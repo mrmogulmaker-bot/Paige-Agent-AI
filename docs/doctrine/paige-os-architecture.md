@@ -278,6 +278,199 @@ questions.
   portal, Playbooks, Harness registrations, action bus, departments, autonomy lanes, audit, and
   billing rails—not by creating duplicate homes (§8, §16, §17).
 
+## 6. Current-state agentization audit and operating map
+
+This audit is grounded on first-parent `main` at `610e609c` (2026-09-08), the
+Surface Binding Ledger, Spine Registry, Integration Registry, Runtime Harness
+doctrine, Skills inventory, C-suite roster, Brain wiring and decision records,
+and the actual source and migrations behind the candidate capabilities. It
+does not activate agents or change product behavior.
+
+The governing architecture is:
+
+`One Paige -> one shared governed Runtime Harness -> coordinated work across many platform domains.`
+
+### 6.1 Current-state agentization inventory
+
+Truth labels describe current agentization eligibility, not visual completeness.
+`LIVE` requires a callable, governed, verified path. `PARTIAL` means useful
+substrate exists but one or more Harness, authority, provider, record, or
+evaluation seams remain. `PROOF OWED` means implementation is asserted but
+required runtime evidence is missing. `UNAVAILABLE` means no agent claim is
+permitted.
+
+| Existing capability | Classification | Current evidence and boundary | Truth |
+|---|---|---|---|
+| Paige workspace and chat | Paige orchestrator responsibility; platform surface | The single owner-facing entry point exists. It remains the only primary intelligence and cannot imply that every routed capability is callable. | `PARTIAL` |
+| Paige Runtime Harness | Shared execution architecture | Job, authority, tool, evaluation, budget, receipt, and recovery contracts are documented; central implementation and end-to-end proof are incomplete. | `PARTIAL` |
+| Paige Spine | Authority layer | Registered capability envelopes exist, but coverage and proof vary by action. Every specialist action must re-resolve authority here. | `PARTIAL` |
+| Trust Compass | Platform authority/governance surface; Paige orchestrator responsibility | Server action-risk policy and approval gates are authoritative. The visible dial/numbers remain non-authoritative fixtures without a complete server seam; Paige never raises her own authority. | `PARTIAL` |
+| Rail and receipts | Canonical evidence layer | Bounded receipts exist for some flows; universal job-to-action-to-readback coverage is not proven. | `PARTIAL` |
+| Second Brain | Shared scoped context | The one business-context source for Paige and specialists; not a per-agent memory store. Coverage is incomplete. | `PARTIAL` |
+| Mind and Memory | Eligibility-controlled learning layers | Governance, stores, and bounded substrate are `PARTIAL`; specialist runtime Mind admission and confirmed-only Memory projection/integration are `UNAVAILABLE` until implemented and proven. Doctrine prohibits inference, raw transcript promotion, and unverified research promotion. No specialist receives a private Mind or Memory. | `PARTIAL` substrate; `UNAVAILABLE` specialist runtime projection |
+| Skills catalogue and runner | Skills | 112 seeded S2 recipe rows and a generic interpreter exist, with only a small bespoke execution set. Seeded or active rows are inventory, not blanket callable proof. | `PARTIAL` |
+| Legacy `paige_subagents` substrate | Specialist-agent precursor | Invocation/proposal tables and vertical functions exist. Old names and stored cap columns do not prove a coordinated Harness team or enforced limits. Do not create `paige_agents` or a second registry. | `PARTIAL` |
+| Business Game Plan, Missions, Strategic Plays, operating reviews | Platform domain; skills; Operating Strategy candidate | Game Plan binding is partial; some Mission actions are Spine-registered. Strategic and review workflows need unified Harness jobs and evaluation. | `PARTIAL` |
+| Command Center Systems Check | Platform readiness domain; Paige orchestrator responsibility; existing specialist support only | The shipped domain/runner/UI and caller-scoped safe-lens substrate are `PARTIAL`, but no Paige binding is built. Counts require enumerated bounds; finding text, ids, registry internals and triggering actor remain excluded. Remediation stays with the owning surface and its own authority gate. | `PARTIAL` domain/safe-lens substrate; `UNAVAILABLE` Paige binding/specialist activation |
+| Clients, relationships, conversations, follow-up, health, requests | Platform domain; Client Success candidate | People, Conversations, and Calendar bindings remain unavailable and active design/workstream boundaries apply. | `UNAVAILABLE` |
+| Tenant Client Portal | MVP platform domain and client-scoped experience | Not an agent. A real external-client substrate exists; calls to Paige or specialists must use constrained client authority and the same evidence path. Recipient binding, revocation, record convergence, governed tools, and authenticated isolation/recovery proof remain gated. | `PARTIAL` |
+| Campaign Briefs, offers, audience, content planning | Platform domain; skills; Growth candidate | Campaign Brief actions have bounded Spine/Rail seams; the broader six-tab Campaigns domain has mixed unavailable/proof-owed bindings. | `PARTIAL` |
+| Social operations | Platform domain; tools; Growth candidate | Presence is partial and social surfaces owe proof. No posting or provider action is authorized by this audit. | `PROOF OWED` |
+| Opportunities, deal health, pipeline movement, follow-up | Platform domain; skills; Sales candidate | Deal-stage evidence is Spine-registered, while the Pipeline surface owes proof and governed mutation is not established. | `PARTIAL` |
+| Research and intelligence | Skills; tools; Research candidate | Source-grounded synthesis patterns exist, but governed job, citation, evaluation, and Memory-promotion controls are incomplete. | `PARTIAL` |
+| Paige Self-Knowledge & Migration Advisor | Paige orchestrator responsibility; skills | A current-main read-first architecture contract separates capability manifest, tenant inventory, external evidence, and migration-plan records. Distributed primitives are `PARTIAL`; the end-to-end advisor is not callable. It is not a separate specialist identity. | `UNAVAILABLE` |
+| Secure Browser | Tool and execution channel | The shipped prerequisite/public-browser substrate is `PARTIAL`; the customer Secure Browser capability remains `UNAVAILABLE`. PR #1046 is an unmerged candidate and collision, not current-main proof. It is an execution layer, never an assistant identity. | `UNAVAILABLE` capability; `PARTIAL` prerequisite substrate |
+| Live Conversation | Modality and execution channel | Current main includes the organic Paige Presence and actual played-output reaction. Provider-backed realtime audio remains `PROOF OWED`; local test audio is not provider speech. The modality uses the same Harness, Spine, Rail, and context boundary. | `PARTIAL` |
+| Vibe Studio and creative production | Platform domain; skills/tools; Paige-assembled Creative Production Team candidate | Existing creative-authoring/session/version capability is `PARTIAL` substrate only. Binding Ledger `campaigns.vibe-studio`, the Paige/Harness binding, and all seven worker-role activations remain `UNAVAILABLE`; presence is not callable-agent proof. NEXUS owns creative/growth outcomes, MENTOR owns Studio platform/config/readiness, and Paige orchestrates the bounded team. | `PARTIAL` authoring substrate; `UNAVAILABLE` binding and team activation |
+| Analytics and outcome learning | Platform domain; skills | The Analytics binding is unavailable. Metrics require source, provenance, date range, and honest availability. | `UNAVAILABLE` |
+| Plan usage, model/voice/browser/job/provider consumption and forecasts | Platform concern; Cost Advisor candidate | Billing is partial and provider registry entries are mixed. No canonical cross-provider cost ledger, rate proof, or anomaly evaluation is complete. | `PARTIAL` |
+| Vault and Security & Data | Platform domains; constrained context source | Intentionally isolated. Specialists receive only explicitly approved safe projections, never raw secrets or unrestricted Vault context. | `UNAVAILABLE` for specialist access |
+| Settings, Connections, Integrations, Setup, Team, Public Presence | Platform domains; tools and authority inputs | Integration and billing bindings are partial; other bindings are unavailable or proof owed. Registry listing is not connection or action proof. | `PARTIAL` overall |
+| Marketplace and MCP door | Platform domain; tool channel | Marketplace is bounded and the MCP door is read-only/refuses mutation. Neither is a specialist identity nor permission to add products or providers. | `PARTIAL` |
+| Platform Operator and Fleet | Internal platform domain; future operator candidates | Operator routes and records exist, but public-tenant agentization is forbidden and workflows need Platform Operator gates and proof. | `UNAVAILABLE` |
+
+Secure Browser and Live Conversation are execution/modality layers. The Tenant
+Client Portal is a platform domain and constrained client experience. None is
+an independent assistant identity.
+
+### 6.2 Domain-to-skill-to-tool-to-specialist matrix
+
+Provider status must be resolved from the Integration Registry at execution
+time. A listed provider is not necessarily connected, authorized, or usable.
+
+| Platform domain | Skills or methods | Registered tools or channels | Accountable specialist candidate | Present eligibility |
+|---|---|---|---|---|
+| Cross-domain owner operations | intent framing, decomposition, synthesis, verification | Paige workspace, Harness jobs, Spine, Rail | Paige Orchestrator / COO | `PARTIAL` |
+| Game Plan, Missions, Strategic Plays | planning, decision framing, operating review | Brain reads; registered Mission actions | Operating Strategy and Planning | `PARTIAL` |
+| Command Center Systems Check | readiness interpretation, remediation ordering and draft steps | `systems_check_snapshot`, n8n readiness; mutations remain in owning surfaces | Paige Orchestrator coordinating existing VERA compliance and MENTOR operations capability domains | `PARTIAL` domain/safe-lens substrate; `UNAVAILABLE` Paige binding/specialist activation |
+| Trust Compass | authority-posture explanation and denial-safe routing | platform ceiling resolver, Rail activity, server action-risk policy and approval gates | Paige Orchestrator / COO; authority cannot be delegated | `PARTIAL`; visible control remains non-authoritative |
+| Clients and Tenant Client Portal | relationship synthesis, follow-up drafting, request triage | client records, conversations, calendar, constrained Portal calls | Client Success and Relationship | `UNAVAILABLE` as an agent; Portal domain `PARTIAL` |
+| Campaigns and approved social work | brief creation, audience/offer planning, content planning, performance interpretation | Campaign Brief actions; authorized provider channels only | Growth and Campaign | `PARTIAL` |
+| Sales and Pipeline | deal evidence, follow-up drafting, stage-change preparation | pipeline records; registered deal-stage evidence | Sales and Pipeline | `PARTIAL` |
+| Research and intelligence | source collection, citation, synthesis, contradiction handling | approved search/browser/model tools | Research and Intelligence | `PARTIAL` |
+| Self-knowledge and migration advice | capability interpretation, Paige-first comparison, staged migration planning | planned/unavailable derived-manifest and plan/evidence adapters; existing tenant/source records only where separately proven | Paige Orchestrator with Research and Strategy support | `UNAVAILABLE` end to end; distributed primitives `PARTIAL` |
+| Vibe Studio — Creative Brief and Strategy Specialist | versioned brief covering business goal, audience, offer, message, campaign, channel, asset and success evidence | planned Studio brief/version lineage; approved research/model tools only after registration and proof | NEXUS creative/growth owner; MENTOR Studio platform/config/readiness owner; Paige orchestrates the temporary team | `UNAVAILABLE` |
+| Vibe Studio — Funnel and Conversion Copy Specialist | sourced landing-page, offer, ad, email, CTA, follow-up and conversion-copy variants | planned Studio copy/version lineage; no send, publish or spend authority | NEXUS creative/growth owner; MENTOR Studio platform/config/readiness owner; Paige orchestrates the temporary team | `UNAVAILABLE` |
+| Vibe Studio — Forms and Conversion Flow Specialist | qualifying forms, intake logic, routing, consent, follow-up, conversion, validation and recovery specifications | planned Studio flow/version lineage; no silent publish, live-routing, website, form, schema or product change | NEXUS creative/growth owner; MENTOR Studio platform/config/readiness owner; Paige orchestrates the temporary team | `UNAVAILABLE` |
+| Vibe Studio — Long-Form Publishing Specialist | editable governed eBooks, guides, manuals, pamphlets, proposals, lead magnets and marketing collateral | planned Studio document/version lineage; no publication, syndication or sending authority | NEXUS creative/growth owner; MENTOR Studio platform/config/readiness owner; Paige orchestrates the temporary team | `UNAVAILABLE` |
+| Vibe Studio — Visual Asset Specialist | brand-aware concepts and variations within brand, rights and quality boundaries | planned Studio asset/version lineage; generation tools only after separate registration, authority, budget and proof | NEXUS creative/growth owner; MENTOR Studio platform/config/readiness owner; Paige orchestrates the temporary team | `UNAVAILABLE` |
+| Vibe Studio — Video Production Adapter | provider-neutral scripts, shot lists, storyboards, render requests and returned-asset reconciliation | planned neutral adapter/version lineage; Higgsfield is an unverified example only; no provider call, spend, upload or external-account change without separate gates | NEXUS creative/growth owner; MENTOR Studio platform/config/readiness owner; Paige orchestrates the temporary team | `UNAVAILABLE` |
+| Vibe Studio — Creative Quality Reviewer | owner-intent fidelity, brand/visual quality, funnel coherence, truthful claims, accessibility, version comparison and owner-ready presentation | canonical version lineage plus a role-specific approved creative evaluation contract; review grants no approval or execution authority | NEXUS creative/growth owner; MENTOR Studio platform/config/readiness owner; Paige orchestrates the temporary team | `UNAVAILABLE` |
+| Usage and economics | consumption reconciliation, forecasting, anomaly review, optimization proposal | canonical usage records; verified provider rates and invoices | Cost and Usage Advisor | `PARTIAL` |
+| Skill lifecycle | outcome review, evaluation design, versioned proposal | Skills catalogue, evaluations, owner corrections | Skills Steward / Skill Evolution | `UNAVAILABLE` |
+| Platform operations | tenant health, support, release, fleet, entitlement, incident and margin operations | operator-only tools and records | Platform Operator specialists | `UNAVAILABLE` |
+
+### 6.3 Delegation and evidence path
+
+`Owner request -> Paige orchestrator -> scoped specialist job(s) -> approved skills/tools -> Spine authority -> canonical action/readback -> receipt/Rail -> Paige synthesis -> owner-visible result`
+
+Paige owns goal interpretation, decomposition, conflict resolution, delegation,
+verification, synthesis, and the single owner-facing response. A specialist
+owns only its accepted job contract and accountable outputs. Specialists may
+run asynchronously as durable Harness jobs, but may not hold uncontrolled raw
+agent-to-agent conversations, create private untracked memory, bypass canonical
+readback or Rail, or act beyond separately resolved authority.
+
+`Owner -> Paige -> [Strategy | Client Success | Growth | Sales | Research | Creative | Cost | Steward | Operator] -> governed evidence -> Paige -> Owner`
+
+**Vibe Studio creative path:**
+
+`Owner request → server-derived tenant/workspace/actor context → Paige assembles approved specialist job team → scoped skills/tools → drafts and versions → quality review → owner approval → separately authorized publish/provider execution → verified receipt/Rail outcome`
+
+NEXUS owns creative/growth outcomes, MENTOR owns Studio platform/config/readiness,
+while Paige remains the orchestrator. The owner has one conversation with Paige.
+Paige selects the smallest fixed,
+approved role set for that accepted job; the workers are temporary job roles,
+not seven permanent agents, user-facing identities, departments, or private
+conversation threads. They receive explicit context, skill/tool versions,
+budget, time, retry and concurrency ceilings, create drafts and review evidence
+only, and end with the job. The summary path’s terminal “publish/provider
+execution” means post-review external delivery; it does not authorize or hide a
+provider-backed draft-generation call. When a visual or video draft requires a
+provider, that call first needs a fresh Spine decision, registered provider,
+enforced budget and applicable approval. Its result must be written and read
+back canonically with a generation receipt/Rail before role-specific creative
+review. Text or local drafts likewise require canonical write/readback and an
+attributable job receipt/Rail before review. The reviewer’s finding/version is
+also read back and receipted before Paige reports an owner-ready bundle.
+Owner approval and later publish/send/upload/live-site authority remain separate
+Spine decisions; the reviewer cannot self-approve, publish, call a provider or
+retain private memory.
+
+### 6.4 Activation roadmap
+
+**Cohort 0 - mandatory Harness completion gate**
+
+No specialist becomes a production agent until the shared Harness proves:
+server-derived tenant/workspace/actor/role context; scoped Second Brain reads;
+version-pinned skills and registered tools; per-action Spine decisions;
+enforced spend/time/concurrency limits; durable jobs, retries and cancellation;
+canonical write/readback; receipts and Rail; evaluation; recovery; and explicit
+Mind/Memory eligibility. Cross-tenant, wrong-account, denied-authority, missing-
+provider, timeout, duplicate, abandonment, and retry paths must fail closed.
+
+**Cohort 1 - proposed first activation after Cohort 0**
+
+1. Operating Strategy and Planning - read, analyze, draft, and propose only.
+2. Research and Intelligence - source-grounded evidence packets only; no
+   automatic Memory promotion.
+3. Cost and Usage Advisor - reconcile verified usage/rates and recommend only;
+   never invent rates, bills, charges, savings, or forecasts.
+4. Skills Steward - evaluate and propose versioned changes only; never silently
+   rewrite, activate, or deploy.
+
+Their current labels remain `PARTIAL`, `PARTIAL`, `PARTIAL`, and
+`UNAVAILABLE` respectively until every role-specific roster gate is met.
+
+**Cohort 2 - domain action readiness**
+
+Client Success, Growth, and Sales follow only after their canonical surfaces,
+provider seams, write/readback paths, evaluations, and owner/client authority
+boundaries are proven. Mixed surface status cannot be averaged into a claim.
+
+**Cohort 3 - specialized production and internal operations**
+
+Creative Production follows governed Studio and asset/outcome proof. Its first
+future MVP sequence is: (1) Creative Brief and Strategy Specialist plus Creative Quality
+Reviewer; (2) Funnel and Conversion Copy Specialist plus Forms and Conversion Flow Specialist;
+(3) Long-Form Publishing Specialist plus Visual Asset Specialist; and (4) the provider-neutral Video
+Production Adapter only after provider, rights, security, budget and evidence
+gates. The smallest proof accepts one bounded brief; server-resolves tenant,
+workspace and actor context; selects a fixed approved role set; pins skills,
+tools, budget and concurrency; creates attributed versioned drafts in canonical
+artifact lineage; verifies matching artifact/version ids by canonical readback;
+runs the role-specific approved creative evaluation; writes and reads back the
+attributed review; records job receipts/Rail for the drafts and review; and
+returns one coherent bundle to Paige for owner approval. If provider-backed
+asset generation is needed, it first receives its own Spine, provider, budget
+and approval decision, then canonical result readback and generation receipt.
+Only later may a separately authorized publish/send/upload/live-site effect run
+with its own canonical readback and receipt/Rail. Acceptance also requires proof
+that denial, tenant/account switch, retry, cancellation and provider-unavailable
+paths fail closed. Each stage remains draft/version/review-only until those gates
+pass.
+
+Platform Operator specialists remain future internal dogfood behind operator
+tenancy, role, entitlement, break-glass, incident, and release controls; they
+are never public tenant agents.
+
+### 6.5 Active collision and ownership map
+
+| Surface | Active owner/collision | Audit rule |
+|---|---|---|
+| Competing agent registry/roster | PR #921 | Do not merge its proposed `paige-agent-registry.md` as canonical. Reconcile useful evidence into existing homes only. |
+| Text-chat skills and interviews | PR #1044 | Preserve its Binding Ledger/chat/Game Plan ownership; this audit changes no runtime. |
+| Secure Browser | PR #1046 | Preserve browser UI/control-plane ownership; classify only. |
+| Live Conversation canonical base | PR #1068 merged as `610e609c` | Preserve its product, evidence, Master, decision-log, config, and provider-registry records; provider audio remains `PROOF OWED` and this audit classifies the modality only. |
+| Orchestration and contact import | PR #917 | Preserve tool/job/chat/migration ownership; do not duplicate it. |
+| Rail and Spine | PRs #729 and #776 | Preserve recovery and evidence workstreams; no schema or product edits here. |
+| Brain and doctrine | PRs #754 and #1040 | Documentation overlap requires rebase/reconciliation before merge. |
+| Client Portal, Platform Operator, social operations | Existing active/paused canonical workstreams | Keep their gates and truth labels; this audit grants no release or activation authority. |
+
+This documentation delivery is R2 collision-sensitive but behaviorally inert.
+Any conflicting canonical-doc change must be rebased and reconciled; a clean
+textual merge does not prove semantic compatibility.
+
 ## Canonical references
 
 - `CLAUDE.md` §7 — intelligent, tenant-authored, two-way client portal.
