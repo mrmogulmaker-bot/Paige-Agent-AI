@@ -1,6 +1,6 @@
 /* Owner-approved Live Presence exception: warm internal gold and calm ambient motion are identity,
    not telemetry or work claims. No remote assets, shader compilation, or 3D dependency. */
-.paige-presence { --presence-obsidian: #0c0810; --presence-plum: #352335; --presence-edge: #796b7d; --presence-gold: #bc965b; --presence-light-ink: #f0dfb7; width: clamp(12rem,24vw,21rem); max-width: 100%; flex: none; }
+.paige-presence { --presence-obsidian: #0c0810; --presence-plum: #352335; --presence-edge: #796b7d; --presence-gold: #bc965b; --presence-light-ink: #f0dfb7; width: min(100%,48vh,36rem); max-width: 100%; flex: none; }
 .paige-presence svg { display: block; width: 100%; height: auto; overflow: visible; --presence-light: .28; --presence-energy: 0; }
 .paige-presence__sculpture { transform-origin: 160px 146px; transform: translateY(var(--presence-drift,0px)) rotate(var(--presence-turn,-12deg)); }
 .paige-presence__shadow { fill: var(--presence-obsidian); opacity: .3; }
@@ -14,6 +14,6 @@
 .paige-presence[data-presence-state="held"],.paige-presence[data-presence-state="disconnected"] { opacity: .72; }
 .paige-presence[data-presence-state="unavailable"] .paige-presence__fold { opacity: .24; }
 .paige-presence[data-motion="reduced"] svg { --presence-energy: 0 !important; --presence-drift: 0px !important; --presence-turn: -12deg !important; }
-@media(max-width:800px) { .paige-presence { width: 10rem; } }
-@media(max-height:600px) { .paige-presence { width: 8rem; } }
+@media(max-width:800px) { .paige-presence { width: min(72vw,24rem); } }
+@media(max-height:600px) and (min-width:801px) { .paige-presence { width: min(100%,46vh); } }
 @media(forced-colors:active) { .paige-presence path { stroke: CanvasText; } }

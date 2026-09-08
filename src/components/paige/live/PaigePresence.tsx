@@ -40,7 +40,7 @@ export function PaigePresence({ state, visible = true, readEnergy = () => SILENT
       svg.style.setProperty("--presence-drift", `${frame.drift}px`);
       svg.style.setProperty("--presence-turn", `${frame.turn}deg`);
       svg.dataset.energy = frame.energy.toFixed(3);
-      if (visible && !hidden && !reduced) timer = setTimeout(paint, state === "unavailable" || state === "held" ? 125 : 40);
+      if (visible && !hidden && !reduced) timer = setTimeout(paint, state === "held" ? 125 : 40);
     };
     paint();
     return () => { if (timer !== undefined) clearTimeout(timer); };

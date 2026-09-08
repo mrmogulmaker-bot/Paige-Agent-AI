@@ -4,6 +4,17 @@
 
 ## Full live-audio completion — owner authority, 2026-09-08
 
+**Owner visual correction (2026-09-08):** the deployed Presence looks static to human eyes and
+occupies the smaller stage column. Approved correction makes Paige the primary (~60%) desktop
+region, keeps the same transcript/cards in a compact (~40%) region, enlarges the sculpture and
+requires perceptible calm shape/drift change within two seconds even when audio is unavailable.
+Reduced motion remains static; ambient movement conveys identity, never listening or speaking.
+FLOW_PROTOTYPE: NOT_REQUIRED for this presentation-only correction: no action, state, exit,
+permission, persistence or scroll-controller contract changes. Existing mounted prototype host
+provides both-theme/four-viewport geometry, actual motion recording and return/anchor regression.
+Goal: feel present with Paige, not read a chat panel beside a thumbnail. Existing owner screenshots
+are the failed visual baseline; enlarged scale must not clip controls or create another scroll owner.
+
 **Intended usable outcome:** an authenticated authorized owner speaks and hears Paige through the
 existing composer/thread, with real audio-reactive Presence, contextual cards, governed work and
 safe same-thread return. The latest owner instruction authorizes existing-account inspection and
@@ -26,6 +37,13 @@ Current acceptance is FAIL pending that owner's correction and proof. The initia
 was immediately withdrawn by owner correction: continue authorized work, coordinate concrete
 overlaps in scroll/focus writers, anchor identity and mount lifecycle without stopping other work.
 Re-ground on the accepted repair before final integration.
+
+**Presentation composition checkpoint:** current main `3bdd26c2bc80a3d40298faad30e041a35734e5db`
+includes shared-scroll repair #1075 (`f86b1c401c492c4d0dc122258b6c26b96870befe`) and the audited
+owner-only account inspection #1073. The focused Presence branch starts there and changes no shared
+chat/controller/focus writer. #1075's authenticated acceptance remains its own canonical boundary.
+The initial enlarged layout failed outer-main overflow; the corrected 48vh sculpture and 60/40
+columns pass all eight required theme/viewport checks, now enforced by the verifier.
 
 **First dependency:** current production metadata has no independent provider-verification rows.
 Existing hosted-agent token endpoints are not an account-inspection route and will not be used.

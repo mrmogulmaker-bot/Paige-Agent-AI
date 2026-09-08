@@ -125,6 +125,30 @@ RELEASE_RECOVERY: position=forward-fix or revert the exact feature commits while
 Independent final static review found no remaining concrete release blocker after playback races,
 thread cleanup and inferred-anchor-adoption repairs. It does not establish authenticated audio proof.
 
+## Owner correction: larger Presence and perceptible ambient motion — local evidence, 2026-09-08
+
+The owner reported that the shipped sculpture looked static and requested a larger conversation
+stage with a smaller running transcript. The focused correction gives Presence 60% of the desktop
+content width and increases ambient drift and silhouette evolution without creating audio energy.
+Reduced motion remains intentionally still; hidden rendering remains suspended.
+
+Local rendered evidence is in [presence-focus/render-results.json](assets/paige-live-conversation/presence-focus/render-results.json).
+All eight required theme/viewport pairs pass horizontal overflow, footer reachability, and **no outer
+main overflow** checks. The latter is now enforced, after the initial enlarged layout failed it.
+Companion return, existing-popout isolation, and 200-percent-equivalent reflow also pass.
+
+[Motion evidence](assets/paige-live-conversation/presence-focus/motion-results.json) records 32 passing
+behavioral checks, including 14.3 SVG-unit silhouette change and 7.8-unit drift over two seconds in
+the actual unavailable state, with zero audio energy. The [recording](assets/paige-live-conversation/presence-focus/presence-motion-local-audio.webm)
+uses **local test audio, not provider-backed speech**. Nineteen focused component/presence tests pass.
+Independent local presentation review found no remaining concrete blocker after the overflow repair.
+
+This correction is development-only at this record: not yet merged or deployed. Provider-backed
+live audio remains UNAVAILABLE pending account/scopes, voice authorization, retention, quota and cost
+evidence. Authenticated owner proof remains UNVERIFIED. No Rail, Mind or Memory behavior changes.
+Current-main #1075 is the newer shared-scroll correction; its canonical acceptance boundary is
+preserved, not superseded by these isolated Live-stage checks.
+
 ## Prior shipped #1053 scope and evidence (historical)
 
 - Classification: dedicated Paige Live Conversation MVP, separate from Skills/Intentful Interview.
