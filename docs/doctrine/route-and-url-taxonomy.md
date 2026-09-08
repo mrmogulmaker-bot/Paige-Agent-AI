@@ -17,6 +17,12 @@ incoherent routes to intuitive ones **without breaking anything** (§58). Modele
 > | Solo / Business / Agency workspace | `/solo/{account}/...` / `/business/{account}/...` / `/agency/{account}/...` |
 > | Platform operator capability | `/operator/...`, guarded by server-proven platform authority |
 > | Setup / OAuth / notification | tier-owned Setup; explicit callback route; validated safe tenant destination or chooser |
+>
+> **Account-choice correction — 2026-09-07:** after sign-in, Platform staff always pause at
+> `/choose-account` and deliberately select Platform or one of their directly authorized Paige
+> workspaces. Platform continues to `/operator/fleet`; workspace selection enters that workspace's
+> canonical tier route through the guarded tenant switch. `/admin` is never a fallback or special
+> Platform destination. This supersedes older direct-routing language.
 §51 tier matrix (`docs/doctrine/tier-matrix.md`).
 
 This is **PR 1: the taxonomy + matrix + migration plan.** It contains **zero code renames.**

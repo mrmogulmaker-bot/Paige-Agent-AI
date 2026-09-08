@@ -19,4 +19,13 @@ describe("account switch unsaved-work guard", () => {
     removeFirst();
     removeSecond();
   });
+
+  it("delivers an explicit null destination when leaving a tenant for Platform", async () => {
+    const guard = vi.fn().mockResolvedValue(true);
+    const remove = registerAccountSwitchGuard(guard);
+    const platformIntent = { fromTenantId: "tenant-a", toTenantId: null, toTenantName: "Platform" };
+    expect(await allowAccountSwitch(platformIntent)).toBe(true);
+    expect(guard).toHaveBeenCalledWith(platformIntent);
+    remove();
+  });
 });

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Shield, TrendingUp, Zap, ChevronRight, Eye, EyeOff } from "lucide-react";
+import { Loader2, ArrowLeft, Shield, TrendingUp, Zap, ChevronRight, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { z } from "zod";
 import type { User, Session } from "@supabase/supabase-js";
 import { signInWithOAuth } from "@/integrations/auth/oauth";
@@ -15,7 +15,7 @@ import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthInd
 import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
 import { signUpTenant } from "@/lib/auth/signUpTenant";
 import { trackEvent } from "@/hooks/useAnalytics";
-import { resolveLandingRoute, clearClientViewOverride } from "@/lib/auth/resolveLandingRoute";
+import { LANDING_ROUTE_RETRY, resolveLandingRoute, clearClientViewOverride } from "@/lib/auth/resolveLandingRoute";
 import { isSafeRedirectPath } from "@/lib/auth/safeRedirect";
 import {
   type PlanIntent, stashPlanIntent, readPlanIntent, clearPlanIntent,
@@ -24,6 +24,7 @@ import {
 import { useRequiredSignupDocs, recordAcceptances } from "@/lib/legal/useLegalDocuments";
 import { readableTextOn, isColorDark } from "@/lib/brand/contrast";
 import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
+import { operatorChooserTarget } from "@/lib/auth/operatorTarget";
 
 const authSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }),
@@ -47,6 +48,7 @@ const Auth = () => {
     setFullName([firstName.trim(), mi, lastName.trim()].filter(Boolean).join(" "));
   }, [firstName, middleInitial, lastName]);
   const [isLoading, setIsLoading] = useState(false);
+  const [routingError, setRoutingError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -154,9 +156,33 @@ const Auth = () => {
   }, [searchParams]);
 
   const redirectByRole = async (userId: string) => {
+    setRoutingError(null);
+    setIsLoading(true);
     // Always clear any "preview as client" override on a fresh login so role
     // redirects aren't suppressed by a stale flag from a previous session.
     clearClientViewOverride();
+
+    // Resolve the account-choice contract before any post-login continuation.
+    // Platform staff always pause, including on bookmarked operator deep links;
+    // the safe operator target is carried through the chooser and applied only
+    // after Platform is deliberately selected.
+    const accountChoiceContext = Promise.all([
+      supabase.from("tenant_members").select("tenant_id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "active"),
+      supabase.rpc("is_platform_admin"),
+    ]);
+    const [initialMemberships, initialStaff] = await accountChoiceContext;
+    if (initialMemberships.error || initialStaff.error) {
+      // Keep the authenticated person on this exact continuation. Moving to the
+      // chooser would discard an in-memory signup plan and cannot retry invite,
+      // role, or client resolution.
+      setRoutingError("Paige couldn't confirm your account access. Your sign-in is still active; try again.");
+      setIsLoading(false);
+      return;
+    }
+    if (!initialStaff.error && Boolean(initialStaff.data)) {
+      navigate(operatorChooserTarget(window.location.search), { replace: true });
+      return;
+    }
 
     // Plan-intent (task #66 reorder): a fresh signup that carried a plan goes to
     // /onboarding CARRYING the plan — the business-context + terms step, from which
@@ -223,19 +249,27 @@ const Auth = () => {
       /* non-blocking */
     }
 
-    const [{ count: activeMembershipCount, error: membershipError }, staff] = await Promise.all([
-      supabase.from("tenant_members").select("tenant_id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "active"),
-      supabase.rpc("is_platform_admin"),
-    ]);
-    if (!membershipError && !staff.error && shouldOfferAccountPicker({ activeMembershipCount: activeMembershipCount ?? 0, isPlatformStaff: Boolean(staff.data) })) {
+    const [{ count: activeMembershipCount }, staff] = await accountChoiceContext;
+    const isPlatformStaff = Boolean(staff.data);
+    if (
+      shouldOfferAccountPicker({
+        activeMembershipCount: activeMembershipCount ?? 0,
+        isPlatformStaff,
+      })
+    ) {
       navigate("/choose-account", { replace: true });
       return;
     }
 
     const target = await Promise.race<string>([
       resolveLandingRoute(userId),
-      new Promise<string>((resolve) => setTimeout(() => resolve("/app"), 4000)),
+      new Promise<string>((resolve) => setTimeout(() => resolve(LANDING_ROUTE_RETRY), 4000)),
     ]);
+    if (target === LANDING_ROUTE_RETRY) {
+      setRoutingError("Paige couldn't finish checking where you can work. Your sign-in is still active; try again.");
+      setIsLoading(false);
+      return;
+    }
     navigate(target, { replace: true });
   };
 
@@ -746,6 +780,14 @@ const Auth = () => {
             </div>
 
             {/* Form */}
+            {routingError && user && (
+              <div role="alert" className="rounded-xl border border-amber-300/40 bg-amber-300/10 p-4 text-sm text-foreground">
+                <p>{routingError}</p>
+                <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void redirectByRole(user.id)}>
+                  <RefreshCw className="mr-2 h-4 w-4" /> Retry account check
+                </Button>
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-5">
               {!isLogin && (
                 <div className="grid grid-cols-[1fr_4.5rem_1fr] gap-2">

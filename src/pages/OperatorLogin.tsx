@@ -2,14 +2,15 @@
  * Operator Login — the God-tier entrance.
  * A dedicated, isolated sign-in for the platform operator (super-admin), kept
  * separate from the shared /auth door that every agency and coach uses. On
- * success it verifies platform-owner status and lands straight in the God
- * console; anyone who isn't an operator is routed to their normal home (the
+ * success it verifies platform authority and hands the person to the shared
+ * account chooser, preserving a safe operator deep link. Platform is entered
+ * only after the person deliberately selects it. Anyone who isn't an operator is routed to their normal home (the
  * God surfaces are RLS-gated regardless — this page is isolation, not the
  * security boundary). Route: /operator.
  */
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,8 +18,8 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { PLATFORM } from "@/lib/platform/identity";
-import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
-import { operatorTarget } from "@/lib/auth/operatorTarget";
+import { LANDING_ROUTE_RETRY, resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
+import { operatorChooserTarget } from "@/lib/auth/operatorTarget";
 
 export default function OperatorLogin() {
   const navigate = useNavigate();
@@ -27,12 +28,16 @@ export default function OperatorLogin() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [routing, setRouting] = useState(false);
+  const [routingError, setRoutingError] = useState<string | null>(null);
   const handledRef = useRef(false);
+  const routedUserRef = useRef<string | null>(null);
 
   const routeAfterAuth = async (userId: string) => {
     if (handledRef.current) return; // getSession + INITIAL_SESSION can both fire
     handledRef.current = true;
+    routedUserRef.current = userId;
     setRouting(true);
+    setRoutingError(null);
     try {
       // WHICH PREDICATE, AND WHY IT IS NOT `is_platform_owner`. This door must admit exactly
       // who `RequireOperator` admits, or the `?next=` round-trip it sets up is a trap.
@@ -44,25 +49,41 @@ export default function OperatorLogin() {
       // `resolveLandingRoute` — which has no platform_admin branch at all — to a tenant
       // surface. Caught by the §39 peer-gate; verified against both migrations before fixing.
       //
-      // Each call is raced so a stalled network can never trap the operator on
-      // "Entering console…" — it falls through to a sane default instead.
-      const isOperator = await Promise.race<boolean>([
-        supabase.rpc("is_platform_admin").then(({ data }) => data === true),
-        new Promise<boolean>((r) => setTimeout(() => r(false), 4000)),
+      // A timeout or error is UNKNOWN, not a denial. Unknown authority may enter
+      // the chooser's recovery state but must never bypass deliberate selection.
+      const isOperator = await Promise.race<boolean | null>([
+        supabase.rpc("is_platform_admin").then(({ data, error }) => error ? null : data === true),
+        new Promise<null>((r) => setTimeout(() => r(null), 4000)),
       ]);
+      if (isOperator === null) {
+        handledRef.current = false;
+        setRouting(false);
+        setIsLoading(false);
+        setRoutingError("Paige couldn't confirm Platform access. Your sign-in is still active; try again.");
+        return;
+      }
       if (isOperator) {
-        navigate(operatorTarget(window.location.search), { replace: true });
+        navigate(operatorChooserTarget(window.location.search), { replace: true });
         return;
       }
       // Authenticated, but not an operator — send them where they belong.
       const target = await Promise.race<string>([
         resolveLandingRoute(userId),
-        new Promise<string>((r) => setTimeout(() => r("/app"), 4000)),
+        new Promise<string>((r) => setTimeout(() => r(LANDING_ROUTE_RETRY), 4000)),
       ]);
+      if (target === LANDING_ROUTE_RETRY) {
+        handledRef.current = false;
+        setRouting(false);
+        setIsLoading(false);
+        setRoutingError("Paige couldn't finish checking where you can work. Your sign-in is still active; try again.");
+        return;
+      }
       navigate(target, { replace: true });
     } catch {
       handledRef.current = false;
       setRouting(false);
+      setIsLoading(false);
+      setRoutingError("Paige couldn't finish checking your access. Your sign-in is still active; try again.");
       toast({ title: "Couldn't route you in", description: "Please try again.", variant: "destructive" });
     }
   };
@@ -131,6 +152,14 @@ export default function OperatorLogin() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {routingError && routedUserRef.current && (
+            <div role="alert" className="rounded-xl border border-[#EBB94C]/35 bg-[#EBB94C]/10 p-4 text-sm text-[#EDE8F6]">
+              <p>{routingError}</p>
+              <Button type="button" variant="outline" size="sm" className="mt-3 border-white/20 bg-white/5" onClick={() => void routeAfterAuth(routedUserRef.current!)}>
+                <RefreshCw className="mr-2 h-4 w-4" /> Retry account check
+              </Button>
+            </div>
+          )}
           <div className="grid gap-1.5">
             <Label htmlFor="op-email" className="text-xs text-[#A79EC2]">Email</Label>
             <Input

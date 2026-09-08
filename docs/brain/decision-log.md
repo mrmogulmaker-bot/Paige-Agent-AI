@@ -68,6 +68,17 @@
   bypasses consequential-action policy or substitutes a casual "yes" for approval proof. Canonical
   contract and future-surface acceptance checklist: `../doctrine/paige-modality-neutrality.md`.
 
+- **AUTH ENTRY: Platform staff must deliberately choose Platform or a direct Paige workspace (owner ruling 2026-09-07).**
+  The 2026-09-01 picker record excluded Platform staff and the tier matrix routed God users from
+  `/choose-account` to the retired `/admin` route. Both are superseded. After identity is established,
+  Platform staff always pause on the existing chooser. **Platform** exits tenant scope through the
+  audited `switchTenant(null)` seam and continues to `/operator/fleet`; workspace choices are limited
+  to the intersection of RLS-visible tenants and the caller's own active direct memberships, then use
+  the existing guarded switch. Non-platform single-membership entry remains direct. At the chooser,
+  missing, failed, stale, inaccessible, or ambiguous membership state stays with honest recovery; no
+  URL, email, account number, or retired route grants access. Logout behavior is unchanged. Scope is
+  exactly `sign in → deliberate account choice → Platform or direct Paige workspace`.
+
 - **Secure Browser — prerequisite security repair candidate (2026-09-07, dedicated builder).**
   Grounded current `main` at `49d25f4c`; #1039 is merged and its Browserbase review/starting packet
   remains authoritative. Candidate source now gives every `browser_use_sessions` writer a

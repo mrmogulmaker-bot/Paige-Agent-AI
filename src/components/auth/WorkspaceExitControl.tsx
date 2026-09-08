@@ -48,7 +48,8 @@ import { toast } from "sonner";
  * switcher rendered only when the active tenant was `standalone`, so it was
  * absent in exactly the situation an owner needed it. It is shown only to a
  * genuinely multi-context person: a single-workspace owner has nothing to
- * choose, and platform staff switch through the audited operator seam.
+ * choose. Platform staff always have Platform as a distinct context, so they
+ * may leave a tenant shell for the same deliberate chooser used at sign-in.
  */
 export function WorkspaceExitControl() {
   const navigate = useNavigate();

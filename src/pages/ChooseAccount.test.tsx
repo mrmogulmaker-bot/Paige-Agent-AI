@@ -21,6 +21,7 @@ const harness = vi.hoisted(() => ({
     accountContextStatus: "ready",
     isPlatformStaff: false,
     switchTenant: vi.fn(),
+    refresh: vi.fn(),
   },
 }));
 
@@ -48,6 +49,7 @@ vi.mock("@/integrations/supabase/client", () => ({
 const PRISTINE_TENANTS = harness.context.tenants.map((t) => ({ ...t }));
 
 import { registerAccountSwitchGuard } from "@/lib/auth/accountSwitchGuard";
+import { GOD_CONSOLE } from "@/lib/auth/operatorTarget";
 import ChooseAccount from "./ChooseAccount";
 
 function LocationProbe() {
@@ -64,6 +66,10 @@ describe("ChooseAccount", () => {
     localStorage.clear();
     harness.membershipError = null;
     harness.context.activeTenantId = "antonio";
+    harness.context.isPlatformStaff = false;
+    harness.context.switchTenant = vi.fn(async () => true);
+    harness.context.refresh = vi.fn(async () => undefined);
+    harness.context.accountContextStatus = "ready";
     // Restore the tenant fixture. Several cases mutate it (status, canary,
     // account_number) and without this the mutations leak forward and the next
     // test passes or fails for a reason that has nothing to do with its subject.
@@ -95,6 +101,93 @@ describe("ChooseAccount", () => {
     expect(host.textContent).toContain("Mogul Maker Academy");
     expect(host.textContent).not.toContain("Not My Account");
     expect(host.querySelectorAll("button").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("pauses platform staff with an explicit Platform choice and their direct memberships", async () => {
+    harness.context.isPlatformStaff = true;
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
+    });
+
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/choose-account");
+    expect(host.textContent).toContain("Choose the Platform or a Paige account to continue.");
+    expect(host.textContent).toContain("Platform operations");
+    expect(host.textContent).toContain("Antonio Daniel LLC");
+    expect(host.textContent).toContain("Mogul Maker Academy");
+    expect(host.textContent).not.toContain("Not My Account");
+  });
+
+  it("pauses platform-only staff and offers Platform without inventing a workspace", async () => {
+    harness.context.isPlatformStaff = true;
+    harness.context.activeTenantId = null;
+    harness.context.tenants = [];
+    harness.memberships = [];
+
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
+    });
+
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/choose-account");
+    expect(host.textContent).toContain("Platform operations");
+    expect(host.textContent).not.toContain("couldn't confirm a workspace");
+  });
+
+  it("still pauses platform staff after the chooser is refreshed", async () => {
+    harness.context.isPlatformStaff = true;
+    sessionStorage.setItem("paige.workspace.entered", "antonio");
+
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
+    });
+    expect(host.textContent).toContain("Platform operations");
+
+    await act(async () => root.unmount());
+    root = createRoot(host);
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
+    });
+
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/choose-account");
+    expect(host.textContent).toContain("Platform operations");
+  });
+
+  it("enters Platform through the audited null-scope switch before navigating", async () => {
+    harness.context.isPlatformStaff = true;
+    sessionStorage.setItem("paige.workspace.entered", "antonio");
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
+    });
+    const button = Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.includes("Platform operations"));
+    await act(async () => { button?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+
+    expect(harness.context.switchTenant).toHaveBeenCalledWith(null);
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe(GOD_CONSOLE);
+    expect(sessionStorage.getItem("paige.workspace.entered")).toBeNull();
+  });
+
+  it("recovers a safe operator deep link only after Platform is selected", async () => {
+    harness.context.isPlatformStaff = true;
+    harness.context.activeTenantId = null;
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account?next=%2Foperator%2Fsettings%2Fteam%2Froles"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
+    });
+    const button = Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.includes("Platform operations"));
+    await act(async () => { button?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/operator/settings/team/roles");
+  });
+
+  it("stays on the chooser when Platform scope cannot be entered", async () => {
+    harness.context.isPlatformStaff = true;
+    harness.context.switchTenant = vi.fn(async () => false);
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
+    });
+    const button = Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.includes("Platform operations"));
+    await act(async () => { button?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/choose-account");
+    expect(host.textContent).toContain("couldn't open the Platform");
   });
 
   // The owner ruling of 2026-09-02: choosing a workspace ENTERS it. Routing the
@@ -163,6 +256,27 @@ describe("ChooseAccount", () => {
     Object.defineProperty(window, "location", { configurable: true, value: original });
   });
 
+  it("does not change scope when the selected workspace has no safe canonical route", async () => {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, "location", { configurable: true, value: { ...original, assign, search: "" } });
+    harness.context.tenants = harness.context.tenants.map((tenant) =>
+      tenant.id === "mogul" ? { ...tenant, account_number: null } : tenant,
+    ) as typeof harness.context.tenants;
+
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /></MemoryRouter>);
+    });
+    const button = Array.from(host.querySelectorAll("button")).find((candidate) => candidate.textContent?.includes("Mogul Maker Academy"));
+    await act(async () => { button?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+
+    expect(harness.context.switchTenant).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("paige.workspace.entered")).toBeNull();
+    expect(assign).not.toHaveBeenCalled();
+    expect(host.textContent).toContain("canonical workspace address");
+    Object.defineProperty(window, "location", { configurable: true, value: original });
+  });
+
 
   // THE LOCKOUT GUARD. The owner was parked in a sub-account and could not reach
   // this page's picker at all: two of his three workspaces were on `trial`, the
@@ -203,13 +317,13 @@ describe("ChooseAccount", () => {
   // `/admin` is only safe when that door would not immediately ask again. Here the
   // context still lists enterable workspaces while the membership read returned
   // none — the exact disagreement — so the page stops rather than starting a cycle.
-  it("refuses to hand back to a door that would immediately ask again", async () => {
+  it("stays on the chooser when memberships and visible workspaces disagree", async () => {
     harness.memberships = [];
     await act(async () => {
       root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
     });
     expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/choose-account");
-    expect(host.textContent).toContain("couldn't confirm which workspaces");
+    expect(host.textContent).toContain("couldn't confirm a workspace");
     expect(sessionStorage.getItem("paige.workspace.entered")).toBeNull();
   });
 
@@ -257,6 +371,22 @@ describe("ChooseAccount", () => {
     expect(Array.from(host.querySelectorAll("button")).some((b) => b.textContent?.includes("Retry"))).toBe(true);
   });
 
+  it("shows honest recovery and no choices when account authority cannot be resolved", async () => {
+    harness.context.isPlatformStaff = true;
+    harness.context.accountContextStatus = "error";
+
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /></MemoryRouter>);
+    });
+
+    expect(host.textContent).toContain("couldn't confirm your account access");
+    expect(host.textContent).not.toContain("Platform operations");
+    expect(host.textContent).not.toContain("Antonio Daniel LLC");
+    const retry = Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.includes("Retry"));
+    await act(async () => { retry?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    expect(harness.context.refresh).toHaveBeenCalledTimes(1);
+  });
+
   // §58 — a protection that shipped on `main` for the control this PR DELETES.
   // `settings-setup.tsx` registers a guard while Setup is dirty or mid-save, and
   // the deleted `MemberAccountSwitcher` was its only caller. Replacing that control
@@ -278,6 +408,22 @@ describe("ChooseAccount", () => {
     expect(assign).not.toHaveBeenCalled();
     release();
     Object.defineProperty(window, "location", { configurable: true, value: original });
+  });
+
+  it("protects unsaved work before leaving a Paige workspace for Platform", async () => {
+    harness.context.isPlatformStaff = true;
+    harness.context.switchTenant = vi.fn(async () => true);
+    const release = registerAccountSwitchGuard(async () => false);
+
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
+    });
+    const button = Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.includes("Platform operations"));
+    await act(async () => { button?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+
+    expect(harness.context.switchTenant).not.toHaveBeenCalled();
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/choose-account");
+    release();
   });
 
   // Nothing from the previous account may render under the new one's heading.

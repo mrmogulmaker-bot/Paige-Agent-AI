@@ -44,6 +44,8 @@ function mockTables(
     agencyLoginDefault?: string | null;
     agencyVisible?: boolean;
     tenantsError?: boolean;
+    rolesError?: boolean;
+    rolesThrow?: boolean;
     roles?: string[];
   } = {},
 ) {
@@ -60,7 +62,13 @@ function mockTables(
     });
     if (table === "user_roles") {
       const roles = (opts.roles ?? ["admin"]).map((role) => ({ role }));
-      return { select: () => ({ eq: () => Promise.resolve({ data: roles, error: null }) }) };
+      return {
+        select: () => ({
+          eq: () => opts.rolesThrow
+            ? Promise.reject(new Error("role transport failed"))
+            : Promise.resolve({ data: roles, error: opts.rolesError ? { message: "role read failed" } : null }),
+        }),
+      };
     }
     if (table === "profiles") {
       return one({ agency_login_default: opts.agencyLoginDefault ?? "agency" });
@@ -200,7 +208,7 @@ describe("resolveLandingRoute — agency landing (§65)", () => {
     expect(await resolveLandingRoute("u1")).toBe("/choose-account");
   });
 
-  // §53 — BOTH operator tiers land on the operator console.
+  // §53 + owner ruling 2026-09-07 — BOTH operator tiers pause at the chooser.
   //
   // A `platform_admin` holds no tenant membership, owns no tenant and has no client
   // row BY DESIGN, so every later branch of this resolver declines them and they
@@ -213,22 +221,32 @@ describe("resolveLandingRoute — agency landing (§65)", () => {
   // because the shared mock gives every user a tenant. The OWNER's real account has
   // no tenant at all — by design for this tier — so in production the same missing
   // branch carried him past every check to the `/pricing` fallback. Same root cause,
-  // different landing depending on whether a tenant exists; the assertion is simply
-  // that an operator reaches the operator console.
-  it("lands a platform_admin on the operator console, not a tenant surface", async () => {
+  // different landing depending on whether a tenant exists; the assertion is now
+  // that an operator reaches the chooser and no context is silently selected.
+  it("pauses a platform_admin at the chooser, not a tenant surface", async () => {
     mockTables({ roles: ["platform_admin"] });
-    await expect(resolveLandingRoute("u-operator")).resolves.toBe("/operator/fleet/tenants");
+    await expect(resolveLandingRoute("u-operator")).resolves.toBe("/choose-account");
   });
 
-  it("still lands a super_admin on the operator console", async () => {
+  it("also pauses a super_admin at the chooser", async () => {
     mockTables({ roles: ["super_admin"] });
-    await expect(resolveLandingRoute("u-god")).resolves.toBe("/operator/fleet/tenants");
+    await expect(resolveLandingRoute("u-god")).resolves.toBe("/choose-account");
   });
 
-  // The operator tier wins over a tenant role held by the same person: the platform
-  // operator and the tenant operator are different §9 audiences.
-  it("prefers the operator console when a platform_admin also carries a tenant role", async () => {
+  // The operator tier forces deliberate choice even when the same person also holds
+  // a tenant role: the Platform and tenant contexts are different §9 audiences.
+  it("requires the chooser when a platform_admin also carries a tenant role", async () => {
     mockTables({ roles: ["admin", "platform_admin"] });
-    await expect(resolveLandingRoute("u-both")).resolves.toBe("/operator/fleet/tenants");
+    await expect(resolveLandingRoute("u-both")).resolves.toBe("/choose-account");
+  });
+
+  it("fails closed to a retryable auth door when role authority cannot be read", async () => {
+    mockTables({ rolesError: true });
+    await expect(resolveLandingRoute("u-unknown")).resolves.toBe("/auth?mode=login&route=retry");
+  });
+
+  it("fails closed to a retryable auth door when role resolution throws", async () => {
+    mockTables({ rolesThrow: true });
+    await expect(resolveLandingRoute("u-transport-error")).resolves.toBe("/auth?mode=login&route=retry");
   });
 });
