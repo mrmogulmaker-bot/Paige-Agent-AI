@@ -2,7 +2,17 @@
 
 **Workstream:** dedicated Paige Live Conversation, separate from Skills and Intentful Interview
 
-**Grounded base:** `origin/main` at `ae0a16a0d5147a4652a06925356c427c4d543d56`
+**Grounded base:** `origin/main` at `53104500` after shipped PRs #1050 and #1051
+
+**Coordination checkpoint (2026-09-07):** the branch was re-grounded before further implementation.
+Current `main` owns the canonical exact transcript-position contract through
+`createAnchoredTranscriptScroll`: deliberate owner movement takes control immediately, and the exact
+visible message plus pixel offset survives streaming, thread changes, resize, minimize/restore,
+dock/pop-out, and client-to-server message rehydration. Live Conversation must compose with that
+controller and may not restore the former Boolean near-bottom heuristic, unconditional auto-follow,
+responsive remount, or index-based transcript identity. Draft PR #1044 remains a separate paused
+Skills/Intentful Interview workstream and must re-ground and rebase after this delivery; none of its
+client-scope, interview, or ledger changes are adopted here.
 
 **Product status:** Paige-owned UI and control plane implemented; provider-backed realtime audio
 remains `PROOF OWED`; authenticated owner production proof remains `UNVERIFIED` until deployment.
@@ -101,8 +111,9 @@ those facts and an approved transport-enablement change consumes it.
 
 | Collision | Resolution |
 |---|---|
-| Skills/Intentful Interview PR touches Paige composer/workspace | Rebased on current main and confined Live Conversation to a dedicated component and narrow composer mount. Interview remains one eligible conversation path, never the purpose or owner. Re-query before merge. |
-| Shared `PaigeAIChat.tsx` composer | One adjacent trigger only; existing text, attachment, dictation, permissions, thread, transcript, and confirmation paths retained. |
+| Skills/Intentful Interview PR #1044 touches Paige composer/workspace | Owner-paused and explicitly separate. This delivery adopts none of its interview, Skills, client-scope, or binding-ledger changes. After Live Conversation lands, #1044 must re-ground and rebase onto the resulting `main`. |
+| Shipped PRs #1050/#1051 own transcript position in `PaigeAIChat.tsx` | Current-main `createAnchoredTranscriptScroll`, stable message identity, context switching, exact-bottom ownership, hidden-geometry handling, and pop-out document rebinding are canonical and non-negotiable. Live Conversation is manually composed around them; no old auto-follow/remount/near-bottom behavior may return. |
+| Shared `PaigeAIChat.tsx` composer and transcript | Live Conversation adds one adjacent composer trigger and portals the same transcript without replacing the canonical scroll element, controller, message anchors, text/attachment/dictation paths, permissions, history, or confirmations. Minimize/end returns focus to the exact trigger and leaves the transcript controller and underlying page mounted. |
 | Legacy literal/request voice selection | Closed in this branch: server profile is the sole Paige speech identity path; request overrides rejected; playbook voice field retired. |
 | Existing chat pop-out | Portal renders into the trigger's owner document. Embedded launch can create a user-initiated companion; minimize restores exact chat and unsaved state. |
 | Legacy `voice-command-processor` | Not imported or used by Live Conversation. It receives no new authority and remains outside this workstream; Live actions route only through PaigeAIChat/Spine. |
