@@ -2,6 +2,13 @@
 
 **Date:** 2026-08-08 · **Status:** Draft v1 for owner review · **Ground truth:** codebase + prod (Supabase project xygzykjyynhzqytbqnzu) as of 2026-08-08
 
+> **Current routing override — 2026-09-08:** this dated draft is not the status authority for
+> Paige's operating runtime. Before adding or changing any model, agent, skill, voice path, browser,
+> proactive job, MCP server, or external tool, read the owner-approved **Paige Runtime Harness**
+> decision in `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` Section 3 and its Second Brain routing in
+> `docs/brain/paige-brain-wiring-standard.md`. Provider/model statements below are historical
+> snapshots and replaceable configuration, not Paige's identity or proof of current availability.
+
 > Synthesized by a **ground-truth-first** crew (§1/§14): research agents grepped the codebase and queried prod (Supabase MCP). Every architectural claim traces to a file path or a prod query result; aspirational items are labeled **(Roadmap)**. §32 honesty note: frontend line-number references are as-of 2026-08-08 `main` and may drift across commits — treat them as pointers, not fixed addresses.
 
 ---

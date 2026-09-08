@@ -20,6 +20,12 @@ index what you have not checked.
   memory. **A recorded "not built" counts** — see `decision-log.md` → "Known-unbuilt / spec-only status."
 - **Need the meaning of a §-number, tier word, or VP name?** → `glossary.md`.
 - **Need "what happened / what did we decide recently?"** → `decision-log.md`.
+- **Adding or changing a model, agent, skill, voice path, browser, proactive job, MCP server, or
+  external tool?** → read the canonical Paige Runtime Harness decision in
+  `../PAIGE-MASTER-PROJECT-REFERENCE.md` Section 3, then
+  `paige-brain-wiring-standard.md`, `paige-spine-and-rail-state.md`, and the Integration Capability
+  Registry when a provider or connected app is involved. No surface may invent a parallel runtime,
+  authority seam, Brain, Rail, receipt store, or registry.
 - **Hit a weird recurring bug?** → `lessons-learned.md` (symptom → root cause → rule).
 - **Opening/closing a PR, merging, deploying, versioning, or drafting a customer update?** →
   `../doctrine/release-governance-and-customer-update-policy.md`.
@@ -54,7 +60,7 @@ worse than none — it lies with authority.
 | `roles-permissions.md` | How roles actually work: the three stores, the owner→global-admin amplifier, which helper to use, live counts, what's not built | 2026-08-18 |
 | `decision-log.md` | Chronological one-liners: PRs #375+, dated rulings, wave decisions | "What changed / what did we decide?" |
 | `lessons-learned.md` | Recurring traps: symptom → root cause → rule | Before a class of work that's bitten us before |
-| `paige-brain-wiring-standard.md` | **The two brains, and the 5-point checklist every capability must satisfy** — second-brain entry + callable seam + context feed + tool registration + tier availability. Includes the running coverage ledger (what Paige can/can't see). Names the four real layers of her runtime brain | **Shipping ANY capability** — owner-directed, 2026-08-19 |
+| `paige-brain-wiring-standard.md` | **The Second Brain versus Runtime Harness distinction, and the six-part checklist every capability must satisfy** — knowledge record + callable seam + context feed + tool registration + tier availability + modality-neutral acceptance. Includes the running coverage ledger while routing current Harness authority to the Master decision | **Before model, agent, skill, voice, browser, proactive-job, or external-tool work; and when shipping ANY capability** |
 | `cd-pack-port-playbook.md` | How to port a Claude Design pack surface to a live tier: the 7-step procedure + the 6 traps that have actually cost us. Written from the operator port so Agency/Sub-account/Solo/Enterprise don't re-learn them | Before porting any pack surface to any tier |
 | `design-system.md` | Palette · gold discipline · type · depth · motion · layout · taste — and where each source lives | ANY design work, or "what is our design system?" |
 | `../doctrine/paige-attention-register.md` | **Where a platform finding lives so it is never lost** — the five records and what each is for, the register's nine fields and eight views, the eleven delivery statuses and what each one means, intake and closeout rules, the board's acceptance criteria, and the honest record that the GitHub Project does not exist yet | **Whenever a finding is discovered outside the current assignment's scope**, or before closing out any workstream |

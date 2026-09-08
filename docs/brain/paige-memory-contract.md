@@ -46,6 +46,19 @@ All three are `SECURITY DEFINER`, `search_path=public`, **anon-revoked**, `authe
 `*` = honored only for `service_role`. Uses `IS NOT DISTINCT FROM` on `tenant_id` so a tenant-less
 operator's NULL-tenant rows match (avoiding the `=`-on-NULL trap `match_paige_owner_memory` documents).
 
+### Runtime Harness eligibility boundary (owner-confirmed 2026-09-08)
+
+A durable row with `confirmation_state='proposed'` is a **candidate**, not eligible Memory knowledge.
+It may be displayed with provenance for review or correction, but the Runtime Harness must not
+assemble it into task context as a confirmed fact. Only an authorized, scoped projection that
+enforces the owner-confirmed eligibility rule may promote durable knowledge into runtime context.
+That confirmed-only projection and its runtime integration are currently `UNAVAILABLE`; the
+existing write/read seam and its returned confirmation metadata do not prove filtering. Proof
+becomes owed only after an implementation exists. This clarifies eligibility without changing the
+established store or seam and does not authorize chat auto-write, raw transcript ingestion, or a
+second Memory system. Canonical Harness decision:
+`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` Section 3.
+
 ## Every memory item carries the six governance fields (+ confirmation)
 
 source · scope · timestamp/freshness · visibility · correction path · deletion/retention — realized

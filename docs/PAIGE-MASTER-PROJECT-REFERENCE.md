@@ -149,6 +149,160 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 `100M-org-blueprint.md` (§16 canonical) · `1B-growth-map.md` (§17 canonical) · `paige-os-architecture.md` (§35 derived) · `money-spine-architecture.md` (§38 derived) · `paige-c-suite-roster.md` (proposed §42) · `paige-corporate-structure-2026-08-01.md` (Wyoming LLC → Delaware C-Corp + QSBS + Core Connect holdco + TX domicile) · `paige-memory-fabric-l8-2026-07-28.md` (L8 owner-flagged, promoted into MVP) · `paige-unified-comms-substrate-2026-07-29.md` (§49) · `paige-voice-layer-2026-07-28.md` · `paige-chat-universal-control-surface-2026-07-28.md` · `paige-practice-blueprints-2026-07-29.md` (deferred past W4 per owner ruling 2026-08-08) · `tenant-lifecycle-winddown-2026-07-28.md` (Task #129) · `paige-n8n-orchestrator-brain-doctrine.md` (Task #118 template library).
 
+### Paige Runtime Harness — owner-approved internal operating architecture (2026-09-08)
+
+**Decision and present truth.** Paige owns one provider-neutral Runtime Harness that connects her
+knowledge, reasoning, tools, authority, work, verification, evidence, and controlled improvement.
+This architecture is approved. Its current implementation is **PARTIAL** and distributed; a
+centralized, end-to-end Harness is not `LIVE` merely because several constituent systems exist.
+This record formalizes their shared contract without creating another Brain, Spine, Rail,
+Integration Registry, job system, or source of truth.
+
+This is internal planning and architecture documentation only. It changes no Solo or shared-chat
+code, model provider, provider state, runtime, infrastructure, tenant data, production behavior,
+customer release identity, public feature promise, developer API, SDK, or Marketplace listing.
+
+#### The five concepts that must stay separate
+
+| Concept | Canonical meaning |
+|---|---|
+| **Second Brain** | Paige's governed, scoped knowledge layer: approved business facts, plans, policies, evidence, skills, and eligible lessons. `docs/brain/` is the durable architecture/governance index for that layer; runtime use still requires an authorized, tenant-safe projection. |
+| **Runtime Harness** | Paige's internal operating layer: context assembly, model routing, skill/tool selection, authority, durable jobs, verification, cost controls, receipts/Rail, evaluation, and controlled improvement. It safely uses Brain knowledge; it does not replace the Brain. |
+| **Paige Spine** | The governed action and authority seam. Every read or action crosses server-resolved identity, scope, policy, budget, approval, and stop rules. |
+| **Rail and receipts** | Durable evidence of actions, readback, outcomes, and attribution. Rail is the safe, owner-visible evidence stream; detailed receipts remain bounded and redacted rather than becoming a raw-payload dump. |
+| **Mind / Memory** | **Mind** is bounded working reasoning and evidence, not automatic durable memory. **Memory** is durable, governed, owner-confirmed knowledge only. |
+
+The Harness is the system that lets Paige safely use Second Brain knowledge, interact through the
+Spine, and turn verified experience into eligible future improvement.
+
+#### Canonical modality-neutral path
+
+`Chat or Live Voice → tenant-safe context assembly → model/task routing → skill/tool selection → Spine authority → canonical action → verified readback → receipt and Rail → truthful Paige response → eligible reviewed learning`
+
+Text chat, Live Conversation, proactive operating work, Secure Browser, social operations,
+research, internal Platform Operator work, and future agent experiences may have different
+interaction surfaces, but they use this same governed core. Their tenant boundary, authority,
+verification, evidence, and truth rules cannot differ.
+
+No LLM, provider, MCP server, browser worker, voice provider, skill, sub-agent, or external tool may
+bypass server-resolved actor, tenant, workspace, role, and scope; Paige Spine authority; configured
+budget, approval, concurrency, and stop limits; canonical write and verified readback; attributable,
+redacted receipt and Rail requirements; or Second Brain, Mind, and Memory eligibility rules.
+
+#### Paige-owned Harness responsibilities
+
+1. **Context assembly:** build the minimum tenant/workspace-safe context for the task from
+   authorized canonical records, eligible Brain knowledge, bounded Mind evidence, and governed
+   Memory; fail closed on unresolved identity, ambiguity, stale scope, or unavailable sources.
+2. **Model routing:** route by task and modality behind a provider-neutral contract; control
+   fallback, quality, latency, capability eligibility, and spend. Provider products and model names
+   are replaceable configuration, never Paige's identity.
+3. **Skill lifecycle:** register versioned skills with explicit purpose, inputs, eligible tiers,
+   allowed tools, policies, evaluation evidence, and retirement state. Inventory does not equal
+   runtime eligibility.
+4. **Tool authority:** enforce registered tools, budgets, scopes, approval rules, attribution,
+   concurrency, and stop conditions at the server-owned Spine—not in prompts or pixels.
+5. **Durable work:** orchestrate jobs with idempotent claims, retry limits, recovery, cancellation,
+   visible status, and honest terminal states; arbitrary agent-to-agent chat is not the operating
+   system.
+6. **Verification and truth:** verify canonical readback and material side effects before reporting
+   success; distinguish accepted, failed, unavailable, and proof-owed results.
+7. **Evidence and operations:** create receipts and Rail, correlate release identity, runtime traces,
+   costs, incidents, recovery, and provider health without exposing secrets or raw private content.
+8. **Mind and Memory eligibility:** keep working evidence ephemeral or bounded unless a separately
+   authorized durable-memory contract admits an owner-confirmed item with provenance, scope,
+   correction, and deletion semantics.
+9. **Evaluation and improvement:** combine outcome evidence, owner feedback, quality scoring, and
+   versioned evaluations so a reviewed skill, route, prompt, or policy can improve without silent
+   self-modification.
+
+#### Current-state inventory at `main` `ec2336f7` (2026-09-08)
+
+| Capability | Status | Grounded current truth / next gate |
+|---|---|---|
+| Dedicated Paige workspace/chat and session/context behavior | `PARTIAL` | The tenant-aware workspace, persistent threads, account-switch fences, and transcript ownership exist. Context assembly remains distributed, and the shared chat scroll repair still lacks owner-accepted authenticated production proof. |
+| Spine authority and registered-tool path | `PARTIAL` | The Spine registry, action-risk policy, approval/autonomy substrate, governed execution seam, and MCP tool door exist. Not every chat, skill, job, browser, voice, or external-tool path is proven to use one complete contract. |
+| Canonical-record readback and truthful success | `PARTIAL` | Mission and Campaign Brief flows establish the write → scoped readback → Rail pattern. Universal enforcement and authenticated proof across all mutations remain owed. |
+| Rail and detailed receipts | `PARTIAL` | Rail and capability-run evidence cover bounded paths. A universal, correlated, redacted detailed-receipt contract across all Harness work is not live. |
+| Second Brain, Tenant Brain, Mind, Memory, and skills inventory | `PARTIAL` | Durable doctrine, Tenant Brain composition, bounded Mind projections, Memory contracts/stores, and the skills inventory exist at different maturity levels. Proposed durable rows are not eligible confirmed Memory; the confirmed-only runtime projection and integration are `UNAVAILABLE`, with proof owed only after implementation exists. Inventory or storage presence does not prove runtime reach or evaluation. |
+| Text-chat Skills / Intentful Interview | `UNAVAILABLE` | The active MVP workstream owns its shared-chat files and acceptance criteria. Its candidate branch is not on current `main` and is not absorbed by this record; authenticated durable-state, Rail, abandonment, and regression evidence remain its gate. |
+| Live Conversation architecture and provider gates | `PARTIAL` | PR #1053 landed the provider-neutral UI/control plane and governance contract on `main`. Provider-backed realtime audio remains unavailable until provider and authenticated end-to-end proof gates are met. |
+| Secure Browser control plane and worker boundary | `UNAVAILABLE` | Public bounded research and the prerequisite security foundation exist, but the customer capability does not. Credentialed browsing, provider sessions, Connected Accounts, worker authority proof, budgets, and detailed receipts remain unavailable or proof-owed in the separately owned MVP workstream. |
+| Durable background work, retry, recovery, and visible job state | `PARTIAL` | The action bus, scheduled workers, claims, retries, alert evaluation, and several job records exist. They are not yet one uniformly governed, owner-visible Harness job contract. |
+| Model routing, provider fallback, spend, and latency controls | `PARTIAL` | The shared router has task/modality routing, allowlists, fallback, traces, latency, and cost estimates. Universal provider coverage, enforced per-task/tenant spend ceilings, and correlated quality gates remain owed. Estimates are not budget enforcement. |
+| Evaluation, feedback, skill versioning, quality scoring, experience-to-skill learning | `UNAVAILABLE` | Trace/evaluation, prompt-memory, skills, forge, and critique substrates are partial foundations. The complete owner-reviewed experience → evaluation → versioned approved skill/routing/prompt/policy loop is not available, and no change may publish automatically. |
+| Proactive monitoring and operating-brief runtime | `PARTIAL` | Systems Check, operating context/memory, alerts, scheduled workers, and the action bus provide real substrate. Uniform triggers, authoring, delivery/escalation, recovery, and owner-visible work state remain incomplete. |
+| Observability, release awareness, cost/metering, and incident/recovery controls | `PARTIAL` | Traces, audit, Rail, Systems Check, alerting, metering, deployment tags, the Section 4 shipped log, and release-aware UI exist. They are not yet one end-to-end correlated Harness control plane. |
+
+#### Controlled improvement, never silent self-modification
+
+`task context → routed model and skill → governed execution → verified outcome → owner correction or quality signal → proposed lesson → evaluation → versioned approved skill, routing, prompt, or policy improvement`
+
+The Harness must not permit raw transcript ingestion as automatic durable memory; credentials,
+cookies, private browser content, or page content entering model context by default; one tenant's
+confidential business information becoming platform-wide learning; arbitrary agent-to-agent chat as
+the operating system; or unreviewed prompt, skill, routing, or policy changes entering production.
+Platform learning may use only properly governed, scoped, approved, anonymized, or aggregate
+evidence.
+
+#### Platform Operator dogfood-first sequence and future product boundary
+
+1. Complete active Solo MVP, hotfix, and shared-chat collision work.
+2. Formalize internal Harness contracts without duplicating Spine, Brain, Rail, or the Integration
+   Capability Registry.
+3. Build and use the Platform Operator Shell as Paige's internal operating environment.
+4. Dogfood the Harness through actual Paige operations: support, campaigns, internal strategy,
+   provider management, releases, controlled research, and approved proactive work.
+5. Prove tenant isolation, permissions, quality evaluation, spend visibility, recovery, and evidence
+   behavior.
+6. Only after documented dogfood acceptance, assess a developer SDK/API, Marketplace extension, or
+   hosted Harness offering.
+
+The future opportunity is a provider-neutral **Paige Runtime Harness SDK and/or hosted API**, not a
+copy of Paige and not access to Paige customer data. A future developer may bring and govern their
+own models and provider credentials; knowledge adapters and storage; tools and connected apps;
+users, tenants, permissions, budgets, and policies; and evaluations, receipts, and operational
+evidence.
+
+Any future product must never expose Paige tenant Brain data, cross-tenant context, Paige customer
+records, internal Platform Operator data, proprietary Paige playbooks unless separately licensed
+and explicitly authorized, raw credentials, private browser content, hidden system prompts, or
+internal reasoning traces. This is a Platform Operator and later product opportunity, not a current
+Solo customer promise.
+
+#### Affected-flow and collision assessment (documentation-only)
+
+- **Actor and goal:** the owner and future Paige builders need one durable governing contract before
+  adding model, agent, skill, voice, browser, job, or external-tool work.
+- **Affected flow:** architecture discovery and delivery routing only. The record maps every future
+  surface to the same context → routing → authority → action → verification → evidence → reviewed
+  learning flow; no runtime flow changes in this delivery.
+- **Canonical ownership:** this Master section owns the Harness decision. The Second Brain, Spine and
+  Rail state, Memory contract, skills inventory, Integration Capability Registry, release policy,
+  and workstream delivery records retain their narrower facts and are linked, not copied or forked.
+- **Active shared-file/workstream boundaries:** chat scroll stability and `PaigeAIChat`; text-chat
+  Skills/Intentful Interview; Live Conversation; Secure Browser; Tenant Brain/Campaign Brief;
+  Platform account choice; release/customer-update behavior; and Metricool/social exploration keep
+  their current owners, launch scope, provider state, and acceptance criteria. This architecture
+  delivery modifies none of their code or evidence.
+- **Documentation collision:** concurrent canonical-record work that changes this Master or
+  `docs/brain/decision-log.md` must rebase and preserve this ruling. This branch was last rebased
+  after documentation/evidence PR #1055 reached `main`; likely-open PR refs were assessed but
+  authenticated GitHub UI state was unavailable, so no PR-open claim is inferred from a remote ref
+  alone.
+- **Regression map:** no new source of truth; no customer/runtime capability promoted by
+  documentation; no provider named as Paige's identity; no bypass around server identity, Spine,
+  budgets, readback, receipts/Rail, or Memory eligibility; no active workstream absorbed.
+- **Release boundary:** internal architecture/governance documentation only. It earns no customer
+  version, name, What's New item, announcement, deployment, or production-behavior claim.
+
+**Routing:** before model, agent, skill, voice, browser, proactive-job, or external-tool work, read
+this section, `docs/brain/paige-brain-wiring-standard.md`,
+`docs/brain/paige-spine-and-rail-state.md`, `docs/brain/paige-memory-contract.md`, and—when an external
+provider or connected app is involved—`docs/integration-registry/README.md`. Platform Operator work
+also reads `docs/architecture/platform-operator-tenant-200.md`. Current delivery status still comes
+from Section 4 and the relevant detailed record, never from this architecture decision alone.
+
 ### Integration Capability Registry (provider-governance delivery record — MANDATORY)
 
 **`docs/integration-registry/`** (README + `integration-capability-registry.json`, the source of
@@ -3192,6 +3346,9 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 
 ### Architecture (`docs/architecture/`)
 
+- Paige Runtime Harness — Section 3 of this Master Reference (canonical owner decision, status map,
+  dogfood-first sequence, and future product gate); read it before model, agent, skill, voice,
+  browser, proactive-job, or external-tool work
 - Ecosystem Data Ownership Map — `ECOSYSTEM_DATA_OWNERSHIP_MAP.md`
 - Ecosystem Full-Stack Boundaries — `ECOSYSTEM_FULL_STACK_BOUNDARIES.md`
 - Marketplace Data Model — `MARKETPLACE-DATA-MODEL.md`
