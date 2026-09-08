@@ -1,4 +1,4 @@
-# Paige Skills Inventory (v1) — what Paige DOES at professional level
+# Paige Skills Inventory (v1.1) — what Paige DOES at professional level
 
 The Paige Skills Inventory documents what Paige DOES at professional level — the atomic capabilities that
 make her the AI-COO for client-based service businesses (coaches, consultants, agencies, thought leaders,
@@ -145,6 +145,11 @@ Markdown before generating.
 - Status report — weekly / monthly ops summary
 - Vendor review — evaluate a proposed vendor
 - Capacity planning — team utilization forecast
+- **Paige Self-Knowledge & Migration Advisor** — **PLANNED / `UNAVAILABLE`**, not seeded or callable:
+  derive a tenant-safe verified capability projection; inventory declared systems/dependencies;
+  normalize migration direction; separate dated external comparison evidence from Paige truth; and
+  draft coverage, gaps, approvals, staged cutover, rollback, verification, receipt, and Rail
+  requirements. Inventory presence grants no provider connection, tool authority, or execution.
 - **Verify deployed surface** — `verify_deployed_surface` skill (SEEDED, Task #126 Slice 2): drives a deployed public Paige page read-only and reports an honest render verdict (§32.c software counterpart).
 - **Browse a public web page** — `browse_public_url` skill (SEEDED, Task #126 Slice 3b): opens an arbitrary public URL read-only (via the SSRF-guarded `paige-browser` `/browse-public-url`), extracts title/meta/headings/body/links, and summarizes honestly; every call writes one tenant-scoped `paige_browser_usage` audit row (§9/§17). `read_only`+`auto`, `scoping='platform'`, tier §61 default.
 
@@ -175,6 +180,9 @@ explanation) · doc-coauthoring
 ---
 
 ## Amendments log
+- **v1.1 (2026-09-08):** owner-approved Self-Knowledge & Migration Advisor added as a planned
+  `UNAVAILABLE` Operations & Process capability. No `paige_skills` row, runtime handler, provider
+  connection, action authority, migration, or production behavior was created.
 - **v1 (2026-08-11):** initial 12-category structure filed, owner-approved as launch pad. Sequencing gate:
   all categories seeded before Task #126 browser install. §62 two-tier sourcing (PROPOSED): baselines pulled
   from OSS + tenant-loadable custom skills.

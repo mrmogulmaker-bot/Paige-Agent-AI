@@ -55,6 +55,21 @@ functionality. It records what the platform has decided about each provider and 
 - **Not authorization, and not a design record.** An entry is an observation about the contract, never
   permission to build, and holds zero opinion about how any surface looks (§00).
 
+### Self-Knowledge & Migration Advisor consumer boundary
+
+The owner-approved advisor consumes this provider-axis registry together with live, server-resolved
+tenant provider/connection results; it does not duplicate or mutate this catalogue. A comparison-only
+external product does not become a registry entry merely because Paige researches it. A listed or
+globally delivered provider is never inferred to be installed, tenant-connected, eligible,
+authorized, proven, or released.
+
+Migration advice preserves, as separate cited fields, provider delivery status, per-tenant connection
+state, tier eligibility, authority lane, provider/model route, budget/cost evidence, limitations,
+proof, source revision/freshness, and release identity. External comparison claims require a source
+URL, publisher, checked-as-of date, applicable plan/edition/region, and re-verification boundary; they
+cannot override verified Paige or tenant truth. This architecture decision changes no provider entry
+or state in `integration-capability-registry.json`.
+
 ## The six delivery states (the task-mandated vocabulary)
 
 | State | Meaning |

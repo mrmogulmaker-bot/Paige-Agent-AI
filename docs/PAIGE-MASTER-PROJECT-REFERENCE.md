@@ -295,6 +295,136 @@ broken, or proof owed. Tenant-side
 Clients UI is management/configuration—not proof of the external-client journey. This correction
 does not authorize the dedicated Client Portal MVP build.
 
+#### Paige Self-Knowledge & Migration Advisor — canonical Harness contract
+
+**Owner decision and current truth (2026-09-08).** Paige must lead capability questions,
+platform comparisons, and migration planning from her own verified tenant-scoped powers. She is not
+a generic consultant that reflexively sends a tenant to another platform. This is one internal
+capability of the shared Paige Runtime Harness—not another assistant, Brain, Harness, registry,
+migration database, authority system, or Rail.
+
+The end-to-end **Paige Self-Knowledge & Migration Advisor is `UNAVAILABLE`** on current `main`.
+Paige already has `PARTIAL`, distributed self-description primitives—route/tier configuration,
+Spine and tool registrations, Skills Inventory, Integration Capability Registry, Surface Binding
+Ledger, provider-result state, model traces/cost estimates, release history, and narrow safe
+projections—but no server-owned, freshness-aware contract assembles them into an authorized answer
+or governed migration plan. Historical prose is planning evidence, never current runtime truth.
+
+The read-only advisory path is:
+
+`verified tenant capability projection → normalized migration direction → Paige-first coverage and gaps → dated comparison → staged recoverable plan → human-readable advisory receipt`
+
+It preserves four distinct source-of-truth layers:
+
+1. **Paige verified capability manifest.** A derived tenant-safe projection—not a new registry—with
+   capability key/name/domain; tenant/workspace/tier eligibility; delivery truth
+   (`LIVE`/`PARTIAL`/`UNAVAILABLE`/`PROOF OWED`); tenant availability and source; read/draft/auto/
+   confirm/prohibited authority lanes; provider and approval gates; budget/cost policy; limitations;
+   evidence references; source revision; observed/freshness timestamps; conflicts; and owner-facing
+   “can now / cannot yet / next gate” language.
+2. **Tenant operating-system inventory.** Tenant-owned connected systems and declared functions,
+   connection truth/evidence, workflow dependencies, data/control ownership, replacement candidates,
+   authority/approval boundaries, last verification, and unknowns. It stores safe references and
+   summaries—not credentials, secrets, raw workflow definitions, or private payloads.
+3. **Dated comparison knowledge.** Each external claim records subject/provider, claim, source URL,
+   publisher, checked-as-of date, applicable plan/edition/region, limitation/confidence, and a
+   re-verification boundary. It may identify an honest competitor advantage or Paige gap, but never
+   overrides Paige's verified truth or makes a provider connected, eligible, or authorized.
+4. **Migration plan and evidence model.** Source system, target state, requested outcome, object
+   classes, inventory/evidence references, replacement coverage, gaps, staged cutover, per-stage
+   approvals/budgets, stop conditions, checkpoints, rollback/forward-fix, canonical readback,
+   receipt/Rail requirements, deliberately unchanged items, and truthful status.
+
+The manifest is a derived projection, not a circular new source. Implementations use this precedence
+and fail closed rather than selecting convenient prose when sources disagree:
+
+| Manifest field | Canonical owner | Runtime adapter and freshness/failure rule |
+|---|---|---|
+| Actor, tenant, workspace, tier, role, act-as, context epoch | Authenticated JWT plus server membership/role resolvers | Resolve per request and again per action; unresolved or changed scope stops. |
+| Route/tier eligibility | `src/lib/routing/tierBranches.ts` + `src/lib/tier/tierFeatures.ts` | Server manifest adapter is `UNAVAILABLE`; bind source revision and fail closed on drift. |
+| Spine capability and authority | `_shared/paige-spine/registry.ts` + server authority resolvers | Read current registration and authorization per step; registry presence alone grants nothing. |
+| Skill/version eligibility | Canonical `paige_skills` rows + skill interpreter policy | Read active scoped/versioned rows at request time; inventory prose or missing metadata is ineligible. |
+| Provider limitation vs tenant connection | Integration Registry JSON (governance) + `provider-result-contract.md` and tenant connection records (runtime) | Both are required; current tenant result wins only within registry limits; stale/conflicting/missing state is unavailable. |
+| Surface binding | Surface Binding Ledger JSON (governance/evidence) | No authority source; cite state/revision as a limitation and require live adapter proof. |
+| Model route, quality, latency, spend | `_shared/model-router.ts`, `paige_llm_trace`, and metered-event records | Use current routed result plus bounded evidence window; absent budget/quality evidence remains unknown. |
+| Release identity | Exact approved release record under the release schema; Section 4 is history | Only an approved exact record supports customer-release language; absence fails closed. |
+
+Server-resolved live tenant state outranks static eligibility/config for that tenant; static code/config
+defines allowable candidates; approved governance may narrow but never fabricate runtime state.
+Historical Master/Brain prose provides provenance and limitations only. Any unresolved contradiction,
+stale source, missing revision, or absent adapter produces an explicit gap—not a guessed answer.
+
+“Migration” is not one blanket operation. The plan names each affected class: model/provider route;
+integration connection or API version; skill/prompt/policy version; Spine or legacy-tool path;
+Marketplace capability version; tenant configuration; release/build cutover; or database/data-schema
+migration. Every class defaults to **read-only advice**. Schema/data moves, provider credentials,
+model-route changes, connection shutdowns, production cutovers, destructive cleanup, and other
+external effects are excluded until a separately owner-authorized delivery contract names the class,
+owner, approval lane, rollback, recovery, and proof.
+
+The normalized intent records source system, target state, desired outcome, object classes, scope,
+assumptions, ambiguities, and one of `off_external_to_paige`, `into_external`, `compare_only`, or
+`ambiguous`. When direction is genuinely ambiguous, Paige asks only: **“Are we moving off GHL into
+Paige-managed operations, or moving work into GHL?”** She never infers authority from migration
+language.
+
+Paige's answer order is mandatory: **(1)** what Paige can genuinely handle now for this tenant,
+**(2)** gaps, prerequisites, and unavailable/proof-owed work, **(3)** the proposed staged transition
+and alternatives, **(4)** the exact approvals required before any external change, then dated
+comparison evidence where useful. “Listed,” “installed,” “connected,” “eligible,” “authorized,”
+“proven,” and “released” remain separate facts. Provider integration delivery, tenant connection,
+surface binding, release identity, capability proof, and authority must never collapse into
+“available.” With no approved release record, customer-release advice fails closed to verified
+internal build facts and non-release language.
+
+Each advisory result owes a redacted, human-readable **response artifact** naming what Paige was asked, what she
+read and as-of when, what she drafted, what she changed (**none** for advisory), what she verified,
+what she deliberately left unchanged, remaining gaps/unknowns, required approvals, rollback boundary,
+and request/plan identifiers. In the first read-only slice it is returned inline and is **not durable
+Memory or a new receipt store**. If persistence is later authorized, `_shared/capability-record.ts` /
+`record_capability_run` remains the existing Rail-summary seam; the universal immutable detailed-
+receipt contract is `PARTIAL` and must be approved in that shared seam before persistence. It contains
+no raw tenant data, secret, credential, transcript, private workflow/browser payload, hidden prompt,
+or reasoning trace. “Done,” “working on it,” or partial-step counts are never completion evidence.
+
+If a later execution slice is explicitly authorized, the Harness must re-resolve authenticated and
+effective actor, tenant, workspace, tier, role, act-as state, object scope, provider state, tool lane,
+approval, budget, and context epoch before every step; run an idempotent durable job; checkpoint before
+mutation; preserve the old route/tool/version until cutover verifies; perform canonical write and
+readback; record redacted receipt and Rail; and expose pending/running/paused/blocked/failed/
+`outcome_unknown`/verified state. Revocation or workspace switch invalidates later authority. An
+ambiguous provider outcome is `outcome_unknown` and must reconcile before retry. No destructive
+cleanup precedes export, compatibility, backfill, and rollback proof.
+
+Owner correction or quality evidence may propose a versioned skill, route, prompt, or policy lesson;
+it cannot auto-publish or enter durable confirmed Memory. Tenant data, private comparisons, raw logs,
+and one tenant's confidential operating knowledge never become cross-tenant learning.
+
+**Maturity gate.** A first callable server-owned read-only advisor is `PROOF OWED` until authenticated
+tenant/workspace/tier/role isolation, stale/conflict handling, source citation, approval denial,
+account switching, receipts, and regressions are proven. Migration execution remains separately
+`UNAVAILABLE` until each authorized effect proves durable orchestration, canonical readback,
+Rail/receipt, rollback/recovery, and honest partial or unknown outcomes.
+
+**Affected-flow and collision assessment.** The architecture covers capability questions, tenant
+system inventory, ambiguous or explicit replacement direction, dated comparisons, advisory plans,
+and a later separately authorized execution/recovery flow. First-use, empty, loading, stale,
+conflicting, disconnected, denied, unavailable, account-switch, cancellation, retry, rollback, and
+`outcome_unknown` states all fail closed with the next safe action. Active shared-chat/scroll,
+Text-chat Skills/Intentful Interview, Live Conversation, Secure Browser, Tenant Brain/Campaign Brief,
+Platform account choice, release/customer-update, social/Metricool, model/cost, orchestration/Rail,
+and Client Portal workstreams retain their owners and acceptance criteria. The dedicated
+Self-Knowledge & Migration Advisor implementation owner consumes this contract; this documentation
+lane does not edit or absorb UI, chat, runtime, provider, migration, or production files. Canonical
+record overlaps are resolved by rebasing on current `main` and preserving newer shipped-log, Harness,
+Live Conversation, portal, and shared-chat truth.
+
+Current concrete overlaps checked 2026-09-08: #1068 (Master/config/decision/Integration Registry),
+#754 (Master/Brain/wiring), #917 (Master/config/Spine/chat/jobs), #1044 (binding ledger/chat/skills),
+#572 (model router/trace/metering), #576/#591 (chat/knowledge isolation), #1040/#729
+(Master/decision/Rail), #921 (competing agent-registry framing), #1046 (Secure Browser), and #670
+(Marketplace release). Their product/runtime files remain outside this architecture branch.
+
 #### Paige-owned Harness responsibilities
 
 1. **Context assembly:** build the minimum tenant/workspace-safe context for the task from
@@ -3129,7 +3259,7 @@ does not prove identity, send permission, A2P, inbound, webhook, mailbox, or ope
 Video and Apple Messages for Business remain unavailable unless separately proven. Ordinary consumer
 iMessage is never claimed. No backend, provider, schema, auth, or business-data mutation is in scope.
 
-### GAP — Paige does not know her OWN design (task #219, owner-raised 2026-08-23)
+### PARTIAL — Paige self-knowledge is distributed; the governed advisor is unavailable (tasks #159/#219, corrected 2026-09-08)
 
 **Owner:** *"Paige should be aware of her own design."* · *"I just want to make sure that we, as a
 collective group, and then eventually Paige gets a lot smarter."*
@@ -3137,9 +3267,12 @@ collective group, and then eventually Paige gets a lot smarter."*
 **Verified state, not assumed.** Paige can be steered AWAY from bad design
 (`_shared/cheesy-tells.ts`, the runtime mirror of `docs/design-references/CHEESY-TELLS.md`,
 substituted into every generation prompt) and can brief a design agent
-(`_shared/design-agent-prompt.ts`). She has **no runtime knowledge of her own system** — asked why
-gold is only on the act, or what the operator shell's geometry is, she answers from a model's general
-sense of nice UI. She guesses, confidently.
+(`_shared/design-agent-prompt.ts`). Other bounded self-description primitives now exist across route,
+tier, Spine/tool, skill, provider, binding, release, and metering records, so the older claim that she
+has **no runtime knowledge of her own system** is superseded. Current truth is `PARTIAL`: those facts
+remain distributed, and the tenant-scoped, freshness-aware Self-Knowledge & Migration Advisor defined
+in the Runtime Harness section is `UNAVAILABLE`. The design-rationale corpus below is a separate
+audience-bound source; tenants must not receive Paige's private platform design rationale.
 
 **The source of truth now exists:** `docs/brain/design-system.md` (2026-08-23) — palette and the two
 separately-authored themes, gold-only-on-the-act, type ladder, layered depth, motion reserved for real
@@ -4209,6 +4342,13 @@ delegate. (12) **Superpowers** (imported from the Claude Skills ecosystem) — d
 brand-guidelines/brandkit, algorithmic-art, imagegen, high-end-visual-design/apple-design, theme-factory,
 web-artifacts-builder, image-to-code, mcp-builder, skill-creator, morning, schedule, learn, doc-coauthoring,
 memory-management, task-management.
+
+**Approved inventory amendment — not yet executable:** **Paige Self-Knowledge & Migration Advisor**
+belongs in Operations & Process as a planned `UNAVAILABLE` Harness skill. It derives a tenant-safe
+capability projection, inventories declared systems and dependencies, normalizes migration direction,
+separates dated competitor evidence from Paige truth, and drafts coverage/gap, approval, rollback,
+verification, receipt, and Rail requirements. Inventory presence does not create a `paige_skills` row,
+runtime eligibility, tool authority, provider connection, or execution permission.
 
 **S2 seeding order (owner may reorder):** Vision → Documents → Client Delivery → Sales → Marketing → Analytics
 → Team → Financial → Compliance → Operations → Agent Orchestration → Superpowers. One PR per category

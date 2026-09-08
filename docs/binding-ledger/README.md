@@ -137,6 +137,14 @@ is `NO` for every surface (per the Mind integration matrix). Concretely:
 `paige.workspace` is recorded `PARTIAL`, not PROOF_OWED — the workspace is the *consumer* of bindings;
 its own gap is the handoff seam Phase 1 addresses.
 
+The Self-Knowledge & Migration Advisor is an intended read-only consumer of `paige.workspace`, not a
+new surface or binding row. Its end-to-end runtime is `UNAVAILABLE`: current binding facts remain
+distributed and do not yet form a server-owned tenant capability manifest or migration plan. A later
+implementation updates `paige.workspace` in place only when actual context, read, draft, confirm,
+verification, receipt, or Rail behavior changes and is proven. Architecture approval alone does not
+change the JSON state. Comparison or migration advice must cite binding state without treating a
+surface as connected, authorized, proven, or released.
+
 ## Per-surface summary
 
 The **Completion target** column is the surface's intended `completion_criterion` — the real governed
