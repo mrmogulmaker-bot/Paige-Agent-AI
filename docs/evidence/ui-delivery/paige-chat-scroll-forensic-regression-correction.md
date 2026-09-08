@@ -4,6 +4,36 @@ Date: 2026-09-08
 Owner scope: actual production transcript jump after the shipped exact-bottom hotfix
 Status: REOPENED P0 — delayed reading-position theft reported after #1057/#1066
 
+## Corrective release #1075 — deployed, owner acceptance still owed
+
+Merged 2026-09-08 at16:03 EDT as `f86b1c401c492c4d0dc122258b6c26b96870befe` after all
+exact-head CI gates and independent review approved `5b6a36c8ec4dff186babe6e582548a1c6ff3beff`.
+Vercel production deployment `dpl_63jHR5ys6w9h5NVQUJk7D2eiS9w7` is READY. Both
+`app.paigeagent.ai/version.json` and `paigeagent.ai/version.json` serve exact build
+`f86b1c401c492c4d0dc122258b6c26b96870befe-mtt3l0yt`. A fresh unauthenticated Chromium
+entry check returned200 with no page errors. Development diagnostic emission is absent from
+production build assets. No migration, provider change or shared mount change was made.
+
+Proof:113 affected tests; all290files/4026tests pass in CI and in a bounded-concurrency local
+full run; type ratchet, scoped lint, security and production build pass. Two earlier local full
+runs each failed a different unrelated UI timing assertion; neither feature was edited.
+Original native rendered run passed117/117. A redundant run passed116/117 because the1366-wide
+tenant-return comparison sampled a minimize transition with temporary79776px scroll height,
+then a browser-clamped position. Waiting for actual finite CSS animation completion, without
+changing anchor assertions or transcript state, passes117/117 across allfive widths. This proves
+the settled endpoint, not absence of every transient painted movement during animation.
+The follow-up harness waits only running/pending finite animations, never a fixed debounce.
+
+AUTHENTICATED OWNER ACCEPTANCE: UNVERIFIED. The supplied signed-in browser tool cannot start
+because Windows sandbox deny-read ACL initialization fails. The owner has been asked to reload
+and repeat the delayed manual-scroll flow on the deployed correction. Frame-by-frame transition
+continuity and authenticated owner acceptance remain proof owed; the P0 workstream is not closed.
+Historical #1057 acceptance below does not override these boundaries.
+
+Runtime files changed: `src/components/chat/anchoredTranscriptScroll.ts` and
+`src/components/dashboard/PaigeAIChat.tsx` (diagnostic cause labels and five preventScroll focus
+calls). `AppShell`, `PaigeChat`, `SoloPaigeWorkspace` mounting and Secure Browser remain unchanged.
+
 ## Reopened affected-flow assessment — 2026-09-08
 
 The owner reproduced delayed transcript movement after the prior acceptance. That acceptance is historical and insufficient for the indefinite manual-ownership contract; current production behavior is FAIL. Grounded production build: `610e609c491864e6c4384839e80c8e91b7e5fce4-mtt0zfhp`; its shared controller is unchanged from #1057.

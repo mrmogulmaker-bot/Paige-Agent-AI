@@ -106,6 +106,11 @@
   provider wiring, tenant data, deployment, production behavior, or customer release.
 
 - **Paige chat-scroll P0 reopened after delayed owner-position theft (2026-09-08).**
+  Corrective PR #1075 subsequently merged as `f86b1c401c492c4d0dc122258b6c26b96870befe` and
+  is READY on both production domains. Exact-head CI,113affected tests,4026full tests and independent
+  review pass.117settled-endpoint browser checks pass; the prior transient-animation comparison is
+  retained in the canonical forensic record, not erased. Authenticated owner acceptance and
+  frame-by-frame transition continuity remain PROOF OWED. The workstream is not closed.
   The owner reproduced delayed movement after #1057/#1066 acceptance. Prior acceptance is
   insufficient for indefinite manual ownership; current behavioral status is FAIL. Any deliberate
   movement off exact bottom owns the semantic message/pixel anchor without expiration. Only
