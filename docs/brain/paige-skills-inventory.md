@@ -1,4 +1,4 @@
-# Paige Skills Inventory (v1.1) — what Paige DOES at professional level
+# Paige Skills Inventory (v1.3) — what Paige DOES at professional level
 
 The Paige Skills Inventory documents what Paige DOES at professional level — the atomic capabilities that
 make her the AI-COO for client-based service businesses (coaches, consultants, agencies, thought leaders,
@@ -179,7 +179,103 @@ explanation) · doc-coauthoring
 
 ---
 
+## Runtime maturity and specialist eligibility
+
+This catalogue is a capability inventory and design baseline. It is not proof
+that every listed item is callable. Current source and migration audit finds
+112 S2 seeded recipe rows, a generic skill interpreter, and a small set of
+bespoke handlers. A seeded or `active` database row proves registration state,
+not tenant-safe execution, tool/provider readiness, evaluated quality, or
+production agent eligibility.
+
+Use these truth labels per skill version and environment:
+
+- `LIVE` — registered, callable through the shared Harness, authority-resolved,
+  canonically recorded/read back, receipted, evaluated, and runtime-proven.
+- `PARTIAL` — useful recipe, interpreter, tool, or evidence exists, but one or
+  more required seams are incomplete.
+- `PROOF OWED` — an implementation claim exists without the required
+  authenticated/runtime evidence.
+- `UNAVAILABLE` — no callable or truthful agent claim is permitted.
+
+Skills never own tenant context, authority, provider access, memory, or a user
+identity. A specialist job pins an approved skill version and registered tools;
+the Spine separately resolves every action. Tool or provider unavailability
+must remain visible rather than being substituted or fabricated.
+
+### Vibe Studio Creative Production Team skill families
+
+These seven future skill families are assembled as temporary job roles by Paige,
+not installed as separate customer assistants: Creative Brief and Strategy Specialist;
+Funnel and Conversion Copy Specialist; Forms and Conversion Flow Specialist; Long-Form Publishing Specialist;
+Visual Asset Specialist; provider-neutral Video Production Adapter; and Creative Quality
+Reviewer. Their current activation status is `UNAVAILABLE`.
+
+These are future role mappings over existing inventory homes, not newly callable
+skills:
+Creative Brief and Strategy Specialist, Funnel and Conversion Copy Specialist,
+and Forms and Conversion Flow Specialist map primarily to
+**Marketing & Content**; Long-Form Publishing Specialist maps to **Marketing &
+Content** plus **Document Creation**; Visual Asset Specialist and the
+provider-neutral Video Production Adapter map to the existing **Design/visual**
+Superpowers home; Creative Quality Reviewer evaluates their combined output.
+Existing seeded or listed capabilities retain their recorded maturity and do
+not make the seven-role team callable.
+
+The owner remains in one Paige conversation. Paige chooses a fixed approved
+subset of these roles for one bounded job; they are not seven persistent agents.
+Higgsfield is an unverified example behind the provider-neutral Video Production
+Adapter only, not a registered, connected, authorized or callable integration.
+
+Every future skill version must accept only the approved brief and minimum
+server-scoped context; emit versioned drafts or review findings; enforce job
+spend/time/tool/retry/concurrency limits; preserve source, rights and generation
+provenance; and stop before publication, upload, provider execution or spend.
+Owner approval and separately authorized Spine/provider execution are distinct
+gates. The Creative Quality Reviewer may reject a version but cannot approve for
+the owner, call a provider, publish, retain private Memory or silently change a
+skill. It uses only a role-specific approved creative evaluation contract.
+
+The first future proof must accept one bounded brief, server-resolve context,
+pin the approved role set plus skill/tool versions, budget and concurrency,
+write attributed versions to canonical artifact lineage, verify matching ids by
+readback, record attributable job receipts/Rail, run and canonically record the
+role-specific creative evaluation with reviewer attribution, and only then return
+one owner bundle. Provider-backed draft generation, when needed, first receives
+its own Spine/provider/budget/approval decision, result readback and generation
+receipt. Any later publication, send, upload or live-site effect requires a new
+authority decision, readback and receipt/Rail, with denial, tenant/account switch,
+retry, cancellation and provider-unavailable paths proven.
+
+### Skills Steward controlled learning loop
+
+`verified task outcome -> owner correction or quality signal -> Skills Steward evaluation -> proposed versioned improvement -> tests/evaluation -> approval gate -> activated skill/routing update`
+
+The Skills Steward is an internal-only, proposal-only specialist candidate. It
+may analyze canonical verified outcomes, attributable owner corrections,
+evaluation results, and approved performance signals. Its allowed outputs are
+evaluation reports, versioned skill/routing/prompt proposals, tests,
+rollout/rollback plans, and approval requests.
+
+It may **not** silently rewrite, activate, deploy, or retire skills; change agent
+authority, autonomy, models, prompts, Memory, pricing, providers, or customer
+behavior; learn from unverified output; or treat acceptance, a seeded recipe, or
+an `active` row as quality proof. Proposed changes require reproducible
+evaluation, regression and denial cases, an explicit approval gate, recorded
+activation, and rollback. Until that loop exists end to end, Skills Steward
+runtime activation is `UNAVAILABLE`; the underlying catalogue/runner remains
+`PARTIAL`.
+
 ## Amendments log
+- **v1.3 (2026-09-08):** mapped the seven owner-approved Vibe Studio temporary
+  worker roles to existing skill homes and recorded their `UNAVAILABLE`
+  activation, provider/evidence gates, and role-specific evaluation boundary.
+  Documentation only; no skill, provider, runtime, registry or product behavior
+  was activated or changed.
+- **v1.2 (2026-09-08):** distinguished catalogue entries from callable skills,
+  recorded runtime truth labels, and added the owner-approved Skills Steward
+  controlled learning loop. Documentation only; no skill, routing, prompt,
+  authority, provider, Memory, or product behavior was activated or changed.
 - **v1.1 (2026-09-08):** owner-approved Self-Knowledge & Migration Advisor added as a planned
   `UNAVAILABLE` Operations & Process capability. No `paige_skills` row, runtime handler, provider
   connection, action authority, migration, or production behavior was created.
