@@ -269,6 +269,14 @@ export function createAnchoredTranscriptScroll({
     beginContinuousUserMovement();
   };
 
+  const beginWindowTabMovement = (event: KeyboardEvent) => {
+    // Reverse Tab can enter an offscreen message control from the composer, so
+    // its initiating keydown is outside the transcript even though the browser
+    // then scrolls this transcript to reveal the focused descendant.
+    if (event.key !== "Tab") return;
+    beginContinuousUserMovement();
+  };
+
   const beginPointerUserMovement = (event: Event) => {
     // Native scrollbar drags target the scroll owner. A click on message
     // content is not a scroll instruction and must not arm a later update.
@@ -337,6 +345,7 @@ export function createAnchoredTranscriptScroll({
     element?.ownerDocument.defaultView?.removeEventListener("pointerup", finishContinuousUserInput);
     element?.ownerDocument.defaultView?.removeEventListener("pointercancel", finishContinuousUserInput);
     element?.removeEventListener("keydown", beginKeyboardUserMovement);
+    element?.ownerDocument.defaultView?.removeEventListener("keydown", beginWindowTabMovement);
     element?.ownerDocument.defaultView?.removeEventListener("keyup", finishContinuousUserInput);
     element?.ownerDocument.defaultView?.removeEventListener("blur", finishContinuousUserInput);
     element?.removeEventListener("scrollend", endUserMovement);
@@ -382,6 +391,7 @@ export function createAnchoredTranscriptScroll({
       element.ownerDocument.defaultView?.addEventListener("pointerup", finishContinuousUserInput, { passive: true });
       element.ownerDocument.defaultView?.addEventListener("pointercancel", finishContinuousUserInput, { passive: true });
       element.addEventListener("keydown", beginKeyboardUserMovement);
+      element.ownerDocument.defaultView?.addEventListener("keydown", beginWindowTabMovement);
       // Tab can move focus outside the transcript before keyup. Window owns the
       // release so keyboard intent cannot remain armed for a later layout scroll.
       element.ownerDocument.defaultView?.addEventListener("keyup", finishContinuousUserInput);

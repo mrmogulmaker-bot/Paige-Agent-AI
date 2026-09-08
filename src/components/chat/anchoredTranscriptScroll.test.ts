@@ -221,6 +221,31 @@ describe("createAnchoredTranscriptScroll", () => {
     composer.remove();
   });
 
+  it("captures reverse Tab ownership before focus enters an offscreen message", () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 } },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    const composer = document.createElement("textarea");
+    document.body.append(element, composer);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-reverse-tab-entry" });
+    controller.setContext("thread-a");
+    controller.attach(element);
+
+    composer.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true }));
+    element.scrollTop = 410;
+    expect(controller.handleScroll()).toBe(false);
+    composer.dispatchEvent(new KeyboardEvent("keyup", { key: "Tab", shiftKey: true, bubbles: true }));
+
+    geometry.items.d.height += 100;
+    geometry.scrollHeight += 100;
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(410);
+    composer.remove();
+  });
+
   it("does not reconcile an incoming thread anchor against outgoing thread DOM", () => {
     const geometry: Geometry = {
       viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
