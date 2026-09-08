@@ -431,11 +431,12 @@ lane does not edit or absorb UI, chat, runtime, provider, migration, or producti
 record overlaps are resolved by rebasing on current `main` and preserving newer shipped-log, Harness,
 Live Conversation, portal, and shared-chat truth.
 
-Current concrete overlaps checked 2026-09-08: #1068 (Master/config/decision/Integration Registry),
-#754 (Master/Brain/wiring), #917 (Master/config/Spine/chat/jobs), #1044 (binding ledger/chat/skills),
-#572 (model router/trace/metering), #576/#591 (chat/knowledge isolation), #1040/#729
-(Master/decision/Rail), #921 (competing agent-registry framing), #1046 (Secure Browser), and #670
-(Marketplace release). Their product/runtime files remain outside this architecture branch.
+Current concrete ownership checked 2026-09-08: merged #1068 is the canonical Live Conversation
+base. Active overlaps remain #754 (Master/Brain/wiring), #917 (Master/config/Spine/chat/jobs), #1044
+(binding ledger/chat/skills), #572 (model router/trace/metering), #576/#591 (chat/knowledge
+isolation), #1040/#729 (Master/decision/Rail), #921 (competing agent-registry framing), #1046
+(Secure Browser), and #670 (Marketplace release). Their product/runtime files remain outside this
+architecture branch.
 
 #### Paige-owned Harness responsibilities
 
@@ -464,7 +465,7 @@ Current concrete overlaps checked 2026-09-08: #1068 (Master/config/decision/Inte
    versioned evaluations so a reviewed skill, route, prompt, or policy can improve without silent
    self-modification.
 
-#### Current-state inventory refreshed at `main` `968b2dab` (2026-09-08)
+#### Current-state inventory refreshed at `main` `610e609c` (2026-09-08)
 
 | Capability | Status | Grounded current truth / next gate |
 |---|---|---|
@@ -474,13 +475,76 @@ Current concrete overlaps checked 2026-09-08: #1068 (Master/config/decision/Inte
 | Rail and detailed receipts | `PARTIAL` | Rail and capability-run evidence cover bounded paths. A universal, correlated, redacted detailed-receipt contract across all Harness work is not live. |
 | Second Brain, Tenant Brain, Mind, Memory, and skills inventory | `PARTIAL` | Durable doctrine, Tenant Brain composition, bounded Mind projections, Memory contracts/stores, and the skills inventory exist at different maturity levels. Proposed durable rows are not eligible confirmed Memory; the confirmed-only runtime projection and integration are `UNAVAILABLE`, with proof owed only after implementation exists. Inventory or storage presence does not prove runtime reach or evaluation. |
 | Text-chat Skills / Intentful Interview | `UNAVAILABLE` | The active MVP workstream owns its shared-chat files and acceptance criteria. Its candidate branch is not on current `main` and is not absorbed by this record; authenticated durable-state, Rail, abandonment, and regression evidence remain its gate. |
-| Live Conversation architecture and provider gates | `PARTIAL` | PR #1053 landed the provider-neutral UI/control plane and governance contract on `main`. Provider-backed realtime audio remains unavailable until provider and authenticated end-to-end proof gates are met. |
+| Live Conversation architecture and provider gates | `PARTIAL` | PR #1053 landed the provider-neutral UI/control plane and governance contract; merged PR #1068 adds the organic Paige Presence and actual played-output reaction. Provider-backed realtime audio remains `PROOF OWED` until provider scope/privacy/cost and authenticated end-to-end proof gates are met; local test audio is not provider speech. |
 | Secure Browser control plane and worker boundary | `UNAVAILABLE` | Public bounded research and the prerequisite security foundation exist, but the customer capability does not. Credentialed browsing, provider sessions, Connected Accounts, worker authority proof, budgets, and detailed receipts remain unavailable or proof-owed in the separately owned MVP workstream. |
 | Durable background work, retry, recovery, and visible job state | `PARTIAL` | The action bus, scheduled workers, claims, retries, alert evaluation, and several job records exist. They are not yet one uniformly governed, owner-visible Harness job contract. |
 | Model routing, provider fallback, spend, and latency controls | `PARTIAL` | The shared router has task/modality routing, allowlists, fallback, traces, latency, and cost estimates. Universal provider coverage, enforced per-task/tenant spend ceilings, and correlated quality gates remain owed. Estimates are not budget enforcement. |
 | Evaluation, feedback, skill versioning, quality scoring, experience-to-skill learning | `UNAVAILABLE` | Trace/evaluation, prompt-memory, skills, forge, and critique substrates are partial foundations. The complete owner-reviewed experience → evaluation → versioned approved skill/routing/prompt/policy loop is not available, and no change may publish automatically. |
 | Proactive monitoring and operating-brief runtime | `PARTIAL` | Systems Check, operating context/memory, alerts, scheduled workers, and the action bus provide real substrate. Uniform triggers, authoring, delivery/escalation, recovery, and owner-visible work state remain incomplete. |
 | Observability, release awareness, cost/metering, and incident/recovery controls | `PARTIAL` | Traces, audit, Rail, Systems Check, alerting, metering, deployment tags, the Section 4 shipped log, and release-aware UI exist. They are not yet one end-to-end correlated Harness control plane. |
+
+#### Agentization audit, canonical roster, and activation order
+
+The full current-state classification, domain-to-skill-to-tool-to-specialist
+matrix, delegation path, activation roadmap, and collision map live in
+`docs/doctrine/paige-os-architecture.md` §6. The specialist operating
+contracts live in the existing
+`docs/doctrine/paige-c-suite-roster.md` Part 5. Skill maturity and the
+controlled Skills Steward loop live in
+`docs/brain/paige-skills-inventory.md`. These extend existing
+canonical homes; they do not create an agent registry, second C-suite, duplicate
+Skills catalogue, Brain, Harness, Spine, Rail, authority system, tenant context,
+or public navigation.
+
+The proposed first activation cohort **after** the central Harness completion
+gate is Operating Strategy and Planning, Research and Intelligence, Cost and
+Usage Advisor, and Skills Steward. Initial lanes are read, analyze, draft, and
+propose only. Their present truth remains `PARTIAL`, `PARTIAL`,
+`PARTIAL`, and `UNAVAILABLE`; roadmap order is not activation.
+Client Success, Growth, Sales, Creative Production, and future Platform Operator
+roles remain behind their domain, provider, authority, record/readback,
+evidence, evaluation, and workstream gates.
+
+Vibe Studio Creative Production is one Paige-assembled, temporary job team—not
+seven customer-facing assistants. Its bounded roles are Creative Brief and Strategy Specialist; Funnel and
+Conversion Copy Specialist; Forms and Conversion Flow Specialist; Long-Form
+Publishing Specialist; Visual Asset Specialist; provider-neutral Video
+Production Adapter; and
+Creative Quality Reviewer. Canonical flow:
+
+`Owner request → server-derived tenant/workspace/actor context → Paige assembles approved specialist job team → scoped skills/tools → drafts and versions → quality review → owner approval → separately authorized publish/provider execution → verified receipt/Rail outcome`
+
+Existing Vibe Studio creative-authoring/session/version capability is a `PARTIAL`
+substrate. Binding Ledger `campaigns.vibe-studio`, the Paige/Harness Studio
+binding, and all seven roles remain `UNAVAILABLE` for activation. NEXUS owns the
+growth/creative business domain, MENTOR owns Studio platform/config/readiness,
+and Paige orchestrates the bounded temporary team. First future MVP order is
+(1) Creative Brief and Strategy Specialist plus Creative Quality Reviewer;
+(2) Funnel and Conversion Copy Specialist plus
+Forms and Conversion Flow Specialist; (3) Long-Form Publishing Specialist plus Visual Asset Specialist;
+and (4) Video Production Adapter after provider, rights, security, budget and
+evidence gates. Workers
+are temporary, minimum-context and budget-bound within one owner conversation
+with Paige; Paige selects a fixed approved role set for one bounded brief, not
+seven permanent agents. Higgsfield is an unverified provider-neutral adapter
+example only, not an Integration Registry, connection, authority or availability
+claim. The first proof pins skills/tools/budget/concurrency, creates attributed
+drafts in canonical artifact lineage, verifies matching artifact/version ids by
+readback, records attributable job receipts/Rail, runs and canonically records a
+role-specific approved creative evaluation with reviewer attribution, and only
+then returns one owner bundle. Provider-backed draft generation, when needed,
+first receives its own Spine/provider/budget/approval decision, result readback
+and generation receipt. Outputs remain versioned drafts until owner approval;
+later publication, send, upload or live-site action requires a fresh Spine
+decision, canonical readback and effect receipt/Rail. Denial, tenant/account
+switch, retry, cancellation and provider-unavailable paths must fail closed.
+
+Secure Browser and Live Conversation are execution/modality layers, not
+assistant identities. The Tenant Client Portal is an MVP platform domain and
+client-scoped experience, not an agent. PR #921's proposed
+`paige-agent-registry.md` is a competing canonical home and must not be
+treated as current doctrine; useful evidence must be reconciled into the
+existing homes above.
 
 #### Controlled improvement, never silent self-modification
 
@@ -537,10 +601,11 @@ Solo customer promise.
   reproducible defect is reported.
 - **Documentation collision:** concurrent canonical-record work that changes this Master,
   `docs/brain/README.md`, `docs/brain/decision-log.md`, or
-  `docs/brain/paige-brain-wiring-standard.md` must rebase and preserve this ruling. This correction
-  starts from `main` `968b2dab`. Authenticated GitHub inventory confirmed overlapping open PRs
-  #1040, #905, #917, #729, #776, #754, #724, #907, #899, #648, and #560; their product and
-  historical-record ownership remains separate.
+  `docs/brain/paige-brain-wiring-standard.md` must rebase and preserve this ruling. The
+  agentization audit refresh starts from `main` `610e609c`. Current GitHub inventory confirms direct
+  collisions with #921 (competing registry), #1044 (text-chat Skills/Game Plan), #1046 (Secure
+  Browser), #917 (orchestration/tools), #729/#776 (Spine/Rail), and #754/#1040 (Brain/doctrine);
+  their product and historical-record ownership remains separate.
 - **Regression map:** no new source of truth; no customer/runtime capability promoted by
   documentation; no provider named as Paige's identity; no bypass around server identity, Spine,
   budgets, readback, receipts/Rail, or Memory eligibility; no active workstream absorbed.
