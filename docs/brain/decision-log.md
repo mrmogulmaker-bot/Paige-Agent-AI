@@ -1,5 +1,17 @@
 # Decision Log — chronological one-liners
 
+- **Master Section 4 shipped-log reconciliation + public-version audit (2026-09-08, owner-directed).**
+  Git history sets the backfill cutoff at PR #1029 / `1fee541808b71293329e8111f45b17cd28248794`;
+  all 18 first-parent deliveries through #1051 / `531045004aa306beecb669b31c385c779c76c4b8`
+  are reconciled in the sole chronological log at Master Reference Section 4.0. Both production
+  domains served the same public build `531045004aa306beecb669b31c385c779c76c4b8-mtry6b9s` from
+  READY Vercel deployment `dpl_5V2fqn1D8axaEH25Tg2tB6KgKh8P`; no customer-update record was
+  resolved. The unlinked prior homepage implementations at `/premium` and `/legacy` were proven
+  outside the intended canonical surface, so both paths now replace-redirect to `/` and their
+  obsolete page components are removed. The separately documented `/tenant-redesign` representative
+  prototype remains active pending a distinct owner retirement decision. No migration, Edge function,
+  provider, tenant record, public release/version, or customer communication changed.
+
 - **Paige Live Conversation MVP implementation (2026-09-07).** The approved owner-facing stage is
   entered only from `Talk live with Paige` in the dedicated composer, portals over the exact thread,
   preserves the platform page, supports minimize/focus return and one active real card, and reuses

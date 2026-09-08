@@ -23,14 +23,20 @@ index what you have not checked.
 - **Hit a weird recurring bug?** → `lessons-learned.md` (symptom → root cause → rule).
 - **Opening/closing a PR, merging, deploying, versioning, or drafting a customer update?** →
   `../doctrine/release-governance-and-customer-update-policy.md`.
+- **Checking what shipped, or preparing/closing a merge to `main`?** →
+  `../PAIGE-MASTER-PROJECT-REFERENCE.md#40-shipped-delivery-log`; every `main` merge gets one verified chronological row.
 
 <!-- RELEASE_GOVERNANCE_POLICY -->
 
-**Closeout is TWO records, not one (owner-ruled 2026-09-02).** A workstream is not complete until the
+**Closeout is TWO records, not one (owner-ruled 2026-09-02; shipped-log discipline clarified 2026-09-07).** A workstream is not complete until the
 relevant brain file **and** `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` are updated, whenever the work
 changes product capability, platform truth, release status, architecture, owner flow, or a material
 known limitation — or a collision-safe handoff names the exact section, proposed text, owner and
-reason. The rule and its reporting gate live in `.claude/skills/second-brain/SKILL.md`.
+reason. Every merge to `main` also gets one verified row in Master Reference Section 4.0; a PR that
+did not reach `main` records that log update as `N/A`. The rule and its reporting gate live in
+`.claude/skills/second-brain/SKILL.md`.
+
+A closeout-only PR used solely to record the preceding delivery's exact post-merge identity is not a recursive new shipped item. It may not carry product, policy, capability, or status change.
 
 **How to keep it true (see proposed CLAUDE.md §BRAIN).** Any PR that ships a feature, changes
 config, or lands a ruling updates the relevant brain file **in the same commit**. A stale brain is
@@ -42,6 +48,7 @@ worse than none — it lies with authority.
 | File | What it holds | When to read |
 |---|---|---|
 | `README.md` (this) | Master index of every doc + orientation | First, every session |
+| `../PAIGE-MASTER-PROJECT-REFERENCE.md#40-shipped-delivery-log` | **The sole chronological Shipped Delivery Log** — every `main` merge, why it shipped, exact identity/evidence, proof boundary, and customer-release eligibility | Before claiming delivery; update after every merge to `main` |
 | `codebase-map.md` | Shipped surface area — routes (3 routers), component folders, edge-fn theme groups, feature gates, integration entry points | "Do we have surface/feature X **built**?" |
 | `config-registry.md` | Infra/integration state — Twilio (incl. ISV/subaccount), ElevenLabs (3 voice systems), Stripe, Supabase, CI, MCP, signup, third-party (NAMES/IDs only, no secret values) | Touching any integration or deploy |
 | `roles-permissions.md` | How roles actually work: the three stores, the owner→global-admin amplifier, which helper to use, live counts, what's not built | 2026-08-18 |
@@ -74,6 +81,12 @@ worse than none — it lies with authority.
 ---
 
 ## Verified platform snapshot (this session, 2026-08-09)
+
+**Current Solo-shell delivery correction (verified on production 2026-09-07):** the eligibility
+query now returns **4 active top-level standalone Solo tenants; all 4 have
+`features.solo_shell_enabled=true`; 0 eligible tenant is served the legacy shell**. The older
+7/4/3 count below and in the parity matrix is retained as historical rollout evidence, not current
+platform truth. This count does not by itself prove every authenticated surface or user journey.
 
 All figures below were checked live this session; how each was verified is in `config-registry.md`.
 

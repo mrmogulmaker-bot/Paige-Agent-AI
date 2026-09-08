@@ -5,6 +5,12 @@
 Grounded on `main` @ `8eda0e8d`. Every row was read from code on `main` — never from a tenant, a
 URL, a preview fixture, a legacy account, a branch, or a screenshot.
 
+> **Current-state amendment — 2026-09-07 production query:** 4 active eligible top-level
+> standalone Solo tenants exist; all 4 have `features.solo_shell_enabled=true`; 0 eligible tenant
+> is served the legacy shell. The 7/4/3 figures in this Wave 0 record remain historical evidence of
+> the rollout gap that existed on 2026-09-02, not a current platform count. Authenticated
+> cross-tenant behavior remains a separate evidence class.
+
 **The program objective this serves:** every current and future Solo account receives the same
 canonical Solo product template. This file is the inventory that makes that measurable. It is not a
 backlog and it is not a design document — Claude Design owns everything about how these surfaces

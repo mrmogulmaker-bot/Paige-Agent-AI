@@ -37,7 +37,7 @@ it does **not** prove the feature is fully wired end-to-end (integration state l
 ## 1. Routes / surfaces (by audience section)
 
 ### Public / marketing (`src/App.tsx`)
-Homepage `/` (`PaigeHome`; `/premium`,`/legacy` legacy heroes) · auth `/auth` (`/login`→/auth),
+Homepage `/` (`PaigeHome`; retired `/premium` and `/legacy` paths replace-redirect here) · auth `/auth` (`/login`→/auth),
 operator login `/operator` · signup `/signup`·`/get-started`·`/onboarding`·`/signup/coach-qualify`,
 `/join-platform` · marketing `/about`·`/pricing`·`/blog`·`/welcome` · legal `/terms`·`/privacy`·`/legal/:slug` ·
 affiliate/broker `/affiliates`·`/broker`·`/broker/accept-invite` · public tenant storefront `/store/:slug` ·
