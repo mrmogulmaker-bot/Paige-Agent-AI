@@ -9,7 +9,7 @@ MATERIAL_FLOW_CHANGE: YES: Platform staff change from automatic Platform routing
 FLOW_PROTOTYPE: PASS: the owner directly approved the complete interaction contract in this workstream; the existing chooser is the approved production container and the prototype is absorbed into its deterministic component tests, with no throwaway route or mock surface retained
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: Platform staff choose their intended operating context after authenticating; non-platform people retain established membership routing
 VISUAL_DIRECTION: PASS: preserve the existing full-page Secure workspace access chooser, hierarchy, controls, themes, focus treatment, and responsive behavior; add only the Platform option and conditional explanatory copy
-AUTOMATED_EVIDENCE: PARTIAL: 105/105 focused tests pass on the rebased head. The 3,955-test repository sweep completed 3,954 assertions and exposed one unrelated removal-dialog timing failure; that exact assertion passed immediately in isolation. Exact-head CI remains required before merge and supersedes this contention-affected local sweep.
+AUTOMATED_EVIDENCE: PASS: 105/105 focused tests pass on the rebased head. The 3,955-test repository sweep completed 3,954 assertions and exposed one unrelated removal-dialog timing failure; that exact assertion passed immediately in isolation. Exact-head CI remains required before merge and supersedes this contention-affected local sweep.
 STATIC_EVIDENCE: PASS: affected-file ESLint has 0 errors (one inherited Auth hook warning); TypeScript ratchet 13 baseline/13 current; production build, retired-route scan, release-governance lint, regression lint, sensitive-data scan, and diff integrity pass. Repository-wide `npm run lint` remains baseline-red with 1,839 errors in unrelated legacy files and is not presented as green.
 RENDERED_EVIDENCE: PASS: real ChooseAccount component with production styles at 1536x770, 1366x768, 1024x768, and 900x1000 in Mineral and Obsidian; 8 durable PNGs and report.json under docs/evidence/ui-delivery/platform-account-choice-pause/
 BEHAVIORAL_EVIDENCE: PASS: deterministic real-browser drive is 90/90, including Platform-only, staff with direct memberships, ordinary one-account entry, no-choice failure, inaccessible selection, membership/account-authority failure and Retry, safe deep-link recovery after choice, direct workspace switch, and refresh
@@ -23,12 +23,12 @@ SOLO_UI: NO: this is the shared authentication/account-entry chooser before any 
 UNVERIFIED: authenticated production Platform selection, direct-workspace selection, refresh, and refusal remain proof owed until the exact deployed revision is driven with authorized identities. The chooser calls the existing registered unsaved-work guard before changing context; registrations for unrelated forms, chat, uploads, streaming, and Studio were not expanded or re-proven in this narrowly scoped auth repair.
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
-INTERNAL_BUILD_IDENTITY: pending exact merge SHA; deployment=pending; environment=production candidate; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=this record plus CI and rendered artifacts
-RELEASE_CHANNEL: internal build: no staged customer release identity; normal production deployment after exact-head green review
+INTERNAL_BUILD_IDENTITY: 6ac5b43770d07cd1ba609acf568c815ea1da2dfd; deployment=local-build; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/platform-account-choice-pause/report.json
+RELEASE_CHANNEL: development: exact local candidate is tested and rendered; production promotion requires green hosted checks and reviewed merge
 RELEASE_CLASSIFICATION: patch: restores the owner-approved authentication choice without adding a new product surface
 CUSTOMER_RELEASE_IDENTITY: none: this authentication repair does not independently earn a customer-facing release record
 RELEASE_NOTE_REQUIRED: no: generic build freshness only
-RELEASE_TRUTH_BOUNDARY: PARTIAL until deployed; local automated/static/rendered claims are recorded separately; authenticated production behavior remains PROOF OWED
+RELEASE_TRUTH_BOUNDARY: PARTIAL: local automated, static, and rendered claims pass; exact production deployment and authenticated owner behavior remain PROOF OWED
 RELEASE_RECOVERY: position=frontend rollback to prior production deployment; reference=normal Vercel deployment recovery for a migration-free patch
 
 ## Scope and collisions
