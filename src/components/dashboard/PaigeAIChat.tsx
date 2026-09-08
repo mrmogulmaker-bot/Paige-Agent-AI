@@ -486,7 +486,7 @@ const PaigeAIChatInner = ({
     transcriptScrollRef.current?.jumpToBottom(behavior);
     hasNewerContentRef.current = false;
     setLatestAnnouncement("Latest PAIGE message reached.");
-    requestAnimationFrame(() => inputRef.current?.focus());
+    requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
   }, []);
 
   // SCOPE changes — the workspace or the client in focus — are a hard frontend isolation
@@ -561,8 +561,15 @@ const PaigeAIChatInner = ({
     transcriptScrollRef.current?.setContext(transcriptContext);
   }, [transcriptContext]);
 
+  const previousScrollLayoutRef = useRef({ messages, steps, isLoading, historyTransitioning });
   useLayoutEffect(() => {
-    transcriptScrollRef.current?.notifyLayoutChange();
+    const previous = previousScrollLayoutRef.current;
+    const source = historyTransitioning || previous.historyTransitioning ? "hydration"
+      : previous.isLoading && !isLoading ? "assistant-completion"
+      : previous.steps !== steps ? "status-tool-receipt"
+      : isLoading && previous.messages !== messages ? "stream-token" : "layout-effect";
+    previousScrollLayoutRef.current = { messages, steps, isLoading, historyTransitioning };
+    transcriptScrollRef.current?.notifyLayoutChange(source);
     if (!atLatestRef.current && !hasNewerContentRef.current) {
       hasNewerContentRef.current = true;
       setLatestAnnouncement("Newer PAIGE content is available.");
@@ -583,7 +590,7 @@ const PaigeAIChatInner = ({
       return;
     }
     setInput(chip.prompt);
-    requestAnimationFrame(() => inputRef.current?.focus());
+    requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
   };
 
   // Rebuild the message list from a thread's stored turns. Cards are reconstructed
@@ -690,7 +697,7 @@ const PaigeAIChatInner = ({
     setConnectionIssue(null);
     retryTurnRef.current = null;
     setHistoryTransitioning(false);
-    requestAnimationFrame(() => inputRef.current?.focus());
+    requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
   };
 
   // On first load in history mode, resume the most recent chat (or start fresh).
@@ -1390,7 +1397,7 @@ const PaigeAIChatInner = ({
         setDictationGeneration(dictationGenerationRef.current);
         setInput("");
         setAttachedDoc(null);
-        requestAnimationFrame(() => inputRef.current?.focus());
+        requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
       }}
     >
       <X className="h-4 w-4" aria-hidden />
@@ -1602,7 +1609,7 @@ const PaigeAIChatInner = ({
                                 tenantId={a.tenantId ?? activeTenantId}
                                 onSend={() => {
                                   setInput(`Send "${a.title}" to `);
-                                  requestAnimationFrame(() => inputRef.current?.focus());
+                                  requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
                                 }}
                               />
                             ))}

@@ -10,6 +10,7 @@ type Geometry = {
 
 function transcriptFixture(geometry: Geometry) {
   const element = document.createElement("div");
+  document.body.append(element);
   Object.defineProperties(element, {
     clientHeight: { configurable: true, get: () => geometry.clientHeight },
     scrollHeight: { configurable: true, get: () => geometry.scrollHeight },
@@ -43,9 +44,168 @@ function transcriptFixture(geometry: Geometry) {
 afterEach(() => {
   sessionStorage.clear();
   vi.restoreAllMocks();
+  document.body.replaceChildren();
 });
 
 describe("createAnchoredTranscriptScroll", () => {
+  it("does not treat fractional manual distance as a near-bottom pin", () => {
+    const geometry: Geometry = { viewportTop: 0, clientHeight: 300, scrollHeight: 1200,
+      items: { a: { top: 0, height: 1200 } } };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "fractional" });
+    controller.attach(element);
+    element.dispatchEvent(new WheelEvent("wheel"));
+    element.scrollTop = 899.75;
+    controller.handleScroll();
+    element.dispatchEvent(new Event("scrollend"));
+    geometry.scrollHeight += 100;
+    controller.notifyLayoutChange();
+    expect(controller.isAtBottom()).toBe(false);
+    expect(element.scrollTop).toBe(899.75);
+    controller.destroy();
+  });
+
+  it("aborts an in-flight native smooth jump when the owner intervenes", () => {
+    const geometry: Geometry = { viewportTop: 0, clientHeight: 300, scrollHeight: 1200,
+      items: { a: { top: 0, height: 1200 } } };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a"]);
+    const scrollTo = vi.fn();
+    element.scrollTo = scrollTo;
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "smooth-interrupt" });
+    controller.attach(element);
+    element.dispatchEvent(new WheelEvent("wheel"));
+    element.scrollTop = 425;
+    controller.handleScroll();
+    controller.jumpToBottom("smooth");
+    element.scrollTop = 500;
+    controller.handleScroll();
+    element.dispatchEvent(new WheelEvent("wheel", { deltaY: -1 }));
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 500, behavior: "instant" });
+    element.scrollTop = 499;
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(499);
+    expect(controller.isAtBottom()).toBe(false);
+    controller.destroy();
+  });
+
+  it("never writes or captures a detached transcript and restores it on return", () => {
+    const geometry: Geometry = { viewportTop: 0, clientHeight: 300, scrollHeight: 1200,
+      items: { a: { top: 0, height: 1200 } } };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "detached" });
+    controller.attach(element);
+    element.dispatchEvent(new WheelEvent("wheel"));
+    element.scrollTop = 425;
+    controller.handleScroll();
+    element.remove();
+    element.scrollTop = 0;
+    controller.handleScroll();
+    controller.notifyLayoutChange();
+    controller.jumpToBottom();
+    expect(element.scrollTop).toBe(0);
+    document.body.append(element);
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(425);
+    controller.destroy();
+  });
+
+  it.each(["wheel", "touchstart", "pointerdown", "keydown"])("does not let a delayed layout writer overtake the %s scroll event", (type) => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 } },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "delayed-" + type });
+    controller.attach(element);
+    element.dispatchEvent(type === "keydown" ? new KeyboardEvent(type, { key: "ArrowUp" }) : new Event(type));
+    element.scrollTop = 899;
+    // Compositor scrolling has happened, but React/ResizeObserver can run
+    // before the native scroll event is delivered to React's handler.
+    controller.notifyLayoutChange();
+    controller.handleScroll();
+    expect(element.scrollTop).toBe(899);
+    expect(controller.isAtBottom()).toBe(false);
+    controller.destroy();
+  });
+
+  it("retains wheel ownership after idle frames and a delayed scroll notification", () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.set(++nextFrame, callback); return nextFrame;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => { frames.delete(id); });
+    const flush = () => {
+      const batch = [...frames.values()]; frames.clear();
+      batch.forEach((callback) => callback(performance.now()));
+    };
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 } },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "idle-owner" });
+    controller.attach(element);
+    flush();
+    element.dispatchEvent(new WheelEvent("wheel", { deltaY: -1 }));
+    for (let index = 0; index < 120; index += 1) flush();
+    element.scrollTop = 899;
+    controller.handleScroll();
+    geometry.items.d.height += 100;
+    geometry.scrollHeight += 100;
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(899);
+    expect(controller.isAtBottom()).toBe(false);
+    controller.destroy();
+  });
+
+  it("does not grant a delayed programmatic focus permission to replace the reading anchor", () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 } },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "focus-owner" });
+    controller.attach(element);
+    element.dispatchEvent(new WheelEvent("wheel"));
+    element.scrollTop = 899;
+    controller.handleScroll();
+    element.children[1].dispatchEvent(new FocusEvent("focusin", { bubbles: true, relatedTarget: element.firstElementChild }));
+    element.scrollTop = 300;
+    controller.handleScroll();
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(899);
+    expect(controller.isAtBottom()).toBe(false);
+    controller.destroy();
+  });
+
+  it("keeps accepting the same touch gesture after a layout compensation", () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 } },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "continued-touch" });
+    controller.attach(element);
+    element.dispatchEvent(new Event("touchstart"));
+    element.scrollTop = 425;
+    controller.handleScroll();
+    geometry.clientHeight = 250;
+    controller.notifyLayoutChange();
+    element.scrollTop = 424;
+    controller.handleScroll();
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(424);
+    controller.destroy();
+  });
+
   it.each([
     ["wheel", () => new WheelEvent("wheel")],
     ["touch", () => new Event("touchstart")],

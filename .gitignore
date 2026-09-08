@@ -41,6 +41,7 @@ dist-ssr
 scripts/live-drive/artifacts/
 outputs/paige-scroll-verification/
 outputs/paige-scroll-baseline/
+outputs/paige-scroll-delayed-baseline/
 deno.lock
 
 # Rendered pack/app screenshots — regenerate with scripts/live-drive/pack-shoot.mjs

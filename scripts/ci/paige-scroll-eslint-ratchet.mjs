@@ -15,6 +15,7 @@ const targets = [
   "src/__tests__/dedicated-chat-overflow-contract.test.ts",
   "src/solo/SoloPaigeWorkspace.contract.test.tsx",
   "scripts/ci/paige-scroll-baseline-reproduction.mjs",
+  "scripts/ci/paige-scroll-delayed-reproduction.mjs",
   "scripts/ci/paige-scroll-verify.mjs",
   "scripts/live-drive/paige-scroll-stability-react-drive.mjs",
   "scripts/live-drive/harness/settings-mount/paige-threads-stub.ts",
