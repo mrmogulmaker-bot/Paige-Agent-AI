@@ -2,9 +2,13 @@
 
 **Workstream:** dedicated Paige Live Conversation, separate from Skills and Intentful Interview
 
-**Grounded base:** `origin/main` at `53104500` after shipped PRs #1050 and #1051
+**Grounded base:** `origin/main` at `2719d7d8` after shipped PR #1054, including #1050/#1051
 
-**Coordination checkpoint (2026-09-07):** the branch was re-grounded before further implementation.
+**Coordination checkpoint (2026-09-08):** the branch was re-grounded again before merge after
+PR #1054 advanced `main`. That delivery owns the sole chronological Shipped Delivery Log in Master
+Reference Section 4.0 and retires only obsolete public-home routes; Live Conversation must preserve
+its log, current routing, and new closeout rule without creating another ledger. The branch was
+re-grounded before further implementation.
 Current `main` owns the canonical exact transcript-position contract through
 `createAnchoredTranscriptScroll`: deliberate owner movement takes control immediately, and the exact
 visible message plus pixel offset survives streaming, thread changes, resize, minimize/restore,
@@ -111,6 +115,7 @@ those facts and an approved transport-enablement change consumes it.
 
 | Collision | Resolution |
 |---|---|
+| Shipped PR #1054 owns Master Section 4.0 and retires `/premium`/`/legacy` | Preserve the sole chronological Shipped Delivery Log, canonical public-route redirects/removals, and the closeout-only exception. Live Conversation adds its verified row only after the product merge; it does not restore retired routes or create a parallel log. |
 | Skills/Intentful Interview PR #1044 touches Paige composer/workspace | Owner-paused and explicitly separate. This delivery adopts none of its interview, Skills, client-scope, or binding-ledger changes. After Live Conversation lands, #1044 must re-ground and rebase onto the resulting `main`. |
 | Shipped PRs #1050/#1051 own transcript position in `PaigeAIChat.tsx` | Current-main `createAnchoredTranscriptScroll`, stable message identity, context switching, exact-bottom ownership, hidden-geometry handling, and pop-out document rebinding are canonical and non-negotiable. Live Conversation is manually composed around them; no old auto-follow/remount/near-bottom behavior may return. |
 | Shared `PaigeAIChat.tsx` composer and transcript | Live Conversation adds one adjacent composer trigger and portals the same transcript without replacing the canonical scroll element, controller, message anchors, text/attachment/dictation paths, permissions, history, or confirmations. Minimize/end returns focus to the exact trigger and leaves the transcript controller and underlying page mounted. |
