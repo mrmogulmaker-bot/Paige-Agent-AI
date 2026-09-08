@@ -79,7 +79,7 @@ async function openThread(page, title) {
 }
 
 async function openTenant(page, url) {
-  await page.goto(url);
+  await page.goto(url, { waitUntil: "domcontentloaded" });
   if (!(await transcript(page).isVisible())) {
     await page.getByRole("button", { name: "Direct PAIGE", exact: true }).evaluate((button) => button.click());
   }

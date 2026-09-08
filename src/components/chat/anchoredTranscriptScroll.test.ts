@@ -301,6 +301,64 @@ describe("createAnchoredTranscriptScroll", () => {
     expect(sessionStorage.getItem("test-deferred-thread:thread-b")).toContain('"messageId":"y"');
   });
 
+  it("does not replace an incoming thread anchor with transient hydration content", () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
+      items: {
+        a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 },
+        greeting: { top: 0, height: 300 }, x: { top: 0, height: 600 }, y: { top: 600, height: 600 },
+      },
+    };
+    sessionStorage.setItem("test-transient-hydration:thread-b", JSON.stringify({
+      kind: "anchor", messageId: "y", semanticKey: "message:y", indexFromStart: 1, indexFromEnd: 0, offsetPx: -55,
+    }));
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-transient-hydration" });
+    controller.setContext("thread-a");
+    controller.attach(element);
+    element.scrollTop = 425;
+
+    controller.setContext("thread-b");
+    render(["greeting"]);
+    geometry.scrollHeight = 300;
+    controller.notifyLayoutChange();
+
+    expect(element.scrollTop).toBe(425);
+    expect(sessionStorage.getItem("test-transient-hydration:thread-b")).toContain('"messageId":"y"');
+
+    render(["x", "y"]);
+    geometry.scrollHeight = 1_200;
+    controller.notifyLayoutChange();
+    expect(element.scrollTop).toBe(655);
+    expect(sessionStorage.getItem("test-transient-hydration:thread-b")).toContain('"messageId":"y"');
+  });
+
+  it("does not move a one-pixel reader during same-thread transient refresh content", () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1_500,
+      items: {
+        a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 600 },
+        greeting: { top: 0, height: 300 },
+      },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-one-pixel-transient-refresh" });
+    controller.setContext("thread-a");
+    controller.attach(element);
+    element.dispatchEvent(new WheelEvent("wheel", { deltaY: -1 }));
+    element.scrollTop = 1_199;
+    controller.handleScroll();
+
+    render(["greeting"]);
+    geometry.scrollHeight = 300;
+    controller.notifyLayoutChange();
+
+    expect(element.scrollTop).toBe(1_199);
+    expect(sessionStorage.getItem("test-one-pixel-transient-refresh:thread-a")).toContain('"messageId":"d"');
+  });
+
   it("uses the end-relative duplicate after an ephemeral greeting disappears on reload", () => {
     const geometry: Geometry = {
       viewportTop: 0, clientHeight: 200, scrollHeight: 900,
@@ -484,6 +542,30 @@ describe("createAnchoredTranscriptScroll", () => {
     controller.notifyLayoutChange();
     expect(element.scrollTop).toBe(510);
     expect(element.scrollTop).not.toBe(geometry.scrollHeight - geometry.clientHeight);
+  });
+
+  it("adopts a server thread ID without losing the provisional conversation anchor", () => {
+    const geometry: Geometry = {
+      viewportTop: 0, clientHeight: 300, scrollHeight: 1_200,
+      items: { a: { top: 0, height: 300 }, b: { top: 300, height: 300 }, c: { top: 600, height: 300 }, d: { top: 900, height: 300 } },
+    };
+    const { element, render } = transcriptFixture(geometry);
+    render(["a", "b", "c", "d"]);
+    const controller = createAnchoredTranscriptScroll({ storagePrefix: "test-adopt-thread" });
+    controller.setContext("draft-message-id");
+    controller.attach(element);
+    element.dispatchEvent(new WheelEvent("wheel", { deltaY: -1 }));
+    element.scrollTop = 899;
+    controller.handleScroll();
+
+    controller.adoptContext("server-thread-id");
+    geometry.items.d.height += 120;
+    geometry.scrollHeight += 120;
+    controller.notifyLayoutChange();
+
+    expect(element.scrollTop).toBe(899);
+    expect(sessionStorage.getItem("test-adopt-thread:server-thread-id")).toContain('"messageId":"c"');
+    expect(controller.isAtBottom()).toBe(false);
   });
 
   it("restores positions per thread and through a same-session controller remount", () => {
