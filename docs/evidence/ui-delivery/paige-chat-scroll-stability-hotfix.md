@@ -2,7 +2,7 @@
 
 Date: 2026-09-07
 Owner scope: dedicated PAIGE workspace, ordinary chat, Solo dock/pop-out lifecycle, and same-session thread restoration
-Status: RELEASE CANDIDATE — exact-head CI, merge, deployment, and authenticated production verification pending
+Status: SUPERSEDED — INCIDENT RESOLVED BY OWNER-ACCEPTED #1057
 
 UI_DELIVERY_EVIDENCE_VERSION: 1
 INTERNAL_BUILD_IDENTITY: 4ead09acc88bfceab6f06239120e8dace35954d3; deployment=local-build; environment=local; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=scripts/live-drive/artifacts/paige-scroll-stability-react/report.json
@@ -10,7 +10,7 @@ RELEASE_CHANNEL: development: exact implementation commit verified locally befor
 RELEASE_CLASSIFICATION: patch: focused correction to existing PAIGE conversation reading-position behavior
 CUSTOMER_RELEASE_IDENTITY: none: no named customer release identity was assigned to this hotfix
 RELEASE_NOTE_REQUIRED: NO: no approved named customer release exists for this focused internal patch
-RELEASE_TRUTH_BOUNDARY: PARTIAL: local exact-implementation tests and rendered behavior pass; preview, authenticated owner, and production proof remain owed
+RELEASE_TRUTH_BOUNDARY: NOT_ACCEPTED for #1050; the production incident is LIVE/resolved only through the later owner-accepted #1057 correction
 RELEASE_RECOVERY: position=Revert the hotfix PR before merge or revert its merge commit after release while preserving unrelated main history; reference=docs/evidence/ui-delivery/paige-chat-scroll-stability-hotfix.md
 FLOW_BY_FLOW: PASS: affected surfaces, scroll ownership, message identity, history hydration, streaming frames, responsive remounts, popup lifecycle, and active Skills/Interview collision were grounded before editing
 PAIGE_UI_DESIGN: PASS: the approved chat composition and separate Live Conversation workstream are unchanged; this is a behavior-only stability repair
@@ -22,14 +22,14 @@ AUTOMATED_EVIDENCE: PASS: source-bound Chromium baseline reproduction captures t
 STATIC_EVIDENCE: PASS: hotfix-file ESLint has zero errors; TypeScript ratchet adds no errors to the 13-error baseline; production build passes with 5605 modules
 RENDERED_EVIDENCE: PASS: 72/72 local real-React checks use shipped SoloPaigeWorkspace and PaigeAIChat with stable synthetic history and controlled SSE at 1536x770, 1366x768, 1024x768, 900x1000, and 520x820
 BEHAVIORAL_EVIDENCE: PASS: same message and pixel offset survive ordinary React updates, controlled streaming, paige_step, approval receipt, reflow, thread A-B-A hydration, per-thread isolation, reload, minimize/return, pop-out/native-close return, and keyboard navigation; bottom-pinned streaming follows naturally
-AUTHENTICATED_RUNTIME: UNVERIFIED: local rendered proof uses explicit synthetic thread records and a controlled SSE double; authenticated preview and production account proof are still required before a production PASS claim
+AUTHENTICATED_RUNTIME: NOT_ACCEPTED for #1050: this revision was superseded by failed #1051 and then resolved by owner-accepted #1057 on 2026-09-08
 KEYBOARD_FOCUS: PASS: transcript is focusable; PageDown, PageUp, Home, and End work in the rendered drive; Jump to latest returns focus to the composer
 ZOOM_REFLOW: PASS: the four required Solo viewports plus 520x820 remain free of horizontal transcript overflow
 REDUCED_MOTION: PASS: Jump to latest uses `auto` when reduced motion is requested; smooth intentional-bottom transitions remain pinned until completion or genuine user interruption
 STATE_COVERAGE: PASS: reading history, bottom-pinned, streamed text, tool/thought step, approval receipt, thread replacement, separate thread positions, responsive resize, reload, docked, minimized, pop-out, native-close return, and open/closed viewport states
 TRUTHFUL_STATE_LABELS: PASS: rendered artifacts are visibly labeled local and synthetic; no provider, tenant, authority, production, or authenticated claim is inferred
 SOLO_UI: YES: dedicated Solo PAIGE workspace and its dock/pop-out lifecycle are affected; Live Conversation is excluded and unchanged
-UNVERIFIED: authenticated preview and production behavior remain proof owed until the exact merged revision is deployed and driven in a real owner account
+UNVERIFIED: none for the eventual #1057 resolution; #1050 remains a superseded historical candidate and must not be reclassified as accepted
 
 SOLO_1536X770_PAIGE_CLOSED: PASS: screenshot captured after folding the shipped PAIGE workspace; no horizontal overflow or page error
 SOLO_1536X770_PAIGE_OPEN: PASS: real React stream, thread switch/return, reload, and anchor measurements pass
@@ -63,8 +63,12 @@ The shared controller records either an intentional bottom pin or the first visi
 - PASS — local rendered affected flow: 72/72 checks; report generated under `scripts/live-drive/artifacts/paige-scroll-stability-react/report.json` with timestamp and tested revision.
 - PASS — independent review found two release-blocking races; both were repaired and now have focused regressions.
 - UNAVAILABLE — product history pagination/prepend API does not exist; anchor/prepend behavior is proven at the shared controller and React reconciliation layers only.
-- UNVERIFIED — authenticated preview, merged production revision, and real-account production interaction until post-deploy verification.
+- HISTORICAL GATE — at this record's original publication, authenticated preview, merged production revision, and real-account production interaction remained unverified; the dated addendum below records the later #1057 resolution without reclassifying #1050.
 
 ## Collision and handoff
 
 Draft PR #1044 owns overlapping Skills and Intentful Interview work in `PaigeAIChat`. Its owner explicitly paused shared chat writes and yielded hotfix-first landing. This hotfix does not absorb or alter that workstream. After merge, the exact main revision must be handed back so #1044 can rebase and preserve the anchor controller while reconciling its narrow history addition.
+
+## Resolution addendum — 2026-09-08
+
+#1050 remains a superseded historical candidate rather than an authenticated production pass. PR #1057 later corrected the remaining transcript-anchor identity races and shipped as `af752d7a67c71f71e28a31ab87a962584b42105a`. The owner personally confirmed that, after the intended Supabase project was resumed, login and authenticated data access were restored and the deployed #1057 behavior preserved the deliberate reading position during new activity and after minimize/pop-out return. That owner proof closes the shared chat-scroll workstream through #1057; it does not retroactively validate #1050. No further shared-seam change is authorized without a new reproducible defect.

@@ -2,7 +2,7 @@
 
 Date: 2026-09-08
 Owner scope: actual production transcript jump after the shipped exact-bottom hotfix
-Status: RELEASE CANDIDATE
+Status: SHIPPED — OWNER-ACCEPTED
 
 UI_DELIVERY_EVIDENCE_VERSION: 1
 FLOW_BY_FLOW: PASS: first-parent forensics traced two post-#1050 identity races: transient hydration cleared the pending-context guard and accepted a bare list-index fallback, while provisional new-chat identity was replaced by a server thread ID without adopting the visible anchor
@@ -15,21 +15,21 @@ AUTOMATED_EVIDENCE: PASS: 30 focused controller/React tests and 81 affected chat
 STATIC_EVIDENCE: PASS: scoped lint, type ratchet, production build, static scroll/key audit, and full 285-file / 3978-test regression suite pass; GitHub Security Audit passes
 RENDERED_EVIDENCE: PASS: 107/107 controlled real-React browser checks pass at 1536x770, 1366x768, 1024x768, 900x1000, and compact 520x820
 BEHAVIORAL_EVIDENCE: PASS: middle and one-pixel anchors survive streaming, tool/status, receipt, refresh, resize, thread A-B-A, reload, minimize, pop-out, native-close return, and tenant switching; exact-bottom streaming follows
-AUTHENTICATED_RUNTIME: UNVERIFIED: exact merged production deployment and signed-in owner-account interaction remain required before the defect can be declared fixed
+AUTHENTICATED_RUNTIME: PASS: on 2026-09-08 the owner personally verified production login and authenticated data access after the intended Supabase project was resumed, then verified that deployed #1057 preserved the deliberate reading position during new activity and after minimize/pop-out return
 KEYBOARD_FOCUS: PASS: Arrow/Page/Home/End and Tab focus navigation preserve deliberate ownership; non-scroll keys do not claim it
 ZOOM_REFLOW: PASS: required Solo widths and compact 520x820 retain one scroll owner with no horizontal overflow
 REDUCED_MOTION: PASS: manual position ownership is motion-independent and explicit Jump to latest remains automatic under reduced motion
 STATE_COVERAGE: PASS: bottom-pinned, one-pixel-away, middle history, transient hydration, same-thread refresh, streaming, receipt/tool update, resize, hidden/minimized, pop-out return, reload, per-thread restore, and tenant isolation
-TRUTHFUL_STATE_LABELS: PASS: local browser artifacts are visibly synthetic and no authenticated or production claim is made
+TRUTHFUL_STATE_LABELS: PASS: automated/rendered artifacts remain identified as controlled evidence; authenticated production acceptance is separately and explicitly owner-attested
 SOLO_UI: YES: canonical Solo PAIGE transcript behavior is affected; mounting and navigation ownership are unchanged
-UNVERIFIED: signed-in production interaction and exact deployment identity
+UNVERIFIED: none for the stated #1057 scroll-stability contract; broader chat/context capabilities remain outside this closeout
 
-INTERNAL_BUILD_IDENTITY: 309467af1a3c38aae56d13ee22957dbba9d3eecc; deployment=PR-1057-pending; environment=preview; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=scripts/live-drive/artifacts/paige-scroll-stability-react/report.json
-RELEASE_CHANNEL: preview: production promotion is owner-authorized only after exact-head CI and independent review pass; deployment identity remains pending
+INTERNAL_BUILD_IDENTITY: af752d7a67c71f71e28a31ab87a962584b42105a; deployment=dpl_FrWHHEkMqvtfnNcixPqkpZBufPX6; environment=production; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=scripts/live-drive/artifacts/paige-scroll-stability-react/report.json plus owner-attested authenticated production acceptance on 2026-09-08
+RELEASE_CHANNEL: production: exact build af752d7a67c71f71e28a31ab87a962584b42105a-mts7czby served on both production domains and owner-accepted
 RELEASE_CLASSIFICATION: patch: narrow owner-visible reliability correction to an existing shipped behavior
 CUSTOMER_RELEASE_IDENTITY: none: no named customer release or publication was requested
 RELEASE_NOTE_REQUIRED: NO: internal corrective hotfix closeout only
-RELEASE_TRUTH_BOUNDARY: PARTIAL: local automated, static, rendered, and independent review pass; production remains PROOF OWED until exact deployment and authenticated owner drive
+RELEASE_TRUTH_BOUNDARY: LIVE: #1057 exact-position behavior is owner-accepted in authenticated production for new activity and minimize/pop-out return; the broader automated matrix remains supported by exact-head automated, static, rendered, and independent-review evidence
 RELEASE_RECOVERY: position=revert PR #1057 merge without changing transcript mounts or adjacent chat features; reference=PR #1057
 
 SOLO_1536X770_PAIGE_CLOSED: PASS: hidden transcript geometry is ignored without page overflow
@@ -63,7 +63,8 @@ The owner reads Paige history at a chosen location. Any deliberate movement away
 - Focused result: 30/30 controller/React and 81/81 affected chat/mount checks pass.
 - Full result: 285/285 files and 3978/3978 tests pass.
 - Rendered result: 107/107 checks in `scripts/live-drive/artifacts/paige-scroll-stability-react/report.json`.
+- Authenticated production acceptance: on 2026-09-08 the owner personally confirmed restored login/authenticated data access after resuming the intended Supabase project and verified deliberate reading-position stability during new activity and minimize/pop-out return on deployed #1057. This is owner-attested proof; the Supabase restoration is not attributed to the #1057 code diff.
 
 ## Review and limitations
 
-Independent exact-product-head review found no code issues after auditing scroll setters, message keys, remount/context identity, hidden geometry, hydration, stream, resize, minimize, pop-out, and #1053 preservation. Synthetic geometry cannot reproduce every browser clamp, and the controlled browser harness is not authenticated production. Signed-in exact-production verification remains mandatory before declaring the defect fixed.
+Independent exact-product-head review found no code issues after auditing scroll setters, message keys, remount/context identity, hidden geometry, hydration, stream, resize, minimize, pop-out, and #1053 preservation. Synthetic geometry cannot reproduce every browser clamp, so its broader matrix remains distinct from the owner's authenticated production acceptance. The owner has now satisfied the required signed-in production gate for the reported defect. The shared chat-scroll workstream is closed; make no further shared-seam change unless a new reproducible defect is reported.
