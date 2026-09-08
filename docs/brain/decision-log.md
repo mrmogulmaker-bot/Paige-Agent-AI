@@ -1,5 +1,16 @@
 # Decision Log — chronological one-liners
 
+- **Paige transcript-anchor identity-race correction shipped (2026-09-08, PR #1057).**
+  PR #1057 merged as `af752d7a67c71f71e28a31ab87a962584b42105a`; READY Vercel deployment
+  `dpl_FrWHHEkMqvtfnNcixPqkpZBufPX6` serves exact build
+  `af752d7a67c71f71e28a31ab87a962584b42105a-mts7czby` on both public domains.
+  Identity-gated anchors, hidden/zero-geometry rejection, and explicit provisional-to-server thread
+  adoption replace the transient hydration/index fallback races while retaining exact-bottom and
+  Jump-to-latest behavior. Exact-head CI, 81/81 affected tests, 3,978/3,978 full tests, 107/107
+  rendered checks, and independent review passed. Signed-in owner production behavior remains
+  `UNVERIFIED` because the Windows computer-use bridge and scoped live-drive state were unavailable;
+  there is no verified last-known-good build, so this must not be called accepted or fixed yet.
+
 - **Paige Runtime Harness and Reusable Intelligence Platform (2026-09-08, owner-approved architecture).**
   The **Second Brain** is Paige's governed, scoped knowledge layer; the **Runtime Harness** is her
   provider-neutral internal operating layer for tenant-safe context, model/task routing, eligible
