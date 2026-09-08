@@ -1,5 +1,18 @@
 # Decision Log — chronological one-liners
 
+- **Organic Presence/local playback-analysis release closeout (2026-09-08, PR #1068).**
+  Owner-approved head `14a199927c6e70fc33a5690217afc1d512cd41d3` merged as
+  `610e609c491864e6c4384839e80c8e91b7e5fce4`; READY production deployment
+  `dpl_7Pv8wCDuNyWmT6S2bWUWXZr26AnZ` serves build
+  `610e609c491864e6c4384839e80c8e91b7e5fce4-mtt0zfhp` on both production aliases.
+  Exact-head CI/review and public served-asset smoke passed. Organic Presence/local playback
+  analysis is released; captured audio is local test audio only. Provider-backed live audio is
+  UNAVAILABLE pending account/scopes, voice authorization, retention, quota and cost evidence.
+  Authenticated owner voice and signed-in surface proof remain PROOF OWED/unverified after the
+  browser bridge failed before session access. No provider configuration or new Rail/Mind/Memory
+  mutation was enabled. Canonical evidence: `../evidence/ui-delivery/paige-live-conversation-mvp.md`;
+  sole shipped record: Master Section 4.0. No named customer release or public claim was created.
+
 - **Paige Self-Knowledge & Migration Advisor is one read-first Harness capability (2026-09-08,
   owner-approved architecture contract).** Paige must answer what she can do for the active tenant,
   interpret replacement direction, and lead comparisons/migration plans from verified Paige coverage

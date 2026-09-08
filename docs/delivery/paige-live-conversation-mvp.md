@@ -2,6 +2,14 @@
 
 **Workstream:** dedicated Paige Live Conversation, separate from Skills and Intentful Interview
 
+**Organic Presence release closeout:** #1068 merged at `610e609c491864e6c4384839e80c8e91b7e5fce4`;
+READY production `dpl_7Pv8wCDuNyWmT6S2bWUWXZr26AnZ`, both aliases verified on exact build
+`610e609c491864e6c4384839e80c8e91b7e5fce4-mtt0zfhp`. Organic Presence/local playback analysis is
+released; provider-backed audio remains UNAVAILABLE; authenticated owner voice/surface proof is
+PROOF OWED. Public asset smoke passed, not an authenticated UI drive. Exact evidence and remaining
+gates: `../evidence/ui-delivery/paige-live-conversation-mvp.md` → PR #1068 production closeout.
+The Master Section 4.0 row is the sole shipped record; historical checkpoints below remain historical.
+
 ## Organic Presence and audio recovery — active delivery, 2026-09-08
 
 Owner-approved scope: irregular layered obsidian/plum and warm-gold Presence replaces the Live

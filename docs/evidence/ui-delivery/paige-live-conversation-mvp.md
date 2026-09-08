@@ -1,5 +1,34 @@
 # UI delivery evidence — Paige Live Conversation MVP
 
+## PR #1068 production closeout — 2026-09-08
+
+Owner approved exact head `14a199927c6e70fc33a5690217afc1d512cd41d3`. PR #1068 merged as
+`610e609c491864e6c4384839e80c8e91b7e5fce4`. Production deployment
+`dpl_7Pv8wCDuNyWmT6S2bWUWXZr26AnZ` is READY, target production, Git source at that exact main commit.
+Both `https://paigeagent.ai/version.json` and `https://app.paigeagent.ai/version.json` returned HTTP 200
+and build `610e609c491864e6c4384839e80c8e91b7e5fce4-mtt0zfhp`, with `customerUpdate: null`.
+Vercel independently reports both aliases on that deployment. No migration or Edge function changed.
+
+Production public-asset smoke PASS: `/assets/PaigeAIChat-CtDJ2Wnj.js` returns HTTP 200 and contains
+the Presence state markup, Talk live with Paige entry, actual output analyser, and unavailable copy;
+`/assets/PaigeAIChat-CdWI3rgf.css` returns HTTP 200 with Presence and reduced-motion rules. This is
+served-asset proof, not authenticated UI behavior. The browser bridge failed before session access
+(`apply deny-read ACLs`); signed-in Presence interaction and owner end-to-end voice proof remain
+PROOF OWED / unverified. No credentials, provider calls, microphone, or account settings were used.
+
+Approved Organic Presence/local playback-analysis scope: released. Existing local motion/audio
+recording remains test audio only, not provider speech. Provider-backed live audio: UNAVAILABLE
+pending account/scopes, voice authorization, retention, quota and cost evidence plus separately
+governed transport activation. No new Rail, Mind or Memory mutation path. No public release name,
+customer version, or provider-live claim is authorized.
+
+Exact-head verify (4016 tests/290 files, build and type ratchet), audit and UI evidence all PASS:
+GitHub Actions runs `34262778187`, `34262777631`, `34262778055`. Fresh independent composition
+review found no issues. This closeout records the preceding release only; Master Section 4.0 owns
+its sole shipped row. Historical development evidence and the narrow per-PR attestation below
+retain their original proof class. Recovery: revert the scoped feature or forward-fix, keeping
+provider audio disabled; no provider rollback/configuration action is implied.
+
 ## Organic Presence recovery — 2026-09-08 development evidence
 
 The owner-approved Organic Paige Presence + Real Audio Recovery pack supersedes the circular
@@ -55,7 +84,7 @@ AUTOMATED_EVIDENCE: PASS: full 290-file/4016-test suite, 42 focused tests and 30
 STATIC_EVIDENCE: PASS: changed product files pass ESLint, type ratchet baseline13/current13, production build, registry/release checks and shared-file no-diff proof pass. Full repository ESLint remains FAIL with 1837 errors/246 warnings outside this changed product scope; no unrelated repairs are absorbed
 RENDERED_EVIDENCE: PASS: assets/paige-live-conversation/presence-recovery/ contains both-theme/four-viewport, compact, reflow, stage-state and motion artifacts; render-results.json and motion-results.json name the exact local proof class
 BEHAVIORAL_EVIDENCE: PASS: 107 accepted shared scroll checks plus Live stream/semantic-ID/restore/jump checks; real local-audio analyzer energy varies, Hold/Resume/Interrupt/Mute and return pass; fixture speech is not provider proof
-AUTHENTICATED_RUNTIME: UNVERIFIED: this iteration is not yet deployed; no signed-in owner UI drive completed because the Windows browser helper failed before reading session state; provider and microphone calls remained deliberately prohibited
+AUTHENTICATED_RUNTIME: UNVERIFIED: deployed exact release verified above; signed-in owner UI drive could not complete because the Windows browser helper failed before session access; provider and microphone calls remained prohibited
 KEYBOARD_FOCUS: PASS: real-browser Escape closes the portaled dialog and returns focus to the exact Talk live with Paige trigger; unit regressions cover initial Shift+Tab, full forward/backward cycling, inert embedded background, companion native-close return, and exact focus restoration
 ZOOM_REFLOW: PASS: 1536x770 at a 200-percent-equivalent 768x385 CSS viewport retains controls, has no horizontal overflow, and keeps the main region as the internal vertical scroll owner
 REDUCED_MOTION: PASS: data-motion=reduced and identical SVG spline across elapsed time; unsupported audio analysis returns zero without silencing playback
@@ -72,8 +101,8 @@ SOLO_900X1000_PAIGE_CLOSED: PASS: docs/evidence/ui-delivery/assets/paige-live-co
 SOLO_900X1000_PAIGE_OPEN: PASS: docs/evidence/ui-delivery/assets/paige-live-conversation/presence-recovery/900x1000-light-live.png and 900x1000-dark-live.png show the responsive stage with reachable controls
 UNVERIFIED: provider-backed realtime audio and signed-in production owner behavior cannot be exercised because transport is deliberately disabled until the existing account’s scope, voice, retention, quota, concurrency, and hard-cost gates are recorded
 
-INTERNAL_BUILD_IDENTITY: 8ed709795d09b04cccd827d1bf09d485d01f136e; deployment=not-yet-deployed; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/assets/paige-live-conversation/presence-recovery/motion-results.json
-RELEASE_CHANNEL: development: implemented and locally verified; exact PR head CI/review and production identity required before delivery claim
+INTERNAL_BUILD_IDENTITY: 610e609c491864e6c4384839e80c8e91b7e5fce4; deployment=dpl_7Pv8wCDuNyWmT6S2bWUWXZr26AnZ; environment=production; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/paige-live-conversation-mvp.md#pr-1068-production-closeout--2026-09-08
+RELEASE_CHANNEL: production: READY deployment and both aliases verified at exact merged build; authenticated surface proof remains excluded
 RELEASE_CLASSIFICATION: patch: owner-approved Live Presence and playback/control reliability; provider transport remains disabled
 CUSTOMER_RELEASE_IDENTITY: none: owner authorized feature deployment but did not authorize a customer-facing version or release-name publication
 RELEASE_NOTE_REQUIRED: YES: the final delivery closeout must distinguish deployed UI/control plane, provider audio, authenticated owner proof, Rail/Mind/Memory, and provider gates
