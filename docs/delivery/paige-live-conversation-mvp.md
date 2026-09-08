@@ -12,8 +12,9 @@ purchase, upgrade, payment method, new legal agreement, hosted agent or unrelate
 
 **Grounding/collision checkpoint:** current main `610e609c491864e6c4384839e80c8e91b7e5fce4`
 contains #1068; its mechanical closeout `955c6f6c368c0efa53a0c44538354c91fac11912` is preserved.
-#1044 Skills/Interview and #1046 Secure Browser remain independent drafts. #1072 owns the draft
-specialist-agent architecture; preserve any subsequently accepted doctrine during composition.
+#1044 Skills/Interview and #1046 Secure Browser remain independent drafts. Current-main composition
+at `716906ac6a1bada7fe6f230974a530139961d20f` includes shipped #1072 specialist-agent doctrine.
+Its two newer decisions remain above the Live entries, verbatim; no specialist role is activated.
 The #1057 shared scroll controller is not an implementation target. Only the existing Live
 component's intent/output callbacks may attach to ordinary chat; no duplicate transcript/runtime.
 

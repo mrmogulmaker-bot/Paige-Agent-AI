@@ -1,5 +1,49 @@
 # Decision Log — chronological one-liners
 
+- **Vibe Studio Creative Production Team is a temporary Paige-assembled job team (2026-09-08,
+  owner-approved agentization correction).** Seven bounded roles—Creative Brief and Strategy Specialist,
+  Funnel and Conversion Copy Specialist, Forms and Conversion Flow Specialist, Long-Form Publishing Specialist, Visual Asset Specialist,
+  provider-neutral Video Production Adapter, and Creative Quality Reviewer—operate only inside the
+  one Paige Runtime Harness and one owner conversation. Flow: `Owner request → server-derived
+  tenant/workspace/actor context → Paige assembles approved specialist job team → scoped
+  skills/tools → drafts and versions → quality review → owner approval → separately authorized
+  publish/provider execution → verified receipt/Rail outcome`. Paige selects a fixed approved role
+  set for one bounded brief; the roles are temporary, minimum-context, draft/version-only and bounded by
+  enforced spend, time, tool, retry and concurrency limits; they retain no private memory. Owner
+  approval never itself authorizes provider spend, generation, upload or publication. The Creative
+  Quality Reviewer may reject work but cannot approve for the owner, execute, publish or become the
+  cross-cutting quality system. The first proof pins skills/tools/budget/concurrency,
+  creates and reads back attributed drafts, records job receipts/Rail, canonically records the
+  role-specific evaluation with reviewer attribution, and only then returns one owner bundle.
+  Provider-backed draft generation first needs its own Spine/provider/budget/approval decision,
+  result readback and generation receipt; later publish/send/upload/live-site effects need fresh
+  authority, readback and effect receipts. Denial, switch, retry, cancel and provider-unavailable
+  paths must fail closed. Higgsfield is only an unverified
+  example behind the neutral Video Production Adapter, not a provider/integration status claim.
+  Existing Studio creative-authoring/session/version capability is `PARTIAL`; Binding Ledger `campaigns.vibe-studio`, Paige/Harness
+  binding and all seven team roles remain `UNAVAILABLE`. NEXUS owns growth/creative business scope,
+  MENTOR owns Studio platform/config/readiness, and Paige orchestrates the temporary team pending Studio,
+  canonical version/asset, provider/rights/security, evaluation, approval, readback and evidence
+  gates. This correction activates no role, provider, product behavior, migration, billing,
+  deployment or customer claim.
+
+- **Paige agentization audit and specialist-agent operating model (2026-09-08, owner-approved).**
+  Paige remains the single user-facing orchestrator over one shared governed Runtime Harness.
+  Current capabilities are classified separately as platform domains, skills, tools/channels,
+  specialist candidates, Paige responsibilities, or unavailable/deferred capability. The existing
+  C-suite roster now owns specialist contracts; the existing Skills inventory owns skill maturity
+  and the controlled Steward loop; no new agent registry, Brain, Memory, Rail, Harness, authority
+  system, tenant context, or navigation is authorized. Proposed first activation after complete
+  Harness proof is Operating Strategy, Research and Intelligence, Cost and Usage Advisor, and Skills
+  Steward in read/analyze/draft/propose lanes only; their current truth remains `PARTIAL`,
+  `PARTIAL`, `PARTIAL`, and `UNAVAILABLE`. Secure Browser and Live Conversation are governed
+  execution/modality layers; Tenant Client Portal is a client-scoped domain, not an agent. PR #921's
+  competing registry is not canonical. Skill evolution follows verified outcome -> owner correction
+  or quality signal -> Steward evaluation -> versioned proposal -> tests/evaluation -> approval ->
+  recorded activation; the Steward cannot self-modify production. This decision is documentation
+  and governance only: no production agent, product behavior, provider/account, external action,
+  data migration, billing, customer claim, deployment, or workstream ownership changed.
+
 - **Full Live Conversation completion resumed (2026-09-08, owner authority).** Existing provider
   account inspection and server-only secret use are authorized; purchases/upgrades/payment methods,
   new agreements and hosted agents are not. The first dependency is a bounded read-only inspection

@@ -375,4 +375,329 @@ data, provider, UI, or runtime changes.
 
 ---
 
+## Part 5 — Specialist-agent operating contracts (owner-approved 2026-09-08)
+
+This part governs specialist **responsibilities**, not new user-facing
+identities. The named C-suite presentation layer above may attribute work, but
+all execution remains one Paige operating system through the shared Runtime
+Harness. This part is the canonical specialist roster; no competing agent
+registry is authorized. Part 5 supersedes any conflicting specialist-runtime or per-role memory/authority implication in Parts 1-4; their presentation and business-domain guidance otherwise remains intact.
+
+### Shared inherited contract
+
+Every role below inherits all of these requirements. A role-specific contract
+may narrow them but may not weaken them.
+
+- **Exposure:** Paige remains the only primary user-facing intelligence.
+  “Tenant-facing through Paige” means Paige may present attributed work; it does
+  not create a separate chat, Brain, Memory, Rail, tenant, or authority system.
+- **Required context:** server-derived tenant, workspace, actor, role,
+  entitlement, plan, environment, request correlation, job purpose, approved
+  Second Brain scope, skill version, tool registration, and current provider
+  state. Client-originated work also requires the client identity and constrained
+  client authority.
+- **Excluded context:** other tenants; unrestricted Vault or secrets; raw
+  credentials; unrelated clients; private worker scratchpads; raw chain of
+  thought; unverified research as Memory; and any data outside the accepted job.
+- **Authority/autonomy:** resolve each proposed action independently through the
+  Spine. Read, draft, propose, confirm, and auto are distinct lanes; the role
+  name never grants blanket authority. Unknown or conflicting policy fails
+  closed.
+- **Limits:** spend, elapsed time, token/model use, tool calls, retries, and
+  concurrency must be explicit, enforced Harness inputs. An absent or
+  unenforceable limit blocks activation; stored cap fields alone are not proof.
+- **Canonical record:** every material read identifies provenance and freshness.
+  Every mutation uses the canonical action path, idempotency, post-action
+  readback, attributable receipt, and Rail entry. No private untracked state is
+  authoritative.
+- **Brain/Mind/Memory:** Brain reads are least-privilege and purpose-scoped. Mind
+  may receive only eligible verified signals. Memory promotion follows the
+  canonical eligibility and approval rules; worker output, research, and
+  transcripts do not promote themselves.
+- **Quality and evaluation:** role-specific metrics must be tested against
+  golden, denial, cross-tenant, unavailable-provider, contradiction, retry,
+  duplicate, abandonment, and recovery cases before activation and continuously
+  thereafter.
+- **Failure/recovery:** stop external effects when authority, context, provider,
+  budget, or verification is uncertain; record the failure; use bounded retries
+  only when safe; preserve idempotency; escalate to Paige; and return an honest
+  `PARTIAL`, `UNAVAILABLE`, or `PROOF OWED` result rather than improvise.
+- **Activation:** runtime use requires the common Harness gate in
+  `paige-os-architecture.md` §6.4 plus every role-specific gate below. This
+  record authorizes documentation only.
+
+### Role-specific contracts
+
+#### 1. Paige Orchestrator / COO
+
+- **Responsibility/exposure:** only primary user-facing intelligence; interprets
+  the owner's goal, scopes and delegates specialist jobs, resolves conflicts,
+  verifies evidence, and returns one coherent recommendation or governed action.
+- **Domains:** all platform domains for coordination; no blanket execution
+  ownership.
+- **Skills/tools/maturity:** intent framing, planning, routing, synthesis and
+  verification through Harness jobs, Spine, Rail and registered tools;
+  orchestration substrate is `PARTIAL`.
+- **Outputs/lane:** plans, delegated jobs, evidence packets, recommendations,
+  approval requests, and owner-visible results. Direct execution is allowed only
+  when the action independently resolves to its approved lane.
+- **Metric/evaluation:** correct routing, complete evidence, no authority bypass,
+  coherent synthesis, recovery quality, and owner correction rate.
+- **Status/gate/owner:** `PARTIAL`; activate only after the central Harness
+  end-to-end gate. Shared Paige Runtime Harness owner; collisions include PRs
+  #917 and #1044.
+
+#### 2. Operating Strategy and Planning Specialist
+
+- **Responsibility/exposure:** internal-only work presented through Paige;
+  supports Business Game Plan, annual direction, quarterly focus, Missions,
+  Strategic Plays, decision framing, and operating reviews.
+- **Skills/tools/maturity:** planning/review skills are `PARTIAL`; use scoped
+  Brain evidence and registered Mission actions only.
+- **Outputs/lane:** analyses, draft plans, options, decision frames, review
+  packets, and proposed Mission changes. First activation is read/draft/propose;
+  mutations require separate Spine authority and confirmation/readback.
+- **Metric/evaluation:** evidence coverage, plan-to-goal traceability,
+  contradiction handling, decision usefulness, and accepted correction rate.
+- **Status/gate/owner:** `PARTIAL`; first-cohort candidate after Harness proof,
+  versioned skills/evals, and canonical Game Plan/Mission evidence. Command
+  Center/Game Plan owner; PR #1044 is a collision.
+
+#### 3. Client Success and Relationship Specialist
+
+- **Responsibility/exposure:** tenant-facing through Paige; supports Clients,
+  relationships, conversations, follow-up, client health, requests, and the
+  current `PARTIAL` Tenant Client Portal domain.
+- **Skills/tools/maturity:** relationship synthesis, request triage, follow-up
+  drafting, and health interpretation remain `UNAVAILABLE` for agent activation.
+  The Portal domain has real `PARTIAL` substrate, while People, Conversations
+  and Calendar remain unavailable and Portal recipient binding, revocation,
+  record convergence, governed tools, and authenticated isolation/recovery
+  proof remain gated.
+- **Outputs/lane:** client briefs, sourced health explanations, follow-up drafts,
+  request triage, and explicitly authorized actions; no inferred health or
+  cross-client context.
+- **Metric/evaluation:** source coverage, follow-up accuracy, request routing,
+  client-boundary isolation, permission denials, and abandonment safety.
+- **Status/gate/owner:** `UNAVAILABLE`; requires accepted Clients designs,
+  canonical records, Portal client-authority contract, provider/readback proof,
+  and release from active People/Conversations/Calendar ownership.
+
+#### 4. Growth and Campaign Specialist
+
+- **Responsibility/exposure:** tenant-facing through Paige; supports Campaign
+  Briefs, offers, audience, content planning, performance interpretation, and
+  approved social operations.
+- **Skills/tools/maturity:** Campaign Brief methods are `PARTIAL`; use registered
+  Brief actions and only connected, authorized provider channels. Social remains
+  `PROOF OWED`.
+- **Outputs/lane:** briefs, content plans, draft assets/copy, sourced performance
+  interpretation, recommendations, and separately authorized posts. Initial
+  lane is read/draft/propose.
+- **Metric/evaluation:** brief completeness, source fidelity, channel-policy
+  compliance, attribution, no fabricated performance, and outcome quality.
+- **Status/gate/owner:** `PARTIAL`; requires the locked Campaigns domain's
+  canonical surfaces, social/provider proof, write/readback, and evaluation.
+  Campaigns/social owners retain collision authority.
+
+#### 5. Sales and Pipeline Specialist
+
+- **Responsibility/exposure:** tenant-facing through Paige; supports
+  opportunities, deal health, pipeline movement, follow-up, conversion evidence,
+  and governed sales operations.
+- **Skills/tools/maturity:** pipeline evidence skills are `PARTIAL`; stage
+  evidence is registered but the Pipeline surface is `PROOF OWED`.
+- **Outputs/lane:** sourced deal summaries, follow-up drafts, risk flags,
+  evidence-based conversion analysis, and proposed stage changes. No inferred
+  revenue/ROI and no auto-stage movement without per-action authority.
+- **Metric/evaluation:** stage-evidence precision, follow-up accuracy, stale-data
+  detection, conversion provenance, denial handling, and readback match.
+- **Status/gate/owner:** `PARTIAL`; requires Pipeline UI/runtime proof,
+  canonical mutation/readback, skill evaluation, and owner authority rules.
+  Campaigns/Pipeline ownership remains controlling.
+
+#### 6. Research and Intelligence Specialist
+
+- **Responsibility/exposure:** internal-only evidence worker presented through
+  Paige; performs source-grounded research, synthesis, competitive/market
+  analysis, and evidence preparation.
+- **Skills/tools/maturity:** research/citation methods and approved search,
+  browser, and model channels are `PARTIAL`; Secure Browser is a tool layer,
+  not this role's identity.
+- **Outputs/lane:** cited evidence packets, uncertainty, contradictions,
+  freshness, and recommendations. Read/research/draft only; no external action
+  and no automatic Memory promotion.
+- **Metric/evaluation:** citation validity, source quality and diversity,
+  freshness, claim support, contradiction recall, and abstention quality.
+- **Status/gate/owner:** `PARTIAL`; first-cohort candidate after governed
+  research jobs, source capture, evaluations, Memory exclusion tests, and
+  Browser collision reconciliation with PR #1046.
+
+#### 7. Vibe Studio / Creative Production Team
+
+- **Responsibility/exposure:** tenant-facing only through Paige. Paige assembles
+  the smallest temporary, job-scoped creative team needed for an approved brief;
+  the team supports creative direction, conversion content and flows, assets,
+  versioning, quality review, and outcome-linked learning. It is not a set of
+  independent customer assistants or persistent departments.
+- **Required flow:** `Owner request → server-derived tenant/workspace/actor context → Paige assembles approved specialist job team → scoped skills/tools → drafts and versions → quality review → owner approval → separately authorized publish/provider execution → verified receipt/Rail outcome`.
+- **Bounded worker roles:**
+  1. **Creative Brief and Strategy Specialist** — turns the approved business
+     goal, audience, offer, message, campaign, channel, requested asset and
+     success evidence into the versioned job brief; it cannot approve claims or
+     expand scope.
+  2. **Funnel and Conversion Copy Specialist** — prepares sourced landing-page,
+     offer, ad, email, CTA, follow-up and conversion-copy variants; it cannot
+     invent results, testimonials, urgency, pricing or performance.
+  3. **Forms and Conversion Flow Specialist** — drafts qualifying forms, intake
+     logic, routing, consent language, follow-up requirements, conversion paths,
+     validation, success, failure, retry and abandonment behavior; it cannot
+     silently publish or change live routing, product UI, schema, production
+     forms or websites.
+  4. **Long-Form Publishing Specialist** — drafts sourced eBooks, guides,
+     manuals, pamphlets, proposals, lead magnets and other editable governed
+     marketing collateral; “Publishing” names the role’s preparation domain and
+     never authority to publish, syndicate, send or treat model text as fact.
+  5. **Visual Asset Specialist** — prepares brand-aware concepts and variations
+     within explicit brand, rights and quality boundaries, with source and
+     generation provenance; it cannot imply final approval or publish.
+  6. **Video Production Adapter** — provider-neutral planning/execution adapter
+     for scripts, shot lists, storyboards, render requests and returned assets.
+     Higgsfield is an unverified example behind this neutral boundary only; it
+     is not a registered, connected, authorized or usable provider claim.
+     No provider, account, credential, spend, upload or generation call occurs
+     without separate registration, authority, budget and owner approval.
+  7. **Creative Quality Reviewer** — independently checks owner-intent fidelity,
+     brand and visual quality, funnel coherence, truthful claims, accessibility,
+     version comparison and owner-ready presentation against the approved brief,
+     evidence, policy and channel constraints. It may reject or return work but
+     cannot approve on the owner’s behalf, publish, call providers or rewrite
+     the quality standard.
+- **Skills/tools/maturity:** existing Vibe Studio creative-authoring/session/version capability is a
+  `PARTIAL` substrate. Binding Ledger `campaigns.vibe-studio`, the Paige/Harness
+  binding, all seven worker-role activations and provider adapters remain
+  `UNAVAILABLE`. A recipe, generated asset or provider listing is not
+  callable proof. The Creative Quality Reviewer consumes the separately owned
+  cross-cutting Experience Quality Harness standard when a canonical version is
+  available; it is not that Harness and does not create another agent role.
+- **Context and limits:** every worker receives only the accepted brief, approved
+  tenant/brand/audience/offer evidence, its minimum role-specific inputs,
+  version lineage and explicit tool allowance. Raw secrets, other tenants,
+  unrelated client data, unrestricted Brain/Vault content and private worker
+  conversations remain excluded. Spend, time, token/model/tool calls, retries
+  and concurrency are explicit per-job ceilings; missing enforcement blocks the
+  job. The owner has one conversation with Paige; Paige selects a fixed approved
+  role set for the bounded brief. Workers are created for that job and end with
+  it, retaining no private memory and never becoming permanent agents, separate
+  customer identities or raw worker-to-worker conversations.
+- **Outputs/lane:** versioned briefs, copy, flow specifications, long-form drafts,
+  visual/video plans or assets, review findings and approval packets only.
+  Draft/revise/review is the first lane. Text/local creation, provider-backed
+  draft generation, and post-review publication/delivery are distinct steps.
+  Provider-backed generation first requires its own fresh Spine decision,
+  registered-provider proof, enforced budget and applicable approval, followed
+  by canonical result readback and a generation receipt/Rail. Post-review owner
+  approval does not itself authorize publication, sending, upload, spend,
+  external-account changes, or live form/website changes; each later effect has
+  its own fresh authority decision, readback and receipt/Rail.
+- **Canonical evidence:** every input and claim carries provenance. Every
+  material draft/version and reviewer finding uses an idempotent canonical write,
+  matching artifact/version-id readback, worker/reviewer attribution, and job
+  receipt/Rail before Paige may present the bundle as ready. Provider generation
+  and later publication/delivery each require their own result readback and
+  effect receipt/Rail. Failed, ambiguous, partial or rejected output remains
+  visible and cannot be promoted to Mind/Memory or outcome learning.
+- **Metric/evaluation:** brief and claim fidelity, brand/policy/accessibility
+  compliance, conversion-flow completeness, provenance/rights coverage,
+  reviewer defect escape rate, owner correction rate, version traceability,
+  provider-result reconciliation and verified outcome attribution.
+- **Failure/recovery:** any missing context, rights, provider readiness, budget,
+  authority, approval or readback stops the affected step; preserve versions,
+  record the failure, retry only when safe/idempotent, and return control to
+  Paige with the next governed action.
+- **Status/gate/owner:** NEXUS owns creative/growth outcomes, MENTOR owns Studio
+  platform/config/readiness, and Paige orchestrates the bounded temporary team.
+  Team activation is `UNAVAILABLE`. First future MVP sequence:
+  (1) Creative Brief and Strategy Specialist plus Creative Quality Reviewer;
+  (2) Funnel and Conversion Copy Specialist plus Forms and Conversion Flow Specialist;
+  (3) Long-Form Publishing Specialist plus Visual Asset Specialist; then
+  (4) the provider-neutral Video Production Adapter after provider, rights,
+  security, budget and evidence gates. Requires governed Studio binding,
+  canonical version/asset records, evaluation, owner approval surfaces and
+  publish/provider execution contracts. The smallest proof accepts one bounded
+  brief, server-resolves context, selects a fixed approved role set, pins
+  skills/tools/budget/concurrency, creates attributed versioned drafts in
+  canonical artifact lineage, verifies matching artifact/version ids by readback,
+  runs and records the role-specific approved creative evaluation, and writes,
+  reads back and receipts the reviewer finding before returning one owner bundle.
+  Provider-backed draft generation, when required, first receives a separate
+  Spine/provider/budget/approval decision plus result readback and generation
+  receipt. Separately authorized publication, send, upload or live-site action
+  follows only later with its own readback and receipt/Rail; denial, switch,
+  retry, cancel and provider-unavailable paths must fail closed.
+
+#### 8. Cost and Usage Advisor
+
+- **Responsibility/exposure:** internal-only analysis presented through Paige;
+  covers plan, model, voice, browser, agent-job and provider usage, forecasts,
+  anomaly detection, optimization, and budget recommendations.
+- **Skills/tools/maturity:** reconciliation, forecasting and anomaly methods are
+  `PARTIAL`; use canonical usage plus verified effective rates, invoices and
+  provider status only.
+- **Outputs/lane:** sourced usage reports, bounded forecasts, anomaly evidence,
+  and recommendations. Read/analyze/propose only; never invent rates, savings,
+  bills, charges or provider consumption.
+- **Metric/evaluation:** reconciliation accuracy, rate provenance, forecast
+  calibration, anomaly precision/recall, false-savings rate, and abstention.
+- **Status/gate/owner:** `PARTIAL`; first-cohort candidate after canonical
+  metering/cost ledger, freshness and rate proof, budget enforcement, and
+  evaluations. Billing/integration/platform-cost owners retain collisions.
+
+#### 9. Skills Steward / Skill Evolution Specialist
+
+- **Responsibility/exposure:** internal-only governance worker presented through
+  Paige; reviews approved skills, verified outcomes, owner corrections,
+  evaluations, and performance signals.
+- **Skills/tools/maturity:** evaluation, versioning and proposal methods are
+  `UNAVAILABLE` as an activated role even though the Skills catalogue/runner is
+  `PARTIAL`.
+- **Outputs/lane:** evaluation reports, versioned skill/routing/prompt proposals,
+  test cases, rollout/rollback plans, and approval requests. Propose only.
+- **Metric/evaluation:** reproducible improvement, regression rate, approval
+  traceability, rollback success, and zero silent activation or authority drift.
+- **Status/gate/owner:** `UNAVAILABLE`; first-cohort candidate only after the
+  controlled loop in the Skills inventory is implemented, evaluated and
+  approval-gated. Skills/Brain governance owner; PRs #754 and #1040 collide.
+
+#### 10. Platform Operator Specialists — future internal dogfood
+
+- **Responsibility/exposure:** internal-only and Platform Operator-gated; covers
+  tenant health, support, release operations, fleet health, entitlement/pricing
+  administration, incident response, and platform cost/margin visibility.
+- **Skills/tools/maturity:** operator skills and tools are `UNAVAILABLE` for
+  specialist activation. Tenant-facing or public use is forbidden.
+- **Outputs/lane:** operator evidence packets, incident timelines, release
+  readiness, support triage, entitlement proposals and margin analysis.
+  Sensitive reads and every action require operator tenancy, role, entitlement,
+  audit, break-glass and two-key controls as applicable.
+- **Metric/evaluation:** tenant isolation, incident detection/recovery, release
+  correctness, entitlement accuracy, audit completeness, and zero unauthorized
+  tenant action.
+- **Status/gate/owner:** `UNAVAILABLE`; later internal dogfood only after
+  operator control-plane, fleet, incident, release, entitlement, pricing and
+  cost/margin paths are implemented and proven. Platform Operator owners retain
+  all collisions.
+
+### Layers and domains that are not agents
+
+- **Secure Browser** is a governed execution channel supporting accepted jobs.
+- **Live Conversation** is a governed modality supporting Paige and specialists.
+- **Tenant Client Portal** is an MVP domain and client-scoped experience whose
+  calls use constrained client authority.
+
+All three inherit the same Harness, Spine, Rail, context, record, budget,
+evaluation and recovery requirements. None receives an independent identity,
+Brain, Memory, authority system, or customer-facing assistant claim.
+
+---
 *End of doctrine draft.*
