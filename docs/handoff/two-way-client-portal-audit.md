@@ -1,5 +1,35 @@
 # Two-way smart client portal — repository reconciliation
 
+## 2026-09-08 current-main correction and collision assessment
+
+**Decision:** the Tenant Client Portal is a competitive, launch-blocking MVP capability inside the
+one Paige Runtime Harness. It is not a separate portal agent or Brain and is distinct from a later
+Paige Enterprise Success Portal for Paige's direct enterprise customers.
+
+**Current status: `PARTIAL`.** At `main` `ddbc5cd6`, the external-client product has a branded
+`/portal/:tenantSlug` gateway, `/join/:token` registration, single-tenant client linkage,
+authenticated `/app` shell, action-item responses, approval-status visibility, a platform
+legal-acceptance audit list, a dedicated Paige chat surface, and client-visible activity. The
+complete vertical is not proven. Consumer-invite recipient binding in the final acceptance RPC,
+multi-workspace client membership/switching, revocation after accepted access, tenant/client
+conversation convergence and governed portal-tool execution, dedicated shared documents, client
+Planning/tasks, decision controls on approval records, tenant-facing support/escalation and booking,
+tenant service-agreement receipt/PDF, and authenticated isolation/direct-URL/stale-session/recovery
+evidence remain unavailable, broken, or proof owed. Tenant-side
+Clients screens are configuration, preview, and invite management—not external-client proof.
+
+**Affected flow:** canonical client relationship → explicit grant/invite → client authentication →
+approved client projection → bounded reads/messages/requests/tasks/documents/approvals → Spine
+authority → canonical action/readback → receipt/Rail → tenant review/revoke. Every step independently
+resolves client identity, sponsoring tenant, relationship, workspace/record scope, client role and
+consent, allowed shared information, tenant policy, provider/file/document state, and evidence rules.
+
+**Collision boundary:** active PR #1044 owns the binding-ledger JSON; #1040, #917, #907, #905, #899
+and others touch the Master; #754 touches Master/Brain/wiring/tier records. This docs correction
+does not absorb their product code, shared chat, Clients, Sales, orchestration, provider, or release
+acceptance ownership. Rebase must preserve both sides. No runtime, provider, tenant data, invitation,
+deployment, or production behavior changes here.
+
 **Evidence date:** 2026-08-21  
 **Scope:** repository implementation and supplied read-only production audit. Production counts are dated evidence, not prototype fixtures, and were not independently queried in this environment.
 

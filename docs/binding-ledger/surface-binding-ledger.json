@@ -605,16 +605,16 @@
     },
     {
       "id": "clients.portal",
-      "out_of_scope": true,
+      "out_of_scope": false,
       "intended_capability": {
         "read": "Portal configuration and link state (safe).",
         "draft": "Recommend portal setup and prepare portal content.",
-        "auto": "None in this program's scope.",
-        "confirm": "Sending portal access is Solo/Sub-account-gated and confirmation-gated.",
+        "auto": "Only tenant-authorized, explicitly eligible low-risk client actions within budget and policy; no blanket client autonomy.",
+        "confirm": "Sending portal access is Solo/Sub-account/Enterprise-gated and confirmation-gated; Agency and Super Admin are excluded by the tier feature contract.",
         "prohibited": "Never expose private client portal material.",
-        "completion_criterion": "Owned by the Client-Experience workstream; here only the safe seam is recorded — not in this program's action scope."
+        "completion_criterion": "A tenant explicitly grants a real client scoped access; approved shared reads and permitted actions traverse the one Harness, verify canonical outcomes, emit receipt/Rail evidence, and remain reviewable/revocable."
       },
-      "surface": "Clients -> Portal (customer portal — separately owned product)",
+      "surface": "Clients -> Portal (Tenant Client Portal MVP through one Harness)",
       "group": "clients",
       "tier_scope": ["solo"],
       "owner_component": "src/components/tenant-relationships/TenantRelationshipsClientsWorkspace.tsx:749 (PortalView)",
@@ -622,21 +622,21 @@
       "chain": {
         "canonical_source": {"status": "partial", "note": "config is real; capability cards are static (UI-REPAIR)"},
         "tenant_scope": {"status": "server_resolved"},
-        "safe_context": {"status": "none"},
-        "authority": {"status": "none"},
-        "governed_write": {"status": "none"},
-        "verified_outcome": {"status": "none"},
-        "rail_evidence": {"producer": "none", "read": "n/a"},
-        "mind_eligibility": {"axis_a": "UNAVAILABLE", "axis_b": "NO", "note": "the Client Portal is a separately owned product surface"},
-        "memory_retention": {"status": "n/a", "note": "client_memory is the Client-Experience team's, governed separately"}
+        "safe_context": {"status": "partial", "note": "real client-scoped reads exist, but no complete approved shared-item projection is proven"},
+        "authority": {"status": "partial", "note": "a narrow client tool allowance and action-item RPC exist; complete per-action tenant policy is not proven"},
+        "governed_write": {"status": "partial", "note": "client action responses exist; shared messages, documents, tasks and approve/decline are incomplete"},
+        "verified_outcome": {"status": "partial"},
+        "rail_evidence": {"producer": "partial", "read": "client-scoped resolver", "note": "client-visible activity exists; universal client action receipts are not proven"},
+        "mind_eligibility": {"axis_a": "UNAVAILABLE", "axis_b": "NO", "note": "client context is a bounded projection through the shared Harness, never a separate Mind"},
+        "memory_retention": {"status": "partial", "note": "The existing portal-chat path writes session summaries, milestones, preferences and extracted items to client_memory and reads active rows back into prompts. Harness convergence must add confirmed-only eligibility filtering, govern future writes through the shared Memory contract, and remediate legacy rows; this is not a separate permitted portal memory system."}
       },
-      "prohibited_context": ["private client material", "portal credentials"],
-      "state": "UNAVAILABLE",
-      "state_reason": "The Client Portal remains a separately owned product surface; not in this Solo binding program's scope beyond recording the seam.",
+      "prohibited_context": ["tenant full Second Brain", "private Mind or Memory", "Vault or connected-account secrets", "internal team conversations", "other clients", "financial controls", "private strategy", "credentials or private browser content", "hidden prompts or reasoning traces"],
+      "state": "PARTIAL",
+      "state_reason": "A real external-client portal substrate exists, but consumer-invite recipient binding, accepted-access revocation, multi-workspace switching, canonical conversation/document/task convergence, approval-record decisions, tenant-facing support/booking, tenant service-agreement receipt/PDF, governed portal tools, and authenticated isolation/recovery proof remain unavailable, broken, or owed.",
       "evidence_class": ["source_read"],
-      "linked": [],
-      "next_slice": "None in this program; portal is separately owned.",
-      "sources": ["docs/strategy/client-experience-workstream-2026-07-21.md"]
+      "linked": ["docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md", "docs/handoff/two-way-client-portal-audit.md"],
+      "next_slice": "Dedicated Client Portal MVP build after explicit owner start; preserve active Clients, Chat, Conversations and binding-ledger ownership.",
+      "sources": ["docs/strategy/client-experience-workstream-2026-07-21.md", "docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md", "docs/handoff/two-way-client-portal-audit.md"]
     },
     {
       "id": "settings.setup",

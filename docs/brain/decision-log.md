@@ -1,5 +1,25 @@
 # Decision Log — chronological one-liners
 
+- **Tenant Client Portal is an MVP projection through the one Paige Harness (2026-09-08, owner correction).**
+  The Tenant Client Portal is the governed, client-facing experience a Paige tenant provides to its
+  external clients and is a competitive MVP differentiator. Canonical rule:
+  `Tenant business → shared governed Paige Runtime Harness → client-scoped portal experience`.
+  It is not a separate app, agent, Brain, Harness, authority system, operating logic, or memory. Every
+  client read/action independently resolves client identity, sponsoring tenant, explicit
+  relationship, workspace/record scope, role/consent, allowed sharing, tenant policy,
+  provider/file/document state, verification, receipt, and Rail. Clients receive only an approved
+  canonical projection, never the tenant's full Brain, private Mind/Memory, Vault, connections,
+  internal conversations, other clients, financial controls, private strategy, or blanket action
+  authority. Current-main status is `PARTIAL`: real external-client entry/linkage/shell/action and
+  evidence substrate exists, while consumer-invite recipient binding, full shared-record
+  convergence, accepted-access revocation, multi-workspace switching, approval-record decisions,
+  tenant-facing support/booking, tenant service-agreement receipt/PDF, governed portal-tool
+  execution, and authenticated isolation/recovery proof remain unavailable, broken, or owed. A
+  future Paige Enterprise Success Portal for Paige's own enterprise
+  customers remains a separate later product. This correction authorizes documentation and MVP
+  planning only—no product implementation, provider setup, billing, invitations, migration,
+  deployment, public promise, production change, or active-workstream ownership change.
+
 - **One Paige Runtime Harness across every platform domain (2026-09-08, owner-approved architecture correction).**
   Departments, VPs, specialists, and sub-agents are capability domains, presentation identities, or
   bounded workers inside one Paige—not separate AI products. The canonical rule is

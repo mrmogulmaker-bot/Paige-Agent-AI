@@ -56,6 +56,22 @@ automatic authority.
 **Every shipped capability updates the relevant Second Brain record and completes its eligible
 Runtime Harness path.** One without the other is half-done.
 
+#### Tenant Client Portal is a client-scoped projection, not another intelligence system
+
+`Tenant business → shared governed Paige Runtime Harness → client-scoped portal experience`
+
+The Tenant Client Portal is MVP scope and currently `PARTIAL`. For every client-facing operation,
+the shared Harness independently resolves external client identity, sponsoring tenant, the explicit
+client-to-tenant relationship, workspace/record scope, client role and consent, the tenant's allowed
+shared information and authority policy, provider/file/document state, and the applicable
+verification, receipt, and Rail contract. The client sees only a deliberate projection of canonical
+shared work. The tenant's full Brain, private Mind/Memory, Vault, connections, internal conversations,
+other clients, private strategy, financial controls, and autonomous authority stay excluded.
+
+A future Paige Enterprise Success Portal for Paige's own enterprise customers is a separate later
+product opportunity. It is not the Tenant Client Portal, not this MVP commitment, and not authority
+to create a second Brain, Harness, memory, or operating path.
+
 ---
 
 ## 2. What Paige's distributed Runtime Harness components were on 2026-08-19
