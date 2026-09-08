@@ -27,7 +27,8 @@
   hard ceiling before provider contact. Ambiguous provider outcomes remain counted, cost survives
   actor deletion, and operator readiness/profile activation is one transaction. The historical
   literal and request-level Paige voice selection paths are superseded. **Production closeout:** PR
-  #1053 merged as `f8eb2362`; both production domains serve exact build `f8eb2362-mts66mnc`; migration
+  #1053 merged as `f8eb2362beb03ec609dfe645b4d00f43c3eebf2d`; both production domains serve exact build
+  `f8eb2362beb03ec609dfe645b4d00f43c3eebf2d-mts66mnc`; migration
   `20260907155052` and the three Live Edge functions are deployed with `db-live`/`edge-live` on the
   merge. The UI/control plane is deployed `PARTIAL`; realtime audio remains `PROOF OWED`, authenticated
   owner E2E remains `UNVERIFIED`, and no raw conversation material gained a durable-memory path.
