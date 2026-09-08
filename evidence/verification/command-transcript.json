@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-07T23:57:42.538Z",
-  "revision": "d90a1fb834581697a8ac9d4fc6f02b2e86d8db33",
+  "generatedAt": "2026-09-08T00:14:12.943Z",
+  "revision": "01a692def3f92d2c15c33835af7acc2456a47a98",
   "workingTreeBefore": "",
   "workingTreeAfterCommands": "",
   "hashes": {
-    "src/components/chat/anchoredTranscriptScroll.ts": "f7c8a7753afde474b94201c4b631374d88b784fa4d5fda55963edc1761ce5d19",
+    "src/components/chat/anchoredTranscriptScroll.ts": "9788ae8b6089372a6806d4806c492e1a779f9795f76d59e57837681572ce1a14",
     "src/components/dashboard/PaigeAIChat.tsx": "f17bbbb6c9bd23fbd5bf7630f55203fc54b5f0c93f617a049e3a7bf27c94bf39",
     "src/components/app/PaigeChat.tsx": "04f7307eebfcee9b49485ccf6e0c03ee98647c61ef804c1c4c60150d75bc5ce5",
     "src/pages/AppShell.tsx": "2211c517c4e2673df1ce06e041f82cd28e003a5666d0b7f35c2777a88fabf7f6",
@@ -31,8 +31,8 @@
         "src/components/dashboard/PaigeAIChat.clientScope.test.tsx"
       ],
       "definition_file": "package.json",
-      "startedAt": "2026-09-07T23:53:32.614Z",
-      "finishedAt": "2026-09-07T23:53:39.566Z",
+      "startedAt": "2026-09-08T00:09:59.951Z",
+      "finishedAt": "2026-09-08T00:10:07.939Z",
       "exitCode": 0,
       "log": "tests.log"
     },
@@ -45,8 +45,8 @@
         "--testTimeout=15000"
       ],
       "definition_file": "package.json",
-      "startedAt": "2026-09-07T23:53:39.567Z",
-      "finishedAt": "2026-09-07T23:55:20.804Z",
+      "startedAt": "2026-09-08T00:10:07.940Z",
+      "finishedAt": "2026-09-08T00:11:51.321Z",
       "exitCode": 0,
       "log": "full-suite.log"
     },
@@ -57,8 +57,8 @@
         "scripts/ci/tsc-ratchet.mjs"
       ],
       "definition_file": "scripts/ci/tsc-ratchet.mjs",
-      "startedAt": "2026-09-07T23:55:20.805Z",
-      "finishedAt": "2026-09-07T23:56:13.018Z",
+      "startedAt": "2026-09-08T00:11:51.323Z",
+      "finishedAt": "2026-09-08T00:12:43.836Z",
       "exitCode": 0,
       "log": "types.log"
     },
@@ -69,8 +69,8 @@
         "scripts/ci/paige-scroll-eslint-ratchet.mjs"
       ],
       "definition_file": "scripts/ci/paige-scroll-eslint-ratchet.mjs",
-      "startedAt": "2026-09-07T23:56:13.019Z",
-      "finishedAt": "2026-09-07T23:56:15.946Z",
+      "startedAt": "2026-09-08T00:12:43.839Z",
+      "finishedAt": "2026-09-08T00:12:46.622Z",
       "exitCode": 0,
       "log": "lint.log"
     },
@@ -81,8 +81,8 @@
         "scripts/ci/definer-fn-lint.mjs"
       ],
       "definition_file": "scripts/ci/definer-fn-lint.mjs",
-      "startedAt": "2026-09-07T23:56:15.947Z",
-      "finishedAt": "2026-09-07T23:56:16.490Z",
+      "startedAt": "2026-09-08T00:12:46.623Z",
+      "finishedAt": "2026-09-08T00:12:47.140Z",
       "exitCode": 0,
       "log": "security.log"
     },
@@ -94,8 +94,8 @@
         "build"
       ],
       "definition_file": "package.json",
-      "startedAt": "2026-09-07T23:56:16.490Z",
-      "finishedAt": "2026-09-07T23:56:44.276Z",
+      "startedAt": "2026-09-08T00:12:47.140Z",
+      "finishedAt": "2026-09-08T00:13:15.355Z",
       "exitCode": 0,
       "log": "build.log"
     },
@@ -108,8 +108,8 @@
         "outputs/paige-scroll-baseline"
       ],
       "definition_file": "scripts/ci/paige-scroll-baseline-reproduction.mjs",
-      "startedAt": "2026-09-07T23:56:44.277Z",
-      "finishedAt": "2026-09-07T23:56:45.502Z",
+      "startedAt": "2026-09-08T00:13:15.357Z",
+      "finishedAt": "2026-09-08T00:13:16.677Z",
       "exitCode": 0,
       "log": "baseline-reproduction.log"
     },
@@ -120,8 +120,8 @@
         "scripts/live-drive/paige-scroll-stability-react-drive.mjs"
       ],
       "definition_file": "scripts/live-drive/paige-scroll-stability-react-drive.mjs",
-      "startedAt": "2026-09-07T23:56:45.502Z",
-      "finishedAt": "2026-09-07T23:57:42.445Z",
+      "startedAt": "2026-09-08T00:13:16.678Z",
+      "finishedAt": "2026-09-08T00:14:12.852Z",
       "exitCode": 0,
       "log": "runtime-proof.log"
     }
