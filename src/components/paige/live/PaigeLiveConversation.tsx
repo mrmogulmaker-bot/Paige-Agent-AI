@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { Check, CirclePause, ExternalLink, Hand, Mic, MicOff, Minimize2, PhoneOff, RefreshCw, ShieldCheck, Square, Volume2, X } from "lucide-react";
 import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PAIGE_LIVE_CONVERSATION_ENABLED, type LiveConversationCard } from "@/lib/paigeLiveConversation/contract";
 import { startPaigeLiveConversation, transitionPaigeLiveConversation, type PaigeLiveEntryMode } from "@/lib/paigeLiveConversation/client";
+import { PaigePresence } from "./PaigePresence";
+import { usePaigeOutput } from "./usePaigeOutput";
+import { resolvePresenceState } from "@/lib/paigeLiveConversation/presence";
+import { createAnchoredTranscriptScroll, messageScrollAnchorKey } from "@/components/chat/anchoredTranscriptScroll";
 import "./paige-live-conversation.css";
 
 export type PaigeLiveTranscriptTurn = Readonly<{ id: string; role: "user" | "assistant"; content: string }>;
@@ -104,6 +108,9 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   const sessionIdRef = useRef<string | null>(null);
   const sessionScopeRef = useRef<{ threadId: string; contextEpoch: string } | null>(null);
   const previousEpochRef = useRef(contextEpoch);
+  const previousThreadRef = useRef(threadId);
+  const requestGeneration = useRef(0);
+  const mounted = useRef(true);
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<LiveSurfaceState>("checking");
   const [muted, setMuted] = useState(false);
@@ -112,6 +119,36 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   const [explanation, setExplanation] = useState("Live audio setup is being verified. Paige will not request microphone access until it is authorized.");
   const [portalDocument, setPortalDocument] = useState<Document | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  const [pinned, setPinned] = useState(true);
+  const [scrollController] = useState(() => createAnchoredTranscriptScroll({ storagePrefix: "paige-live-reading", onPinnedChange: setPinned }));
+  const scrollContext = `${contextEpoch}:${threadId ?? "new"}`;
+  const priorScrollContext = useRef(scrollContext);
+  const output = usePaigeOutput(open && !muted && state !== "held", transcript.map((turn) => turn.id));
+  const stopPlayback = useRef(output.stop);
+  stopPlayback.current = output.stop;
+  const invalidatePending = useCallback(() => { requestGeneration.current++; }, []);
+
+  useLayoutEffect(() => {
+    if (priorScrollContext.current === `${contextEpoch}:new` && threadId) scrollController.adoptContext(scrollContext);
+    else scrollController.setContext(scrollContext);
+    priorScrollContext.current = scrollContext;
+  }, [contextEpoch, threadId, scrollContext, scrollController]);
+
+  useLayoutEffect(() => {
+    if (!open || !portalDocument || !stageRef.current) return;
+    const view = portalDocument.defaultView;
+    const media = view?.matchMedia?.("(max-width: 800px)");
+    let scrollElement: HTMLDivElement | null = null;
+    const bind = () => {
+      scrollElement?.removeEventListener("scroll", scrollController.handleScroll);
+      scrollElement = stageRef.current?.querySelector<HTMLDivElement>(media?.matches ? ".plc-stage__main" : ".plc-transcript") ?? null;
+      scrollController.attach(scrollElement);
+      scrollElement?.addEventListener("scroll", scrollController.handleScroll, { passive: true });
+    };
+    bind();
+    media?.addEventListener("change", bind);
+    return () => { media?.removeEventListener("change", bind); scrollElement?.removeEventListener("scroll", scrollController.handleScroll); scrollController.detach(); };
+  }, [open, portalDocument, scrollController]);
 
   const transitionCurrent = useCallback((transition: "hold" | "resume" | "minimize" | "restore" | "retry" | "end") => {
     const scope = sessionScopeRef.current;
@@ -119,11 +156,15 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   }, []);
 
   const closeStage = useCallback((kind: "minimize" | "end") => {
+    requestGeneration.current++;
+    stopPlayback.current();
     transitionCurrent(kind);
+    if (kind === "end") { sessionIdRef.current = null; sessionScopeRef.current = null; setSessionId(null); }
     const child = stageWindowRef.current;
     stageWindowRef.current = null;
     if (child && !child.closed) child.close();
     setOpen(false);
+    setState("unavailable");
     setPortalDocument(null);
     setAnnouncement(kind === "end" ? "Live Conversation ended. The Paige chat is unchanged." : "Live Conversation minimized. Returned to the same Paige conversation.");
     requestAnimationFrame(() => triggerRef.current?.focus({ preventScroll: true }));
@@ -157,27 +198,60 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   }, [open, portalDocument]);
 
   useEffect(() => {
-    if (!open || !working) return;
-    setState("thinking");
-  }, [open, working]);
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      invalidatePending();
+      stopPlayback.current();
+      transitionCurrent("end");
+      const child = stageWindowRef.current;
+      stageWindowRef.current = null;
+      if (child && !child.closed) child.close();
+    };
+  }, [transitionCurrent, invalidatePending]);
 
   useEffect(() => {
     if (previousEpochRef.current === contextEpoch) return;
     previousEpochRef.current = contextEpoch;
-    if (open) closeStage("end");
+    closeStage("end");
   }, [closeStage, contextEpoch, open]);
+
+  useEffect(() => {
+    const previous = previousThreadRef.current;
+    previousThreadRef.current = threadId;
+    if (sessionScopeRef.current && ((threadId && sessionScopeRef.current.threadId !== threadId) || (previous && threadId === null))) closeStage("end");
+  }, [threadId, closeStage]);
+
+  useEffect(() => {
+    if (!open || !portalDocument) return;
+    const stopHidden = () => { if (portalDocument.hidden) stopPlayback.current(); };
+    const disconnected = () => { stopPlayback.current(); setState("reconnecting"); setExplanation("The connection was interrupted. Retry the setup check or return to this conversation in chat."); };
+    portalDocument.addEventListener("visibilitychange", stopHidden);
+    portalDocument.defaultView?.addEventListener("offline", disconnected);
+    return () => { portalDocument.removeEventListener("visibilitychange", stopHidden); portalDocument.defaultView?.removeEventListener("offline", disconnected); };
+  }, [open, portalDocument]);
 
   const begin = async () => {
     if (!PAIGE_LIVE_CONVERSATION_ENABLED || disabled) return;
+    const generation = ++requestGeneration.current;
     setOpen(true);
+    if (sessionIdRef.current && sessionScopeRef.current?.contextEpoch === contextEpoch && sessionScopeRef.current.threadId === threadId) {
+      transitionCurrent("restore");
+      return;
+    }
     setState("checking");
     setExplanation("Paige is checking whether live audio is authorized for this workspace.");
     try {
       const resolvedThread = threadId ?? await ensureThread();
+      if (!mounted.current || generation !== requestGeneration.current) return;
       sessionScopeRef.current = { threadId: resolvedThread, contextEpoch };
       const ownerWindow = triggerRef.current?.ownerDocument.defaultView;
       const entryMode: PaigeLiveEntryMode = ownerWindow && ownerWindow !== window ? "existing-popout" : "embedded";
       const result = await startPaigeLiveConversation({ threadId: resolvedThread, contextEpoch, entryMode });
+      if (!mounted.current || generation !== requestGeneration.current) {
+        if (result.sessionId) void transitionPaigeLiveConversation(result.sessionId, "end", { threadId: resolvedThread, contextEpoch }).catch(() => undefined);
+        return;
+      }
       sessionIdRef.current = result.sessionId;
       setSessionId(result.sessionId);
       setAvailability(result.availability);
@@ -185,6 +259,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
       setState(result.code === "microphone_permission_denied" ? "permission-denied" : "unavailable");
       setAnnouncement(`${result.availability}. ${result.explanation}`);
     } catch (error) {
+      if (!mounted.current || generation !== requestGeneration.current) return;
       setAvailability("UNAVAILABLE");
       setState("unavailable");
       setExplanation(error instanceof Error && error.message === "session_expired"
@@ -194,11 +269,14 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   };
 
   const retry = async () => {
-    transitionCurrent("retry");
+    transitionCurrent("end");
+    sessionIdRef.current = null;
+    sessionScopeRef.current = null;
     await begin();
   };
 
   const toggleHold = () => {
+    if (state === "held") output.resume(); else output.pause();
     const next = state === "held" ? "unavailable" : "held";
     setState(next);
     setAnnouncement(next === "held" ? "Live Conversation is on hold." : "Live Conversation resumed. Audio remains unavailable until setup is verified.");
@@ -225,6 +303,8 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
     child.addEventListener("beforeunload", () => {
       if (stageWindowRef.current !== child) return;
       stageWindowRef.current = null;
+      requestGeneration.current++;
+      stopPlayback.current();
       transitionCurrent("minimize");
       setOpen(false);
       setPortalDocument(null);
@@ -248,8 +328,14 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
     else if (!event.shiftKey && (!inside || active === stageRef.current || active === last)) { event.preventDefault(); first.focus(); }
   };
 
-  const lastTurns = useMemo(() => transcript.filter((turn) => turn.content.trim()).slice(-8), [transcript]);
-  const controlsDisabled = state === "unavailable" || state === "checking" || state === "permission-denied" || state === "reconnecting";
+  const lastTurns = useMemo(() => transcript.filter((turn) => turn.content.trim()), [transcript]);
+  const controlsDisabled = state === "unavailable" || state === "checking" || state === "permission-denied" || state === "reconnecting" || state === "interrupted";
+  const presenceState = resolvePresenceState({
+    phase: output.playing ? "speaking" : state === "held" || state === "interrupted" ? state
+      : state === "reconnecting" ? "disconnected" : state === "checking" ? "ready" : "unavailable",
+    outputPlaying: output.playing,
+    working: working && !output.playing,
+  });
   const stage = open && portalDocument ? createPortal(
     <div className="plc-stage" role="dialog" aria-modal="true" aria-labelledby="plc-title" aria-describedby="plc-description" ref={stageRef} tabIndex={-1} onKeyDown={trapFocus}>
       <header className="plc-stage__header">
@@ -261,19 +347,19 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
         </div>
       </header>
       <main className="plc-stage__main">
-        <section className="plc-presence" aria-label={`Paige is ${STATE_LABEL[state].toLowerCase()}`} data-live-state={state}>
-          <div className="plc-orb" aria-hidden><span className="plc-orb__halo" /><PaigeCommandMark plated={false} animated={!controlsDisabled} className="plc-orb__mark" /></div>
-          <p className="plc-state"><span />{STATE_LABEL[state]}</p>
+        <section className="plc-presence" aria-label="Paige Presence and live audio status" data-live-state={state}>
+          <PaigePresence state={presenceState} readEnergy={output.readEnergy} />
+          <p className="plc-state"><span />{output.playing ? "Speaking" : STATE_LABEL[state]}</p>
           <p id="plc-description" className="plc-context">Working in this exact Paige thread. Nothing here creates a second assistant or a separate memory.</p>
           <div className="plc-working" aria-live="polite"><span>Paige is working on</span><strong>{working ? (workingLabel || "your current request") : "No active work"}</strong></div>
-          {(state === "unavailable" || state === "permission-denied" || state === "reconnecting") && (
+          {(state !== "checking" && availability !== "LIVE") && (
             <div className="plc-notice" role="status"><strong>{availability}</strong><p>{explanation}</p><Button variant="outline" size="sm" onClick={() => void retry()}><RefreshCw aria-hidden />Retry setup check</Button></div>
           )}
         </section>
         <section className="plc-workspace" aria-label="Live conversation workspace">
-          <div className="plc-transcript" aria-label="Conversation transcript" aria-live="polite">
+          <div className="plc-transcript" aria-label="Conversation transcript">
             <div className="plc-section-title"><span>Transcript</span><small>Same Paige conversation</small></div>
-            {lastTurns.length ? lastTurns.map((turn) => <div key={turn.id} className={cn("plc-turn", turn.role === "user" && "plc-turn--owner")}><span>{turn.role === "user" ? "You" : "Paige"}</span><p>{turn.content}</p></div>) : <p className="plc-empty">Your conversation will remain here. Audio has not started.</p>}
+            {lastTurns.length ? lastTurns.map((turn) => <div key={turn.id} data-paige-message-id={turn.id} data-paige-message-anchor-key={messageScrollAnchorKey(turn.role, turn.content)} className={cn("plc-turn", turn.role === "user" && "plc-turn--owner")}><span>{turn.role === "user" ? "You" : "Paige"}</span><p>{turn.content}</p></div>) : <p className="plc-empty">Your conversation will remain here. Audio has not started.</p>}
           </div>
           <div className="plc-card-layer" aria-label="Current conversation card">
             <div className="plc-section-title"><span>On screen</span><small>One current object at a time</small></div>
@@ -282,14 +368,15 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
         </section>
       </main>
       <footer className="plc-controls" aria-label="Live Conversation controls">
-        <Button variant="outline" disabled={controlsDisabled} aria-pressed={muted} onClick={() => setMuted((value) => !value)}>{muted ? <MicOff aria-hidden /> : <Mic aria-hidden />}{muted ? "Unmute" : "Mute"}</Button>
-        <Button variant="outline" disabled={controlsDisabled} aria-pressed={state === "held"} onClick={toggleHold}><CirclePause aria-hidden />{state === "held" ? "Resume" : "Hold"}</Button>
-        <Button variant="outline" disabled={controlsDisabled} onClick={() => { setState("interrupted"); setAnnouncement("Paige stopped speaking. You can continue."); }}><Hand aria-hidden />Interrupt</Button>
+        {!pinned && <Button variant="outline" onClick={() => scrollController.jumpToBottom("auto")}>Jump to latest</Button>}
+        <Button variant="outline" disabled={controlsDisabled && !output.playing && !muted} aria-pressed={muted} onClick={() => { stopPlayback.current(); setMuted((value) => !value); }}>{muted ? <MicOff aria-hidden /> : <Mic aria-hidden />}{muted ? "Unmute" : "Mute"}</Button>
+        <Button variant="outline" disabled={controlsDisabled && !output.playing} aria-pressed={state === "held"} onClick={toggleHold}><CirclePause aria-hidden />{state === "held" ? "Resume" : "Hold"}</Button>
+        <Button variant="outline" disabled={controlsDisabled && !output.playing} onClick={() => { stopPlayback.current(); setState("interrupted"); setAnnouncement("Paige stopped speaking. You can continue in this conversation."); }}><Hand aria-hidden />Interrupt</Button>
         <Button variant="outline" onClick={() => closeStage("minimize")}><Minimize2 aria-hidden />Minimize</Button>
         <Button variant="destructive" onClick={() => closeStage("end")}><PhoneOff aria-hidden />End</Button>
       </footer>
-      <p className="sr-only" aria-live="assertive">{announcement}</p>
+      <p className="sr-only" aria-live="polite">{announcement}</p>
     </div>, portalDocument.body) : null;
 
-  return <><Button ref={triggerRef} type="button" variant="outline" size="sm" className="plc-trigger" disabled={disabled || !PAIGE_LIVE_CONVERSATION_ENABLED} onClick={() => void begin()} aria-haspopup="dialog" aria-expanded={open}><Volume2 aria-hidden />Talk live with Paige</Button>{stage}<span className="sr-only" aria-live="polite">{announcement}</span></>;
+  return <><Button ref={triggerRef} type="button" variant="outline" size="sm" className="plc-trigger" disabled={disabled || !PAIGE_LIVE_CONVERSATION_ENABLED} onClick={() => void begin()} aria-haspopup="dialog" aria-expanded={open}><Volume2 aria-hidden />Talk live with Paige</Button>{stage}<span className="sr-only" aria-live="polite">{open ? "" : announcement}</span></>;
 }

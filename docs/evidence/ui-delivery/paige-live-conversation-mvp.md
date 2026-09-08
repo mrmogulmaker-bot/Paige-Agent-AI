@@ -1,5 +1,48 @@
 # UI delivery evidence — Paige Live Conversation MVP
 
+## Organic Presence recovery — 2026-09-08 development evidence
+
+The owner-approved Organic Paige Presence + Real Audio Recovery pack supersedes the circular
+badge appearance below. Existing #1053 production evidence remains historical. This iteration
+mounts the reusable layered SVG Presence in the existing Live stage; no new shell, provider agent,
+transcript store, authority path, Memory path, or navigation is introduced. Baseline identity
+motion is not activity telemetry. Actual shared played-audio capture drives speaking energy;
+unsupported capture/AudioContext leaves energy zero without rerouting or silencing audio.
+
+Current evidence: `assets/paige-live-conversation/presence-recovery/` contains both-theme renders
+at all four required viewports, companion window, compact 390x844, 200%-equivalent reflow,
+state fixtures, reduced motion, `render-results.json`, `motion-results.json`, and
+`presence-motion-local-audio.webm`. The video is a local generated audible signal played through
+the real shared audio owner. Analyzer samples vary from 0 through 0.825; Hold, Resume, Interrupt,
+Mute and return-to-chat checks pass. Listening/ready/thinking/working fixture images are visual
+state evidence only: no microphone or provider is involved. Reduced motion retains an irregular
+static silhouette. The original chat controller and PaigeAIChat have zero product diff.
+
+Automated: 65 initial affected checks passed; the current focused 42 checks include added async
+session, work-state, new-thread, media lifecycle and pending-resume regression tests. Full suite
+passed 288 files / 4013 tests before the final focused review repairs; exact-head CI/full rerun
+remains required. Type ratchet: baseline 13/current 13; production build passed. Independent
+review identified old-output ownership, null-thread cleanup, Hold and pending-resume races;
+repairs and regression tests are included. Final exact-head review/release identity follows.
+
+Read-only production provider audit: surface enabled, transport disabled, realtime STT PROOF OWED,
+streaming TTS PARTIAL; zero independent verification records, all scope/voice/retention/ZRM/quota
+flags false, cost ceilings null. The fallback profile remains active and the requested provider
+candidate remains pending. No provider call, key value, token, microphone or retention change was
+used. Realtime STT/streaming transport activation remains UNAVAILABLE pending account, privacy and
+cost evidence; shared message playback is not claimed as a revision-bound realtime session.
+The existing realtime start/transition contract remains fail closed. Actual provider speech,
+consented microphone and authenticated owner production behavior remain UNVERIFIED/PROOF OWED.
+No new migration or Edge deployment is required for this provider-independent Presence iteration.
+
+Authenticated test path after deployment: sign in to the existing account chooser, deliberately
+select the authorized workspace, open the existing Paige thread, choose Talk live with Paige,
+verify the organic unavailable state and useful transcript/card, then exercise keyboard, minimize,
+restore, window close and workspace switch while retaining unsaved work. Provider-backed speaking
+and listening cannot be tested until canonical readiness proof and transport enablement exist.
+
+## Prior shipped #1053 evidence (historical)
+
 UI_DELIVERY_EVIDENCE_VERSION: 1
 FLOW_BY_FLOW: PASS: docs/delivery/paige-live-conversation-mvp.md records actor, job, complete state map, exits, affected flows, collisions, and truth boundaries
 PAIGE_UI_DESIGN: PASS: .agents/skills/paige-ui-design/SKILL.md and every routed accessibility, quality-gate, review, and upstream reference were read and applied

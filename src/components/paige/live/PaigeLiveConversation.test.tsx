@@ -55,15 +55,15 @@ describe("Paige Live Conversation owner surface", () => {
     document.body.querySelectorAll(".plc-stage").forEach((node) => node.remove());
   });
 
-  const render = async (card: LiveConversationCard | null = null, epoch = "tenant-a||") => {
+  const render = async (card: LiveConversationCard | null = null, epoch = "tenant-a||", working = false, threadId: string | null = null) => {
     await act(async () => root.render(
       <PaigeLiveConversation
         contextEpoch={epoch}
-        threadId={null}
+        threadId={threadId}
         ensureThread={ensureThread}
         transcript={[{ id: "m1", role: "assistant", content: "We are still in the same thread." }]}
         activeCard={card}
-        working={false}
+        working={working}
         confirmationFingerprints={["fingerprint-1"]}
         onAnswer={onAnswer}
         onApprove={onApprove}
@@ -82,6 +82,56 @@ describe("Paige Live Conversation owner surface", () => {
     expect(document.querySelector(".plc-transcript")?.textContent).toContain("We are still in the same thread.");
     expect(document.querySelector(".plc-notice")?.textContent).toContain("PROOF OWED");
     expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("keeps audio unavailable during genuine text work and clears working Presence afterwards", async () => {
+    await render();
+    await act(async () => clickText("Talk live with Paige"));
+    await render(null, "tenant-a||", true);
+    expect(document.querySelector('[data-presence-state="working"]')).not.toBeNull();
+    expect(document.querySelector(".plc-notice")?.textContent).toContain("PROOF OWED");
+    await render();
+    expect(document.querySelector('[data-presence-state="unavailable"]')).not.toBeNull();
+    expect(document.querySelector(".plc-working")?.textContent).toContain("No active work");
+  });
+
+  it("ends late setup results instead of reviving a closed stage", async () => {
+    let resolve!: (value: unknown) => void;
+    control.start.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    await render();
+    await act(async () => { clickText("Talk live with Paige"); });
+    await flush();
+    await act(async () => clickText("End"));
+    await act(async () => resolve({ sessionId: "late-session", availability: "PROOF OWED" }));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(control.transition).toHaveBeenCalledWith("late-session", "end", expect.objectContaining({ contextEpoch: "tenant-a||" }));
+  });
+
+  it("restores a minimized same-thread session without creating another one", async () => {
+    await render(null, "tenant-a||", false, "thread-a");
+    await act(async () => clickText("Talk live with Paige"));
+    await act(async () => clickText("Minimize"));
+    await act(async () => clickText("Talk live with Paige"));
+    expect(control.start).toHaveBeenCalledTimes(1);
+    expect(control.transition).toHaveBeenCalledWith(expect.any(String), "restore", { threadId: "thread-a", contextEpoch: "tenant-a||" });
+  });
+
+  it("ends a minimized session on workspace or thread switch", async () => {
+    await render(null, "tenant-a||", false, "thread-a");
+    await act(async () => clickText("Talk live with Paige"));
+    await act(async () => clickText("Minimize"));
+    await render(null, "tenant-a||", false, "thread-b");
+    expect(control.transition).toHaveBeenCalledWith(expect.any(String), "end", { threadId: "thread-a", contextEpoch: "tenant-a||" });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("ends the bound session when New chat selects a null provisional thread", async () => {
+    await render(null, "tenant-a||", false, "thread-a");
+    await act(async () => clickText("Talk live with Paige"));
+    await act(async () => clickText("Minimize"));
+    await render(null, "tenant-a||", false, null);
+    expect(control.transition).toHaveBeenCalledWith(expect.any(String), "end", { threadId: "thread-a", contextEpoch: "tenant-a||" });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it("minimizes to the exact chat control and restores keyboard focus", async () => {

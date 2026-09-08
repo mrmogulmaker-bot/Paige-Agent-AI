@@ -11,9 +11,6 @@
 .plc-stage__header-actions svg,.plc-controls svg,.plc-card__actions svg { width: .95rem; height: .95rem; }
 .plc-stage__main { min-height: 0; overflow: auto; display: grid; grid-template-columns: minmax(15rem,.7fr) minmax(0,1.3fr); gap: clamp(1rem,3vw,3rem); padding: clamp(1rem,3vw,2.5rem); }
 .plc-presence { min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-.plc-orb { position: relative; width: clamp(8rem,18vw,13rem); aspect-ratio: 1; display: grid; place-items: center; }
-.plc-orb__halo { position: absolute; inset: 5%; border: 1px solid hsl(var(--primary)/.35); border-radius: 50%; box-shadow: 0 0 3rem hsl(var(--primary)/.13); }
-.plc-orb__mark { width: 45%; height: 45%; }
 .plc-state { margin-top: 1rem; display: flex; align-items: center; gap: .5rem; font-weight: 650; }
 .plc-state span { width: .55rem; height: .55rem; border-radius: 50%; background: hsl(var(--muted-foreground)); }
 [data-live-state="listening"] .plc-state span,[data-live-state="speaking"] .plc-state span { background: hsl(var(--primary)); }
@@ -60,19 +57,23 @@
 .plc-recap li { display: flex; gap: .5rem; font-size: .8rem; }
 .plc-recap svg { width: 1rem; height: 1rem; flex: none; }
 .plc-controls { min-width: 0; justify-content: center; flex-wrap: wrap; gap: .45rem; padding: .75rem; border-top: 1px solid hsl(var(--border)/.8); background: hsl(var(--background)/.92); }
-.plc-controls button { gap: .4rem; }
+.plc-controls button { gap: .4rem; min-height: 44px; }
+.plc-stage button,.plc-stage input { min-height: 44px; }
+.plc-stage button:focus-visible,.plc-stage input:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; }
+.plc-turn p,.plc-card,.plc-notice,.plc-working { overflow-wrap: anywhere; }
 @keyframes plc-pulse { 0%,100% { opacity: .45; transform: scale(.85); } 50% { opacity: 1; transform: scale(1); } }
 @media (max-width: 800px) {
   .plc-stage__main { grid-template-columns: 1fr; grid-template-rows: auto minmax(0,1fr); padding: .8rem; gap: .8rem; }
   .plc-presence { justify-content: flex-start; }
-  .plc-orb { width: 5rem; }
   .plc-context { display: none; }
   .plc-working,.plc-notice { margin-top: .55rem; }
-  .plc-workspace { min-height: 22rem; }
-  .plc-card-layer { max-height: 38vh; }
+  .plc-workspace { display: flex; flex-direction: column; min-height: auto; }
+  .plc-transcript,.plc-card-layer { overflow: visible; max-height: none; flex: none; }
 }
 @media (max-width: 560px) {
-  .plc-stage__identity span,.plc-stage__header-actions button:first-child { display: none; }
+  .plc-stage__identity span { display: none; }
+  .plc-stage__header { flex-wrap: wrap; gap: .4rem; }
+  .plc-stage__header-actions { flex-wrap: wrap; }
   .plc-choices { grid-template-columns: 1fr; }
   .plc-controls { justify-content: stretch; }
   .plc-controls button { flex: 1 1 calc(33% - .5rem); }

@@ -11,7 +11,7 @@
 // `needsConfig` flag — every button then shows the disabled/needs-config state (playback is a
 // workspace capability, not a per-message one), never a broken/silent button.
 
-export type TtsStatus = "idle" | "loading" | "playing";
+export type TtsStatus = "idle" | "loading" | "playing" | "paused";
 
 export interface TtsSnapshot {
   /** The message id currently loading or playing, else null. */
@@ -44,6 +44,26 @@ class MessageTtsController {
   };
 
   getSnapshot = (): TtsSnapshot => this.snapshot;
+
+  /** The existing output only; inspection never creates audio, fetches TTS, or starts playback. */
+  getAudioElement = (): HTMLAudioElement | null => this.audio;
+
+  pause = () => {
+    if (this.audio && (this.snapshot.status === "playing" || this.snapshot.status === "paused")) {
+      this.token++;
+      this.audio.pause();
+      this.emit({ status: "paused" });
+    }
+  };
+
+  resume = async () => {
+    if (!this.audio || this.snapshot.status !== "paused") return;
+    const myToken = this.token;
+    try {
+      await this.audio.play();
+      if (myToken === this.token) this.emit({ status: "playing" });
+    } catch { if (myToken === this.token) this.stop(); }
+  };
 
   private emit(next: Partial<TtsSnapshot>) {
     this.snapshot = { ...this.snapshot, ...next };
@@ -91,6 +111,10 @@ class MessageTtsController {
     fetchAudio: () => Promise<Blob>,
     onError?: (e: TtsFetchError) => void,
   ): Promise<void> => {
+    if (this.snapshot.activeId === id && this.snapshot.status === "paused") {
+      await this.resume();
+      return;
+    }
     if (this.snapshot.activeId === id && this.snapshot.status !== "idle") {
       this.stop();
       return;

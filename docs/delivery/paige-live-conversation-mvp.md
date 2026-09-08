@@ -2,6 +2,43 @@
 
 **Workstream:** dedicated Paige Live Conversation, separate from Skills and Intentful Interview
 
+## Organic Presence and audio recovery — active delivery, 2026-09-08
+
+Owner-approved scope: irregular layered obsidian/plum and warm-gold Presence replaces the Live
+stage badge. Calm visible baseline motion is presentation, never activity proof; reduced motion
+is the static exception. Speaking/listening energy requires real playback or consented active mic.
+The existing composer, thread, transcript, cards and controls remain the product surface.
+
+Grounded base: `74768a531469bc2b23d213a3e04e8d1b5b34f96d`. Preserve #1057 exact scroll anchors,
+#1060 account choice, and #1059/#1064 one-Harness rules. Open #1066 owns scroll-acceptance docs.
+#1044 Skills/Interview and #1046 Secure Browser remain separate drafts. No Campaign Brief,
+Platform account-choice, Social, Client Portal or binding-ledger ownership is absorbed.
+
+Controlled edit surface: existing live components, provider-neutral session/audio seams, their
+tests/harness, and canonical Live delivery/Brain records. Shared PaigeAIChat and scroll controller
+remain current-main; integration must preserve controller lifetime and semantic thread identity.
+Flow-by-Flow and Flow Prototype use the owner's complete Organic Presence + Real Audio Recovery
+pack as approved design authority. The existing mounted harness is the isolated prototype host;
+illustrative states and generated test audio never constitute authenticated provider proof.
+
+| Affected flow | Required behavior |
+|---|---|
+| First use / unavailable / denial / retry | Readiness before mic; setup notice remains truthful during text work |
+| Idle / thinking / working | Calm irregular motion; actual chat work signal clears when work ends |
+| Speaking / listening | Actual output analyzer or consented active mic energy only |
+| Mute / hold / interrupt / end / failure | Zero energy immediately; stop audio and invalidate pending work |
+| Minimize / restore / pop-out / hidden | Same thread/page, suspend expensive work, reject stale completions |
+| Workspace / thread switch | End old session; preserve #1057 exact reading-position contract |
+| Cards / denied authority / recap | Existing governed callbacks; no raw transcript/card Memory promotion |
+| Accessibility / reflow | 44px controls, focus return, quiet state, reduced motion/fallback, both themes/four viewports/compact/200% |
+
+Read-only production audit: transport disabled; realtime STT PROOF OWED; streaming TTS PARTIAL;
+scope/voice/privacy/quota flags false; cost values null; zero canonical verification records.
+The approved fallback is active; the requested provider candidate is inactive/unapproved. Account
+scope, exact voice, applied retention, quota/concurrency and approved hard-cost/unit-price proof
+remain required before real audio. No secret values or provider calls were accessed. No ZRM is
+assumed. Current status: development only, no new release or authenticated audio proof claimed.
+
 **Grounded base:** `origin/main` at `2719d7d8` after shipped PR #1054, including #1050/#1051
 
 **Coordination checkpoint (2026-09-08):** the branch was re-grounded again before merge after

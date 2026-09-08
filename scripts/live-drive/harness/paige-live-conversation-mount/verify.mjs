@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "../../../..");
-const output = path.join(root, "docs/evidence/ui-delivery/assets/paige-live-conversation");
+const output = path.join(root, "docs/evidence/ui-delivery/assets/paige-live-conversation/presence-recovery");
 await fs.mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const viewports = [[1536, 770], [1366, 768], [1024, 768], [900, 1000]];
@@ -35,7 +35,7 @@ for (const theme of popoutOnly ? [] : ["light", "dark"]) {
         transcriptOverflowY: getComputedStyle(transcript).overflowY,
         stageRole: stage.getAttribute("role"),
         modal: stage.getAttribute("aria-modal"),
-        motion: getComputedStyle(document.querySelector(".plc-orb__halo")).animationDuration,
+        motion: document.querySelector(".paige-presence").dataset.motion,
       };
     });
     if (!geometry || geometry.documentOverflowX || geometry.stageOverflowX || geometry.controlsClipped || geometry.stageRole !== "dialog" || geometry.modal !== "true") {
