@@ -122,16 +122,15 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   const [pinned, setPinned] = useState(true);
   const [scrollController] = useState(() => createAnchoredTranscriptScroll({ storagePrefix: "paige-live-reading", onPinnedChange: setPinned }));
   const scrollContext = `${contextEpoch}:${threadId ?? "new"}`;
-  const priorScrollContext = useRef(scrollContext);
   const output = usePaigeOutput(open && !muted && state !== "held", transcript.map((turn) => turn.id));
   const stopPlayback = useRef(output.stop);
   stopPlayback.current = output.stop;
   const invalidatePending = useCallback(() => { requestGeneration.current++; }, []);
 
   useLayoutEffect(() => {
-    if (priorScrollContext.current === `${contextEpoch}:new` && threadId) scrollController.adoptContext(scrollContext);
-    else scrollController.setContext(scrollContext);
-    priorScrollContext.current = scrollContext;
+    // A null -> UUID prop alone does not prove creation; it may be history selection.
+    // Never overwrite an existing thread's persisted anchor by inferring adoption here.
+    scrollController.setContext(scrollContext);
   }, [contextEpoch, threadId, scrollContext, scrollController]);
 
   useLayoutEffect(() => {

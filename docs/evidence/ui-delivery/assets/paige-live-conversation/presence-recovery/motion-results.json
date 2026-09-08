@@ -1,0 +1,178 @@
+{
+  "evidenceClass": "local real-component + actual locally generated audio playback; NOT provider or authenticated tenant proof",
+  "states": [
+    {
+      "state": "ready",
+      "audio": "absent",
+      "fixture": true
+    },
+    {
+      "state": "listening",
+      "audio": "absent",
+      "fixture": true
+    },
+    {
+      "state": "thinking",
+      "audio": "absent",
+      "fixture": true
+    },
+    {
+      "state": "working",
+      "audio": "absent",
+      "fixture": true
+    },
+    {
+      "state": "held",
+      "audio": "absent",
+      "fixture": true
+    },
+    {
+      "state": "interrupted",
+      "audio": "absent",
+      "fixture": true
+    },
+    {
+      "state": "disconnected",
+      "audio": "absent",
+      "fixture": true
+    }
+  ],
+  "outputSamples": [
+    0,
+    0,
+    0,
+    0.741,
+    0.832,
+    0.764,
+    0.512,
+    0.302,
+    0.166,
+    0.243,
+    0.378,
+    0.605,
+    0.755,
+    0.81
+  ],
+  "checks": [
+    {
+      "name": "ready baseline shape changes",
+      "pass": true
+    },
+    {
+      "name": "ready no invented audio",
+      "pass": true
+    },
+    {
+      "name": "listening baseline shape changes",
+      "pass": true
+    },
+    {
+      "name": "listening no invented audio",
+      "pass": true
+    },
+    {
+      "name": "thinking baseline shape changes",
+      "pass": true
+    },
+    {
+      "name": "thinking no invented audio",
+      "pass": true
+    },
+    {
+      "name": "working baseline shape changes",
+      "pass": true
+    },
+    {
+      "name": "working no invented audio",
+      "pass": true
+    },
+    {
+      "name": "held baseline shape changes",
+      "pass": true
+    },
+    {
+      "name": "held no invented audio",
+      "pass": true
+    },
+    {
+      "name": "interrupted baseline shape changes",
+      "pass": true
+    },
+    {
+      "name": "interrupted no invented audio",
+      "pass": true
+    },
+    {
+      "name": "disconnected baseline shape changes",
+      "pass": true
+    },
+    {
+      "name": "disconnected no invented audio",
+      "pass": true
+    },
+    {
+      "name": "actual played audio produces positive analyzer energy",
+      "pass": true
+    },
+    {
+      "name": "actual output energy changes",
+      "pass": true
+    },
+    {
+      "name": "hold zeros energy",
+      "pass": true
+    },
+    {
+      "name": "interrupt zeros energy",
+      "pass": true
+    },
+    {
+      "name": "mute exits speaking",
+      "pass": true
+    },
+    {
+      "name": "same unsaved composer returns",
+      "pass": true
+    },
+    {
+      "name": "reduced motion keeps sculptural shape still",
+      "pass": true
+    },
+    {
+      "name": "compact has no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "compact open in window remains reachable",
+      "pass": true
+    },
+    {
+      "name": "compact main is the only vertical scroll owner",
+      "pass": true
+    },
+    {
+      "name": "Live deliberate anchor survives streaming",
+      "pass": true
+    },
+    {
+      "name": "Live semantic anchor survives persisted IDs",
+      "pass": true
+    },
+    {
+      "name": "Live exact anchor survives minimize/restore",
+      "pass": true
+    },
+    {
+      "name": "history selection after New preserves saved reading anchor",
+      "pass": true
+    },
+    {
+      "name": "explicit Jump to latest offered",
+      "pass": true
+    },
+    {
+      "name": "explicit jump returns exact bottom",
+      "pass": true
+    }
+  ]
+}

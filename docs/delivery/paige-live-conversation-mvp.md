@@ -9,8 +9,8 @@ stage badge. Calm visible baseline motion is presentation, never activity proof;
 is the static exception. Speaking/listening energy requires real playback or consented active mic.
 The existing composer, thread, transcript, cards and controls remain the product surface.
 
-Grounded base: `74768a531469bc2b23d213a3e04e8d1b5b34f96d`. Preserve #1057 exact scroll anchors,
-#1060 account choice, and #1059/#1064 one-Harness rules. Open #1066 owns scroll-acceptance docs.
+Grounded base: `ddbc5cd654b54fd58ce4e1b7ded7c37ffb994767`, including shipped #1066 owner scroll acceptance. Preserve #1057 exact scroll anchors,
+#1060 account choice, and #1059/#1064 one-Harness rules. Shared chat/controller have zero product diff.
 #1044 Skills/Interview and #1046 Secure Browser remain separate drafts. No Campaign Brief,
 Platform account-choice, Social, Client Portal or binding-ledger ownership is absorbed.
 

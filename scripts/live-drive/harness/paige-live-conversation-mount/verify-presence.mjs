@@ -84,6 +84,14 @@ await page.getByRole("button", { name: "Minimize", exact: true }).last().click()
 await page.getByRole("button", { name: "Talk live with Paige" }).click();
 await page.waitForTimeout(150);
 check("Live exact anchor survives minimize/restore", JSON.stringify(before) === JSON.stringify(await anchor()));
+await page.getByRole("button", { name: "Minimize", exact: true }).last().click();
+await page.evaluate(() => window.fixtureThread(null));
+await page.waitForTimeout(150);
+await page.evaluate(() => window.fixtureThread("00000000-0000-4000-8000-000000000002"));
+await page.waitForTimeout(150);
+await page.getByRole("button", { name: "Talk live with Paige" }).click();
+await page.waitForTimeout(150);
+check("history selection after New preserves saved reading anchor", JSON.stringify(before) === JSON.stringify(await anchor()));
 check("explicit Jump to latest offered", await page.getByRole("button", { name: "Jump to latest" }).isVisible());
 await page.getByRole("button", { name: "Jump to latest" }).click();
 check("explicit jump returns exact bottom", await page.locator(".plc-transcript").evaluate((el) => Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) < 1));

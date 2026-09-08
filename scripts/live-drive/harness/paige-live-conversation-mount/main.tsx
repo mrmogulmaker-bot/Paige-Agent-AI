@@ -45,10 +45,12 @@ const cards: Record<string, LiveConversationCard> = {
 };
 
 function Harness() {
+  const [threadId, setThreadId] = useState<string | null>("00000000-0000-4000-8000-000000000002");
   const [turns, setTurns] = useState<Array<{ id: string; role: "user" | "assistant"; content: string }>>(() => params.has("long")
     ? Array.from({ length: 30 }, (_, i) => ({ id: `fixture-${i}`, role: i % 2 ? "assistant" : "user", content: `Local conversation fixture ${i}. This is sufficient history to verify an exact reading anchor through streaming and window changes.` }))
     : [{ id: "one", role: "user", content: "Help me review our delivery plan." }, { id: "two", role: "assistant", content: "I put the current Strategic Play on screen so we can work from the same record." }]);
   Object.assign(window, {
+    fixtureThread: setThreadId,
     fixtureAppend: () => setTurns((items) => [...items, { id: `fixture-${items.length}`, role: "assistant", content: "Local streamed continuation fixture." }]),
     fixtureRehydrate: () => setTurns((items) => items.map((item) => ({ ...item, id: `persisted-${item.id}` }))),
   });
@@ -65,7 +67,7 @@ function Harness() {
           <textarea aria-label="Message Paige" className="min-h-12 flex-1 resize-none bg-transparent p-2" defaultValue="Help me review this plan." />
           <PaigeLiveConversation
             contextEpoch="fixture-tenant||fixture-workspace"
-            threadId="00000000-0000-4000-8000-000000000002"
+            threadId={threadId}
             ensureThread={async () => "00000000-0000-4000-8000-000000000002"}
             transcript={turns}
             activeCard={cards[cardKind] ?? cards.plan}
