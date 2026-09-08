@@ -158,7 +158,7 @@ Every route from the §30 inventory is accounted for. Sources: `src/App.tsx` `<R
 
 ### 4b. Routes that DON'T move (already coherent)
 
-`/` `/premium` `/legacy` `/legal/*` `/terms` `/privacy` `/about` `/pricing` `/blog` `/affiliates`
+`/` (`/premium` and `/legacy` replace-redirect here) `/legal/*` `/terms` `/privacy` `/about` `/pricing` `/blog` `/affiliates`
 (marketing/anonymous); `/auth` `/login` `/operator`(login) `/join-platform` `/reset-password`
 `/accept-invite` `/join/:token` `/mcp/authorize` `/auth/*/callback` (auth/OAuth); `/portal/:tenantSlug`
 `/book/:slug` `/booking/manage` `/store/:slug` `/p/:tenantSlug/:pageSlug` `/f/:tenantSlug/:funnelSlug`

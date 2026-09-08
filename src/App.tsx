@@ -51,7 +51,6 @@ import { usePageView } from "./hooks/useAnalytics";
 import { PlatformUpdateBanner } from "./components/PlatformUpdateBanner";
 
 // Eagerly load only the public landing + auth pages (likely first-paint)
-import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 const OperatorEntry = lazyWithReload(() => import("@/operator/OperatorEntry"));
 const JoinPlatform = lazyWithReload(() => import("./pages/JoinPlatform"));
@@ -60,7 +59,6 @@ const ZapierOAuthCallback = lazyWithReload(() => import("./pages/ZapierOAuthCall
 const BookingPage = lazyWithReload(() => import("./pages/BookingPage"));
 const ManageBooking = lazyWithReload(() => import("./pages/ManageBooking"));
 const PaigeHome = lazyWithReload(() => import("./pages/PaigeHome"));
-const PremiumHero = lazyWithReload(() => import("./pages/PremiumHero"));
 const Onboarding = lazyWithReload(() => import("./pages/Onboarding"));
 const SignupCoachQualify = lazyWithReload(() => import("./pages/SignupCoachQualify"));
 const McpAuthorize = lazyWithReload(() => import("./pages/McpAuthorize"));
@@ -226,9 +224,9 @@ const App = () => (
           <Routes>
             {/* Live homepage — the new gold+indigo Paige design */}
             <Route path="/" element={<PageSuspense><PaigeHome /></PageSuspense>} />
-            {/* Parked prior designs (not linked): star-field orb + legacy site */}
-            <Route path="/premium" element={<PageSuspense><PremiumHero /></PageSuspense>} />
-            <Route path="/legacy" element={<Index />} />
+            {/* Retired public design routes resolve to the one canonical homepage. */}
+            <Route path="/premium" element={<Navigate to="/" replace />} />
+            <Route path="/legacy" element={<Navigate to="/" replace />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/choose-account" element={<PageSuspense><ChooseAccount /></PageSuspense>} />
             <Route path="/login" element={<Navigate to="/auth" replace />} />

@@ -31,6 +31,12 @@ A UI feature is not working merely because it renders, has fixtures, passes a st
 
 Before opening or closing a PR, merging, deploying, assigning a version, or describing a change to a customer, read `docs/doctrine/release-governance-and-customer-update-policy.md`. Record the exact internal build identity and release channel for every delivery. Create a customer release name/version only for a coherent owner-visible outcome that passes the policy's announcement gate. Never turn a commit, preview, prototype, shell, listed provider, or `PROOF OWED` capability into a `LIVE` customer claim.
 
+## Shipped Delivery Log
+
+At workstream startup and before PR preparation, read `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` Section 4.0. After every merge to `main`, append one verified row to its Shipped Delivery Log in the same closeout change: exact PR and main commit, what shipped and why, actual delivery/proof boundary, canonical evidence, and customer-release eligibility. A workstream may not be reported complete until that row exists, or its closeout records an explicit `N/A` because the PR did not reach `main`. Never create a second shipped log, delivery ledger, master file, roadmap, or program registry.
+
+A closeout-only PR whose sole change is recording the exact post-merge identity of the preceding delivery closes that preceding row and is not logged recursively. Git remains the evidence for that mechanical closeout commit. This exception may not carry product, policy, capability, or status change.
+
 ## Evidence and review
 
 Every UI pull request must add a record under `docs/evidence/ui-delivery/` based on `docs/evidence/ui-delivery/TEMPLATE.md` and use `.github/PULL_REQUEST_TEMPLATE/ui-delivery.md`. The `ui-delivery-evidence` workflow checks recognized UI paths for that record. The guardrail validates structure only; reviewers must inspect the evidence and the user-visible flow.
