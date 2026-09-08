@@ -17,7 +17,10 @@ describe("Voice Profile inspection request boundary", () => {
     mocks.inspect.mockReset();
     mocks.envKey.mockReset();
     vi.stubGlobal("Deno", { env: { get: (name: string) => name } });
-    await import("../../supabase/functions/paige-voice-profile-admin/index");
+    // Execute the real Edge handler through Vitest's mocked runtime. Its Deno module
+    // graph is typechecked by the affected-edge CI gate, not the browser TS project.
+    const edgeHandlerPath = "../../supabase/functions/paige-voice-profile-admin/index.ts";
+    await import(/* @vite-ignore */ edgeHandlerPath);
   });
   const request = (body: unknown, auth = true) => new Request("https://example.test/voice-admin", {
     method: "POST", headers: { "Content-Type": "application/json", ...(auth ? { Authorization: "Bearer test-only" } : {}) }, body: JSON.stringify(body),
