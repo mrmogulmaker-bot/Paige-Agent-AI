@@ -75,9 +75,13 @@ Every paste Cowork produces for CC or Codex includes the line:
 
 Paige is the **AI COO** for a client-based service business — coaches, consultants, agencies, thought leaders, advisors. Not a chatbot. Not a CRM. An intelligent, tenant-authored, two-way client portal (§7) that orchestrates a team of specialist sub-agents (§8, §14) across a 10-department operating model (§16), and stays Paige-governable end-to-end so an operator or a tenant can drive it by voice or chat (§10, §20).
 
-**Two audiences, one brain (§7 + §8):**
+**Two audiences, one Paige Runtime Harness (§7 + §8):**
 - **For the operator/tenant:** pipeline, follow-ups, retainers, content, campaigns, at-risk triage, daily brief
-- **For each client:** hyper-personalized portal, onboarding, expert probing, answers, nurture
+- **For each client:** a deliberate client-scoped projection through the tenant's branded portal: onboarding, approved progress, messages, requests, tasks, documents, approvals, next steps, and bounded Paige help
+
+The **Tenant Client Portal is an MVP capability and competitive differentiator**. It is the governed,
+client-facing experience a Paige tenant provides to that tenant's own external clients. It is not the
+later **Paige Enterprise Success Portal**, which would serve Paige's direct enterprise customers.
 
 **The moat is intuitiveness (§36):** every capability enters through a path a non-technical owner can discover in <5 minutes. If the user has to learn how to prompt, we've regressed the category.
 
@@ -132,6 +136,10 @@ Canonical: **`docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md`**.
 7. **Support & Help** — how the client reaches the tenant, Paige, or platform support
 
 **5 stakeholders × rights matrix:** Client · Tenant/Coach · Sub-account · Agency · God/Super Admin, with **OWN · CONFIG · WRITE · READ · —** per pillar cell. See the LOCKED SPEC for the full matrix.
+
+**MVP Harness rule:** `Tenant business → shared governed Paige Runtime Harness → client-scoped portal experience`.
+Tenant-side Clients screens, portal configuration, routes, or invite primitives do not by themselves
+make this end-to-end client capability live.
 
 ---
 
@@ -242,6 +250,50 @@ remaining safe workflow stays truthfully resumable.
 
 This is the architecture contract, not a claim that every listed domain is currently connected.
 Each domain retains its status and acceptance evidence in its existing canonical record.
+
+#### Tenant Client Portal: MVP projection through the same Harness
+
+The Tenant Client Portal is a client-audience surface of the one Paige Runtime Harness, not a
+separate portal product, department agent, Brain, Harness, authority system, or memory. Its canonical
+path is:
+
+`Tenant business → shared governed Paige Runtime Harness → client-scoped portal experience`
+
+For every client-facing read, message, request, approval, task, document, status update, or
+Paige-assisted interaction, the Harness independently resolves the external client identity,
+sponsoring tenant, explicit client-to-tenant relationship, workspace and record scope, client role
+and consent, allowed shared information, tenant-defined authority and approval policy, applicable
+provider/file/document state, and verification, receipt, and Rail requirements. Breadth of Paige
+coordination never grants blanket client authority.
+
+The portal receives only a deliberate, client-scoped projection of canonical tenant information and
+approved shared work. It never automatically receives the tenant's full Second Brain, private Mind
+or Memory, Vault, Connected Accounts, internal team conversations, other clients, financial controls,
+private strategy, credentials, hidden prompts or reasoning traces, or autonomous action authority.
+
+The owner-complete MVP vertical is:
+
+1. Tenant owner selects or creates an existing canonical client relationship.
+2. Tenant explicitly invites or grants that client portal access.
+3. Client authenticates into a branded, tenant-scoped portal.
+4. Client sees only approved progress, messages, requests, tasks, documents, approvals, and next steps.
+5. Client may respond, ask Paige a bounded question, provide requested information, or approve/decline an item only where permitted.
+6. Every meaningful action crosses the same Spine authority, canonical write, verified readback, receipt, and Rail path.
+7. Tenant owner can review, revoke, or narrow access.
+8. Account/client/tenant switching, expired invitations, denied access, stale links, removed relationships, and unavailable provider/document states fail closed and explain the next safe action.
+
+**Current status: `PARTIAL`.** Current `main` contains a real external-client substrate: branded
+`/portal/:tenantSlug` sign-in, `/join/:token` registration, single-tenant client linkage, the
+authenticated `/app` shell, action-item responses, approval-status visibility, a platform
+legal-acceptance audit list, a dedicated Paige chat surface, and client-visible activity. The complete
+vertical is not proven: consumer-invite recipient binding in the final acceptance RPC; multi-workspace
+client membership and switching; revocation after acceptance; canonical tenant/client conversation
+and governed portal-tool execution; dedicated shared documents; client Planning/tasks; decision
+controls on approval records; tenant-facing support/escalation and booking; tenant service-agreement
+receipt/PDF; and authenticated isolation/denial/stale-session/recovery evidence remain unavailable,
+broken, or proof owed. Tenant-side
+Clients UI is management/configuration—not proof of the external-client journey. This correction
+does not authorize the dedicated Client Portal MVP build.
 
 #### Paige-owned Harness responsibilities
 
@@ -1866,7 +1918,7 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
 - ✅ **§34 Intelligence spine** (partial): `paige_prompt_template` · `paige_prompt_memory` · `paige_llm_trace` · `paige_eval` · `paige_subagents_talent` · `paige_action_bus_drainer` · `paige_action_worker_cron` · `studio_visual_critique_log`. Prompt-forge at `_shared/prompt-forge.ts`; visual-critique gate at `_shared/visual-critique-gate.ts`.
 - ✅ **`paige_owner_memory` table** — migration `20260810120000`, shipped in PR #406. L6/L8 memory table, distinct from `paige_prompt_memory`.
 - ✅ **Voice = Ivanna** (ConvAI agent live post 2026-08-08 hotfix; in-app chat voice via `_shared/tts-router.ts` `DEFAULT_TTS_VOICE`)
-- ✅ **§60 structural tier-lock** (#122 + #125, 2026-08-11) — `src/lib/tier/tierFeatures.ts` is the ONE HOME for tier→feature mapping (`hasFeature`/`useTierFeatures`), guarded by CI `lint:tier-features`. Owner-locked: **`customer_portal_invite` = Solo + Sub-account only** (server-enforced in `create_tenant_invite_token`, migration `20260823000000`); **Growth + Vibe Studio = Solo/Sub/Enterprise/God, NOT Agency** (route-gated via `RequireFeature`). Tier baselines in `docs/doctrine/tier-matrix.md`.
+- ✅ **§60 structural tier-lock** (#122 + #125 + Enterprise hybrid #460, 2026-08-11) — `src/lib/tier/tierFeatures.ts` is the ONE HOME for tier→feature mapping (`hasFeature`/`useTierFeatures`), guarded by CI `lint:tier-features`. Current owner-locked rule: **`customer_portal_invite` = Solo + Sub-account + Enterprise**; Agency + Super Admin excluded. **Growth + Vibe Studio = Solo/Sub/Enterprise/God, NOT Agency** (route-gated via `RequireFeature`). Tier baselines in `docs/doctrine/tier-matrix.md`.
 - ✅ **Money Spine Lane B-ii-a + B-iv** merged.
 - ✅ **§27 facelift sweep** (PR `a2df4436`)
 - ✅ **§37 amendment** (PR #232)
@@ -3271,9 +3323,15 @@ Recorded here for durability; §30 verdicts noted where CC's diagnostic already 
 - ❌ **#60 — Antonio Daniel LLC misclassified `SUB_ACCOUNT`** in the attention queue — tier reclassification audit (§51/§57 anchor case b).
 - ❌ **#61 — Super Admin Analytics gap** (empty vs. a sub-account's live Analytics) — §35 violation; at-least-parity required before shipping more sub-account analytics (§57 anchor case c).
 
-### Post-MVP CX workstream
+### Tenant Client Portal — MVP commitment; dedicated build not started
 
-Per `docs/strategy/client-experience-workstream-2026-07-21.md` — CX-1 (polish, ships anytime) → CX-2 (composable) → CX-3 (client-facing Paige) → CX-4 (transformation primitive) → CX-5 (Marketplace client blocks + Money Spine Lane B-vi).
+The owner-complete Tenant Client Portal vertical is launch-blocking MVP scope and is currently
+`PARTIAL`. It must reuse the one Harness and the existing canonical client relationship, invite,
+Spine, Rail, Brain/Mind/Memory, provider-state, and release contracts. The larger historical CX
+programme is now split: the secure branded owner/client vertical is MVP; composable Marketplace
+blocks, revenue-share, broad transformation catalogs, and third-party developer expansion remain
+later opportunities unless separately promoted. No implementation starts until the owner explicitly
+starts the dedicated Client Portal MVP build.
 
 ### Critical DOC gaps (files referenced but ABSENT from `docs/`)
 
@@ -3306,7 +3364,7 @@ Per `docs/strategy/client-experience-workstream-2026-07-21.md` — CX-1 (polish,
 | #5 | Owner Trilogy Customer Portal Taxonomy — Platform Team vs Tenant Team distinction row (companion to the taxonomy-matrix doc edit) | queued | — |
 | CX-1 | Client Portal config polish | pending | — |
 | CX-2 | Composable portal architecture | pending | CX-1 |
-| CX-3 | Client-facing Paige persona | pending | CX-2 |
+| CX-3 | Client-facing Paige experience through the one Harness | pending | CX-2 |
 | CX-4 | Transformation primitive | pending | CX-3 |
 | CX-5 | Marketplace client-side blocks | pending | CX-4 + Money Spine B-vi |
 
@@ -3320,6 +3378,7 @@ Per `docs/doctrine/canonical-build-order.md` (LIVING, updated 2026-08-08):
 - **Wave 2** ✅ COMPLETE (except #247 tail)
 - **Wave 2.5** 🔥 FIRING — Playwright dev-dep, live-drive backfills, per-sub-account curation, §3.b doctrine paste, #247
 - **Wave 4 = MVP HUB** 🎯 NEXT — 4 Owner Trilogy pillars + 5 Cowork-locked product specs + BRD-promoted items (L8 Memory Fabric, Interactive Analytics UI, Playwright web-browsing, Promo Account Type, Chat compaction/history/tasking)
+- **Tenant Client Portal MVP vertical** — explicit grant, branded client authentication, approved shared projection, bounded two-way Paige interaction, governed actions, owner revoke/narrow, and fail-closed switching/expiry/relationship/provider states. Current status `PARTIAL`; dedicated build requires a separate owner start.
 - **Wave 3** ⏸️ DEFERRED past W6 (Practice Blueprints)
 - **Wave 5** 📋 RESERVED
 - **Wave 6-7** 📋 QUEUED

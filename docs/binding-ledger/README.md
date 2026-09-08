@@ -124,11 +124,13 @@ is `NO` for every surface (per the Mind integration matrix). Concretely:
   (authority governed server-side; the visible dial is a non-authoritative fixture) ·
   `settings.integrations` (n8n writes wired to the Rail capability-run write; zero rows in prod) ·
   `settings.billing` (safe status source contract shipped, not injected; secrets isolated) ·
+  `clients.portal` (real external-client gateway/linkage/shell/action substrate; complete
+  client-scoped shared records, authority, revoke/switch, verification and runtime proof remain) ·
   `paige.workspace` (handoff carries client scope but drops the intended prompt, #771, and still
   accepts raw prose).
 - **`INTENTIONALLY_ISOLATED`**: `settings.vault` · `settings.security-data`.
 - **`UNAVAILABLE`** (contract not built, sourceless, or awaiting a Spine Change Request): the rest —
-  Command Center (Systems Check / Mind tab), all Clients surfaces, Calendar, Catalog, Sales, Overview,
+  Command Center (Systems Check / Mind tab), Clients People/Conversations/Calendar, Catalog, Sales, Overview,
   Performance, Analytics, Marketplace, Connections, Vibe Studio, and the intentionally-separate
   Operator console.
 
@@ -159,7 +161,7 @@ shrinks the target — it names the gap between present proof and the full opera
 | Clients → People | `UNAVAILABLE` | Paige coordinates a governed follow-up whose outcome is recorded (owner UI edits also Rail-visible) | no Mind-safe lens; owner's own UI write emits no Rail (#757 "do not start") | resolve producer gap first |
 | Clients → Conversations | `UNAVAILABLE` | Paige sends a governed reply, delivery verified + Rail-logged | message bodies forbidden to Mind | future transcript-evidence ingestion |
 | Clients → Calendar | `UNAVAILABLE` | Paige books/reschedules a real meeting, truthful attribution, verified Rail outcome | FU-3 Rail contract absent; attribution untruthful (#786); six-PR collision | resolve #786 + FU-3 |
-| Clients → Portal | `UNAVAILABLE` | _Out of scope_ — separately owned Client-Experience product; safe seam only | separately owned product surface | out of scope |
+| Clients → Portal | `PARTIAL` | Tenant grants a client-scoped portal experience through the one Harness; meaningful actions verify and emit Rail | real external portal substrate; complete shared records, revoke/switch, approval and authenticated isolation proof remain | dedicated Client Portal MVP build, only after owner start |
 | Settings → Setup | `PROOF_OWED` | Paige helps complete real business context, verified on save | `business_context.readiness` deployed + injected; owner UI-flow proof owed | Phase 4.4 authenticated proof |
 | Settings → Team | `PROOF_OWED` | Paige executes a real team change (invite/role) on confirmation, verified | `team.authority` wired; PAIGE can act (capability PARTIAL); auth proof owed | Phase 5 |
 | Settings → Connections | `UNAVAILABLE` | Paige completes a real provider/comms connection the next check verifies (never a secret) | safe subset unwired; credentials isolated; private finding #788 | Phase 5 |

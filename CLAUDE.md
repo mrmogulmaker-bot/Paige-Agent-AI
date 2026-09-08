@@ -425,11 +425,20 @@ at once**:
 - **For the staff/coach:** surfaces what each client needs, drafts the follow-up, flags
   at-risk, proposes and (on approval or autonomously per policy) takes the next move.
 
-Two-way communication, two-way intelligence — **one brain facing both sides.** The
+Two-way communication, two-way intelligence — **one Paige Runtime Harness facing both sides.** The
 portal is the product; the intelligence is the moat. It must be **tenant-authored** so
 each coach's Paige is native to *their* practice — persona, probing questions, journey,
 and templates configured per tenant (the "Playbook" model), never a hardcoded vertical.
 Every build decision serves this.
+
+**Tenant Client Portal MVP correction (owner: Antonio, 2026-09-08).** The Tenant Client Portal is
+MVP scope and a competitive differentiator. It is a deliberate client-scoped projection through the
+one shared Harness—never a separate portal agent, Brain, memory, authority system, or app logic.
+`Tenant business → shared governed Paige Runtime Harness → client-scoped portal experience`.
+Every client operation independently resolves external client, sponsoring tenant, relationship,
+workspace/record scope, role/consent, allowed sharing, tenant policy, provider/file/document state,
+verification, receipt, and Rail. A future Paige Enterprise Success Portal for Paige's direct
+enterprise customers is separate later scope and is not authorized here.
 
 ## 8. Paige runs a team — AI orchestration of two coordinated departments.
 
@@ -2075,7 +2084,7 @@ the ability to customize on top of that."*
   silently fall below it.
 
 **Baseline the owner has LOCKED (starting content — extend as features are added):**
-- **Customer portal access / invite sending → Solo + Sub-account ONLY.** Agency + Super Admin do NOT
+- **Customer portal access / invite sending → Solo + Sub-account + Enterprise.** Agency + Super Admin do NOT
   get it (an Agency manages sub-accounts, not a direct consumer client book; Super Admin manages
   tenants).
 

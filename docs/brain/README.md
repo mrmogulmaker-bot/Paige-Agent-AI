@@ -202,6 +202,16 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 
 ## Architecture index
 
+**Tenant Client Portal routing (owner correction 2026-09-08):** before adding or changing any
+client-facing model, skill, message, request, approval, task, document, portal tool, provider, or
+external action, read the Master Runtime Harness decision first, then
+`docs/product/BRD-MVP-2026-08-08.md`,
+`docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md`,
+`docs/strategy/client-experience-workstream-2026-07-21.md`, and
+`docs/handoff/two-way-client-portal-audit.md`. The Tenant Client Portal is a `PARTIAL` MVP
+capability projected through the one shared Harness. It is not a separate Brain/agent/runtime, and it
+is distinct from any later Paige Enterprise Success Portal for Paige's own enterprise customers.
+
 | Path | One-line | When to read |
 |---|---|---|
 | `docs/architecture/CANONICAL-SYSTEM-ARCHITECTURE-2026-08-08.md` | Canonical system architecture (newest, 2026-08-08) | First stop for "how is the system wired?" |
@@ -227,7 +237,7 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 | `docs/strategy/agency-surface-competitive-research-2026-07-25.md` | Agency surface competitive research + proposal | Agency-surface features |
 | `docs/strategy/marketplace-competitive-landscape-2026-07-22.md` | Marketplace competitive landscape | Marketplace positioning |
 | `docs/strategy/monetization-rollout-2026-07-21.md` | Monetization rollout strategy | Monetization sequencing |
-| `docs/strategy/client-experience-workstream-2026-07-21.md` | Client-experience workstream strategy (§7/§8) | Client-portal experience work |
+| `docs/strategy/client-experience-workstream-2026-07-21.md` | Tenant Client Portal MVP vertical plus separately gated later client-experience expansion (§7/§8) | Client-portal experience work, after the Master Harness decision and locked portal matrix |
 | `docs/audits/paige-secure-browser-audit-2026-09-06.md` | Paige Secure Browser / Twin Phase-0 audit — current-state matrix (research LIVE/PARTIAL, credentialed modes UNAVAILABLE, no browser provider wired), collision packet vs the owner-locked five-slice plan, provider evaluation (the two distinct "Twin" vendors twin.so vs twin-browser.com disambiguated with dated sources; Browserbase/Anchor/Steel evidence), three-mode security architecture, Phase 0–4 roadmap; **owner-ruled 2026-09-07** — owner-direct-login + provider-held-persistent-session custody (opaque reference only), Browserbase adopted as PROPOSED Phase-1 candidate pending review | Any Secure Browser / Twin / connected-account-via-browser / owner-assisted-login / bounded-crawl work; "do we have a browser capability?" |
 | `docs/audits/money-spine-lane-b-i-discovery-2026-07-25.md` | Money Spine Lane B-i revenue-plumbing discovery | Money-spine build |
 | `docs/audits/b-iv-38-connect-posture-2026-07-26.md` | B-iv §38 Connect-posture diagnostic (spike, no code) | Stripe Connect posture (§38) |
