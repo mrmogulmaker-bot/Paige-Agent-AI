@@ -6,6 +6,8 @@ Status: #1080 merged; authenticated production acceptance PROOF OWED — workstr
 
 ## #1080 release checkpoint — 2026-09-08
 
+Public production browser smoke: both domains returned HTTP200 with the expected Paige title and zero page runtime exceptions. Browser contexts were unauthenticated; this does not prove the signed-in transcript interaction. The owner acceptance request is the remaining runtime gate.
+
 Production deployment `dpl_7V1rPr1apLDUVujH9uZiWc3ZLH7y` is READY from exact main commit `42a8d5aa760877fc34316ab3712523f86f95b19e`. Both `https://app.paigeagent.ai/version.json` and `https://paigeagent.ai/version.json` serve `42a8d5aa760877fc34316ab3712523f86f95b19e-mtt84zjl`; Vercel aliases both domains to this deployment. Migrations/Edge changes: NOT_APPLICABLE. Channel: production; customer release identity: none. This verifies deployment, not authenticated acceptance. Recovery is a reviewed revert of the single portal guard only if a new regression is demonstrated; no data reset is involved.
 
 Fresh alternate independent reviewer approved exact PR head `d7b66d75716890fa9b36275b70a63e3b42a4ffad`, independently ran31/31 shell ownership tests and inspected4051 full-test passes and the exact-head127/127 rendered report. No actionable specification, race, security or code findings. GitHub verify/audit/UI evidence checks passed for that head; Supabase Preview appropriately skipped. PR #1080 merged under explicit owner release authority as `42a8d5aa760877fc34316ab3712523f86f95b19e` at18:11 EDT. Product diff is solely the parent-node guard in `src/components/tenant-shell/TenantCommandCenterShell.tsx`; no timer, delay, threshold, second controller or context change.
