@@ -35,6 +35,24 @@ bounded working reasoning/evidence, not automatic durable memory; and **Memory**
 governed, owner-confirmed knowledge only. See `paige-spine-and-rail-state.md`,
 `paige-memory-contract.md`, and `paige-skills-inventory.md` rather than copying their contracts here.
 
+### One runtime, many capability domains (owner correction 2026-09-08)
+
+`One Paige → one shared governed runtime → coordinated work across many platform domains.`
+
+“Department,” “VP,” “specialist,” and “sub-agent” identify capability ownership, routing, or a
+bounded worker role. They do **not** create another Paige, Brain, Harness, memory, authority system,
+job fabric, evaluator, cost controller, or disconnected tool surface. Command Center and strategy;
+Clients and relationships; Campaigns/content/social/growth; Sales and Pipeline; Calendar/tasks;
+Analytics; Vibe Studio; Vault/Connections/Secure Browser; Settings and workspace configuration; and
+future Platform Operator operations all register into the same Harness contract in the Master.
+
+A cross-domain task remains one Paige-led flow. Every domain hand-off carries bounded references,
+authority-relevant provenance/scope references, and receipts through the shared job/Spine path; it
+does not copy raw context into an “agent memory” or carry an inherited authority grant. Each
+execution step independently re-resolves tenant, actor, workspace, role, tool scope, provider state,
+approval, budget, and verification. Full-platform coordination therefore never means blanket
+automatic authority.
+
 **Every shipped capability updates the relevant Second Brain record and completes its eligible
 Runtime Harness path.** One without the other is half-done.
 
@@ -115,7 +133,9 @@ When any surface, function, department or URL ships, it is not done until all si
       Browser, handoff, and card surface reuses the one workspace and Spine path: server-resolved
       scope → shared authority decision → canonical tool/RPC → verified readback → detailed receipt
       + Rail evidence → truthful modality presentation. No surface may fork authority, mutation,
-      memory, or upgrade a capability's evidence state. See
+      memory, or upgrade a capability's evidence state. A department/domain registration follows
+      the same rule: its skill, adapter, record, or tool joins the shared Harness and may not create
+      separate operating logic or memory. See
       `../doctrine/paige-modality-neutrality.md`.
 
 **The test, every time:** *"If the operator asks through any Paige modality, can Paige actually

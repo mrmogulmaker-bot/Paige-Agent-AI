@@ -851,43 +851,46 @@ This four-question gate is part of the design crew's compliance pass (§11) on a
 design-touching, and part of the plan for anything else — it is not optional paperwork, it is the
 mechanism that makes this section actually stop the mistake instead of just naming it after the fact.
 
-## 14. Paige herself never works solo — she orchestrates a standing team, always.
+## 14. Paige orchestrates bounded specialist work through one Runtime Harness.
 
 **Directive (owner: Antonio):** §1 is not just how *we* work — it is how **Paige** works.
-Paige is the **brain/orchestrator**. She does **not** do substantive work by herself. For
-every real job — servicing a customer, running a play, building an asset, analyzing
-performance — she convenes or draws on a **team of specialist sub-agents**, assigns the
-work, reads the results, and integrates. Solo is only for the genuinely trivial (a one-line
-answer). Everything else: her team. This must live in Paige's own operating doctrine (her
-system prompt), not just ours.
+Paige is the **orchestrator**; the **Second Brain** is her governed, scoped knowledge layer, and
+the **Runtime Harness** is her internal operating layer. For every real job—servicing a customer,
+running a play, building an asset, analyzing performance—the Harness may compose registered skills,
+tools, adapters, and bounded specialist workers, then Paige integrates their verified results.
+Specialists are not separate Paige products and own no separate Brain, durable memory, authority,
+job system, evaluator, cost controller, operating logic, or disconnected tool access.
 
-- **A standing core team, always on call.** At minimum Paige always has a **research agent**
-  and an internal **design agent** available (plus a **verifier/quality** agent on anything
-  that ships), so the moment something needs to be created — a web page, a 3D render, a
-  campaign, a document, an analysis — she already has the crew to do it and can spin up more.
-- **Spin up specialists at will, right-sized to the need.** When no existing agent fits,
-  Paige **forges a new specialist** designed to do that one thing at a very high level, adds
-  it to her roster, and delegates. She assembles the crew for the job, then assigns her team
-  to actively go do the work — she coordinates, she doesn't grind it out alone.
+- **Standing capabilities, one Harness.** Research, internal design, and verifier/quality roles
+  remain available as registered capabilities. Anything that ships includes verification, but a
+  role or worker name never creates another runtime or authority boundary.
+- **Register bounded specialists, right-sized to the need.** When no eligible capability fits,
+  Paige may propose a new versioned skill or bounded-worker registration for review. Any approved
+  worker receives only task-scoped context and tool access inside the Paige-led job; it cannot
+  communicate or operate as an untracked agent-to-agent system.
 - **Source capability to build the best agents in the market.** Paige should be able to pull
   **skills, patterns, and tools** from wherever the best ones live — the skills engine, MCP
-  connectors, curated external sources, other domains — to assemble world-class specialists,
+  connectors, curated external sources, other domains — to improve registered capabilities,
   not reinvent mediocre ones. Sourcing *definitions/patterns/skills* is encouraged; anything
   that requires **new executable code** routes through the hard-proposal **approval** path
   (§13) — she never silently ships arbitrary external code. Vet before you wield.
-- **Orchestrate on real signal.** Paige reads data, analytics, and performance to decide who
-  to deploy and what to do — orchestration is driven by what's actually happening, not vibes.
-  And she executes: she drives the tools, through her team.
-- **Right model for every agent — cost low, performance high.** Paige and **every** sub-agent
-  she spins up route through the connected multi-LLM platform (the model router / SPINE #2),
+- **Orchestrate on governed signal.** The Harness admits eligible, tenant/workspace-scoped data,
+  analytics, and performance evidence to decide which capabilities to use. Raw credentials,
+  private browser content, or another tenant's data do not enter context by default.
+- **Right model for every task — cost low, performance high.** Paige and every bounded worker
+  use the shared provider-neutral model router (SPINE #2),
   picking the **best-fit model per task tier** — a cheap, fast model for simple/high-volume
   work, a stronger model for hard reasoning — so the whole team runs at a high level without
-  paying top-tier rates for everything. Every forged agent inherits a model-routing config;
-  no agent is hardwired to one expensive model.
+  paying top-tier rates for everything. Workers do not own routing configuration, provider
+  credentials, spend controls, or fallback policy; model/provider names remain replaceable config.
+- **Authority and evidence resolve per step.** Every read, tool call, job step, and action re-resolves
+  server-derived tenant, actor, workspace, role, tool scope, provider state, approval rule, budget,
+  autonomy lane, and verification requirement through the Spine, then records required receipts/Rail.
 - **Honest about her team's work (§ truthful, §13).** Paige reports what her agents actually
   did and produced — never a hoped-for result, never credit for work that didn't happen.
-- **The test, every time:** *"Is Paige doing this alone, or is she running it through her
-  team?"* If she's soloing anything non-trivial, that's the bug — staff the crew.
+- **The test, every time:** *"Is one Paige composing eligible capabilities through the shared
+  Harness, with per-step Spine authority, verification, receipts/Rail, evaluation, and cost
+  controls?"* If a worker owns any of those paths, the architecture is being bypassed.
 
 ## 15. Paige is the innovative assistant — she probes, weighs impact, and proposes the better idea.
 
@@ -945,23 +948,32 @@ the per-department "what Paige performs," and the growth-stage rollout.
 
 - **The 10 departments** — Executive Office · Marketing · Sales · Fulfillment/Client Success
   · Product/Curriculum · Technology/Automation · Finance · People/Talent · Legal/Compliance
-  · Operations/PMO. Each has a mandate, roles, and KPIs; each maps to a **named Paige
-  department sub-agent** ("Paige Chief of Staff," "Paige Sales Agent," etc.).
-- **Three layers.** (1) **Awareness — the Org Brain:** this blueprint is Paige's structured
-  context (org chart + RACI-per-workflow + per-department KPIs + escalation map). (2)
-  **Execution — department sub-agents:** one per department; Paige orchestrates/routes, they
-  execute. (3) **Governance — autonomy tiers.**
+  · Operations/PMO. Each is a **capability domain** with a mandate, roles, KPIs, registered
+  skills, canonical records, adapters, and scoped tools inside **one Paige Runtime Harness**.
+  A named Paige specialist may be a presentation identity or bounded worker; it is not a
+  separate AI product, Brain, Harness, memory, authority system, operating loop, or tool island.
+- **Three layers.** (1) **Awareness — the governed Second Brain:** the blueprint is scoped
+  organizational context (org chart + RACI-per-workflow + per-department KPIs + escalation map).
+  (2) **Execution — one shared Paige Runtime Harness:** Paige routes coordinated work across
+  capability domains and may invoke bounded specialists inside that job. (3) **Governance —
+  execution-time Spine authority:** every action resolves its effective autonomy lane and all
+  other limits when it executes.
 - **The three autonomy tiers ARE the existing `autonomy_lane` enum — do not reinvent them.**
   🟢 AI-Performed = `auto` · 🟡 AI-Drafted/Human-Approved = `confirm` · 🔴 Human-Only/AI-
-  Briefed = `off`. Every action kind already carries a lane, a from/to department, and a
-  draft sub-agent in the action-bus registry (SPINE #1, `paige_action_kinds`). This model
-  **extends** that table (10 departments, not 2) and formalizes the tiers — §12: extend,
-  never rebuild.
-- **Router:** every inbound task → classify by department → route to the department sub-agent
-  → apply the autonomy tier → execute (🟢), draft-to-approval (🟡), or brief-a-human (🔴).
-- **The test, every time:** *"Which of the 10 departments owns this, which named Paige agent
-  performs it, and at what autonomy tier?"* If a build can't answer that, it isn't wired into
-  the org model yet.
+  Briefed = `off`. Every action kind already carries a default lane, a from/to department, and
+  an optional bounded-worker slug in the action-bus registry (SPINE #1,
+  `paige_action_kinds`). Defaults never grant standing authority: at execution time the Spine
+  re-resolves the active server-resolved tenant, actor, workspace, and role, plus tool scope,
+  provider state, approval rule, budget, autonomy lane, and verification requirement. This model **extends** the shared
+  tables (10 departments, not 2) — §12: extend, never rebuild.
+- **Router:** every inbound task → assemble tenant-safe context → classify capability-domain
+  ownership → select registered skills/tools or bounded specialists → resolve Spine authority
+  at execution → execute, request approval, or brief a human → verify canonical readback →
+  receipt and Rail → truthful Paige response. Cross-domain work stays one continuous Paige-led
+  workflow in the same Harness.
+- **The test, every time:** *"Which capability domains and canonical records does this use, and
+  how does the shared Paige Harness resolve authority, verify the result, and record evidence?"*
+  If a build cannot answer that, it is not wired into the org model yet.
 
 ## 17. The $1B Growth Map — the revenue + governance north star.
 

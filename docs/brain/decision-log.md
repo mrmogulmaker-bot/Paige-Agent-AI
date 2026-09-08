@@ -1,5 +1,21 @@
 # Decision Log — chronological one-liners
 
+- **One Paige Runtime Harness across every platform domain (2026-09-08, owner-approved architecture correction).**
+  Departments, VPs, specialists, and sub-agents are capability domains, presentation identities, or
+  bounded workers inside one Paige—not separate AI products. The canonical rule is
+  `One Paige → one shared governed runtime → coordinated work across many platform domains.` Every
+  present and future domain joins the same tenant-safe context, Second Brain, Spine, canonical
+  records, verification, receipts/Rail, durable jobs, evaluation, and cost-control path. One
+  continuous Paige-led workflow may move from goal/conversation through campaign and approved
+  content work, contact update, Pipeline movement, follow-up scheduling, performance readback, and
+  an operating brief without creating domain-specific memory or operating systems. A domain may
+  register versioned skills, adapters, canonical records, scoped tools, and bounded workers only.
+  Each execution step still re-resolves active tenant, actor, workspace, role, tool scope, provider
+  state, approval, budget, and verification; full-platform intelligence never grants blanket
+  automatic authority. This corrects conflicting “own VP memory/autonomy” language in the proposed
+  C-suite roster and changes documentation only—no product code, active workstream ownership,
+  provider wiring, tenant data, deployment, production behavior, or customer release.
+
 - **Paige transcript-anchor identity-race correction shipped (2026-09-08, PR #1057).**
   PR #1057 merged as `af752d7a67c71f71e28a31ab87a962584b42105a`; READY Vercel deployment
   `dpl_FrWHHEkMqvtfnNcixPqkpZBufPX6` serves exact build

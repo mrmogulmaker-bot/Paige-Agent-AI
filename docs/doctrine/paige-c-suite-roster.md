@@ -4,7 +4,17 @@
 **Date:** 2026-07-27
 **Status:** Doctrine draft — § section below is ready to paste into `CLAUDE.md` (recommended slot: §42, following the §39/§40/§41 amendments)
 **Numbering note (updated 2026-08-04):** the original §42 recommendation predates the §39 peer-gate amendment that merged 2026-08-04 (commit `1e87894e`). Actual § assignment when this roster is filed to `CLAUDE.md` defers to Task #93 doctrine paste slice — the roster takes whatever number is next-available at that time (likely §43 given §39 = peer-gate, §40 = Integrity Governance from Trilogy doc, §41 = Platform Spine amendment per Task #239).
-**Purpose:** Formalize the named executive team pattern for Paige — the operational concretization of §14 (Paige runs a team) with 7 named AI identities (PAIGE + 6 VPs), each addressable in code, UI, and marketing.
+**Purpose:** Formalize the named executive-team presentation and capability-ownership pattern for Paige — the operational concretization of §14 (Paige runs a team) with PAIGE + 6 VP domains addressable in code, UI, and marketing.
+
+> **Current owner correction — 2026-09-08:** this proposed roster describes capability domains,
+> presentation identities, and bounded specialist roles inside **one Paige Runtime Harness**. It does
+> not authorize seven AI products, separate department agents, separate Brains, separate Harnesses,
+> separate authority or job systems, disconnected tools, or VP-owned “agent memory.” The canonical
+> rule is `One Paige → one shared governed runtime → coordinated work across many platform domains.`
+> Every domain integrates through the same tenant-safe context, Second Brain, Spine, execution-time
+> authority, canonical records, verification, receipts/Rail, jobs, evaluation, and cost controls.
+> This correction supersedes any older wording below that could be read as runtime, memory, or
+> autonomy isolation. Canonical authority: `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` Section 3.
 
 ---
 
@@ -30,29 +40,29 @@
 
 **How each VP shows up (three surfaces):**
 
-- **In code (functional but named):** class + module names carry the VP name — `_shared/vera-verification-agent.ts`, `send-message` reads `vera_consent_check()`, `zion_scenario_model()`, etc. Never anonymous `sub_agent_1` or `compliance_worker_v2`. Every named agent is discoverable at `paige_agents.name = 'VERA'` (a new registry table) and callable via a consistent seam per §10 (Paige-callable).
+- **In code (functional but named):** presentation/capability metadata may carry the VP name through established configuration and the existing `paige_subagents`/department/skill registry homes. Never create a new agent registry, callable seam, or authority owner for branding. A VP identity remains callable only through the consistent §10/Spine seam.
 - **In the UI (identity-based trust):** tenants see which VP is doing what for them — "VERA is verifying your identity — 30 seconds" · "ZION drafted your Monday competitive brief" · "MERIT flagged your insurance renews in 47 days" · "MENTOR: your Meta pixel stopped firing on 7/23, here's the fix." Never anonymous "Paige is processing." Every named agent has a distinct icon, tone (VERA precise; CURA warm; ZION elevated + directional; MENTOR technical + brief; MERIT stewarding + careful; NEXUS energetic + market-aware), and Command Center tile pattern.
 - **In marketing (the org chart IS the pitch):** investor deck, landing page, sales conversation — "meet the Paige team: PAIGE runs it, VERA verifies, NEXUS grows, CURA cares for clients, MENTOR operates, MERIT stewards money and people, ZION owns strategy." Six-word summaries per VP become memorable identities the market can name back to us.
 
 **Coordination rules (how the team works together):**
 
-- Cross-VP work routes through **PAIGE** (as CEO orchestrating) OR through the **§8 action bus** (VP-to-VP hand-offs are first-class actions — e.g., NEXUS drafts a sales sequence → hands off to VERA for consent compliance check → hands off to MENTOR for delivery infrastructure verification → returns to NEXUS for send).
-- Each VP inherits her own **autonomy tier** per §16 (auto / confirm / human-only). Default tiers per the roster:
+- Cross-VP work routes through **PAIGE's one Runtime Harness**; the **§8 action bus** is a shared job/handoff seam inside that Harness, not an alternative operating system. A hand-off carries bounded references, authority-relevant provenance/scope references, and receipts—never copied raw context, separate memory, or an inherited authority grant. The receiving step re-resolves authority through the Spine. Example: NEXUS drafts a sales sequence → VERA checks consent policy → MENTOR verifies delivery readiness → the governed flow returns to NEXUS, all under one Paige-led job.
+- No VP owns an autonomy tier. The historical defaults below are domain risk guidance only; every action resolves its effective lane at execution time from active tenant, actor, workspace, role, tool scope, provider state, approval rule, budget, and verification requirement through the shared Spine:
   - **VERA** — default **confirm** on nearly everything (legal + trust: better to over-check than under-check)
   - **MERIT** — default **confirm** on money decisions, **auto** on tracking/reminders
   - **NEXUS** — **auto** on approved sequences, **confirm** on new drafts
   - **CURA** — **auto** on lifecycle nudges, **confirm** on retention-critical outreach
   - **MENTOR** — **auto** on infrastructure health, **confirm** on config changes
   - **ZION** — **confirm** on strategic recommendations (never autonomous strategy)
-  - **PAIGE** — routes based on the specific action's tier, never has her own tier separate from her VPs
-- **§39 Integrity Governance boundaries** are checked by **VERA** before any VP acts on restricted topics. Every sub-agent + Paige-forged specialist + VP-owned action inherits the tenant's boundary register through VERA.
-- **Tenant learned preferences** (§26 semantic memory) can be scoped to an individual VP: "VERA, don't verify with WhatsApp — I don't want my clients getting WhatsApp OTPs" — the boundary lives on VERA's memory + is honored by all VERA sub-agents forever.
+  - **PAIGE** — routes by the specific action's resolved authority; neither Paige nor a domain identity can raise it
+- **§39 Integrity Governance boundaries** are checked before restricted work executes. VERA may contribute a policy signal, but no VP or worker inherits authority through VERA; the shared Spine re-resolves the tenant boundary and action authority.
+- **Tenant learned preferences** use the one governed Memory contract and may carry domain-applicability metadata: “VERA, don't verify with WhatsApp.” That is not a separate VERA memory store; every eligible domain worker reads the same confirmed, tenant-scoped knowledge through the Harness.
 
 **Tenant addressing patterns:**
 
-- Tenants can **address any VP directly** in the Paige chat: "ZION, what should I do about my Q2 pricing?" — chat routes to ZION's specialist context with her tools + memory. "VERA, verify this client's identity before I add them" — direct VERA invocation.
+- Tenants can **address any VP directly** in the Paige chat: “ZION, what should I do about my Q2 pricing?” routes the one Paige Harness to the ZION capability domain with eligible scoped context, skills, and tools. “VERA, verify this client's identity before I add them” selects VERA's domain expertise; neither creates a separate runtime or memory.
 - Tenants can **address PAIGE for orchestration**: "Paige, coordinate a plan across the team for my Black Friday launch" — PAIGE splits work across NEXUS (campaign) + CURA (fulfillment prep) + ZION (pricing strategy) + MERIT (cash projection) via §8 action bus, returns a coordinated brief.
-- Sub-specialists forged **under a VP** (by that VP, per §14) are addressable as **"VP.SubAgent"**: "ZION.PricingModeler" · "VERA.KYCScreener" · "MERIT.DunningDrafter".
+- Bounded sub-specialists registered to a VP capability domain (per §14) may be addressable as **"VP.SubAgent"**: "ZION.PricingModeler" · "VERA.KYCScreener" · "MERIT.DunningDrafter". The name does not create a runtime or authority boundary.
 
 **The C-suite is the org, and the org is the OS.** Per §35 (OS north star), Paige is not an app — she is an operating system for the tenant's business. An OS has named services, not anonymous processes. The C-suite IS the OS's named service layer. When Paige eventually runs on a household (§35 future context) or a portfolio, the same 7 named agents apply — their DOMAIN of concern shifts per Playbook (VERA still verifies, but the "identity" she verifies for a household is spouse + kids access levels; ZION still owns strategy, but the "strategy" she owns is family financial goals) — the ROSTER stays. That's the OS pattern.
 
@@ -66,16 +76,16 @@
 **Doctrine integrations (this section threads through others):**
 
 - **§14 (Paige runs a team)** — §42 is the concrete operational form of §14. §14 says "Paige orchestrates a team of specialists"; §42 names them and formalizes the roster.
-- **§16 (10-department org)** — §42 collapses the 10 departments into 6 VP-led clusters + PAIGE as Executive Office. Each VP inherits her cluster's autonomy defaults, action-bus routing, and departmental sub-agents.
+- **§16 (10-department org)** — §42 presents the 10 departments as 6 VP-led capability clusters + PAIGE as Executive Office. Each cluster registers skills, adapters, records, and scoped tools into the same Harness; its risk guidance cannot replace execution-time Spine authority.
 - **§17 ($1B growth-map)** — ZION owns the growth-map operationally. She's the VP who knows the tenant's stage and calibrates strategic guidance to it.
-- **§26 (semantic memory / prompt-forge)** — each VP has her own tenant-scoped semantic memory + prompt DNA. VERA's prompt DNA is precise + legal-adherent; NEXUS's is voice + market-aware; ZION's is strategic + long-horizon. Cross-VP semantic memory isolation is a §26 extension.
+- **§26 (semantic memory / prompt-forge)** — one tenant-scoped governed Memory may support domain-specific retrieval and versioned prompt/skill configuration. VERA may be precise, NEXUS market-aware, and ZION strategic, but none owns a separate semantic-memory store or hidden operating logic. Tenant and workspace isolation is enforced across the shared Harness, not between invented VP brains.
 - **§35 (OS north star)** — the C-suite IS the OS's named service layer.
 - **§36 (5-minute test)** — 7 named agents is the memorable ceiling; adding more requires §36 justification. A tenant can name the VP responsible for the surface they're on within 5 minutes of first login. Onboarding surfaces each VP progressively (VERA first at signup; MERIT when billing engages; CURA when first client arrives; NEXUS when first campaign fires; MENTOR when first integration connects; ZION at the first strategic decision moment).
 - **§39 (Integrity Governance)** — VERA enforces §39 boundaries before any VP acts on restricted topics.
 - **§40 (Revenue-Stage Awareness)** — ZION owns the revenue-stage primitive operationally.
 - **§41 (Entity-Type Awareness)** — MERIT (legal-adherence side — what filings the entity type requires) + VERA (statutory-compliance side — what boundary the entity type creates for what Paige can suggest) co-own entity-type awareness.
 
-**The test, every time:** *"For every action Paige takes on behalf of a tenant, can I name which VP owned it, why she owned it, and at what autonomy tier she executed?"* If the answer is "some anonymous sub-agent" or "just Paige" — the roster isn't wired.
+**The test, every time:** *“For every action Paige takes, can I name the capability domain, the canonical record, and the tenant/actor/workspace/role/tool/provider/approval/budget/verification decision resolved at execution time?”* Domain attribution without that shared-Harness authority evidence is not wired.
 
 **Corporate structure Paige must know (owner-ruled 2026-08-11):**
 
@@ -133,8 +143,8 @@ Scope is determined by MODE, never inferred from message content. Every VP knows
 - Represents the whole team in the tenant chat — every "Paige is drafting..." moment is PAIGE-as-orchestrator, sometimes with a VP handling the actual specialist work
 
 **What she does NOT do:**
-- Direct execution of specialist work (that's the VPs' job)
-- Overriding a VP's autonomy tier without explicit tenant instruction
+- Bypass registered domain skills/tools or bounded workers through an ungoverned direct path
+- Overriding the shared Spine authority decision, action-specific resolved lane, or required approval
 - Making decisions that violate §39 integrity boundaries (VERA blocks first)
 
 **Tenant addressing:** default. "Paige, [anything]" → PAIGE routes.
@@ -317,26 +327,15 @@ Progressive introduction, not all-at-once. A fresh tenant meets each VP at the m
 
 By the end of week one, a tenant knows all 6 VPs and has worked with each on something concrete. §36 5-minute test passes.
 
-### Code registry pattern
+### Established registry/config pattern
 
-New `paige_agents` table (schema sketch — Claude Code to build during doctrine implementation):
-
-```sql
-CREATE TABLE paige_agents (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL UNIQUE,  -- 'PAIGE', 'VERA', 'NEXUS', 'CURA', 'MENTOR', 'MERIT', 'ZION'
-  role_title TEXT NOT NULL,  -- 'CEO / Chief of Staff', 'VP Trust & Verification', etc.
-  department_cluster TEXT NOT NULL,  -- 'Executive Office', 'Legal/Compliance', etc.
-  scope_summary TEXT NOT NULL,  -- markdown
-  default_autonomy_tier TEXT NOT NULL,  -- 'auto', 'confirm', 'human_only'
-  voice_style TEXT NOT NULL,  -- 'precise', 'warm', 'directional', etc.
-  icon_key TEXT,  -- reference to icon asset
-  is_active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-Every callable seam that acts on tenant work reads its VP owner from this registry. Every `paige_actions` row carries a `named_agent_id` FK so the audit trail shows which VP did what.
+Do **not** create a `paige_agents` table or a second execution registry. If this roster is later
+approved for implementation, presentation and capability metadata must extend the established
+`paige_subagents`, `paige_departments`, skill inventory/mapping, action-kind, and configuration
+homes without duplicating them. Voice/icon/role labels are attribution metadata only. Domain risk
+defaults never become executable authority; the Spine resolves effective authority per action and
+the existing receipts/Rail record attribution. This doctrine correction does not authorize schema,
+data, provider, UI, or runtime changes.
 
 ---
 
@@ -350,8 +349,8 @@ Every callable seam that acts on tenant work reads its VP owner from this regist
 
 ### Slice work (folds into Owner Trilogy build)
 
-4. **Build `paige_agents` registry** — the schema above, seeded with the 7 named agents on migration
-5. **Refactor existing sub-agent dispatch** — every current sub-agent identity gets mapped to a VP owner (backwards-compatible; adds `named_agent_id` FK to existing tables, populated by data migration)
+4. **Extend established homes only after separate approval** — map any VP presentation metadata onto existing department/sub-agent/skill configuration; do not create a new registry or authority field
+5. **Preserve shared dispatch** — any bounded worker-to-domain attribution remains inside the one Harness and existing receipt/Rail path; this record authorizes no migration
 6. **UI surfacing** — Command Center tiles, chat message attribution, action-bus draft attribution all show the VP name
 
 ### Marketplace / brand work (later)

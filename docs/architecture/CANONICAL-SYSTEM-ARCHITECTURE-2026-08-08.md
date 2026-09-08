@@ -8,6 +8,9 @@
 > decision in `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` Section 3 and its Second Brain routing in
 > `docs/brain/paige-brain-wiring-standard.md`. Provider/model statements below are historical
 > snapshots and replaceable configuration, not Paige's identity or proof of current availability.
+> Department, VP, and sub-agent descriptions below identify capability ownership or bounded workers
+> inside one shared Paige Runtime Harness; they do not authorize separate brains, memories, tools,
+> autonomy systems, or operating runtimes.
 
 > Synthesized by a **ground-truth-first** crew (§1/§14): research agents grepped the codebase and queried prod (Supabase MCP). Every architectural claim traces to a file path or a prod query result; aspirational items are labeled **(Roadmap)**. §32 honesty note: frontend line-number references are as-of 2026-08-08 `main` and may drift across commits — treat them as pointers, not fixed addresses.
 
@@ -24,7 +27,7 @@ The system is **pre-launch and small-seeded**: 10 tenants, 15 tenant members, 7 
 Two truths shape any accurate reading of the architecture:
 
 1. **Prod is effectively Anthropic-only today.** The model router (`_shared/model-router.ts`) is built to fan out across Anthropic + OpenAI + Groq + Featherless + Gemini, but all 174 `paige_llm_trace` rows are `provider='anthropic'` — with `FEATHERLESS_API_KEY` unset, every job resolves to Claude by design. Multi-provider independence (§14/§34) is **in-code, dormant**, not deployed.
-2. **Doctrine runs ahead of code in named places.** The §16 ten-department org, the §42 six-VP C-suite (VERA/NEXUS/CURA/MENTOR/MERIT/ZION, `paige_agents` table), L4 consumer-direct, the Money-Spine "sign-up → Stripe → subscription" create-wire (B-Platform), and tenant-authored custom portal tabs/blocks are **Roadmap** — not present in prod. What *does* run is a real §8 action bus (`paige_action_kinds`, 31 rows), a real 24-agent `paige_subagents` registry tagged with two departments (`client_experience` / `owner_ops`), and a real observability/audit spine (`paige_llm_trace`, `paige_audit_log`).
+2. **Doctrine runs ahead of code in named places.** The §16 ten-department capability map, the proposed §42 six-VP presentation identities (VERA/NEXUS/CURA/MENTOR/MERIT/ZION), L4 consumer-direct, the Money-Spine "sign-up → Stripe → subscription" create-wire (B-Platform), and tenant-authored custom portal tabs/blocks are **Roadmap** — not present in prod. The 2026-09-08 owner correction prohibits the previously proposed `paige_agents` table as a duplicate registry. What *does* run is a real §8 action bus (`paige_action_kinds`, 31 rows), a real 24-agent `paige_subagents` registry tagged with two departments (`client_experience` / `owner_ops`), and a real observability/audit spine (`paige_llm_trace`, `paige_audit_log`).
 
 The rest of this document traces every architectural claim to a **file path or a prod query result**, and labels anything aspirational as **(Roadmap)**.
 
@@ -468,7 +471,7 @@ flowchart LR
 
 The agent layer that **exists in prod** is a two-tier structure, not a named C-suite:
 
-1. **PAIGE (the orchestrator).** Paige is the brain/router. She does not do substantive work herself; she classifies an inbound task, delegates to a specialist, reads the result, and integrates (doctrine §14). The delegation seam is `delegate_to_subagent`, exposed as an **MCP/edge tool** — *not* a Postgres function (a `pg_proc` query returned no `delegate_to_subagent`). The callable-seam rule (§10) is satisfied at edge/MCP land, not uniformly as an RPC.
+1. **PAIGE (the orchestrator).** Paige is the orchestrator/router; the Second Brain is the governed knowledge layer. She does not do substantive work herself; she classifies an inbound task, delegates to a bounded specialist, reads the result, and integrates (doctrine §14). The delegation seam is `delegate_to_subagent`, exposed as an **MCP/edge tool** — *not* a Postgres function (a `pg_proc` query returned no `delegate_to_subagent`). The callable-seam rule (§10) is satisfied at edge/MCP land, not uniformly as an RPC.
    - *Evidence:* Super Admin MCP roster (`mcp__Paige_Agent_AI_Super_Admin__delegate_to_subagent`); prod `pg_proc` query returned none.
 
 2. **The `paige_subagents` registry (24 enabled agents).** This is the real, deployed roster. Each row carries a `department` column, but only **two** department values are populated:
@@ -496,15 +499,15 @@ flowchart TD
     XC --> EF
 ```
 
-### 5.2 The 6-VP C-Suite (VERA, NEXUS, CURA, MENTOR, MERIT, ZION) — **(Roadmap)**
+### 5.2 The 6-VP presentation/capability identities (VERA, NEXUS, CURA, MENTOR, MERIT, ZION) — **(Roadmap)**
 
 The named 6-VP C-Suite is **doctrine draft only — it does not exist in code or prod.**
 
-- The `paige_agents` registry table the roster spec calls for **does not exist** on prod (`paige_agents_exists = 0`).
+- The historical `paige_agents` proposal **does not exist** on prod (`paige_agents_exists = 0`) and is now prohibited as a duplicate registry by the 2026-09-08 owner correction.
 - **None** of the names VERA / NEXUS / CURA / MENTOR / MERIT / ZION appear as rows in `paige_subagents`.
-- The source doc (`docs/doctrine/paige-c-suite-roster.md`, lines 5–6, 337–352) is explicitly labeled *"Doctrine draft — ready to paste into CLAUDE.md"* with a *"schema sketch — Claude Code to build"* for `paige_agents`. There is **no §42/§43 roster section** in `CLAUDE.md` as loaded this session.
+- The source doc (`docs/doctrine/paige-c-suite-roster.md`) remains a doctrine draft. Its historical new-table sketch was removed by the 2026-09-08 owner correction; future presentation metadata may extend established registry/configuration homes only. There is **no §42/§43 roster section** in `CLAUDE.md` as loaded for this historical inventory.
 
-> **HONESTY (§13):** Any narrative that presents VERA/NEXUS/CURA/MENTOR/MERIT/ZION as a running system is fabrication. They are **proposed named identities** for a future C-suite that would sit **above** the real two-team `paige_subagents` registry — collapsing the §16 ten-department taxonomy into six VP clusters. The per-VP mandates live in the roster doc; they are **not** verified against code because no such agents run.
+> **HONESTY (§13):** Any narrative that presents VERA/NEXUS/CURA/MENTOR/MERIT/ZION as a running system is fabrication. They are **proposed presentation/capability identities** that could annotate or cluster the real `paige_subagents`/department/skill configuration inside one Paige Harness. They are not an agent layer above it. The per-VP mandates live in the roster doc; they are **not** verified against code because no such identities run.
 
 What each VP is *proposed* to own, per the roster doc (roadmap, unbuilt — presented so the doc is traceable, not as shipped capability):
 
@@ -513,12 +516,12 @@ What each VP is *proposed* to own, per the roster doc (roadmap, unbuilt — pres
 | **PAIGE** | CEO / orchestrator | The live `delegate_to_subagent` seam + router |
 | **VERA · NEXUS · CURA · MENTOR · MERIT · ZION** | Six VP clusters collapsing the §16 10-department org | The 24-row `paige_subagents` registry + 13 `subagent-*` edge functions + `paige_action_kinds` |
 
-Because the roster doc assigns the six names to clusters (Marketing/Growth, Integration/Tech, Client Experience, Product/Curriculum, Finance, Legal-Ops class of departments) without a shipped `paige_agents` table to bind them, **the mapping is aspirational**. The audit did not find per-VP mandate rows to verify individually.
+Because the roster doc assigns the six names to clusters (Marketing/Growth, Integration/Tech, Client Experience, Product/Curriculum, Finance, Legal-Ops class of departments) without shipped presentation/capability metadata in the established registries, **the mapping is aspirational**. The audit did not find per-VP mandate rows to verify individually.
    - *Evidence:* `docs/doctrine/paige-c-suite-roster.md` (Status: Doctrine draft); prod `paige_agents_exists = 0`.
 
 ### 5.3 Where the agents physically live
 
-- **Registry / identity:** `paige_subagents` (Postgres, prod) — the durable roster; the roadmap `paige_agents` C-suite table does not exist.
+- **Registry / identity:** `paige_subagents` (Postgres, prod) — the durable roster; a second C-suite execution registry is prohibited.
 - **Execution:** `subagent-*` edge functions (Deno on Supabase Edge).
 - **Routing / governance:** `paige_action_kinds` (autonomy lanes 🟢`auto` / 🟡`confirm` / 🔴`off`, from/to department, draft subagent slug).
 - **Orchestration seam:** `delegate_to_subagent` MCP/edge tool (not an RPC).
@@ -626,8 +629,8 @@ There is **no dedicated, numbered "customer-portal taxonomy/matrix" doctrine** a
 
 A grep for `portal taxonomy` / `portal matrix` returned **no dedicated doctrine file**. If an authoritative portal taxonomy is wanted, it must be written and numbered.
 
-### 7.6 The 6-VP C-Suite is fiction-in-doctrine vs code **(Roadmap)**
-`paige_agents` does not exist; VERA/NEXUS/CURA/MENTOR/MERIT/ZION are unbuilt (§5.2). Doctrine numbering is **ahead of the doctrine file** — the requested §42/§43/§47 roster anchors are **absent from `CLAUDE.md` as loaded** (highest present: §35/§36/§37/§38/§39/§51).
+### 7.6 The 6-VP presentation identities are unbuilt **(Roadmap)**
+VERA/NEXUS/CURA/MENTOR/MERIT/ZION presentation/capability metadata is unbuilt (§5.2), and the historical `paige_agents` proposal is prohibited. Doctrine numbering is **ahead of the doctrine file** — the requested §42/§43/§47 roster anchors are **absent from `CLAUDE.md` as loaded for this historical inventory**.
 
 ### 7.7 §16 ten-department taxonomy divergence
 Doctrine claims a 10-department org extending `paige_action_kinds`; the live `paige_subagents.department` enum carries only **two** values (`client_experience`, `owner_ops`), with core cross-cutting agents at `NULL`. The 10-department → 6-VP-cluster collapse is **unmodeled in the registry.**

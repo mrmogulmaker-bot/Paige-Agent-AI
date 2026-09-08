@@ -201,6 +201,48 @@ bypass server-resolved actor, tenant, workspace, role, and scope; Paige Spine au
 budget, approval, concurrency, and stop limits; canonical write and verified readback; attributable,
 redacted receipt and Rail requirements; or Second Brain, Mind, and Memory eligibility rules.
 
+#### One Paige across all capability domains
+
+`One Paige → one shared governed runtime → coordinated work across many platform domains.`
+
+Departments are capability domains inside the Paige Runtime Harness—not separate AI products,
+separate agents with their own operating systems, or independent islands of memory and tools. A
+domain may register versioned skills, scoped tools, canonical-record adapters, job handlers, and
+presentation identities or specialist workers. Those registrations remain visible to the same Paige
+Harness and governed through the same Second Brain, Spine, authority, canonical-record,
+verification, receipt, Rail, job, evaluation, and cost-control path. No department may create its
+own Brain, Harness, authority system, untracked “agent memory,” disconnected tool access, or
+parallel operating logic.
+
+The shared Harness must account for governed access across the full platform. This is a
+representative, non-exhaustive integration map—not a new surface or capability registry:
+
+- Command Center, operating direction, Missions, Strategic Plays, and plans;
+- Clients, conversations, relationships, records, and follow-up;
+- Campaigns, offers, content, social operations, and growth;
+- Sales, pipelines, opportunities, and conversion work;
+- Calendar, tasks, scheduling, and approved connections;
+- Analytics, performance evidence, and decision support;
+- Vibe Studio and approved creative production;
+- Vault, Connected Accounts, provider connections, and future Secure Browser work;
+- Settings, permissions, workspace switching, and operational configuration; and
+- future Platform Operator support, tenant health, pricing/entitlements, fleet operations,
+  releases, incidents, and internal Paige-company operations.
+
+Cross-domain work is one continuous Paige-led workflow, not a chain of disconnected assistants:
+
+`goal or conversation → campaign plan → approved content work → lead/contact update → pipeline movement → follow-up scheduling → performance readback → Rail/receipt → Paige operating brief`
+
+Coordination breadth is not blanket authority. At each read, tool call, job step, or action, the
+Harness re-resolves the active tenant, actor, workspace, role, tool scope, provider state, approval
+rule, budget, and verification requirement. A later step cannot inherit broader authority merely
+because an earlier step succeeded, and a domain label, specialist identity, model choice, prompt,
+or hand-off cannot elevate authority. Unavailable or unauthorized steps fail closed while the
+remaining safe workflow stays truthfully resumable.
+
+This is the architecture contract, not a claim that every listed domain is currently connected.
+Each domain retains its status and acceptance evidence in its existing canonical record.
+
 #### Paige-owned Harness responsibilities
 
 1. **Context assembly:** build the minimum tenant/workspace-safe context for the task from
@@ -228,7 +270,7 @@ redacted receipt and Rail requirements; or Second Brain, Mind, and Memory eligib
    versioned evaluations so a reviewed skill, route, prompt, or policy can improve without silent
    self-modification.
 
-#### Current-state inventory at `main` `ec2336f7` (2026-09-08)
+#### Current-state inventory refreshed at `main` `968b2dab` (2026-09-08)
 
 | Capability | Status | Grounded current truth / next gate |
 |---|---|---|
@@ -297,11 +339,12 @@ Solo customer promise.
   Platform account choice; release/customer-update behavior; and Metricool/social exploration keep
   their current owners, launch scope, provider state, and acceptance criteria. This architecture
   delivery modifies none of their code or evidence.
-- **Documentation collision:** concurrent canonical-record work that changes this Master or
-  `docs/brain/decision-log.md` must rebase and preserve this ruling. This branch was last rebased
-  after documentation/evidence PR #1055 reached `main`; likely-open PR refs were assessed but
-  authenticated GitHub UI state was unavailable, so no PR-open claim is inferred from a remote ref
-  alone.
+- **Documentation collision:** concurrent canonical-record work that changes this Master,
+  `docs/brain/README.md`, `docs/brain/decision-log.md`, or
+  `docs/brain/paige-brain-wiring-standard.md` must rebase and preserve this ruling. This correction
+  starts from `main` `968b2dab`. Authenticated GitHub inventory confirmed overlapping open PRs
+  #1040, #905, #917, #729, #776, #754, #724, #907, #899, #648, and #560; their product and
+  historical-record ownership remains separate.
 - **Regression map:** no new source of truth; no customer/runtime capability promoted by
   documentation; no provider named as Paige's identity; no bypass around server identity, Spine,
   budgets, readback, receipts/Rail, or Memory eligibility; no active workstream absorbed.

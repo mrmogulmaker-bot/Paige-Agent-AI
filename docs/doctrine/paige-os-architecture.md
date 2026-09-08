@@ -5,11 +5,18 @@
 > differ, `CLAUDE.md` governs. The linked organization and growth-map documents
 > remain canonical for their respective details; this document points to them
 > rather than duplicating them.
+>
+> **Current routing override — 2026-09-08:** read the **Paige Runtime Harness** decision in
+> `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` before using this synthesis for any model, agent,
+> skill, voice, browser, department, or external-tool work. Departments are capability domains
+> inside one shared governed Harness. Historical “agent team” language below means optional
+> bounded workers in a Paige-led job, never separate Brains, memory, authority, operating logic,
+> job systems, cost controls, or disconnected tool access.
 
 ## Purpose
 
 Paige is designed as one connected operating system, not a collection of unrelated
-AI features. This reference explains how the client portal, agent team, department
+AI features. This reference explains how the client portal, bounded specialist work, department
 model, action bus, autonomy controls, growth model, and long-range context expansion
 fit together. It grounds future work adjacent to `CLAUDE.md` §§7, 8, 14, 16, 17,
 35, and 36, and provides an architectural foundation for the future beta investor
@@ -18,10 +25,10 @@ pitch without replacing doctrine.
 The architecture has a deliberate progression:
 
 1. Paige meets people through an intelligent, tenant-authored portal today (§7).
-2. Paige runs substantive work through a standing team of specialists (§14).
-3. That team operates as departments connected by a two-way action bus (§8, §16).
-4. Autonomy lanes determine what executes, what is drafted for approval, and what
-   remains human-only (§16).
+2. Paige runs substantive work through one Runtime Harness, optionally using bounded specialists (§14).
+3. Capability domains coordinate through that Harness and a two-way action bus (§8, §16).
+4. Default autonomy lanes inform—but do not grant—the authority that the Spine re-resolves
+   for every action at execution time (§16).
 5. The same operating primitives support the revenue and governance map (§17).
 6. The SMB beachhead can later expand into additional contexts—including
    households, portfolios, and devices—without changing Paige's identity as the
@@ -69,46 +76,48 @@ additions around stable OS primitives, not as competing Paige products (§35).
 Paige's operating model has three connected layers: orchestration, organizational
 execution, and governed coordination.
 
-### Layer 1: Paige orchestrates a standing team
+### Layer 1: Paige composes registered capabilities through one Harness
 
-Paige is the brain and orchestrator; she does not perform substantive work alone
-(§14). For every non-trivial job, she assembles or draws on specialist sub-agents,
-assigns work, reads their results, and integrates the outcome (§14).
+Paige is the orchestrator; the Second Brain is her governed, scoped knowledge layer (§14).
+For every non-trivial job, the Harness composes eligible registered skills, tools, adapters, and,
+when useful, bounded specialist workers; Paige integrates the verified outcome (§14).
 
-The standing team begins with research and internal design capability, with a
-verifier or quality agent on anything that ships (§14). Paige can forge a specialist
-when no existing agent fits, and can source patterns, skills, tools, and connectors
-to improve that specialist (§14). Any sourced capability that requires new
-executable code still follows the hard approval path; sourcing does not authorize
-silent code execution (§14).
+Research, internal design, and verification are registered capabilities, with verification on
+anything that ships (§14). When no eligible capability fits, Paige may propose a versioned skill
+or bounded-worker registration for review and may source patterns, skills, tools, and connectors
+for that proposal (§14). Any sourced capability that requires new executable code still follows
+the hard approval path; sourcing does not authorize silent code execution (§14).
 
 Orchestration is driven by real signals and performance data, not intuition alone
-(§14). Each agent uses the model router to select a cost-appropriate model for its
-task, and Paige reports only work the team actually performed (§14). The governing
-question is: **Is Paige doing this alone, or is she running it through her team?**
-If a non-trivial task is being soloed, the architecture is being bypassed (§14).
+(§14). Any bounded worker uses the Harness's shared model router to select a cost-appropriate
+model for its task, and Paige reports only work the team actually performed (§14). The governing
+question is: **Did one Paige use the shared Harness, execution-time Spine authority, canonical
+verification, and receipts/Rail?** A bounded worker is optional; bypassing the governed path is not.
 
-### Layer 2: the team operates through ten departments
+### Layer 2: the Harness coordinates ten capability domains
 
-The standing team is not an unstructured pool. Paige runs the 10-department
-operating model defined in `CLAUDE.md` §16. The full organization map, department
-mandates, roles, KPIs, and growth-stage rollout live in
+The 10-department operating model defined in `CLAUDE.md` §16 is a capability and ownership
+map inside one Paige Runtime Harness, not a roster of isolated AI products. The full organization
+map, department mandates, roles, KPIs, and growth-stage rollout live in
 [`docs/doctrine/100M-org-blueprint.md`](./100M-org-blueprint.md); this document does
 not restate them.
 
 The department model provides three things (§16):
 
-1. **Awareness — the Org Brain.** Paige has structured organizational context:
-   ownership, RACI, KPIs, and escalation paths.
-2. **Execution — department agents.** A named specialist represents each
-   department while Paige classifies and routes the work.
-3. **Governance — autonomy tiers.** The existing `autonomy_lane` values remain the
-   control plane: `auto` for AI-performed work, `confirm` for AI-drafted and
-   human-approved work, and `off` for human-only work with AI briefing.
+1. **Awareness — Second Brain organizational context.** Eligible, scoped knowledge gives Paige
+   ownership, RACI, KPIs, and escalation paths without creating another Brain.
+2. **Execution — shared Harness capability domains.** A domain registers versioned skills,
+   adapters, canonical-record access, scoped tools, and optional bounded workers; Paige may
+   traverse multiple domains in one continuous job.
+3. **Governance — execution-time Spine authority.** Existing `autonomy_lane` values remain
+   policy inputs: `auto` for eligible AI-performed work, `confirm` for AI-drafted and
+   human-approved work, and `off` for human-only work with AI briefing. The effective lane and
+   every other authority constraint are re-resolved for each action when it executes.
 
 The model extends existing primitives rather than creating a parallel department
-system (§16). Every task must answer three questions: which department owns it,
-which named Paige agent performs it, and which autonomy lane governs it (§16).
+system (§16). Every task must answer three questions: which capability domains and canonical
+records it uses, which registered skills/tools or bounded workers it needs, and how the shared
+Spine resolves authority and verification for each consequential action (§16).
 
 ### Layer 3: the action bus coordinates both sides of the portal
 
@@ -124,31 +133,32 @@ These are coordinated views of the 10-department organization, not a competing o
 chart (§8, §16). The 10 departments establish durable ownership and execution; the
 two teams describe how work crosses the owner/client boundary.
 
-For example, Client Experience detects a need, creates an action for Owner Ops, a
-department specialist drafts the move, the applicable autonomy lane determines
-whether approval is required, and the result returns to the client-facing context
-(§8, §16). In the other direction, Owner Ops establishes a play and Client
-Experience personalizes it for the individual client (§8). This cross-team exchange
-is what turns a portal into an operating system.
+For example, Client Experience detects a need, creates an action for Owner Ops, and the shared
+Harness may use a bounded specialist to draft the move. The Spine then resolves active tenant,
+actor, workspace, role, tool scope, provider state, approval rule, budget, lane, and verification
+requirements for that action before the result returns to the client-facing context (§8, §16).
+In the other direction, Owner Ops establishes a play and Client Experience personalizes it for
+the individual client (§8). This remains one Paige-led job with attributable evidence, not an
+exchange between autonomous department systems.
 
 ### The end-to-end work contract
 
 Taken together, the canonical sections imply one reusable execution path:
 
 ```text
-signal in a tenant-authored context
-  → Paige classifies department ownership
-  → Paige selects or forges the specialist team
-  → specialists research, draft, and verify
-  → the action bus routes work between Owner Ops and Client Experience
-  → the autonomy lane executes, requests approval, or briefs a human
-  → Paige integrates and reports the actual result
-  → the portal presents the next useful state to the relevant participant
+goal, signal, or conversation
+  → tenant-safe context assembly in the shared Paige Runtime Harness
+  → classify one or more capability domains and select registered skills/tools or bounded workers
+  → resolve Spine authority separately for every read, tool call, job step, or action
+  → execute, request approval, or brief a human through canonical seams
+  → verify canonical readback and record attributable receipts/Rail for consequential steps
+  → Paige integrates and truthfully reports the actual result
+  → eligible reviewed learning may enter the governed improvement path
 ```
 
 This flow is a synthesis of §§7, 8, 14, and 16. It does not create a new workflow
-engine or autonomy model. Builds should extend the existing action kinds, agents,
-approvals, audit records, and Playbook configuration that those sections govern.
+engine or autonomy model. Builds should extend the existing Harness, action kinds, capability
+registrations, approvals, audit records, and Playbook configuration that those sections govern.
 
 ## 3. How Paige stays intuitive
 
@@ -239,13 +249,14 @@ questions.
 
 **Work and organization**
 
-- Which specialist team performs the substantive work? Paige must orchestrate
-  rather than solo non-trivial execution (§14).
-- Which department owns it? Route it through the 10-department model instead of
+- Which registered skills/tools or bounded workers perform the substantive work inside the
+  shared Harness? Paige must orchestrate rather than solo non-trivial execution (§14).
+- Which capability domain owns it? Route it through the 10-department model instead of
   inventing an unowned feature silo (§16).
 - How does it cross the owner/client boundary? Use the action bus when work moves
   between Owner Ops and Client Experience (§8).
-- Which autonomy lane governs it? Extend `auto`, `confirm`, and `off`; do not
+- Which execution-time authority decision governs each action? Treat `auto`, `confirm`, and
+  `off` as policy inputs, re-resolve the full authority context through the Spine, and do not
   create a competing approval vocabulary (§16).
 
 **Experience**
@@ -264,7 +275,7 @@ questions.
 - Does it cross the Commerce Line? Paige may power the operator's marketplace
   activity but must not become the consumer marketplace (§17).
 - Which existing primitive does it extend? Architecture grows by extending the
-  portal, Playbooks, agents, action bus, departments, autonomy lanes, audit, and
+  portal, Playbooks, Harness registrations, action bus, departments, autonomy lanes, audit, and
   billing rails—not by creating duplicate homes (§8, §16, §17).
 
 ## Canonical references
