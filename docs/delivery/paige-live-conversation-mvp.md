@@ -38,6 +38,13 @@ was immediately withdrawn by owner correction: continue authorized work, coordin
 overlaps in scroll/focus writers, anchor identity and mount lifecycle without stopping other work.
 Re-ground on the accepted repair before final integration.
 
+**Presentation composition checkpoint:** current main `3bdd26c2bc80a3d40298faad30e041a35734e5db`
+includes shared-scroll repair #1075 (`f86b1c401c492c4d0dc122258b6c26b96870befe`) and the audited
+owner-only account inspection #1073. The focused Presence branch starts there and changes no shared
+chat/controller/focus writer. #1075's authenticated acceptance remains its own canonical boundary.
+The initial enlarged layout failed outer-main overflow; the corrected 48vh sculpture and 60/40
+columns pass all eight required theme/viewport checks, now enforced by the verifier.
+
 **First dependency:** current production metadata has no independent provider-verification rows.
 Existing hosted-agent token endpoints are not an account-inspection route and will not be used.
 Extend the existing platform-owner Voice Profile administration seam with a fixed-host, bounded,
