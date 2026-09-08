@@ -21,8 +21,8 @@ STATE_COVERAGE: PASS: middle/one-pixel/bottom follow; token/tool/receipt; thread
 TRUTHFUL_STATE_LABELS: PASS: controlled evidence is not authenticated production acceptance; owner-reported failure remains open
 SOLO_UI: YES: shared Solo chat portal only; no Secure Browser mount change
 UNVERIFIED: authenticated production acceptance; physical touch device; screen-reader/zoom conformance; history prepend is controller/React proof because backend pagination is not implemented; every painted frame of existing minimize animation is not proven
-INTERNAL_BUILD_IDENTITY: 02153224b5416e311448ac7f5d8caa2c13f9641f; deployment=NOT_DEPLOYED; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=canonical forensic record plus final PR head/checks
-RELEASE_CHANNEL: development: authorized production hotfix awaiting exact-head CI/review
+INTERNAL_BUILD_IDENTITY: 42a8d5aa760877fc34316ab3712523f86f95b19e; deployment=dpl_7V1rPr1apLDUVujH9uZiWc3ZLH7y; environment=production; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=canonical forensic record; reviewed PR head=d7b66d75716890fa9b36275b70a63e3b42a4ffad
+RELEASE_CHANNEL: production: READY deployment; both production domains serve42a8d5aa760877fc34316ab3712523f86f95b19e-mtt84zjl; fresh independent exact-head review and CI passed
 RELEASE_CLASSIFICATION: patch: remove unnecessary chat host reinsertions
 CUSTOMER_RELEASE_IDENTITY: none: internal hotfix, no publication authority requested
 RELEASE_NOTE_REQUIRED: NO: internal corrective patch

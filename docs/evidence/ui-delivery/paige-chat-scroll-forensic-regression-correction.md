@@ -2,7 +2,15 @@
 
 Date: 2026-09-08
 Owner scope: actual production transcript jump after the shipped exact-bottom hotfix
-Status: REOPENED P0 — delayed reading-position theft reported after #1057/#1066
+Status: #1080 merged; authenticated production acceptance PROOF OWED — workstream not yet accepted
+
+## #1080 release checkpoint — 2026-09-08
+
+Production deployment `dpl_7V1rPr1apLDUVujH9uZiWc3ZLH7y` is READY from exact main commit `42a8d5aa760877fc34316ab3712523f86f95b19e`. Both `https://app.paigeagent.ai/version.json` and `https://paigeagent.ai/version.json` serve `42a8d5aa760877fc34316ab3712523f86f95b19e-mtt84zjl`; Vercel aliases both domains to this deployment. Migrations/Edge changes: NOT_APPLICABLE. Channel: production; customer release identity: none. This verifies deployment, not authenticated acceptance. Recovery is a reviewed revert of the single portal guard only if a new regression is demonstrated; no data reset is involved.
+
+Fresh alternate independent reviewer approved exact PR head `d7b66d75716890fa9b36275b70a63e3b42a4ffad`, independently ran31/31 shell ownership tests and inspected4051 full-test passes and the exact-head127/127 rendered report. No actionable specification, race, security or code findings. GitHub verify/audit/UI evidence checks passed for that head; Supabase Preview appropriately skipped. PR #1080 merged under explicit owner release authority as `42a8d5aa760877fc34316ab3712523f86f95b19e` at18:11 EDT. Product diff is solely the parent-node guard in `src/components/tenant-shell/TenantCommandCenterShell.tsx`; no timer, delay, threshold, second controller or context change.
+
+The earlier blocked review attempts were tooling limitations, not independent approval. This fresh alternate review satisfies the exact-head gate. Authenticated owner acceptance remains PROOF OWED; the browser bridge exits before accessing the signed-in session. No controlled test or deployment metadata is substituted for that interaction.
 
 ## Same-parent portal reset investigation — 2026-09-08
 
@@ -80,6 +88,14 @@ SOLO_900X1000_PAIGE_OPEN: PASS: middle, one-pixel, stream, resize, reload, and m
 - Explicit exclusions: Secure Browser, Vault, logo/refresh, Live Voice, Live Conversation, authority/Spine, Skills, Interview, Tenant Brain, Business Game Plan, and chat redesign.
 
 ## User job and state map
+
+### Durable transcript preservation contract — owner reaffirmed 2026-09-08
+
+> Once an owner deliberately moves the transcript even one pixel away from the exact bottom, no programmatic render, stream token, status update, resize, hydration, focus change, minimize/restore, pop-out return, remount, or thread-ID adoption may move their reading position. Automatic following resumes only when the owner returns to the exact bottom or explicitly selects Jump to latest.
+
+This is indefinite semantic-message/pixel ownership, not an absolute-scrollTop snapshot and not a time-limited pause. Hidden, detached or zero-size measurements must not replace a valid anchor. Stale asynchronous work cannot reclaim ownership. The existing controller is the sole scroll-position authority; surrounding mounts must not unnecessarily detach/reinsert its ancestor. Actual pop-out relocation retains the existing anchor handoff. No timer, near-bottom tolerance, delayed compensation or fallback controller may be introduced as a substitute. Tests and signed-in acceptance must distinguish unchanged-layout parent refresh from real layout compensation, and must not treat a settled endpoint as proof of every animation frame.
+
+Acceptance check after loading the deployed build: in the signed-in owner's long conversation, manually move one pixel upward and then into older content; allow streamed text/status/completion and ordinary delayed refresh to finish; resize, minimize/restore and pop-out/return. The same semantic text must remain at the chosen pixel offset. Verify explicit Jump to latest and manual exact-bottom return resume follow. Record PASS/FAIL against the exact served build. Until the owner confirms this formerly failing flow, acceptance is PROOF OWED and the defect is not declared fully resolved.
 
 The owner reads Paige history at a chosen location. Any deliberate movement away from the exact bottom immediately stores the first visible stable message and its pixel offset. Ordinary updates restore only that valid identity with visible non-zero geometry. Transient content cannot replace it. Automatic following resumes only through Jump to latest or a genuine deliberate return to exact bottom.
 
