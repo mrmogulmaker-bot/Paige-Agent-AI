@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-08T04:34:00.470Z",
+  "generatedAt": "2026-09-08T04:46:37.870Z",
   "evidenceClass": "Real ChooseAccount component and production styles; deterministic local authorization adapter; not authenticated production proof",
   "viewports": [
     [
@@ -111,7 +111,7 @@
     {
       "name": "1536x770-mineral screenshot",
       "ok": true,
-      "detail": 307174
+      "detail": 307182
     },
     {
       "name": "1366x768-mineral meaningful content",
@@ -556,7 +556,7 @@
     {
       "name": "1366x768-obsidian screenshot",
       "ok": true,
-      "detail": 305542
+      "detail": 305540
     },
     {
       "name": "1024x768-obsidian meaningful content",
@@ -645,7 +645,7 @@
     {
       "name": "1024x768-obsidian screenshot",
       "ok": true,
-      "detail": 218289
+      "detail": 218278
     },
     {
       "name": "900x1000-obsidian meaningful content",
@@ -734,7 +734,7 @@
     {
       "name": "900x1000-obsidian screenshot",
       "ok": true,
-      "detail": 220275
+      "detail": 220276
     },
     {
       "name": "Platform-only staff pauses",

@@ -3,7 +3,7 @@
 Owner decision 2026-09-07: after sign-in, Platform staff must pause at the existing account chooser and deliberately select Platform or one of their directly authorized Paige workspaces. The retired `/admin` route is not a fallback.
 
 UI_DELIVERY_EVIDENCE_VERSION: 1
-FLOW_BY_FLOW: PASS: grounded current main `2719d7d86ccfa23d0e781b841b5ee134ec8e7276`, repository instructions, open PRs, Master Reference Section 4 and account-picker record, Second Brain decisions, tier/route contracts, prior route-retirement closeout, and the real chooser/auth implementation before resuming
+FLOW_BY_FLOW: PASS: grounded current main `f8eb2362beb03ec609dfe645b4d00f43c3eebf2d`, repository instructions, open PRs, Master Reference Section 4 and account-picker record, Second Brain decisions, tier/route contracts, prior route-retirement and Paige Live closeouts, and the real chooser/auth implementation before resuming
 PAIGE_UI_DESIGN: PASS: repository skill, pinned frontend-design core, accessibility checklist, Paige quality gates, and review/testing reference read completely; the approved flow reuses the existing chooser and Paige tokens
 MATERIAL_FLOW_CHANGE: YES: Platform staff change from automatic Platform routing to a required deliberate context choice after sign-in
 FLOW_PROTOTYPE: PASS: the owner directly approved the complete interaction contract in this workstream; the existing chooser is the approved production container and the prototype is absorbed into its deterministic component tests, with no throwaway route or mock surface retained
@@ -36,7 +36,7 @@ RELEASE_RECOVERY: position=frontend rollback to prior production deployment; ref
 - Classification: R3 authentication/context selection; Deep assurance and independent review required.
 - Affected flows: `/auth` post-identity routing → `/choose-account` → Platform or direct Paige workspace; chooser refresh; account switch; inaccessible selection and retry.
 - Neighboring regressions: non-platform one-membership direct entry, multi-membership selection, workspace-scoped state clearing, unsaved-work guard, operator authorization, canonical tier routes.
-- Active-owner/file collisions: none across 31 open PRs at initial grounding. Before delivery, `origin/main` advanced from `531045004aa306beecb669b31c385c779c76c4b8` to `2719d7d86ccfa23d0e781b841b5ee134ec8e7276` through PR #1054. That delivery overlaps only additive canonical documentation and public-home routing, not the auth implementation; its shipped-reference additions are preserved during rebase.
+- Active-owner/file collisions: none across 31 open PRs at initial grounding. Before delivery, `origin/main` advanced first through PR #1054 and then to `f8eb2362beb03ec609dfe645b4d00f43c3eebf2d` through Paige Live PR #1053. Both overlap only additive canonical documentation; neither changes auth entry or chooser code. Their shipped-reference, public-route, modality, and Paige Live records are preserved. Paige Live keeps the underlying page mounted and ends its session on a tenant-context change, so this chooser continues through the existing account-switch guard and does not introduce a competing session path.
 - Explicit exclusions: logout behavior, Google identity chooser behavior, tenant/role/billing/account management, operator permissions, new routes, `/admin` compatibility, migrations, provider work.
 
 ## User job and state map
