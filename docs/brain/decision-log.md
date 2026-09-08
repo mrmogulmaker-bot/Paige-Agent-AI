@@ -35,6 +35,16 @@
   planning only—no product implementation, provider setup, billing, invitations, migration,
   deployment, public promise, production change, or active-workstream ownership change.
 
+- **Organic Paige Presence and real-audio recovery (2026-09-08, owner-approved delivery).**
+  The Live stage's circular badge is replaced by a layered irregular obsidian/plum and warm-gold
+  Presence with calm baseline motion and a static reduced-motion exception. Only actual played
+  audio may drive speech energy; text work never fabricates speech or hides unavailable setup.
+  Existing thread, #1057 scroll ownership, cards, Spine/receipt/Rail and Memory rules remain.
+  Safe production metadata contains no provider verification records and no cost/privacy/scope
+  approval. Provider audio stays PROOF OWED; no provider call or credential access is authorized by
+  the visual proof. This is a development candidate until exact PR/deployment closeout is recorded
+  in the existing Live Conversation delivery/evidence packet.
+
 - **One Paige Runtime Harness across every platform domain (2026-09-08, owner-approved architecture correction).**
   Departments, VPs, specialists, and sub-agents are capability domains, presentation identities, or
   bounded workers inside one Paige—not separate AI products. The canonical rule is

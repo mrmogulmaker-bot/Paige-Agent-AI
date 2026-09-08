@@ -287,6 +287,14 @@ not re-propose it.)* Module header `_shared/twilio.ts:24-35` states the model ex
 
 ## Voice / TTS / STT — Paige Voice Profile
 
+**2026-09-08 readiness audit / Presence recovery:** production safe metadata still has transport
+disabled, no independent provider-verification rows, false scope/voice/privacy/ZRM/quota flags and
+null cost values. This proves missing recorded authorization, not account incapability. Organic
+Live Presence and actual shared-output analysis are a development candidate; no provider account,
+secret, voice approval, retention term, STT/token path or readiness flag was changed. The streaming
+realtime session remains unavailable, distinct from per-message playback. Exact iteration evidence:
+`../evidence/ui-delivery/paige-live-conversation-mvp.md`.
+
 **Current contract (2026-09-07):** every Paige speech path resolves one approved, active
 server-side `paige_default_voice` profile. The browser and request body cannot select a provider or
 voice reference. Profile rows carry an immutable revision, approval/effective metadata, optional

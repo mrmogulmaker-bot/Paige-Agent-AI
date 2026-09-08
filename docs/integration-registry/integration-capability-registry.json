@@ -520,7 +520,7 @@
       "status": "PROOF_OWED",
       "owner": "Paige Live Conversation workstream",
       "dependency": "Independent proof of existing-account key scopes, exact voice authorization, realtime STT eligibility/concurrency, Zero Retention Mode application or an approved alternative retention posture, quota, and Paige hard cost ceiling.",
-      "next_slice": "An authorized operator performs a secret-safe account review and separately approved minimal capability test; only then may the transport readiness gate be enabled.",
+      "next_slice": "2026-09-08 safe production audit found zero canonical verification records and unset scope, voice, privacy, quota and cost approvals. An authorized operator must provide existing-account evidence and approve STT duration/concurrency plus STT/TTS price ceilings. Only then implement and verify bounded revision-bound realtime transport activation. Organic Presence and local played-audio analysis do not satisfy provider proof.",
       "tier_eligibility": { "platform": "eligible", "solo": "eligible", "agency_future": "resell", "enterprise_future": "eligible" },
       "expense_and_operations": {
         "cost_responsibility": "platform_paid",
