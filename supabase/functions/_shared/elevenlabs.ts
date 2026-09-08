@@ -1,10 +1,7 @@
-// _shared/elevenlabs.ts — ElevenLabs text-to-speech client for the Vibe Studio model router.
+// _shared/elevenlabs.ts — low-level ElevenLabs text-to-speech transport.
 //
-// The audio-voice lane. ElevenLabs turns a script into narration/voiceover audio for Studio
-// deliverables (video VO, walkthroughs, spoken lead magnets). This is the ONE ElevenLabs seam
-// the router calls (§12/§18) — the endpoint streams the rendered audio back as the raw response
-// body, so we read the bytes and hand them to the router as artifact_bytes (ElevenLabs returns
-// no hosted URL); the router persists the mp3 in studio-deliverables itself.
+// Callers must resolve the provider reference through the service-only Paige Voice Profile and
+// readiness gate before entering this adapter. This file owns transport only.
 //
 // FAIL-CLOSED (doctrine §13): ELEVENLABS_API_KEY is read at CALL time; if absent we throw
 // NeedsConfigError("elevenlabs") — never a generic crash, never fake audio. The key is very
@@ -16,8 +13,6 @@ import { envKey } from "./env-key.ts";
 
 const ELEVENLABS_BASE = Deno.env.get("ELEVENLABS_BASE_URL") ?? "https://api.elevenlabs.io/v1";
 const DEFAULT_MODEL = Deno.env.get("ELEVENLABS_MODEL") ?? "eleven_multilingual_v2";
-// "Rachel" — a standard, stable, public ElevenLabs voice available on every account by default.
-const DEFAULT_VOICE = Deno.env.get("ELEVENLABS_VOICE_ID") ?? "21m00Tcm4TlvDq8ikWAM";
 
 function elevenlabsKey(): string {
   const k = envKey("ELEVENLABS_API_KEY");
@@ -27,7 +22,8 @@ function elevenlabsKey(): string {
 
 export interface ElevenLabsTtsInput {
   text: string;
-  voiceId?: string;
+  /** Required server-resolved provider reference. There is deliberately no provider default. */
+  voiceId: string;
   modelId?: string;
 }
 
@@ -37,12 +33,13 @@ export interface ElevenLabsTtsInput {
  */
 export async function elevenlabsTts(opts: ElevenLabsTtsInput): Promise<ProviderCallResult> {
   const key = elevenlabsKey();
-  const voiceId = opts.voiceId || DEFAULT_VOICE;
+  const voiceId = opts.voiceId;
+  if (!voiceId) throw new NeedsConfigError("elevenlabs:paige_voice_profile");
   const modelId = opts.modelId || DEFAULT_MODEL;
   const started = Date.now();
 
-  // voiceId comes from untrusted caller input (task {voiceId|voice_id}) — encode it so a stray
-  // '/', '?', or '..' can't reshape the request path (§13 secure-by-construction).
+  // The server-resolved reference is still encoded so no unexpected provider value can reshape
+  // the request path (§13 secure-by-construction).
   const resp = await fetch(`${ELEVENLABS_BASE}/text-to-speech/${encodeURIComponent(voiceId)}`, {
     method: "POST",
     // Key in the xi-api-key header only — never the URL — so a network-level fetch reject

@@ -25,7 +25,7 @@ Purpose: pre-launch cleanup + systemic §32 tooling. Fires between the shipped W
 - **Bug A — btf-onboarding bucket** (launch-blocker; PR #396 → merged) ✅ — signed-agreement PDF uploads persist again; §32.b-proven, §39 peer-gate caught + fixed a replay-only defect
 - **Bug B — 3 logo leakers** (launch-blocker; PR #397 → merged) ✅ — broker invite / portal chatbot / coach→client email now resolve tenant brand; also threads tenant brand through shared email renderer
 - **BRD + System Architecture** (PR #394 → merged) ✅ — MVP requirements + canonical architecture locked
-- **Voice work** ✅ — Ivanna voice on ConvAI + Direct-TTS separation; ELEVENLABS_VOICE_ID env var wired
+- **Historical voice work — superseded** — Paige speech now uses one server-side Paige Voice Profile; hosted-agent and request/env-selected voice paths are not Paige execution paths
 - **Doctrine amendments** ✅ — §47 (MCP-migrations commit-same-beat), §48 (Cowork rate-limit scope discipline)
 - **Playwright dev-dep + live-drive helper** (PR #398) — 🔄 near merge, one CodeQL re-scan away; systemic §32 tooling — collapses most of the original Wave 7
 - **Owed live-drive backfills** — 2 tight PRs after #398 merges (Bug A signed-agreement download path, Bug B widgets + coaching-reminder email)

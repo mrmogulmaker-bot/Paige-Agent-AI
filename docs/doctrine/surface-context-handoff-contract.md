@@ -15,6 +15,11 @@ Companion to `governed-execution-seam.md` (how an *action* is governed once requ
 surface hands Paige a **safe, structured context** so she opens already knowing what the owner is
 looking at — never a blind chat window, never a raw page payload.
 
+This contract is modality-neutral. Text, Live Conversation, future phone/SIP, Secure Browser, and
+cards may all carry an allowlisted intent into this same scope bridge; none may carry authority,
+raw audio/transcript content, or a modality-specific mutation shortcut. See
+`paige-modality-neutrality.md`.
+
 ## The real current state (grounded 2026-09-06, `origin/main` a013be41 plus the route-retirement hotfix)
 
 The only surface → chat handoff that exists today:
@@ -160,6 +165,7 @@ merge (§BRAIN.3), and none claims `LIVE` without authenticated runtime proof (�
 ## Cross-references
 
 `docs/binding-ledger/` (the ledger this serves) · `governed-execution-seam.md` · `one-approval-gate.md`
+· `paige-modality-neutrality.md` (the same handoff and governance contract for every Paige door)
 · §00 (CC owns the data/behavior contract; CD owns how the banner/status looks) · §7/§36 (Paige opens
 already oriented) · §9/§51 (tenant isolation — the intent is never the authority) · §18 (extend the one
 home) · #981 (why raw payloads are forbidden) · #771 (the dropped prompt).

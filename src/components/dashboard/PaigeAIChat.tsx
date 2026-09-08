@@ -35,6 +35,8 @@ import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingInd
 import { PaigeArtifactCard, type PaigeArtifact } from "@/components/paige/chat/PaigeArtifactCard";
 import { ExtractionProposalCard, type ExtractionProposal } from "@/components/chat/ExtractionProposalCard";
 import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/chat/PaigeCompactingCard";
+import { PaigeLiveConversation } from "@/components/paige/live/PaigeLiveConversation";
+import { parseLiveConversationCard, type LiveConversationCard } from "@/lib/paigeLiveConversation/contract";
 import { createAnchoredTranscriptScroll, messageScrollAnchorKey } from "@/components/chat/anchoredTranscriptScroll";
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
@@ -300,6 +302,9 @@ const PaigeAIChatInner = ({
   const [writingPhase, setWritingPhase] = useState(false);
   // #12 — the live conversation-compacting signal (this surface persists → it can fold). Reset per turn.
   const [compacting, setCompacting] = useState<CompactingSignal | null>(null);
+  // Presentation-only projection of a real current object. It never persists a card or creates
+  // an action path; canonical records and confirmations remain owned by the chat/Spine response.
+  const [streamedLiveCard, setStreamedLiveCard] = useState<LiveConversationCard | null>(null);
   // The streamed reasoning thoughts (paige_step kind:"thought") exposed under "Thought process".
   const thinkingThoughts = steps
     .filter((s) => s.kind === "thought")
@@ -458,6 +463,7 @@ const PaigeAIChatInner = ({
     setStreamingThreadId(null);
     setWritingPhase(false);
     setCompacting(null);
+    setStreamedLiveCard(null);
     setCancelled(true);
     setConnectionIssue(null);
     setHistoryTransitioning(false);
@@ -523,6 +529,7 @@ const PaigeAIChatInner = ({
     setIsLoading(false);
     setStreamingThreadId(null);
     setSteps([]);
+    setStreamedLiveCard(null);
     setWritingPhase(false);
     setCompacting(null);
     setCancelled(false);
@@ -771,6 +778,7 @@ const PaigeAIChatInner = ({
     setSteps([]); // fresh "watch her work" trace per turn
     setWritingPhase(false); // #11 — back to "Thinking…" until the first token this turn
     setCompacting(null); // #12 — clear any prior turn's compacting card
+    setStreamedLiveCard(null);
     const timeoutId = soloTenantSafety ? window.setTimeout(() => {
       if (!ticketAccepted(requestTicket)) return;
       requestFenceRef.current.invalidate();
@@ -942,6 +950,11 @@ const PaigeAIChatInner = ({
             // Structured event: a "watch her work" step (#95). Upsert by id, sorted by seq.
             if (parsed.paige_step) {
               setSteps((prev) => upsertStep(prev, parsed.paige_step as PaigeStep));
+              continue;
+            }
+            const liveCard = parseLiveConversationCard(parsed.paige_live_card);
+            if (liveCard) {
+              setStreamedLiveCard(liveCard);
               continue;
             }
             // #11 — the server confirmed the transition into the reply. A lightweight signal; the
@@ -1303,6 +1316,62 @@ const PaigeAIChatInner = ({
       disabled={composerBlocked}
     />
   );
+
+  const lastAssistantMessage = [...messages].reverse().find((message) => message.role === "assistant");
+  const liveConfirmation = lastAssistantMessage?.confirmResolved ? undefined : lastAssistantMessage?.confirm;
+  const liveConfirmationFingerprints = (liveConfirmation ?? []).map((item) => item.fingerprint).filter((value): value is string => !!value);
+  const latestArtifact = lastAssistantMessage?.artifacts?.at(-1);
+  const activeLiveCard: LiveConversationCard | null = streamedLiveCard ?? (liveConfirmation?.length ? {
+    id: `governed-${lastAssistantMessage?.id ?? "current"}`,
+    kind: "governed-action",
+    title: liveConfirmation.length > 1 ? `${liveConfirmation.length} actions need your confirmation` : "This action needs your confirmation",
+    body: liveConfirmation.map((item) => item.summary).join("; "),
+    source: { availability: "LIVE", provenanceLabel: "Paige authority review" },
+    action: {
+      toolName: liveConfirmation.map((item) => item.tool).join(", "),
+      authorityStatus: "confirmation-required",
+      scopeSummary: liveConfirmation.map((item) => item.summary).join("; "),
+      confirmationFingerprints: liveConfirmationFingerprints,
+    },
+  } : latestArtifact ? {
+    id: `result-${latestArtifact.id}`,
+    kind: "evidence-result",
+    title: latestArtifact.title || "Paige result",
+    body: `A ${latestArtifact.artifactType} Paige created in this conversation is ready to review in chat.`,
+    source: { availability: "PARTIAL", canonicalRef: latestArtifact.id, provenanceLabel: "Paige conversation artifact" },
+    resultLabel: "Ready to review in this conversation",
+  } : null);
+  const displayedConfirmationFingerprints = activeLiveCard?.kind === "governed-action"
+    && activeLiveCard.action.authorityStatus === "confirmation-required"
+    && activeLiveCard.action.confirmationFingerprints?.length === liveConfirmationFingerprints.length
+    && activeLiveCard.action.confirmationFingerprints.every((fingerprint, index) => fingerprint === liveConfirmationFingerprints[index])
+    ? [...liveConfirmationFingerprints]
+    : [];
+
+  const ensureLiveThread = useCallback(async () => {
+    if (activeThreadId) return activeThreadId;
+    const id = await threadsApi.ensureThread("Live Conversation");
+    hydratedFromRef.current = id;
+    setActiveThreadId(id);
+    return id;
+  }, [activeThreadId, setActiveThreadId, threadsApi]);
+
+  const liveConversationButton = soloTenantSafety && enableHistory ? (
+    <PaigeLiveConversation
+      disabled={composerBlocked}
+      contextEpoch={scopeEpoch}
+      threadId={activeThreadId}
+      ensureThread={ensureLiveThread}
+      transcript={messages.map(({ id, role, content }) => ({ id, role, content }))}
+      activeCard={activeLiveCard}
+      working={isLoading}
+      workingLabel={steps.at(-1)?.label ?? (writingPhase ? "Preparing your response" : null)}
+      confirmationFingerprints={displayedConfirmationFingerprints}
+      onAnswer={(answer) => void handleSend(answer)}
+      onApprove={(fingerprints) => void handleSend("Approved — run it.", fingerprints)}
+      onDecline={(fingerprints) => void handleSend("Hold off — skip that one.", undefined, fingerprints)}
+    />
+  ) : null;
 
   const clearComposerButton = soloTenantSafety && input ? (
     <Button
@@ -1853,6 +1922,7 @@ const PaigeAIChatInner = ({
                         canonical per-tool autonomy seam; it never gates or claims authority here. */}
                     {composerAutonomyControl}
                     {micButton}
+                    {liveConversationButton}
                     {attachButton}
                     {clearComposerButton}
                     <Button

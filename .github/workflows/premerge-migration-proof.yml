@@ -216,6 +216,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           [ "$fail" = "0" ] || exit 1
 
+      - name: Prove Paige voice revocation and hard-cost boundary (rolled back)
+        if: steps.changed.outputs.count != '0' && steps.restore.outputs.restore_ok == 'true' && steps.apply.outputs.fail == '0' && hashFiles('scripts/sql/paige-voice-cost-proof.sql') != ''
+        run: psql -v ON_ERROR_STOP=1 -f scripts/sql/paige-voice-cost-proof.sql
+
       # ── §13 advisory outcome comment (always, when the PR carries migrations). ──
       - name: Post advisory outcome (§13)
         if: always() && steps.changed.outputs.count != '0'

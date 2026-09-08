@@ -302,6 +302,11 @@ Each cost one failed run on prod (rollback, nothing persisted) before it was wri
 
 ## 1. The voice live-drive trap (ElevenLabs, #24 / #170 / PR #409)
 
+> **SUPERSEDED 2026-09-07:** the literal defaults and `ELEVENLABS_VOICE_ID` behavior below describe
+> historical wiring only. Paige speech now resolves exclusively through the approved service-side
+> Paige Voice Profile; request-level provider/voice overrides are rejected, and active sessions keep
+> their immutable profile revision.
+
 - **Symptom:** "I updated the ElevenLabs agent but I still hear the old voice." Sessions changed a
   ConvAI agent's voice and heard no change.
 - **Root cause:** Paige's TTS path does **not** read the ElevenLabs **ConvAI agent** at all. The
