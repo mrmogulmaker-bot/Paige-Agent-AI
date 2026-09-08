@@ -75,11 +75,11 @@
       },
       "prohibited_context": ["tenant id from client", "role from client", "raw consumer/own-row PII (the #981 leak reason)", "provider secrets or voice references in customer UI", "raw audio/transcript/card text as durable knowledge", "arbitrary client-supplied prose as identity"],
       "state": "PARTIAL",
-      "state_reason": "Sole chat surface established. Live Conversation now uses the exact workspace/thread and existing governed card path, with a fail-closed session control plane and immutable server voice-profile revision. Provider-backed realtime audio and authenticated owner runtime remain PROOF OWED. Existing handoff gaps (#771/raw clientContext) remain and are not widened by voice.",
+      "state_reason": "Sole chat surface established. Live Conversation UI and fail-closed session/profile control plane are deployed on exact main f8eb2362 and use the exact workspace/thread plus existing governed card path. Provider-backed realtime audio remains PROOF OWED and authenticated owner runtime remains UNVERIFIED. Existing handoff gaps (#771/raw clientContext) remain and are not widened by voice.",
       "evidence_class": ["source_read", "production_catalog", "automated_test", "rendered_structural"],
       "linked": ["#981", "#771"],
       "next_slice": "Independent account/privacy/cost proof may enable provider transport in a separate bounded change; authenticated owner proof remains owed. Separately adopt the Surface Context Handoff Contract to retire raw clientContext.",
-      "sources": ["docs/doctrine/paige-modality-neutrality.md", "docs/doctrine/surface-context-handoff-contract.md", "src/solo/paigeClientScope.ts", "src/components/dashboard/PaigeAIChat.tsx", "src/components/paige/live/PaigeLiveConversation.tsx", "supabase/functions/paige-ai-chat/index.ts", "supabase/functions/paige-live-session/index.ts", "supabase/migrations/20260907155052_paige_live_conversation_control_plane.sql"]
+      "sources": ["docs/doctrine/paige-modality-neutrality.md", "docs/doctrine/surface-context-handoff-contract.md", "src/solo/paigeClientScope.ts", "src/components/dashboard/PaigeAIChat.tsx", "src/components/paige/live/PaigeLiveConversation.tsx", "supabase/functions/paige-ai-chat/index.ts", "supabase/functions/paige-live-session/index.ts", "supabase/migrations/20260907155052_paige_live_conversation_control_plane.sql", "docs/delivery/paige-live-conversation-mvp.md"]
     },
     {
       "id": "command-center.business-game-plan",
