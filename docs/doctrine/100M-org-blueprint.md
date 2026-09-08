@@ -7,6 +7,15 @@
 > construction — a general operating architecture for coaching, consulting, thought
 > leadership, and agency businesses; nothing here is a finance/credit default.
 >
+> **Owner architecture correction — 2026-09-08:** departments are capability domains inside
+> **one Paige Runtime Harness**, not separate AI products or agents with independent memory,
+> operating logic, authority, jobs, evaluations, cost controls, or disconnected tools. Named
+> department agents below are presentation identities or bounded workers only. They register
+> domain skills, adapters, canonical records, and scoped tools into the shared Harness, and every
+> action still resolves tenant, actor, workspace, role, provider state, scope, approval, budget,
+> and verification through the Paige Spine at execution time. The canonical rule is
+> `One Paige → one shared governed runtime → coordinated work across many platform domains.`
+>
 > **How this maps onto what already exists (extend, never rebuild — §12):**
 > - The **10 departments** below extend the existing `paige_departments` table
 >   (SPINE #1 action bus, migration `20260711140000_action_bus.sql`), which today
@@ -19,12 +28,13 @@
 > - **RACI-per-workflow** is already the action-kind registry
 >   (`default_from_department`, `default_to_department`, `draft_subagent_slug`,
 >   `default_autonomy_lane`, `requires_approval`) — each action kind is a RACI row.
-> - **Layer 2 sub-agents** ride the existing sub-agent forge + `delegate_to_subagent`
->   + the model router (SPINE #2), tenant-scoped.
+> - **Layer 2 capability domains** use the shared skill/tool registry, optional bounded-worker
+>   forge + `delegate_to_subagent`, and provider-neutral model router (SPINE #2), tenant-scoped.
+>   These are extensions of the one Harness, never separate runtimes or memory stores.
 >
-> The operationalization plan (which departments/sub-agents/router/reports to build,
-> in what order) is tracked separately; this document is the awareness layer (Layer 1
-> "Org Brain") that Paige and every sub-agent reference.
+> The operationalization plan (which domain skills/adapters/router/reports to build,
+> in what order) is tracked separately; this document is organizational knowledge in the
+> existing Second Brain that the Paige Harness and its bounded workers may reference when eligible.
 
 ---
 
@@ -211,18 +221,28 @@ The core principle: **the org chart exists on Day 1 — humans fill the seats ov
 
 For Paige to be *aware* of the departments and *perform* their roles, she needs three layers:
 
-### Layer 1 — Awareness (The Org Brain)
-Paige's knowledge base contains this entire blueprint as structured context:
+### Layer 1 — Awareness (Second Brain organizational context)
+The Second Brain may hold this blueprint as governed organizational knowledge. The Runtime Harness
+admits only the eligible tenant/workspace-scoped projection needed for the task, which may include:
 
 - **The org chart itself** — all 10 departments, every seat, every role description
 - **RACI per workflow** — for any task, who is Responsible, Accountable, Consulted, Informed (and whether that "who" is a human or Paige)
 - **KPIs per department** — so Paige knows what "good" looks like in every lane
 - **Escalation map** — which decisions Paige can make alone, which need approval, which are human-only
 
-**Implementation:** Load this document into Paige's system knowledge/vector store. Every sub-agent references it. When any request comes in, Paige first classifies it by department, then routes it to the correct sub-agent with the correct authority level.
+**Implementation:** Make this document eligible governed Second Brain knowledge for the active
+tenant/workspace scope. When a request comes in, the shared Paige Harness assembles tenant-safe
+context, classifies domain ownership, selects registered skills/tools or bounded workers, and asks
+the Spine to resolve authority at execution time. The document does not itself grant authority.
 
-### Layer 2 — Execution (The Department Sub-Agents)
-One named sub-agent per department, each with its own system prompt, tool access, and workflows. Paige (the orchestrator) routes; sub-agents execute.
+### Layer 2 — Execution (Shared Harness capability domains)
+
+One Paige coordinates all departments through the same Runtime Harness. A department may expose a
+named specialist identity and register domain prompts, skills, adapters, canonical records,
+workflows, and scoped tools, but it does not own a separate Brain, Harness, memory store, authority
+system, job system, evaluation loop, cost control, or disconnected tool access. Any sub-agent is a
+bounded worker within a Paige-led job; it receives only scoped context and cannot bypass the Spine,
+verification, receipts, Rail, or Mind/Memory eligibility rules.
 
 ### Layer 3 — Governance (The Autonomy Tiers)
 Every task in the company gets one of three tags:
@@ -334,13 +354,13 @@ The org chart never changes. What changes is **who sits in each seat** as revenu
 
 ## Implementation Checklist for Paige
 
-1. **Load this blueprint** into Paige's knowledge base as the canonical org document
-2. **Create/rename sub-agents** to match the 10 department agents above
-3. **Tag every existing workflow** with its department + autonomy tier (🟢/🟡/🔴)
-4. **Build the router prompt:** every inbound task → classify by department → route to sub-agent → apply autonomy tier → execute or escalate
-5. **Set approval channels** for 🟡 tasks (Slack/email/dashboard approve buttons)
-6. **Weekly department reports:** each sub-agent produces its department's KPI snapshot every Monday
-7. **Quarterly seat review:** which 🟡 tasks earned promotion to 🟢, and which seats are ready for a human hire
+1. **Register this blueprint** as governed Second Brain knowledge for eligible tenant/workspace scopes
+2. **Register capability domains** and any bounded specialist identities in the one Paige Runtime Harness
+3. **Tag every existing workflow** with its domain and default autonomy lane (🟢/🟡/🔴); defaults do not grant authority
+4. **Use the shared router contract:** every inbound task → tenant-safe context → classify domains → select registered skills/tools or bounded workers → Spine resolves execution-time authority → execute or escalate → verify → receipt/Rail → truthful Paige response
+5. **Use the one approval gate** for 🟡 tasks; Slack, email, and dashboard controls are presentation or notification doors only and never own approval proof
+6. **Weekly department reports:** the Harness produces each domain's evidence-backed KPI snapshot from canonical records
+7. **Quarterly authority review:** which defaults have evidence for a proposed policy change, and which seats are ready for a human hire; no automatic promotion enters production
 
 ---
 

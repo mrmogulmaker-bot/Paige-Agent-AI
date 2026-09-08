@@ -8,9 +8,9 @@ for the future template-library build (task #118).
 
 | Role | node `type` | `typeVersion` |
 |---|---|---|
-| Brain | `@n8n/n8n-nodes-langchain.agent` | 3.1 |
-| Chat model (default) | `@n8n/n8n-nodes-langchain.lmChatAnthropic` | 1.5 (model `claude-sonnet-4-6`) |
-| Memory | `@n8n/n8n-nodes-langchain.memoryBufferWindow` | 1.4 |
+| Orchestrator node (n8n Agent) | `@n8n/n8n-nodes-langchain.agent` | 3.1 |
+| Chat model (historical template snapshot; replaceable configuration) | `@n8n/n8n-nodes-langchain.lmChatAnthropic` | 1.5 (model `claude-sonnet-4-6`) |
+| Bounded session/Mind state adapter | `@n8n/n8n-nodes-langchain.memoryBufferWindow` | 1.4 |
 | Sub-workflow as tool | `@n8n/n8n-nodes-langchain.toolWorkflow` | 2.2 |
 | Sub-agent as tool | `@n8n/n8n-nodes-langchain.agentTool` | 2.2 |
 | Trigger — form | `n8n-nodes-base.formTrigger` | 2.6 |
@@ -20,16 +20,24 @@ for the future template-library build (task #118).
 | Act/notify | `gmail` 2.2 · `telegram` 1.2 · `httpRequest` 4.4 · `if` 2.3 · `switch` 3.4 · `executeWorkflow` 1.3 |
 
 ## Structural invariants
-1. Exactly one trigger → brain via `type:"main"`.
-2. Brain = Agent node; always has `ai_languageModel`; add `ai_memory` when per-client/conversational; add `ai_outputParser` when it must route.
+1. Exactly one trigger → orchestrator Agent node via `type:"main"`.
+2. The Agent node always has `ai_languageModel`; `ai_memory` is permitted only as bounded session/Mind state or an adapter to the one governed Memory eligibility contract—never an n8n-owned durable store. Add `ai_outputParser` when the node must route.
 3. **AI sub-nodes connect IN REVERSE** — keyed by the sub-node's *name*, connection type `ai_languageModel`/`ai_memory`/`ai_tool`/`ai_outputParser`, pointing INTO the agent. Only trigger→brain→downstream use `main`.
-4. Propose→confirm gate is mandatory: brain proposes, an approval branch exists for `needs_human_approval`.
+4. Propose→confirm is mandatory for gated work: `needs_human_approval` is a routing signal only. Its branch must invoke the shared Spine/one-approval gate, which re-resolves authority at execution time and owns approval proof; the n8n branch cannot approve locally.
 5. Notify + Log are `executeWorkflow` calls to reusable per-tenant bridges (the §10 callable seam, §8 action bus), never hand-rolled.
 6. Credentials are placeholders filled from `list_credentials` — never hardcoded.
 7. `POST /api/v1/workflows` accepts only `{name, nodes, connections, settings}` — never send `active`/`tags`/`pinData`. Created inactive; name ends `[DRAFT]`; activation is a separate gated step.
 
 ## Single-brain vs sub-agents
-Default one brain (give it tools, not more brains). Add a sub-agent (`agentTool`/`toolWorkflow`) only when: distinct expertise/persona needed · two audiences at once (Client-Experience + Owner-Ops, §8) · >~6-8 tools on one agent · a stage needs its own memory/loop · long-horizon 90-day (orchestrator decides "who's due today", content sub-agent personalizes each touch).
+Default one orchestrator Agent node (give it scoped tools, not more brains). In a generated n8n workflow, an
+`agentTool`/`toolWorkflow` is only a bounded worker inside the one Paige Runtime Harness—not a
+department Brain, independent memory, authority system, or disconnected tool island. Use one only
+when distinct expertise/presentation is needed, two audiences are served at once
+(Client-Experience + Owner-Ops, §8), a tool boundary reduces exposure, a stage needs bounded
+workflow-local Mind/job state or loop, or long-horizon work needs scoped delegation. Such state is
+ephemeral/bounded unless the governed Memory contract separately admits it. All execution still uses
+the shared tenant-safe context, Spine authority, canonical verification, receipts/Rail, job,
+evaluation, and cost-control path.
 
 ## Consultative questions (ask ≤4, infer the rest)
 1. Outcome — what should be true after it runs?

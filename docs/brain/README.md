@@ -20,12 +20,13 @@ index what you have not checked.
   memory. **A recorded "not built" counts** — see `decision-log.md` → "Known-unbuilt / spec-only status."
 - **Need the meaning of a §-number, tier word, or VP name?** → `glossary.md`.
 - **Need "what happened / what did we decide recently?"** → `decision-log.md`.
-- **Adding or changing a model, agent, skill, voice path, browser, proactive job, MCP server, or
-  external tool?** → read the canonical Paige Runtime Harness decision in
+- **Adding or changing a department/domain, model, agent, skill, voice path, browser, proactive job,
+  MCP server, or external tool?** → read the canonical Paige Runtime Harness decision in
   `../PAIGE-MASTER-PROJECT-REFERENCE.md` Section 3, then
   `paige-brain-wiring-standard.md`, `paige-spine-and-rail-state.md`, and the Integration Capability
   Registry when a provider or connected app is involved. No surface may invent a parallel runtime,
-  authority seam, Brain, Rail, receipt store, or registry.
+  authority seam, Brain, Rail, receipt store, registry, or “agent memory”; departments are
+  capability domains within one shared Paige Harness.
 - **Hit a weird recurring bug?** → `lessons-learned.md` (symptom → root cause → rule).
 - **Opening/closing a PR, merging, deploying, versioning, or drafting a customer update?** →
   `../doctrine/release-governance-and-customer-update-policy.md`.
@@ -60,7 +61,7 @@ worse than none — it lies with authority.
 | `roles-permissions.md` | How roles actually work: the three stores, the owner→global-admin amplifier, which helper to use, live counts, what's not built | 2026-08-18 |
 | `decision-log.md` | Chronological one-liners: PRs #375+, dated rulings, wave decisions | "What changed / what did we decide?" |
 | `lessons-learned.md` | Recurring traps: symptom → root cause → rule | Before a class of work that's bitten us before |
-| `paige-brain-wiring-standard.md` | **The Second Brain versus Runtime Harness distinction, and the six-part checklist every capability must satisfy** — knowledge record + callable seam + context feed + tool registration + tier availability + modality-neutral acceptance. Includes the running coverage ledger while routing current Harness authority to the Master decision | **Before model, agent, skill, voice, browser, proactive-job, or external-tool work; and when shipping ANY capability** |
+| `paige-brain-wiring-standard.md` | **The Second Brain versus Runtime Harness distinction, the one-runtime/many-capability-domains rule, and the six-part checklist every capability must satisfy** — knowledge record + callable seam + context feed + tool registration + tier availability + modality-neutral acceptance. Includes the running coverage ledger while routing current Harness authority to the Master decision | **Before department/domain, model, agent, skill, voice, browser, proactive-job, or external-tool work; and when shipping ANY capability** |
 | `cd-pack-port-playbook.md` | How to port a Claude Design pack surface to a live tier: the 7-step procedure + the 6 traps that have actually cost us. Written from the operator port so Agency/Sub-account/Solo/Enterprise don't re-learn them | Before porting any pack surface to any tier |
 | `design-system.md` | Palette · gold discipline · type · depth · motion · layout · taste — and where each source lives | ANY design work, or "what is our design system?" |
 | `../doctrine/paige-attention-register.md` | **Where a platform finding lives so it is never lost** — the five records and what each is for, the register's nine fields and eight views, the eleven delivery statuses and what each one means, intake and closeout rules, the board's acceptance criteria, and the honest record that the GitHub Project does not exist yet | **Whenever a finding is discovered outside the current assignment's scope**, or before closing out any workstream |
@@ -159,7 +160,7 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 | `docs/brain/comms-capability-map.md` | What A2P / numbers / voice actually exist, and the difference between code that exists, is deployed, and is reachable. The stranded-surface backlog and the resurfacing order | "do we have comms X?" · any A2P, number, or voice work |
 | `.claude/skills/README.md` | What lives in `.claude/skills/` and why nothing third-party does: the MIT notice for the §69 skill can neither be fetched nor reconstructed without inventing a copyright holder, and what would unblock it. **Carries the 2026-09-01 correction** — the "half-install" an earlier revision described is NOT real; the synced bundle inlines every reference and is self-contained | Any software task here — §69 makes the skill mandatory · before vendoring or updating it |
 | `.claude/skills/second-brain/SKILL.md` | **Ours.** Read the brain BEFORE work and update it BEFORE done — both bookends. Step 1 says which file answers which question; steps 3–4 record what the task taught and sweep for the claims it falsified (§0 master ref · §BRAIN.3 brain · §66 tier matrix each bind a DIFFERENT file). Loads on every fresh container | One of the FIRST steps of any task here, and again as one of the LAST |
-| `docs/doctrine/paige-c-suite-roster.md` | Named-agent VP roster (VERA/NEXUS/CURA/…) | Referencing or forging a Paige VP/sub-agent |
+| `docs/doctrine/paige-c-suite-roster.md` | Proposed VP presentation and capability-ownership roster (VERA/NEXUS/CURA/…); every VP/specialist remains inside one Paige Runtime Harness with no separate memory or authority | Referencing or forging a Paige VP/sub-agent |
 | `docs/doctrine/paige-os-architecture.md` | Paige-as-OS architecture (§35) | OS-shaped primitive decisions |
 | `docs/doctrine/paige-practice-blueprints-2026-07-29.md` | One-click vertical "Blueprint" install layer | Playbook/Blueprint/vertical-preset work |
 | `docs/doctrine/paige-unified-comms-substrate-2026-07-29.md` | §49 unified comms substrate spec | Comms/messaging/channel work |

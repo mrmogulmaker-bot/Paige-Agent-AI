@@ -153,7 +153,7 @@ LEVEL 0 — GOD / SUPER ADMIN            /admin/paige/*        admin.* MCP names
              └─ LEVEL 3 — TENANT ACCOUNTS   /admin/* · tenant.* namespace · RLS-scoped
                   └─ LEVEL 4 — TENANT STAFF/SEATS   tenant_members
                        └─ LEVEL 5 — CLIENT PORTALS   /app/* · /workspace/* · self.* namespace
-                            └─ (PAIGE + HER SUB-AGENT TEAMS — governed at every level)
+                             └─ (ONE PAIGE HARNESS + BOUNDED WORKERS — governed at every level)
 ```
 
 Permissions inherit downward only. Tenant isolation is **architectural** (RLS on tenant-scope + ecosystem-scope), not policy. The MCP namespaces (`admin.*` / `paige.*` / `tenant.*` / `self.*` / `bridge.*`) are the permission boundary for every agent action — the same seam §10 requires for "Paige can run anything by voice."
@@ -165,11 +165,11 @@ Permissions inherit downward only. Tenant isolation is **architectural** (RLS on
 3. **§199 — Data sovereignty:** no two systems store the same authoritative fact; cross-ecosystem flows only through the four sanctioned patterns (webhook / pull / sync / federation) via `*-bridge` functions, every call logged to `paige_audit_log`. At scale this is the anti-entropy law — it's why tenant #40,000's integrations don't rot the platform.
 4. **§10 — Paige-governable, always:** every feature keeps a callable seam (RPC/edge function). The end state — one chat where the God account or any tenant runs the entire platform by voice — is only possible if no feature ever ships as a UI dead end.
 5. **The Commerce Line — power the operators, never become the marketplace.** Paige monetizes rails (SaaS + platform fees + Exchange take), never demand aggregation. Consumer-marketplace liability (trust-and-safety, insurance, lodging/transport regulation) stays with the operator who owns the customer. Every Engine 6 proposal is tested against this line before it ships.
-6. **§14 — Even Paige never works solo:** every substantive job runs through her forged specialist teams with a verifier; every forged agent inherits model-routing config. Governance of the AI is governance of the *teams*, not one monolith.
+6. **§14 — One Paige Harness composes bounded specialist work:** every substantive job uses registered skills/tools and, when useful, bounded workers with a verifier. All workers use the shared provider-neutral router, Spine authority, job, evidence, evaluation, and cost-control path; none inherits separate model-routing config or becomes an autonomous operating system.
 
 ## The Autonomy Governance Stack (extends `autonomy_lane` — do not reinvent)
 
-The three tiers are already the enum: 🟢 `auto` · 🟡 `confirm` · 🔴 `off`. Governance at scale is **who may move which action kind between lanes**:
+The three tiers are already the enum: 🟢 `auto` · 🟡 `confirm` · 🔴 `off`. Governance at scale includes **who may propose or configure which action-kind defaults and ceilings**. Those settings never grant blanket authority; the shared Spine re-resolves the active tenant, actor, workspace, role, tool scope, provider state, approval rule, budget, and verification requirement for every execution step:
 
 | Control | Mechanism (existing → extended) |
 |---|---|

@@ -154,7 +154,7 @@ Markdown before generating.
 - Composition — chains agents into multi-step flows
 - Agent forging — recognizes when to spin up a new specialist, drafts the spec for approval
 - Agent-learning loop — capture what worked / didn't, update the agent's playbook (§34 L6)
-- Cross-department action-bus routing (§16) — files actions to the right department at the right autonomy tier
+- Cross-domain action-bus routing (§16) — keeps one Paige-led job in the shared Harness while the Spine re-resolves authority for each action
 - Recognizes when to NOT use an agent — sometimes a direct reply is better than a delegation
 
 ## 12. Superpowers — imported capabilities from the Claude Skills ecosystem

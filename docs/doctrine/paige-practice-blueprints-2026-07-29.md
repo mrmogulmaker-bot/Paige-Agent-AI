@@ -102,8 +102,9 @@ not inside React-only handlers. The Blueprint test passes for each.
   config captured as an installable bundle) depend on the memory fabric.
 - **#100 / Live newswire** — Blueprints as ambient shared signals across a vertical.
 - **#45 / Paige-on-Paige** — Paige Agent AI Inc. gets its own Blueprint via §45 dogfood.
-- **#21 / §16 10-department model** — a Blueprint tunes per-department autonomy tiers
-  (🟢/🟡/🔴) for its vertical.
+- **#21 / §16 10-department model** — a Blueprint may tune capability-domain policy defaults
+  (🟢/🟡/🔴) for its vertical; defaults do not grant authority, and the shared Spine re-resolves
+  every action at execution time.
 - **#274 / Vibe Studio dimensional bar** — Blueprints installable via the Studio.
 
 ## The test, every time
