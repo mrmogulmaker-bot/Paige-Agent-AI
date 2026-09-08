@@ -1,5 +1,7 @@
 # Decision Log — chronological one-liners
 
+- **#1080 chat portal reset correction deployed (2026-09-08).** Exact main `42a8d5aa760877fc34316ab3712523f86f95b19e`, READY deployment `dpl_7V1rPr1apLDUVujH9uZiWc3ZLH7y`, and both production domains' build `42a8d5aa760877fc34316ab3712523f86f95b19e-mtt84zjl` are verified. Fresh alternate independent review approved exact head `d7b66d75716890fa9b36275b70a63e3b42a4ffad`; CI,144 affected,4051 full tests and127 rendered checks passed. Only the redundant same-parent portal append is guarded; no timer/threshold/controller/context changes. The [durable preservation contract](../evidence/ui-delivery/paige-chat-scroll-forensic-regression-correction.md#durable-transcript-preservation-contract--owner-reaffirmed-2026-09-08) remains indefinite one-pixel owner control. Authenticated production acceptance is PROOF OWED; this is not full defect resolution or customer publication.
+
 - **Chat-scroll P0 remains open after #1075 (2026-09-08, owner report).** Actual shell parent refresh unconditionally reinserted the existing portal host, resetting native transcript scroll to zero. Failing-first real-component reproduction fails at all five viewports; a single parent-node guard removes the redundant move while preserving actual pop-out relocation. No context/memory, Secure Browser, voice or unrelated changes. Existing forensic closeout owns evidence; production acceptance remains owed. Other agents continue undisturbed.
 
 - **Vibe Studio Creative Production Team is a temporary Paige-assembled job team (2026-09-08,
