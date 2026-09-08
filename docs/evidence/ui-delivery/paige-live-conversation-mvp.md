@@ -63,9 +63,11 @@ The independent review result and exact PR/deployment/migration/function identif
 the PR and final closeout after those systems produce them. Provider audio cannot be upgraded above
 `PROOF OWED` without a separate account-verification receipt and approved readiness change.
 
-Independent review of pre-reconciliation implementation head
-`a7f681232b3f28609446d41c87727443d9e2468e` is `PASS`: no remaining release blocker after
-cross-realm isolation, canonical revocation, atomic activation, ambiguous-cost accounting, and
-actor-deletion retention were rechecked. A fresh independent review of the reconciled exact head is
-required before merge. The SQL behavior proof is still evidence owed to the premerge ephemeral
+Independent review of reconciled exact head
+`67a9165eee9ff825f48e5b729127192f741bba5e` against current-main
+`531045004aa306beecb669b31c385c779c76c4b8` is `PASS` with no release blocker. The reviewer
+confirmed the anchored transcript controller has zero branch diff, the Live portal leaves the
+canonical transcript mounted, #1044 is not absorbed, governed-card fingerprints reuse the existing
+confirmation path, and provider/profile/cost/session boundaries fail closed. Its fresh combined run
+passes 11 files / 103 tests. The SQL behavior proof is still evidence owed to the premerge ephemeral
 database job rather than inferred from static review.
