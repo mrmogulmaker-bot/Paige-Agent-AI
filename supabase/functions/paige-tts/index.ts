@@ -150,7 +150,18 @@ serve(async (req: Request) => {
     const { data: profile, error: profileError } = await admin.rpc("resolve_paige_voice_profile_internal", {
       _session_started_at: new Date().toISOString(),
     });
-    const resolvedVoice = profile && !profileError ? resolveProfileVoice(profile as Record<string, unknown>) : null;
+    const profileRecord = profile && typeof profile === "object"
+      ? profile as Record<string, unknown>
+      : null;
+    const resolvedVoice = profileRecord && !profileError
+      ? resolveProfileVoice({
+        provider: profileRecord.provider,
+        provider_voice_ref: profileRecord.provider_voice_ref,
+        revision: profileRecord.revision,
+        approved: profileRecord.approved,
+        active: profileRecord.active,
+      })
+      : null;
     if (!resolvedVoice) {
       console.error("[paige-tts] approved Paige Voice Profile unavailable", { code: profileError?.code });
       return json({ error: "voice_profile_unavailable" }, 503);
