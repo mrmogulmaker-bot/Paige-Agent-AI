@@ -61,6 +61,7 @@ Variants: authentication, role, tenant, and provider state do not apply.
 - Static/governance: TypeScript ratchet, production build, regression lint, release-governance lint, integration-registry lint, and binding-ledger lint all passed.
 - Browser drive: local plus `paigeagent.ai` and `app.paigeagent.ai` at 1366x768 and 900x1000; both retired routes ended at `/`; Back history returned to `/about`; keyboard entry, reduced-motion, and 200 percent reflow exercised.
 - Production identity: PR #1054 merged as `2719d7d86ccfa23d0e781b841b5ee134ec8e7276`; Vercel `dpl_CfH3jVVmkzrAm4vSzdUGDTU9Z9gQ` READY; both `version.json` manifests returned `2719d7d86ccfa23d0e781b841b5ee134ec8e7276-mts5d4ii` and `customerUpdate: null`.
+- Durable production artifacts: `production-paigeagent-drive.json` and `production-app-paigeagent-drive.json` preserve each tested entry, final path, heading, history result, focus target, reflow measurement, and console finding. Eight adjacent `production-*-premium-*.png` / `production-*-legacy-*.png` files preserve both retired-route results on both domains at both viewports.
 - Screenshots: `canonical-1366x768.png`, `premium-1366x768.png`, `legacy-1366x768.png`, `canonical-900x1000.png`, `premium-900x1000.png`, `legacy-900x1000.png`, and `zoom-200-1366x768.png` in the adjacent evidence directory.
 - Both public domains emitted background `track-event` CORS/401 console errors during production proof. They did not alter the canonical-route result and remain a separately owned telemetry finding.
 

@@ -1,0 +1,106 @@
+{
+  "base": "https://app.paigeagent.ai",
+  "buildVerifiedSeparately": true,
+  "results": [
+    {
+      "viewport": "1366x768",
+      "path": "/",
+      "finalPath": "/",
+      "heading": "Paige — Your AI Business Operations Partner",
+      "errors": []
+    },
+    {
+      "viewport": "1366x768",
+      "path": "/premium",
+      "finalPath": "/",
+      "heading": "Paige runs your  business.",
+      "errors": [
+        "Access to resource at 'https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/track-event' from origin 'https://app.paigeagent.ai' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: The value of the 'Access-Control-Allow-Origin' header in the response must not be the wildcard '*' when the request's credentials mode is 'include'.",
+        "Failed to load resource: net::ERR_FAILED",
+        "Access to resource at 'https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/track-event' from origin 'https://app.paigeagent.ai' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: The value of the 'Access-Control-Allow-Origin' header in the response must not be the wildcard '*' when the request's credentials mode is 'include'.",
+        "Failed to load resource: net::ERR_FAILED",
+        "Failed to load resource: the server responded with a status of 401 ()"
+      ]
+    },
+    {
+      "viewport": "1366x768",
+      "path": "/legacy",
+      "finalPath": "/",
+      "heading": "Paige runs your  business.",
+      "errors": [
+        "Access to resource at 'https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/track-event' from origin 'https://app.paigeagent.ai' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: The value of the 'Access-Control-Allow-Origin' header in the response must not be the wildcard '*' when the request's credentials mode is 'include'.",
+        "Failed to load resource: net::ERR_FAILED",
+        "Failed to load resource: the server responded with a status of 401 ()",
+        "Access to resource at 'https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/track-event' from origin 'https://app.paigeagent.ai' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: The value of the 'Access-Control-Allow-Origin' header in the response must not be the wildcard '*' when the request's credentials mode is 'include'.",
+        "Failed to load resource: net::ERR_FAILED"
+      ]
+    },
+    {
+      "viewport": "1366x768",
+      "history": {
+        "beforeBack": "/",
+        "afterBack": "/about"
+      },
+      "focus": {
+        "tag": "A",
+        "label": "Paige Agent",
+        "horizontalOverflow": false
+      },
+      "zoom": {
+        "horizontalOverflow": false,
+        "scrollWidth": 1366,
+        "clientWidth": 1366
+      }
+    },
+    {
+      "viewport": "900x1000",
+      "path": "/",
+      "finalPath": "/",
+      "heading": "Paige — Your AI Business Operations Partner",
+      "errors": []
+    },
+    {
+      "viewport": "900x1000",
+      "path": "/premium",
+      "finalPath": "/",
+      "heading": "Paige runs your  business.",
+      "errors": [
+        "Access to resource at 'https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/track-event' from origin 'https://app.paigeagent.ai' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: The value of the 'Access-Control-Allow-Origin' header in the response must not be the wildcard '*' when the request's credentials mode is 'include'.",
+        "Failed to load resource: net::ERR_FAILED",
+        "Access to resource at 'https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/track-event' from origin 'https://app.paigeagent.ai' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: The value of the 'Access-Control-Allow-Origin' header in the response must not be the wildcard '*' when the request's credentials mode is 'include'.",
+        "Failed to load resource: net::ERR_FAILED",
+        "Failed to load resource: the server responded with a status of 401 ()"
+      ]
+    },
+    {
+      "viewport": "900x1000",
+      "path": "/legacy",
+      "finalPath": "/",
+      "heading": "Paige runs your  business.",
+      "errors": [
+        "Access to resource at 'https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/track-event' from origin 'https://app.paigeagent.ai' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: The value of the 'Access-Control-Allow-Origin' header in the response must not be the wildcard '*' when the request's credentials mode is 'include'.",
+        "Failed to load resource: net::ERR_FAILED",
+        "Failed to load resource: the server responded with a status of 401 ()",
+        "Access to resource at 'https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/track-event' from origin 'https://app.paigeagent.ai' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: The value of the 'Access-Control-Allow-Origin' header in the response must not be the wildcard '*' when the request's credentials mode is 'include'.",
+        "Failed to load resource: net::ERR_FAILED"
+      ]
+    },
+    {
+      "viewport": "900x1000",
+      "history": {
+        "beforeBack": "/",
+        "afterBack": "/about"
+      },
+      "focus": {
+        "tag": "A",
+        "label": "Paige Agent",
+        "horizontalOverflow": false
+      },
+      "zoom": {
+        "horizontalOverflow": false,
+        "scrollWidth": 900,
+        "clientWidth": 900
+      }
+    }
+  ]
+}
