@@ -130,6 +130,39 @@ const PaigeWorkspaceFixture = () => {
 };
 
 describe("tenant shell owns one PAIGE surface", () => {
+  it("does not detach and reinsert the existing chat host on ordinary parent refresh", () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const render = () => root.render(
+      <MemoryRouter initialEntries={["/solo/410001/growth/pipeline"]}>
+        <TenantCommandCenterShell accountName="Fixture" accountType="standalone" userRole="admin"
+          brandHomeHref="/solo/410001/command-center" onSignOut={() => undefined}
+          soloPaigeWorkspace={<div data-refresh-chat-fixture />}>
+          <div />
+        </TenantCommandCenterShell>
+      </MemoryRouter>,
+    );
+    act(render);
+    const fixture = container.querySelector("[data-refresh-chat-fixture]");
+    const nativeAppend = Node.prototype.appendChild;
+    let redundantMoves = 0;
+    const spy = vi.spyOn(Node.prototype, "appendChild").mockImplementation(function <T extends Node>(this: Node, child: T): T {
+      if (child.parentNode === this && child.contains(fixture)) redundantMoves += 1;
+      return nativeAppend.call(this, child) as T;
+    });
+    try {
+      act(render);
+      act(render);
+      expect(container.querySelector("[data-refresh-chat-fixture]")).toBe(fixture);
+      expect(redundantMoves).toBe(0);
+    } finally {
+      spy.mockRestore();
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
   it("renders one canonical Solo shell structure for different server-resolved tenants", () => {
     const renderTenant = (
       accountNumber: string,
