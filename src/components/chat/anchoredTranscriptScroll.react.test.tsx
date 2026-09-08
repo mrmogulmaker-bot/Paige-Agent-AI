@@ -12,6 +12,7 @@ type TranscriptHarnessApi = {
   measure: (id: string) => { offset: number; scrollTop: number; bottomGap: number };
   prepend: (items: Item[]) => void;
   resize: (height: number) => void;
+  rehydrateIds: () => void;
   scrollTo: (top: number) => void;
   switchThread: (threadId: string, items: Item[]) => void;
 };
@@ -92,6 +93,7 @@ const TranscriptHarness = forwardRef<TranscriptHarnessApi>((_, apiRef) => {
     },
     prepend: (older) => setItems((current) => [...older, ...current]),
     resize: setViewportHeight,
+    rehydrateIds: () => setItems((current) => current.map((item) => ({ ...item, id: `db-${item.id}` }))),
     scrollTo: (top) => {
       const owner = ownerRef.current!;
       owner.dispatchEvent(new WheelEvent("wheel"));
@@ -118,6 +120,7 @@ const TranscriptHarness = forwardRef<TranscriptHarnessApi>((_, apiRef) => {
           key={item.id}
           data-height={item.height}
           data-paige-message-id={item.id}
+          data-paige-message-anchor-key={item.text}
         >
           {item.text}
         </article>
@@ -183,5 +186,22 @@ describe("anchored transcript React affected flow", () => {
     expect(api.measure("d").bottomGap).toBe(0);
     act(() => api.append({ id: "stream", height: 160, text: "streamed output" }));
     expect(api.measure("stream").bottomGap).toBe(0);
+  });
+
+  it("keeps a one-pixel manual reading position through streaming and resize", () => {
+    act(() => api.scrollTo(899));
+    const baseline = api.measure("d");
+    expect(baseline.bottomGap).toBe(1);
+    act(() => api.append({ id: "stream", height: 160, text: "streamed output" }));
+    expect(api.measure("d")).toMatchObject({ offset: baseline.offset, scrollTop: baseline.scrollTop });
+    act(() => api.resize(240));
+    expect(api.measure("d")).toMatchObject({ offset: baseline.offset, scrollTop: baseline.scrollTop });
+  });
+
+  it("keeps the visible text fixed when rehydration replaces every message ID", () => {
+    act(() => api.scrollTo(425));
+    const baseline = api.measure("b");
+    act(() => api.rehydrateIds());
+    expect(api.measure("db-b")).toMatchObject({ offset: baseline.offset, scrollTop: baseline.scrollTop });
   });
 });

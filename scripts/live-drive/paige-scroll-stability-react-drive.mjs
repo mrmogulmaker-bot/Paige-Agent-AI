@@ -78,10 +78,30 @@ async function openThread(page, title) {
   await settle(page);
 }
 
+async function openTenant(page, url) {
+  await page.goto(url);
+  if (!(await transcript(page).isVisible())) {
+    await page.getByRole("button", { name: "Direct PAIGE", exact: true }).evaluate((button) => button.click());
+  }
+  await transcript(page).waitFor();
+  await page.waitForFunction(() => document.querySelectorAll("[data-paige-message-id]").length >= 40);
+  await settle(page);
+}
+
 async function scrollReaderToMiddle(page) {
   await transcript(page).evaluate((owner) => {
     owner.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, bubbles: true }));
     owner.scrollTop = Math.round((owner.scrollHeight - owner.clientHeight) * 0.46);
+    owner.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  await settle(page);
+  return measure(page);
+}
+
+async function scrollReaderOnePixelUp(page) {
+  await transcript(page).evaluate((owner) => {
+    owner.dispatchEvent(new WheelEvent("wheel", { deltaY: -1, bubbles: true }));
+    owner.scrollTop = Math.max(0, owner.scrollHeight - owner.clientHeight - 1);
     owner.dispatchEvent(new Event("scroll", { bubbles: true }));
   });
   await settle(page);
@@ -155,19 +175,17 @@ try {
               window.__paigeHarnessFrames.push(frame.value);
               controller.enqueue(encoder.encode(frame.value));
             }
+            const completed = Number(sessionStorage.getItem("paige-harness-completed-turns") ?? 0);
+            sessionStorage.setItem("paige-harness-completed-turns", String(completed + 1));
             controller.close();
           },
         }), { status: 200, headers: { "Content-Type": "text/event-stream" } });
       };
     });
 
-    await page.goto(`${BASE}/solo/1971670/settings/setup?theme=dark`);
-    if (!(await transcript(page).isVisible())) {
-      await page.getByRole("button", { name: "Direct PAIGE", exact: true }).evaluate((button) => button.click());
-    }
-    await transcript(page).waitFor();
-    await page.waitForFunction(() => document.querySelectorAll("[data-paige-message-id]").length >= 40);
-    await settle(page);
+    const primaryTenantUrl = `${BASE}/solo/1971670/settings/setup?theme=dark`;
+    const secondTenantUrl = `${BASE}/solo/2072681/settings/setup?theme=dark&tenant=second`;
+    await openTenant(page, primaryTenantUrl);
 
     const initial = await scrollReaderToMiddle(page);
     record(`${label} real hydrated middle anchor`, !!initial.id && initial.text?.includes("HARNESS ONLY") && initial.bottomGap > 48, initial);
@@ -229,7 +247,23 @@ try {
     const bottom = await measure(page);
     record(`${label} real stream follows when bottom pinned`, Math.abs(bottom.bottomGap) <= 1, bottom);
 
-    const readerBeforeReload = await scrollReaderToMiddle(page);
+    const onePixel = await scrollReaderOnePixelUp(page);
+    record(`${label} deliberate one-pixel movement leaves bottom pin`, Math.abs(onePixel.bottomGap - 1) <= 0.1, onePixel);
+    await send(page, `One pixel ownership check ${label}`);
+    await page.getByText("HARNESS ONLY streamed response completed.", { exact: false }).last().waitFor();
+    await page.getByRole("button", { name: "Send message", exact: true }).waitFor();
+    await settle(page);
+    const onePixelStreamed = await measure(page);
+    record(`${label} one-pixel anchor survives streaming tool and receipt updates`, sameAnchor(onePixel, onePixelStreamed), { onePixel, onePixelStreamed });
+
+    await page.setViewportSize({ width: Math.max(400, width - 35), height: Math.max(700, height - 20) });
+    await settle(page);
+    await page.setViewportSize({ width, height });
+    await settle(page);
+    const onePixelResized = await measure(page);
+    record(`${label} one-pixel anchor survives responsive resize`, sameAnchor(onePixel, onePixelResized), { onePixel, onePixelResized });
+
+    const readerBeforeReload = onePixelResized;
     await page.reload();
     await transcript(page).waitFor();
     await page.waitForFunction(() => document.querySelectorAll("[data-paige-message-id]").length >= 40);
@@ -262,6 +296,20 @@ try {
       const nativeClosed = await measure(page);
       record(`${label} native popup close returns anchor`, sameAnchor(minimizedReturn, nativeClosed), { minimizedReturn, nativeClosed });
     }
+
+    const primaryTenantAnchor = await measure(page);
+    await openTenant(page, secondTenantUrl);
+    const secondTenantInitial = await measure(page);
+    record(`${label} second tenant does not inherit primary position`, Math.abs(secondTenantInitial.bottomGap) <= 1, { primaryTenantAnchor, secondTenantInitial });
+    const secondTenantAnchor = await scrollReaderToMiddle(page);
+    record(`${label} second tenant establishes its own reading anchor`, !!secondTenantAnchor.id && secondTenantAnchor.bottomGap > 48, secondTenantAnchor);
+    await openTenant(page, primaryTenantUrl);
+    const primaryTenantReturn = await measure(page);
+    record(`${label} primary tenant restores its own position`, sameAnchor(primaryTenantAnchor, primaryTenantReturn), { primaryTenantAnchor, primaryTenantReturn });
+    await openTenant(page, secondTenantUrl);
+    const secondTenantReturn = await measure(page);
+    record(`${label} second tenant restores its isolated position`, sameAnchor(secondTenantAnchor, secondTenantReturn), { secondTenantAnchor, secondTenantReturn });
+    await page.screenshot({ path: path.join(OUT, `${label}-second-tenant.png`), fullPage: true });
 
     record(`${label} no horizontal overflow`, !(await measure(page)).horizontalOverflow, await measure(page));
     record(`${label} no runtime errors`, errors.length === 0, errors);
