@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import type { User, Session } from "@supabase/supabase-js";
 import { Outlet, useLocation } from "react-router-dom";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { PaigeChat } from "@/components/app/PaigeChat";
 import { AppNav } from "@/components/app/AppNav";
 import { QuickStatsBar } from "@/components/app/QuickStatsBar";
@@ -64,9 +64,7 @@ const AppShell = () => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(!DEV_MODE);
-  const [chatCollapsed, setChatCollapsed] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const location = useLocation();
   const { target: impersonationTarget, isImpersonating } = useImpersonation();
@@ -82,8 +80,6 @@ const AppShell = () => {
   // the real authenticated user (auth.uid()), regardless of view-as-client.
   usePresenceHeartbeat(!!user?.id);
 
-  // Show context panel on non-root /app routes
-  const showContextPanel = location.pathname !== "/app" || !isMobile;
 
   // Check if user is new and needs onboarding (respects snooze + permanent dismissal).
   // Users can browse freely — the OnboardingChecklist on the dashboard is the persistent reminder.
@@ -93,7 +89,9 @@ const AppShell = () => {
       const snoozedUntil = Number(localStorage.getItem("onboarding_snoozed_until") || 0);
       if (snoozedUntil && Date.now() < snoozedUntil) return;
       if (localStorage.getItem("onboarding_dismissed") === "true") return;
-    } catch {}
+    } catch {
+      // Continue when browser storage is unavailable.
+    }
     supabase
       .from("profiles")
       .select("full_name, phone, address")
@@ -227,7 +225,9 @@ const AppShell = () => {
     try {
       const stay = sessionStorage.getItem("paige_stay_in_client_view");
       if (stay === "1") return;
-    } catch {}
+    } catch {
+      // Continue when browser storage is unavailable.
+    }
 
     let cancelled = false;
     setRedirectingStaff(true);
@@ -279,33 +279,6 @@ const AppShell = () => {
     ? ({ ...activeUser, id: effectiveUserId } as User)
     : activeUser;
 
-  // Mobile layout: full-screen chat with bottom nav
-  if (isMobile) {
-    return (
-      <>
-        {!isImpersonating && <RequiredConsentsGate userId={activeUser.id} />}
-        {!isImpersonating && fundingEnabled && <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />}
-        <AdminViewBanner />
-        <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
-        <PushNotificationPrompt />
-        <div className="h-dvh flex flex-col bg-background overflow-x-hidden">
-          <AppNav user={activeUser} />
-          <div className="flex-1 overflow-hidden">
-            {location.pathname === "/app" ? (
-              <PaigeChat user={scopedUser} session={session} />
-            ) : (
-              <div className="h-full overflow-y-auto scroll-touch p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
-                <Outlet context={{ user: scopedUser, session }} />
-              </div>
-            )}
-          </div>
-          {fundingEnabled && <QuickStatsBar factors={factors} />}
-        </div>
-      </>
-    );
-  }
-
-  // Desktop layout: resizable panels
   return (
     <>
       {!isImpersonating && <RequiredConsentsGate userId={activeUser.id} />}
@@ -316,12 +289,20 @@ const AppShell = () => {
       <div className="h-dvh flex flex-col bg-background overflow-x-hidden">
         <AppNav user={activeUser} />
         <ResizablePanelGroup direction="horizontal" className="flex-1">
-          <ResizablePanel defaultSize={40} minSize={30} maxSize={60}>
+          <ResizablePanel
+            defaultSize={40}
+            minSize={30}
+            maxSize={60}
+            className={location.pathname === "/app" ? "max-md:!flex-[1_1_100%]" : "max-md:hidden"}
+          >
             <PaigeChat user={scopedUser} session={session} />
           </ResizablePanel>
-          <ResizableHandle withHandle />
-          <ResizablePanel defaultSize={60}>
-            <div className="h-full overflow-y-auto p-6">
+          <ResizableHandle withHandle className="max-md:hidden" />
+          <ResizablePanel
+            defaultSize={60}
+            className={location.pathname === "/app" ? "max-md:hidden" : "max-md:!flex-[1_1_100%]"}
+          >
+            <div className="h-full overflow-y-auto scroll-touch p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:p-6">
               {location.pathname === "/app" ? (
                 <AppDashboardHome factors={factors} userId={scopedUser.id} />
               ) : (
@@ -337,7 +318,9 @@ const AppShell = () => {
 };
 
 // Default home content when on /app
-function AppDashboardHome({ factors, userId }: { factors: any; userId?: string }) {
+type CreditFactorScores = Database["public"]["Tables"]["credit_factor_scores"]["Row"];
+
+function AppDashboardHome({ factors, userId }: { factors: CreditFactorScores | null | undefined; userId?: string }) {
   const pb = usePlaybook();
   // Tenant-authored portal greeting (Portal Studio → portal_config.welcome).
   // Fail-open: an unset/empty overlay falls back to the current defaults, so

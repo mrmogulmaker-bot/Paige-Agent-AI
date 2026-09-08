@@ -497,6 +497,7 @@ describe("Solo PAIGE workspace contract", () => {
       clientHeight: { configurable: true, value: 300 },
       scrollHeight: { configurable: true, value: 1_200 },
     });
+    transcript.dispatchEvent(new WheelEvent("wheel"));
     transcript.scrollTop = 240;
     await act(async () => transcript.dispatchEvent(new Event("scroll", { bubbles: true })));
 
@@ -520,6 +521,7 @@ describe("Solo PAIGE workspace contract", () => {
       configurable: true,
       value: vi.fn(() => ({ matches: true })),
     });
+    transcript.dispatchEvent(new WheelEvent("wheel"));
     transcript.scrollTop = 120;
     await act(async () => transcript.dispatchEvent(new Event("scroll", { bubbles: true })));
     scrollTo.mockClear();
@@ -551,6 +553,7 @@ describe("Solo PAIGE workspace contract", () => {
       clientHeight: { configurable: true, value: 300 },
       scrollHeight: { configurable: true, value: 1_200 },
     });
+    transcript.dispatchEvent(new WheelEvent("wheel"));
     transcript.scrollTop = 180;
     await act(async () => transcript.dispatchEvent(new Event("scroll", { bubbles: true })));
     const composer = host.querySelector<HTMLTextAreaElement>('textarea[placeholder="Talk while she works…"]')!;
@@ -607,6 +610,7 @@ describe("Solo PAIGE workspace contract", () => {
       clientHeight: { configurable: true, value: 300 },
       scrollHeight: { configurable: true, value: 1_200 },
     });
+    accountATranscript.dispatchEvent(new WheelEvent("wheel"));
     accountATranscript.scrollTop = 120;
     await act(async () => accountATranscript.dispatchEvent(new Event("scroll", { bubbles: true })));
     expect(host.querySelector('button[aria-label="Jump to latest message"]')).toBeTruthy();
@@ -630,4 +634,3 @@ describe("Solo PAIGE workspace contract", () => {
     expect(workspace).toContain("51D7A6F680DB83AEF6BFE1147E9FC1651E39206EFAED17963F2FC16EC294F117");
   });
 });
-

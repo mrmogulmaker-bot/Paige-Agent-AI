@@ -1,6 +1,6 @@
 # Solo Tenant Brain — Verified Campaign Brief with Paige
 
-Status: RELEASE CANDIDATE rebased on current `main` (`6e93b1106d4ecd5593deaafd2a7c2ca269ea3fc5`, 2026-09-07); independently reviewed CLEAN; authenticated owner proof remains `PROOF OWED`.
+Status: RELEASED on production as PR #1047 referenced production merge `ae0a16a0d5147a4652a06925356c427c4d543d56` (2026-09-07). The verified create/revise and post-readback Rail backend lane is `LIVE`; the owner-visible vertical remains `PARTIAL` because authenticated owner proof is `PROOF OWED`.
 
 ## Owner outcome
 
@@ -52,3 +52,13 @@ Automated helper tests cover create, revise, exact field preservation, strict ma
 Rendered evidence reuses the unchanged Campaigns UI and proves existing first-use/card/reload rendering in Mineral and Obsidian at 1536x770, 1366x768, 1024x768, and 900x1000. Because no production UI code changes, it is regression evidence rather than a new design claim. Authenticated owner production create/revise -> verified chat result -> canonical card revision -> matching Rail evidence remains `PROOF OWED` until actually driven.
 
 Release-candidate proof on current main: 38/38 focused helper/chat tests and 161/161 adjacent Campaigns, Mission, Voice, and Skills regressions pass; the TypeScript ratchet remains at its 13-error baseline; the production build and required security, authority, registry, migration, release-governance, and sensitive-data checks pass; independent review is CLEAN. The complete repository run passed 3,898/3,900 under parallel load; its only two failures were five-second repository-scan timeouts, and both passed 21/21 immediately in isolation. The direct isolated PostgreSQL 16 migration application and readback pass; CI remains the authoritative Linux/Deno and production-database gate.
+
+## Production closeout
+
+PR #1047 supporting review-history head `8c9bf37ff617f70019ec6e3006f48e6d899d5172` passed required CI after both automated-review P2 findings were repaired and independently re-reviewed CLEAN. It squash-merged as the referenced production build `ae0a16a0d5147a4652a06925356c427c4d543d56`.
+
+Production migration run 34150733491 applied `20270105000000_campaign_brief_verified_rail_copy.sql` and passed the persisted-production verification. Edge run 34150733561 deployed `paige-ai-chat` and moved `edge-live`; `db-live` and `edge-live` both point exactly to the merge SHA with zero changed-file drift. Merge-time CI 34150733476, PAIGE Spine contract 34150733506, Security Audit 34150733474, and UI evidence 34150733493 passed. Both public production version endpoints returned `ae0a16a0d5147a4652a06925356c427c4d543d56-mtrk6vbx`.
+
+This proves the deployed Campaign Brief verified-create/revise and post-verification Rail contracts, not a signed-in owner journey. The backend lane is `LIVE`; the owner-visible Campaign Brief with Paige vertical and overall Solo Tenant Brain remain `PARTIAL`; authenticated owner create/revise, denied-role, workspace-switch, canonical card revision and matching Rail browser evidence remain `PROOF OWED`; Campaign Brief Mind and durable Memory remain `UNAVAILABLE`. Secure Browser/Browserbase is unchanged: Browserbase remains `PROPOSED`, prohibited and unwired, and credentialed browser use remains `UNAVAILABLE`.
+
+Recovery position: fail closed and forward-fix the Campaign Brief dispatch/helper, then redeploy `paige-ai-chat`; never delete or rewrite canonical briefs, receipts, or successful Rail evidence. The applied migration is additive and must not be edited or removed; any display-copy correction ships as a new forward migration. A source revert may remove the chat capability branch, but it does not roll back tenant records or the applied migration.

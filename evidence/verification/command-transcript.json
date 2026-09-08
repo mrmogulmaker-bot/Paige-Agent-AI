@@ -1,0 +1,147 @@
+{
+  "generatedAt": "2026-09-08T00:39:45.625Z",
+  "revision": "3ac7a7d28528f27d2c5d518bbef8e9e32820e10d",
+  "workingTreeBefore": "",
+  "workingTreeAfterCommands": "",
+  "hashes": {
+    "src/components/chat/anchoredTranscriptScroll.ts": "9721320f5400754abb4ac1f8161127adbf5512aa18b73fab383527504edbea28",
+    "src/components/dashboard/PaigeAIChat.tsx": "f17bbbb6c9bd23fbd5bf7630f55203fc54b5f0c93f617a049e3a7bf27c94bf39",
+    "src/components/app/PaigeChat.tsx": "04f7307eebfcee9b49485ccf6e0c03ee98647c61ef804c1c4c60150d75bc5ce5",
+    "src/pages/AppShell.tsx": "2211c517c4e2673df1ce06e041f82cd28e003a5666d0b7f35c2777a88fabf7f6",
+    "scripts/live-drive/paige-scroll-stability-react-drive.mjs": "4fc68402e3c8588a3801d94f5217f1fde836076cda1dc05e1e98db55dd984f26"
+  },
+  "commands": [
+    {
+      "name": "tests",
+      "argv": [
+        "node",
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "src/components/chat/anchoredTranscriptScroll.test.ts",
+        "src/components/chat/anchoredTranscriptScroll.react.test.tsx",
+        "src/components/app/PaigeChat.scroll-stability.contract.test.ts",
+        "src/components/app/PaigeChat.remount.test.tsx",
+        "src/pages/AppShell.paige-mount.contract.test.ts",
+        "src/__tests__/paige-spine-chat-binding.test.ts",
+        "src/__tests__/dedicated-chat-overflow-contract.test.ts",
+        "src/__tests__/dedicated-chat-image-refine-anchor.test.ts",
+        "src/solo/SoloPaigeWorkspace.contract.test.tsx",
+        "src/components/dashboard/PaigeAIChat.honesty.test.tsx",
+        "src/components/dashboard/PaigeAIChat.documentProposal.test.tsx",
+        "src/components/dashboard/PaigeAIChat.clientScope.test.tsx"
+      ],
+      "definition_file": "package.json",
+      "startedAt": "2026-09-08T00:35:34.368Z",
+      "finishedAt": "2026-09-08T00:35:42.875Z",
+      "exitCode": 0,
+      "log": "tests.log"
+    },
+    {
+      "name": "full-suite",
+      "argv": [
+        "node",
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--testTimeout=15000"
+      ],
+      "definition_file": "package.json",
+      "startedAt": "2026-09-08T00:35:42.876Z",
+      "finishedAt": "2026-09-08T00:37:25.894Z",
+      "exitCode": 0,
+      "log": "full-suite.log"
+    },
+    {
+      "name": "types",
+      "argv": [
+        "node",
+        "scripts/ci/tsc-ratchet.mjs"
+      ],
+      "definition_file": "scripts/ci/tsc-ratchet.mjs",
+      "startedAt": "2026-09-08T00:37:25.896Z",
+      "finishedAt": "2026-09-08T00:38:16.683Z",
+      "exitCode": 0,
+      "log": "types.log"
+    },
+    {
+      "name": "lint",
+      "argv": [
+        "node",
+        "scripts/ci/paige-scroll-eslint-ratchet.mjs"
+      ],
+      "definition_file": "scripts/ci/paige-scroll-eslint-ratchet.mjs",
+      "startedAt": "2026-09-08T00:38:16.684Z",
+      "finishedAt": "2026-09-08T00:38:19.542Z",
+      "exitCode": 0,
+      "log": "lint.log"
+    },
+    {
+      "name": "security",
+      "argv": [
+        "node",
+        "scripts/ci/definer-fn-lint.mjs"
+      ],
+      "definition_file": "scripts/ci/definer-fn-lint.mjs",
+      "startedAt": "2026-09-08T00:38:19.546Z",
+      "finishedAt": "2026-09-08T00:38:19.993Z",
+      "exitCode": 0,
+      "log": "security.log"
+    },
+    {
+      "name": "build",
+      "argv": [
+        "node",
+        "node_modules/vite/bin/vite.js",
+        "build"
+      ],
+      "definition_file": "package.json",
+      "startedAt": "2026-09-08T00:38:19.994Z",
+      "finishedAt": "2026-09-08T00:38:47.941Z",
+      "exitCode": 0,
+      "log": "build.log"
+    },
+    {
+      "name": "baseline-reproduction",
+      "argv": [
+        "node",
+        "scripts/ci/paige-scroll-baseline-reproduction.mjs",
+        "e70af9ddfe01aec2d482d07bedc05ca2c581d7cf",
+        "outputs/paige-scroll-baseline"
+      ],
+      "definition_file": "scripts/ci/paige-scroll-baseline-reproduction.mjs",
+      "startedAt": "2026-09-08T00:38:47.942Z",
+      "finishedAt": "2026-09-08T00:38:49.206Z",
+      "exitCode": 0,
+      "log": "baseline-reproduction.log"
+    },
+    {
+      "name": "runtime-proof",
+      "argv": [
+        "node",
+        "scripts/live-drive/paige-scroll-stability-react-drive.mjs"
+      ],
+      "definition_file": "scripts/live-drive/paige-scroll-stability-react-drive.mjs",
+      "startedAt": "2026-09-08T00:38:49.206Z",
+      "finishedAt": "2026-09-08T00:39:45.533Z",
+      "exitCode": 0,
+      "log": "runtime-proof.log"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "outputs/paige-scroll-baseline/report.json",
+      "produced_by": "baseline-reproduction",
+      "kind": "runtime",
+      "max_age_hours": 24,
+      "fresh": true
+    },
+    {
+      "path": "scripts/live-drive/artifacts/paige-scroll-stability-react/report.json",
+      "produced_by": "runtime-proof",
+      "kind": "runtime",
+      "max_age_hours": 24,
+      "fresh": true
+    }
+  ],
+  "automated": "PASS",
+  "authenticatedProduction": "UNVERIFIED"
+}

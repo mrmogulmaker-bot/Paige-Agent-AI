@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { PaigeReasoningStrip, StepTimeline, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -37,6 +37,7 @@ import { ExtractionProposalCard, type ExtractionProposal } from "@/components/ch
 import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/chat/PaigeCompactingCard";
 import { PaigeLiveConversation } from "@/components/paige/live/PaigeLiveConversation";
 import { parseLiveConversationCard, type LiveConversationCard } from "@/lib/paigeLiveConversation/contract";
+import { createAnchoredTranscriptScroll, messageScrollAnchorKey } from "@/components/chat/anchoredTranscriptScroll";
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
 type QueuedApproval = { id: string; summary: string; category: string; contact_id: string | null };
@@ -308,7 +309,6 @@ const PaigeAIChatInner = ({
   const thinkingThoughts = steps
     .filter((s) => s.kind === "thought")
     .map((s) => ({ id: s.id, label: s.label }));
-  const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const atLatestRef = useRef(true);
   const hasNewerContentRef = useRef(false);
@@ -384,6 +384,26 @@ const PaigeAIChatInner = ({
   // Surfaces that never focus a client (the operator desk) pass no `clientId`, so their
   // epoch is `"<tenant>|"` and their behaviour is byte-for-byte what it was.
   const scopeEpoch = `${activeTenantId ?? ""}|${clientId ?? ""}|${businessMissionId ?? ""}`;
+  const transcriptContext = [
+    platform ? "platform" : soloTenantSafety ? "solo" : presentation,
+    scopedUserId ?? "anonymous",
+    activeTenantId ?? "no-tenant",
+    enableHistory ? (activeThreadId ?? messages[0]?.id ?? "new") : scopeEpoch,
+  ].join(":");
+  const transcriptScrollRef = useRef<ReturnType<typeof createAnchoredTranscriptScroll> | null>(null);
+  if (!transcriptScrollRef.current) {
+    transcriptScrollRef.current = createAnchoredTranscriptScroll({
+      storagePrefix: "paige-transcript-position-v1",
+      onPinnedChange: (pinned) => {
+        atLatestRef.current = pinned;
+        setIsAtLatest(pinned);
+        if (pinned) {
+          hasNewerContentRef.current = false;
+          setLatestAnnouncement("");
+        }
+      },
+    });
+  }
   // The thread a person asked for, parked across the reset their own click causes (#765).
   // Same idiom, and same reason, as the refusal notice below: releasing focus changes the
   // epoch, and the epoch change invalidates the very load the release was made for.
@@ -449,37 +469,19 @@ const PaigeAIChatInner = ({
     setHistoryTransitioning(false);
   }, [soloTenantSafety]);
 
-  const resetTranscriptFollow = useCallback(() => {
-    atLatestRef.current = true;
-    hasNewerContentRef.current = false;
-    setIsAtLatest(true);
-    setLatestAnnouncement("");
+  const syncTranscriptPosition = useCallback(() => {
+    transcriptScrollRef.current?.handleScroll();
   }, []);
-
-  const syncTranscriptPosition = useCallback((element: HTMLDivElement) => {
-    const atLatest = element.scrollHeight - element.scrollTop - element.clientHeight <= 48;
-    atLatestRef.current = atLatest;
-    setIsAtLatest(atLatest);
-    if (atLatest) {
-      hasNewerContentRef.current = false;
-      setLatestAnnouncement("");
-    }
+  const setTranscriptElement = useCallback((node: HTMLDivElement | null) => {
+    transcriptScrollRef.current?.attach(node);
   }, []);
 
   const jumpToLatest = useCallback(() => {
-    const element = scrollRef.current;
-    if (!element) return;
     const reduceMotion = typeof window.matchMedia === "function"
       && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const behavior: ScrollBehavior = reduceMotion ? "auto" : "smooth";
-    if (typeof element.scrollTo === "function") {
-      element.scrollTo({ top: element.scrollHeight, behavior });
-    } else {
-      element.scrollTop = element.scrollHeight;
-    }
-    atLatestRef.current = true;
+    transcriptScrollRef.current?.jumpToBottom(behavior);
     hasNewerContentRef.current = false;
-    setIsAtLatest(true);
     setLatestAnnouncement("Latest PAIGE message reached.");
     requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
@@ -544,8 +546,7 @@ const PaigeAIChatInner = ({
     setHistoryHydrated(scopeNotice !== null);
     setHistoryTransitioning(false);
     setMobileRailOpen(false);
-    resetTranscriptFollow();
-  }, [scopeEpoch, openingGreeting, resetTranscriptFollow, setActiveThreadId, setAttachedDoc]);
+  }, [scopeEpoch, openingGreeting, setActiveThreadId, setAttachedDoc]);
 
   useEffect(() => {
     if (!soloTenantSafety) return;
@@ -553,29 +554,17 @@ const PaigeAIChatInner = ({
     return () => requestFence.invalidate();
   }, [soloTenantSafety]);
 
-  useEffect(() => {
-    const element = scrollRef.current;
-    if (!element) return;
-    if (atLatestRef.current) {
-      element.scrollTop = element.scrollHeight;
-      return;
-    }
-    if (!hasNewerContentRef.current) {
+  useLayoutEffect(() => {
+    transcriptScrollRef.current?.setContext(transcriptContext);
+  }, [transcriptContext]);
+
+  useLayoutEffect(() => {
+    transcriptScrollRef.current?.notifyLayoutChange();
+    if (!atLatestRef.current && !hasNewerContentRef.current) {
       hasNewerContentRef.current = true;
       setLatestAnnouncement("Newer PAIGE content is available.");
     }
-  }, [messages]);
-
-  useEffect(() => {
-    const element = scrollRef.current;
-    if (!element || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      if (atLatestRef.current) element.scrollTop = element.scrollHeight;
-      else syncTranscriptPosition(element);
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [syncTranscriptPosition]);
+  }, [messages, steps, compacting, isLoading, cancelled, connectionIssue, historyTransitioning]);
 
   // Mirror the live step trace up so a parent surface (the Live desk) can render it.
   useEffect(() => { onTrace?.(steps, isLoading); }, [steps, isLoading, onTrace]);
@@ -657,7 +646,6 @@ const PaigeAIChatInner = ({
     const previousTranscriptThreadId = hydratedFromRef.current;
     const requestTicket = requestFenceRef.current.begin(scopeEpoch);
     if (soloTenantSafety) {
-      resetTranscriptFollow();
       setHistoryTransitioning(true);
       setCancelled(false);
       setActiveThreadId(id);
@@ -692,7 +680,6 @@ const PaigeAIChatInner = ({
       requestFenceRef.current.invalidate();
     }
     hydratedFromRef.current = null;
-    resetTranscriptFollow();
     setActiveThreadId(null);
     setMessages([mkMsg({ role: "assistant", content: openingGreeting })]);
     setSteps([]);
@@ -762,12 +749,11 @@ const PaigeAIChatInner = ({
     } else {
       // Parent cleared the selection (New chat in the other door) — reset to a fresh one.
       hydratedFromRef.current = null;
-      resetTranscriptFollow();
       setMessages([mkMsg({ role: "assistant", content: openingGreeting })]);
       setSteps([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cancelSoloRequest, controlledThreadId, enableHistory, isLoading, isThreadControlled, resetTranscriptFollow, soloTenantSafety]);
+  }, [cancelSoloRequest, controlledThreadId, enableHistory, isLoading, isThreadControlled, soloTenantSafety]);
 
   // One turn runner, reused by send + regenerate. `base` ends at the user turn to
   // answer; `rollback` is the list restored if the turn fails; `userText` seeds the
@@ -1505,9 +1491,11 @@ const PaigeAIChatInner = ({
           <div className="relative flex min-h-0 flex-1 flex-col">
             <div
               id={soloTenantSafety ? "solo-paige-transcript" : undefined}
-              ref={scrollRef}
-              data-paige-transcript-scroll={soloTenantSafety ? "true" : undefined}
-              onScroll={soloTenantSafety ? (event) => syncTranscriptPosition(event.currentTarget) : undefined}
+              ref={setTranscriptElement}
+              data-paige-transcript-scroll="true"
+              aria-label="PAIGE conversation"
+              tabIndex={0}
+              onScroll={syncTranscriptPosition}
               className={cn(
                 // overflow-x-hidden is DEFENCE-IN-DEPTH, not a cover-up: the real cause (a flex
                 // message bubble missing min-w-0, plus unwrapped user text) is fixed below, so
@@ -1523,6 +1511,8 @@ const PaigeAIChatInner = ({
             {messages.map((message, index) => (
               <div
                 key={message.id}
+                data-paige-message-id={message.id}
+                data-paige-message-anchor-key={messageScrollAnchorKey(message.role, message.content)}
                 className={cn(
                   "flex min-w-0",
                   message.role === "user" ? "flex-row-reverse" : "w-full flex-row",
