@@ -376,6 +376,14 @@ project_id = "xygzykjyynhzqytbqnzu"
   # platform_usage_events (§17); replays hit the tenant-scoped Storage cache and skip OpenAI (§14).
   [functions.paige-tts]
     verify_jwt = true
+  # Paige-owned Live Conversation session/control plane. Authenticated callers only; the function
+  # resolves tenant + thread server-side and currently fails closed before any provider or mic path.
+  [functions.paige-live-session]
+    verify_jwt = true
+  # Platform-owner-only profile activation. In-function authorization and canonical proof are
+  # rechecked before the service-only profile/readiness RPCs are reachable.
+  [functions.paige-voice-profile-admin]
+    verify_jwt = true
 
   # §49 Wave A #170 — paige-dictate: press-to-talk DICTATION (mic → text) for the Paige composers.
   # A browser WebSocket streams PCM16 (linear16/16k) and receives interim+final transcript. Deepgram

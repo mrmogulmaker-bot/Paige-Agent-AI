@@ -293,7 +293,6 @@ import { replicateRun } from "./replicate.ts";
 import { meshyTextTo3d } from "./meshy.ts";
 import { geminiImage } from "./gemini-image.ts";
 import { renderDoc, type DocFormat } from "./doc-render.ts";
-import { elevenlabsTts } from "./elevenlabs.ts";
 import { traceLLMCall, type TraceCtx } from "./llm-trace.ts";
 import { estimateTokenCostUsd } from "./token-pricing.ts";
 
@@ -460,20 +459,14 @@ const threeDCell: RouteCell = {
   },
 };
 
-// audio-voice — ElevenLabs text-to-speech. Fail-CLOSED at the client (NeedsConfigError when
-// ELEVENLABS_API_KEY is unset) → callModel turns it into an honest needs_config degrade; never a
-// fake/silent audio result (§13). The client returns raw mp3 bytes (artifact_bytes) which the
-// router persists to studio-deliverables. task may carry {voiceId|voice_id}; model_override → modelId.
+// audio-voice — fail closed until Studio is attached to the same server-side Paige Voice Profile
+// and provider-readiness resolver as paige-tts. A task/request may never select a provider voice.
+// This deliberately returns needs_config rather than retaining a hidden second voice path.
 const voiceCell: RouteCell = {
-  provider: "elevenlabs",
-  justification: "ElevenLabs voice synthesis — text→narration mp3; honest needs_config degrade until ELEVENLABS_API_KEY is set (§13).",
-  invoke: (task, model) => {
-    const v = (task as any)?.voiceId ?? (task as any)?.voice_id;
-    return elevenlabsTts({
-      text: taskText(task),
-      voiceId: typeof v === "string" ? v : undefined,
-      modelId: model,
-    });
+  provider: "paige-voice-profile",
+  justification: "Studio narration is unavailable until it traverses the approved Paige Voice Profile and readiness gate (§13).",
+  invoke: () => {
+    throw new NeedsConfigError("paige_voice_profile:studio_adapter", "Studio narration must use the server-approved Paige Voice Profile control plane");
   },
 };
 

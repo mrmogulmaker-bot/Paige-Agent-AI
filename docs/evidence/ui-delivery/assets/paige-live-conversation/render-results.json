@@ -1,0 +1,149 @@
+[
+  {
+    "theme": "light",
+    "width": 1536,
+    "height": 770,
+    "geometry": {
+      "documentOverflowX": false,
+      "stageOverflowX": false,
+      "controlsClipped": false,
+      "transcriptOverflowY": "auto",
+      "stageRole": "dialog",
+      "modal": "true",
+      "motion": "1e-05s"
+    },
+    "focusReturned": true,
+    "consoleErrors": []
+  },
+  {
+    "theme": "light",
+    "width": 1366,
+    "height": 768,
+    "geometry": {
+      "documentOverflowX": false,
+      "stageOverflowX": false,
+      "controlsClipped": false,
+      "transcriptOverflowY": "auto",
+      "stageRole": "dialog",
+      "modal": "true",
+      "motion": "1e-05s"
+    },
+    "focusReturned": true,
+    "consoleErrors": []
+  },
+  {
+    "theme": "light",
+    "width": 1024,
+    "height": 768,
+    "geometry": {
+      "documentOverflowX": false,
+      "stageOverflowX": false,
+      "controlsClipped": false,
+      "transcriptOverflowY": "auto",
+      "stageRole": "dialog",
+      "modal": "true",
+      "motion": "1e-05s"
+    },
+    "focusReturned": true,
+    "consoleErrors": []
+  },
+  {
+    "theme": "light",
+    "width": 900,
+    "height": 1000,
+    "geometry": {
+      "documentOverflowX": false,
+      "stageOverflowX": false,
+      "controlsClipped": false,
+      "transcriptOverflowY": "auto",
+      "stageRole": "dialog",
+      "modal": "true",
+      "motion": "1e-05s"
+    },
+    "focusReturned": true,
+    "consoleErrors": []
+  },
+  {
+    "theme": "dark",
+    "width": 1536,
+    "height": 770,
+    "geometry": {
+      "documentOverflowX": false,
+      "stageOverflowX": false,
+      "controlsClipped": false,
+      "transcriptOverflowY": "auto",
+      "stageRole": "dialog",
+      "modal": "true",
+      "motion": "1e-05s"
+    },
+    "focusReturned": true,
+    "consoleErrors": []
+  },
+  {
+    "theme": "dark",
+    "width": 1366,
+    "height": 768,
+    "geometry": {
+      "documentOverflowX": false,
+      "stageOverflowX": false,
+      "controlsClipped": false,
+      "transcriptOverflowY": "auto",
+      "stageRole": "dialog",
+      "modal": "true",
+      "motion": "1e-05s"
+    },
+    "focusReturned": true,
+    "consoleErrors": []
+  },
+  {
+    "theme": "dark",
+    "width": 1024,
+    "height": 768,
+    "geometry": {
+      "documentOverflowX": false,
+      "stageOverflowX": false,
+      "controlsClipped": false,
+      "transcriptOverflowY": "auto",
+      "stageRole": "dialog",
+      "modal": "true",
+      "motion": "1e-05s"
+    },
+    "focusReturned": true,
+    "consoleErrors": []
+  },
+  {
+    "theme": "dark",
+    "width": 900,
+    "height": 1000,
+    "geometry": {
+      "documentOverflowX": false,
+      "stageOverflowX": false,
+      "controlsClipped": false,
+      "transcriptOverflowY": "auto",
+      "stageRole": "dialog",
+      "modal": "true",
+      "motion": "1e-05s"
+    },
+    "focusReturned": true,
+    "consoleErrors": []
+  },
+  {
+    "zoom": "200% equivalent",
+    "zoomGeometry": {
+      "overflowX": false,
+      "controlsClipped": false,
+      "mainOverflowY": "auto"
+    }
+  },
+  {
+    "popout": true,
+    "themePreserved": true,
+    "underlyingComposerPreserved": true,
+    "consequentialCardHasVisibleConfirmation": true
+  },
+  {
+    "existingPopout": true,
+    "backgroundInert": true,
+    "backgroundAriaHidden": true
+  }
+]

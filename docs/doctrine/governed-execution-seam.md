@@ -32,7 +32,9 @@ This is that slice's foundation. It was written knowing that entry existed, and 
 
 **No caller gains permission by arriving through a different door.**
 
-`door` is recorded on the audit line and read NOWHERE else. There is no branch on it. That is
+`door` is recorded on the audit line and read NOWHERE else. A door may be text chat, Live
+Conversation, future phone/SIP, Secure Browser, a contextual handoff, a platform card, an
+automation, a skill, or MCP. There is no authority branch on it. That is
 asserted two ways, because a property proven only by a test is one a later edit can quietly remove:
 
 - a test runs nine fixtures through all six doors and asserts byte-identical decisions;
@@ -212,4 +214,5 @@ MCP) · `autonomy-architecture.md` (§67/§68; §10/§67.2 the standing delegate
 RE-2 slice adds a `standingPolicy` adapter-assertion to THIS seam so a valid policy lifts a `high` act
 to autonomous execution instead of clamping to `confirm`) · `../architecture/paige-spine-foundation.md` (the
 canonical Spine contract) · `../architecture/paige-spine-tool-migration-map.md` (the 105-tool plan
-and the ten-condition `LIVE` standard) · `_shared/action-risk.ts` (the one classifier) · issue #784.
+and the ten-condition `LIVE` standard) · `paige-modality-neutrality.md` (every modality is one more
+door, never one more authority path) · `_shared/action-risk.ts` (the one classifier) · issue #784.

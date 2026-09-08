@@ -285,45 +285,44 @@ not re-propose it.)* Module header `_shared/twilio.ts:24-35` states the model ex
 
 ---
 
-## Voice / TTS / STT (ElevenLabs + fallbacks)
+## Voice / TTS / STT — Paige Voice Profile
 
-**⚠ ElevenLabs MCP is disconnected this session** — facts below are verified from **repo source**, not
-from the ElevenLabs API.
+**Current contract (2026-09-07):** every Paige speech path resolves one approved, active
+server-side `paige_default_voice` profile. The browser and request body cannot select a provider or
+voice reference. Profile rows carry an immutable revision, approval/effective metadata, optional
+speech policy, and operator audit trail; a new session resolves the current revision while an active
+session retains its snapshot. Customer UI shows only Paige.
 
-**Platform default voice — ON RECORD, do NOT re-ask (§200 owner-locked, §BRAIN.2):**
-- **`DEFAULT_TTS_VOICE` is now `0S5oIfi8zOZixuSj8K6n` ("Ivanna")** — owner-ruled 2026-08-09, merged in
-  **PR #409 (commit `1e726426`)**. This is a **settled decision on record**; it must NOT be re-surfaced
-  as an open question (see `lessons-learned.md` → "Re-ruled a settled decision"). §200 owner-locked.
-  *(Sourced from the PR #409 ruling relayed by the coordinator 2026-08-09; ⚠ confirm the exact
-  `tts-router.ts` constant on the next repo pull into this brain, per §BRAIN.3.)*
-- `6aDn1KB0hjpdcocrUkmq` ("Warm") is now a **selectable alternate**, no longer the default. Other
-  alternates: `g6xIsTj2HwM6VR4iXFCw` ("Clear", backup female), `vBKc2FfBKJfcZNyEt1n6` ("Deep", male).
-  (Voice IDs are non-secret identifiers.)
-- `_shared/elevenlabs.ts`: `DEFAULT_VOICE = Deno.env.get("ELEVENLABS_VOICE_ID") ?? "21m00Tcm4TlvDq8ikWAM"`
-  (Rachel — generic fallback for the legacy path only). **This is the only path that honors the
-  `ELEVENLABS_VOICE_ID` edge secret.** OpenAI TTS is the honest degrade fallback (comment cites §13/#579).
-- Model comes from `_shared/model-router.ts` `voiceCell` → `elevenlabsTts` (`eleven_multilingual_v2`).
+The requested ElevenLabs reference is stored only in the service-owned profile table as a pending,
+inactive candidate. The separately approved OpenAI fallback is the initial active profile. Neither
+provider reference is a client setting, prompt value, or request override. Missing/deleted/
+unauthorized profiles fail closed unless a separately approved fallback resolves.
 
-**ElevenLabs secret NAMES** (✅ grep): `ELEVENLABS_API_KEY` (the auth key — accessed via the
-case-insensitive `envKey("ELEVENLABS_API_KEY")` helper, so a raw `Deno.env.get` grep misses it; real
-refs `elevenlabs.ts:23`, `tts-router.ts:186`, `model-router.ts:449/454`), `ELEVENLABS_VOICE_ID`,
-`ELEVENLABS_MODEL`, `ELEVENLABS_BASE_URL`.
+**Provider-backed realtime audio: `PROOF OWED`.** The production readiness record is deliberately
+transport-disabled until an authorized operator independently verifies the existing account's
+minimum key scopes, exact voice authorization, realtime STT eligibility/concurrency, quota, Paige
+calendar-month UTC hard cost ceiling, approved maximum price per 1,000 characters, and retention
+posture. The service-only reservation seam locks readiness before every uncached provider TTS call,
+counts reserved plus committed usage, allows the exact cap, rejects over-cap work before provider
+contact, and releases only a typed pre-dispatch missing-key refusal. Ambiguous provider outcomes and
+settlement faults remain counted; actor deletion cannot erase spend history. Profile activation is
+one transactional proof/readiness/profile RPC, so a failed replacement cannot leave transport
+enabled. Canonical
+provider proof is re-read at profile resolution and reservation time, so later revocation fails
+closed. Zero Retention Mode is never assumed: a provider warning
+that it was requested but not applied is a failed privacy gate. No hosted provider agent is owned or
+created by this architecture.
 
-**Three independent voice systems** (✅ code-verified; the trap: they are NOT the same knob — a prior
-session "fixed" the wrong one). Full detail in CLAUDE.md → "Voice Configuration"; the quick table:
+**Secret names only:** `ELEVENLABS_API_KEY`, `ELEVENLABS_MODEL`, and `ELEVENLABS_BASE_URL` may remain
+server-side provider wiring. `ELEVENLABS_VOICE_ID` is superseded for Paige speech and is not read by
+the new shared TTS path. Secret values were not inspected or tested in this delivery.
 
-| System | Entry | Voice / model | Reads `ELEVENLABS_VOICE_ID`? | Wired in app? |
-|---|---|---|---|---|
-| **1. In-app chat Direct-TTS** (what the owner hears) | `paige-tts` → `_shared/tts-router.ts` | `PRIMARY_ELEVENLABS_VOICE`/`DEFAULT_TTS_VOICE` = **`0S5oIfi8zOZixuSj8K6n` (Ivanna)**, `eleven_multilingual_v2`; OpenAI `nova` fallback | **NO** (hardcodes the constant) | ✅ YES |
-| **2. Studio voiceover** | `_shared/elevenlabs.ts` via model-router `voiceCell` | `ELEVENLABS_VOICE_ID` ?? `21m00Tcm4TlvDq8ikWAM` (Rachel) | **YES** (only path that does) | ✅ Studio-VO lane only |
-| **3. ConvAI agent** (phone) | agent `agent_1601k7…` | Ivanna + `eleven_turbo_v2_5` (per docs) | N/A | **❌ UNWIRED** (ConvAI removed #170; agent id appears only in docs, never in `src/`/`supabase/`) |
-
-**ConvAI voice-leak lesson (PR #409, MERGED 2026-08-09, commit `1e726426`):** the TTS path does
-**not** read the ElevenLabs ConvAI agent — updating a ConvAI agent's voice has **no effect** on
-Paige's spoken voice (the ConvAI stack was removed in #170 / §49 Wave A). The authoritative voice knob
-is `DEFAULT_TTS_VOICE`/`PRIMARY_ELEVENLABS_VOICE` in `tts-router.ts` (hardcoded — now `0S5oIfi8zOZixuSj8K6n`
-Ivanna) and `ELEVENLABS_VOICE_ID` (only for the `elevenlabs.ts` legacy path). #409 also persisted a
-"Voice Configuration" section to CLAUDE.md. See `lessons-learned.md` → "voice live-drive trap."
+| System | Voice resolution | Current state |
+|---|---|---|
+| Paige message playback | `paige-tts` → service-only profile resolver → provider-neutral router | Implemented; authenticated runtime proof owed |
+| Paige Live Conversation | immutable profile revision in `paige_live_sessions`; provider transport disabled | UI/control plane implemented; realtime audio `PROOF OWED` |
+| Studio voiceover | request-selected provider voice removed; model-router fails closed | `UNAVAILABLE` until this lane uses the same Paige Voice Profile/readiness resolver |
+| Hosted ElevenLabs agent | none | `UNAVAILABLE` and intentionally outside Paige ownership |
 
 **Voice feature-flag / cost secret NAMES** (✅ grep): `VOICE_COPILOT_ENABLED`,
 `VOICE_COPILOT_COST_CAP_USD`.

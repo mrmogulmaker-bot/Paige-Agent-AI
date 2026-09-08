@@ -1615,7 +1615,15 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
     **Premium / registry search** is not built at all. Task #27's remaining scope is vanity and
     premium/registry; exposing `sms_enabled` through a caller is a separate, smaller question.
 - ✅ **Stripe** — live-mode webhook + checkout + Marketplace + Connect wiring started. Functions: `stripe-webhook`, `create-checkout`, `create-trial-checkout`, `customer-portal`, `check-subscription`, `marketplace-checkout-session`, `tenant-checkout-session`, `tenant-stripe-connect`. B-iv storefront webhook merged (PR `9f9b6cf7`). B-ii-a marketplace paid install merged (PR `c95a7e16`). Data: `platform_subscriptions` table.
-- ✅ **ElevenLabs** — TTS + ConvAI. **Voice = Ivanna.** ConvAI agent `agent_1601k7zn6bs7e72bt6485bp99v4a`, model `eleven_turbo_v2_5`. Code in BOTH `_shared/tts-router.ts` (in-app chat voice path — per CC code check) AND `_shared/elevenlabs.ts` (ElevenLabs client). See Section 10 for the precise voice-env attribution (`ELEVENLABS_VOICE_ID` drives Studio VO, not the in-app chat voice).
+- **ElevenLabs voice I/O — `PROOF OWED`.** Paige-owned message playback and Live Conversation resolve
+  only through the approved server-side Paige Voice Profile. No hosted provider agent owns reasoning,
+  context, authority, memory, tools, records, or actions. Realtime transport remains disabled until
+  account scopes, voice authorization, retention/ZRM application, quota, concurrency, and Paige's
+  calendar-month hard cost limit plus conservative per-character price ceiling are independently
+  verified. The service-only control plane rechecks canonical proof and atomically reserves uncached
+  TTS cost before any provider call; ambiguous provider outcomes stay counted, actor deletion cannot
+  erase spend, and activation commits readiness plus profile atomically. Revocation or an exceeded
+  cap fails closed. No provider or voice reference appears in customer UI.
 - ✅ **Supabase** — Postgres + RLS + edge functions + auth. Prod ref `xygzykjyynhzqytbqnzu`. 231+ edge functions. 688+ migrations. RLS helpers: `is_platform_owner()` (operator scope), `current_user_tenant_id()` (tenant scope).
 - ✅ **Vercel** — deploy target. `vercel.json` at repo root.
 - ✅ **LLM providers via `_shared/model-router.ts`** — text tier: Anthropic + Featherless. Capability tier: OpenAI + Gemini + Groq + Ideogram + Replicate + Meshy + ElevenLabs.
@@ -1776,6 +1784,29 @@ Grouped:
 ---
 
 ## 5. Current focus + known gaps
+
+### Paige modality neutrality — OWNER-LOCKED platform rule (2026-09-06; acceptance contract, not a capability claim)
+
+Text chat, Live Conversation, future phone/SIP, Secure Browser interactions, contextual handoffs,
+and platform cards are interfaces to the **one tenant-aware Paige workspace** and **one PAIGE
+Spine**. Every request follows one path: receive text/voice/UI intent → server-resolve actor, tenant,
+workspace, page/object context, and role → use the shared Spine registry and existing authority
+decision → call the canonical governed tool/RPC only when available and authorized → verify the
+canonical persisted outcome → create the detailed action receipt and matching Rail evidence →
+present the truthful result through the active modality → allow only approved, source-backed,
+owner-confirmed material to become Brain/Mind/Memory eligible. Raw chat text, raw voice audio, and
+raw transcripts are never automatic durable facts.
+
+Spoken answers may select ordinary conversational options where policy permits. Money movement,
+authority change, external-impact work, and every other consequential action retain the existing
+standing-authority/confirmation policy, readback, receipt, and Rail requirements; a casual spoken
+"yes" never substitutes for approval proof. Workspace switch, end, denial, retry, revoke, and
+expiry clear or fail closed exactly as chat does. A modality never creates a second brain, direct
+mutation path, duplicate authority system, ungoverned memory store, or evidence-state upgrade. Do
+not claim voice parity with a capability that is `UNAVAILABLE`, `PARTIAL`, `UNVERIFIED`, or `PROOF
+OWED`. Canonical contract and future-surface acceptance checklist:
+`docs/doctrine/paige-modality-neutrality.md`; Second Brain checklist:
+`docs/brain/paige-brain-wiring-standard.md` §3.
 
 - **Business Vault binary inspection remains UNAVAILABLE:** activate only after an owner-approved OCR/DLP provider and service-owned worker prove PDF/image OCR, secret and financial-sensitive detection, timeouts, encrypted/malformed handling, exact-byte promotion, cleanup compensation, and authenticated storage behavior. Provider-neutral quarantine schema is present; service-role promotion is deliberately revoked. Client publishing, provider ingestion, legal interpretation, automated execution, and broad document-to-memory promotion remain later phases. Active collision handoff: #724 is adjacent; #917 overlaps the narrow Settings/header/config seam and must preserve both Integrations/Vault `openPaige`, Vault layout/header treatment, current Connections copy, `solo-contact-import`, and all three Vault JWT blocks.
 ### Connections after Add channel — remaining real-provider and runtime proof gaps (2026-09-05)
@@ -3740,7 +3771,11 @@ Things Cowork/CC/Codex have claimed that the codebase disagrees with. **Never re
 - **2026-08-10 · #109 Lovable/Gemini chat-premise correction (§30, CC-caught pre-code, task #109/PR #442):** the #109 handoff premise was that the Paige chat runs on the **Lovable AI gateway** serving `google/gemini-2.5-*`, and the deliverable was to "swap it to direct Gemini." **CC's §30 diagnosis (proven with live `paige_llm_trace`) reversed this: the chat is ALREADY direct-Anthropic AND has no Gemini or Lovable in the runtime.** `_shared/claude.ts` `gatewayCompat` is a direct-Anthropic shim (`ANTHROPIC_URL`, `callClaude` / `streamAnthropicAsOpenAI`) — it IGNORES the `Bearer ${lovableApiKey}` header, and the `"google/gemini-2.5-flash"/"-pro"` strings are **legacy labels** `tierForLegacyModel` maps to Claude tiers (flash→haiku/classification, pro→sonnet/reasoning). Prod trace: `claude-haiku-4-5` + `claude-sonnet-5` + `featherless`, zero lovable/gemini. So "is the chat on Lovable/Gemini?" = **NO, it's Anthropic** — do not re-diagnose. What #442 actually shipped: the **#34 approval-loop fix** (a `substantiveTurn` heuristic routes approval/creation turns to the reasoning=Sonnet tier so `document_generate` fires instead of looping) + the **safe Lovable purge** (deleted the one live `api.lovable.app` caller `parse-business-credit-report` + 16 vestigial dead-code refs). The **live Lovable email trinity** (`auth-email-hook`+`process-email-queue`+`handle-email-suppression`, `@lovable.dev` HMAC+delivery SDKs) could NOT be atomically removed — it's launch-critical (silently 401s signup if ripped out) — and is sequenced as **task #112** (owner secrets + §32 live-email verify).
 - **2026-08-10 · Systems Check availability-by-accident (owner-reported, CC-fixed, task #99) + new §56 doctrine:** the owner reported the tenant Systems Check was missing on several **sub-accounts** while showing on Mogul Maker Academy, and hypothesized a tier-misclassification ("thinking it's a solo account"). CC's §30 diagnostic found the real cause was NOT tier classification: the `<SystemsCheckTile scope="tenant" />` was gated INSIDE the non-empty branch of `PracticeOverview.tsx`'s `{emptyBook ? … : …}` conditional (`emptyBook` = 0 clients + 0 attention + 0 approvals), so every freshly-provisioned tenant — solo OR sub-account — rendered only the "blank canvas" empty state and never saw the check; Academy has clients (`emptyBook=false`) so it showed. Routing is tier-uniform (all tenant-selected staff → `PracticeOverview`, Admin.tsx:892), so the fix is availability, not routing. **Fix (PR pending, branch `claude/systems-check-tier-availability`):** render the tenant tile ABOVE the empty/non-empty split on `PracticeOverview` (covers solo + all sub-accounts, empty book or not) AND add it to `AgencyBoard` (`/agency`, the agency owner's DEFAULT landing — its own-business check, scoped to the agency's own tenant), matching the operator tile already on `OperatorCommandCenter`. Systems Check is now uniform across **God · Agency · Standalone/solo · Sub-account** — the owner's "repeatable throughout the entire process." Crew: design-engineer + §39 adversarial (SHIP) + §5 compliance (ITERATE→the AgencyBoard gap, now closed). **New doctrine `CLAUDE.md §56`** (lands §51's forward-referenced "platform impact assessment"): before ANY build, check `docs/doctrine/tier-matrix.md` to name which account type(s) the feature is for AND decide per-tier whether it belongs — a capability meant for "every tier" must render regardless of empty-book/branch/route accident. Propagated to §56, `tier-matrix.md`, this log, and `docs/brain/` in the same PR.
 - **2026-08-09 · Cowork miss #1 (REVERSED by CC's code check):** originally claimed `_shared/tts-router.ts` does NOT exist. **Reality:** file DOES exist (in-app chat voice path, 14,557 bytes, verified this session). BOTH `_shared/tts-router.ts` AND `_shared/elevenlabs.ts` exist. This correction was itself wrong — do not cite. **Lesson:** when sandbox agent grep disagrees with CC's code check, CC wins.
-- **2026-08-09 · CC voice-env precision (§13, added by CC same commit):** the in-app CHAT voice is `DEFAULT_TTS_VOICE = { provider:"elevenlabs", id:"0S5oIfi8zOZixuSj8K6n" }` (Ivanna) hardcoded in `_shared/tts-router.ts` — it does NOT read `ELEVENLABS_VOICE_ID`. The `ELEVENLABS_VOICE_ID` env drives the SEPARATE **Studio-VO** lane (`_shared/elevenlabs.ts`, Rachel fallback when unset), and the ConvAI **phone** agent is a third independent system. Do not attribute the in-app Ivanna voice to `ELEVENLABS_VOICE_ID`. Full detail in the `CLAUDE.md` "Voice Configuration" section.
+- **2026-08-09 · historical voice-env decision — SUPERSEDED 2026-09-07:** literal in-code Paige voice
+  defaults and request-level voice selection were retired by the Paige Live Conversation delivery.
+  The only current Paige speech identity path is the service-only `paige_default_voice` profile with
+  an immutable revision per session. The requested provider reference is server-side and pending;
+  the separately approved fallback is active. No dashboard display name or request body is identity.
 - **2026-08-09 · Cowork miss #2 (REVISED with owner-supplied visual proof):** originally claimed `tenant_twilio_subaccounts` table + `provision-tenant-twilio` edge function exist. Half-reality: code artifacts genuinely don't exist in the repo (grep-verified), BUT the Twilio ISV/reseller architecture IS FULLY LIVE at Twilio's side — Organization, master account, 5 active subaccounts (SIDs in owner's console). Purchase capability EXISTS. **Only narrow gap:** phone-number SEARCH tools in Communications. Task #27 rescoped.
 - **2026-08-09 · Cowork miss #2.b (owner-flagged in-flight):** first revision over-scoped to include "purchase flow" as gapped. Wrong — purchase exists. Corrected to search-tools-only.
 - **2026-08-09 · Cowork miss #3:** claimed `signup_intake` table exists. Reality: does NOT exist. Signup gate is `signup_completion_gate` + `profiles.terms_accepted_at`.
