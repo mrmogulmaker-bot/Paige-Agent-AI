@@ -6,8 +6,10 @@
   are reconciled in the sole chronological log at Master Reference Section 4.0. PR #1054 merged as
   `2719d7d86ccfa23d0e781b841b5ee134ec8e7276`; the log now also records subsequently merged
   Live Conversation PR #1053 / `f8eb2362beb03ec609dfe645b4d00f43c3eebf2d`. Both production
-  domains serve that exact current public build, `f8eb2362beb03ec609dfe645b4d00f43c3eebf2d-mts66mnc`,
-  from READY Vercel deployment `dpl_79gKFA29LsSstU6tJFEMxNeYWXdw`; no customer-update record
+  domains then served that exact product delivery. Production-proof PR #1055 merged as
+  `ec2336f70ca1016898e4bc91dd7f2efda3816a02` and preserved durable route artifacts; both domains
+  now serve its documentation-only descendant build `ec2336f70ca1016898e4bc91dd7f2efda3816a02-mts6s2mo`
+  from READY Vercel deployment `dpl_FqW7er4bgB5cpoEnwrqNmUqd2bRn`. No customer-update record
   resolved. The unlinked prior
   homepage implementations at `/premium` and `/legacy` were proven
   outside the intended canonical surface, so both paths now replace-redirect to `/` and their
