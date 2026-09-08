@@ -88,7 +88,13 @@
   the existing guarded switch. Non-platform single-membership entry remains direct. At the chooser,
   missing, failed, stale, inaccessible, or ambiguous membership state stays with honest recovery; no
   URL, email, account number, or retired route grants access. Logout behavior is unchanged. Scope is
-  exactly `sign in → deliberate account choice → Platform or direct Paige workspace`.
+  exactly `sign in → deliberate account choice → Platform or direct Paige workspace`. PR #1060
+  merged as `87a3a41d188c93b7073816e352f3c7604548f7a6`; READY Vercel deployment
+  `dpl_95h8jrhA9VZ8wE7auvVCX3aH5yPR` serves exact build
+  `87a3a41d188c93b7073816e352f3c7604548f7a6-mts7zmtk` on both domains. Exact-head CI, Security
+  Audit, UI evidence, 108/108 affected tests, eight responsive screenshots, and 90/90 browser
+  assertions passed. Authenticated production selection/retry/session/switch proof remains
+  `PROOF OWED`; no customer release record exists.
 
 - **Secure Browser — prerequisite security repair candidate (2026-09-07, dedicated builder).**
   Grounded current `main` at `49d25f4c`; #1039 is merged and its Browserbase review/starting packet
