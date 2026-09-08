@@ -1,5 +1,16 @@
 # Decision Log — chronological one-liners
 
+- **Paige transcript-anchor identity-race correction shipped (2026-09-08, PR #1057).**
+  PR #1057 merged as `af752d7a67c71f71e28a31ab87a962584b42105a`; READY Vercel deployment
+  `dpl_FrWHHEkMqvtfnNcixPqkpZBufPX6` serves exact build
+  `af752d7a67c71f71e28a31ab87a962584b42105a-mts7czby` on both public domains.
+  Identity-gated anchors, hidden/zero-geometry rejection, and explicit provisional-to-server thread
+  adoption replace the transient hydration/index fallback races while retaining exact-bottom and
+  Jump-to-latest behavior. Exact-head CI, 81/81 affected tests, 3,978/3,978 full tests, 107/107
+  rendered checks, and independent review passed. Signed-in owner production behavior remains
+  `UNVERIFIED` because the Windows computer-use bridge and scoped live-drive state were unavailable;
+  there is no verified last-known-good build, so this must not be called accepted or fixed yet.
+
 - **Paige Runtime Harness and Reusable Intelligence Platform (2026-09-08, owner-approved architecture).**
   The **Second Brain** is Paige's governed, scoped knowledge layer; the **Runtime Harness** is her
   provider-neutral internal operating layer for tenant-safe context, model/task routing, eligible
@@ -77,7 +88,13 @@
   the existing guarded switch. Non-platform single-membership entry remains direct. At the chooser,
   missing, failed, stale, inaccessible, or ambiguous membership state stays with honest recovery; no
   URL, email, account number, or retired route grants access. Logout behavior is unchanged. Scope is
-  exactly `sign in → deliberate account choice → Platform or direct Paige workspace`.
+  exactly `sign in → deliberate account choice → Platform or direct Paige workspace`. PR #1060
+  merged as `87a3a41d188c93b7073816e352f3c7604548f7a6`; READY Vercel deployment
+  `dpl_95h8jrhA9VZ8wE7auvVCX3aH5yPR` serves exact build
+  `87a3a41d188c93b7073816e352f3c7604548f7a6-mts7zmtk` on both domains. Exact-head CI, Security
+  Audit, UI evidence, 108/108 affected tests, eight responsive screenshots, and 90/90 browser
+  assertions passed. Authenticated production selection/retry/session/switch proof remains
+  `PROOF OWED`; no customer release record exists.
 
 - **Secure Browser — prerequisite security repair candidate (2026-09-07, dedicated builder).**
   Grounded current `main` at `49d25f4c`; #1039 is merged and its Browserbase review/starting packet
