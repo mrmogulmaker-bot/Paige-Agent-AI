@@ -1,5 +1,20 @@
 # Decision Log — chronological one-liners
 
+- **Paige Self-Knowledge & Migration Advisor is one read-first Harness capability (2026-09-08,
+  owner-approved architecture contract).** Paige must answer what she can do for the active tenant,
+  interpret replacement direction, and lead comparisons/migration plans from verified Paige coverage
+  before external alternatives. Four source layers remain distinct: a derived tenant-safe capability
+  manifest; the tenant operating-system inventory; dated/sourced external comparison knowledge; and
+  the staged migration plan/evidence model. Delivery, tenant connection, eligibility, authority,
+  proof, and release identity never collapse into “available.” Migration classes default to read-only
+  advice; shutdown, provider/model route, credential, schema/data, production, and other effects need
+  separate scoped authorization, durable execution, readback, receipt/Rail, and rollback proof. The
+  end-to-end advisor is `UNAVAILABLE`; distributed self-description primitives are `PARTIAL`.
+  This ruling creates no assistant, Brain, Harness, registry, migration database, skill row, provider
+  connection, product code, tenant-data access, deployment, production behavior, or customer promise.
+  The dedicated implementation owner consumes the Master contract and does not inherit documentation
+  ownership or action authority.
+
 - **Tenant Client Portal is an MVP projection through the one Paige Harness (2026-09-08, owner correction).**
   The Tenant Client Portal is the governed, client-facing experience a Paige tenant provides to its
   external clients and is a competitive MVP differentiator. Canonical rule:

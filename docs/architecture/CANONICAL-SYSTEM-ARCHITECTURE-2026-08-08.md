@@ -12,6 +12,15 @@
 > inside one shared Paige Runtime Harness; they do not authorize separate brains, memories, tools,
 > autonomy systems, or operating runtimes.
 
+> **Self-knowledge and migration routing override — 2026-09-08:** before adding capability answers,
+> competitor comparisons, replacement guidance, consolidation, cutover, or migration behavior, read
+> the Master Runtime Harness subsection **“Paige Self-Knowledge & Migration Advisor.”** The advisor is
+> one `UNAVAILABLE` shared-Harness capability. It derives a tenant-safe manifest from current canonical
+> runtime sources, keeps external claims dated and sourced, leads with Paige's real replacement path,
+> and defaults every migration class to read-only advice. This dated architecture, the Integration
+> Registry, and the Skills Inventory are inputs/governance—not proof of tenant connection, execution
+> authority, runtime eligibility, or customer release.
+
 > Synthesized by a **ground-truth-first** crew (§1/§14): research agents grepped the codebase and queried prod (Supabase MCP). Every architectural claim traces to a file path or a prod query result; aspirational items are labeled **(Roadmap)**. §32 honesty note: frontend line-number references are as-of 2026-08-08 `main` and may drift across commits — treat them as pointers, not fixed addresses.
 
 ---

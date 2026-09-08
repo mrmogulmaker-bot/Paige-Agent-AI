@@ -71,7 +71,10 @@ cadence, launch timing, communication preferences, known stakeholders, relevant 
 - **time / freshness** — `created_at`/`updated_at`; a memory has an age and can go stale.
 - **confidence / confirmation state** — `metadata.confirmation_state ∈ {proposed, confirmed, corrected, retired}`
   and an optional `confidence`. **This is the field that keeps an inference from masquerading as truth.**
-  A `proposed` item may inform Paige's reasoning but is never presented, or promoted to canonical, as fact.
+  A `proposed` item may be displayed as a candidate for authorized human review or correction, but
+  must not enter task context as a confirmed fact. The newer
+  [`paige-memory-contract.md`](../brain/paige-memory-contract.md) governs this boundary; confirmed-only
+  runtime projection remains `UNAVAILABLE` until implemented and proven.
 - **correction / supersession** — `record_paige_memory(p_supersede_prior)` marks prior active rows
   inactive; a correction is a new row that supersedes, never an in-place rewrite that loses history.
 - **safe retirement / forgetting** — `forget_paige_memory` soft-deletes; retired context stops
@@ -79,9 +82,11 @@ cadence, launch timing, communication preferences, known stakeholders, relevant 
 
 **The load-bearing rule:** Paige must **never** treat a transcript/chat inference as permanent
 canonical truth. It is stored as governed context with `confirmation_state='proposed'` until a human
-confirms it or it is promoted through the People/Clients write path (Layer 1). Governed context may
-shape Paige's answers ("last time you mentioned an August launch") but is spoken as *remembered and
-correctable*, not as a canonical fact.
+confirms it or it is promoted through the People/Clients write path (Layer 1). Only active
+`confirmed` items—or a `corrected` item carrying explicit authorized-owner confirmation
+provenance—may shape answers as durable Memory through the future authorized confirmed-only
+projection. Proposed or service-written unconfirmed corrections remain review candidates, not
+reasoning facts.
 
 ## 3. Layer 3 — ingestion requirements for future Conversations/Transcription work
 

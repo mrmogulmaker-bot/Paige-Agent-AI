@@ -72,6 +72,36 @@ A future Paige Enterprise Success Portal for Paige's own enterprise customers is
 product opportunity. It is not the Tenant Client Portal, not this MVP commitment, and not authority
 to create a second Brain, Harness, memory, or operating path.
 
+#### Self-Knowledge & Migration Advisor consumes the existing truth system
+
+The canonical contract is the Master Runtime Harness subsection **“Paige Self-Knowledge & Migration
+Advisor.”** Its current end-to-end status is `UNAVAILABLE`; existing self-description pieces are
+`PARTIAL` and distributed. A future callable advisor derives a tenant-safe manifest from current
+route/tier truth, Spine/tool registrations, eligible skills, provider-result state, the Integration
+Capability Registry's limitations, Surface Binding Ledger state, model/cost evidence, and approved
+release identity. It does not copy those sources into a new registry or treat historical prose as
+live runtime truth.
+
+The wiring checklist for this capability is additive to the standing six-part checklist:
+
+1. preserve delivery, tenant connection, eligibility, authority, proof, and release identity as
+   separate fields with source revision, observed-at, freshness, conflict state, and a distinct
+   `VERIFIED`/`UNVERIFIED` evidence dimension; stale facts retain their last-known state plus age but
+   cannot support a decision that requires current truth;
+2. resolve authenticated/effective actor, tenant, workspace, tier, role, act-as state, and object
+   scope before advice, and again before every separately authorized action;
+3. lead with Paige's verified tenant replacement coverage and gaps; keep competitor claims dated,
+   cited, edition/region-scoped, and unable to override internal truth;
+4. normalize replacement direction and ask the smallest clarification when ambiguous;
+5. default every migration object class to read-only planning; a plan creates no tool authority;
+6. return a redacted receipt of reads, draft, verification, deliberate non-actions, approvals, gaps,
+   and rollback boundary; and
+7. admit no raw tenant data, secrets, transcripts, workflow/browser payloads, hidden prompts, or
+   cross-tenant knowledge into generalized comparison or learning material.
+
+Do not add the advisor to `paige-spine-and-rail-state.md` as a registered capability until a callable
+Spine path actually lands. Inventory approval is not registration or runtime eligibility.
+
 ---
 
 ## 2. What Paige's distributed Runtime Harness components were on 2026-08-19
