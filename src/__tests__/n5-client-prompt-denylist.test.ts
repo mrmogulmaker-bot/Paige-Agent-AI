@@ -27,6 +27,8 @@ import { PAIGE_VOICE_BLOCK } from "../../supabase/functions/_shared/paige-voice.
 // --- Chainable Supabase mock. Every builder method returns `this`; `this` is
 // thenable (resolves to {data: list, count}); `.maybeSingle()` resolves to
 // {data: single}. Per-table fixtures drive the shape. ---
+// (Typed as the module's structural ContextDb via a cast: the mock predates that
+// interface and its runtime shape satisfies it — the cast only bridges the types.)
 interface MockBuilder {
   select: () => MockBuilder;
   eq: () => MockBuilder;
@@ -51,7 +53,7 @@ function mockSupabase(fixtures: Record<string, { single?: unknown; list?: unknow
     };
     return b;
   }
-  return { from: (t: string) => builder(t) };
+  return { from: (t: string) => builder(t) } as unknown as import("../../supabase/functions/_shared/client-context.ts").ContextDb;
 }
 
 const NEUTRAL_CTX = (userContext: string, clientContext: string) =>

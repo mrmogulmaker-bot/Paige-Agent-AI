@@ -282,23 +282,194 @@ export function buildFundingProgramVocab(playbookConfig: any): string {
 }
 
 // ---------------------------------------------------------------------------
-// buildUserContext — the SERVER-BUILT context block. Credit-specific queries +
-// strings are gated behind `fundingEnabled` (taken as a PARAMETER). QuickBooks
-// (cash/runway/revenue) stays UNGATED — financial coaching, not credit.
-// `supabase` is the service-role client, passed in so this module needs no
-// Supabase import and stays trivially unit-testable with a mock client.
+// buildUserContext — the SERVER-BUILT context block, refactored onto the
+// Context Assembly Contract (docs/brain/paige-context-assembly-contract.md,
+// first adopter). Credit-specific queries + strings are gated behind
+// `fundingEnabled` (taken as a PARAMETER). QuickBooks (cash/runway/revenue)
+// stays UNGATED — financial coaching, not credit.
+//
+// TWO LAYERS, per the contract: `resolveUserContext` performs every read and
+// returns TYPED sources (available | unavailable | degraded + reason — the
+// degradation ledger makes a failed read visible instead of swallowed);
+// `projectUserContext` renders the SAME prompt string from `.data` only, so the
+// projection is byte-comparable with the pre-contract output for identical
+// reads. `buildUserContext` keeps its original signature (resolve + project,
+// top-level catch → "") so no caller changes in this beat.
+//
+// `supabase` is the service-role client, passed in as a minimal STRUCTURAL type
+// (the `capability-record.ts` `Rpc` precedent) so this module needs no supabase-js
+// import, stays tsc-clean without https-module resolution, and stays trivially
+// unit-testable with a mock client.
 // ---------------------------------------------------------------------------
-export async function buildUserContext(
-  supabase: any,
+import { contextAvailable, contextDegraded, contextUnavailable, type ContextSourceResult } from "./paige-context/mod.ts";
+
+/** A read chain: any .select/.eq/.order/.limit/.maybeSingle composition, awaitable. */
+export interface ContextDbQuery extends PromiseLike<{ data: unknown; error: { message?: string } | null; count?: number | null }> {
+  select(...args: unknown[]): ContextDbQuery;
+  eq(...args: unknown[]): ContextDbQuery;
+  neq(...args: unknown[]): ContextDbQuery;
+  in(...args: unknown[]): ContextDbQuery;
+  gte(...args: unknown[]): ContextDbQuery;
+  order(...args: unknown[]): ContextDbQuery;
+  limit(...args: unknown[]): ContextDbQuery;
+  maybeSingle(): ContextDbQuery;
+}
+/** The minimal service-role client surface this module reads through. */
+export interface ContextDb {
+  from(table: string): ContextDbQuery;
+}
+
+interface ProfileRow {
+  full_name: string | null; city: string | null; state: string | null;
+  estimated_fico_eq: number | null; estimated_fico_ex: number | null; estimated_fico_tu: number | null;
+  primary_bank_name: string | null; primary_bank_months: number | null; primary_bank_average_balance: number | null;
+  has_investment_accounts: boolean | null; investment_account_value_range: string | null;
+  total_liquid_assets_range: string | null; has_real_estate_equity: boolean | null; real_estate_equity_range: string | null;
+  has_equipment_assets: boolean | null; has_invoice_receivables: boolean | null; monthly_revenue_range: string | null;
+}
+interface SubscriptionRow { plan_slug: string; status: string }
+interface TaskRow { title: string; status: string; track: string | null; due_date: string | null }
+interface BusinessLiteRow { id: string; legal_name: string; entity_type: string | null; formation_status: string | null; business_type: string | null }
+interface DocumentRow { document_type: string; file_name: string; business_id: string | null; uploaded_at: string }
+interface CreditReportRow { id: string; file_name: string; analysis_status: string; created_at: string; last_analyzed_at: string | null; bureau_detected: string | null; error_message: string | null }
+interface NegativeItemRow { creditor_name: string; item_type: string; bureau: string; amount: number | null; status: string }
+interface QbConnectionRow { id: string; qb_company_name: string | null; last_synced_at: string | null; is_active: boolean }
+interface QbFinancialsRow {
+  total_revenue: number | null; gross_margin_percent: number | null; net_margin_percent: number | null;
+  cash_and_bank_balance: number | null; monthly_burn_rate: number | null; cash_runway_months: number | null;
+  payroll_expenses: number | null; marketing_expenses: number | null; accounts_receivable: number | null;
+  top_expense_categories: { name: string; amount: number }[] | null; revenue_per_month: { revenue: number }[] | null; synced_at: string;
+}
+interface BankingRelationshipRow {
+  institution_name: string; institution_type: string | null; relationship_type: string | null;
+  months_at_institution: number | null; average_monthly_balance: number | null; is_primary_institution: boolean | null;
+  has_direct_deposit: boolean | null; overdraft_count_last_12_months: number | null; nsf_count_last_12_months: number | null;
+  account_standing: string | null; business_id: string | null;
+}
+interface BusinessCreditRow {
+  id: string; legal_name: string; entity_type: string | null; entity_role: string | null; ein: string | null;
+  formation_date: string | null; is_primary: boolean | null; is_active: boolean | null;
+  dnb_paydex_score: number | null; dnb_report_date: string | null; experian_intelliscore: number | null; experian_report_date: string | null;
+  experian_days_beyond_terms: number | null; equifax_sbfe_score: number | null; equifax_report_date: string | null;
+  business_credit_last_updated: string | null; estimated_annual_revenue: number | null;
+  organizational_level: number | null; display_order: number | null;
+}
+interface BusinessCreditReportRow { trade_line_count: number | null; derogatory_count: number | null; days_beyond_terms: number | null; payment_trend: string | null; bureau: string | null; report_date: string | null }
+
+/** One read's honest result. The structural query resolves `unknown` rows; the row
+ *  interfaces above are the contract this module projects from. */
+async function readSource<T>(
+  query: ContextDbQuery,
+  source: string,
+): Promise<ContextSourceResult<T>> {
+  try {
+    const { data, error } = await query;
+    if (error) return contextDegraded<T>(`${source}: ${error.message ?? "read error"}`);
+    return contextAvailable<T>((data ?? null) as T | null);
+  } catch (e) {
+    return contextDegraded<T>(`${source}: ${e instanceof Error ? e.message : "threw"}`);
+  }
+}
+
+/** head:true count reads: the number IS the payload (data is null by construction). */
+async function readCountSource(
+  query: ContextDbQuery,
+  source: string,
+): Promise<ContextSourceResult<number>> {
+  try {
+    const { count, error } = await query;
+    if (error) return contextDegraded<number>(`${source}: ${error.message ?? "read error"}`);
+    return contextAvailable<number>(Number(count ?? 0));
+  } catch (e) {
+    return contextDegraded<number>(`${source}: ${e instanceof Error ? e.message : "threw"}`);
+  }
+}
+
+export interface UserContextSources {
+  readonly profile: ContextSourceResult<ProfileRow | null>;
+  readonly subscription: ContextSourceResult<SubscriptionRow | null>;
+  readonly tasks: ContextSourceResult<TaskRow[] | null>;
+  readonly businesses: ContextSourceResult<BusinessLiteRow[] | null>;
+  readonly documents: ContextSourceResult<DocumentRow[] | null>;
+  /** Funding lane only — contextUnavailable("funding_lane_off") for non-funding tenants,
+   *  so credit tables are never queried for them (§2 structural gate). */
+  readonly creditReports: ContextSourceResult<CreditReportRow[] | null>;
+  readonly creditAccountsCount: ContextSourceResult<number>;
+  readonly negativeItems: ContextSourceResult<NegativeItemRow[] | null>;
+  readonly qbConnection: ContextSourceResult<QbConnectionRow | null>;
+  readonly qbFinancials: ContextSourceResult<QbFinancialsRow | null>;
+  readonly bankingRelationships: ContextSourceResult<BankingRelationshipRow[] | null>;
+  readonly portfolioBusinesses: ContextSourceResult<BusinessCreditRow[] | null>;
+  readonly latestBusinessCreditReport: ContextSourceResult<BusinessCreditReportRow | null>;
+}
+
+/** Every read, same tables/columns/order as the pre-contract inline fetches. */
+export async function resolveUserContext(
+  supabase: ContextDb,
   contextUserId: string,
   fundingEnabled: boolean,
-): Promise<string> {
-  try {
-    const { data: profile } = await supabase.from("profiles").select("full_name, city, state, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, primary_bank_name, primary_bank_months, primary_bank_average_balance, has_investment_accounts, investment_account_value_range, total_liquid_assets_range, has_real_estate_equity, real_estate_equity_range, has_equipment_assets, has_invoice_receivables, monthly_revenue_range").eq("user_id", contextUserId).maybeSingle();
-    const { data: subscription } = await supabase.from("user_subscriptions").select("plan_slug, status").eq("user_id", contextUserId).maybeSingle();
-    const { data: tasks } = await supabase.from("tasks").select("title, status, track, due_date").eq("user_id", contextUserId).order("created_at", { ascending: false }).limit(10);
-    const { data: businesses } = await supabase.from("businesses").select("id, legal_name, entity_type, formation_status, business_type").eq("owner_user_id", contextUserId).order("created_at", { ascending: false }).limit(5);
-    const { data: documents } = await supabase.from("documents").select("document_type, file_name, business_id, uploaded_at").eq("user_id", contextUserId).order("uploaded_at", { ascending: false }).limit(20);
+): Promise<UserContextSources> {
+  const fundingOff = <T>(): ContextSourceResult<T> => contextUnavailable("funding_lane_off");
+  // QuickBooks is UNGATED (cash/revenue is financial coaching, not credit). Resolved
+  // ONCE — a supabase-js builder is thenable and must not be awaited twice.
+  // No connection is AVAILABLE-null: the projection's "NOT connected" recommendation
+  // line is that state's honest render (the old code printed it). Only a connection
+  // whose financials read FAILS is degraded (old behavior: local catch skipped block).
+  const qbConn = await readSource<QbConnectionRow | null>(
+    supabase.from("quickbooks_connections").select("id, qb_company_name, last_synced_at, is_active").eq("user_id", contextUserId).eq("is_active", true).maybeSingle(),
+    "quickbooks_connections",
+  );
+  const qbFinancials: ContextSourceResult<QbFinancialsRow | null> = qbConn.status !== "available"
+    ? contextUnavailable("qb_connection_read_degraded")
+    : !qbConn.data
+      ? contextAvailable<QbFinancialsRow | null>(null)
+      : await readSource<QbFinancialsRow | null>(
+          supabase.from("quickbooks_financials").select("total_revenue, gross_margin_percent, net_margin_percent, cash_and_bank_balance, monthly_burn_rate, cash_runway_months, payroll_expenses, marketing_expenses, accounts_receivable, top_expense_categories, revenue_per_month, synced_at").eq("qb_connection_id", qbConn.data.id).order("synced_at", { ascending: false }).limit(1).maybeSingle(),
+          "quickbooks_financials",
+        );
+  const sources: UserContextSources = {
+    profile: await readSource(supabase.from("profiles").select("full_name, city, state, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, primary_bank_name, primary_bank_months, primary_bank_average_balance, has_investment_accounts, investment_account_value_range, total_liquid_assets_range, has_real_estate_equity, real_estate_equity_range, has_equipment_assets, has_invoice_receivables, monthly_revenue_range").eq("user_id", contextUserId).maybeSingle(), "profiles"),
+    subscription: await readSource(supabase.from("user_subscriptions").select("plan_slug, status").eq("user_id", contextUserId).maybeSingle(), "user_subscriptions"),
+    tasks: await readSource(supabase.from("tasks").select("title, status, track, due_date").eq("user_id", contextUserId).order("created_at", { ascending: false }).limit(10), "tasks"),
+    businesses: await readSource(supabase.from("businesses").select("id, legal_name, entity_type, formation_status, business_type").eq("owner_user_id", contextUserId).order("created_at", { ascending: false }).limit(5), "businesses"),
+    documents: await readSource(supabase.from("documents").select("document_type, file_name, business_id, uploaded_at").eq("user_id", contextUserId).order("uploaded_at", { ascending: false }).limit(20), "documents"),
+    creditReports: fundingEnabled
+      ? await readSource(supabase.from("credit_report_uploads").select("id, file_name, analysis_status, created_at, last_analyzed_at, bureau_detected, error_message").eq("user_id", contextUserId).order("created_at", { ascending: false }).limit(3), "credit_report_uploads")
+      : fundingOff<CreditReportRow[]>(),
+    creditAccountsCount: fundingEnabled
+      ? await readCountSource(supabase.from("credit_accounts").select("id", { count: "exact", head: true }).eq("user_id", contextUserId), "credit_accounts_count")
+      : fundingOff<number>(),
+    negativeItems: fundingEnabled
+      ? await readSource(supabase.from("credit_negative_items").select("creditor_name, item_type, bureau, amount, status").eq("user_id", contextUserId).eq("status", "active").order("created_at", { ascending: false }).limit(10), "credit_negative_items")
+      : fundingOff<NegativeItemRow[]>(),
+    qbConnection: qbConn,
+    qbFinancials,
+    bankingRelationships: fundingEnabled
+      ? await readSource(supabase.from("banking_relationships").select("institution_name, institution_type, relationship_type, months_at_institution, average_monthly_balance, is_primary_institution, has_direct_deposit, overdraft_count_last_12_months, nsf_count_last_12_months, account_standing, business_id").eq("user_id", contextUserId), "banking_relationships")
+      : fundingOff<BankingRelationshipRow[]>(),
+    portfolioBusinesses: fundingEnabled
+      ? await readSource(supabase.from("businesses").select("id, legal_name, entity_type, entity_role, ein, formation_date, is_primary, is_active, dnb_paydex_score, dnb_report_date, experian_intelliscore, experian_report_date, experian_days_beyond_terms, equifax_sbfe_score, equifax_report_date, business_credit_last_updated, estimated_annual_revenue").eq("owner_user_id", contextUserId).eq("is_active", true).order("is_primary", { ascending: false }).order("organizational_level", { ascending: true }).order("display_order", { ascending: true }), "businesses_portfolio")
+      : fundingOff<BusinessCreditRow[]>(),
+    latestBusinessCreditReport: fundingEnabled
+      ? await readSource(supabase.from("business_credit_reports").select("trade_line_count, derogatory_count, days_beyond_terms, payment_trend, bureau, report_date").eq("user_id", contextUserId).order("report_date", { ascending: false, nullsFirst: false }).limit(1).maybeSingle(), "business_credit_reports")
+      : fundingOff<BusinessCreditReportRow | null>(),
+  };
+  return sources;
+}
+
+/** Renders the prompt block from resolved sources. The body below is the
+ *  pre-contract projection, MOVED VERBATIM — only the variable origins changed
+ *  (bundle fields instead of inline fetch results) and the interleaved fetches
+ *  became source-status guards. Byte-comparable for identical reads. */
+export function projectUserContext(
+  s: UserContextSources,
+  fundingEnabled: boolean,
+): string {
+    const profile = s.profile.data;
+    const subscription = s.subscription.data;
+    const tasks = s.tasks.data;
+    const businesses = s.businesses.data;
+    const documents = s.documents.data;
 
     const contextParts: string[] = [];
     if (profile) contextParts.push(`User Profile: ${profile.full_name || "User"} from ${profile.city ? `${profile.city}, ${profile.state}` : "location not set"}`);
@@ -306,26 +477,9 @@ export async function buildUserContext(
 
     // ===== Credit report awareness (§2 — FUNDING TENANTS ONLY) =====
     if (fundingEnabled) {
-      const { data: creditReports } = await supabase
-        .from("credit_report_uploads")
-        .select("id, file_name, analysis_status, created_at, last_analyzed_at, bureau_detected, error_message")
-        .eq("user_id", contextUserId)
-        .order("created_at", { ascending: false })
-        .limit(3);
-
-      const { count: accountsCount } = await supabase
-        .from("credit_accounts")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", contextUserId);
-
-      const { data: negatives } = await supabase
-        .from("credit_negative_items")
-        .select("creditor_name, item_type, bureau, amount, status")
-        .eq("user_id", contextUserId)
-        .eq("status", "active")
-        .order("created_at", { ascending: false })
-        .limit(10);
-
+      const creditReports = s.creditReports.data;
+      const accountsCount = s.creditAccountsCount.data ?? 0;
+      const negatives = s.negativeItems.data;
       if (creditReports && creditReports.length > 0) {
         const latest = creditReports[0];
         const uploadedAt = new Date(latest.created_at);
@@ -366,7 +520,7 @@ export async function buildUserContext(
           contextParts.push(`Synced credit accounts: ${accountsCount}`);
         }
         if (negatives && negatives.length > 0) {
-          const negSummary = negatives.slice(0, 5).map((n: any) => `${n.creditor_name} (${n.item_type}, ${n.bureau}${n.amount ? `, $${n.amount}` : ""})`).join("; ");
+          const negSummary = negatives.slice(0, 5).map((n: NegativeItemRow) => `${n.creditor_name} (${n.item_type}, ${n.bureau}${n.amount ? `, $${n.amount}` : ""})`).join("; ");
           contextParts.push(`Active negative items (${negatives.length}): ${negSummary}`);
         }
       } else {
@@ -379,118 +533,100 @@ export async function buildUserContext(
         // Funding tenants: strip dispute / credit-repair tasks so Paige never
         // surfaces dispute work (handled by the tenant's separate credit team).
         const isDisputeTask = (title: string) => /\b(dispute|disput|credit repair|cra letter|goodwill letter|validation letter|metro\s*2|removal|delete\s+from\s+report|charge[\s-]?off\s+removal)\b/i.test(title || "");
-        const visibleTasks = tasks.filter((t: any) => !isDisputeTask(t.title));
-        const pendingTasks = visibleTasks.filter((t: any) => t.status === "pending").length;
-        const completedTasks = visibleTasks.filter((t: any) => t.status === "completed").length;
+        const visibleTasks = tasks.filter((t: TaskRow) => !isDisputeTask(t.title));
+        const pendingTasks = visibleTasks.filter((t: TaskRow) => t.status === "pending").length;
+        const completedTasks = visibleTasks.filter((t: TaskRow) => t.status === "completed").length;
         contextParts.push(`Tasks: ${pendingTasks} pending, ${completedTasks} completed (dispute-related tasks excluded — handled by separate credit services team)`);
         if (pendingTasks > 0) {
-          const taskSummary = visibleTasks.filter((t: any) => t.status === "pending").slice(0, 3).map((t: any) => `- ${t.title} (${t.track})`).join("\n");
+          const taskSummary = visibleTasks.filter((t: TaskRow) => t.status === "pending").slice(0, 3).map((t: TaskRow) => `- ${t.title} (${t.track})`).join("\n");
           contextParts.push(`Recent Pending Tasks:\n${taskSummary}`);
         }
       } else {
         // Non-funding tenants: show tasks plainly, no credit/dispute framing.
-        const pendingTasks = tasks.filter((t: any) => t.status === "pending").length;
-        const completedTasks = tasks.filter((t: any) => t.status === "completed").length;
+        const pendingTasks = tasks.filter((t: TaskRow) => t.status === "pending").length;
+        const completedTasks = tasks.filter((t: TaskRow) => t.status === "completed").length;
         contextParts.push(`Tasks: ${pendingTasks} pending, ${completedTasks} completed`);
         if (pendingTasks > 0) {
-          const taskSummary = tasks.filter((t: any) => t.status === "pending").slice(0, 3).map((t: any) => `- ${t.title} (${t.track})`).join("\n");
+          const taskSummary = tasks.filter((t: TaskRow) => t.status === "pending").slice(0, 3).map((t: TaskRow) => `- ${t.title} (${t.track})`).join("\n");
           contextParts.push(`Recent Pending Tasks:\n${taskSummary}`);
         }
       }
     }
     if (businesses && businesses.length > 0) {
-      const bizSummary = businesses.map((b: any) => `${b.legal_name} (${b.business_type}, ${b.entity_type || "type not set"})`).join(", ");
+      const bizSummary = businesses.map((b: BusinessLiteRow) => `${b.legal_name} (${b.business_type}, ${b.entity_type || "type not set"})`).join(", ");
       contextParts.push(`Businesses: ${bizSummary}`);
     }
     if (documents && documents.length > 0) {
-      const personalDocs = documents.filter((d: any) => !d.business_id);
-      const businessDocs = documents.filter((d: any) => d.business_id);
+      const personalDocs = documents.filter((d: DocumentRow) => !d.business_id);
+      const businessDocs = documents.filter((d: DocumentRow) => d.business_id);
       const docSummary: string[] = [];
-      if (personalDocs.length > 0) docSummary.push(`Personal Documents (${personalDocs.length}): ${[...new Set(personalDocs.map((d: any) => d.document_type))].join(", ")}`);
-      if (businessDocs.length > 0) docSummary.push(`Business Documents (${businessDocs.length}): ${[...new Set(businessDocs.map((d: any) => d.document_type))].join(", ")}`);
+      if (personalDocs.length > 0) docSummary.push(`Personal Documents (${personalDocs.length}): ${[...new Set(personalDocs.map((d: DocumentRow) => d.document_type))].join(", ")}`);
+      if (businessDocs.length > 0) docSummary.push(`Business Documents (${businessDocs.length}): ${[...new Set(businessDocs.map((d: DocumentRow) => d.document_type))].join(", ")}`);
       if (docSummary.length > 0) contextParts.push(`Available Documents:\n${docSummary.join("\n")}`);
     }
 
     // ===== QuickBooks Financial Intelligence (UNGATED — cash/revenue is not credit) =====
-    try {
-      const { data: qbConn } = await supabase
-        .from("quickbooks_connections")
-        .select("id, qb_company_name, last_synced_at, is_active")
-        .eq("user_id", contextUserId)
-        .eq("is_active", true)
-        .maybeSingle();
-      if (qbConn) {
-        const { data: qbFin } = await supabase
-          .from("quickbooks_financials")
-          .select("total_revenue, gross_margin_percent, net_margin_percent, cash_and_bank_balance, monthly_burn_rate, cash_runway_months, payroll_expenses, marketing_expenses, accounts_receivable, top_expense_categories, revenue_per_month, synced_at")
-          .eq("qb_connection_id", qbConn.id)
-          .order("synced_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (qbFin) {
-          const fmt = (n: any) => `$${Math.round(Number(n || 0)).toLocaleString()}`;
-          const revPerMonth = (qbFin.revenue_per_month as any[]) || [];
-          const t12 = revPerMonth.reduce((s: number, m: any) => s + Number(m.revenue || 0), 0);
-          const payrollPct = Number(qbFin.total_revenue) > 0 ? (Number(qbFin.payroll_expenses) / Number(qbFin.total_revenue)) * 100 : 0;
-          const marketingPct = Number(qbFin.total_revenue) > 0 ? (Number(qbFin.marketing_expenses) / Number(qbFin.total_revenue)) * 100 : 0;
-          const topCats = ((qbFin.top_expense_categories as any[]) || []).slice(0, 3)
-            .map((c: any) => `${c.name}: ${fmt(c.amount)}`).join(", ");
-          contextParts.push(
-            `\n=== QUICKBOOKS FINANCIAL DATA (synced ${new Date(qbFin.synced_at).toLocaleDateString()}) ===\n` +
-            `Company: ${qbConn.qb_company_name || "Connected"}\n` +
-            `Revenue: ${fmt(qbFin.total_revenue)} (last 30 days) | Trailing 12M: ${fmt(t12)}\n` +
-            `Gross Margin: ${Number(qbFin.gross_margin_percent).toFixed(1)}% | Net Margin: ${Number(qbFin.net_margin_percent).toFixed(1)}%\n` +
-            `Cash Position: ${fmt(qbFin.cash_and_bank_balance)} | Runway: ${qbFin.cash_runway_months !== null ? `${Number(qbFin.cash_runway_months).toFixed(1)} months` : "N/A"}\n` +
-            `Burn Rate: ${fmt(qbFin.monthly_burn_rate)}/month\n` +
-            `Payroll: ${payrollPct.toFixed(1)}% of revenue | Marketing: ${marketingPct.toFixed(1)}% of revenue\n` +
-            `Top Expenses: ${topCats || "n/a"}\n` +
-            `AR Outstanding: ${fmt(qbFin.accounts_receivable)}`,
-          );
-        } else {
-          contextParts.push(`\nQuickBooks connected (${qbConn.qb_company_name}) but no synced data yet.`);
-        }
+    // Contract: the block renders only when BOTH QB sources read available — a
+    // degraded read skips the block exactly like the old local catch did, except the
+    // degradation is now recorded in the bundle instead of only a console.warn.
+    if (s.qbConnection.status === "available" && s.qbFinancials.status === "available") {
+      const qbConn = s.qbConnection.data;
+      const qbFin = s.qbFinancials.data;
+      if (qbConn && qbFin) {
+        const fmt = (n: number | null) => `$${Math.round(Number(n || 0)).toLocaleString()}`;
+        const revPerMonth = (qbFin.revenue_per_month as { revenue: number }[] | null) || [];
+        const t12 = revPerMonth.reduce((sum: number, m: { revenue: number }) => sum + Number(m.revenue || 0), 0);
+        const payrollPct = Number(qbFin.total_revenue) > 0 ? (Number(qbFin.payroll_expenses) / Number(qbFin.total_revenue)) * 100 : 0;
+        const marketingPct = Number(qbFin.total_revenue) > 0 ? (Number(qbFin.marketing_expenses) / Number(qbFin.total_revenue)) * 100 : 0;
+        const topCats = ((qbFin.top_expense_categories as { name: string; amount: number }[] | null) || []).slice(0, 3)
+          .map((c: { name: string; amount: number }) => `${c.name}: ${fmt(c.amount)}`).join(", ");
+        contextParts.push(
+          `\n=== QUICKBOOKS FINANCIAL DATA (synced ${new Date(qbFin.synced_at).toLocaleDateString()}) ===\n` +
+          `Company: ${qbConn.qb_company_name || "Connected"}\n` +
+          `Revenue: ${fmt(qbFin.total_revenue)} (last 30 days) | Trailing 12M: ${fmt(t12)}\n` +
+          `Gross Margin: ${Number(qbFin.gross_margin_percent).toFixed(1)}% | Net Margin: ${Number(qbFin.net_margin_percent).toFixed(1)}%\n` +
+          `Cash Position: ${fmt(qbFin.cash_and_bank_balance)} | Runway: ${qbFin.cash_runway_months !== null ? `${Number(qbFin.cash_runway_months).toFixed(1)} months` : "N/A"}\n` +
+          `Burn Rate: ${fmt(qbFin.monthly_burn_rate)}/month\n` +
+          `Payroll: ${payrollPct.toFixed(1)}% of revenue | Marketing: ${marketingPct.toFixed(1)}% of revenue\n` +
+          `Top Expenses: ${topCats || "n/a"}\n` +
+          `AR Outstanding: ${fmt(qbFin.accounts_receivable)}`,
+        );
+      } else if (qbConn) {
+        contextParts.push(`\nQuickBooks connected (${qbConn.qb_company_name}) but no synced data yet.`);
       } else {
         contextParts.push(`\n⚠️ QuickBooks NOT connected — recommend connecting for accurate financial coaching.`);
       }
-    } catch (qbErr) {
-      console.warn("[paige] QB context fetch failed:", qbErr);
     }
 
     // ===== Financial Profile — banking relationships + fundability weights (§2 FUNDING ONLY) =====
-    if (fundingEnabled) {
-      try {
-        const { data: bankingRels } = await supabase
-          .from("banking_relationships")
-          .select(
-            "institution_name, institution_type, relationship_type, months_at_institution, average_monthly_balance, is_primary_institution, has_direct_deposit, overdraft_count_last_12_months, nsf_count_last_12_months, account_standing, business_id",
-          )
-          .eq("user_id", contextUserId);
+    if (fundingEnabled && s.bankingRelationships.status === "available") {
+      {
 
         const qbConnectedFlag = contextParts.some((p) => p.includes("QUICKBOOKS FINANCIAL DATA"));
         const qbConnectedNoData = contextParts.some((p) => p.startsWith("\nQuickBooks connected"));
         const qbConnected = qbConnectedFlag || qbConnectedNoData;
 
-        const rels = (bankingRels ?? []) as any[];
-        const personalRels = rels.filter((r: any) => !r.business_id);
-        const businessRels = rels.filter((r: any) => r.business_id);
-        const primary = personalRels.find((r: any) => r.is_primary_institution) ?? personalRels[0] ?? null;
-        const primaryBiz = businessRels.find((r: any) => r.is_primary_institution) ?? businessRels[0] ?? null;
+        const rels = s.bankingRelationships.data ?? [];
+        const personalRels = rels.filter((r: BankingRelationshipRow) => !r.business_id);
+        const businessRels = rels.filter((r: BankingRelationshipRow) => r.business_id);
+        const primary = personalRels.find((r: BankingRelationshipRow) => r.is_primary_institution) ?? personalRels[0] ?? null;
+        const primaryBiz = businessRels.find((r: BankingRelationshipRow) => r.is_primary_institution) ?? businessRels[0] ?? null;
 
         const completenessSignals = [
-          !!(profile as any)?.primary_bank_name || !!primary,
-          ((profile as any)?.primary_bank_months ?? null) !== null || (primary?.months_at_institution ?? null) !== null,
-          ((profile as any)?.primary_bank_average_balance ?? null) !== null || (primary?.average_monthly_balance ?? null) !== null,
-          (profile as any)?.has_investment_accounts !== null && (profile as any)?.has_investment_accounts !== undefined,
-          !!(profile as any)?.total_liquid_assets_range,
-          (profile as any)?.has_real_estate_equity !== null && (profile as any)?.has_real_estate_equity !== undefined,
-          (profile as any)?.has_equipment_assets !== null && (profile as any)?.has_equipment_assets !== undefined,
-          !!(profile as any)?.monthly_revenue_range,
+          !!profile?.primary_bank_name || !!primary,
+          (profile?.primary_bank_months ?? null) !== null || (primary?.months_at_institution ?? null) !== null,
+          (profile?.primary_bank_average_balance ?? null) !== null || (primary?.average_monthly_balance ?? null) !== null,
+          profile?.has_investment_accounts !== null && profile?.has_investment_accounts !== undefined,
+          !!profile?.total_liquid_assets_range,
+          profile?.has_real_estate_equity !== null && profile?.has_real_estate_equity !== undefined,
+          profile?.has_equipment_assets !== null && profile?.has_equipment_assets !== undefined,
+          !!profile?.monthly_revenue_range,
         ];
         const completenessPct = Math.round(
           (completenessSignals.filter(Boolean).length / completenessSignals.length) * 100,
         );
 
-        const p: any = profile || {};
+        const p: Partial<ProfileRow> = profile ?? {};
         const hasAnyFinancialData =
           rels.length > 0 ||
           !!p.primary_bank_name ||
@@ -521,7 +657,7 @@ export async function buildUserContext(
             lines.push(`Average monthly balance: $${Math.round(Number(avgBal)).toLocaleString()}`);
           }
 
-          const personalAcctTypes = [...new Set(personalRels.map((r: any) => r.relationship_type).filter(Boolean))];
+          const personalAcctTypes = [...new Set(personalRels.map((r: BankingRelationshipRow) => r.relationship_type).filter(Boolean))];
           if (personalAcctTypes.length > 0) {
             lines.push(`Account types at primary institution: ${personalAcctTypes.join(", ")}`);
           }
@@ -560,7 +696,7 @@ export async function buildUserContext(
           lines.push(`Financial profile completeness: ${completenessPct}%`);
           lines.push(`QuickBooks connected: ${qbConnected ? "yes — banking/revenue figures above can be cross-checked against verified QB data" : "no"}`);
 
-          const allInstitutions = rels.map((r: any) => (r.institution_name || "").toLowerCase());
+          const allInstitutions = rels.map((r: BankingRelationshipRow) => (r.institution_name || "").toLowerCase());
           const hasBoA = allInstitutions.some((n: string) => n.includes("bank of america") || n.includes("boa"));
           const hasAmex = allInstitutions.some((n: string) => n.includes("american express") || n.includes("amex"));
           if (hasBoA) lines.push(`✅ Bank of America deposit relationship detected — apply 7-card-in-12-months rule when discussing BoA cards.`);
@@ -568,33 +704,17 @@ export async function buildUserContext(
 
           contextParts.push(lines.join("\n"));
         }
-      } catch (finErr) {
-        console.warn("[paige] Financial Profile context fetch failed:", finErr);
+      }
       }
 
       // ===== Business Credit (D&B, Experian Business, Equifax SBFE) — FUNDING ONLY =====
-      try {
-        const { data: portfolioBusinesses } = await supabase
-          .from("businesses")
-          .select(
-            "id, legal_name, entity_type, entity_role, ein, formation_date, is_primary, is_active, dnb_paydex_score, dnb_report_date, experian_intelliscore, experian_report_date, experian_days_beyond_terms, equifax_sbfe_score, equifax_report_date, business_credit_last_updated, estimated_annual_revenue",
-          )
-          .eq("owner_user_id", contextUserId)
-          .eq("is_active", true)
-          .order("is_primary", { ascending: false })
-          .order("organizational_level", { ascending: true })
-          .order("display_order", { ascending: true });
-
-        const bizList = portfolioBusinesses ?? [];
+      // Contract: renders only when both funding-lane sources read available; a
+      // degraded read skips the block exactly like the old local catch did, recorded.
+      if (fundingEnabled && s.portfolioBusinesses.status === "available" && s.latestBusinessCreditReport.status === "available") {
+        {
+        const bizList: BusinessCreditRow[] = s.portfolioBusinesses.data ?? [];
         const bizForCredit = bizList[0] ?? null;
-
-        const { data: latestBcReport } = await supabase
-          .from("business_credit_reports")
-          .select("trade_line_count, derogatory_count, days_beyond_terms, payment_trend, bureau, report_date")
-          .eq("user_id", contextUserId)
-          .order("report_date", { ascending: false, nullsFirst: false })
-          .limit(1)
-          .maybeSingle();
+        const latestBcReport = s.latestBusinessCreditReport.data;
 
         const interpretPaydex = (s: number | null) => {
           if (s == null) return "no data";
@@ -716,23 +836,33 @@ export async function buildUserContext(
             );
           }
 
-          const active = bizList.find((b: any) => b.is_primary) ?? bizList[0];
+          const active = bizList.find((b: BusinessCreditRow) => b.is_primary) ?? bizList[0];
           portfolioLines.push(
             `\nCurrently active entity for this session: ${active.legal_name}`,
           );
 
           contextParts.push(portfolioLines.join("\n"));
         }
-      } catch (bcErr) {
-        console.warn("[paige] business credit context fetch failed:", bcErr);
+        }
       }
-    }
 
     // The credit-file footer sentence only applies to funding tenants.
     const footer = fundingEnabled
       ? "\n==================\nIMPORTANT: If a credit report IS on file, NEVER ask the client to upload one again. Reference the data above when answering questions about their scores, accounts, or negative items.\n"
       : "\n==================\n";
     return contextParts.length > 0 ? "\n\n=== USER CONTEXT ===\n" + contextParts.join("\n") + footer : "";
+}
+
+/** Original signature, unchanged behavior: resolve (typed) → project (verbatim) →
+ *  top-level catch → "". Callers in paige-ai-chat are untouched in this beat. */
+export async function buildUserContext(
+  supabase: ContextDb,
+  contextUserId: string,
+  fundingEnabled: boolean,
+): Promise<string> {
+  try {
+    const sources = await resolveUserContext(supabase, contextUserId, fundingEnabled);
+    return projectUserContext(sources, fundingEnabled);
   } catch (error) {
     console.error("Error fetching user context:", error);
     return "";
