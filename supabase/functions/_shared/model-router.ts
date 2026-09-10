@@ -196,6 +196,53 @@ async function featherlessChat(body: OpenAIStyleBody, model: string): Promise<an
 export async function routedChatCompletion(jobKind: JobKind, body: OpenAIStyleBody, trace?: TraceCtx): Promise<any> {
   const route = pickRoute(jobKind);
   const started = Date.now();
+
+  // BUDGET ENFORCEMENT (docs/brain/paige-router-budget-contract.md, #1102): this is the
+  // routed-TEXT path — the chat traffic — a DISTINCT entry point from callModel, and both
+  // enforce. Band maps from the job kind's own band (the same three sets pickRoute uses).
+  // No tenant in the trace ctx (platform/system turn) or no admin client → ungated, like
+  // audit/persist. The gate hit rides the trace's doctrine_gate_hits on every path.
+  const budgetBand: BudgetBand = SENSITIVE_KINDS.has(jobKind)
+    ? "sensitive"
+    : REASONING_KINDS.has(jobKind) ? "reasoning" : "cheap";
+  let budgetCheck: BudgetDecision | null = null;
+  if (trace?.tenant_id) {
+    const budgetAdmin = getAdmin();
+    if (budgetAdmin) {
+      const ceiling = await resolveCeiling(budgetAdmin as unknown as BudgetDb, trace.tenant_id);
+      const accrued = await accruedSpendToday(budgetAdmin as unknown as BudgetDb, trace.tenant_id);
+      if (accrued == null) {
+        // Accrual unknown ≠ $0. Proceed ungated but LOUD — observable, not silent.
+        console.warn("[model-router] budget accrual unknown; chat call proceeds ungated (budget_accrual_unknown)");
+      } else {
+        budgetCheck = enforceBudget({ accrued_usd: accrued, ceiling_usd: ceiling, band: budgetBand });
+        if (budgetCheck.decision === "block") {
+          const err = new BudgetExceeded(budgetCheck.ceiling_usd, budgetCheck.accrued_usd);
+          traceLLMCall({
+            tenant_id: trace.tenant_id,
+            task_id: trace.task_id ?? null,
+            agent_id: trace.agent_id ?? null,
+            parent_trace_id: trace.parent_trace_id ?? null,
+            provider: "router_budget",
+            model: null,
+            job_kind: trace.job_kind ?? jobKind,
+            modality: "text",
+            tier: route.tier,
+            status: "error",
+            latency_ms: Date.now() - started,
+            input: body.messages,
+            output: null,
+            error_class: "budget_exceeded",
+            error_message: err.message,
+            doctrine_gate_hits: { budget: { level: "exceeded", accrued_usd: budgetCheck.accrued_usd, ceiling_usd: budgetCheck.ceiling_usd, band: budgetBand } },
+            metadata: { caller_function: trace.agent_id },
+          });
+          throw err;
+        }
+      }
+    }
+  }
+
   // §34 L1.1: one trace row per routed text call. This is a DISTINCT entry point (its callers do not go
   // through callModel), so tracing here never double-counts. The shared helpers it calls
   // (featherlessChat / chatCompletionCompat / callClaude) do NOT trace — this is the single trace layer
@@ -225,6 +272,9 @@ export async function routedChatCompletion(jobKind: JobKind, body: OpenAIStyleBo
       output: status === "success" ? (resp?.choices?.[0]?.message?.content ?? null) : null,
       error_class: status === "error" ? ((err as Error)?.name ?? "error") : null,
       error_message: status === "error" ? ((err as Error)?.message ?? String(err)) : null,
+      doctrine_gate_hits: budgetCheck?.gate
+        ? { budget: { level: budgetCheck.gate.replace("budget_", ""), accrued_usd: budgetCheck.accrued_usd, ceiling_usd: budgetCheck.ceiling_usd, band: budgetCheck.band } }
+        : null,
       metadata: { caller_function: trace?.agent_id },
     });
   };
