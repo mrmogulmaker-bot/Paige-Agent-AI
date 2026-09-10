@@ -92,8 +92,11 @@ per §47).
 
 1. **Seam module:** `supabase/functions/_shared/durable-job/` — canonical states, claim/lease
    helpers, reconciliation helpers. No tables of its own.
-2. **First adopter:** `coaching-reminder-cron` — smallest surface, live duplicate-send risk,
-   immediate verifiable win (idempotent sends provable by attempt ledger).
+2. **First adopter:** `weekly-summary-cron` — live surface with a real no-dedupe
+   double-send risk (any re-fire re-emailed every opted-in user), immediate verifiable
+   win. *(Correction 2026-09-10: this doc originally named `coaching-reminder-cron`;
+   survey found `coaching_appointments` exists in no migration — that cron is dormant.
+   Delivered as #1084 against `weekly-summary-cron`.)*
 3. **Then:** remaining crons, then `paige_actions` execution steps (bridging business state to
    attempt state), then the systems-check family.
 4. **New work rule:** from contract adoption forward, any new scheduled/durable work must use the
