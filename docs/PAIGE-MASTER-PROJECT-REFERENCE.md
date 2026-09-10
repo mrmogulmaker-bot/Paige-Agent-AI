@@ -657,6 +657,21 @@ Reference or any domain ledger; it governs how their facts become release and cu
 
 ### 4.0 Shipped Delivery Log
 
+**2026-09-10 durable-job first-adopter deployment + live verification:** migration `20270106000000`
+was applied to production with history parity (top of `supabase_migrations.schema_migrations`) and
+`weekly-summary-cron` was deployed at version 801 post-#1084-merge (crew pipeline). Live verification
+against production on 2026-09-10, all rollback-isolated with zero persistent test state: **(1)**
+concurrent claim atomicity — session A claimed a synthetic due row (1) while session B's simultaneous
+`claim_due_weekly_summaries` returned 0 (FOR UPDATE SKIP LOCKED held); **(2)** lease/re-claim
+exclusion — a second claim during the live lease returned 0; **(3)** attempts ceiling — claim at
+attempts=4 succeeded (→5), claim at ceiling returned 0, and `mark_exhausted_weekly_summaries`
+stamped `failed/attempt_ceiling_reached`; **(4)** end-to-end — the deployed function's response is
+the retrofit shape (`{"success":true,"claimed":0,"dispatched":0}`; the pre-retrofit shape lacked
+`claimed`). The #1084 row's "deploy + authenticated runtime proof" next gate is therefore closed
+for claim semantics. Still `PROOF OWED`: a Rail receipt from a real send via
+`record_capability_run` (requires a real opted-in user and a genuine tick — synthetic testing cannot
+produce it honestly) and volume behavior with real due rows.
+
 **2026-09-08 chat-scroll acceptance correction:** the #1057 entry below remains a historical
 shipping/owner-acceptance record, not current behavioral acceptance. The owner has since reproduced
 delayed reading-position theft after #1066. The shared scroll workstream is REOPENED P0 / FAIL,
