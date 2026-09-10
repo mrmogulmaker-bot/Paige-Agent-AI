@@ -47,6 +47,7 @@ import {
   resolveDisputeReferralLabel,
   sanitizeClientContextForTier,
 } from "../_shared/client-context.ts";
+import { buildVpAddressBlock, detectVpAddress } from "../_shared/paige-context/vp-address.ts";
 // §18 one home — the platform-default VOICE DNA lives in ONE shared module so both this
 // edge function AND the §2/§3 denylist test import the same text (§32: the assembled
 // voice is scannable). A tenant-authored persona still OVERRIDES it (read first below).
@@ -4376,10 +4377,32 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // chat and the owner/Studio design-agent path. §18 one home: the block text is now
     // imported from _shared/paige-voice.ts so the §2/§3 denylist test scans the same string.
 
+    // VP addressing (Stage 2, docs/doctrine/paige-c-suite-roster.md "Tenant addressing
+    // patterns"): a leading "ZION, …" routes THIS turn to that VP's presentation identity —
+    // an additive system block + Rail/trace attribution. The persona still leads; authority
+    // is unchanged (roster 2026-09-08 correction: presentation, never a second runtime).
+    let vpAddress: ReturnType<typeof detectVpAddress> = null;
+    for (let mi = messages.length - 1; mi >= 0; mi--) {
+      if (messages[mi]?.role === "user") {
+        const lastUser: unknown = messages[mi]?.content;
+        const lastUserText = typeof lastUser === "string" ? lastUser
+          : Array.isArray(lastUser)
+            ? lastUser.map((p) => (typeof p === "string" ? p : ((p as Record<string, unknown>)?.text ?? ""))).join(" ")
+            : "";
+        vpAddress = detectVpAddress(lastUserText);
+        break;
+      }
+    }
+    if (vpAddress) {
+      // Rail/trace attribution: this turn's rows carry the VP as the acting agent identity.
+      traceCtx.agent_id = vpAddress.vp.slug;
+    }
+
     // Build message array — lead with the tenant's persona so identity is set first,
     // then the platform-default VOICE, THEN the task/tool operating core below.
     const aiMessages: any[] = [
       { role: "system", content: buildPaigePersonaBlock(personaCtx.playbook_config, personaCtx.tenant_name || "your practice", fundingEnabled, personaCtx.brand) },
+      ...(vpAddress ? [{ role: "system", content: buildVpAddressBlock(vpAddress, personaCtx.tenant_name || "your practice") }] : []),
       { role: "system", content: PAIGE_VOICE_BLOCK },
       ...(tenantDomainContext ? [{ role: "system", content: tenantDomainContext }] : []),
       ...(tenantTeamContext ? [{ role: "system", content: tenantTeamContext }] : []),
