@@ -1,0 +1,93 @@
+# Paige Context Assembly Contract — PROPOSAL (owner green-lit via Stage 1)
+
+> **Status:** PROPOSAL. Documentation only. Extends the Paige Runtime Harness doctrine
+> (`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §3, responsibility #1 "Context assembly") as
+> the third Stage 1 contract, sibling to `paige-durable-job-contract.md` and
+> `paige-receipt-rail-contract.md`. It owns no Brain/Spine/registry fact and creates no
+> new source of truth.
+
+---
+
+## 1. Problem (grounded survey, 2026-09-10, `main` `6dcde4da`)
+
+Master §3's inventory: context assembly "remains distributed." Grounded:
+
+- **`paige-ai-chat/index.ts` is 13,374 lines** containing at least six independent,
+  hand-rolled context builders wired inline: persona resolution
+  (`get_paige_persona_context`), working-tenant resolution, scoped identity
+  (`contextUserId = scopedClientId || user.id`), semantic tenant knowledge
+  (`match_tenant_knowledge`), skill prompts (e.g. `FUNDING_SKILL_PROMPT`), and the
+  transcript replay with its silent prior-turn drop (#93/#117).
+- **`_shared/client-context.ts` (851 lines)** — `buildUserContext` builds the biggest
+  block (profile, subscription, tasks, businesses, documents, credit-awareness) as
+  formatted strings, funding-gated by parameter. It is unit-testable and service-built
+  (good), but its failure mode is a swallowed `catch` → silently partial context, and it
+  returns a string, so no caller can tell what was available, degraded, or stale.
+- **Silent degradation is the norm:** persona resolution "defaults to neutral" on error;
+  working-context tenant resolution "defaults to null" with a `console.warn`; user
+  context catches to empty. The doctrine requires failing closed on unresolved identity
+  or stale scope — today the model just receives less context and the owner is told
+  nothing.
+- **The model citizen already exists:** `_shared/paige-spine/resolveEvidence.ts` — typed
+  `available | unavailable` results with named reasons (`capability_unavailable`,
+  `resolver_unavailable`, `subject_required`, `scope_changed`), exact-key validation, and
+  scope-change detection. Proof that the pattern fits this codebase.
+
+## 2. The contract
+
+**One ContextBundle per turn, many typed sources, zero silent degradation.**
+
+1. **Identity once, scope-checked continuously.** Actor, tenant, workspace, role, and
+   act-as state resolve ONCE at turn start into the bundle; every subsequent step
+   re-validates against `scope_changed` (the `resolveEvidence.ts` precedent). Identity
+   never re-derives mid-turn, never blends (a scoped-client turn keeps the client's
+   context under the client's identity — the existing `contextUserId` fence stays).
+2. **Sources are typed resolvers, not string builders.** Each source returns
+   `{ status: "available" | "unavailable" | "degraded", reason?, data }`. String
+   formatting happens LAST, from structured results, so callers can render, test, and
+   audit what was included. `buildUserContext`'s string output becomes a projection of a
+   typed resolver, not the source of truth.
+3. **Degradation is recorded, never silent.** An unavailable source appears in the bundle
+   with its reason and (per the receipt contract) can ride the turn's trace. The model
+   may be told "X unavailable" in bounded language; the owner can see it on the Rail.
+   What is NEVER allowed: catch-to-empty, default-to-neutral identity, null-tenant with
+   a warn and onward execution as if scoped.
+4. **Minimum necessary.** The bundle carries only sources the task's lane requires
+   (funding gate precedent: credit context rides only when the tenant's funding preset
+   is on). Breadth is a policy decision recorded in the bundle, not an accident of
+   which builder ran.
+5. **Eligibility rules hold.** Brain knowledge, bounded Mind evidence, and governed
+   Memory enter only through their existing eligibility contracts; the bundle assembles,
+   it never bypasses.
+
+## 3. Adapter-first rollout
+
+1. **Seam module** `_shared/paige-context/` — the `ContextSource` / `ContextBundle` types,
+   the identity resolver, and the degradation ledger. No tables; dependency-free,
+   vitest-importable (the `resolveEvidence.ts` and durable-job seam precedents).
+2. **First adopter: `buildUserContext` → typed resolver.** Biggest block, already
+   unit-testable with a mock client; its catch-to-empty becomes honest
+   `degraded`/`unavailable` results, with the existing string projection preserved for
+   the prompt so no model-behavior change ships in the same beat.
+3. **Then:** persona + working-tenant resolution into the bundle (their silent defaults
+   become recorded degradations); transcript replay's prior-turn drop becomes an
+   explicit bounded-Mind source (joins the #93/#117 memory workstream, which owns the
+   compaction design).
+4. **New work rule:** any new context source ships as a typed resolver; no new inline
+   string-builder in a function body.
+
+**Maturity gate.** `PROOF OWED` until the first adopter proves: sources report honest
+availability under mock failures, degradation is visible in the bundle (and testable),
+identity fence holds under scoped-client turns, and no prompt output changes in the
+refactor beat (byte-comparable projection for identical inputs).
+
+## 4. Collision assessment
+
+- Extends Master §3 responsibility #1; owns no Brain/Spine/Rail/registry fact.
+- #917 (orchestration/tools): the bundle feeds the same governed execution path; no
+  orchestration decision preempted.
+- #576/#591 (chat/knowledge isolation): the identity-once fence composes with their
+  account-switch fences; their acceptance criteria are untouched.
+- #93/#117 (memory/compaction): the transcript source defers to that workstream's design;
+  this contract only types the seam.
+- #754 (Brain wiring): Brain/Mind/Memory eligibility contracts are linked, not redefined.
