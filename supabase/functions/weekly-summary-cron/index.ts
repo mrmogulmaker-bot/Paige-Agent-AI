@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
       await recordCapabilityRun(supabase, {
         tenantId: tenantByUser.get(pref.user_id) ?? null,
         actorId: pref.user_id,
-        capabilityKey: 'comms.weekly_summary',
+        capabilityKey: 'comms_weekly_summary',
         outcome,
         correlation: {
           jobAttemptId: idempotencyKey('weekly-summary', pref.user_id, intent),
