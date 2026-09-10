@@ -14,7 +14,8 @@
 // Streaming is intentionally NOT handled here — the two streaming call sites
 // (paige-ai-chat, broker-paige-chat) get a dedicated streaming path in R4.
 
-import { traceLLMCall, type TraceCtx } from "./llm-trace.ts";
+import { traceLLMCall, traceAdmin, type TraceCtx } from "./llm-trace.ts";
+import { accruedSpendToday, BudgetExceeded, enforceBudget, resolveCeiling, type BudgetDb } from "./router-budget/mod.ts";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
@@ -552,11 +553,57 @@ export async function gatewayCompat(
 ): Promise<{ ok: boolean; status: number; body?: ReadableStream<Uint8Array>; json: () => Promise<any>; text: () => Promise<string> }> {
   const parsed: OpenAIStyleBody & { stream?: boolean } = init?.body ? JSON.parse(init.body) : ({} as any);
   const started = Date.now();
+
+  // 0) BUDGET ENFORCEMENT (docs/brain/paige-router-budget-contract.md, #1102/#1105): the chat
+  //    GATEWAY is the third distinct model-call entry point (after callModel and
+  //    routedChatCompletion) and the highest-traffic one — the tenant/client chat front door,
+  //    streaming included. Chat is REASONING-band work: at the hard ceiling it fails closed
+  //    (BudgetExceeded surfaces in the turn) rather than silently degrading. The gate hit rides
+  //    the ctx so BOTH trace writers (streamed and non-streamed) record it via their spreads.
+  let budgetGateHits: { budget: Record<string, unknown> } | null = null;
+  if (trace?.tenant_id) {
+    const admin = traceAdmin();
+    if (admin) {
+      const ceiling = await resolveCeiling(admin as unknown as BudgetDb, trace.tenant_id);
+      const accrued = await accruedSpendToday(admin as unknown as BudgetDb, trace.tenant_id);
+      if (accrued == null) {
+        // Accrual unknown ≠ $0. Proceed ungated but LOUD — observable, not silent.
+        console.warn("[claude-gateway] budget accrual unknown; chat proceeds ungated (budget_accrual_unknown)");
+      } else {
+        const d = enforceBudget({ accrued_usd: accrued, ceiling_usd: ceiling, band: "reasoning" });
+        if (d.gate) {
+          budgetGateHits = { budget: { level: d.gate.replace("budget_", ""), accrued_usd: d.accrued_usd, ceiling_usd: d.ceiling_usd, band: "reasoning" } };
+        }
+        if (d.decision === "block") {
+          const err = new BudgetExceeded(d.ceiling_usd, d.accrued_usd);
+          traceLLMCall({
+            ...(trace ?? {}),
+            provider: "router_budget",
+            model: null,
+            job_kind: trace.job_kind ?? "chat",
+            modality: "text",
+            status: "error",
+            latency_ms: Date.now() - started,
+            input: parsed.messages,
+            output: null,
+            error_class: "budget_exceeded",
+            error_message: err.message,
+            doctrine_gate_hits: budgetGateHits,
+            metadata: { caller_function: trace.agent_id },
+          });
+          throw err;
+        }
+      }
+    }
+  }
+  // ctx carries the gate hit into every downstream trace writer (both spread it).
+  const ctx: TraceCtx = { ...(trace ?? {}), ...(budgetGateHits ? { doctrine_gate_hits: budgetGateHits } as TraceCtx : {}) };
+
   try {
     if (parsed.stream === true) {
       // The streamed turn traces itself when it drains (tokens are only known then). Pass a context
       // ({} if the caller didn't thread one) so the stream always writes an honest row. §34 L1.1.
-      const r = await streamAnthropicAsOpenAI(buildClaudeRequest(parsed), trace ?? {});
+      const r = await streamAnthropicAsOpenAI(buildClaudeRequest(parsed), ctx);
       return { ok: r.ok, status: r.status, body: r.body, json: async () => ({}), text: async () => "" };
     }
     const data = await chatCompletionCompat(parsed);
@@ -564,10 +611,10 @@ export async function gatewayCompat(
     // so tracing here never double-counts. Always writes a row (tenant null until a caller threads ctx).
     const usage = data?.usage ?? {};
     traceLLMCall({
-      ...(trace ?? {}),
+      ...ctx,
       provider: "anthropic",
       model: data?.model ?? (typeof parsed.model === "string" ? parsed.model : null),
-      job_kind: trace?.job_kind ?? "chat",
+      job_kind: ctx.job_kind ?? "chat",
       modality: "text",
       status: "success",
       tokens_in: usage.prompt_tokens ?? null,
@@ -575,16 +622,16 @@ export async function gatewayCompat(
       latency_ms: Date.now() - started,
       input: parsed.messages,
       output: data?.choices?.[0]?.message?.content ?? null,
-      metadata: { caller_function: trace?.agent_id },
+      metadata: { caller_function: ctx.agent_id },
     });
     return { ok: true, status: 200, json: async () => data, text: async () => JSON.stringify(data) };
   } catch (e) {
     const msg = String((e as Error)?.message ?? e);
     traceLLMCall({
-      ...(trace ?? {}),
+      ...ctx,
       provider: "anthropic",
       model: typeof parsed.model === "string" ? parsed.model : null,
-      job_kind: trace?.job_kind ?? "chat",
+      job_kind: ctx.job_kind ?? "chat",
       modality: "text",
       status: "error",
       latency_ms: Date.now() - started,
