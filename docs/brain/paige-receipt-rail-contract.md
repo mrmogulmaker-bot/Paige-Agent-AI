@@ -79,6 +79,13 @@ The detailed receipt is what a summary cannot say, under hard redaction:
 4. **Gating:** persistence is disabled until this section is owner-approved in this doc;
    until then the detailed receipt is returned inline (the Migration Advisor's
    read-only-slice precedent) and the Rail keeps summaries only.
+   **OWNER APPROVED — 2026-09-10:** the §2.2 persistence gate is open. Detailed receipts
+   may persist through `record_capability_run` under the rules above; the shared
+   `redactDetail()` scrub in `_shared/capability-record.ts` is the tested enforcement
+   point (denylist key drop at any depth, 16KB size fence server-side, depth cap), and
+   `weekly-summary-cron` is the first correlated adopter (deterministic
+   `job_attempt_id` = `weekly-summary:<user>:<week-intent>`, detail without recipient
+   address or message content).
 
 ### 2.3 Writer consolidation order (existing tracked slice, unchanged scope)
 

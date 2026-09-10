@@ -13,6 +13,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import {
   capabilityOutcomeFor,
   completedForIntent,
+  idempotencyKey,
   type DurableJobState,
 } from '../_shared/durable-job/mod.ts'
 import { recordCapabilityRun } from '../_shared/capability-record.ts'
@@ -31,6 +32,8 @@ function weekStartUtc(now: Date): Date {
 interface ClaimedPref {
   user_id: string
   weekly_summary_last_sent_at: string | null
+  weekly_summary_attempts: number
+  weekly_summary_attempt_week: string | null
 }
 
 Deno.serve(async (req) => {
@@ -88,14 +91,28 @@ Deno.serve(async (req) => {
 
     // Rail receipt per terminal/outcome_unknown transition. Unknown tenant →
     // recordCapabilityRun declines visibly (returns false) rather than inventing scope.
-    const record = async (state: DurableJobState, error?: string) => {
+    // Receipt & Rail Contract adopter #1: every receipt carries the deterministic
+    // job-attempt correlation id (substrate:user:intent) and a redacted detail payload —
+    // no recipient address, no message content (§2.2 redaction rules).
+    const record = async (state: DurableJobState, error?: string, sendHttpStatus?: number) => {
       const outcome = capabilityOutcomeFor(state)
       if (!outcome) return
+      const intent = pref.weekly_summary_attempt_week ?? windowStart.toISOString().slice(0, 10)
       await recordCapabilityRun(supabase, {
         tenantId: tenantByUser.get(pref.user_id) ?? null,
         actorId: pref.user_id,
         capabilityKey: 'comms.weekly_summary',
         outcome,
+        correlation: {
+          jobAttemptId: idempotencyKey('weekly-summary', pref.user_id, intent),
+        },
+        detail: {
+          substrate: 'weekly-summary-cron',
+          intent,
+          attempt: pref.weekly_summary_attempts,
+          send_http_status: sendHttpStatus ?? null,
+          ...(error ? { error } : {}),
+        },
       })
       // Stamp the canonical state + release the lease. Cleared claimed_at lets the next
       // tick reclaim failed intents within the week (attempts already counted at claim).
@@ -154,9 +171,9 @@ Deno.serve(async (req) => {
       // ambiguous response is outcome_unknown and must reconcile, never silently retry.
       if (response.ok) {
         dispatched++
-        await record('succeeded')
+        await record('succeeded', undefined, response.status)
       } else {
-        await record('failed', `send_notification_http_${response.status}`)
+        await record('failed', `send_notification_http_${response.status}`, response.status)
       }
     } catch (err) {
       // The effect may or may not have landed: reconcile before any retry (attempts are
