@@ -27,6 +27,15 @@ import {
   CLAUDE_REASONING,
   CLAUDE_CLASSIFICATION,
 } from "./claude.ts";
+import {
+  accruedSpendToday,
+  BudgetExceeded,
+  type BudgetBand,
+  type BudgetDecision,
+  enforceBudget,
+  resolveCeiling,
+  type BudgetDb,
+} from "./router-budget/mod.ts";
 
 // ── Job taxonomy ────────────────────────────────────────────────────────────
 export type JobKind =
@@ -817,6 +826,56 @@ export async function callModel(
     throw e;
   }
 
+  // 1.5) BUDGET ENFORCEMENT (docs/brain/paige-router-budget-contract.md): every call crosses a
+  //      budget decision BEFORE dispatch — "estimates are not budget enforcement." The band maps
+  //      from this call's own signals: customer-send/approval = SENSITIVE (fails closed at the
+  //      hard ceiling, never silently degraded); reasoning tier = REASONING (fails closed); every
+  //      other tier = CHEAP (continues gated — the economy tier IS the remediation). The gate hit
+  //      rides the trace's doctrine_gate_hits and is Rail-correlatable via llm_trace_id. No admin
+  //      client (offline/no service context) → no ledger to read → ungated, like audit/persist.
+  const budgetBand: BudgetBand = (opts.is_customer_send || opts.is_approval_decision)
+    ? "sensitive"
+    : (tier === "reasoning" ? "reasoning" : "cheap");
+  let budgetCheck: BudgetDecision | null = null;
+  const budgetAdmin = getAdmin();
+  if (budgetAdmin) {
+    const ceiling = await resolveCeiling(budgetAdmin as unknown as BudgetDb, opts.tenantId);
+    const accrued = await accruedSpendToday(budgetAdmin as unknown as BudgetDb, opts.tenantId);
+    if (accrued == null) {
+      // Accrual unknown ≠ $0 (never a claim). Proceed UNGATED but audited — observable, not
+      // silent, and not a metrics-blip brick of the revenue path (documented deviation).
+      await auditRouter("model_router.budget_accrual_unknown", opts, {
+        modality, tier, ceiling_usd: ceiling,
+        caller_function: opts.callerFunction ?? null,
+      });
+    } else {
+      budgetCheck = enforceBudget({ accrued_usd: accrued, ceiling_usd: ceiling, band: budgetBand });
+      if (budgetCheck.decision === "block") {
+        await auditRouter("model_router.budget_exceeded", opts, {
+          modality, tier, band: budgetBand,
+          accrued_usd: budgetCheck.accrued_usd, ceiling_usd: budgetCheck.ceiling_usd,
+          caller_function: opts.callerFunction ?? null,
+        });
+        traceLLMCall({
+          tenant_id: opts.tenantId,
+          provider: "router_budget",
+          model: null,
+          job_kind: `${modality}:${tier}`,
+          modality, tier,
+          status: "error",
+          error_class: "budget_exceeded",
+          error_message: `daily ceiling $${budgetCheck.ceiling_usd} reached (accrued $${budgetCheck.accrued_usd.toFixed(2)}); resets at UTC midnight`,
+          latency_ms: Date.now() - started,
+          input: text,
+          output: null,
+          doctrine_gate_hits: { budget: { level: "exceeded", accrued_usd: budgetCheck.accrued_usd, ceiling_usd: budgetCheck.ceiling_usd, band: budgetBand } },
+          metadata: { caller_function: opts.callerFunction, actor_role: opts.actorRole },
+        });
+        throw new BudgetExceeded(budgetCheck.ceiling_usd, budgetCheck.accrued_usd);
+      }
+    }
+  }
+
   // 2) Resolve the route. No cell = a modality/tier we don't serve yet (incl. any video-*). Degrade
   //    to the SAME honest needs_config shape a provider-raised NeedsConfig produces (one shape for
   //    "can't do this yet", so a caller never has to handle both a throw and a flag).
@@ -996,7 +1055,8 @@ export async function callModel(
 
   // §34 L1: the full trace row (scrubbed + truncated I/O, tokens, cost estimate, correlation). Detached
   // best-effort — never blocks the return. Output is the produced content or, for a binary artifact, the
-  // deliverable reference (the writer never inlines bytes).
+  // deliverable reference (the writer never inlines bytes). The budget gate hit (if any) rides
+  // doctrine_gate_hits — the enforcement decision is recorded, never silent.
   traceLLMCall({
     tenant_id: opts.tenantId,
     task_id: opts.taskId ?? null,
@@ -1015,6 +1075,9 @@ export async function callModel(
     input: text,
     output: typeof result.content === "string" ? result.content : (persisted.artifact_url ?? result.artifact_url ?? null),
     deliverable_id: persisted.deliverable_id ?? null,
+    doctrine_gate_hits: budgetCheck?.gate
+      ? { budget: { level: budgetCheck.gate.replace("budget_", ""), accrued_usd: budgetCheck.accrued_usd, ceiling_usd: budgetCheck.ceiling_usd, band: budgetCheck.band } }
+      : null,
     metadata: { caller_function: opts.callerFunction, actor_role: opts.actorRole },
   });
 
