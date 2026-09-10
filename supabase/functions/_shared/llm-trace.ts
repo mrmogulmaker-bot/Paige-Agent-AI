@@ -26,7 +26,7 @@ import { estimateTokenCostUsd } from "./token-pricing.ts";
 // context (offline/local) → the writer is an honest no-op, never a fake row.
 let _admin: SupabaseClient | null = null;
 let _adminTried = false;
-function traceAdmin(): SupabaseClient | null {
+export function traceAdmin(): SupabaseClient | null {
   if (_adminTried) return _admin;
   _adminTried = true;
   const url = Deno.env.get("SUPABASE_URL");
