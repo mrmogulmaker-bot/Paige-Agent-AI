@@ -64,6 +64,11 @@ type Rpc = {
  * A null tenant or actor returns false WITHOUT calling: a platform-operator turn has no
  * tenant by construction (§52), and the RPC would raise `CAPABILITY_RUN_INCOMPLETE` on
  * every one of them, filling the logs with an error that is not a fault.
+ *
+ * Receipt & Rail Contract (docs/brain/paige-receipt-rail-contract.md, §2.1/§2.2 approved
+ * 2026-09-10): `correlation` joins the receipt to the work that caused it (reference-only
+ * ids, null never guessed); `detail` is the owner-approved detailed receipt payload and
+ * MUST pass through `redactDetail()` here — never pass caller-built jsonb straight through.
  */
 export async function recordCapabilityRun(
   admin: Rpc,
@@ -75,9 +80,18 @@ export async function recordCapabilityRun(
     /** Defaults to a fresh id. Pass a stable one to make a retry idempotent. */
     runId?: string;
     agentSlug?: string | null;
+    /** Reference-only correlation ids. Absent sources stay undefined — never guessed. */
+    correlation?: {
+      jobAttemptId?: string;
+      llmTraceId?: string;
+      releaseId?: string;
+    };
+    /** Detailed receipt payload — scrubbed by redactDetail() before it is sent. */
+    detail?: Record<string, unknown>;
   },
 ): Promise<boolean> {
   if (!opts.tenantId || !opts.actorId) return false;
+  const redactedDetail = opts.detail ? redactDetail(opts.detail) : undefined;
   try {
     const { error } = await admin.rpc("record_capability_run", {
       _tenant_id: opts.tenantId,
@@ -86,6 +100,10 @@ export async function recordCapabilityRun(
       _outcome: opts.outcome,
       _run_id: opts.runId ?? crypto.randomUUID(),
       ...(opts.agentSlug ? { _agent_slug: opts.agentSlug } : {}),
+      ...(opts.correlation?.jobAttemptId ? { _job_attempt_id: opts.correlation.jobAttemptId } : {}),
+      ...(opts.correlation?.llmTraceId ? { _llm_trace_id: opts.correlation.llmTraceId } : {}),
+      ...(opts.correlation?.releaseId ? { _release_id: opts.correlation.releaseId } : {}),
+      ...(redactedDetail ? { _detail: redactedDetail } : {}),
     });
     if (error) {
       // The message matters: a `permission denied` here means the caller passed the wrong
@@ -97,5 +115,50 @@ export async function recordCapabilityRun(
   } catch (e) {
     console.error("[capability-record] threw", { capability: opts.capabilityKey, reason: e instanceof Error ? e.message : "unknown" });
     return false;
+  }
+}
+
+// ── Detailed-receipt redaction (Receipt & Rail Contract §2.2) ─────────────────────
+//
+// The tested enforcement point for "never present": secrets, credentials, tokens, and
+// keyed private material are dropped at any depth; the server enforces type + 16KB size
+// as the fence, not the redactor. Never throws; a payload that cannot be made safe
+// (oversize after scrubbing) is rejected to null and logged, because a receipt that
+// cannot be honest in detail should not land in detail at all.
+
+const DENYLIST_KEY = /(?:secret|token|password|passwd|credential|cookie|authorization|api[_-]?key|private[_-]?key|refresh)/i;
+const MAX_DETAIL_BYTES = 16_384;
+const MAX_DEPTH = 6;
+
+/** Deep-clone a detail payload with denylisted keys removed. Circular-safe via depth cap. */
+function scrub(value: unknown, depth: number): unknown {
+  if (depth > MAX_DEPTH) return "[depth-capped]";
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (Array.isArray(value)) return value.map((v) => scrub(v, depth + 1));
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (DENYLIST_KEY.test(k)) continue; // dropped, not blanked — no fake placeholders
+      out[k] = scrub(v, depth + 1);
+    }
+    return out;
+  }
+  return "[unsupported-type]"; // functions/symbols/undefined never reach a receipt
+}
+
+export function redactDetail(detail: Record<string, unknown>): Record<string, unknown> | null {
+  try {
+    const scrubbed = scrub(detail, 0) as Record<string, unknown>;
+    const serialized = JSON.stringify(scrubbed);
+    if (serialized.length > MAX_DETAIL_BYTES) {
+      console.error("[capability-record] detail rejected: exceeds 16KB after redaction");
+      return null;
+    }
+    return JSON.parse(serialized) as Record<string, unknown>;
+  } catch (e) {
+    console.error("[capability-record] detail rejected: not JSON-safe", { reason: e instanceof Error ? e.message : "unknown" });
+    return null;
   }
 }
