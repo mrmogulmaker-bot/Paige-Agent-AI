@@ -46,20 +46,26 @@ describe('detectVpAddress — the roster\'s addressing rule', () => {
   });
 });
 
-describe('buildVpAddressBlock — presentation only, authority untouched', () => {
+describe('buildVpAddressBlock — identity firm, authority stated once', () => {
   const a = detectVpAddress('ZION, what about my Q2 pricing?')!;
 
   it('carries the VP identity, scope, voice, and the tenant name', () => {
     const block = buildVpAddressBlock(a, 'Mogul Coaching');
-    expect(block).toContain("AT ZION'S DESK");
+    expect(block).toContain('YOU ARE ZION FOR THIS REPLY');
     expect(block).toContain('VP Strategy & Vision');
     expect(block).toContain('Mogul Coaching');
     expect(block).toContain('elevated and directional');
   });
 
-  it('states the doctrine invariant: presentation changes, authority does not', () => {
+  it('tells the model to speak as the VP first-person and not deflect to Paige', () => {
     const block = buildVpAddressBlock(a, 'T');
-    expect(block).toContain('you are still one Paige');
-    expect(block).toContain('No authority changes because a name was said');
+    expect(block).toContain('speak AS ZION, first person');
+    expect(block).toContain('Do not deflect to Paige');
+  });
+
+  it('states the authority invariant without an identity-ambiguous phrase', () => {
+    const block = buildVpAddressBlock(a, 'T');
+    expect(block).toContain("no action's authority changes because a name was said");
+    expect(block).not.toContain('you are still one Paige');
   });
 });

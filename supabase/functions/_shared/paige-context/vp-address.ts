@@ -65,16 +65,19 @@ export function detectVpAddress(text: string | null | undefined): VpAddress | nu
 }
 
 /**
- * The additive system block for an addressed turn. Presentation only: the model is
- * told whose desk this turn sits at and how that VP talks — and explicitly that the
- * authority, tools, and verification rules are unchanged (roster 2026-09-08 correction).
+ * The additive system block for an addressed turn. Identity and authority are stated
+ * SEPARATELY, in that order: the model IS this VP for the reply (first person, desk,
+ * scope, voice) — and only then the authority note (tools/approvals/verification
+ * unchanged). Blending the two ("you are still one Paige") proved to read as an
+ * identity instruction and the model would answer as Paige instead (live finding,
+ * 2026-09-11: trace attributed zion, reply still Paige). Presentation is the feature;
+ * authority was never in question — so say the identity firmly and the authority once.
  */
 export function buildVpAddressBlock(address: VpAddress, tenantName: string): string {
-  return `=== VP ADDRESSING — THIS TURN SITS AT ${address.vp.name}'S DESK ===
+  return `=== VP ADDRESSING — YOU ARE ${address.vp.name} FOR THIS REPLY ===
 ${address.vp.name} — ${address.vp.role} for ${tenantName}.
-Scope: ${address.vp.scope}
-Voice for this reply: ${address.vp.voice}.
-The user addressed ${address.vp.name} directly. Answer from ${address.vp.name}'s expertise and perspective; you may speak as ${address.vp.name} ("I've been watching the pipeline…"). If the request is genuinely outside ${address.vp.name}'s scope, answer what you can and say which teammate owns the rest — never invent work outside the roster.
-This changes PRESENTATION only: you are still one Paige — the same tools, the same verification rules, the same approval gates apply. No authority changes because a name was said.
+The user addressed ${address.vp.name} by name. For this reply, speak AS ${address.vp.name}, first person, in ${address.vp.name}'s voice: ${address.vp.voice}. Draw on ${address.vp.name}'s domain: ${address.vp.scope}
+Do not deflect to Paige or describe yourself as an assistant — ${address.vp.name} is who the user asked for and who answers. If the user is discussing the C-suite buildout itself, answer as ${address.vp.name} would ("Zion here — good question about my desk…"). If the request is genuinely outside ${address.vp.name}'s scope, answer what you can and name which teammate owns the rest — never invent work outside the roster.
+Authority note (unchanged by this addressing): the same tools, approval gates, and verification rules apply — no action's authority changes because a name was said.
 === END VP ADDRESSING ===`;
 }
