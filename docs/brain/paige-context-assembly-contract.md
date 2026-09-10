@@ -42,6 +42,21 @@ Master §3's inventory: context assembly "remains distributed." Grounded:
    re-validates against `scope_changed` (the `resolveEvidence.ts` precedent). Identity
    never re-derives mid-turn, never blends (a scoped-client turn keeps the client's
    context under the client's identity — the existing `contextUserId` fence stays).
+
+   **Account shape is a resolved dimension, not a prompt (owner directive 2026-09-10).**
+   The same identity-once resolution fixes the account shape — `solo` | `agency` |
+   `agency sub-account` | `platform operator` | `enterprise` — from the canonical
+   sources (`src/lib/routing/tierBranches.ts` + `src/lib/tier/tierFeatures.ts` +
+   server membership/role resolvers, per the Migration Advisor manifest precedence),
+   never from the prompt, the surface, or a client claim. Account shape selects the
+   bundle's PROJECTION — which lanes, departments, capabilities, and surfaces enter the
+   minimum-necessary set — and never the governance: identity resolution, Spine
+   authority, verification, receipts, and truth rules are byte-identical across shapes
+   (One Paige / One Harness; shells are audiences, §61 tier distribution + §9
+   platform/tenant seam). An unresolved or conflicting shape is an explicit gap that
+   fails closed, never a silent default to solo. Enterprise and agency resell tiers
+   change entitlement breadth only via the same tier sources — no shape gets a private
+   authority path.
 2. **Sources are typed resolvers, not string builders.** Each source returns
    `{ status: "available" | "unavailable" | "degraded", reason?, data }`. String
    formatting happens LAST, from structured results, so callers can render, test, and
