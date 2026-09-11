@@ -90,6 +90,13 @@ async function fetchRecentMessages(client: any): Promise<{ data: unknown; error:
     .limit(200);
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- boundary pattern */
+async function fetchMessageLabels(client: any, msgIds: string[]): Promise<{ data: unknown }> {
+  return await client.from("paige_message_labels")
+    .select("message_id, label_id, paige_conversation_labels(name, slug, color)")
+    .in("message_id", msgIds);
+}
+
 export function useConversations() {
   const { activeTenantId } = useTenantContext();
   const [threads, setThreads] = useState<ConversationThread[]>([]);
@@ -127,10 +134,9 @@ export function useConversations() {
       const contactMap = new Map(contacts.map((c) => [c.id, c]));
 
       // Fetch labels for these messages (the triage pass's output).
+      // Same boundary pattern as fetchRecentMessages (deep type workaround).
       const msgIds = (msgs ?? []).map((m) => m.id);
-      const labelsRes = await (supabase.from("paige_message_labels") as any)
-        .select("message_id, label_id, paige_conversation_labels(name, slug, color)")
-        .in("message_id", msgIds);
+      const labelsRes = await fetchMessageLabels(supabase, msgIds);
       const rawLabels = (labelsRes.data ?? []) as Array<{
         message_id: string;
         paige_conversation_labels?: { name: string; slug: string; color: string } | null;
