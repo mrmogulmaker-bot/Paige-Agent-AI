@@ -29,6 +29,7 @@
 // Auth: service bearer or Vault cron token. Fails closed.
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { routedChatCompletion, type JobKind } from "../_shared/model-router.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -104,28 +105,29 @@ Deno.serve(async (req) => {
       // 2) Ensure system labels exist for this tenant (lazy, idempotent).
       await admin.rpc("ensure_system_labels", { p_tenant: msg.tenant_id });
 
-      // 3) Classify on the CHEAP tier — the classify job kind via the router.
+      // 3) Classify on the CHEAP tier — direct model router call (classify
+      //    job kind routes to Featherless → Claude fallback). No orchestrator
+      //    hop needed for a single-prompt classification.
       const prompt = CLASSIFY_PROMPT
         .replace("{subject}", msg.subject ?? "(no subject)")
         .replace("{body}", (msg.body_text ?? "").slice(0, 500));
 
-      // Route through the model router's cheap band (Featherless → Claude fallback).
-      const { data: routeData } = await admin.functions.invoke("paige-orchestrator", {
-        body: {
-          action: "tool_invoke",
-          slug: "classify-inbound",
-          tenant_id: msg.tenant_id,
-          input: { prompt, message_id: msg.id },
-          context: { contact_id: msg.contact_id },
-        },
-      });
-
-      // Parse the classification (fallback to 'admin' on any error — honest).
-      const rawClass = typeof routeData?.result === "string"
-        ? routeData.result.trim().toLowerCase()
-        : "admin";
-      const category = ["question", "at_risk", "buying_signal", "booking", "admin", "personal"].includes(rawClass)
-        ? rawClass : "admin";
+      let category = "admin"; // honest fallback
+      try {
+        const result = await routedChatCompletion("classify" as JobKind, {
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 10,
+          temperature: 0.1,
+        });
+        const rawClass = (result as { choices?: Array<{ message?: { content?: string } }> })
+          ?.choices?.[0]?.message?.content?.trim().toLowerCase() ?? "admin";
+        if (["question", "at_risk", "buying_signal", "booking", "admin", "personal"].includes(rawClass)) {
+          category = rawClass;
+        }
+      } catch (e) {
+        console.error("[paige-inbox-triage] classification failed:", msg.id, (e as Error).message);
+        // Continue with 'admin' — the label still applies, honest default.
+      }
 
       // 4) Map classification to label slug.
       const labelSlug = category === "buying_signal" ? "new-lead"
