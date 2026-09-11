@@ -87,10 +87,10 @@ Deno.serve(async (req) => {
     const urlOf = (w: Wh) => w.endpointUrl ?? w.endpoint_url ?? w.url ?? "";
     const existing = (list as Wh[]).find((w) => urlOf(w) === INBOUND_HANDLER_URL);
 
+    // Resend's create-webhook schema: `endpoint` + `events` (the live 422 named the field).
     const payload = JSON.stringify({
-      endpointUrl: INBOUND_HANDLER_URL,
+      endpoint: INBOUND_HANDLER_URL,
       events: ["email.received"],  // Resend's inbound event name (NOT email.inbound — the runbook correction)
-      ...(body.name ? {} : {}),
     });
 
     let result: Response;
