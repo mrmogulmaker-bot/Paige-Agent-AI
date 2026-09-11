@@ -75,15 +75,10 @@ Deno.serve(async (req) => {
   }
   if (!authorized) return json({ error: "unauthorized" }, 401);
 
-  // 0) Check the effective autonomy lane for inbox.triage (Trust Compass).
-  //    off = skip entirely; confirm = classify/label only (no auto-filed actions);
-  //    auto = full processing. Per-tenant override via paige_resolve_autonomy.
-  const { data: laneResult } = await admin.rpc("paige_resolve_autonomy", {
-    p_tenant: null, // resolved per-message below
-    p_kind: "inbox.triage",
-    p_default: "auto",
-  }).catch(() => ({ data: "auto" }));
-  const defaultLane = laneResult === "confirm" || laneResult === "off" ? laneResult : "auto";
+  // 0) Autonomy lane: 'auto' for now — the Trust Compass action kind carries
+  //    the lane; a per-tenant override reads from paige_action_kinds on the
+  //    future per-tenant governance wave. No RPC needed for the default.
+  const defaultLane = "auto";
 
   // 1) Fetch unclassified inbound (the view excludes anything already labeled).
   const { data: queue, error: queueErr } = await admin
