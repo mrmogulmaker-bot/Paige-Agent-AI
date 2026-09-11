@@ -158,11 +158,26 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const admin = createClient(supabaseUrl, serviceKey);
 
-  // -- 1. Svix HMAC verification (unchanged). Fail closed if secret missing. -----
-  const secret = Deno.env.get("RESEND_WEBHOOK_SECRET");
+  // -- 1. Svix HMAC verification. Fail closed if no secret resolves. ------------
+  // Secret precedence: function env FIRST, then the platform-operator-managed
+  // settings row (admin_app_settings key resend_webhook_secret, service-role read
+  // — the same operator-manageable pattern the §200 resolver established). The
+  // fallback exists because the Management API's function-secrets routes are not
+  // available on every gateway, which would otherwise leave the secret
+  // uninstallable outside the dashboard; a settings row rotates it in one write.
+  let secret = Deno.env.get("RESEND_WEBHOOK_SECRET");
   const rawBody = await req.text();
   if (!secret) {
-    console.error("[handle-inbound-email] RESEND_WEBHOOK_SECRET not configured");
+    const { data: row } = await admin
+      .from("admin_app_settings")
+      .select("value")
+      .eq("key", "resend_webhook_secret")
+      .maybeSingle();
+    const v = (row as { value?: unknown } | null)?.value;
+    if (typeof v === "string" && v.startsWith("whsec_")) secret = v;
+  }
+  if (!secret) {
+    console.error("[handle-inbound-email] RESEND_WEBHOOK_SECRET not configured (env or settings)");
     return new Response("webhook_not_configured", { status: 500 });
   }
   try {
