@@ -29,3 +29,8 @@ Notable doctrine overrides of common agent-skill advice:
 | `supabase`, `supabase-postgres-best-practices` | in-house | — |
 | `agentic-harness-patterns` | `keli-wen/agentic-harness-patterns-skill` | MIT (`LICENSE-agentic-harness-patterns`) |
 | `context-engineering`, `observability-and-instrumentation`, `incremental-implementation`, `test-driven-development`, `code-review-and-quality`, `planning-and-task-breakdown` | `addyosmani/agent-skills` (curated subset) | MIT (`LICENSE-addyosmani-agent-skills`) |
+| `audit-ai-design-slop`, `no-ai-design-slop`, `design-first-ui-prompting`, `build-awwwards-quality-sites`, `animation-systems`, `animation-on-scroll`, `beautiful-shadows`, `beam-glow-states`, `ambient-section-particles` | `MengTo/skills` (curated subset — 90-skill catalog available on demand) | MIT (`LICENSE-mengto-skills`) |
+
+## MANDATORY UI-design skills rule (owner, 2026-09-11)
+
+Every visible-interface task reads `paige-ui-design` completely (the delivery standard) AND applies the design-quality skills: at minimum `no-ai-design-slop` (the bland-blocks ban) and `design-first-ui-prompting`; premium/motion surfaces add `build-awwwards-quality-sites` + the animation techniques. The bar: interactive, immersive, distinctive — never "a block with words in it." Doctrine still outranks all skills (precedence above). Context: a full website revamp (Command Mark identity) is upcoming — these skills are the standing toolkit for it.
