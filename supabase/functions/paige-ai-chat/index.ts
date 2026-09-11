@@ -173,6 +173,7 @@ function describeStep(
     case "action_advance": return { label: "Moving that action forward", group: "owner" };
     case "action_list": return { label: "Checking the team's queue", group: "owner" };
     case "inbox_list": return { label: "Checking the inbox", group: "owner" };
+    case "integrations_list": return { label: "Checking your connections", group: "owner" };
     case "improvement_propose": return { label: "Filing an improvement proposal", group: "owner" };
     case "improvement_list": return { label: "Reviewing improvement proposals", group: "owner" };
     case "improvement_decide": return { label: "Recording the improvement decision", group: "owner" };
@@ -5925,6 +5926,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 }
               }
             }
+          {
+            type: "function",
+            function: {
+              name: "integrations_list",
+              description: "List every integration/connection on this workspace — channel (email/SMS/calendar), provider, status (active/disabled), health (healthy/degraded/disconnected), and the sending/receiving addresses. Use when the owner asks what they're connected to, what's available, or what's not working.",
+              parameters: {
+                type: "object",
+                properties: {}
+              }
+            }
+          },
           },
           {
             type: "function",
@@ -9195,6 +9207,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "action_file" ||
           tc.function.name === "action_advance" ||
           tc.function.name === "inbox_list" ||
+          tc.function.name === "integrations_list" ||
           tc.function.name === "improvement_propose" ||
           tc.function.name === "improvement_list" ||
           tc.function.name === "improvement_decide" ||
@@ -11105,6 +11118,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               result = { success: true, ...(data as any) };
+            } else if (tc.function.name === "integrations_list") {
+              // The integrations read verb (spine: integrations.list). Caller-scoped.
+              const { data, error } = await supabaseClient.rpc("list_integration_surface");
+              if (error) throw error;
+              result = { success: true, count: (data as any[])?.length ?? 0, integrations: data ?? [] };
             } else if (tc.function.name === "inbox_list") {
               // #1104 — the comms read verb (spine: comms.messages_read). Caller-scoped:
               // the RPC derives the tenant from the JWT (§59) — no tenant param exists.
