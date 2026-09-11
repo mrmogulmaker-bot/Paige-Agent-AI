@@ -1535,7 +1535,7 @@ JSON:`;
         const inFlight = rows("in_flight");
         if (inFlight.length) {
           parts.push(`In flight:\n${inFlight.map((a) =>
-            `- ${a.title} — ${a.awaiting_approval ? "WAITING ON THEIR APPROVAL" : a.status}`).join("\n")}`);
+            `- ${a.desk ? `${a.desk} — ` : ""}${a.title} — ${a.awaiting_approval ? "WAITING ON THEIR APPROVAL" : a.status}`).join("\n")}`);
         }
         const processes = rows("processes");
         if (processes.length) {
