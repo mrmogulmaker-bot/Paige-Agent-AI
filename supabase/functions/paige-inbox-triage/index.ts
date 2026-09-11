@@ -29,7 +29,6 @@
 // Auth: service bearer or Vault cron token. Fails closed.
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
-import { routedChatCompletion, type JobKind } from "../_shared/model-router.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -105,28 +104,21 @@ Deno.serve(async (req) => {
       // 2) Ensure system labels exist for this tenant (lazy, idempotent).
       await admin.rpc("ensure_system_labels", { p_tenant: msg.tenant_id });
 
-      // 3) Classify on the CHEAP tier — direct model router call (classify
-      //    job kind routes to Featherless → Claude fallback). No orchestrator
-      //    hop needed for a single-prompt classification.
-      const prompt = CLASSIFY_PROMPT
-        .replace("{subject}", msg.subject ?? "(no subject)")
-        .replace("{body}", (msg.body_text ?? "").slice(0, 500));
-
-      let category = "admin"; // honest fallback
-      try {
-        const result = await routedChatCompletion("classify" as JobKind, {
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: 10,
-          temperature: 0.1,
-        });
-        const rawClass = (result as { choices?: Array<{ message?: { content?: string } }> })
-          ?.choices?.[0]?.message?.content?.trim().toLowerCase() ?? "admin";
-        if (["question", "at_risk", "buying_signal", "booking", "admin", "personal"].includes(rawClass)) {
-          category = rawClass;
-        }
-      } catch (e) {
-        console.error("[paige-inbox-triage] classification failed:", msg.id, (e as Error).message);
-        // Continue with 'admin' — the label still applies, honest default.
+      // 3) Classify — keyword-based first iteration (honest: pattern matching,
+      //    not LLM reasoning — the LLM classification upgrade rides the model
+      //    router once the import chain is resolved; the labels still apply).
+      const text = `${msg.subject ?? ""} ${(msg.body_text ?? "").slice(0, 500)}`.toLowerCase();
+      let category = "admin";
+      if (/\b(cancel|leave|leaving|frustrat|unhappy|complain|disappoint|quit|refund|switch(ing)? to)\b/.test(text)) {
+        category = "at_risk";
+      } else if (/\b(interested|pricing|how much|when can we (start|begin)|upgrade|sign up|onboard)\b/.test(text)) {
+        category = "buying_signal";
+      } else if (/\b(schedule|meeting|call|appointment|book|reschedul|calendar|availability)\b/.test(text)) {
+        category = "booking";
+      } else if (text.includes("?") || /\b(how|what|when|where|why|can you|could you|do you|is there)\b/.test(text)) {
+        category = "question";
+      } else if (/\b(thanks|thank you|great|appreciate|good|nice|hello|hi)\b/.test(text) && text.length < 200) {
+        category = "personal";
       }
 
       // 4) Map classification to label slug.
