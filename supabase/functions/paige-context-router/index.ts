@@ -139,10 +139,28 @@ Deno.serve(async (req) => {
       .select("role, content, created_at")
       .eq("thread_id", threadId)
       .in("role", ["user", "assistant"])
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(PRIOR_TURN_LIMIT);
     if (turnsErr) return json({ ok: false, error: "TURN_LOAD_FAILED", message: turnsErr.message }, 400);
-    priorTurns = (turns ?? []).map((t) => ({ role: String(t.role), content: String(t.content) }));
+    // DESC + limit takes the NEWEST window; reversed back to chronological for replay.
+    // The previous ASC+limit replayed the OLDEST 20 — on long threads it silently dropped
+    // the most recent exchanges, including the one the user just had (#117 at its literal
+    // worst). The folded summary injected below covers everything older than the window.
+    priorTurns = (turns ?? []).map((t) => ({ role: String(t.role), content: String(t.content) })).reverse();
+    // Compaction tie-in (#117): when the thread has a folded summary, inject it as
+    // recollection-ahead-of-replay so turns beyond the window are remembered, not lost.
+    const { data: th } = await client
+      .from("paige_chat_threads")
+      .select("summary")
+      .eq("id", threadId)
+      .maybeSingle();
+    if (th?.summary && typeof th.summary === "string" && th.summary.trim()) {
+      priorTurns = [
+        { role: "user", content: `[Earlier in this conversation — your folded recollection, not verbatim: ${th.summary.trim().slice(0, 2000)}]` },
+        { role: "assistant", content: "Understood — I have the earlier context." },
+        ...priorTurns,
+      ];
+    }
   } else {
     // Mint thread. Consent has passed via load_contact_context.
     const consentSnapshot = {
