@@ -172,6 +172,7 @@ function describeStep(
     }
     case "action_advance": return { label: "Moving that action forward", group: "owner" };
     case "action_list": return { label: "Checking the team's queue", group: "owner" };
+    case "inbox_list": return { label: "Checking the inbox", group: "owner" };
     case "action_get": return { label: "Pulling up that action", group: "owner" };
     case "propose_action": return { label: "Lining up something for your approval", group: "owner", detail: "waiting on you" };
     case "mission_create": return out?.replayed === true ? { label: "That proposed Mission was already saved", group: "owner", detail: "replay · no duplicate change" } : { label: failed ? "Could not create that Mission" : "Created the proposed Mission", group: "owner", detail: failed ? "nothing changed" : "record only · no work ran" };
@@ -5845,6 +5846,20 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "inbox_list",
+              description: "List the workspace's recent comms envelopes from the unified inbox — direction (inbound/outbound), channel, subject line, status, and when. ENVELOPES ONLY (no bodies). Use when the owner asks what was sent/received, whether a message went out, or what's queued/failed.",
+              parameters: {
+                type: "object",
+                properties: {
+                  limit: { type: "number", description: "Max results (default 20, cap 50)." },
+                  direction: { type: "string", enum: ["inbound", "outbound"], description: "Filter by direction." }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "action_get",
               description: "Admin/coach only. Fetch one action by id with its current status and links (the approval it waits on, the client-facing card it created).",
               parameters: {
@@ -9110,6 +9125,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "growth_page_publish" ||
           tc.function.name === "action_file" ||
           tc.function.name === "action_advance" ||
+          tc.function.name === "inbox_list" ||
           tc.function.name === "action_list" ||
           tc.function.name === "action_get" ||
           tc.function.name === "crm_list_team" ||
@@ -11017,6 +11033,15 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               result = { success: true, ...(data as any) };
+            } else if (tc.function.name === "inbox_list") {
+              // #1104 — the comms read verb (spine: comms.messages_read). Caller-scoped:
+              // the RPC derives the tenant from the JWT (§59) — no tenant param exists.
+              const { data, error } = await supabaseClient.rpc("list_inbox_messages", {
+                p_limit: args.limit ?? 20,
+                p_direction: args.direction ?? null,
+              });
+              if (error) throw error;
+              result = { success: true, count: (data as any[])?.length ?? 0, messages: data ?? [] };
             } else if (tc.function.name === "action_list" || tc.function.name === "action_get") {
               const { data, error } = await supabaseClient.rpc("list_actions", {
                 p_to_department: args.to_department ?? null,
