@@ -980,14 +980,16 @@ SUMMARY:`;
 
       // Preference extraction prompt — runs alongside summary so we can persist
       // conversational preferences (tone, length, topics) for future sessions.
-      const preferencePrompt = `Analyze the following conversation and extract any communication preferences the CLIENT has expressed — either explicitly ("be brief", "stop explaining basics", "no bullet points") or implicitly through repeated short replies, frustration, or specific format requests.
+      const preferencePrompt = `Analyze the following conversation and extract three kinds of durable facts the CLIENT has expressed. One JSON object, no prose, no markdown fences.
 
-Return ONLY a JSON array of concise sentences. Each sentence must describe ONE preference in language suitable for a system prompt. If none, return [].
+- "preferences": communication preferences — explicit ("be brief", "no bullet points") or implicit (repeated short replies, frustration, format requests). Concise sentences suitable for a system prompt.
+- "commitments": promises or agreements the CLIENT made ("I'll send the docs Friday", "we'll launch on the 1st"). One per item; include the deadline or timeframe when stated.
+- "open_loops": unresolved threads either side left hanging — questions never answered, topics raised but not concluded, next steps agreed but not yet done. One per item.
 
 Examples:
-- "Prefers brief, conversational replies with no bullet points."
-- "Wants Paige to skip greetings and get to the answer."
-- "Has asked Paige not to suggest disputes."
+{"preferences":["Prefers brief, conversational replies with no bullet points."],"commitments":["Will send bank statements by Friday."],"open_loops":["Data-room access question from Tuesday remains unanswered."]}
+
+Omit a key when nothing qualifies (empty array). Extract only what the messages actually support — never infer a promise or a preference.
 
 MESSAGES:
 ${transcript}
@@ -1105,23 +1107,39 @@ JSON:`;
       if (!skipScopedMemoryWrites && preferenceResponse.ok) {
         try {
           const prefData = await preferenceResponse.json();
-          const prefRaw = prefData.choices?.[0]?.message?.content || "[]";
+          const prefRaw = prefData.choices?.[0]?.message?.content || "{}";
           const cleaned = prefRaw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-          const preferences: string[] = JSON.parse(cleaned);
-          if (Array.isArray(preferences)) {
-            for (const p of preferences) {
+          // The combined fact pass (#93/#117): one extraction, three durable kinds —
+          // preferences (the original), commitments, and open_loops (the two the memory
+          // contract named but nothing wrote). Back-compat: a plain array from an older
+          // shape still lands as preferences.
+          const parsed = JSON.parse(cleaned);
+          const facts: Record<string, string[]> = Array.isArray(parsed)
+            ? { preferences: parsed as string[] }
+            : {
+                preferences: Array.isArray(parsed.preferences) ? parsed.preferences : [],
+                commitments: Array.isArray(parsed.commitments) ? parsed.commitments : [],
+                open_loops: Array.isArray(parsed.open_loops) ? parsed.open_loops : [],
+              };
+          const kindByList: Record<keyof typeof facts, string> = {
+            preferences: "user_preference",
+            commitments: "commitment",
+            open_loops: "open_loop",
+          };
+          for (const [list, memoryType] of Object.entries(kindByList)) {
+            for (const p of facts[list] ?? []) {
               if (typeof p !== "string" || !p.trim()) continue;
               const emb = await embedText(p.trim());
-              const prefMemory: any = {
+              const factMemory: any = {
                 client_user_id: scopedClientId || user.id,
-                memory_type: "user_preference",
+                memory_type: memoryType,
                 content: p.trim(),
                 source_session_id: rawData.sessionId || null,
                 embedding: emb,
                 metadata: { channel: "text", source: "auto_extracted" },
               };
-              if (scopedClientId) prefMemory.client_id = scopedClientId;
-              await recordWrite("client_memory:preference", supabase.from("client_memory").insert(prefMemory));
+              if (scopedClientId) factMemory.client_id = scopedClientId;
+              await recordWrite(`client_memory:${memoryType}`, supabase.from("client_memory").insert(factMemory));
             }
           }
         } catch (err) {
