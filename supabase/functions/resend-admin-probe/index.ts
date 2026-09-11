@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
 
     const payload = JSON.stringify({
       endpointUrl: INBOUND_HANDLER_URL,
-      events: ["email.inbound"],
+      events: ["email.received"],  // Resend's inbound event name (NOT email.inbound — the runbook correction)
       ...(body.name ? {} : {}),
     });
 
