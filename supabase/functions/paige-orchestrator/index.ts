@@ -6,6 +6,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { routedChatCompletion, pickRoute, isJobKind, JOB_KINDS, DEFAULT_SUBAGENT_JOB_KIND, type JobKind } from "../_shared/model-router.ts";
 import { looksLikeFinanceAgent } from "../_shared/finance-gate.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { recordCapabilityRun } from "../_shared/capability-record.ts";
+import { idempotencyKey } from "../_shared/durable-job/mod.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -406,6 +408,52 @@ async function updateInvocation(id: string, patch: Record<string, unknown>) {
   await supabase.from("paige_subagent_invocations").update(patch).eq("id", id);
 }
 
+/**
+ * Receipt & Rail Contract (runway ③): every completed invocation records a correlated
+ * capability receipt — the stitch that makes each specialist call provable on the Rail
+ * and joinable to the actions it served (paige_actions.invocation_id) and its receipt
+ * (job_attempt_id = subagent-invocation:<id>). Envelope-only detail: no input/output
+ * content rides the receipt (the invocation row already stores those under its own
+ * access rules). Honest outcomes: langgraph DISPATCH is capability_outcome_unknown —
+ * a dispatch is not a completion. Actor: the tenant's active owner (the business the
+ * specialist served); null tenant → the helper declines visibly.
+ */
+async function recordInvocationReceipt(opts: {
+  invocationId: string | undefined;
+  slug: string;
+  runtime: string;
+  tenantId: string | null;
+  success: boolean;
+  dispatched: boolean;
+  latencyMs: number;
+}): Promise<void> {
+  if (!opts.invocationId || !opts.tenantId) return;
+  try {
+    const { data: m } = await supabase.from("tenant_members")
+      .select("user_id").eq("tenant_id", opts.tenantId).eq("status", "active")
+      .in("role", ["owner", "admin"]).limit(1);
+    const actor = m?.[0]?.user_id ?? null;
+    await recordCapabilityRun(supabase, {
+      tenantId: opts.tenantId,
+      actorId: actor,
+      capabilityKey: "subagent_invoke",
+      outcome: opts.dispatched
+        ? "capability_outcome_unknown"
+        : opts.success ? "capability_succeeded" : "capability_failed",
+      agentSlug: opts.slug,
+      correlation: { jobAttemptId: idempotencyKey("subagent-invocation", opts.invocationId, "run") },
+      detail: {
+        substrate: "paige-orchestrator",
+        runtime: opts.runtime,
+        latency_ms: opts.latencyMs,
+        ...(opts.dispatched ? { note: "langgraph dispatch — completion unobserved" } : {}),
+      },
+    });
+  } catch (e) {
+    console.error("[orchestrator] invocation receipt failed:", (e as Error)?.message);
+  }
+}
+
 async function invokeLocal(
   fnName: string,
   input: Record<string, unknown>,
@@ -603,6 +651,16 @@ Deno.serve(async (req) => {
             : null,
       });
     }
+
+    await recordInvocationReceipt({
+      invocationId,
+      slug: agent.slug,
+      runtime: agent.runtime,
+      tenantId,
+      success,
+      dispatched: isDispatch,
+      latencyMs: latency,
+    });
 
     return ok(
       {
