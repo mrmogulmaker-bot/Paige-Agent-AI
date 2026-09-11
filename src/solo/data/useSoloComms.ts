@@ -47,6 +47,15 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate } from "../settings-contract";
 import { resolveFunctionError } from "@/lib/integrations/connectError";
 
+export interface DnsRecord {
+  record: string;
+  name: string;
+  type: string;
+  ttl?: string;
+  status?: string;
+  priority?: string;
+}
+
 export interface SoloDomain {
   id: string;
   domain: string;
@@ -54,6 +63,9 @@ export interface SoloDomain {
   fromName: string;
   status: string;
   isDefault: boolean;
+  /** The DNS records Resend returned for this domain — what the tenant must
+   *  publish at their registrar for sending to verify. Displayed copy-paste-able. */
+  dnsRecords: DnsRecord[];
 }
 
 export interface SoloSendingIdentity {
@@ -278,6 +290,20 @@ export function useSoloComms(): SoloCommsData {
       const rawDomains = Array.isArray(domainData?.domains) ? domainData!.domains : [];
       const parsedDomains: SoloDomain[] = rawDomains.map((d) => {
         const r = asRecord(d);
+        // dns_records: Resend's record set, stored on the domain row by the
+        // manage-tenant-domain edge function (add and refresh both write it).
+        const rawRecords = Array.isArray(r.dns_records) ? r.dns_records : [];
+        const dnsRecords: DnsRecord[] = rawRecords.map((rec) => {
+          const rr = asRecord(rec);
+          return {
+            record: str(rr.record) ?? str(rr.value) ?? "",
+            name: str(rr.name) ?? str(rr.host) ?? "",
+            type: str(rr.type) ?? "",
+            ttl: str(rr.ttl) ?? undefined,
+            status: str(rr.status) ?? undefined,
+            priority: str(rr.priority) ?? undefined,
+          };
+        });
         return {
           id: String(r.id ?? ""),
           domain: str(r.domain) ?? "",
@@ -285,6 +311,7 @@ export function useSoloComms(): SoloCommsData {
           fromName: str(r.from_name) ?? "",
           status: str(r.status) ?? "pending",
           isDefault: r.is_default === true,
+          dnsRecords,
         };
       });
       setDomains(parsedDomains);
