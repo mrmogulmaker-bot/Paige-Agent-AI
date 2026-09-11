@@ -58,6 +58,7 @@ import {
 import "./settings-setup.css";
 import { resolveSetupSubtabRoute, setupSubtabPath } from "./setup-subtab-route";
 import { settingsScrollOwner } from "./settings-scroll-owner";
+import { PeopleEmailPreferences } from "./settings-people-email-preferences";
 import { SettingsPublicPresence } from "./settings-public-presence";
 import {
   ADDRESS_AUTOCOMPLETE,
@@ -1394,6 +1395,7 @@ export function SoloBusinessContextSetup({ account, openPaige }: { account: stri
               />
             )}{" "}
             {tab === "people-email" && (
+              <>
               <PeopleEmail
                 account={account}
                 draft={draft}
@@ -1424,6 +1426,10 @@ export function SoloBusinessContextSetup({ account, openPaige }: { account: stri
                 onOwners={setOwners}
                 onOpenEmail={() => setEmailEditor(true)}
               />
+              <div className="mt-6">
+                <PeopleEmailPreferences />
+              </div>
+              </>
             )}{" "}
             {tab === "knowledge-bucket" && (
               <KnowledgeBucket
