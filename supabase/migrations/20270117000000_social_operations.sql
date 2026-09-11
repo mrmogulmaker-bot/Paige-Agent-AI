@@ -1,0 +1,97 @@
+-- =============================================================================
+-- SOCIAL MEDIA OPERATIONS CENTER — the data foundation (#1140-era, owner-directed).
+--
+-- The Campaigns → Social surface reimagined: connected accounts (real OAuth,
+-- not recorded handles), a content pipeline (draft → preview → schedule →
+-- approve → publish → receipt), and per-post analytics. NEXUS owns the domain.
+--
+-- Tables:
+--   paige_social_accounts  — per-tenant connected platform accounts
+--   paige_social_posts     — the content pipeline (drafts, scheduled, published)
+--
+-- The spine capabilities (social.accounts_read, social.post_draft,
+-- social.post_schedule, social.post_publish, social.analytics_read) ride the
+-- standard registry. The publisher adapter calls UPLOAD_POST_API (owner-provided,
+-- configurable endpoint) for actual posting. Every publish is an external_effect
+-- with confirm-first approval and a Rail receipt.
+-- =============================================================================
+
+create table if not exists public.paige_social_accounts (
+  id              uuid primary key default gen_random_uuid(),
+  tenant_id       uuid not null references public.tenants(id) on delete cascade,
+  platform        text not null check (platform in ('facebook','instagram','linkedin','x','tiktok','youtube','pinterest','threads')),
+  account_id      text not null,
+  handle          text not null,
+  display_name    text,
+  avatar_url      text,
+  -- Vault reference for the OAuth token (never the token itself).
+  credentials_vault_ref text,
+  status          text not null default 'connected' check (status in ('connected','needs_reauth','disconnected')),
+  connected_by    uuid references auth.users(id) on delete set null,
+  connected_at    timestamptz not null default now(),
+  last_synced_at  timestamptz,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now(),
+  unique(tenant_id, platform, account_id)
+);
+
+create table if not exists public.paige_social_posts (
+  id              uuid primary key default gen_random_uuid(),
+  tenant_id       uuid not null references public.tenants(id) on delete cascade,
+  -- The post content (one draft can target multiple platforms)
+  content         text not null,
+  media_urls      jsonb not null default '[]'::jsonb,
+  -- Target platforms: [{platform, account_id, scheduled_at, published_at, post_url, provider_post_id, error}]
+  targets         jsonb not null default '[]'::jsonb,
+  status          text not null default 'draft' check (status in ('draft','pending_approval','scheduled','publishing','published','partial','failed','cancelled')),
+  -- Durable job correlation (the scheduler's idempotency key)
+  job_attempt_id  text,
+  scheduled_at    timestamptz,
+  published_at    timestamptz,
+  created_by      uuid references auth.users(id) on delete set null,
+  created_by_agent text,
+  approval_id     uuid,
+  result          jsonb,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+create index if not exists idx_psa_tenant on public.paige_social_accounts(tenant_id, platform);
+create index if not exists idx_psp_tenant_status on public.paige_social_posts(tenant_id, status, scheduled_at);
+
+alter table public.paige_social_accounts enable row level security;
+alter table public.paige_social_posts enable row level security;
+
+grant select on public.paige_social_accounts to authenticated;
+grant all on public.paige_social_accounts to service_role;
+grant select on public.paige_social_posts to authenticated;
+grant all on public.paige_social_posts to service_role;
+
+drop policy if exists psa_read on public.paige_social_accounts;
+create policy psa_read on public.paige_social_accounts for select to authenticated
+  using (tenant_id = public.current_user_tenant_id());
+drop policy if exists psa_write on public.paige_social_accounts;
+create policy psa_write on public.paige_social_accounts for all to authenticated
+  using (tenant_id = public.current_user_tenant_id() and public.has_any_role(auth.uid(), array['admin','super_admin','coach']))
+  with check (tenant_id = public.current_user_tenant_id() and public.has_any_role(auth.uid(), array['admin','super_admin','coach']));
+
+drop policy if exists psp_read on public.paige_social_posts;
+create policy psp_read on public.paige_social_posts for select to authenticated
+  using (tenant_id = public.current_user_tenant_id());
+drop policy if exists psp_write on public.paige_social_posts;
+create policy psp_write on public.paige_social_posts for all to authenticated
+  using (tenant_id = public.current_user_tenant_id() and public.has_any_role(auth.uid(), array['admin','super_admin','coach']))
+  with check (tenant_id = public.current_user_tenant_id() and public.has_any_role(auth.uid(), array['admin','super_admin','coach']));
+
+-- Trust Compass: social.post_publish is an external_effect (high, confirm).
+insert into public.paige_action_kinds
+  (slug, label, description, default_from_department, default_to_department,
+   executor, requires_approval, approval_type, draft_subagent_slug,
+   default_autonomy_lane, default_priority)
+values
+  ('social.post_publish', 'Publish social post',
+   'Post content to connected social media accounts. Always confirm-first.',
+   'owner_ops', 'owner_ops',
+   'send_via_approval', true, 'cs_draft', null,
+   'confirm', 'normal')
+on conflict (slug) do nothing;

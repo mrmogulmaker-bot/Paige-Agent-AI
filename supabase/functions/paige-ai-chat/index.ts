@@ -174,6 +174,9 @@ function describeStep(
     case "action_list": return { label: "Checking the team's queue", group: "owner" };
     case "inbox_list": return { label: "Checking the inbox", group: "owner" };
     case "integrations_list": return { label: "Checking your connections", group: "owner" };
+    case "social_post": return { label: "Preparing your social post", group: "owner" };
+    case "social_analytics": return { label: "Reading social analytics", group: "owner" };
+    case "social_accounts": return { label: "Checking social accounts", group: "owner" };
     case "improvement_propose": return { label: "Filing an improvement proposal", group: "owner" };
     case "improvement_list": return { label: "Reviewing improvement proposals", group: "owner" };
     case "improvement_decide": return { label: "Recording the improvement decision", group: "owner" };
@@ -5900,6 +5903,54 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "social_post",
+              description: "Post content to connected social media accounts (TikTok, Instagram, YouTube, LinkedIn, Facebook, X, Threads, Pinterest, and more). This is NEXUS's domain — content creation and growth. ALWAYS confirm with the owner before posting. You can also schedule posts for later. Include the content, target platforms, and optionally a scheduled date.",
+              parameters: {
+                type: "object",
+                properties: {
+                  content_type: { type: "string", enum: ["text", "photos", "video", "document"], description: "The type of content to post." },
+                  title: { type: "string", description: "Post title/caption (for text posts, this is the content)." },
+                  description: { type: "string", description: "Additional description or body text." },
+                  platforms: { type: "array", items: { type: "string" }, description: "Target platforms: tiktok, instagram, youtube, linkedin, facebook, x, threads, pinterest, reddit, bluesky." },
+                  media_url: { type: "string", description: "Public URL of the video or photo to post (for video/photo posts)." },
+                  photos: { type: "array", items: { type: "string" }, description: "Array of photo URLs (for photo posts)." },
+                  scheduled_date: { type: "string", description: "ISO date to schedule the post for later (optional)." },
+                  profile: { type: "string", description: "The Upload-Post profile username to post from." }
+                },
+                required: ["content_type", "title", "platforms", "profile"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "social_analytics",
+              description: "Read cross-platform social media analytics — followers, views, impressions, reach, per-post metrics, and audience insights. NEXUS and ZION use this for growth strategy.",
+              parameters: {
+                type: "object",
+                properties: {
+                  platforms: { type: "array", items: { type: "string" }, description: "Platforms to query." },
+                  profile: { type: "string", description: "The Upload-Post profile username." },
+                  detail: { type: "string", enum: ["overview", "posts", "audience"], description: "Level of detail: account overview, per-post metrics, or audience insights." }
+                },
+                required: ["profile"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "social_accounts",
+              description: "List connected social media accounts across all platforms. Shows which platforms are connected, account handles, and connection status.",
+              parameters: {
+                type: "object",
+                properties: {}
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "action_list",
               description: "Admin/coach only. List actions on Paige's bus — a department's queue or one client's — filed, drafting, waiting on approval, or done. Use to see her team's open work before deciding what to do next.",
               parameters: {
@@ -9208,6 +9259,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "action_advance" ||
           tc.function.name === "inbox_list" ||
           tc.function.name === "integrations_list" ||
+          tc.function.name === "social_post" ||
+          tc.function.name === "social_analytics" ||
+          tc.function.name === "social_accounts" ||
           tc.function.name === "improvement_propose" ||
           tc.function.name === "improvement_list" ||
           tc.function.name === "improvement_decide" ||
@@ -11118,6 +11172,29 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               result = { success: true, ...(data as any) };
+            } else if (tc.function.name === "social_post" || tc.function.name === "social_analytics" || tc.function.name === "social_accounts") {
+              // NEXUS's social media operations (Upload-Post API). Post = confirm-first.
+              const { data: roleRows } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+              const roles = (roleRows || []).map((r: any) => r.role);
+              if (!(roles.includes("admin") || roles.includes("coach"))) {
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Social media operations are restricted to admins and coaches." }) });
+                continue;
+              }
+              const socialTenant = personaCtx?.tenant_id ?? null;
+              const socialUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/paige-social`;
+              const socialBody = tc.function.name === "social_post"
+                ? { action: "post", tenant_id: socialTenant, ...args }
+                : tc.function.name === "social_analytics"
+                  ? { action: args.detail === "posts" ? "post_analytics" : args.detail === "audience" ? "audience" : "analytics", tenant_id: socialTenant, ...args }
+                  : { action: "accounts", tenant_id: socialTenant };
+              const socialRes = await fetch(socialUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseServiceKey}`, apikey: supabaseServiceKey },
+                body: JSON.stringify(socialBody),
+              });
+              const socialText = await socialRes.text();
+              let socialPayload: any; try { socialPayload = JSON.parse(socialText); } catch { socialPayload = { raw: socialText }; }
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(socialPayload) });
             } else if (tc.function.name === "integrations_list") {
               // The integrations read verb (spine: integrations.list). Caller-scoped.
               const { data, error } = await supabaseClient.rpc("list_integration_surface");
