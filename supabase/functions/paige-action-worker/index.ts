@@ -24,6 +24,8 @@
 // reopens a >10-min stale claim). One action failing never aborts the batch — each is independent.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { recordCapabilityRun } from "../_shared/capability-record.ts";
+import { idempotencyKey } from "../_shared/durable-job/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -89,6 +91,53 @@ Deno.serve(async (req) => {
   const drafted: string[] = [];
   const failed: Array<{ id: string; error: string }> = [];
 
+  // -- Receipt helpers (Receipt & Rail Contract adopter): terminal transitions record to the Rail
+  //    with deterministic job-attempt correlation (`action-bus:<action_id>:draft` — a re-FILED need is
+  //    a new action row, hence a new id; re-drafts of the same row replay the same correlation key).
+  //    Actor: the tenant's active owner/admin (the business the draft serves) — resolved once per
+  //    tenant and cached for the batch. VP attribution: the drafting specialist's parent VP from the
+  //    C-suite registry, resolved once per batch. Both fail soft: a missing row records without them.
+  const actorByTenant = new Map<string, string | null>();
+  const resolveActor = async (tenantId: string): Promise<string | null> => {
+    if (actorByTenant.has(tenantId)) return actorByTenant.get(tenantId)!;
+    const { data: m } = await admin.from("tenant_members")
+      .select("user_id").eq("tenant_id", tenantId).eq("status", "active")
+      .in("role", ["owner", "admin"]).limit(1);
+    const actor = m?.[0]?.user_id ?? null;
+    actorByTenant.set(tenantId, actor);
+    return actor;
+  };
+  const { data: vpRows } = await admin.from("paige_subagents")
+    .select("slug, parent_subagent_slug, name");
+  const vpParentBySlug = new Map<string, string>();
+  for (const r of (vpRows ?? []) as Array<{ slug: string; parent_subagent_slug: string | null; name: string }>) {
+    if (r.parent_subagent_slug) vpParentBySlug.set(r.slug, r.parent_subagent_slug);
+  }
+  const recordReceipt = async (
+    a: ClaimedAction,
+    outcome: "capability_succeeded" | "capability_failed",
+    extra: Record<string, unknown> = {},
+  ) => {
+    const actor = await resolveActor(a.tenant_id);
+    const specialist = a.draft_subagent_slug;
+    const vp = vpParentBySlug.get(specialist) ?? null;
+    await recordCapabilityRun(admin, {
+      tenantId: a.tenant_id,
+      actorId: actor,
+      capabilityKey: "actions_draft",
+      outcome,
+      agentSlug: specialist,
+      correlation: { jobAttemptId: idempotencyKey("action-bus", a.id, "draft") },
+      detail: {
+        substrate: "paige-action-worker",
+        action_kind: a.action_kind,
+        subagent: specialist,
+        ...(vp ? { vp_desk: vp } : {}),
+        ...extra,
+      },
+    });
+  };
+
   // -- 2. Draft each claimed action through Paige's orchestrator, then advance it. Independent. --
   for (const a of claimed) {
     try {
@@ -131,6 +180,7 @@ Deno.serve(async (req) => {
           typeof orchBody?.error === "string" ? orchBody.error : JSON.stringify(orchBody).slice(0, 300)
         }`;
         await admin.rpc("fail_action", { p_action_id: a.id, p_error: msg });
+        await recordReceipt(a, "capability_failed", { stage: "invoke" });
         failed.push({ id: a.id, error: msg });
         continue;
       }
@@ -152,13 +202,19 @@ Deno.serve(async (req) => {
       });
       if (advErr) {
         await admin.rpc("fail_action", { p_action_id: a.id, p_error: `advance failed: ${advErr.message}` });
+        await recordReceipt(a, "capability_failed", { stage: "advance" });
         failed.push({ id: a.id, error: advErr.message });
         continue;
       }
+      await recordReceipt(a, "capability_succeeded", {
+        invocation_id: invocationId,
+        routed_to_approval: true,
+      });
       drafted.push(a.id);
     } catch (e) {
       const msg = (e as Error)?.message ?? "worker error";
       try { await admin.rpc("fail_action", { p_action_id: a.id, p_error: msg }); } catch (_e) { /* self-heals */ }
+      try { await recordReceipt(a, "capability_failed", { stage: "worker", error: msg.slice(0, 200) }); } catch (_e) { /* receipt must not resurrect a failed batch */ }
       failed.push({ id: a.id, error: msg });
     }
   }
