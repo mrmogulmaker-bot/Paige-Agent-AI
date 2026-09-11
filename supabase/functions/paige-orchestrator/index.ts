@@ -609,6 +609,7 @@ Deno.serve(async (req) => {
       conversation_id: ctx.conversation_id ?? null,
       input: payload.input ?? {},
       status: "pending",
+      tenant_id: tenantId, // §9 attribution: the resolved request tenant, never caller-supplied
     });
 
     let result: { status: number; body: unknown };
