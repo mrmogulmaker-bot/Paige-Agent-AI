@@ -225,5 +225,39 @@ Deno.serve(async (req) => {
     }
   }
 
+  // -- PROACTIVE DELIVERY (runway ①, decision #19 layer 3): the COO reports without being asked.
+  //    One daily-brief item per tenant whose drafts landed this run — the owner-facing brief line
+  //    the action bus already surfaces (record_only/auto lane: an internal report to the CEO, not
+  //    an external client send — no approval gate applies). The Rail receipts (with desk names)
+  //    already stream live to the Paige sidebar; this is the same report as a durable brief item.
+  //    Email push defers to the comms template lane (a 'paige-digest' template is registry work).
+  const draftedByTenant = new Map<string, Array<{ desk: string | null; title: string }>>();
+  for (const a of claimed) {
+    if (!drafted.includes(a.id)) continue;
+    const desk = vpParentBySlug.get(a.draft_subagent_slug) ?? null;
+    const list = draftedByTenant.get(a.tenant_id) ?? [];
+    list.push({ desk, title: a.title });
+    draftedByTenant.set(a.tenant_id, list);
+  }
+  for (const [tenantId, items] of draftedByTenant) {
+    try {
+      await admin.rpc("file_action", {
+        p_action_kind: "owner.daily_brief_item",
+        p_title: items.length === 1
+          ? `New draft waiting on you: ${items[0]!.desk ? items[0]!.desk + " — " : ""}${items[0]!.title}`
+          : `${items.length} new drafts waiting on you`,
+        p_summary: items.map((i) => `${i.desk ? i.desk + " — " : ""}${i.title}`).join("; ").slice(0, 500),
+        p_payload: { source: "action-worker-digest", items: items.map((i) => ({ desk: i.desk, title: i.title })) },
+        p_to_department: "owner_ops",
+        p_priority: "low",
+        p_created_by_agent: "paige-action-worker",
+        p_tenant_id: tenantId,
+      });
+    } catch (e) {
+      // The brief is an enhancement, never a failure of the drafting run itself.
+      console.error("[paige-action-worker] digest brief failed", tenantId, (e as Error)?.message);
+    }
+  }
+
   return json({ ok: true, claimed: claimed.length, drafted: drafted.length, failed: failed.length, failures: failed }, 200);
 });
