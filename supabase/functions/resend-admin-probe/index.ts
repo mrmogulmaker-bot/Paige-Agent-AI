@@ -140,5 +140,35 @@ Deno.serve(async (req) => {
                 : json({ ok: false, error: `resend_${r.status}`, detail: out }, 502);
   }
 
+  // ---- list-inbound: does Resend's API expose received emails? ---------------
+  // The webhook fires email.received; the question is whether GET /emails (or any
+  // endpoint) returns them. This action tries the known candidates and reports
+  // what works — the polling beat's foundation.
+  if (action === "list-inbound") {
+    const attempts: Array<{ endpoint: string; status: number; count?: number; sample?: unknown }> = [];
+    const candidates = [
+      `${RESEND_API}/emails?limit=5`,
+      `${RESEND_API}/emails?direction=inbound&limit=5`,
+      `${RESEND_API}/inbound/emails?limit=5`,
+      `${RESEND_API}/domains/thegtri.resend.app/emails?limit=5`,
+    ];
+    for (const url of candidates) {
+      try {
+        const r = await fetch(url, { headers: authHeaders });
+        const j = r.ok ? await r.json() : null;
+        const items = Array.isArray(j?.data) ? j.data : Array.isArray(j) ? j : null;
+        attempts.push({
+          endpoint: url.replace(RESEND_API, ""),
+          status: r.status,
+          count: items?.length ?? undefined,
+          sample: items?.[0] ? { id: items[0].id, from: items[0].from, to: items[0].to, subject: items[0].subject, created_at: items[0].created_at, direction: items[0].direction } : undefined,
+        });
+      } catch (e) {
+        attempts.push({ endpoint: url.replace(RESEND_API, ""), status: 0, sample: { error: (e as Error).message } });
+      }
+    }
+    return json({ ok: true, attempts });
+  }
+
   return json({ error: "unknown_action" }, 400);
 });
