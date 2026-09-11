@@ -163,8 +163,14 @@ Deno.serve(async (req) => {
               action_kind: a.action_kind,
               title: a.title,
               summary: a.summary,
-              payload: a.payload ?? {},
               contact_id: a.contact_id,
+              // The filing's drafting brief, when the filer provided one: composer-ready
+              // fields (intent/key_points/tone/cta/…) spread to top level so the drafting
+              // specialist receives its actual input contract, not filing metadata.
+              ...((a.payload && typeof a.payload === "object" && (a.payload as Record<string, unknown>).draft_input &&
+                    typeof (a.payload as Record<string, unknown>).draft_input === "object")
+                  ? (a.payload as Record<string, unknown>).draft_input
+                  : {}),
             },
             context: { contact_id: a.contact_id, conversation_id: a.conversation_id },
           }),

@@ -95,6 +95,20 @@ Deno.serve(async (req) => {
         days_silent: r.days_silent,
         last_activity_at: r.last_activity_at,
         ...(r.mission_title ? { mission_context: { title: r.mission_title, state: r.mission_state } } : {}),
+        // The drafting brief the worker spreads into the composer's input contract.
+        draft_input: {
+          intent: r.days_silent == null
+            ? `Re-engage a client who onboarded but never engaged — restart the relationship warmly.`
+            : `Re-engage a client who has gone quiet for ${r.days_silent} days — check in, add value, invite a next step.`,
+          key_points: [
+            r.days_silent == null
+              ? "They signed up but we have never really talked"
+              : `It has been ${r.days_silent} days since our last exchange`,
+            ...(r.mission_title ? [`Current focus: ${r.mission_title}`] : []),
+          ],
+          tone: "warm",
+          cta: "invite a quick call or a simple reply",
+        },
       },
       p_to_department: "owner_ops",
       p_priority: "normal",
