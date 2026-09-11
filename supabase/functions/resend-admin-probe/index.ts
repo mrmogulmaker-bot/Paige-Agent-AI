@@ -129,5 +129,16 @@ Deno.serve(async (req) => {
     });
   }
 
+  // ---- set-endpoint: repoint a webhook (by id) at a given URL -----------------
+  if (action === "set-endpoint" && typeof body.webhook_id === "string" && typeof body.endpoint === "string") {
+    const r = await fetch(`${RESEND_API}/webhooks/${body.webhook_id}`, {
+      method: "PATCH", headers: authHeaders,
+      body: JSON.stringify({ endpoint: body.endpoint }),
+    });
+    const out = await r.json().catch(() => ({}));
+    return r.ok ? json({ ok: true, webhook: { id: out.id, endpoint: out.endpointUrl ?? out.endpoint ?? body.endpoint } })
+                : json({ ok: false, error: `resend_${r.status}`, detail: out }, 502);
+  }
+
   return json({ error: "unknown_action" }, 400);
 });

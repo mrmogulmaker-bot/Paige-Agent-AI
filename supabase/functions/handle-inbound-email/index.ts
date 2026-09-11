@@ -165,19 +165,28 @@ Deno.serve(async (req) => {
   // fallback exists because the Management API's function-secrets routes are not
   // available on every gateway, which would otherwise leave the secret
   // uninstallable outside the dashboard; a settings row rotates it in one write.
-  let secret = Deno.env.get("RESEND_WEBHOOK_SECRET");
+  // Secrets are a LIST: the account may run several webhooks (each signs with its
+  // own secret) and any one match verifies. Sources: env + settings rows (single
+  // `resend_webhook_secret` and array `resend_webhook_secrets`), deduped.
   const rawBody = await req.text();
-  if (!secret) {
-    const { data: row } = await admin
+  const secrets: string[] = [];
+  const envSecret = Deno.env.get("RESEND_WEBHOOK_SECRET");
+  if (envSecret) secrets.push(envSecret);
+  {
+    const { data: rows } = await admin
       .from("admin_app_settings")
-      .select("value")
-      .eq("key", "resend_webhook_secret")
-      .maybeSingle();
-    const v = (row as { value?: unknown } | null)?.value;
-    if (typeof v === "string" && v.startsWith("whsec_")) secret = v;
+      .select("key, value")
+      .in("key", ["resend_webhook_secret", "resend_webhook_secrets"]);
+    for (const r of (rows ?? []) as Array<{ key: string; value: unknown }>) {
+      if (r.key === "resend_webhook_secret" && typeof r.value === "string" && r.value.startsWith("whsec_")) secrets.push(r.value);
+      if (r.key === "resend_webhook_secrets" && Array.isArray(r.value)) {
+        for (const v of r.value) if (typeof v === "string" && v.startsWith("whsec_")) secrets.push(v);
+      }
+    }
   }
-  if (!secret) {
-    console.error("[handle-inbound-email] RESEND_WEBHOOK_SECRET not configured (env or settings)");
+  const secretList = [...new Set(secrets)];
+  if (!secretList.length) {
+    console.error("[handle-inbound-email] no webhook secret configured (env or settings)");
     return new Response("webhook_not_configured", { status: 500 });
   }
   try {
@@ -185,15 +194,23 @@ Deno.serve(async (req) => {
     const svixTs = req.headers.get("svix-timestamp") ?? "";
     const svixSig = req.headers.get("svix-signature") ?? "";
     const signedContent = `${svixId}.${svixTs}.${rawBody}`;
-    const secretBytes = secret.startsWith("whsec_")
-      ? Uint8Array.from(atob(secret.slice(6)), (c) => c.charCodeAt(0))
-      : new TextEncoder().encode(secret);
-    const key = await crypto.subtle.importKey(
-      "raw", secretBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
-    );
-    const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signedContent));
-    const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
-    const passed = svixSig.split(" ").some((s) => s.split(",")[1] === sigB64);
+    // Any ONE configured secret verifying is enough (multi-webhook accounts).
+    const passed = await (async () => {
+      for (const s of secretList) {
+        try {
+          const secretBytes = s.startsWith("whsec_")
+            ? Uint8Array.from(atob(s.slice(6)), (c) => c.charCodeAt(0))
+            : new TextEncoder().encode(s);
+          const key = await crypto.subtle.importKey(
+            "raw", secretBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+          );
+          const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signedContent));
+          const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+          if (svixSig.split(" ").some((part) => part.split(",")[1] === sigB64)) return true;
+        } catch { /* try the next secret */ }
+      }
+      return false;
+    })();
     if (!passed) {
       console.warn("[handle-inbound-email] svix_signature_invalid");
       return new Response("invalid_signature", { status: 401 });
