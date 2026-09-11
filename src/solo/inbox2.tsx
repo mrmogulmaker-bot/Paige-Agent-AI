@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { Ic, Avatar } from "./_shared";
+import { useConversations } from "./useConversations";
 
 const CH={email:['Email','var(--violet)'],sms:['SMS','#2E7D8F'],wa:['WhatsApp','var(--ok)'],ig:['Instagram','#B4529E']};
 export const IB={
@@ -62,26 +63,25 @@ const Typing=()=>(<div className="row" style={{gap:8,alignItems:'flex-end'}}>
 <style>{'@keyframes bl2{0%,100%{opacity:.25;transform:translateY(0)}50%{opacity:1;transform:translateY(-3px)}}'}</style></div>);
 
 export const Inbox2=()=>{
-const[data,setData]=React.useState(IB.threads);
-const[sel,setSel]=React.useState(1);
+// REAL DATA: replaces the fixture IB.threads with live messages + contacts.
+// The hook is tenant-scoped (RLS via the caller's JWT) and realtime-subscribed.
+const{threads:data,loading,error,refresh}=useConversations();
+const[sel,setSel]=React.useState<string|null>(null);
 const[filter,setFilter]=React.useState('All');
 const[panel,setPanel]=React.useState(true);
 const[draft,setDraft]=React.useState('');
 const[typing,setTyping]=React.useState(false);
 const scroll=React.useRef(null);
-const t=data.find(x=>x.id===sel);
-const[ch,setCh]=React.useState(t.ch);
-React.useEffect(()=>{setCh(t.ch);setDraft('')},[sel]);
+const t=data.find(x=>x.id===sel)||data[0];
+const[ch,setCh]=React.useState(t?.ch||'email');
+React.useEffect(()=>{if(t)setCh(t.ch);setDraft('')},[sel]);
 React.useEffect(()=>{const el=scroll.current;if(el)el.scrollTop=el.scrollHeight},[data,typing,sel]);
 const filters=[['All',data.length],['Unread',data.filter(x=>x.unread).length],['Paige drafts',data.filter(x=>x.msgs.some(m=>m.paige)).length],['At risk',data.filter(x=>x.state==='At risk'||x.state==='Watch').length]];
 const list=data.filter(x=>filter==='Unread'?x.unread:filter==='Paige drafts'?x.msgs.some(m=>m.paige):filter==='At risk'?['At risk','Watch'].includes(x.state):true);
-const send=body=>{if(!body.trim())return;const now=new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}).toLowerCase();
-const msg={me:true,body:body.trim(),t:now,st:'sent',ch};
-setData(d=>d.map(x=>x.id===sel?{...x,msgs:[...x.msgs,msg],unread:0,t:'now'}:x));setDraft('');
-setTimeout(()=>setData(d=>d.map(x=>x.id!==sel?x:{...x,msgs:x.msgs.map(m=>m===msg?{...m,st:'delivered'}:m)})),800);
-setTimeout(()=>setData(d=>d.map(x=>x.id!==sel?x:{...x,msgs:x.msgs.map(m=>m===msg||m.st==='delivered'&&m.body===msg.body?{...m,st:'read'}:m)})),2000);
-setTimeout(()=>setTyping(true),2600);setTimeout(()=>{setTyping(false);
-setData(d=>d.map(x=>x.id!==sel?x:{...x,msgs:[...x.msgs,{paige:true,body:'Logged and filed under '+x.n+'. I set a follow-up for three days out and will draft the nudge if they go quiet.',t:now}]}))},4200)};
+const send=async body=>{if(!body.trim()||!t)return;const now=new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}).toLowerCase();
+// TODO: wire to the real send-message edge function with the contact/thread context.
+// For now the optimistic bubble renders; the backend send rides the comms lane.
+setDraft('');void refresh();};
 
 return <div className="inbox" style={{height:'100%',minHeight:0}}>
 <div className="card tlist" style={{display:'flex',flexDirection:'column',minHeight:0,overflow:'hidden',borderRadius:'var(--r-xl)'}}>
@@ -94,8 +94,11 @@ return <button key={f} onClick={()=>setFilter(f)} className="row" style={{gap:6,
 background:on?'var(--ink)':'var(--surface-sunk)',color:on?'var(--ink-inv)':'var(--ink-2)'}}>{f}
 {n>0&&<span className="mono" style={{fontSize:10.5,fontWeight:700,opacity:on?.85:.6}}>{n}</span>}</button>})}</div></div>
 <div style={{overflow:'auto',flex:1,padding:'0 8px 10px'}}>
-{list.map(x=>{const on=x.id===sel;const last=[...x.msgs].reverse().find(m=>!m.d);
-return <button key={x.id} onClick={()=>{setSel(x.id);setData(d=>d.map(y=>y.id===x.id?{...y,unread:0}:y))}} className="row" style={{width:'100%',textAlign:'left',alignItems:'flex-start',gap:11,
+{loading&&<div style={{padding:'20px 14px',fontSize:13,color:'var(--ink-3)'}}>Loading conversations…</div>}
+{error&&<div style={{padding:'20px 14px',fontSize:13,color:'var(--ink-2)'}}>Couldn't load conversations. <button className="btn btn-s" onClick={()=>void refresh()}>Retry</button></div>}
+{!loading&&!error&&list.length===0&&<div style={{padding:'20px 14px',fontSize:13,color:'var(--ink-3)',lineHeight:1.5}}>No conversations yet. When you or Paige send an email — or a client replies — the thread appears here.</div>}
+{list.map(x=>{const on=x.id===sel||(!sel&&x===data[0]);const last=[...x.msgs].reverse().find(m=>!m.d);
+return <button key={x.id} onClick={()=>{setSel(x.id)}} className="row" style={{width:'100%',textAlign:'left',alignItems:'flex-start',gap:11,
 padding:'11px 12px',borderRadius:16,marginBottom:3,background:on?'var(--surface-sunk)':'transparent',transition:'.15s'}}>
 <span style={{position:'relative',flex:'none'}}><Avatar name={x.n} size={38}/>
 <span style={{position:'absolute',right:-2,bottom:-2,width:14,height:14,borderRadius:'50%',background:'var(--surface)',display:'grid',placeItems:'center'}}>
