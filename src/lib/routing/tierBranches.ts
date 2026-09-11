@@ -124,6 +124,9 @@ export const SOLO_BRANCHES: Branch[] = [
     // NOT declared here as a dead/placeholder tab (owner ruling 2026-09-05; four-surfaces §4).
     subtabs: [
       { slug: "business-game-plan", aliases: ["overview"], key: "plan", label: "Business Game Plan" },
+      // Approvals — the "what needs my yes" lane (owner decision #20 position 5; the
+      // sidebar's Live desk shows a capped slice; this is the full queue destination).
+      { slug: "approvals", key: "approvals", label: "Approvals" },
       { slug: "systems-check", key: "sys", label: "Systems Check" },
       // Trust Compass is the third Command Center surface (owner-ruled 2026-09-05):
       // Business Game Plan → Systems Check → Trust Compass → Mind.

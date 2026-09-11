@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useEffect, useRef } from "react";
-import { Activity, BrainCircuit, ShieldCheck, Target } from "lucide-react";
+import { Activity, BrainCircuit, ClipboardCheck, ShieldCheck, Target } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useTierFeatures } from "@/hooks/useTierFeatures";
@@ -9,6 +9,7 @@ import { SoloMindWorkspace } from "./SoloMindWorkspace";
 import { SoloSystemsCheckWorkspace } from "./SoloSystemsCheckWorkspace";
 import { SoloGamePlanWorkspace } from "./SoloGamePlanWorkspace";
 import { TrustCompass } from "./compass";
+import { SoloApprovalsWorkspace } from "./SoloApprovalsWorkspace";
 
 // Business Game Plan → Systems Check → Trust Compass → Mind (owner-ruled 2026-09-05). All four are
 // real surfaces now: Business Game Plan is the default landing, and Trust Compass is the third tab.
@@ -16,6 +17,7 @@ import { TrustCompass } from "./compass";
 // contract test asserts the TABS set and order against the registry.
 const TABS = [
   ["plan", "Business Game Plan", Target],
+  ["approvals", "Approvals", ClipboardCheck],
   ["sys", "Systems Check", Activity],
   ["compass", "Trust Compass", ShieldCheck],
   ["mind", "Mind", BrainCircuit],
@@ -143,6 +145,10 @@ const CommandHub = ({ accountContext, openPaige }) => {
         {effectiveTab === "plan" ? (
           <div role="tabpanel" id="command-panel-plan" aria-labelledby="command-tab-plan" style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
             <SoloGamePlanWorkspace key={activeTenantId ?? "unresolved"} accountContext={accountContext} openPaige={openPaige} workspaceId={activeTenantId} />
+          </div>
+        ) : effectiveTab === "approvals" ? (
+          <div role="tabpanel" id="command-panel-approvals" aria-labelledby="command-tab-approvals" style={{ height: "100%" }}>
+            <SoloApprovalsWorkspace key={activeTenantId ?? "unresolved"} accountContext={accountContext} openPaige={openPaige} workspaceId={activeTenantId} />
           </div>
         ) : effectiveTab === "sys" ? (
           <div role="tabpanel" id="command-panel-sys" aria-labelledby="command-tab-sys" style={{ height: "100%" }}>
