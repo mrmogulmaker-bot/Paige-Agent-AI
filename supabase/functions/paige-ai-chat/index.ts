@@ -5977,6 +5977,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 }
               }
             }
+          },
           {
             type: "function",
             function: {
@@ -5987,7 +5988,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 properties: {}
               }
             }
-          },
           },
           {
             type: "function",
