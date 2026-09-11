@@ -76,8 +76,9 @@ const t=data.find(x=>x.id===sel)||data[0];
 const[ch,setCh]=React.useState(t?.ch||'email');
 React.useEffect(()=>{if(t)setCh(t.ch);setDraft('')},[sel]);
 React.useEffect(()=>{const el=scroll.current;if(el)el.scrollTop=el.scrollHeight},[data,typing,sel]);
-const filters=[['All',data.length],['Unread',data.filter(x=>x.unread).length],['Paige drafts',data.filter(x=>x.msgs.some(m=>m.paige)).length],['At risk',data.filter(x=>x.state==='At risk'||x.state==='Watch').length]];
-const list=data.filter(x=>filter==='Unread'?x.unread:filter==='Paige drafts'?x.msgs.some(m=>m.paige):filter==='At risk'?['At risk','Watch'].includes(x.state):true);
+const filters=[['All',data.length],['Unread',data.filter(x=>x.unread).length],['Paige drafts',data.filter(x=>x.msgs.some(m=>m.paige)).length],['At risk',data.filter(x=>x.state==='At risk'||x.state==='Watch').length],
+...[...new Set(data.flatMap(x=>x.labels?.map(l=>l.name)??[]))].slice(0,4).map(name=>[name,data.filter(x=>x.labels?.some(l=>l.name===name)).length])];
+const list=data.filter(x=>filter==='Unread'?x.unread:filter==='Paige drafts'?x.msgs.some(m=>m.paige):filter==='At risk'?['At risk','Watch'].includes(x.state):data.flatMap(t2=>t2.labels?.map(l=>l.name)??[]).includes(filter)?x.labels?.some(l=>l.name===filter):true);
 const send=async body=>{if(!body.trim()||!t)return;const now=new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}).toLowerCase();
 // TODO: wire to the real send-message edge function with the contact/thread context.
 // For now the optimistic bubble renders; the backend send rides the comms lane.
@@ -108,6 +109,12 @@ padding:'11px 12px',borderRadius:16,marginBottom:3,background:on?'var(--surface-
 <span className="row" style={{justifyContent:'space-between',gap:8}}><span className="trunc" style={{fontWeight:600,fontSize:13.6}}>{x.n}</span>
 <span className="row" style={{gap:6,flex:'none'}}>{x.pin&&<span style={{color:'var(--gold)',display:'flex'}}><Ic.bolt size={11}/></span>}<span className="sub" style={{fontSize:11.5}}>{x.t}</span></span></span>
 <span className="sub trunc" style={{display:'block',fontSize:11.8}}>{x.role}</span>
+{/* LABEL CHIPS: the triage pass's output — colored, named, scan-friendly */}
+{x.labels&&x.labels.length>0&&<span className="row" style={{gap:4,marginTop:2,flexWrap:'wrap'}}>
+{x.labels.slice(0,3).map(l=><span key={l.slug} className="row" style={{gap:3,height:17,padding:'0 7px',borderRadius:99,
+background:`color-mix(in srgb, ${l.color} 12%, transparent)`,border:`1px solid color-mix(in srgb, ${l.color} 30%, transparent)`,
+color:l.color,fontSize:10.3,fontWeight:650,letterSpacing:'.02em',whiteSpace:'nowrap'}}>{l.name}</span>)}
+{x.labels.length>3&&<span style={{fontSize:10,color:'var(--ink-3)'}}>+{x.labels.length-3}</span>}</span>}
 <span className="row" style={{gap:7,marginTop:3}}>
 <span className="trunc grow" style={{fontSize:12.5,color:x.unread?'var(--ink)':'var(--ink-3)',fontWeight:x.unread?600:400}}>
 {last?.paige?'Paige: '+last.body.slice(0,42)+'…':last?.me?'You: '+last.body.slice(0,42)+'…':last?.body.slice(0,48)+'…'}</span>

@@ -19,6 +19,8 @@ export interface ConversationThread {
   state: string;         // lifecycle hint (from contact metadata or risk signal)
   email: string | null;
   msgs: ConversationMsg[];
+  /** Labels applied to any message in this thread (from the triage pass or Paige). */
+  labels: Array<{ name: string; slug: string; color: string }>;
 }
 
 export interface ConversationMsg {
@@ -124,6 +126,23 @@ export function useConversations() {
       }
       const contactMap = new Map(contacts.map((c) => [c.id, c]));
 
+      // Fetch labels for these messages (the triage pass's output).
+      const msgIds = (msgs ?? []).map((m) => m.id);
+      const labelsRes = await (supabase.from("paige_message_labels") as any)
+        .select("message_id, label_id, paige_conversation_labels(name, slug, color)")
+        .in("message_id", msgIds);
+      const rawLabels = (labelsRes.data ?? []) as Array<{
+        message_id: string;
+        paige_conversation_labels?: { name: string; slug: string; color: string } | null;
+      }>;
+      const labelsByMsg = new Map<string, Array<{ name: string; slug: string; color: string }>>();
+      for (const rl of rawLabels) {
+        if (!rl.paige_conversation_labels) continue;
+        const list = labelsByMsg.get(rl.message_id) ?? [];
+        list.push(rl.paige_conversation_labels);
+        labelsByMsg.set(rl.message_id, list);
+      }
+
       // Group into threads by contact_id (or sender email for unlinked).
       const byThread = new Map<string, ConversationThread>();
       for (const m of msgs ?? []) {
@@ -147,9 +166,14 @@ export function useConversations() {
             state: "Active",
             email: contact?.email ?? (m.direction === "inbound" ? m.sender : m.recipients?.[0]?.address) ?? null,
             msgs: [],
+            labels: [],
           });
         }
         const th = byThread.get(key)!;
+        // Carry this message's labels up to the thread level (deduped).
+        for (const lbl of labelsByMsg.get(m.id) ?? []) {
+          if (!th.labels.some((l) => l.slug === lbl.slug)) th.labels.push(lbl);
+        }
 
         const body = (m.body_text ?? m.body_html ?? "").replace(/<[^>]+>/g, "").trim();
         const msg: ConversationMsg = {
