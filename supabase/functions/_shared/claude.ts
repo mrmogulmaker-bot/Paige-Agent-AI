@@ -391,6 +391,13 @@ function buildClaudeRequest(body: OpenAIStyleBody): Record<string, unknown> {
     model,
     max_tokens: body.max_tokens ?? 2048,
     messages: msgs,
+    // Prompt caching (automatic): the chat re-sends a large stable prefix every turn
+    // (persona + voice + context blocks + tools). Top-level cache_control makes the API
+    // cache the prefix and move the breakpoint forward as conversations grow — cache
+    // reads bill at 0.1x, which is the single biggest Anthropic-spend lever for the
+    // main chat. Minimum cacheable length (Sonnet 5: 1024 tokens) is far exceeded by
+    // the assembled chat prompt; prompts below the floor cache silently as no-ops.
+    cache_control: { type: "ephemeral" },
   };
   if (system) req.system = system;
   if (body.temperature != null && !modelRejectsSampling(model)) req.temperature = body.temperature;
