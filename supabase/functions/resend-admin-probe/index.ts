@@ -67,14 +67,27 @@ Deno.serve(async (req) => {
     const project = (d: Record<string, unknown>) => ({
       id: d.id, name: d.name, status: d.status, region: d.region, created_at: d.created_at,
     });
+    // The LIST response hides endpoints; fetch each webhook's DETAIL for the truth.
+    const detailList: Array<Record<string, unknown>> = [];
+    if (Array.isArray(webhooks?.data)) {
+      for (const w of webhooks.data as Array<{ id: string }>) {
+        const d = await fetch(`${RESEND_API}/webhooks/${w.id}`, { headers: authHeaders });
+        const dj = d.ok ? await d.json() : { error: d.status };
+        detailList.push({
+          id: dj.id ?? w.id,
+          endpoint: dj.endpointUrl ?? dj.endpoint_url ?? dj.endpoint ?? dj.url ?? null,
+          events: dj.events ?? null,
+          status: dj.status ?? null,
+          // Secret fields (if the API exposes any) — surfaced to the authorized operator only.
+          secret_fields: Object.keys(dj).filter((k) => /secret/i.test(k)),
+          secret_values: Object.fromEntries(Object.entries(dj).filter(([k]) => /secret/i.test(k))),
+        });
+      }
+    }
     return json({
       ok: true,
       domains: Array.isArray(domains?.data) ? domains.data.map(project) : domains,
-      webhooks: Array.isArray(webhooks?.data)
-        ? webhooks.data.map((w: Record<string, unknown>) => ({
-            id: w.id, endpoint_url: w.endpointUrl ?? w.endpoint_url ?? w.url, events: w.events, status: w.status,
-          }))
-        : webhooks,
+      webhooks: detailList.length ? detailList : webhooks,
       expected_handler: INBOUND_HANDLER_URL,
     });
   }
