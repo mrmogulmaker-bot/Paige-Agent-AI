@@ -1039,6 +1039,28 @@ function SendingDomainsPanel({ comms }: { comms: ReturnType<typeof useSoloComms>
             Remove
           </button>
         </div>
+        {/* DNS RECORDS: the copy-paste-able record set Resend returned for this
+            domain — what the tenant publishes at their registrar (Namecheap,
+            GoDaddy, Cloudflare, Vercel, etc). Shown whenever records exist,
+            especially while status is pending (the tenant is mid-publish). */}
+        {d.dnsRecords.length > 0 && <div className="ss-dns-records" style={{ marginTop: 8, marginBottom: 4 }}>
+          <p className="ss-note" style={{ marginBottom: 6 }}>
+            <strong>Publish these at your DNS host ({d.status === "verified" ? "verified — already live" : "then click Check DNS above"}):</strong>
+          </p>
+          <div style={{ display: "grid", gap: 4 }}>
+            {d.dnsRecords.map((rec, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "52px 1fr 1fr auto", gap: 8, alignItems: "center",
+                padding: "6px 10px", borderRadius: 8, background: "var(--surface-sunk)", fontSize: 12, fontFamily: "var(--font-mono, monospace)" }}>
+                <span style={{ fontWeight: 700, color: "var(--ink)" }}>{rec.type}</span>
+                <span style={{ color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={rec.name}>{rec.name}</span>
+                <span style={{ color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={rec.record}>{rec.record}</span>
+                <button type="button" className="ss-btn ss-btn--quiet ss-btn--sm" style={{ fontSize: 10.5, padding: "2px 8px" }}
+                  onClick={() => { void navigator.clipboard.writeText(`${rec.type}  ${rec.name}  →  ${rec.record}`); }}
+                  aria-label={`Copy the ${rec.type} record`}>Copy</button>
+              </div>
+            ))}
+          </div>
+        </div>}
       </div>)}
     </div>}
 
