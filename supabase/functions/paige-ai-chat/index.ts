@@ -173,6 +173,9 @@ function describeStep(
     case "action_advance": return { label: "Moving that action forward", group: "owner" };
     case "action_list": return { label: "Checking the team's queue", group: "owner" };
     case "inbox_list": return { label: "Checking the inbox", group: "owner" };
+    case "improvement_propose": return { label: "Filing an improvement proposal", group: "owner" };
+    case "improvement_list": return { label: "Reviewing improvement proposals", group: "owner" };
+    case "improvement_decide": return { label: "Recording the improvement decision", group: "owner" };
     case "action_get": return { label: "Pulling up that action", group: "owner" };
     case "propose_action": return { label: "Lining up something for your approval", group: "owner", detail: "waiting on you" };
     case "mission_create": return out?.replayed === true ? { label: "That proposed Mission was already saved", group: "owner", detail: "replay · no duplicate change" } : { label: failed ? "Could not create that Mission" : "Created the proposed Mission", group: "owner", detail: failed ? "nothing changed" : "record only · no work ran" };
@@ -5848,6 +5851,54 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "improvement_propose",
+              description: "Owner/coach only. File an improvement proposal from real evidence — a repeating failure you observed, an owner correction, a pattern worth a decision. PROPOSES ONLY: nothing changes until the owner decides via improvement_decide. Include evidence references (counts, ids, signatures) — never raw message content.",
+              parameters: {
+                type: "object",
+                properties: {
+                  kind: { type: "string", enum: ["skill", "prompt", "routing", "policy", "subagent"], description: "What the proposal targets." },
+                  target_ref: { type: "string", description: "The target's slug or key (e.g. a specialist slug)." },
+                  title: { type: "string", description: "One line: what the evidence shows." },
+                  proposed_change: { type: "string", description: "The change being proposed — applied only after owner approval." },
+                  evidence: { type: "object", description: "Envelope-only evidence: counts, rates, ids, signatures. No message content." }
+                },
+                required: ["kind", "target_ref", "title", "proposed_change"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "improvement_list",
+              description: "Owner/coach only. List improvement proposals (default: open ones) — evidence-backed suggestions awaiting an owner decision.",
+              parameters: {
+                type: "object",
+                properties: {
+                  status: { type: "string", enum: ["proposed", "approved", "rejected", "superseded"] },
+                  limit: { type: "number" }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "improvement_decide",
+              description: "ADMIN ONLY. Approve or reject an improvement proposal with a rationale. Approving records the decision — the actual change is follow-up work named in the proposal; nothing auto-applies.",
+              parameters: {
+                type: "object",
+                properties: {
+                  proposal_id: { type: "string" },
+                  decision: { type: "string", enum: ["approved", "rejected"] },
+                  rationale: { type: "string", description: "Why — becomes the decision record." }
+                },
+                required: ["proposal_id", "decision", "rationale"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "action_list",
               description: "Admin/coach only. List actions on Paige's bus — a department's queue or one client's — filed, drafting, waiting on approval, or done. Use to see her team's open work before deciding what to do next.",
               parameters: {
@@ -9144,6 +9195,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "action_file" ||
           tc.function.name === "action_advance" ||
           tc.function.name === "inbox_list" ||
+          tc.function.name === "improvement_propose" ||
+          tc.function.name === "improvement_list" ||
+          tc.function.name === "improvement_decide" ||
           tc.function.name === "action_list" ||
           tc.function.name === "action_get" ||
           tc.function.name === "crm_list_team" ||
@@ -11060,6 +11114,58 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               result = { success: true, count: (data as any[])?.length ?? 0, messages: data ?? [] };
+            } else if (tc.function.name === "improvement_propose" || tc.function.name === "improvement_list" || tc.function.name === "improvement_decide") {
+              // Runway 4 — the evaluation loop's chat surface. Role-gated like delegation;
+              // deciding is admin-only (the doctrine's owner gate).
+              const { data: roleRows } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+              const roles = (roleRows || []).map((r: any) => r.role);
+              const isAdmin = roles.includes("admin");
+              const isCoach = roles.includes("coach");
+              if (!(isAdmin || isCoach)) {
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Improvement proposals are restricted to admins and coaches." }) });
+                continue;
+              }
+              if (tc.function.name === "improvement_decide" && !isAdmin) {
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Deciding improvement proposals is admin-only." }) });
+                continue;
+              }
+              const impTenantId = personaCtx?.tenant_id ?? null;
+              if (!impTenantId) throw new Error("improvement tools require a resolved tenant");
+              if (tc.function.name === "improvement_propose") {
+                const { data, error } = await supabaseClient.from("paige_improvement_proposals").insert({
+                  tenant_id: impTenantId,
+                  kind: args.kind,
+                  target_ref: args.target_ref,
+                  title: args.title,
+                  proposed_change: args.proposed_change,
+                  evidence: args.evidence ?? { source: "chat-observation" },
+                  proposed_by: "paige-ai-chat",
+                }).select("id").single();
+                if (error) throw error;
+                result = { success: true, proposal_id: data?.id };
+              } else if (tc.function.name === "improvement_list") {
+                const { data, error } = await supabaseClient.from("paige_improvement_proposals")
+                  .select("id, kind, target_ref, title, proposed_change, evidence, proposed_by, status, created_at, decided_at, decision_rationale")
+                  .eq("status", args.status ?? "proposed")
+                  .order("created_at", { ascending: false })
+                  .limit(Math.min(args.limit ?? 20, 50));
+                if (error) throw error;
+                result = { success: true, count: (data as any[])?.length ?? 0, proposals: data ?? [] };
+              } else {
+                const { data, error } = await supabaseClient.from("paige_improvement_proposals")
+                  .update({
+                    status: args.decision,
+                    decided_by: user.id,
+                    decision_rationale: args.rationale,
+                    decided_at: new Date().toISOString(),
+                  })
+                  .eq("id", args.proposal_id)
+                  .eq("status", "proposed")
+                  .select("id, status").single();
+                if (error) throw error;
+                if (!data) throw new Error("proposal not found or already decided");
+                result = { success: true, ...(data as any) };
+              }
             } else if (tc.function.name === "action_list" || tc.function.name === "action_get") {
               const { data, error } = await supabaseClient.rpc("list_actions", {
                 p_to_department: args.to_department ?? null,
