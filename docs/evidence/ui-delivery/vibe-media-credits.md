@@ -29,7 +29,7 @@ SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: owed to the credentialed session
 UNVERIFIED: authenticated live render of both surfaces; the controlled paid proof (owner-authorized ≤$1.25, runs after deploy); pgTAP concurrency claims beyond single-session (the FOR UPDATE tenant lock follows the house precedent; a two-connection proof script is a follow-up).
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
-INTERNAL_BUILD_IDENTITY: 373ffde27d463181eb5eed7393c202176cf3b8d2; deployment=none-PR-head-only; environment=development; migrations=PROOF_OWED(20270122000000_media_credit_ledger merge pending CI validation incl the new pgTAP suite); edge=PROOF_OWED(paige-media paige-media-sweeper redeploys with credit gate pending merge); evidence=docs/evidence/ui-delivery/vibe-media-credits.md and the PR checks
+INTERNAL_BUILD_IDENTITY: 373ffde27d463181eb5eed7393c202176cf3b8d2; deployment=none-PR-head-only; environment=development; migrations=PROOF_OWED(20270123000000_media_credit_ledger merge pending CI validation incl the new pgTAP suite); edge=PROOF_OWED(paige-media paige-media-sweeper redeploys with credit gate pending merge); evidence=docs/evidence/ui-delivery/vibe-media-credits.md and the PR checks
 RELEASE_CHANNEL: development: PR head only — merge and deploy follow Gate A once exact-head checks are green
 RELEASE_CLASSIFICATION: internal-only: metered usage visibility + ledger, no charge path exists — no Stripe products, no customer billing
 CUSTOMER_RELEASE_IDENTITY: none: no charge path and no approved release record; media credits are visible tracking only
