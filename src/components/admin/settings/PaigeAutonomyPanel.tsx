@@ -117,7 +117,7 @@ export function PaigeAutonomyPanel() {
       setLoading(false);
       return;
     }
-    setRows((data || []) as ToolRow[]);
+    setRows(((data || []) as ToolRow[]).filter((row) => row.tool_key !== "social_post"));
     setLoading(false);
   };
 

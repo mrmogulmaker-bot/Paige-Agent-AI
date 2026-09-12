@@ -41,4 +41,50 @@ describe("Social Operations Phase 0 containment", () => {
     expect(agency).not.toContain("p.eng");
     expect(agency).toContain("Provider-backed Social activity is unavailable");
   });
+
+  it("keeps Admin Social and Meta surfaces read-only and truthful", () => {
+    const admin = read("src/pages/admin/SocialAdmin.tsx");
+    const meta = read("src/pages/admin/MetaIntegrationConfig.tsx");
+    const hub = read("src/pages/admin/IntegrationsHub.tsx");
+
+    for (const surface of [admin, meta]) {
+      expect(surface).not.toContain("supabase");
+      expect(surface).not.toContain("fetch(");
+      expect(surface).toMatch(/unavailable/i);
+    }
+    expect(admin).not.toContain("Publish now");
+    expect(admin).not.toContain("Schedule");
+    expect(meta).not.toContain("META_PAGE_ACCESS_TOKEN");
+    expect(meta).not.toContain("meta_default_page_id");
+    expect(hub).not.toContain('from("paige_social_posts")');
+    expect(hub).not.toContain("meta_default_page_id");
+    expect(hub).toContain('case "meta": return { state: "off", label: "Unavailable" }');
+  });
+
+  it("fails every legacy Social provider endpoint closed without reading credentials or payloads", () => {
+    const shared = read("supabase/functions/_shared/socialUnavailable.ts");
+    expect(shared).toContain('error: "social_capability_unavailable"');
+    expect(shared).toContain("attempted: false");
+    expect(shared).toContain("status: 503");
+    expect(shared).not.toContain("Deno.env.get");
+    expect(shared).not.toContain("req.json");
+    expect(shared).not.toContain("fetch(");
+
+    for (const fn of [
+      "paige-social",
+      "meta-schedule-post",
+      "meta-get-insights",
+      "meta-list-comments",
+      "handle-meta-webhook",
+    ]) {
+      const source = read(`supabase/functions/${fn}/index.ts`);
+      expect(source).toBe('import { serveSocialUnavailable } from "../_shared/socialUnavailable.ts";\n\nserveSocialUnavailable();\n');
+    }
+  });
+
+  it("does not offer the unavailable Social tool as an autonomy control", () => {
+    expect(read("src/operator/data/useToolAutonomy.ts")).toContain('r.tool_key !== "social_post"');
+    expect(read("src/operator/data/usePlatformTrust.ts")).toContain('row.tool_key !== "social_post"');
+    expect(read("src/components/admin/settings/PaigeAutonomyPanel.tsx")).toContain('row.tool_key !== "social_post"');
+  });
 });

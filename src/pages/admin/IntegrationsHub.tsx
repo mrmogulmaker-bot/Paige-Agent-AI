@@ -35,7 +35,6 @@ type ConfigShape = {
   langsmith_project: string | null;
   posthog_project_url: string | null;
   sentry_org_slug: string | null;
-  meta_default_page_id: string | null;
   cal_default_event_type_id: string | null;
   apollo_auto_enrich: boolean | null;
   docusign_templates: Record<string, string> | null;
@@ -48,7 +47,6 @@ type Counts = {
   recentSubscriptionEvents: number;
   envelopes: number;
   bookings: number;
-  socialPosts: number;
   enrichments: number;
   emailConnected: boolean;
 };
@@ -68,7 +66,7 @@ const tiles = [
   { key: "docusign", icon: FileSignature, short: "DocuSign", title: "DocuSign", description: "VIP apps, coach agreements, DFY engagement letters, term sheets.", long: "Paige prepares and sends agreements for signature, then tracks each one until it's signed — no more chasing paperwork.", href: "/choose-account" },
   { key: "cal", icon: CalendarClock, short: "Cal.com", title: "Cal.com", description: "Booking surface for VIP intros, DFY discovery and workshops.", long: "Paige turns your booking calendar into a front door for intros, discovery calls, and workshops, and keeps every slot in sync.", href: "/choose-account" },
   { key: "meta_pixel", icon: Share2, short: "Meta Pixel", title: "Meta Pixel + Conversions API", description: "Track ad conversions on Paige + external landing/webinar pages.", long: "Paige measures which ads actually turn into clients across your pages, so you spend on what works and cut what doesn't.", href: "/choose-account" },
-  { key: "meta", icon: Share2, short: "Meta Graph", title: "Meta Graph (FB + IG, inbound)", description: "Inbound comments → CS Triage. Scheduling disabled by default.", long: "Paige watches incoming comments and messages from Facebook and Instagram and routes them straight into your follow-up queue.", href: "/choose-account" },
+  { key: "meta", icon: Share2, short: "Meta Graph", title: "Meta Graph (Facebook + Instagram)", description: "Provider connection and actions are not available yet.", long: "Meta remains unavailable until Paige can prove tenant-owned authorization, explicit account selection, provider readback, and governed action evidence.", href: "/choose-account" },
   { key: "apollo", icon: UserSearch, short: "Apollo", title: "Apollo Enrichment", description: "Auto-enrich new contacts; manual lookup; prospect search.", long: "Paige enriches new contacts with the details that help you sell — and can look someone up on demand when you need it.", href: "/choose-account" },
   { key: "posthog", icon: BarChart3, short: "PostHog", title: "PostHog Analytics", description: "Product usage truth for internal + B2B rollout.", long: "Paige reads real product usage so you know what people actually do, not what you hope they do.", href: "/choose-account" },
   { key: "sentry", icon: Bug, short: "Sentry", title: "Sentry Errors", description: "Frontend + Edge Function error tracking with deep links.", long: "Paige catches errors across the app and functions the moment they happen, with a direct link to the cause.", href: "/choose-account" },
@@ -107,7 +105,7 @@ export default function IntegrationsHub() {
   const [config, setConfig] = useState<ConfigShape | null>(null);
   const [counts, setCounts] = useState<Counts>({
     n8n: 0, mcp: 0, telegramConfigured: false, recentSubscriptionEvents: 0,
-    envelopes: 0, bookings: 0, socialPosts: 0, enrichments: 0, emailConnected: false,
+    envelopes: 0, bookings: 0, enrichments: 0, emailConnected: false,
   });
 
   // Dimensional-surface UI state (§47/§48): search + filter + density, the active
@@ -132,15 +130,14 @@ export default function IntegrationsHub() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sb = supabase as any;
       const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
-      const [cfg, n8n, mcp, tg, sub, env, bkg, soc, enr, email] = await Promise.all([
-        sb.from("paige_config").select("ghl_pit_ref, ghl_location_id, langsmith_project, posthog_project_url, sentry_org_slug, meta_default_page_id, cal_default_event_type_id, apollo_auto_enrich, docusign_templates").eq("id", 1).maybeSingle(),
+      const [cfg, n8n, mcp, tg, sub, env, bkg, enr, email] = await Promise.all([
+        sb.from("paige_config").select("ghl_pit_ref, ghl_location_id, langsmith_project, posthog_project_url, sentry_org_slug, cal_default_event_type_id, apollo_auto_enrich, docusign_templates").eq("id", 1).maybeSingle(),
         sb.rpc("get_tenant_n8n_connection"),
         sb.from("paige_mcp_connections").select("id", { count: "exact", head: true }).eq("enabled", true),
         sb.from("paige_telegram_config").select("default_admin_chat_id").eq("id", 1).maybeSingle(),
         sb.from("paige_subscription_events").select("id", { count: "exact", head: true }).gte("created_at", since),
         sb.from("paige_signature_envelopes").select("id", { count: "exact", head: true }),
         sb.from("paige_bookings").select("id", { count: "exact", head: true }).gte("scheduled_at", new Date(Date.now() - 30 * 86_400_000).toISOString()),
-        sb.from("paige_social_posts").select("id", { count: "exact", head: true }),
         sb.from("paige_enrichment_log").select("id", { count: "exact", head: true }).gte("created_at", since),
         sb.from("channel_connectors").select("id", { count: "exact", head: true }).eq("channel_type", "email").eq("active", true).eq("status", "active"),
       ]);
@@ -152,7 +149,6 @@ export default function IntegrationsHub() {
         recentSubscriptionEvents: sub.count ?? 0,
         envelopes: env.count ?? 0,
         bookings: bkg.count ?? 0,
-        socialPosts: soc.count ?? 0,
         enrichments: enr.count ?? 0,
         emailConnected: (email.count ?? 0) > 0,
       });
@@ -180,7 +176,7 @@ export default function IntegrationsHub() {
       case "langsmith": return config?.langsmith_project ? { state: "success", label: config.langsmith_project } : { state: "off", label: "Disabled" };
       case "docusign": return counts.envelopes > 0 ? { state: "success", label: `${counts.envelopes} envelope${counts.envelopes === 1 ? "" : "s"}` } : { state: "off", label: "Not configured" };
       case "cal": return counts.bookings > 0 ? { state: "success", label: `${counts.bookings} bookings (30d)` } : { state: "off", label: "Not configured" };
-      case "meta": return config?.meta_default_page_id ? { state: "success", label: "Connected" } : { state: "off", label: "Not configured" };
+      case "meta": return { state: "off", label: "Unavailable" };
       case "apollo": return config?.apollo_auto_enrich ? { state: "success", label: `Auto-enrich on • ${counts.enrichments} (7d)` } : { state: "off", label: "Auto-enrich off" };
       case "posthog": return hasPosthogKey ? { state: "success", label: "Connected" } : { state: "off", label: "Disabled" };
       case "sentry": return hasSentryDsn ? { state: "success", label: "Connected" } : { state: "off", label: "Disabled" };
@@ -210,7 +206,7 @@ export default function IntegrationsHub() {
       case "sentry": return config?.sentry_org_slug ? [{ label: "Organization", value: config.sentry_org_slug }] : [];
       case "docusign": return [{ label: "Envelopes", value: String(counts.envelopes) }];
       case "cal": return [{ label: "Bookings (last 30 days)", value: String(counts.bookings) }];
-      case "meta": return config?.meta_default_page_id ? [{ label: "Page", value: config.meta_default_page_id }] : [];
+      case "meta": return [];
       case "apollo": return [
         { label: "Auto-enrich", value: config?.apollo_auto_enrich ? "On" : "Off" },
         { label: "Enrichments (7d)", value: String(counts.enrichments) },
