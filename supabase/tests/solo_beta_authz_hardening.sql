@@ -91,7 +91,7 @@ SELECT set_config('request.jwt.claims', '', true);
 SET LOCAL ROLE service_role;
 
 SELECT lives_ok(
-  $$SELECT public.create_contact('Valid', 'Service', 'solo-authz-valid@tests.invalid', NULL, NULL, NULL, 'new_lead', 'proof', '{}', NULL, NULL, 'b1900000-0000-0000-0000-000000000002', 'b1900000-0000-0000-0000-00000000aaaa', 'b1900000-0000-0000-0000-000000000001', 'proof')$$,
+  $$SELECT public.create_contact('Valid', 'Service', 'solo-authz-valid@tests.invalid', NULL, NULL, NULL, 'new_lead', 'proof', '{}', NULL, NULL, 'b1900000-0000-0000-0000-000000000002', 'b1900000-0000-0000-0000-00000000aaaa', 'b1900000-0000-0000-0000-000000000001', 'api')$$,
   'service creation succeeds when creator and assigned coach are active members of the supplied tenant'
 );
 RESET ROLE;
@@ -102,17 +102,17 @@ SELECT is(
 );
 SET LOCAL ROLE service_role;
 SELECT throws_ok(
-  $$SELECT public.create_contact('Wrong', 'Creator', 'solo-authz-wrong-creator@tests.invalid', NULL, NULL, NULL, 'new_lead', 'proof', '{}', NULL, NULL, NULL, 'b1900000-0000-0000-0000-00000000aaaa', 'b1900000-0000-0000-0000-000000000003', 'proof')$$,
+  $$SELECT public.create_contact('Wrong', 'Creator', 'solo-authz-wrong-creator@tests.invalid', NULL, NULL, NULL, 'new_lead', 'proof', '{}', NULL, NULL, NULL, 'b1900000-0000-0000-0000-00000000aaaa', 'b1900000-0000-0000-0000-000000000003', 'api')$$,
   '42501', 'CONTACT_CREATOR_NOT_IN_TENANT',
   'service creation rejects a creator who is not active in the supplied tenant'
 );
 SELECT throws_ok(
-  $$SELECT public.create_contact('Wrong', 'Coach', 'solo-authz-wrong-coach@tests.invalid', NULL, NULL, NULL, 'new_lead', 'proof', '{}', NULL, NULL, 'b1900000-0000-0000-0000-000000000003', 'b1900000-0000-0000-0000-00000000aaaa', 'b1900000-0000-0000-0000-000000000001', 'proof')$$,
+  $$SELECT public.create_contact('Wrong', 'Coach', 'solo-authz-wrong-coach@tests.invalid', NULL, NULL, NULL, 'new_lead', 'proof', '{}', NULL, NULL, 'b1900000-0000-0000-0000-000000000003', 'b1900000-0000-0000-0000-00000000aaaa', 'b1900000-0000-0000-0000-000000000001', 'api')$$,
   '42501', 'CONTACT_COACH_NOT_IN_TENANT',
   'service creation rejects an assigned coach active only in another tenant'
 );
 SELECT throws_ok(
-  $$SELECT public.create_contact('Revoked', 'Coach', 'solo-authz-revoked-coach@tests.invalid', NULL, NULL, NULL, 'new_lead', 'proof', '{}', NULL, NULL, 'b1900000-0000-0000-0000-000000000004', 'b1900000-0000-0000-0000-00000000aaaa', 'b1900000-0000-0000-0000-000000000001', 'proof')$$,
+  $$SELECT public.create_contact('Revoked', 'Coach', 'solo-authz-revoked-coach@tests.invalid', NULL, NULL, NULL, 'new_lead', 'proof', '{}', NULL, NULL, 'b1900000-0000-0000-0000-000000000004', 'b1900000-0000-0000-0000-00000000aaaa', 'b1900000-0000-0000-0000-000000000001', 'api')$$,
   '42501', 'CONTACT_COACH_NOT_IN_TENANT',
   'service creation rejects a revoked assigned coach in the supplied tenant'
 );
@@ -122,7 +122,7 @@ SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims', '{"sub":"b1900000-0000-0000-0000-000000000001","role":"authenticated"}', true);
 
 SELECT lives_ok(
-  $$SELECT public.create_contact('Pinned', 'Caller', 'solo-authz-pinned@tests.invalid', NULL, NULL, NULL, 'new_lead', 'proof', '{}', NULL, NULL, NULL, 'b1900000-0000-0000-0000-00000000bbbb', 'b1900000-0000-0000-0000-000000000003', 'proof')$$,
+  $$SELECT public.create_contact('Pinned', 'Caller', 'solo-authz-pinned@tests.invalid', NULL, NULL, NULL, 'new_lead', 'proof', '{}', NULL, NULL, NULL, 'b1900000-0000-0000-0000-00000000bbbb', 'b1900000-0000-0000-0000-000000000003', 'api')$$,
   'authenticated Solo owner with only the base user role can create and remains pinned despite caller-supplied tenant/creator'
 );
 RESET ROLE;
