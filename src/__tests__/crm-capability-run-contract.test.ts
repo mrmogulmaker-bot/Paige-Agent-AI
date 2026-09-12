@@ -127,11 +127,12 @@ describe("CRM capability run WIRING in paige-ai-chat (source assertions)", () =>
   it("declares recordCrmRun via the service-role client, attributed to the acted-on tenant", () => {
     expect(src).toMatch(/const recordCrmRun = async/);
     const at = src.indexOf("const recordCrmRun = async");
-    const block = src.slice(at, at + 900);
+    const block = src.slice(at, at + 2400);
     expect(block).toContain("classifyCrmRun({");
     expect(block).toContain("await recordCapabilityRun(supabase, {");
     // Attributed to the RPC-resolved tenant the write LANDED in, not the persona echo (#1040/§9).
-    expect(block).toContain("tenantId: await resolveActorTenant()");
+    expect(block).toContain("const crmTenant = await resolveActorTenant()");
+    expect(block).toContain("tenantId: crmTenant");
     expect(block).toContain("actorId: user.id");
     // never the anon/JWT client, which would silently write nothing
     expect(block).not.toContain("recordCapabilityRun(supabaseClient");
@@ -161,5 +162,12 @@ describe("CRM capability run WIRING in paige-ai-chat (source assertions)", () =>
     expect(src).toContain("already_existed: true");
     // the live step trace tells the truth for a resolve, not "Adding a contact"
     expect(src).toContain('out?.already_existed === true ? "Found an existing contact" : "Adding a contact"');
+  });
+
+  it("records crm_create_contact under a STABLE run id so a retry cannot double-record", () => {
+    expect(src).toContain("stableRunId, type CapabilityOutcome");
+    // keyed on (capability, RPC-resolved tenant, natural-act anchor), passed as the run id
+    expect(src).toContain('stableRunId(["crm_create_contact", crmTenant ?? "", anchor])');
+    expect(src).toContain("...(crmRunId ? { runId: crmRunId } : {})");
   });
 });

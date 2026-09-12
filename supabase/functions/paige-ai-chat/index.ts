@@ -17,7 +17,7 @@ import { isSpendableQuoteCents } from "../_shared/purchase-quote.ts";
 // Wave 3 · Communications — the owner can find out what Paige did with the business
 // phone line. `capability-record` owns HOW a run is written; `comms-capability-outcome`
 // owns WHICH of the six outcomes these four acts landed in (§18: one home each).
-import { recordCapabilityRun, type CapabilityOutcome } from "../_shared/capability-record.ts";
+import { recordCapabilityRun, stableRunId, type CapabilityOutcome } from "../_shared/capability-record.ts";
 import { classifyCommsRun } from "../_shared/comms-capability-outcome.ts";
 // Phase 2 · S1 — Pipeline write acts (starting deal_move_stage) record an honest outcome
 // through the SAME ratified pattern (#947): capability-record owns HOW, this owns WHICH.
@@ -9442,13 +9442,27 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 ...input,
               });
               if (!outcome) return;
+              const crmTenant = await resolveActorTenant();
+              // §13/§32 idempotency: a retried create must not write a second receipt/Rail row.
+              // Key the run id on the act's natural identity (email when present, else the
+              // originating thread + tool-call) so a retry folds to ONE capability-run row via the
+              // (tenant, source_kind, source_id, source_revision, outcome) UNIQUE key.
+              let crmRunId: string | undefined;
+              if (tc.function.name === "crm_create_contact") {
+                let a: Record<string, unknown> = {};
+                try { a = JSON.parse(tc.function.arguments || "{}"); } catch { /* ignore malformed args */ }
+                const email = typeof a.email === "string" ? a.email.trim().toLowerCase() : "";
+                const anchor = email || `${payloadThreadId ?? ""}:${tc.id}`;
+                crmRunId = await stableRunId(["crm_create_contact", crmTenant ?? "", anchor]);
+              }
               await recordCapabilityRun(supabase, {
                 // Attribute to the tenant the write actually LANDED in — the RPC-resolved
                 // current_user_tenant_id(), not the persona echo (#1040 finding #3 / §9).
-                tenantId: await resolveActorTenant(),
+                tenantId: crmTenant,
                 actorId: user.id,
                 capabilityKey: tc.function.name,
                 outcome,
+                ...(crmRunId ? { runId: crmRunId } : {}),
               });
             } catch (e) {
               console.error("[paige] crm capability run not recorded:", (e as Error)?.message);
