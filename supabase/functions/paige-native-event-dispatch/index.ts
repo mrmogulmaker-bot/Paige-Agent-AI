@@ -10,13 +10,16 @@
 //   * paige_automations                         - the subscribers (§67 Process Records) by trigger_key
 //   * paige_event_dispatches                    - the fire-once ledger, UNIQUE(event_id, automation_id)
 //
-// -- SCOPE (honest, §13/§947) -----------------------------------------------------------------
-// This delivers the EVENT to its subscribers and records the delivery. It does NOT execute a
-// subscriber's acts and performs NO external send — Telegram/email stay off until their own
-// security design lands (owner directive). Each dispatch row therefore records delivered:true with
-// acts_executed:false, so Paige can truthfully say "the event fired and reached N subscribers"
-// without ever claiming a notification was sent that was not. Executing subscriber acts, and the
-// owner-facing Rail projection, are the next increments.
+// -- SCOPE (honest, §13) — Layer C slice 1 -----------------------------------------------------
+// This delivers the EVENT to its subscribers AND runs the governed act-execution engine
+// (_shared/paige-orchestration): per subscriber it evaluates conditions, resolves the effective
+// autonomy lane (grant ∧ most-restrictive act floor ∧ Trust-Compass ceiling ∧ §68 decay), and runs
+// the ONE governed pathway (decideGovernedExecution) per act, recording the EXACT per-act outcome
+// in paige_act_executions. It performs NO external send yet — an authorized act stops at
+// `accepted_for_execution`; the connector-neutral adapter DISPATCH (n8n first) + signed readback +
+// CRM update is slice 2. `acts_executed` is recorded true ONLY when an act truly executed (never in
+// slice 1), so Paige can say "the event fired, reached N subscribers, and here is each act's exact
+// governed outcome" — never a blanket "automation ran".
 //
 // -- SECURITY (§9/§13) ------------------------------------------------------------------------
 // NOT user-facing. Authorized ONLY by (a) the service-role bearer, or (b) a valid Vault cron token
@@ -33,6 +36,7 @@
 // top-level error.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { runEventActs, type AutomationRow, type ClaimedEvent, type EngineDb } from "../_shared/paige-orchestration/engine.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -103,7 +107,7 @@ Deno.serve(async (req) => {
     // -- 2. Load this event's approved, live subscribers for THIS tenant (§67 Process Records). --
     const { data: subs, error: subErr } = await admin
       .from("paige_automations")
-      .select("id, name, granted_lane")
+      .select("id, name, granted_lane, conditions, created_by, state")
       .eq("tenant_id", tenantId)
       .eq("trigger_key", eventKey)
       .eq("state", "live");
@@ -125,15 +129,37 @@ Deno.serve(async (req) => {
     const delivered: string[] = [];
     const failed: string[] = [];
 
-    // -- 4. Deliver to each subscriber, recording the TRUE outcome (done|error), fire-once. --
-    //    MVP: delivery = recording that the event reached the subscriber. No acts are executed and
-    //    nothing is sent externally (acts_executed:false) — honest by construction (§13/§947).
-    //    TODO (§39 F3 — MUST land before acts are wired): paige_automations.conditions is NOT
-    //    evaluated here yet. For the MVP that is harmless (nothing runs), but once act execution is
-    //    added, a subscriber whose conditions do not match this event MUST be skipped — otherwise a
-    //    process fires on events its conditions exclude. Gate on conditions before executing acts.
+    // -- 4. Run the governed act-execution engine (Layer C). For each subscriber it evaluates the
+    //    process's conditions (this CLOSES the former TODO F3 — a subscriber whose conditions exclude
+    //    the event no longer even reaches an act), resolves the effective autonomy lane (grant ∧
+    //    most-restrictive act floor ∧ Trust-Compass ceiling ∧ §68 decay), and runs the ONE governed
+    //    pathway per act — recording the EXACT per-act outcome (condition_not_matched / held_by_lane /
+    //    approval_pending / refused_* / accepted_for_execution / failed) in paige_act_executions,
+    //    fire-once. SLICE 1 stops at accepted_for_execution; the external adapter dispatch + signed
+    //    readback + CRM update is slice 2. A high external-effect act on an `auto` process correctly
+    //    HOLDS for approval — the lane alone never authorizes a high act (§67 / RE-2 grant lift). --
+    const engine = await runEventActs(
+      admin as unknown as EngineDb,
+      {
+        event_id: eventId, tenant_id: tenantId, event_key: eventKey,
+        subject_table: claim.subject_table, subject_id: claim.subject_id, payload: claim.payload ?? {},
+      } as ClaimedEvent,
+      (subscribers as any[]).map((s): AutomationRow => ({
+        id: s.id, name: s.name, granted_lane: s.granted_lane,
+        conditions: s.conditions, created_by: s.created_by ?? null, state: s.state,
+      })),
+    );
+
+    // -- 5. Record DELIVERY per subscriber (paige_event_dispatches), now carrying the EXACT per-act
+    //    outcomes from the engine. `acts_executed` is TRUE only if an act actually reached the
+    //    `executed` outcome (never in slice 1) — never a blanket claim (§13 / owner directive). --
     for (const sub of subscribers) {
       if (alreadyDone.has(sub.id)) { delivered.push(sub.id); continue; }
+      const actRecs = engine.records.filter((r) => r.automation_id === sub.id);
+      const acts = actRecs.map((r) => ({
+        act_id: r.act_id, position: r.act_position, adapter: r.adapter_kind, outcome: r.outcome,
+      }));
+      const anyExecuted = actRecs.some((r) => r.outcome === "executed");
       const { error: upErr } = await admin
         .from("paige_event_dispatches")
         .upsert(
@@ -142,7 +168,7 @@ Deno.serve(async (req) => {
             automation_id: sub.id,
             tenant_id: tenantId,
             status: "done",
-            result: { delivered: true, acts_executed: false, note: "event delivered to subscriber; act execution not yet wired" },
+            result: { delivered: true, acts_governed: actRecs.length, acts_executed: anyExecuted, acts },
             error: null,
           },
           { onConflict: "event_id,automation_id" },
@@ -171,6 +197,7 @@ Deno.serve(async (req) => {
       subscriber_count: subscribers.length,
       delivered,
       failed,
+      act_outcomes: engine.by_outcome,
       terminal,
     }, 200);
   } catch (e) {

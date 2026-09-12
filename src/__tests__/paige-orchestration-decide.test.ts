@@ -98,7 +98,7 @@ describe("outcome vocabulary parity — TS type ↔ SQL domain paige_act_outcome
       "accepted_for_execution", "retrying", "executed", "failed", "ambiguous", "cancelled",
     ];
     const migration = readFileSync(
-      resolve(process.cwd(), "supabase/migrations/20270122000000_paige_act_execution_ledger.sql"),
+      resolve(process.cwd(), "supabase/migrations/20270123000000_paige_act_execution_ledger.sql"),
       "utf8",
     );
     // the domain block lists each value as a quoted literal; every producible outcome must appear there
