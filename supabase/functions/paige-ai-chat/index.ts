@@ -196,7 +196,7 @@ function describeStep(
     // CRM (client)
     case "crm_search_contacts": return { label: "Looking through your contacts", group: "client", detail: typeof out?.count === "number" ? `${out.count} found` : undefined };
     case "crm_get_contact_summary": return { label: "Pulling up the contact", group: "client" };
-    case "crm_create_contact": return { label: "Adding a contact", group: "client" };
+    case "crm_create_contact": return { label: out?.already_existed === true ? "Found an existing contact" : "Adding a contact", group: "client" };
     case "crm_update_contact": return { label: "Updating the contact", group: "client" };
     case "crm_delete_contact": return { label: "Removing that contact", group: "client" };
     case "crm_log_activity": return { label: "Jotting down a note", group: "client" };
@@ -9359,22 +9359,26 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // workspace's owner an act that happened in another. So resolve the caller's own tenant
           // the same way the seam did, and attribute the row to that. Resolved lazily, ONLY on a
           // real comms act — the outcome is classified first, and a non-comms tool (or a comms
-          // read) returns before the round-trip. `commsActorTenant` is declared per tool-call
+          // read) returns before the round-trip. `actorTenant` is declared per tool-call
           // iteration and `recordCommsRun` runs at most once per iteration (result XOR catch), so
           // the `undefined`-sentinel guard is a correctness belt (never resolve twice, never treat
           // a real `null` as unresolved), not a cross-call cache — there is no second call in an
           // iteration for it to save.
-          let commsActorTenant: string | null | undefined;
-          const resolveCommsActorTenant = async (): Promise<string | null> => {
-            if (commsActorTenant !== undefined) return commsActorTenant;
+          // The RPC-resolved actor tenant (current_user_tenant_id), shared by the comms AND crm
+          // recorders (§18 one home): a capability receipt must be attributed to the tenant the
+          // write actually LANDED in — the JWT-derived current_user_tenant_id() the RPCs write
+          // under — never a persona echo that can diverge for an operator acting on another tenant.
+          let actorTenant: string | null | undefined;
+          const resolveActorTenant = async (): Promise<string | null> => {
+            if (actorTenant !== undefined) return actorTenant;
             const { data, error } = await supabaseClient.rpc("current_user_tenant_id");
             if (error) {
-              console.error("[paige] comms capability tenant resolve failed:", error.message);
-              commsActorTenant = null;
+              console.error("[paige] capability tenant resolve failed:", error.message);
+              actorTenant = null;
             } else {
-              commsActorTenant = (data as string | null) ?? null;
+              actorTenant = (data as string | null) ?? null;
             }
-            return commsActorTenant;
+            return actorTenant;
           };
           const recordCommsRun = async (
             input: { result?: unknown; thrown?: unknown; threw?: boolean },
@@ -9386,7 +9390,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (!outcome) return;
               await recordCapabilityRun(supabase, {
-                tenantId: await resolveCommsActorTenant(),
+                tenantId: await resolveActorTenant(),
                 actorId: user.id,
                 capabilityKey: tc.function.name,
                 outcome,
@@ -9439,7 +9443,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (!outcome) return;
               await recordCapabilityRun(supabase, {
-                tenantId: personaCtx?.tenant_id ?? null,
+                // Attribute to the tenant the write actually LANDED in — the RPC-resolved
+                // current_user_tenant_id(), not the persona echo (#1040 finding #3 / §9).
+                tenantId: await resolveActorTenant(),
                 actorId: user.id,
                 capabilityKey: tc.function.name,
                 outcome,
@@ -9983,10 +9989,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   message: "One or more existing contacts closely match this person. Ask the operator whether this is the same person before creating a new one. To update the existing contact, call crm_update_contact with the matching contact_id. To create a genuinely new, separate contact anyway, call crm_create_contact again with confirm_new: true.",
                 };
               } else {
-                // No match, or the operator confirmed a new contact → existing create.
-                // Caller-authed client so auth.uid() resolves inside the RPC (sets
-                // created_by, role gate, tenant). tenant_id passed explicitly too.
-                const { data: newId, error } = await supabaseClient.rpc("create_contact", {
+                // No match, or the operator confirmed a new contact. create_contact_v2 returns the
+                // inserted-vs-existing signal (was_created) + the public-safe client_ref resolved
+                // INSIDE its transaction under the same current_user_tenant_id() the row is written
+                // to — so the separate account_number lookup (which scoped to personaCtx and could
+                // null the ref for an operator acting on another tenant) is gone. Caller-authed
+                // client so auth.uid() resolves inside the RPC (created_by, role gate, tenant).
+                crmWriteAttempted = true; // dispatching the external write — pre/post-throw split (§13)
+                const { data: createdRows, error } = await supabaseClient.rpc("create_contact_v2", {
                   p_first_name: args.first_name ?? null,
                   p_last_name: args.last_name ?? null,
                   p_email: args.email ?? null,
@@ -10004,9 +10014,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   p_created_by: user.id, // auth.uid() is null in this call path; pass the verified operator
                 });
                 if (error) throw error;
-                const { data: createdIdentity } = await admin.from("clients").select("account_number")
-                  .eq("id", newId).eq("tenant_id", dedupTenantId).maybeSingle();
-                result = { success: true, client_ref: createdIdentity?.account_number ?? null };
+                // TABLE-returning RPC → supabase-js yields an array of rows.
+                const createdRow: any = Array.isArray(createdRows) ? createdRows[0] : createdRows;
+                // §947: classify by what the RPC POSITIVELY reports. Only a genuine insert is a
+                // "created"; an exact-email match resolves to an EXISTING contact (was_created:false)
+                // and must NOT be reported — or Railed — as a creation.
+                result = createdRow?.was_created === true
+                  ? { success: true, created: true, client_ref: createdRow?.client_ref ?? null }
+                  : { success: true, created: false, already_existed: true, client_ref: createdRow?.client_ref ?? null };
               }
             } else if (tc.function.name === "crm_update_contact") {
               const contactId = await resolveClientReference(admin, crmTenantId, args.client_ref);
@@ -12288,6 +12303,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           let args: any = {}; try { args = JSON.parse(tc?.function?.arguments ?? "{}"); } catch { /* ignore */ }
           let out: any = {}; try { out = JSON.parse(res?.content ?? "{}"); } catch { /* ignore */ }
           if (out?.success !== true) return; // never mirror a non-success
+          // §947: crm_create_contact returns success:true for a resolved-EXISTING contact too.
+          // Only a GENUINE insert (was_created) is a creation to mirror — "already existed" is not
+          // a mutation and must never render as "Adding a contact" on the client's own timeline.
+          if (name === "crm_create_contact" && out?.created !== true) return;
           const contactId = await resolveRailContactId(args, out);
           if (!contactId) return; // rail is per-client — skip general/non-client actions
           void supabaseClient.rpc("record_rail_event", {

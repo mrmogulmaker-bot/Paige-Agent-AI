@@ -35,18 +35,25 @@ import type { CapabilityOutcome } from "./capability-record.ts";
  *     deliberate difference from `pipeline-capability-outcome.ts`, whose `deal_move_stage`
  *     genuinely returns `success:false` from pre-write guard branches.
  *
- * FAMILY GROWTH: a new member with a real `success:false` refusal branch (e.g. `deal_create`) must
- * branch per-capability first (as `comms-capability-outcome.ts` does) rather than reuse this
- * no-refusal mapping — the three receipts share this shape, which is why they ship together.
+ * FAMILY GROWTH (now realized by `crm_create_contact`): a member with a real `success:false`
+ * branch, or one where `success:true` does NOT by itself prove the act, MUST branch per-capability
+ * first (as `comms-capability-outcome.ts` does) rather than reuse the three receipts' no-refusal
+ * `success:true → succeeded` mapping. `crm_create_contact` is both: it returns `success:false`
+ * with `needs_dedup_confirmation` (a "same person?" proposal, not a refusal decision) AND returns
+ * `success:true` for a resolved-EXISTING contact (`was_created:false`) that did NOT create anything.
+ * So only a GENUINE insert (`created:true`) is `capability_succeeded`; a resolved-existing row and a
+ * dedup proposal each record NOTHING (a false "created" or "failed" would both lie, #947).
  *
  * OTHER PRODUCERS, out of scope (§37): the generic `paige_audit_log` trail (`auditWriteForTool`)
  * still records these acts too — this adds the capability-Rail row alongside it, it does not replace
- * the audit trail. `paige-mcp` does not expose these three, so there is no second producer to cover.
+ * the audit trail. The inbound MCP door creates contacts via a DIRECT insert (never this RPC/tool),
+ * so it is a separate producer handled in its own slice, not here.
  */
 export const CRM_WRITE_CAPABILITIES: ReadonlySet<string> = new Set([
   "crm_log_activity",
   "calendar_book_meeting",
   "crm_create_task",
+  "crm_create_contact",
 ]);
 
 /**
@@ -76,6 +83,15 @@ export function classifyCrmRun(input: {
     ? input.result as Record<string, unknown>
     : null;
   if (!r) return "capability_outcome_unknown";
+
+  // crm_create_contact is the family-growth member (see header): classify by what we POSITIVELY
+  // know (#947). A dedup "same person?" proposal and a resolved-EXISTING contact each record
+  // NOTHING — only a genuine insert is a succeeded create.
+  if (input.capability === "crm_create_contact") {
+    if (r.needs_dedup_confirmation === true) return null; // a proposal awaiting a person
+    if (r.success === true) return r.created === true ? "capability_succeeded" : null; // resolve ≠ create
+    return "capability_outcome_unknown"; // an unexpected success:false shape
+  }
 
   if (r.success === true) return "capability_succeeded";
 

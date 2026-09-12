@@ -214,7 +214,7 @@ Owner asks to create a contact
  → server re-resolves actor + tenant/workspace (auth.uid()/current_user_tenant_id(); never body)
  → dedup guard runs → if a likely match: "same person?" clarification that RECORDS NOTHING (classifier → null, never "refused")
  → on confirm-new: governed create_contact runs
- → fresh readback distinguishes INSERTED vs RETURNED-EXISTING (RPC return-contract change → §37 sweep of all 7 consumers)
+ → fresh readback distinguishes INSERTED vs RETURNED-EXISTING (RPC return-contract change → §37 sweep of all 6 RPC-return consumers; the inbound MCP door does a DIRECT insert, not an RPC call, so it is unaffected)
  → outcome classified truthfully: created / already-existed / needs-clarification / failed
  → record_capability_run receipt (RPC-resolved tenant attribution, never personaCtx) with a STABLE idempotency key (fix the dup-row bug)
  → per-client Rail event emitted ONLY on a genuine insert, labelled truthfully (the §947 fix)
