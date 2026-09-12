@@ -109,7 +109,8 @@ describe("Solo Beta security boundary", () => {
   it("authorizes a freshly provisioned Solo owner from tenant scope without a fake global admin role", () => {
     expect(provisioner).toContain("values (_owner, 'user')");
     expect(provisioner).toContain("values (_tenant.id, _owner, 'owner', 'active', true, now())");
-    expect(authz).toContain("tm.role IN ('owner','admin','super_admin','coach')");
+    expect(authz).toContain("tm.role IN ('owner','admin','coach')");
+    expect(authz).not.toContain("super_admin");
     expect(authz).not.toContain("has_any_role(_creator");
     expect(authz).toContain("FUNCTION public.create_contact_v2");
     expect(authz).toContain("was_created := false");

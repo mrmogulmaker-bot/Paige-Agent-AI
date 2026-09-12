@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(20);
+SELECT plan(21);
 
 SELECT is((SELECT unit_amount_cents FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1'),7450,'offer amount is exactly 7450 cents');
 SELECT is((SELECT currency FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1'),'usd','offer currency is usd');
@@ -11,6 +11,7 @@ SELECT is((SELECT account_type FROM public.platform_subscription_offers WHERE of
 SELECT is((SELECT stripe_account FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1'),'v2','offer is pinned to the approved Stripe account contract');
 SELECT is((SELECT p.slug FROM public.platform_subscription_offers o JOIN public.platform_subscription_plans p ON p.id=o.plan_id WHERE o.offer_code='paige-solo-beta-monthly-v1'),'solo','offer is bound only to the canonical Solo plan');
 SELECT is((SELECT status FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1'),'configuration_required','offer fails closed until test provider identifiers are configured');
+SELECT is((SELECT count(*)::integer FROM public.platform_subscription_offers WHERE status<>'retired'),1,'Solo Beta is the only non-retired public enrollment offer');
 SELECT ok(NOT has_table_privilege('authenticated','public.platform_subscription_offers','SELECT'),'browser cannot read provider offer identifiers');
 SELECT ok(NOT has_table_privilege('authenticated','public.solo_beta_enrollments','SELECT'),'browser cannot read enrollment authority rows');
 SELECT ok(NOT has_table_privilege('authenticated','public.solo_beta_fulfillment_receipts','SELECT'),'browser cannot read fulfillment receipts directly');
