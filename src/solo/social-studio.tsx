@@ -14,7 +14,7 @@
 //   ⑤ ZION Insights — bottom slide-up cards with natural-language reads
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
 import {
   BarChart3, Calendar, Check, ChevronRight, Copy, Eye, GripVertical,
   Image as ImageIcon, Plus, Sparkles, Trash2, Video, X, Zap
@@ -464,8 +464,8 @@ export function SocialStudio() {
     setError(null);
     try {
       // Load from paige_social_posts (RLS-gated to tenant)
-      const { data, error: err } = await (window as any).__supabase
-        ?.from("paige_social_posts")
+      const { data, error: err } = await supabase
+        .from("paige_social_posts")
         .select("*")
         .order("created_at", { ascending: false })
         .limit(50);
@@ -513,44 +513,8 @@ export function SocialStudio() {
     <div style={{ position: "relative", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <AmbientCanvas dominantColor={dominantColor} />
 
-      {/* Header */}
-      <div style={{ position: "relative", zIndex: 1, padding: "16px 20px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-.03em" }}>Social Studio</h2>
-          <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>NEXUS operates · you approve · ZION interprets</p>
-        </div>
-        <button
-          onClick={() => setShowComposer(true)}
-          style={{
-            display: "flex", alignItems: "center", gap: 6, padding: "8px 16px",
-            borderRadius: 99, border: 0, cursor: "pointer",
-            background: "linear-gradient(135deg, #FFB800, #FF9500)",
-            color: "#1a1000", fontSize: 12.5, fontWeight: 750,
-            boxShadow: "0 4px 16px rgba(255,184,0,0.3)",
-            transition: `transform .2s ${SPRING}, box-shadow .2s`,
-          }}
-          onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.05)"; }}
-          onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; }}
-        >
-          <Plus size={14} /> New Post
-        </button>
-      </div>
-
-      {/* Presence strip */}
-      <div style={{ position: "relative", zIndex: 1, padding: "0 20px", marginBottom: 12 }}>
-        <div style={{ display: "flex", gap: 12, padding: "8px 14px", borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", overflowX: "auto" }}>
-          {Object.entries(PLATFORM_META).slice(0, 6).map(([id, meta]) => (
-            <div key={id} style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}>
-              <PlatformChip platform={id} size="sm" />
-              <span style={{ fontSize: 11, fontWeight: 650, color: "rgba(255,255,255,0.7)" }}>—</span>
-            </div>
-          ))}
-          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", alignSelf: "center", cursor: "pointer" }}>view all →</span>
-        </div>
-      </div>
-
-      {/* Pipeline filter bar */}
-      <div style={{ position: "relative", zIndex: 1, padding: "0 20px", marginBottom: 14, display: "flex", gap: 6 }}>
+      {/* Compact toolbar: filters + platforms + new post — ONE row */}
+      <div style={{ position: "relative", zIndex: 10, padding: "8px 16px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         {([
           ["all", "All", posts.length],
           ["draft", "Drafts", counts.draft],
@@ -560,19 +524,32 @@ export function SocialStudio() {
         ] as const).map(([id, label, count]) => (
           <button key={id} onClick={() => setFilter(id)}
             style={{
-              display: "flex", alignItems: "center", gap: 5, padding: "5px 12px",
+              display: "flex", alignItems: "center", gap: 4, padding: "4px 10px",
               borderRadius: 99, border: `1px solid ${filter === id ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.06)"}`,
               background: filter === id ? "rgba(255,255,255,0.08)" : "transparent",
-              cursor: "pointer", transition: "all .15s",
+              cursor: "pointer", transition: "all .15s", flex: "none",
             }}>
-            <span style={{ fontSize: 11.5, fontWeight: 650, color: filter === id ? "#fff" : "rgba(255,255,255,0.5)" }}>{label}</span>
-            {count > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.08)", padding: "1px 6px", borderRadius: 99 }}>{count}</span>}
+            <span style={{ fontSize: 11, fontWeight: 650, color: filter === id ? "#fff" : "rgba(255,255,255,0.5)" }}>{label}</span>
+            {count > 0 && <span style={{ fontSize: 9.5, fontWeight: 700, color: "rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.08)", padding: "0 5px", borderRadius: 99 }}>{count}</span>}
           </button>
         ))}
+        <div style={{ flex: 1 }} />
+        <button
+          onClick={() => setShowComposer(true)}
+          style={{
+            display: "flex", alignItems: "center", gap: 5, padding: "5px 14px",
+            borderRadius: 99, border: 0, cursor: "pointer", flex: "none",
+            background: "linear-gradient(135deg, #FFB800, #FF9500)",
+            color: "#1a1000", fontSize: 11.5, fontWeight: 750,
+            boxShadow: "0 2px 10px rgba(255,184,0,0.25)",
+          }}
+        >
+          <Plus size={12} /> Post
+        </button>
       </div>
 
       {/* Content canvas */}
-      <div style={{ position: "relative", zIndex: 1, flex: 1, overflow: "auto", padding: "0 20px 20px" }}>
+      <div style={{ position: "relative", zIndex: 10, flex: 1, overflow: "auto", padding: "0 20px 20px", WebkitOverflowScrolling: "touch" }}>
         {loading ? (
           <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
             <div style={{ fontSize: 28, color: "rgba(255,255,255,0.15)" }}>
