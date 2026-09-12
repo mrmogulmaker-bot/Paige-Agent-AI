@@ -121,9 +121,12 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // so it is client-visible and public the moment it runs, and a delete on the platform does not
   // unsee what was already on followers' feeds — the same "goes public, cannot be walked back" limb
   // as the two publishes above. `social_analytics` / `social_accounts` are reads and are not
-  // classified here. Before this entry the tool was a declared write with NO classification, so it
-  // never entered the risk gate at all — an ungoverned public post (§58 silent-ungating, the exact
-  // shape this file exists to catch).
+  // classified here. Before this entry the tool was a declared write with NO classification; because
+  // its name carries `post` (already a MUTATION_VERB), the runtime backstop and CI REFUSED it as an
+  // unclassified write — inert and fail-closed, never an ungoverned post, but also unable to run at
+  // all. Classifying it `high` makes it a governable post behind the rendered approval card instead
+  // of an inert one. (Contrast `improvement_decide` below, whose verb was NOT in the list, so it
+  // genuinely slipped through as a read — that is the live bypass this repair closes.)
   ["social_post", "high", "publishes to the workspace's public social accounts; it is client-visible and cannot be cleanly unpublished"],
   ["program_enroll", "high", "enrols a real person into a programme"],
   // The evaluation loop's DECIDE leg (Runway 4 / #1123), the sign-off half of the `improvement_propose`
