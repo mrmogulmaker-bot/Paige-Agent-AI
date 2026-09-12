@@ -671,7 +671,6 @@ scheduling/analytics. **Known limitation (gap, §5):** the operator-vs-tenant `p
 conflict leaves two Solo Social surfaces wired but non-functional on prod — tracked in **#1161**, to be
 replaced by the complete Social Foundation migration. Merging also unblocks the backed-up prod migration queue
 (20270117→latest; all additive) — persisted-apply self-verified by the `deploy-migrations` pipeline.
-
 **2026-09-10 durable-job first-adopter deployment + live verification:** migration `20270106000000`
 was applied to production with history parity (top of `supabase_migrations.schema_migrations`) and
 `weekly-summary-cron` was deployed at version 801 post-#1084-merge (crew pipeline). Live verification

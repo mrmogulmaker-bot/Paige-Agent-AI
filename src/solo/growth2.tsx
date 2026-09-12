@@ -14,15 +14,11 @@ import { PipelineCommandDesk } from "./PipelineCommandDesk";
 import CampaignOverview from "./campaign-desk";
 import "./solo-campaigns.css";
 
-// Vibe Studio still imports this project-only fixture. Campaigns never renders it;
-// preserving the export avoids changing the separately owned Vibe implementation.
-export const GR={projects:[
- {n:'Meridian Advisory website',type:'Site · 6 pages',edited:'2h ago',state:'Published'},
- {n:'Masterclass landing page',type:'Page + form',edited:'Yesterday',state:'Published'},
- {n:'Discovery-call intake',type:'Form',edited:'3d ago',state:'Published'},
- {n:'Client-scoring dashboard',type:'Internal tool',edited:'5d ago',state:'Draft'},
- {n:'New-client welcome sequence',type:'Email · 5 steps',edited:'1w ago',state:'Published'}
-]};
+// RETIRED 2026-09-12: the GR projects fixture served only the pre-rebuild Vibe
+// Studio overlay. The canonical surface (src/solo/vibe.tsx) now renders real
+// governed media jobs, so the fixture data is deleted; the export stays as an
+// empty typed shell for any external import until a later cleanup removes it.
+export const GR={projects:[] as Array<{n:string;type:string;edited:string;state:string}>};
 
 const TRUTH = {
   overview: ["UNAVAILABLE", "A tenant-authorized all-state campaign rollup is not yet available."],
