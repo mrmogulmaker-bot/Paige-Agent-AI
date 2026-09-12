@@ -31,6 +31,14 @@ BEGIN
     (tenant_id, actor_id, mode, provider, model, params, state, approval_state, idempotency_key, estimated_cost_usd)
   VALUES (_t, _u, 'image', 'fal', 'fal-ai/nano-banana', '{"prompt":"proof"}'::jsonb,
           'created', 'not_required', 'pgtap-proof-job-1', 0.039);
+  -- Seed the current-month grant with the EXACT lazy-mint idempotency key, so
+  -- (a) the append-only row triggers have a row to fire on, and (b) the later
+  -- exactly-once assertion still counts one grant.
+  INSERT INTO public.paige_media_credit_entries
+    (tenant_id, entry_type, credits, idempotency_key, month_bucket, included_credits, source)
+  VALUES (_t, 'grant_included', 300,
+          'grant:t:' || _t || ':' || to_char(now() at time zone 'utc', 'YYYY-MM'),
+          to_char(now() at time zone 'utc', 'YYYY-MM'), 300, 'system');
 END $$;
 
 -- ── §59: the ledger writers are service-role-only ─────────────────────────────
