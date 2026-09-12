@@ -30,17 +30,23 @@ export interface SocialToolUnavailableResult {
   success: true;
   available: false;
   status: "unavailable";
-  /** The capability-truth manifest key this tool maps to (see signals.ts). */
+  /** The capability this tool maps to. `social.publish` and `social.presence` are real
+   *  capability-truth keys in `paige-capability-status/signals.ts`; `social.analytics` is a
+   *  descriptive label (there is no dedicated analytics manifest row — analytics availability
+   *  derives from `social.presence`/connected-account data). Relayed to the model only. */
   capability: string;
   /** The factual note the model relays. Never implies a post/send happened. */
   note: string;
 }
 
-// Each tool → its capability-truth manifest key (aligned with
-// `paige-capability-status/signals.ts`):
-//   social_post      → social.publish   (the external_effect that is owner-ruled unavailable)
-//   social_analytics → social.analytics (no connected provider ⇒ no data to report)
-//   social_accounts  → social.presence  (the read of recorded/connected accounts)
+// Each tool → the capability it maps to. `social.publish` and `social.presence` are REAL
+// capability-truth keys in `paige-capability-status/signals.ts`; `social.analytics` is a
+// DESCRIPTIVE label only — there is no registered analytics manifest row (analytics availability
+// derives from `social.presence`/connected-account data), so the comment does not claim a
+// signals.ts alignment it does not have (§13 — the capability field is relayed to the model only):
+//   social_post      → social.publish   (real key; the external_effect that is owner-ruled unavailable)
+//   social_analytics → social.analytics (descriptive; no dedicated manifest row)
+//   social_accounts  → social.presence  (real key; the read of recorded/connected accounts)
 const SOCIAL_TOOL_CONTAINMENT: Record<SocialTool, { capability: string; note: string }> = {
   social_post: {
     capability: "social.publish",

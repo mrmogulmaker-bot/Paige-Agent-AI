@@ -127,7 +127,7 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // all. Classifying it `high` makes it a governable post behind the rendered approval card instead
   // of an inert one. (Contrast `improvement_decide` below, whose verb was NOT in the list, so it
   // genuinely slipped through as a read — that is the live bypass this repair closes.)
-  ["social_post", "high", "publishes to the workspace's public social accounts; it is client-visible and cannot be cleanly unpublished"],
+  ["social_post", "high", "publishes to the workspace's public social accounts; it is client-visible and cannot be cleanly unpublished (the chat executor is CONTAINED as of #1170 and returns 'unavailable'; this high classification stays forward-correct for when #1161 wires the tenant-safe publish path)"],
   ["program_enroll", "high", "enrols a real person into a programme"],
   // The evaluation loop's DECIDE leg (Runway 4 / #1123), the sign-off half of the `improvement_propose`
   // pair above. It records the owner's approve/reject on a `paige_improvement_proposals` row and

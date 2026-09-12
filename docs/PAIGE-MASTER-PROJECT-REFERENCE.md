@@ -685,12 +685,14 @@ scheduling/analytics. **Known limitation (gap, §5):** the operator-vs-tenant `p
 conflict leaves two Solo Social surfaces wired but non-functional on prod — tracked in **#1161**, to be
 replaced by the complete Social Foundation migration. Merging also unblocks the backed-up prod migration queue
 (20270117→latest; all additive) — persisted-apply self-verified by the `deploy-migrations` pipeline.
-**2026-09-12 Social server-side containment (Task 1):** the chat `social_post`/`social_analytics`/`social_accounts`
-tool executors no longer proxy the platform-wide Upload-Post credential (`paige-social`); they return a truthful
-governed `unavailable` (`_shared/social-publish-containment.ts`), so no tenant can publish through the shared
-platform credential (§9/§38) and the tool now AGREES with #1166's capability-truth manifest (`social.publish` →
-"planned"). Current truth: **tenant Social publishing/scheduling/analytics is non-executable** (operator-only at
-the data layer — live `paige_social_posts` RLS `is_platform_owner()`; contained at the chat seam). Not the tenant
+**2026-09-12 Social server-side containment (Task 1) — PROPOSED in PR #1170 (draft); NOT YET MERGED OR DEPLOYED:**
+the change makes the chat `social_post`/`social_analytics`/`social_accounts` tool executors return a truthful
+governed `unavailable` (`_shared/social-publish-containment.ts`) instead of proxying the platform-wide Upload-Post
+credential (`paige-social`), so no tenant can publish through the shared platform credential (§9/§38) and the tool
+agrees with #1166's capability-truth manifest (`social.publish` → "planned"). **This entry flips to delivered in
+the post-merge closeout once PR #1170 merges AND the `paige-ai-chat` edge deploy is confirmed (§13/§32.a) — do not
+read it as shipped until then.** Already true regardless of this PR (unchanged): the data-layer operator-only
+posture — live `paige_social_posts` RLS `is_platform_owner()`, so a tenant read returns 0 rows. Not the tenant
 pipeline — that stays deferred to #1161.
 **2026-09-10 durable-job first-adopter deployment + live verification:** migration `20270106000000`
 was applied to production with history parity (top of `supabase_migrations.schema_migrations`) and

@@ -6020,7 +6020,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "social_post",
-              description: "Post content to connected social media accounts (TikTok, Instagram, YouTube, LinkedIn, Facebook, X, Threads, Pinterest, and more). This is NEXUS's domain — content creation and growth. ALWAYS confirm with the owner before posting. You can also schedule posts for later. Include the content, target platforms, and optionally a scheduled date.",
+              description: "CURRENTLY UNAVAILABLE for tenants — the tenant-safe social publishing path is not built yet (#1161). Calling this returns a governed 'unavailable' result; NOTHING is posted or scheduled, and you must NOT tell the user you can post or schedule to their accounts. You CAN still draft the post copy with draft_marketing_content. (Kept registered so it lights up when the governed per-tenant publish path lands.)",
               parameters: {
                 type: "object",
                 properties: {
@@ -6042,7 +6042,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "social_analytics",
-              description: "Read cross-platform social media analytics — followers, views, impressions, reach, per-post metrics, and audience insights. NEXUS and ZION use this for growth strategy.",
+              description: "CURRENTLY UNAVAILABLE for tenants — there is no connected per-tenant social provider, so no analytics exist (#1161). Calling this returns a governed 'unavailable' result; do NOT report any follower, view, impression, reach, or per-post figure — none is available.",
               parameters: {
                 type: "object",
                 properties: {
@@ -6058,7 +6058,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "social_accounts",
-              description: "List connected social media accounts across all platforms. Shows which platforms are connected, account handles, and connection status.",
+              description: "CURRENTLY UNAVAILABLE for tenants — there is no per-tenant social provider connection to list (#1161). Calling this returns a governed 'unavailable' result. For the accounts a business has RECORDED that it posts from, use the social.presence context injected into each turn — NOT this tool.",
               parameters: {
                 type: "object",
                 properties: {}
@@ -12270,8 +12270,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         propose_business_brief_update: "tenants",
         // 2026-09-12 repair — the evaluation loop + social publish, newly classified (action-risk.ts).
         // `improvement_propose` INSERTs and `improvement_decide` UPDATEs the proposals row, so both
-        // name that table; `social_post` reaches an external social platform via Upload-Post with no
-        // durable local record, so it names the provider the way `zapier_run_action` does.
+        // name that table; `social_post` WOULD reach an external social platform via Upload-Post with
+        // no durable local record, so it names the provider the way `zapier_run_action` does. (As of
+        // #1170 the chat executor is CONTAINED — it returns 'unavailable' and reaches no provider; this
+        // write-target stays forward-correct for when #1161 wires the tenant-safe publish path.)
         improvement_propose: "paige_improvement_proposals",
         improvement_decide: "paige_improvement_proposals",
         social_post: "external_provider",
