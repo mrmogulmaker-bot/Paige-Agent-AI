@@ -657,7 +657,7 @@ Reference or any domain ledger; it governs how their facts become release and cu
 
 ### 4.0 Shipped Delivery Log
 
-**2026-09-12 Social publishing server-side containment — INTERIM guard, LIVE (PR #1164, main `19ccb13`, owner-approved Gate A):**
+**2026-09-12 Social publishing server-side containment — INTERIM guard, LIVE (PR #1164, main `19ccb133699837d745c053769070ca7a3659f06f`, production channel, owner-approved Gate A):**
 Denies Social PUBLICATION at both content-publication seams — `paige-social` `post` (Upload-Post) and
 `meta-schedule-post` (Meta Graph FB `/feed` + IG `/media_publish`) — with an honest `UNAVAILABLE` (reason +
 setup path) returned BEFORE any provider call, success claim, or receipt/Rail. New pure
@@ -669,8 +669,13 @@ found). Reads (`accounts`/`analytics`/`post_analytics`/`audience`/`comments`/`st
 `cancel_scheduled` are preserved; account `connect` is NOT wired and is no longer over-claimed in the copy
 (Codex P2). §37 producer inventory: the two seams are the only content publishers (Chat `social_post`, a
 direct service-role call, and cron all pass through them). Proven: `social-publish-containment` 13/13 (unit +
-structural + perturbation), `lint:action-risk` + `lint:governed-execution` green, `ui-delivery-evidence` PASS
-(record + `Visible-Flow-Impact: yes` trailer — Codex P1). Edge deploy: `paige-social` + `meta-schedule-post`
+structural + perturbation), `lint:action-risk` + `lint:governed-execution` green. The `ui-delivery-evidence` gate PASSED on PR #1164 —
+the `Visible-Flow-Impact: yes` trailer on branch commit `2b8ec97` routed the backend change and CI validated
+the evidence record (Codex P1). **§13 precision (Codex #1167 P2):** the squash-merge collapsed that trailer
+to a prose mention, so the main commit `19ccb133699837d745c053769070ca7a3659f06f` does NOT carry it as a
+functional trailer (`git interpret-trailers --parse` shows only Co-Authored-By/Claude-Session). That is
+expected — `ui-delivery-evidence` is a PR-time gate (it was satisfied on #1164), and the evidence record
+itself is on main; the trailer has no post-merge function. Edge deploy: `paige-social` + `meta-schedule-post`
 redeploy via `deploy-edge-functions.yml` (run #282 on `19ccb13`). **OWNER RULING (2026-09-12): this is INTERIM
 containment, NOT the canonical Social implementation.** Codex PR #1162 (Social Operations Gate A — containment +
 canonical foundation) is canonical; on its rebase onto fresh main it MUST preserve/strengthen every denial here
