@@ -54,7 +54,7 @@ A closeout-only PR used solely to record the preceding delivery's exact post-mer
 config, or lands a ruling updates the relevant brain file **in the same commit**. A stale brain is
 worse than none — it lies with authority.
 
-**Billing P0 current truth (2026-09-03):** authenticated owner setup FAIL; repair candidate, provider completion unverified. Secret presence confirmed without values. [Repair, flow boundaries and proof ledger](../delivery/billing-payment-setup-p0.md). Prepaid credits remain gated on payment setup verification and owner commercial approval.
+**Billing P0 current truth (2026-09-03):** authenticated owner setup remains FAIL pending retest; P0 repair #898 (`df38d4c7`) is production-deployed, provider completion unverified. Same-second confirmation ordering is covered by additive follow-up #899. Secret presence confirmed without values. [Repair, flow boundaries and proof ledger](../delivery/billing-payment-setup-p0.md). Prepaid credits remain gated on payment setup verification and owner commercial approval.
 
 **Brain-internal files**
 | File | What it holds | When to read |
