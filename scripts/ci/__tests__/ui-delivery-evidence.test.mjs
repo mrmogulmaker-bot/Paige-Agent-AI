@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   classifyUiChanges,
+  hasVisibleFlowTrailer,
   isRegistryNamedTarget,
   parseNameStatus,
   pinnedBundlePaths,
@@ -432,4 +433,75 @@ test("a UI rename across the recognized boundary keeps both paths", () => {
   ]);
   assert.equal(result.required, true);
   assert.deepEqual(result.uiFiles, ["src/components/clients/OldDrawer.tsx"]);
+});
+
+test("does not require the five-skill module fields when absent", () => {
+  // coreEvidence carries none of the module fields and must still pass — backward compatible.
+  const result = validateEvidenceText(coreEvidence, { required: true, solo: false });
+  assert.equal(result.ok, true, result.errors.join("\n"));
+});
+
+test("recognizes the five-skill module fields, accepting substance and rejecting placeholders", () => {
+  const withModules = `${coreEvidence}
+OWNER_INTENT: owner wants the Solo dashboard to open to the approvals queue
+MUST_NOT_HAPPEN: NONE: no shipped capability removed
+MUST_PRESERVE: the chat transcript scroll ownership stays with the shell
+ACCEPTANCE_CRITERIA: owner opens the surface and the approvals queue renders first
+MOTION_PURPOSE: NONE: no motion change
+PROTECTED_SEAMS: NONE_AFFECTED: governance-only change
+`;
+  const ok = validateEvidenceText(withModules, { required: true, solo: false });
+  assert.equal(ok.ok, true, ok.errors.join("\n"));
+
+  for (const placeholder of ["OWNER_INTENT: TODO", "PROTECTED_SEAMS: REPLACE_ME with seams"]) {
+    const [field] = placeholder.split(":");
+    const bad = validateEvidenceText(`${coreEvidence}\n${placeholder}`, { required: true, solo: false });
+    assert.equal(bad.ok, false, placeholder);
+    assert.match(bad.errors.join("\n"), new RegExp(field));
+  }
+});
+
+test("routes a backend/contract change to the evidence gate only when a visible-flow impact is declared", () => {
+  const backend = [
+    "supabase/functions/paige-ai-chat/index.ts",
+    "supabase/migrations/20270201000000_example.sql",
+  ];
+
+  const undeclared = classifyUiChanges(backend);
+  assert.equal(undeclared.required, false);
+  assert.equal(undeclared.backendVisibleFlow, false);
+  assert.deepEqual(undeclared.backendContractFiles, backend);
+
+  const declared = classifyUiChanges(backend, { declaredVisibleFlow: true });
+  assert.equal(declared.required, true);
+  assert.equal(declared.backendVisibleFlow, true);
+  assert.equal(declared.solo, false);
+
+  // A declaration with no backend/contract file does not fire, and declared test-only backend does not either.
+  const declaredNoBackend = classifyUiChanges(["docs/architecture/example.md"], { declaredVisibleFlow: true });
+  assert.equal(declaredNoBackend.required, false);
+  assert.equal(declaredNoBackend.backendVisibleFlow, false);
+
+  const declaredTestOnly = classifyUiChanges(["supabase/functions/example/__tests__/x.test.ts"], { declaredVisibleFlow: true });
+  assert.equal(declaredTestOnly.required, false);
+});
+
+test("the Visible-Flow-Impact trailer match is strict: line-anchored, value yes|true, not armed by prose", () => {
+  // A real trailer at the start of its own line, either accepted value.
+  assert.equal(hasVisibleFlowTrailer("fix: thing\n\nVisible-Flow-Impact: yes\n"), true);
+  assert.equal(hasVisibleFlowTrailer("feat: x\n\nVisible-Flow-Impact: true"), true);
+  // Concatenated %B across commits: a later commit carries it.
+  assert.equal(hasVisibleFlowTrailer("first commit\nsecond commit\n\nVisible-Flow-Impact: yes\n"), true);
+
+  // Indented line (not a real trailer) does NOT arm the gate — the leading-\s* leniency is gone.
+  assert.equal(hasVisibleFlowTrailer("body\n  Visible-Flow-Impact: yes\n"), false);
+  // Mid-line prose mention does not match.
+  assert.equal(hasVisibleFlowTrailer("We set Visible-Flow-Impact: yes here.\n"), false);
+  // Wrong / absent value does not match.
+  assert.equal(hasVisibleFlowTrailer("Visible-Flow-Impact: no\n"), false);
+  assert.equal(hasVisibleFlowTrailer("Visible-Flow-Impact: yesterday\n"), false);
+  assert.equal(hasVisibleFlowTrailer("no trailer here\n"), false);
+  // Fail-safe on empty/undefined.
+  assert.equal(hasVisibleFlowTrailer(""), false);
+  assert.equal(hasVisibleFlowTrailer(undefined), false);
 });

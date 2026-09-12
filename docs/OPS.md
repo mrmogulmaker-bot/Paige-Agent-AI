@@ -43,6 +43,21 @@ A workflow only **blocks** merges when it's a **required status check** in branc
 can't be set from code. Mark `ci / verify` (and `lint`, `audit`) required in **Settings → Branches →
 main**. Until then the gate is advisory (runs + reports, doesn't block).
 
+**`ui-delivery-evidence` — the Experience-Quality gate (owner decision, Harness-upgrade Phase 3).**
+The `ui-delivery-evidence` workflow (`.github/workflows/ui-delivery-evidence.yml`, job
+**`Validate UI delivery evidence`**) validates the UI-delivery evidence record on every PR and routes
+a declared backend→visible change (a `Visible-Flow-Impact: yes` commit trailer on a
+`supabase/functions/**` / `supabase/migrations/**` change) to the same record. It is **not** in the
+documented required-check set above, so today it is **advisory** (runs + reports, does not block) —
+this is the honest current state per this doc; a live read of `main`'s detailed branch-protection
+required-check list is **UNVERIFIED** from a headless agent session (no admin/API access to the
+protection endpoint) and is owed to an owner/web check. To make it blocking, the owner adds the check
+**`ui-delivery-evidence / Validate UI delivery evidence`** to the required list in **Settings →
+Branches → main → Require status checks to pass**. Before making it required, let the open-UI-PR window
+clear: the five-skill evidence fields are recognized-but-optional and only a dated, announced cutover
+(never silent) would make any of them required. Making the workflow itself required does **not** make
+those optional fields required — it only enforces that the existing evidence record + routing validate.
+
 ### Regenerating the tsc baseline (ratchet it DOWN)
 When you fix pre-existing type errors, shrink the baseline:
 ```

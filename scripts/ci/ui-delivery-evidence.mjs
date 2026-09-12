@@ -65,6 +65,23 @@ const SOLO_FIELDS = [
   "SOLO_900X1000_PAIGE_CLOSED",
   "SOLO_900X1000_PAIGE_OPEN",
 ];
+// The five-skill Experience-Quality modules' fields. RECOGNIZED but NOT required:
+// validated for substance only when present, so a record that omits them still passes
+// and no in-flight UI PR breaks. Phase 3 of the Harness upgrade adds the recognition;
+// a dated, announced cutover (never silent) is what would later make any of them required.
+const OPTIONAL_FIELDS = [
+  "OWNER_INTENT",
+  "MUST_NOT_HAPPEN",
+  "MUST_PRESERVE",
+  "ACCEPTANCE_CRITERIA",
+  "MOTION_PURPOSE",
+  "PROTECTED_SEAMS",
+];
+// Backend/contract surfaces (edge functions, migrations/RPC/RLS/entitlement, provider
+// webhooks). A change here is in scope for this standard ONLY when the author DECLARES a
+// visible-flow impact (a `Visible-Flow-Impact: yes` commit trailer); an undeclared backend
+// change is unaffected — declaration is the trigger, review catches an omitted one.
+const BACKEND_CONTRACT_PATH = /^supabase\/(?:functions|migrations)\//i;
 const PINNED_BUNDLE = new Map([
   [".agents/skills/paige-ui-design/vendor/frontend-design/SKILL.md", "e7c8e7fd0bde8eb8a7d9f024fe20eeab4b6cde3f612e8d253334b806c09ca1ff"],
   [".agents/skills/paige-ui-design/vendor/frontend-design/references/accessibility-checklist.md", "de10179e21fa2cf7c098a01dbef5a5e9eed0b262a0526fd9c1b20ad0058e988c"],
@@ -112,6 +129,12 @@ function isSoloUi(path) {
     || /TenantCommandCenterShell/i.test(path);
 }
 
+function isBackendContractFile(path) {
+  if (isTestOnly(path)) return false;
+  if (isUiFile(path)) return false;
+  return BACKEND_CONTRACT_PATH.test(path);
+}
+
 function changeRecord(entry) {
   if (typeof entry === "string") return { status: "M", path: normalize(entry) };
   return {
@@ -120,13 +143,19 @@ function changeRecord(entry) {
   };
 }
 
-export function classifyUiChanges(files) {
+export function classifyUiChanges(files, { declaredVisibleFlow = false } = {}) {
   const changes = files.map(changeRecord).filter((entry) => entry.path);
   const uiFiles = changes.filter((entry) => isUiFile(entry.path)).map((entry) => entry.path);
+  const backendContractFiles = changes.filter((entry) => isBackendContractFile(entry.path)).map((entry) => entry.path);
+  // A backend/contract change routes to an evidence record only when a visible-flow impact
+  // was declared (the commit trailer). Without the declaration, backend changes are unaffected.
+  const backendVisibleFlow = Boolean(declaredVisibleFlow) && backendContractFiles.length > 0;
   return {
-    required: uiFiles.length > 0,
+    required: uiFiles.length > 0 || backendVisibleFlow,
     solo: uiFiles.some(isSoloUi),
     uiFiles,
+    backendContractFiles,
+    backendVisibleFlow,
     evidenceFiles: changes.filter((entry) => entry.status === "A" && EVIDENCE_PATH.test(entry.path)).map((entry) => entry.path),
   };
 }
@@ -340,6 +369,19 @@ export function validateEvidenceText(text, classification) {
     }
   }
 
+  // Five-skill module fields: optional (never required here), but when an author DOES declare
+  // one it must be a non-placeholder statement — a declared-but-empty contract is worse than an
+  // absent one. CI enforces non-placeholder ONLY; whether the statement is genuinely substantive
+  // is a reviewer judgment, not a CI one. This is the "recognized" half of recognized-but-optional.
+  for (const key of OPTIONAL_FIELDS) {
+    if (fields.has(key)) {
+      const value = fields.get(key);
+      if (!value?.trim() || hasPlaceholder(value)) {
+        errors.push(`${key} is optional, but when present it must be a non-placeholder declaration (reviewers judge substance).`);
+      }
+    }
+  }
+
   const soloValue = fields.get("SOLO_UI");
   if (!/^(?:YES|NO):\s*\S.+$/i.test(soloValue ?? "") || hasPlaceholder(soloValue)) {
     errors.push("SOLO_UI must be YES: scope or NO: reason.");
@@ -375,6 +417,28 @@ function changedFiles(base, head) {
   return parseNameStatus(output);
 }
 
+// True when any commit body carries a `Visible-Flow-Impact:` trailer with value yes|true.
+// A real git trailer sits at the start of its own line, so the anchor is strict (`^`, no leading
+// whitespace) — an indented prose line that merely mentions the phrase does not arm the gate.
+// Accepts `yes` or `true`; the `\b` stops `yesterday`/`truer` from matching. Pure + exported so
+// the match is unit-tested rather than only traced by review.
+export function hasVisibleFlowTrailer(logText) {
+  return /^Visible-Flow-Impact:\s*(?:yes|true)\b/im.test(logText || "");
+}
+
+// The author declares a backend change's visible-flow impact with a `Visible-Flow-Impact: yes`
+// commit trailer. Scans this PR's own commits (base..head). Absent the trailer, backend changes
+// are not routed to the evidence gate — the declaration is the trigger (§ the standard's
+// "Backend-to-visible routing"). Read-only and fail-safe: any git error yields false.
+function declaresVisibleFlowImpact(base, head) {
+  try {
+    const log = execFileSync("git", ["log", "--format=%B", `${base}..${head}`], { encoding: "utf8" });
+    return hasVisibleFlowTrailer(log);
+  } catch {
+    return false;
+  }
+}
+
 export function run({ base, head }) {
   const bundle = verifyPinnedBundle();
   if (!bundle.ok) {
@@ -384,15 +448,21 @@ export function run({ base, head }) {
   }
 
   const files = changedFiles(base, head);
-  const classification = classifyUiChanges(files);
+  const classification = classifyUiChanges(files, { declaredVisibleFlow: declaresVisibleFlowImpact(base, head) });
   if (!classification.required) {
     console.log("UI delivery evidence: not required; no recognized UI source changed.");
     return 0;
   }
   if (classification.evidenceFiles.length === 0) {
     console.error("UI delivery evidence: FAIL");
-    console.error("Recognized UI files changed:");
-    for (const file of classification.uiFiles) console.error(`  - ${file}`);
+    if (classification.uiFiles.length > 0) {
+      console.error("Recognized UI files changed:");
+      for (const file of classification.uiFiles) console.error(`  - ${file}`);
+    }
+    if (classification.backendVisibleFlow) {
+      console.error("A backend/contract change declared Visible-Flow-Impact: yes (routed to the evidence gate):");
+      for (const file of classification.backendContractFiles) console.error(`  - ${file}`);
+    }
     console.error("Add a non-template docs/evidence/ui-delivery/*.md record based on TEMPLATE.md.");
     return 1;
   }
