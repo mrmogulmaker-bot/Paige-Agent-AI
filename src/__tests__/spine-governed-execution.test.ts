@@ -311,6 +311,114 @@ describe("owner_only fails closed", () => {
   });
 });
 
+describe("the capability-status gate — availability blocks through EVERY door, identically", () => {
+  // The dimension that closes the last inheritance gap: a capability this tenant cannot use right
+  // now must not run, no matter which door asked. The four hard-blocked statuses refuse here,
+  // before classification, with a status-specific code.
+  const CASES = [
+    ["not_for_tier", "capability_not_for_tier"],
+    ["unavailable", "capability_unavailable"],
+    ["planned", "capability_planned"],
+    ["needs_setup", "capability_needs_setup"],
+  ] as const;
+
+  it.each(CASES)("a %s capability refuses with %s", (availability, code) => {
+    const d = decide({
+      caller: caller(),
+      capability: { ...ORDINARY, availability: availability as never },
+      approval: { autonomyLane: "auto" },
+      requestArgs: {},
+    });
+    expect(d.kind === "refuse" && d.code).toBe(code);
+  });
+
+  it.each(CASES)("%s refuses byte-identically through every door (no inheritance by door)", (availability) => {
+    const results = DOORS.map((door) => doorless(decide({
+      caller: caller({ door }),
+      capability: { ...ORDINARY, availability: availability as never },
+      approval: { autonomyLane: "auto" },
+      requestArgs: { a: 1 },
+    })));
+    for (const r of results) expect(r).toEqual(results[0]);
+    expect(results[0].kind).toBe("refuse");
+  });
+
+  it("blocks a READ too — availability is about the capability, not its effect", () => {
+    // A genuine read would otherwise execute at step 6; the gate is before it, so an out-of-tier or
+    // unbuilt READ refuses rather than running.
+    for (const [availability, code] of CASES) {
+      const d = decide({
+        caller: caller(),
+        capability: { id: "crm_search_contacts", effect: "read", availability: availability as never },
+        approval: { autonomyLane: "confirm" },
+        requestArgs: { q: "x" },
+      });
+      expect(d.kind === "refuse" && d.code).toBe(code);
+    }
+  });
+
+  it("fires BEFORE classification — an out-of-tier unclassified mutation reports the tier reason", () => {
+    // Ordering is pinned: the tenant cannot use the capability at all, so the availability reason is
+    // the one returned, not `unclassified_mutation`. Either refuses safely; this locks which message.
+    const d = decide({
+      caller: caller(),
+      capability: { id: "crm_delete_everything", effect: "mutate", outcomeChannel: "rail",
+                    availability: "not_for_tier" as never },
+      approval: { autonomyLane: "auto" },
+      requestArgs: {},
+    });
+    expect(d.kind === "refuse" && d.code).toBe("capability_not_for_tier");
+  });
+
+  it("no approval, at any strength, runs a blocked capability — it is not 'approve it harder'", () => {
+    for (const [availability] of CASES) {
+      for (const approval of [
+        { autonomyLane: "auto" as const },
+        { autonomyLane: "confirm" as const },
+        { autonomyLane: "confirm" as const, claimedArgs: { x: 1 }, claimedFor: ORDINARY.id },
+      ]) {
+        const d = decide({
+          caller: caller(), capability: { ...ORDINARY, availability: availability as never },
+          approval, requestArgs: {},
+        });
+        expect(d.kind).toBe("refuse");
+      }
+    }
+  });
+
+  it("live, needs_approval, explicit unknown, and ABSENT all pass the gate (no-op)", () => {
+    // `live` executes on auto; `needs_approval` proposes on confirm; `unknown` and absent leave the
+    // gate inert and behave exactly as before the dimension existed.
+    const live = decide({ caller: caller(), capability: { ...ORDINARY, availability: "live" },
+      approval: { autonomyLane: "auto" }, requestArgs: { a: 1 } });
+    expect(live.kind).toBe("execute");
+
+    const pending = decide({ caller: caller(), capability: { ...ORDINARY, availability: "needs_approval" },
+      approval: { autonomyLane: "confirm" }, requestArgs: {} });
+    expect(pending.kind).toBe("propose");
+
+    const unknown = decide({ caller: caller(), capability: { ...ORDINARY, availability: "unknown" },
+      approval: { autonomyLane: "auto" }, requestArgs: { a: 1 } });
+    expect(unknown.kind).toBe("execute");
+
+    const absent = decide({ caller: caller(), capability: ORDINARY,
+      approval: { autonomyLane: "auto" }, requestArgs: { a: 1 } });
+    expect(absent.kind).toBe("execute");
+
+    // Absent and "unknown" decide identically — the explicit marker is documentation, not behaviour.
+    expect(doorless(unknown)).toEqual(doorless(absent));
+  });
+
+  it("every status-gate code it can emit is in the declared set", () => {
+    for (const [availability] of CASES) {
+      const d = decide({ caller: caller(), capability: { ...ORDINARY, availability: availability as never },
+        approval: { autonomyLane: "auto" }, requestArgs: {} });
+      expect(d.kind).toBe("refuse");
+      if (d.kind === "refuse") expect(GOVERNED_REFUSAL_CODES).toContain(d.code);
+    }
+  });
+});
+
 describe("the door changes nothing", () => {
   const fixtures = [
     { label: "high, no claim", capability: HIGH, approval: { autonomyLane: "confirm" } },

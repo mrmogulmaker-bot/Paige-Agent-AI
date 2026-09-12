@@ -17,11 +17,22 @@ describe("capability_status tool wiring (source assertions)", () => {
     expect(src).toContain('import { getSpineCapability } from "../_shared/paige-spine/registry.ts"');
   });
 
-  it("declares the tool with no body params (tenant is always server-resolved, never from the wire)", () => {
-    const at = src.indexOf('name: "capability_status"');
+  it("offers the tool via the Capability Gateway (not inline) with no body params", () => {
+    // MIGRATED 2026-09 — the def moved OFF the inline handler array and onto the Capability Gateway
+    // (owner ruling 2026-09-01: domains/Spine own features, Chat consumes), which is how the
+    // chat-tool-registry ratchet descended 10 → 8. So the handler no longer DECLARES it inline; it
+    // spreads it in from the gateway, and the no-body-params shape now lives (and is asserted) in
+    // the gateway module.
+    expect(src).not.toMatch(/^\s*name: "capability_status",\s*$/m);
+    expect(src).toContain("...buildGatewayToolDefs()");
+    expect(src).toContain('import { buildGatewayToolDefs } from "../_shared/paige-capability-gateway/gateway.ts"');
+
+    const gw = readFileSync("supabase/functions/_shared/paige-capability-gateway/gateway.ts", "utf8");
+    const at = gw.indexOf('name: "capability_status"');
     expect(at).toBeGreaterThan(-1);
-    // the tool-def occurrence sits next to an empty parameters object
-    const defWindow = src.slice(at, at + 900);
+    // the tool-def occurrence sits next to an empty parameters object — tenant is server-resolved,
+    // never taken from the wire.
+    const defWindow = gw.slice(at, at + 1200);
     expect(defWindow).toContain("parameters: {");
     expect(defWindow).toContain("properties: {}");
   });

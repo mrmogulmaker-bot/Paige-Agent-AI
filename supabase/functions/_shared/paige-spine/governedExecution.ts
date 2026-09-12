@@ -27,6 +27,29 @@
  * absence of such a branch, because a property proven only by a test is a property a later edit can
  * quietly remove.
  *
+ * THE CAPABILITY-STATUS GATE — THE SAME PROPERTY, EXTENDED FROM THE ACT TO ITS AVAILABILITY
+ * -----------------------------------------------------------------------------------------
+ * Door-blindness stops a caller gaining permission by arriving differently. It does NOT, on its
+ * own, stop a caller reaching a capability the product has decided this tenant cannot use — because
+ * "what this tenant may do right now" (tier, connection, a shipped seam, present evidence) lived
+ * only in the Capability Gateway that decides what to expose to Chat. A capability the Gateway
+ * hides from Chat stayed reachable from an MCP client, a durable job, or a delegated subagent,
+ * since none of them asked the Gateway and nothing here re-checked. `decideGovernedExecution` is
+ * where every door converges, so the re-check belongs here: `capability.availability` is resolved
+ * by the SAME capability-status composition the Gateway uses, and a capability that is
+ * `needs_setup` / `planned` / `not_for_tier` / `unavailable` refuses at step 5.5 through every
+ * door, byte-identically — the door-blind property applied to the act's availability rather than
+ * to the act. A delegated specialist therefore inherits no standing: it re-passes the decision at
+ * execution, and the status is re-resolved for its tenant, not carried from whoever delegated it.
+ *
+ * HONEST ABOUT ADOPTION (§13). The gate enforces only as far as its callers re-resolve the status.
+ * The field is OPTIONAL and does NOT fail closed on absence — the one field here that does not —
+ * because the dimension is being adopted incrementally and refusing every un-migrated caller would
+ * be an outage. Absent, or the explicit `"unknown"`, means "not re-resolved": the gate is a no-op
+ * and NOT a claim of availability. The MCP door declares `"unknown"` today (its reads are unchanged,
+ * its mutations already refuse structurally); wiring the real resolution into MCP, durable jobs and
+ * subagent execution is named, sequenced follow-up, not something this slice claims as done.
+ *
  * IT CONSUMES AN APPROVAL RESULT. IT NEVER PRODUCES ONE.
  * ------------------------------------------------------
  * This module does NOT call `decideToolConfirmation`, and must not: that gate (#711) is superseded
@@ -87,6 +110,12 @@
  * `toolConfirmation.ts` is, and it keeps the decision reviewable as one readable function.
  */
 import { classifyAction, riskReason, unclassifiedWriteReason, type ActionRisk } from "../action-risk.ts";
+// TYPE-ONLY, deliberately. The one home for "what can this tenant do with this capability right
+// now" is the capability-status resolver (§18); the seam borrows its vocabulary so the gate below
+// and the resolver can never disagree about what `needs_setup` means. No runtime value crosses this
+// import — the availability is an ADAPTER ASSERTION like every other field on the boundary, and the
+// seam has no signal gatherer of its own to produce one.
+import type { CapabilityAvailability } from "../paige-capability-status/resolver.ts";
 
 // DELIBERATELY NOT IMPORTED: `../toolConfirmation.ts`.
 //
@@ -232,6 +261,40 @@ export type GovernedCapability = {
    * string is present — it has no Rail to ask.
    */
   outcomeChannel?: string;
+  /**
+   * WHAT THIS TENANT MAY DO WITH THIS CAPABILITY RIGHT NOW, re-resolved at EXECUTION time.
+   *
+   * This is the dimension that closes the last inheritance gap. The other fields prove WHO is
+   * asking and WHAT the act is; this proves the capability is actually usable for this workspace at
+   * the moment it runs — tier eligibility, a required connection, a shipped seam, present evidence —
+   * the same composition the Capability Gateway uses to decide what to even expose to Chat. Without
+   * it, a capability hidden from one door (Chat shows no tool) stays reachable through another (an
+   * MCP client, a durable job, a delegated subagent) because nothing at the shared seam re-checks
+   * it. With it, the SAME status that hides a capability also refuses it here, through every door,
+   * byte-identically — which is "no caller gains permission by arriving a different way," extended
+   * from the act to the act's availability.
+   *
+   * Only `live` and `needs_approval` proceed (the autonomy/approval steps below then decide whether
+   * a human's yes is required). `needs_setup`, `planned`, `not_for_tier` and `unavailable` refuse
+   * here, before classification, because no approval makes an unbuilt, unconnected, or
+   * out-of-tier capability runnable.
+   *
+   * NOT FAIL-CLOSED ON ABSENCE, and deliberately so — the one field on this boundary that is not.
+   * `access` absent is a refusal because every caller already resolves access; the capability-status
+   * dimension is being adopted INCREMENTALLY, so refusing every caller that has not yet wired the
+   * resolver would be an outage, not a rule. Absent — or the explicit `"unknown"` — therefore means
+   * "this caller did not re-resolve status", the gate is a NO-OP, and it is NOT a claim that the
+   * capability is available. The MCP door declares `"unknown"` today (its reads are unaffected and
+   * its mutations already refuse structurally); wiring the real resolution there, and in durable
+   * jobs and subagent execution, is named, sequenced follow-up.
+   *
+   * ADAPTER SHOULD: resolve this server-side at execution via the capability-status resolver when it
+   * can, never cache it from when the tool was exposed, and never take it from request data. A
+   * request-supplied `"live"` reaches the execute path exactly like a request-supplied autonomy lane
+   * does — the seam recognises the value, not its provenance — so a caller that re-resolves buys the
+   * gate's protection, and one that does not simply leaves the gate inert for itself.
+   */
+  availability?: CapabilityAvailability | "unknown";
 };
 
 /**
@@ -337,6 +400,10 @@ export type GovernedRefusalCode =
   | "tenant_unresolved"
   | "capability_unidentified"
   | "access_denied"
+  | "capability_not_for_tier"
+  | "capability_unavailable"
+  | "capability_planned"
+  | "capability_needs_setup"
   | "unclassified_mutation"
   | "effect_mismatch"
   | "owner_only"
@@ -350,7 +417,9 @@ export type GovernedRefusalCode =
 /** Every refusal this seam can produce. Exported so a test can prove the list is covered. */
 export const GOVERNED_REFUSAL_CODES: readonly GovernedRefusalCode[] = Object.freeze([
   "tenant_not_server_derived", "unauthenticated", "tenant_unresolved", "capability_unidentified",
-  "access_denied", "unclassified_mutation", "effect_mismatch", "owner_only",
+  "access_denied",
+  "capability_not_for_tier", "capability_unavailable", "capability_planned", "capability_needs_setup",
+  "unclassified_mutation", "effect_mismatch", "owner_only",
   "service_principal_may_not_mutate",
   "outcome_channel_undeclared", "autonomy_off", "autonomy_lane_unrecognized",
   "approval_claim_malformed", "approval_claim_capability_mismatch",
@@ -471,6 +540,36 @@ export function decideGovernedExecution(input: {
   if (caller.access?.allowed !== true) {
     return refuse("access_denied",
       caller.access?.reason ?? "This account is not permitted to perform this action.");
+  }
+
+  // 5.5 — CAPABILITY STATUS, re-resolved at execution. A capability this tenant cannot actually use
+  // right now cannot run through ANY door, regardless of how the caller arrived — which is the
+  // door-blind property extended from the ACT to the act's AVAILABILITY. A capability hidden from
+  // Chat (no tool exposed) must not stay reachable from an MCP client, a durable job, or a delegated
+  // subagent, and this is the one place every door converges to make that impossible.
+  //
+  // Before classification deliberately: an out-of-tier, unbuilt, unconnected or unconfirmed
+  // capability is refused whether it reads or writes, and no approval is a path out — the fix is to
+  // make it available, not to approve it harder. `live` and `needs_approval` proceed (the steps
+  // below decide whether a human's yes is required); `"unknown"` is a declared non-adoption and
+  // passes the gate as a no-op (it is not a claim of availability — see `GovernedCapability`).
+  switch (capability.availability) {
+    case "not_for_tier":
+      return refuse("capability_not_for_tier",
+        "This isn't available for this account type, so it can't run.");
+    case "unavailable":
+      return refuse("capability_unavailable",
+        "Paige can't confirm this works for this workspace yet, so it wasn't run.");
+    case "planned":
+      return refuse("capability_planned",
+        "This isn't built yet, so it can't run.");
+    case "needs_setup":
+      return refuse("capability_needs_setup",
+        "This needs a connection or setup step first, so it wasn't run.");
+    case "live":
+    case "needs_approval":
+    case "unknown":
+      break; // proceed — availability does not block; the steps below decide the rest.
   }
 
   // 6 — CLASSIFICATION, and the two ways a declaration can lie about itself.

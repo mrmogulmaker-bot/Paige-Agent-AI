@@ -173,6 +173,94 @@ separately.
   enriched resolver status set; the ratchet guard; the honest contact outcome (preserved); tests.
 - NOT in: migrating the 8 legacy tools; fixing the social/improvement domain defects; Telegram/n8n/
   Zapier/external sends for contact.created; any new provider/credential.
-- PROOF OWED (§32.c/§70): the authenticated Solo-owner drive (this headless session cannot drive the
-  live app — owed to the owner's live review, the §4 pre-launch loop). The contact pieces' prod
-  migration apply stays behind external #1147.
+- PROOF OWED (§32.c/§70): the authenticated Solo-owner drive. See §9 correction 5 for the honest,
+  specific blocker (this is NOT "owed to the owner's live review"). The contact pieces' prod migration
+  apply stays behind external #1147.
+
+## 9. Foundation corrections folded (owner, 2026-09-12) + Increment 1 delivered
+
+The owner issued five foundation corrections after the Phase-1 record above. They are folded here so
+this doc stays the single contract, and Increment 1 (this PR) delivers against them.
+
+**Correction 1 — four SEPARATE concerns, never one number; 10→8 is interim, not "green".** The
+chat-tool-registry red is a migration *register*, not a failure to paper over. Reported as four
+distinct facts, each with its own truth:
+- **(a) Inline-baseline register** — `chat-tool-registry-lint` reports **8 added** inline tools
+  (`improvement_decide/list/propose`, `inbox_list`, `integrations_list`,
+  `social_accounts/analytics/post`). This PR took it from **10 → 8** by moving `capability_status` +
+  `contact_event_status` onto the gateway; the remaining 8 are the parked register (§7), and the lint
+  staying red at 8 is the owner-sanctioned interim, not a thing to force green by baselining them.
+- **(b) Action-risk failures** — `action-risk-lint` is red on `improvement_propose` + `social_post`
+  (unclassified). Per Correction 2 these stay unclassified; this is a DISTINCT concern from (a),
+  untouched by this PR.
+- **(c) Capability truth** — the resolver + gateway decide what is honestly exposed. Delivered: the
+  gateway core (`decideGatewayEntry`) maps each resolved status to exactly one disposition.
+- **(d) Runtime availability** — `contact_event_status` is honest-partial while #1147 blocks its
+  substrate; the shared seam's new status gate refuses a non-live capability at execution.
+- **Ratchet:** the existing `chat-tool-registry-lint` already forbids GROWTH (any new inline tool is
+  an `added` failure) and only DESCENDS. This PR relies on it; it did not need a new guard.
+
+**Correction 2 — do NOT "unbrick" Social/improvement by classifying.** `social_post` and
+`improvement_propose` remain unclassified and non-executable. The gateway naturally keeps them
+non-executable by STATUS (an unconnected social capability resolves `needs_setup` → withheld; an
+unbuilt one resolves `planned` → withheld) — no classification shortcut is taken. They are NOT routed
+through the gateway in this increment (they stay in the register); when they migrate, their honest
+status is what keeps them non-executable.
+
+**Correction 3 — the finish line: ONE shared execution-decision contract, re-resolving at execution.**
+`decideGovernedExecution` already IS that contract ("one pathway, whichever door knocked" — doors
+chat|automation|agent|skill|mcp|other, CI-asserted door-blind, consumed by MCP). This PR EXTENDS it
+(does not fork) with the **capability-status dimension** — the last inheritance gap. A new
+`capability.availability` (resolved by the SAME capability-status resolver the gateway uses) is
+gated at step 5.5: `needs_setup`/`planned`/`not_for_tier`/`unavailable` refuse through EVERY door,
+byte-identically, so a capability hidden from Chat cannot be reached via MCP, a durable job, or a
+delegated subagent. "No permission inheritance from delegation" is thus extended from the ACT to the
+act's AVAILABILITY, and proven by a door-blind property test over the new codes.
+- **Honest adoption boundary (§13):** the field is OPTIONAL and does not fail closed on absence —
+  the dimension is adopted incrementally. MCP declares `"unknown"` (a no-op; its 51 reads unchanged,
+  68 mutations still refuse structurally). Wiring the real status resolution into the **MCP door,
+  durable/background jobs, and bounded-subagent execution** is NAMED, sequenced follow-up — NOT
+  claimed done here. What IS done: the shared seam now carries the dimension, so those doors adopt a
+  gate that already exists rather than inventing one.
+
+**Correction 4 — the gateway decides PER-ENTRY.** `decideGatewayEntry` returns one of: `tool`
+(executable) · `approval_card` (needs_approval — exposed, routed through approval) · `setup_explanation`
+(needs_setup) · `planned_explanation` (planned) · `tier_explanation` (not_for_tier) · `unavailable` ·
+`none` (no chat verb). Only `live`/`needs_approval` emit a callable tool. A registered capability with
+no real executable path (status not live) is never emitted as a working tool. `contact_event_status`
+is returned as an honest read whose `available:false` degrade lives INSIDE the read (never a broken
+invocation) while #1147 blocks its substrate.
+
+**Correction 5 — authenticated proof is the TEAM's responsibility; name the SPECIFIC blocker.** This
+increment is a BACKEND governance foundation — pure decision functions (`decideGovernedExecution`
+gate, `decideGatewayEntry`) + a tool-def relocation — so its proof class is unit/property tests +
+the CI lints, ALL of which are run and green (see §10). The one thing that genuinely owes an
+authenticated drive is the end-to-end Chat experience, and the SPECIFIC blocker is recorded honestly:
+this is a headless remote CI session with **no browser-driving tool** (no Chrome MCP / Playwright
+session bound here) and, per CLAUDE.md §32, **live prod is not reachable headless from this sandbox
+even via the proxy**. So the authenticated Solo-owner drive is owed to the **next capable session**
+(a Cowork/Chrome session, or `scripts/live-drive` with a scoped test tenant and
+`LIVE_DRIVE_EMAIL`/`_PASSWORD`), NOT to "the owner's eyes." It is named here as a delivery blocker,
+not labelled LIVE.
+
+### 10. Increment 1 — what shipped, proven how (§13 evidence classes)
+
+- **Shared seam** `governedExecution.ts`: `availability?` on `GovernedCapability`; step-5.5 status
+  gate; 4 new refusal codes. **Proof:** `src/__tests__/spine-governed-execution.test.ts` (new
+  availability-gate property block — each code, byte-identical across all 6 doors; live/needs_approval/
+  unknown/absent proceed; exhaustive sweep still green) + `governed-execution-lint` GREEN (door-blind,
+  approval allowlist intact, no claim of its own) + focused `tsc` of the pure edge files GREEN.
+- **Gateway** `paige-capability-gateway/gateway.ts` (new): `decideGatewayEntry` + `buildGatewayToolDefs`.
+  **Proof:** `src/__tests__/paige-capability-gateway.test.ts` (every availability → one disposition;
+  only live/needs_approval emit; no-chat-verb → none; emits exactly the 2 tools).
+- **Handler** `paige-ai-chat/index.ts`: 2 inline defs removed, gateway spread in. **Proof:**
+  `chat-tool-registry-lint` 10 → 8; updated wiring tests assert the handler no longer declares them
+  inline and spreads them from the gateway; dispatch + describeStep unchanged (§58 byte-identical).
+- **MCP** `governed-adapter.ts`: declares `availability:"unknown"`. **Proof:** `mcp-governed-door-lint`
+  GREEN (119 tools, one door) + `mcp-governed-door.test.ts` green (behaviour unchanged).
+- **Evidence classes (honest):** automated unit/property tests ✅ · static CI lints ✅ · focused edge
+  `tsc` ✅ · authenticated runtime on the real platform — **OWED** (Correction 5 blocker) · prod
+  migration apply for the contact substrate — **blocked on external #1147**.
+- **NOT claimed:** MCP/job/subagent status re-resolution (named follow-up); per-tier availability-aware
+  WITHHOLDING of the 2 reads (the core supports it; emission is behaviour-preserving this increment);
+  the 8 legacy tools' migration; social/improvement executability.

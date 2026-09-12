@@ -81,6 +81,11 @@ import { getActorTier, clientSeatToolAllowed, type Tier } from "../_shared/actor
 import { resolveCapabilityStatus } from "../_shared/paige-capability-status/resolver.ts";
 import { buildCapabilitySignals } from "../_shared/paige-capability-status/signals.ts";
 import { getSpineCapability } from "../_shared/paige-spine/registry.ts";
+// The Capability Gateway owns the tool definitions Chat may reach (§18 one home; owner ruling
+// 2026-09-01). `capability_status` and `contact_event_status` are emitted from here rather than
+// declared inline, so the chat-tool-registry ratchet descends instead of growing. Dispatch for each
+// stays below, unchanged.
+import { buildGatewayToolDefs } from "../_shared/paige-capability-gateway/gateway.ts";
 // §25/§33 — the design agent's generate→critique→iterate loop (its "eyes"). GATED OFF by default
 // (STUDIO_VISUAL_CRITIQUE_ENABLED); with the flag unset this is never called and generation is
 // byte-for-byte unchanged. Turned on only once the Fly renderer + secrets are live (owner-gated).
@@ -5997,33 +6002,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               }
             }
           },
-          {
-            type: "function",
-            function: {
-              name: "capability_status",
-              description: "Report truthfully what you can actually do for THIS workspace right now — across contacts and connections. Each capability comes back with an honest availability: live (do it now), needs_approval (you prepare it, the owner approves), needs_setup (a connection is required first), planned (a real capability not built yet), not_for_tier (not for this account type), or unavailable (can't be confirmed yet). Call this BEFORE claiming you can do something, so you never promise a capability you don't truly have. Resolved server-side from this workspace's tier, autonomy settings, and connection state — never guessed.",
-              parameters: {
-                type: "object",
-                properties: {}
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "contact_event_status",
-              description: "Check whether the contact.created event actually fired for a new contact, and whether it reached its subscribers — so you can report the truth, never a hoped-for 'it was sent.' Returns each recent new-contact event with its delivery state: how many subscribers it reached, how many were delivered, any errors, and whether it is still processing. Pass contact_id to check one contact, or omit it for the most recent new contacts. No external notification (e.g. a text) is sent yet — this reports the recorded delivery, and you must say so plainly rather than imply a message went out.",
-              parameters: {
-                type: "object",
-                properties: {
-                  contact_id: {
-                    type: "string",
-                    description: "Optional. The contact's id (a uuid, e.g. from a prior contact lookup) to check just that contact. Omit to see the most recent new-contact events."
-                  }
-                }
-              }
-            }
-          },
+          // capability_status + contact_event_status are emitted by the Capability Gateway, not
+          // declared inline (owner ruling 2026-09-01 — domains/Spine own features, Chat consumes).
+          // Spread as objects so they carry no inline `name:` line, descending the chat-tool-registry
+          // ratchet 10 → 8. Their dispatch stays below, unchanged. The shapes are byte-identical to
+          // the defs they replaced (§58 — nothing a caller sees changes).
+          ...buildGatewayToolDefs(),
           {
             type: "function",
             function: {

@@ -248,6 +248,14 @@ export function decideMcpToolCall(
       // caller writes it on this same path for every attempt. Naming a channel the seam cannot
       // check would be the assertion it warns about; this one is true.
       ...(policy.effect === "mutate" ? { outcomeChannel: "paige_audit_log" } : {}),
+      // DECLARED non-adoption, not a silent absence (§13). This door does not yet re-resolve the
+      // tenant capability status, so it says so rather than asserting a capability is available: the
+      // seam's status gate is a no-op for `"unknown"`. That changes nothing here today — the 51
+      // reads proceed exactly as before, and every mutation refuses structurally at the door rule
+      // below regardless of status — so passing a resolved status could only ever REFUSE a read
+      // that reads fine, which would be a behaviour change this slice does not make (§37). Wiring
+      // the real resolution into this door is the named follow-up in `governedExecution.ts`.
+      availability: "unknown" as const,
     },
     approval: {
       autonomyLane: MCP_LANE_NOT_RESOLVED,
