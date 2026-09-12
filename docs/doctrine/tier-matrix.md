@@ -42,6 +42,12 @@ tier that customizes on top of its (Agency) baseline. Owner-locked cells (2026-0
   `_kind='consumer'` mint for an **agency** target, §32.a-proven; #460 narrowed that guard to agency-only
   so Enterprise passes).
 - **`growth` + `studio` (Vibe Studio + Campaigns) = Solo · Sub-account · Enterprise · God — NOT Agency**
+  - *2026-09-12 media capability truth (same-commit §66 note, vibe-media-fal — shipped #1153 /
+    main `d5387376`, deployed config-gated OFF):* the Vibe Studio tier set is unchanged; the governed
+    fal.ai media seam is `PARTIAL` (deployed, provider-gated) — generation `UNAVAILABLE` by config
+    until the owner sets the spend gates (fails closed until the owner sets `FAL_KEY` + provider ceiling +
+    media budget; video additionally flagged off; music deferred). The tier gate continues to
+    derive through the one tier helper; no inline account_type compare was introduced.
 - **Solo Campaigns -> Pipeline (Gate 1 approved; draft, not live as of 2026-08-31):** follows the existing Growth exception: Solo + Sub-account + Enterprise + God, not Agency. The base capability is tenant-owned multiple pipelines, explicit stage lifecycle management, board-first deal context, and compact focused-stage operation. Read-only members receive the projection but not stage/pipeline writes. This row remains **DRAFT / UNVERIFIED** until Gate 2, merge, persisted migration apply, and authenticated owner-flow proof; it must not be represented as shipped beforehand.
 
 - **Bounded empty-pipeline deletion (2026-09-03):** the new `delete_empty_pipeline` exception is narrower than general Growth access: active canonical Owner of the server-resolved top-level standalone Solo tenant only. Admin-only/member, child/sub-account, Agency, Enterprise and Operator contexts receive no new deletion capability. `get_pipeline_workspace.can_delete` is server-proven. Existing Pipeline catalogue/configure permissions are unchanged. See `docs/delivery/solo-pipeline-empty-delete.md` for proof/release status; rendered fixtures do not prove authenticated production access.

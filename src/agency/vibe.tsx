@@ -4,6 +4,15 @@
 // whatsoever"), mirroring src/solo/vibe.tsx (the Solo Studio precedent) for the
 // Agency design's Studio surface.
 //
+// LINEAGE CLASSIFICATION (2026-09-12, Vibe media workstream): fixture-only.
+// The canonical Vibe Studio — real governed media generation — is the SOLO
+// surface (src/solo/vibe.tsx + the paige-media seam). This port carries no
+// generation, storage, or publishing capability; per the owner's build
+// authorization ("no surface may imply that it generates, previews, publishes,
+// or stores assets when it does not") it states that truth in-surface. The
+// §28-scoped diff is exactly three lines: this header, one status line under
+// the composer, and the sample-projects label.
+//
 // Source of truth: "Agency Shell.dc.html" studioOpen block — a fixed, committed-
 // DARK cosmic surface (radial gradient, drifting star field) that ESCAPES the app
 // chrome: a 246px rail (Back-to-Growth + Esc chip · Vibe Studio brand · New project ·
@@ -144,13 +153,18 @@ const VibeStudio = ({ onBack = () => {}, studioContext = "", studioContextColor 
               <span style={{ marginLeft: "auto", width: 30, height: 30, borderRadius: "50%", background: q ? "var(--gold-bright)" : "rgba(255,253,248,.14)", color: q ? "#241C05" : "#FFFDF8", display: "grid", placeItems: "center", fontSize: 13, flex: "none" }}>↑</span>
             </div>
           </div>
+          {/* Truthful capability line (2026-09-12 classification): this port
+              generates nothing; creation is live on the Solo workspace. */}
+          <div style={{ marginTop: 12, fontSize: 11.5, color: "rgba(255,253,248,.5)", textAlign: "center" }}>
+            Generation isn't available on this surface yet — the Solo workspace's Vibe Studio is where creation is live.
+          </div>
         </div>
 
         {/* Your projects. */}
         <div style={{ flex: "none", padding: "20px 26px 26px", borderTop: "1px solid rgba(255,253,248,.07)", background: "rgba(10,8,26,.5)" }}>
           <div className="row" style={{ alignItems: "baseline", gap: 11 }}>
             <div style={{ fontSize: 19, fontWeight: 700, color: "#FFFDF8" }}>Your projects</div>
-            <div style={{ fontSize: 12, color: "rgba(255,253,248,.5)" }}>{STUDIO_PROJECTS.length} projects</div>
+            <div style={{ fontSize: 12, color: "rgba(255,253,248,.5)" }}>sample projects — not live data</div>
             <div style={{ marginLeft: "auto", fontSize: 11.5, color: "rgba(255,253,248,.55)", cursor: "pointer", flex: "none" }}>Recently edited ▾</div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(196px,100%),1fr))", gap: 12, marginTop: 14 }}>

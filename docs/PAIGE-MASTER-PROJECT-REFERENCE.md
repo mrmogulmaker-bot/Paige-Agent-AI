@@ -669,6 +669,8 @@ runtime is PROOF_OWED** across all 7 flows until a capable session has the least
 + `LIVE_DRIVE_*` CI secrets (owner-approved; this session cannot provision/set-secrets/reach-prod). This is
 the Layer-G verification backbone that lets a binding-ledger surface move `PROOF_OWED → LIVE` once driven.
 
+**2026-09-12 Vibe Studio governed media seam (fal.ai) — LIVE as deployed code, config-gated OFF (PR #1153, main `d5387376`):** one durable media layer per the owner build authorization + MVP-mode standing order, merged after the #1159 replay bridge let the exact-head database-contract validate migration `20270121000000` (renamed from 20270118 after the Chat collision). Deployed: `paige-media` (governed front door — server-derived tenant, shared budget ladder with fail-closed media deviations, video flag + daily cap + always-approval, music truthful 403), `paige-media-webhook` (verify_jwt=false in config.toml + manual `--no-verify-jwt` deploy after a config-only push didn't trigger the pipeline; unsigned prod probe returns the function's OWN `{"error":"unverified"}` — the ED25519 JWKS fail-closed path is live), `paige-media-sweeper` (*/2 cron, verified on prod). §32 persisted-apply CONFIRMED by read-only prod queries: schema_migrations row, paige_media_jobs + 5 policies, claim RPC, cron job, realtime publication. Post-deploy probes: no-auth paige-media/sweeper 401 at the JWT wall; webhook reaches the in-function verifier only. Adversarial diff pass fixed 3 blockers incl. deleting a stale-baseline save_marketing_content replacement that would have regressed the tenant gate; 16 security-contract tests pin the webhook/bypass proofs. **PROOF OWED (owner-gated):** controlled first paid generation — FAL_KEY + media_provider_ceiling_usd + media_budget_daily_usd + explicit max test spend are the owner's fail-closed go-live switches; authenticated UI drive (no test credentials in build sessions). Capability truth: media generation UNAVAILABLE by config until then; music UNAVAILABLE; Social publishing non-executable. Evidence: docs/evidence/ui-delivery/vibe-media-fal.md.
+
 **2026-09-12 Harness Completion Program — Map + P1 fresh-replay compatibility bridge (PR #1159, owner-approved Gate A):**
 Shipped `docs/delivery/harness-completion-map.md` — the owner's required first deliverable: a read-only
 A–G-layer navigation synthesis over the canonical records (grounded by a 5-agent crew against `main 6aa077d`),
@@ -683,7 +685,6 @@ scheduling/analytics. **Known limitation (gap, §5):** the operator-vs-tenant `p
 conflict leaves two Solo Social surfaces wired but non-functional on prod — tracked in **#1161**, to be
 replaced by the complete Social Foundation migration. Merging also unblocks the backed-up prod migration queue
 (20270117→latest; all additive) — persisted-apply self-verified by the `deploy-migrations` pipeline.
-
 **2026-09-10 durable-job first-adopter deployment + live verification:** migration `20270106000000`
 was applied to production with history parity (top of `supabase_migrations.schema_migrations`) and
 `weekly-summary-cron` was deployed at version 801 post-#1084-merge (crew pipeline). Live verification

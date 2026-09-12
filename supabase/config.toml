@@ -7,6 +7,12 @@ project_id = "xygzykjyynhzqytbqnzu"
   # Supabase JWT — the HMAC-signed state is what authenticates the connecting host.
   [functions.zoom-oauth-callback]
     verify_jwt = false
+  # fal.ai completion callbacks carry no Supabase JWT — the ENTIRE auth model is
+  # fal's own ED25519 callback signature verified in-function against fal's JWKS
+  # (±300s replay window; completion-only — it can never create jobs or spend).
+  # Without verify_jwt=false the gateway 401s every callback before verification.
+  [functions.paige-media-webhook]
+    verify_jwt = false
   # Public front-door signup — creates a pre-confirmed account via the service
   # role (email verification not wired yet). Must be reachable pre-auth.
   [functions.tenant-signup]
