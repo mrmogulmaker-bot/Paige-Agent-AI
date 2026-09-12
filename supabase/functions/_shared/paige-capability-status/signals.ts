@@ -74,6 +74,17 @@ export interface CapabilityFacts {
   // ── Real per-tenant connection facts ──
   /** Is the tenant's own n8n instance connected? (loadN8nReadinessForChat → status === "available"). */
   workflowsConnected: boolean;
+
+  /**
+   * Does the caller hold the owner-ops role these tools actually require? The chat's owner block
+   * gates every one of these tools (the reads included) on `admin | coach | super_admin`, derived
+   * server-side from `user_roles`. The caller's TIER alone does not prove that role — a non-admin
+   * tenant member is a non-client tier but cannot drive any of these — so the manifest must AND the
+   * role in, or it would tell such a member she can do things the tool gate will refuse (§13/§51:
+   * the block and the tool must agree on WHO). Resolved from the verified JWT's user id; false when
+   * unknown, so the manifest never over-claims on an unresolved role.
+   */
+  ownerOpsEligible: boolean;
 }
 
 // A sealed client seat (actorTier CLIENT_SEAT_ALLOW) can neither see/create contacts nor reach any
@@ -90,7 +101,10 @@ const eligibleForTenantBook = (tier: Tier): boolean => tier !== "client";
 const mat = (m: Maturity | null): Maturity => m ?? "UNAVAILABLE";
 
 export function buildCapabilitySignals(facts: CapabilityFacts): CapabilitySignal[] {
-  const tierEligible = eligibleForTenantBook(facts.callerTier);
+  // Eligible = a non-client tier AND the owner-ops role the tools actually require. ANDing the role
+  // in keeps the manifest from telling a non-admin tenant member she can do what the tool gate will
+  // refuse (§13/§51 — the block and the tool agree on WHO); a sealed client fails the tier half too.
+  const tierEligible = eligibleForTenantBook(facts.callerTier) && facts.ownerOpsEligible;
 
   return [
     // ── CRM ───────────────────────────────────────────────────────────────────────────────────

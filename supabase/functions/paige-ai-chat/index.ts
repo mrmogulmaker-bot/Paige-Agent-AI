@@ -4323,15 +4323,35 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // tenant's real n8n connection state. The SAME gatherer feeds BOTH the prompt-time capability
     // block the model answers "what can you do" from AND the capability_status read tool, so the two
     // can never diverge. No maturity is decided here; it is read from the registry (§13/§947).
+    // The owner-ops role the manifest's tools actually require (`admin | coach | super_admin`, the
+    // exact gate the CRM/owner tool block enforces). Resolved once from `user_roles` on the verified
+    // user id (service client, keyed on user.id — a caller-supplied role can never reach it) and
+    // cached for the request, so the prompt block and the capability_status tool agree on WHO
+    // (§13/§51). Fails closed to false so an unresolved role never over-claims.
+    let ownerOpsEligibleCache: boolean | undefined;
+    const resolveOwnerOpsEligible = async (): Promise<boolean> => {
+      if (ownerOpsEligibleCache !== undefined) return ownerOpsEligibleCache;
+      try {
+        const { data } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+        const roles = (data || []).map((r: any) => r.role);
+        ownerOpsEligibleCache = roles.includes("admin") || roles.includes("coach") || roles.includes("super_admin");
+      } catch {
+        ownerOpsEligibleCache = false;
+      }
+      return ownerOpsEligibleCache;
+    };
+
     const gatherCapabilityManifest = async (workflowsConnected: boolean) => {
       const mat = (key: string) => getSpineCapability(key)?.maturity ?? null;
-      const [contactCreateLane, campaignCreateLane, workflowsLane] = await Promise.all([
+      const [contactCreateLane, campaignCreateLane, workflowsLane, ownerOpsEligible] = await Promise.all([
         resolveToolAutonomy("crm_create_contact"),
         resolveToolAutonomy("campaign_brief_create"),
         resolveToolAutonomy("n8n_run_workflow"),
+        resolveOwnerOpsEligible(),
       ]);
       const signals = buildCapabilitySignals({
         callerTier,
+        ownerOpsEligible,
         contactCreateLane: contactCreateLane as "auto" | "confirm" | "off",
         campaignCreateLane: campaignCreateLane as "auto" | "confirm" | "off",
         workflowsLane: workflowsLane as "auto" | "confirm" | "off",
@@ -4461,8 +4481,10 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
 
     // Capability status block (P0 Defect-1 — truthful self-knowledge, §13/§36/§70). The per-turn,
     // authoritative answer to "what can you do here?", resolved server-side from the SAME gatherer
-    // the capability_status tool uses (§18), so the prompt and the tool never disagree. Tenant-only
-    // and never a client seat (the gate mirrors the over-claimed tools' own role gate). Workflows
+    // the capability_status tool uses (§18), so the prompt and the tool never disagree. Injected for
+    // any tenant non-client session; the MANIFEST ITSELF is role-accurate (the gatherer ANDs in the
+    // owner-ops role the tools require, so a non-admin member sees every owner-ops capability as
+    // not-available-to-them rather than a claim the tool gate would refuse — §13/§51). Workflows
     // connection comes from the n8n evidence already loaded above. Fail-closed NO-OP on any error —
     // better to say nothing than to inject a half-resolved capability claim (§13).
     let capabilityStatusBlock = "";

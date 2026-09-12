@@ -50,6 +50,7 @@ const freshSolo = (over: Record<string, unknown> = {}) => ({
   campaignCreateMaturity: "PARTIAL",
   workflowsMaturity: "PARTIAL",     // integrations.n8n_run_workflow is registered…
   workflowsConnected: false,        // …but the tenant's n8n is not connected yet
+  ownerOpsEligible: true,           // the Solo owner holds admin — the tools' own role gate
   ...over,
 });
 const byKey = (rows: any[]) => Object.fromEntries(rows.map((r) => [r.key, r]));
@@ -165,6 +166,16 @@ describe("the honest answer a FRESH SOLO owner is told (the P0 Defect-1 anti-ove
     for (const k of Object.keys(a)) {
       expect(a[k].availability, k).toBe("not_for_tier");
       expect(a[k].reason, k).toBeTruthy();
+    }
+  });
+
+  it("a non-owner-ops tenant member (lacks admin/coach/super_admin) is NOT told she can do these", () => {
+    // The tools require the owner-ops role; a non-admin member who is a non-client tier must still
+    // see NOT_FOR_TIER everywhere, never a cheerful 'Add a contact — you approve' the tool gate
+    // would refuse (§13/§51 — the block and the tool agree on WHO).
+    const a = answer({ ownerOpsEligible: false });
+    for (const k of Object.keys(a)) {
+      expect(a[k].availability, k).toBe("not_for_tier");
     }
   });
 

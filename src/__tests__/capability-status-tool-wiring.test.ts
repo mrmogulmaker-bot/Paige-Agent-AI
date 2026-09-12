@@ -54,6 +54,11 @@ describe("capability_status tool wiring (source assertions)", () => {
     expect(src).toContain('resolveToolAutonomy("n8n_run_workflow")');
     expect(src).toContain("buildCapabilitySignals({");
     expect(src).toContain("resolveCapabilityStatus(signals)");
+    // the manifest must agree with the tools' OWN role gate (admin/coach/super_admin), so a
+    // non-admin member is not told she can do what the gate refuses (§13/§51)
+    expect(src).toContain("const resolveOwnerOpsEligible = async (): Promise<boolean> =>");
+    expect(src).toContain('roles.includes("admin") || roles.includes("coach") || roles.includes("super_admin")');
+    expect(src).toContain("ownerOpsEligible,");
 
     // the tool dispatch calls the SAME gatherer (never its own divergent resolution)
     const at = src.indexOf('} else if (tc.function.name === "capability_status") {');
