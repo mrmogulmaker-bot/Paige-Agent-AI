@@ -133,6 +133,11 @@ describe("Solo Beta security boundary", () => {
     expect(functionConfig).toMatch(/\[functions\.solo-beta-offer-status\][\s\S]*verify_jwt = false/);
     expect(offerStatus).toContain('offer.status === "test_ready"');
     expect(offerStatus).toContain('offer.provider_mode === "test"');
+    expect(offerStatus).toContain('Deno.env.get("STRIPE_SECRET_KEY_V2")');
+    expect(offerStatus).toContain('stripe.prices.retrieve(offer.stripe_price_id');
+    expect(offerStatus).toContain('purpose: "checkout_configuration"');
+    expect(offerStatus).toContain('validateSoloBetaOffer({');
+    expect(offerStatus).toContain('product.active === true');
     expect(offerStatus).not.toContain("stripe_product_id:");
     expect(offerStatus).not.toContain("stripe_price_id:");
     expect(pricing).toContain('availability !== "available"');
@@ -200,6 +205,27 @@ describe("Solo Beta security boundary", () => {
     expect(welcome).toContain('canceled_paid: { title: "Your paid Solo subscription has ended"');
   });
 
+  it("revokes workspace membership with entitlement and restores it only for verified granting states", () => {
+    expect(integrity).toContain("UPDATE public.tenant_members");
+    expect(integrity).toContain("CASE WHEN _subscription_status IN ('trialing','active') THEN 'active' ELSE 'suspended' END");
+    expect(integrity).toContain("solo_beta_owner_membership_missing");
+    expect(status).toContain('membership.status === "active" && ["trialing", "active"].includes(subscription.status)');
+    expect(status).toContain('membership.status === "suspended" && ["past_due", "unpaid", "paused"].includes(subscription.status)');
+    expect(status).toContain('membership.status === "suspended" && subscription.status === "canceled"');
+  });
+
+  it("requires an active offer for acquisition but permits immutable archived-offer lifecycle recovery", () => {
+    const checkoutBranch = webhook.slice(
+      webhook.indexOf('event.type === "checkout.session.completed"'),
+      webhook.indexOf('event.type === "customer.subscription.updated"'),
+    );
+    const lifecycleBranch = webhook.slice(webhook.indexOf('event.type === "customer.subscription.updated"'));
+    expect(checkoutBranch).toContain('product.active !== true');
+    expect(lifecycleBranch).not.toContain('product.active !== true');
+    expect(lifecycleBranch).toContain('persisted.stripe_product_id');
+    expect(lifecycleBranch).toContain('persisted.stripe_price_id');
+  });
+
   it("uses the Stripe Basil invoice parent and item billing periods", () => {
     expect(webhook).toContain("readInvoiceSubscriptionId(invoice)");
     expect(webhook).toContain("readSubscriptionItemPeriod(item)");
@@ -216,10 +242,16 @@ describe("Solo Beta security boundary", () => {
   });
 
   it("opens a dedicated exact-contract test-mode portal for Beta billing recovery", () => {
+    expect(portal).toContain('admin.from("solo_beta_enrollments")');
+    expect(portal).toContain('["active", "suspended"].includes(membership.status)');
     expect(portal).toContain('persisted.provider_mode !== "test"');
     expect(portal).toContain("validateSoloBetaOffer");
     expect(portal).toContain("SOLO_BETA_PRODUCT_NAME");
     expect(portal).toContain("stripe.billingPortal.sessions.create");
+    expect(portal).not.toContain("get_workspace_billing_authority");
+    expect(portal).not.toContain('offer.status === "test_ready"');
+    expect(welcome).toContain('supabase.functions.invoke("solo-beta-billing-portal")');
+    expect(status).toContain("can_manage_billing: true");
   });
 
   it("removes retired public acquisition detours and blocks new invite-created account types", () => {

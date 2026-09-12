@@ -27,11 +27,12 @@ Deno.serve(async (req) => {
 
   const [enrollmentResult, membershipsResult] = await Promise.all([
     admin.from("solo_beta_enrollments").select("state,reference_id,tenant_id,stripe_subscription_id,last_error_code").eq("user_id", user.id).maybeSingle(),
-    admin.from("tenant_members").select("tenant_id,role,is_owner,status,tenants(account_number,account_type,parent_tenant_id)").eq("user_id", user.id).eq("status", "active"),
+    admin.from("tenant_members").select("tenant_id,role,is_owner,status,tenants(account_number,account_type,parent_tenant_id)").eq("user_id", user.id),
   ]);
   if (enrollmentResult.error || membershipsResult.error) return json(503, { error: "status_unavailable" });
   const enrollment = enrollmentResult.data;
-  const activeMemberships = membershipsResult.data ?? [];
+  const memberships = membershipsResult.data ?? [];
+  const activeMemberships = memberships.filter((row) => row.status === "active");
   const referenceId = enrollment?.reference_id ?? crypto.randomUUID();
 
   if (activeMemberships.length > 0 && !enrollment) {
@@ -44,7 +45,7 @@ Deno.serve(async (req) => {
   // Fulfilled access is verified from its immutable receipt/subscription/membership chain.
   // A later agreement rotation is a future-acquisition rule and never revokes an already-paid workspace.
   if (enrollment?.state === "fulfilled" && enrollment.tenant_id && enrollment.stripe_subscription_id) {
-    const membership = activeMemberships.find((row: Record<string, unknown>) => row.tenant_id === enrollment.tenant_id) as Record<string, unknown> | undefined;
+    const membership = memberships.find((row: Record<string, unknown>) => row.tenant_id === enrollment.tenant_id) as Record<string, unknown> | undefined;
     const tenantRaw = membership?.tenants;
     const tenant = (Array.isArray(tenantRaw) ? tenantRaw[0] : tenantRaw) as { account_number?: number; account_type?: string; parent_tenant_id?: string | null } | null | undefined;
     const [subscriptionResult, receiptResult, entitlementResult] = await Promise.all([
@@ -70,7 +71,7 @@ Deno.serve(async (req) => {
       && entitlement?.plan_slug === "solo"
       && entitlement.stripe_subscription_id === enrollment.stripe_subscription_id
       && entitlement.status === subscription.status;
-    if (chainVerified && ["trialing", "active"].includes(subscription.status)) {
+    if (chainVerified && membership.status === "active" && ["trialing", "active"].includes(subscription.status)) {
       return json(200, {
         state: "verified", reference_id: referenceId, retryable: false,
         message: subscription.cancel_at_period_end
@@ -83,14 +84,14 @@ Deno.serve(async (req) => {
         destination: `/solo/${tenant.account_number}/command-center`,
       });
     }
-    if (chainVerified && ["past_due", "unpaid", "paused"].includes(subscription.status)) {
+    if (chainVerified && membership.status === "suspended" && ["past_due", "unpaid", "paused"].includes(subscription.status)) {
       return json(200, {
         state: "payment_recovery", reference_id: referenceId, retryable: false,
         message: "Paige verified that this subscription needs billing attention. Update payment details in billing or contact support with this reference; access is not being inferred while recovery is required.",
-        billing_destination: `/solo/${tenant.account_number}/settings/billing`,
+        can_manage_billing: true,
       });
     }
-    if (chainVerified && subscription.status === "canceled") {
+    if (chainVerified && membership.status === "suspended" && subscription.status === "canceled") {
       const canceledDuringTrial = subscription.trial_ends_at
         && new Date(subscription.trial_ends_at).getTime() > Date.now();
       return json(200, {
@@ -100,7 +101,7 @@ Deno.serve(async (req) => {
         message: canceledDuringTrial
           ? "Your Solo Beta trial was canceled. No first paid renewal is scheduled, and trial access has ended."
           : "Your paid Solo subscription is canceled and its service period has ended. Review billing history or contact support with this reference.",
-        billing_destination: `/solo/${tenant.account_number}/settings/billing`,
+        can_manage_billing: true,
       });
     }
     return json(200, { state: "failed", reference_id: referenceId, retryable: true, message: "We received the billing result but could not verify every access record. Retry verification or contact support with this reference." });

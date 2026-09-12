@@ -173,8 +173,8 @@ Deno.serve(async (req) => {
       const product = price && typeof price.product !== "string" ? price.product : null;
       const productDeleted = product && "deleted" in product ? product.deleted : false;
       const period = readSubscriptionItemPeriod(item);
-      if (!price || item.quantity !== 1 || !product || productDeleted || !("active" in product)
-        || product.active !== true || !("name" in product) || product.name !== SOLO_BETA_PRODUCT_NAME
+      if (!price || item.quantity !== 1 || !product || productDeleted
+        || !("name" in product) || product.name !== SOLO_BETA_PRODUCT_NAME
         || !period) return json(400, { error: "event_not_eligible" });
       const productId = product.id;
       const { data: persisted, error: persistedError } = await admin.from("platform_subscriptions")

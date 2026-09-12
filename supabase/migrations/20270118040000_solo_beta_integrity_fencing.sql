@@ -394,6 +394,11 @@ BEGIN
       current_period_start=_period_start,current_period_end=_period_end,trial_ends_at=_trial_end,updated_at=now()
     WHERE stripe_subscription_id=_subscription_id AND user_id=_user_id;
     IF NOT FOUND THEN RAISE EXCEPTION 'solo_beta_user_subscription_missing'; END IF;
+    UPDATE public.tenant_members
+    SET status = CASE WHEN _subscription_status IN ('trialing','active') THEN 'active' ELSE 'suspended' END,
+        updated_at = now()
+    WHERE tenant_id=_sub.tenant_id AND user_id=_user_id AND is_owner=true;
+    IF NOT FOUND THEN RAISE EXCEPTION 'solo_beta_owner_membership_missing'; END IF;
     _outcome := 'applied';
   END IF;
 

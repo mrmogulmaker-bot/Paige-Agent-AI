@@ -10,7 +10,7 @@ const POLL_TIMEOUT_MS = 30000;
 
 type EnrollmentState = "needs_identity" | "needs_intake" | "needs_checkout" | "pending" | "verified" | "payment_recovery" | "canceled_trial" | "canceled_paid" | "failed";
 type ViewState = EnrollmentState | "cancelled" | "expired" | "invalid" | "delayed";
-type EnrollmentStatus = { state: EnrollmentState; reference_id: string; message: string; retryable: boolean; destination?: string; billing_destination?: string };
+type EnrollmentStatus = { state: EnrollmentState; reference_id: string; message: string; retryable: boolean; destination?: string; can_manage_billing?: boolean };
 
 export default function Welcome() {
   const navigate = useNavigate();
@@ -21,6 +21,8 @@ export default function Welcome() {
   const [view, setView] = useState<ViewState>(initial);
   const [status, setStatus] = useState<EnrollmentStatus | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [billingError, setBillingError] = useState<string | null>(null);
   const settled = useRef(false);
 
   useEffect(() => {
@@ -68,6 +70,19 @@ export default function Welcome() {
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [attempt, checkout, navigate]);
 
+  const openBillingRecovery = async () => {
+    setBillingBusy(true);
+    setBillingError(null);
+    const { data, error } = await supabase.functions.invoke("solo-beta-billing-portal");
+    const url = !error && data && typeof data === "object" ? (data as { url?: unknown }).url : null;
+    if (typeof url === "string" && /^https:\/\//.test(url)) {
+      window.location.assign(url);
+      return;
+    }
+    setBillingError("Billing could not be opened. Try again or contact support with the reference shown above.");
+    setBillingBusy(false);
+  };
+
   const defaults: Record<ViewState, { title: string; body: string }> = {
     pending: { title: "Verifying your Paige Solo access…", body: "We are confirming your 30-day trial subscription, membership, and workspace on the server. Access is not granted until every check passes." },
     delayed: { title: "Verification is taking longer than expected", body: "We could not verify your Solo enrollment yet. Retrying is safe and will not create another workspace or subscription." },
@@ -95,13 +110,14 @@ export default function Welcome() {
         <div className="space-y-3" role="status" aria-live="polite">
           <h1 id="welcome-title" className="text-2xl font-bold text-foreground">{copy.title}</h1>
           <p className="text-sm leading-relaxed text-muted-foreground">{message}</p>
+          {billingError ? <p className="text-sm text-destructive" role="alert">{billingError}</p> : null}
           {status?.reference_id ? <p className="text-xs text-muted-foreground">Reference: <span className="font-mono">{status.reference_id}</span></p> : null}
         </div>
         <div className="space-y-3">
           {(view === "delayed" || (view === "failed" && status?.retryable)) && <Button variant="gold" className="w-full" onClick={() => setAttempt((value) => value + 1)}>Retry verification</Button>}
           {view === "needs_identity" && <Button variant="gold" className="w-full" onClick={() => navigate("/auth?mode=login&next=%2Fwelcome%3Fcheckout%3Dsuccess")}>Sign in and resume</Button>}
           {view === "needs_intake" && <Button variant="gold" className="w-full" onClick={() => navigate("/onboarding?plan=solo&billing=monthly")}>Finish Solo setup</Button>}
-          {(view === "payment_recovery" || view === "canceled_trial" || view === "canceled_paid") && status?.billing_destination && <Button variant="gold" className="w-full" onClick={() => navigate(status.billing_destination!)}>Review billing</Button>}
+          {(view === "payment_recovery" || view === "canceled_trial" || view === "canceled_paid") && status?.can_manage_billing && <Button variant="gold" className="w-full" disabled={billingBusy} onClick={() => void openBillingRecovery()}>{billingBusy ? "Opening billing…" : "Review billing"}</Button>}
           {(view === "needs_checkout" || view === "cancelled" || view === "expired" || view === "invalid" || (view === "failed" && !status?.retryable)) && <Button variant="gold" className="w-full" onClick={() => navigate("/pricing")}>Return to Paige Solo</Button>}
           <Button asChild variant="outline" className="w-full"><a href="mailto:support@paigeagent.ai?subject=Solo%20enrollment%20verification">Contact support</a></Button>
         </div>

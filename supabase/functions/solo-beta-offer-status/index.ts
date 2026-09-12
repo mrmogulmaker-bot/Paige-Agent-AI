@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import Stripe from "https://esm.sh/stripe@18.5.0";
 import {
   SOLO_BETA_CURRENCY,
   SOLO_BETA_INTERVAL,
@@ -6,6 +7,8 @@ import {
   SOLO_BETA_OFFER_CODE,
   SOLO_BETA_TRIAL_DAYS,
   SOLO_BETA_UNIT_AMOUNT_CENTS,
+  SOLO_BETA_PRODUCT_NAME,
+  validateSoloBetaOffer,
 } from "../_shared/solo-beta-offer.ts";
 
 const cors = {
@@ -27,7 +30,8 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  if (!supabaseUrl || !serviceKey) return json(503, { available: false });
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY_V2") ?? "";
+  if (!supabaseUrl || !serviceKey || !stripeKey) return json(503, { available: false });
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
   const { data: offer, error } = await admin.from("platform_subscription_offers")
@@ -36,7 +40,7 @@ Deno.serve(async (req) => {
     .maybeSingle();
 
   if (error) return json(503, { available: false });
-  const available = Boolean(
+  const configured = Boolean(
     offer
     && offer.status === "test_ready"
     && offer.provider_mode === "test"
@@ -49,6 +53,38 @@ Deno.serve(async (req) => {
     && offer.trial_days === SOLO_BETA_TRIAL_DAYS
     && offer.account_type === "standalone"
   );
+
+  let available = false;
+  if (configured && offer) {
+    try {
+      const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
+      const price = await stripe.prices.retrieve(offer.stripe_price_id, { expand: ["product"] });
+      const product = typeof price.product === "string" ? null : price.product;
+      const productDeleted = product && "deleted" in product ? product.deleted : false;
+      const validation = validateSoloBetaOffer({
+        offerCode: offer.offer_code,
+        purpose: "checkout_configuration",
+        livemode: price.livemode,
+        configuredProductId: offer.stripe_product_id,
+        configuredPriceId: offer.stripe_price_id,
+        observedProductId: product?.id ?? null,
+        observedPriceId: price.id,
+        priceActive: price.active,
+        unitAmountCents: price.unit_amount,
+        currency: price.currency,
+        recurring: price.recurring ? { interval: price.recurring.interval, intervalCount: price.recurring.interval_count } : null,
+        trialStart: null,
+        trialEnd: null,
+        paymentMethodCollected: null,
+        subscriptionStatus: null,
+      });
+      available = validation.ok && price.active === true && product !== null
+        && !productDeleted && "active" in product && product.active === true
+        && "name" in product && product.name === SOLO_BETA_PRODUCT_NAME;
+    } catch {
+      available = false;
+    }
+  }
 
   return json(200, {
     available,

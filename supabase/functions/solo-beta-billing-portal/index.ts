@@ -40,40 +40,41 @@ Deno.serve(async (req) => {
   if (authError || !authData.user) return json(401, { error: "unauthenticated" });
   const user = authData.user;
 
-  const { data: authorityRows, error: authorityError } = await caller.rpc("get_workspace_billing_authority");
-  const authority = Array.isArray(authorityRows) ? authorityRows[0] : authorityRows;
-  if (authorityError || !authority) return json(503, { error: "authority_unreadable" });
-  if (authority.scope !== "top_level_solo") return json(403, { error: "not_applicable_scope" });
-  if (authority.can_manage_billing !== true || authority.role !== "owner") {
-    return json(403, { error: "owner_only" });
+  const { data: enrollment, error: enrollmentError } = await admin.from("solo_beta_enrollments")
+    .select("tenant_id,stripe_subscription_id,state")
+    .eq("user_id", user.id).maybeSingle();
+  if (enrollmentError) return json(503, { error: "authority_unreadable" });
+  if (!enrollment) return json(409, { error: "not_solo_beta" });
+  if (enrollment.state !== "fulfilled" || !enrollment.tenant_id || !enrollment.stripe_subscription_id) {
+    return json(409, { error: "billing_account_unresolvable" });
   }
-  const tenantId = typeof authority.tenant_id === "string" ? authority.tenant_id : null;
-  if (!tenantId) return json(409, { error: "no_active_workspace" });
+  const tenantId = enrollment.tenant_id;
 
-  const [subscriptionResult, mappingResult, tenantResult, offerResult] = await Promise.all([
+  const [subscriptionResult, mappingResult, tenantResult, membershipResult] = await Promise.all([
     admin.from("platform_subscriptions")
       .select("stripe_subscription_id,stripe_customer_id,stripe_product_id,stripe_price_id,offer_code,provider_mode")
       .eq("tenant_id", tenantId).eq("offer_code", SOLO_BETA_OFFER_CODE).maybeSingle(),
     admin.from("platform_billing_accounts")
       .select("stripe_customer_id,stripe_account").eq("tenant_id", tenantId).maybeSingle(),
     admin.from("tenants").select("account_number").eq("id", tenantId).maybeSingle(),
-    admin.from("platform_subscription_offers")
-      .select("stripe_product_id,stripe_price_id,status,provider_mode,trial_days")
-      .eq("offer_code", SOLO_BETA_OFFER_CODE).maybeSingle(),
+    admin.from("tenant_members").select("role,is_owner,status")
+      .eq("tenant_id", tenantId).eq("user_id", user.id).maybeSingle(),
   ]);
-  if (subscriptionResult.error || mappingResult.error || tenantResult.error || offerResult.error) {
+  if (subscriptionResult.error || mappingResult.error || tenantResult.error || membershipResult.error) {
     return json(503, { error: "billing_account_unresolvable" });
   }
   const persisted = subscriptionResult.data;
   if (!persisted) return json(409, { error: "not_solo_beta" });
   const mapping = mappingResult.data;
-  const offer = offerResult.data;
+  const membership = membershipResult.data;
+  if (!membership || membership.role !== "owner" || membership.is_owner !== true
+    || !["active", "suspended"].includes(membership.status)) {
+    return json(403, { error: "owner_only" });
+  }
   if (!mapping || mapping.stripe_account !== "v2"
     || mapping.stripe_customer_id !== persisted.stripe_customer_id
     || persisted.provider_mode !== "test" || !persisted.stripe_subscription_id
-    || !offer || offer.status !== "test_ready" || offer.provider_mode !== "test" || offer.trial_days !== 30
-    || offer.stripe_product_id !== persisted.stripe_product_id
-    || offer.stripe_price_id !== persisted.stripe_price_id) {
+    || enrollment.stripe_subscription_id !== persisted.stripe_subscription_id) {
     return json(409, { error: "billing_account_unresolvable" });
   }
   const returnUrl = canonicalAppUrl({
@@ -101,8 +102,8 @@ Deno.serve(async (req) => {
       offerCode: subscription.metadata?.offer_code ?? null,
       purpose: "lifecycle_sync",
       livemode: subscription.livemode,
-      configuredProductId: offer.stripe_product_id,
-      configuredPriceId: offer.stripe_price_id,
+      configuredProductId: persisted.stripe_product_id,
+      configuredPriceId: persisted.stripe_price_id,
       observedProductId: product?.id ?? null,
       observedPriceId: price.id,
       priceActive: price.active,
@@ -117,7 +118,7 @@ Deno.serve(async (req) => {
       subscriptionStatus: subscription.status,
     });
     if (!validation.ok || item.quantity !== 1 || !readSubscriptionItemPeriod(item)
-      || !product || productDeleted || !("active" in product) || product.active !== true
+      || !product || productDeleted
       || !("name" in product) || product.name !== SOLO_BETA_PRODUCT_NAME
       || customerId !== mapping.stripe_customer_id) {
       return json(409, { error: "billing_account_unresolvable" });
