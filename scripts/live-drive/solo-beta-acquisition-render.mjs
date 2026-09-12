@@ -99,6 +99,17 @@ try {
         colorScheme: theme,
         reducedMotion: "reduce",
       });
+      // Rendered/UI evidence only: provider readiness is separately PROOF OWED.
+      // This response exercises the exact safe public contract without exposing
+      // or pretending to create Stripe objects.
+      await context.route("**/functions/v1/solo-beta-offer-status", (route) => route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          available: true,
+          offer: { name: "Paige Solo Beta", unit_amount_cents: 7450, currency: "usd", interval: "month", interval_count: 1, trial_days: 30 },
+        }),
+      }));
       await context.addInitScript((selectedTheme) => localStorage.setItem("theme", selectedTheme), theme);
       const page = await context.newPage();
       const pageErrors = [];
@@ -142,6 +153,20 @@ try {
       await context.close();
     }
   }
+
+  const unavailableContext = await browser.newContext({ viewport: { width: 1366, height: 768 }, reducedMotion: "reduce" });
+  await unavailableContext.route("**/functions/v1/solo-beta-offer-status", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ available: false }),
+  }));
+  const unavailablePage = await unavailableContext.newPage();
+  await unavailablePage.goto(`${BASE}/pricing`, { waitUntil: "domcontentloaded", timeout: 45_000 });
+  await settle(unavailablePage);
+  const unavailableFacts = await pageFacts(unavailablePage);
+  record(/Enrollment is not open yet/i.test(unavailableFacts.body), "pricing unavailable: exact offer not ready has a truthful intentional state");
+  record(!unavailableFacts.interactive.some(({ text }) => /Start your 30-day trial/i.test(text)), "pricing unavailable: enrollment action is absent");
+  await unavailableContext.close();
 
   const context = await browser.newContext({ viewport: { width: 1366, height: 768 }, reducedMotion: "reduce" });
   const page = await context.newPage();
