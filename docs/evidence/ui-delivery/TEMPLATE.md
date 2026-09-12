@@ -26,7 +26,11 @@ UNVERIFIED: REPLACE_ME with remaining behavior and reason, or state none with th
      RECOGNIZED but OPTIONAL: CI validates each only when present (it must not be a placeholder)
      and never requires it — a record that omits them still passes, so no in-flight PR breaks.
      A dated, announced cutover (never silent) is what would later make any of them required.
-     Include the ones your change touches; delete the rest. -->
+     Include the ones your change touches; delete the rest.
+     Backend/edge/migration change that alters a visible flow with NO UI file? Add a
+     `Visible-Flow-Impact: yes` commit trailer — that is what routes your change under
+     supabase/functions/** or supabase/migrations/** to this evidence gate (see the standard's
+     "Backend-to-visible routing"). -->
 OWNER_INTENT: REPLACE_ME with the exact owner objective, target actor + user job, and required outcome (module 1)
 MUST_NOT_HAPPEN: REPLACE_ME with what this change must not break, remove, hide, or regress — or `NONE: reason` (module 1)
 MUST_PRESERVE: REPLACE_ME with the existing behavior/visuals/seams that must stay unchanged — or `NONE: reason` (module 1)

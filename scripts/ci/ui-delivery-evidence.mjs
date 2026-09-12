@@ -370,13 +370,14 @@ export function validateEvidenceText(text, classification) {
   }
 
   // Five-skill module fields: optional (never required here), but when an author DOES declare
-  // one it must be a substantive, non-placeholder statement — a declared-but-empty contract is
-  // worse than an absent one. This is the "recognized" half of recognized-but-optional.
+  // one it must be a non-placeholder statement — a declared-but-empty contract is worse than an
+  // absent one. CI enforces non-placeholder ONLY; whether the statement is genuinely substantive
+  // is a reviewer judgment, not a CI one. This is the "recognized" half of recognized-but-optional.
   for (const key of OPTIONAL_FIELDS) {
     if (fields.has(key)) {
       const value = fields.get(key);
       if (!value?.trim() || hasPlaceholder(value)) {
-        errors.push(`${key} is optional, but when present it must be a substantive, non-placeholder declaration.`);
+        errors.push(`${key} is optional, but when present it must be a non-placeholder declaration (reviewers judge substance).`);
       }
     }
   }
@@ -416,6 +417,15 @@ function changedFiles(base, head) {
   return parseNameStatus(output);
 }
 
+// True when any commit body carries a `Visible-Flow-Impact:` trailer with value yes|true.
+// A real git trailer sits at the start of its own line, so the anchor is strict (`^`, no leading
+// whitespace) — an indented prose line that merely mentions the phrase does not arm the gate.
+// Accepts `yes` or `true`; the `\b` stops `yesterday`/`truer` from matching. Pure + exported so
+// the match is unit-tested rather than only traced by review.
+export function hasVisibleFlowTrailer(logText) {
+  return /^Visible-Flow-Impact:\s*(?:yes|true)\b/im.test(logText || "");
+}
+
 // The author declares a backend change's visible-flow impact with a `Visible-Flow-Impact: yes`
 // commit trailer. Scans this PR's own commits (base..head). Absent the trailer, backend changes
 // are not routed to the evidence gate — the declaration is the trigger (§ the standard's
@@ -423,7 +433,7 @@ function changedFiles(base, head) {
 function declaresVisibleFlowImpact(base, head) {
   try {
     const log = execFileSync("git", ["log", "--format=%B", `${base}..${head}`], { encoding: "utf8" });
-    return /^\s*Visible-Flow-Impact:\s*(?:yes|true)\b/im.test(log);
+    return hasVisibleFlowTrailer(log);
   } catch {
     return false;
   }

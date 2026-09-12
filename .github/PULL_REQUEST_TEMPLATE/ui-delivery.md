@@ -15,6 +15,7 @@ User job, audience, primary action, and visual direction:
 - Regression flows:
 - Active-owner/file collision result:
 - Explicit exclusions:
+- Backend/edge/migration change that alters a visible flow with no UI file? Declare it with a `Visible-Flow-Impact: yes` commit trailer so CI routes it to the evidence gate (see the UI delivery standard, "Backend-to-visible routing"):
 
 ## Evidence record
 

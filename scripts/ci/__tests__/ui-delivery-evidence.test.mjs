@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   classifyUiChanges,
+  hasVisibleFlowTrailer,
   isRegistryNamedTarget,
   parseNameStatus,
   pinnedBundlePaths,
@@ -483,4 +484,24 @@ test("routes a backend/contract change to the evidence gate only when a visible-
 
   const declaredTestOnly = classifyUiChanges(["supabase/functions/example/__tests__/x.test.ts"], { declaredVisibleFlow: true });
   assert.equal(declaredTestOnly.required, false);
+});
+
+test("the Visible-Flow-Impact trailer match is strict: line-anchored, value yes|true, not armed by prose", () => {
+  // A real trailer at the start of its own line, either accepted value.
+  assert.equal(hasVisibleFlowTrailer("fix: thing\n\nVisible-Flow-Impact: yes\n"), true);
+  assert.equal(hasVisibleFlowTrailer("feat: x\n\nVisible-Flow-Impact: true"), true);
+  // Concatenated %B across commits: a later commit carries it.
+  assert.equal(hasVisibleFlowTrailer("first commit\nsecond commit\n\nVisible-Flow-Impact: yes\n"), true);
+
+  // Indented line (not a real trailer) does NOT arm the gate — the leading-\s* leniency is gone.
+  assert.equal(hasVisibleFlowTrailer("body\n  Visible-Flow-Impact: yes\n"), false);
+  // Mid-line prose mention does not match.
+  assert.equal(hasVisibleFlowTrailer("We set Visible-Flow-Impact: yes here.\n"), false);
+  // Wrong / absent value does not match.
+  assert.equal(hasVisibleFlowTrailer("Visible-Flow-Impact: no\n"), false);
+  assert.equal(hasVisibleFlowTrailer("Visible-Flow-Impact: yesterday\n"), false);
+  assert.equal(hasVisibleFlowTrailer("no trailer here\n"), false);
+  // Fail-safe on empty/undefined.
+  assert.equal(hasVisibleFlowTrailer(""), false);
+  assert.equal(hasVisibleFlowTrailer(undefined), false);
 });

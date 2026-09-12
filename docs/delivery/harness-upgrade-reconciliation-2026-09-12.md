@@ -107,7 +107,7 @@ Overall: **LIVE as a routing/attestation guardrail; UNVERIFIED as independent pr
 
 | # | Function | Truth | Biggest gap |
 |---|---|---|---|
-| 15 | Experience quality | PARTIAL | No Owner‑Intent "must‑not / must‑preserve" contract; **no protected‑seam declaration field**; CI validator **fires only on UI files** (backend/RPC/edge/entitlement/provider changes that break a visible flow are not routed); likely **advisory, not a required check**; one flat doctrine file with no composable module structure; monolithic evidence template not partitioned for composable skills |
+| 15 | Experience quality | PARTIAL | No Owner‑Intent "must‑not / must‑preserve" contract; **no protected‑seam declaration field**; CI validator **fires only on UI files** (backend/RPC/edge/entitlement/provider changes that break a visible flow are not routed); likely **advisory, not a required check**; one flat doctrine file with no composable module structure; monolithic evidence template not partitioned for composable skills — **◆ partly superseded; see "Implementation delta (Phase 2/3)" below** |
 
 Delta to five composable skills (route back to the ONE doctrine; content mostly exists):
 **A. Owner Intent Fidelity** — needs the must‑not / must‑preserve fields + a doctrine anchor.
@@ -169,6 +169,8 @@ one of these is out of scope and is routed to its owner. The pre‑existing guar
    backend/RPC/edge/entitlement/provider changes that alter a visible flow into the evidence gate; add a
    safe session‑start routing check; verify branch protection and, if advisory, surface the exact
    Settings‑side change to make the gate blocking (cannot be set from code).
+   **✓ Shipped `09ac5ef`/`974849e`/`9625a35`/`2456f02` — see "Implementation delta (Phase 2/3)" above.
+   Remaining: the branch‑protection Settings step (owed as an owner action).**
 2. **Phase 4:** authenticated test‑environment plan (dedicated non‑customer test tenant + live‑drive),
    stopping for any credential/provider/billing/production step.
 3. **Phase 5+6:** owner‑visible operating view + the safe‑learning apply/verify/outcome tail (extending the
@@ -176,7 +178,32 @@ one of these is out of scope and is routed to its owner. The pre‑existing guar
 
 Nothing merges, deploys, or touches a provider/credential/billing/production without explicit owner approval.
 
-## Findings filed outside this workstream's scope (Attention Register intake owed)
+## Implementation delta (Phase 2/3) — appended 2026‑09‑12, supersedes the noted snapshot items
+
+This reconciliation's current‑state table is a snapshot at base `a22d4b9`. The following Phase 2/3
+commits on this branch have since changed the Experience‑Quality facts, so **row 15's two bolded
+items and plan item 1 below are superseded where noted** (the row stays as the honest base snapshot
+per §58 — marked, not rewritten):
+
+- **Phase 2 (`09ac5ef`, review‑fixed `974849e`):** the one flat standard now routes to **five
+  composable quality skills** (`paige-owner-intent-fidelity`, `-visual-immersive-quality`,
+  `-interaction-geometry-accessibility`, `-protected-behavior-regression`, `-release-acceptance-evidence`),
+  adding the missing **Owner‑Intent "must‑not / must‑preserve" contract** and the **protected‑seam
+  declaration field** (`PROTECTED_SEAMS`) as backward‑compatible, recognized‑but‑optional evidence
+  fields. → closes "no Owner‑Intent contract" and "no protected‑seam declaration field" in row 15.
+- **Phase 3a (`9625a35`, reviewers clean):** the CI validator now **recognizes** the six optional
+  five‑skill fields (validated only when present, never required) and **routes a DECLARED
+  backend→visible change** (`Visible-Flow-Impact: yes|true` trailer on a `supabase/functions/**` or
+  `supabase/migrations/**` change) into the same evidence gate. → supersedes "fires only on UI files".
+- **Phase 3b (`2456f02`):** the session‑start routing card ships as a **versioned, per‑operator
+  local opt‑in** (not an auto‑wired repo‑wide hook, because `.gitignore` treats `.claude/settings.json`
+  + `.claude/hooks/` as never‑committed local state — reversing that is an owner call). → delivers plan
+  item 1's "safe session‑start routing check" within the gitignore policy.
+
+**Still open from row 15 / plan item 1 (not yet superseded):** whether `ui-delivery-evidence` is a
+**required** branch‑protection check (still believed advisory; the Settings‑side change cannot be made
+from code and is owed as an owner step — Phase 3 close). The optional fields are recognized but **not
+yet required**; any cutover to required is a dated, announced step, never silent.
 
 1. `main` fails `lint:chat-tool-registry` + `lint:action-risk` (unclassified writes `social_post`,
    `improvement_propose`; unregistered social tools) — Social/Conversations workstream.

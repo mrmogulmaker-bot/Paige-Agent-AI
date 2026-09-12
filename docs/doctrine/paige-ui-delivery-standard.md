@@ -73,18 +73,22 @@ governs and names the evidence fields that prove it.
 **Backward compatibility (so the upgrade breaks no in-flight work).** The new evidence fields
 (`OWNER_INTENT`, `MUST_NOT_HAPPEN`, `MUST_PRESERVE`, `ACCEPTANCE_CRITERIA`, `MOTION_PURPOSE`,
 `PROTECTED_SEAMS`) are in `docs/evidence/ui-delivery/TEMPLATE.md`, and the CI guardrail now **recognizes
-them**: it validates each only when present (it must be substantive, not a placeholder) and **never
-requires** it — so records with or without them pass and open UI PRs do not break. They become required
-only per a dated, announced step once the open-PR window clears — never silently.
+them**: it validates each only when present (it must not be a placeholder — CI checks non-placeholder
+only; whether the statement is genuinely substantive is a reviewer judgment) and **never requires** it —
+so records with or without them pass and open UI PRs do not break. They become required only per a
+dated, announced step once the open-PR window clears — never silently.
 
 **Backend-to-visible routing.** A backend, RPC, edge-function, entitlement, or provider-contract
 change that alters a visible customer flow is in scope for this standard **even when it touches no UI
 file** — the author declares the visible-flow impact and adds the evidence record, and omitting it
 when a visible flow changed is a reviewable defect. The guardrail (`scripts/ci/ui-delivery-evidence.mjs`)
-now **routes a DECLARED impact**: a `Visible-Flow-Impact: yes` commit trailer on a change under
-`supabase/functions/**` or `supabase/migrations/**` requires an evidence record even when no UI file
-changed. An **undeclared** backend change is still caught by author declaration and review, never by CI —
-declaration is the trigger, so do not rely on CI to catch an impact nobody declared.
+now **routes a DECLARED impact**: a `Visible-Flow-Impact: yes` (or `true`) commit trailer on a change
+under `supabase/functions/**` or `supabase/migrations/**` requires an evidence record even when no UI
+file changed. The CI route is scoped to those two directories; a declared entitlement or
+provider-contract change that lives in another path (e.g. a non-UI `src/**` client) is **not**
+CI-routed and falls to author declaration and review. An **undeclared** backend change is likewise
+caught by author declaration and review, never by CI — declaration is the trigger, so do not rely on CI
+to catch an impact nobody declared.
 
 ## Ownership and exceptions
 
