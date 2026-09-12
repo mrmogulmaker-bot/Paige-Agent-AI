@@ -6018,55 +6018,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
-              name: "social_post",
-              description: "Post content to connected social media accounts (TikTok, Instagram, YouTube, LinkedIn, Facebook, X, Threads, Pinterest, and more). This is NEXUS's domain — content creation and growth. ALWAYS confirm with the owner before posting. You can also schedule posts for later. Include the content, target platforms, and optionally a scheduled date.",
-              parameters: {
-                type: "object",
-                properties: {
-                  content_type: { type: "string", enum: ["text", "photos", "video", "document"], description: "The type of content to post." },
-                  title: { type: "string", description: "Post title/caption (for text posts, this is the content)." },
-                  description: { type: "string", description: "Additional description or body text." },
-                  platforms: { type: "array", items: { type: "string" }, description: "Target platforms: tiktok, instagram, youtube, linkedin, facebook, x, threads, pinterest, reddit, bluesky." },
-                  media_url: { type: "string", description: "Public URL of the video or photo to post (for video/photo posts)." },
-                  photos: { type: "array", items: { type: "string" }, description: "Array of photo URLs (for photo posts)." },
-                  scheduled_date: { type: "string", description: "ISO date to schedule the post for later (optional)." },
-                  profile: { type: "string", description: "The Upload-Post profile username to post from." },
-                  confirm: { type: "boolean", description: "Set true only after the operator approves posting on the rendered card. Never set it in the same reply that proposes it." }
-                },
-                required: ["content_type", "title", "platforms", "profile"]
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "social_analytics",
-              description: "Read cross-platform social media analytics — followers, views, impressions, reach, per-post metrics, and audience insights. NEXUS and ZION use this for growth strategy.",
-              parameters: {
-                type: "object",
-                properties: {
-                  platforms: { type: "array", items: { type: "string" }, description: "Platforms to query." },
-                  profile: { type: "string", description: "The Upload-Post profile username." },
-                  detail: { type: "string", enum: ["overview", "posts", "audience"], description: "Level of detail: account overview, per-post metrics, or audience insights." }
-                },
-                required: ["profile"]
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "social_accounts",
-              description: "List connected social media accounts across all platforms. Shows which platforms are connected, account handles, and connection status.",
-              parameters: {
-                type: "object",
-                properties: {}
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
               name: "action_list",
               description: "Admin/coach only. List actions on Paige's bus — a department's queue or one client's — filed, drafting, waiting on approval, or done. Use to see her team's open work before deciding what to do next.",
               parameters: {
@@ -11312,28 +11263,20 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               if (error) throw error;
               result = { success: true, ...(data as any) };
             } else if (tc.function.name === "social_post" || tc.function.name === "social_analytics" || tc.function.name === "social_accounts") {
-              // NEXUS's social media operations (Upload-Post API). Post = confirm-first.
-              const { data: roleRows } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
-              const roles = (roleRows || []).map((r: any) => r.role);
-              if (!(roles.includes("admin") || roles.includes("coach"))) {
-                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Social media operations are restricted to admins and coaches." }) });
-                continue;
-              }
-              const socialTenant = personaCtx?.tenant_id ?? null;
-              const socialUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/paige-social`;
-              const socialBody = tc.function.name === "social_post"
-                ? { action: "post", tenant_id: socialTenant, ...args }
-                : tc.function.name === "social_analytics"
-                  ? { action: args.detail === "posts" ? "post_analytics" : args.detail === "audience" ? "audience" : "analytics", tenant_id: socialTenant, ...args }
-                  : { action: "accounts", tenant_id: socialTenant };
-              const socialRes = await fetch(socialUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseServiceKey}`, apikey: supabaseServiceKey },
-                body: JSON.stringify(socialBody),
+              // Phase 0 containment. These legacy names are deliberately absent from the model's
+              // tool definitions. If a stale/forged tool call nevertheless reaches dispatch,
+              // fail closed before role lookup, tenant handling, credentials, or provider I/O.
+              toolResults.push({
+                tool_call_id: tc.id,
+                role: "tool",
+                content: JSON.stringify({
+                  success: false,
+                  code: "social_capability_unavailable",
+                  availability: "unavailable",
+                  error: "Social provider connections, publishing, scheduling, and analytics are not available for this workspace yet. No Social provider action was attempted.",
+                }),
               });
-              const socialText = await socialRes.text();
-              let socialPayload: any; try { socialPayload = JSON.parse(socialText); } catch { socialPayload = { raw: socialText }; }
-              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(socialPayload) });
+              continue;
             } else if (tc.function.name === "integrations_list") {
               // The integrations read verb (spine: integrations.list). Caller-scoped.
               const { data, error } = await supabaseClient.rpc("list_integration_surface");

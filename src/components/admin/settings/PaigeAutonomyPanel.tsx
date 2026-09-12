@@ -111,13 +111,13 @@ export function PaigeAutonomyPanel() {
   const load = async () => {
     setLoading(true);
     // list_tool_autonomy with no arg → resolves the caller's own tenant.
-    const { data, error } = await (supabase as any).rpc("list_tool_autonomy");
+    const { data, error } = await supabase.rpc("list_tool_autonomy");
     if (error) {
       toast.error("Couldn't load autonomy settings.");
       setLoading(false);
       return;
     }
-    setRows((data || []) as ToolRow[]);
+    setRows(((data || []) as ToolRow[]).filter((row) => row.tool_key !== "social_post"));
     setLoading(false);
   };
 
@@ -130,7 +130,7 @@ export function PaigeAutonomyPanel() {
     setSaving(tool.tool_key);
     // Optimistic.
     setRows((rs) => rs.map((r) => (r.tool_key === tool.tool_key ? { ...r, mode, is_default: false } : r)));
-    const { error } = await (supabase as any).rpc("set_tool_autonomy", {
+    const { error } = await supabase.rpc("set_tool_autonomy", {
       _tool_key: tool.tool_key,
       _mode: mode,
     });

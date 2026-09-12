@@ -87,7 +87,7 @@ export function useToolAutonomy(enabled = true): ToolAutonomy {
           // A row whose mode is outside the enum is DROPPED rather than defaulted into a lane it
           // may not be on — the same rule the trust tally follows. Showing a tool as "ask first"
           // when the server said something else would misreport a governance gate.
-          .filter((r) => r.tool_key && isMode(r.mode))
+          .filter((r) => r.tool_key && r.tool_key !== "social_post" && isMode(r.mode))
           .map((r) => ({
             key: String(r.tool_key),
             label: String(r.label ?? r.tool_key),
