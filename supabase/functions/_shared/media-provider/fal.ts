@@ -88,20 +88,24 @@ function catalog(): MediaModelInfo[] {
       estCostPerUnitUsd: 0.039,
       unit: "image",
     },
+    // Veo 3.1 family (2026-09-12 correction): fal deprecated fal-ai/veo3 and veo3/fast —
+    // the live endpoints are veo3.1/fast and veo3.1. Estimates are the AUDIO-ON rates
+    // ($0.15/s fast, $0.40/s standard; hi-res tiers run to $0.60/s), verified against
+    // fal's model pages. Video remains flag-gated + per-job approval regardless.
     {
-      id: env("FAL_VIDEO_MODEL") ?? "fal-ai/veo3/fast",
-      label: "Veo 3 (fast)",
+      id: env("FAL_VIDEO_MODEL") ?? "fal-ai/veo3.1/fast",
+      label: "Veo 3.1 Fast",
       mode: "video",
       tier: "standard",
       estCostPerUnitUsd: 0.15,
       unit: "second",
     },
     {
-      id: env("FAL_VIDEO_MODEL_PREMIUM") ?? "fal-ai/veo3",
-      label: "Veo 3",
+      id: env("FAL_VIDEO_MODEL_PREMIUM") ?? "fal-ai/veo3.1",
+      label: "Veo 3.1",
       mode: "video",
       tier: "premium",
-      estCostPerUnitUsd: 0.5,
+      estCostPerUnitUsd: 0.4,
       unit: "second",
     },
   ];

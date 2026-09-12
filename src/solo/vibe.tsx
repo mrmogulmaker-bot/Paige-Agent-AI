@@ -217,6 +217,23 @@ export const VibeStudio = ({ onBack }: { onBack: () => void }) => {
           ))}
         </div>
 
+        {media.capabilities?.credits?.readable && (
+          <div style={{ display: "grid", gap: 2, fontSize: 11.8, color: DIM }} aria-label="Media credits">
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <span>Media credits</span>
+              <span className="mono" style={{ color: TXT }}>
+                {(media.capabilities.credits.total_remaining ?? 0).toLocaleString("en-US")}
+              </span>
+            </div>
+            {typeof media.capabilities.credits.allowance_monthly === "number" && (
+              <span style={{ fontSize: 10.5, lineHeight: 1.5, color: "#8B86AD" }}>
+                {media.capabilities.credits.total_remaining === 0
+                  ? "Allowance used — new requests show their cost and need credits."
+                  : `of ${(media.capabilities.credits.allowance_monthly).toLocaleString("en-US")} included monthly${media.capabilities.credits.notice_band ? ` · ${media.capabilities.credits.notice_band}% band` : ""}`}
+              </span>
+            )}
+          </div>
+        )}
         {budget && (
           <div style={{ marginTop: "auto", display: "grid", gap: 4, borderTop: `1px solid ${LINE}`, paddingTop: 12, fontSize: 11.5, color: DIM }}>
             <div className="row" style={{ justifyContent: "space-between" }}>

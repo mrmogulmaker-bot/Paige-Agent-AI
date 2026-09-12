@@ -12861,6 +12861,69 @@ export type Database = {
           },
         ]
       }
+      paige_media_credit_entries: {
+        Row: {
+          id: string
+          tenant_id: string
+          entry_type: string
+          credits: number
+          job_id: string | null
+          idempotency_key: string
+          month_bucket: string | null
+          included_credits: number
+          purchased_credits: number
+          source: string
+          reason: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          entry_type: string
+          credits: number
+          job_id?: string | null
+          idempotency_key: string
+          month_bucket?: string | null
+          included_credits?: number
+          purchased_credits?: number
+          source?: string
+          reason?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          entry_type?: string
+          credits?: number
+          job_id?: string | null
+          idempotency_key?: string
+          month_bucket?: string | null
+          included_credits?: number
+          purchased_credits?: number
+          source?: string
+          reason?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_media_credit_entries_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_media_credit_entries_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "paige_media_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       paige_media_jobs: {
         Row: {
           actor_id: string | null

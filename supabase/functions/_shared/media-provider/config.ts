@@ -25,7 +25,37 @@ export const DEFAULT_DRAFT_ALLOWANCE_USD = 0.1;
 export const VIDEO_ENABLED_KEY = "media_video_enabled";
 export const VIDEO_DAILY_LIMIT_KEY = "media_daily_video_limit";
 export const DEFAULT_VIDEO_DAILY_LIMIT = 1;
+/**
+ * TRUTHFUL NAMING (owner correction 2026-09-12): this key is the ACTIVATION
+ * acknowledgment of the fal prepaid balance — presence lets fal submissions
+ * leave the building. It is NOT a spend cap and never was; the ENFORCED guards
+ * are media_budget_daily_usd (per tenant/day) and media_spend_ceiling_usd
+ * (platform-wide/day, actually metered against media_spend_today_all()).
+ */
 export const PROVIDER_CEILING_KEY = "media_provider_ceiling_usd";
+/** The REAL platform-level guard: enforced daily media spend across ALL tenants. */
+export const SPEND_CEILING_KEY = "media_spend_ceiling_usd";
+/** Conservative enforced default — a platform guard must exist to be truthful. */
+export const DEFAULT_PLATFORM_SPEND_CEILING_USD = 25;
+/** Customer-facing credit config (owner product rules 2026-09-12). */
+export const CREDITS_INCLUDED_MONTHLY_KEY = "media_credits_included_monthly";
+export const DEFAULT_CREDITS_INCLUDED_MONTHLY = 300;
+export const CREDIT_USD_KEY = "media_credit_usd";
+export const DEFAULT_CREDIT_USD = 0.01;
+
+/**
+ * Purchased credit packs — PRODUCT DATA ONLY (no Stripe products exist; no
+ * charge path is live). Prices chosen for >=20% contribution margin after
+ * payment processing (2.9% + $0.30): credits_granted <= 0.771x price - 0.30.
+ *   $5 -> 350cr -> (5-0.145-0.30-3.50)/5 = 21.1%
+ *   $15 -> 1100cr -> 21.8%
+ *   $40 -> 3000cr -> 21.4%
+ */
+export const MEDIA_CREDIT_PACKS = [
+  { id: "media5", priceUsd: 5, credits: 350, label: "Starter pack — 350 Media Credits" },
+  { id: "media15", priceUsd: 15, credits: 1100, label: "Creator pack — 1,100 Media Credits" },
+  { id: "media40", priceUsd: 40, credits: 3000, label: "Studio pack — 3,000 Media Credits" },
+] as const;
 
 /** Structural client (the router-budget BudgetDb precedent). */
 export interface SettingsQuery extends PromiseLike<{ data: unknown; error: { message?: string } | null }> {
@@ -65,11 +95,18 @@ function parseBool(value: unknown): boolean | null {
 
 export interface MediaConfig {
   /**
-   * Daily media budget ceiling (USD). NULL when neither the settings key nor an
-   * env fallback exists — spend stays OFF (no silent default; the owner rules
-   * when media spend turns on). Per-tenant overrides resolve in the seam.
+   * Daily media budget ceiling (USD), PER TENANT. NULL when neither the settings
+   * key nor an env fallback exists — spend stays OFF (no silent default; the
+   * owner rules when media spend turns on). Per-tenant overrides resolve in the
+   * seam.
    */
   dailyCeilingUsd: number | null;
+  /** The ENFORCED platform-wide daily media-spend guard (media_spend_ceiling_usd). */
+  platformSpendCeilingUsd: number;
+  /** Included monthly media credits for every Solo workspace (default 300). */
+  creditsIncludedMonthly: number;
+  /** Provider-cost value of one Media Credit (default $0.01). */
+  creditUsd: number;
   /** Automatic-draft boundary (USD). Standard-tier images at/below run without confirmation. */
   draftAllowanceUsd: number;
   /** Video capability flag — default false (owner-controlled Beta). */
@@ -84,12 +121,15 @@ export interface MediaConfig {
 }
 
 export async function loadMediaConfig(db: SettingsDb): Promise<MediaConfig> {
-  const [platform, draft, video, videoLimit, providerCeiling] = await Promise.all([
+  const [platform, draft, video, videoLimit, providerCeiling, spendCeiling, creditsMonthly, creditUsd] = await Promise.all([
     readSetting(db, MEDIA_CEILING_KEY),
     readSetting(db, DRAFT_ALLOWANCE_KEY),
     readSetting(db, VIDEO_ENABLED_KEY),
     readSetting(db, VIDEO_DAILY_LIMIT_KEY),
     readSetting(db, PROVIDER_CEILING_KEY),
+    readSetting(db, SPEND_CEILING_KEY),
+    readSetting(db, CREDITS_INCLUDED_MONTHLY_KEY),
+    readSetting(db, CREDIT_USD_KEY),
   ]);
 
   const envCeiling = parseNumber(Deno.env.get("MEDIA_BUDGET_DAILY_USD"));
@@ -97,9 +137,15 @@ export async function loadMediaConfig(db: SettingsDb): Promise<MediaConfig> {
   const envVideo = parseBool(Deno.env.get("MEDIA_VIDEO_ENABLED"));
   const envVideoLimit = parseNumber(Deno.env.get("MEDIA_DAILY_VIDEO_LIMIT"));
   const envProviderCeiling = parseNumber(Deno.env.get("MEDIA_PROVIDER_CEILING_USD"));
+  const envSpendCeiling = parseNumber(Deno.env.get("MEDIA_SPEND_CEILING_USD"));
+  const envCreditsMonthly = parseNumber(Deno.env.get("MEDIA_CREDITS_INCLUDED_MONTHLY"));
+  const envCreditUsd = parseNumber(Deno.env.get("MEDIA_CREDIT_USD"));
 
   return {
     dailyCeilingUsd: parseNumber(platform.value) ?? envCeiling ?? null,
+    platformSpendCeilingUsd: parseNumber(spendCeiling.value) ?? envSpendCeiling ?? DEFAULT_PLATFORM_SPEND_CEILING_USD,
+    creditsIncludedMonthly: Math.max(0, Math.round(parseNumber(creditsMonthly.value) ?? envCreditsMonthly ?? DEFAULT_CREDITS_INCLUDED_MONTHLY)),
+    creditUsd: parseNumber(creditUsd.value) ?? envCreditUsd ?? DEFAULT_CREDIT_USD,
     draftAllowanceUsd: parseNumber(draft.value) ?? envDraft ?? DEFAULT_DRAFT_ALLOWANCE_USD,
     videoEnabled: parseBool(video.value) ?? envVideo ?? false,
     videoDailyLimit: Math.max(1, Math.round(parseNumber(videoLimit.value) ?? envVideoLimit ?? DEFAULT_VIDEO_DAILY_LIMIT)),

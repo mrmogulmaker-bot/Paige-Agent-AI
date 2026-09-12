@@ -59,6 +59,53 @@ export type MediaBudgetDecision =
   | { verdict: "deny"; gate: "budget_exceeded" | "budget_unknown"; explanation: string; decision?: BudgetDecision };
 
 /**
+ * Platform-wide accrual read for the UTC day via `media_spend_today_all` — the
+ * feed for the ENFORCED platform-level guard (media_spend_ceiling_usd; the
+ * owner's truthful-naming correction: this one is a real cap, actually metered).
+ */
+export async function readPlatformMediaAccrual(
+  rpc: (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message?: string } | null }>,
+): Promise<number | null> {
+  try {
+    const { data, error } = await rpc("media_spend_today_all", {});
+    if (error) {
+      console.error("[media-budget] platform accrual read error:", error.message ?? "unknown");
+      return null;
+    }
+    const n = data === null || data === undefined ? 0 : Number(data);
+    return Number.isFinite(n) ? n : null;
+  } catch (e) {
+    console.error("[media-budget] platform accrual read threw:", e instanceof Error ? e.message : "unknown");
+    return null;
+  }
+}
+
+/**
+ * The platform guard decision (owner correction 2026-09-12): unlike the
+ * per-tenant ladder, an UNREADABLE platform accrual still allows the call —
+ * the guard is a runaway-spend backstop, not the customer-facing gate, and
+ * bricking every tenant's media on a metrics blip trades a bounded money risk
+ * for an outage. The per-tenant ladder (decideMediaBudget) remains fail-closed.
+ */
+export function decidePlatformSpendGuard(input: {
+  platformAccruedUsd: number | null;
+  platformCeilingUsd: number;
+  estimatedCostUsd: number;
+}): { ok: boolean; explanation?: string } {
+  if (input.platformAccruedUsd === null || !Number.isFinite(input.platformAccruedUsd)) {
+    return { ok: true };
+  }
+  if (input.platformAccruedUsd + input.estimatedCostUsd > input.platformCeilingUsd) {
+    return {
+      ok: false,
+      explanation:
+        `Platform media spend is paused for today (about $${input.platformAccruedUsd.toFixed(2)} of the $${input.platformCeilingUsd.toFixed(2)} platform-wide daily guard used); resets at UTC midnight`,
+    };
+  }
+  return { ok: true };
+}
+
+/**
  * Decide a media job against the ladder. `accruedUsd: null` means the accrual
  * read FAILED — media fails closed (the documented deviation from the LLM path).
  *

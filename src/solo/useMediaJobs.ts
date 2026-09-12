@@ -48,7 +48,22 @@ export interface MediaCapabilities {
     ceiling_usd: number | null;
     accrued_today_usd: number | null;
     draft_allowance_usd: number;
+    platform_spend_ceiling_usd?: number;
   };
+  credits?: {
+    readable: boolean;
+    reason?: string;
+    credit_usd?: number;
+    allowance_monthly?: number;
+    included_remaining?: number;
+    purchased_remaining?: number;
+    total_remaining?: number;
+    month?: string | null;
+    consumed_this_month?: number;
+    allowance_pct_used?: number | null;
+    notice_band?: 50 | 80 | 100 | null;
+  };
+  packs?: Array<{ id: string; priceUsd: number; credits: number; label: string }>;
 }
 
 export interface MediaJob {

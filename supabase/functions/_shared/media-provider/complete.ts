@@ -24,11 +24,14 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 import { recordCapabilityRun } from "../capability-record.ts";
 import { idempotencyKey } from "../durable-job/mod.ts";
 import { COMMERCIAL_USE_DISCLOSURE, MEDIA_NON_TERMINAL_STATES as NON_TERMINAL_STATES, MEDIA_TERMINAL_STATES } from "./mod.ts";
+import { consumeMediaCredits, estimateCredits, releaseMediaCredits } from "./credits.ts";
 
 export interface CompletableJob {
   id: string;
   tenant_id: string;
   actor_id: string | null;
+  /** Present once the provider accepted the request — the release/consume pivot. */
+  submitted_at: string | null;
   mode: string;
   provider: string;
   model: string;
@@ -39,6 +42,21 @@ export interface CompletableJob {
   video_seconds: number | null;
   state: string;
   attempts: number | null;
+}
+
+/** Read the configured credit value (media_credit_usd) — same key the seam reads. */
+async function readCreditUsd(admin: SupabaseClient): Promise<number> {
+  try {
+    const { data } = await admin
+      .from("admin_app_settings")
+      .select("value")
+      .eq("key", "media_credit_usd")
+      .maybeSingle();
+    const n = Number((data as { value?: unknown } | null)?.value);
+    return Number.isFinite(n) && n > 0 ? n : 0.01;
+  } catch {
+    return 0.01;
+  }
 }
 
 async function fetchArtifactBytes(url: string): Promise<{ bytes: Uint8Array; contentType: string }> {
@@ -189,6 +207,20 @@ export async function completeMediaJob(
       },
     });
 
+    // CREDIT RECONCILIATION: convert the hold into a consume for the actual
+    // draw (idempotent per job; a low estimate is clamped honestly by the RPC).
+    // credit_usd is config-as-data — read it the same way the seam does.
+    const creditUsd = await readCreditUsd(admin);
+    const consumed = await consumeMediaCredits(
+      (n: string, a: Record<string, unknown>) => admin.rpc(n, a),
+      job.tenant_id,
+      job.id,
+      estimateCredits(Number(job.estimated_cost_usd) || 0, creditUsd),
+    );
+    if (!consumed.ok && consumed.error && consumed.error !== "no_open_hold") {
+      console.error("[media-complete] credit consume failed:", consumed.error);
+    }
+
     return { state: "succeeded", contentId: (contentId as string) ?? null, storagePath: path };
   } catch (e) {
     const message = e instanceof Error ? e.message : "unknown completion failure";
@@ -219,6 +251,32 @@ export async function failMediaJob(
   job: CompletableJob,
   reason: string,
 ): Promise<void> {
+  // CREDIT SETTLEMENT (anti-leakage): a job that VERIFIABLY never reached the
+  // provider releases its reservation; a job that was submitted CONSUMES it —
+  // fal already charged, and returning those credits would leak provider cost
+  // into the platform. The RPC's own state gate is the authority; this mirrors
+  // it so the attempt is honest even if the job row raced.
+  if (job.submitted_at == null) {
+    const released = await releaseMediaCredits(
+      (n: string, a: Record<string, unknown>) => admin.rpc(n, a),
+      job.tenant_id,
+      job.id,
+      `job failed: ${reason.slice(0, 120)}`,
+    );
+    if (!released.ok && released.error) {
+      console.error("[media-complete] credit release failed:", released.error);
+    }
+  } else {
+    const consumed = await consumeMediaCredits(
+      (n: string, a: Record<string, unknown>) => admin.rpc(n, a),
+      job.tenant_id,
+      job.id,
+      estimateCredits(Number(job.estimated_cost_usd) || 0, await readCreditUsd(admin)),
+    );
+    if (!consumed.ok && consumed.error) {
+      console.error("[media-complete] credit consume on failure failed:", consumed.error);
+    }
+  }
   const { error } = await admin
     .from("paige_media_jobs")
     .update({ state: "failed", error: reason.slice(0, 500), completed_at: new Date().toISOString(), lease_until: null, claimed_at: null })
