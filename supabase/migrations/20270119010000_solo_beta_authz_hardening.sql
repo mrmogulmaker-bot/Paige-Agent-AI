@@ -74,7 +74,7 @@ BEGIN
        WHERE tm.tenant_id = _tenant
          AND tm.user_id = _caller
          AND tm.status = 'active'
-         AND tm.role IN ('owner','admin','super_admin','coach')
+         AND tm.role IN ('owner','admin','coach')
      ) THEN
     RAISE EXCEPTION 'CONTACT_FORBIDDEN' USING ERRCODE = '42501';
   END IF;
@@ -88,7 +88,7 @@ BEGIN
        WHERE tm.tenant_id = _tenant
          AND tm.user_id = _creator
          AND tm.status = 'active'
-         AND tm.role IN ('owner','admin','super_admin','coach')
+         AND tm.role IN ('owner','admin','coach')
      ) THEN
     RAISE EXCEPTION 'CONTACT_CREATOR_NOT_IN_TENANT' USING ERRCODE = '42501';
   END IF;
@@ -190,6 +190,6 @@ GRANT EXECUTE ON FUNCTION public.create_contact_v2(text, text, text, text, text,
   TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.create_contact_v2(text, text, text, text, text, text, text, text, text[], text, text, uuid, uuid, uuid, text) IS
-  'Canonical honest-outcome contact creation. Authenticated callers are server-pinned to their active tenant; service callers must supply an active owner/admin/super_admin/coach tenant member as creator, and any assigned coach must be active in the same tenant.';
+  'Canonical honest-outcome contact creation. Authenticated callers are server-pinned to their active tenant; service callers must supply an active owner/admin/coach tenant member as creator, and any assigned coach must be active in the same tenant.';
 
 COMMIT;

@@ -125,6 +125,7 @@ SELECT lives_ok(
   $$SELECT public.create_contact('Pinned', 'Caller', 'solo-authz-pinned@tests.invalid', NULL, NULL, NULL, 'new_lead', 'proof', '{}', NULL, NULL, NULL, 'b1900000-0000-0000-0000-00000000bbbb', 'b1900000-0000-0000-0000-000000000003', 'proof')$$,
   'authenticated Solo owner with only the base user role can create and remains pinned despite caller-supplied tenant/creator'
 );
+RESET ROLE;
 SELECT is(
   (SELECT tenant_id FROM public.clients WHERE email = 'solo-authz-pinned@tests.invalid'),
   'b1900000-0000-0000-0000-00000000aaaa'::uuid,
