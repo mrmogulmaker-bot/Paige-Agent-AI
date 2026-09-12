@@ -7,7 +7,7 @@ const N8N_MANAGEMENT_TOOL_NAMES = new Set(N8N_MANAGEMENT_TOOLS.map(tool => tool.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { checkedWrite, writeOutcome } from "../_shared/checked-write.ts";
-import { classifyAction, mutatingTools, riskReason, unclassifiedWriteReason } from "../_shared/action-risk.ts";
+import { classifyAction, clampLaneByRisk, mutatingTools, riskReason, unclassifiedWriteReason } from "../_shared/action-risk.ts";
 import { confirmFingerprint } from "../_shared/confirm-fingerprint.ts";
 import { buildCreditProposal, buildCreditSyncPayload } from "../_shared/credit-extraction-payload.ts";
 import { projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
@@ -4343,18 +4343,41 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
 
     const gatherCapabilityManifest = async (workflowsConnected: boolean) => {
       const mat = (key: string) => getSpineCapability(key)?.maturity ?? null;
-      const [contactCreateLane, campaignCreateLane, workflowsLane, ownerOpsEligible] = await Promise.all([
-        resolveToolAutonomy("crm_create_contact"),
-        resolveToolAutonomy("campaign_brief_create"),
-        resolveToolAutonomy("n8n_run_workflow"),
+      // The EFFECTIVE lane the runtime would act on = the trust-compass clamp (resolve_tool_autonomy,
+      // §67/§68) THEN the action-class clamp (clampLaneByRisk — the SAME helper the chat dispatch uses
+      // at its gate, §18). Without the second clamp the manifest would show a HIGH tool on an `auto`
+      // grant as "no approval" while the dispatch always forces the card (the §39 over-claim). Resolving
+      // both here makes the manifest's answer identical to what actually happens (§13/§70).
+      const resolveEffectiveLane = async (toolKey: string): Promise<"auto" | "confirm" | "off"> =>
+        clampLaneByRisk((await resolveToolAutonomy(toolKey)) as "auto" | "confirm" | "off", toolKey);
+      const [
+        contactCreateLane, campaignCreateLane, workflowsLane,
+        documentCreateLane, knowledgeSaveLane, planningCreateLane, delegateLane,
+        ownerOpsEligible,
+      ] = await Promise.all([
+        resolveEffectiveLane("crm_create_contact"),
+        resolveEffectiveLane("campaign_brief_create"),
+        resolveEffectiveLane("n8n_run_workflow"),
+        resolveEffectiveLane("document_generate"),
+        resolveEffectiveLane("save_to_knowledge_base"),
+        resolveEffectiveLane("plan_create"),
+        resolveEffectiveLane("delegate_to_subagent"),
         resolveOwnerOpsEligible(),
       ]);
+      // Research (web_search/deep_research) degrades honestly to configured:false without a provider
+      // key; the manifest gates it on the REAL presence of that key (never the value — §34/§13),
+      // exactly as n8n gates on its connection.
+      const researchProviderConfigured = !!Deno.env.get("FIRECRAWL_API_KEY");
       const signals = buildCapabilitySignals({
         callerTier,
         ownerOpsEligible,
-        contactCreateLane: contactCreateLane as "auto" | "confirm" | "off",
-        campaignCreateLane: campaignCreateLane as "auto" | "confirm" | "off",
-        workflowsLane: workflowsLane as "auto" | "confirm" | "off",
+        contactCreateLane,
+        campaignCreateLane,
+        workflowsLane,
+        documentCreateLane,
+        knowledgeSaveLane,
+        planningCreateLane,
+        delegateLane,
         integrationsListMaturity: mat("integrations.list"),
         pipelineEvidenceMaturity: mat("pipeline.deal_stage_evidence"),
         commsReadMaturity: mat("comms.messages_read"),
@@ -4367,6 +4390,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
         campaignCreateMaturity: mat("campaign.create"),
         workflowsMaturity: mat("integrations.n8n_run_workflow"),
         workflowsConnected,
+        researchProviderConfigured,
       });
       return resolveCapabilityStatus(signals);
     };
@@ -8305,10 +8329,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // should read belongs to whoever owns that surface. The hole is closed at the only place
           // that decides whether an action runs; the tidying is somebody's deliberate call, not a
           // side-effect of this merge.
-          const classForClamp = classifyAction(tc.function.name);
-          if (autoMode === "auto" && (classForClamp === "high" || classForClamp === "owner_only")) {
-            console.warn("[paige] autonomy clamped by action class", JSON.stringify({ tool: tc.function.name, from: "auto", to: "confirm", risk: classForClamp }));
-            autoMode = "confirm";
+          // The action-class clamp, via the shared `clampLaneByRisk` helper (§18 one home) — the SAME
+          // rule the capability manifest resolves its effective lane through, so the "what can you do"
+          // answer and what actually runs can never diverge (the §39 over-claim fix).
+          const clampedMode = clampLaneByRisk(autoMode as "auto" | "confirm" | "off", tc.function.name);
+          if (clampedMode !== autoMode) {
+            console.warn("[paige] autonomy clamped by action class", JSON.stringify({ tool: tc.function.name, from: autoMode, to: clampedMode, risk: classifyAction(tc.function.name) }));
+            autoMode = clampedMode;
           }
 
           if (autoMode === "off") {

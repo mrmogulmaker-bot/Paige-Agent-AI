@@ -42,6 +42,29 @@ describe("renderCapabilityStatusBlock — the authoritative 'what can you do' bl
     expect(out).toMatch(/NEVER say you can post to social, send a text\/SMS, run an automation, or manage the team/i);
   });
 
+  it("carries the two completion directives — offer-but-never-promise for proof-owed, and no-invented-capability when nothing matches", () => {
+    const out = renderCapabilityStatusBlock([cap("x", "live", "See things")]);
+    // proof-owed framing: offer to try and report honestly, never promise the result
+    expect(out).toMatch(/offer to try/i);
+    expect(out).toMatch(/report honestly what came back/i);
+    expect(out).toMatch(/never promise the outcome/i);
+    // no-applicable-capability: when the ask matches nothing, say so plainly — never invent a tool
+    expect(out).toMatch(/matches\s+NONE of the capabilities/i);
+    expect(out).toMatch(/don't have a capability for that here/i);
+    expect(out).toMatch(/do NOT\s+invent one/i);
+  });
+
+  it("puts proof_owed items under a CAN-ATTEMPT-NOT-PROVEN heading distinct from planned", () => {
+    const out = renderCapabilityStatusBlock([
+      cap("browser.secure_session", "proof_owed", "Browse a website for you", "Paige can try this, but it isn't proven to work here yet — she'll tell you honestly what came back."),
+    ]);
+    expect(out).toMatch(/CAN ATTEMPT, BUT NOT PROVEN HERE YET/i);
+    expect(out).toMatch(/never promise the result/i);
+    expect(out).toContain("Browse a website for you");
+    // it is NOT folded into the planned "can't do here yet" bucket
+    expect(out).not.toMatch(/NOT SOMETHING YOU CAN DO HERE YET/i);
+  });
+
   it("puts planned items under a CAN'T-DO-HERE-YET heading that never asserts non-existence", () => {
     const out = renderCapabilityStatusBlock([
       cap("social.publish", "planned", "Post to your social accounts", "Not something Paige can do here yet — there's no governed path for it."),

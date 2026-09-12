@@ -484,6 +484,27 @@ export function classifyAction(tool: string): ActionRiskVerdict {
   return RISK_BY_TOOL.get(tool) ?? "unclassified";
 }
 
+/**
+ * THE ACTION-CLASS AUTONOMY CLAMP — the ONE home (§18) for the rule "a HIGH or owner-only action
+ * never runs unattended, even on an `auto` grant." The trust-compass RPC (`resolve_tool_autonomy`,
+ * §67/§68) clamps by the platform/tenant AUTONOMY RUNG; it does NOT look at the action's RISK class.
+ * That second clamp lived only inline at the chat dispatch, so a HIGH tool on an `auto` grant at a
+ * permissive rung resolved `auto` everywhere the dispatch did not run — e.g. the capability manifest,
+ * which would then tell the owner a high-risk act needs "no approval" while the dispatch always forces
+ * the card. Both the dispatch AND the manifest gatherer now resolve the effective lane through HERE,
+ * so they cannot diverge. Pure; `auto` on high/owner_only → `confirm`, everything else passes through.
+ */
+export function clampLaneByRisk(
+  lane: "auto" | "confirm" | "off",
+  tool: string,
+): "auto" | "confirm" | "off" {
+  if (lane === "auto") {
+    const cls = classifyAction(tool);
+    if (cls === "high" || cls === "owner_only") return "confirm";
+  }
+  return lane;
+}
+
 /** Why an action carries its class, for a message a person will read. Never a tool name. */
 export function riskReason(tool: string): string | null {
   return REASON_BY_TOOL.get(tool) ?? null;

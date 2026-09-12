@@ -2262,3 +2262,52 @@ shipped. An incrementally-adopted gate says `"unknown"` for callers that have no
 names their adoption as sequenced follow-up, rather than pretending enforcement is universal (§13).
 The class of mistake this avoids: claiming a cross-cutting guard is "enforced platform-wide" when it
 is enforced only where callers opted in.
+
+---
+
+## A parallel array and its consumer drift apart silently — the "dropped signal" class (2026-09-12)
+
+**What happened (twice).** The capability manifest's `buildCapabilitySignals` returns a hand-written
+array of signal objects, while a separate `CapabilityFacts` interface declares the facts and the
+`index.ts` gatherer passes them. Twice now, a rewrite of the return array dropped ONE capability
+(`integrations.list` during the #1166 rewrite; `integrations.n8n_run_workflow` during the 2026-09-12
+Slice 1 rewrite) while the interface field and the gatherer's passed fact stayed in place. Nothing
+failed at transpile — the unused fact is just ignored — so the omission was invisible until a test
+asserted on the missing key (`m["integrations.n8n_run_workflow"]` → undefined).
+
+**Why a green transpile missed it.** TypeScript does not flag an interface field that a function
+chooses not to read, and it does not flag a parallel array that is "one element short" — there is no
+declared length. The array and its facts are coupled only by convention, so they drift silently.
+
+**The lesson (the class, not just the fix).** When a hand-maintained list must stay 1:1 with a
+separate declaration (an interface, an enum, a registry), the proof that catches drift is an
+EXPLICIT completeness assertion, not the type-checker and not the feature tests. The signals suite's
+`ALL_KEYS` equality check (`expect(keys).toEqual(ALL_KEYS)`) is exactly that guard — it is what
+turned both silent drops into a loud red. A feature test that only asserts "research resolves
+needs_setup" would have stayed green with n8n missing; the whole-manifest key-set assertion is the
+one that cannot. Keep that assertion, and extend `ALL_KEYS` deliberately whenever a capability is
+added — the friction of updating it IS the check.
+
+### A source-assertion test is a CONSUMER of the code it reads — inventory it before refactoring (2026-09-12)
+
+**What happened.** Refactoring the chat dispatch's inline action-class clamp
+(`const classForClamp = classifyAction(...); if (autoMode === "auto" && ...) autoMode = "confirm"`)
+into the shared `clampLaneByRisk` helper removed those exact literals from `paige-ai-chat/index.ts`.
+A test in a DIFFERENT area — `src/solo/paige-team-capability.test.ts` — read the handler's SOURCE and
+asserted it `toContain('autoMode === "auto"')` / `'classForClamp === "high"'`. The refactor made those
+literals vanish, so the test's `HANDLER.indexOf("const classForClamp = classifyAction(")` returned -1,
+its slice went empty, and it failed in CI `verify` (not caught by the capability unit tests, which pass
+through a transpile port and never read the dispatch source). The §39 re-review verified the runtime
+behavior was identical but did not run the full vitest suite, so the source-assertion consumer slipped
+through to CI.
+
+**The lesson (the §37 class).** A test that asserts on the *source text* of a file is a CONSUMER of
+that file's exact spelling, the same way a caller is a consumer of a function's signature. When a
+refactor changes a literal that such a test pins — even a behavior-preserving one — that test breaks.
+Before refactoring a load-bearing code region, grep the test tree for source-assertions against its
+literals (`grep -rn 'toContain.*<the literal>'`), not just for callers of the symbol. And a local
+proof that runs only a *subset* of tests (the ones you edited) cannot see a consumer in an area you
+did not touch — the full `vitest run` (or the CI it mirrors) is what catches it. Prefer behavioral
+assertions over source-string matching where the behavior is importable: this fix replaced the broken
+source-slice assertions with direct `clampLaneByRisk(...)` calls (real code), keeping only the one
+source check that genuinely needs source (the clamp is APPLIED above the branch it protects).

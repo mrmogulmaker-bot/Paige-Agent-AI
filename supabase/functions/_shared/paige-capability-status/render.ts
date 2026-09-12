@@ -20,6 +20,7 @@ const GROUP_ORDER: readonly CapabilityAvailability[] = [
   "live",
   "needs_approval",
   "needs_setup",
+  "proof_owed",
   "planned",
   "unavailable",
   "not_for_tier",
@@ -29,9 +30,13 @@ const GROUP_HEADING: Record<CapabilityAvailability, string> = {
   live: "CAN DO NOW (no approval needed):",
   needs_approval: "CAN PREPARE FOR YOUR APPROVAL (you run it):",
   needs_setup: "NEEDS A CONNECTION OR SETUP FIRST (tell them what to connect):",
+  proof_owed: "CAN ATTEMPT, BUT NOT PROVEN HERE YET — offer it, never promise the result:",
   planned: "NOT SOMETHING YOU CAN DO HERE YET — do NOT offer or claim these:",
   unavailable: "CANNOT CONFIRM FOR THIS WORKSPACE — do NOT claim these:",
   not_for_tier: "NOT AVAILABLE FOR THIS ACCOUNT TYPE:",
+  // `no_applicable_capability` is never a per-capability row (it is the answer when a request matches
+  // none of the list); it is named as an explicit resolution in the directive below, not a group.
+  no_applicable_capability: "",
 };
 
 /**
@@ -53,8 +58,11 @@ export function renderCapabilityStatusBlock(capabilities: readonly CapabilitySta
       "unless it appears under CAN DO NOW or CAN PREPARE FOR YOUR APPROVAL below. For anything under " +
       "NEEDS A CONNECTION, say what to connect first; for anything you CAN'T DO HERE YET, say plainly " +
       "it's not something you can do for them yet — never imply otherwise, and never claim it simply " +
-      "doesn't exist. Keep the answer short and action-oriented (what you'd actually help with next), " +
-      "not a recited inventory.",
+      "doesn't exist. For anything you CAN ATTEMPT BUT ISN'T PROVEN, offer to try and say you'll " +
+      "report honestly what came back — never promise the outcome. And if what they ask for matches " +
+      "NONE of the capabilities below, say plainly you don't have a capability for that here — do NOT " +
+      "invent one or imply a tool you don't have. Keep the answer short and action-oriented (what " +
+      "you'd actually help with next), not a recited inventory.",
   );
 
   for (const group of GROUP_ORDER) {

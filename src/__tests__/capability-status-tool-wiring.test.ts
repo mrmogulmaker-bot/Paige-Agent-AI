@@ -49,11 +49,30 @@ describe("capability_status tool wiring (source assertions)", () => {
     // the ceiling-clamped lanes, and the REAL Spine maturities, then lets the pure core decide.
     expect(src).toContain("const gatherCapabilityManifest = async (workflowsConnected: boolean) =>");
     expect(src).toContain('getSpineCapability(key)?.maturity ?? null');
-    expect(src).toContain('resolveToolAutonomy("crm_create_contact")');
-    expect(src).toContain('resolveToolAutonomy("campaign_brief_create")');
-    expect(src).toContain('resolveToolAutonomy("n8n_run_workflow")');
+    // the manifest resolves the EFFECTIVE lane = trust-compass clamp (resolve_tool_autonomy) THEN the
+    // action-class clamp (clampLaneByRisk), so a HIGH tool on an `auto` grant is NOT over-claimed as
+    // "no approval" when the dispatch would force the card (the §39 over-claim fix).
+    expect(src).toContain("clampLaneByRisk((await resolveToolAutonomy(toolKey))");
+    // the 2026-09-12 anti-under-claim completion: the previously-omitted governed writes each resolve
+    // their OWN effective lane through the SAME gatherer (never a hardcoded lane)
+    expect(src).toContain('resolveEffectiveLane("crm_create_contact")');
+    expect(src).toContain('resolveEffectiveLane("campaign_brief_create")');
+    expect(src).toContain('resolveEffectiveLane("n8n_run_workflow")');
+    expect(src).toContain('resolveEffectiveLane("document_generate")');
+    expect(src).toContain('resolveEffectiveLane("save_to_knowledge_base")');
+    expect(src).toContain('resolveEffectiveLane("plan_create")');
+    expect(src).toContain('resolveEffectiveLane("delegate_to_subagent")');
+    // research gates on the REAL provider-key signal (presence, never the value) — §13/§34/§947
+    expect(src).toContain('const researchProviderConfigured = !!Deno.env.get("FIRECRAWL_API_KEY");');
+    expect(src).toContain("researchProviderConfigured,");
     expect(src).toContain("buildCapabilitySignals({");
     expect(src).toContain("resolveCapabilityStatus(signals)");
+    // the dispatch and the manifest clamp through the SAME shared helper (§18 one home) — imported,
+    // and the dispatch's own risk clamp routes through it so they cannot diverge
+    expect(src).toContain("clampLaneByRisk");
+    expect(src).toContain('import { classifyAction, clampLaneByRisk,');
+    const riskSrc = readFileSync("supabase/functions/_shared/action-risk.ts", "utf8");
+    expect(riskSrc).toContain("export function clampLaneByRisk(");
     // the manifest must agree with the tools' OWN role gate (admin/coach/super_admin), so a
     // non-admin member is not told she can do what the gate refuses (§13/§51)
     expect(src).toContain("const resolveOwnerOpsEligible = async (): Promise<boolean> =>");

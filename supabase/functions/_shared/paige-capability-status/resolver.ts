@@ -7,15 +7,23 @@
 // (§00); it reports facts the chat renders. Side-effect-free so it is unit-testable; the async
 // gatherer feeds it the real signals resolved server-side from the verified JWT (never the body).
 
+// The COMPLETE disposition vocabulary a consequential request resolves to (the owner's 8, §family-7).
+// Seven are computed per-capability below; the eighth — `no_applicable_capability` — is not a property
+// of any one capability (it is the answer when a request matches NONE of them), so it is not emitted
+// by resolveCapabilityStatus; it is carried here so the type is the single complete vocabulary and is
+// named as an explicit resolution in the rendered directive (render.ts), closing the owner's taxonomy.
 /** How Paige may act on a capability for this tenant — in the owner's own verbs. */
 export type CapabilityAvailability =
   | "live"            // available now with no approval (a read, or an auto-lane write)
   | "needs_approval"  // available, but drafted for the owner to approve/run (confirm or off lane)
   | "needs_setup"     // a connection or setup step is required before Paige can do it
+  | "proof_owed"      // the governed path is built but its behavior is not proven for this workspace
+                      // yet AND it fails closed — Paige may attempt it but must not promise the result
   | "planned"         // no governed path here yet — not something Paige can do (whether the seam is
                       // unbuilt, or a raw tool exists but is not a governed, tenant-safe capability)
   | "not_for_tier"    // not available to this account type
-  | "unavailable";    // provider/account evidence is missing, so Paige must not claim it
+  | "unavailable"     // provider/account evidence is missing, so Paige must not claim it
+  | "no_applicable_capability"; // request matches no capability (a request-level resolution; see render.ts)
 
 export type CapabilityActionKind = "read" | "draft" | "create" | "update" | "configure" | "external_effect";
 
@@ -36,6 +44,15 @@ export interface CapabilitySignal {
   autonomyLane?: "auto" | "confirm" | "off" | null;
   /** True when a required evidence/contract is provably absent — an honest UNAVAILABLE. */
   evidenceMissing?: boolean;
+  /**
+   * True when the governed path is built AND reachable for this tier/connection, but its behavior is
+   * not yet proven for the workspace AND it fails closed (e.g. a renderer that degrades to
+   * needs_config rather than producing output). Resolves to `proof_owed`: Paige may attempt it but
+   * must not promise the result. It is NOT set for capabilities that merely lack an authenticated
+   * live-drive — that is our evidence/ledger debt, not a limit the owner experiences, and marking a
+   * usable capability `proof_owed` would wrongly tell the owner they cannot rely on it (§13/§70).
+   */
+  proofOwed?: boolean;
 }
 
 export interface CapabilityStatus {
@@ -71,6 +88,11 @@ export function resolveCapabilityStatus(signals: CapabilitySignal[]): Capability
     }
     if (s.requiresConnection && s.connected !== true) {
       return mk(s, "needs_setup", "Needs a connection before Paige can use it.");
+    }
+    if (s.proofOwed) {
+      // Built + reachable, but the path fails closed and its behavior is not proven here yet. Paige
+      // may attempt it, but must not promise the result (§13). Wins over the cheerful live/approval.
+      return mk(s, "proof_owed", "Paige can try this, but it isn't proven to work here yet — she'll tell you honestly what came back.");
     }
     if (isMutation(s.actionKind)) {
       if (s.autonomyLane === "auto") return mk(s, "live", null);
