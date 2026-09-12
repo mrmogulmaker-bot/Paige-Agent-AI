@@ -9,8 +9,29 @@ drop table if exists public.paige_social_jobs cascade;
 drop table if exists public.paige_social_targets cascade;
 drop table if exists public.paige_social_post_versions cascade;
 drop table public.paige_social_posts cascade;
+drop table public.paige_social_accounts cascade;
 drop table if exists private.paige_social_posts_legacy_20260627 cascade;
 drop table if exists private.paige_social_posts_legacy_20270117 cascade;
+
+-- 20270117000000 creates the tenant-shaped account table even when its
+-- compatibility guard leaves the older operator post table in place.
+create table public.paige_social_accounts (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  platform text not null check (platform in ('facebook','instagram','linkedin','x','tiktok','youtube','pinterest','threads')),
+  account_id text not null,
+  handle text not null,
+  display_name text,
+  avatar_url text,
+  credentials_vault_ref text,
+  status text not null default 'connected' check (status in ('connected','needs_reauth','disconnected')),
+  connected_by uuid references auth.users(id) on delete set null,
+  connected_at timestamptz not null default now(),
+  last_synced_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(tenant_id,platform,account_id)
+);
 
 create table public.paige_social_posts (
   id uuid not null default gen_random_uuid() primary key,
