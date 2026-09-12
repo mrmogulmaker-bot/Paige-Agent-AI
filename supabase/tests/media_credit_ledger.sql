@@ -63,18 +63,16 @@ DO $$
 DECLARE
   _t uuid := (SELECT tenant_id FROM public.paige_media_jobs WHERE idempotency_key = 'pgtap-proof-job-1');
   _j uuid := (SELECT id FROM public.paige_media_jobs WHERE idempotency_key = 'pgtap-proof-job-1');
-  _hold jsonb; _consume jsonb; _bal record;
+  _hold jsonb; _consume jsonb;
 BEGIN
-  -- Lazy mint: exactly one included grant for the current month.
-  PERFORM public.__media_credit_roll(_t);
-  PERFORM public.__media_credit_roll(_t);
+  -- Lazy mint: exactly-once included grant for the current month, triggered BY
+  -- the hold itself. Public wrappers only — the __internals are revoked from
+  -- every role including this connection, by design (§59).
+  _hold := public.media_credit_hold(_t, _j, 4, 0.039);
   IF (SELECT count(*) FROM public.paige_media_credit_entries
       WHERE tenant_id = _t AND entry_type = 'grant_included') <> 1 THEN
     RAISE EXCEPTION 'pgtap: lazy mint is not exactly-once';
   END IF;
-
-  -- Hold 4 credits (a $0.039 image rounds up); all from the included pool.
-  _hold := public.media_credit_hold(_t, _j, 4, 0.039);
   IF (_hold->>'ok')::boolean IS NOT TRUE THEN
     RAISE EXCEPTION 'pgtap: hold failed: %', _hold;
   END IF;
@@ -94,9 +92,15 @@ BEGIN
   IF (_consume->>'ok')::boolean IS NOT TRUE THEN
     RAISE EXCEPTION 'pgtap: consume failed: %', _consume;
   END IF;
-  SELECT * INTO _bal FROM public.__media_credit_balance(_t);
-  IF _bal.included_remaining <> 296 OR _bal.total_remaining <> 296 OR _bal.holds_open <> 0 THEN
-    RAISE EXCEPTION 'pgtap: closure math wrong: %', row_to_json(_bal);
+  -- Closure math via the ledger rows themselves (the balance internal is
+  -- revoked by design): included consumed 4 of the 300 grant, no open holds.
+  IF (SELECT coalesce(sum(included_credits), 0) FROM public.paige_media_credit_entries
+      WHERE tenant_id = _t AND entry_type = 'consume') <> 4
+     OR (SELECT count(*) FROM public.paige_media_credit_entries h
+         WHERE h.tenant_id = _t AND h.entry_type = 'hold'
+           AND NOT EXISTS (SELECT 1 FROM public.paige_media_credit_entries c
+                           WHERE c.entry_type IN ('consume','release') AND c.job_id = h.job_id)) <> 0 THEN
+    RAISE EXCEPTION 'pgtap: closure math wrong (consume or open holds)';
   END IF;
 
   -- Release after consume: a NO-OP, never a credit return.
