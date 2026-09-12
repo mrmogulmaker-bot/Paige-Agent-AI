@@ -15,6 +15,7 @@ import { embeddingsCompat } from "../_shared/voyage.ts";
 import { applyContactSearchFilter } from "../_shared/contact-search.ts";
 import { readPipelineWorkspace } from "../_shared/pipelineWorkspaceRead.ts";
 import { isSpendableQuoteCents } from "../_shared/purchase-quote.ts";
+import { socialToolUnavailable } from "../_shared/social-publish-containment.ts";
 // Wave 3 · Communications — the owner can find out what Paige did with the business
 // phone line. `capability-record` owns HOW a run is written; `comms-capability-outcome`
 // owns WHICH of the six outcomes these four acts landed in (§18: one home each).
@@ -11312,28 +11313,23 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               if (error) throw error;
               result = { success: true, ...(data as any) };
             } else if (tc.function.name === "social_post" || tc.function.name === "social_analytics" || tc.function.name === "social_accounts") {
-              // NEXUS's social media operations (Upload-Post API). Post = confirm-first.
-              const { data: roleRows } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
-              const roles = (roleRows || []).map((r: any) => r.role);
-              if (!(roles.includes("admin") || roles.includes("coach"))) {
-                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Social media operations are restricted to admins and coaches." }) });
-                continue;
-              }
-              const socialTenant = personaCtx?.tenant_id ?? null;
-              const socialUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/paige-social`;
-              const socialBody = tc.function.name === "social_post"
-                ? { action: "post", tenant_id: socialTenant, ...args }
-                : tc.function.name === "social_analytics"
-                  ? { action: args.detail === "posts" ? "post_analytics" : args.detail === "audience" ? "audience" : "analytics", tenant_id: socialTenant, ...args }
-                  : { action: "accounts", tenant_id: socialTenant };
-              const socialRes = await fetch(socialUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseServiceKey}`, apikey: supabaseServiceKey },
-                body: JSON.stringify(socialBody),
-              });
-              const socialText = await socialRes.text();
-              let socialPayload: any; try { socialPayload = JSON.parse(socialText); } catch { socialPayload = { raw: socialText }; }
-              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(socialPayload) });
+              // Social capability-truth CONTAINMENT (§9/§38, §13/§36, §58, #1161/#1166).
+              // This branch used to proxy `paige-social` (an Upload-Post API proxy) with
+              // service-role auth. `paige-social` authenticates with a SINGLE platform-wide
+              // UPLOAD_POST_API_KEY and posts to a platform-controlled profile — there is NO
+              // per-tenant provider connection, so any tenant admin/coach invoking social_post
+              // would publish through a SHARED platform credential to a platform-controlled
+              // profile (§9 tenant-isolation / §38 identity-&-money-boundary breach).
+              //
+              // The complete tenant-safe governed social pipeline is DEFERRED (#1161), and the
+              // capability-truth manifest already resolves social.publish → "planned"/unavailable
+              // (#1166, paige-capability-status/signals.ts). So the tool MUST agree with the
+              // manifest (§13/§36/§70): return a truthful governed "unavailable" result for EVERY
+              // caller and NEVER call paige-social. The previously-wired-but-tenant-unsafe seam is
+              // CONTAINED and flagged here (§58), not silently removed — the Upload-Post fetch is
+              // deliberately gone from this branch. socialToolUnavailable() is the one pure home
+              // for the three notes. No role branch: it is unavailable for admins/coaches too.
+              result = socialToolUnavailable(tc.function.name);
             } else if (tc.function.name === "integrations_list") {
               // The integrations read verb (spine: integrations.list). Caller-scoped.
               const { data, error } = await supabaseClient.rpc("list_integration_surface");

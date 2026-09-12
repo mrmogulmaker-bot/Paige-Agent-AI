@@ -1406,6 +1406,18 @@
     "registry_steward_role": "UNDEFINED here. The RE-2 M1-a, Solo Tenant Brain Business Mission, and Public Presence slices reference a 'Registry Steward' who must add/cross-link canonical entries before provider-facing work. This registry ships a per-entry `owner` field + the delivery rule instead of a named Steward — an owner decision on whether that satisfies the requirement is owed.",
     "entries": [
       {
+        "owed_by": "Social server-side containment (Task 1, 2026-09-12; docs/brain/decision-log.md)",
+        "provider": "Upload-Post (multi-platform social publishing adapter, reached by supabase/functions/paige-social)",
+        "capability": "Publish / schedule / read social posts across 14 platforms via Upload-Post's unified API — a SECOND social-publish seam distinct from the `meta` provider's meta-schedule-post path.",
+        "provider_scopes": "platform-wide UPLOAD_POST_API_KEY + a platform-controlled Upload-Post profile; NO per-tenant connection exists.",
+        "authority_lane": "read/draft only; external publish PROHIBITED for tenants.",
+        "provider_confirmed_outcome": "Upload-Post post id (only once a per-tenant connection + governed publish path exists).",
+        "rail_mind_memory": "Rail: publish outcome (future, when a tenant-safe path exists); Mind/Memory: none.",
+        "status": "UNAVAILABLE — CONTAINED 2026-09-12: the chat social_post/social_analytics/social_accounts tool executors no longer proxy paige-social; they return a governed 'unavailable' (_shared/social-publish-containment.ts). A tenant could otherwise have published through the SHARED platform-wide credential (§9/§38). Tenant social publishing/analytics is non-executable across BOTH this seam and the `meta` meta-schedule-post seam.",
+        "limitations": "No per-tenant Upload-Post OAuth/connection; the platform-wide key is operator scope only. A full catalogued provider entry for Upload-Post is OWED (pre-existing gap, not introduced by the containment).",
+        "note": "The tenant-safe governed social pipeline (per-tenant connection + a governed publish verb + receipt/Rail) is deferred to #1161, which must also reconcile the operator-vs-tenant paige_social_posts schema. Until then, Social publishing stays contained and unavailable for tenants."
+      },
+      {
         "owed_by": "RE-2 M1-a money backbone (docs/brain/decision-log.md ~L63-77, PR #1014)",
         "capability": "record-provider-confirmed-spend + reconcile",
         "provider_scopes": "none (provider-agnostic backbone; a concrete provider is bound only at PR-3)",

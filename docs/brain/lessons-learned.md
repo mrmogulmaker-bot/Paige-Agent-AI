@@ -6,6 +6,32 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## Fixing the capability MANIFEST is not fixing the capability — the executable TOOL seam must be contained too (2026-09-12)
+
+- **Symptom.** #1166 made Paige's "what can you do here?" answer truthful — the capability-status
+  manifest resolved `social.publish` to "planned"/unavailable. But the `social_post` /
+  `social_analytics` / `social_accounts` model TOOLS were still wired in `paige-ai-chat` and their
+  executors still proxied `paige-social` (the Upload-Post adapter, a single platform-wide credential).
+  So the manifest said "I can't post" while the tool, if the model called it, would post a TENANT's
+  content through a SHARED platform credential (§9/§38). The truthful prose and the live seam
+  disagreed.
+- **Root cause.** A capability has TWO server-side faces a model can act on: the capability-truth
+  block/`capability_status` tool (what Paige SAYS she can do) and the executable tool seam (what the
+  tool actually DOES when called). Repairing only the manifest leaves the contradiction: models act on
+  tools, not only on prose, so a "planned" manifest next to a live executor is still reachable. This
+  is the exact twin of §32 ("green build ≠ working render") and §70 ("wired ≠ a human can finish"):
+  the manifest compiling truthful does not prove the seam is contained.
+- **Rule.** When a capability is owner-ruled unavailable (no registered governed path, no per-tenant
+  connection), contain BOTH faces in the same change: the manifest says "planned" AND the executor
+  returns a truthful governed `{available:false, status:"unavailable"}` (or the tool is unregistered),
+  so no caller can reach the unsafe credential. The class of proof that catches it: for every capability
+  the manifest marks "planned"/unavailable, assert its tool executor has NO live external route (no
+  `fetch`/RPC to a provider) — a manifest claim without a matching executor containment is the gap.
+  (Contain at the executor, keep the tool defined, and the model relays the honest result — the most
+  truthful UX and §58-safe when the seam was already non-functional/tenant-unsafe.)
+
+---
+
 ## A new result/status vocabulary must be cross-mapped to the existing CI-enforced one, not silently forked (2026-09-12)
 
 - **Symptom.** The proof-lane framework (Harness Layer G) introduced a runtime verdict vocabulary
