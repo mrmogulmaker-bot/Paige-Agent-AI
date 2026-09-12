@@ -105,7 +105,7 @@ export default function Pricing() {
         <main className="px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
           <div className="mx-auto max-w-3xl text-center">
             <Badge className="mb-4 border-primary/20 bg-primary/10 text-primary">
-              <Sparkles className="mr-1.5 h-3 w-3" /> Solo-only beta
+              <Sparkles className="mr-1.5 h-3 w-3" /> Paige Solo Beta
             </Badge>
             <h1 className="text-4xl font-bold text-foreground lg:text-5xl">Paige Solo is ready for your business.</h1>
             <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">

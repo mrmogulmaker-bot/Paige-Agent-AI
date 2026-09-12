@@ -139,7 +139,7 @@ const Auth = () => {
   const heroAccent = brandColor && !isColorDark(brandColor) ? brandColor : "#F0C86A";
   const headingTitle = isLogin
     ? "Welcome back"
-    : isClientInvite ? `Join ${brandName}` : "Start with Paige";
+    : isClientInvite ? `Join ${brandName}` : "Start Paige Solo Beta";
   const hasPlanIntent = !isLogin && isSoloBetaPlan(searchParams.get("plan"));
   const hasInvite = !isLogin && !!searchParams.get("invite");
   const headingSub = isLogin
@@ -147,8 +147,8 @@ const Auth = () => {
     : (hasInvite
           ? "Your invite includes access selected by the workspace owner — create your login to continue"
           : hasPlanIntent
-            ? "Create your account, verify your email, then finish the approved Paige Solo setup"
-            : "Paige Solo is the beta available now");
+            ? "$74.50/month, billed monthly with no trial. Create your account, verify your email, then finish your Solo setup."
+            : "Paige Solo Beta is available for $74.50/month, billed monthly with no trial.");
 
   useEffect(() => {
     setIsLogin(isClientInvite || searchParams.get("mode") !== "signup");
@@ -969,7 +969,7 @@ const Auth = () => {
                     {isLogin ? "Signing in..." : "Creating account..."}
                   </>
                 ) : (
-                  <>{isLogin ? "Sign In" : "Start with Paige"}</>
+                  <>{isLogin ? "Sign In" : "Create Solo Beta account"}</>
                 )}
               </Button>
             </form>

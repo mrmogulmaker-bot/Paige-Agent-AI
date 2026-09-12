@@ -11,6 +11,8 @@ import {
 } from "./soloBetaAcquisition";
 
 const publicHome = readFileSync("src/pages/PaigeHome.tsx", "utf8");
+const pricing = readFileSync("src/pages/Pricing.tsx", "utf8");
+const auth = readFileSync("src/pages/Auth.tsx", "utf8");
 
 describe("Solo-only beta acquisition contract", () => {
   it("emits one fixed public display intent and signup path", () => {
@@ -36,6 +38,17 @@ describe("Solo-only beta acquisition contract", () => {
       { slug: "enterprise", is_active: true },
       { slug: "solo", is_active: false },
     ])).toEqual([{ slug: "solo", is_active: true }]);
+  });
+
+  it("repeats the exact paid offer at pricing and account commitment", () => {
+    expect(pricing).toContain("Paige Solo Beta");
+    expect(pricing).toContain("$74.50");
+    expect(pricing).toContain("Billed monthly");
+    expect(auth).toContain("Start Paige Solo Beta");
+    expect(auth).toContain("$74.50/month, billed monthly with no trial");
+    expect(auth).toContain("Create Solo Beta account");
+    expect(auth).not.toContain("14-day");
+    expect(auth).not.toContain("$149");
   });
 
   it("never sends caller-selected plan, account type, billing period, or trial to checkout", () => {
