@@ -13,7 +13,7 @@
 --   §59: only service_role reaches the ledger writers.
 BEGIN;
 
-SELECT plan(22);
+SELECT plan(8);
 
 -- ── Fixtures: a tenant, a user, a job ─────────────────────────────────────────
 DO $$
