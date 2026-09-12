@@ -17,6 +17,26 @@ User job, audience, primary action, and visual direction:
 - Explicit exclusions:
 - Backend/edge/migration change that alters a visible flow with no UI file? Declare it with a `Visible-Flow-Impact: yes` commit trailer so CI routes it to the evidence gate (see the UI delivery standard, "Backend-to-visible routing"):
 
+## Capability routing
+
+State "not applicable" and why, rather than inventing a record. An honest N/A is always acceptable;
+a fabricated row never is. (Rule: Master Reference → "Capability Portfolio — the One Paige Operating
+Platform rule"; map: `docs/doctrine/paige-capability-portfolio.md`.)
+
+- Portfolio family / domain owner:
+- Shared Harness seams used (Gateway/kernel, Spine capability key, action-risk class + autonomy lane,
+  approval gate, event bus or durable job, `record_capability_run` / Rail) — and any the change
+  deliberately does not touch:
+- Provider / connection status (Integration Capability Registry entry read + updated in this commit,
+  or "no provider"). Listed is never connected:
+- Current truth label after this change (`LIVE` / `PARTIAL` / `UNAVAILABLE` / `UNVERIFIED` /
+  `PROOF_OWED`) and the contract that supports it:
+- Proof obtained vs proof owed — name what stays owed and to whom:
+- Canonical records updated in this commit (Binding Ledger row / Integration Registry entry / Spine
+  registry / Rail-receipt contract / Harness Completion Map / tier matrix), or explicit N/A per record:
+- Nothing duplicated: this change creates no second Harness, authority engine, tool registry, job
+  system, browser system, evidence stream, provider registry, memory, or orchestrator:
+
 ## Evidence record
 
 Link the non-template record added under `docs/evidence/ui-delivery/`:

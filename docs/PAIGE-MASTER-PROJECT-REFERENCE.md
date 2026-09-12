@@ -627,6 +627,76 @@ provider or connected app is involved—`docs/integration-registry/README.md`. P
 also reads `docs/architecture/platform-operator-tenant-200.md`. Current delivery status still comes
 from Section 4 and the relevant detailed record, never from this architecture decision alone.
 
+### Capability Portfolio — the One Paige Operating Platform rule (owner-approved 2026-09-12)
+
+**The rule.** Paige is one AI COO, not a collection of disconnected apps. Every capability —
+Calendar, Social, Vibe, CRM, Client Portal, Marketplace, browser research, sandbox work, skills,
+agents, billing, analytics, automations, and every future domain — plugs into the same shared
+governed path. A capability that reaches a provider, a record, or an owner by any other route is not
+a faster capability; it is an ungoverned one, and it does not ship.
+
+**The required capability entry path (binding on every domain, every tier, every modality):**
+
+`Capability Gateway → tenant/actor/role/connection truth → authority / approval / budget / policy
+checks → domain adapter or canonical write → readback / reconciliation → receipt + Rail → truthful
+Paige explanation and owner control`
+
+This is the same governed core as the canonical modality-neutral path recorded above; the Gateway
+naming states the entry obligation explicitly so no domain can read "my surface is different" into
+it. **Nothing in this rule grants authority.** Breadth of coordination is never breadth of
+permission: at every read, tool call, job step and act, the Harness re-resolves tenant, actor,
+workspace, role, tool scope, provider state, approval rule, budget and verification requirement, and
+a later step never inherits a wider authority because an earlier one succeeded.
+
+**Division of labour (who builds what).**
+
+- **The Harness** builds the roads, power grid, authority, event engine, receipts, proof, budgets and
+  specialist runtime. Its per-layer state is `docs/delivery/harness-completion-map.md` (Layers A–G).
+- **Chat** builds the owner cockpit through which the owner discovers, directs, approves, monitors
+  and understands the system.
+- **Domain teams** build their domain capabilities **on those shared primitives**.
+
+**Prohibited by this rule — a domain may not create its own:** Harness · authority or execution
+engine · tool registry · job or scheduler system · browser system · evidence or receipt stream ·
+provider registry · memory · orchestrator. This restates, and does not replace, the existing
+"One Paige across all capability domains" contract above and
+`docs/brain/paige-brain-wiring-standard.md` §1.
+
+**The 200-capability portfolio is OWNER-APPROVED PRODUCT DIRECTION — binding, not aspirational.**
+The long-term target is a large portfolio of capabilities inside one governed platform, not two
+hundred independently-architected products each with its own runtime and its own idea of the truth.
+It is a portfolio, never 200 apps. **Capability count measures reach across one platform; it is never
+a licence to fork the platform.**
+
+> **Every portfolio capability remains intended product direction; each becomes real only through the
+> shared Harness path and its domain-specific completion proof.**
+
+**Its canonical home is `docs/doctrine/paige-capability-portfolio.md`** — the one owner-vision
+artifact. It preserves the capability families and their intended outcomes and maps each family to
+its domain and shared Harness dependencies. It **claims no runtime availability**, and it is **not**
+a second Binding Ledger, Integration Capability Registry, Spine registry, or roadmap tracker: for
+current status and delivery proof it points at those records, which own those answers.
+
+**Two guardrails on the number itself (§13).** (1) "200" is **never** a delivery-percentage or
+`LIVE`-coverage score — there is no "we are at N/200," because the portfolio is intent and the
+canonical records hold reality. (2) Runtime truth, provider status, surface binding and delivery
+state are **never duplicated** out of their owning records into the portfolio artifact; it cites
+them. Scope is binding; **availability is only ever what the owning record proves.**
+
+**The truthful completion rule.** A capability is complete only when a real owner or client outcome
+is reachable through the path above and proven at the evidence class claimed. Explicitly, **none of
+these is completion**: a component renders · a tool exists in a registry · a fixture or structural
+test passes · a provider name appears in documentation · a config flag is set · a migration merged ·
+a preview deploys · a prior agent's report says so. Evidence classes and their honest labels
+(`LIVE` / `PARTIAL` / `UNAVAILABLE` / `UNVERIFIED`, plus the ledger's `PROOF_OWED` and
+`INTENTIONALLY_ISOLATED`) are already defined in `AGENTS.md`, `docs/doctrine/paige-ui-delivery-standard.md`
+and `docs/binding-ledger/README.md` — this rule adds no vocabulary and forks none.
+
+**Routing.** Which canonical home answers which capability question — and what proof each portfolio
+family owes — is `docs/doctrine/paige-capability-portfolio.md`. That artifact is the owner-vision
+portfolio plus a routing and sequencing map: it cites the Binding Ledger, Integration Capability Registry, Spine, Rail and
+Harness Completion Map, and replaces none of them (§18).
+
 ### Integration Capability Registry (provider-governance delivery record — MANDATORY)
 
 **`docs/integration-registry/`** (README + `integration-capability-registry.json`, the source of

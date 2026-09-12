@@ -32,6 +32,14 @@ index what you have not checked.
   Migration Advisor”**, then `paige-brain-wiring-standard.md`, the Integration Capability Registry,
   and Surface Binding Ledger. Derive tenant truth from current server-owned sources; do not create a
   second capability registry, migration database, or customer-facing assistant.
+- **Building ANY capability — where does it belong and what proof does it owe?** → the owner rule
+  `../PAIGE-MASTER-PROJECT-REFERENCE.md` → "Capability Portfolio — the One Paige Operating Platform
+  rule", then the routing map `../doctrine/paige-capability-portfolio.md`. Paige is one governed
+  operating platform; every capability uses the one Gateway→authority→adapter→readback→receipt/Rail
+  path. **The matrix routes, it does not rule:** per-surface truth stays in
+  `../binding-ledger/`, per-provider truth in `../integration-registry/`, per-layer Harness truth in
+  `../delivery/harness-completion-map.md`, and per-capability ship-time completion in
+  `paige-brain-wiring-standard.md` §3. Do not copy portfolio records into the Brain — cite them.
 - **Hit a weird recurring bug?** → `lessons-learned.md` (symptom → root cause → rule).
 - **Opening/closing a PR, merging, deploying, versioning, or drafting a customer update?** →
   `../doctrine/release-governance-and-customer-update-policy.md`.
@@ -70,6 +78,7 @@ worse than none — it lies with authority.
 | `cd-pack-port-playbook.md` | How to port a Claude Design pack surface to a live tier: the 7-step procedure + the 6 traps that have actually cost us. Written from the operator port so Agency/Sub-account/Solo/Enterprise don't re-learn them | Before porting any pack surface to any tier |
 | `design-system.md` | Palette · gold discipline · type · depth · motion · layout · taste — and where each source lives | ANY design work, or "what is our design system?" |
 | `../doctrine/paige-attention-register.md` | **Where a platform finding lives so it is never lost** — the five records and what each is for, the register's nine fields and eight views, the eleven delivery statuses and what each one means, intake and closeout rules, the board's acceptance criteria, and the honest record that the GitHub Project does not exist yet | **Whenever a finding is discovered outside the current assignment's scope**, or before closing out any workstream |
+| `../doctrine/paige-capability-portfolio.md` | **Where a capability belongs and what proof it owes** — the fifteen portfolio families mapped to current truth label, domain owner, shared dependencies, the canonical records to update, and the completion proof required. A routing and sequencing map that CITES the Binding Ledger / Integration Registry / Spine / Rail / Harness Completion Map and replaces none of them | **Before building any capability**, or when asked "where does this go / what must it not duplicate?" |
 | `../doctrine/one-approval-gate.md` | **How Paige proves the operator said yes — and the rule that no slice builds its own version.** How to add a gated action (classify it, stop), what is forbidden and why each shipped once, and how to rewrite a slice that built its own channel | **Before adding ANY action Paige performs on the operator's behalf**, or touching the confirm gate |
 | `../doctrine/surface-cards/` | **The Solo surface cards** — one per department, ten required fields, a truth label. `README.md` carries the schema and maps the Alignment Standard's named documents to what actually exists | Before changing ANY Solo department |
 | `../delivery/solo-setup-persistence-release.md` | Solo Setup durable-save diagnosis, exact migration evidence classes, release truth, and authenticated-runtime proof debt | Before changing or releasing Solo Settings → Setup |
