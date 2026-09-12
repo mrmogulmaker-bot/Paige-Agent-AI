@@ -169,9 +169,19 @@ provider-facing changes that updated every documentation home **except** the con
 - **fal.ai** (Vibe media provider layer, `d5387376` / #1153, 2026-09-12) — **no entry**, though it did
   add `../brain/config-registry.md`, tier-matrix and due-diligence records.
 
-Under the registry's own delivery rule both owe an entry. The **Registry Steward** role named in the
-escalation path **has no holder anywhere in the repository**, so the "notify the Steward" step is
-currently unexecutable — an owner decision, recorded rather than worked around.
+Under the registry's own delivery rule both owe an entry.
+
+**Registry Steward — ASSIGNED to the Harness workstream** (owner ruling 2026-09-12). It is a
+governance and consistency role, **not** a feature-development bottleneck and **not** an approval
+queue: Harness owns the canonical registry contract, the allowed truth states, cross-domain
+reconciliation, and escalation of unowned or unsafe entries. **Domain workstreams keep ownership of
+their own provider adapters and propose their own capability/connection entries** — nobody waits on
+the Steward to build, and the per-entry `owner` field still names the domain owner. No new registry,
+approval queue or dependency chain is created by the assignment.
+
+So the escalation path is now executable. **What is still missing is the mechanism, not the owner:**
+nothing in CI couples a provider-touching diff to its registry entry, which is why these two were
+caught by review rather than by a gate (see Enforcement below).
 
 ---
 
@@ -240,6 +250,20 @@ workflow file.
   `STUB` constants in non-test `src` + `functions` are legitimate. A lint there would be almost
   entirely false positives. **This gap stays open deliberately** — human review owns it.
 
-**One owner action, surfaced not coded around:** `ui-delivery-evidence` is advisory, not a required
-status check (per `../OPS.md`), so its diff-coupled enforcement does not block a merge today. Making
-it required is a repository-settings decision.
+**Owner rulings 2026-09-12, both recorded here:**
+
+- **Registry Steward → the Harness workstream** (above). Governance and consistency; never a
+  build bottleneck.
+- **`ui-delivery-evidence` becomes a REQUIRED status check for merges to `main`.** Its scoped
+  behaviour is preserved: a UI-affecting change must carry the evidence record; a non-UI change
+  passes honestly as not-applicable. The required-check context string is
+  **`ui-delivery-evidence / Validate UI delivery evidence`** (workflow name / job name — the job
+  name alone will not match, and a wrong string silently protects nothing).
+  **Status: NOT YET IN FORCE — this is a repository branch-protection setting, not a file.** A
+  headless agent session cannot read or write branch protection (`GET
+  /branches/main/protection` → `403 Resource not accessible by integration`, measured
+  2026-09-12), so neither the change nor its verification can be made from here. Workflow YAML is
+  **never** proof that merges are blocked. Owner action: Settings → Branches → `main` → Require
+  status checks to pass → add that exact context, then confirm it appears in the required list.
+  Until that is confirmed, this check remains **advisory** and this line must not be edited to
+  say otherwise (§13).
