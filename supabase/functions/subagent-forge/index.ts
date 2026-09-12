@@ -358,6 +358,37 @@ async function routeForApproval(proposalId: string, actorId: string | null) {
     .from("paige_subagent_proposals").select("*").eq("id", proposalId).single();
   if (!p) return fail("Proposal not found", 404);
 
+  // STAGE 1 — an approval must name the business it belongs to.
+  //
+  // `paige_subagent_proposals.tenant_id` is nullable by design, so the old
+  // `tenant_id: p.tenant_id ?? null` below faithfully propagated an unattributed
+  // proposal into an unattributed approval. A NULL-tenant approval row is readable,
+  // updatable and dismissable by every tenant admin on the platform (the RESTRICTIVE
+  // `tenant_isolation` policy admits `tenant_id IS NULL` unconditionally), so that
+  // `?? null` was a cross-tenant publish, not a tolerant default.
+  //
+  // Refuse instead. The proposal row survives untouched and can be re-routed once it
+  // carries a tenant; nothing is written here.
+  //
+  // §58 — SAY WHAT THIS CLOSES. In THIS table `tenant_id IS NULL` is meaningful: it is
+  // the platform/operator lane (see `quotaToday` and `shipProposal`, which both preserve
+  // NULL as operator scope on purpose). So this refusal also closes the operator lane's
+  // route-to-approval path, not only accidental non-attribution. That is deliberate and
+  // consistent: `paige_pending_approvals` has no verified platform-scope contract, so an
+  // operator-scoped approval has nowhere legitimate to land today. Re-opening it needs
+  // that contract with its own trusted creation path — not a NULL row. Live impact at the
+  // time of writing: zero (0 proposal rows exist).
+  if (!p.tenant_id) {
+    console.error(
+      "[subagent-forge] routeForApproval REFUSED — proposal has no tenant attribution",
+      JSON.stringify({ proposal_id: proposalId }),
+    );
+    return fail(
+      "This specialist proposal has no business attached to it, so it cannot be sent for approval.",
+      422,
+    );
+  }
+
   const { data: approval, error } = await supabase
     .from("paige_pending_approvals")
     .insert({
@@ -375,7 +406,8 @@ async function routeForApproval(proposalId: string, actorId: string | null) {
       risk_level: p.runtime === "langgraph" ? "high" : "medium",
       source: "subagent-forge",
       submitted_by_user_id: actorId,
-      tenant_id: p.tenant_id ?? null,
+      // Guaranteed non-null by the attribution check above (§13 — no silent fallback).
+      tenant_id: p.tenant_id,
     })
     .select("id").single();
   if (error) return fail(`Approval routing failed: ${error.message}`, 500);
