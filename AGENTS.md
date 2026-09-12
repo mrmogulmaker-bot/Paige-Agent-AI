@@ -39,7 +39,7 @@ A closeout-only PR whose sole change is recording the exact post-merge identity 
 
 ## Evidence and review
 
-Every UI pull request must add a record under `docs/evidence/ui-delivery/` based on `docs/evidence/ui-delivery/TEMPLATE.md` and use `.github/PULL_REQUEST_TEMPLATE/ui-delivery.md`. The `ui-delivery-evidence` workflow checks recognized UI paths for that record. The guardrail validates structure only; reviewers must inspect the evidence and the user-visible flow.
+Every UI pull request must add a record under `docs/evidence/ui-delivery/` based on `docs/evidence/ui-delivery/TEMPLATE.md` and use `.github/PULL_REQUEST_TEMPLATE/ui-delivery.md`. The `ui-delivery-evidence` workflow checks recognized UI paths for that record. The guardrail validates structure only; reviewers must inspect the evidence and the user-visible flow. A backend, RPC, edge-function, entitlement, or provider-contract change that alters a visible customer flow declares it with a `Visible-Flow-Impact: yes` commit trailer, which routes it to the same evidence record even when no UI file changed.
 
 For Solo UI, cover 1536x770, 1366x768, 1024x768, and 900x1000 with PAIGE closed and open. Test a relevant tenant and a different known-good tenant. Verify the real scroll owner, clipping, reachability, keyboard path, focus, zoom/reflow, reduced motion, relevant states, cancellation, and workspace switching.
 

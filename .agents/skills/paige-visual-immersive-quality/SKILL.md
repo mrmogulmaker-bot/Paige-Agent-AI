@@ -43,5 +43,5 @@ Against the approved pack and the premium bar:
   reduced-motion behavior. "Decorative, no purpose" fails.
 
 Visuals are checked against **rendered evidence**, never prose. Backward compatibility: `MOTION_PURPOSE`
-is not yet required or checked by the CI guardrail (unknown fields are ignored); Phase 3 wires it as
-optional, required only per an announced cutover.
+is recognized by the CI guardrail — validated when present, never required — required only per an
+announced cutover.
