@@ -554,6 +554,11 @@ export function decideGovernedExecution(input: {
   // below decide whether a human's yes is required); `"unknown"` is a declared non-adoption and
   // passes the gate as a no-op (it is not a claim of availability — see `GovernedCapability`).
   switch (capability.availability) {
+    case undefined:
+    case "unknown":
+    case "live":
+    case "needs_approval":
+      break; // proceed — availability does not block; the steps below decide the rest.
     case "not_for_tier":
       return refuse("capability_not_for_tier",
         "This isn't available for this account type, so it can't run.");
@@ -566,10 +571,16 @@ export function decideGovernedExecution(input: {
     case "needs_setup":
       return refuse("capability_needs_setup",
         "This needs a connection or setup step first, so it wasn't run.");
-    case "live":
-    case "needs_approval":
-    case "unknown":
-      break; // proceed — availability does not block; the steps below decide the rest.
+    default:
+      // FAIL CLOSED on a status this seam does not recognise. This is the fail-closed layer, so a
+      // future CapabilityAvailability member that nobody mapped here must REFUSE, never silently
+      // proceed — the same direction as the unrecognised-autonomy-lane guard in step 8. The
+      // "proceed" set above is the explicit allowlist (including absent and "unknown"); everything
+      // else is blocked until it is deliberately classified. Found by the §39 peer-gate: the prior
+      // switch had `break` arms with code after it, so a new member would have fallen through and
+      // executed.
+      return refuse("capability_unavailable",
+        "This capability's availability could not be recognised, so it wasn't run.");
   }
 
   // 6 — CLASSIFICATION, and the two ways a declaration can lie about itself.

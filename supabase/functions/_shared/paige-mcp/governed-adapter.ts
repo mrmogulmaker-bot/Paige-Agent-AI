@@ -131,6 +131,17 @@ const SEAM_REFUSALS_TRUER_THAN_THE_DOOR_RULE: ReadonlySet<string> = new Set<Gove
   "unclassified_mutation",
   "owner_only",
   "outcome_channel_undeclared",
+  // The capability-status gate's refusals (step 5.5). Truer than the blanket mutation rule —
+  // "not available for this account type" / "needs a connection first" says exactly why, for a READ
+  // as much as a mutation. INERT today: this door passes `availability: "unknown"`, so the seam's
+  // status gate never fires and these never arise here. Added now so that when the named follow-up
+  // wires real status resolution into this door, a status-refused READ surfaces its real reason
+  // instead of falling through to the step-4 "could not be governed" terminal (§37 consumer
+  // inventory — flagged by the §39 peer-gate as a dormant mislabel trap).
+  "capability_not_for_tier",
+  "capability_unavailable",
+  "capability_planned",
+  "capability_needs_setup",
 ]);
 
 /**

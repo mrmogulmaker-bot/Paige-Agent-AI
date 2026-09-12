@@ -409,6 +409,25 @@ describe("the capability-status gate — availability blocks through EVERY door,
     expect(doorless(unknown)).toEqual(doorless(absent));
   });
 
+  it("FAILS CLOSED on an availability it does not recognise (a future 7th member)", () => {
+    // Peer-gate finding: the step-5.5 switch had `break` arms with code after it, so a future
+    // CapabilityAvailability member nobody mapped would have fallen through and EXECUTED. The seam
+    // is the fail-closed layer, so an unrecognised status must refuse, not proceed. Simulated with a
+    // value outside the union — exactly what a new member looks like before it is mapped.
+    for (const door of DOORS) {
+      const d = decide({
+        caller: caller({ door }),
+        capability: { ...ORDINARY, availability: "some_future_status" as never },
+        approval: { autonomyLane: "auto" }, requestArgs: {},
+      });
+      expect(d.kind, `door ${door}`).toBe("refuse");
+      if (d.kind === "refuse") {
+        expect(d.code).toBe("capability_unavailable");
+        expect(GOVERNED_REFUSAL_CODES).toContain(d.code);
+      }
+    }
+  });
+
   it("every status-gate code it can emit is in the declared set", () => {
     for (const [availability] of CASES) {
       const d = decide({ caller: caller(), capability: { ...ORDINARY, availability: availability as never },

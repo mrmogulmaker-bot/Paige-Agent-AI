@@ -6004,9 +6004,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           },
           // capability_status + contact_event_status are emitted by the Capability Gateway, not
           // declared inline (owner ruling 2026-09-01 — domains/Spine own features, Chat consumes).
-          // Spread as objects so they carry no inline `name:` line, descending the chat-tool-registry
-          // ratchet 10 → 8. Their dispatch stays below, unchanged. The shapes are byte-identical to
-          // the defs they replaced (§58 — nothing a caller sees changes).
+          // Spread as objects so they carry no inline `name:` line. This drops chat-tool-registry-lint
+          // from 10 `added` to 8 — progress, NOT green: that lint fails on any `added > 0`, so it
+          // still exits non-zero at 8 (the eight remaining are the owner-sanctioned interim migration
+          // register; see docs/brain/decision-log.md 2026-09-12). Dispatch stays below, unchanged; the
+          // shapes are byte-identical to the defs they replaced (§58 — nothing a caller sees changes).
           ...buildGatewayToolDefs(),
           {
             type: "function",

@@ -202,6 +202,12 @@ const GATEWAY_OWNED: readonly GatewayOwnedCapability[] = [
  * sees (§58). The dispatch for each tool stays in the handler, unchanged, and still owns the
  * per-role refusal (a client seat is refused there today, exactly as before).
  *
+ * HONEST ON THE RATCHET (§13): moving these two took `chat-tool-registry-lint` from 10 `added` to 8
+ * — real progress, but NOT green. That lint fails on ANY `added > 0` ("must not grow"), so it still
+ * EXITS NON-ZERO at 8: the eight remaining inline tools are the owner-sanctioned interim migration
+ * register, not baselined away (see `docs/brain/decision-log.md` 2026-09-12). 10 → 8 descends the
+ * register; it does not clear the check.
+ *
  * PER-CALLER, AVAILABILITY-AWARE WITHHOLDING — the gateway hiding a tool whose status is
  * `needs_setup`/`planned`/`not_for_tier`/`unavailable` for this tenant — is the decision core's
  * designed purpose and is tested across every availability. It is deliberately NOT yet wired into
