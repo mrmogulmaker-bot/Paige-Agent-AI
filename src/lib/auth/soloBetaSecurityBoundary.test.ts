@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 const migration = readFileSync("supabase/migrations/20270118010000_solo_beta_atomic_fulfillment.sql", "utf8");
 const lifecycle = readFileSync("supabase/migrations/20270118020000_solo_beta_subscription_lifecycle.sql", "utf8");
 const integrity = readFileSync("supabase/migrations/20270118040000_solo_beta_integrity_fencing.sql", "utf8");
-const authz = readFileSync("supabase/migrations/20270119000000_solo_beta_authz_hardening.sql", "utf8");
+const authz = readFileSync("supabase/migrations/20270119010000_solo_beta_authz_hardening.sql", "utf8");
 const checkout = readFileSync("supabase/functions/solo-beta-subscription-checkout/index.ts", "utf8");
 const webhook = readFileSync("supabase/functions/solo-beta-stripe-webhook/index.ts", "utf8");
 const status = readFileSync("supabase/functions/solo-beta-enrollment-status/index.ts", "utf8");
@@ -104,6 +104,9 @@ describe("Solo Beta security boundary", () => {
     expect(provisioner).toContain("values (_tenant.id, _owner, 'owner', 'active', true, now())");
     expect(authz).toContain("tm.role IN ('owner','admin','super_admin','coach')");
     expect(authz).not.toContain("has_any_role(_creator");
+    expect(authz).toContain("FUNCTION public.create_contact_v2");
+    expect(authz).toContain("was_created := false");
+    expect(authz).not.toContain("FUNCTION public.create_contact(");
   });
 
   it("keeps failed webhook fulfillment retryable and never acknowledges it", () => {

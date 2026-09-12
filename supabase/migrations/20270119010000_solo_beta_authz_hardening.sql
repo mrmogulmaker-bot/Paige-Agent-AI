@@ -20,7 +20,10 @@ REVOKE ALL ON FUNCTION public.is_signup_complete()
 GRANT EXECUTE ON FUNCTION public.is_signup_complete()
   TO authenticated, service_role;
 
-CREATE OR REPLACE FUNCTION public.create_contact(
+-- Main now owns the honest-outcome implementation in create_contact_v2 and
+-- keeps create_contact as a scalar compatibility shim. Harden the one logic
+-- home so this migration composes with that contract instead of replacing it.
+CREATE OR REPLACE FUNCTION public.create_contact_v2(
   p_first_name text,
   p_last_name text DEFAULT NULL::text,
   p_email text DEFAULT NULL::text,
@@ -37,7 +40,7 @@ CREATE OR REPLACE FUNCTION public.create_contact(
   p_created_by uuid DEFAULT NULL::uuid,
   p_channel text DEFAULT NULL::text
 )
-RETURNS uuid
+RETURNS TABLE(contact_id uuid, client_ref text, was_created boolean)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
@@ -48,6 +51,7 @@ DECLARE
   _tenant uuid := CASE WHEN auth.uid() IS NOT NULL THEN public.current_user_tenant_id() ELSE p_tenant_id END;
   _id uuid;
   _existing uuid;
+  _ref text;
   _email text := NULLIF(btrim(p_email), '');
 BEGIN
   IF _creator IS NULL THEN
@@ -102,14 +106,18 @@ BEGIN
   END IF;
 
   IF _email IS NOT NULL THEN
-    SELECT id INTO _existing
+    SELECT id, account_number INTO _existing, _ref
     FROM public.clients
     WHERE tenant_id = _tenant
       AND lower(email) = lower(_email)
     ORDER BY created_at, id
     LIMIT 1;
     IF _existing IS NOT NULL THEN
-      RETURN _existing;
+      contact_id := _existing;
+      client_ref := _ref;
+      was_created := false;
+      RETURN NEXT;
+      RETURN;
     END IF;
   END IF;
 
@@ -137,16 +145,20 @@ BEGIN
       _tenant,
       NULLIF(btrim(p_channel), '')
     )
-    RETURNING id INTO _id;
+    RETURNING id, account_number INTO _id, _ref;
   EXCEPTION WHEN unique_violation THEN
-    SELECT id INTO _existing
+    SELECT id, account_number INTO _existing, _ref
     FROM public.clients
     WHERE tenant_id = _tenant
       AND lower(email) = lower(_email)
     ORDER BY created_at, id
     LIMIT 1;
     IF _existing IS NOT NULL THEN
-      RETURN _existing;
+      contact_id := _existing;
+      client_ref := _ref;
+      was_created := false;
+      RETURN NEXT;
+      RETURN;
     END IF;
     RAISE;
   END;
@@ -164,16 +176,20 @@ BEGIN
     )
   );
 
-  RETURN _id;
+  contact_id := _id;
+  client_ref := _ref;
+  was_created := true;
+  RETURN NEXT;
+  RETURN;
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.create_contact(text, text, text, text, text, text, text, text, text[], text, text, uuid, uuid, uuid, text)
+REVOKE ALL ON FUNCTION public.create_contact_v2(text, text, text, text, text, text, text, text, text[], text, text, uuid, uuid, uuid, text)
   FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.create_contact(text, text, text, text, text, text, text, text, text[], text, text, uuid, uuid, uuid, text)
+GRANT EXECUTE ON FUNCTION public.create_contact_v2(text, text, text, text, text, text, text, text, text[], text, text, uuid, uuid, uuid, text)
   TO authenticated, service_role;
 
-COMMENT ON FUNCTION public.create_contact(text, text, text, text, text, text, text, text, text[], text, text, uuid, uuid, uuid, text) IS
-  'Creates a tenant-bound contact. Authenticated callers are server-pinned to their active tenant; service callers must supply an active owner/admin/super_admin/coach tenant member as creator, and any assigned coach must be active in the same tenant.';
+COMMENT ON FUNCTION public.create_contact_v2(text, text, text, text, text, text, text, text, text[], text, text, uuid, uuid, uuid, text) IS
+  'Canonical honest-outcome contact creation. Authenticated callers are server-pinned to their active tenant; service callers must supply an active owner/admin/super_admin/coach tenant member as creator, and any assigned coach must be active in the same tenant.';
 
 COMMIT;
