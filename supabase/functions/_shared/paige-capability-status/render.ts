@@ -1,0 +1,72 @@
+// Render the resolved capability manifest into the system block Paige answers "what can you do
+// here?" from (Main Paige Operational Chat · P3b, the P0 Defect-1 grounding) — PURE.
+//
+// The resolver turns server-resolved signals into one honest availability per capability. This
+// turns that list into the authoritative system block the model reads. It decides nothing about
+// the UI (§00) and imports ONLY the type (erased at transpile) so it is unit-testable through the
+// port. It is the WORDS; the truth is the resolved statuses it is handed.
+//
+// WHY IT IS AUTHORITATIVE (the P0 Defect-1 fix): Paige's tool list and persona make her SOUND able
+// to post, text, run workflows and manage a team the instant she is asked "what can you do?". Left
+// to the general impression she over-claims — the live defect. This block is injected per turn with
+// the workspace's REAL statuses and a directive that it OVERRIDES any general impression: capability
+// questions are answered ONLY from here, grouped by what she can do now / prepare for approval /
+// that needs setup / that is not built yet — and she never claims an action the block does not mark
+// available (§13/§36/§70).
+
+import type { CapabilityStatus, CapabilityAvailability } from "./resolver.ts";
+
+const GROUP_ORDER: readonly CapabilityAvailability[] = [
+  "live",
+  "needs_approval",
+  "needs_setup",
+  "planned",
+  "unavailable",
+  "not_for_tier",
+];
+
+const GROUP_HEADING: Record<CapabilityAvailability, string> = {
+  live: "CAN DO NOW (no approval needed):",
+  needs_approval: "CAN PREPARE FOR YOUR APPROVAL (you run it):",
+  needs_setup: "NEEDS A CONNECTION OR SETUP FIRST (tell them what to connect):",
+  planned: "NOT BUILT INTO YOU YET — do NOT claim you can do these:",
+  unavailable: "CANNOT CONFIRM FOR THIS WORKSPACE — do NOT claim these:",
+  not_for_tier: "NOT AVAILABLE FOR THIS ACCOUNT TYPE:",
+};
+
+/**
+ * The per-turn, workspace-specific capability block. Returns "" when there is nothing to report
+ * (an empty manifest), so the caller can skip injecting an empty system message.
+ */
+export function renderCapabilityStatusBlock(capabilities: readonly CapabilityStatus[]): string {
+  if (!capabilities.length) return "";
+
+  const lines: string[] = [];
+  lines.push("=============================================================");
+  lines.push("WHAT YOU CAN ACTUALLY DO HERE — live capability status (authoritative)");
+  lines.push("=============================================================");
+  lines.push(
+    "This is the SERVER-RESOLVED truth of what you can do for THIS workspace right now. When the " +
+      "person asks what you can do, what you can help with, or whether you can do a specific thing, " +
+      "answer ONLY from this list — it OVERRIDES any broader impression from your tools or persona. " +
+      "NEVER say you can post to social, send a text/SMS, run an automation, or manage the team " +
+      "unless it appears under CAN DO NOW or CAN PREPARE FOR YOUR APPROVAL below. For anything under " +
+      "NEEDS A CONNECTION, say what to connect first; for anything NOT BUILT YET, say plainly it's " +
+      "not something you can do yet — never imply otherwise. Keep the answer short and action-" +
+      "oriented (what you'd actually help with next), not a recited inventory.",
+  );
+
+  for (const group of GROUP_ORDER) {
+    const inGroup = capabilities.filter((c) => c.availability === group);
+    if (!inGroup.length) continue;
+    lines.push("");
+    lines.push(GROUP_HEADING[group]);
+    for (const c of inGroup) {
+      // The reason is only meaningful when it's not "live"; for live items the label stands alone.
+      const suffix = c.availability === "live" || !c.reason ? "" : ` — ${c.reason}`;
+      lines.push(`- ${c.label}${suffix}`);
+    }
+  }
+
+  return lines.join("\n");
+}
