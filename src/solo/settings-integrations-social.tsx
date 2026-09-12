@@ -14,7 +14,7 @@ export function SocialMediaSection() {
           Social Media Accounts
         </h3>
         <p style={{ fontSize: 12.5, color: "var(--ink-3)", marginTop: 3, lineHeight: 1.5 }}>
-          Provider connections are not available yet. No platform is connected, authorized, or
+          Provider authorization is not available yet. No platform account is verified or
           available for publishing from this workspace through Paige today.
         </p>
       </header>
@@ -39,7 +39,7 @@ export function SocialMediaSection() {
           action is started from this screen.
         </p>
         <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.5, color: "var(--ink-3)" }}>
-          Declared handles are not connections. They can be recorded in Campaigns → Social so Paige
+          Declared handles are capture-only records. They can be recorded in Campaigns → Social so Paige
           knows which public accounts belong to this business; they cannot publish or read analytics.
         </p>
       </div>
