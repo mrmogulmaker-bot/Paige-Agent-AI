@@ -101,7 +101,10 @@
     "smoke:secure-browser-egress": "node services/paige-browser/smoke-readonly-egress.mjs",
     "lint:release-governance": "node scripts/ci/release-governance-lint.mjs",
     "lint:release-governance:test": "node scripts/ci/release-governance-lint.mjs --self-test",
-    "test:customer-update-manifest": "node --test scripts/release-governance/customer-update-manifest.test.mjs"
+    "test:customer-update-manifest": "node --test scripts/release-governance/customer-update-manifest.test.mjs",
+    "test:proof-lane": "node --test scripts/live-drive/__tests__/proof-lane.test.mjs",
+    "proof:lane:selftest": "node scripts/live-drive/proof-lane.selftest.mjs",
+    "proof:lane": "node scripts/live-drive/flows/solo-governed-flows.mjs"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",

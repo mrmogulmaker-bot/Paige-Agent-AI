@@ -6,6 +6,23 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## A new result/status vocabulary must be cross-mapped to the existing CI-enforced one, not silently forked (2026-09-12)
+
+- **Symptom.** The proof-lane framework (Harness Layer G) introduced a runtime verdict vocabulary
+  `VERIFIED/PARTIAL/PROOF_OWED/UNAVAILABLE/UNVERIFIED`. The repo already has a CI-enforced
+  release-accounting vocabulary in `scripts/ci/binding-ledger-lint.mjs`
+  (`LIVE/PARTIAL/READ_ONLY_CONTEXT/INTENTIONALLY_ISOLATED/UNAVAILABLE/PROOF_OWED`) and
+  `release-governance-lint.mjs`. Three tokens matched verbatim; `LIVE` was renamed `VERIFIED` and
+  `UNVERIFIED` was added — a silent divergence a future reader could mistake for drift.
+- **Root cause.** Two honest layers (a runtime per-flow test verdict vs. committed surface-release
+  accounting) legitimately need different tokens, but nothing documented the relationship, so the
+  rename read as an accidental fork rather than a deliberate layer boundary (§18 one-home tension).
+- **Rule.** When adding a status/result vocabulary, grep for an existing one in the same domain and
+  either reuse it or **document the crosswalk in the same PR** — here, a proof-lane `VERIFIED` flow is
+  exactly the `authenticated_runtime` evidence that moves a binding-ledger row `PROOF_OWED → LIVE`
+  (`scripts/live-drive/PROOF-LANE.md`). Full token reconciliation, if wanted, is its own tracked
+  issue — never done silently, never under time pressure.
+
 ## A second `CREATE TABLE … IF NOT EXISTS` with a DIVERGENT schema silently yields the WRONG schema — and no from-zero replay runs on a non-migration PR to catch it (2026-09-12)
 
 - **Symptom.** `database-contract` (the from-zero `supabase db reset` replay in `paige-spine-contract.yml`)
