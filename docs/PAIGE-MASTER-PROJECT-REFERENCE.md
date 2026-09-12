@@ -671,30 +671,6 @@ scheduling/analytics. **Known limitation (gap, §5):** the operator-vs-tenant `p
 conflict leaves two Solo Social surfaces wired but non-functional on prod — tracked in **#1161**, to be
 replaced by the complete Social Foundation migration. Merging also unblocks the backed-up prod migration queue
 (20270117→latest; all additive) — persisted-apply self-verified by the `deploy-migrations` pipeline.
-**2026-09-12 Vibe Studio governed media seam (fal.ai) — deployed CONFIG-GATED OFF (PR: vibe-media-fal):**
-one durable media layer per the owner build authorization + MVP-mode standing order. Shipped:
-migration `20270118000000` (paige_media_jobs on the durable-job contract with anti-double-spend
-submission lanes, claim/spend/video-cap RPCs, deny-policies, marketing_content kind +video, 2-min
-sweeper cron); edge `paige-media` (the governed front door: capabilities/estimate/submit/approve/
-reject/cancel/status/list — tenant SERVER-derived via resolveTenantForUser, budget = shared ladder
-with fail-closed-on-unknown + no-silent-ceiling media deviations, video flag + daily cap, music
-truthful 403), `paige-media-webhook` (fal ED25519 JWKS verification, ±300s replay window,
-completion-only, idempotent), `paige-media-sweeper` (submission/poll/reconcile lanes; crashed
-submits terminally fail, never resubmit); provider adapter seam (`_shared/media-provider/` — fal
-first, the four legacy image providers through their PROVEN generate-image executor invoked with
-the caller's JWT, preserving it unmodified); frontend: Solo Vibe overlay REBUILT as the canonical
-governed surface (src/solo/vibe.tsx + useMediaJobs — 18 owner-required states, approval boundary
-with the exact commercial-use disclosure, truthful disabled Social handoff), agency port classified
-fixture-only (three-line §28-scoped truth diff), GR fixture retired, types.ts +paige_media_jobs.
-Proof boundary: 46 new tests green (budget ladder incl. H1/H3 rulings; REAL ED25519 verify vectors;
-adapter contracts; component render of the state map); tsc-ratchet/build/lint/secret-scan green;
-full-suite failures verified pre-existing on main. **PROOF OWED (owner-gated, §5):** the controlled
-provider proof (one low-cost image generation end-to-end) — blocked until the owner sets `FAL_KEY`
-+ `media_provider_ceiling_usd` + `media_budget_daily_usd`; authenticated UI drive (no credentials
-in the building session). Customer-release identity: none (config-gated OFF; release-governance
-policy). Canonical evidence: docs/evidence/ui-delivery/vibe-media-fal.md; config:
-docs/brain/config-registry.md (fal entry); decisions: docs/brain/decision-log.md 2026-09-12.
-
 **2026-09-10 durable-job first-adopter deployment + live verification:** migration `20270106000000`
 was applied to production with history parity (top of `supabase_migrations.schema_migrations`) and
 `weekly-summary-cron` was deployed at version 801 post-#1084-merge (crew pipeline). Live verification
