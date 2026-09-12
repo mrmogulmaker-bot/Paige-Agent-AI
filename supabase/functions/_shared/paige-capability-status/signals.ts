@@ -14,8 +14,10 @@
 // and their shape, and the edge dispatch feeds each one its REAL maturity (from the Spine registry)
 // and connection/lane state. An over-claimed ACTION family whose governed seam is not registered
 // (social publishing, sending an SMS, managing the team) resolves through a `null` maturity →
-// UNAVAILABLE → "planned" — the anti-over-claim, so Paige says "not built yet" instead of implying
-// she can do it. Only capabilities that GENUINELY ship are modeled LIVE, and no maturity is
+// UNAVAILABLE → "planned" — the anti-over-claim, so Paige says it is not something she can do here
+// yet (honest whether the seam is unbuilt OR a raw tool exists without a governed, tenant-safe path —
+// she never implies she can do it, and never falsely claims it doesn't exist). Only capabilities that
+// GENUINELY ship are modeled LIVE, and no maturity is
 // hardcoded here except the two documented CRM reads/writes that have no crm.* registry row
 // (§947/§13 — never a hoped-for capability, never a fabricated maturity). Adding a capability is
 // adding a signal here — the decision core does not change (§18).

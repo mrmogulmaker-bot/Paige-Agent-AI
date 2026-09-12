@@ -6,7 +6,8 @@
 // MVP to the families Paige's tool list/persona over-claim (social, comms/SMS, team, pipeline,
 // campaigns, workflows). The load-bearing honesty property: an ACTION family whose governed seam is
 // NOT registered in the Spine (social publish, SMS send, team management) resolves through a `null`
-// maturity → UNAVAILABLE → "planned" — so Paige says "not built yet", never implies she can do it.
+// maturity → UNAVAILABLE → "planned" — so Paige says it's not something she can do here yet, never
+// implies she can do it (and never falsely asserts it flatly doesn't exist — §13/§70).
 //
 // Tested on the REAL pure modules loaded through the transpile port (both import ONLY types).
 import { readFileSync } from "node:fs";
@@ -132,6 +133,10 @@ describe("the honest answer a FRESH SOLO owner is told (the P0 Defect-1 anti-ove
     for (const k of ["social.publish", "comms.send", "team.manage"]) {
       expect(a[k].availability, k).toBe("planned");
       expect(a[k].reason, k).toBeTruthy();
+      // §13/§70 (SF-1): the reason must NOT falsely assert the capability doesn't exist / "isn't
+      // built" — raw tools exist for some of these; the honest claim is "no governed path here yet".
+      expect(a[k].reason, k).not.toMatch(/not built/i);
+      expect(a[k].reason, k).toMatch(/governed/i);
     }
   });
 

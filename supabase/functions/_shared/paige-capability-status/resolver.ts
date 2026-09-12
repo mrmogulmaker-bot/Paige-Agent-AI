@@ -12,7 +12,8 @@ export type CapabilityAvailability =
   | "live"            // available now with no approval (a read, or an auto-lane write)
   | "needs_approval"  // available, but drafted for the owner to approve/run (confirm or off lane)
   | "needs_setup"     // a connection or setup step is required before Paige can do it
-  | "planned"         // a real capability that is not built/shipped yet
+  | "planned"         // no governed path here yet — not something Paige can do (whether the seam is
+                      // unbuilt, or a raw tool exists but is not a governed, tenant-safe capability)
   | "not_for_tier"    // not available to this account type
   | "unavailable";    // provider/account evidence is missing, so Paige must not claim it
 
@@ -62,7 +63,11 @@ export function resolveCapabilityStatus(signals: CapabilitySignal[]): Capability
       return mk(s, "unavailable", "Paige can't confirm this works for your workspace yet — required setup evidence is missing.");
     }
     if (s.maturity === "UNAVAILABLE") {
-      return mk(s, "planned", "Planned — not built yet.");
+      // Honest in BOTH cases this reaches: a seam that is genuinely unbuilt, AND an action for which
+      // a raw tool exists but no governed, tenant-safe path does (social publish, SMS send, team
+      // management). "Not something you can do here yet" is true either way — it never falsely
+      // asserts non-existence, and it never implies Paige can take the action (§13/§70).
+      return mk(s, "planned", "Not something Paige can do here yet — there's no governed path for it.");
     }
     if (s.requiresConnection && s.connected !== true) {
       return mk(s, "needs_setup", "Needs a connection before Paige can use it.");

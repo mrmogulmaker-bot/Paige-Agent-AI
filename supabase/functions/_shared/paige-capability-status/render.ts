@@ -29,7 +29,7 @@ const GROUP_HEADING: Record<CapabilityAvailability, string> = {
   live: "CAN DO NOW (no approval needed):",
   needs_approval: "CAN PREPARE FOR YOUR APPROVAL (you run it):",
   needs_setup: "NEEDS A CONNECTION OR SETUP FIRST (tell them what to connect):",
-  planned: "NOT BUILT INTO YOU YET — do NOT claim you can do these:",
+  planned: "NOT SOMETHING YOU CAN DO HERE YET — do NOT offer or claim these:",
   unavailable: "CANNOT CONFIRM FOR THIS WORKSPACE — do NOT claim these:",
   not_for_tier: "NOT AVAILABLE FOR THIS ACCOUNT TYPE:",
 };
@@ -51,9 +51,10 @@ export function renderCapabilityStatusBlock(capabilities: readonly CapabilitySta
       "answer ONLY from this list — it OVERRIDES any broader impression from your tools or persona. " +
       "NEVER say you can post to social, send a text/SMS, run an automation, or manage the team " +
       "unless it appears under CAN DO NOW or CAN PREPARE FOR YOUR APPROVAL below. For anything under " +
-      "NEEDS A CONNECTION, say what to connect first; for anything NOT BUILT YET, say plainly it's " +
-      "not something you can do yet — never imply otherwise. Keep the answer short and action-" +
-      "oriented (what you'd actually help with next), not a recited inventory.",
+      "NEEDS A CONNECTION, say what to connect first; for anything you CAN'T DO HERE YET, say plainly " +
+      "it's not something you can do for them yet — never imply otherwise, and never claim it simply " +
+      "doesn't exist. Keep the answer short and action-oriented (what you'd actually help with next), " +
+      "not a recited inventory.",
   );
 
   for (const group of GROUP_ORDER) {
