@@ -425,6 +425,16 @@ const NON_MUTATING_EXEMPT: ReadonlyMap<string, string> = new Map([
   // requester-scoped row whose only job is to show the owner what archiving the folder costs
   // before they answer. The archive it prepares is the gated act.
   ["pipeline_folder_archive_preview", "mints the folder archive's own single-use binding and shows the consequence; the archive it prepares is the gated act"],
+  // improvement_propose is the SECOND exempt shape, exactly like propose_action above: it PERSISTS
+  // only a request for a human decision — a `paige_improvement_proposals` row the owner reviews via
+  // improvement_list and decides via improvement_decide — and the risk-carrying act (applying the
+  // change) is separately gated and never auto-applied (the tool's own contract, and the owner's
+  // condition for enabling it: "only if it truthfully creates an owner-visible proposal through the
+  // governed path ... must not imply an automatic apply lane"). Gating it would ask the owner to
+  // approve being asked. Before this exemption it matched MUTATION_VERB (`propose`) and the runtime
+  // backstop refused it, so it filed nothing — dead, not governed. Exempting it is what makes it
+  // run and truthfully file the proposal.
+  ["improvement_propose", "files an improvement proposal for the owner's decision via improvement_decide; nothing is applied until that separate, gated decision"],
 ]);
 
 /**

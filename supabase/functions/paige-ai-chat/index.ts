@@ -182,7 +182,6 @@ function describeStep(
     case "integrations_list": return { label: "Checking your connections", group: "owner" };
     case "capability_status": return { label: "Checking what I can do here", group: "owner" };
     case "contact_event_status": return { label: "Checking whether your new-contact alerts fired", group: "owner" };
-    case "social_post": return { label: "Preparing your social post", group: "owner" };
     case "social_analytics": return { label: "Reading social analytics", group: "owner" };
     case "social_accounts": return { label: "Checking social accounts", group: "owner" };
     case "improvement_propose": return { label: "Filing an improvement proposal", group: "owner" };
@@ -5908,27 +5907,15 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               }
             }
           },
-          {
-            type: "function",
-            function: {
-              name: "social_post",
-              description: "Post content to connected social media accounts (TikTok, Instagram, YouTube, LinkedIn, Facebook, X, Threads, Pinterest, and more). This is NEXUS's domain — content creation and growth. ALWAYS confirm with the owner before posting. You can also schedule posts for later. Include the content, target platforms, and optionally a scheduled date.",
-              parameters: {
-                type: "object",
-                properties: {
-                  content_type: { type: "string", enum: ["text", "photos", "video", "document"], description: "The type of content to post." },
-                  title: { type: "string", description: "Post title/caption (for text posts, this is the content)." },
-                  description: { type: "string", description: "Additional description or body text." },
-                  platforms: { type: "array", items: { type: "string" }, description: "Target platforms: tiktok, instagram, youtube, linkedin, facebook, x, threads, pinterest, reddit, bluesky." },
-                  media_url: { type: "string", description: "Public URL of the video or photo to post (for video/photo posts)." },
-                  photos: { type: "array", items: { type: "string" }, description: "Array of photo URLs (for photo posts)." },
-                  scheduled_date: { type: "string", description: "ISO date to schedule the post for later (optional)." },
-                  profile: { type: "string", description: "The Upload-Post profile username to post from." }
-                },
-                required: ["content_type", "title", "platforms", "profile"]
-              }
-            }
-          },
+          // social_post (publish to connected social accounts) is DELIBERATELY NOT EXPOSED as an
+          // executable Chat capability (owner ruling, Gate A 2026-09-12): social operations remain
+          // UNAVAILABLE until the full connected-account → authorize → draft → approve → publish →
+          // readback → analytics flow is genuinely proven. It was previously declared here but was
+          // already inert at runtime — the action-risk backstop refused it as an unclassified write
+          // (`post` verb) — so removing the declaration makes the unavailability HONEST rather than
+          // offering a tool that only refuses (§13/§70). The social READS below (accounts, analytics)
+          // stay: they report real connection/analytics state and publish nothing. Re-expose social_post
+          // only when its full governed publish vertical exists and is proven.
           {
             type: "function",
             function: {
@@ -9296,7 +9283,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "integrations_list" ||
           tc.function.name === "capability_status" ||
           tc.function.name === "contact_event_status" ||
-          tc.function.name === "social_post" ||
           tc.function.name === "social_analytics" ||
           tc.function.name === "social_accounts" ||
           tc.function.name === "improvement_propose" ||
@@ -11238,8 +11224,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               result = { success: true, ...(data as any) };
-            } else if (tc.function.name === "social_post" || tc.function.name === "social_analytics" || tc.function.name === "social_accounts") {
-              // NEXUS's social media operations (Upload-Post API). Post = confirm-first.
+            } else if (tc.function.name === "social_analytics" || tc.function.name === "social_accounts") {
+              // NEXUS's social media READS (Upload-Post API). social_post (publish) is deliberately
+              // NOT a Chat capability — see the tool-list note above; social operations stay
+              // UNAVAILABLE until the full governed publish vertical is proven. Reads only here.
               const { data: roleRows } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
               const roles = (roleRows || []).map((r: any) => r.role);
               if (!(roles.includes("admin") || roles.includes("coach"))) {
@@ -11248,11 +11236,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               }
               const socialTenant = personaCtx?.tenant_id ?? null;
               const socialUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/paige-social`;
-              const socialBody = tc.function.name === "social_post"
-                ? { action: "post", tenant_id: socialTenant, ...args }
-                : tc.function.name === "social_analytics"
-                  ? { action: args.detail === "posts" ? "post_analytics" : args.detail === "audience" ? "audience" : "analytics", tenant_id: socialTenant, ...args }
-                  : { action: "accounts", tenant_id: socialTenant };
+              const socialBody = tc.function.name === "social_analytics"
+                ? { action: args.detail === "posts" ? "post_analytics" : args.detail === "audience" ? "audience" : "analytics", tenant_id: socialTenant, ...args }
+                : { action: "accounts", tenant_id: socialTenant };
               const socialRes = await fetch(socialUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseServiceKey}`, apikey: supabaseServiceKey },
