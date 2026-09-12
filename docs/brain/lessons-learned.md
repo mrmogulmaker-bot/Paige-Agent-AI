@@ -6,6 +6,29 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## A second `CREATE TABLE … IF NOT EXISTS` with a DIVERGENT schema silently yields the WRONG schema — and no from-zero replay runs on a non-migration PR to catch it (2026-09-12)
+
+- **Symptom.** `database-contract` (the from-zero `supabase db reset` replay in `paige-spine-contract.yml`)
+  was RED on *every* migration-carrying PR with `ERROR: column "tenant_id" does not exist` at
+  `20270117000000_social_operations.sql` — yet `meta-schedule-post` kept writing the table fine and prod
+  looked healthy. (#1155.)
+- **Root cause.** `public.paige_social_posts` had TWO creators under one name: an earlier operator-scoped
+  schema (`20260627193825`, no `tenant_id`) and a later tenant-scoped redefinition
+  (`20270117000000`, `tenant_id NOT NULL`). The later `create table if not exists` is a **silent no-op**
+  when the table already exists — it does NOT reconcile or validate against the new definition — so the
+  new columns/constraints never appear, and the migration's own `tenant_id` index + RLS policies then
+  error on fresh replay. Two truths diverged: prod/incremental-apply carried the operator schema; the
+  from-zero replay tried to build the tenant schema and died. The replay gate only fires on
+  `supabase/migrations/**`, so PRs that didn't touch a migration never ran it — the break sat latent until
+  a migration-bearing PR surfaced it.
+- **Rule.** Never introduce a SECOND `CREATE TABLE` for a name that already exists with a different shape —
+  a table has ONE authoritative schema; evolve it with explicit `ALTER TABLE … ADD COLUMN IF NOT EXISTS`,
+  never a second `create if not exists` that silently wins or loses by apply-order. When a from-zero replay
+  and incremental prod-apply can diverge, the replay is the canonical contract — keep it green. A
+  `create table if not exists` that no-ops is not a safety net; it is how a wrong schema ships invisibly.
+  And a tenant-scoping retrofit on a LIVE operator table (`tenant_id NOT NULL`) will break the live writer
+  unless the producer moves first — that is a §9 product decision, not a migration tweak (#1161).
+
 ## 00. A new by-id EXPORT/read edge function that trusts RLS is a cross-tenant IDOR — marketing_content's RLS has a global-admin OR-branch (2026-09-06)
 
 - **Symptom (caught by the §39 peer-gate, missed by §5 compliance).** A new `export-document` edge fn

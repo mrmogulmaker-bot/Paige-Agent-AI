@@ -57,7 +57,6 @@ create table if not exists public.paige_social_posts (
 );
 
 create index if not exists idx_psa_tenant on public.paige_social_accounts(tenant_id, platform);
-create index if not exists idx_psp_tenant_status on public.paige_social_posts(tenant_id, status, scheduled_at);
 
 alter table public.paige_social_accounts enable row level security;
 alter table public.paige_social_posts enable row level security;
@@ -75,13 +74,60 @@ create policy psa_write on public.paige_social_accounts for all to authenticated
   using (tenant_id = public.current_user_tenant_id() and public.has_any_role(auth.uid(), array['admin','super_admin','coach']))
   with check (tenant_id = public.current_user_tenant_id() and public.has_any_role(auth.uid(), array['admin','super_admin','coach']));
 
-drop policy if exists psp_read on public.paige_social_posts;
-create policy psp_read on public.paige_social_posts for select to authenticated
-  using (tenant_id = public.current_user_tenant_id());
-drop policy if exists psp_write on public.paige_social_posts;
-create policy psp_write on public.paige_social_posts for all to authenticated
-  using (tenant_id = public.current_user_tenant_id() and public.has_any_role(auth.uid(), array['admin','super_admin','coach']))
-  with check (tenant_id = public.current_user_tenant_id() and public.has_any_role(auth.uid(), array['admin','super_admin','coach']));
+-- #1155 REPLAY REPAIR (2026-09-12, Harness Completion Program P1).
+-- public.paige_social_posts already exists from 20260627193825 with an EARLIER,
+-- operator-scoped schema that has NO tenant_id column. Both 20260721053737 (L13) and
+-- 20261210000000 (L33-36) explicitly record this table as operator-scoped / no-tenant-col,
+-- and the live writer supabase/functions/meta-schedule-post/index.ts:75 inserts exactly
+-- that earlier schema (platform / caption / posted_at / status). Because the table
+-- pre-exists, the `create table if not exists` above is a no-op here, so tenant_id is
+-- NEVER added — and the tenant_id index + tenant-scoped RLS policies below therefore
+-- failed on every fresh-history replay (the `database-contract` job) with
+-- `ERROR: column "tenant_id" does not exist (SQLSTATE 42703)` at this migration (#1155).
+--
+-- This guard makes the tenant_id-dependent statements conditional on the column actually
+-- existing. On the live/earlier schema (no tenant_id) they are skipped, so fresh replay is
+-- green and the operator-scoped table is left EXACTLY as-is — no schema change, no data
+-- touched, no §9 scoping change (its operator policies from 20260627193825/20260721053737
+-- remain in force). On any environment that DOES carry tenant_id, the original index +
+-- policies apply unchanged.
+--
+-- Reconciling the two schemas into ONE tenant-scoped social-content pipeline — which this
+-- migration originally intended, and which the orphaned social.post_* Spine capabilities
+-- assume — is a genuine operator-vs-tenant §9 product decision (the operator table is live
+-- via meta-schedule-post; making it tenant_id NOT NULL would break that writer). It is
+-- deliberately NOT made here; it is recorded in the Harness Completion Map §5.7 and #1161
+-- (with #1155) as the real follow-up.
+--
+-- OWNER-APPROVED 2026-09-12: this guard is a COMPATIBILITY BRIDGE, not the final canonical
+-- Social schema. Its only purpose is to restore a truthful fresh database replay so every
+-- migration-bearing workstream can test/merge/deploy again. It preserves the legacy
+-- operator-scoped behavior EXACTLY, fabricates no tenant ownership, and alters/migrates/
+-- deletes no legacy Social rows. A repaired replay does NOT make tenant-safe Social
+-- publishing / scheduling / analytics live. The complete Social Foundation migration is
+-- expected to REPLACE this bridge: it must add tenant_id with a real ownership source (never
+-- a guess), move meta-schedule-post off the operator insert, and re-establish the tenant RLS
+-- this guard currently skips — at which point the `if exists (tenant_id)` condition becomes
+-- unconditionally true and this guard is inert.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name  = 'paige_social_posts'
+      and column_name = 'tenant_id'
+  ) then
+    create index if not exists idx_psp_tenant_status on public.paige_social_posts(tenant_id, status, scheduled_at);
+
+    drop policy if exists psp_read on public.paige_social_posts;
+    create policy psp_read on public.paige_social_posts for select to authenticated
+      using (tenant_id = public.current_user_tenant_id());
+    drop policy if exists psp_write on public.paige_social_posts;
+    create policy psp_write on public.paige_social_posts for all to authenticated
+      using (tenant_id = public.current_user_tenant_id() and public.has_any_role(auth.uid(), array['admin','super_admin','coach']))
+      with check (tenant_id = public.current_user_tenant_id() and public.has_any_role(auth.uid(), array['admin','super_admin','coach']));
+  end if;
+end $$;
 
 -- Trust Compass: social.post_publish is an external_effect (high, confirm).
 insert into public.paige_action_kinds

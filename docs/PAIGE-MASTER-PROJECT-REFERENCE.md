@@ -657,6 +657,21 @@ Reference or any domain ledger; it governs how their facts become release and cu
 
 ### 4.0 Shipped Delivery Log
 
+**2026-09-12 Harness Completion Program — Map + P1 fresh-replay compatibility bridge (PR #1159, owner-approved Gate A):**
+Shipped `docs/delivery/harness-completion-map.md` — the owner's required first deliverable: a read-only
+A–G-layer navigation synthesis over the canonical records (grounded by a 5-agent crew against `main 6aa077d`),
+naming the keystone (the native-event dispatcher delivers but executes no acts; RE-2 execution lane dark) and
+a phased Gate-A program sequenced around the in-flight #1157 Layer-A/B kernel. **P1 = the #1155 fresh-replay
+repair:** guarded `20270117000000`'s `paige_social_posts` `tenant_id` index/policies on the column existing,
+restoring a truthful from-zero `database-contract` replay (FAILURE→SUCCESS on the fix) so every
+migration-bearing workstream can test/merge/deploy again. **This is an explicit COMPATIBILITY BRIDGE, not the
+final canonical Social schema:** it preserves the live operator-scoped `paige_social_posts` behavior exactly,
+fabricates no tenant ownership, touches no legacy rows, and establishes **no** tenant-safe Social publishing/
+scheduling/analytics. **Known limitation (gap, §5):** the operator-vs-tenant `paige_social_posts` schema
+conflict leaves two Solo Social surfaces wired but non-functional on prod — tracked in **#1161**, to be
+replaced by the complete Social Foundation migration. Merging also unblocks the backed-up prod migration queue
+(20270117→latest; all additive) — persisted-apply self-verified by the `deploy-migrations` pipeline.
+
 **2026-09-10 durable-job first-adopter deployment + live verification:** migration `20270106000000`
 was applied to production with history parity (top of `supabase_migrations.schema_migrations`) and
 `weekly-summary-cron` was deployed at version 801 post-#1084-merge (crew pipeline). Live verification
