@@ -208,12 +208,17 @@ distinct facts, each with its own truth:
 - **Ratchet:** the existing `chat-tool-registry-lint` already forbids GROWTH (any new inline tool is
   an `added` failure) and only DESCENDS. This PR relies on it; it did not need a new guard.
 
-**Correction 2 — do NOT "unbrick" Social/improvement by classifying.** `social_post` and
-`improvement_propose` remain unclassified and non-executable. The gateway naturally keeps them
-non-executable by STATUS (an unconnected social capability resolves `needs_setup` → withheld; an
-unbuilt one resolves `planned` → withheld) — no classification shortcut is taken. They are NOT routed
-through the gateway in this increment (they stay in the register); when they migrate, their honest
-status is what keeps them non-executable.
+**Correction 2 — do NOT "unbrick" Social/improvement by classifying.** THIS PR classified nothing:
+CC's compliance with the owner correction is that it never made `social_post`/`improvement_propose`
+auto-executable via a risk classification shortcut. (RECONCILED with merged reality — Codex P2, and
+consistent with the §9(b) note above: `main`'s #1152, a separate owner-directed track, has SINCE
+classified `social_post=high` / `improvement_propose=ordinary` / `improvement_decide=high` to close an
+approval BYPASS. A `high`/`ordinary` classification ENFORCES an approval gate — it does not
+auto-execute — so it serves this correction's intent rather than violating it; "remain unclassified"
+is no longer accurate.) These tools are NOT routed through the gateway in this increment (they stay in
+the register); when they do migrate, the gateway's status-withholding (an unconnected social
+capability resolves `needs_setup` → withheld; an unbuilt one resolves `planned` → withheld) PLUS the
+approval gate are what keep them from running unapproved.
 
 **Correction 3 — the finish line: ONE shared execution-decision contract, re-resolving at execution.**
 `decideGovernedExecution` already IS that contract ("one pathway, whichever door knocked" — doors
@@ -267,7 +272,10 @@ not labelled LIVE.
   inline and spreads them from the gateway; dispatch + describeStep unchanged (§58 byte-identical).
 - **MCP** `governed-adapter.ts`: declares `availability:"unknown"`. **Proof:** `mcp-governed-door-lint`
   GREEN (119 tools, one door) + `mcp-governed-door.test.ts` green (behaviour unchanged).
-- **Evidence classes (honest):** automated unit/property tests ✅ · static CI lints ✅ · focused edge
+- **Evidence classes (honest):** automated unit/property tests ✅ · static CI lints ✅ **EXCEPT two
+  expected reds that are NOT green and must not be reported as such (Codex P2):** `chat-tool-registry`
+  **exits 1** at the owner-sanctioned interim of 8 (the `ci → verify` step at `.github/workflows/ci.yml`
+  line 298), and the pre-existing `lint:views` — both documented above and non-required · focused edge
   `tsc` ✅ (CI `deno check` ratchet GREEN too) · authenticated runtime on the real platform — **OWED**
   (Correction 5 blocker) · prod migration apply for the contact substrate — **applied on prod**
   (#1147 landed, queue drained; no longer blocked).
