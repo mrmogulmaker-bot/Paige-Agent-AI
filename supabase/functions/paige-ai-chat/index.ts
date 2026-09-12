@@ -75,6 +75,12 @@ import { buildStudioWhereYouAre, STUDIO_OPERATING_CORE } from "../_shared/design
 // Tier Rail Spine (Phase D): the SAME declared-rail tier resolver + client-seat
 // allowlist that paige-mcp uses, so a client-portal Paige seat is sealed here too.
 import { getActorTier, clientSeatToolAllowed, type Tier } from "../_shared/actorTier.ts";
+// Main Paige Operational Chat · P3 — truthful capability status (§13/§36/§70). The pure decision
+// core (resolver) + the MVP signal builder compose the honest "what can Paige do here?" answer;
+// the dispatch feeds them server-resolved facts (tier, clamped lane, Spine maturity). §18: one home.
+import { resolveCapabilityStatus } from "../_shared/paige-capability-status/resolver.ts";
+import { buildCapabilitySignals } from "../_shared/paige-capability-status/signals.ts";
+import { getSpineCapability } from "../_shared/paige-spine/registry.ts";
 // §25/§33 — the design agent's generate→critique→iterate loop (its "eyes"). GATED OFF by default
 // (STUDIO_VISUAL_CRITIQUE_ENABLED); with the flag unset this is never called and generation is
 // byte-for-byte unchanged. Turned on only once the Fly renderer + secrets are live (owner-gated).
@@ -174,6 +180,7 @@ function describeStep(
     case "action_list": return { label: "Checking the team's queue", group: "owner" };
     case "inbox_list": return { label: "Checking the inbox", group: "owner" };
     case "integrations_list": return { label: "Checking your connections", group: "owner" };
+    case "capability_status": return { label: "Checking what I can do here", group: "owner" };
     case "social_post": return { label: "Preparing your social post", group: "owner" };
     case "social_analytics": return { label: "Reading social analytics", group: "owner" };
     case "social_accounts": return { label: "Checking social accounts", group: "owner" };
@@ -5992,6 +5999,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "capability_status",
+              description: "Report truthfully what you can actually do for THIS workspace right now — across contacts and connections. Each capability comes back with an honest availability: live (do it now), needs_approval (you prepare it, the owner approves), needs_setup (a connection is required first), planned (a real capability not built yet), not_for_tier (not for this account type), or unavailable (can't be confirmed yet). Call this BEFORE claiming you can do something, so you never promise a capability you don't truly have. Resolved server-side from this workspace's tier, autonomy settings, and connection state — never guessed.",
+              parameters: {
+                type: "object",
+                properties: {}
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "action_get",
               description: "Admin/coach only. Fetch one action by id with its current status and links (the approval it waits on, the client-facing card it created).",
               parameters: {
@@ -9259,6 +9277,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "action_advance" ||
           tc.function.name === "inbox_list" ||
           tc.function.name === "integrations_list" ||
+          tc.function.name === "capability_status" ||
           tc.function.name === "social_post" ||
           tc.function.name === "social_analytics" ||
           tc.function.name === "social_accounts" ||
@@ -11229,6 +11248,21 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               const { data, error } = await supabaseClient.rpc("list_integration_surface");
               if (error) throw error;
               result = { success: true, count: (data as any[])?.length ?? 0, integrations: data ?? [] };
+            } else if (tc.function.name === "capability_status") {
+              // Truthful capability awareness (§13/§36/§70): what can Paige do for THIS workspace
+              // right now? Compose server-resolved facts — the caller's tier (resolved once as
+              // callerTier), the ceiling-clamped autonomy lane for the star write, and the Spine
+              // maturity of the integrations read seam — then let the pure core decide one honest
+              // availability each. Every fact is resolved server-side; none is taken from the model.
+              const contactCreateLane = await resolveToolAutonomy("crm_create_contact");
+              const integrationsListMaturity = getSpineCapability("integrations.list")?.maturity ?? null;
+              const signals = buildCapabilitySignals({
+                callerTier,
+                contactCreateLane: contactCreateLane as "auto" | "confirm" | "off",
+                integrationsListMaturity,
+              });
+              const capabilities = resolveCapabilityStatus(signals);
+              result = { success: true, count: capabilities.length, capabilities };
             } else if (tc.function.name === "inbox_list") {
               // #1104 — the comms read verb (spine: comms.messages_read). Caller-scoped:
               // the RPC derives the tenant from the JWT (§59) — no tenant param exists.
