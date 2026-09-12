@@ -118,9 +118,9 @@ non-baseline path. My 2 tools leave the inline array → baseline returns to 8.
   tests. Docs: this file + master §4 + tier-matrix + decision-log on delivery.
 - **Collision:** fresh `main` bb4828ba; my branch 0-behind. The 8 legacy inline tools
   (`inbox_list`, `integrations_list`, `improvement_*`, `social_*`) are other workstreams' — NOT
-  absorbed here (register parked, §7). #1147 still blocks the contact migration's prod apply (external,
-  Social's) — the gateway + capability_status don't depend on it; `contact_event_status`'s read RPC
-  does. No active non-composable collision.
+  absorbed here (register parked, §7). (UPDATE post-merge: #1147 has since landed and the contact
+  migration is now applied on prod, so `contact_event_status`'s read RPC is live; it no longer
+  depends on a pending migration.) No active non-composable collision.
 - **Protected behavior to preserve (do NOT break):** server-resolved tenant identity; account
   switching; approval gates; transcript reading position / the scroll owner (no timer workaround);
   budget enforcement; receipts/Rail; existing honest-unavailable states; sensitive-data boundaries.
@@ -174,8 +174,9 @@ separately.
 - NOT in: migrating the 8 legacy tools; fixing the social/improvement domain defects; Telegram/n8n/
   Zapier/external sends for contact.created; any new provider/credential.
 - PROOF OWED (§32.c/§70): the authenticated Solo-owner drive. See §9 correction 5 for the honest,
-  specific blocker (this is NOT "owed to the owner's live review"). The contact pieces' prod migration
-  apply stays behind external #1147.
+  specific blocker (this is NOT "owed to the owner's live review"). (UPDATE post-merge: the contact
+  pieces' prod migration apply is no longer owed — #1147 landed and the queue drained, so those
+  migrations are applied on prod.)
 
 ## 9. Foundation corrections folded (owner, 2026-09-12) + Increment 1 delivered
 
@@ -190,13 +191,20 @@ distinct facts, each with its own truth:
   `social_accounts/analytics/post`). This PR took it from **10 → 8** by moving `capability_status` +
   `contact_event_status` onto the gateway; the remaining 8 are the parked register (§7), and the lint
   staying red at 8 is the owner-sanctioned interim, not a thing to force green by baselining them.
-- **(b) Action-risk failures** — `action-risk-lint` is red on `improvement_propose` + `social_post`
-  (unclassified). Per Correction 2 these stay unclassified; this is a DISTINCT concern from (a),
-  untouched by this PR.
+- **(b) Action-risk classification** — RECONCILED on merge: `action-risk-lint` was red on
+  `improvement_propose` + `social_post` when this branch opened; `main`'s #1152 has since classified
+  `improvement_propose=ordinary` / `social_post=high` / `improvement_decide=high` to close an
+  approval BYPASS (classification that *enforces* approval, not auto-execution), and after merging
+  `origin/main` this lint is GREEN on the branch (122 classified, 0 unclassified writes). This PR
+  itself classified nothing — Correction 2 compliance was "CC does not unbrick by classifying," which
+  holds; #1152 is a separate owner-directed track that landed the classification for a different
+  (bypass-closing) reason. A DISTINCT concern from (a).
 - **(c) Capability truth** — the resolver + gateway decide what is honestly exposed. Delivered: the
   gateway core (`decideGatewayEntry`) maps each resolved status to exactly one disposition.
-- **(d) Runtime availability** — `contact_event_status` is honest-partial while #1147 blocks its
-  substrate; the shared seam's new status gate refuses a non-live capability at execution.
+- **(d) Runtime availability** — RECONCILED on merge: #1147 has LANDED and the prod migration queue
+  drained, so the contact.created substrate (migrations `20270118`/`20270119`) is now **applied on
+  prod** — `contact_event_status` returns real delivery data, its honest "not available yet" degrade
+  no longer the state. The shared seam's new status gate refuses a non-live capability at execution.
 - **Ratchet:** the existing `chat-tool-registry-lint` already forbids GROWTH (any new inline tool is
   an `added` failure) and only DESCENDS. This PR relies on it; it did not need a new guard.
 
@@ -229,7 +237,8 @@ act's AVAILABILITY, and proven by a door-blind property test over the new codes.
 `none` (no chat verb). Only `live`/`needs_approval` emit a callable tool. A registered capability with
 no real executable path (status not live) is never emitted as a working tool. `contact_event_status`
 is returned as an honest read whose `available:false` degrade lives INSIDE the read (never a broken
-invocation) while #1147 blocks its substrate.
+invocation). (That degrade path is now dormant on prod — #1147 has landed and the substrate is
+applied — but it remains the correct honest fallback for any workspace where the read cannot resolve.)
 
 **Correction 5 — authenticated proof is the TEAM's responsibility; name the SPECIFIC blocker.** This
 increment is a BACKEND governance foundation — pure decision functions (`decideGovernedExecution`
@@ -259,8 +268,14 @@ not labelled LIVE.
 - **MCP** `governed-adapter.ts`: declares `availability:"unknown"`. **Proof:** `mcp-governed-door-lint`
   GREEN (119 tools, one door) + `mcp-governed-door.test.ts` green (behaviour unchanged).
 - **Evidence classes (honest):** automated unit/property tests ✅ · static CI lints ✅ · focused edge
-  `tsc` ✅ · authenticated runtime on the real platform — **OWED** (Correction 5 blocker) · prod
-  migration apply for the contact substrate — **blocked on external #1147**.
+  `tsc` ✅ (CI `deno check` ratchet GREEN too) · authenticated runtime on the real platform — **OWED**
+  (Correction 5 blocker) · prod migration apply for the contact substrate — **applied on prod**
+  (#1147 landed, queue drained; no longer blocked).
+- **§39 peer-gate folded (post-push):** 3 findings, all folded — (1) code comments aligned to the
+  decision-log's honest "interim red at 8" framing; (2) the 4 status refusal codes added to the MCP
+  adapter's truer-than-door set (forward-correct, inert today); (3) a fail-closed `default` on the
+  step-5.5 switch so a future availability member cannot fall through + a test. No confirmed runtime
+  defect; relocation byte-faithful; door-blindness + approval allowlist + §37 inventory clean.
 - **NOT claimed:** MCP/job/subagent status re-resolution (named follow-up); per-tier availability-aware
   WITHHOLDING of the 2 reads (the core supports it; emission is behaviour-preserving this increment);
   the 8 legacy tools' migration; social/improvement executability.
