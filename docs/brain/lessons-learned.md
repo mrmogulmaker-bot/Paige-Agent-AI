@@ -2200,3 +2200,25 @@ LEVEL of a prefix-delimited token — heading depth, nesting, indent — anchor 
 so a one-level regression cannot pass on the shorter token hiding inside the longer one. Caught here by a
 §39 adversarial re-read of the FINAL diff, not by the green suite — the substring green was indistinguishable
 from a correct green until someone computed the actual output by hand.
+
+---
+
+## A shared governance seam must carry the full intersection, or one door re-opens what another closed (2026-09-12)
+
+The Capability Gateway decides what Chat may SEE; `decideGovernedExecution` decides what any caller
+may RUN. For a while those were two separate truths: the gateway hid a capability from Chat, but
+nothing at the shared seam re-checked the same status, so the capability stayed reachable from an
+MCP client, a durable job, or a delegated subagent. **A capability hidden in one door is not hidden
+until the SHARED seam every door converges on re-resolves the same fact.** The fix was to extend the
+seam with the capability-status dimension (a step-5.5 gate), not to make the gateway stricter — the
+gateway is not on the MCP/job/subagent path. General lesson: when admissibility and execution are
+decided in different places, the EXECUTION place is the one that must carry every dimension, because
+it is the one no door can skip.
+
+**And the adoption honesty:** the new dimension is OPTIONAL and does not fail closed on absence — the
+deliberate exception to this seam's "absent = refuse" rule — because fail-closed on a
+freshly-added dimension would refuse every un-migrated caller (every current read) the instant it
+shipped. An incrementally-adopted gate says `"unknown"` for callers that have not wired it yet and
+names their adoption as sequenced follow-up, rather than pretending enforcement is universal (§13).
+The class of mistake this avoids: claiming a cross-cutting guard is "enforced platform-wide" when it
+is enforced only where callers opted in.

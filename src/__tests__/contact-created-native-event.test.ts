@@ -68,8 +68,16 @@ describe("the read surface — Paige can report whether the event fired (§13/§
 });
 
 describe("contact_event_status chat tool — honest reporting surface (paige-ai-chat)", () => {
-  it("declares the tool (optional contact_id) and routes it into the owner block", () => {
-    expect(chat).toContain('name: "contact_event_status"');
+  it("offers the tool via the Capability Gateway and routes it into the owner block", () => {
+    // MIGRATED 2026-09 — the def moved OFF the inline handler array and onto the Capability Gateway
+    // (owner ruling 2026-09-01), descending the chat-tool-registry ratchet 10 → 8. So the handler
+    // no longer DECLARES it inline; it spreads it in from the gateway, where the def (with its
+    // optional contact_id) now lives. The dispatch branch and describeStep case stay in the handler.
+    expect(chat).not.toMatch(/^\s*name: "contact_event_status",\s*$/m);
+    expect(chat).toContain("...buildGatewayToolDefs()");
+    const gw = readFileSync("supabase/functions/_shared/paige-capability-gateway/gateway.ts", "utf8");
+    expect(gw).toContain('name: "contact_event_status"');
+    expect(gw).toContain("contact_id"); // still accepts the optional contact id
     expect(chat).toContain('tc.function.name === "contact_event_status" ||');
     expect(chat).toContain('case "contact_event_status": return { label: "Checking whether your new-contact alerts fired"');
   });

@@ -131,6 +131,17 @@ const SEAM_REFUSALS_TRUER_THAN_THE_DOOR_RULE: ReadonlySet<string> = new Set<Gove
   "unclassified_mutation",
   "owner_only",
   "outcome_channel_undeclared",
+  // The capability-status gate's refusals (step 5.5). Truer than the blanket mutation rule —
+  // "not available for this account type" / "needs a connection first" says exactly why, for a READ
+  // as much as a mutation. INERT today: this door passes `availability: "unknown"`, so the seam's
+  // status gate never fires and these never arise here. Added now so that when the named follow-up
+  // wires real status resolution into this door, a status-refused READ surfaces its real reason
+  // instead of falling through to the step-4 "could not be governed" terminal (§37 consumer
+  // inventory — flagged by the §39 peer-gate as a dormant mislabel trap).
+  "capability_not_for_tier",
+  "capability_unavailable",
+  "capability_planned",
+  "capability_needs_setup",
 ]);
 
 /**
@@ -248,6 +259,14 @@ export function decideMcpToolCall(
       // caller writes it on this same path for every attempt. Naming a channel the seam cannot
       // check would be the assertion it warns about; this one is true.
       ...(policy.effect === "mutate" ? { outcomeChannel: "paige_audit_log" } : {}),
+      // DECLARED non-adoption, not a silent absence (§13). This door does not yet re-resolve the
+      // tenant capability status, so it says so rather than asserting a capability is available: the
+      // seam's status gate is a no-op for `"unknown"`. That changes nothing here today — the 51
+      // reads proceed exactly as before, and every mutation refuses structurally at the door rule
+      // below regardless of status — so passing a resolved status could only ever REFUSE a read
+      // that reads fine, which would be a behaviour change this slice does not make (§37). Wiring
+      // the real resolution into this door is the named follow-up in `governedExecution.ts`.
+      availability: "unknown" as const,
     },
     approval: {
       autonomyLane: MCP_LANE_NOT_RESOLVED,
