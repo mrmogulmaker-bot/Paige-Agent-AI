@@ -194,12 +194,13 @@ BEGIN
   INSERT INTO public.tenant_members (tenant_id, user_id, role, status)
   VALUES (_other, _other, 'owner', 'active');
 END $$;
+SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims',
   json_build_object('sub', (SELECT id FROM auth.users WHERE email = 'other@example.test'),
                     'role', 'authenticated')::text, true);
 SELECT is((SELECT count(*) FROM public.paige_media_credit_entries)::int, 0,
           'another workspace sees zero of this workspace''s ledger entries');
-SELECT reset_role();
+RESET ROLE;
 
 SELECT * FROM finish();
 ROLLBACK;
