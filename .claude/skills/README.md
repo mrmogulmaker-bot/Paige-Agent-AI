@@ -3,9 +3,22 @@
 `CLAUDE.md` §69 makes the **flow-by-flow** skill mandatory on every software task in this repo. It is
 installed **per-account**, not vendored here. This directory holds our own additions to it.
 
+Each `paige-*` entry below is a thin **router**: the canonical, project-owned skill body lives under
+`.agents/skills/<name>/SKILL.md`; the `.claude` copy points at it and contains no alternative rules and
+must not be used as a summary or substitute.
+
 | Path | What it is |
 |---|---|
 | `second-brain/SKILL.md` | Ours. BOTH bookends: read the brain before work (so nothing already written down gets re-diagnosed), and record + sweep before calling it done. Bound to §0 / §BRAIN.3 / §66 |
+| `paige-ui-design/SKILL.md` | Router → the mandatory entry skill for any visible-interface change (`CLAUDE.md` §00); routes to the five composable quality modules below. Canonical body: `.agents/skills/paige-ui-design/` |
+| `paige-owner-intent-fidelity/SKILL.md` | Router → module 1 of the Paige UI Delivery Standard: the pre-edit Owner Intent & Experience Contract (what must happen, what must NOT happen, what must be preserved, acceptance criteria) |
+| `paige-visual-immersive-quality/SKILL.md` | Router → module 2: the premium visual bar + purposeful motion, faithful to the approved Claude Design pack (zero visual authority, §00) |
+| `paige-interaction-geometry-accessibility/SKILL.md` | Router → module 3: real interaction proof, accessibility, and the four Solo viewports PAIGE-open and closed |
+| `paige-protected-behavior-regression/SKILL.md` | Router → module 4: the pre-edit protected-seam declaration; test every impacted seam, name every unaffected one |
+| `paige-release-acceptance-evidence/SKILL.md` | Router → module 5: evidence separated by class with truthful labels; nothing is LIVE because it merely compiles, renders, or passes a structural harness |
+
+The five `paige-*` quality modules and the standard they execute are defined in
+`docs/doctrine/paige-ui-delivery-standard.md`.
 
 ---
 

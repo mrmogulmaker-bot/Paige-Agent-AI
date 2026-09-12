@@ -30,7 +30,13 @@ Report each class distinctly; do not let one stand in for another:
 
 ## Truth labels (use without softening)
 
-`LIVE` · `PARTIAL` · `UNAVAILABLE` · `PROOF OWED` · `VERIFIED` · `UNVERIFIED` · `BLOCKED` · `FAILED`.
+Two sets, kept apart so a value lands where CI accepts it:
+
+- **Capability / truth-boundary** (what a claim or `RELEASE_TRUTH_BOUNDARY` may say): `LIVE` · `PARTIAL`
+  · `UNAVAILABLE` · `PROOF OWED`. The CI validator accepts exactly these for `RELEASE_TRUTH_BOUNDARY`;
+  do not write a delivery-outcome word there.
+- **Delivery outcome** (the result of a check or gate): `PASS` · `VERIFIED` · `UNVERIFIED` · `BLOCKED`
+  · `FAILED`.
 
 No feature is `LIVE` solely because it compiles, renders, has fixtures, or passes a structural harness
 (§32/§70.1). A harness drive against an in-memory double is structural evidence, never authenticated
@@ -39,7 +45,9 @@ reason and recovery path — and keep delivering every other proven flow.
 
 ## Evidence it requires
 
-The six evidence classes of the standard, plus the seven `RELEASE_*` fields
+The evidence classes above (the standard's six core classes — automated, static, rendered, behavioral,
+authenticated-runtime, `UNVERIFIED` — plus the release-specific proof: provider, deployment, production
+acceptance, and rollback/recovery), plus the seven `RELEASE_*` fields
 (`INTERNAL_BUILD_IDENTITY`, `RELEASE_CHANNEL`, `RELEASE_CLASSIFICATION`, `CUSTOMER_RELEASE_IDENTITY`,
 `RELEASE_NOTE_REQUIRED`, `RELEASE_TRUTH_BOUNDARY`, `RELEASE_RECOVERY`). No PR is feature-complete, or
 put to the owner for go-live, until this gate is met or its gaps are reported `UNVERIFIED` / `UNAVAILABLE`

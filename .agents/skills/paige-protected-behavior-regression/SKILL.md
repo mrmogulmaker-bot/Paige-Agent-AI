@@ -46,5 +46,5 @@ seam was considered).
 - Never fix a seam outside the change's scope by absorbing it; route it to its owner (§58, the
   Attention Register).
 
-Evidence: `PROTECTED_SEAMS`, recognized by the CI guardrail without being hard-required on in-flight
-records until the announced cutover.
+Evidence: `PROTECTED_SEAMS` — not yet required or checked by the CI guardrail (it ignores unknown
+fields); Phase 3 wires it as optional, required only per an announced cutover.

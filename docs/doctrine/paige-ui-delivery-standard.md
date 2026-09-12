@@ -72,16 +72,19 @@ governs and names the evidence fields that prove it.
 
 **Backward compatibility (so the upgrade breaks no in-flight work).** The new evidence fields
 (`OWNER_INTENT`, `MUST_NOT_HAPPEN`, `MUST_PRESERVE`, `ACCEPTANCE_CRITERIA`, `MOTION_PURPOSE`,
-`PROTECTED_SEAMS`) are added to `docs/evidence/ui-delivery/TEMPLATE.md` as they are wired. The CI
-guardrail **recognizes them without hard-requiring them** on existing records, so open UI PRs do not
-break. They become required only per a dated, announced step once the open-PR window clears — never
-silently.
+`PROTECTED_SEAMS`) are added to `docs/evidence/ui-delivery/TEMPLATE.md` as they are wired. Today the CI
+guardrail **neither requires nor checks them** — it ignores unknown fields — so records with or without
+them pass and open UI PRs do not break. Phase 3 adds them to the validator (recognized, still optional);
+they become required only per a dated, announced step once the open-PR window clears — never silently.
 
 **Backend-to-visible routing.** A backend, RPC, edge-function, entitlement, or provider-contract
 change that alters a visible customer flow is in scope for this standard **even when it touches no UI
-file**. The CI guardrail routes such a change to an evidence record when it declares a visible-flow
-impact; the declaration is the agent's, and omitting it when a visible flow changed is itself a
-reviewable defect. See `scripts/ci/ui-delivery-evidence.mjs`.
+file** — the author declares the visible-flow impact and adds the evidence record, and omitting it
+when a visible flow changed is a reviewable defect. This is a **normative rule, enforced today by
+author declaration and review, not by CI**: the guardrail (`scripts/ci/ui-delivery-evidence.mjs`)
+currently triggers only on changed UI files. Phase 3 of the Harness upgrade wires it to route a
+declared visible-flow impact from a backend change; until that lands, do not rely on CI to catch an
+undeclared one.
 
 ## Ownership and exceptions
 

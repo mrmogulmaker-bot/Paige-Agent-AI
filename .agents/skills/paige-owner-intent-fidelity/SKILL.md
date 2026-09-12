@@ -46,5 +46,6 @@ boundaries (module 5), design-approval status, and go-live-approval status.
   (§00). It checks fidelity to the approved direction; it never invents or overrides it.
 
 Backward compatibility: the `OWNER_INTENT` / `MUST_NOT_HAPPEN` / `MUST_PRESERVE` / `ACCEPTANCE_CRITERIA`
-fields are recognized by the CI guardrail without being hard-required on in-flight records until the
-announced cutover — see the standard's "Backward compatibility" note.
+fields are not yet required or checked by the CI guardrail (it ignores unknown fields); Phase 3 wires
+them as optional, and they become required only per an announced cutover — see the standard's
+"Backward compatibility" note.

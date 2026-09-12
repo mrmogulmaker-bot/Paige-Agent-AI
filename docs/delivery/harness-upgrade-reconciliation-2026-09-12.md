@@ -107,7 +107,7 @@ Overall: **LIVE as a routing/attestation guardrail; UNVERIFIED as independent pr
 
 | # | Function | Truth | Biggest gap |
 |---|---|---|---|
-| 15 | Experience quality | PARTIAL | No Owner‑Intent "must‑not / must‑preserve" contract; **no protected‑seam declaration field**; CI validator **fires only on UI files** (backend/RPC/edge/entitlement/provider changes that break a visible flow are not routed); likely **advisory, not a required check**; one flat doctrine file with no section anchors; monolithic evidence template not partitioned for composable skills |
+| 15 | Experience quality | PARTIAL | No Owner‑Intent "must‑not / must‑preserve" contract; **no protected‑seam declaration field**; CI validator **fires only on UI files** (backend/RPC/edge/entitlement/provider changes that break a visible flow are not routed); likely **advisory, not a required check**; one flat doctrine file with no composable module structure; monolithic evidence template not partitioned for composable skills |
 
 Delta to five composable skills (route back to the ONE doctrine; content mostly exists):
 **A. Owner Intent Fidelity** — needs the must‑not / must‑preserve fields + a doctrine anchor.
