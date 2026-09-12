@@ -59,9 +59,11 @@ describe("the read surface — Paige can report whether the event fired (§13/§
     expect(rpc).toContain("error_count");
   });
 
-  it("is granted to authenticated (RLS does the scoping), revoked from anon", () => {
+  it("is granted to authenticated ONLY (§39/§59) — NOT service_role, since INVOKER is tenant-safe only via the caller's RLS", () => {
     expect(mig).toContain("REVOKE ALL ON FUNCTION public.get_contact_event_status(uuid) FROM PUBLIC, anon;");
-    expect(mig).toContain("GRANT EXECUTE ON FUNCTION public.get_contact_event_status(uuid) TO authenticated, service_role;");
+    expect(mig).toContain("GRANT EXECUTE ON FUNCTION public.get_contact_event_status(uuid) TO authenticated;");
+    // must NOT carry the service_role grant — a BYPASSRLS service-role caller would read cross-tenant
+    expect(mig).not.toContain("get_contact_event_status(uuid) TO authenticated, service_role");
   });
 });
 

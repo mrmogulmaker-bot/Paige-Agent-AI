@@ -335,6 +335,18 @@ class of lie as a fabricated metric (§13).
 
 Legend: **✓** live · **—** not built · **N/A** tier not opened yet · **403** denied at the route gate.
 
+### Main Paige chat — capability truth + the contact.created event (PR #1145, 2026-09-12)
+
+Paige chat tools (not nav surfaces), gated server-side to **admin / coach / super_admin** within the acting tenant. No new per-tier `getTierFeatureSet` flag — availability follows the existing chat role gate + tenant scope (RLS), so the per-tier reality is "any tenant whose chat + client book exist, plus the operator acting into a tenant."
+
+| Capability | God (act-as) | Agency-as-tenant | Standalone Solo | Sub-account | Client | Anonymous | Deploy state |
+|---|---|---|---|---|---|---|---|
+| `capability_status` (truthful "what can you do here?") | ✓ | ✓ (own book) | ✓ | ✓ | — (client seat sealed) | 403 | **edge-LIVE on merge** (uses already-live prod RPCs) |
+| `crm_create_contact` honest outcome + idempotency | ✓ | ✓ | ✓ | ✓ | — | 403 | edge logic LIVE; `create_contact_v2` signal deploy-pending #1147 |
+| `contact.created` native event + `contact_event_status` read | ✓ | ✓ | ✓ | ✓ | — | 403 | **code MERGED, prod activation PENDING #1147** (migration `20270119000000` sorts after the broken Social `20270117000000`); edge deploys inert until tables land |
+
+Honest note (§13): the `contact.created` substrate (tables, trigger, drainer, read RPC) is code-complete and reviewed (§39/§5, no blockers) but **not live on prod** until the Social workstream fixes #1147 so the prod migration queue advances past it; the read tool degrades to "not available yet" until then. Authenticated owner-drive §32.c/§70 OWED on all three. Hardening fast-follows: #1149.
+
 ### Trust Compass — the governed control surface (Command Center 3rd sub-tab, 2026-09-05)
 
 Trust Compass moved from a top-level Solo branch to the **third Command Center sub-tab** (Business

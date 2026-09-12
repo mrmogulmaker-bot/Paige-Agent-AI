@@ -137,7 +137,12 @@ AS $function$
 $function$;
 
 REVOKE ALL ON FUNCTION public.get_contact_event_status(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.get_contact_event_status(uuid) TO authenticated, service_role;
+-- authenticated ONLY — deliberately NOT service_role (§39 peer-gate, §59). This is SECURITY INVOKER:
+-- it is tenant-safe ONLY because RLS scopes it to the CALLER. A service-role caller is BYPASSRLS, so
+-- invoking it service-role would return contact.created events platform-wide, unfiltered. Nothing calls
+-- it service-role today (the one caller is the JWT-client chat tool); withholding the grant keeps it that
+-- way — the name must never be tenant-safe only by virtue of which client happens to call it.
+GRANT EXECUTE ON FUNCTION public.get_contact_event_status(uuid) TO authenticated;
 
 -- ── 3. Lifecycle RPCs (service-only; §59 caller-scope IN-BODY: auth.uid() IS NULL) ────────────
 -- 3a. Atomic single-UPDATE claim. Loser gets zero rows → no double-drain. Re-claimable after a
