@@ -331,6 +331,13 @@ project_id = "xygzykjyynhzqytbqnzu"
   [functions.growth-process-submission]
     verify_jwt = false
 
+  # The native-event DRAINER (MPC-4) — a producer trigger or the pg_cron sweeper POSTs {event_id}; it
+  # claims the event atomically and delivers it to its approved live subscribers (paige_automations by
+  # trigger_key) fire-once. NOT user-facing (verify_jwt=false): authorized ONLY by the service-role
+  # bearer OR a valid Vault cron token, fail-closed; tenant taken from the CLAIMED event row (§9).
+  [functions.paige-native-event-dispatch]
+    verify_jwt = false
+
   # The §8 action-bus DRAINER — on a */2 cron it claims 'filed' paige_actions whose kind has a drafting
   # sub-agent, has that agent draft the work through the orchestrator, and advances to 'drafted' (which
   # routes send-kinds to the approval lane). NOT user-facing (verify_jwt=false): authorized ONLY by the
