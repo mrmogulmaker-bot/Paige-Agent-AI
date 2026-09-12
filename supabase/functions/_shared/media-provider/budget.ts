@@ -51,10 +51,12 @@ export function mediaBand(mode: MediaMode, tier: "standard" | "premium"): Budget
   return "cheap";
 }
 
+// String-literal discriminant: this repo compiles non-strict, where boolean
+// discrimination does not narrow.
 export type MediaBudgetDecision =
-  | { ok: true; decision: BudgetDecision }
+  | { verdict: "allow"; decision: BudgetDecision }
   /** Fail-closed verdict with the truthful reason the UI must show. */
-  | { ok: false; gate: "budget_exceeded" | "budget_unknown"; explanation: string; decision?: BudgetDecision };
+  | { verdict: "deny"; gate: "budget_exceeded" | "budget_unknown"; explanation: string; decision?: BudgetDecision };
 
 /**
  * Decide a media job against the ladder. `accruedUsd: null` means the accrual
@@ -74,7 +76,7 @@ export function decideMediaBudget(input: {
 }): MediaBudgetDecision {
   if (input.accruedUsd === null || !Number.isFinite(input.accruedUsd)) {
     return {
-      ok: false,
+      verdict: "deny",
       gate: "budget_unknown",
       explanation:
         "Today's media spend couldn't be read, so generation is paused (fail-closed). Try again shortly; if it persists, check the database.",
@@ -85,7 +87,7 @@ export function decideMediaBudget(input: {
   // until … the budget configuration is in place").
   if (input.ceilingUsd === null || !Number.isFinite(input.ceilingUsd) || input.ceilingUsd <= 0) {
     return {
-      ok: false,
+      verdict: "deny",
       gate: "budget_unknown",
       explanation:
         "Media generation isn't switched on yet — no media budget ceiling is configured. The owner sets media_budget_daily_usd (platform or per-tenant) to enable spend.",
@@ -100,7 +102,7 @@ export function decideMediaBudget(input: {
   // economy traffic; media mints provider spend, so the hard gate BLOCKS here.
   if (decision.decision === "block" || decision.gate === "budget_hard") {
     return {
-      ok: false,
+      verdict: "deny",
       gate: "budget_exceeded",
       explanation:
         `Daily media budget reached ($${input.accruedUsd.toFixed(2)} of $${input.ceilingUsd.toFixed(2)}); resets at UTC midnight`,
@@ -112,14 +114,14 @@ export function decideMediaBudget(input: {
   // marginal spend the request is about to mint.
   if (input.accruedUsd + input.estimatedCostUsd > input.ceilingUsd) {
     return {
-      ok: false,
+      verdict: "deny",
       gate: "budget_exceeded",
       explanation:
         `This job (≈$${input.estimatedCostUsd.toFixed(2)}) would exceed today's media budget ($${input.accruedUsd.toFixed(2)} of $${input.ceilingUsd.toFixed(2)} used); resets at UTC midnight`,
       decision,
     };
   }
-  return { ok: true, decision };
+  return { verdict: "allow", decision };
 }
 
 /** Accrual read for the UTC day via the service-role RPC `media_spend_today`. */

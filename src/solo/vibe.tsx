@@ -429,7 +429,7 @@ export const VibeStudio = ({ onBack }: { onBack: () => void }) => {
                       </div>
                     </div>
                     <div className="row" style={{ gap: 8, flex: "none" }}>
-                      {job.state === "succeeded" && (
+                      {job.state === "succeeded" && asset?.kind !== "video" && (
                         <>
                           <button
                             className="btn btn-s"

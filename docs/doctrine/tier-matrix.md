@@ -42,9 +42,9 @@ tier that customizes on top of its (Agency) baseline. Owner-locked cells (2026-0
   `_kind='consumer'` mint for an **agency** target, §32.a-proven; #460 narrowed that guard to agency-only
   so Enterprise passes).
 - **`growth` + `studio` (Vibe Studio + Campaigns) = Solo · Sub-account · Enterprise · God — NOT Agency**
-  - *2026-09-12 media capability truth (same-commit §66 note, vibe-media-fal):* the Vibe Studio
-    tier set is unchanged; the surface now carries the governed fal.ai media seam — currently
-    `UNAVAILABLE` by config (fails closed until the owner sets `FAL_KEY` + provider ceiling +
+  - *2026-09-12 media capability truth (same-commit §66 note, vibe-media-fal — code on PR #1153,
+    merge held upstream, not yet shipped):* the Vibe Studio tier set is unchanged; the governed
+    fal.ai media seam is `PARTIAL`/`UNAVAILABLE` by config (fails closed until the owner sets `FAL_KEY` + provider ceiling +
     media budget; video additionally flagged off; music deferred). The tier gate continues to
     derive through the one tier helper; no inline account_type compare was introduced.
 - **Solo Campaigns -> Pipeline (Gate 1 approved; draft, not live as of 2026-08-31):** follows the existing Growth exception: Solo + Sub-account + Enterprise + God, not Agency. The base capability is tenant-owned multiple pipelines, explicit stage lifecycle management, board-first deal context, and compact focused-stage operation. Read-only members receive the projection but not stage/pipeline writes. This row remains **DRAFT / UNVERIFIED** until Gate 2, merge, persisted migration apply, and authenticated owner-flow proof; it must not be represented as shipped beforehand.

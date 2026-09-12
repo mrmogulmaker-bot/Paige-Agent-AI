@@ -28,7 +28,7 @@
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
-import { completeMediaJob } from "../_shared/media-provider/complete.ts";
+import { completeMediaJob, failMediaJob } from "../_shared/media-provider/complete.ts";
 import { falAdapter } from "../_shared/media-provider/fal.ts";
 import { verifyFalCallback } from "../_shared/media-provider/fal-webhook.ts";
 
@@ -106,11 +106,17 @@ serve(async (req: Request) => {
     }
   }
 
-  // status ERROR (or anything else non-OK): honest provider failure.
-  const detail = typeof event.error === "string"
-    ? event.error.slice(0, 300)
-    : JSON.stringify(event.payload ?? {}).slice(0, 300);
-  await failMediaJob(admin, { ...job, attempts: job.attempts ?? 1 }, `provider reported ERROR: ${detail}`)
-    .catch(() => {});
-  return json({ state: "failed" });
+  // Explicit provider ERROR: honest terminal failure.
+  if (event.status === "ERROR") {
+    const detail = typeof event.error === "string"
+      ? event.error.slice(0, 300)
+      : JSON.stringify(event.payload ?? {}).slice(0, 300);
+    await failMediaJob(admin, { ...job, attempts: job.attempts ?? 1 }, `provider reported ERROR: ${detail}`)
+      .catch(() => {});
+    return json({ state: "failed" });
+  }
+  // Any other/unknown status: ack (stop fal retrying) and let the sweeper's
+  // authoritative poll decide — never terminally fail a possibly-good asset on
+  // an unrecognized status spelling.
+  return json({ state: job.state, deferred: true });
 });

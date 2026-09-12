@@ -100,7 +100,7 @@ serve(async (req: Request) => {
             videoSeconds: typeof params.video_seconds === "number" ? params.video_seconds : undefined,
             webhookUrl,
           });
-          await admin
+          const { data: stillLive } = await admin
             .from("paige_media_jobs")
             .update({
               state: "submitted",
@@ -111,7 +111,18 @@ serve(async (req: Request) => {
               claimed_at: null,
               error: null,
             })
-            .eq("id", job.id);
+            .eq("id", job.id)
+            .eq("state", "created")
+            .select("id");
+          if (!stillLive?.length) {
+            // Cancelled mid-submit (B3): keep it cancelled; stop the provider work.
+            try {
+              await falAdapter.cancel({ model: String(job.model), providerRequestId });
+            } catch (e) {
+              console.error("[media-sweeper] lost-race provider cancel failed:", e instanceof Error ? e.message : "unknown");
+            }
+            continue;
+          }
           submitted++;
           continue;
         }

@@ -123,6 +123,10 @@ drop policy if exists pmj_service_all on public.paige_media_jobs;
 create policy pmj_service_all on public.paige_media_jobs for all to service_role
   using (true) with check (true);
 
+-- Realtime: the client subscribes to job transitions (the 10s poll is only a
+-- backstop while jobs are locally in-flight).
+alter publication supabase_realtime add table public.paige_media_jobs;
+
 -- updated_at keeps itself honest.
 create or replace function public.touch_paige_media_job()
 returns trigger
@@ -241,6 +245,17 @@ as $$
   where state in ('submitted','processing')
     and created_at < now() - interval '2 hours';
 
+  -- reconcile states older than a day: the provider artifact window is long
+  -- gone; honest terminal failure instead of claiming forever
+  update public.paige_media_jobs
+  set state = 'failed',
+      error = coalesce(error, 'reconciliation_window_expired'),
+      completed_at = now(),
+      lease_until = null,
+      claimed_at = null
+  where state in ('outcome_unknown','expired')
+    and created_at < now() - interval '24 hours';
+
   -- approvals abandoned for a week: cancelled, honestly
   update public.paige_media_jobs
   set state = 'cancelled',
@@ -303,97 +318,13 @@ revoke all on function public.media_video_completed_today(uuid) from public, ano
 grant execute on function public.media_video_completed_today(uuid) to service_role;
 
 -- -----------------------------------------------------------------------------
--- The ONE asset library gains the 'video' kind: successful video jobs file to
--- marketing_content exactly like images (one asset database — no media-specific
--- asset table). The save RPC's kind coercion is extended to match; everything
--- else about the RPC is byte-identical to 20260711014952.
+-- The ONE asset library needs NO change here: the live kind CHECK and the
+-- save_marketing_content coercion already admit 'video' (20260718035843) and
+-- 'document' (20260718080838), and the live RPC carries the tenant-membership
+-- gate (20260821010000) and version-preserving image swap (20261228000001).
+-- An earlier draft of this migration REPLACED the RPC from the stale 2026-07-11
+-- baseline and would have regressed all four; the diff verifier caught it (B1).
 -- -----------------------------------------------------------------------------
-do $$
-declare ck name;
-begin
-  select conname into ck
-  from pg_constraint
-  where conrelid = 'public.marketing_content'::regclass
-    and contype = 'c'
-    and pg_get_constraintdef(oid) ilike '%kind%' and pg_get_constraintdef(oid) ilike '%text%';
-  if ck is not null then
-    execute format('alter table public.marketing_content drop constraint %I', ck);
-  end if;
-end $$;
-
-alter table public.marketing_content
-  add constraint marketing_content_kind_check
-  check (kind in ('text','image','video')) not valid;
-
-alter table public.marketing_content validate constraint marketing_content_kind_check;
-
-create or replace function public.save_marketing_content(
-  p_kind       text,
-  p_title      text,
-  p_body       text DEFAULT NULL,
-  p_channel    text DEFAULT NULL,
-  p_image_url  text DEFAULT NULL,
-  p_image_path text DEFAULT NULL,
-  p_size       text DEFAULT NULL,
-  p_brief      text DEFAULT NULL,
-  p_meta       jsonb DEFAULT '{}'::jsonb,
-  p_id         uuid DEFAULT NULL,
-  p_tenant_id  uuid DEFAULT NULL
-)
-RETURNS uuid
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  _caller uuid := auth.uid();
-  _tenant uuid := COALESCE(p_tenant_id, public.current_user_tenant_id());
-  _kind text := CASE WHEN p_kind IN ('text','image','video') THEN p_kind ELSE 'text' END;
-  _id uuid;
-BEGIN
-  IF _caller IS NOT NULL AND NOT public.has_any_role(_caller, ARRAY['admin','super_admin','coach']) THEN
-    RAISE EXCEPTION 'CONTENT_FORBIDDEN: admin or coach required' USING ERRCODE = '42501';
-  END IF;
-  IF _tenant IS NULL THEN
-    RAISE EXCEPTION 'CONTENT_NO_TENANT: a tenant context is required' USING ERRCODE = '22023';
-  END IF;
-
-  IF p_id IS NOT NULL THEN
-    UPDATE public.marketing_content SET
-      title = COALESCE(NULLIF(btrim(p_title), ''), title),
-      body = COALESCE(p_body, body),
-      channel = COALESCE(p_channel, channel),
-      brief = COALESCE(p_brief, brief),
-      meta = COALESCE(p_meta, meta)
-    WHERE id = p_id AND tenant_id = _tenant
-    RETURNING id INTO _id;
-    IF _id IS NULL THEN
-      RAISE EXCEPTION 'CONTENT_NOT_FOUND' USING ERRCODE = 'P0002';
-    END IF;
-    RETURN _id;
-  END IF;
-
-  INSERT INTO public.marketing_content (
-    tenant_id, created_by, kind, channel, title, body,
-    image_url, image_path, size, brief, meta
-  ) VALUES (
-    _tenant, _caller, _kind, NULLIF(btrim(p_channel), ''),
-    COALESCE(NULLIF(btrim(p_title), ''), 'Untitled'), p_body,
-    NULLIF(btrim(p_image_url), ''), NULLIF(btrim(p_image_path), ''),
-    NULLIF(btrim(p_size), ''), p_brief, COALESCE(p_meta, '{}'::jsonb)
-  )
-  RETURNING id INTO _id;
-
-  INSERT INTO public.audit_logs (user_id, entity, action, entity_id, data)
-  VALUES (_caller, 'marketing_content', 'save_marketing_content', _id,
-          jsonb_build_object('tenant_id', _tenant, 'kind', _kind, 'channel', p_channel));
-
-  RETURN _id;
-END;
-$$;
-
-revoke all on function public.save_marketing_content(text, text, text, text, text, text, text, text, jsonb, uuid, uuid) from public, anon;
-grant execute on function public.save_marketing_content(text, text, text, text, text, text, text, text, jsonb, uuid, uuid) to authenticated, service_role;
 
 -- -----------------------------------------------------------------------------
 -- The sweeper beat: every 2 minutes (lease TTL is 5 minutes — a dead tick

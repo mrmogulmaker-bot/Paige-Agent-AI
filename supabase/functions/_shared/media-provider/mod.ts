@@ -125,6 +125,18 @@ export interface ExecuteResult {
   model: string;
 }
 
+/** Terminal per the durable-job contract — terminal is terminal for completion. */
+export const MEDIA_TERMINAL_STATES: readonly string[] = ["succeeded", "failed", "cancelled"] as const;
+/** Every state a completion claim may legally move (the resurrect guard's domain). */
+export const MEDIA_NON_TERMINAL_STATES: readonly string[] = [
+  "created",
+  "blocked",
+  "submitted",
+  "processing",
+  "outcome_unknown",
+  "expired",
+] as const;
+
 /**
  * The truthful commercial-use disclosure, rendered wherever an asset or job is
  * shown (owner authorization's exact required language).

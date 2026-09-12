@@ -251,7 +251,7 @@ serve(async (req: Request) => {
         tier: entry.tier,
         estimatedCostUsd: estimate.estimatedCostUsd,
       });
-      if (!budget.ok) {
+      if (budget.verdict === "deny") {
         await recordCapabilityRun(admin, {
           tenantId,
           actorId: user.id,
@@ -328,6 +328,16 @@ serve(async (req: Request) => {
         .select()
         .single();
       if (insertErr || !job) {
+        // A concurrent submit with the SAME key lost the unique race — that is
+        // the documented replay, not an error (S1).
+        if (insertErr?.code === "23505") {
+          const { data: winner } = await admin
+            .from("paige_media_jobs")
+            .select("*")
+            .eq("idempotency_key", idempotencyKey)
+            .maybeSingle();
+          if (winner) return json({ job: winner, idempotent_replay: true });
+        }
         return json({ error: "Couldn't create the media job." }, 500);
       }
 
@@ -379,9 +389,10 @@ serve(async (req: Request) => {
         .update({ approval_state: "approved", state: "created", claimed_at: null, lease_until: null })
         .eq("id", jobId)
         .eq("approval_state", "pending")
+        .eq("state", "blocked")
         .select()
         .single();
-      if (upErr || !updated) return json({ error: "Couldn't approve the job." }, 500);
+      if (upErr || !updated) return json({ error: "Couldn't approve the job (it may have been cancelled)." }, 409);
       return await dispatchJob(admin, updated, { authHeader, webhookUrl: `${supabaseUrl}/functions/v1/paige-media-webhook` });
     }
 
@@ -396,7 +407,7 @@ serve(async (req: Request) => {
       // Terminal-bound guarded transition wins exactly once.
       const { data: updated, error: upErr } = await admin
         .from("paige_media_jobs")
-        .update({ state: "cancelled", completed_at: new Date().toISOString(), lease_until: null })
+        .update({ state: "cancelled", approval_state: "rejected", completed_at: new Date().toISOString(), lease_until: null })
         .eq("id", jobId)
         .not("state", "in", "(succeeded,failed,cancelled)")
         .select()
@@ -497,8 +508,19 @@ async function dispatchJob(
           error: null,
         })
         .eq("id", jobId)
+        .eq("state", "created")
         .select()
         .single();
+      if (!updated) {
+        // Cancelled mid-submit (B3): keep it cancelled and best-effort stop the
+        // provider work so the just-minted spend cannot orphan into a file.
+        try {
+          await falAdapter.cancel({ model, providerRequestId });
+        } catch (e) {
+          console.error("[paige-media] lost-race provider cancel failed:", e instanceof Error ? e.message : "unknown");
+        }
+        return json({ job: { ...job, state: "cancelled" }, dispatched: false, cancelled_mid_submit: true });
+      }
       return json({ job: updated, dispatched: true });
     } catch (e) {
       // NeedsConfig → honest failure. Anything else: the submit MAY have reached
@@ -525,7 +547,16 @@ async function dispatchJob(
     }
   }
 
-  // Legacy sync provider: execute inside the authenticated request.
+  // Legacy sync provider: execute inside the authenticated request. Accrual
+  // starts NOW (N3): a provider spend that later fails still counts today.
+  if (provider !== "fal") {
+    await admin
+      .from("paige_media_jobs")
+      .update({ submitted_at: new Date().toISOString() })
+      .eq("id", jobId)
+      .eq("state", "created");
+  }
+
   const legacy = getMediaAdapter(provider);
   if (!legacy) {
     await failMediaJob(admin, { ...job, attempts: claimed.attempts } as never, `unknown provider ${provider}`);

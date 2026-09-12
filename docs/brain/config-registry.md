@@ -413,8 +413,8 @@ Values intentionally omitted.
     (allow-listed). Cheap-tier §34 economics restored; Claude remains the frontier/rescue tier.
 - **Image / 3D generation (Studio):** `REPLICATE_BASE_URL`, `IDEOGRAM_BASE_URL`, `MESHY_BASE_URL`,
   `STUDIO_REPLICATE_IMAGE_MODEL`, `STUDIO_REPLICATE_3D_MODEL`.
-- **Vibe media generation (fal.ai primary — owner build authorization 2026-09-12; seam deployed
-  config-gated OFF):** `FAL_KEY` (alias `FAL_API_KEY`) ⚠ unset/unverified — owner created the fal
+- **Vibe media generation (fal.ai primary — owner build authorization 2026-09-12; code complete on
+  PR #1153, merge HELD on main's upstream database-replay failure; nothing deployed yet):** `FAL_KEY` (alias `FAL_API_KEY`) ⚠ unset/unverified — owner created the fal
   account via GitHub sign-in; the key is NOT yet stored as an Edge Function secret, and provider
   calls stay fail-closed until the owner also sets `media_provider_ceiling_usd` (admin_app_settings
   or env `MEDIA_PROVIDER_CEILING_USD`) AND a media budget ceiling (`media_budget_daily_usd`
@@ -425,7 +425,7 @@ Values intentionally omitted.
   `FAL_WEBHOOK_USER_ID` (callback account pin), `MEDIA_VIDEO_ENABLED` (default false),
   `MEDIA_DAILY_VIDEO_LIMIT` (default 1), `MEDIA_DRAFT_ALLOWANCE_USD` (default 0.10). Webhook
   `paige-media-webhook` MUST deploy `--no-verify-jwt` (it verifies fal's ED25519 JWKS signatures
-  itself). Full contract: docs/evidence/ui-delivery/vibe-media-fal.md + migration 20270118000000.
+  itself). Full contract: docs/evidence/ui-delivery/vibe-media-fal.md + migration 20270121000000.
 - **`LOVABLE_API_KEY` / `LOVABLE_SEND_URL` (§34 — scoped for removal, task #112):** post-PR #442 these
   are used by ONLY the live **email trinity** (`auth-email-hook` + `process-email-queue` +
   `handle-email-suppression` — `@lovable.dev` HMAC-signing + email DELIVERY) + `preview-transactional-email`

@@ -78,6 +78,25 @@ export interface MediaAsset {
 
 // String-literal discriminant (not boolean): this repo compiles non-strict
 // (strictNullChecks off), where boolean-literal discrimination does not narrow.
+
+/**
+ * Denial bodies (403/429/400 — video-off, daily cap, budget exceeded, unknown
+ * model) live on FunctionsHttpError.context (the Response), not on the generic
+ * "Function returned an error" message — the connectError.ts:164 house pattern.
+ */
+async function functionsErrorMessage(error: unknown): Promise<string> {
+  const context = (error as { context?: { json?: () => Promise<unknown> } })?.context;
+  if (context && typeof context.json === "function") {
+    try {
+      const body = (await context.json()) as { error?: unknown } | null;
+      if (body && typeof body.error === "string") return body.error;
+    } catch {
+      // fall through to the generic message
+    }
+  }
+  return error instanceof Error ? error.message : "The request failed.";
+}
+
 export type SubmitOutcome =
   | { status: "ok"; job: MediaJob; awaitingApproval?: boolean }
   | { status: "error"; message: string; needsConfig?: boolean; needsCeiling?: boolean; budgetDenied?: boolean; limitReached?: boolean };
@@ -99,7 +118,7 @@ export function useMediaJobs() {
     const { data, error } = await supabase.functions.invoke<T>("paige-media", {
       body: { action, ...payload },
     });
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(await functionsErrorMessage(error));
     return data;
   }, []);
 

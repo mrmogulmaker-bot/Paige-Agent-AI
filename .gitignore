@@ -66,3 +66,4 @@ deno-ratchet-evidence/
 # `SHOOT=1 node docs/prototypes/campaigns-overview.drive.mjs`; the committed evidence
 # record cites them and the repo keeps the script, not the binaries (house pattern).
 docs/evidence/ui-delivery/campaigns-overview/
+supabase/.temp/

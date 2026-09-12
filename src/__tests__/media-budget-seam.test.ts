@@ -46,14 +46,14 @@ describe("media band mapping", () => {
 describe("decideMediaBudget — fail-closed rulings", () => {
   it("fails closed on unknown accrual (owner: 'budget unavailable… → fail closed')", () => {
     const v = decideMediaBudget({ accruedUsd: null, ceilingUsd: 20, mode: "image", tier: "standard", estimatedCostUsd: 0.03 });
-    expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.gate).toBe("budget_unknown");
+    expect(v.verdict).toBe("deny");
+    if (v.verdict === "deny") expect(v.gate).toBe("budget_unknown");
   });
 
   it("treats an UNSET ceiling as spend-off — no silent default (compliance H3)", () => {
     const v = decideMediaBudget({ accruedUsd: 0, ceilingUsd: null, mode: "image", tier: "standard", estimatedCostUsd: 0.03 });
-    expect(v.ok).toBe(false);
-    if (!v.ok) {
+    expect(v.verdict).toBe("deny");
+    if (v.verdict === "deny") {
       expect(v.gate).toBe("budget_unknown");
       expect(v.explanation).toMatch(/media_budget_daily_usd/);
     }
@@ -61,21 +61,21 @@ describe("decideMediaBudget — fail-closed rulings", () => {
 
   it("blocks cheap-band image spend at the hard ceiling (compliance H1: media never continues past 100%)", () => {
     const v = decideMediaBudget({ accruedUsd: 20, ceilingUsd: 20, mode: "image", tier: "standard", estimatedCostUsd: 0.03 });
-    expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.gate).toBe("budget_exceeded");
+    expect(v.verdict).toBe("deny");
+    if (v.verdict === "deny") expect(v.gate).toBe("budget_exceeded");
   });
 
   it("blocks a job whose marginal spend would cross the ceiling even below it", () => {
     const v = decideMediaBudget({ accruedUsd: 19.99, ceilingUsd: 20, mode: "image", tier: "standard", estimatedCostUsd: 0.03 });
-    expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.explanation).toMatch(/would exceed today's media budget/);
+    expect(v.verdict).toBe("deny");
+    if (v.verdict === "deny") expect(v.explanation).toMatch(/would exceed today's media budget/);
   });
 
   it("allows ordinary in-budget image jobs, soft-gated near the ceiling", () => {
     const okCase = decideMediaBudget({ accruedUsd: 1, ceilingUsd: 20, mode: "image", tier: "standard", estimatedCostUsd: 0.03 });
-    expect(okCase.ok).toBe(true);
+    expect(okCase.verdict).toBe("allow");
     const soft = decideMediaBudget({ accruedUsd: 16.5, ceilingUsd: 20, mode: "image", tier: "standard", estimatedCostUsd: 0.03 });
-    expect(soft.ok).toBe(true);
-    if (soft.ok) expect(soft.decision.gate).toBe("budget_soft");
+    expect(soft.verdict).toBe("allow");
+    if (soft.verdict === "allow") expect(soft.decision.gate).toBe("budget_soft");
   });
 });

@@ -23,7 +23,7 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { recordCapabilityRun } from "../capability-record.ts";
 import { idempotencyKey } from "../durable-job/mod.ts";
-import { COMMERCIAL_USE_DISCLOSURE } from "./mod.ts";
+import { COMMERCIAL_USE_DISCLOSURE, MEDIA_NON_TERMINAL_STATES as NON_TERMINAL_STATES, MEDIA_TERMINAL_STATES } from "./mod.ts";
 
 export interface CompletableJob {
   id: string;
@@ -63,9 +63,7 @@ function extFor(contentType: string, mode: string): string {
   return "png";
 }
 
-/** Terminal per the durable-job contract — terminal is terminal for completion. */
-const TERMINAL_STATES = new Set(["succeeded", "failed", "cancelled"]);
-const NON_TERMINAL_STATES = ["created", "blocked", "submitted", "processing", "outcome_unknown", "expired"];
+const TERMINAL_STATES = new Set(MEDIA_TERMINAL_STATES);
 
 /** Deterministic attempt correlation (the durable-job contract's idempotencyKey helper). */
 function jobAttemptId(job: CompletableJob): string {
@@ -92,6 +90,22 @@ export async function completeMediaJob(
   }
 
   const prompt = typeof job.params?.prompt === "string" ? (job.params.prompt as string) : "";
+
+  // CLAIM-FIRST (S2): exclusively claim the completion before any side effect.
+  // The winner moves to 'processing' with a poll deadline (a completer that
+  // dies mid-copy self-heals through the poll lane); the loser stops here with
+  // the winner's truth — no double storage upload, no double library row.
+  const { data: claimedCompletion, error: claimErr } = await admin
+    .from("paige_media_jobs")
+    .update({ state: "processing", next_poll_at: new Date(Date.now() + 60_000).toISOString() })
+    .eq("id", job.id)
+    .in("state", NON_TERMINAL_STATES)
+    .is("content_id", null)
+    .select("id");
+  if (claimErr) throw new Error(`completion claim failed: ${claimErr.message}`);
+  if (!claimedCompletion?.length) {
+    return { state: job.state === "succeeded" ? "succeeded" : "processing", contentId: job.content_id, storagePath: null };
+  }
 
   try {
     const { bytes, contentType } = await fetchArtifactBytes(artifactUrl);
@@ -140,10 +154,12 @@ export async function completeMediaJob(
       p_id: null,
       p_tenant_id: job.tenant_id,
     });
-    if (saveErr) console.error("[media-complete] library save failed:", saveErr.message);
+    if (saveErr) throw new Error(`library save failed: ${saveErr.message}`);
 
-    // ATOMIC GUARDED TERMINAL TRANSITION: only one concurrent completer wins.
-    const { data: won, error: jobErr } = await admin
+    // Verified write BEFORE "done": the asset is in OUR storage and the job row
+    // transitions only now (the claim above already made this completer the
+    // exclusive owner of the transition).
+    const { error: jobErr } = await admin
       .from("paige_media_jobs")
       .update({
         state: "succeeded",
@@ -154,13 +170,8 @@ export async function completeMediaJob(
         claimed_at: null,
       })
       .eq("id", job.id)
-      .in("state", NON_TERMINAL_STATES)
-      .select("id");
+      .in("state", NON_TERMINAL_STATES);
     if (jobErr) throw new Error(`job terminal update failed: ${jobErr.message}`);
-    if (!won?.length) {
-      // A concurrent completion won the race — its result IS the truth.
-      return { state: "succeeded", contentId: (contentId as string) ?? null, storagePath: null };
-    }
 
     await recordCapabilityRun(admin, {
       tenantId: job.tenant_id,
