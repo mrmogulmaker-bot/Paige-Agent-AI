@@ -94,11 +94,13 @@ SELECT lives_ok(
   $$SELECT public.create_contact('Valid', 'Service', 'solo-authz-valid@tests.invalid', NULL, NULL, NULL, 'new_lead', 'proof', '{}', NULL, NULL, 'b1900000-0000-0000-0000-000000000002', 'b1900000-0000-0000-0000-00000000aaaa', 'b1900000-0000-0000-0000-000000000001', 'proof')$$,
   'service creation succeeds when creator and assigned coach are active members of the supplied tenant'
 );
+RESET ROLE;
 SELECT is(
   (SELECT tenant_id FROM public.clients WHERE email = 'solo-authz-valid@tests.invalid'),
   'b1900000-0000-0000-0000-00000000aaaa'::uuid,
   'valid service creation writes only to the supplied tenant'
 );
+SET LOCAL ROLE service_role;
 SELECT throws_ok(
   $$SELECT public.create_contact('Wrong', 'Creator', 'solo-authz-wrong-creator@tests.invalid', NULL, NULL, NULL, 'new_lead', 'proof', '{}', NULL, NULL, NULL, 'b1900000-0000-0000-0000-00000000aaaa', 'b1900000-0000-0000-0000-000000000003', 'proof')$$,
   '42501', 'CONTACT_CREATOR_NOT_IN_TENANT',
