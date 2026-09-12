@@ -16,6 +16,7 @@
 // Pinterest, Reddit, Bluesky, Discord, Telegram, Google Business, Snapchat.
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { socialPublishContainment } from "../_shared/social-publish-containment.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -67,6 +68,25 @@ Deno.serve(async (req) => {
   const action = typeof body.action === "string" ? body.action : "";
   const tenantId = typeof body.tenant_id === "string" ? body.tenant_id : null;
   const profile = typeof body.profile === "string" ? body.profile : "";
+
+  // ── SOCIAL PUBLISH CONTAINMENT (owner ruling, Gate A 2026-09-12) ──────────────────────────────
+  // Deny PUBLICATION at the seam, before any Upload-Post call, success claim, or receipt/Rail. This
+  // is the every-entry-point safeguard: it holds for the Chat tool, a direct service-role call, a
+  // cron token, or any future producer, and a configured UPLOAD_POST_API_KEY cannot change it (the
+  // decision takes only the action name). Reads and cancel stay available. The governed, tenant-safe
+  // Social capability is not built/proven; until it is, Paige publishes nothing. See
+  // _shared/social-publish-containment.ts for the lift path.
+  const containment = socialPublishContainment(action);
+  if (containment.denied) {
+    return json({
+      ok: false,
+      status: containment.status,
+      capability: containment.capability,
+      reason: containment.reason,
+      setup_path: containment.setup_path,
+      contained: true,
+    }, 403);
+  }
 
   // ---- ACTIONS ----
 
