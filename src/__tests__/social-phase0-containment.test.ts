@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
@@ -19,8 +19,8 @@ describe("Social Operations Phase 0 containment", () => {
     expect(settings).not.toContain('/functions/v1/paige-social');
     expect(settings).not.toContain('action: "connect"');
     expect(settings).not.toMatch(/>\s*Connect\s*</);
-    expect(settings).toContain("Provider connections are not available yet");
-    expect(settings).toContain("Declared handles are not connections");
+    expect(settings).toContain("Provider authorization is not available yet");
+    expect(settings).toContain("Declared handles are capture-only records");
   });
 
   it("neither advertises nor executes the legacy Chat Social tools", () => {
@@ -62,6 +62,7 @@ describe("Social Operations Phase 0 containment", () => {
   });
 
   it("fails every legacy Social provider endpoint closed without reading credentials or payloads", () => {
+    expect(existsSync(resolve(process.cwd(), "supabase/functions/_shared/social-publish-containment.ts"))).toBe(false);
     const shared = read("supabase/functions/_shared/socialUnavailable.ts");
     expect(shared).toContain('error: "social_capability_unavailable"');
     expect(shared).toContain("attempted: false");
