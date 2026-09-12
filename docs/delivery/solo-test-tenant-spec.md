@@ -5,7 +5,10 @@
 authenticated surface. That is an honest degrade, and it is also a standing hole: it means the
 owner's own eyes are the only thing converting `PARTIAL` into proven, on every surface, forever.
 
-This specifies the account that closes it. **It does not ask for, and must never be satisfied by,
+This specifies the account that closes it. It is also the canonical anchor for **Harness‑upgrade
+Phase 4** (authenticated usability test environment) — see
+`docs/delivery/harness-upgrade-reconciliation-2026-09-12.md` "Phase 4"; that phase reconciles to this
+spec rather than writing a second one. **It does not ask for, and must never be satisfied by,
 the owner's personal credentials.** A test account is not a convenience — using a real owner login
 would make every drive indistinguishable from the owner acting, put real customer data behind an
 automated browser, and give a CI secret the authority of the founder.
