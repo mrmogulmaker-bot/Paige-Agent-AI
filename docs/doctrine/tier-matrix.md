@@ -4006,6 +4006,17 @@ zero tests and now breaks three.
 every workspace's post to one shared page. Per-tenant publishing needs per-tenant OAuth (provider app
 review, per-tenant tokens) and a tenant column on that table.
 
+**Server-side containment now ENFORCES that UNAVAILABLE (§66, PR #1164, main `19ccb13`, 2026-09-12).**
+Previously publishing was UNAVAILABLE by architecture/UI only; the interim `_shared/social-publish-containment.ts`
+safeguard now hard-denies Social PUBLICATION at both content-publication seams — `paige-social` `post`
+(Upload-Post) and `meta-schedule-post` (Meta Graph) — for **every caller (all tiers)** with an honest
+`UNAVAILABLE` returned before any provider call, success, or receipt; a configured provider key cannot flip
+it (§13/§38). Tier VISIBILITY is unchanged (publishing was already not-live everywhere); this ships the
+enforcement layer. **Owner ruling 2026-09-12: this is INTERIM containment; Codex PR #1162 (Social Operations
+Gate A — containment + canonical foundation) is canonical and must preserve/strengthen every denial and own
+the definitive Social tier reality when it lands.** Reads and `cancel_scheduled` stay available; account
+`connect` is not wired. Evidence: `docs/evidence/ui-delivery/social-publish-containment.md`.
+
 ### PAIGE Mind — the approved 3D knowledge orb, `/solo/{account}/…` Command Center → Mind
 
 **§66, same commit as the ship. This is a REDESIGN of an existing surface — tier VISIBILITY is
