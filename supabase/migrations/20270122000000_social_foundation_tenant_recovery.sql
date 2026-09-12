@@ -27,6 +27,16 @@ begin
     return;
   end if;
 
+  -- A failed deployment may have completed the archive and canonical table
+  -- creation before a later statement stopped. Never re-archive that canonical
+  -- table on retry; continue below and converge the remaining objects instead.
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='paige_social_posts' and column_name='source_kind'
+  ) then
+    return;
+  end if;
+
   select exists (
     select 1 from information_schema.columns
     where table_schema='public' and table_name='paige_social_posts' and column_name='tenant_id'
@@ -131,8 +141,17 @@ alter table public.paige_social_accounts add constraint paige_social_accounts_co
   status <> 'connected' or
   (credentials_vault_ref is not null and connected_at is not null and last_verified_at is not null)
 );
-alter table public.paige_social_accounts drop constraint if exists paige_social_accounts_tenant_id_id_key;
-alter table public.paige_social_accounts add constraint paige_social_accounts_tenant_id_id_key unique (tenant_id,id);
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid='public.paige_social_accounts'::regclass
+      and conname='paige_social_accounts_tenant_id_id_key'
+  ) then
+    alter table public.paige_social_accounts
+      add constraint paige_social_accounts_tenant_id_id_key unique (tenant_id,id);
+  end if;
+end $$;
 alter table public.paige_social_accounts drop constraint if exists paige_social_accounts_tenant_id_platform_account_id_key;
 alter table public.paige_social_accounts drop constraint if exists paige_social_accounts_provider_account_key;
 alter table public.paige_social_accounts add constraint paige_social_accounts_provider_account_key unique (tenant_id,provider_key,platform,account_id);
@@ -144,7 +163,7 @@ create unique index if not exists paige_social_accounts_selected_platform_key
 comment on column public.paige_social_accounts.credentials_vault_ref is
   'Opaque Vault secret identifier only. Never a token and never exposed through authenticated table grants.';
 
-create table public.paige_social_posts (
+create table if not exists public.paige_social_posts (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete cascade,
   title text not null default 'Untitled Social draft',
@@ -169,7 +188,7 @@ create table public.paige_social_posts (
   constraint paige_social_posts_tenant_id_id_key unique (tenant_id,id)
 );
 
-create table public.paige_social_post_versions (
+create table if not exists public.paige_social_post_versions (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete cascade,
   post_id uuid not null,
@@ -186,7 +205,7 @@ create table public.paige_social_post_versions (
   constraint paige_social_post_versions_tenant_post_id_key unique (tenant_id,post_id,id)
 );
 
-create table public.paige_social_targets (
+create table if not exists public.paige_social_targets (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete cascade,
   post_id uuid not null,
@@ -215,7 +234,7 @@ alter table public.paige_pending_approvals drop constraint if exists paige_pendi
 alter table public.paige_pending_approvals add constraint paige_pending_approvals_type_check
   check (type in ('cs_draft','campaign_send','tier_change','qc_finding','milestone','other','workflow_run','social_publish'));
 
-create table public.paige_social_jobs (
+create table if not exists public.paige_social_jobs (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete cascade,
   target_id uuid not null,
@@ -245,7 +264,7 @@ create table public.paige_social_jobs (
   constraint paige_social_jobs_idempotency_key unique (tenant_id,idempotency_key)
 );
 
-create table public.paige_social_provider_results (
+create table if not exists public.paige_social_provider_results (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete cascade,
   job_id uuid not null,
@@ -268,18 +287,18 @@ create table public.paige_social_provider_results (
   )
 );
 
-create unique index paige_social_provider_results_remote_post_key
+create unique index if not exists paige_social_provider_results_remote_post_key
   on public.paige_social_provider_results(tenant_id,provider_key,provider_account_id,provider_post_id)
   where provider_post_id is not null;
-create unique index paige_social_provider_results_request_key
+create unique index if not exists paige_social_provider_results_request_key
   on public.paige_social_provider_results(tenant_id,provider_key,provider_account_id,provider_request_id)
   where provider_request_id is not null;
-create index paige_social_posts_tenant_status_idx on public.paige_social_posts(tenant_id,status,updated_at desc);
-create index paige_social_versions_post_idx on public.paige_social_post_versions(tenant_id,post_id,version_number desc);
-create index paige_social_targets_account_status_idx on public.paige_social_targets(tenant_id,account_id,status);
-create index paige_social_jobs_due_idx on public.paige_social_jobs(state,next_attempt_at,lease_until)
+create index if not exists paige_social_posts_tenant_status_idx on public.paige_social_posts(tenant_id,status,updated_at desc);
+create index if not exists paige_social_versions_post_idx on public.paige_social_post_versions(tenant_id,post_id,version_number desc);
+create index if not exists paige_social_targets_account_status_idx on public.paige_social_targets(tenant_id,account_id,status);
+create index if not exists paige_social_jobs_due_idx on public.paige_social_jobs(state,next_attempt_at,lease_until)
   where state in ('blocked','expired','outcome_unknown');
-create index paige_social_provider_results_job_idx on public.paige_social_provider_results(tenant_id,job_id,created_at desc);
+create index if not exists paige_social_provider_results_job_idx on public.paige_social_provider_results(tenant_id,job_id,created_at desc);
 
 -- Map only the already tenant-bound 20270117 rows. Targets and provider results
 -- remain solely in the private archive because their JSON cannot prove account,
@@ -396,6 +415,10 @@ begin
 end $$;
 revoke all on function public.paige_social_guard_links() from public,anon,authenticated;
 
+drop trigger if exists paige_social_posts_guard on public.paige_social_posts;
+drop trigger if exists paige_social_targets_guard on public.paige_social_targets;
+drop trigger if exists paige_social_jobs_guard on public.paige_social_jobs;
+drop trigger if exists paige_social_provider_results_guard on public.paige_social_provider_results;
 create trigger paige_social_posts_guard before insert or update on public.paige_social_posts
   for each row execute function public.paige_social_guard_links();
 create trigger paige_social_targets_guard before insert or update on public.paige_social_targets
@@ -415,11 +438,17 @@ begin
 end $$;
 revoke all on function public.paige_social_immutable_evidence() from public,anon,authenticated;
 
+drop trigger if exists paige_social_versions_immutable on public.paige_social_post_versions;
+drop trigger if exists paige_social_provider_results_immutable on public.paige_social_provider_results;
 create trigger paige_social_versions_immutable before update or delete on public.paige_social_post_versions
   for each row execute function public.paige_social_immutable_evidence();
 create trigger paige_social_provider_results_immutable before update or delete on public.paige_social_provider_results
   for each row execute function public.paige_social_immutable_evidence();
 
+drop trigger if exists paige_social_accounts_updated_at on public.paige_social_accounts;
+drop trigger if exists paige_social_posts_updated_at on public.paige_social_posts;
+drop trigger if exists paige_social_targets_updated_at on public.paige_social_targets;
+drop trigger if exists paige_social_jobs_updated_at on public.paige_social_jobs;
 create trigger paige_social_accounts_updated_at before update on public.paige_social_accounts
   for each row execute function public.update_updated_at_column();
 create trigger paige_social_posts_updated_at before update on public.paige_social_posts
@@ -473,6 +502,16 @@ grant execute on function public.social_current_tenant_id() to authenticated;
 
 drop policy if exists psa_read on public.paige_social_accounts;
 drop policy if exists psa_write on public.paige_social_accounts;
+drop policy if exists paige_social_accounts_service on public.paige_social_accounts;
+drop policy if exists paige_social_posts_read on public.paige_social_posts;
+drop policy if exists paige_social_posts_service on public.paige_social_posts;
+drop policy if exists paige_social_versions_read on public.paige_social_post_versions;
+drop policy if exists paige_social_versions_service on public.paige_social_post_versions;
+drop policy if exists paige_social_targets_read on public.paige_social_targets;
+drop policy if exists paige_social_targets_service on public.paige_social_targets;
+drop policy if exists paige_social_jobs_read on public.paige_social_jobs;
+drop policy if exists paige_social_jobs_service on public.paige_social_jobs;
+drop policy if exists paige_social_provider_results_service on public.paige_social_provider_results;
 create policy paige_social_accounts_service on public.paige_social_accounts for all to service_role using (true) with check (true);
 create policy paige_social_posts_read on public.paige_social_posts for select to authenticated
   using (auth.uid() is not null and tenant_id=public.social_current_tenant_id());

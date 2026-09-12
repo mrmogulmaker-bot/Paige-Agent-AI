@@ -4,6 +4,9 @@ set local lock_timeout='2s';
 set local statement_timeout='30s';
 
 \ir ../../supabase/migrations/20270122000000_social_foundation_tenant_recovery.sql
+-- Recovery rehearsal: a retry after the DDL has converged must be a no-op for
+-- preserved data and must recreate replaceable policies/triggers safely.
+\ir ../../supabase/migrations/20270122000000_social_foundation_tenant_recovery.sql
 
 do $$
 begin

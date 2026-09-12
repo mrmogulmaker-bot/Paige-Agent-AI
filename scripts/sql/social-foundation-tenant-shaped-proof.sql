@@ -70,6 +70,7 @@ insert into public.paige_social_posts(
 );
 
 \ir ../../supabase/migrations/20270122000000_social_foundation_tenant_recovery.sql
+\ir ../../supabase/migrations/20270122000000_social_foundation_tenant_recovery.sql
 
 do $$
 begin
