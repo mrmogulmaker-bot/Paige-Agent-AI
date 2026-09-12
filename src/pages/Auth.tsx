@@ -24,6 +24,7 @@ import { readableTextOn, isColorDark } from "@/lib/brand/contrast";
 import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
 import { operatorChooserTarget } from "@/lib/auth/operatorTarget";
 import { isSoloBetaPlan, soloAuthRecoveryState, soloBetaDisplayIntent, soloBetaSignupPath } from "@/lib/auth/soloBetaAcquisition";
+import { signUpWithReferral } from "@/lib/signUpWithReferral";
 
 const authSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }),
@@ -363,17 +364,21 @@ const Auth = () => {
           const intent = soloBetaDisplayIntent();
           signupPlanIntentRef.current = intent;
           stashPlanIntent(intent);
-          const { data: signupData, error: signupError } = await supabase.auth.signUp({
+          const consentTimestamp = new Date().toISOString();
+          const { data: signupData, error: signupError } = await signUpWithReferral({
             email,
             password,
-            options: {
-              emailRedirectTo: authRedirectWithPlan(window.location.origin, intent),
-              data: {
-                full_name: fullName,
-                marketing_opt_in: consentMarketing,
-                phone: consentSms ? normalizedMobile : null,
-                sms_consent: consentSms,
-              },
+            fullName,
+            redirectTo: authRedirectWithPlan(window.location.origin, intent),
+            extraData: {
+              signup_offer_code: "paige-solo-beta-monthly-v1",
+              consent_agreements: true,
+              consent_data_usage: true,
+              consent_marketing: consentMarketing,
+              consent_timestamp: consentTimestamp,
+              phone: consentSms ? normalizedMobile : null,
+              sms_consent: consentSms,
+              sms_consent_source_url: `${window.location.origin}/auth`,
             },
           });
           if (signupError) {
@@ -974,7 +979,7 @@ const Auth = () => {
               </Button>
             </form>
 
-            {!isClientInvite && <>
+            {!isClientInvite && isLogin && <>
             {/* OAuth Divider */}
             <div className="relative">
               <div className="absolute inset-0 flex items-center">

@@ -131,6 +131,10 @@ export function WorkspaceProvisioner({ planSlug }: Props) {
         window.location.assign(await resolveLandingRoute(userId));
         return;
       }
+      if (code === "checkout_verification_pending") {
+        window.location.assign("/welcome?checkout=success");
+        return;
+      }
       throw new Error("checkout_failed");
     }
     const url = (data as { url?: string } | null)?.url;

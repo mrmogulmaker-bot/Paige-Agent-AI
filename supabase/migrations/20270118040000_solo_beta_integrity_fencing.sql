@@ -380,7 +380,7 @@ BEGIN
 
   IF _sub.provider_event_created_at IS NOT NULL AND (
       _provider_created_at < _sub.provider_event_created_at OR
-      (_provider_created_at = _sub.provider_event_created_at AND _precedence <= _sub.provider_event_precedence)
+      (_provider_created_at = _sub.provider_event_created_at AND _precedence < _sub.provider_event_precedence)
     ) THEN
     _outcome := 'ignored_stale';
   ELSE
@@ -454,4 +454,75 @@ REVOKE ALL ON FUNCTION public.solo_beta_expire_checkout(text,text,timestamptz,uu
   FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.solo_beta_expire_checkout(text,text,timestamptz,uuid,text,text)
   TO service_role;
+
+-- A confirmation-required email signup has no authenticated browser session at
+-- creation time. Persist the exact Solo signup consent inside the auth.users
+-- transaction so verification, refresh, and callback recovery cannot skip it.
+CREATE OR REPLACE FUNCTION public.persist_solo_beta_signup_consent()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  _sms boolean := coalesce((NEW.raw_user_meta_data->>'sms_consent')::boolean, false);
+  _phone text := public.normalize_e164_phone(NEW.raw_user_meta_data->>'phone');
+  _source_url text := nullif(NEW.raw_user_meta_data->>'sms_consent_source_url', '');
+  _doc_count integer;
+BEGIN
+  IF NEW.raw_user_meta_data->>'signup_offer_code' IS DISTINCT FROM 'paige-solo-beta-monthly-v1' THEN
+    RETURN NEW;
+  END IF;
+
+  IF coalesce((NEW.raw_user_meta_data->>'consent_agreements')::boolean, false) IS NOT TRUE
+    OR coalesce((NEW.raw_user_meta_data->>'consent_data_usage')::boolean, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'solo_beta_signup_consent_required';
+  END IF;
+
+  UPDATE public.profiles
+  SET consent_privacy_policy = true,
+      consent_data_usage = true,
+      consent_marketing = coalesce((NEW.raw_user_meta_data->>'consent_marketing')::boolean, false),
+      consent_timestamp = coalesce(consent_timestamp, NEW.created_at)
+  WHERE user_id = NEW.id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'solo_beta_profile_missing'; END IF;
+
+  INSERT INTO public.legal_acceptances(
+    user_id, document_slug, document_version, document_id, accepted_at, context
+  )
+  SELECT NEW.id, d.slug, d.version, d.id, NEW.created_at,
+    jsonb_build_object('source','solo_beta_signup','offer_code','paige-solo-beta-monthly-v1')
+  FROM public.legal_documents d
+  WHERE d.is_current = true AND d.required_at_signup = true
+  ON CONFLICT (user_id, document_slug, document_version) DO NOTHING;
+
+  SELECT count(*)::integer INTO _doc_count
+  FROM public.legal_documents d
+  WHERE d.is_current = true AND d.required_at_signup = true;
+  IF _doc_count = 0 THEN RAISE EXCEPTION 'solo_beta_signup_documents_unavailable'; END IF;
+
+  IF _sms THEN
+    IF _phone IS NULL OR _source_url IS NULL OR _source_url !~ '^https://[^[:space:]]+$' THEN
+      RAISE EXCEPTION 'solo_beta_sms_consent_evidence_invalid';
+    END IF;
+    INSERT INTO public.communications_consents(
+      user_id, email, phone, email_transactional, email_marketing,
+      sms_transactional, sms_marketing, voice_marketing, source,
+      source_url, disclosure_version, consent_granted_at, revoked_at
+    ) VALUES (
+      NEW.id, lower(NEW.email), _phone, true,
+      coalesce((NEW.raw_user_meta_data->>'consent_marketing')::boolean, false),
+      true, false, false, 'solo_beta_signup', _source_url,
+      'paige-platform-account-service-v1-2026-08-31', NEW.created_at, NULL
+    ) ON CONFLICT DO NOTHING;
+  END IF;
+
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.persist_solo_beta_signup_consent() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS zz_persist_solo_beta_signup_consent ON auth.users;
+CREATE TRIGGER zz_persist_solo_beta_signup_consent
+AFTER INSERT ON auth.users
+FOR EACH ROW EXECUTE FUNCTION public.persist_solo_beta_signup_consent();
 COMMIT;

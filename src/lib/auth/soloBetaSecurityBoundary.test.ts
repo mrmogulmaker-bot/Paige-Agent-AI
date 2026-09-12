@@ -17,6 +17,11 @@ const acceptInvite = readFileSync("src/pages/AcceptInvite.tsx", "utf8");
 const auth = readFileSync("src/pages/Auth.tsx", "utf8");
 const portal = readFileSync("supabase/functions/solo-beta-billing-portal/index.ts", "utf8");
 const routeGate = readFileSync("src/components/auth/RequireSoloBetaEntitlement.tsx", "utf8");
+const legal = readFileSync("src/lib/legal/useLegalDocuments.ts", "utf8");
+const offerStatus = readFileSync("supabase/functions/solo-beta-offer-status/index.ts", "utf8");
+const pricing = readFileSync("src/pages/Pricing.tsx", "utf8");
+const provisionerUi = readFileSync("src/components/onboarding/WorkspaceProvisioner.tsx", "utf8");
+const functionConfig = readFileSync("supabase/config.toml", "utf8");
 
 describe("Solo Beta security boundary", () => {
   it("encodes one immutable test-mode 7450 USD monthly offer with a 30-day trial", () => {
@@ -106,6 +111,39 @@ describe("Solo Beta security boundary", () => {
     expect(migration).toContain("THEN 'verification_pending' ELSE 'retryable_failure'");
   });
 
+  it("keeps a completed Checkout in server-verification recovery instead of opening another subscription", () => {
+    expect(checkout).toContain('existing.status === "complete"');
+    expect(checkout).toContain('error: "checkout_verification_pending"');
+    expect(provisionerUi).toContain('code === "checkout_verification_pending"');
+    expect(provisionerUi).toContain('/welcome?checkout=success');
+  });
+
+  it("persists confirmation-required signup consent transactionally and idempotently", () => {
+    expect(auth).toContain("signUpWithReferral");
+    expect(auth).toContain('signup_offer_code: "paige-solo-beta-monthly-v1"');
+    expect(integrity).toContain("CREATE OR REPLACE FUNCTION public.persist_solo_beta_signup_consent()");
+    expect(integrity).toContain("AFTER INSERT ON auth.users");
+    expect(integrity).toContain("d.required_at_signup = true");
+    expect(checkout).toContain('error: "solo_beta_signup_consent_incomplete"');
+    expect(legal).toContain('onConflict: "user_id,document_slug,document_version"');
+    expect(legal).toContain("ignoreDuplicates: true");
+  });
+
+  it("advertises enrollment only from a safe exact-contract server readiness read", () => {
+    expect(functionConfig).toMatch(/\[functions\.solo-beta-offer-status\][\s\S]*verify_jwt = false/);
+    expect(offerStatus).toContain('offer.status === "test_ready"');
+    expect(offerStatus).toContain('offer.provider_mode === "test"');
+    expect(offerStatus).not.toContain("stripe_product_id:");
+    expect(offerStatus).not.toContain("stripe_price_id:");
+    expect(pricing).toContain('availability !== "available"');
+    expect(pricing).toContain("Enrollment is not open yet.");
+  });
+
+  it("allows equal-time lifecycle delivery to converge while rejecting lower-precedence stale events", () => {
+    expect(integrity).toContain("_precedence < _sub.provider_event_precedence");
+    expect(integrity).not.toContain("_precedence <= _sub.provider_event_precedence");
+  });
+
   it("authorizes a freshly provisioned Solo owner from tenant scope without a fake global admin role", () => {
     expect(provisioner).toContain("values (_owner, 'user')");
     expect(provisioner).toContain("values (_tenant.id, _owner, 'owner', 'active', true, now())");
@@ -191,6 +229,8 @@ describe("Solo Beta security boundary", () => {
     expect(joinWorkspace).not.toContain("Need an account? Create one");
     expect(acceptInvite).toContain("Client Portal enrollment is not open");
     expect(auth).not.toContain('import { signUpTenant }');
+    expect(auth).not.toContain("supabase.auth.signUp({");
+    expect(auth).toContain("!isClientInvite && isLogin && <>");
     expect(auth).toContain("New Client Portal accounts are not open during the Solo Beta");
     expect(auth).toContain("!isClientInvite && <>");
     expect(auth).not.toContain("Create a free account");

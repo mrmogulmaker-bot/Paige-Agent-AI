@@ -47,6 +47,8 @@ describe("Solo-only beta acquisition contract", () => {
     expect(auth).toContain("Start Paige Solo Beta");
     expect(auth).toContain("Start your 30-day trial. Then $74.50/month unless you cancel before your first paid renewal.");
     expect(auth).toContain("Create Solo Beta account");
+    expect(auth).toContain("signUpWithReferral");
+    expect(auth).toContain('signup_offer_code: "paige-solo-beta-monthly-v1"');
     expect(auth).not.toContain("14-day");
     expect(auth).not.toContain("no trial");
     expect(auth).not.toContain("$149");

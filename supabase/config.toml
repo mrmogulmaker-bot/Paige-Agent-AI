@@ -540,6 +540,9 @@ entrypoint = "./functions/business-mission-action/index.ts"
 # static_files = [ "./functions/business-mission-action/*.html" ]
 
 # Solo beta checkout and enrollment status require an authenticated Supabase user.
+[functions.solo-beta-offer-status]
+verify_jwt = false
+
 [functions.solo-beta-subscription-checkout]
 verify_jwt = true
 

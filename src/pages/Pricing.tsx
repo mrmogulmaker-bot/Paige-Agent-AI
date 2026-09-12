@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle, Sparkles, Building2, Users, Loader2 } from "lucide-react";
+import { CheckCircle, Sparkles, Building2, Users, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -49,6 +49,20 @@ export default function Pricing() {
   const navigate = useNavigate();
   const [plan, setPlan] = useState(APPROVED_SOLO_PLAN);
   const [continuing, setContinuing] = useState(false);
+  const [availability, setAvailability] = useState<"loading" | "available" | "unavailable">("loading");
+
+  const checkAvailability = useCallback(async () => {
+    setAvailability("loading");
+    const { data, error } = await supabase.functions.invoke("solo-beta-offer-status", { body: {} });
+    const result = data as { available?: boolean; offer?: { unit_amount_cents?: number; currency?: string; interval?: string; interval_count?: number; trial_days?: number } } | null;
+    const exact = !error && result?.available === true
+      && result.offer?.unit_amount_cents === 7450
+      && result.offer.currency === "usd"
+      && result.offer.interval === "month"
+      && result.offer.interval_count === 1
+      && result.offer.trial_days === 30;
+    setAvailability(exact ? "available" : "unavailable");
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,7 +80,10 @@ export default function Pricing() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => { void checkAvailability(); }, [checkAvailability]);
+
   const continueToSolo = useCallback(async () => {
+    if (availability !== "available") return;
     setContinuing(true);
     try {
       const { data } = await supabase.auth.getSession();
@@ -92,7 +109,7 @@ export default function Pricing() {
       toast.error("We couldn't confirm your account. Please try again.");
       setContinuing(false);
     }
-  }, [navigate]);
+  }, [availability, navigate]);
 
   return (
     <>
@@ -107,7 +124,9 @@ export default function Pricing() {
             <Badge className="mb-4 border-primary/20 bg-primary/10 text-primary">
               <Sparkles className="mr-1.5 h-3 w-3" /> Paige Solo Beta
             </Badge>
-            <h1 className="text-4xl font-bold text-foreground lg:text-5xl">Paige Solo is ready for your business.</h1>
+            <h1 className="text-4xl font-bold text-foreground lg:text-5xl">
+              {availability === "available" ? "Paige Solo is ready for your business." : availability === "loading" ? "Checking Solo Beta enrollment…" : "Paige Solo Beta is preparing its next openings."}
+            </h1>
             <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
               Paige Solo is the beta currently available. We are building the broader platform deliberately; other account types are not yet open for enrollment.
             </p>
@@ -145,9 +164,19 @@ export default function Pricing() {
               </ul>
             </div>
 
-            <Button variant="gold" size="lg" className="w-full font-bold" disabled={continuing} onClick={continueToSolo}>
-              {continuing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Checking your account…</> : "Start your 30-day trial"}
-            </Button>
+            {availability === "unavailable" ? (
+              <div className="rounded-xl border border-border bg-muted/40 p-4 text-left" role="status">
+                <p className="text-sm font-semibold text-foreground">Enrollment is not open yet.</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">The Solo Beta offer is not fully configured in this environment. No account or subscription has been created.</p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => void checkAvailability()}>
+                  <RefreshCw className="mr-2 h-4 w-4" />Check again
+                </Button>
+              </div>
+            ) : (
+              <Button variant="gold" size="lg" className="w-full font-bold" disabled={continuing || availability !== "available"} onClick={continueToSolo}>
+                {continuing || availability === "loading" ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{continuing ? "Checking your account…" : "Checking enrollment…"}</> : "Start your 30-day trial"}
+              </Button>
+            )}
           </Card>
 
           <p className="mx-auto mt-10 max-w-2xl text-center text-xs leading-relaxed text-muted-foreground">

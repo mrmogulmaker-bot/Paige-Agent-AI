@@ -2,7 +2,7 @@
 -- Synthetic fixtures only; every mutation rolls back.
 BEGIN;
 
-SELECT plan(17);
+SELECT plan(20);
 
 SELECT ok(
   NOT has_function_privilege('authenticated', 'public.provision_tenant(text,text,text,text,text,text,integer)', 'EXECUTE'),
@@ -44,6 +44,33 @@ SELECT ok(
 SELECT ok(
   has_function_privilege('service_role', 'public.create_contact(text,text,text,text,text,text,text,text,text[],text,text,uuid,uuid,uuid,text)', 'EXECUTE'),
   'service contact creation remains available for validated internal callers'
+);
+
+INSERT INTO auth.users (id, aud, role, email, raw_user_meta_data, created_at) VALUES
+  (
+    'b1900000-0000-0000-0000-000000000099', 'authenticated', 'authenticated',
+    'solo-consent-proof@tests.invalid',
+    '{"signup_offer_code":"paige-solo-beta-monthly-v1","consent_agreements":true,"consent_data_usage":true,"consent_marketing":false,"sms_consent":false}'::jsonb,
+    now()
+  );
+
+SELECT ok(
+  (SELECT consent_privacy_policy AND consent_data_usage AND consent_timestamp IS NOT NULL
+   FROM public.profiles WHERE user_id='b1900000-0000-0000-0000-000000000099'),
+  'Solo identity creation persists required profile consent in the auth transaction'
+);
+SELECT is(
+  (SELECT count(*)::integer FROM public.legal_acceptances
+   WHERE user_id='b1900000-0000-0000-0000-000000000099'),
+  (SELECT count(*)::integer FROM public.legal_documents WHERE is_current=true AND required_at_signup=true),
+  'Solo identity creation records every current required signup document'
+);
+SELECT throws_ok(
+  $$INSERT INTO auth.users (id,aud,role,email,raw_user_meta_data,created_at) VALUES
+    ('b1900000-0000-0000-0000-000000000098','authenticated','authenticated','solo-consent-denied@tests.invalid',
+     '{"signup_offer_code":"paige-solo-beta-monthly-v1","consent_agreements":false,"consent_data_usage":true}'::jsonb,now())$$,
+  'P0001', 'solo_beta_signup_consent_required',
+  'Solo identity creation fails closed when required consent is absent'
 );
 
 INSERT INTO auth.users (id, aud, role, email) VALUES

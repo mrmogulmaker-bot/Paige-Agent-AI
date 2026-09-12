@@ -52,14 +52,15 @@ Deno.serve(async (req) => {
   const user = authData.user;
   if (authError || !user) return json(401, { error: "authentication_required" });
 
-  const [ownedResult, membershipsResult, subscriptionHistoryResult, intakeResult, offerResult] = await Promise.all([
+  const [ownedResult, membershipsResult, subscriptionHistoryResult, intakeResult, offerResult, profileResult] = await Promise.all([
     admin.from("tenants").select("id").eq("owner_user_id", user.id).is("parent_tenant_id", null).limit(1),
     admin.from("tenant_members").select("tenant_id").eq("user_id", user.id).eq("status", "active").limit(1),
     admin.from("user_subscriptions").select("stripe_subscription_id,status").eq("user_id", user.id).not("stripe_subscription_id", "is", null).limit(1),
     admin.from("signup_intake").select("plan_slug,billing_period,account_type,agreement_slug,agreement_version,terms_accepted_at").eq("user_id", user.id).maybeSingle(),
     admin.from("platform_subscription_offers").select("offer_code,status,provider_mode,stripe_product_id,stripe_price_id,unit_amount_cents,currency,billing_interval,interval_count,trial_days").eq("offer_code", SOLO_BETA_OFFER_CODE).maybeSingle(),
+    admin.from("profiles").select("consent_privacy_policy,consent_data_usage,consent_timestamp").eq("user_id", user.id).maybeSingle(),
   ]);
-  if (ownedResult.error || membershipsResult.error || subscriptionHistoryResult.error || intakeResult.error || offerResult.error) {
+  if (ownedResult.error || membershipsResult.error || subscriptionHistoryResult.error || intakeResult.error || offerResult.error || profileResult.error) {
     return json(503, { error: "solo_beta_eligibility_unavailable" });
   }
   const owned = ownedResult.data;
@@ -67,11 +68,26 @@ Deno.serve(async (req) => {
   const subscriptionHistory = subscriptionHistoryResult.data;
   const intake = intakeResult.data;
   const offer = offerResult.data;
+  const profile = profileResult.data;
   if ((owned?.length ?? 0) > 0 || (memberships?.length ?? 0) > 0 || (subscriptionHistory?.length ?? 0) > 0) {
     return json(409, { error: "existing_account_not_beta_eligible" });
   }
   if (!intake || intake.plan_slug !== "solo" || intake.billing_period !== "monthly" || intake.account_type !== "standalone" || !intake.terms_accepted_at || intake.agreement_slug !== "saas-standalone" || !intake.agreement_version) {
     return json(409, { error: "solo_beta_intake_incomplete" });
+  }
+  if (!profile?.consent_privacy_policy || !profile.consent_data_usage || !profile.consent_timestamp) {
+    return json(409, { error: "solo_beta_signup_consent_incomplete" });
+  }
+  const { data: requiredDocs, error: requiredDocsError } = await admin.from("legal_documents")
+    .select("slug,version").eq("is_current", true).eq("required_at_signup", true);
+  if (requiredDocsError || !requiredDocs?.length) return json(503, { error: "solo_beta_eligibility_unavailable" });
+  const { data: signupAcceptances, error: signupAcceptancesError } = await admin.from("legal_acceptances")
+    .select("document_slug,document_version").eq("user_id", user.id)
+    .in("document_slug", requiredDocs.map((document) => document.slug));
+  if (signupAcceptancesError) return json(503, { error: "solo_beta_eligibility_unavailable" });
+  const accepted = new Set((signupAcceptances ?? []).map((row) => `${row.document_slug}:${row.document_version}`));
+  if (requiredDocs.some((document) => !accepted.has(`${document.slug}:${document.version}`))) {
+    return json(409, { error: "solo_beta_signup_consent_incomplete" });
   }
   const { data: currentAgreement, error: agreementError } = await admin.from("legal_documents")
     .select("version").eq("slug", "saas-standalone").eq("is_current", true).maybeSingle();
@@ -129,6 +145,12 @@ Deno.serve(async (req) => {
       if (row?.existing_session_id) {
         const existing = await stripe.checkout.sessions.retrieve(row.existing_session_id);
         if (existing.status === "open" && existing.url) return json(200, { url: existing.url, reference_id: row.reference_id, resumed: true });
+        // A completed Checkout may be waiting on a delayed signed webhook. Never
+        // replace it with a second subscription attempt: the return surface polls
+        // fresh server state and gives the provider delivery time to converge.
+        if (existing.status === "complete") {
+          return json(409, { error: "checkout_verification_pending", reference_id: row.reference_id });
+        }
         if (!fencingToken) throw new Error("checkout_fence_missing");
         const { error: closeError } = await admin.rpc("solo_beta_close_checkout", {
           _user_id: user.id, _attempt: attempt, _fencing_token: fencingToken,
