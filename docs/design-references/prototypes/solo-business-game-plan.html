@@ -1,0 +1,854 @@
+<title>Solo Business Game Plan</title>
+<style>
+/* ─────────────────────────────────────────────────────────────────────────────
+   THROWAWAY REVIEW PROTOTYPE — Solo Command Center › Your Business Game Plan.
+   Read-only. Every value is deterministic local mock data. Nothing here calls a
+   network, writes a record, sends a message, or touches production.
+
+   Tokens are COPIED VERBATIM from src/index.css (Obsidian dark / Mineral light).
+   Type ladder, radii, elevation and gold discipline are ported, not authored:
+   visual direction belongs to Claude Design (CLAUDE.md §00). This prototype
+   exists to review INFORMATION ARCHITECTURE and FLOW, not appearance.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+:root, [data-pg] {
+  --pg-font-display: "Schibsted Grotesk", "Segoe UI Variable Display", system-ui, sans-serif;
+  --pg-font-ui: "Schibsted Grotesk", "Segoe UI Variable Text", system-ui, sans-serif;
+  --pg-font-editorial: "Gambetta", "Newsreader", "Iowan Old Style", Baskerville, serif;
+  --pg-font-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --pg-t-label: 11px; --pg-t-body: 13px; --pg-t-lead: 16px; --pg-t-title: 21px;
+  --pg-r-plate: 13px; --pg-r-chip: 9px; --pg-r-seal: 11px; --pg-r-pill: 999px;
+}
+
+/* Obsidian — the dark theme, verbatim from src/index.css */
+:root {
+  --pg-env: #08070b; --pg-nav: #0d0b11; --pg-canvas: #100e14; --pg-spine: #121017;
+  --pg-workspace: #16131a; --pg-surface: #19161e; --pg-raised: #211d27;
+  --pg-artifact: #e9e4da;
+  --pg-line-soft: rgba(244,237,222,.115); --pg-line: rgba(244,237,222,.195);
+  --pg-line-strong: rgba(244,237,222,.30); --pg-line-authority: rgba(234,213,170,.40);
+  --pg-ink: #f6f2ea; --pg-ink-2: #d6d0c9; --pg-muted: #aca69d; --pg-faint: #969089;
+  --pg-gold-core: #fff0cf; --pg-gold: #ead5aa; --pg-gold-deep: #c7a978;
+  --pg-gold-fill: #d4a752; --pg-gold-bloom: rgba(240,200,106,.28);
+  --pg-graphite: #2a2730; --pg-lift: rgba(255,255,255,.018);
+  --pg-violet: #9b8de0; --pg-positive: #8fd1ae; --pg-warning: #edc17f; --pg-negative: #eda093;
+  --pg-e2: 0 1px 2px rgba(0,0,0,.45);
+  --pg-rim: inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.5);
+  --pg-lift-1: inset 0 1px 0 rgba(255,255,255,.055), 0 1px 1px rgba(0,0,0,.3), 0 4px 12px -4px rgba(0,0,0,.42);
+  --pg-lift-2: inset 0 1px 0 rgba(255,255,255,.07), 0 2px 4px rgba(0,0,0,.32), 0 16px 34px -12px rgba(0,0,0,.52);
+  --k-agent: #a99ad6;
+  color-scheme: dark;
+}
+
+/* Mineral — the light theme, verbatim from src/index.css */
+[data-theme="light"] {
+  --pg-env: #e8e5df; --pg-nav: #f4f1eb; --pg-canvas: #fbf9f5; --pg-spine: #f1eee8;
+  --pg-workspace: #f7f4ee; --pg-surface: #f5f2ec; --pg-raised: #fffdf8;
+  --pg-artifact: #fffdf8;
+  --pg-line-soft: rgba(45,40,50,.105); --pg-line: rgba(45,40,50,.185);
+  --pg-line-strong: rgba(45,40,50,.28); --pg-line-authority: rgba(155,120,60,.44);
+  --pg-ink: #201e23; --pg-ink-2: #3d3941; --pg-muted: #67616b; --pg-faint: #6a646e;
+  --pg-gold-core: #6f5636; --pg-gold: #8b7049; --pg-gold-deep: #7a5c2e;
+  --pg-gold-fill: #c9a96a; --pg-gold-bloom: rgba(201,169,106,.30);
+  --pg-graphite: #b9b2a6; --pg-lift: rgba(45,40,50,.03);
+  --pg-violet: #655a96; --pg-positive: #327458; --pg-warning: #986322; --pg-negative: #a5483d;
+  --pg-e2: 0 1px 2px rgba(45,40,50,.10);
+  --pg-rim: inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 0 rgba(45,40,50,.07);
+  --pg-lift-1: inset 0 1px 0 rgba(255,255,255,.9), 0 1px 1px rgba(45,40,50,.055), 0 4px 10px -4px rgba(45,40,50,.12);
+  --pg-lift-2: inset 0 1px 0 rgba(255,255,255,.95), 0 2px 4px rgba(45,40,50,.07), 0 14px 30px -12px rgba(45,40,50,.17);
+  --k-agent: #6f5eb0;
+  color-scheme: light;
+}
+
+body { background: var(--pg-env); color: var(--pg-ink); font: 400 var(--pg-t-body)/1.55 var(--pg-font-ui); letter-spacing: -.002em; }
+button { font: inherit; color: inherit; cursor: pointer; }
+h1,h2,h3,h4,p,ul,ol,dl,dd,figure { margin: 0; }
+ul { padding: 0; list-style: none; }
+
+/* ── Review layer — deliberately OUTSIDE the product chrome ───────────────── */
+#rv { position: sticky; top: 0; z-index: 40; background: #121016; color: #ece7dd;
+  border-bottom: 1px solid rgba(244,237,222,.22); padding: 9px clamp(10px,2vw,18px); }
+#rv .rv-in { display: flex; flex-wrap: wrap; gap: 14px 20px; align-items: center; max-width: 1600px; margin: 0 auto; }
+#rv .rv-brand { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+#rv .rv-brand b { font: 700 12.5px var(--pg-font-ui); letter-spacing: -.01em; }
+#rv .rv-brand span { font: 500 10.5px var(--pg-font-data); color: #b3aba1; text-transform: uppercase; letter-spacing: .07em; }
+.rv-grp { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+.rv-grp > label { font: 600 10px var(--pg-font-data); text-transform: uppercase; letter-spacing: .08em; color: #9b938a; }
+.rv-btn { background: rgba(255,255,255,.05); border: 1px solid rgba(244,237,222,.2); color: #e6e0d6;
+  border-radius: var(--pg-r-chip); padding: 4px 9px; font: 600 11px var(--pg-font-ui); }
+.rv-btn[aria-pressed="true"], .rv-btn.on { background: #ece7dd; color: #16131a; border-color: #ece7dd; }
+.rv-btn:focus-visible { outline: 2px solid #9b8de0; outline-offset: 2px; }
+#rv select { background: rgba(255,255,255,.05); color: #e6e0d6; border: 1px solid rgba(244,237,222,.2);
+  border-radius: var(--pg-r-chip); padding: 4px 8px; font: 600 11px var(--pg-font-ui); }
+
+/* ── Stage / viewport frame ───────────────────────────────────────────────── */
+#stage { padding: 16px clamp(8px,2vw,20px) 30px; display: flex; justify-content: center; }
+.frame { width: 100%; max-width: 1340px; min-width: 0; }
+#stage[data-vp="tablet"] .frame { max-width: 834px; }
+#stage[data-vp="mobile"] .frame { max-width: 402px; }
+.vp-note { font: 500 10.5px var(--pg-font-data); color: var(--pg-faint); text-align: center;
+  padding-bottom: 7px; text-transform: uppercase; letter-spacing: .07em; }
+
+/* ── The Solo shell ───────────────────────────────────────────────────────── */
+.shell { display: grid; grid-template-columns: 52px minmax(0,1fr) 372px; height: 720px;
+  background: var(--pg-canvas); border: 1px solid var(--pg-line); border-radius: var(--pg-r-plate);
+  overflow: hidden; box-shadow: var(--pg-lift-2); }
+#stage[data-vp="tablet"] .shell { grid-template-columns: 52px minmax(0,1fr); height: 700px; }
+#stage[data-vp="mobile"] .shell { grid-template-columns: minmax(0,1fr); height: 720px; }
+
+.rail { background: var(--pg-nav); border-right: 1px solid var(--pg-line-soft);
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 11px 0; }
+#stage[data-vp="mobile"] .rail { display: none; }
+.rail button { width: 34px; height: 32px; border: 0; background: transparent; border-radius: var(--pg-r-chip);
+  display: grid; place-items: center; color: var(--pg-faint); }
+.rail button[aria-current="page"] { background: var(--pg-surface); color: var(--pg-ink); box-shadow: var(--pg-rim); }
+.rail button:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 1px; }
+.rail hr { width: 20px; border: 0; border-top: 1px solid var(--pg-line-soft); margin: 6px 0; }
+
+/* Work column */
+.work { display: flex; flex-direction: column; min-width: 0; background: var(--pg-workspace); }
+.cc-tabs { display: flex; gap: 4px; min-height: 43px; align-items: stretch; flex: 0 0 auto;
+  padding: 0 clamp(12px,2.2vw,26px); background: var(--pg-spine); border-bottom: 1px solid var(--pg-line); }
+.cc-tabs button { position: relative; display: inline-flex; align-items: center; gap: 7px; border: 0;
+  padding: 0 11px; background: transparent; color: var(--pg-muted); font-size: var(--pg-t-label); font-weight: 650; white-space: nowrap; }
+.cc-tabs button[aria-selected="true"] { color: var(--pg-ink); font-weight: 800; }
+.cc-tabs button[aria-selected="true"]::after { content: ""; position: absolute; inset: auto 8px -1px; height: 2px;
+  border-radius: 2px; background: var(--pg-gold); }
+.cc-tabs button:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: -2px; border-radius: 4px; }
+.cc-body { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; padding: clamp(14px,2vw,24px); }
+
+.gp-head { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; padding-bottom: 4px; }
+.gp-head h1 { font: 700 var(--pg-t-title)/1.15 var(--pg-font-display); letter-spacing: -.021em; min-width: 0; }
+.gp-head .eyebrow { font: 700 10px var(--pg-font-data); text-transform: uppercase; letter-spacing: .1em; color: var(--pg-faint); display: block; margin-bottom: 5px; }
+.gp-sub { color: var(--pg-muted); font-size: var(--pg-t-body); max-width: 62ch; margin-top: 7px; }
+
+/* Truth pills — the shipped vocabulary from SoloPaigeWorkspace.tsx */
+.truth { display: inline-flex; align-items: center; gap: 5px; border-radius: var(--pg-r-pill);
+  padding: 2px 9px; font: 700 10px var(--pg-font-data); text-transform: uppercase; letter-spacing: .07em;
+  border: 1px solid var(--pg-line); color: var(--pg-muted); white-space: nowrap; }
+.truth::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.truth-live { color: var(--pg-positive); border-color: color-mix(in srgb, var(--pg-positive) 42%, transparent); }
+.truth-partial { color: var(--pg-warning); border-color: color-mix(in srgb, var(--pg-warning) 42%, transparent); }
+.truth-unavailable { color: var(--pg-faint); }
+.truth-proposed { color: var(--pg-violet); border-color: color-mix(in srgb, var(--pg-violet) 42%, transparent); }
+.truth-blocked { color: var(--pg-negative); border-color: color-mix(in srgb, var(--pg-negative) 45%, transparent); }
+
+.gp-grid { display: grid; gap: 11px; margin-top: 16px; grid-template-columns: repeat(auto-fit, minmax(248px, 1fr)); }
+.card { background: var(--pg-surface); border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-plate);
+  padding: 13px 14px; min-width: 0; box-shadow: var(--pg-rim); }
+.card h3 { font: 700 var(--pg-t-body) var(--pg-font-ui); letter-spacing: -.008em; margin-bottom: 5px; }
+.card p { color: var(--pg-muted); font-size: 12px; line-height: 1.5; }
+.card .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 7px; }
+
+/* Move rows — the plan itself */
+.moves { margin-top: 18px; border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-plate); overflow: hidden; background: var(--pg-surface); }
+.moves-head { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 13px; border-bottom: 1px solid var(--pg-line-soft); background: var(--pg-spine); }
+.moves-head b { font: 700 var(--pg-t-label) var(--pg-font-ui); text-transform: uppercase; letter-spacing: .07em; color: var(--pg-muted); }
+.move { display: grid; grid-template-columns: 26px minmax(0,1fr) auto; gap: 11px; align-items: start;
+  padding: 12px 13px; border-bottom: 1px solid var(--pg-line-soft); }
+.move:last-child { border-bottom: 0; }
+.move-glyph { width: 26px; height: 26px; border-radius: var(--pg-r-chip); display: grid; place-items: center;
+  font: 700 10px var(--pg-font-data); border: 1px solid var(--pg-line); color: var(--pg-muted); background: var(--pg-raised); }
+.move b { display: block; font: 650 var(--pg-t-body) var(--pg-font-ui); letter-spacing: -.006em; }
+.move small { display: block; color: var(--pg-faint); font-size: 11.5px; margin-top: 3px; line-height: 1.5; }
+.move .owner { color: var(--pg-ink-2); font: 600 11px var(--pg-font-data); letter-spacing: .02em; }
+
+/* Empty / first-use */
+.firstuse { margin-top: 18px; border: 1px dashed var(--pg-line); border-radius: var(--pg-r-plate);
+  padding: 20px; background: color-mix(in srgb, var(--pg-surface) 60%, transparent); }
+.firstuse h3 { font: 700 var(--pg-t-lead) var(--pg-font-display); letter-spacing: -.014em; margin-bottom: 6px; }
+.firstuse p { color: var(--pg-muted); font-size: 12.5px; max-width: 54ch; }
+.asks { margin-top: 13px; display: grid; gap: 7px; }
+.ask { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid var(--pg-line-soft);
+  border-radius: var(--pg-r-chip); background: var(--pg-surface); font-size: 12.5px; }
+.ask i { width: 5px; height: 5px; border-radius: 50%; background: var(--pg-gold-deep); flex: 0 0 auto; }
+
+/* ── PAIGE rail — ONE conversation ─────────────────────────────────────────── */
+.paige { background: var(--pg-spine); border-left: 1px solid var(--pg-line); display: flex; flex-direction: column; min-width: 0; }
+#stage[data-vp="tablet"] .paige, #stage[data-vp="mobile"] .paige { display: none; }
+#stage[data-vp="mobile"][data-mobilepaige="1"] .paige { display: flex; grid-column: 1; }
+#stage[data-vp="mobile"][data-mobilepaige="1"] .work { display: none; }
+.pg-head { display: flex; align-items: center; gap: 9px; padding: 11px 13px; border-bottom: 1px solid var(--pg-line-soft); flex: 0 0 auto; }
+.pg-mark { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; flex: 0 0 auto;
+  border: 1px solid var(--pg-line-authority); background: var(--pg-raised); font: 700 11px var(--pg-font-data); color: var(--pg-gold); }
+.pg-head b { font: 700 12.5px var(--pg-font-ui); letter-spacing: -.005em; display: block; }
+.pg-head small { display: block; color: var(--pg-faint); font-size: 10.5px; }
+.pg-thread { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 13px; display: flex; flex-direction: column; gap: 13px; }
+.msg-you { align-self: flex-end; max-width: 88%; background: var(--pg-raised); border: 1px solid var(--pg-line-soft);
+  border-radius: var(--pg-r-plate); padding: 9px 11px; font-size: 12.5px; }
+.msg-you small { display: block; font: 700 9.5px var(--pg-font-data); letter-spacing: .1em; color: var(--pg-faint); margin-bottom: 3px; }
+.msg-p { max-width: 96%; }
+.msg-p .byline { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.msg-p .byline b { font: 700 11px var(--pg-font-data); letter-spacing: .06em; }
+.msg-p .byline span { font-size: 10.5px; color: var(--pg-faint); }
+.msg-p p { font-size: 12.5px; line-height: 1.6; color: var(--pg-ink-2); }
+
+/* Delegation strip — specialists as CONTRIBUTORS inside the one conversation */
+.delg { margin-top: 10px; border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-plate); background: var(--pg-surface); overflow: hidden; }
+.delg-head { padding: 7px 11px; border-bottom: 1px solid var(--pg-line-soft); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.delg-head small { font: 700 9.5px var(--pg-font-data); text-transform: uppercase; letter-spacing: .1em; color: var(--pg-faint); }
+.contrib { width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--pg-line-soft);
+  display: grid; grid-template-columns: 22px minmax(0,1fr) auto; gap: 9px; align-items: center; padding: 9px 11px; }
+.contrib:last-of-type { border-bottom: 0; }
+.contrib:hover { background: var(--pg-lift); }
+.contrib:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: -2px; }
+.cg { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font: 700 9.5px var(--pg-font-data);
+  border: 1px solid var(--pg-line); color: var(--k-agent); background: var(--pg-raised); }
+.contrib .who { min-width: 0; }
+.contrib .who b { display: block; font: 700 11px var(--pg-font-data); letter-spacing: .05em; }
+.contrib .who em { display: block; font-style: normal; font-size: 11px; color: var(--pg-muted); margin-top: 2px; }
+.contrib-detail { padding: 0 11px 11px 42px; font-size: 11.5px; color: var(--pg-muted); line-height: 1.55; border-bottom: 1px solid var(--pg-line-soft); }
+.contrib-detail dl { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 3px 10px; margin-top: 7px; }
+.contrib-detail dt { font: 700 9.5px var(--pg-font-data); text-transform: uppercase; letter-spacing: .08em; color: var(--pg-faint); padding-top: 2px; }
+.contrib-detail dd { font-size: 11.5px; color: var(--pg-ink-2); min-width: 0; }
+
+/* Decision card — the ONE approval gate, inline in the conversation */
+.decision { margin-top: 10px; border: 1px solid var(--pg-line-authority); border-radius: var(--pg-r-plate);
+  background: var(--pg-surface); padding: 12px; box-shadow: var(--pg-lift-1); }
+.decision .kick { font: 700 9.5px var(--pg-font-data); text-transform: uppercase; letter-spacing: .1em; color: var(--pg-gold-deep); }
+.decision h4 { font: 700 var(--pg-t-body) var(--pg-font-ui); margin: 5px 0 6px; letter-spacing: -.006em; }
+.decision p { font-size: 12px; color: var(--pg-muted); line-height: 1.55; }
+.decision dl { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 3px 10px; margin: 9px 0 11px; }
+.decision dt { font: 700 9.5px var(--pg-font-data); text-transform: uppercase; letter-spacing: .08em; color: var(--pg-faint); padding-top: 2px; }
+.decision dd { font-size: 11.5px; color: var(--pg-ink-2); min-width: 0; }
+.acts { display: flex; gap: 7px; flex-wrap: wrap; }
+.btn-gold { background: var(--pg-gold-fill); color: #211d27; border: 1px solid var(--pg-gold-fill);
+  border-radius: var(--pg-r-chip); padding: 6px 13px; font: 700 11.5px var(--pg-font-ui); }
+[data-theme="light"] .btn-gold { color: #fffdf8; }
+.btn-quiet { background: transparent; border: 1px solid var(--pg-line); color: var(--pg-ink-2);
+  border-radius: var(--pg-r-chip); padding: 6px 12px; font: 600 11.5px var(--pg-font-ui); }
+.btn-gold:focus-visible, .btn-quiet:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 2px; }
+.settled { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--pg-positive); font-weight: 650; }
+
+.pg-composer { flex: 0 0 auto; border-top: 1px solid var(--pg-line-soft); padding: 10px 11px; }
+.pg-composer .box { border: 1px solid var(--pg-line); border-radius: var(--pg-r-plate); background: var(--pg-surface); padding: 8px 10px; }
+.pg-composer textarea { width: 100%; border: 0; background: transparent; color: var(--pg-ink); resize: none;
+  font: 400 12.5px/1.5 var(--pg-font-ui); min-height: 34px; }
+.pg-composer textarea:focus-visible { outline: none; }
+.pg-composer .box:focus-within { outline: 2px solid var(--pg-violet); outline-offset: 1px; }
+.pg-composer .foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 5px; }
+.pg-composer .foot small { font-size: 10px; color: var(--pg-faint); }
+
+/* Annotation layer */
+.anno { margin-top: 9px; border-left: 2px solid var(--pg-violet); background: color-mix(in srgb, var(--pg-violet) 9%, transparent);
+  padding: 8px 11px; border-radius: 0 var(--pg-r-chip) var(--pg-r-chip) 0; font-size: 11.5px; color: var(--pg-ink-2); line-height: 1.55; }
+.anno b { font: 700 9.5px var(--pg-font-data); text-transform: uppercase; letter-spacing: .09em; color: var(--pg-violet); display: block; margin-bottom: 3px; }
+body[data-anno="0"] .anno { display: none; }
+
+/* Mock banner */
+.mockbar { display: flex; align-items: center; gap: 8px; padding: 6px 11px; background: color-mix(in srgb, var(--pg-warning) 12%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--pg-warning) 35%, transparent); font-size: 10.5px; color: var(--pg-ink-2); flex: 0 0 auto; }
+.mockbar i { width: 5px; height: 5px; border-radius: 50%; background: var(--pg-warning); flex: 0 0 auto; }
+
+/* Below-stage review panels */
+.panels { max-width: 1340px; margin: 22px auto 0; display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(310px,1fr)); }
+.panel { background: var(--pg-surface); border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-plate); padding: 15px 16px; min-width: 0; }
+.panel h2 { font: 700 var(--pg-t-lead) var(--pg-font-display); letter-spacing: -.014em; margin-bottom: 4px; }
+.panel > p { color: var(--pg-muted); font-size: 12px; margin-bottom: 11px; }
+.panel table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.panel th { text-align: left; font: 700 9.5px var(--pg-font-data); text-transform: uppercase; letter-spacing: .08em;
+  color: var(--pg-faint); padding: 5px 8px 5px 0; border-bottom: 1px solid var(--pg-line-soft); vertical-align: bottom; }
+.panel td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--pg-line-soft); vertical-align: top; color: var(--pg-ink-2); }
+.panel tr:last-child td { border-bottom: 0; }
+.scrollx { overflow-x: auto; }
+.approve textarea { width: 100%; min-height: 74px; background: var(--pg-raised); color: var(--pg-ink);
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); padding: 8px 10px; font: 400 12px/1.5 var(--pg-font-ui); resize: vertical; }
+.approve .row { display: flex; gap: 7px; flex-wrap: wrap; margin: 10px 0; }
+#verdict { margin-top: 10px; font-size: 12px; color: var(--pg-ink-2); }
+
+@media (prefers-reduced-motion: no-preference) {
+  body[data-motion="1"] .contrib, body[data-motion="1"] .move { transition: background .18s cubic-bezier(.2,.7,.3,1); }
+}
+body[data-kbd="1"] :focus { outline: 2px solid var(--pg-violet) !important; outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+</style>
+
+<header id="rv">
+  <div class="rv-in">
+    <div class="rv-brand">
+      <b>Solo · Business Game Plan</b>
+      <span>Review prototype · read-only · nothing connects to production</span>
+    </div>
+    <div class="rv-grp">
+      <label for="st">State</label>
+      <select id="st">
+        <option value="new">1 · New workspace</option>
+        <option value="partial">2 · Partially configured</option>
+        <option value="active">3 · Specialists at work</option>
+        <option value="blocked">4 · Blocked integration</option>
+        <option value="decision">5 · Held owner decision</option>
+        <option value="done">6 · Delegated task completed</option>
+        <option value="failed">7 · Failed task · retry</option>
+        <option value="switch">8 · Workspace switch cleanup</option>
+      </select>
+    </div>
+    <div class="rv-grp">
+      <label>Viewport</label>
+      <button class="rv-btn on" data-vp="desktop">Desktop</button>
+      <button class="rv-btn" data-vp="tablet">Tablet</button>
+      <button class="rv-btn" data-vp="mobile">Mobile</button>
+    </div>
+    <div class="rv-grp">
+      <label>Theme</label>
+      <button class="rv-btn on" data-theme="dark">Obsidian</button>
+      <button class="rv-btn" data-theme="light">Mineral</button>
+    </div>
+    <div class="rv-grp">
+      <label>Layer</label>
+      <button class="rv-btn on" id="tg-anno" aria-pressed="true">Annotations</button>
+      <button class="rv-btn on" id="tg-motion" aria-pressed="true">Motion</button>
+      <button class="rv-btn" id="tg-kbd" aria-pressed="false">Focus rings</button>
+    </div>
+  </div>
+</header>
+
+<main id="stage" data-vp="desktop" data-mobilepaige="0">
+  <div class="frame">
+    <p class="vp-note" id="vpnote">Desktop 1340 · Obsidian</p>
+    <div class="shell" data-pg>
+      <nav class="rail" aria-label="Solo sections">
+        <button aria-current="page" title="Command Center" aria-label="Command Center">◧</button>
+        <button title="Clients" aria-label="Clients">◑</button>
+        <button title="Sales" aria-label="Sales">◈</button>
+        <button title="Campaigns" aria-label="Campaigns">◇</button>
+        <button title="Conversations" aria-label="Conversations">◍</button>
+        <hr>
+        <button title="Integrations" aria-label="Integrations">◎</button>
+        <button title="Setup" aria-label="Setup">◉</button>
+      </nav>
+
+      <section class="work" aria-label="Command Center">
+        <div class="cc-tabs" role="tablist" aria-label="Command Center sections">
+          <button role="tab" aria-selected="true" id="tab-plan">▣ Game Plan</button>
+          <button role="tab" aria-selected="false" id="tab-sys">◈ Systems Check</button>
+          <button role="tab" aria-selected="false" id="tab-mind">◐ Mind</button>
+          <button class="mob-paige" id="mob-open" style="margin-left:auto;color:var(--pg-gold-deep);font-weight:800;display:none">PAIGE ▸</button>
+        </div>
+        <div class="mockbar"><i></i><span id="mocknote">Representative data. No figure here was read from a live record.</span></div>
+        <div class="cc-body" role="tabpanel" aria-labelledby="tab-plan" id="plan"></div>
+      </section>
+
+      <aside class="paige" aria-label="PAIGE conversation">
+        <div class="pg-head">
+          <span class="pg-mark" aria-hidden="true">P</span>
+          <div style="min-width:0">
+            <b>PAIGE</b>
+            <small id="pgstate">Ready</small>
+          </div>
+          <button class="btn-quiet" id="mob-close" style="margin-left:auto;display:none;padding:3px 9px">Close</button>
+        </div>
+        <div class="pg-thread" id="thread"></div>
+        <div class="pg-composer">
+          <div class="box">
+            <textarea aria-label="Message PAIGE" placeholder="Tell PAIGE what you want to happen…"></textarea>
+            <div class="foot">
+              <small>One conversation. No specialist has a separate chat.</small>
+              <button class="btn-quiet" style="padding:4px 11px" disabled title="Disabled in the prototype">Send</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <div class="panels">
+      <section class="panel">
+        <h2>What this state is proving</h2>
+        <p id="proving-sub">Each state answers one question a reviewer should be able to check without reading code.</p>
+        <div id="proving"></div>
+      </section>
+
+      <section class="panel">
+        <h2>State and transition map</h2>
+        <p>Container, feedback and recovery for every modelled pathway.</p>
+        <div class="scrollx">
+          <table>
+            <thead><tr><th>From</th><th>Trigger</th><th>To</th><th>Container</th><th>Recovery</th></tr></thead>
+            <tbody>
+              <tr><td>Entry</td><td>Open Command Center</td><td>New workspace</td><td>Page · overview</td><td>Skip to any section</td></tr>
+              <tr><td>New</td><td>Owner answers an ask</td><td>Partially configured</td><td>Inline in plan</td><td>Answer later; plan stays usable</td></tr>
+              <tr><td>Partial</td><td>PAIGE delegates</td><td>Specialists at work</td><td>Inline in conversation</td><td>Say stop in the thread</td></tr>
+              <tr><td>At work</td><td>Missing connection</td><td>Blocked</td><td>Inline row + named fix</td><td>Connect, or reassign</td></tr>
+              <tr><td>At work</td><td>Consequential act</td><td>Held decision</td><td>Inline decision card</td><td>Approve · change · decline</td></tr>
+              <tr><td>Held</td><td>Owner approves</td><td>Completed</td><td>Same thread</td><td>Result carries its evidence</td></tr>
+              <tr><td>At work</td><td>Worker fails</td><td>Failed</td><td>Inline row + reason</td><td>Retry once, then hold</td></tr>
+              <tr><td>Any</td><td>Switch workspace</td><td>Clean state</td><td>Full remount</td><td>Nothing carries over</td></tr>
+              <tr><td>Any</td><td>Escape / close rail</td><td>Work continues</td><td>Rail folds</td><td>Reopen restores thread</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Mocks and unverified behaviour</h2>
+        <p>Stated plainly so nothing here is mistaken for proof.</p>
+        <table>
+          <tbody>
+            <tr><th style="width:38%">Every figure and name</th><td>Deterministic local mock. No query, no record, no tenant.</td></tr>
+            <tr><th>Send · Approve · Retry</th><td>Local state only. No message leaves, no write occurs.</td></tr>
+            <tr><th>Specialist activity</th><td>Illustrates the contract, not observed runs. Run telemetry is not composed anywhere today.</td></tr>
+            <tr><th>Named specialists on Solo</th><td>Currently forbidden by a shipped contract test. Landing them is an explicit, visible change — see the handoff note.</td></tr>
+            <tr><th>Motion and haptics</th><td>Browser only. Proves intent, never native behaviour.</td></tr>
+            <tr><th>Screen reader</th><td>Roles and labels are present but unverified on a real AT.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="panel approve">
+        <h2>Decision</h2>
+        <p>Approve the information architecture and flow, or send it back with notes.</p>
+        <div class="row">
+          <button class="btn-gold" data-verdict="Approved">Approve</button>
+          <button class="btn-quiet" data-verdict="Revise">Revise</button>
+          <button class="btn-quiet" data-verdict="Rejected">Reject</button>
+        </div>
+        <textarea id="notes" placeholder="Notes — what to change, and why."></textarea>
+        <p id="verdict">No decision recorded. Recorded locally only; nothing is sent.</p>
+      </section>
+    </div>
+  </div>
+</main>
+<span class="sr" aria-live="polite" id="live"></span>
+
+<script>
+/* Deterministic. No Date.now, no Math.random, no network. Every string is authored mock
+   copy chosen to be coaching-generic (§2) and to never assert a number nobody measured (§13). */
+
+var S = {
+  new: {
+    pgstate: "Ready · nothing running",
+    truth: ["unavailable", "Nothing to plan from yet"],
+    title: "Your business game plan",
+    sub: "I write the plan. You rule on it. Right now I know almost nothing about your business, so anything I produced would be a guess wearing a plan's clothes.",
+    firstuse: {
+      h: "Four answers and I can draft a real one.",
+      p: "None of these are settings. They are the things only you know, and every one of them changes what the plan says.",
+      asks: [
+        "Who you serve, in your own words",
+        "What you sell them, and roughly what it costs",
+        "What you want more of in the next 90 days",
+        "One thing I must never do without asking you first"
+      ]
+    },
+    cards: [],
+    moves: [],
+    movesNote: null,
+    thread: [
+      { t: "p", who: "PAIGE", state: "Ready", body: "This workspace is new, so I have nothing to build a plan on. I would rather tell you that than hand you a template.<br><br>Start anywhere — tell me who you serve, or just describe a normal week. I will pull the rest out as we go and write the plan against it.", delg: null }
+    ],
+    delegNote: "No delegation. Nothing to delegate yet — a specialist with no business context produces a template, and a template is not a plan.",
+    anno: "First-use state. The overview address exists today and redirects away because it has nothing to show; the plan is what gives it something. No metric tile renders in this state, because every one of them would be zero-with-no-meaning rather than a measurement.",
+    proving: [
+      ["Nothing is fabricated", "Zero metrics, zero specialists, zero activity. Absence is stated, not filled."],
+      ["The ask is human, not a form", "Four questions in the owner's language, answerable in the conversation."],
+      ["One conversation", "The rail is the only place work is dispatched from."]
+    ]
+  },
+
+  partial: {
+    pgstate: "Ready · 1 draft waiting",
+    truth: ["partial", "Plan drafted from what I have"],
+    title: "Your business game plan",
+    sub: "Drafted from your setup answers and the two sources you connected. Where I could not see something, the plan says so instead of assuming.",
+    cards: [
+      ["Who you serve", "live", "Independent operators scaling past their first hires. From your own words in Setup."],
+      ["What you sell", "live", "A three-month advisory engagement and a shorter diagnostic. Both are in your catalogue."],
+      ["How people reach you", "partial", "Email is connected. Calendar is not, so I cannot see or offer real availability."],
+      ["What is working", "unavailable", "No outcome history yet. I will not rank channels I have never watched."]
+    ],
+    moves: [
+      ["ZI", "ZION", "Sequence the next 90 days around the diagnostic", "Your two offers compete for the same first conversation. I would lead with the diagnostic and let it feed the engagement."],
+      ["ME", "MERIT", "Put a written price and term on the diagnostic", "It is in the catalogue without either, so nothing downstream of it can be drafted."],
+      ["CU", "CURA", "Decide what the first two weeks look like", "You have no written onboarding. Every client is currently a fresh improvisation."]
+    ],
+    movesNote: "Three moves, in the order I would do them.",
+    thread: [
+      { t: "y", body: "Read what I put in setup and tell me where to start." },
+      { t: "p", who: "PAIGE", state: "Drafted", body: "I read it, and I gave the shape of it to ZION to sequence. Three moves came back, in the order they unblock each other.<br><br>The one that matters most is the second: your diagnostic has no price or term written down, so MERIT cannot draft anything that quotes it, and CURA cannot write an onboarding that starts from it.", delg: [
+        { g: "ZI", n: "ZION", r: "Strategy · Business Twin", s: "Returned", d: "Read your setup answers and your catalogue. Sequenced three moves and named which one unblocks the other two.", src: "Setup answers · Catalogue", out: "The plan on the left" },
+        { g: "ME", n: "MERIT", r: "Sales and commercial", s: "Waiting", d: "Cannot draft commercial terms until the diagnostic has a price and a term.", src: "Catalogue", out: "Held — needs your number" }
+      ] }
+    ],
+    delegNote: null,
+    anno: "Partial state. Each card carries its own truth label rather than one banner for the whole surface, because 'partial' is per-fact. The waiting specialist states what it is waiting ON, which is the difference between a queue and an explanation.",
+    proving: [
+      ["Truth is per-fact", "Four cards, four different truth labels. No blanket 'some data missing'."],
+      ["A waiting worker explains itself", "MERIT names the exact missing input, not a spinner."],
+      ["Ownership is legible", "Every move carries the specialist who owns it."]
+    ]
+  },
+
+  active: {
+    pgstate: "Working · 3 running",
+    truth: ["live", "Three moves in progress"],
+    title: "Your business game plan",
+    sub: "Three specialists are working on the plan right now. Everything they produce comes back into this conversation, not into a separate inbox.",
+    cards: [
+      ["Who you serve", "live", "Independent operators scaling past their first hires."],
+      ["What you sell", "live", "Diagnostic priced at your number. Engagement term written."],
+      ["How people reach you", "partial", "Email connected. Calendar still not connected."],
+      ["What is working", "unavailable", "Still no outcome history. Ask me again once the first sequence has run."]
+    ],
+    moves: [
+      ["NE", "NEXUS", "Write the outreach that fills the diagnostic", "In progress · drafting"],
+      ["ME", "MERIT", "Turn the diagnostic into a written offer", "In progress · drafting"],
+      ["CU", "CURA", "Write the first-two-weeks onboarding", "In progress · drafting"]
+    ],
+    movesNote: "Running now. Nothing leaves this workspace without your word.",
+    thread: [
+      { t: "y", body: "Do all three. Keep me out of it until there is something to read." },
+      { t: "p", who: "PAIGE", state: "Delegating", body: "Running all three. NEXUS needed the price before it could write anything honest, so MERIT went first and handed the number across — you can see that handoff below.<br><br>I will come back when there is something worth your attention. Nothing gets sent to anyone in the meantime.", delg: [
+        { g: "ME", n: "MERIT", r: "Sales and commercial", s: "Working", d: "Writing the diagnostic as a real offer — scope, price, term, what is and is not included.", src: "Catalogue · your setup answers", out: "A draft offer, held for you" },
+        { g: "NE", n: "NEXUS", r: "Marketing and growth", s: "Working", d: "Drafting the outreach that fills the diagnostic. Took the price from MERIT rather than inventing one.", src: "MERIT's draft · your voice brief", out: "A draft sequence, held for you" },
+        { g: "CU", n: "CURA", r: "Client success", s: "Working", d: "Writing what the first two weeks look like, so the engagement starts the same way every time.", src: "Your setup answers", out: "A draft onboarding, held for you" }
+      ] }
+    ],
+    delegNote: null,
+    anno: "Active state. The specialists are rows inside PAIGE's message, not a panel and not three chats. A handoff between two of them is stated in her words — that is the whole point of a team you can see. Expand any row for its scope, its sources and what it will hand back.",
+    proving: [
+      ["Specialists are contributors", "Three workers, one conversation, zero extra chat products."],
+      ["Handoffs are visible", "MERIT → NEXUS is named in her message, not hidden."],
+      ["Nothing acts outward", "Every output is 'held for you'."]
+    ]
+  },
+
+  blocked: {
+    pgstate: "Working · 1 blocked",
+    truth: ["blocked", "One move cannot proceed"],
+    title: "Your business game plan",
+    sub: "Two moves are still running. The third stopped, and it stopped for a reason I can name and you can fix in about a minute.",
+    cards: [
+      ["Who you serve", "live", "Independent operators scaling past their first hires."],
+      ["What you sell", "live", "Diagnostic priced. Engagement term written."],
+      ["How people reach you", "blocked", "Calendar is not connected, so no real time can be offered to anyone."],
+      ["What is working", "unavailable", "No outcome history yet."]
+    ],
+    moves: [
+      ["NE", "NEXUS", "Write the outreach that fills the diagnostic", "Blocked · the call-to-action has nowhere to point"],
+      ["ME", "MERIT", "Turn the diagnostic into a written offer", "In progress · drafting"],
+      ["CU", "CURA", "Write the first-two-weeks onboarding", "In progress · drafting"]
+    ],
+    movesNote: "One blocked, two running.",
+    thread: [
+      { t: "p", who: "PAIGE", state: "Blocked", body: "NEXUS stopped, and I would rather it stopped than guessed.<br><br>The sequence it is writing ends by asking someone to book a call. No calendar is connected, so there is no real time to offer. It could invent a booking link, and I will not let it — a link that goes nowhere costs you the meeting and the credibility.<br><br>Connect a calendar and it picks up where it left off. The other two are unaffected.", delg: [
+        { g: "NE", n: "NEXUS", r: "Marketing and growth", s: "Blocked", d: "The sequence needs a real place to book. Nothing is connected, so there is no honest link to write.", src: "Needs: a connected calendar", out: "Stopped before writing a false link", blocked: "Integrations › Calendars — not connected" },
+        { g: "ME", n: "MERIT", r: "Sales and commercial", s: "Working", d: "Writing the diagnostic as a real offer. Unaffected by the calendar.", src: "Catalogue", out: "A draft offer, held for you" },
+        { g: "CU", n: "CURA", r: "Client success", s: "Working", d: "Writing the first two weeks. Unaffected by the calendar.", src: "Your setup answers", out: "A draft onboarding, held for you" }
+      ] }
+    ],
+    delegNote: null,
+    anno: "Blocked state. A block names the exact missing connection, the exact surface that fixes it, and why the worker stopped rather than improvising. The two unaffected workers keep running — one block never freezes the plan.",
+    proving: [
+      ["A block is specific", "Names the integration, the surface, and the consequence."],
+      ["Refusing to guess is the feature", "The worker stops rather than write a dead link."],
+      ["Blast radius is bounded", "Two other moves continue untouched."]
+    ]
+  },
+
+  decision: {
+    pgstate: "Holding · 1 decision",
+    truth: ["partial", "One decision is yours"],
+    title: "Your business game plan",
+    sub: "The drafts are done. One of them wants to leave this workspace, and that is not a call I make.",
+    cards: [
+      ["Who you serve", "live", "Independent operators scaling past their first hires."],
+      ["What you sell", "live", "Diagnostic priced. Engagement term written."],
+      ["How people reach you", "live", "Email and calendar both connected."],
+      ["What is working", "unavailable", "No outcome history yet."]
+    ],
+    moves: [
+      ["NE", "NEXUS", "Write the outreach that fills the diagnostic", "Drafted · waiting on your word"],
+      ["ME", "MERIT", "Turn the diagnostic into a written offer", "Done · saved to your catalogue"],
+      ["CU", "CURA", "Write the first-two-weeks onboarding", "Done · saved to your workspace"]
+    ],
+    movesNote: "One waiting on you.",
+    thread: [
+      { t: "p", who: "PAIGE", state: "Holding", body: "Two are finished and saved here. The third is ready to go out, and going out is the part I hold for you.<br><br>OATHEN is holding it. It does not act — it only refuses to let something consequential happen quietly.", delg: [
+        { g: "NE", n: "NEXUS", r: "Marketing and growth", s: "Drafted", d: "Four emails over ten days, ending in a real booking link now that the calendar is connected.", src: "Your voice brief · MERIT's offer · your calendar", out: "Held at the gate below" },
+        { g: "OA", n: "OATHEN", r: "Owner approvals", s: "Holding", d: "This reaches people outside your workspace and cannot be recalled once sent. That makes it yours to decide, not mine.", src: "The drafted sequence", out: "Waiting on your word" }
+      ], decision: {
+        kick: "Approval · leaves the workspace",
+        h: "Send the diagnostic sequence to 34 contacts",
+        p: "Four emails over ten days, in your voice, ending with a real booking link. First send goes out immediately on approval.",
+        rows: [
+          ["Reaches", "34 contacts who opted in. No one else."],
+          ["Reversible", "No. Email cannot be recalled once it has left."],
+          ["Written by", "NEXUS, from MERIT's offer and your voice brief."],
+          ["If you decline", "The draft stays here. Nothing is sent, and nothing is lost."]
+        ]
+      } }
+    ],
+    delegNote: null,
+    anno: "Decision state. The approval is a card inside the conversation — the same gate every consequential act passes through, never a separate approvals queue. It states reach, reversibility, authorship and the cost of declining before it asks for anything.",
+    proving: [
+      ["One gate, in the thread", "No approvals tab. The decision is where the work is."],
+      ["Irreversibility is stated first", "'No. Email cannot be recalled' appears before the button."],
+      ["Declining is safe and said so", "The draft survives a decline."]
+    ]
+  },
+
+  done: {
+    pgstate: "Ready · sequence live",
+    truth: ["live", "Approved and running"],
+    title: "Your business game plan",
+    sub: "You approved the sequence. It is out, and what happens next comes back here.",
+    cards: [
+      ["Who you serve", "live", "Independent operators scaling past their first hires."],
+      ["What you sell", "live", "Diagnostic priced. Engagement term written."],
+      ["How people reach you", "live", "Email and calendar both connected."],
+      ["What is working", "partial", "First sequence is running. Too early to say anything honest about results."]
+    ],
+    moves: [
+      ["NE", "NEXUS", "Outreach sequence", "Live · email 1 of 4 sent to 34 contacts"],
+      ["ME", "MERIT", "Diagnostic offer", "Done · in your catalogue"],
+      ["CU", "CURA", "First-two-weeks onboarding", "Done · in your workspace"]
+    ],
+    movesNote: "Where the three moves landed.",
+    thread: [
+      { t: "y", body: "Approved." },
+      { t: "p", who: "PAIGE", state: "Done", body: "Sent. Email one went to 34 contacts; the next is scheduled for day three.<br><br>CURA is watching for replies and will bring anything that needs you into this thread. I am not going to report open rates at you — there is nothing meaningful to say for a few days, and a number that early is noise.", delg: [
+        { g: "NE", n: "NEXUS", r: "Marketing and growth", s: "Done", d: "Sequence sent. Email 1 of 4 delivered to 34 contacts; email 2 scheduled for day three.", src: "Your approval · your voice brief", out: "Recorded in Conversations" },
+        { g: "CU", n: "CURA", r: "Client success", s: "Watching", d: "Watching for replies. Anything that needs an answer comes here, not to a separate inbox.", src: "Conversations", out: "Will raise it in this thread" }
+      ] }
+    ],
+    delegNote: null,
+    anno: "Completed state. The result comes back into the same conversation carrying what it actually did and where the record lives. Note what is deliberately absent: no open rate, no engagement score. Reporting a number this early would be decoration, not information.",
+    proving: [
+      ["Results return to the thread", "No separate results screen to go find."],
+      ["The claim is checkable", "Names the count, the stage, and where the record is."],
+      ["Restraint is honest", "Refuses to report a metric that means nothing yet."]
+    ]
+  },
+
+  failed: {
+    pgstate: "Attention · 1 failed",
+    truth: ["blocked", "One task failed"],
+    title: "Your business game plan",
+    sub: "Email two did not go out. I have the reason, and I am not going to retry it blind.",
+    cards: [
+      ["Who you serve", "live", "Independent operators scaling past their first hires."],
+      ["What you sell", "live", "Diagnostic priced. Engagement term written."],
+      ["How people reach you", "partial", "Sending domain was rejected on this attempt."],
+      ["What is working", "partial", "Email 1 delivered. Email 2 did not."]
+    ],
+    moves: [
+      ["NE", "NEXUS", "Outreach sequence", "Failed at email 2 · sending domain rejected"],
+      ["ME", "MERIT", "Diagnostic offer", "Done · in your catalogue"],
+      ["CU", "CURA", "First-two-weeks onboarding", "Done · in your workspace"]
+    ],
+    movesNote: "One needs a decision from you.",
+    thread: [
+      { t: "p", who: "PAIGE", state: "Attention", body: "Email two failed. The provider rejected the send because your sending domain is not verified — email one went out on the shared address, and the second was scheduled from your own.<br><br>I tried once. It failed the same way, so I stopped. Retrying a rejection that is a configuration problem just produces the same rejection more times.<br><br>Two ways forward, and neither of them is mine to pick.", delg: [
+        { g: "NE", n: "NEXUS", r: "Marketing and growth", s: "Failed", d: "Send rejected by the provider: sending domain not verified. Retried once at the same result, then stopped.", src: "Conversations · delivery log", out: "34 contacts have email 1 and no email 2", blocked: "Integrations › Email — domain not verified" },
+        { g: "OA", n: "OATHEN", r: "Owner approvals", s: "Holding", d: "Both options change what your contacts receive, so neither runs without you.", src: "The failed send", out: "Waiting on your word" }
+      ], decision: {
+        kick: "Failed task · two ways forward",
+        h: "How should email two go out?",
+        p: "34 contacts received email one and are waiting on the second. The longer the gap, the less the sequence reads as deliberate.",
+        rows: [
+          ["Verify the domain", "About ten minutes in Integrations. Then it sends from you, as intended."],
+          ["Send from the shared address", "Goes out today, but from a name your contacts will not recognise."],
+          ["If you do nothing", "Emails three and four stay held. Nobody receives a broken half-sequence."],
+          ["What I will not do", "Retry a third time. The result would be identical."]
+        ]
+      } }
+    ],
+    delegNote: null,
+    anno: "Failure state. The failure names its provider reason, states that exactly one retry happened and why a second is pointless, and hands the owner a real choice rather than a Retry button that would fail identically. 'What I will not do' is part of the contract.",
+    proving: [
+      ["Failure is diagnosed, not announced", "Names the provider reason and the exact stopping point."],
+      ["Retry is bounded and explained", "One attempt, then a stated reason to stop."],
+      ["Consequence is stated", "Says what 34 people are currently experiencing."]
+    ]
+  },
+
+  switch: {
+    pgstate: "Ready · new workspace resolved",
+    truth: ["unavailable", "Nothing carried over"],
+    title: "Your business game plan",
+    sub: "You switched workspaces. Everything from the previous one is gone from this view — not hidden, not filtered. Gone.",
+    firstuse: {
+      h: "This workspace has its own plan, and I have not written it yet.",
+      p: "The plan, the specialists, the drafts and the held decisions you were just looking at belong to the other workspace and stay there.",
+      asks: [
+        "Nothing from the previous workspace is in memory here",
+        "No specialist carried a task across",
+        "The held decision stayed with the workspace that raised it",
+        "Ask me anything and I will start this one from scratch"
+      ]
+    },
+    cards: [],
+    moves: [],
+    movesNote: null,
+    thread: [
+      { t: "p", who: "PAIGE", state: "Ready", body: "Different workspace, different business, different plan.<br><br>I am not carrying anything across — not the drafts, not the sequence, and not the decision you were about to make. That one stayed where it was raised. Tell me what this business does and I will start here.", delg: null }
+    ],
+    delegNote: "No delegation carried over. A worker belongs to the workspace that delegated it.",
+    anno: "Workspace-switch cleanup. The shipped Command Center already keys its subtree on the resolved workspace, so the switch remounts rather than re-filters — no prior row, filter, pending read or loading state survives. This state exists to make that guarantee visible instead of assumed.",
+    proving: [
+      ["Remount, not refilter", "The prior workspace's state cannot leak, because it is not there."],
+      ["Held decisions do not travel", "An approval stays with the workspace that raised it."],
+      ["Absence is explicit", "The surface says what did not carry over."]
+    ]
+  }
+};
+
+var TONE = { Ready:"", Returned:"live", Working:"partial", Waiting:"partial", Drafted:"proposed",
+  Blocked:"blocked", Holding:"proposed", Done:"live", Watching:"live", Failed:"blocked" };
+
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function contribRow(c, key, i){
+  var t = TONE[c.s] || "";
+  var det = '<div class="contrib-detail" id="d-'+key+'-'+i+'" hidden>' + esc(c.d) +
+    '<dl><dt>Reads</dt><dd>'+esc(c.src)+'</dd><dt>Hands back</dt><dd>'+esc(c.out)+'</dd>' +
+    (c.blocked ? '<dt>Fix</dt><dd>'+esc(c.blocked)+'</dd>' : '') + '</dl></div>';
+  return '<button class="contrib" type="button" aria-expanded="false" aria-controls="d-'+key+'-'+i+'">' +
+    '<span class="cg" aria-hidden="true">'+esc(c.g)+'</span>' +
+    '<span class="who"><b>'+esc(c.n)+'</b><em>'+esc(c.r)+'</em></span>' +
+    '<span class="truth truth-'+t+'">'+esc(c.s)+'</span></button>' + det;
+}
+
+function render(key){
+  var d = S[key];
+  document.getElementById("pgstate").textContent = d.pgstate;
+
+  // ── The plan surface ──────────────────────────────────────────────────────
+  var h = '<div class="gp-head"><div style="min-width:0"><span class="eyebrow">Command Center · Overview</span>' +
+    '<h1>'+esc(d.title)+'</h1></div><span class="truth truth-'+d.truth[0]+'">'+esc(d.truth[1])+'</span></div>' +
+    '<p class="gp-sub">'+esc(d.sub)+'</p>';
+
+  if (d.firstuse) {
+    h += '<div class="firstuse"><h3>'+esc(d.firstuse.h)+'</h3><p>'+esc(d.firstuse.p)+'</p><div class="asks">' +
+      d.firstuse.asks.map(function(a){ return '<div class="ask"><i></i><span>'+esc(a)+'</span></div>'; }).join("") +
+      '</div></div>';
+  }
+  if (d.cards && d.cards.length) {
+    h += '<div class="gp-grid">' + d.cards.map(function(c){
+      return '<article class="card"><div class="card-top"><h3>'+esc(c[0])+'</h3>' +
+        '<span class="truth truth-'+c[1]+'">'+esc(c[1])+'</span></div><p>'+esc(c[2])+'</p></article>';
+    }).join("") + '</div>';
+  }
+  if (d.moves && d.moves.length) {
+    h += '<div class="moves"><div class="moves-head"><b>'+esc(d.movesNote||"The plan")+'</b>' +
+      '<span class="truth truth-proposed">PAIGE wrote this</span></div>' +
+      d.moves.map(function(m){
+        return '<div class="move"><span class="move-glyph" aria-hidden="true">'+esc(m[0])+'</span>' +
+          '<span><b>'+esc(m[2])+'</b><small>'+esc(m[3])+'</small></span>' +
+          '<span class="owner">'+esc(m[1])+'</span></div>';
+      }).join("") + '</div>';
+  }
+  h += '<div class="anno"><b>Reviewer note</b>'+esc(d.anno)+'</div>';
+  document.getElementById("plan").innerHTML = h;
+
+  // ── The one conversation ──────────────────────────────────────────────────
+  var t = d.thread.map(function(m, i){
+    if (m.t === "y") return '<div class="msg-you"><small>YOU</small>'+esc(m.body)+'</div>';
+    var out = '<div class="msg-p"><div class="byline"><span class="pg-mark" style="width:20px;height:20px;font-size:9px" aria-hidden="true">P</span>' +
+      '<b>'+esc(m.who)+'</b><span>'+esc(m.state)+'</span></div><p>'+m.body+'</p>';
+    if (m.delg) {
+      out += '<div class="delg"><div class="delg-head"><small>Working on this</small>' +
+        '<small>'+m.delg.length+' delegated · expand any</small></div>' +
+        m.delg.map(function(c, j){ return contribRow(c, i, j); }).join("") + '</div>';
+    }
+    if (m.decision) {
+      var dc = m.decision;
+      out += '<div class="decision"><span class="kick">'+esc(dc.kick)+'</span><h4>'+esc(dc.h)+'</h4>' +
+        '<p>'+esc(dc.p)+'</p><dl>' + dc.rows.map(function(r){
+          return '<dt>'+esc(r[0])+'</dt><dd>'+esc(r[1])+'</dd>'; }).join("") + '</dl>' +
+        '<div class="acts" data-gate><button class="btn-gold" data-act="approve">Approve</button>' +
+        '<button class="btn-quiet" data-act="change">Change something</button>' +
+        '<button class="btn-quiet" data-act="decline">Decline</button></div></div>';
+    }
+    return out + '</div>';
+  }).join("");
+  if (d.delegNote) t += '<div class="anno"><b>Why no team here</b>'+esc(d.delegNote)+'</div>';
+  document.getElementById("thread").innerHTML = t;
+
+  // ── What this state proves ────────────────────────────────────────────────
+  document.getElementById("proving").innerHTML = '<table><tbody>' + d.proving.map(function(p){
+    return '<tr><th style="width:40%">'+esc(p[0])+'</th><td>'+esc(p[1])+'</td></tr>'; }).join("") + '</tbody></table>';
+
+  document.getElementById("live").textContent = "State: " + key;
+}
+
+/* ── Wiring ─────────────────────────────────────────────────────────────────── */
+document.getElementById("st").addEventListener("change", function(e){ render(e.target.value); });
+
+document.addEventListener("click", function(e){
+  var c = e.target.closest(".contrib");
+  if (c) {
+    var det = document.getElementById(c.getAttribute("aria-controls"));
+    var open = c.getAttribute("aria-expanded") === "true";
+    c.setAttribute("aria-expanded", open ? "false" : "true");
+    if (det) det.hidden = open;
+    return;
+  }
+  var a = e.target.closest("[data-act]");
+  if (a) {
+    var gate = a.closest("[data-gate]");
+    var label = { approve:"Approved once. Prototype only — nothing was sent.",
+      change:"Sent back for a change. Prototype only — nothing was sent.",
+      decline:"Declined. The draft stays here. Prototype only — nothing was sent." }[a.dataset.act];
+    gate.outerHTML = '<div class="settled">✓ ' + label + '</div>';
+    document.getElementById("live").textContent = label;
+    return;
+  }
+  var vp = e.target.closest("[data-vp]");
+  if (vp && vp.classList.contains("rv-btn")) {
+    document.querySelectorAll(".rv-btn[data-vp]").forEach(function(b){ b.classList.toggle("on", b === vp); });
+    var v = vp.dataset.vp;
+    var stage = document.getElementById("stage");
+    stage.dataset.vp = v;
+    stage.dataset.mobilepaige = "0";
+    document.getElementById("mob-open").style.display = v === "mobile" ? "inline-flex" : "none";
+    document.getElementById("mob-close").style.display = v === "mobile" ? "inline-flex" : "none";
+    note();
+    return;
+  }
+  var th = e.target.closest("[data-theme]");
+  if (th && th.classList.contains("rv-btn")) {
+    document.querySelectorAll(".rv-btn[data-theme]").forEach(function(b){ b.classList.toggle("on", b === th); });
+    document.documentElement.setAttribute("data-theme", th.dataset.theme);
+    note();
+    return;
+  }
+  var vd = e.target.closest("[data-verdict]");
+  if (vd) {
+    var n = document.getElementById("notes").value.trim();
+    document.getElementById("verdict").textContent = vd.dataset.verdict + " — recorded locally in this page only. " +
+      (n ? 'Notes: "' + n + '"' : "No notes added.");
+    document.getElementById("live").textContent = vd.dataset.verdict + " recorded locally.";
+  }
+});
+
+document.getElementById("mob-open").addEventListener("click", function(){
+  document.getElementById("stage").dataset.mobilepaige = "1"; });
+document.getElementById("mob-close").addEventListener("click", function(){
+  document.getElementById("stage").dataset.mobilepaige = "0"; });
+
+function toggle(id, attr){
+  var b = document.getElementById(id);
+  b.addEventListener("click", function(){
+    var on = b.getAttribute("aria-pressed") === "true";
+    b.setAttribute("aria-pressed", on ? "false" : "true");
+    b.classList.toggle("on", !on);
+    document.body.setAttribute(attr, on ? "0" : "1");
+  });
+}
+toggle("tg-anno", "data-anno"); toggle("tg-motion", "data-motion"); toggle("tg-kbd", "data-kbd");
+document.body.setAttribute("data-anno","1");
+document.body.setAttribute("data-motion","1");
+document.body.setAttribute("data-kbd","0");
+
+function note(){
+  var v = document.getElementById("stage").dataset.vp;
+  var t = document.documentElement.getAttribute("data-theme") === "light" ? "Mineral" : "Obsidian";
+  var w = { desktop:"Desktop 1340", tablet:"Tablet 834", mobile:"Mobile 402" }[v];
+  document.getElementById("vpnote").textContent = w + " · " + t;
+}
+
+render("new"); note();
+</script>
