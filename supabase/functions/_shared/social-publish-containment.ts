@@ -26,6 +26,12 @@
  *     than an unstated gap: if the owner later wants every provider mutation frozen, add it to
  *     `CONTAINED_ACTIONS` — the one edit that widens the containment.
  *
+ * NOT AVAILABLE, AND NOT CLAIMED (§13). Account CONNECTION is a distinct capability that is not wired
+ * today: the Social settings surface posts `action:"connect"`, but `paige-social` has no `connect`
+ * branch and returns `unknown_action`. This safeguard does not touch or claim connection — the copy
+ * below advertises only what actually works (reads). Wiring connection is lift-path/Social-vertical
+ * work, not this containment's job.
+ *
  * LIFT PATH. This safeguard is removed only when the future governed, tenant-scoped Social capability
  * is registered in the Spine, classified in action-risk, wired through the Capability Gateway, and
  * proven — i.e. the full connected-account → authorize → draft → approve → publish → readback →
@@ -65,8 +71,9 @@ export function socialPublishContainment(action: string): SocialContainment {
       "and proven, so Paige will not post to any social account — even if a provider key is configured.",
     setup_path:
       "This unlocks when the governed Social capability ships (registered in the Spine, risk-classified, " +
-      "wired through the Capability Gateway, and proven end to end). Until then, Social reads and " +
-      "account connection remain available; publishing does not.",
+      "wired through the Capability Gateway, and proven end to end). Until then, Social reads (connection " +
+      "status, analytics) remain available; publishing does not. (Account connection is not claimed here: " +
+      "the `connect` action is not wired in `paige-social` today, so this copy does not advertise it.)",
   };
 }
 
