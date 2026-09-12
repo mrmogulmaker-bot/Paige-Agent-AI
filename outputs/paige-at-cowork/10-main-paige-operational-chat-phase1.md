@@ -249,3 +249,38 @@ named if this session cannot drive it headless (§32.c).
   ahead of the core operating flow.
 - **No merge / deploy / live-provider enablement / customer communication / production-acceptance claim** without
   explicit final owner approval.
+
+---
+
+## H. Canonical governed contact-create contract (create_contact_v2 is TRANSITIONAL, not a second system)
+
+**Owner directive (2026-09-12):** keep `create_contact_v2` transitional only; do not create a permanent
+second contact-action system; document the canonical contract, the shim behavior, the migration path, and
+the retirement condition.
+
+- **One logic home (canonical seam):** `public.create_contact_v2(...) RETURNS TABLE(contact_id, client_ref,
+  was_created)` — `SECURITY DEFINER`, authority enforced IN-BODY (`auth.uid()` / `current_user_tenant_id()`,
+  role + active-membership gates, §59), tenant-scoped email dedup, and the inserted-vs-existing signal. This
+  is the ONLY place contact-create logic lives. The chat path calls it, classifies the outcome
+  (created / already-existed / needs-clarification / failed), emits the per-client Rail ONLY on a genuine
+  insert (§947), and records a receipt under a stable idempotency key attributed to the RPC-resolved tenant.
+- **The shim is an adapter, not a system:** `public.create_contact(...) RETURNS uuid` is now a one-line
+  `SELECT contact_id FROM public.create_contact_v2($1..$15)`. It carries **no logic of its own** (so it
+  cannot drift), and exists solely to preserve the `RETURNS uuid` wire shape for the five existing scalar
+  RPC-return consumers. There is one contact-create brain; `v2` and the shim are the same brain seen through
+  two return shapes.
+- **The six consumers (§37):** scalar-shim consumers — `NewContactDialog`, `AddInternalClientDialog`,
+  `ClientManagementDashboard`, `GrowthHub`, `growth-process-submission` (all use the returned id only); the
+  chat path is migrated to `create_contact_v2` (it needs the signal). The inbound MCP door is **not** a
+  consumer — it does a DIRECT insert and never calls this RPC (its own honesty is a separate slice).
+- **Migration path:** migrate a scalar consumer to `create_contact_v2` only when it genuinely needs the
+  signal (e.g. a dialog that should say "already exists" vs "created"); until then the shim is correct and
+  nothing is owed. No consumer is forced to change to satisfy the refactor.
+- **Retirement condition for the old path:** the `create_contact` shim is dropped ONLY when a §37 sweep
+  proves **zero** remaining `.rpc("create_contact"` callers across all eight caller classes (frontend, edge,
+  MCP, tests, cron, webhooks), i.e. every consumer has moved to `create_contact_v2`. Dropping it before that
+  is a §58 regression. (A later cosmetic collapse — folding the composite back under the name `create_contact`
+  once all callers take the signal — is optional and owner-gated; it is not required for correctness.)
+- **Status:** unmerged candidate. LIVE requires the authenticated owner drive (§32.c/§70), the migration's
+  persisted-apply (blocked on #1147, the Social workstream's migration-replay fix — recorded as an external
+  exact-head verification dependency, NOT this program's to touch), and owner acceptance.
