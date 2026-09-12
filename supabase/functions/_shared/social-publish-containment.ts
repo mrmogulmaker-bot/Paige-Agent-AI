@@ -69,3 +69,33 @@ export function socialPublishContainment(action: string): SocialContainment {
       "account connection remain available; publishing does not.",
   };
 }
+
+/**
+ * The ONE wire body every contained-publish seam returns (paige-social AND meta-schedule-post),
+ * so no caller can read a denial as a success. It deliberately carries `success:false` AND `ok:false`
+ * AND `error`: Chat's write-audit keys on `success === false` (a body without it was recorded as
+ * `outcome:"succeeded"` — the false receipt this closes), the frontend admin path keys on `ok`/`error`,
+ * and the model reads `reason`/`setup_path` to relay the refusal truthfully. `contained:true` marks it
+ * as a deliberate policy denial rather than a provider error. Return it under HTTP 403.
+ */
+export function containedPublishResponse(c: Extract<SocialContainment, { denied: true }>): {
+  success: false;
+  ok: false;
+  error: "social_publish_contained";
+  status: "UNAVAILABLE";
+  capability: "social_publish";
+  reason: string;
+  setup_path: string;
+  contained: true;
+} {
+  return {
+    success: false,
+    ok: false,
+    error: "social_publish_contained",
+    status: c.status,
+    capability: c.capability,
+    reason: c.reason,
+    setup_path: c.setup_path,
+    contained: true,
+  };
+}

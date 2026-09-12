@@ -16,7 +16,7 @@
 // Pinterest, Reddit, Bluesky, Discord, Telegram, Google Business, Snapchat.
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
-import { socialPublishContainment } from "../_shared/social-publish-containment.ts";
+import { socialPublishContainment, containedPublishResponse } from "../_shared/social-publish-containment.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -78,14 +78,9 @@ Deno.serve(async (req) => {
   // _shared/social-publish-containment.ts for the lift path.
   const containment = socialPublishContainment(action);
   if (containment.denied) {
-    return json({
-      ok: false,
-      status: containment.status,
-      capability: containment.capability,
-      reason: containment.reason,
-      setup_path: containment.setup_path,
-      contained: true,
-    }, 403);
+    // `containedPublishResponse` carries success:false so Chat's write-audit records this as a
+    // FAILED attempt, never a succeeded external publish (the false-receipt hole #1164's review found).
+    return json(containedPublishResponse(containment), 403);
   }
 
   // ---- ACTIONS ----
