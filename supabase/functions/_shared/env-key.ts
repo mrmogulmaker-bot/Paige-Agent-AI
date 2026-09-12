@@ -30,16 +30,23 @@
  * @param names one or more candidate variable names (e.g. envKey("REPLICATE_API_TOKEN", "REPLICATE_API_KEY"))
  * @returns the resolved value, or undefined if none is set. Never logged.
  */
+// Deno global guarded so this shared module type-checks when vitest/app-tsc
+// pulls it into the app project (no Deno types there); edge behavior identical.
+type DenoEnv = { get(name: string): string | undefined; toObject(): Record<string, string> };
+const denoEnv = (): DenoEnv | undefined => (globalThis as { Deno?: { env?: DenoEnv } }).Deno?.env;
+
 export function envKey(...names: string[]): string | undefined {
+  const envApi = denoEnv();
+  if (!envApi) return undefined;
   // 1. Exact match first — correctly-named keys behave EXACTLY as today, scan never reached.
   for (const name of names) {
-    const v = Deno.env.get(name);
+    const v = envApi.get(name);
     if (v) return v;
   }
   // 2. No exact hit — scan the env map ONCE (not cached: respects secret rotation) and match
   //    a candidate name case-insensitively.
   const lowered = names.map((n) => n.toLowerCase());
-  const env = Deno.env.toObject();
+  const env = envApi.toObject();
   for (const [k, v] of Object.entries(env)) {
     if (v && lowered.includes(k.toLowerCase())) return v;
   }

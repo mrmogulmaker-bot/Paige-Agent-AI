@@ -12448,6 +12448,96 @@ export type Database = {
         }
         Relationships: []
       }
+      paige_media_jobs: {
+        Row: {
+          actor_id: string | null
+          approval_state: string
+          attempts: number
+          budget_decision: Json | null
+          claimed_at: string | null
+          completed_at: string | null
+          content_id: string | null
+          created_at: string
+          error: string | null
+          estimated_cost_usd: number | null
+          id: string
+          idempotency_key: string
+          lease_until: string | null
+          mode: string
+          model: string
+          moderation_result: Json | null
+          next_poll_at: string | null
+          params: Json
+          prompt_hash: string | null
+          provider: string
+          provider_request_id: string | null
+          state: string
+          submitted_at: string | null
+          tenant_id: string
+          updated_at: string
+          actual_cost_usd: number | null
+          video_seconds: number | null
+        }
+        Insert: {
+          actor_id?: string | null
+          approval_state?: string
+          attempts?: number
+          budget_decision?: Json | null
+          claimed_at?: string | null
+          completed_at?: string | null
+          content_id?: string | null
+          created_at?: string
+          error?: string | null
+          estimated_cost_usd?: number | null
+          id?: string
+          idempotency_key: string
+          lease_until?: string | null
+          mode: string
+          model: string
+          moderation_result?: Json | null
+          next_poll_at?: string | null
+          params?: Json
+          prompt_hash?: string | null
+          provider: string
+          provider_request_id?: string | null
+          state?: string
+          submitted_at?: string | null
+          tenant_id: string
+          updated_at?: string
+          actual_cost_usd?: number | null
+          video_seconds?: number | null
+        }
+        Update: {
+          actor_id?: string | null
+          approval_state?: string
+          attempts?: number
+          budget_decision?: Json | null
+          claimed_at?: string | null
+          completed_at?: string | null
+          content_id?: string | null
+          created_at?: string
+          error?: string | null
+          estimated_cost_usd?: number | null
+          id?: string
+          idempotency_key?: string
+          lease_until?: string | null
+          mode?: string
+          model?: string
+          moderation_result?: Json | null
+          next_poll_at?: string | null
+          params?: Json
+          prompt_hash?: string | null
+          provider?: string
+          provider_request_id?: string | null
+          state?: string
+          submitted_at?: string | null
+          tenant_id?: string
+          updated_at?: string
+          actual_cost_usd?: number | null
+          video_seconds?: number | null
+        }
+        Relationships: []
+      }
       paige_subagent_factory_quota: {
         Row: {
           created_at: string
