@@ -213,3 +213,108 @@ yet required**; any cutover to required is a dated, announced step, never silent
 4. Canonical Harness docs stale (26 caps / 102 tools vs documented 17/105) — re‑grounded by this workstream.
 
 (#824, #802, #746 are already tracked.)
+
+## Phase 4 — authenticated test environment (reconciled 2026‑09‑12)
+
+§BRAIN: answered "do we have X?" from the record before designing anything. The authenticated-proof
+approach Phase 4 asks for **already exists** — so this is reconciliation, not a second plan (§18).
+
+| Piece | Where | State |
+|---|---|---|
+| Dedicated least‑privilege Solo test tenant + user spec (never owner PII; never send/spend/operator/cross‑tenant; empty + populated states) | `docs/delivery/solo-test-tenant-spec.md` | COMPLETE spec |
+| One‑home headless Chromium launch/resolve + honest result (never fabricates success, never logs page‑derived data) | `scripts/live-drive/live-drive.mjs` | LIVE helper (§32.c) |
+| Auth‑gated prod drive template (env‑only creds; self‑skips when prod/creds unavailable) | `scripts/live-drive/example-b-authed-prod.template.mjs` | LIVE template |
+| ~40 surface drive scripts (sign‑in, mutation, readback, a11y, scroll, account‑choice, settings, connections, sales, catalog, comms…) | `scripts/live-drive/*.mjs` | LIVE |
+| Credential contract (`LIVE_DRIVE_EMAIL`/`LIVE_DRIVE_PASSWORD`, env‑only, rotatable, burn‑if‑real) | spec §3 + `scripts/live-drive/README.md` | DEFINED |
+
+The directive's repeatable flows (sign‑in / onboarding / approval / mutation / readback / receipt /
+retry / failure / recovery / release smoke) map onto the existing drive scripts + `liveDrive` building
+blocks; a new flow is a new `*.mjs` that calls `liveDrive` (one home, §18) — no new harness.
+
+**The one thing owed is an OWNER action — the exact stop condition the directive names.**
+`solo-test-tenant-spec.md` §7 states it: the owner (a) provisions the dedicated least‑privilege Solo
+test tenant + user as specified, and (b) sets the two secret **names** (`LIVE_DRIVE_EMAIL` /
+`LIVE_DRIVE_PASSWORD`) in the CI environment. Provisioning a real authenticated account + a CI secret
+is a credential/account action — not code, and not something a headless agent can or should self‑serve.
+Until then every auth‑gated drive self‑skips honestly (§13) and authenticated‑runtime rows stay
+`UNVERIFIED` / `PROOF OWED`.
+
+**Honest limit (§13):** this converts *tenant‑tier* claims only. Operator surfaces + Act‑as need
+operator authority the account must never hold and stay owner‑verified by design.
+
+**Phase 4 status:** DESIGN + IMPLEMENTATION of the approach = DONE (pre‑existing, reconciled here);
+ACTIVATION = blocked on the owner step above — surfaced, not worked around. No second test‑env spec
+created.
+
+## Phase 5 — owner operations, observability & safe learning (reconciled 2026‑09‑12)
+
+Phase 1 already diagnosed this layer (functions 13–17 above). Phase 5 reconciles that diagnosis against
+the directive's ask, states which part is already satisfied, and bounds the gap — it does **not** build
+a new surface blind (the owner‑visible VIEW is Claude Design's, §00) or absorb another lane's crons (§00
+scope / standing order).
+
+**Already satisfied — the load‑bearing governance requirement.** The directive's hard rule is *"the
+system may recommend but must not silently rewrite skills, rules, budgets, or prompts."* That
+**PROPOSE‑only wall HOLDS today** (function 14): there is no silent self‑modification path. The
+improvement lifecycle the directive names — evidence → diagnosis → proposal → **owner decision** →
+controlled implementation → verification → recorded outcome — is the existing doctrine stack, not new
+law: §14/§15 (propose→confirm, never presume), §34/§26 (Paige owns her intelligence; learning is
+gated), §67/§68 (autonomy is granted to a process and decays; nothing acts unattested), §13 (honest
+outcome, never hoped‑for), §BRAIN (record the result). Phase 5 must **reuse** that stack, not fork it.
+
+**Observability substrate that already exists** (so the owner view is wiring, not invention): the
+`paige_llm_trace` store (L1), `paige_audit_log`, the action bus + `paige_action_kinds` (mission/approval
+state), router metering → `platform_usage_events` (cost), Rail/receipts (`paige-receipt-rail-contract.md`),
+the ReasoningPanel (L7 transparency), and the four Command Center surfaces
+(`command-center-four-surfaces.md`).
+
+**The bounded gap (not built here — why each is out of this slice):**
+1. **The apply→verify→record TAIL of the learning loop is unbuilt** (function 14). Defining + building
+   that lane is real backend work that belongs with the **learning/proactive workstream** — which also
+   owns `paige-evaluator`/`paige-heartbeat` (the crons currently 401'd for want of `verify_jwt=false` in
+   `config.toml`). Absorbing it here would cross into an active lane (§00 scope / standing order "do not
+   absorb unrelated workstreams"). Surfaced, with the smallest safe next step: register the two beats in
+   `config.toml` and define the apply/verify/record lane as its own Gate‑A slice.
+2. **A proposals / owner‑ops VIEW** (proposals are chat‑only today; no owner‑visible security‑posture or
+   release‑record surface — functions 14/16/17). Its **visual direction is Claude Design's** (§00); it
+   must **extend the Command Center four surfaces + Rail, never a new "Mission Control."** That is a
+   CD‑pack + Gate‑A dependency — CC wires the (already‑collected) data behind whatever CD draws; CC does
+   not invent the surface.
+3. **Release records + automated rollback** (function 17): zero release records exist;
+   `premerge-migration-proof` is advisory. These are release‑governance items tracked under that policy,
+   not this Experience‑Quality slice.
+
+**Phase 5 status:** RECONCILED. The governance invariant (recommend, never silently rewrite) is
+**already met**. The remaining build (learning apply/verify/record tail + an owner‑ops VIEW) is a bounded
+follow‑on that needs a CD pack for the surface (§00) and coordination with the learning/proactive lane —
+surfaced as a decision, not built blind.
+
+## Phase 6 — competitive benchmarking without copying (practice, 2026‑09‑12)
+
+A standing practice for benchmarking Paige against best‑in‑class, scoped to stay **inside §00**: CC
+benchmarks the dimensions that are **correctness, capability, and governance** — never visual taste,
+which is Claude Design's. "Study principles, never clone" (no competitor trade dress, UI kit, or
+marketing copy is copied — already a §-bound rule in the UI standard).
+
+**Dimensions CC benchmarks (engineering, mine):**
+- **Conversational usefulness** — can a non‑technical owner reach the capability in ≤5 min without
+  prompt‑engineering (§36), measured by the authenticated drives (Phase 4) once the test account exists.
+- **Authority & isolation** — tenant/workspace/actor/role re‑resolved per step (§9/§51/§59); no IDOR.
+- **Auditability** — every consequential act leaves a Rail/receipt; the owner can trace it (§ receipt‑rail).
+- **Recovery & release discipline** — deploy is loud‑failing; migrations proven‑persisted (§32.a);
+  rollback position named (§ release‑governance).
+- **Observability & cost** — spend is traced + metered; budget enforcement provable (function 13).
+- **Safe autonomy** — recommend‑not‑rewrite; authority decays and is attested (§67/§68).
+
+**Dimension CC does NOT benchmark (Claude Design's, §00):** visual polish, motion, layout, hierarchy,
+"Apple‑level" feel. CC records *measurements* a design decision might use (contrast ratios, whether a
+face loaded, whether a control 404s — §00 "evidence handed over, never a review"); it renders no verdict.
+
+**Method:** per surface/capability, state the best‑in‑class bar on each engineering dimension, measure
+Paige against it with evidence (not impression), and file any gap as a tracked finding (Attention
+Register) — never a silent rewrite and never a visual critique. **Honesty (§13):** competitor internals
+are largely unobservable; benchmark against *well‑attested public behavior*, never claim "competitor X
+does exactly Y" as fact.
+
+**Phase 6 status:** PRACTICE RECORDED (§00‑clean). It is a repeatable rubric, not a one‑time report;
+the first real pass runs against the authenticated drives once the Phase‑4 test account is provisioned.
