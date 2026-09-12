@@ -151,6 +151,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run smoke:secure-browser-security
 
+      - name: Secure Browser provider-neutral control plane (RLS, receipts, limits, quarantine, hard provider gates)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:secure-browser-control-plane
+
       - name: Install Chromium for the Secure Browser hostile-page proof
         if: ${{ !cancelled() }}
         run: npx playwright install --with-deps chromium

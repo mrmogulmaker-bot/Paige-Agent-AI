@@ -105,6 +105,7 @@ jobs:
       # authenticated user of that same tenant). Rides this job for the same reason as the two
       # above — the expensive part is `supabase start` + `db reset` (§24).
       - run: supabase test db supabase/tests/business_context_readiness.sql
+      - run: supabase test db supabase/tests/secure_browser_control_plane_security.sql
       # The team.authority contract. Its load-bearing fixture is a caller who is the legal owner of
       # ANOTHER workspace while holding a plain member seat in their active one — the one shape that
       # makes a dropped is_tenant_owner() tenant argument, and a collapsed permission field, fail
