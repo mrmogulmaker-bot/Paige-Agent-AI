@@ -973,3 +973,143 @@ export const PAYMENT_SETUP_DURABLE_REFUSALS: ReadonlySet<string> = new Set([
   "no_active_workspace", "not_applicable_scope", "owner_only",
   "billing_account_ambiguous", "needs_config", "provider_configuration",
 ]);
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Vibe Media usage (owner build authorization 2026-09-12). The same discipline
+// as the AI-usage slice: one server-owned read (get_workspace_media_usage), a
+// pure presentation resolver, no enforcement on a Billing screen. The MEDIA
+// category is the first customer-facing metered usage on the platform; Chat
+// and automations stay visibility-only (included in Beta) on their own card.
+// ═════════════════════════════════════════════════════════════════════════════
+
+export type MediaUsageStateId =
+  | "media-loading"
+  | "media-error"
+  | "media-no-workspace"
+  | "media-owner-only"
+  | "media-not-applicable"
+  /** A real allowance with real remaining credit — the working state. */
+  | "media-ok"
+  /** The allowance is exhausted AND no purchased credits remain. */
+  | "media-exhausted";
+
+export interface MediaUsagePresentation {
+  state: MediaUsageStateId;
+  heading: string;
+  body: string;
+  fields: ReadonlyArray<{ label: string; value: string }>;
+  /** The 50/80/100% allowance notice (null below 50%). */
+  notice: string | null;
+  note: string;
+  canRetry: boolean;
+}
+
+export interface MediaUsageInput {
+  loading: boolean;
+  readFailed: boolean;
+  usageState: "ok" | "no_workspace" | "owner_only" | "not_applicable";
+  allowanceMonthly: number | null;
+  includedRemaining: number | null;
+  purchasedRemaining: number | null;
+  totalRemaining: number | null;
+  holdsOpen: number | null;
+  imageCredits: number | null;
+  imageEditCredits: number | null;
+  videoCredits: number | null;
+  otherCredits: number | null;
+  jobsMonth: number | null;
+  periodEnd: string | null;
+  formatDate?: (iso: string) => string;
+}
+
+const NO_MEDIA_FIELDS: ReadonlyArray<{ label: string; value: string }> = [];
+
+function mediaCount(n: number | null): string {
+  return typeof n === "number" && Number.isFinite(n) ? n.toLocaleString("en-US") : "—";
+}
+
+export function resolveMediaUsagePresentation(input: MediaUsageInput): MediaUsagePresentation {
+  const fmt = input.formatDate ?? ((iso: string) => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  });
+
+  if (input.loading) {
+    return { state: "media-loading", heading: "Reading this workspace's Vibe Media usage…", body: "", fields: NO_MEDIA_FIELDS, notice: null, note: "", canRetry: false };
+  }
+  if (input.readFailed) {
+    return { state: "media-error", heading: "Vibe Media usage could not be read.", body: "Nothing about the workspace changed — the read failed.", fields: NO_MEDIA_FIELDS, notice: null, note: "", canRetry: true };
+  }
+  if (input.usageState === "no_workspace") {
+    return { state: "media-no-workspace", heading: "No workspace is selected.", body: "Vibe Media usage belongs to a workspace.", fields: NO_MEDIA_FIELDS, notice: null, note: "", canRetry: false };
+  }
+  if (input.usageState === "owner_only") {
+    return { state: "media-owner-only", heading: "Only the workspace owner can view Vibe Media usage.", body: "", fields: NO_MEDIA_FIELDS, notice: null, note: "", canRetry: false };
+  }
+  if (input.usageState === "not_applicable") {
+    return { state: "media-not-applicable", heading: "Vibe Media usage applies to top-level workspaces.", body: "", fields: NO_MEDIA_FIELDS, notice: null, note: "", canRetry: false };
+  }
+
+  const allowance = input.allowanceMonthly ?? 0;
+  const includedRemaining = input.includedRemaining ?? 0;
+  const purchased = input.purchasedRemaining ?? 0;
+  const total = input.totalRemaining ?? 0;
+  const consumed = Math.max(0, allowance - includedRemaining);
+  const pct = allowance > 0 ? (consumed / allowance) * 100 : 0;
+
+  let notice: string | null = null;
+  if (allowance > 0 && pct >= 100) {
+    notice = "Your included media allowance is used. Generation beyond it needs Media Credits and shows its estimated cost for approval before anything runs.";
+  } else if (allowance > 0 && pct >= 80) {
+    notice = `You've used about ${Math.floor(pct)}% of this month's included media allowance.`;
+  } else if (allowance > 0 && pct >= 50) {
+    notice = `Halfway through this month's included media allowance.`;
+  }
+
+  const fields: Array<{ label: string; value: string }> = [
+    { label: "Included monthly allowance", value: `${mediaCount(allowance)} Media Credits` },
+    { label: "Included remaining", value: mediaCount(input.includedRemaining) },
+  ];
+  if (purchased > 0) fields.push({ label: "Purchased credits remaining", value: mediaCount(input.purchasedRemaining) });
+  fields.push({ label: "Available to spend", value: `${mediaCount(input.totalRemaining)} Media Credits` });
+  if ((input.holdsOpen ?? 0) > 0) {
+    fields.push({ label: "Reserved for jobs in flight", value: mediaCount(input.holdsOpen) });
+  }
+  if (input.periodEnd) fields.push({ label: "Allowance resets", value: fmt(input.periodEnd) });
+
+  const breakdown: Array<{ label: string; value: string }> = [];
+  if ((input.jobsMonth ?? 0) > 0) {
+    breakdown.push(
+      { label: "Images this month", value: `${mediaCount(input.imageCredits)} cr` },
+      { label: "Edits this month", value: `${mediaCount(input.imageEditCredits)} cr` },
+    );
+    if ((input.videoCredits ?? 0) > 0) breakdown.push({ label: "Video this month", value: `${mediaCount(input.videoCredits)} cr` });
+    if ((input.otherCredits ?? 0) > 0) breakdown.push({ label: "Other media this month", value: `${mediaCount(input.otherCredits)} cr` });
+    breakdown.push({ label: "Completed jobs this month", value: mediaCount(input.jobsMonth) });
+  }
+
+  const note =
+    "One Media Credit covers one cent of approved provider cost. Chat, reasoning, and automation usage are included during Beta and shown separately — only Vibe Media consumes Media Credits. There is no unlimited media: anything beyond the allowance shows its estimated cost and asks first.";
+
+  if (total <= 0) {
+    return {
+      state: "media-exhausted",
+      heading: "Media credits exhausted.",
+      body: "This workspace has used its included allowance and has no purchased credits. Vibe Studio will show the estimated cost for anything new and needs credits added before it can run.",
+      fields: [...fields, ...breakdown],
+      notice,
+      note,
+      canRetry: false,
+    };
+  }
+
+  return {
+    state: "media-ok",
+    heading: "Vibe Media usage is being tracked.",
+    body: "",
+    fields: [...fields, ...breakdown],
+    notice,
+    note,
+    canRetry: false,
+  };
+}

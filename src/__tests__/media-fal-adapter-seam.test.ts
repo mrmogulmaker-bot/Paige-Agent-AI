@@ -49,12 +49,15 @@ describe("estimate catalog", () => {
     expect(ids).toContain("fal-ai/nano-banana");
     expect(ids).toContain("fal-ai/flux-pro/v1.1");
     expect(ids).toContain("fal-ai/nano-banana/edit");
-    expect(ids).toContain("fal-ai/veo3/fast");
-    expect(ids).toContain("fal-ai/veo3");
+    expect(ids).toContain("fal-ai/veo3.1/fast");
+    expect(ids).toContain("fal-ai/veo3.1");
+    // The deprecated Veo 3 family must NOT ship as a default (2026-09-12 correction).
+    expect(ids).not.toContain("fal-ai/veo3/fast");
+    expect(ids).not.toContain("fal-ai/veo3");
   });
 
   it("video estimates are per-second with bounded duration math", () => {
-    const e = estimateFromCatalog(catalog, { mode: "video", model: "fal-ai/veo3/fast", videoSeconds: 8 });
+    const e = estimateFromCatalog(catalog, { mode: "video", model: "fal-ai/veo3.1/fast", videoSeconds: 8 });
     expect(e?.unit).toBe("second");
     // 8s at the curated $0.15/s within rounding at 4dp.
     expect(e?.estimatedCostUsd).toBeCloseTo(1.2, 3);

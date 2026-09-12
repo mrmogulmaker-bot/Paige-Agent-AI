@@ -6,6 +6,7 @@ on:
       - "supabase/functions/_shared/paige-spine/**"
       - "supabase/migrations/**"
       - "supabase/tests/paige_spine_foundation.sql"
+      - "supabase/tests/media_credit_ledger.sql"
       - "supabase/tests/business_context_readiness.sql"
       - "supabase/tests/team_authority_readiness.sql"
       - "supabase/tests/business_mission_foundation.sql"
@@ -37,6 +38,7 @@ on:
       - "supabase/functions/_shared/paige-spine/**"
       - "supabase/migrations/**"
       - "supabase/tests/paige_spine_foundation.sql"
+      - "supabase/tests/media_credit_ledger.sql"
       - "supabase/tests/business_context_readiness.sql"
       - "supabase/tests/team_authority_readiness.sql"
       - "supabase/tests/business_mission_foundation.sql"
@@ -96,6 +98,9 @@ jobs:
       - run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector
       - run: supabase db reset
       - run: supabase test db supabase/tests/paige_spine_foundation.sql
+      # Vibe Media Credit Ledger: append-only, closure math, anti-leakage release
+      # gate, lazy mint, RLS, and the §59 service-role surface (2026-09-12).
+      - run: supabase test db supabase/tests/media_credit_ledger.sql
       # Behavioural proof for the Solo Team invitation seam, against the schema `db reset` just
       # replayed from zero. It rides this job deliberately rather than standing up a second
       # Postgres: the expensive part is `supabase start` + `db reset`, and duplicating it to run
