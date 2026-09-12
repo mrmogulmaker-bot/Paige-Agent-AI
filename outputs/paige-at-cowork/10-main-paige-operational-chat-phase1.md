@@ -97,13 +97,21 @@ genuine-insert Rail-emission gate (the §947 fix), and the duplicate-prevention 
   `_shared/toolConfirmation.ts`). **LIVE.** *Partial:* a second, unwired confirmation home
   (`paige_tool_confirmations`) exists in-tree (§18 two-homes smell, not a correctness gap).
 
-### C.2 Truthful capability awareness (NET-NEW — does not exist)
-- **No tenant capability-status resolver exists.** "What can Paige do for THIS tenant right now?" is net-new
-  assembly over distributed sources: Spine maturity (`_shared/paige-spine/registry.ts`) × tier
-  (`src/lib/tier/tierFeatures.ts:273 getTierFeatureSet()`) × connection
-  (`integrations.list`→`public.list_integration_surface`) × autonomy (`resolve_tool_autonomy` /
-  `src/solo/data/useSoloToolGovernance.ts`) × evidence presence. No code joins these today
-  (binding-ledger `README.md:143-145`). **This is the "first implementation priority."** → **PLANNED → P2.**
+### C.2 Truthful capability awareness (BUILT in P3a/P3b — unmerged candidate)
+- **The tenant capability-status resolver now exists as the §18 one home** that COMPOSES the distributed
+  sources — it does not fork a second registry. Two pure modules + one chat tool:
+  - `_shared/paige-capability-status/resolver.ts` (P3a) — the decision core: one honest availability per
+    capability (live / needs_approval / needs_setup / planned / not_for_tier / unavailable), most-restrictive-wins.
+  - `_shared/paige-capability-status/signals.ts` (P3b) — the pure fact→signal layer; MVP = contacts + connections,
+    only capabilities that genuinely ship (§947).
+  - `capability_status` READ tool in `paige-ai-chat` — resolves the facts SERVER-SIDE (caller tier via the early
+    `callerTier`; the Trust-Compass-clamped lane via `resolveToolAutonomy("crm_create_contact")`; Spine maturity via
+    `getSpineCapability("integrations.list")`) and returns the honest statuses. Reads as a query → no approval gate.
+  - Grounded truths (two Explore sweeps): NO `crm.*` Spine entry (contacts maturity synthesized from the shipped+classified
+    tool, documented); `getTierFeatureSet` is frontend-only (tierEligible derives from `callerTier`; sealed client seat →
+    nothing; Agency-CRM = open task #124, modeled to match current shipped behavior, flagged not faked).
+  - **Proof owed (§32.c):** the authenticated owner drive ("what can you do here?" → truthful list) is owed to a capable
+    session; this headless session cannot drive the authenticated chat. → **BUILT → PROOF-OWED.**
 
 ### C.3 Contact creation (LIVE write; PARTIAL + a live honesty defect on the outcome)
 - **Path:** chat tool `crm_create_contact` (`index.ts:5326`, handler `:9926-10010`) → fuzzy dedup
