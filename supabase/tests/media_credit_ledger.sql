@@ -186,7 +186,7 @@ DO $$
 DECLARE
   _u uuid := (SELECT id FROM auth.users WHERE email = 'media-ledger-test@example.test');
   _t uuid := (SELECT tenant_id FROM public.paige_media_jobs WHERE idempotency_key = 'pgtap-proof-job-1');
-  _other uuid := gen_random_uuid();
+  _other uuid := '5e500000-0000-0000-0000-000000000005';
 BEGIN
   INSERT INTO auth.users (id, email) VALUES (_other, 'other@example.test');
   INSERT INTO public.tenants (id, slug, name, status, account_type, account_number_prefix, features)
@@ -196,7 +196,7 @@ BEGIN
 END $$;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', (SELECT id FROM auth.users WHERE email = 'other@example.test'),
+  json_build_object('sub', '5e500000-0000-0000-0000-000000000005'::text,
                     'role', 'authenticated')::text, true);
 SELECT is((SELECT count(*) FROM public.paige_media_credit_entries)::int, 0,
           'another workspace sees zero of this workspace''s ledger entries');
