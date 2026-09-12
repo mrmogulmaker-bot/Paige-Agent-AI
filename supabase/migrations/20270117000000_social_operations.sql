@@ -96,8 +96,19 @@ create policy psa_write on public.paige_social_accounts for all to authenticated
 -- migration originally intended, and which the orphaned social.post_* Spine capabilities
 -- assume — is a genuine operator-vs-tenant §9 product decision (the operator table is live
 -- via meta-schedule-post; making it tenant_id NOT NULL would break that writer). It is
--- deliberately NOT made here; it is recorded in the Harness Completion Map §5.7 and #1155
--- as the real follow-up.
+-- deliberately NOT made here; it is recorded in the Harness Completion Map §5.7 and #1161
+-- (with #1155) as the real follow-up.
+--
+-- OWNER-APPROVED 2026-09-12: this guard is a COMPATIBILITY BRIDGE, not the final canonical
+-- Social schema. Its only purpose is to restore a truthful fresh database replay so every
+-- migration-bearing workstream can test/merge/deploy again. It preserves the legacy
+-- operator-scoped behavior EXACTLY, fabricates no tenant ownership, and alters/migrates/
+-- deletes no legacy Social rows. A repaired replay does NOT make tenant-safe Social
+-- publishing / scheduling / analytics live. The complete Social Foundation migration is
+-- expected to REPLACE this bridge: it must add tenant_id with a real ownership source (never
+-- a guess), move meta-schedule-post off the operator insert, and re-establish the tenant RLS
+-- this guard currently skips — at which point the `if exists (tenant_id)` condition becomes
+-- unconditionally true and this guard is inert.
 do $$
 begin
   if exists (
