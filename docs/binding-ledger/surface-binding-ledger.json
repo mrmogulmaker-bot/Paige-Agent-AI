@@ -408,25 +408,25 @@
       "group": "campaigns",
       "tier_scope": ["solo"],
       "owner_component": "src/solo/social-command.tsx:578 (useSocialCommand/social-truth)",
-      "canonical_source": "tenants.features->social_handles (record-only); Spine read get_social_presence_evidence; write record_social_handles",
+      "canonical_source": "tenants.features->social_handles (record-only); Spine read get_social_presence_evidence; write record_social_handles. The deployed paige_social_* lifecycle tables are a service-only, non-executable foundation and are not yet a surface source.",
       "chain": {
         "canonical_source": {"status": "real", "note": "record-only handles; NO provider metrics"},
         "tenant_scope": {"status": "server_resolved", "note": "get_social_presence_evidence: DEFINER, tenant server-resolved, is_tenant_admin gate guarded on auth.uid() IS NOT NULL"},
         "safe_context": {"status": "wired", "note": "social.presence registered; buildSocialPresenceBlock injected per tenant turn; returns the raw handle (a PUBLIC identifier, deliberate)"},
         "authority": {"status": "governed", "note": "write record_social_handles is a §10 callable seam reached by JWT and by paige-mcp (crm.write), never an inline chat tool"},
         "governed_write": {"status": "wired", "note": "record_social_handles has its own in-body gate"},
-        "verified_outcome": {"status": "none", "note": "the Spine entry declares the READ only"},
+        "verified_outcome": {"status": "none", "note": "the Spine entry declares the presence READ only; social_post is hard-off and no provider executor, readback, receipt, or Rail outcome exists"},
         "rail_evidence": {"producer": "none", "read": "n/a"},
         "mind_eligibility": {"axis_a": "PARTIAL", "axis_b": "NO", "note": "read chat-injected, unit-tested, no authenticated drive. SUPERSEDES the Mind matrix, which recorded Social UNAVAILABLE at its 2026-09-03 grounding — social.presence shipped 2026-09-05"},
         "memory_retention": {"status": "n/a"}
       },
       "prohibited_context": ["any provider metric (none exist)", "provider credentials/tokens"],
       "state": "PROOF_OWED",
-      "state_reason": "social.presence read+write wired and unit-tested; authenticated runtime proof absent. Provider metrics remain UNAVAILABLE (no source). Supersedes the pre-2026-09-05 Mind matrix.",
+      "state_reason": "social.presence read+write wired and unit-tested; authenticated runtime proof absent. PR #1162 deployed the tenant-safe lifecycle substrate and fail-closed containment, but connection, durable-draft consumers, provider actions/readback, receipts, metrics, and recommendations remain UNAVAILABLE.",
       "evidence_class": ["production_catalog", "automated_test", "rendered_structural", "source_read"],
-      "linked": [],
-      "next_slice": "Authenticated drive of the social.presence read/write on a real Solo tenant. Provider connections/metrics remain a separate, unstarted contract.",
-      "sources": ["docs/brain/paige-spine-and-rail-state.md", "supabase/functions/_shared/paige-spine/domains/social.ts", "docs/delivery/solo-social-command.md", "docs/architecture/paige-mind-integration-matrix.md#campaigns-social-performance (SUPERSEDED — predates social.presence)"]
+      "linked": ["PR #1162"],
+      "next_slice": "Authenticated drive of the declared-handle read/write remains owed. Separately, the owner must select and authorize the Beta provider/platform/OAuth/test-account boundary before the canonical account lifecycle can be implemented.",
+      "sources": ["docs/brain/paige-spine-and-rail-state.md", "supabase/functions/_shared/paige-spine/domains/social.ts", "supabase/migrations/20270122000000_social_foundation_tenant_recovery.sql", "docs/evidence/ui-delivery/social-operations-phase-0-truth-containment.md", "docs/delivery/solo-social-command.md", "docs/architecture/paige-mind-integration-matrix.md#campaigns-social-performance (SUPERSEDED — predates social.presence)"]
     },
     {
       "id": "campaigns.performance",

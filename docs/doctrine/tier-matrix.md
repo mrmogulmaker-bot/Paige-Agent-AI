@@ -4000,22 +4000,26 @@ zero tests and now breaks three.
 **Still owed, unchanged:** the authenticated live drive of the record form
 (§32.c) — no session in this work has held a browser that can reach the authenticated surface.
 
-**Live provider connection remains UNAVAILABLE and is unchanged by this slice.** `meta-schedule-post`
-/ `meta-get-insights` exist but read a single platform-wide `META_PAGE_ACCESS_TOKEN` and write
-`paige_social_posts`, a table with **no `tenant_id`**. Pointing a tenant surface at them would publish
-every workspace's post to one shared page. Per-tenant publishing needs per-tenant OAuth (provider app
-review, per-tenant tokens) and a tenant column on that table.
+**Live provider connection and every Social operation remain UNAVAILABLE (PR #1162, production main
+`d71fa70f19dda13f3b8f8dc9d968bc9cbbcdbf65`, 2026-09-12).** The canonical recovery migration
+`20270122000000_social_foundation_tenant_recovery.sql` is deployed and persisted: production's empty
+tenant-shaped predecessor is preserved at `private.paige_social_posts_legacy_20270117`; the public lifecycle
+now has tenant-bound accounts, draft roots, immutable versions, account targets, approval/confirmation-bound
+jobs, provider results, provider correlation, and idempotency constraints. All six tables have forced RLS;
+browser access is read-only to the four safe lifecycle tables, while raw accounts and provider results are
+service-only. This is a safe substrate, not an executable capability.
 
-**Server-side containment now ENFORCES that UNAVAILABLE (§66, PR #1164, main `19ccb13`, 2026-09-12).**
-Previously publishing was UNAVAILABLE by architecture/UI only; the interim `_shared/social-publish-containment.ts`
-safeguard now hard-denies Social PUBLICATION at both content-publication seams — `paige-social` `post`
-(Upload-Post) and `meta-schedule-post` (Meta Graph) — for **every caller (all tiers)** with an honest
-`UNAVAILABLE` returned before any provider call, success, or receipt; a configured provider key cannot flip
-it (§13/§38). Tier VISIBILITY is unchanged (publishing was already not-live everywhere); this ships the
-enforcement layer. **Owner ruling 2026-09-12: this is INTERIM containment; Codex PR #1162 (Social Operations
-Gate A — containment + canonical foundation) is canonical and must preserve/strengthen every denial and own
-the definitive Social tier reality when it lands.** Reads and `cancel_scheduled` stay available; account
-`connect` is not wired. Evidence: `docs/evidence/ui-delivery/social-publish-containment.md`.
+PR #1162 supersedes the interim #1164 module with one broader `_shared/socialUnavailable.ts` contract.
+`paige-social`, `meta-schedule-post`, `meta-get-insights`, `meta-list-comments`, and `handle-meta-webhook`
+all terminate without reading request payloads, credentials, database rows, or provider state. `social_post`,
+`social_accounts`, and `social_analytics` are absent from Chat dispatch; `social_post` is hard-off in the
+autonomy resolver. Production credential-free probes reached the canonical 503 `attempted:false` response
+where the gateway permits anonymous invocation and otherwise stopped at the JWT wall with 401. No provider
+call, connection, draft consumer, publication, schedule, cancellation, analytics read, receipt, Rail outcome,
+or recommendation is claimed. The only customer Social capability remains declared-handle capture
+(`PARTIAL` / authenticated proof owed). Next gate: the owner selects and authorizes one Beta provider/platform,
+OAuth application and scopes, redirect domains, test account, credentials, and controlled external-publication
+proof. Evidence: `docs/evidence/ui-delivery/social-operations-phase-0-truth-containment.md`.
 
 ### PAIGE Mind — the approved 3D knowledge orb, `/solo/{account}/…` Command Center → Mind
 
