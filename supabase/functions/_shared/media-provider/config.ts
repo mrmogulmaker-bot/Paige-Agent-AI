@@ -18,6 +18,11 @@
  *     for standard-tier image jobs.
  */
 
+// Deno global guarded so this shared module type-checks when app-tsc/vitest
+// pulls it in (no Deno types there); edge behavior identical.
+const env = (name: string): string | undefined =>
+  (globalThis as { Deno?: { env?: { get(n: string): string | undefined } } }).Deno?.env?.get(name);
+
 export const MEDIA_CEILING_KEY = "media_budget_daily_usd";
 export const mediaCeilingKey = (tenantId: string) => `media_budget_daily_usd__t_${tenantId}`;
 export const DRAFT_ALLOWANCE_KEY = "media_draft_allowance_usd";
@@ -132,14 +137,14 @@ export async function loadMediaConfig(db: SettingsDb): Promise<MediaConfig> {
     readSetting(db, CREDIT_USD_KEY),
   ]);
 
-  const envCeiling = parseNumber(Deno.env.get("MEDIA_BUDGET_DAILY_USD"));
-  const envDraft = parseNumber(Deno.env.get("MEDIA_DRAFT_ALLOWANCE_USD"));
-  const envVideo = parseBool(Deno.env.get("MEDIA_VIDEO_ENABLED"));
-  const envVideoLimit = parseNumber(Deno.env.get("MEDIA_DAILY_VIDEO_LIMIT"));
-  const envProviderCeiling = parseNumber(Deno.env.get("MEDIA_PROVIDER_CEILING_USD"));
-  const envSpendCeiling = parseNumber(Deno.env.get("MEDIA_SPEND_CEILING_USD"));
-  const envCreditsMonthly = parseNumber(Deno.env.get("MEDIA_CREDITS_INCLUDED_MONTHLY"));
-  const envCreditUsd = parseNumber(Deno.env.get("MEDIA_CREDIT_USD"));
+  const envCeiling = parseNumber(env("MEDIA_BUDGET_DAILY_USD"));
+  const envDraft = parseNumber(env("MEDIA_DRAFT_ALLOWANCE_USD"));
+  const envVideo = parseBool(env("MEDIA_VIDEO_ENABLED"));
+  const envVideoLimit = parseNumber(env("MEDIA_DAILY_VIDEO_LIMIT"));
+  const envProviderCeiling = parseNumber(env("MEDIA_PROVIDER_CEILING_USD"));
+  const envSpendCeiling = parseNumber(env("MEDIA_SPEND_CEILING_USD"));
+  const envCreditsMonthly = parseNumber(env("MEDIA_CREDITS_INCLUDED_MONTHLY"));
+  const envCreditUsd = parseNumber(env("MEDIA_CREDIT_USD"));
 
   return {
     dailyCeilingUsd: parseNumber(platform.value) ?? envCeiling ?? null,
