@@ -18,6 +18,14 @@ REDUCED_MOTION: NOT_APPLICABLE: the card adds no motion.
 STATE_COVERAGE: PASS: trial-equivalent included allowance (fields), low balance (80% notice), exhausted (dedicated state with next-step copy), hold (reserved-in-flight field), completion (category breakdown), failed/released (ledger receipt trail labels every entry type), provider-unavailable + approval-required + declined + cancellation (Vibe-surface states, tested in vibe.render), retry (media-error), receipts history (entries list).
 TRUTHFUL_STATE_LABELS: PASS: "One Media Credit covers one cent of approved provider cost"; no unlimited promise anywhere; Chat/automations stated as included-in-Beta and shown separately; packs labeled roadmap-only until checkout exists.
 SOLO_UI: YES: Settings → Billing (the Solo surface) + the Vibe Studio rail.
+SOLO_1536X770_PAIGE_CLOSED: UNVERIFIED: owed to the credentialed proof session (no test credentials in build sessions); the card reuses the shipped Billing layout whose geometry is proven at these viewports by prior delivery records
+SOLO_1536X770_PAIGE_OPEN: UNVERIFIED: owed with the same session; PAIGE-open collapses the settings pane, the card stack reflows within the proven shell
+SOLO_1366X768_PAIGE_CLOSED: UNVERIFIED: owed to the credentialed session
+SOLO_1366X768_PAIGE_OPEN: UNVERIFIED: owed to the credentialed session
+SOLO_1024X768_PAIGE_CLOSED: UNVERIFIED: owed to the credentialed session
+SOLO_1024X768_PAIGE_OPEN: UNVERIFIED: owed to the credentialed session
+SOLO_900X1000_PAIGE_CLOSED: UNVERIFIED: owed to the credentialed session; the settings scroll owner is the page column (proven shell)
+SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: owed to the credentialed session
 UNVERIFIED: authenticated live render of both surfaces; the controlled paid proof (owner-authorized ≤$1.25, runs after deploy); pgTAP concurrency claims beyond single-session (the FOR UPDATE tenant lock follows the house precedent; a two-connection proof script is a follow-up).
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
@@ -27,7 +35,7 @@ RELEASE_CLASSIFICATION: internal-only: metered usage visibility + ledger, no cha
 CUSTOMER_RELEASE_IDENTITY: none: no charge path and no approved release record; media credits are visible tracking only
 RELEASE_NOTE_REQUIRED: NO: internal capability; the customer-facing moment is the future pack checkout
 RELEASE_TRUTH_BOUNDARY: PARTIAL: credit ledger code complete with CI-proven SQL invariants; deployed state and provider proof owed; no customer can be charged anything by this delivery
-RELEASE_RECOVERY: position=git revert of the merge plus edge redeploy of prior versions; the migration is additive-only and the ledger is append-only so recovery preserves history; reference=docs/evidence/ui-delivery/vibe-media-credits.md
+RELEASE_RECOVERY: position=git revert of the merge plus edge redeploy of prior versions (the migration is additive-only and the ledger is append-only so recovery preserves history); reference=docs/evidence/ui-delivery/vibe-media-credits.md
 
 ## Scope and collisions
 

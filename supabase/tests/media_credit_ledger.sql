@@ -23,7 +23,8 @@ DECLARE
   _j uuid := gen_random_uuid();
 BEGIN
   INSERT INTO auth.users (id, email) VALUES (_u, 'media-ledger-test@example.test');
-  INSERT INTO public.tenants (id, name) VALUES (_t, 'Media Ledger Test Co');
+  INSERT INTO public.tenants (id, slug, name, status, account_type, account_number_prefix, features)
+  VALUES (_t, 'media-ledger-test', 'Media Ledger Test Co', 'active', 'standalone', 'MLT', '{}');
   INSERT INTO public.tenant_members (tenant_id, user_id, role, status)
   VALUES (_t, _u, 'owner', 'active');
   INSERT INTO public.paige_media_jobs
@@ -179,7 +180,8 @@ DECLARE
   _other uuid := gen_random_uuid();
 BEGIN
   INSERT INTO auth.users (id, email) VALUES (_other, 'other@example.test');
-  INSERT INTO public.tenants (id, name) VALUES (_other, 'Other Co');
+  INSERT INTO public.tenants (id, slug, name, status, account_type, account_number_prefix, features)
+  VALUES (_other, 'media-ledger-other', 'Other Co', 'active', 'standalone', 'MLO', '{}');
   INSERT INTO public.tenant_members (tenant_id, user_id, role, status)
   VALUES (_other, _other, 'owner', 'active');
 END $$;
