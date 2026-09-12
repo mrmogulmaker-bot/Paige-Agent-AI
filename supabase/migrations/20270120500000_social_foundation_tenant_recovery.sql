@@ -444,20 +444,40 @@ grant all on public.paige_social_accounts,public.paige_social_posts,public.paige
   public.paige_social_targets,public.paige_social_jobs,public.paige_social_provider_results
   to service_role;
 
+-- One safe actor-to-workspace resolver for Social reads. Unlike the historical
+-- current_user_tenant_id fallback, an active profile alone is insufficient: the
+-- caller must also hold an active membership in that same workspace.
+create or replace function public.social_current_tenant_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path=''
+as $$
+  select p.active_tenant_id
+  from public.profiles p
+  join public.tenant_members m
+    on m.tenant_id=p.active_tenant_id and m.user_id=p.user_id and m.status='active'
+  where p.user_id=auth.uid()
+  limit 1
+$$;
+revoke all on function public.social_current_tenant_id() from public,anon,service_role;
+grant execute on function public.social_current_tenant_id() to authenticated;
+
 drop policy if exists psa_read on public.paige_social_accounts;
 drop policy if exists psa_write on public.paige_social_accounts;
 create policy paige_social_accounts_service on public.paige_social_accounts for all to service_role using (true) with check (true);
 create policy paige_social_posts_read on public.paige_social_posts for select to authenticated
-  using (auth.uid() is not null and tenant_id=public.current_user_tenant_id() and public.is_tenant_member(tenant_id));
+  using (auth.uid() is not null and tenant_id=public.social_current_tenant_id());
 create policy paige_social_posts_service on public.paige_social_posts for all to service_role using (true) with check (true);
 create policy paige_social_versions_read on public.paige_social_post_versions for select to authenticated
-  using (auth.uid() is not null and tenant_id=public.current_user_tenant_id() and public.is_tenant_member(tenant_id));
+  using (auth.uid() is not null and tenant_id=public.social_current_tenant_id());
 create policy paige_social_versions_service on public.paige_social_post_versions for all to service_role using (true) with check (true);
 create policy paige_social_targets_read on public.paige_social_targets for select to authenticated
-  using (auth.uid() is not null and tenant_id=public.current_user_tenant_id() and public.is_tenant_member(tenant_id));
+  using (auth.uid() is not null and tenant_id=public.social_current_tenant_id());
 create policy paige_social_targets_service on public.paige_social_targets for all to service_role using (true) with check (true);
 create policy paige_social_jobs_read on public.paige_social_jobs for select to authenticated
-  using (auth.uid() is not null and tenant_id=public.current_user_tenant_id() and public.is_tenant_member(tenant_id));
+  using (auth.uid() is not null and tenant_id=public.social_current_tenant_id());
 create policy paige_social_jobs_service on public.paige_social_jobs for all to service_role using (true) with check (true);
 create policy paige_social_provider_results_service on public.paige_social_provider_results for all to service_role using (true) with check (true);
 
@@ -472,9 +492,9 @@ returns table(
 language plpgsql stable security definer
 set search_path='public','pg_catalog'
 as $$
-declare t uuid:=public.current_user_tenant_id(); u uuid:=auth.uid();
+declare t uuid:=public.social_current_tenant_id(); u uuid:=auth.uid();
 begin
-  if u is null or t is null or not public.is_tenant_member(t) then
+  if u is null or t is null then
     raise exception 'SOCIAL_ACCOUNT_STATUS_FORBIDDEN' using errcode='42501';
   end if;
   return query

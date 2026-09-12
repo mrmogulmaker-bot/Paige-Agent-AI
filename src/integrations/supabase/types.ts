@@ -20983,6 +20983,7 @@ export type Database = {
           status: string
         }[]
       }
+      social_current_tenant_id: { Args: never; Returns: string }
       list_tool_autonomy: {
         Args: { _tenant_id?: string }
         Returns: {

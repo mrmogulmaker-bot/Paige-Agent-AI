@@ -1,7 +1,7 @@
 -- Social Foundation canonical schema and access contract.
 -- Synthetic fixtures only; the enclosing transaction is always rolled back.
 begin;
-select plan(36);
+select plan(39);
 
 select ok(to_regclass('private.paige_social_posts_legacy_20260627') is not null,'fresh replay preserves the legacy operator table in private quarantine');
 select ok(to_regclass('public.paige_social_posts') is not null,'canonical Social posts exist');
@@ -42,6 +42,9 @@ select ok(exists(select 1 from pg_trigger where tgrelid='public.paige_social_pro
 select ok((select not enabled and default_autonomy_lane='off' from public.paige_action_kinds where slug='social.post_publish'),'legacy Social action kind is disabled and off');
 select is(public.resolve_tool_autonomy(null,'social_post'),'off','legacy Social Chat tool is hard-off at the shared resolver');
 select ok(not has_function_privilege('service_role','public.social_account_status()','EXECUTE'),'service callers cannot impersonate an account-status viewer');
+select ok(has_function_privilege('authenticated','public.social_current_tenant_id()','EXECUTE'),'authenticated Social reads can resolve a membership-proven active tenant');
+select ok(not has_function_privilege('anon','public.social_current_tenant_id()','EXECUTE'),'anonymous callers cannot resolve a Social tenant');
+select ok((select prosecdef and proconfig && array['search_path=','search_path=""'] from pg_proc where oid='public.social_current_tenant_id()'::regprocedure),'Social tenant resolver is SECURITY DEFINER with an empty search path');
 
 select * from finish();
 rollback;
