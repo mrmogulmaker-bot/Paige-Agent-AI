@@ -102,6 +102,43 @@ DROP POLICY IF EXISTS ped_no_direct_write ON public.paige_event_dispatches;
 CREATE POLICY ped_no_direct_write ON public.paige_event_dispatches FOR ALL TO authenticated
   USING (false) WITH CHECK (false);   -- service-only writers
 
+-- ── 2c. The READ surface — "did my new-contact alert fire?" (MPC-4, completes the owner's arc) ──
+-- So Paige can truthfully REPORT whether a contact.created event fired and reached its subscribers
+-- (the "recorded delivery → Paige reports whether notification actually sent" half of the owner's
+-- scope). SECURITY INVOKER, not DEFINER (§59): it reads only paige_native_events /
+-- paige_event_dispatches, which the caller already has tenant-scoped RLS SELECT on — so RLS does the
+-- scoping and there is no grant-is-the-guard exposure. p_contact_id NULL → the caller's recent
+-- contact.created events; a uuid → just that contact's. Honest counts, never a claimed external send.
+CREATE OR REPLACE FUNCTION public.get_contact_event_status(p_contact_id uuid DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path TO 'public'
+AS $function$
+  SELECT coalesce(jsonb_agg(t ORDER BY t.occurred_at DESC), '[]'::jsonb)
+  FROM (
+    SELECT
+      e.id                AS event_id,
+      e.subject_id        AS contact_id,
+      e.occurred_at,
+      e.processing_state,
+      e.attempts,
+      e.last_error,
+      (SELECT count(*) FROM public.paige_event_dispatches d WHERE d.event_id = e.id)                        AS subscriber_count,
+      (SELECT count(*) FROM public.paige_event_dispatches d WHERE d.event_id = e.id AND d.status = 'done')  AS delivered_count,
+      (SELECT count(*) FROM public.paige_event_dispatches d WHERE d.event_id = e.id AND d.status = 'error')  AS error_count
+    FROM public.paige_native_events e
+    WHERE e.event_key = 'contact.created'
+      AND (p_contact_id IS NULL OR e.subject_id = p_contact_id)
+    ORDER BY e.occurred_at DESC
+    LIMIT 20
+  ) t;
+$function$;
+
+REVOKE ALL ON FUNCTION public.get_contact_event_status(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_contact_event_status(uuid) TO authenticated, service_role;
+
 -- ── 3. Lifecycle RPCs (service-only; §59 caller-scope IN-BODY: auth.uid() IS NULL) ────────────
 -- 3a. Atomic single-UPDATE claim. Loser gets zero rows → no double-drain. Re-claimable after a
 --     stale 5-minute lease (crashed drainer); attempts<5 caps retries; terminal never re-claimed.

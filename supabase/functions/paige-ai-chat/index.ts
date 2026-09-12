@@ -181,6 +181,7 @@ function describeStep(
     case "inbox_list": return { label: "Checking the inbox", group: "owner" };
     case "integrations_list": return { label: "Checking your connections", group: "owner" };
     case "capability_status": return { label: "Checking what I can do here", group: "owner" };
+    case "contact_event_status": return { label: "Checking whether your new-contact alerts fired", group: "owner" };
     case "social_post": return { label: "Preparing your social post", group: "owner" };
     case "social_analytics": return { label: "Reading social analytics", group: "owner" };
     case "social_accounts": return { label: "Checking social accounts", group: "owner" };
@@ -6010,6 +6011,22 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "contact_event_status",
+              description: "Check whether the contact.created event actually fired for a new contact, and whether it reached its subscribers — so you can report the truth, never a hoped-for 'it was sent.' Returns each recent new-contact event with its delivery state: how many subscribers it reached, how many were delivered, any errors, and whether it is still processing. Pass contact_id to check one contact, or omit it for the most recent new contacts. No external notification (e.g. a text) is sent yet — this reports the recorded delivery, and you must say so plainly rather than imply a message went out.",
+              parameters: {
+                type: "object",
+                properties: {
+                  contact_id: {
+                    type: "string",
+                    description: "Optional. The contact's id (a uuid, e.g. from a prior contact lookup) to check just that contact. Omit to see the most recent new-contact events."
+                  }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "action_get",
               description: "Admin/coach only. Fetch one action by id with its current status and links (the approval it waits on, the client-facing card it created).",
               parameters: {
@@ -9278,6 +9295,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "inbox_list" ||
           tc.function.name === "integrations_list" ||
           tc.function.name === "capability_status" ||
+          tc.function.name === "contact_event_status" ||
           tc.function.name === "social_post" ||
           tc.function.name === "social_analytics" ||
           tc.function.name === "social_accounts" ||
@@ -11263,6 +11281,30 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               const capabilities = resolveCapabilityStatus(signals);
               result = { success: true, count: capabilities.length, capabilities };
+            } else if (tc.function.name === "contact_event_status") {
+              // The READ half of contact.created (§13/§947): report whether a new contact's event
+              // fired and reached its subscribers — NEVER imply an external send that did not happen.
+              // Caller-scoped: get_contact_event_status is SECURITY INVOKER, so RLS scopes it to this
+              // tenant (no tenant param). Degrades honestly if the substrate is not live on this
+              // workspace yet (its migration is deploy-blocked upstream) — "not available", never a throw.
+              let cesArgs: any = {};
+              try { cesArgs = JSON.parse(tc.function.arguments || "{}"); } catch { cesArgs = {}; }
+              const cesContactId = typeof cesArgs?.contact_id === "string" && cesArgs.contact_id.trim()
+                ? cesArgs.contact_id.trim() : null;
+              const { data: cesData, error: cesErr } = await supabaseClient.rpc("get_contact_event_status", { p_contact_id: cesContactId });
+              if (cesErr) {
+                result = { success: true, available: false, events: [], note: "The new-contact event history isn't available on this workspace yet." };
+              } else {
+                const cesEvents = Array.isArray(cesData) ? cesData : [];
+                result = {
+                  success: true,
+                  available: true,
+                  count: cesEvents.length,
+                  events: cesEvents,
+                  external_send: false,
+                  note: "Delivery is recorded to subscribers; no external notification (e.g. a text or email) is sent yet — report it that way, do not imply a message went out.",
+                };
+              }
             } else if (tc.function.name === "inbox_list") {
               // #1104 — the comms read verb (spine: comms.messages_read). Caller-scoped:
               // the RPC derives the tenant from the JWT (§59) — no tenant param exists.

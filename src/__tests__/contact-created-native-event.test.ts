@@ -12,6 +12,7 @@ import { describe, it, expect } from "vitest";
 const mig = readFileSync("supabase/migrations/20270119000000_contact_created_native_event.sql", "utf8");
 const fn = readFileSync("supabase/functions/paige-native-event-dispatch/index.ts", "utf8");
 const cfg = readFileSync("supabase/config.toml", "utf8");
+const chat = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
 
 describe("contact.created — the catalogue row (extends §67, never forks)", () => {
   it("seeds a LIVE contact.created trigger keyed to the existing paige_automation_triggers catalogue", () => {
@@ -41,6 +42,46 @@ describe("the event outbox + dispatch ledger — fire-once by construction", () 
       const noWrite = new RegExp(`CREATE POLICY \\w+ ON public\\.${t} FOR ALL TO authenticated[\\s\\S]*?USING \\(false\\) WITH CHECK \\(false\\)`);
       expect(noWrite.test(mig)).toBe(true);
     }
+  });
+});
+
+describe("the read surface — Paige can report whether the event fired (§13/§59)", () => {
+  it("get_contact_event_status is SECURITY INVOKER (RLS scopes it) — not a DEFINER bypass", () => {
+    const rpc = mig.slice(mig.indexOf("FUNCTION public.get_contact_event_status"), mig.indexOf("REVOKE ALL ON FUNCTION public.get_contact_event_status"));
+    expect(rpc).toContain("SECURITY INVOKER");
+    expect(rpc).not.toContain("SECURITY DEFINER");
+    // reads the two tenant-RLS'd stores; p_contact_id NULL → recent, a uuid → one contact
+    expect(rpc).toContain("FROM public.paige_native_events");
+    expect(rpc).toContain("public.paige_event_dispatches");
+    expect(rpc).toContain("p_contact_id IS NULL OR e.subject_id = p_contact_id");
+    // honest delivery counts, not a claimed send
+    expect(rpc).toContain("delivered_count");
+    expect(rpc).toContain("error_count");
+  });
+
+  it("is granted to authenticated (RLS does the scoping), revoked from anon", () => {
+    expect(mig).toContain("REVOKE ALL ON FUNCTION public.get_contact_event_status(uuid) FROM PUBLIC, anon;");
+    expect(mig).toContain("GRANT EXECUTE ON FUNCTION public.get_contact_event_status(uuid) TO authenticated, service_role;");
+  });
+});
+
+describe("contact_event_status chat tool — honest reporting surface (paige-ai-chat)", () => {
+  it("declares the tool (optional contact_id) and routes it into the owner block", () => {
+    expect(chat).toContain('name: "contact_event_status"');
+    expect(chat).toContain('tc.function.name === "contact_event_status" ||');
+    expect(chat).toContain('case "contact_event_status": return { label: "Checking whether your new-contact alerts fired"');
+  });
+
+  it("calls the INVOKER read RPC caller-scoped, degrades honestly, and never implies an external send", () => {
+    const at = chat.indexOf('} else if (tc.function.name === "contact_event_status") {');
+    expect(at).toBeGreaterThan(-1);
+    const block = chat.slice(at, at + 2000);
+    expect(block).toContain('supabaseClient.rpc("get_contact_event_status", { p_contact_id: cesContactId })');
+    // graceful degrade if the substrate is not live on this workspace yet (migration deploy-blocked)
+    expect(block).toContain("available: false");
+    // §947: the result states plainly that NO external notification is sent
+    expect(block).toContain("external_send: false");
+    expect(block).toContain("do not imply a message went out");
   });
 });
 
