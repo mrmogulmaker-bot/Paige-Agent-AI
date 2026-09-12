@@ -176,7 +176,7 @@ begin
   if _tenant is null then return; end if;
   perform 1 from public.tenants t where t.id = _tenant for update;
 
-  select coalesce(nullif(regexp_replace(coalesce(value,''), '[^0-9]', '', 'g'), ''), '0')::int
+  select coalesce(nullif(regexp_replace(coalesce(value::text,''), '[^0-9]', '', 'g'), ''), '0')::int
     into _allow
   from public.admin_app_settings where key = 'media_credits_included_monthly';
   if coalesce(_allow, 0) > 0 then
@@ -313,7 +313,7 @@ begin
 
   -- PLATFORM SPEND GUARD (enforced, not advisory): under a global-class lock
   -- so concurrent tenants cannot both pass a nearly-spent platform cap.
-  select coalesce(nullif(regexp_replace(coalesce(value,''), '[^0-9.]', '', 'g'), ''), '')::numeric
+  select coalesce(nullif(regexp_replace(coalesce(value::text,''), '[^0-9.]', '', 'g'), ''), '')::numeric
     into _ceiling
   from public.admin_app_settings where key = 'media_spend_ceiling_usd';
   if _ceiling is not null and _ceiling > 0 then
@@ -591,7 +591,7 @@ begin
     return;
   end if;
 
-  select coalesce(nullif(regexp_replace(coalesce(value,''), '[^0-9]', '', 'g'), ''), '0')::int
+  select coalesce(nullif(regexp_replace(coalesce(value::text,''), '[^0-9]', '', 'g'), ''), '0')::int
     into _allow
   from public.admin_app_settings where key = 'media_credits_included_monthly';
 
