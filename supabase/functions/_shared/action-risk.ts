@@ -117,7 +117,25 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // ── high: becomes visible to a client, or goes public ─────────────────────────────────────
   ["growth_page_publish", "high", "puts a page live at a public URL"],
   ["growth_funnel_publish", "high", "puts a whole sequence live"],
+  // NEXUS's social publish (Upload-Post). It posts to the workspace's own public social accounts,
+  // so it is client-visible and public the moment it runs, and a delete on the platform does not
+  // unsee what was already on followers' feeds — the same "goes public, cannot be walked back" limb
+  // as the two publishes above. `social_analytics` / `social_accounts` are reads and are not
+  // classified here. Before this entry the tool was a declared write with NO classification, so it
+  // never entered the risk gate at all — an ungoverned public post (§58 silent-ungating, the exact
+  // shape this file exists to catch).
+  ["social_post", "high", "publishes to the workspace's public social accounts; it is client-visible and cannot be cleanly unpublished"],
   ["program_enroll", "high", "enrols a real person into a programme"],
+  // The evaluation loop's DECIDE leg (Runway 4 / #1123), the sign-off half of the `improvement_propose`
+  // pair above. It records the owner's approve/reject on a `paige_improvement_proposals` row and
+  // applies nothing (there is no auto-apply path — it flips status, decided_by, rationale only). It
+  // is `high` for the same reason `approval_decide` is: a recorded sign-off is a governance act, and
+  // this one governs whether Paige's own future behaviour changes (§67/§68). It was the live bypass
+  // this repair closes: unclassified AND its verb `decide` was absent from MUTATION_VERB, so it read
+  // as a query, skipped the `MUTATING_TOOLS` gate entirely, and ran from chat with no rendered card.
+  // Classifying it `high` routes it through the gate (the body-borne approval fingerprint); adding
+  // `decide` to MUTATION_VERB makes the runtime + CI backstops catch it too if the class were ever lost.
+  ["improvement_decide", "high", "records the owner's approval or rejection of a self-improvement proposal; the governed sign-off, which must not run from chat without the rendered approval card"],
   // Filing a document is HIGH because one of its two outcomes hands a real document to a real
   // person outside the workspace, and that cannot be walked back — moving it to `internal`
   // afterwards does not unread it. The class is a property of the ACTION, so it does not soften
@@ -166,6 +184,15 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // Both halves are fixed — the entry below, and `configure` added to MUTATION_VERB.
   ["pipeline_configure", "ordinary", "saves a pipeline draft the operator reviews; activation is a separate act"],
   ["propose_business_brief_update", "ordinary", "stages a suggestion the operator approves before it applies"],
+  // The evaluation loop's PROPOSE leg (Runway 4 / #1123). `improvement_propose` writes a row to
+  // `paige_improvement_proposals` at status `proposed` and applies NOTHING — its whole contract is
+  // "proposes only; nothing changes until the owner decides via improvement_decide". That is the
+  // same shape as `propose_business_brief_update` / `crm_propose_contact_update` above: a reversible,
+  // in-tenant staging write whose consequential act is a separate, gated decision. `ordinary` on
+  // purpose, and only because its effect is provably a draft proposal with no application. The
+  // decision that acts on it — `improvement_decide` — is `high` below, and the apply step does not
+  // exist (the loop records the decision and never auto-applies).
+  ["improvement_propose", "ordinary", "stages a self-improvement proposal the owner decides on later; it applies nothing"],
   // Campaign briefs, added 2026-09-06 (owner authority correction). A brief is an owner-authored
   // PLANNING record — reversible, in-tenant, and it launches, sends, publishes, and spends nothing.
   // `ordinary` on purpose: it is the class the runtime clamp leaves eligible for a standing `auto`
@@ -442,7 +469,15 @@ const NON_MUTATING_EXEMPT: ReadonlyMap<string, string> = new Map([
 // write, so this list should err long. It remains a BACKSTOP, never the guard: the reconciliation
 // that actually found those six compared the handler's declared tools against this policy, and
 // that comparison is what `lint:action-risk` runs.
-export const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|install|uninstall|grant|revoke|run|assign|enroll|book|set|draft|generate|file|advance|forge|archive|activate|deactivate|move|add|build|log|author|enable|disable|invite|upload|apply|approve|reject|import|export|sync|write|post|schedule|cancel|start|stop|trigger|fire|configure|buy|purchase|name|rename|propose|provision|claim|release)(_|$)/;
+//
+// EXTENDED 2026-09-12 with `decide`, after `improvement_decide` (the evaluation loop's sign-off,
+// #1123) shipped with no class AND a verb this list did not name — so its name read as a query, it
+// skipped the `MUTATING_TOOLS` gate entirely, and it ran from chat with no rendered approval card.
+// Classifying it `high` above is the primary fix; `decide` is added here so the runtime backstop
+// (`unclassifiedWriteReason`) and the CI lint would ALSO catch a future unclassified `*_decide`
+// write, rather than relying on the classification alone. The lint keeps a byte-identical copy and
+// `checkVerbParity` fails the build if the two ever diverge.
+export const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|install|uninstall|grant|revoke|run|assign|enroll|book|set|draft|generate|file|advance|forge|archive|activate|deactivate|move|add|build|log|author|enable|disable|invite|upload|apply|approve|reject|decide|import|export|sync|write|post|schedule|cancel|start|stop|trigger|fire|configure|buy|purchase|name|rename|propose|provision|claim|release)(_|$)/;
 
 /** Every classified action. This is what the handler gates on — there is no second list. */
 export function mutatingTools(): ReadonlySet<string> {
