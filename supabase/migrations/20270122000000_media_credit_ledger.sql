@@ -443,11 +443,14 @@ as $$
 begin
   if coalesce(_credits, 0) <= 0 then return jsonb_build_object('ok', false, 'error', 'invalid_grant'); end if;
   perform public.__media_credit_roll(_tenant);
+  -- credits carries the amount; splits stay zero on non-move rows (the
+  -- balance formula reads credits for grants — the split columns are the
+  -- hold/consume/release attribution only).
   insert into public.paige_media_credit_entries
-    (tenant_id, entry_type, credits, idempotency_key, purchased_credits, source, reason, created_by)
+    (tenant_id, entry_type, credits, idempotency_key, source, reason, created_by)
   values (_tenant, 'grant_purchased', _credits,
           'grant:t:' || _tenant || ':purchased:' || gen_random_uuid()::text,
-          _credits, coalesce(_source, 'owner'), _reason, _actor);
+          coalesce(_source, 'owner'), _reason, _actor);
   return jsonb_build_object('ok', true, 'granted', _credits);
 end;
 $$;
