@@ -141,14 +141,21 @@ genuine-insert Rail-emission gate (the §947 fix), and the duplicate-prevention 
   `paige_workspace_events`, zero `capability_run`**. Idempotency never fires (each caller mints a fresh UUID → a
   retry writes two rows) — **directly relevant to MPC-3's duplicate-prevention requirement.** **PROOF-OWED.**
 
-### C.5 Native event / outbox to EXTEND (substrate LIVE; `contact.created` PLANNED)
-- **§67 Process Record** `paige_automation_triggers` (trigger catalogue w/ `is_live`/`dark_reason`) +
-  `paige_automations` + `paige_automation_acts` (`20261022000000_…`) — the subscriber seam. Seeded LIVE triggers:
-  `manual.run_now`, `pipeline.stage_changed`. **No `contact.created` trigger exists.**
-- **Emitter pattern (repo's §18 canonical):** DB-trigger → edge via `net.http_post` + `pg_cron` sweeper backstop
-  (growth: `20260715125000_…`). **Per-subscriber fire-once receipts:** `growth_submission_dispatches`
-  (`20260714092000_…:116`) — one row per (source, subscriber), `status∈{done,error,skipped}`, UNIQUE fire-once.
-- `executor='workflow'` on the Action Bus is **UNIMPLEMENTED** (`advance_action` raises). **Extension point for P3.**
+### C.5 Native event / outbox — `contact.created` BUILT (MPC-4, unmerged candidate, proof-owed)
+- **§67 Process Record** `paige_automation_triggers` + `paige_automations` + `paige_automation_acts`
+  (`20261022000000_…`) is the subscriber seam — EXTENDED, not forked: migration `20270119000000_…` seeds a LIVE
+  `contact.created` catalogue row; subscribers are `paige_automations` whose `trigger_key='contact.created'`.
+- **The reusable native-event bus** (`20270119000000_contact_created_native_event.sql`): `paige_native_events`
+  (outbox + atomic claim ledger, `UNIQUE(dedup_key)` = one event per contact) ← AFTER-INSERT-on-`clients` producer
+  (genuine-insert only; §9-minimal payload; swallow-and-notice) → `net.http_post` enqueue → `paige_event_dispatches`
+  (`UNIQUE(event_id, automation_id)` = per-subscriber fire-once) → edge drainer `paige-native-event-dispatch`
+  (service/cron-authed, fail-closed, tenant from the CLAIMED row) → `pg_cron` sweeper. MIRRORS the proven growth
+  pattern (`20260714092000_…` / `20260715125000_…` / `growth-process-submission`); §59 service-only claim RPCs.
+- **SCOPE (§13/§947):** substrate + fire-once delivery only — no subscriber-act execution, no external send (each
+  dispatch records `delivered:true, acts_executed:false`; Telegram off until its security design lands). **Next
+  increments:** subscriber-act execution (the `executor='workflow'` Action-Bus point, still UNIMPLEMENTED —
+  `advance_action` raises), the owner-facing Rail projection, and the chat read-surface ("did my new-contact alert
+  fire?"). **Proof-owed:** from-zero replay + persisted-apply batch behind #1147; authenticated owner drive.
 
 ### C.6 Conversations Intelligence (LIVE surfaces; one shared seam; PARTIAL Compass enforcement)
 - `useConversations` (`src/solo/useConversations.ts`) + `inbox2.tsx`; labels/triage
