@@ -126,7 +126,9 @@ BEGIN
           'created', 'not_required', 'pgtap-proof-job-2', 50.0);
   _j := (SELECT id FROM public.paige_media_jobs WHERE idempotency_key = 'pgtap-proof-job-2');
   _before := (SELECT count(*) FROM public.paige_media_credit_entries WHERE tenant_id = _t);
-  _res := public.media_credit_hold(_t, _j, 5001, 50.0);
+  -- Estimate stays under the platform guard ($25) so the CREDIT branch is
+  -- what refuses: 5001 credits against a 300-credit balance.
+  _res := public.media_credit_hold(_t, _j, 5001, 0.5);
   _after := (SELECT count(*) FROM public.paige_media_credit_entries WHERE tenant_id = _t);
   IF (_res->>'insufficient')::boolean IS NOT TRUE OR _before <> _after THEN
     RAISE EXCEPTION 'pgtap: insufficient hold was not a clean refusal: %', _res;
