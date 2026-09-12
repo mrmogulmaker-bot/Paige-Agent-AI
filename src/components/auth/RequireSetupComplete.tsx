@@ -32,6 +32,8 @@ import { Navigate, useLocation } from "react-router-dom";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { resolveTierKey } from "@/lib/tier/tierFeatures";
 
+// Pure route policy is exported for regression tests; it has no React state or side effects.
+// eslint-disable-next-line react-refresh/only-export-components
 export function canonicalSetupPath(
   tierKey: ReturnType<typeof resolveTierKey>,
   accountNumber: number | string | null | undefined,

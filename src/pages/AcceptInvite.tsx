@@ -66,8 +66,8 @@ export default function AcceptInvitePage() {
           setInfo(data as InviteInfo);
           setFullName(data.displayName ?? "");
         }
-      } catch (e: any) {
-        setError(e?.message ?? "Unable to verify invite");
+      } catch (error: unknown) {
+        setError(error instanceof Error ? error.message : "Unable to verify invite");
       } finally {
         setLoading(false);
       }
@@ -104,8 +104,8 @@ export default function AcceptInvitePage() {
         throw new Error(`Account activated, but sign-in failed: ${signInErr.message}`);
       }
       navigate(safeRedirectOr(data.redirectTo, "/app"), { replace: true });
-    } catch (e: any) {
-      setError(e?.message ?? "Activation failed");
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : "Activation failed");
       setSubmitting(false);
     }
   }

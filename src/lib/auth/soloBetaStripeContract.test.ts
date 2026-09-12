@@ -43,8 +43,7 @@ describe("Solo Beta Stripe contract", () => {
     ["multi-month interval", { recurring: { interval: "month", intervalCount: 12 } }],
     ["trial", { trialEnd: 1_900_000_000 }],
     ["unverified status", { subscriptionStatus: "incomplete" }],
-  ] satisfies Array<[string, Partial<SoloBetaOfferValidationInput>]>)
-  ("fails closed for %s", (_label, mutation) => {
+  ] satisfies Array<[string, Partial<SoloBetaOfferValidationInput>]>)(("fails closed for %s"), (_label, mutation) => {
     expect(validateSoloBetaOffer(exact(mutation)).ok).toBe(false);
   });
 
