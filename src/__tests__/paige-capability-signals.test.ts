@@ -1,18 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Executed edge helper, loaded through a transpile port. */
 // @vitest-environment node
 //
-// Piece 3b — the MVP capability SIGNAL builder. "What can Paige do for THIS tenant right now?"
-// (§13/§36/§70). Piece 3a built the pure decision core (signals → one honest availability). This
-// builds the pure FACT→SIGNAL layer that the edge dispatch feeds with server-resolved truth
-// (caller tier, the ceiling-clamped autonomy lane, the Spine maturity). MVP scope = the two
-// domains the owner named: contacts + connections. Only capabilities that GENUINELY ship are
-// modeled (§947 — never a hoped-for capability).
+// Piece 3b — the capability SIGNAL builder + decision core, the manifest Paige answers "what can
+// you do here?" from (§13/§36/§70). The P0 Defect-1 fix EXPANDED this past the original 3-capability
+// MVP to the families Paige's tool list/persona over-claim (social, comms/SMS, team, pipeline,
+// campaigns, workflows). The load-bearing honesty property: an ACTION family whose governed seam is
+// NOT registered in the Spine (social publish, SMS send, team management) resolves through a `null`
+// maturity → UNAVAILABLE → "planned" — so Paige says it's not something she can do here yet, never
+// implies she can do it (and never falsely asserts it flatly doesn't exist — §13/§70).
 //
-// Two assertions, both on the real pure modules loaded through the transpile port:
-//   1. the SIGNAL SHAPE — does each fact land in the right signal (key, actionKind, maturity,
-//      tierEligible, lane)?
-//   2. the END-TO-END — composing buildCapabilitySignals → resolveCapabilityStatus yields the
-//      honest availability a caller would actually be told.
+// Tested on the REAL pure modules loaded through the transpile port (both import ONLY types).
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, it, expect } from "vitest";
@@ -31,84 +28,158 @@ function port(path: string) {
 const { buildCapabilitySignals } = port("supabase/functions/_shared/paige-capability-status/signals.ts");
 const { resolveCapabilityStatus } = port("supabase/functions/_shared/paige-capability-status/resolver.ts");
 
-const facts = (over: Record<string, unknown> = {}) => ({
+// The facts a FRESH SOLO TENANT actually produces: a non-client tier, every mutating lane on the
+// safe default (confirm), every REGISTERED read/mutate seam PARTIAL (their real registry maturity),
+// every UNREGISTERED action family null (no governed seam), and n8n not yet connected. The edge
+// dispatch resolves these from the verified JWT; here they are spelled out so the assertions below
+// are about the HONEST ANSWER a fresh Solo owner is actually told.
+const freshSolo = (over: Record<string, unknown> = {}) => ({
   callerTier: "tenant",
   contactCreateLane: "confirm",
+  campaignCreateLane: "confirm",
+  workflowsLane: "confirm",
   integrationsListMaturity: "PARTIAL",
+  pipelineEvidenceMaturity: "PARTIAL",
+  commsReadMaturity: "PARTIAL",
+  commsSendMaturity: null,          // comms.send — unregistered governed seam
+  socialPresenceMaturity: "PARTIAL",
+  socialPublishMaturity: null,      // social.publish — unregistered governed seam
+  teamAuthorityMaturity: "PARTIAL",
+  teamManageMaturity: null,         // team.manage — unregistered governed seam
+  campaignListMaturity: "PARTIAL",
+  campaignCreateMaturity: "PARTIAL",
+  workflowsMaturity: "PARTIAL",     // integrations.n8n_run_workflow is registered…
+  workflowsConnected: false,        // …but the tenant's n8n is not connected yet
+  ownerOpsEligible: true,           // the Solo owner holds admin — the tools' own role gate
   ...over,
 });
 const byKey = (rows: any[]) => Object.fromEntries(rows.map((r) => [r.key, r]));
+const answer = (over: Record<string, unknown> = {}) =>
+  byKey(resolveCapabilityStatus(buildCapabilitySignals(freshSolo(over))));
 
-describe("buildCapabilitySignals — MVP contacts + connections (§13/§947)", () => {
-  it("emits exactly the three shipped MVP capabilities, no fabricated ones", () => {
-    const rows = buildCapabilitySignals(facts());
-    expect(rows).toHaveLength(3);
-    expect(rows.map((r: any) => r.key).sort()).toEqual(
-      ["crm.create_contact", "crm.search_contacts", "integrations.list"].sort(),
-    );
+describe("buildCapabilitySignals — the manifest shape (§13/§947)", () => {
+  it("emits every modeled family and ONLY families with a real backing key — no fabricated ones", () => {
+    const keys = buildCapabilitySignals(freshSolo()).map((r: any) => r.key).sort();
+    expect(keys).toEqual([
+      "campaign.create",
+      "campaign.list",
+      "comms.messages_read",
+      "comms.send",
+      "crm.create_contact",
+      "crm.search_contacts",
+      "integrations.list",
+      "integrations.n8n_run_workflow",
+      "pipeline.deal_stage_evidence",
+      "social.presence",
+      "social.publish",
+      "team.authority",
+      "team.manage",
+    ]);
   });
 
-  it("models the read verbs as reads (lane-independent) and the create as a create", () => {
-    const m = byKey(buildCapabilitySignals(facts()));
-    expect(m["crm.search_contacts"].actionKind).toBe("read");
-    expect(m["integrations.list"].actionKind).toBe("read");
-    expect(m["crm.create_contact"].actionKind).toBe("create");
-    // creating a contact needs no connected provider
-    expect(m["crm.create_contact"].requiresConnection).toBe(false);
-  });
-
-  it("threads the ceiling-clamped autonomy lane onto the create signal verbatim", () => {
-    expect(byKey(buildCapabilitySignals(facts({ contactCreateLane: "auto" })))["crm.create_contact"].autonomyLane).toBe("auto");
-    expect(byKey(buildCapabilitySignals(facts({ contactCreateLane: "off" })))["crm.create_contact"].autonomyLane).toBe("off");
-  });
-
-  it("reads Spine maturity for integrations.list; an unregistered seam is UNAVAILABLE, never faked LIVE", () => {
-    expect(byKey(buildCapabilitySignals(facts({ integrationsListMaturity: "PARTIAL" })))["integrations.list"].maturity).toBe("PARTIAL");
-    // null (no registry row resolved) must degrade to UNAVAILABLE so the resolver says "planned"
-    expect(byKey(buildCapabilitySignals(facts({ integrationsListMaturity: null })))["integrations.list"].maturity).toBe("UNAVAILABLE");
-  });
-
-  it("a non-client tier is eligible for the tenant book; a sealed client seat is not", () => {
-    for (const tier of ["tenant", "subaccount", "agency", "god"]) {
-      const rows = buildCapabilitySignals(facts({ callerTier: tier }));
-      for (const r of rows) expect(r.tierEligible).toBe(true);
+  it("models reads as reads, the writes as create/update, and the dangerous acts as external effects", () => {
+    const m = byKey(buildCapabilitySignals(freshSolo()));
+    for (const k of ["crm.search_contacts", "integrations.list", "pipeline.deal_stage_evidence", "comms.messages_read", "social.presence", "team.authority", "campaign.list"]) {
+      expect(m[k].actionKind, k).toBe("read");
     }
-    const clientRows = buildCapabilitySignals(facts({ callerTier: "client" }));
-    for (const r of clientRows) expect(r.tierEligible).toBe(false);
+    expect(m["crm.create_contact"].actionKind).toBe("create");
+    expect(m["campaign.create"].actionKind).toBe("create");
+    expect(m["team.manage"].actionKind).toBe("update");
+    expect(m["comms.send"].actionKind).toBe("external_effect");
+    expect(m["social.publish"].actionKind).toBe("external_effect");
+    expect(m["integrations.n8n_run_workflow"].actionKind).toBe("external_effect");
+  });
+
+  it("GROUNDING GUARD — only the two documented CRM seams are hardcoded LIVE; every other maturity comes from the fact", () => {
+    // With every passed maturity null, nothing may be LIVE except the CRM synthesis. This is the
+    // guard against a future edit hardcoding a cheerful LIVE for a seam we cannot confirm ships.
+    const allNull = byKey(buildCapabilitySignals(freshSolo({
+      integrationsListMaturity: null, pipelineEvidenceMaturity: null, commsReadMaturity: null,
+      socialPresenceMaturity: null, teamAuthorityMaturity: null, campaignListMaturity: null,
+      campaignCreateMaturity: null, workflowsMaturity: null,
+    })));
+    const live = Object.values(allNull).filter((r: any) => r.maturity === "LIVE").map((r: any) => r.key).sort();
+    expect(live).toEqual(["crm.create_contact", "crm.search_contacts"]);
+    // and every other family degraded its null to UNAVAILABLE (never undefined, never faked)
+    for (const k of ["integrations.list", "pipeline.deal_stage_evidence", "comms.messages_read", "social.presence", "team.authority", "campaign.list", "campaign.create", "integrations.n8n_run_workflow"]) {
+      expect(allNull[k].maturity, k).toBe("UNAVAILABLE");
+    }
+  });
+
+  it("threads the ceiling-clamped lane onto each mutating write verbatim", () => {
+    const m = byKey(buildCapabilitySignals(freshSolo({ contactCreateLane: "auto", campaignCreateLane: "off" })));
+    expect(m["crm.create_contact"].autonomyLane).toBe("auto");
+    expect(m["campaign.create"].autonomyLane).toBe("off");
+  });
+
+  it("marks only the real connection-gated family as requiresConnection", () => {
+    const m = byKey(buildCapabilitySignals(freshSolo()));
+    expect(m["integrations.n8n_run_workflow"].requiresConnection).toBe(true);
+    expect(m["integrations.n8n_run_workflow"].connected).toBe(false);
+    expect(m["crm.create_contact"].requiresConnection).toBe(false);
+    expect(m["campaign.create"].requiresConnection).toBe(false);
+  });
+
+  it("a non-client tier is eligible for everything; a sealed client seat is eligible for nothing", () => {
+    for (const tier of ["tenant", "subaccount", "agency", "god"]) {
+      for (const r of buildCapabilitySignals(freshSolo({ callerTier: tier }))) expect(r.tierEligible).toBe(true);
+    }
+    for (const r of buildCapabilitySignals(freshSolo({ callerTier: "client" }))) expect(r.tierEligible).toBe(false);
   });
 });
 
-describe("end-to-end: buildCapabilitySignals → resolveCapabilityStatus (the answer a caller is told)", () => {
-  const answer = (over: Record<string, unknown> = {}) =>
-    byKey(resolveCapabilityStatus(buildCapabilitySignals(facts(over))));
-
-  it("a Solo tenant on a confirm lane: sees contacts/connections LIVE, adding a contact NEEDS_APPROVAL", () => {
+describe("the honest answer a FRESH SOLO owner is told (the P0 Defect-1 anti-over-claim)", () => {
+  it("the over-claimed ACTIONS are never live: posting, texting, and team management are PLANNED", () => {
     const a = answer();
-    expect(a["crm.search_contacts"].availability).toBe("live");
-    expect(a["integrations.list"].availability).toBe("live");
-    expect(a["crm.create_contact"].availability).toBe("needs_approval");
-    expect(a["crm.create_contact"].reason).toBeTruthy();
-  });
-
-  it("an auto lane makes adding a contact LIVE", () => {
-    expect(answer({ contactCreateLane: "auto" })["crm.create_contact"].availability).toBe("live");
-  });
-
-  it("an off lane is NEEDS_APPROVAL with the manual reason", () => {
-    const c = answer({ contactCreateLane: "off" })["crm.create_contact"];
-    expect(c.availability).toBe("needs_approval");
-    expect(c.reason).toMatch(/manual/i);
-  });
-
-  it("a sealed client seat is told NOT_FOR_TIER on every MVP capability", () => {
-    const a = answer({ callerTier: "client" });
-    for (const key of ["crm.search_contacts", "crm.create_contact", "integrations.list"]) {
-      expect(a[key].availability).toBe("not_for_tier");
-      expect(a[key].reason).toBeTruthy();
+    for (const k of ["social.publish", "comms.send", "team.manage"]) {
+      expect(a[k].availability, k).toBe("planned");
+      expect(a[k].reason, k).toBeTruthy();
+      // §13/§70 (SF-1): the reason must NOT falsely assert the capability doesn't exist / "isn't
+      // built" — raw tools exist for some of these; the honest claim is "no governed path here yet".
+      expect(a[k].reason, k).not.toMatch(/not built/i);
+      expect(a[k].reason, k).toMatch(/governed/i);
     }
   });
 
-  it("an unregistered integrations seam is PLANNED, not claimed", () => {
+  it("running automations is NEEDS_SETUP until n8n is connected — not a claim that Paige can run them", () => {
+    expect(answer()["integrations.n8n_run_workflow"].availability).toBe("needs_setup");
+    // once connected, it is governed-but-gated (external effect → prepared for approval), never silently auto
+    expect(answer({ workflowsConnected: true })["integrations.n8n_run_workflow"].availability).toBe("needs_approval");
+  });
+
+  it("the reads ARE live — seeing contacts, connections, pipeline, inbox, social accounts, team, campaigns", () => {
+    const a = answer();
+    for (const k of ["crm.search_contacts", "integrations.list", "pipeline.deal_stage_evidence", "comms.messages_read", "social.presence", "team.authority", "campaign.list"]) {
+      expect(a[k].availability, k).toBe("live");
+    }
+  });
+
+  it("the governed writes are prepared for approval on a confirm lane; an auto lane makes them live", () => {
+    expect(answer()["crm.create_contact"].availability).toBe("needs_approval");
+    expect(answer()["campaign.create"].availability).toBe("needs_approval");
+    expect(answer({ contactCreateLane: "auto" })["crm.create_contact"].availability).toBe("live");
+    expect(answer({ campaignCreateLane: "auto" })["campaign.create"].availability).toBe("live");
+  });
+
+  it("a sealed client seat is told NOT_FOR_TIER on every capability, with a reason", () => {
+    const a = answer({ callerTier: "client" });
+    for (const k of Object.keys(a)) {
+      expect(a[k].availability, k).toBe("not_for_tier");
+      expect(a[k].reason, k).toBeTruthy();
+    }
+  });
+
+  it("a non-owner-ops tenant member (lacks admin/coach/super_admin) is NOT told she can do these", () => {
+    // The tools require the owner-ops role; a non-admin member who is a non-client tier must still
+    // see NOT_FOR_TIER everywhere, never a cheerful 'Add a contact — you approve' the tool gate
+    // would refuse (§13/§51 — the block and the tool agree on WHO).
+    const a = answer({ ownerOpsEligible: false });
+    for (const k of Object.keys(a)) {
+      expect(a[k].availability, k).toBe("not_for_tier");
+    }
+  });
+
+  it("an unregistered integrations read seam degrades to PLANNED, never a fabricated claim", () => {
     expect(answer({ integrationsListMaturity: null })["integrations.list"].availability).toBe("planned");
   });
 });

@@ -8,6 +8,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { checkedWrite, writeOutcome } from "../_shared/checked-write.ts";
 import { classifyAction, mutatingTools, riskReason, unclassifiedWriteReason } from "../_shared/action-risk.ts";
+import { confirmFingerprint } from "../_shared/confirm-fingerprint.ts";
 import { buildCreditProposal, buildCreditSyncPayload } from "../_shared/credit-extraction-payload.ts";
 import { projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
@@ -80,6 +81,7 @@ import { getActorTier, clientSeatToolAllowed, type Tier } from "../_shared/actor
 // the dispatch feeds them server-resolved facts (tier, clamped lane, Spine maturity). §18: one home.
 import { resolveCapabilityStatus } from "../_shared/paige-capability-status/resolver.ts";
 import { buildCapabilitySignals } from "../_shared/paige-capability-status/signals.ts";
+import { renderCapabilityStatusBlock } from "../_shared/paige-capability-status/render.ts";
 import { getSpineCapability } from "../_shared/paige-spine/registry.ts";
 // The Capability Gateway owns the tool definitions Chat may reach (§18 one home; owner ruling
 // 2026-09-01). `capability_status` and `contact_event_status` are emitted from here rather than
@@ -4293,6 +4295,82 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       tenantKbContext,
     });
 
+    // Per-request cache of resolved autonomy modes (tool_key → 'auto'|'confirm'|'off').
+    // Defined HERE (before prompt assembly) rather than at the tool-dispatch site so the per-turn
+    // capability manifest below can resolve its lanes at prompt time, and the dispatch reuses the
+    // same cached resolver — one home, one cache (§18). Depends only on supabaseClient + personaCtx,
+    // both resolved above; nothing between here and the old site referenced it.
+    const autonomyModeCache = new Map<string, string>();
+    const resolveToolAutonomy = async (toolKey: string): Promise<string> => {
+      if (autonomyModeCache.has(toolKey)) return autonomyModeCache.get(toolKey)!;
+      let mode = "confirm"; // safe default — never assume autopilot
+      try {
+        const { data, error } = await supabaseClient.rpc("resolve_tool_autonomy", {
+          _tenant_id: personaCtx?.tenant_id ?? null,
+          _tool_key: toolKey,
+        });
+        if (!error && typeof data === "string" && ["auto", "confirm", "off"].includes(data)) mode = data;
+      } catch { /* keep safe default */ }
+      autonomyModeCache.set(toolKey, mode);
+      return mode;
+    };
+
+    // ── Capability manifest — the ONE home for "what can Paige do for THIS workspace?" (§18) ──────
+    // Resolves each capability family's honest status from SERVER-RESOLVED truth only: the caller's
+    // tier (callerTier, resolved early off the declared rail — never the body), the ceiling-clamped
+    // autonomy lanes (resolve_tool_autonomy), the REAL Spine maturities (getSpineCapability — a key
+    // with no registered governed seam returns null ⇒ "planned", the anti-over-claim), and the
+    // tenant's real n8n connection state. The SAME gatherer feeds BOTH the prompt-time capability
+    // block the model answers "what can you do" from AND the capability_status read tool, so the two
+    // can never diverge. No maturity is decided here; it is read from the registry (§13/§947).
+    // The owner-ops role the manifest's tools actually require (`admin | coach | super_admin`, the
+    // exact gate the CRM/owner tool block enforces). Resolved once from `user_roles` on the verified
+    // user id (service client, keyed on user.id — a caller-supplied role can never reach it) and
+    // cached for the request, so the prompt block and the capability_status tool agree on WHO
+    // (§13/§51). Fails closed to false so an unresolved role never over-claims.
+    let ownerOpsEligibleCache: boolean | undefined;
+    const resolveOwnerOpsEligible = async (): Promise<boolean> => {
+      if (ownerOpsEligibleCache !== undefined) return ownerOpsEligibleCache;
+      try {
+        const { data } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+        const roles = (data || []).map((r: any) => r.role);
+        ownerOpsEligibleCache = roles.includes("admin") || roles.includes("coach") || roles.includes("super_admin");
+      } catch {
+        ownerOpsEligibleCache = false;
+      }
+      return ownerOpsEligibleCache;
+    };
+
+    const gatherCapabilityManifest = async (workflowsConnected: boolean) => {
+      const mat = (key: string) => getSpineCapability(key)?.maturity ?? null;
+      const [contactCreateLane, campaignCreateLane, workflowsLane, ownerOpsEligible] = await Promise.all([
+        resolveToolAutonomy("crm_create_contact"),
+        resolveToolAutonomy("campaign_brief_create"),
+        resolveToolAutonomy("n8n_run_workflow"),
+        resolveOwnerOpsEligible(),
+      ]);
+      const signals = buildCapabilitySignals({
+        callerTier,
+        ownerOpsEligible,
+        contactCreateLane: contactCreateLane as "auto" | "confirm" | "off",
+        campaignCreateLane: campaignCreateLane as "auto" | "confirm" | "off",
+        workflowsLane: workflowsLane as "auto" | "confirm" | "off",
+        integrationsListMaturity: mat("integrations.list"),
+        pipelineEvidenceMaturity: mat("pipeline.deal_stage_evidence"),
+        commsReadMaturity: mat("comms.messages_read"),
+        commsSendMaturity: mat("comms.send"),
+        socialPresenceMaturity: mat("social.presence"),
+        socialPublishMaturity: mat("social.publish"),
+        teamAuthorityMaturity: mat("team.authority"),
+        teamManageMaturity: mat("team.manage"),
+        campaignListMaturity: mat("campaign.list"),
+        campaignCreateMaturity: mat("campaign.create"),
+        workflowsMaturity: mat("integrations.n8n_run_workflow"),
+        workflowsConnected,
+      });
+      return resolveCapabilityStatus(signals);
+    };
+
     // Funding tenants (opt-in skill) keep the full funding brain; everyone else
     // gets the neutral core. The tenant's authored persona leads either way.
     const systemPrompt = fundingEnabled ? FUNDING_SKILL_PROMPT : NEUTRAL_CORE_PROMPT;
@@ -4401,6 +4479,24 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // A fixed unavailable notice carries no workspace facts; verified evidence does.
     if (n8nEvidence?.status === "available") markProtectedLate("n8n_readiness");
 
+    // Capability status block (P0 Defect-1 — truthful self-knowledge, §13/§36/§70). The per-turn,
+    // authoritative answer to "what can you do here?", resolved server-side from the SAME gatherer
+    // the capability_status tool uses (§18), so the prompt and the tool never disagree. Injected for
+    // any tenant non-client session; the MANIFEST ITSELF is role-accurate (the gatherer ANDs in the
+    // owner-ops role the tools require, so a non-admin member sees every owner-ops capability as
+    // not-available-to-them rather than a claim the tool gate would refuse — §13/§51). Workflows
+    // connection comes from the n8n evidence already loaded above. Fail-closed NO-OP on any error —
+    // better to say nothing than to inject a half-resolved capability claim (§13).
+    let capabilityStatusBlock = "";
+    if (personaCtx.tenant_id && callerTier !== "client") {
+      try {
+        const capabilities = await gatherCapabilityManifest(n8nEvidence?.status === "available");
+        capabilityStatusBlock = renderCapabilityStatusBlock(capabilities);
+      } catch (e) {
+        console.warn("[paige-ai-chat] capability manifest unavailable:", (e as Error)?.message);
+      }
+    }
+
     // PAIGE VOICE — the platform-DEFAULT "how you talk" block (persona-layer-1 voice fix).
     // It sits RIGHT AFTER the tenant persona and BEFORE the operating core so the model
     // reads WHO you are → HOW you talk → (then) task/tool/context — instead of burying the
@@ -4452,6 +4548,10 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       ...(businessMissionContextBlock ? [{ role: "system", content: businessMissionContextBlock }] : []),
       ...(n8nReadinessBlock ? [{ role: "system", content: n8nReadinessBlock }] : []),
       ...(spineEvidenceBlock ? [{ role: "system", content: spineEvidenceBlock }] : []),
+      // Capability status sits LAST among the context blocks, right before the operating core, so
+      // "what can you do here?" is answered from the live, workspace-resolved manifest that OVERRIDES
+      // any general impression from the tool list or persona (P0 Defect-1, §13/§36/§70).
+      ...(capabilityStatusBlock ? [{ role: "system", content: capabilityStatusBlock }] : []),
       { role: "system", content: systemPrompt },
       // "Watch Paige work" narration (#152): when she's about to USE tools, she first
       // writes one short backstage line saying what she's doing and why. It streams to
@@ -6900,22 +7000,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
      * Keys are sorted and `confirm` is dropped, so the fingerprint is a property of the ACTION and
      * not of how the model happened to order its JSON or whether the flag was already set.
      */
-    const confirmFingerprint = async (tool: string, args: Record<string, unknown>): Promise<string> => {
-      const stable = (v: unknown): unknown => {
-        if (Array.isArray(v)) return v.map(stable);
-        if (v && typeof v === "object") {
-          return Object.fromEntries(
-            Object.keys(v as Record<string, unknown>).sort()
-              .filter((k) => k !== "confirm")
-              .map((k) => [k, stable((v as Record<string, unknown>)[k])]),
-          );
-        }
-        return v;
-      };
-      const bytes = new TextEncoder().encode(`${tool}\u0000${JSON.stringify(stable(args))}`);
-      const digest = await crypto.subtle.digest("SHA-256", bytes);
-      return [...new Uint8Array(digest)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
-    };
+    // `confirmFingerprint` now lives in `_shared/confirm-fingerprint.ts` (pure + unit-testable, §18).
+    // It sorts keys, always drops `confirm`, and drops each tool's narrow, reviewed non-identity
+    // free-text (NON_IDENTITY_ARGS — e.g. action_advance's `decision_rationale`) so an approval for
+    // the same action set is not defeated by the model rephrasing that note on the approval turn.
+    // Everything consequential stays in the hash. Imported at the top of this file.
 
     // ── THE PROPOSAL STORE ───────────────────────────────────────────────────
     // Writing down the exact call a person is being asked to approve, so that saying yes does not
@@ -7765,21 +7854,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       }
     }
 
-    // Per-request cache of resolved autonomy modes (tool_key → 'auto'|'confirm'|'off').
-    const autonomyModeCache = new Map<string, string>();
-    const resolveToolAutonomy = async (toolKey: string): Promise<string> => {
-      if (autonomyModeCache.has(toolKey)) return autonomyModeCache.get(toolKey)!;
-      let mode = "confirm"; // safe default — never assume autopilot
-      try {
-        const { data, error } = await supabaseClient.rpc("resolve_tool_autonomy", {
-          _tenant_id: personaCtx?.tenant_id ?? null,
-          _tool_key: toolKey,
-        });
-        if (!error && typeof data === "string" && ["auto", "confirm", "off"].includes(data)) mode = data;
-      } catch { /* keep safe default */ }
-      autonomyModeCache.set(toolKey, mode);
-      return mode;
-    };
+    // `autonomyModeCache` + `resolveToolAutonomy` are defined earlier (just before the system-prompt
+    // assembly) so the per-turn capability manifest can resolve its lanes at prompt time AND the
+    // tool dispatch below reuses the same cached resolver (§18 one home). Moved, not duplicated.
 
     // Call AI
     // U2 — extended thinking is GATED OFF by default and is ONLY ever considered on the Studio path
@@ -8443,7 +8520,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   : refusedSelfApproval
                   ? "This action cannot be approved by you saying it was approved — it is irreversible, changes permissions, reaches outside this platform, or spends money, so it needs the operator to click Approve on the Needs your OK card in this conversation. A typed yes alone does not submit that approval. Read confirm_summary back, point to that card, and do NOT call this again in this reply."
                   : changed
-                    ? "Not approved. Either you set confirm before actually hearing back from the operator — in which case you cannot approve on their behalf, so STOP and ask them — or the approval is spent, expired, or the action has changed since. Read the NEW confirm_summary back to them and wait for their answer."
+                    ? (recorded === "exists"
+                      // The exact call is ALREADY a live proposal — a card is on screen for it — but a
+                      // typed "yes" carries no card fingerprint, so it cannot bind here (and a batch of
+                      // several pending actions is ambiguous to bind by word alone). Point the operator
+                      // to the card ONCE rather than re-reading and re-asking — that re-ask is the
+                      // approval loop this branch exists to stop (P0, dismissing a batch of drafts).
+                      ? "Not run. A typed 'yes' does not submit this — the action set you asked about is ALREADY waiting on the 'Needs your OK' card shown above. Tell the operator, in one line, to click Approve on THAT card once. Do NOT read it back again and do NOT call this tool again in this reply. (Only if they want a CHANGE: call it again with the full new arguments and confirm left false, for a fresh card.)"
+                      : "Not approved. Either you set confirm before actually hearing back from the operator — in which case you cannot approve on their behalf, so STOP and ask them — or the approval is spent, expired, or the action has changed since. Read the NEW confirm_summary back to them and wait for their answer.")
                     : recorded === "exists"
                       ? "You have ALREADY asked them this and they have not answered yet. Do not read the same thing to them again and do not call this tool again — say what you are waiting on, in one line, and then move on or wait."
                       : (recorded === "created"
@@ -11257,18 +11341,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               result = { success: true, count: (data as any[])?.length ?? 0, integrations: data ?? [] };
             } else if (tc.function.name === "capability_status") {
               // Truthful capability awareness (§13/§36/§70): what can Paige do for THIS workspace
-              // right now? Compose server-resolved facts — the caller's tier (resolved once as
-              // callerTier), the ceiling-clamped autonomy lane for the star write, and the Spine
-              // maturity of the integrations read seam — then let the pure core decide one honest
-              // availability each. Every fact is resolved server-side; none is taken from the model.
-              const contactCreateLane = await resolveToolAutonomy("crm_create_contact");
-              const integrationsListMaturity = getSpineCapability("integrations.list")?.maturity ?? null;
-              const signals = buildCapabilitySignals({
-                callerTier,
-                contactCreateLane: contactCreateLane as "auto" | "confirm" | "off",
-                integrationsListMaturity,
-              });
-              const capabilities = resolveCapabilityStatus(signals);
+              // right now? Resolved through the SAME gatherer that built the prompt-time capability
+              // block (gatherCapabilityManifest, §18 one home) so the tool and the block can never
+              // disagree. Every fact is resolved server-side (tier, ceiling-clamped lanes, real Spine
+              // maturities, real n8n connection); none is taken from the model. n8nEvidence was loaded
+              // at prompt assembly above, in the same request scope.
+              const capabilities = await gatherCapabilityManifest(n8nEvidence?.status === "available");
               result = { success: true, count: capabilities.length, capabilities };
             } else if (tc.function.name === "contact_event_status") {
               // The READ half of contact.created (§13/§947): report whether a new contact's event
