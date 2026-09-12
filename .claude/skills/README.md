@@ -143,3 +143,36 @@ Mirror `second-brain/SKILL.md` into it as a new gate plus a read-first and a clo
 re-derive it, and do not fork a second copy of the content (§18). This file stays the one home for
 the *reason*; that skill stays the one home for the *procedure*.
 
+---
+
+## Optional: the local session-start routing card
+
+`scripts/harness/session-start-routing-card.sh` (versioned) prints a one-screen advisory card that
+re-states the mandatory routing — Flow-by-Flow → paige-ui-design → its five modules → flow-prototype →
+the evidence record + `Visible-Flow-Impact:` trailer → read the Second Brain → ground in the Master
+Reference. It **enforces nothing** and always exits `0`; the binding routing already lives in
+`AGENTS.md`, `CLAUDE.md` (§69/§00/§BRAIN), and the skills above, which reach every session.
+
+**Why it is not auto-wired repo-wide.** The root `.gitignore` deliberately treats `.claude/settings.json`
+and `.claude/hooks/` as local session state that is **never committed** (see the `.claude/*` block and
+its §64 note — only `.claude/commands/` and `.claude/skills/` are versioned). Committing a repo-wide
+SessionStart hook would reverse that documented decision, which is an owner call. So the script ships
+here and each operator opts in locally.
+
+**To enable it (per operator, in your own gitignored `.claude/settings.json`):**
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command",
+        "command": "$CLAUDE_PROJECT_DIR/scripts/harness/session-start-routing-card.sh" } ] }
+    ]
+  }
+}
+```
+
+UNVERIFIED from a headless container: whether the web SessionStart surface runs the hook and injects
+its stdout as context. The script itself is verified to run and exit `0`; the injection behavior is
+owed to a check from an interactive/web session (§32).
+
