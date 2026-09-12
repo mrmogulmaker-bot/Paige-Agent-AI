@@ -11,6 +11,12 @@ const status = readFileSync("supabase/functions/solo-beta-enrollment-status/inde
 const welcome = readFileSync("src/pages/Welcome.tsx", "utf8");
 const offerValidator = readFileSync("supabase/functions/_shared/solo-beta-offer.ts", "utf8");
 const provisioner = readFileSync("supabase/migrations/20260810000000_signup_flow_reorder_intake.sql", "utf8");
+const app = readFileSync("src/App.tsx", "utf8");
+const joinWorkspace = readFileSync("src/pages/JoinWorkspace.tsx", "utf8");
+const acceptInvite = readFileSync("src/pages/AcceptInvite.tsx", "utf8");
+const auth = readFileSync("src/pages/Auth.tsx", "utf8");
+const portal = readFileSync("supabase/functions/solo-beta-billing-portal/index.ts", "utf8");
+const routeGate = readFileSync("src/components/auth/RequireSoloBetaEntitlement.tsx", "utf8");
 
 describe("Solo Beta security boundary", () => {
   it("encodes one immutable test-mode 7450 USD monthly offer with no trial", () => {
@@ -70,7 +76,7 @@ describe("Solo Beta security boundary", () => {
     expect(checkout).toContain("acceptanceError");
     expect(status).toContain("enrollmentResult.error || membershipsResult.error");
     expect(status).toContain("intakeResult.error || agreementResult.error");
-    expect(status).toContain("subscriptionResult.error || receiptResult.error");
+    expect(status).toContain("subscriptionResult.error || receiptResult.error || entitlementResult.error");
   });
 
   it("uses immutable fulfilled subscription facts for lifecycle and converges revoking states", () => {
@@ -118,12 +124,46 @@ describe("Solo Beta security boundary", () => {
   });
 
   it("derives current-shell destination only after membership and entitlement readback", () => {
-    expect(status).toContain('subscription?.status === "active"');
+    expect(status).toContain('subscription.status === "active"');
     expect(status).toContain('membership.is_owner === true');
     // tier-feature-exempt: assertion covers canonical account-type routing, not a feature toggle.
     expect(status).toContain('tenant?.account_type === "standalone"');
     expect(status).toContain('destination: `/solo/${tenant.account_number}/command-center`');
     expect(status).not.toContain('destination: "/app"');
+  });
+
+  it("uses the Stripe Basil invoice parent and item billing periods", () => {
+    expect(webhook).toContain("readInvoiceSubscriptionId(invoice)");
+    expect(webhook).toContain("readSubscriptionItemPeriod(item)");
+    expect(webhook).not.toContain("subscription as unknown as { current_period_start");
+    expect(webhook).not.toContain("invoiceSubscription");
+  });
+
+  it("gates marked Beta workspaces on fresh server entitlement readback", () => {
+    expect(integrity).toContain("'solo_beta_offer_code', 'paige-solo-beta-monthly-v1'");
+    expect(app).toContain("<RequireSoloBetaEntitlement>");
+    expect(routeGate).toContain('supabase.functions.invoke("solo-beta-enrollment-status")');
+    expect(status).toContain('admin.from("user_subscriptions")');
+    expect(status).toContain('entitlement.status === subscription.status');
+  });
+
+  it("opens a dedicated exact-contract test-mode portal for Beta billing recovery", () => {
+    expect(portal).toContain('persisted.provider_mode !== "test"');
+    expect(portal).toContain("validateSoloBetaOffer");
+    expect(portal).toContain("SOLO_BETA_PRODUCT_NAME");
+    expect(portal).toContain("stripe.billingPortal.sessions.create");
+  });
+
+  it("removes retired public acquisition detours and blocks new invite-created account types", () => {
+    expect(app).toContain('<Route path="/get-started" element={<SignupRedirect />} />');
+    expect(app).toContain('<Route path="/signup/coach-qualify" element={<SignupRedirect />} />');
+    expect(joinWorkspace).not.toContain("signUpTenant(");
+    expect(joinWorkspace).not.toContain("Need an account? Create one");
+    expect(acceptInvite).toContain("Client Portal enrollment is not open");
+    expect(auth).not.toContain('import { signUpTenant }');
+    expect(auth).toContain("New Client Portal accounts are not open during the Solo Beta");
+    expect(auth).toContain("!isClientInvite && <>");
+    expect(auth).not.toContain("Create a free account");
   });
 
   it("offers immediate sign-in recovery for a signed-out checkout return", () => {

@@ -13,7 +13,6 @@ import type { User, Session } from "@supabase/supabase-js";
 import { signInWithOAuth } from "@/integrations/auth/oauth";
 import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
 import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
-import { signUpTenant } from "@/lib/auth/signUpTenant";
 import { trackEvent } from "@/hooks/useAnalytics";
 import { LANDING_ROUTE_RETRY, resolveLandingRoute, clearClientViewOverride } from "@/lib/auth/resolveLandingRoute";
 import { isSafeRedirectPath } from "@/lib/auth/safeRedirect";
@@ -21,7 +20,6 @@ import {
   type PlanIntent, stashPlanIntent, readPlanIntent, clearPlanIntent,
   normalizeBilling, onboardingPathWithPlan, authRedirectWithPlan,
 } from "@/lib/auth/signupPlanIntent";
-import { useRequiredSignupDocs, recordAcceptances } from "@/lib/legal/useLegalDocuments";
 import { readableTextOn, isColorDark } from "@/lib/brand/contrast";
 import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
 import { operatorChooserTarget } from "@/lib/auth/operatorTarget";
@@ -35,7 +33,13 @@ const authSchema = z.object({
 
 const Auth = () => {
   const [searchParams] = useSearchParams();
-  const [isLogin, setIsLogin] = useState(searchParams.get("mode") !== "signup");
+  const nextParam = searchParams.get("next");
+  const inviteToken = useMemo(() => {
+    const match = nextParam ? /^\/join\/([^/?#]+)/.exec(nextParam) : null;
+    return match ? match[1] : null;
+  }, [nextParam]);
+  const isClientInvite = !!inviteToken;
+  const [isLogin, setIsLogin] = useState(isClientInvite || searchParams.get("mode") !== "signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -60,7 +64,6 @@ const Auth = () => {
   const [consentMarketing, setConsentMarketing] = useState(false);
   const [mobileNumber, setMobileNumber] = useState("");
   const [consentSms, setConsentSms] = useState(false);
-  const { docs: requiredDocs } = useRequiredSignupDocs();
   const navigate = useNavigate();
   const { toast } = useToast();
   const authRecovery = soloAuthRecoveryState({
@@ -82,12 +85,6 @@ const Auth = () => {
   // Client-invite mode: when a tenant's CUSTOMER arrives here from /join/<token>
   // to sign in/up, the page must wear the TENANT's brand (§6/§9) — never Paige's
   // SaaS pitch. Peek the invite (anon RPC, no consumption) for the tenant brand.
-  const nextParam = searchParams.get("next");
-  const inviteToken = useMemo(() => {
-    const m = nextParam ? /^\/join\/([^/?#]+)/.exec(nextParam) : null;
-    return m ? m[1] : null;
-  }, [nextParam]);
-  const isClientInvite = !!inviteToken;
   const [inviteBrand, setInviteBrand] = useState<
     { tenant_name: string; logo_url: string | null; primary_color: string | null } | null
   >(null);
@@ -102,7 +99,7 @@ const Auth = () => {
   useEffect(() => {
     if (!inviteToken) return;
     let cancelled = false;
-    supabase.rpc("peek_tenant_invite", { _token: inviteToken })
+    void Promise.resolve(supabase.rpc("peek_tenant_invite", { _token: inviteToken }))
       .then(({ data, error }) => {
         if (cancelled) return;
         const row = (Array.isArray(data) ? data[0] : data) as
@@ -124,8 +121,9 @@ const Auth = () => {
     return () => { cancelled = true; };
   }, [inviteToken]);
 
-  // OAuth must land back on the invite target (/join/:token) when present, so a
-  // customer who signs in with Google/Apple still reaches invite acceptance.
+  // OAuth is never offered for an invite during the Solo-only Beta: an OAuth
+  // provider can create a new identity as well as sign one in. Existing invitees
+  // use password sign-in; ordinary Solo OAuth returns to the pending Solo flow.
   const oauthRedirectTo = (nextParam && isSafeRedirectPath(nextParam))
     ? `${window.location.origin}${nextParam}`
     : isLogin
@@ -146,17 +144,15 @@ const Auth = () => {
   const hasInvite = !isLogin && !!searchParams.get("invite");
   const headingSub = isLogin
     ? (isClientInvite ? `Sign in to open your ${brandName} portal` : "Sign in to your workspace")
-    : (isClientInvite
-        ? `Create your login to open your private client portal with ${brandName}.`
-        : hasInvite
+    : (hasInvite
           ? "Your invite includes access selected by the workspace owner — create your login to continue"
           : hasPlanIntent
             ? "Create your account, verify your email, then finish the approved Paige Solo setup"
             : "Paige Solo is the beta available now");
 
   useEffect(() => {
-    setIsLogin(searchParams.get("mode") !== "signup");
-  }, [searchParams]);
+    setIsLogin(isClientInvite || searchParams.get("mode") !== "signup");
+  }, [isClientInvite, searchParams]);
 
   useEffect(() => {
     if (searchParams.get("mode") === "signup" && !isClientInvite && !isSoloBetaPlan(searchParams.get("plan"))) {
@@ -352,11 +348,18 @@ const Auth = () => {
           return;
         }
 
-        const consentTimestamp = new Date().toISOString();
+        // Invite authentication is sign-in-only during the Solo Beta. Keep this
+        // server-call boundary defensive even if a stale render submits signup.
+        if (isClientInvite) {
+          toast({
+            title: "Enrollment unavailable",
+            description: "New Client Portal accounts are not open during the Solo Beta. Sign in with an existing authorized account.",
+            variant: "destructive",
+          });
+          return;
+        }
 
-        // Ordinary Solo enrollment uses Supabase email verification. Client invites
-        // retain the legacy tenant-branded helper so existing portal access is preserved.
-        if (!isClientInvite) {
+        {
           const intent = soloBetaDisplayIntent();
           signupPlanIntentRef.current = intent;
           stashPlanIntent(intent);
@@ -392,111 +395,6 @@ const Auth = () => {
           void trackEvent("signup_verification_sent", "activation", { method: "email" });
           return;
         }
-
-        // Capture any plan intent BEFORE we create the account, so it's set before
-        // the sign-in inside signUpTenant fires onAuthStateChange → redirectByRole
-        // (which reads this ref). Cleared on signup failure so a later login/retry
-        // can't inherit it. Client-invite signups never carry a platform plan (§9).
-        if (!isClientInvite) {
-          const planSlug = searchParams.get("plan");
-          if (planSlug) {
-            const billing = searchParams.get("billing") === "annual" ? "annual" : "monthly";
-            // Invite token (from /get-started) rides along to checkout so the webhook can
-            // resolve the server-side trial and mark the invite consumed (§9 consumption).
-            const invite = searchParams.get("invite") || undefined;
-            signupPlanIntentRef.current = { plan: planSlug, billing, invite };
-          }
-        }
-        // Client-invite compatibility path; ordinary Solo signup returned above for verification.
-        let newUserId: string | null = null;
-        try {
-          const res = await signUpTenant({
-            email,
-            password,
-            fullName,
-            marketingOptIn: consentMarketing,
-            phone: consentSms ? normalizedMobile : undefined,
-            smsConsent: consentSms,
-            // A client accepting a tenant's invite already got the tenant's
-            // branded invite email — don't also send the Paige welcome (§9).
-            suppressWelcome: isClientInvite,
-          });
-          newUserId = res.userId;
-        } catch (e) {
-          // Signup failed — drop the plan intent so a subsequent login/retry on this
-          // page doesn't inadvertently launch checkout.
-          signupPlanIntentRef.current = null;
-          const emsg = (e as Error).message || "";
-          let title = "Error";
-          let description = emsg || "Couldn't create your account. Please try again.";
-          if (/already exists|already registered/i.test(emsg)) {
-            title = "Account exists";
-            description = "An account with this email already exists. Please sign in instead.";
-          } else if (/breach/i.test(emsg)) {
-            title = "Unsafe password";
-            description = "This password has appeared in a known data breach. Please choose a stronger, unique password.";
-          }
-          toast({ title, description, variant: "destructive" });
-          return;
-        }
-
-        void trackEvent("signup_complete", "activation", { method: "email" });
-
-        // A brand-new tenant (not accepting an invite) must not inherit a stale
-        // pending-invite stash from an earlier visitor on this browser (§9).
-        if (!isClientInvite) {
-          try { localStorage.removeItem("paige_pending_invite"); } catch { /* ignore */ }
-        }
-
-        // Persist consent on the profile (non-blocking)
-        if (newUserId) {
-          const userId = newUserId;
-          supabase
-            .from("profiles")
-            .update({
-              consent_privacy_policy: true,
-              consent_data_usage: true,
-              consent_marketing: consentMarketing,
-              consent_timestamp: consentTimestamp,
-            })
-            .eq("user_id", userId)
-            .then(({ error: pErr }) => {
-              if (pErr) console.warn("Consent persist failed:", pErr);
-            });
-
-          // Append-only audit row per required document.
-          if (requiredDocs.length) {
-            recordAcceptances(
-              userId,
-              requiredDocs.map((d) => ({
-                slug: d.slug,
-                version: d.version,
-                context: { source: "signup", marketing_opt_in: consentMarketing },
-              }))
-            ).catch((err) => console.warn("Acceptance log failed:", err));
-          }
-        }
-
-        // Send the platform welcome email — but NOT for a client accepting a
-        // tenant's invite (they already got the tenant's branded invite; a Paige
-        // welcome would leak the platform to the tenant's customer, §9).
-        if (!isClientInvite) {
-          supabase.functions.invoke("send-transactional-email", {
-            body: {
-              templateName: "welcome",
-              recipientEmail: email,
-              idempotencyKey: `welcome-${email}-${Date.now()}`,
-              templateData: { name: fullName },
-            },
-          }).catch(err => console.warn("Welcome email failed:", err));
-        }
-
-        toast({
-          title: "Account created!",
-          description: signupPlanIntentRef.current
-            ? "Next, let's set up your workspace…"
-            : "Welcome! Redirecting to your dashboard...",
-        });
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -774,7 +672,7 @@ const Auth = () => {
             </div>
             <div>
               <p className="text-xs font-medium text-primary-foreground/85">
-                {isClientInvite ? `Your private workspace with ${brandName}` : "Built for coaches, consultants, agencies & thought leaders"}
+                {isClientInvite ? `Your private workspace with ${brandName}` : "Built deliberately for founder-led Solo businesses"}
               </p>
               <p className="text-[11px] text-primary-foreground/55">Access controls · encrypted transport</p>
             </div>
@@ -816,15 +714,17 @@ const Auth = () => {
               </span>
             </Link>
           )}
-          <button
-            type="button"
-            onClick={toggleMode}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-            disabled={isLoading}
-          >
-            {isLogin ? "Create account" : "Sign in"}
-            <ChevronRight className="w-3.5 h-3.5 inline ml-0.5" />
-          </button>
+          {!isClientInvite ? (
+            <button
+              type="button"
+              onClick={toggleMode}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              disabled={isLoading}
+            >
+              {isLogin ? "Start Solo Beta" : "Sign in"}
+              <ChevronRight className="w-3.5 h-3.5 inline ml-0.5" />
+            </button>
+          ) : <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">Return to Paige</Link>}
         </div>
 
         {/* Form Area */}
@@ -1069,11 +969,12 @@ const Auth = () => {
                     {isLogin ? "Signing in..." : "Creating account..."}
                   </>
                 ) : (
-                  <>{isLogin ? "Sign In" : isClientInvite ? "Create my portal login" : "Start with Paige"}</>
+                  <>{isLogin ? "Sign In" : "Start with Paige"}</>
                 )}
               </Button>
             </form>
 
+            {!isClientInvite && <>
             {/* OAuth Divider */}
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
@@ -1116,7 +1017,9 @@ const Auth = () => {
                 Apple
               </Button>
             </div>
+            </>}
 
+            {!isClientInvite && <>
             {/* Mode Toggle Divider */}
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
@@ -1124,7 +1027,7 @@ const Auth = () => {
               </div>
               <div className="relative flex justify-center">
                 <span className="bg-background px-4 text-xs text-muted-foreground">
-                  {isLogin ? (isClientInvite ? "New here?" : "New to Paige Agent?") : "Already have an account?"}
+                  {isLogin ? "New to Paige Agent?" : "Already have an account?"}
                 </span>
               </div>
             </div>
@@ -1137,8 +1040,9 @@ const Auth = () => {
               disabled={isLoading}
               className="w-full h-11 text-sm border-border/60 text-muted-foreground hover:text-foreground hover:border-accent/40 transition-all"
             >
-              {isLogin ? (isClientInvite ? "Create your login" : "Create a free account") : "Sign in instead"}
+              {isLogin ? "Start the paid Solo Beta" : "Sign in instead"}
             </Button>
+            </>}
 
             {/* Team Login hint — staff routing copy is off-context for a customer */}
             {!isClientInvite && (

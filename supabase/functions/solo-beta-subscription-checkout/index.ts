@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import {
   SOLO_BETA_OFFER_CODE,
+  SOLO_BETA_PRODUCT_NAME,
   validateSoloBetaOffer,
 } from "../_shared/solo-beta-offer.ts";
 
@@ -107,7 +108,8 @@ Deno.serve(async (req) => {
       subscriptionStatus: "active",
     });
     const productDeleted = product && "deleted" in product ? product.deleted : false;
-    if (!validation.ok || !product || productDeleted || !("active" in product) || product.active !== true) {
+    if (!validation.ok || !product || productDeleted || !("active" in product) || product.active !== true
+      || !("name" in product) || product.name !== SOLO_BETA_PRODUCT_NAME) {
       return json(503, { error: "solo_beta_provider_contract_mismatch" });
     }
 

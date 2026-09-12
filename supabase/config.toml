@@ -546,6 +546,9 @@ verify_jwt = true
 [functions.solo-beta-enrollment-status]
 verify_jwt = true
 
+[functions.solo-beta-billing-portal]
+verify_jwt = true
+
 # Stripe cannot present a Supabase JWT. The function verifies the Stripe signature
 # and rejects live events; the dedicated test webhook secret is the caller gate.
 [functions.solo-beta-stripe-webhook]

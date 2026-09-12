@@ -269,6 +269,13 @@ BEGIN
     RAISE EXCEPTION 'solo_beta_tenant_invariant_failed';
   END IF;
 
+  -- Server-authored marker activates the Beta-specific shell gate. Existing
+  -- tenants have no marker and preserve their established access path.
+  UPDATE public.tenants
+  SET features = coalesce(features, '{}'::jsonb)
+    || jsonb_build_object('solo_beta_offer_code', 'paige-solo-beta-monthly-v1')
+  WHERE id = _tenant.id;
+
   INSERT INTO public.platform_billing_accounts(tenant_id,stripe_customer_id,stripe_account,source,created_by)
   VALUES (_tenant.id,_customer_id,'v2','checkout',_user_id);
   INSERT INTO public.platform_subscriptions(

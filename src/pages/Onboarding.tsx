@@ -35,12 +35,10 @@ export default function Onboarding() {
   const [status, setStatus] = useState<"checking" | "ready">("checking");
   const [cancelling, setCancelling] = useState(false);
 
-  // Task #66: a plan chosen on /pricing rides in as ?plan=&billing=(&invite=). Its
-  // presence makes this the PAID path — WorkspaceProvisioner fixes the tier from it,
-  // stages the intake + logs terms, then launches checkout as the last step. Absent ⇒
-  // the free/legacy standalone path (direct provision, no checkout).
+  // A plan chosen on /pricing rides in as ?plan=solo&billing=monthly. The page
+  // fails closed to pricing without that fixed paid offer; there is no public
+  // planless, free-provisioning, or alternate-account path.
   const planSlug = searchParams.get("plan");
-  const isPaid = isSoloBetaPlan(planSlug);
 
   useEffect(() => {
     let mounted = true;
@@ -141,9 +139,7 @@ export default function Onboarding() {
                 Let's set up your workspace.
               </h1>
               <p className="mt-3 text-muted-foreground">
-                {isPaid
-                  ? "Tell us about your business, review the Solo agreement, then continue to the approved $74.50 monthly checkout."
-                  : "Name your business and tell us what you do. You can invite your team once you're in — and change any of this later as you grow."}
+                Tell us about your business, review the Solo agreement, then continue to the approved $74.50 monthly checkout.
               </p>
             </header>
             <WorkspaceProvisioner

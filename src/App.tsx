@@ -60,7 +60,6 @@ const BookingPage = lazyWithReload(() => import("./pages/BookingPage"));
 const ManageBooking = lazyWithReload(() => import("./pages/ManageBooking"));
 const PaigeHome = lazyWithReload(() => import("./pages/PaigeHome"));
 const Onboarding = lazyWithReload(() => import("./pages/Onboarding"));
-const SignupCoachQualify = lazyWithReload(() => import("./pages/SignupCoachQualify"));
 const McpAuthorize = lazyWithReload(() => import("./pages/McpAuthorize"));
 const JoinWorkspace = lazyWithReload(() => import("./pages/JoinWorkspace"));
 const PortalGateway = lazyWithReload(() => import("./pages/PortalGateway"));
@@ -112,7 +111,6 @@ const SmsTerms = lazyWithReload(() => import("./pages/SmsTerms"));
 const LegalDoc = lazyWithReload(() => import("./pages/LegalDoc"));
 const About = lazyWithReload(() => import("./pages/About"));
 const Pricing = lazyWithReload(() => import("./pages/Pricing"));
-const GetStarted = lazyWithReload(() => import("./pages/GetStarted"));
 const Welcome = lazyWithReload(() => import("./pages/Welcome"));
 const Blog = lazyWithReload(() => import("./pages/Blog"));
 
@@ -148,6 +146,7 @@ const GmailCallback = lazyWithReload(() => import("./pages/GmailCallback"));
 // Bounces a signed-in-but-incomplete signup (no lane/agreement/workspace yet) to
 // the /onboarding gate. Not lazy — it's a thin wrapper around the app shells.
 import { RequireCompleteSignup } from "@/components/auth/RequireCompleteSignup";
+import { RequireSoloBetaEntitlement } from "@/components/auth/RequireSoloBetaEntitlement";
 import { RequireSetupComplete } from "@/components/auth/RequireSetupComplete";
 
 const queryClient = new QueryClient({
@@ -241,9 +240,9 @@ const App = () => (
             <Route path="/book/:slug" element={<PageSuspense><BookingPage /></PageSuspense>} />
             <Route path="/booking/manage" element={<PageSuspense><ManageBooking /></PageSuspense>} />
             <Route path="/signup" element={<SignupRedirect />} />
-            <Route path="/get-started" element={<PageSuspense><GetStarted /></PageSuspense>} />
+            <Route path="/get-started" element={<SignupRedirect />} />
             <Route path="/onboarding" element={<PageSuspense><Onboarding /></PageSuspense>} />
-            <Route path="/signup/coach-qualify" element={<PageSuspense><SignupCoachQualify /></PageSuspense>} />
+            <Route path="/signup/coach-qualify" element={<SignupRedirect />} />
             <Route path="/reset-password" element={<PageSuspense><ResetPassword /></PageSuspense>} />
             <Route path="/accept-invite" element={<PageSuspense><AcceptInvite /></PageSuspense>} />
             <Route path="/join/:token" element={<PageSuspense><JoinWorkspace /></PageSuspense>} />
@@ -297,7 +296,7 @@ const App = () => (
             <Route path="/business/*" element={<RequireCompleteSignup><RequireSetupComplete><PageSuspense><BusinessEntry /></PageSuspense></RequireSetupComplete></RequireCompleteSignup>} />
             {/* /solo is a SOLO tenant's own address (§65 R3d-i) — same wrapping as
                 /business (a real business tenant that picks a playbook). */}
-            <Route path="/solo/*" element={<RequireCompleteSignup><RequireSetupComplete><PageSuspense><SoloEntry /></PageSuspense></RequireSetupComplete></RequireCompleteSignup>} />
+            <Route path="/solo/*" element={<RequireCompleteSignup><RequireSoloBetaEntitlement><RequireSetupComplete><PageSuspense><SoloEntry /></PageSuspense></RequireSetupComplete></RequireSoloBetaEntitlement></RequireCompleteSignup>} />
             <Route path="/unsubscribe" element={<PageSuspense><Unsubscribe /></PageSuspense>} />
             {/* Comms C-2s-C — tenant one-click/footer unsubscribe. SAME Unsubscribe surface (§18),
                 branded /u/:token path form; the component routes the token to comms-email-unsubscribe. */}

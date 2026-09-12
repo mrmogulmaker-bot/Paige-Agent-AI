@@ -6,6 +6,7 @@
  */
 
 export const SOLO_BETA_OFFER_CODE = "paige-solo-beta-monthly-v1" as const;
+export const SOLO_BETA_PRODUCT_NAME = "Paige Solo Beta" as const;
 export const SOLO_BETA_UNIT_AMOUNT_CENTS = 7_450 as const;
 export const SOLO_BETA_CURRENCY = "usd" as const;
 export const SOLO_BETA_INTERVAL = "month" as const;

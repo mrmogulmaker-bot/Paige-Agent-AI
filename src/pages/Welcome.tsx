@@ -8,23 +8,23 @@ import { supabase } from "@/integrations/supabase/client";
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 30000;
 
-type EnrollmentState = "needs_identity" | "needs_intake" | "needs_checkout" | "pending" | "verified" | "failed";
+type EnrollmentState = "needs_identity" | "needs_intake" | "needs_checkout" | "pending" | "verified" | "access_ended" | "failed";
 type ViewState = EnrollmentState | "cancelled" | "expired" | "invalid" | "delayed";
-type EnrollmentStatus = { state: EnrollmentState; reference_id: string; message: string; retryable: boolean; destination?: string };
+type EnrollmentStatus = { state: EnrollmentState; reference_id: string; message: string; retryable: boolean; destination?: string; billing_destination?: string };
 
 export default function Welcome() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const reduce = useReducedMotion();
   const checkout = params.get("checkout");
-  const initial: ViewState = checkout === "cancelled" ? "cancelled" : checkout === "expired" ? "expired" : checkout === "failed" ? "failed" : checkout === "success" ? "pending" : "invalid";
+  const initial: ViewState = checkout === "cancelled" ? "cancelled" : checkout === "expired" ? "expired" : checkout === "failed" ? "failed" : checkout === "success" || checkout === "recovery" ? "pending" : "invalid";
   const [view, setView] = useState<ViewState>(initial);
   const [status, setStatus] = useState<EnrollmentStatus | null>(null);
   const [attempt, setAttempt] = useState(0);
   const settled = useRef(false);
 
   useEffect(() => {
-    if (checkout !== "success") return;
+    if (checkout !== "success" && checkout !== "recovery") return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const startedAt = Date.now();
@@ -79,6 +79,7 @@ export default function Welcome() {
     needs_intake: { title: "Finish your Solo setup", body: "Your identity is ready, but your Solo business setup still needs to be completed." },
     needs_checkout: { title: "Checkout is still needed", body: "Your setup is saved, but no verified payment is attached. Continue from the approved Solo offer." },
     verified: { title: "Solo access verified", body: "Opening your authorized workspace…" },
+    access_ended: { title: "Your Solo access needs billing attention", body: "Paige verified that this subscription is not currently active. Review billing or contact support; no access is being inferred from the browser." },
   };
   const copy = defaults[view];
   const message = status?.message || copy.body;
@@ -98,6 +99,7 @@ export default function Welcome() {
           {(view === "delayed" || (view === "failed" && status?.retryable)) && <Button variant="gold" className="w-full" onClick={() => setAttempt((value) => value + 1)}>Retry verification</Button>}
           {view === "needs_identity" && <Button variant="gold" className="w-full" onClick={() => navigate("/auth?mode=login&next=%2Fwelcome%3Fcheckout%3Dsuccess")}>Sign in and resume</Button>}
           {view === "needs_intake" && <Button variant="gold" className="w-full" onClick={() => navigate("/onboarding?plan=solo&billing=monthly")}>Finish Solo setup</Button>}
+          {view === "access_ended" && status?.billing_destination && <Button variant="gold" className="w-full" onClick={() => navigate(status.billing_destination!)}>Review billing</Button>}
           {(view === "needs_checkout" || view === "cancelled" || view === "expired" || view === "invalid" || (view === "failed" && !status?.retryable)) && <Button variant="gold" className="w-full" onClick={() => navigate("/pricing")}>Return to Paige Solo</Button>}
           <Button asChild variant="outline" className="w-full"><a href="mailto:support@paigeagent.ai?subject=Solo%20enrollment%20verification">Contact support</a></Button>
         </div>

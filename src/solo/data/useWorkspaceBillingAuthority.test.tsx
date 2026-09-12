@@ -170,11 +170,26 @@ describe("useWorkspaceBillingAuthority — openPortal", () => {
     let result: unknown;
     await act(async () => { result = await latest().openPortal(); });
     expect(result).toEqual({ ok: true });
-    expect(harness.invoke).toHaveBeenCalledWith("platform-billing-portal");
+    expect(harness.invoke).toHaveBeenCalledWith("solo-beta-billing-portal");
     expect(harness.open).toHaveBeenCalledTimes(1);
     expect(harness.open).toHaveBeenCalledWith("https://billing.stripe.com/p/session/x", "_blank", "noopener");
     // The URL is not kept anywhere on the hook's surface.
     expect(JSON.stringify(latest())).not.toContain("billing.stripe.com");
+  });
+
+  it("falls back to the existing portal only when the server proves this is not a Solo Beta subscription", async () => {
+    harness.rpc.mockResolvedValue(ownerRow("tenant-a"));
+    harness.invoke
+      .mockResolvedValueOnce(httpRefusal("not_solo_beta", 409))
+      .mockResolvedValueOnce({ data: { url: "https://billing.stripe.com/p/session/legacy", tenant_id: "tenant-a" }, error: null });
+    mount();
+    await flush();
+    await act(async () => { await latest().openPortal(); });
+    expect(harness.invoke.mock.calls).toEqual([
+      ["solo-beta-billing-portal"],
+      ["platform-billing-portal"],
+    ]);
+    expect(harness.open).toHaveBeenCalledWith("https://billing.stripe.com/p/session/legacy", "_blank", "noopener");
   });
 
   it("refuses to open a URL minted for a different workspace than the one clicked in", async () => {

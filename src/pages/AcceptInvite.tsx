@@ -163,6 +163,29 @@ export default function AcceptInvitePage() {
     );
   }
 
+  if (isBtf) {
+    return (
+      <div className="workspace-theme min-h-screen flex items-center justify-center px-6 py-12">
+        <Helmet>
+          <title>Enrollment unavailable · {info.brand?.name || "Client Portal"}</title>
+          <meta name="robots" content="noindex,nofollow" />
+        </Helmet>
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <CardTitle>Client Portal enrollment is not open</CardTitle>
+            <CardDescription>
+              Paige Solo is the beta currently available. This invitation cannot create a new Client Portal account.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button onClick={() => navigate("/auth?mode=login")}>Sign in to an existing account</Button>
+            <Button variant="outline" onClick={() => navigate("/")}>Return to Paige</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   // ============ White-label workspace client ============
   // Brand is DATA-DRIVEN off the invite (info.brand.{name,program}), resolved by the
   // accept-invite lookup — never a hardcoded vertical name here (§9). The workspace

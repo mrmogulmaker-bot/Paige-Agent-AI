@@ -47,26 +47,43 @@ Deno.serve(async (req) => {
     const membership = activeMemberships.find((row: Record<string, unknown>) => row.tenant_id === enrollment.tenant_id) as Record<string, unknown> | undefined;
     const tenantRaw = membership?.tenants;
     const tenant = (Array.isArray(tenantRaw) ? tenantRaw[0] : tenantRaw) as { account_number?: number; account_type?: string; parent_tenant_id?: string | null } | null | undefined;
-    const [subscriptionResult, receiptResult] = await Promise.all([
+    const [subscriptionResult, receiptResult, entitlementResult] = await Promise.all([
       admin.from("platform_subscriptions")
-        .select("id,status,offer_code,provider_mode,provider_verified_at,stripe_subscription_id")
+        .select("id,status,offer_code,provider_mode,provider_verified_at,stripe_subscription_id,cancel_at_period_end,current_period_end")
         .eq("tenant_id", enrollment.tenant_id).eq("stripe_subscription_id", enrollment.stripe_subscription_id).maybeSingle(),
       admin.from("solo_beta_fulfillment_receipts")
         .select("subscription_id,user_id,tenant_id,outcome,reference_id")
         .eq("user_id", user.id).eq("tenant_id", enrollment.tenant_id).eq("outcome", "completed").maybeSingle(),
+      admin.from("user_subscriptions")
+        .select("plan_slug,status,stripe_subscription_id,current_period_end")
+        .eq("user_id", user.id).eq("stripe_subscription_id", enrollment.stripe_subscription_id).maybeSingle(),
     ]);
-    if (subscriptionResult.error || receiptResult.error) return json(503, { error: "status_unavailable" });
+    if (subscriptionResult.error || receiptResult.error || entitlementResult.error) return json(503, { error: "status_unavailable" });
     const subscription = subscriptionResult.data;
     const receipt = receiptResult.data;
-    if (membership && membership.is_owner === true && tenant?.account_type === "standalone"
+    const entitlement = entitlementResult.data;
+    const chainVerified = membership && membership.is_owner === true && tenant?.account_type === "standalone"
       && tenant.parent_tenant_id === null && tenant.account_number
-      && subscription?.status === "active" && subscription.offer_code === "paige-solo-beta-monthly-v1"
+      && subscription?.offer_code === "paige-solo-beta-monthly-v1"
       && subscription.provider_mode === "test" && subscription.provider_verified_at
-      && receipt?.subscription_id === subscription.id && receipt?.reference_id === enrollment.reference_id) {
+      && receipt?.subscription_id === subscription.id && receipt?.reference_id === enrollment.reference_id
+      && entitlement?.plan_slug === "solo"
+      && entitlement.stripe_subscription_id === enrollment.stripe_subscription_id
+      && entitlement.status === subscription.status;
+    if (chainVerified && subscription.status === "active") {
       return json(200, {
         state: "verified", reference_id: referenceId, retryable: false,
         message: "Your payment, Solo workspace, membership, and access are verified.",
         destination: `/solo/${tenant.account_number}/command-center`,
+      });
+    }
+    if (chainVerified && ["past_due", "canceled", "unpaid", "paused"].includes(subscription.status)) {
+      return json(200, {
+        state: "access_ended", reference_id: referenceId, retryable: false,
+        message: subscription.status === "canceled"
+          ? "Your paid Solo service period has ended. Review billing history or contact support to discuss a new enrollment."
+          : "Paige verified that this subscription is not active. Review billing to update payment details, or contact support with this reference.",
+        billing_destination: `/solo/${tenant.account_number}/settings/billing`,
       });
     }
     return json(200, { state: "failed", reference_id: referenceId, retryable: true, message: "We received the billing result but could not verify every access record. Retry verification or contact support with this reference." });

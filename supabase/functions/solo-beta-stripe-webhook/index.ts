@@ -1,6 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import Stripe from "https://esm.sh/stripe@18.5.0";
-import { SOLO_BETA_OFFER_CODE, validateSoloBetaOffer } from "../_shared/solo-beta-offer.ts";
+import {
+  SOLO_BETA_OFFER_CODE,
+  SOLO_BETA_PRODUCT_NAME,
+  validateSoloBetaOffer,
+} from "../_shared/solo-beta-offer.ts";
+import {
+  readInvoiceSubscriptionId,
+  readSubscriptionItemPeriod,
+} from "../_shared/solo-beta-stripe-shapes.ts";
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), {
   status,
@@ -57,10 +65,16 @@ Deno.serve(async (req) => {
       if (!userId || session.client_reference_id !== userId || subscriptionActor !== userId || subscriptionCustomerId !== customerId) {
         return json(400, { error: "event_not_eligible" });
       }
+      if (subscription.items.data.length !== 1) return json(400, { error: "checkout_item_mismatch" });
       const item = subscription.items.data[0];
       const price = item?.price;
-      if (!price) return json(400, { error: "checkout_price_missing" });
-      const productId = typeof price.product === "string" ? price.product : price.product.id;
+      const product = price && typeof price.product !== "string" ? price.product : null;
+      const productDeleted = product && "deleted" in product ? product.deleted : false;
+      const period = readSubscriptionItemPeriod(item);
+      if (!price || item.quantity !== 1 || !product || productDeleted || !("active" in product)
+        || product.active !== true || !("name" in product) || product.name !== SOLO_BETA_PRODUCT_NAME
+        || !period) return json(400, { error: "checkout_item_mismatch" });
+      const productId = product.id;
       const { data: configured, error: configuredError } = await admin.from("platform_subscription_offers")
         .select("stripe_product_id,stripe_price_id").eq("offer_code", SOLO_BETA_OFFER_CODE).single();
       if (configuredError || !configured) return json(503, { error: "solo_beta_configuration_unavailable" });
@@ -102,8 +116,6 @@ Deno.serve(async (req) => {
         throw new Error("enrollment_identity_mismatch");
       }
 
-      const periodStart = new Date(Number((subscription as unknown as { current_period_start: number }).current_period_start) * 1000).toISOString();
-      const periodEnd = new Date(Number((subscription as unknown as { current_period_end: number }).current_period_end) * 1000).toISOString();
       const { error: fulfillError } = await admin.rpc("solo_beta_fulfill_checkout", {
         _event_id: event.id, _user_id: userId,
         _attempt: enrollment.checkout_attempt, _fencing_token: enrollment.checkout_fencing_token,
@@ -112,7 +124,7 @@ Deno.serve(async (req) => {
         _product_id: productId, _price_id: price.id, _livemode: subscription.livemode,
         _unit_amount: price.unit_amount, _currency: price.currency,
         _interval: price.recurring?.interval, _interval_count: price.recurring?.interval_count,
-        _subscription_status: subscription.status, _period_start: periodStart, _period_end: periodEnd,
+        _subscription_status: subscription.status, _period_start: period.start, _period_end: period.end,
         _cancel_at_period_end: subscription.cancel_at_period_end,
       });
       if (fulfillError) throw new Error("atomic_fulfillment_failed");
@@ -123,8 +135,7 @@ Deno.serve(async (req) => {
       let subscriptionId: string | null = null;
       if (event.type === "invoice.payment_failed") {
         const invoice = event.data.object as Stripe.Invoice;
-        const invoiceSubscription = (invoice as unknown as { subscription?: string | { id?: string } | null }).subscription;
-        subscriptionId = typeof invoiceSubscription === "string" ? invoiceSubscription : invoiceSubscription?.id ?? null;
+        subscriptionId = readInvoiceSubscriptionId(invoice);
       } else {
         subscriptionId = (event.data.object as Stripe.Subscription).id;
       }
@@ -133,9 +144,16 @@ Deno.serve(async (req) => {
       const userId = subscription.metadata?.actor_user_id;
       const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
       if (!userId || !customerId) return json(400, { error: "event_not_eligible" });
-      const price = subscription.items.data[0]?.price;
-      if (!price) throw new Error("subscription_price_missing");
-      const productId = typeof price.product === "string" ? price.product : price.product.id;
+      if (subscription.items.data.length !== 1) return json(400, { error: "event_not_eligible" });
+      const item = subscription.items.data[0];
+      const price = item?.price;
+      const product = price && typeof price.product !== "string" ? price.product : null;
+      const productDeleted = product && "deleted" in product ? product.deleted : false;
+      const period = readSubscriptionItemPeriod(item);
+      if (!price || item.quantity !== 1 || !product || productDeleted || !("active" in product)
+        || product.active !== true || !("name" in product) || product.name !== SOLO_BETA_PRODUCT_NAME
+        || !period) return json(400, { error: "event_not_eligible" });
+      const productId = product.id;
       const { data: persisted, error: persistedError } = await admin.from("platform_subscriptions")
         .select("offer_code,provider_mode,stripe_product_id,stripe_price_id,stripe_customer_id")
         .eq("stripe_subscription_id", subscription.id).maybeSingle();
@@ -171,8 +189,6 @@ Deno.serve(async (req) => {
       eventClaimed = true;
 
 
-      const periodStart = new Date(Number((subscription as unknown as { current_period_start: number }).current_period_start) * 1000).toISOString();
-      const periodEnd = new Date(Number((subscription as unknown as { current_period_end: number }).current_period_end) * 1000).toISOString();
       const { error: syncError } = await admin.rpc("solo_beta_sync_subscription", {
         _event_id: event.id, _event_type: event.type, _provider_created_at: providerCreatedAt,
         _subscription_id: subscription.id, _customer_id: customerId, _user_id: userId,
@@ -180,7 +196,7 @@ Deno.serve(async (req) => {
         _price_id: price.id, _livemode: subscription.livemode, _unit_amount: price.unit_amount,
         _currency: price.currency, _interval: price.recurring?.interval,
         _interval_count: price.recurring?.interval_count, _subscription_status: normalizedStatus,
-        _period_start: periodStart, _period_end: periodEnd,
+        _period_start: period.start, _period_end: period.end,
         _cancel_at_period_end: subscription.cancel_at_period_end,
       });
       if (syncError) throw new Error("lifecycle_sync_failed");
