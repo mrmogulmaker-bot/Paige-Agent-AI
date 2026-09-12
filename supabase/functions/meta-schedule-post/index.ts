@@ -1,6 +1,7 @@
 // Publish or schedule a Facebook/Instagram post via Meta Graph API.
 // Body: { platform: "facebook"|"instagram", caption?, media_urls: string[], scheduled_at?: ISO }
 import { corsHeaders, jsonResponse, requireAdmin } from "../_shared/adminAuth.ts";
+import { socialPublishContainment, containedPublishResponse } from "../_shared/social-publish-containment.ts";
 
 const GRAPH = "https://graph.facebook.com/v20.0";
 
@@ -9,6 +10,18 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
   const guard = await requireAdmin(req);
   if (!guard.ok) return guard.response;
+
+  // ── SOCIAL PUBLISH CONTAINMENT (owner ruling, Gate A 2026-09-12) ──────────────────────────────
+  // This function publishes CONTENT to Facebook/Instagram via the Meta Graph API — a SECOND social
+  // publication seam, distinct from paige-social/Upload-Post. Deny it here, BEFORE any Graph call or
+  // `paige_social_posts` write, regardless of the `meta_ads_features_enabled` flag or
+  // META_PAGE_ACCESS_TOKEN: a configured credential + a mutable flag is exactly what the ruling
+  // rejects. Social publishing stays UNAVAILABLE until the governed, tenant-safe path is proven.
+  // Reuses the one containment safeguard (§18). See _shared/social-publish-containment.ts.
+  const containment = socialPublishContainment("post");
+  if (containment.denied) {
+    return jsonResponse(containedPublishResponse(containment), 403);
+  }
 
   // Gate: ads / scheduling features are off by default per Phase 5 scope downgrade.
   const { data: cfg } = await guard.admin
