@@ -244,34 +244,48 @@ SET search_path TO 'public'
 AS $function$
 DECLARE _event_id uuid;
 BEGIN
-  BEGIN
-    INSERT INTO public.paige_native_events
-      (event_key, tenant_id, subject_table, subject_id, dedup_key, payload)
-    VALUES (
-      'contact.created', NEW.tenant_id, 'clients', NEW.id,
-      'contact.created:' || NEW.id::text,
-      jsonb_build_object(
-        'contact_id',      NEW.id,
-        'account_number',  NEW.account_number,
-        'first_name',      NEW.first_name,
-        'lifecycle_stage', NEW.lifecycle_stage,
-        'source',          NEW.source
-      )
+  -- TRANSACTIONAL OUTBOX (§32/§13, tightened by the §39 peer-gate): the event row is written in the
+  -- SAME transaction as the contact and its failure is NOT swallowed. An event bus that silently
+  -- drops its source event is worthless to every downstream subscriber, and the sweeper can only
+  -- re-drive rows that EXIST — a never-written event is unrecoverable. The ONLY expected conflict
+  -- (the same contact twice) is absorbed by ON CONFLICT DO NOTHING; any OTHER failure (a real bug, a
+  -- future constraint, a serialization conflict) rolls the whole statement back LOUDLY so the caller
+  -- sees it and retries idempotently (create_contact_v2 dedup + this dedup_key make the retry safe)
+  -- — never a contact created with its event lost in silence. This is deliberately STRONGER than the
+  -- growth reference, whose producer swallowed. Only the net.http_post FIRE is best-effort, and its
+  -- OWN handler inside paige_fire_event_processor swallows that (the pg_cron sweeper is its backstop).
+  INSERT INTO public.paige_native_events
+    (event_key, tenant_id, subject_table, subject_id, dedup_key, payload)
+  VALUES (
+    'contact.created', NEW.tenant_id, 'clients', NEW.id,
+    'contact.created:' || NEW.id::text,
+    jsonb_build_object(
+      'contact_id',      NEW.id,
+      'account_number',  NEW.account_number,
+      'first_name',      NEW.first_name,
+      'lifecycle_stage', NEW.lifecycle_stage,
+      'source',          NEW.source
     )
-    ON CONFLICT (dedup_key) DO NOTHING
-    RETURNING id INTO _event_id;
+  )
+  ON CONFLICT (dedup_key) DO NOTHING
+  RETURNING id INTO _event_id;
 
-    -- Only enqueue when we actually recorded a new event (ON CONFLICT → _event_id NULL → skip).
-    IF _event_id IS NOT NULL THEN
-      PERFORM public.paige_fire_event_processor(_event_id, NEW.tenant_id);
-    END IF;
-  EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'trg_clients_emit_contact_created failed for client %: %', NEW.id, SQLERRM;
-  END;
+  -- Only enqueue when we actually recorded a new event (ON CONFLICT → _event_id NULL → skip).
+  IF _event_id IS NOT NULL THEN
+    PERFORM public.paige_fire_event_processor(_event_id, NEW.tenant_id);
+  END IF;
   RETURN NEW;
 END;
 $function$;
 
+-- CONSTRAINT (§37, flagged by the §5 compliance pass): this is FOR EACH ROW, and each row does
+-- 2× vault reads + one net.http_post enqueue. Every contact-insert path today is single-row
+-- (create_contact_v2, the portal/sub-account/agency invites, public booking, solo/zapier/skool
+-- intake) — inventoried, so the per-row cost is fine now. But if a BULK/CSV import-insert path is
+-- ever added, it must suppress per-row firing (e.g. a session GUC the trigger checks) and enqueue
+-- the batch once — otherwise an N-row import fires N events + N HTTP posts + 2N vault decrypts in
+-- one statement. The growth reference never faced this (form submissions are inherently one at a
+-- time); we do, the moment bulk import lands. Do NOT add a bulk path without that suppression.
 DROP TRIGGER IF EXISTS trg_clients_emit_contact_created ON public.clients;
 CREATE TRIGGER trg_clients_emit_contact_created
   AFTER INSERT ON public.clients

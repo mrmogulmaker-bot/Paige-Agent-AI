@@ -128,6 +128,10 @@ Deno.serve(async (req) => {
     // -- 4. Deliver to each subscriber, recording the TRUE outcome (done|error), fire-once. --
     //    MVP: delivery = recording that the event reached the subscriber. No acts are executed and
     //    nothing is sent externally (acts_executed:false) — honest by construction (§13/§947).
+    //    TODO (§39 F3 — MUST land before acts are wired): paige_automations.conditions is NOT
+    //    evaluated here yet. For the MVP that is harmless (nothing runs), but once act execution is
+    //    added, a subscriber whose conditions do not match this event MUST be skipped — otherwise a
+    //    process fires on events its conditions exclude. Gate on conditions before executing acts.
     for (const sub of subscribers) {
       if (alreadyDone.has(sub.id)) { delivered.push(sub.id); continue; }
       const { error: upErr } = await admin
@@ -149,10 +153,15 @@ Deno.serve(async (req) => {
 
     // -- 5. Terminal lifecycle: complete when nothing failed (incl. zero subscribers — it fired,
     //    nobody is listening yet, which is a legitimate 'done'), else fail so the sweeper retries. --
+    let terminal: string;
     if (failed.length === 0) {
-      await admin.rpc("paige_complete_event", { p_event_id: eventId });
+      // §13/§39 F2: do NOT report "done" if the terminal write itself failed — the event is still
+      // 'claimed' and the sweeper will re-claim + re-deliver idempotently. Report the real state.
+      const { error: compErr } = await admin.rpc("paige_complete_event", { p_event_id: eventId });
+      terminal = compErr ? "complete_error" : "done";
     } else {
       await failEvent(`dispatch_failed for ${failed.length} subscriber(s)`);
+      terminal = "retry_pending";
     }
 
     return json({
@@ -162,7 +171,7 @@ Deno.serve(async (req) => {
       subscriber_count: subscribers.length,
       delivered,
       failed,
-      terminal: failed.length === 0 ? "done" : "retry_pending",
+      terminal,
     }, 200);
   } catch (e) {
     const msg = (e as Error)?.message ?? String(e);

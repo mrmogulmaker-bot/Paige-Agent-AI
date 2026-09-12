@@ -73,11 +73,18 @@ describe("the producer trigger — genuine new contact only, never aborts the cr
     expect(mig).toContain("ON CONFLICT (dedup_key) DO NOTHING");
   });
 
-  it("swallows-and-notices so eventing can never abort the contact create (§13 — the create is primary)", () => {
+  it("writes the event row ATOMICALLY with the contact — the durable record is NOT silently swallowed (§32/§39 F1)", () => {
     const trg = mig.slice(mig.indexOf("FUNCTION public.trg_clients_emit_contact_created"), mig.indexOf("DROP TRIGGER IF EXISTS trg_clients_emit_contact_created"));
-    expect(trg).toMatch(/EXCEPTION WHEN OTHERS THEN\s*\n\s*RAISE NOTICE/);
-    // only enqueues when a NEW event row was actually recorded (skip on conflict)
+    // the ONLY expected conflict (same contact twice) is absorbed; any OTHER failure propagates and
+    // rolls back the statement rather than being caught — the producer-level swallow was REMOVED
+    // (the §39 MEDIUM: an event bus must not silently drop its source event; the sweeper can only
+    // re-drive rows that EXIST, so a never-written event is unrecoverable).
+    expect(trg).toContain("ON CONFLICT (dedup_key) DO NOTHING");
+    expect(trg).not.toMatch(/EXCEPTION WHEN OTHERS/);
     expect(trg).toContain("IF _event_id IS NOT NULL THEN");
+    // only the net.http_post FIRE is best-effort — swallowed inside its OWN helper, not the producer
+    const fire = mig.slice(mig.indexOf("FUNCTION public.paige_fire_event_processor"), mig.indexOf("-- ── 5."));
+    expect(fire).toMatch(/EXCEPTION WHEN OTHERS THEN\s*\n\s*RAISE NOTICE/);
   });
 
   it("the payload carries §9-minimal display facts, never email/phone PII", () => {
@@ -126,6 +133,15 @@ describe("the edge drainer — fail-closed, tenant-from-claim, fire-once, honest
     expect(fn).toContain("if (failed.length === 0) {");
     expect(fn).toContain('admin.rpc("paige_complete_event"');
     expect(fn).toContain("await failEvent(");
+  });
+
+  it("reports the terminal state HONESTLY — a failed complete is not called 'done' (§13/§39 F2)", () => {
+    expect(fn).toContain('const { error: compErr } = await admin.rpc("paige_complete_event"');
+    expect(fn).toContain('terminal = compErr ? "complete_error" : "done";');
+  });
+
+  it("flags that subscriber conditions must gate act execution before acts are wired (§39 F3 TODO)", () => {
+    expect(fn).toContain("paige_automations.conditions is NOT");
   });
 
   it("a concurrent claim loser no-ops (idempotent), never double-drains", () => {
