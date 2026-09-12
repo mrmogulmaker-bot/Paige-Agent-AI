@@ -67,9 +67,12 @@ INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, j
 INSERT INTO public.profiles (user_id, active_tenant_id) VALUES
   ('b1900000-0000-0000-0000-000000000001', 'b1900000-0000-0000-0000-00000000aaaa'),
   ('b1900000-0000-0000-0000-000000000002', 'b1900000-0000-0000-0000-00000000aaaa'),
-  ('b1900000-0000-0000-0000-000000000003', 'b1900000-0000-0000-0000-00000000bbbb'),
-  ('b1900000-0000-0000-0000-000000000004', 'b1900000-0000-0000-0000-00000000aaaa')
+  ('b1900000-0000-0000-0000-000000000003', 'b1900000-0000-0000-0000-00000000bbbb')
 ON CONFLICT (user_id) DO UPDATE SET active_tenant_id = EXCLUDED.active_tenant_id;
+
+-- The revoked coach deliberately has no active workspace. Giving a revoked
+-- membership an active_tenant_id would violate the existing profile guard and
+-- would make the fixture less realistic than the boundary it is proving.
 
 INSERT INTO public.user_roles (user_id, role) VALUES
   ('b1900000-0000-0000-0000-000000000001', 'user'),
