@@ -31,8 +31,8 @@ UNVERIFIED: the browser-driven, signed-in confirmation that Chat surfaces the ho
 
 ## Release governance
 
-INTERNAL_BUILD_IDENTITY: 70144b2b9e782fef1600a3121a7d15a62dbe32cc; deployment=draft PR #1164 — Vercel preview READY, edge functions redeploy on merge to main; environment=development; migrations=NOT_APPLICABLE; edge=PROOF_OWED(paige-social and meta-schedule-post redeploy via deploy-edge-functions.yml on merge to main); evidence=this record and src/__tests__/social-publish-containment.test.ts (13/13)
-RELEASE_CHANNEL: development: draft PR #1164 on branch claude/blissful-einstein-pbnraa, shipping to production on merge to main under Gate A (§4)
+INTERNAL_BUILD_IDENTITY: 19ccb133699837d745c053769070ca7a3659f06f; deployment=deploy-edge-functions run #282 on 19ccb13 (edge-live tag moved to this commit); environment=production; migrations=NOT_APPLICABLE; edge=PROOF_OWED(paige-social and meta-schedule-post deployed via deploy-edge-functions run #282 success and the edge-live tag at 19ccb13 — the exact Supabase function version is not queryable from this headless session, no edge-list permission); evidence=this record and src/__tests__/social-publish-containment.test.ts (13/13)
+RELEASE_CHANNEL: production: merged to main 19ccb13 under Gate A (§4) and deployed via deploy-edge-functions run #282 (success), edge-live tag at 19ccb13; the owner reviews on the live site
 RELEASE_CLASSIFICATION: internal-only: a server-side safeguard that DENIES an externally-consequential action, adding no customer-facing capability
 CUSTOMER_RELEASE_IDENTITY: none: internal safeguard only, Social publishing stays UNAVAILABLE by design and no customer-visible capability is added
 RELEASE_NOTE_REQUIRED: NO: internal-only denial of an unproven action, with nothing to announce to customers
