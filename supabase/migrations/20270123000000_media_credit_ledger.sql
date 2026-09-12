@@ -92,7 +92,9 @@ create index if not exists idx_pmj_submitted_day
   where submitted_at is not null;
 
 alter table public.paige_media_credit_entries enable row level security;
--- Append-only even for service_role: SELECT + INSERT, never UPDATE/DELETE.
+-- The Billing receipts read (pmce_read, tenant-scoped) needs authenticated
+-- SELECT; the append-only posture for service_role: SELECT + INSERT only.
+grant select on public.paige_media_credit_entries to authenticated;
 grant select, insert on public.paige_media_credit_entries to service_role;
 
 drop policy if exists pmce_read on public.paige_media_credit_entries;
