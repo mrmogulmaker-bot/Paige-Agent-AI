@@ -1,0 +1,709 @@
+-- ============================================================================
+-- PR #572 · LLM metering bridge — §32 behavioural regression test (self-contained).
+--
+-- Proves the Step 1+2 bridge added by migration 20261002000000. Synthetic
+-- fixtures only; rolls back. Terminal row 'LLM_METERING_BRIDGE_PROVEN' = pass;
+-- any RAISE = fail.
+--
+-- The seven cases the owner named (brief 2026-08-24, boundary 5):
+--   1. verified platform scope           → ledger scope='platform', NO tenant usage event
+--   2. missing attribution               → ledger scope='unattributed', surfaced for repair
+--   3. properly attributed tenant usage  → scope='tenant', exactly ONE usage event, NO price on it
+--   4. anon + tenant denial of wholesale pricing (registry AND estimator)
+--   5. operator / service_role access
+--   6. trace↔ledger transaction failure  → the trace does NOT commit without its cost row
+--   7. reasoning non-duplication         → tokens_reasoning raises neither quantity nor cost
+--
+-- Run: psql "$DB_URL" -1 -f supabase/tests/llm_metering_bridge.sql
+-- ============================================================================
+BEGIN;
+
+-- ── DO NOT DEGRADE PRODUCTION WHILE PROVING SOMETHING ───────────────────────
+-- This proof applies the migration's DDL, and its first act is an ALTER TABLE that needs
+-- ACCESS EXCLUSIVE on public.paige_llm_trace — a live table that takes production inserts.
+-- Without a lock_timeout the statement QUEUES behind any concurrent reader, and a QUEUED
+-- AccessExclusive request blocks every NEW reader that arrives behind it. So a verification run
+-- can take out reads on a production table while proving nothing at all.
+--
+-- Observed on 2026-08-24, measured from pg_locks/pg_stat_activity rather than assumed: a
+-- Supabase-internal introspection session (Supavisor, dumpFunc) sat idle-in-transaction holding
+-- AccessShare for 2m08s; this proof waited 1m35s without executing a single statement, an
+-- unrelated reader piled up behind it, and the client gave up at 60s. Nothing ran and nothing
+-- was proven — but production readers paid for it.
+--
+-- Fail FAST and LOUDLY instead. A lock wait is an environment condition, not a test result, and
+-- it must never be mistaken for either a pass or a failure of the thing under test.
+SET LOCAL lock_timeout = '4s';
+
+-- ── FIXTURES ────────────────────────────────────────────────────────────────
+-- §63: synthetic accounts only. No real business account is ever used as a fixture.
+INSERT INTO auth.users(id,aud,role,email) VALUES
+ ('d0000000-0000-0000-0000-00000000000a','authenticated','authenticated','lm-operator@x.invalid'),
+ ('d0000000-0000-0000-0000-00000000000b','authenticated','authenticated','lm-tenantuser@x.invalid');
+
+INSERT INTO public.tenants(id,slug,name,status,account_type,account_number_prefix,account_number,features) VALUES
+ ('d0000000-0000-0000-0000-000000001111','lm-t1','LM Fixture Tenant','active','standalone','LM1',999999101,'{}'::jsonb),
+ -- A SECOND tenant exists solely so the cross-tenant assertion in 4b can actually FAIL. With only
+ -- one fixture tenant, "the view leaked no other tenant's rows" is true because no other tenant HAS
+ -- rows — a vacuous pass. v_tenant_metered_usage is security_invoker = off, so its WHERE clause is
+ -- the only thing between these two tenants; that deserves a test that can fail.
+ ('d0000000-0000-0000-0000-000000002222','lm-t2','LM Fixture Tenant Two','active','standalone','LM2',999999102,'{}'::jsonb);
+
+-- ORDER MATTERS, and both facts below were found by RUNNING this proof, not assumed:
+--   (a) inserting into auth.users fires a trigger that auto-provisions a profiles row, so setting
+--       active_tenant_id is an UPSERT, not an INSERT (a plain INSERT hits profiles_user_id_key);
+--   (b) guard_active_tenant_membership() rejects an active_tenant_id the user does not belong to,
+--       so membership must be established BEFORE the profile points at the tenant.
+INSERT INTO public.tenant_members(tenant_id,user_id,role,status,is_owner,joined_at) VALUES
+ ('d0000000-0000-0000-0000-000000001111','d0000000-0000-0000-0000-00000000000b','admin','active',true,now());
+
+INSERT INTO public.profiles(user_id,active_tenant_id) VALUES
+ ('d0000000-0000-0000-0000-00000000000b','d0000000-0000-0000-0000-000000001111')
+ON CONFLICT (user_id) DO UPDATE SET active_tenant_id = EXCLUDED.active_tenant_id;
+
+-- OPERATOR FIXTURE = platform_admin, NOT super_admin, and deliberately WITHOUT an ON CONFLICT.
+-- Two things learned by running this proof rather than assuming (§13):
+--   (a) a partial unique index `one_super_admin ON user_roles(role) WHERE role='super_admin'`
+--       enforces the §53 invariant that exactly ONE super_admin exists platform-wide, so a
+--       super_admin fixture can never be seeded — it collides with the real operator;
+--   (b) an earlier draft wrote ON CONFLICT DO NOTHING here, which SWALLOWED that collision and
+--       left the fixture with no operator role at all. Every operator assertion below would then
+--       have passed vacuously against a user who was not an operator. No ON CONFLICT: if this
+--       fixture cannot be seeded, the proof must fail loudly rather than quietly prove nothing.
+-- is_platform_operator() = is_super_admin() OR is_platform_admin(auth.uid()), and is_platform_admin
+-- accepts platform_admin, so this fixture exercises the real operator predicate.
+-- The §53 grant guard (enforce_protected_role_grant) admits a write whose auth.uid() is NULL —
+-- a migration/service context, which is what this transaction is.
+INSERT INTO public.user_roles(user_id,role) VALUES
+ ('d0000000-0000-0000-0000-00000000000a','platform_admin'::public.app_role);
+
+DO $t$
+DECLARE
+  _tenant   uuid := 'd0000000-0000-0000-0000-000000001111';
+  _operator uuid := 'd0000000-0000-0000-0000-00000000000a';
+  _tuser    uuid := 'd0000000-0000-0000-0000-00000000000b';
+  _n        int;
+  _scope    text;
+  _cost     numeric;
+  _qty      numeric;
+  _price    numeric;
+  _blocked  boolean;
+  _t1 uuid := 'd0000000-0000-0000-0000-0000000000f1';  -- platform
+  _t2 uuid := 'd0000000-0000-0000-0000-0000000000f2';  -- unattributed
+  _t3 uuid := 'd0000000-0000-0000-0000-0000000000f3';  -- tenant
+  _t4 uuid := 'd0000000-0000-0000-0000-0000000000f4';  -- reasoning
+  _t5 uuid := 'd0000000-0000-0000-0000-0000000000f5';  -- no-reasoning twin
+  _t6 uuid := 'd0000000-0000-0000-0000-0000000000f6';  -- SECOND tenant, for the cross-tenant check
+  -- Own id, deliberately NOT _t6. These two fixtures collided on 2026-08-24: the unpriced probe
+  -- hardcoded …f6 as a literal, _t6 was added later for FAIL_4b_CROSS and reused the same value,
+  -- and the second INSERT died on paige_llm_trace_pkey (23505) — aborting the transaction before
+  -- DO block 2 ran at all, so five assertions could never be reached. Worse than the crash: had the
+  -- PK allowed it, the follow-up SELECT below would have read _t6's row and FAIL_UNPRICED would
+  -- have been asserting against the wrong trace entirely.
+  _t7 uuid := 'd0000000-0000-0000-0000-0000000000f7';  -- unpriced-model probe
+BEGIN
+  -- ══ 1. VERIFIED PLATFORM SCOPE ════════════════════════════════════════════
+  -- No tenant, and the call site DECLARED scope:'platform' in its trace metadata.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out,metadata)
+  VALUES
+    (_t1,NULL,'anthropic','anthropic','anthropic','claude-sonnet-5','2026-08-24','chat','success',
+     10000,500,'{"scope":"platform","caller_function":"lm-fixture"}'::jsonb);
+
+  SELECT scope, tenant_id IS NULL INTO _scope, _blocked
+    FROM public.paige_llm_cost_ledger WHERE trace_id=_t1;
+  IF _scope IS DISTINCT FROM 'platform' THEN
+    RAISE EXCEPTION 'FAIL_1_SCOPE: declared platform call recorded as % (expected platform)',_scope; END IF;
+  IF NOT _blocked THEN RAISE EXCEPTION 'FAIL_1_TENANT: platform ledger row carries a tenant_id'; END IF;
+
+  SELECT count(*) INTO _n FROM public.platform_metered_events
+   WHERE idempotency_key='llm_trace:'||_t1::text;
+  IF _n<>0 THEN RAISE EXCEPTION 'FAIL_1_BILLED: platform call produced % tenant usage event(s)',_n; END IF;
+
+  -- ══ 2. MISSING ATTRIBUTION ════════════════════════════════════════════════
+  -- No tenant AND no declaration. Must NOT be silently classified as platform usage, and must NOT
+  -- be charged to anyone. Correlation ids are present on purpose: their presence must not be
+  -- mistaken for a scope declaration.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out,conversation_id,metadata)
+  VALUES
+    (_t2,NULL,'anthropic','anthropic','anthropic','claude-sonnet-5','2026-08-24','chat','success',
+     8000,400,'d0000000-0000-0000-0000-00000000cccc','{"caller_function":"lm-fixture"}'::jsonb);
+
+  SELECT scope INTO _scope FROM public.paige_llm_cost_ledger WHERE trace_id=_t2;
+  IF _scope IS DISTINCT FROM 'unattributed' THEN
+    RAISE EXCEPTION 'FAIL_2_SCOPE: undeclared tenant-less call recorded as % (expected unattributed)',_scope; END IF;
+
+  SELECT count(*) INTO _n FROM public.platform_metered_events
+   WHERE idempotency_key='llm_trace:'||_t2::text;
+  IF _n<>0 THEN RAISE EXCEPTION 'FAIL_2_BILLED: unattributed call was charged to a tenant'; END IF;
+
+  SELECT count(*) INTO _n FROM public.v_llm_unattributed_spend;
+  IF _n < 1 THEN RAISE EXCEPTION 'FAIL_2_ALERT: unattributed spend is invisible to the alert surface'; END IF;
+
+  -- ══ 3. PROPERLY ATTRIBUTED TENANT USAGE ═══════════════════════════════════
+  -- 12000 uncached + 4000 cache-read + 1000 out = 17000 billable tokens.
+  -- Sonnet 5 @ 2.00 / 0.20 / 10.00 per MTok
+  --   = 12000*2.00/1e6 + 4000*0.20/1e6 + 1000*10.00/1e6
+  --   = 0.024 + 0.0008 + 0.010 = 0.0348
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_cache_read,tokens_out,metadata)
+  VALUES
+    (_t3,_tenant,'anthropic','anthropic','anthropic','claude-sonnet-5','2026-08-24','chat','success',
+     12000,4000,1000,'{"caller_function":"lm-fixture"}'::jsonb);
+
+  SELECT scope, billable_tokens_total, wholesale_cost_usd
+    INTO _scope, _qty, _cost
+    FROM public.paige_llm_cost_ledger WHERE trace_id=_t3;
+  IF _scope IS DISTINCT FROM 'tenant' THEN
+    RAISE EXCEPTION 'FAIL_3_SCOPE: tenant call recorded as %',_scope; END IF;
+  IF _qty <> 17000 THEN RAISE EXCEPTION 'FAIL_3_QTY: billable tokens % (expected 17000)',_qty; END IF;
+  IF _cost IS NULL THEN RAISE EXCEPTION 'FAIL_3_UNPRICED: a priced model produced a NULL cost'; END IF;
+  IF round(_cost,6) <> 0.034800 THEN
+    RAISE EXCEPTION 'FAIL_3_COST: % (expected 0.034800 at the official 2026-08-24 rates)',_cost; END IF;
+
+  -- exactly ONE tenant-visible usage event...
+  SELECT count(*) INTO _n FROM public.platform_metered_events
+   WHERE idempotency_key='llm_trace:'||_t3::text;
+  IF _n<>1 THEN RAISE EXCEPTION 'FAIL_3_EVENTS: % usage events (expected exactly 1)',_n; END IF;
+
+  -- ...idempotent: re-firing the same key adds nothing. quantity=999999 is the marker the assertion
+  -- keys on; the price is deliberately NULL because [5b]'s CHECK now forbids a priced ai_inference
+  -- row, and ON CONFLICT cannot rescue it — DO NOTHING absorbs unique/exclusion violations only,
+  -- and a CHECK is raised BEFORE conflict arbitration is ever reached. This fixture carried 999 and
+  -- was legal under the old schema; the new constraint caught it on the first live encounter,
+  -- which is the constraint working. The idempotency test itself is unchanged.
+  INSERT INTO public.platform_metered_events
+    (tenant_id,service_category,event_type,provider,quantity,wholesale_cost_usd,
+     layer,subject_type,subject_id,idempotency_key)
+  VALUES (_tenant,'ai_inference','llm_call','anthropic',999999,NULL,
+          'L3_tenant_passthrough','tenant',_tenant,'llm_trace:'||_t3::text)
+  ON CONFLICT (idempotency_key) DO NOTHING;
+  SELECT count(*) INTO _n FROM public.platform_metered_events
+   WHERE idempotency_key='llm_trace:'||_t3::text AND quantity=999999;
+  IF _n<>0 THEN RAISE EXCEPTION 'FAIL_3_IDEMPOTENT: a replayed key overwrote the metered event'; END IF;
+
+  -- And prove the constraint DELIBERATELY, rather than leaving it as something a fixture tripped
+  -- over by accident. This is the structural guarantee that the two ledgers can never both carry a
+  -- price for the same trace — the double-counted-COGS failure mode, where each number is
+  -- individually correct and no test fails. A comment cannot enforce that; Postgres can.
+  _blocked := false;
+  BEGIN
+    INSERT INTO public.platform_metered_events
+      (tenant_id,service_category,event_type,provider,quantity,wholesale_cost_usd,
+       layer,subject_type,subject_id,idempotency_key)
+    VALUES (_tenant,'ai_inference','llm_call','anthropic',1,0.5,
+            'L3_tenant_passthrough','tenant',_tenant,'lm-check-probe:'||_t3::text);
+  EXCEPTION WHEN check_violation THEN _blocked := true;
+  END;
+  IF NOT _blocked THEN
+    RAISE EXCEPTION 'FAIL_3_CHECK: a priced ai_inference row was accepted — pme_ai_inference_has_no_price '
+                    'is not enforcing, so LLM cost could be double-counted across both ledgers'; END IF;
+
+  -- ...and the SAME constraint must NOT block a non-LLM pass-through row, which legitimately
+  -- carries a real recorded cost. A guard that blocks everything would also have passed the check above.
+  INSERT INTO public.platform_metered_events
+    (tenant_id,service_category,event_type,provider,quantity,wholesale_cost_usd,
+     layer,subject_type,subject_id,idempotency_key)
+  VALUES (_tenant,'sms','outbound','twilio',1,0.0079,
+          'L3_tenant_passthrough','tenant',_tenant,'lm-sms-probe:'||_t3::text);
+  SELECT count(*) INTO _n FROM public.platform_metered_events
+   WHERE idempotency_key='lm-sms-probe:'||_t3::text AND wholesale_cost_usd = 0.0079;
+  IF _n<>1 THEN
+    RAISE EXCEPTION 'FAIL_3_CHECK_OVERREACH: the ai_inference price guard also blocked a priced '
+                    'non-LLM pass-through row (got % row(s), expected 1)',_n; END IF;
+
+  -- ...and it carries NO PRICE. This is the boundary-3 assertion: usage is tenant-visible, our
+  -- buy rate is not, in any form a rate can be recovered from.
+  -- [5b] NULL, not 0. The owner ruled the placeholder zero out: a comment cannot stop a SUM, and
+  -- the operator's own COGS tile keyed its availability on row count, so a zero would have printed
+  -- $0.00 as real. `IS NOT NULL` is the assertion — `<> 0` would PASS on a NULL and prove nothing.
+  SELECT wholesale_cost_usd INTO _cost FROM public.platform_metered_events
+   WHERE idempotency_key='llm_trace:'||_t3::text;
+  IF _cost IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL_3_LEAK: tenant-metered row carries wholesale cost % — must be NULL, '
+                    'never a price and never a placeholder zero',_cost; END IF;
+  SELECT count(*) INTO _n FROM public.platform_metered_events
+   WHERE idempotency_key='llm_trace:'||_t3::text
+     AND (jsonb_exists(metadata,'wholesale_cost_usd_exact') OR jsonb_exists(metadata,'cost_known')
+          OR jsonb_exists(metadata,'pricing_version'));
+  IF _n<>0 THEN
+    RAISE EXCEPTION 'FAIL_3_LEAK_META: tenant-visible metadata carries a price or pricing_version'; END IF;
+
+  -- The detectors agree with the trigger: nothing outstanding.
+  -- READ THESE AS THE OPERATOR, deliberately. [5b] gave both detectors an is_platform_operator()
+  -- gate so a tenant gets an empty answer instead of a confidently wrong one — which means that
+  -- without assuming the operator role here, both of these would return 0 rows for the trivial
+  -- reason that the caller is not an operator, and would pass while proving nothing. An assertion
+  -- that survives the feature being deleted is not an assertion.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims','{"sub":"d0000000-0000-0000-0000-00000000000a","role":"authenticated"}',true);
+
+  SELECT count(*) INTO _n FROM public.v_llm_trace_uncosted;
+  IF _n<>0 THEN RAISE EXCEPTION 'FAIL_3_UNCOSTED: % billable trace(s) reached no cost row',_n; END IF;
+  SELECT count(*) INTO _n FROM public.v_llm_trace_unmetered;
+  IF _n<>0 THEN RAISE EXCEPTION 'FAIL_3_UNMETERED: % tenant trace(s) reached no usage event',_n; END IF;
+
+  -- ...and the gate itself is real: the SAME query as a tenant must come back empty, not wrong.
+  PERFORM set_config('request.jwt.claims','{"sub":"d0000000-0000-0000-0000-00000000000b","role":"authenticated"}',true);
+  SELECT count(*) INTO _n FROM public.v_llm_trace_unmetered;
+  IF _n<>0 THEN
+    RAISE EXCEPTION 'FAIL_3_DETECTOR_GATE: a tenant saw % row(s) in v_llm_trace_unmetered — with '
+                    'platform_metered_events operator-only, every one of them is a false '
+                    '"unmetered" verdict about their own traffic',_n; END IF;
+
+  PERFORM set_config('role','postgres',true);
+  PERFORM set_config('request.jwt.claims','',true);
+
+  -- ══ 7. REASONING NON-DUPLICATION ══════════════════════════════════════════
+  -- Two identical calls; one also reports 900 reasoning tokens (a SUBSET of its 1200 output).
+  -- Quantity and cost must be IDENTICAL — reasoning is diagnostic, never an addend.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out,tokens_reasoning)
+  VALUES
+    (_t4,_tenant,'anthropic','anthropic','anthropic','claude-haiku-4-5','2026-08-24','chat','success',
+     5000,1200,900);
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out,tokens_reasoning)
+  VALUES
+    (_t5,_tenant,'anthropic','anthropic','anthropic','claude-haiku-4-5','2026-08-24','chat','success',
+     5000,1200,NULL);
+
+  -- A metered row belonging to the OTHER tenant. Its only job is to give 4b's cross-tenant
+  -- assertion something it could actually find if v_tenant_metered_usage's predicate were wrong.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out)
+  VALUES
+    (_t6,'d0000000-0000-0000-0000-000000002222','anthropic','anthropic','anthropic',
+     'claude-haiku-4-5','2026-08-24','chat','success',1000,500);
+
+  -- Prove the fixture landed, so a silent insert failure cannot make 4b's cross-tenant check pass
+  -- for the wrong reason — the exact trap that made the operator tests vacuous earlier in this file.
+  SELECT count(*) INTO _n FROM public.platform_metered_events
+   WHERE tenant_id='d0000000-0000-0000-0000-000000002222';
+  IF _n<>1 THEN
+    RAISE EXCEPTION 'FAIL_FIXTURE_T2: second tenant has % metered row(s), expected exactly 1 — '
+                    'the cross-tenant assertion in 4b would be vacuous',_n; END IF;
+
+  SELECT a.billable_tokens_total - b.billable_tokens_total INTO _qty
+    FROM public.paige_llm_cost_ledger a, public.paige_llm_cost_ledger b
+   WHERE a.trace_id=_t4 AND b.trace_id=_t5;
+  IF _qty <> 0 THEN
+    RAISE EXCEPTION 'FAIL_7_QTY: reasoning tokens changed billable quantity by % (expected 0)',_qty; END IF;
+
+  SELECT a.wholesale_cost_usd - b.wholesale_cost_usd INTO _cost
+    FROM public.paige_llm_cost_ledger a, public.paige_llm_cost_ledger b
+   WHERE a.trace_id=_t4 AND b.trace_id=_t5;
+  IF _cost <> 0 THEN
+    RAISE EXCEPTION 'FAIL_7_COST: reasoning tokens changed cost by % (expected 0)',_cost; END IF;
+
+  -- ...and it is still RETAINED as diagnostic detail, not discarded.
+  SELECT tokens_reasoning INTO _n FROM public.paige_llm_cost_ledger WHERE trace_id=_t4;
+  IF _n IS DISTINCT FROM 900 THEN
+    RAISE EXCEPTION 'FAIL_7_DIAG: reasoning detail lost (got %)',_n; END IF;
+
+  -- Haiku 4.5 @ 1.00 in / 5.00 out: 5000*1.00/1e6 + 1200*5.00/1e6 = 0.005 + 0.006 = 0.011
+  SELECT wholesale_cost_usd INTO _cost FROM public.paige_llm_cost_ledger WHERE trace_id=_t4;
+  IF round(_cost,6) <> 0.011000 THEN
+    RAISE EXCEPTION 'FAIL_7_RATE: % (expected 0.011000 at the official Haiku 4.5 rates)',_cost; END IF;
+
+  -- ══ UNPRICED STAYS UNKNOWN, NEVER A ZERO ══════════════════════════════════
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out)
+  VALUES
+    (_t7,_tenant,'groq','meta','groq','llama-3.3-70b-versatile',
+     '2026-08-24','chat','success',3000,300);
+  SELECT wholesale_cost_usd INTO _cost FROM public.paige_llm_cost_ledger
+   WHERE trace_id=_t7;
+  IF _cost IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL_UNPRICED: an unpriced model produced cost % instead of NULL',_cost; END IF;
+
+  PERFORM set_config('role','postgres',true);
+END $t$;
+
+-- ══ 4/5. ACCESS CONTROL — anon · tenant user · operator · service_role ═══════
+-- Split into its own DO block so a role switch can never leak into the behavioural asserts above.
+DO $t$
+DECLARE _n int; _blocked boolean; _c numeric; _ts timestamptz;
+BEGIN
+  -- ── 4a. ANON: no grant on the registry, no grant on the estimator.
+  PERFORM set_config('role','anon',true);
+  PERFORM set_config('request.jwt.claims','{"role":"anon"}',true);
+
+  _blocked:=false;
+  BEGIN SELECT count(*) INTO _n FROM public.paige_model_pricing;
+  EXCEPTION WHEN insufficient_privilege THEN _blocked:=true; END;
+  IF NOT _blocked THEN
+    RAISE EXCEPTION 'FAIL_4a_REGISTRY: anon could query the wholesale pricing registry'; END IF;
+
+  _blocked:=false;
+  BEGIN SELECT public.estimate_llm_cost_usd('anthropic','claude-sonnet-5','2026-08-24',1000,0,0,0,100) INTO _c;
+  EXCEPTION WHEN insufficient_privilege THEN _blocked:=true; END;
+  IF NOT _blocked THEN
+    RAISE EXCEPTION 'FAIL_4a_ESTIMATOR: anon could execute the estimator (got %)',_c; END IF;
+
+  _blocked:=false;
+  BEGIN SELECT count(*) INTO _n FROM public.paige_llm_cost_ledger;
+  EXCEPTION WHEN insufficient_privilege THEN _blocked:=true; END;
+  IF NOT _blocked THEN
+    RAISE EXCEPTION 'FAIL_4a_LEDGER: anon could query the cost ledger'; END IF;
+
+  PERFORM set_config('role','postgres',true);
+
+  -- ── 4b. ORDINARY TENANT USER: holds SELECT, but RLS returns nothing, and the estimator is
+  --        not executable — so the buy rate is neither retrievable nor derivable.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims','{"sub":"d0000000-0000-0000-0000-00000000000b","role":"authenticated"}',true);
+
+  SELECT count(*) INTO _n FROM public.paige_model_pricing;
+  IF _n<>0 THEN RAISE EXCEPTION 'FAIL_4b_REGISTRY: tenant user read % wholesale price row(s)',_n; END IF;
+
+  SELECT count(*) INTO _n FROM public.paige_llm_cost_ledger;
+  IF _n<>0 THEN RAISE EXCEPTION 'FAIL_4b_LEDGER: tenant user read % cost row(s)',_n; END IF;
+
+  SELECT count(*) INTO _n FROM public.v_llm_spend_rollup;
+  IF _n<>0 THEN RAISE EXCEPTION 'FAIL_4b_ROLLUP: tenant user read % spend rollup row(s)',_n; END IF;
+
+  _blocked:=false;
+  BEGIN SELECT public.estimate_llm_cost_usd('anthropic','claude-sonnet-5','2026-08-24',1000,0,0,0,100) INTO _c;
+  EXCEPTION WHEN insufficient_privilege THEN _blocked:=true; END;
+  IF NOT _blocked THEN
+    RAISE EXCEPTION 'FAIL_4b_ESTIMATOR: tenant user could execute the estimator (got %)',_c; END IF;
+
+  -- [5b] THE RAW COST-BEARING SHAPE IS NO LONGER TENANT-READABLE AT ALL. This assertion is the
+  -- INVERSE of what it used to be: it previously required a tenant to see its own raw rows, which
+  -- is exactly the behaviour the owner ruled out. RLS returns zero rows; the SELECT grant stays,
+  -- because the operator is the same Postgres role and a grant-level revoke would blind them too.
+  SELECT count(*) INTO _n FROM public.platform_metered_events;
+  IF _n<>0 THEN
+    RAISE EXCEPTION 'FAIL_4b_RAW: tenant read % row(s) of the raw cost-bearing table (expected 0)',_n; END IF;
+
+  -- ...and usage is STILL visible, through the priceless projection. Usage yes, buy rate no.
+  SELECT count(*) INTO _n FROM public.v_tenant_metered_usage
+   WHERE service_category='ai_inference' AND tenant_id='d0000000-0000-0000-0000-000000001111';
+  IF _n<1 THEN
+    RAISE EXCEPTION 'FAIL_4b_USAGE: tenant cannot see its own usage through v_tenant_metered_usage'; END IF;
+
+  -- The projection's SHAPE is the contract, so assert the shape, not just the values. A future
+  -- CREATE OR REPLACE that adds a cost column would pass every value-based check ever written.
+  SELECT count(*) INTO _n FROM information_schema.columns
+   WHERE table_schema='public' AND table_name='v_tenant_metered_usage'
+     AND (column_name ILIKE '%cost%' OR column_name ILIKE '%charge%' OR column_name ILIKE '%price%'
+          OR column_name ILIKE '%retail%' OR column_name ILIKE '%wholesale%');
+  IF _n<>0 THEN
+    RAISE EXCEPTION 'FAIL_4b_SHAPE: v_tenant_metered_usage exposes % money-shaped column(s)',_n; END IF;
+
+  -- CROSS-TENANT ISOLATION THROUGH A DEFINER VIEW. The view is security_invoker = off, so it runs
+  -- as the owner and bypasses RLS entirely — its WHERE clause is the ONLY thing between one tenant
+  -- and another. That makes this the single most important assertion about it, and the lint cannot
+  -- provide it: view-security-invoker-lint checks that an exemption marker EXISTS, never that the
+  -- predicate is still correct. Tenant _t3's row must not be visible to this other tenant's user.
+  SELECT count(*) INTO _n FROM public.v_tenant_metered_usage
+   WHERE tenant_id <> 'd0000000-0000-0000-0000-000000001111';
+  IF _n<>0 THEN
+    RAISE EXCEPTION 'FAIL_4b_CROSS: v_tenant_metered_usage leaked % row(s) of ANOTHER tenant',_n; END IF;
+
+  -- ── 4c. THE ACTIVATION MARKER IS OPERATOR-ONLY (owner correction 2026-08-24). It shipped in
+  --        `public` with RLS off and a blanket SELECT to authenticated. A tenant now sees nothing.
+  SELECT count(*) INTO _n FROM public.paige_llm_meter_bridge;
+  IF _n<>0 THEN RAISE EXCEPTION 'FAIL_4c_BRIDGE: tenant user read % bridge row(s) (expected 0)',_n; END IF;
+
+  -- ...and this is the REGRESSION that enabling RLS could have caused. The two detector views are
+  -- security_invoker and call the accessor in their WHERE clause. If the accessor returned NULL for
+  -- a non-operator, `created_at >= NULL` would go NULL, both views would return zero rows for every
+  -- tenant caller, and that reads as "nothing is broken" — a false all-clear rather than an error.
+  -- SECURITY DEFINER on the accessor is what prevents it, and this asserts it rather than trusting it.
+  SELECT public.llm_meter_bridge_active_from() INTO _ts;
+  IF _ts IS NULL THEN
+    RAISE EXCEPTION 'FAIL_4c_BRIDGE_FN: RLS on paige_llm_meter_bridge broke the boundary accessor for '
+                    'a non-operator caller — the detectors would silently report all-clear'; END IF;
+
+  -- The detector views must still EXECUTE for this caller. Zero rows is a fine answer; an error is not.
+  BEGIN
+    SELECT count(*) INTO _n FROM public.v_llm_trace_uncosted;
+    SELECT count(*) INTO _n FROM public.v_llm_trace_unmetered;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'FAIL_4c_DETECTORS: a detector view raised % for a tenant caller', SQLERRM;
+  END;
+
+  PERFORM set_config('role','postgres',true);
+
+  -- ── 5a. OPERATOR: same grant, RLS opens, the price list and the ledger are readable.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims','{"sub":"d0000000-0000-0000-0000-00000000000a","role":"authenticated"}',true);
+
+  SELECT count(*) INTO _n FROM public.paige_model_pricing;
+  IF _n<3 THEN RAISE EXCEPTION 'FAIL_5a_REGISTRY: operator saw % price row(s) (expected the 3 seeded)',_n; END IF;
+
+  SELECT count(*) INTO _n FROM public.paige_llm_cost_ledger;
+  IF _n<1 THEN RAISE EXCEPTION 'FAIL_5a_LEDGER: operator cannot read the cost ledger'; END IF;
+
+  SELECT count(*) INTO _n FROM public.v_llm_spend_rollup;
+  IF _n<1 THEN RAISE EXCEPTION 'FAIL_5a_ROLLUP: operator cannot read the spend rollup'; END IF;
+
+  -- The operator DOES see the activation marker the tenant could not — proving the new policy
+  -- discriminates by operator status rather than denying everyone (which would also have passed 4c).
+  SELECT count(*) INTO _n FROM public.paige_llm_meter_bridge;
+  IF _n<1 THEN RAISE EXCEPTION 'FAIL_5a_BRIDGE: operator cannot read the activation marker'; END IF;
+
+  -- [5b] And the operator STILL reads the raw cost-bearing table, which is the constraint that
+  -- shaped the whole fix: the operator and every tenant share the Postgres role `authenticated`,
+  -- so this had to be done by narrowing the POLICY. A grant-level or column-level revoke would
+  -- have blinded the operator's own COGS read (useOperatorPlatformMetrics.ts) along with tenants.
+  -- 4b proved the tenant gets 0 rows; this proves the same grant still serves the operator.
+  SELECT count(*) INTO _n FROM public.platform_metered_events;
+  IF _n<1 THEN
+    RAISE EXCEPTION 'FAIL_5a_RAW: operator cannot read platform_metered_events — the policy '
+                    'narrowing blinded the operator COGS surface, not just tenants'; END IF;
+
+  PERFORM set_config('role','postgres',true);
+
+  -- ── 5b. SERVICE_ROLE: can execute the estimator and write the ledger.
+  PERFORM set_config('role','service_role',true);
+  SELECT public.estimate_llm_cost_usd('anthropic','claude-haiku-4-5','2026-08-24',1000000,0,0,0,0) INTO _c;
+  IF _c IS NULL OR round(_c,6) <> 1.000000 THEN
+    RAISE EXCEPTION 'FAIL_5b_ESTIMATOR: service_role got % for 1 MTok of Haiku input (expected 1.000000)',_c; END IF;
+  SELECT count(*) INTO _n FROM public.paige_llm_cost_ledger;
+  IF _n<1 THEN RAISE EXCEPTION 'FAIL_5b_LEDGER: service_role cannot read the cost ledger'; END IF;
+
+  PERFORM set_config('role','postgres',true);
+END $t$;
+
+-- ══ 6. TRACE ↔ LEDGER TRANSACTION FAILURE ═══════════════════════════════════
+-- Induce a ledger write failure and prove the TRACE does not survive it. This is the assertion
+-- that the bridge is transactionally consistent — not that it is durable, which it is not while
+-- the caller fires the write detached ([C2] in the migration).
+CREATE OR REPLACE FUNCTION public.__lm_force_ledger_failure() RETURNS trigger
+LANGUAGE plpgsql AS $f$
+BEGIN
+  IF NEW.model = '__force_ledger_failure__' THEN
+    RAISE EXCEPTION 'induced ledger failure for the §32 proof';
+  END IF;
+  RETURN NEW;
+END $f$;
+
+CREATE TRIGGER __lm_force_ledger_failure_trg
+  BEFORE INSERT ON public.paige_llm_cost_ledger
+  FOR EACH ROW EXECUTE FUNCTION public.__lm_force_ledger_failure();
+
+DO $t$
+DECLARE _n int; _raised boolean := false;
+BEGIN
+  BEGIN
+    INSERT INTO public.paige_llm_trace
+      (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+       tokens_in_uncached,tokens_out)
+    VALUES
+      ('d0000000-0000-0000-0000-0000000000f9','d0000000-0000-0000-0000-000000001111',
+       'anthropic','anthropic','anthropic','__force_ledger_failure__','2026-08-24','chat','success',
+       1000,100);
+  EXCEPTION WHEN OTHERS THEN _raised := true;
+  END;
+
+  IF NOT _raised THEN
+    RAISE EXCEPTION 'FAIL_6_SILENT: the ledger failed and the trigger swallowed it — that is the '
+                    'false atomicity this pass removed'; END IF;
+
+  SELECT count(*) INTO _n FROM public.paige_llm_trace
+   WHERE id='d0000000-0000-0000-0000-0000000000f9';
+  IF _n<>0 THEN
+    RAISE EXCEPTION 'FAIL_6_ORPHAN: the trace committed without a cost row (% row(s) present)',_n; END IF;
+
+  SELECT count(*) INTO _n FROM public.platform_metered_events
+   WHERE idempotency_key='llm_trace:d0000000-0000-0000-0000-0000000000f9';
+  IF _n<>0 THEN RAISE EXCEPTION 'FAIL_6_PARTIAL: a usage event survived a rolled-back trace'; END IF;
+END $t$;
+
+DROP TRIGGER __lm_force_ledger_failure_trg ON public.paige_llm_cost_ledger;
+DROP FUNCTION public.__lm_force_ledger_failure();
+
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+-- CORRECTIVE PASS, owner ruling 2026-08-24. Three findings whose fix lives in SQL.
+--   FINDING 1  cost precedence: invoice > authoritative registry > legacy estimate, with provenance.
+--   FINDING 2  migration retry safety after a partial, non-transactional apply.
+--   FINDING 3  the trigger's scope classification (the TS half is scripts/metering-corrective-smoke.mjs).
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+DO $t$
+DECLARE
+  _tenant   uuid := 'd0000000-0000-0000-0000-000000001111';
+  _n        int;
+  _cost     numeric;
+  _src      text;
+  _est      boolean;
+  _scope    text;
+  _blocked  boolean;
+  _p1 uuid := 'd0000000-0000-0000-0000-0000000000a1';  -- actual wins
+  _p2 uuid := 'd0000000-0000-0000-0000-0000000000a2';  -- registry beats legacy
+  _p3 uuid := 'd0000000-0000-0000-0000-0000000000a3';  -- legacy fallback
+  _p4 uuid := 'd0000000-0000-0000-0000-0000000000a4';  -- nothing priced at all
+  _s1 uuid := 'd0000000-0000-0000-0000-0000000000b1';  -- declared platform
+  _s2 uuid := 'd0000000-0000-0000-0000-0000000000b2';  -- undeclared, tenant-less
+  _s3 uuid := 'd0000000-0000-0000-0000-0000000000b3';  -- tenant + a platform declaration
+BEGIN
+  -- ══ FINDING 1 — COST PRECEDENCE ═══════════════════════════════════════════════════════════
+  -- 1a. AN INVOICE-CONFIRMED COST WINS over both estimates, and is not labelled an estimate.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_cache_read,tokens_out,cost_estimate_usd,cost_actual_usd)
+  VALUES (_p1,_tenant,'anthropic','anthropic','anthropic','claude-sonnet-5','2026-08-24','chat',
+          'success',12000,4000,1000,0.500000,0.990000);
+  SELECT wholesale_cost_usd, cost_source, cost_is_estimate INTO _cost,_src,_est
+    FROM public.paige_llm_cost_ledger WHERE trace_id=_p1;
+  IF round(_cost,6) <> 0.990000 THEN
+    RAISE EXCEPTION 'FAIL_C1_ACTUAL: invoiced cost did not win — got % (expected 0.990000)',_cost; END IF;
+  IF _src IS DISTINCT FROM 'actual' THEN
+    RAISE EXCEPTION 'FAIL_C1_ACTUAL_SRC: provenance % (expected actual)',_src; END IF;
+  IF _est IS NOT FALSE THEN
+    RAISE EXCEPTION 'FAIL_C1_ACTUAL_EST: an invoiced cost was flagged an estimate'; END IF;
+
+  -- 1b. THE HEADLINE REGRESSION TEST. The registry must beat the legacy router estimate.
+  --     Identical token split to the _t3 fixture → 0.034800 at the official Sonnet 5 rates
+  --     (12000*2.00 + 4000*0.20 + 1000*10.00, per MTok). cost_estimate_usd is deliberately set to
+  --     0.052200 — exactly what the LEGACY $3/$15 rates produce for this same call — so if the old
+  --     COALESCE order ever returns, this assertion reports the stale number by name rather than
+  --     failing on some arbitrary mismatch.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_cache_read,tokens_out,cost_estimate_usd)
+  VALUES (_p2,_tenant,'anthropic','anthropic','anthropic','claude-sonnet-5','2026-08-24','chat',
+          'success',12000,4000,1000,0.052200);
+  SELECT wholesale_cost_usd, cost_source INTO _cost,_src
+    FROM public.paige_llm_cost_ledger WHERE trace_id=_p2;
+  IF round(_cost,6) = 0.052200 THEN
+    RAISE EXCEPTION 'FAIL_C1_STALE_WINS: the LEGACY $3/$15 estimate (0.052200) overrode the '
+                    'authoritative registry price — the ledger is contradicting its own rate table'; END IF;
+  IF round(_cost,6) <> 0.034800 THEN
+    RAISE EXCEPTION 'FAIL_C1_REGISTRY: % (expected 0.034800 from paige_model_pricing)',_cost; END IF;
+  IF _src IS DISTINCT FROM 'registry' THEN
+    RAISE EXCEPTION 'FAIL_C1_REGISTRY_SRC: provenance % (expected registry)',_src; END IF;
+
+  -- 1c. THE LEGACY FALLBACK IS USED ONLY WHEN THE REGISTRY CANNOT PRICE THE ROW, and it says so.
+  --     pricing_version NULL → estimate_llm_cost_usd() returns NULL by its own guard, which is
+  --     exactly the shape every row written by today's DEPLOYED writer has.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out,cost_estimate_usd)
+  VALUES (_p3,_tenant,'anthropic','anthropic','anthropic','claude-sonnet-5',NULL,'chat',
+          'success',1000,100,0.004500);
+  SELECT wholesale_cost_usd, cost_source INTO _cost,_src
+    FROM public.paige_llm_cost_ledger WHERE trace_id=_p3;
+  IF round(_cost,6) <> 0.004500 THEN
+    RAISE EXCEPTION 'FAIL_C1_LEGACY: % (expected the legacy 0.004500 when the registry cannot price)',_cost; END IF;
+  -- 1d. ...AND IT REMAINS IDENTIFIABLE. This is the owner's explicit rule: never relabel a legacy
+  --     figure as registry-priced merely to avoid a NULL.
+  IF _src IS DISTINCT FROM 'legacy_router_estimate' THEN
+    RAISE EXCEPTION 'FAIL_C1_LEGACY_SRC: a legacy estimate was labelled % — it must stay '
+                    'distinguishable from an authoritative registry price',_src; END IF;
+  -- ...and it is visible where sums happen, not only on the row.
+  SELECT calls_priced_legacy_rate INTO _n FROM public.v_llm_spend_rollup
+   WHERE ledger='tenant' AND day=date_trunc('day',(SELECT occurred_at FROM public.paige_llm_cost_ledger WHERE trace_id=_p3));
+  IF COALESCE(_n,0) < 1 THEN
+    RAISE EXCEPTION 'FAIL_C1_LEGACY_ROLLUP: the spend rollup does not disclose that its total '
+                    'includes a legacy-rate row'; END IF;
+
+  -- 1e. NOTHING PRICEABLE AT ALL → NULL cost AND NULL provenance, never a confident zero, and the
+  --     pairing constraint holds (a priced row must name its source; an unpriced row must not).
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out)
+  VALUES (_p4,_tenant,'groq','meta','groq','llama-3.3-70b-versatile',NULL,'chat','success',500,50);
+  SELECT wholesale_cost_usd, cost_source INTO _cost,_src
+    FROM public.paige_llm_cost_ledger WHERE trace_id=_p4;
+  IF _cost IS NOT NULL OR _src IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL_C1_UNPRICED: unpriced row got cost=% source=% (both must be NULL)',_cost,_src; END IF;
+
+  -- ══ FINDING 3 — THE TRIGGER'S SCOPE CLASSIFICATION ════════════════════════════════════════
+  -- 3a. A DECLARED platform call, with no tenant, is recorded as platform.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out,metadata)
+  VALUES (_s1,NULL,'anthropic','anthropic','anthropic','claude-sonnet-5','2026-08-24','chat',
+          'success',100,10,'{"scope":"platform"}'::jsonb);
+  SELECT scope INTO _scope FROM public.paige_llm_cost_ledger WHERE trace_id=_s1;
+  IF _scope IS DISTINCT FROM 'platform' THEN
+    RAISE EXCEPTION 'FAIL_C3_PLATFORM: declared platform call recorded as %',_scope; END IF;
+
+  -- 3b. NO tenant and NO declaration stays UNATTRIBUTED — never inferred into platform. This is the
+  --     owner's boundary 2: the two tenant-less states must not blur into one.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out)
+  VALUES (_s2,NULL,'anthropic','anthropic','anthropic','claude-sonnet-5','2026-08-24','chat','success',100,10);
+  SELECT scope INTO _scope FROM public.paige_llm_cost_ledger WHERE trace_id=_s2;
+  IF _scope IS DISTINCT FROM 'unattributed' THEN
+    RAISE EXCEPTION 'FAIL_C3_UNATTRIBUTED: an undeclared tenant-less call was recorded as % — '
+                    'missing attribution must never be banked as internal burn',_scope; END IF;
+
+  -- 3c. TENANT ATTRIBUTION CANNOT BE OVERRIDDEN. Even carrying a platform declaration, a trace with
+  --     a real tenant classifies as 'tenant' — otherwise a call site could move billable tenant
+  --     usage onto the platform's own ledger and off the tenant's bill.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out,metadata)
+  VALUES (_s3,_tenant,'anthropic','anthropic','anthropic','claude-sonnet-5','2026-08-24','chat',
+          'success',100,10,'{"scope":"platform"}'::jsonb);
+  SELECT scope INTO _scope FROM public.paige_llm_cost_ledger WHERE trace_id=_s3;
+  IF _scope IS DISTINCT FROM 'tenant' THEN
+    RAISE EXCEPTION 'FAIL_C3_TENANT_WINS: a tenant-attributed call was reclassified as % by a '
+                    'scope declaration',_scope; END IF;
+  SELECT count(*) INTO _n FROM public.platform_metered_events
+   WHERE idempotency_key='llm_trace:'||_s3::text;
+  IF _n<>1 THEN
+    RAISE EXCEPTION 'FAIL_C3_TENANT_BILLED: tenant usage event count % (expected 1) — a platform '
+                    'declaration must not suppress the tenant''s own usage row',_n; END IF;
+
+  -- ══ FINDING 2 — PARTIAL-APPLY / RETRY SAFETY ══════════════════════════════════════════════
+  -- deploy-migrations.yml states plainly (its own §13 caveat block) that `supabase db push` does NOT
+  -- wrap a migration file in a transaction: DDL auto-commits, so if statement N throws, 1..N-1 stay
+  -- committed while the file is NOT recorded in schema_migrations — and the next run re-executes the
+  -- WHOLE file from statement 1. Every object-creating statement must therefore survive a second
+  -- execution. Every object in this migration already exists at this point in the proof, so
+  -- re-running the retry-sensitive statements here reproduces exactly that second pass.
+  BEGIN
+    EXECUTE $x$
+      CREATE OR REPLACE VIEW public.v_tenant_metered_usage
+      WITH (security_invoker = off) AS
+      SELECT m.id, m.tenant_id, m.end_customer_user_id, m.end_customer_contact_id,
+             m.service_category, m.event_type, m.quantity,
+             m.metadata -> 'token_classes'       AS token_classes,
+             m.metadata ->> 'quantity_semantics' AS quantity_semantics,
+             m.occurred_at
+        FROM public.platform_metered_events m
+       WHERE m.tenant_id IS NOT NULL
+         AND (m.tenant_id = public.current_user_tenant_id()
+              OR public.is_platform_owner(auth.uid()))
+    $x$;
+    EXECUTE 'CREATE TABLE IF NOT EXISTS public.paige_llm_meter_bridge (singleton boolean PRIMARY KEY DEFAULT true)';
+    EXECUTE 'ALTER TABLE public.platform_metered_events ALTER COLUMN wholesale_cost_usd DROP NOT NULL';
+    EXECUTE 'ALTER TABLE public.platform_metered_events DROP CONSTRAINT IF EXISTS pme_ai_inference_has_no_price';
+    EXECUTE 'ALTER TABLE public.platform_metered_events ADD CONSTRAINT pme_ai_inference_has_no_price '
+            'CHECK (service_category <> ''ai_inference'' OR wholesale_cost_usd IS NULL)';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_llm_cost_ledger_time ON public.paige_llm_cost_ledger (occurred_at DESC)';
+    EXECUTE 'INSERT INTO public.paige_llm_meter_bridge (singleton) VALUES (true) ON CONFLICT (singleton) DO NOTHING';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'FAIL_C2_RETRY: re-running a retry-sensitive statement raised %  (%) — a '
+                    'partial apply would wedge every later migration on this file',SQLERRM,SQLSTATE;
+  END;
+
+  -- ...and the retry probe is NOT vacuous: the pre-fix form of that view DOES raise on a second
+  -- execution. If this negative control ever stops raising, the probe above has stopped proving
+  -- anything and must be re-examined rather than trusted.
+  _blocked := false;
+  BEGIN
+    EXECUTE 'CREATE VIEW public.v_tenant_metered_usage AS SELECT 1 AS x';
+  EXCEPTION WHEN duplicate_table OR duplicate_object THEN _blocked := true;
+  END;
+  IF NOT _blocked THEN
+    RAISE EXCEPTION 'FAIL_C2_CONTROL: a bare CREATE VIEW over an existing view did NOT raise, so '
+                    'the retry probe above cannot distinguish retry-safe DDL from retry-fatal DDL'; END IF;
+END $t$;
+
+SELECT 'LLM_METERING_BRIDGE_PROVEN' AS proof;
+ROLLBACK;

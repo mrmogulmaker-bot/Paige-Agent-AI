@@ -47,6 +47,17 @@ export interface TraceCtx {
    *  itemization, DISTINCT from tenant_id (the persona-context attribution). Soft ref, coerced to null
    *  if non-uuid. Optional: a site that doesn't set it writes null (default), never a fabricated id. */
   working_context_tenant_id?: string | null;
+  /**
+   * DECLARED SCOPE for a call with no tenant. Owner boundary, 2026-08-24: a tenant-less trace is
+   * either VERIFIED platform/system work or MISSING ATTRIBUTION, and the difference must not be
+   * guessed. Set "platform" ONLY where the call genuinely has no tenant by design — an operator-
+   * scope chat turn, a cron sweep, a systems check. Leaving it unset is the honest default: the
+   * cost ledger then records the call as `unattributed` and it shows up in v_llm_unattributed_spend
+   * as a call site to repair, rather than being silently banked as internal burn.
+   *
+   * This must be decided SERVER-SIDE. It is never read from a request body.
+   */
+  scope?: "platform";
 }
 
 /** Provenance stamp — bump when the estimator/scrubber/schema changes so a reader knows what produced a row. */
@@ -79,15 +90,20 @@ const SECRET_PATTERNS: RegExp[] = [
 // well-formed uuid to null so a malformed/empty id (e.g. "" ?? null keeps "") can't throw a 22P02 cast
 // error into the (swallowed) insert. NULL = platform/system row — invisible to every tenant per RLS (§9).
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export function cleanTenantId(t: string | null | undefined): string | null {
-  if (typeof t !== "string") return null;
-  const s = t.trim();
+export function cleanUuid(v: string | null | undefined, field: string): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
   if (!s) return null;
   if (UUID_RE.test(s)) return s;
-  // Loud, never silent (§32): a non-empty non-uuid tenant_id is a caller bug worth seeing, but the trace
-  // still persists (as a platform/null row) rather than being dropped by the swallowing catch.
-  console.warn("paige_llm_trace: non-uuid tenant_id coerced to null:", s.slice(0, 40));
+  // Loud, never silent (§32): a non-empty non-uuid id is a caller bug worth seeing, but the trace
+  // still persists (with that field null) rather than being dropped by the swallowing catch.
+  console.warn(`paige_llm_trace: non-uuid ${field} coerced to null:`, s.slice(0, 40));
   return null;
+}
+
+/** Tenant-specific wrapper, kept as the named export existing callers import. */
+export function cleanTenantId(t: string | null | undefined): string | null {
+  return cleanUuid(t, "tenant_id");
 }
 
 /** Redact known credential shapes. input/output keep their PII (that's the trace's job) but shed secrets. */
@@ -119,7 +135,16 @@ export function toExcerpt(value: unknown): { text: string | null; truncated: boo
   return { text: scrubbed.slice(0, EXCERPT_CAP) + "…[truncated]", truncated: true, len: origLen };
 }
 
-/** Only these scalar keys survive into metadata — never a raw opts/headers object (S0/S6). */
+/**
+ * Only these scalar keys survive into metadata — never a raw opts/headers object (S0/S6).
+ *
+ * `scope` is deliberately ABSENT. It was briefly listed here on an UNMERGED, NEVER-DEPLOYED branch
+ * commit, which was the wrong shape twice over: it made the [C6] declaration look wired when nothing
+ * populated it, and it would have let any caller self-declare platform scope through ordinary
+ * metadata and shift its spend off the unattributed ledger. Both were caught in review before the
+ * branch was merged or deployed — no released build ever carried this path. The stored marker is
+ * now written ONLY from the validated top-level TraceRow.scope, below.
+ */
 const METADATA_ALLOWLIST = ["caller_function", "actor_role", "retry_of", "attempt", "capped", "low_confidence"] as const;
 function safeMetadata(meta: Record<string, unknown> | undefined): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -150,6 +175,39 @@ export interface TraceRow {
   status: "success" | "error" | "needs_config";
   tokens_in?: number | null;
   tokens_out?: number | null;
+  /**
+   * ─── CANONICAL USAGE (2026-08-24) ──────────────────────────────────────────────────────────
+   * NULL means the provider did not report the field; 0 means it reported zero. The writer below
+   * preserves that distinction rather than coalescing to 0, because a defaulted 0 is
+   * indistinguishable from a real one on every downstream sum — the same failure that let list-price
+   * estimates omitting caching read as the platform's whole spend.
+   */
+  tokens_in_uncached?: number | null;
+  tokens_cache_read?: number | null;
+  tokens_cache_write_5m?: number | null;
+  tokens_cache_write_1h?: number | null;
+  tokens_reasoning?: number | null;
+  /** Non-token provider charges as {unit: quantity} — tool calls, searches, audio seconds. */
+  billable_units?: Record<string, number> | null;
+
+  /** Identity, separated. `provider` above remains the LEGACY router slug and is unchanged. */
+  gateway_provider?: string | null;
+  model_provider?: string | null;
+  billing_provider?: string | null;
+  capability?: string | null;
+  pricing_version?: string | null;
+
+  /** Correlation. request_id groups every ATTEMPT of one logical request. */
+  request_id?: string | null;
+  provider_request_id?: string | null;
+  user_id?: string | null;
+  run_id?: string | null;
+  workflow_id?: string | null;
+  conversation_id?: string | null;
+  attempt?: number | null;
+  is_retry?: boolean | null;
+  is_fallback?: boolean | null;
+
   latency_ms?: number | null;
   cost_estimate_usd?: number | null;
   /** Raw input payload — scrubbed + truncated here, never stored raw. */
@@ -161,6 +219,22 @@ export interface TraceRow {
   deliverable_id?: string | null;
   doctrine_gate_hits?: unknown;
   metadata?: Record<string, unknown>;
+  /**
+   * DECLARED SCOPE for a call with no tenant — the [C6] seam, mirrored from TraceCtx so it survives
+   * the hop from the caller's context into the written row.
+   *
+   * This exists as a TOP-LEVEL field, and is deliberately NOT reachable through `metadata`. The
+   * trigger classifies a tenant-less trace as 'platform' on the strength of metadata.scope, and
+   * `metadata` is caller-supplied — so if an ordinary caller could put scope there, any call site
+   * could declare itself platform-scoped and move its own spend off the unattributed ledger. The
+   * allowlist above therefore drops `scope` from caller metadata, and the ONLY way the stored
+   * marker appears is the validated assignment in traceLLMCall.
+   *
+   * Set "platform" ONLY where the call genuinely has no tenant by design. Absent stays absent:
+   * the ledger records 'unattributed' and the call site shows up in v_llm_unattributed_spend to be
+   * repaired, rather than being silently banked as internal burn.
+   */
+  scope?: "platform";
 }
 
 /**
@@ -200,6 +274,31 @@ export function traceLLMCall(row: TraceRow): void {
     // NULL, never 0, when the provider didn't report — null cost/tokens ≠ zero (S4).
     tokens_in: row.tokens_in ?? null,
     tokens_out: row.tokens_out ?? null,
+    // Canonical usage. `?? null` throughout — an absent field must not become a reported zero.
+    tokens_in_uncached: row.tokens_in_uncached ?? null,
+    tokens_cache_read: row.tokens_cache_read ?? null,
+    tokens_cache_write_5m: row.tokens_cache_write_5m ?? null,
+    tokens_cache_write_1h: row.tokens_cache_write_1h ?? null,
+    tokens_reasoning: row.tokens_reasoning ?? null,
+    // Column is NOT NULL DEFAULT '{}' — an empty object is the honest "no non-token charges".
+    billable_units: row.billable_units ?? {},
+    gateway_provider: row.gateway_provider ?? null,
+    model_provider: row.model_provider ?? null,
+    billing_provider: row.billing_provider ?? null,
+    capability: row.capability ?? null,
+    pricing_version: row.pricing_version ?? null,
+    // Correlation ids reuse the same uuid coercion as tenant_id: a malformed id degrades to null
+    // rather than throwing a 22P02 into the (swallowed) insert and losing the whole row.
+    request_id: cleanUuid(row.request_id, "request_id"),
+    provider_request_id: row.provider_request_id ?? null,
+    user_id: cleanUuid(row.user_id, "user_id"),
+    run_id: cleanUuid(row.run_id, "run_id"),
+    workflow_id: cleanUuid(row.workflow_id, "workflow_id"),
+    conversation_id: cleanUuid(row.conversation_id, "conversation_id"),
+    // Defaults match the column defaults, so an un-threaded call site still writes a valid attempt.
+    attempt: row.attempt ?? 1,
+    is_retry: row.is_retry ?? false,
+    is_fallback: row.is_fallback ?? false,
     latency_ms: row.latency_ms ?? null,
     cost_estimate_usd: costEstimate,
     cost_basis: costEstimate == null ? null : COST_BASIS,
@@ -214,7 +313,15 @@ export function traceLLMCall(row: TraceRow): void {
     deliverable_id: row.deliverable_id ?? null,
     doctrine_gate_hits: row.doctrine_gate_hits ?? null,
     router_version: ROUTER_VERSION,
-    metadata: safeMetadata(row.metadata),
+    // [C6] The declared-scope marker the meter trigger reads (NEW.metadata->>'scope'). Sourced ONLY
+    // from the validated top-level field: caller metadata cannot reach this key (see the allowlist
+    // above), and any value other than the literal "platform" leaves it unset, so an absent or
+    // malformed declaration degrades to 'unattributed' rather than being inferred into 'platform'.
+    // Tenant attribution is unaffected — the trigger checks tenant_id FIRST, so a trace with a real
+    // tenant is classified 'tenant' whatever this says.
+    metadata: row.scope === "platform"
+      ? { ...safeMetadata(row.metadata), scope: "platform" }
+      : safeMetadata(row.metadata),
   };
 
   const write = async () => {
