@@ -77,7 +77,7 @@ export function parseExemptions(src) {
 }
 
 /** Kept in step with `MUTATION_VERB` in the policy by `checkVerbParity` below. */
-const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|install|uninstall|grant|revoke|run|assign|enroll|book|set|draft|generate|file|advance|forge|archive|activate|deactivate|move|add|build|log|author|enable|disable|invite|upload|apply|approve|reject|import|export|sync|write|post|schedule|cancel|start|stop|trigger|fire|configure|buy|purchase|name|rename|propose|provision|claim|release)(_|$)/;
+const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|install|uninstall|grant|revoke|run|assign|enroll|book|set|draft|generate|file|advance|forge|archive|activate|deactivate|move|add|build|log|author|enable|disable|invite|upload|apply|approve|reject|decide|import|export|sync|write|post|schedule|cancel|start|stop|trigger|fire|configure|buy|purchase|name|rename|propose|provision|claim|release)(_|$)/;
 
 /** The rule: destroys, changes permissions, or goes public ⇒ never `ordinary`. */
 const IRREVERSIBLE_OR_OUTWARD = /(^|_)(delete|remove|revoke|publish|uninstall|install)(_|$)|(^|_)grant(_|$)/;
@@ -198,6 +198,11 @@ function selfTest() {
     findings({ ...base, policy: [] }).some((f) => f.includes("reading nothing")));
   bad += ok("a diverged verb pattern is caught",
     findings({ ...base, verbSourceMatches: false }).some((f) => f.includes("disagree about what counts")));
+  // 2026-09-12 regression: `decide` must read as a mutation verb, so an unclassified `*_decide`
+  // write (the `improvement_decide` bypass) is caught as a write rather than sailing through as a
+  // query. Guards the lint's own copy of MUTATION_VERB; `checkVerbParity` guards it against the policy.
+  bad += ok("`decide` reads as a mutation verb (the improvement_decide bypass stays closed)",
+    MUTATION_VERB.test("improvement_decide") && MUTATION_VERB.test("x_decide") && !MUTATION_VERB.test("decided_list"));
   console.log(bad === 0 ? "\n✓ action-risk-lint self-test passed." : `\n✗ ${bad} self-test(s) failed.`);
   process.exit(bad === 0 ? 0 : 1);
 }

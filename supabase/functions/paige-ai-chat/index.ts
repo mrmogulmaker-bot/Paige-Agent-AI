@@ -5877,7 +5877,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   target_ref: { type: "string", description: "The target's slug or key (e.g. a specialist slug)." },
                   title: { type: "string", description: "One line: what the evidence shows." },
                   proposed_change: { type: "string", description: "The change being proposed — applied only after owner approval." },
-                  evidence: { type: "object", description: "Envelope-only evidence: counts, rates, ids, signatures. No message content." }
+                  evidence: { type: "object", description: "Envelope-only evidence: counts, rates, ids, signatures. No message content." },
+                  confirm: { type: "boolean", description: "Set true only after the operator approves filing this proposal. Never set it in the same reply that proposes it." }
                 },
                 required: ["kind", "target_ref", "title", "proposed_change"]
               }
@@ -5907,7 +5908,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 properties: {
                   proposal_id: { type: "string" },
                   decision: { type: "string", enum: ["approved", "rejected"] },
-                  rationale: { type: "string", description: "Why — becomes the decision record." }
+                  rationale: { type: "string", description: "Why — becomes the decision record." },
+                  confirm: { type: "boolean", description: "Set true only after the operator approves this decision on the rendered card. Never set it in the same reply that proposes it." }
                 },
                 required: ["proposal_id", "decision", "rationale"]
               }
@@ -5928,7 +5930,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   media_url: { type: "string", description: "Public URL of the video or photo to post (for video/photo posts)." },
                   photos: { type: "array", items: { type: "string" }, description: "Array of photo URLs (for photo posts)." },
                   scheduled_date: { type: "string", description: "ISO date to schedule the post for later (optional)." },
-                  profile: { type: "string", description: "The Upload-Post profile username to post from." }
+                  profile: { type: "string", description: "The Upload-Post profile username to post from." },
+                  confirm: { type: "boolean", description: "Set true only after the operator approves posting on the rendered card. Never set it in the same reply that proposes it." }
                 },
                 required: ["content_type", "title", "platforms", "profile"]
               }
@@ -12191,6 +12194,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         comms_draft_registration: "tenant_a2p_registrations",
         pipeline_configure: "pipelines",
         propose_business_brief_update: "tenants",
+        // 2026-09-12 repair — the evaluation loop + social publish, newly classified (action-risk.ts).
+        // `improvement_propose` INSERTs and `improvement_decide` UPDATEs the proposals row, so both
+        // name that table; `social_post` reaches an external social platform via Upload-Post with no
+        // durable local record, so it names the provider the way `zapier_run_action` does.
+        improvement_propose: "paige_improvement_proposals",
+        improvement_decide: "paige_improvement_proposals",
+        social_post: "external_provider",
         // ── The inbound MCP door's acts, added 2026-09-05 with task #45.
         //
         // WHY THEY ARE HERE AT ALL, since Chat cannot perform any of them. This map is keyed off
