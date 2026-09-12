@@ -1,0 +1,73 @@
+# UI delivery evidence: solo-calendar-reschedule-edit
+
+Owner-side **reschedule (move)** and **edit (details)** wired into the mounted Solo Calendar
+(`SoloCalendarWorkspace`). Extends the already-live governed booking engine; does not rebuild it (§18/§30).
+
+UI_DELIVERY_EVIDENCE_VERSION: 1
+FLOW_BY_FLOW: PASS: Flow-by-Flow skill + orchestration/delivery references read; pre-edit packet delivered (mode Existing-project feature extension, depth Standard/Deep, affected flows = owner reschedule + owner edit, fresh main a451278, file/collision result, states, regression map, gates) — recorded in the PR description and session transcript.
+PAIGE_UI_DESIGN: PASS: read `.agents/skills/paige-ui-design/SKILL.md` incl. its material-flow test and non-negotiable rules; this is a §00 port-only change — it reuses the shipped `sc-*` design system and the `CreateDrawer` pattern and invents no visual direction.
+MATERIAL_FLOW_CHANGE: YES: the owner gains two goals — move a booking, and edit its details — and reschedule carries a real consequence (the UPDATE emits the `booking.rescheduled` Layer-C signal to `paige_client_events`).
+FLOW_PROTOTYPE: PASS: the interaction shape is a verbatim reuse of the shipped, Claude-Design-approved `CreateDrawer` on the same surface — `RescheduleDrawer`/`EditDrawer` are structurally identical (same drawer chrome, `sc-field` controls, gold submit, `sc-msg--bad` error, busy/cancel states and exits), so there is no new interaction shape to prototype (§69 precedent reduces prototype scope). Gate-1 prototype approval is lifted pre-launch (§4/§69 — owner reviews on the live site); authoring a separate interaction prototype would overstep §00 (Claude Design owns interaction design).
+PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: a Solo business owner moves (reschedules) or edits the details of a real, tenant-scoped booking directly on their own Calendar.
+VISUAL_DIRECTION: PASS: §00 port-only — reuses the shipped `sc-*` tokens/components and the `Drawer`/`CreateDrawer` pattern; the only CSS change extends `.sc-field` to style a `textarea` identically to its existing inputs (no new pack, tokens, or motion).
+AUTOMATED_EVIDENCE: PASS: `npx vitest run src/components/tenant-calendar` = 128/128 across 5 files, including 7 new tests (reschedule move + preserved length, reschedule refusal keeps the form open, off-schedule disables Reschedule/Edit, edit carries current values, empty-title guard without calling the seam, edit refusal surfaced, and `bookingWriteMessage` unit) plus the existing contract test that keeps the fixture calendar de-mounted.
+STATIC_EVIDENCE: PASS: `npm run typecheck` adds 0 errors (13 pre-existing on `main`, none in touched files — confirmed by a stash/baseline diff); `npx eslint` clean on the four touched files; `npm run build` (vite) green; `npm run lint:definer-fns` and `.github/scripts/lint_migrations.py` green on `20270125000000`.
+RENDERED_EVIDENCE: UNVERIFIED: this headless remote session has no browser tool, so the surface was not rendered here; the live render is owed to a browser-capable session.
+BEHAVIORAL_EVIDENCE: UNVERIFIED: the reschedule/edit flows are proven at the component level (the real `SoloCalendarWorkspace` driven against a mocked data boundary in the workspace test), but they were not driven in a live browser because this session has no browser tool; the browser drive is owed to a browser-capable session.
+AUTHENTICATED_RUNTIME: UNVERIFIED: this session has no authenticated production reach (LIVE_DRIVE credentials unset and headless Chromium cannot reach prod through the agent proxy), so the owner live-drive of reschedule and edit is owed to a browser-capable session; edit additionally cannot run until deploy-migrations applies `20270125000000`.
+KEYBOARD_FOCUS: PASS: both drawers reuse the shared `Drawer`'s focus-trap / Escape / focus-restore contract already covered by the shipped "closes on Escape and restores focus" test, and every new control is a native input/select/textarea with an explicit `label htmlFor`.
+ZOOM_REFLOW: UNVERIFIED: browser zoom/reflow was not exercised in this headless session; the single reflow risk introduced — a six-action detail-drawer foot — is mitigated by the verified `.sc-drawer-foot { flex-wrap: wrap }` so no control clips; the zoom pass is owed to a browser-capable session.
+REDUCED_MOTION: NOT_APPLICABLE: no motion or animation was added; the drawers reuse the existing `Drawer` transitions unchanged.
+STATE_COVERAGE: PASS: saving/busy, success (drawer closes), overlap-refused (23P01/23505), forbidden (42501), not-found (P0002), bad-time (22023), empty-title guard, abandon (Cancel), off-schedule disable, and no-tenant-resolved are handled in code and exercised by the seven new tests.
+TRUTHFUL_STATE_LABELS: PASS: every failure is mapped through the `bookingWriteMessage` helper to an honest sentence (unknown SQLSTATEs surface verbatim, never flattened); no fabricated success; the reschedule note states the guest is not notified from here; the edit note states time and status are unchanged.
+SOLO_UI: YES: the mounted Solo Calendar surface — `SoloCalendarWorkspace`, via `TenantCanonicalCalendarWorkspace` `tier="solo"`.
+UNVERIFIED: Remaining owed items — the live render, the browser behavioral drive, the authenticated owner drive of reschedule and edit, the browser zoom/reflow pass, and all eight Solo-viewport captures — are owed because this headless remote session has no browser tool and cannot reach prod; edit's runtime additionally waits on deploy-migrations applying `20270125000000`. All are owed to a browser-capable session (§32.c).
+SOLO_1536X770_PAIGE_CLOSED: UNVERIFIED: no browser tool in this headless remote session, so the 1536x770 viewport with PAIGE closed cannot be captured; owed to a browser-capable session.
+SOLO_1536X770_PAIGE_OPEN: UNVERIFIED: no browser tool in this headless remote session, so the 1536x770 viewport with PAIGE open cannot be captured; owed to a browser-capable session.
+SOLO_1366X768_PAIGE_CLOSED: UNVERIFIED: no browser tool in this headless remote session, so the 1366x768 viewport with PAIGE closed cannot be captured; owed to a browser-capable session.
+SOLO_1366X768_PAIGE_OPEN: UNVERIFIED: no browser tool in this headless remote session, so the 1366x768 viewport with PAIGE open cannot be captured; owed to a browser-capable session.
+SOLO_1024X768_PAIGE_CLOSED: UNVERIFIED: no browser tool in this headless remote session, so the 1024x768 viewport with PAIGE closed cannot be captured; owed to a browser-capable session.
+SOLO_1024X768_PAIGE_OPEN: UNVERIFIED: no browser tool in this headless remote session, so the 1024x768 viewport with PAIGE open cannot be captured; owed to a browser-capable session.
+SOLO_900X1000_PAIGE_CLOSED: UNVERIFIED: no browser tool in this headless remote session, so the 900x1000 viewport with PAIGE closed cannot be captured; owed to a browser-capable session.
+SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: no browser tool in this headless remote session, so the 900x1000 viewport with PAIGE open cannot be captured; owed to a browser-capable session.
+
+OWNER_INTENT: The Solo owner asked (via the calendar MVP brief) to be able to create, edit, reschedule, cancel and archive real bookings on a tenant-safe governed calendar. Create/cancel/status already ship; this delivers the two the mounted surface lacked — reschedule and edit — for the Solo owner (and sub-account owner) on their own account.
+MUST_NOT_HAPPEN: Must not rebuild a second calendar/booking system; must not touch the live read/create/cancel paths; must not let a client write another tenant's or teammate's booking (server §59 guard enforces); must not emit a false `booking.rescheduled`/`booking.cancelled` Rail signal on a details edit; must not fabricate a "moved"/"saved" success on a refused write.
+MUST_PRESERVE: The existing read/realtime/stale/create/cancel behavior of `useSoloCalendar`; the contract test that keeps `src/solo/calendar*.tsx` de-mounted; the shipped `sc-*` design system and `Drawer` focus contract; every existing tenant-calendar test.
+ACCEPTANCE_CRITERIA: On the live Solo Calendar, the owner opens a booking, chooses Reschedule, picks a new date/time (length preserved), Moves it, and the grid + a `booking.rescheduled` Rail signal reflect the new time; a clashing time is refused with an honest message; the owner chooses Edit details, changes the title/guest/notes/calendar, Saves, and the change persists with no time/status change and no false Rail; an empty title is refused; a teammate's booking a non-admin does not own is refused. (Authenticated live confirmation is PROOF OWED per above.)
+MOTION_PURPOSE: NONE: no motion change — the drawers reuse the existing `Drawer` open/close transitions.
+PROTECTED_SEAMS: Tested — `useSoloCalendar` read/create/cancel/realtime (128/128 incl. regression) and the fixture-de-mount contract test both stay green. Named unaffected — the public `/book/:slug` + `booking-manage` guest paths, `admin_set_booking_status`, `create_internal_booking`, and `reschedule_internal_booking`'s existing edge caller are untouched (reschedule reuses the same deployed RPC; edit is a net-new additive RPC with an identical §59 guard).
+
+<!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
+INTERNAL_BUILD_IDENTITY: 7f5c4b03121ac54dd3736ad13b2f4e56197246e0; deployment=pre-merge-branch-build; environment=local; migrations=PROOF_OWED(deploy-migrations applies 20270125000000_calendar_update_internal_booking on merge to main); edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/solo-calendar-reschedule-edit.md
+RELEASE_CHANNEL: development: pre-merge branch build verified in CI/local; not yet deployed. On merge to main it ships to production via Vercel (frontend) plus deploy-migrations (the edit RPC), per §4 pre-launch.
+RELEASE_CLASSIFICATION: internal-only: pre-launch platform with no live customers; the owner reviews on the live site per §4.
+CUSTOMER_RELEASE_IDENTITY: none: internal build, pre-launch; no customer version or name assigned.
+RELEASE_NOTE_REQUIRED: NO: internal-only pre-launch delivery; no customer-facing release.
+RELEASE_TRUTH_BOUNDARY: PARTIAL: reschedule is LIVE on the frontend merge (existing deployed RPC) and edit is LIVE only after deploy-migrations applies 20270125000000; both are proven by 128 tenant-calendar tests plus the static gates; the authenticated owner live-drive and the Solo-viewport render are owed to a browser-capable session.
+RELEASE_RECOVERY: position=forward-fix or clean revert; reference=the change is additive (two hook methods, two drawers, one migration, one textarea CSS rule) so reverting the branch's code commit 7f5c4b0 removes it with no data migration or backfill, and reschedule/edit are gated behind detail-drawer buttons.
+
+## Scope and collisions
+
+- Classification: existing-project feature extension of a live Solo surface (R1 UI + R2 one net-new governed RPC).
+- Affected flows: owner reschedule (move) a booking; owner edit a booking's details.
+- Neighboring regressions: `useSoloCalendar` read/create/cancel/realtime/stale; the fixture-de-mount contract; the shared `Drawer` focus contract — all retested green.
+- Active-owner/file collisions: none — built on fresh `main` (`a451278`); the touched files were last merged Sep 11 and no concurrent session was coordinated (per the brief).
+- Explicit exclusions: no recurrence editing, no archive status, no guest notification on reschedule (the RPC sends none), no external-calendar sync, no change to the public booking or agency `CalendarAdmin` surfaces.
+
+## User job and state map
+
+Purpose: let the Solo owner move or correct a real booking without leaving the Calendar. Primary action: Reschedule (Move appointment) / Edit details (Save changes) from the booking detail drawer. Visual direction: the shipped `sc-*` system + `CreateDrawer` pattern. States: busy/saving, success (drawer closes and the grid reconciles via a nudged re-read + realtime), overlap-refused, forbidden, not-found, bad-time, empty-title guard, abandon (Cancel), and off-schedule disable. Exits: Save/Move (success closes), Cancel, Escape (Drawer contract), backdrop. Side effect: reschedule emits `booking.rescheduled` to the Rail; edit emits nothing. Scroll owner: the shared `Drawer` body; the foot wraps.
+
+## Evidence index
+
+- `npx vitest run src/components/tenant-calendar` → Test Files 5 passed, Tests 128 passed (7 new).
+- `npm run typecheck` → 13 errors, all pre-existing on `main` (baseline via `git stash`), 0 in touched files.
+- `npx eslint <4 touched files>` → exit 0.
+- `npm run build` → built in ~27s, exit 0.
+- `npm run lint:definer-fns` → pass; `python3 .github/scripts/lint_migrations.py supabase/migrations/20270125000000_*.sql` → passed.
+- Migration `supabase/migrations/20270125000000_calendar_update_internal_booking.sql`; hook `src/components/tenant-calendar/useSoloCalendar.ts`; surface `src/components/tenant-calendar/SoloCalendarWorkspace.tsx`; CSS `src/components/tenant-calendar/solo-calendar.css`.
+
+## Review and limitations
+
+Independent §39 peer-gate read of the pushed diff: clean — tenant-gated RPCs (never raw client UPDATEs), honest error mapping, no false Rail on edit, self-overlap is safe (exclusion constraints never compare a row to itself), realtime reconcile matches the shipped `createBooking` pattern, and the six-action foot stays reachable via `flex-wrap`. §32.c limitations: rendered / behavioral / authenticated-runtime / zoom-reflow / all eight Solo-viewport captures are UNVERIFIED and owed to a browser-capable session; the migration's BEGIN..ROLLBACK proof is owed to CI `premerge-migration-proof` and its persisted apply to `deploy-migrations` (Supabase MCP was unavailable all session).
