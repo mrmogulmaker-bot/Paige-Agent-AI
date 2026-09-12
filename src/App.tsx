@@ -33,7 +33,7 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 // Vercel Speed Insights — Core Web Vitals from real visitors. This is a Vite +
 // React SPA, so we use the framework-agnostic /react entry (NOT /next).
 import { SpeedInsights } from "@vercel/speed-insights/react";
@@ -191,10 +191,7 @@ const AppInner = () => {
 };
 
 function SignupRedirect() {
-  const location = useLocation();
-  const params = new URLSearchParams(location.search);
-  params.set("mode", "signup");
-  return <Navigate to={`/auth?${params.toString()}`} replace />;
+  return <Navigate to="/auth?mode=signup&plan=solo&billing=monthly" replace />;
 }
 
 const App = () => (

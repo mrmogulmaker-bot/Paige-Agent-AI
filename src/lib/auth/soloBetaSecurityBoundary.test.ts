@@ -1,0 +1,141 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+const migration = readFileSync("supabase/migrations/20270118010000_solo_beta_atomic_fulfillment.sql", "utf8");
+const lifecycle = readFileSync("supabase/migrations/20270118020000_solo_beta_subscription_lifecycle.sql", "utf8");
+const integrity = readFileSync("supabase/migrations/20270118040000_solo_beta_integrity_fencing.sql", "utf8");
+const authz = readFileSync("supabase/migrations/20270119000000_solo_beta_authz_hardening.sql", "utf8");
+const checkout = readFileSync("supabase/functions/solo-beta-subscription-checkout/index.ts", "utf8");
+const webhook = readFileSync("supabase/functions/solo-beta-stripe-webhook/index.ts", "utf8");
+const status = readFileSync("supabase/functions/solo-beta-enrollment-status/index.ts", "utf8");
+const welcome = readFileSync("src/pages/Welcome.tsx", "utf8");
+const offerValidator = readFileSync("supabase/functions/_shared/solo-beta-offer.ts", "utf8");
+const provisioner = readFileSync("supabase/migrations/20260810000000_signup_flow_reorder_intake.sql", "utf8");
+
+describe("Solo Beta security boundary", () => {
+  it("encodes one immutable test-mode 7450 USD monthly offer with no trial", () => {
+    expect(migration).toContain("'paige-solo-beta-monthly-v1'");
+    expect(migration).toContain("unit_amount_cents = 7450");
+    expect(migration).toContain("provider_mode = 'test'");
+    expect(migration).toContain("billing_interval = 'month'");
+    expect(migration).toContain("trial_days = 0");
+  });
+
+  it("removes browser authority from generic provisioning and actor-explicit signup reads", () => {
+    expect(authz).toMatch(/REVOKE ALL ON FUNCTION public\.provision_tenant[\s\S]+FROM PUBLIC, anon, authenticated/);
+    expect(authz).toMatch(/REVOKE ALL ON FUNCTION public\.is_signup_complete\(uuid\)[\s\S]+FROM PUBLIC, anon, authenticated/);
+  });
+
+  it("requires exact server/provider evidence before atomic fulfillment", () => {
+    for (const guard of ["_product_id<>_offer.stripe_product_id", "_price_id<>_offer.stripe_price_id", "_unit_amount<>7450", "lower(_currency)<>'usd'", "_interval<>'month'", "_interval_count<>1", "_subscription_status<>'active'"]) {
+      expect(migration).toContain(guard);
+    }
+    expect(migration).toContain("solo_beta_agreement_unpersisted");
+    expect(migration).toContain("lifecycle_state='completed'");
+  });
+
+  it("requires the exact current standalone agreement at checkout and fulfillment", () => {
+    expect(checkout).toContain('.eq("slug", "saas-standalone").eq("is_current", true)');
+    expect(checkout).toContain('intake.agreement_slug !== "saas-standalone"');
+    expect(integrity).toContain("_intake.agreement_slug IS DISTINCT FROM 'saas-standalone'");
+    expect(integrity).toContain("_intake.agreement_version IS DISTINCT FROM _agreement_version");
+  });
+
+  it("fences checkout creation, failure, opening, and fulfillment", () => {
+    expect(integrity).toContain("checkout_fencing_token uuid");
+    expect(integrity).toContain("checkout_claimed_at >= now()-interval '5 minutes'");
+    expect(integrity).toMatch(/solo_beta_checkout_failed\([\s\S]+_fencing_token uuid/);
+    expect(integrity).toMatch(/solo_beta_fulfill_checkout\([\s\S]+_attempt integer,_fencing_token uuid/);
+    expect(checkout).toContain("_fencing_token: fencingToken");
+    expect(webhook).toContain("_fencing_token: enrollment.checkout_fencing_token");
+  });
+
+  it("compares immutable provider event identity before replay acknowledgement", () => {
+    for (const field of ["payload_digest", "owner_user_id", "checkout_session_id", "stripe_subscription_id", "stripe_customer_id", "provider_created_at"]) {
+      expect(integrity).toContain(`_row.${field} IS DISTINCT FROM`);
+    }
+    expect(integrity).toContain("solo_beta_event_identity_mismatch");
+  });
+
+  it("claims lifecycle events and rejects stale provider ordering", () => {
+    expect(webhook).toContain('_event_type: event.type');
+    expect(webhook).toContain('_provider_created_at: providerCreatedAt');
+    expect(integrity).toContain("provider_event_precedence");
+    expect(integrity).toContain("_outcome := 'ignored_stale'");
+    expect(integrity).toContain("solo_beta_lifecycle_receipts");
+  });
+
+  it("fails closed when checkout or status authority reads fail", () => {
+    expect(checkout).toContain("ownedResult.error || membershipsResult.error || intakeResult.error || offerResult.error");
+    expect(checkout).toContain("acceptanceError");
+    expect(status).toContain("enrollmentResult.error || membershipsResult.error");
+    expect(status).toContain("intakeResult.error || agreementResult.error");
+    expect(status).toContain("subscriptionResult.error || receiptResult.error");
+  });
+
+  it("uses immutable fulfilled subscription facts for lifecycle and converges revoking states", () => {
+    expect(webhook).toContain('admin.from("platform_subscriptions")');
+    expect(webhook).toContain('persisted.provider_mode !== "test"');
+    expect(offerValidator).toContain('"unpaid", "paused"');
+    expect(integrity).toContain("_sub.stripe_product_id IS DISTINCT FROM _product_id");
+    expect(integrity).toContain("'active','past_due','canceled','unpaid','paused'");
+  });
+
+  it("verifies fulfilled users before current-agreement acquisition checks", () => {
+    expect(status.indexOf('enrollment?.state === "fulfilled"')).toBeLessThan(status.indexOf('admin.from("signup_intake")'));
+    expect(status).toContain('admin.from("solo_beta_fulfillment_receipts")');
+    expect(status).toContain("receipt?.subscription_id === subscription.id");
+  });
+
+  it("reuses the previous provider idempotency slot when reclaiming a stale creation lease", () => {
+    expect(integrity).toContain("idempotency_slot integer");
+    expect(integrity).toContain("WHEN _row.state='checkout_creating' THEN _row.checkout_attempt");
+    expect(checkout).toContain('idempotencyKey: `solo-beta-checkout-${user.id}-${idempotencySlot}`');
+  });
+
+  it("authorizes a freshly provisioned Solo owner from tenant scope without a fake global admin role", () => {
+    expect(provisioner).toContain("values (_owner, 'user')");
+    expect(provisioner).toContain("values (_tenant.id, _owner, 'owner', 'active', true, now())");
+    expect(authz).toContain("tm.role IN ('owner','admin','super_admin','coach')");
+    expect(authz).not.toContain("has_any_role(_creator");
+  });
+
+  it("keeps failed webhook fulfillment retryable and never acknowledges it", () => {
+    expect(migration).toContain("lifecycle_state='retryable_failure'");
+    expect(webhook).toContain("solo_beta_fail_stripe_event");
+    expect(webhook).toContain("return json(500, { error: \"solo_beta_webhook_retry_required\" })");
+    expect(webhook).not.toContain("email_confirm: true");
+  });
+
+  it("checkout rejects caller-selected tiers, intervals, and trials", () => {
+    expect(checkout).toContain('body.offer_code !== SOLO_BETA_OFFER_CODE');
+    expect(checkout).toContain('"plan_slug" in body');
+    expect(checkout).toContain('"account_type" in body');
+    expect(checkout).toContain('"billing_period" in body');
+    expect(checkout).toContain('"trial_period_days" in body');
+    expect(checkout).not.toContain("trial_period_days:");
+    expect(checkout).toContain('session.status !== "open"');
+  });
+
+  it("derives current-shell destination only after membership and entitlement readback", () => {
+    expect(status).toContain('subscription?.status === "active"');
+    expect(status).toContain('membership.is_owner === true');
+    // tier-feature-exempt: assertion covers canonical account-type routing, not a feature toggle.
+    expect(status).toContain('tenant?.account_type === "standalone"');
+    expect(status).toContain('destination: `/solo/${tenant.account_number}/command-center`');
+    expect(status).not.toContain('destination: "/app"');
+  });
+
+  it("offers immediate sign-in recovery for a signed-out checkout return", () => {
+    expect(welcome).toContain("supabase.auth.getSession()");
+    expect(welcome).toMatch(/if \(sessionError \|\| !sessionData\.session\)[\s\S]+setView\("needs_identity"\)/);
+    expect(welcome).toContain("Sign in and resume");
+    expect(welcome).toContain("Access is not granted until every check passes.");
+  });
+
+  it("syncs cancellation and payment state from a verified subscription contract", () => {
+    expect(lifecycle).toContain("_subscription_status NOT IN ('active','past_due','canceled')");
+    expect(lifecycle).toContain("cancel_at_period_end=coalesce(_cancel_at_period_end,false)");
+    expect(lifecycle).toContain("trial_ends_at=NULL");
+  });
+});

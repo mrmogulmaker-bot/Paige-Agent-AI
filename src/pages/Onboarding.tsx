@@ -25,6 +25,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Loader2 } from "lucide-react";
+import { isSoloBetaPlan } from "@/lib/auth/soloBetaAcquisition";
+import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -38,9 +40,7 @@ export default function Onboarding() {
   // stages the intake + logs terms, then launches checkout as the last step. Absent ⇒
   // the free/legacy standalone path (direct provision, no checkout).
   const planSlug = searchParams.get("plan");
-  const billingPeriod = searchParams.get("billing");
-  const inviteToken = searchParams.get("invite");
-  const isPaid = !!planSlug;
+  const isPaid = isSoloBetaPlan(planSlug);
 
   useEffect(() => {
     let mounted = true;
@@ -77,23 +77,27 @@ export default function Onboarding() {
       ]);
       if (!mounted) return;
       if (staff || owned?.id || member?.tenant_id) {
-        window.location.assign("/choose-account");
+        window.location.assign(await resolveLandingRoute(uid));
         return;
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((agencyRes as any)?.data?.agency_tenant_id) {
-        window.location.assign("/agency");
+        window.location.assign(await resolveLandingRoute(uid));
         return;
       }
       const realClient = (clientRows ?? []).find((c) => (c.source ?? "") !== "signup");
       if (realClient) {
-        window.location.assign("/app");
+        window.location.assign(await resolveLandingRoute(uid));
+        return;
+      }
+      if (!isSoloBetaPlan(planSlug)) {
+        navigate("/pricing", { replace: true });
         return;
       }
       setStatus("ready");
     })();
     return () => { mounted = false; };
-  }, [navigate]);
+  }, [navigate, planSlug]);
 
   const cancelSignup = async () => {
     setCancelling(true);
@@ -138,14 +142,12 @@ export default function Onboarding() {
               </h1>
               <p className="mt-3 text-muted-foreground">
                 {isPaid
-                  ? "Tell us about your business — then a quick checkout starts your free trial. You can invite your team and change any of this later as you grow."
+                  ? "Tell us about your business, review the Solo agreement, then continue to the approved $74.50 monthly checkout."
                   : "Name your business and tell us what you do. You can invite your team once you're in — and change any of this later as you grow."}
               </p>
             </header>
             <WorkspaceProvisioner
               planSlug={planSlug}
-              billingPeriod={billingPeriod}
-              inviteToken={inviteToken}
             />
 
             <div className="mt-8 pt-6 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

@@ -538,3 +538,15 @@ entrypoint = "./functions/business-mission-action/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/business-mission-action/*.html" ]
+
+# Solo beta checkout and enrollment status require an authenticated Supabase user.
+[functions.solo-beta-subscription-checkout]
+verify_jwt = true
+
+[functions.solo-beta-enrollment-status]
+verify_jwt = true
+
+# Stripe cannot present a Supabase JWT. The function verifies the Stripe signature
+# and rejects live events; the dedicated test webhook secret is the caller gate.
+[functions.solo-beta-stripe-webhook]
+verify_jwt = false

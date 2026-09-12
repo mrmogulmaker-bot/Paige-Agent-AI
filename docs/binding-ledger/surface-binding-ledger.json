@@ -848,6 +848,40 @@
       "sources": ["docs/architecture/paige-mind-integration-matrix.md", "docs/evidence/ui-delivery/business-vault-phase2-foundation.md"]
     },
     {
+      "id": "public.solo-beta-acquisition",
+      "consequential": true,
+      "intended_capability": {
+        "read": "Explain the one approved public Solo Beta offer and the caller's server-verified enrollment state without exposing provider or tenant internals.",
+        "draft": "Prepare identity recovery, setup, and checkout continuation for the customer; no side effect is represented as complete.",
+        "auto": "Within the fixed Solo offer policy and its one-user, one-workspace, one-active-checkout limits, the service may perform idempotent reconciliation after signed provider evidence; the browser and Paige hold no enrollment or billing authority.",
+        "confirm": "The customer explicitly submits signup/setup and enters provider-hosted checkout; no broader account type or trial choice exists.",
+        "prohibited": "Never infer payment from a return URL, compose tenant authority client-side, expose Stripe identifiers, enroll a non-Solo account, or let Paige claim billing/support resolution she cannot perform.",
+        "completion_criterion": "A new verified identity receives exactly one standalone owner workspace and current Solo destination only after signed payment plus receipt/subscription/membership readback; interruption is safely resumable."
+      },
+      "surface": "Public website -> Solo Beta identity, checkout, verification, and current Solo handoff",
+      "group": "public-acquisition",
+      "tier_scope": ["anonymous", "solo"],
+      "owner_component": "src/pages/PaigeHome.tsx; src/pages/Pricing.tsx; src/pages/Auth.tsx; src/pages/Onboarding.tsx; src/pages/Welcome.tsx",
+      "canonical_source": "solo-beta-enrollment-status plus dedicated fixed-offer checkout/webhook and atomic fulfillment receipt",
+      "chain": {
+        "canonical_source": {"status": "wired", "note": "Dedicated test-mode fixed offer and receipt-backed status are implemented in the review candidate; provider acceptance remains proof owed."},
+        "tenant_scope": {"status": "server_resolved", "note": "Tenant, account number, owner membership, subscription, and destination are service-resolved; route/query/local storage never confer authority."},
+        "safe_context": {"status": "eligible", "note": "Customer responses contain bounded state, message, reference id, retryability, and a strict current-Solo destination only when verified."},
+        "authority": {"status": "governed", "note": "Ordinary identity/setup intent plus signed Stripe evidence; fixed offer, fencing, immutable event identity, and atomic readback."},
+        "governed_write": {"status": "wired", "note": "Service-only standalone provisioning, subscription, receipt, and evidence transaction; no Paige callable action."},
+        "verified_outcome": {"status": "partial", "note": "Automated/static proof verified; database apply, authenticated flow, and Stripe test acceptance are proof owed."},
+        "rail_evidence": {"producer": "wired", "read": "none", "note": "One bounded usage evidence row per fulfillment/lifecycle event; no customer/provider payload."},
+        "mind_eligibility": {"axis_a": "UNAVAILABLE", "axis_b": "NO", "note": "Enrollment and billing internals do not become Mind facts."},
+        "memory_retention": {"status": "n/a", "note": "No signup, checkout, or provider payload enters Paige Memory."}
+      },
+      "prohibited_context": ["Stripe secrets or raw payloads", "client-selected tenant or account type", "return-URL payment assertions", "unsupported account enrollment", "raw legal/provider errors"],
+      "state": "PARTIAL",
+      "state_reason": "Gate A review candidate: public Solo-only flow and dedicated server contracts are implemented with automated/static proof. No database apply, Stripe test acceptance, authenticated runtime, deployment, or owner acceptance is claimed.",
+      "evidence_class": ["source_read", "automated_test", "rendered_structural"],
+      "linked": ["PR #899 intent carried forward", "PR #724 destination contract carried forward"],
+      "next_slice": "Run migrations and Stripe test-mode acceptance in an approved environment, complete authenticated four-viewport/two-theme recovery proof, independent review, then request explicit owner go-live approval.",
+      "sources": ["docs/evidence/ui-delivery/solo-beta-acquisition.md", "docs/doctrine/tier-matrix.md", "docs/handoff/platform-billing-spine-source-contract.md"]
+    },    {
       "id": "settings.billing",
       "consequential": true,
       "intended_capability": {

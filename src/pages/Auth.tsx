@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, type CSSProperties } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,6 +25,7 @@ import { useRequiredSignupDocs, recordAcceptances } from "@/lib/legal/useLegalDo
 import { readableTextOn, isColorDark } from "@/lib/brand/contrast";
 import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
 import { operatorChooserTarget } from "@/lib/auth/operatorTarget";
+import { isSoloBetaPlan, soloAuthRecoveryState, soloBetaDisplayIntent, soloBetaSignupPath } from "@/lib/auth/soloBetaAcquisition";
 
 const authSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }),
@@ -49,6 +50,7 @@ const Auth = () => {
   }, [firstName, middleInitial, lastName]);
   const [isLoading, setIsLoading] = useState(false);
   const [routingError, setRoutingError] = useState<string | null>(null);
+  const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -61,6 +63,11 @@ const Auth = () => {
   const { docs: requiredDocs } = useRequiredSignupDocs();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const authRecovery = soloAuthRecoveryState({
+    error: searchParams.get("error"),
+    errorCode: searchParams.get("error_code"),
+    description: searchParams.get("error_description"),
+  });
 
   // Plan intent (task #66 reorder). When a prospect picks a plan on /pricing while
   // signed out, they arrive here as /auth?mode=signup&plan=<slug>&billing=<period>.
@@ -121,7 +128,9 @@ const Auth = () => {
   // customer who signs in with Google/Apple still reaches invite acceptance.
   const oauthRedirectTo = (nextParam && isSafeRedirectPath(nextParam))
     ? `${window.location.origin}${nextParam}`
-    : `${window.location.origin}/app`;
+    : isLogin
+      ? `${window.location.origin}/auth?mode=login`
+      : authRedirectWithPlan(window.location.origin, soloBetaDisplayIntent());
 
   const brandColor = inviteBrand?.primary_color || null;
   // Neutral fallback — NEVER the platform ("Paige Agent") name in client-invite mode.
@@ -133,29 +142,29 @@ const Auth = () => {
   const headingTitle = isLogin
     ? "Welcome back"
     : isClientInvite ? `Join ${brandName}` : "Start with Paige";
-  const hasPlanIntent = !isLogin && !!searchParams.get("plan");
-  // An invite (issued by the operator) always carries a server-side trial; when one is
-  // present we honestly promise the free trial rather than "checkout is the last step".
+  const hasPlanIntent = !isLogin && isSoloBetaPlan(searchParams.get("plan"));
   const hasInvite = !isLogin && !!searchParams.get("invite");
   const headingSub = isLogin
     ? (isClientInvite ? `Sign in to open your ${brandName} portal` : "Sign in to your workspace")
     : (isClientInvite
         ? `Create your login to open your private client portal with ${brandName}.`
         : hasInvite
-          // Trial length is derived server-side from the token; Auth doesn't hold N,
-          // so we say "a free trial" without fabricating a number (§13 honesty).
-          ? "Your invite includes a free trial — create your account to claim it"
-          // Plan-intent (paid) signup: create the account, set up the workspace, then
-          // checkout starts the 14-day free trial (card captured, charged when it ends).
+          ? "Your invite includes access selected by the workspace owner — create your login to continue"
           : hasPlanIntent
-            ? "Create your account — next, set up your workspace, then start your 14-day free trial"
-            : "Start free · Paige works on day one");
+            ? "Create your account, verify your email, then finish the approved Paige Solo setup"
+            : "Paige Solo is the beta available now");
 
   useEffect(() => {
     setIsLogin(searchParams.get("mode") !== "signup");
   }, [searchParams]);
 
-  const redirectByRole = async (userId: string) => {
+  useEffect(() => {
+    if (searchParams.get("mode") === "signup" && !isClientInvite && !isSoloBetaPlan(searchParams.get("plan"))) {
+      navigate(soloBetaSignupPath(), { replace: true });
+    }
+  }, [isClientInvite, navigate, searchParams]);
+
+  const redirectByRole = useCallback(async (userId: string) => {
     setRoutingError(null);
     setIsLoading(true);
     // Always clear any "preview as client" override on a fresh login so role
@@ -196,10 +205,10 @@ const Auth = () => {
       planIntent = readPlanIntent();
       if (!planIntent) {
         const urlPlan = searchParams.get("plan");
-        if (urlPlan) {
+        if (isSoloBetaPlan(urlPlan)) {
           planIntent = {
             plan: urlPlan,
-            billing: normalizeBilling(searchParams.get("billing")),
+            billing: "monthly",
           };
         }
       }
@@ -271,7 +280,7 @@ const Auth = () => {
       return;
     }
     navigate(target, { replace: true });
-  };
+  }, [isClientInvite, navigate, searchParams]);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -297,7 +306,7 @@ const Auth = () => {
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, [redirectByRole]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -345,6 +354,45 @@ const Auth = () => {
 
         const consentTimestamp = new Date().toISOString();
 
+        // Ordinary Solo enrollment uses Supabase email verification. Client invites
+        // retain the legacy tenant-branded helper so existing portal access is preserved.
+        if (!isClientInvite) {
+          const intent = soloBetaDisplayIntent();
+          signupPlanIntentRef.current = intent;
+          stashPlanIntent(intent);
+          const { data: signupData, error: signupError } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              emailRedirectTo: authRedirectWithPlan(window.location.origin, intent),
+              data: {
+                full_name: fullName,
+                marketing_opt_in: consentMarketing,
+                phone: consentSms ? normalizedMobile : null,
+                sms_consent: consentSms,
+              },
+            },
+          });
+          if (signupError) {
+            signupPlanIntentRef.current = null;
+            clearPlanIntent();
+            const exists = /already registered|already exists/i.test(signupError.message);
+            toast({
+              title: exists ? "Account exists" : "Couldn't create your account",
+              description: exists ? "Sign in with this email to continue safely." : "We could not create the account. Check your details and try again, or contact support.",
+              variant: "destructive",
+            });
+            return;
+          }
+          if (signupData.session?.user) {
+            await redirectByRole(signupData.session.user.id);
+            return;
+          }
+          setVerificationEmail(email);
+          void trackEvent("signup_verification_sent", "activation", { method: "email" });
+          return;
+        }
+
         // Capture any plan intent BEFORE we create the account, so it's set before
         // the sign-in inside signUpTenant fires onAuthStateChange → redirectByRole
         // (which reads this ref). Cleared on signup failure so a later login/retry
@@ -359,11 +407,7 @@ const Auth = () => {
             signupPlanIntentRef.current = { plan: planSlug, billing, invite };
           }
         }
-
-        // Create a PRE-CONFIRMED account (email verification isn't wired yet —
-        // see tenant-signup edge function) and sign in, so the new owner is
-        // routed straight into onboarding instead of hitting the broken
-        // confirmation-email path.
+        // Client-invite compatibility path; ordinary Solo signup returned above for verification.
         let newUserId: string | null = null;
         try {
           const res = await signUpTenant({
@@ -473,10 +517,10 @@ const Auth = () => {
   const oauthRedirectWithPlan = (): string => {
     if (isClientInvite) return oauthRedirectTo;
     const planSlug = searchParams.get("plan");
-    if (!planSlug) return oauthRedirectTo;
+    if (!isSoloBetaPlan(planSlug)) return authRedirectWithPlan(window.location.origin, soloBetaDisplayIntent());
     const intent: PlanIntent = {
       plan: planSlug,
-      billing: normalizeBilling(searchParams.get("billing")),
+      billing: "monthly",
       invite: searchParams.get("invite") || undefined,
     };
     stashPlanIntent(intent);
@@ -520,12 +564,12 @@ const Auth = () => {
 
   const toggleMode = () => {
     const newMode = isLogin ? "signup" : "login";
-    navigate(`/auth?mode=${newMode}`, { replace: true });
+    navigate(newMode === "signup" ? soloBetaSignupPath() : "/auth?mode=login", { replace: true });
   };
 
   const platformFeatures = [
-    { icon: TrendingUp, title: "Client follow-through", desc: "Every client gets the follow-up you'd never keep up with" },
-    { icon: Zap, title: "Works on day one", desc: "Paige runs your operation the moment you connect her" },
+    { icon: TrendingUp, title: "Client follow-through", desc: "Keep client context and follow-up drafts ready for review" },
+    { icon: Zap, title: "Guided Solo setup", desc: "Start with focused setup and one clear next step" },
     { icon: Shield, title: "Your business, private", desc: "Access controls help protect your client data" },
   ];
   // For a CLIENT accepting a tenant invite, the left panel speaks to THEM (the
@@ -567,6 +611,38 @@ const Auth = () => {
     ["--shadow-glow" as string]: "0 0 40px rgba(240,200,106,0.35)",
   } as CSSProperties;
 
+  if (authRecovery && !isClientInvite) {
+    const recoveryCopy = authRecovery === "expired"
+      ? "That verification link has expired or is no longer valid."
+      : authRecovery === "denied"
+        ? "Sign-in permission was not granted. Nothing was provisioned."
+        : "The identity provider could not complete sign-in. Nothing was provisioned.";
+    return (
+      <div className="relative min-h-screen flex items-center justify-center px-4 text-center" style={goldTheme}>
+        <div className="w-full max-w-md space-y-5 rounded-2xl border border-white/15 bg-white/5 p-8 text-[#F8F5EE]">
+          <h1 className="text-2xl font-semibold">We could not verify your identity</h1>
+          <p className="text-sm text-[#F8F5EE]/75">{recoveryCopy} Start the Solo signup again, or sign in if you already have an account.</p>
+          <Button className="w-full" onClick={() => navigate(soloBetaSignupPath(), { replace: true })}>Restart Solo signup</Button>
+          <Button variant="outline" className="w-full" onClick={() => navigate("/auth?mode=login", { replace: true })}>Sign in instead</Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (verificationEmail && !isClientInvite) {
+    return (
+      <div className="relative min-h-screen flex items-center justify-center px-4 text-center" style={goldTheme}>
+        <div className="w-full max-w-md space-y-5 rounded-2xl border border-white/15 bg-white/5 p-8 text-[#F8F5EE]">
+          <PaigeCommandMark plated={false} className="mx-auto h-12 w-12" />
+          <h1 className="text-2xl font-semibold">Verify your email</h1>
+          <p className="text-sm text-[#F8F5EE]/75">We sent a verification link to <strong>{verificationEmail}</strong>. Open it in this browser to resume your Paige Solo setup. No workspace or subscription has been created yet.</p>
+          <Button className="w-full" onClick={() => { setVerificationEmail(null); setIsLogin(true); navigate("/auth?mode=login", { replace: true }); }}>Sign in instead</Button>
+          <Button asChild variant="outline" className="w-full"><a href="mailto:support@paigeagent.ai?subject=Solo%20email%20verification">Contact support</a></Button>
+        </div>
+      </div>
+    );
+  }
+
   // Client-invite gate: never show a tenant's customer the Paige-branded signup.
   // Hold on a neutral screen until the tenant brand resolves; show a neutral error
   // (no platform branding) if the invite is invalid/expired.
@@ -595,16 +671,16 @@ const Auth = () => {
       <ForgotPasswordDialog open={showForgotPassword} onOpenChange={setShowForgotPassword} />
 
       {/* Left Panel — Brand / Value Prop */}
-      <div className="hidden lg:flex lg:w-[48%] relative overflow-hidden bg-primary flex-col justify-between p-10 animate-in fade-in slide-in-from-left-8 duration-700">
+      <div className="hidden lg:flex lg:w-[48%] relative overflow-hidden bg-primary flex-col justify-between p-10 animate-in fade-in slide-in-from-left-8 duration-700 motion-reduce:animate-none">
         {/* Decorative Elements */}
         <div className="absolute inset-0">
           <div className="absolute inset-0 opacity-[0.04]" style={{
             backgroundImage: `linear-gradient(hsl(var(--accent)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--accent)) 1px, transparent 1px)`,
             backgroundSize: '60px 60px',
           }} />
-          <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-accent/10 blur-3xl animate-float" />
-          <div className="absolute bottom-20 -left-20 w-80 h-80 rounded-full bg-gold/8 blur-3xl animate-float-slow" />
-          <div className="absolute top-1/2 right-1/4 w-48 h-48 rounded-full bg-accent/5 blur-2xl animate-float-delayed" />
+          <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-accent/10 blur-3xl animate-float motion-reduce:animate-none" />
+          <div className="absolute bottom-20 -left-20 w-80 h-80 rounded-full bg-gold/8 blur-3xl animate-float-slow motion-reduce:animate-none" />
+          <div className="absolute top-1/2 right-1/4 w-48 h-48 rounded-full bg-accent/5 blur-2xl animate-float-delayed motion-reduce:animate-none" />
           <div className="absolute top-0 right-0 w-px h-full bg-gradient-to-b from-transparent via-accent/20 to-transparent" style={{ transform: 'translateX(-120px)' }} />
         </div>
 
@@ -640,7 +716,7 @@ const Auth = () => {
         <div className="relative z-10 space-y-8">
           <div className="space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20">
-              <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+              <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse motion-reduce:animate-none" />
               <span className="text-xs font-medium text-accent tracking-wide uppercase">
                 {isClientInvite ? "Your private client portal" : "Operations · Follow-ups · Follow-through"}
               </span>
@@ -707,7 +783,7 @@ const Auth = () => {
       </div>
 
       {/* Right Panel — Auth Form */}
-      <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150 fill-mode-both">
+      <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150 fill-mode-both motion-reduce:animate-none">
         {/* Top nav */}
         <div className="flex items-center justify-between px-6 sm:px-10 py-5">
           {isClientInvite ? (
@@ -983,7 +1059,7 @@ const Auth = () => {
 
               <Button
                 type="submit"
-                className="w-full h-12 rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] text-[#241645] text-sm font-bold shadow-[0_12px_34px_rgba(240,200,106,0.28)] transition-transform duration-300 hover:scale-[1.01] disabled:opacity-60 disabled:hover:scale-100"
+                className="w-full h-12 rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] text-[#241645] text-sm font-bold shadow-[0_12px_34px_rgba(240,200,106,0.28)] transition-transform duration-300 hover:scale-[1.01] disabled:opacity-60 disabled:hover:scale-100 motion-reduce:transition-none motion-reduce:hover:scale-100"
                 style={brandColor ? { background: brandColor, color: ctaTextColor, boxShadow: "none" } : undefined}
                 disabled={isLoading || (!isLogin && (!consentAgreements || !consentDataUsage))}
               >
@@ -1004,7 +1080,7 @@ const Auth = () => {
                 <div className="w-full border-t border-border/40" />
               </div>
               <div className="relative flex justify-center">
-                <span className="bg-background px-4 text-xs text-muted-foreground/60">
+                <span className="bg-background px-4 text-xs text-muted-foreground">
                   or continue with
                 </span>
               </div>
@@ -1047,7 +1123,7 @@ const Auth = () => {
                 <div className="w-full border-t border-border/40" />
               </div>
               <div className="relative flex justify-center">
-                <span className="bg-background px-4 text-xs text-muted-foreground/60">
+                <span className="bg-background px-4 text-xs text-muted-foreground">
                   {isLogin ? (isClientInvite ? "New here?" : "New to Paige Agent?") : "Already have an account?"}
                 </span>
               </div>

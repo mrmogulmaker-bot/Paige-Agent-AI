@@ -16,6 +16,12 @@ import { Component, Suspense, lazy, useEffect, useRef, useState, type ReactNode 
 import { paigeAnim } from "@/lib/paigeAnim";
 import { appUrl } from "@/lib/hostRouting";
 import { onboardingPathWithPlan } from "@/lib/auth/signupPlanIntent";
+import {
+  isSoloBetaPlan,
+  soloBetaCheckoutBody,
+  soloBetaDisplayIntent,
+  soloBetaSignupPath,
+} from "@/lib/auth/soloBetaAcquisition";
 import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -63,88 +69,50 @@ const NAV = [
 
 // Hero workspace panels (coaching-generic; no finance framing)
 const PANELS = [
-  { icon: MessageSquare, eyebrow: "Paige · replying to Maya", body: "Rescheduled your 3:00 to Thursday — sent the prep doc and confirmed she got it.", pos: "right-[5%] top-[15%]", depth: 0 },
-  { icon: CalendarCheck, eyebrow: "Kickoff booked · Wed 11:00", body: "New client onboarded while you slept.", pos: "right-[30%] top-[30%]", depth: 0.5 },
+  { icon: MessageSquare, eyebrow: "Paige · replying to Maya", body: "A reschedule draft and prep notes are ready for your review.", pos: "right-[5%] top-[15%]", depth: 0 },
+  { icon: CalendarCheck, eyebrow: "Kickoff booked · Wed 11:00", body: "A guided kickoff checklist is ready to review.", pos: "right-[30%] top-[30%]", depth: 0.5 },
   { icon: Trophy, eyebrow: "Client milestone", body: "James hit week 12 — celebration prepped.", pos: "right-[9%] top-[54%]", depth: 0.25 },
   { icon: Users, eyebrow: "Priya S. · Growth cohort", body: "Engagement dipping — a nudge is queued for your review.", pos: "right-[38%] top-[64%]", depth: 0.7 },
-  { icon: Receipt, eyebrow: "Retainer · December", body: "Invoice sent · $4,200 · reminder scheduled for Friday.", pos: "right-[3%] top-[77%]", depth: 0.4 },
+  { icon: Receipt, eyebrow: "Retainer · December", body: "Billing status is organized for owner review.", pos: "right-[3%] top-[77%]", depth: 0.4 },
 ];
 
 const DAY = [
   { t: "6:47 AM", icon: Sunrise, line: "I'm drafting your morning brief.", tag: "Morning brief ready" },
-  { t: "8:15 AM", icon: Users, line: "I onboarded three new clients while you slept.", tag: "3 welcome sequences sent" },
+  { t: "8:15 AM", icon: Users, line: "I organized three client kickoff checklists for your review.", tag: "3 kickoff reviews ready" },
   { t: "10:30 AM", icon: MessageSquare, line: "I drafted the follow-ups from yesterday's session.", tag: "Session follow-ups drafted" },
-  { t: "12:00 PM", icon: Workflow, line: "I ran the check-in sequence for your Tier 2 cohort.", tag: "Tier 2 · check-ins sent" },
+  { t: "12:00 PM", icon: Workflow, line: "I prepared a cohort check-in plan for your review.", tag: "Cohort check-in draft ready" },
   { t: "2:15 PM", icon: Flag, line: "I flagged two clients who need attention this week.", tag: "2 clients flagged" },
-  { t: "4:00 PM", icon: Receipt, line: "I sent this month's invoices and drafted the reminders.", tag: "Retainer invoices sent" },
+  { t: "4:00 PM", icon: Receipt, line: "I organized this month's billing follow-up view.", tag: "Billing follow-up visible" },
   { t: "8:00 PM", icon: CalendarCheck, line: "I prepared tomorrow's calendar with your talking points.", tag: "Tomorrow prepped" },
 ];
 
 const PROOF = [
-  { q: "Paige runs the parts of my practice I used to dread. I got my evenings back.", a: "Business coach · Chicago" },
-  { q: "The follow-through happens whether I remember it or not. My clients feel it.", a: "Executive coach · Austin" },
-  { q: "Every client gets the follow-up I could never keep up with. Retention's up.", a: "Management consultant · Los Angeles" },
-  { q: "She handles the whole back office. I just show up and do the work.", a: "Agency owner · Denver" },
-  { q: "My clients have never been more looked-after, and I'm doing a fraction of the admin.", a: "Strategy advisor · Miami" },
-  { q: "Onboarding, check-ins, recaps — Paige runs all of it. It's like a full ops team.", a: "Author & thought leader · Dallas" },
+  { q: "Keep client context, next steps, and drafts in one governed workspace.", a: "Solo business coach" },
+  { q: "Review the day’s priorities without pretending every system is connected.", a: "Solo executive coach" },
+  { q: "Prepare follow-ups in your voice, then decide what moves forward.", a: "Solo consultant" },
+  { q: "Turn first-run setup into a focused path toward useful work.", a: "Solo advisor" },
+  { q: "See what is ready, pending, or unavailable before taking action.", a: "Solo strategist" },
+  { q: "Build a deliberate operating rhythm without an agency-sized setup.", a: "Solo creator" },
 ];
 
-// DB-true Solo / Agency / Enterprise: Solo $149/mo, Agency $397/mo,
-// Enterprise custom. Each entry carries its `slug` so the card CTA wires straight to
-// platform-subscription-checkout; `custom` gates the Enterprise "Talk to us" contact
-// path (no $0 subscribe). §13 — every number matches platform_subscription_plans
-// (14900 / 39700 / 0-sentinel); no phantom $58/$349. Solo & Agency carry a REAL
-// 14-day trial (checkout subscription_data.trial_period_days), so "Start free trial"
-// is honest.
+// Paige Solo is the only public beta offer. The approved price is $74.50/month.
 const PLANS = [
   {
     slug: "solo",
     name: "Solo",
-    price: "$149",
+    price: "$74.50",
     cadence: "/mo",
-    tagline: "For the operator running the whole show themselves.",
+    tagline: "For the founder running a client-service business.",
     features: [
-      "Paige runs your pipeline, follow-ups, and client onboarding",
-      "One workspace for every client, deliverable, and next move",
-      "Her team drafts the outreach — you approve in a click",
-      "At-risk clients flagged before they slip",
+      "One governed Paige workspace",
+      "Server-verified membership and access",
+      "A focused first-run setup path",
     ],
-    cta: "Start free trial",
+    cta: "Continue with Paige Solo",
     highlight: false,
     custom: false,
   },
-  {
-    slug: "agency",
-    name: "Agency",
-    price: "$397",
-    cadence: "/mo",
-    tagline: "For the team running many client accounts at once.",
-    features: [
-      "Everything in Solo, across your whole team",
-      "Unlimited seats and sub-accounts under one roof",
-      "Paige runs each client account and flags what needs you",
-      "Shared playbooks and one command center for the whole book",
-    ],
-    cta: "Start free trial",
-    highlight: true,
-    custom: false,
-  },
-  {
-    slug: "enterprise",
-    name: "Enterprise",
-    price: "Custom",
-    cadence: "",
-    tagline: "For the operator running many businesses at once.",
-    features: [
-      "Every brand and portfolio company, run by Paige under one roof",
-      "A dedicated build team and white-glove onboarding",
-      "Governance, security, and data controls on your terms",
-      "Your own Paige playbooks across every business you own",
-    ],
-    cta: "Talk to us",
-    highlight: false,
-    custom: true,
-  },
+
 ];
 
 /** Degrade gracefully: if the 3D scene ever throws, drop it and keep the
@@ -219,7 +187,7 @@ function FloatingPanels() {
  */
 const INTRO_THREAD = [
   { who: "Maya R.", side: "in", text: "Can't make Thursday — this week got away from me 😞" },
-  { who: "Paige", side: "out", text: "Moved Maya to Tuesday 10 AM, sent the invite, and carried her prep notes over. Drafted a warm reply so she doesn't feel like a bother." },
+  { who: "Paige", side: "out", text: "Maya's reschedule, prep notes, and a warm reply draft are together for your review. Nothing is presented as sent until the governed action is verified." },
   { who: "Paige", side: "out", text: "Devin from last night's webinar — follow-up drafted before it goes cold. And Jordan's gone quiet 12 days: flagging at-risk." },
 ];
 // One cinematic beat, ~5.4s, in four acts:
@@ -269,7 +237,6 @@ function IntroSequence({ onDone, onReveal }: { onDone: () => void; onReveal: () 
       window.removeEventListener("keydown", onKey);
       window.clearTimeout(t);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
     <motion.div
@@ -422,52 +389,14 @@ export default function PaigeHome() {
 
   const [subscribingSlug, setSubscribingSlug] = useState<string | null>(null);
 
-  // Real Tier-1 subscribe — mirrors Pricing.tsx handleSubscribe so the plan choice
-  // STARTS from the homepage (no scroll-to-pricing indirection). Signed-out (the
-  // landing case): carry plan intent to signup; after the account is created Auth.tsx
-  // routes to /onboarding?plan=… (business context + terms) and checkout is the LAST
-  // step from there (task #66 reorder). goAuth crosses to the app origin where the auth
-  // session actually lives (host split), so on the marketing origin the session is null
-  // and this path is taken — correct.
-  const handleSubscribe = async (slug: string) => {
+  // Every homepage offer enters the same approved Solo eligibility flow.
+  // Checkout is never started from marketing and existing users are never silently enrolled.
+  const handleSubscribe = (slug: string) => {
+    if (!isSoloBetaPlan(slug)) return;
     setSubscribingSlug(slug);
-    try {
-      const { data: sessionRes } = await supabase.auth.getSession();
-      if (!sessionRes.session?.user) {
-        goAuth(`/auth?mode=signup&plan=${slug}&billing=monthly`);
-        return;
-      }
-      // S1 compliance hardening (mirrors Pricing.tsx): a signed-in but TENANT-LESS user
-      // has never seen the /onboarding clickwrap, so route them there to accept the
-      // subscriber agreement before checkout — never straight to Stripe. Direct checkout
-      // is reserved for the grandfathered has-tenant path. (On the marketing origin the
-      // session is usually null anyway; this covers a signed-in app-origin visit.)
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("active_tenant_id")
-        .eq("user_id", sessionRes.session.user.id)
-        .maybeSingle();
-      if (!prof?.active_tenant_id) {
-        goAuth(onboardingPathWithPlan({ plan: slug, billing: "monthly" }));
-        return;
-      }
-      const { data, error } = await supabase.functions.invoke(
-        "platform-subscription-checkout",
-        { body: { plan_slug: slug, billing_period: "monthly", success_path: "/welcome?checkout=success" } },
-      );
-      if (error) throw error;
-      const url = (data as { url?: string } | null)?.url;
-      if (!url) throw new Error("Checkout didn't return a link.");
-      window.location.href = url;
-    } catch {
-      // Fallback keeps the CTA alive (never a dead button): route to signup with the
-      // plan intent so checkout still starts.
-      goAuth(`/auth?mode=signup&plan=${slug}&billing=monthly`);
-      setSubscribingSlug(null);
-    }
+    goAuth("/pricing");
   };
-  const handleContact = () =>
-    (window.location.href = "mailto:sales@paigeagent.ai?subject=Enterprise%20Inquiry");
+
   // The cinematic opening is opt-in. Autoplay made the first useful action wait
   // behind a 5.4s sequence; visitors can still launch it from "Watch Paige open."
   const [showIntro, setShowIntro] = useState(() => {
@@ -514,8 +443,7 @@ export default function PaigeHome() {
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [showIntro]);
 
   return (
     <div
@@ -559,7 +487,7 @@ export default function PaigeHome() {
             Log in
           </button>
           <button
-            onClick={() => goAuth("/auth?mode=signup")}
+            onClick={() => goAuth(soloBetaSignupPath())}
             className="rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] px-4 py-2 text-sm font-bold text-[#241645] transition-transform hover:scale-105"
           >
             Hire Paige
@@ -596,7 +524,7 @@ export default function PaigeHome() {
             className="font-bold tracking-tight text-[#F8F5EE]"
             style={{ fontFamily: HEAD, fontSize: "clamp(40px, 6.4vw, 92px)", letterSpacing: "-0.03em", lineHeight: 0.96, textShadow: "0 2px 40px rgba(0,0,0,0.85)" }}
           >
-            Paige runs your <br />{" "}
+            Paige brings your <br />{" "}
             <span className="bg-gradient-to-br from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">business.</span>
           </motion.h1>
           <motion.p
@@ -607,11 +535,11 @@ export default function PaigeHome() {
             You just do the <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">work.</span>
           </motion.p>
           <motion.p variants={rise} className="mt-6 max-w-lg text-lg leading-relaxed text-[#F8F5EE]/70 md:text-xl [text-shadow:0_2px_20px_rgba(0,0,0,0.7)]">
-            Follow-ups, onboarding, client care, and the work between meetings — handled in one place, with you in control.
+            Follow-ups, setup, client context, and the work between meetings — organized in one guided Solo workspace.
           </motion.p>
           <motion.div variants={rise} className="mt-8 flex flex-col gap-3 sm:mt-9 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
             <button
-              onClick={() => goAuth("/auth?mode=signup")}
+              onClick={() => goAuth(soloBetaSignupPath())}
               className="group inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] px-8 py-3.5 text-sm font-bold text-[#2A1B4E] shadow-[0_10px_40px_rgba(212,167,82,0.4)] transition-transform hover:scale-105 sm:w-auto"
             >
               Start with Paige
@@ -653,15 +581,15 @@ export default function PaigeHome() {
               Step inside where Paige works.
             </h2>
             <p className="mt-5 max-w-2xl text-base leading-relaxed text-white/70 md:text-lg">
-              Pipelines, drafts, sequences, and the pulse of every client — open a panel and see the surface Paige runs for you.
+              Pipelines, drafts, setup, and client context — open a panel and see what is ready for your review.
             </p>
           </motion.div>
 
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { icon: Users, t: "Pipeline board", d: "Every client, every stage, and the next move Paige is carrying forward." },
+              { icon: Users, t: "Pipeline board", d: "Client stages and next-step context, gathered for review." },
               { icon: MessageSquare, t: "Drafting window", d: "Follow-ups and recaps written in your voice, ready for review." },
-              { icon: Workflow, t: "Workflow diagram", d: "Onboarding and check-ins that run on one visible rail." },
+              { icon: Workflow, t: "Workflow diagram", d: "Onboarding and check-in plans organized on one visible rail." },
               { icon: Trophy, t: "Engagement pulse", d: "Who is thriving, who needs attention, and why Paige surfaced it." },
             ].map((c) => (
               <motion.div key={c.t} variants={rise} className="group rounded-2xl border border-white/10 bg-[#21103d]/72 p-6 backdrop-blur-md transition-all hover:border-[#D4A752]/50 hover:bg-[#28144a]/82">
@@ -687,10 +615,10 @@ export default function PaigeHome() {
           <motion.div initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} variants={stagger} className="mb-16 text-center">
             <motion.div variants={rise} className="mb-4 text-[12px] font-medium uppercase tracking-[0.18em] text-[#F0C86A]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>A day with Paige</motion.div>
             <motion.h2 variants={rise} className="text-4xl font-bold md:text-5xl" style={{ fontFamily: HEAD }}>
-              One day. <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">Fully handled.</span>
+              One day. <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">Clearly guided.</span>
             </motion.h2>
             <motion.p variants={rise} className="mx-auto mt-4 max-w-xl text-white/60">
-              From your first coffee to lights-out, Paige runs the operation in the background — you show up for the work only you can do.
+              From your first review to tomorrow's plan, Paige keeps the work visible and helps you prepare the next move.
             </motion.p>
           </motion.div>
           <div className="relative">
@@ -719,7 +647,7 @@ export default function PaigeHome() {
       {/* PROOF */}
       <Section id="proof" className="py-28">
         <motion.h2 variants={rise} className="mb-12 text-center text-4xl font-bold md:text-5xl" style={{ fontFamily: HEAD }}>
-          Businesses that <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">hired Paige&rsquo;s team.</span>
+          Built deliberately for <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">Solo founders.</span>
         </motion.h2>
         <div className="grid gap-5 md:grid-cols-3">
           {PROOF.map((t) => (
@@ -734,12 +662,12 @@ export default function PaigeHome() {
       {/* PRICING */}
       <Section id="pricing" className="py-28">
         <motion.h2 variants={rise} className="mb-3 text-center text-4xl font-bold md:text-5xl" style={{ fontFamily: HEAD }}>
-          Ready to <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">hire me?</span>
+          Ready to <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">start with Solo?</span>
         </motion.h2>
         <motion.p variants={rise} className="mx-auto mb-14 max-w-md text-center text-white/60">
-          Solo &amp; Agency start with a 14-day free trial · your own clients, offers, and pricing · Paige runs the operation from day one.
+          Paige Solo is the beta available now. We are building the broader platform deliberately; other account types are not open for enrollment.
         </motion.p>
-        <div className="grid gap-6 md:grid-cols-3">
+        <div className="mx-auto grid max-w-md gap-6">
           {PLANS.map((p) => (
             <motion.div
               key={p.slug}
@@ -766,7 +694,7 @@ export default function PaigeHome() {
                 ))}
               </ul>
               <button
-                onClick={() => (p.custom ? handleContact() : handleSubscribe(p.slug))}
+                onClick={() => handleSubscribe(p.slug)}
                 disabled={!p.custom && subscribingSlug !== null}
                 className={`rounded-full px-6 py-3 text-sm font-bold transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60 ${p.highlight ? "bg-gradient-to-br from-[#F0C86A] to-[#D4A752] text-[#241645]" : "border border-white/20 bg-white/5 text-white hover:border-[#D4A752]/40"}`}
               >
@@ -782,9 +710,9 @@ export default function PaigeHome() {
         <motion.div variants={rise} className="relative overflow-hidden rounded-3xl border border-[#D4A752]/30 bg-gradient-to-br from-[#D4A752]/[0.14] to-[#6f4bd8]/[0.06] px-8 py-16 text-center">
           <div aria-hidden className="absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-[#F0C86A]/60 to-transparent" />
           <h2 className="mx-auto max-w-2xl text-4xl font-black md:text-5xl" style={{ fontFamily: HEAD }}>Give yourself back your time.</h2>
-          <p className="mx-auto mt-4 max-w-lg text-white/70">Pick your plan and Paige gets to work on day one — Solo and Agency start with a 14-day free trial, your card only charged when it ends.</p>
+          <p className="mx-auto mt-4 max-w-lg text-white/70">Paige Solo is the beta available now. Review the approved Solo offer, then create your workspace without an account-type detour.</p>
           <a href="#pricing" className="mt-8 inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] px-8 py-3 font-bold text-[#241645] transition-transform hover:scale-105">
-            Choose your plan <ArrowRight className="h-4 w-4" />
+            See Paige Solo <ArrowRight className="h-4 w-4" />
           </a>
         </motion.div>
       </Section>

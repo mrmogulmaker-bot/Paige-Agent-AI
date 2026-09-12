@@ -131,3 +131,9 @@ gap back to Billing. It does not cache, re-derive, or extend these semantics.
 *Refresh rule:* when the slice merges, replace the STATUS block with the shipped commit and the
 migration version, re-verify §2 against the live function signature, and note any field added or
 removed by Foundation B/C.
+
+## 8. Solo Beta acquisition billing boundary — Gate A candidate (2026-09-12)
+
+This candidate adds a dedicated acquisition lane without widening the shipped Settings/Billing or Paige Spine read contract. The browser can request only offer code `paige-solo-beta-monthly-v1`; the service verifies test mode, `$74.50 USD`, monthly interval, zero trial, actor/customer/session identity, and the current standalone agreement before atomic fulfillment. URL success never proves payment. A fulfilled user is subsequently verified from the immutable fulfillment receipt, persisted subscription/provider facts, and active owner membership; later agreement or offer-catalog rotation cannot erase paid access. Provider lifecycle states `past_due`, `canceled`, `unpaid`, and `paused` revoke access truthfully and are ordered idempotently by signed event time.
+
+No payment-method/provider secret enters Spine, Mind, Memory, or the browser response. Paige receives no new billing write or support-resolution authority. PR #899's payment-setup ordering remains separate. Stripe acceptance, migration apply, deployment, authenticated runtime, and owner acceptance remain `PROOF OWED`/`UNVERIFIED`.
