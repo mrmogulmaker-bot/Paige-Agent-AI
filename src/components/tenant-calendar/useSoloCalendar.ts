@@ -397,6 +397,17 @@ export interface UseSoloCalendarResult {
   refresh: () => void;
   setStatus: (id: string, status: string) => Promise<{ ok: boolean; message?: string }>;
   createBooking: (input: CreateBookingInput) => Promise<{ ok: boolean; message?: string }>;
+  /** Move a booking to a new time through the tenant-gated
+   *  `reschedule_internal_booking` RPC — never a raw table UPDATE (RLS would scope
+   *  it to the caller's own rows and a refusal would silently no-op, §13). The
+   *  server enforces caller scope, the DB overlap constraint refuses a clash, and
+   *  the UPDATE emits the `booking.rescheduled` governed Rail signal on its own. */
+  reschedule: (id: string, startAt: Date, durationMinutes: number) => Promise<{ ok: boolean; message?: string }>;
+  /** Edit a booking's details (title, guest, notes, calendar) through the
+   *  tenant-gated `update_internal_booking` RPC. It never touches start/end or
+   *  status, so it moves no time and files no false "moved"/"cancelled" Rail
+   *  event — a details edit is not a client-visible scheduling moment. */
+  edit: (input: EditBookingInput) => Promise<{ ok: boolean; message?: string }>;
   colorForBooking: (b: SoloBooking, colorBy: "calendar" | "host") => string;
 }
 
@@ -407,6 +418,42 @@ export interface CreateBookingInput {
   calendarId: string;
   guestName: string | null;
   blocked: boolean;
+}
+
+export interface EditBookingInput {
+  id: string;
+  title: string;
+  guestName: string | null;
+  notes: string | null;
+  /** `UNASSIGNED_CALENDAR` sentinel maps to a real NULL calendar_id. */
+  calendarId: string;
+}
+
+/**
+ * Map a booking-write RPC failure to one honest sentence.
+ *
+ * The SQLSTATEs are the ones the shared server guard actually raises, plus the two
+ * the overlap constraint raises: 23505 / 23P01 = the time collides with something
+ * already held (create relies on these same two codes), 42501 = the caller may not
+ * change this booking (`BOOKING_FORBIDDEN`), P0002 = the row is gone
+ * (`BOOKING_NOT_FOUND`), 22023 = the time itself is invalid (`BOOKING_BAD_TIME`).
+ * Anything else surfaces verbatim rather than being flattened to a generic line —
+ * a swallowed real cause is exactly what §13/§32 forbid.
+ */
+export function bookingWriteMessage(err: { code?: string; message: string }): string {
+  switch (err.code) {
+    case "23505":
+    case "23P01":
+      return "Something is already on your schedule at that time.";
+    case "42501":
+      return "You can't change that booking.";
+    case "P0002":
+      return "That appointment no longer exists.";
+    case "22023":
+      return "That time could not be used.";
+    default:
+      return err.message;
+  }
 }
 
 /** One read per burst. A cancel-and-rebook writes several rows in quick
@@ -770,6 +817,51 @@ export function useSoloCalendar(
     return { ok: true };
   }, [activeTenantId]);
 
+  const reschedule = useCallback(async (id: string, startAt: Date, durationMinutes: number) => {
+    if (!activeTenantId) return { ok: false, message: "No authorized account is resolved." };
+    // Duration is preserved from the drawer (prefilled from the booking's own
+    // length), floored at 5 min exactly as create does, so a rescheduled meeting
+    // keeps its shape unless the person deliberately changes it.
+    const end = new Date(startAt.getTime() + Math.max(5, durationMinutes) * 60000);
+    // The tenant-gated RPC, never a raw UPDATE: RLS scopes a direct write to the
+    // caller's own rows so moving a teammate's booking would no-op while reporting
+    // success. The RPC enforces tenant + host/admin scope and refuses truthfully,
+    // the DB overlap constraint refuses a clash, and the UPDATE fires the
+    // `booking.rescheduled` Rail signal on its own.
+    const { error: err } = await supabase.rpc("reschedule_internal_booking" as never, {
+      _booking_id: id,
+      _start_at: startAt.toISOString(),
+      _end_at: end.toISOString(),
+      _tenant_id: activeTenantId,
+    } as never);
+    if (err) return { ok: false, message: bookingWriteMessage(err as { code?: string; message: string }) };
+    // The row moved server-side. The realtime channel will carry the new time in,
+    // but nudge a read so the grid is correct even if that one event is missed.
+    setNonce((n) => n + 1);
+    return { ok: true };
+  }, [activeTenantId]);
+
+  const edit = useCallback(async (input: EditBookingInput) => {
+    if (!activeTenantId) return { ok: false, message: "No authorized account is resolved." };
+    const title = input.title.trim();
+    if (!title) return { ok: false, message: "An appointment needs a title." };
+    // Details only — never start/end or status — so a typo fix or a guest name
+    // being added moves no time and files no false Rail event (§13). Tenant-gated
+    // RPC for the same RLS reason as reschedule; the server also refuses a
+    // calendar that belongs to another tenant.
+    const { error: err } = await supabase.rpc("update_internal_booking" as never, {
+      _booking_id: input.id,
+      _title: title,
+      _guest_name: input.guestName?.trim() || null,
+      _notes: input.notes?.trim() || null,
+      _calendar_id: input.calendarId === UNASSIGNED_CALENDAR ? null : input.calendarId,
+      _tenant_id: activeTenantId,
+    } as never);
+    if (err) return { ok: false, message: bookingWriteMessage(err as { code?: string; message: string }) };
+    setNonce((n) => n + 1);
+    return { ok: true };
+  }, [activeTenantId]);
+
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
 
   return {
@@ -777,6 +869,6 @@ export function useSoloCalendar(
     // Either truth makes the schedule unreliable: the last read failed, or the
     // change stream is not delivering. Both must clear before this says LIVE.
     stale: refreshFailed || channelDown, lastSyncedAt, retry,
-    refresh, setStatus, createBooking, colorForBooking,
+    refresh, setStatus, createBooking, reschedule, edit, colorForBooking,
   };
 }

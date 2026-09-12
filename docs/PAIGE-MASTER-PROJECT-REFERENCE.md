@@ -802,6 +802,9 @@ credentials, and bounded real-publication proof. **Customer-release eligibility:
 safety and database-health foundation, not a live Social capability. Authority/evidence:
 `docs/evidence/ui-delivery/social-operations-phase-0-truth-containment.md`.
 
+**2026-09-12 Solo Calendar — owner RESCHEDULE + EDIT wired to the live governed booking engine (branch `claude/busy-archimedes-bsvrdi`, PR + merge SHA recorded on merge, owner-approved Gate A):**
+Closes the genuine remaining gap in the *mounted* Solo Calendar. **§18/§30 correction (see §10):** the brief targeted `src/solo/calendar-data.tsx`/`calendar.tsx` as "a fixture with no write scope," but that surface is **dead, orphaned, and contract-test-blocked** — `SoloApp.tsx:266` mounts `TenantCanonicalCalendarWorkspace → SoloCalendarWorkspace` backed by the real `useSoloCalendar` hook, already wired to the deployed native booking engine (`calendars`, `internal_bookings`, `list_team_bookings`, `create_internal_booking`, `admin_set_booking_status`, realtime, real overlap conflicts, honest empty/loading/stale states). Owner could create, cancel/status-change, and see real tenant-scoped events — but could **not reschedule or edit**. This wires both. **Reschedule (move):** `useSoloCalendar.reschedule()` + a `RescheduleDrawer` (mirrors `CreateDrawer`, existing `sc-*` design system — §00 port-only) call the **already-deployed** `reschedule_internal_booking` RPC (SECURITY DEFINER, §59-guarded: booking's tenant + admin/coach/host; `BOOKING_BAD_TIME`); the DB GiST EXCLUDE `internal_bookings_no_overlap` refuses a clash (23P01), and the UPDATE **auto-emits the `booking.rescheduled` governed Layer-C signal** to `paige_client_events` via the existing `emit_booking_rail` trigger — no migration, live on frontend deploy. **Edit (details):** new migration `20270125000000_calendar_update_internal_booking.sql` adds `update_internal_booking(_booking_id,_title,_guest_name,_notes,_calendar_id,_tenant_id)` — clones the reschedule/cancel §59 guard verbatim, validates a moved-to calendar belongs to the booking's own tenant (mirrors create), touches **title/guest/notes/calendar ONLY** (never start/end/status, so the emit trigger fires **no** false `booking.rescheduled`/`booking.cancelled` — verified against the trigger body), grant `authenticated`+`service_role` (anon revoked → `lint:definer-fns` clean). `EditDrawer` + `useSoloCalendar.edit()` wire it. Both reuse the tenant-gated-RPC pattern (never a raw client UPDATE, which RLS would no-op-with-false-success, §13); errors map through one honest `bookingWriteMessage` helper (overlap/forbidden/not-found/bad-time → plain sentences, unknown → verbatim). Reschedule/Edit are withheld on an off-schedule (cancelled/no-show) booking; the detail-drawer foot wraps (`flex-wrap`, no unreachable control). **Proven (§13/§32, evidence separated):** *automated* — 128/128 tenant-calendar tests (7 new: reschedule move+preserve-length, reschedule refusal, off-schedule disable, edit carry-values, empty-title guard, edit refusal, + `bookingWriteMessage` unit) + the existing contract test that keeps the fixture de-mounted; *static* — `typecheck` adds **0** errors (13 pre-existing on `main`, none in touched files), `eslint` clean on touched files, `vite build` green, `migration-lint` + `lint:definer-fns` green. **PROOF OWED (§32/§70):** the migration's BEGIN..ROLLBACK SQL proof is owed to CI `premerge-migration-proof` and its persisted apply to `deploy-migrations` (Supabase MCP was denied all session — no local prod verify); the authenticated owner live-drive of reschedule + edit (§32.c) is owed to a browser-capable session (this headless session has no browser/prod reach). **Deploy reality:** reschedule goes live on the frontend (Vercel) merge (RPC already deployed); edit is live once `deploy-migrations` applies `20270125000000` (a brief pre-apply window would surface the honest "function not found" message via `bookingWriteMessage`, never a crash; reschedule is unaffected). **Customer-release eligibility:** none — internal build; owner reviews on the live site per §4 pre-launch.
+
 **2026-09-12 Social publishing server-side containment — INTERIM guard, LIVE (PR #1164, main `19ccb133699837d745c053769070ca7a3659f06f`, production channel, owner-approved Gate A):**
 Denies Social PUBLICATION at both content-publication seams — `paige-social` `post` (Upload-Post) and
 `meta-schedule-post` (Meta Graph FB `/feed` + IG `/media_publish`) — with an honest `UNAVAILABLE` (reason +
@@ -4000,6 +4003,28 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+
+ - **2026-09-12 — The "Solo Calendar is a fixture with no write scope" premise was OUTDATED; the
+   mounted Solo Calendar was already a real, tenant-safe, governed surface.** A build brief described
+   the Solo Calendar as a fixture (citing `src/solo/calendar-data.tsx`/`calendar.tsx`, whose own
+   comments say booking pages/availability/slot-solver/write-scope are "not built"). CC's live-code
+   check (§0/§BRAIN.2 — answer from the code, not the claim) found the opposite: those files are
+   **dead, orphaned, and a contract test (`TenantCanonicalCalendarWorkspace.contract.test.ts`)
+   ENFORCES the Solo shell must not import them.** `SoloApp.tsx:266` mounts
+   `TenantCanonicalCalendarWorkspace → SoloCalendarWorkspace` on the real `useSoloCalendar` hook, wired
+   to the July-2026 native booking engine that is **deployed on prod** (behind `db-live`/`edge-live`):
+   `calendars` + `internal_bookings` + `list_team_bookings`/`create_internal_booking`/
+   `admin_set_booking_status` + realtime + a DST-safe slot solver in `public-booking` + the public
+   `/book/:slug` page + `emit_booking_rail` → Layer-C `paige_client_events`. So most of the brief's
+   "complete intended capability" was **already delivered**; the genuine remaining gap was owner-side
+   **reschedule + edit** (the `reschedule_internal_booking` RPC existed but had no owner-side caller;
+   no edit RPC existed). Reversal recorded per §11 ("mark reversed, don't delete"): the brief's
+   fixture premise is REVERSED; the delivered work (Section 4.0, 2026-09-12) closed the real gap
+   WITHOUT rebuilding the calendar (§18/§30). A separate legacy dead subsystem also exists and is NOT
+   the live one: `paige_bookings` + `cal-list-bookings`/`cal-cancel-booking`/`handle-cal-webhook` +
+   the unrouted `BookingsAdmin`/`CalIntegrationConfig` (Cal.com integration, orphaned). Lesson: a
+   "the current thing is a fixture" premise is a claim to verify against the mounted surface first
+   (§70 — "already delivered" demands MORE proof), not a license to rebuild.
 
  - **2026-09-05 — The Solo Trust Compass became a real, tenant-governed control surface — and it is
    recorded as an RC, not a shipped claim, because the authenticated live-drive is OWED.** #780's

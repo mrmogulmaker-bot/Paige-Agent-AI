@@ -353,6 +353,17 @@ Paige chat tools (not nav surfaces), gated server-side to **admin / coach / supe
 
 Honest note (§13): the `contact.created` substrate (tables, trigger, drainer, read RPC) is code-complete and reviewed (§39/§5, no blockers) but **not live on prod** until the Social workstream fixes #1147 so the prod migration queue advances past it; the read tool degrades to "not available yet" until then. Authenticated owner-drive §32.c/§70 OWED on all three. Hardening fast-follows: #1149.
 
+### Solo Calendar — owner reschedule + edit (branch `claude/busy-archimedes-bsvrdi`, 2026-09-12)
+
+The mounted Solo Calendar (`SoloCalendarWorkspace`, via `TenantCanonicalCalendarWorkspace` `tier="solo"`) was already LIVE and wired to the deployed native booking engine (read/create/cancel/status). This adds the two owner-side write actions it lacked. Gated by the existing chat/RLS tenant scope + the booking RPCs' own §59 guard (booking's tenant + admin/coach/host) — no new `getTierFeatureSet` flag. Agency/Enterprise operators use a **different** surface (`CalendarAdmin`), unchanged here; the "—" below means "not this surface," not "cannot reschedule."
+
+| Capability | God (act-as) | Agency-as-tenant | Standalone Solo | Sub-account | Client | Anonymous | Deploy state |
+|---|---|---|---|---|---|---|---|
+| Reschedule (move) a booking — `reschedule_internal_booking` + `RescheduleDrawer` | ✓ | — (uses CalendarAdmin) | ✓ | ✓ | — (client seat sealed) | 403 | **frontend-LIVE on merge** (RPC already deployed; auto-emits `booking.rescheduled` Layer-C) |
+| Edit details (title/guest/notes/calendar) — `update_internal_booking` + `EditDrawer` | ✓ | — (uses CalendarAdmin) | ✓ | ✓ | — | 403 | **LIVE after `deploy-migrations` applies `20270125000000`** (new RPC); frontend LIVE on merge |
+
+Honest note (§13/§32): reschedule needs no migration (existing prod RPC) so it is live the moment the frontend deploys; edit's `update_internal_booking` is code-complete + lint-clean but **not live on prod** until `deploy-migrations` applies its migration — the UI surfaces an honest "function not found" message (never a crash) in any brief pre-apply window. Authenticated owner-drive of both is §32.c/§70 PROOF OWED to a browser-capable session (this headless session has no browser/prod reach).
+
 ### Trust Compass — the governed control surface (Command Center 3rd sub-tab, 2026-09-05)
 
 Trust Compass moved from a top-level Solo branch to the **third Command Center sub-tab** (Business

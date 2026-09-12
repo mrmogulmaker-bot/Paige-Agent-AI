@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addDays, findConflicts, foldClassSeats, rangeFor, rangeLabel, startOfWeek,
+  addDays, bookingWriteMessage, findConflicts, foldClassSeats, rangeFor, rangeLabel, startOfWeek,
   type SoloBooking,
 } from "./useSoloCalendar";
 
@@ -208,5 +208,31 @@ describe("foldClassSeats", () => {
       booking({ id: "solo", start_at: "2026-08-24T18:30:00Z", end_at: "2026-08-24T19:30:00Z" }),
     ];
     expect([...findConflicts(foldClassSeats(rows).visible)].sort()).toEqual(["class-1", "solo"]);
+  });
+});
+
+describe("bookingWriteMessage", () => {
+  // The reschedule and edit seams raise these exact SQLSTATEs (the overlap codes
+  // come from the DB exclusion constraint, the rest from the shared guard). Each
+  // must become one honest sentence, and an unrecognised failure must surface its
+  // real cause verbatim rather than be flattened to a generic line (§13/§32).
+  it("names an overlap for both the unique and the exclusion-constraint code", () => {
+    const taken = "Something is already on your schedule at that time.";
+    expect(bookingWriteMessage({ code: "23505", message: "duplicate key" })).toBe(taken);
+    expect(bookingWriteMessage({ code: "23P01", message: "conflicting key value violates exclusion constraint" })).toBe(taken);
+  });
+
+  it("maps the guard's own error codes to their plain meaning", () => {
+    expect(bookingWriteMessage({ code: "42501", message: "BOOKING_FORBIDDEN: wrong tenant" }))
+      .toBe("You can't change that booking.");
+    expect(bookingWriteMessage({ code: "P0002", message: "BOOKING_NOT_FOUND" }))
+      .toBe("That appointment no longer exists.");
+    expect(bookingWriteMessage({ code: "22023", message: "BOOKING_BAD_TIME: end must be after start" }))
+      .toBe("That time could not be used.");
+  });
+
+  it("surfaces an unrecognised failure verbatim instead of swallowing it", () => {
+    expect(bookingWriteMessage({ code: "08006", message: "connection failure" })).toBe("connection failure");
+    expect(bookingWriteMessage({ message: "no code at all" })).toBe("no code at all");
   });
 });

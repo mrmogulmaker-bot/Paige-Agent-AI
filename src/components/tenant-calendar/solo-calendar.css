@@ -366,7 +366,7 @@
 
 .sc-field { display: grid; gap: 5px; margin-bottom: 12px; }
 .sc-field label { color: var(--pg-muted); font-size: var(--pg-t-label); }
-.sc-field input, .sc-field select {
+.sc-field input, .sc-field select, .sc-field textarea {
   min-height: 36px;
   padding: 0 10px;
   border: 1px solid var(--pg-line);
@@ -375,7 +375,10 @@
   background: var(--pg-surface);
   font: 400 var(--pg-t-body) var(--pg-font-ui);
 }
-.sc-field input:focus-visible, .sc-field select:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 1px; }
+/* The notes field is the one multi-line control; it wears the same box as the
+   inputs above, only taller and vertically resizable so it never sets its own look. */
+.sc-field textarea { min-height: 68px; padding: 8px 10px; line-height: 1.45; resize: vertical; }
+.sc-field input:focus-visible, .sc-field select:focus-visible, .sc-field textarea:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 1px; }
 
 .sc-msg { margin-bottom: 12px; padding: 9px 11px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); color: var(--pg-ink-2); font-size: var(--pg-t-body); line-height: 1.5; }
 .sc-msg--bad { color: var(--pg-negative); border-color: color-mix(in srgb, var(--pg-negative) 42%, transparent); }
