@@ -657,6 +657,18 @@ Reference or any domain ledger; it governs how their facts become release and cu
 
 ### 4.0 Shipped Delivery Log
 
+**2026-09-12 Harness Layer G — proof-lane authenticated-proof framework (PR #1163, owner-approved Gate A):**
+Shipped `scripts/live-drive/proof-lane.mjs` — a reusable framework that turns an authenticated governed
+flow into data + a runner (extends `live-drive.mjs`, no fork). Honest by construction (§13/§32): reports
+`VERIFIED` only when a real authenticated drive asserts, `PROOF_OWED` (no browser launched) otherwise, and
+fails the flow when a negative/guard step's action unexpectedly succeeds. Proof-status vocabulary, negative
+step kinds (denied/approval/unavailable-connection/provider-failure/retry/cancelled/account-switch),
+build+tenant+actor+timestamp attribution, secret-redaction; 7 concrete governed-flow definitions. Proven:
+`test:proof-lane` 22/22 (CI, browser-free) + real-Chromium mechanics proof (sandbox). **Authenticated
+runtime is PROOF_OWED** across all 7 flows until a capable session has the least-privilege Solo test tenant
++ `LIVE_DRIVE_*` CI secrets (owner-approved; this session cannot provision/set-secrets/reach-prod). This is
+the Layer-G verification backbone that lets a binding-ledger surface move `PROOF_OWED → LIVE` once driven.
+
 **2026-09-12 Harness Completion Program — Map + P1 fresh-replay compatibility bridge (PR #1159, owner-approved Gate A):**
 Shipped `docs/delivery/harness-completion-map.md` — the owner's required first deliverable: a read-only
 A–G-layer navigation synthesis over the canonical records (grounded by a 5-agent crew against `main 6aa077d`),

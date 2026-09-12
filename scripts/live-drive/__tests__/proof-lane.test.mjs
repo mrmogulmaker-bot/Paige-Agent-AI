@@ -72,6 +72,39 @@ test("classifyStep: unknown expectation is UNVERIFIED, never verified", () => {
   assert.equal(classifyStep({ expect: "not-a-real-expect" }, { ok: true }).status, PROOF_STATUS.UNVERIFIED);
 });
 
+test("classifyStep: a SEMANTIC render needs a marker — bare navigation is not a pass (§39 F1)", () => {
+  // ok with no rendered marker: a plain render passes, but a semantic one stays UNVERIFIED.
+  assert.equal(classifyStep({ expect: STEP_EXPECT.RENDER }, { ok: true }).status, PROOF_STATUS.VERIFIED);
+  assert.equal(classifyStep({ expect: STEP_EXPECT.RENDER, semantic: true }, { ok: true }).status, PROOF_STATUS.UNVERIFIED);
+  assert.equal(classifyStep({ expect: STEP_EXPECT.RENDER, semantic: true }, { ok: true, markers: { rendered: true } }).status, PROOF_STATUS.VERIFIED);
+});
+
+test("classifyStep: READBACK is UNVERIFIED without a persisted marker (guards 'Saved.' that discards)", () => {
+  assert.equal(classifyStep({ expect: STEP_EXPECT.READBACK }, { ok: true }).status, PROOF_STATUS.UNVERIFIED);
+  assert.equal(classifyStep({ expect: STEP_EXPECT.READBACK }, { ok: true, markers: { persisted: true } }).status, PROOF_STATUS.VERIFIED);
+});
+
+test("classifyStep: UNAVAILABLE_CONNECTION — honest degrade verifies, crash/fake fails", () => {
+  assert.equal(classifyStep({ expect: STEP_EXPECT.UNAVAILABLE_CONNECTION }, { markers: { degradedHonestly: true } }).status, PROOF_STATUS.VERIFIED);
+  assert.equal(classifyStep({ expect: STEP_EXPECT.UNAVAILABLE_CONNECTION }, { markers: { crashed: true } }).failed, true);
+  assert.equal(classifyStep({ expect: STEP_EXPECT.UNAVAILABLE_CONNECTION }, { markers: { fakedSuccess: true } }).failed, true);
+});
+
+test("classifyStep: PROVIDER_FAILURE — reported failure verifies, faked success fails", () => {
+  assert.equal(classifyStep({ expect: STEP_EXPECT.PROVIDER_FAILURE }, { markers: { reportedFailure: true } }).status, PROOF_STATUS.VERIFIED);
+  assert.equal(classifyStep({ expect: STEP_EXPECT.PROVIDER_FAILURE }, { markers: { fakedSuccess: true } }).failed, true);
+});
+
+test("classifyStep: RETRY_SUCCEEDS — recovery verifies, a double effect fails", () => {
+  assert.equal(classifyStep({ expect: STEP_EXPECT.RETRY_SUCCEEDS }, { markers: { recovered: true } }).status, PROOF_STATUS.VERIFIED);
+  assert.equal(classifyStep({ expect: STEP_EXPECT.RETRY_SUCCEEDS }, { markers: { recovered: true, doubleEffect: true } }).failed, true);
+});
+
+test("classifyStep: CANCELLED — no-effect verifies, an effect that survived cancel fails", () => {
+  assert.equal(classifyStep({ expect: STEP_EXPECT.CANCELLED }, { markers: { noEffect: true } }).status, PROOF_STATUS.VERIFIED);
+  assert.equal(classifyStep({ expect: STEP_EXPECT.CANCELLED }, { markers: { noEffect: false } }).failed, true);
+});
+
 test("isNegativeExpect: guard expectations are negative, render/readback are not", () => {
   assert.equal(isNegativeExpect(STEP_EXPECT.DENIED), true);
   assert.equal(isNegativeExpect(STEP_EXPECT.RENDER), false);

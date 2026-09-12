@@ -548,7 +548,7 @@ jobs:
 
       # Proof-lane PURE logic (the authenticated-proof framework's honest core). Browser-free, so it
       # runs here; the browser MECHANICS are proved by scripts/live-drive/proof-lane.selftest.mjs in
-      # the pre-provisioned sandbox (CI has no browser — see scripts/live-drive/README.md).
+      # the pre-provisioned sandbox (CI has no browser — see scripts/live-drive/PROOF-LANE.md).
       - name: Proof-lane framework unit tests
         if: ${{ !cancelled() }}
         run: npm run test:proof-lane

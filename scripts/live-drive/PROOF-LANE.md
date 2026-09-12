@@ -33,6 +33,25 @@ npm run proof:lane             # run the governed flows (VERIFIED with creds; PR
 
 A single **failed** step fails the whole flow. Empty or unknown is `UNVERIFIED`, never a pass.
 
+### How this maps to the binding-ledger vocabulary (§18 — two deliberate layers, not a fork)
+
+The repo already has a CI-enforced **release-accounting** vocabulary for committed surface state
+(`scripts/ci/binding-ledger-lint.mjs`: `LIVE` / `PARTIAL` / `READ_ONLY_CONTEXT` /
+`INTENTIONALLY_ISOLATED` / `UNAVAILABLE` / `PROOF_OWED`). Proof-lane is a **runtime per-flow test
+verdict**, not surface accounting, and it never rewrites the ledger — so it uses its own verdict
+tokens (shared with the live-drive family it extends, which already reports `UNVERIFIED`). The one
+token that differs by name is deliberate and bridged here:
+
+| proof-lane verdict | binding-ledger meaning |
+|---|---|
+| `VERIFIED` | the **`authenticated_runtime` evidence** that lets a ledger entry move `PROOF_OWED → LIVE` |
+| `PARTIAL` / `PROOF_OWED` / `UNAVAILABLE` | same meaning as the ledger's same-named states |
+| `UNVERIFIED` | no runtime verdict yet — never a ledger `LIVE` |
+
+So a proof-lane `VERIFIED` flow is exactly the authenticated-runtime proof a surface needs before its
+binding-ledger row is allowed to read `LIVE`. Full cross-repo token reconciliation (unify vs. keep two
+documented layers) is tracked as its own issue, not done here.
+
 ## Defining a flow
 
 A flow is data. Each step names what the authenticated run must prove (`intent`), the surface `path`

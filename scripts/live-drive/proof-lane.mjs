@@ -153,9 +153,16 @@ export function classifyStep(step, observed = {}) {
 
   switch (expect) {
     case STEP_EXPECT.RENDER:
-      return observed.ok
-        ? { status: PROOF_STATUS.VERIFIED, note: "rendered/succeeded" }
-        : { status: PROOF_STATUS.UNVERIFIED, note: observed.error || "did not render" };
+      if (!observed.ok) return { status: PROOF_STATUS.UNVERIFIED, note: observed.error || "did not render" };
+      // A step whose intent requires proving something BEYOND mere reachability — a login actually
+      // opened a session, a create actually happened, a capability claim is honest — is marked
+      // `semantic: true`. It is VERIFIED only when its assert set an affirmative `markers.rendered`.
+      // Bare navigation success on a semantic step stays UNVERIFIED, so a silently-failed login or
+      // an unchecked claim can never fold to a hollow VERIFIED (§13, §39 Finding 1). Set
+      // `auth.successSelector` and/or an assert that sets `markers.rendered=true` to satisfy it.
+      if (step.semantic === true && m.rendered !== true)
+        return { status: PROOF_STATUS.UNVERIFIED, note: "semantic assertion owed: navigation alone does not prove this step; wire an assert that sets markers.rendered" };
+      return { status: PROOF_STATUS.VERIFIED, note: "rendered/succeeded" };
     case STEP_EXPECT.READBACK:
       return observed.ok && m.persisted === true
         ? { status: PROOF_STATUS.VERIFIED, note: "change persisted on fresh read" }
@@ -214,9 +221,11 @@ export function isNegativeExpect(expect) {
 }
 
 /**
- * Fold per-step verdicts into one flow status. A single failed step fails the flow (its verdict is
- * surfaced). All-verified is VERIFIED. Mixed verified + owed/unavailable (no failure) is PARTIAL.
- * All-owed is PROOF_OWED. All-unavailable is UNAVAILABLE. Empty/unknown is UNVERIFIED — never a pass.
+ * Fold per-step verdicts into one flow status. A single failed step fails the flow (→ UNVERIFIED,
+ * its verdict surfaced). All-verified is VERIFIED. All-owed is PROOF_OWED. All-unavailable is
+ * UNAVAILABLE. Any mix that contains ≥1 VERIFIED and ≥1 weaker-but-unfailed verdict (PROOF_OWED,
+ * UNAVAILABLE, or a plain UNVERIFIED such as a semantic step whose assert was not wired) is PARTIAL —
+ * strictly weaker than VERIFIED, so a mix never overclaims a pass. Empty/all-unknown is UNVERIFIED.
  */
 export function computeFlowStatus(stepResults = []) {
   if (!Array.isArray(stepResults) || stepResults.length === 0) return PROOF_STATUS.UNVERIFIED;
