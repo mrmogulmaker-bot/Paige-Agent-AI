@@ -325,9 +325,14 @@ declare
   linked_account text;
   confirmation_consumed_at timestamptz;
 begin
-  if tg_table_name='paige_social_posts' and new.campaign_brief_id is not null then
-    select tenant_id into linked_tenant from public.campaign_briefs where id=new.campaign_brief_id;
-    if linked_tenant is distinct from new.tenant_id then raise exception 'SOCIAL_CAMPAIGN_TENANT_MISMATCH' using errcode='23514'; end if;
+  -- NEW is a polymorphic record because this guard is shared by four tables.
+  -- Select the table shape before touching any table-specific field; otherwise
+  -- PostgreSQL tries to resolve campaign_brief_id on target/job/result rows.
+  if tg_table_name='paige_social_posts' then
+    if new.campaign_brief_id is not null then
+      select tenant_id into linked_tenant from public.campaign_briefs where id=new.campaign_brief_id;
+      if linked_tenant is distinct from new.tenant_id then raise exception 'SOCIAL_CAMPAIGN_TENANT_MISMATCH' using errcode='23514'; end if;
+    end if;
   elsif tg_table_name='paige_social_targets' then
     select tenant_id,platform into linked_tenant,linked_platform from public.paige_social_accounts where id=new.account_id;
     if linked_tenant is distinct from new.tenant_id or linked_platform is distinct from new.platform then
