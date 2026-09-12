@@ -170,9 +170,9 @@ describe("Communications capability runs — the wiring that makes them exist", 
   // the linked-client branch first and can name a different workspace than the purchase hit.
   it("records against the seam's own resolved tenant, not the persona tenant", () => {
     const decl = chat.indexOf("const recordCommsRun = async (");
-    const region = chat.slice(chat.indexOf("let commsActorTenant", decl - 2000), decl + 900);
+    const region = chat.slice(chat.indexOf("let actorTenant", decl - 2000), decl + 900);
     expect(region).toContain('supabaseClient.rpc("current_user_tenant_id")');
-    expect(chat).toContain("tenantId: await resolveCommsActorTenant(),");
+    expect(chat).toContain("tenantId: await resolveActorTenant(),");
     // and NOT the persona tenant inside the recorder
     const body = chat.slice(chat.indexOf("const recordCommsRun = async ("), chat.indexOf("};", chat.indexOf("const recordCommsRun = async (")) + 2);
     expect(body).not.toContain("personaCtx.tenant_id");

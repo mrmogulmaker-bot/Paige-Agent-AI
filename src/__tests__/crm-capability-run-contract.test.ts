@@ -32,8 +32,8 @@ const run = (cap: string, input: { result?: unknown; thrown?: unknown; threw?: b
   classifyCrmRun({ capability: cap, ...input });
 
 describe("CRM capability runs — what the Rail is told (slice 3 / F05)", () => {
-  it("covers exactly the three write receipts", () => {
-    expect([...CRM_WRITE_CAPABILITIES].sort()).toEqual([...CAPS].sort());
+  it("covers the three no-refusal write receipts plus crm_create_contact", () => {
+    expect([...CRM_WRITE_CAPABILITIES].sort()).toEqual([...CAPS, "crm_create_contact"].sort());
   });
 
   it("records nothing for a non-CRM capability", () => {
@@ -84,6 +84,39 @@ describe("CRM capability runs — what the Rail is told (slice 3 / F05)", () => 
   });
 });
 
+describe("crm_create_contact — only a GENUINE insert is a created receipt (§947)", () => {
+  const cc = (input: { result?: unknown; thrown?: unknown; threw?: boolean; writeAttempted?: boolean }) =>
+    classifyCrmRun({ capability: "crm_create_contact", ...input });
+
+  it("a genuine insert (was_created:true) is capability_succeeded", () => {
+    expect(cc({ result: { success: true, created: true, client_ref: "CLT-ABC" } })).toBe("capability_succeeded");
+  });
+
+  it("a resolved-EXISTING contact records NOTHING — never a false 'created'", () => {
+    expect(cc({ result: { success: true, created: false, already_existed: true, client_ref: "CLT-ABC" } })).toBeNull();
+    // the negative control: it must not claim a create, a failure, or a refusal
+    const out = cc({ result: { success: true, created: false, already_existed: true } });
+    expect(out).not.toBe("capability_succeeded");
+    expect(out).not.toBe("capability_failed");
+    expect(out).not.toBe("capability_refused");
+  });
+
+  it("a dedup 'same person?' proposal records NOTHING — it is a proposal, not a refusal", () => {
+    expect(cc({ result: { success: false, needs_dedup_confirmation: true, matches: [{ client_ref: "CLT-X" }] } })).toBeNull();
+  });
+
+  it("a POST-write throw is outcome_unknown; a PRE-write throw is failed", () => {
+    expect(cc({ thrown: new Error("db exploded"), threw: true, writeAttempted: true })).toBe("capability_outcome_unknown");
+    expect(cc({ thrown: new Error("SyntaxError"), threw: true, writeAttempted: false })).toBe("capability_failed");
+  });
+
+  it("an unexpected success:false (not a dedup) is outcome_unknown, never refused", () => {
+    const out = cc({ result: { success: false, error: "weird" } });
+    expect(out).toBe("capability_outcome_unknown");
+    expect(out).not.toBe("capability_refused");
+  });
+});
+
 describe("CRM capability run WIRING in paige-ai-chat (source assertions)", () => {
   const src = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
 
@@ -94,10 +127,12 @@ describe("CRM capability run WIRING in paige-ai-chat (source assertions)", () =>
   it("declares recordCrmRun via the service-role client, attributed to the acted-on tenant", () => {
     expect(src).toMatch(/const recordCrmRun = async/);
     const at = src.indexOf("const recordCrmRun = async");
-    const block = src.slice(at, at + 900);
+    const block = src.slice(at, at + 2400);
     expect(block).toContain("classifyCrmRun({");
     expect(block).toContain("await recordCapabilityRun(supabase, {");
-    expect(block).toContain("tenantId: personaCtx?.tenant_id ?? null");
+    // Attributed to the RPC-resolved tenant the write LANDED in, not the persona echo (#1040/§9).
+    expect(block).toContain("const crmTenant = await resolveActorTenant()");
+    expect(block).toContain("tenantId: crmTenant");
     expect(block).toContain("actorId: user.id");
     // never the anon/JWT client, which would silently write nothing
     expect(block).not.toContain("recordCapabilityRun(supabaseClient");
@@ -106,13 +141,33 @@ describe("CRM capability run WIRING in paige-ai-chat (source assertions)", () =>
   it("is reachable from BOTH the result path and the throw path, threading crmWriteAttempted", () => {
     expect(src).toContain("await recordCrmRun({ result })");
     expect(src).toContain("await recordCrmRun({ thrown: err, threw: true, writeAttempted: crmWriteAttempted })");
-    // the flag is declared once (per iteration) and set before EACH of the three external writes
+    // the flag is declared once (per iteration) and set before EACH external write — now four,
+    // with crm_create_contact's create_contact_v2 dispatch joining the original three.
     expect(src).toContain("let crmWriteAttempted = false;");
-    expect((src.match(/crmWriteAttempted = true;/g) ?? []).length).toBe(3);
+    expect((src.match(/crmWriteAttempted = true;/g) ?? []).length).toBe(4);
   });
 
   it("does not disturb the pipeline recorder's verbatim wiring (shared catch)", () => {
     // slice 3 only ADDS a line; the pipeline catch literal a sibling test hard-codes must remain.
     expect(src).toContain("await recordPipelineRun({ thrown: err, threw: true, writeAttempted: false })");
+  });
+
+  it("crm_create_contact calls v2 and Rails/labels ONLY a genuine insert (§947)", () => {
+    // the create branch uses the signal-returning RPC, not the scalar shim
+    expect(src).toContain('.rpc("create_contact_v2"');
+    // the per-client Rail emitter skips a resolved-existing contact (success:true but not a create)
+    expect(src).toContain('if (name === "crm_create_contact" && out?.created !== true) return;');
+    // the handler shapes the honest created/already_existed result the classifier + Rail read
+    expect(src).toContain("created: true, client_ref:");
+    expect(src).toContain("already_existed: true");
+    // the live step trace tells the truth for a resolve, not "Adding a contact"
+    expect(src).toContain('out?.already_existed === true ? "Found an existing contact" : "Adding a contact"');
+  });
+
+  it("records crm_create_contact under a STABLE run id so a retry cannot double-record", () => {
+    expect(src).toContain("stableRunId, type CapabilityOutcome");
+    // keyed on (capability, RPC-resolved tenant, natural-act anchor), passed as the run id
+    expect(src).toContain('stableRunId(["crm_create_contact", crmTenant ?? "", anchor])');
+    expect(src).toContain("...(crmRunId ? { runId: crmRunId } : {})");
   });
 });
