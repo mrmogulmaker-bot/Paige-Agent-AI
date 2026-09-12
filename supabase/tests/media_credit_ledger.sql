@@ -115,14 +115,16 @@ END $$;
 DO $$
 DECLARE
   _t uuid := (SELECT tenant_id FROM public.paige_media_jobs WHERE idempotency_key = 'pgtap-proof-job-1');
-  _j uuid := gen_random_uuid();
+  _j uuid;
   _res jsonb; _before int; _after int;
 BEGIN
+  -- A REAL job first (the correlation gate refuses mismatched ids, correctly).
   INSERT INTO public.paige_media_jobs
     (tenant_id, actor_id, mode, provider, model, params, state, approval_state, idempotency_key, estimated_cost_usd)
   VALUES (_t, (SELECT actor_id FROM public.paige_media_jobs WHERE idempotency_key = 'pgtap-proof-job-1'),
           'video', 'fal', 'fal-ai/veo3.1/fast', '{"prompt":"too big"}'::jsonb,
           'created', 'not_required', 'pgtap-proof-job-2', 50.0);
+  _j := (SELECT id FROM public.paige_media_jobs WHERE idempotency_key = 'pgtap-proof-job-2');
   _before := (SELECT count(*) FROM public.paige_media_credit_entries WHERE tenant_id = _t);
   _res := public.media_credit_hold(_t, _j, 5001, 50.0);
   _after := (SELECT count(*) FROM public.paige_media_credit_entries WHERE tenant_id = _t);
