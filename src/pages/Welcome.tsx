@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 30000;
 
-type EnrollmentState = "needs_identity" | "needs_intake" | "needs_checkout" | "pending" | "verified" | "access_ended" | "failed";
+type EnrollmentState = "needs_identity" | "needs_intake" | "needs_checkout" | "pending" | "verified" | "payment_recovery" | "canceled_trial" | "canceled_paid" | "failed";
 type ViewState = EnrollmentState | "cancelled" | "expired" | "invalid" | "delayed";
 type EnrollmentStatus = { state: EnrollmentState; reference_id: string; message: string; retryable: boolean; destination?: string; billing_destination?: string };
 
@@ -69,17 +69,19 @@ export default function Welcome() {
   }, [attempt, checkout, navigate]);
 
   const defaults: Record<ViewState, { title: string; body: string }> = {
-    pending: { title: "Verifying your Paige Solo access…", body: "We are confirming payment, membership, and your workspace on the server. Access is not granted until every check passes." },
+    pending: { title: "Verifying your Paige Solo access…", body: "We are confirming your 30-day trial subscription, membership, and workspace on the server. Access is not granted until every check passes." },
     delayed: { title: "Verification is taking longer than expected", body: "We could not verify your Solo enrollment yet. Retrying is safe and will not create another workspace or subscription." },
-    cancelled: { title: "Checkout was cancelled", body: "No payment is being claimed and no workspace access was granted. Your setup details remain available when you return." },
+    cancelled: { title: "Checkout was cancelled", body: "We did not start your subscription or take payment, and no workspace access was granted. Your setup details remain available when you return." },
     expired: { title: "This checkout session expired", body: "No access was granted from the expired session. Start a fresh checkout from the Solo offer." },
     invalid: { title: "Choose how to continue", body: "This page does not contain a valid checkout result. Return to Paige Solo or sign in to an existing workspace." },
     failed: { title: "We could not verify enrollment", body: "Solo access was not activated. Retry if offered, or contact support with the reference below." },
     needs_identity: { title: "Sign in to finish verification", body: "Your session ended before server verification completed. Sign in again to safely resume." },
     needs_intake: { title: "Finish your Solo setup", body: "Your identity is ready, but your Solo business setup still needs to be completed." },
-    needs_checkout: { title: "Checkout is still needed", body: "Your setup is saved, but no verified payment is attached. Continue from the approved Solo offer." },
+    needs_checkout: { title: "Checkout is still needed", body: "Your setup is saved, but no verified trial subscription is attached. Continue from the approved Solo offer." },
     verified: { title: "Solo access verified", body: "Opening your authorized workspace…" },
-    access_ended: { title: "Your Solo access needs billing attention", body: "Paige verified that this subscription is not currently active. Review billing or contact support; no access is being inferred from the browser." },
+    payment_recovery: { title: "Payment recovery is required", body: "Paige verified that this subscription needs billing attention. Review billing to update payment details; no access is being inferred from the browser." },
+    canceled_trial: { title: "Your Solo Beta trial is canceled", body: "No first paid renewal is scheduled, and trial access has ended. Billing history and support remain available." },
+    canceled_paid: { title: "Your paid Solo subscription has ended", body: "The verified paid service period is over. Billing history and support remain available." },
   };
   const copy = defaults[view];
   const message = status?.message || copy.body;
@@ -99,7 +101,7 @@ export default function Welcome() {
           {(view === "delayed" || (view === "failed" && status?.retryable)) && <Button variant="gold" className="w-full" onClick={() => setAttempt((value) => value + 1)}>Retry verification</Button>}
           {view === "needs_identity" && <Button variant="gold" className="w-full" onClick={() => navigate("/auth?mode=login&next=%2Fwelcome%3Fcheckout%3Dsuccess")}>Sign in and resume</Button>}
           {view === "needs_intake" && <Button variant="gold" className="w-full" onClick={() => navigate("/onboarding?plan=solo&billing=monthly")}>Finish Solo setup</Button>}
-          {view === "access_ended" && status?.billing_destination && <Button variant="gold" className="w-full" onClick={() => navigate(status.billing_destination!)}>Review billing</Button>}
+          {(view === "payment_recovery" || view === "canceled_trial" || view === "canceled_paid") && status?.billing_destination && <Button variant="gold" className="w-full" onClick={() => navigate(status.billing_destination!)}>Review billing</Button>}
           {(view === "needs_checkout" || view === "cancelled" || view === "expired" || view === "invalid" || (view === "failed" && !status?.retryable)) && <Button variant="gold" className="w-full" onClick={() => navigate("/pricing")}>Return to Paige Solo</Button>}
           <Button asChild variant="outline" className="w-full"><a href="mailto:support@paigeagent.ai?subject=Solo%20enrollment%20verification">Contact support</a></Button>
         </div>

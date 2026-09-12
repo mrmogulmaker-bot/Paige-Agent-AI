@@ -42,7 +42,7 @@ const businessTiers: BusinessTier[] = [
       "Server-verified membership and access",
       "A focused first-run setup path",
     ],
-    cta: "Continue with Paige Solo",
+    cta: "Start your 30-day trial",
     popular: false,
   },
 ];
@@ -145,6 +145,7 @@ export function PricingSection() {
                     <span className="text-muted-foreground text-sm">{tier.period}</span>
                   </div>
                   <p className="text-xs text-gold-dark font-semibold">{tier.seats}</p>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">Start your 30-day trial. Then $74.50/month unless you cancel before your first paid renewal.</p>
                 </div>
                 <ul className="space-y-2.5 mb-7 flex-grow">
                   {tier.features.map((f, i) => (

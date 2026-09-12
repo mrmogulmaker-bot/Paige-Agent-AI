@@ -4109,7 +4109,7 @@ No new entitlement, tier feature flag, `/admin` route, sub-account inheritance, 
 
 | Capability | Solo | Agency / Enterprise | Platform Operator | Sub-account / Client Portal | Anonymous |
 |---|---|---|---|---|---|
-| New public enrollment | Fixed paid Solo Beta only; standalone top-level workspace after verified fulfillment | Unavailable for new public enrollment; existing authorization preserved | Never a public tier; existing operator authorization preserved | Unavailable for new public enrollment/invite creation by this flow; existing client invites/access preserved | May enter only the Solo offer and ordinary identity flow |
-| Post-payment access | Active signed provider state + fulfillment receipt + active owner membership → server destination | Existing resolver only | Existing resolver only | Existing resolver/invite only | None |
+| New public enrollment | Fixed paid Solo Beta only: one 30-day trial, then $74.50/month; standalone top-level workspace after verified fulfillment | Unavailable for new public enrollment; existing authorization preserved | Never a public tier; existing operator authorization preserved | Unavailable for new public enrollment/invite creation by this flow; existing client invites/access preserved | May enter only the Solo offer and ordinary identity flow |
+| Post-checkout access | Trialing or active signed provider state + fulfillment receipt + active owner membership → server destination | Existing resolver only | Existing resolver only | Existing resolver/invite only | None |
 
-This is an acquisition constraint, not a deletion or migration of existing tenants. Trial/free/annual/planless public fallback is prohibited. Candidate status only: authenticated and deployed proof remain owed.
+This is an acquisition constraint, not a deletion or migration of existing tenants. Caller-selected or repeated trials and free/annual/planless public fallbacks are prohibited; the one server-fixed 30-day trial is part of the paid Solo subscription. Candidate status only: authenticated and deployed proof remain owed.

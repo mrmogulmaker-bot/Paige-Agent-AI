@@ -95,7 +95,7 @@ const PROOF = [
   { q: "Build a deliberate operating rhythm without an agency-sized setup.", a: "Solo creator" },
 ];
 
-// Paige Solo is the only public beta offer. The approved price is $74.50/month.
+// Paige Solo is the only public beta offer: 30-day trial, then $74.50/month.
 const PLANS = [
   {
     slug: "solo",
@@ -108,7 +108,7 @@ const PLANS = [
       "Server-verified membership and access",
       "A focused first-run setup path",
     ],
-    cta: "Continue with Paige Solo",
+    cta: "Start your 30-day trial",
     highlight: false,
     custom: false,
   },
@@ -665,7 +665,7 @@ export default function PaigeHome() {
           Ready to <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">start with Solo?</span>
         </motion.h2>
         <motion.p variants={rise} className="mx-auto mb-14 max-w-md text-center text-white/60">
-          Paige Solo is the beta available now. We are building the broader platform deliberately; other account types are not open for enrollment.
+          Paige Solo is the beta available now. Start with 30 days, then continue at $74.50/month unless you cancel before your first paid renewal. Other account types are not open for enrollment.
         </motion.p>
         <div className="mx-auto grid max-w-md gap-6">
           {PLANS.map((p) => (
@@ -685,6 +685,7 @@ export default function PaigeHome() {
                 {p.price}
                 {p.cadence && <span className="text-base font-medium text-white/50">{p.cadence}</span>}
               </div>
+              <p className="-mt-3 mb-6 text-sm leading-relaxed text-white/70">Start your 30-day trial. Then $74.50/month unless you cancel before your first paid renewal.</p>
               <ul className="mb-8 flex-1 space-y-3">
                 {p.features.map((ft) => (
                   <li key={ft} className="flex items-start gap-2 text-sm text-white/75">

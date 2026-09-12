@@ -195,7 +195,7 @@ export function WorkspaceProvisioner({ planSlug }: Props) {
           {isPaid && (
             <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-foreground/80">
               <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-              $74.50/month · access begins after verified payment
+              30-day trial · then $74.50/month · access begins after server verification
             </p>
           )}
         </div>
@@ -272,7 +272,7 @@ export function WorkspaceProvisioner({ planSlug }: Props) {
           </div>
           <p className="text-xs text-muted-foreground pl-7">
             {isPaid
-              ? "Your $74.50 monthly subscription begins at checkout. Workspace access begins only after Paige verifies payment and membership server-side."
+              ? "Start your 30-day trial. Then $74.50/month unless you cancel before your first paid renewal. Workspace access begins only after Paige verifies the subscription and membership server-side."
               : "Interim terms while our full legal review is completed. Your workspace isn't created until you accept."}
           </p>
         </div>
@@ -284,7 +284,7 @@ export function WorkspaceProvisioner({ planSlug }: Props) {
           {creating ? (
             <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Taking you to checkout…</>
           ) : (
-            "Continue to checkout"
+            "Start 30-day trial in Checkout"
           )}
         </Button>
       </div>

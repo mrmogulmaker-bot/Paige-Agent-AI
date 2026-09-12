@@ -49,13 +49,13 @@ Deno.serve(async (req) => {
     const tenant = (Array.isArray(tenantRaw) ? tenantRaw[0] : tenantRaw) as { account_number?: number; account_type?: string; parent_tenant_id?: string | null } | null | undefined;
     const [subscriptionResult, receiptResult, entitlementResult] = await Promise.all([
       admin.from("platform_subscriptions")
-        .select("id,status,offer_code,provider_mode,provider_verified_at,stripe_subscription_id,cancel_at_period_end,current_period_end")
+        .select("id,status,offer_code,provider_mode,provider_verified_at,stripe_subscription_id,cancel_at_period_end,current_period_end,trial_ends_at")
         .eq("tenant_id", enrollment.tenant_id).eq("stripe_subscription_id", enrollment.stripe_subscription_id).maybeSingle(),
       admin.from("solo_beta_fulfillment_receipts")
         .select("subscription_id,user_id,tenant_id,outcome,reference_id")
         .eq("user_id", user.id).eq("tenant_id", enrollment.tenant_id).eq("outcome", "completed").maybeSingle(),
       admin.from("user_subscriptions")
-        .select("plan_slug,status,stripe_subscription_id,current_period_end")
+        .select("plan_slug,status,stripe_subscription_id,current_period_end,trial_ends_at")
         .eq("user_id", user.id).eq("stripe_subscription_id", enrollment.stripe_subscription_id).maybeSingle(),
     ]);
     if (subscriptionResult.error || receiptResult.error || entitlementResult.error) return json(503, { error: "status_unavailable" });
@@ -70,19 +70,36 @@ Deno.serve(async (req) => {
       && entitlement?.plan_slug === "solo"
       && entitlement.stripe_subscription_id === enrollment.stripe_subscription_id
       && entitlement.status === subscription.status;
-    if (chainVerified && subscription.status === "active") {
+    if (chainVerified && ["trialing", "active"].includes(subscription.status)) {
       return json(200, {
         state: "verified", reference_id: referenceId, retryable: false,
-        message: "Your payment, Solo workspace, membership, and access are verified.",
+        message: subscription.cancel_at_period_end
+          ? subscription.status === "trialing"
+            ? "Your cancellation is scheduled. Solo access remains available through the verified trial end, and no first paid renewal is scheduled."
+            : "Your cancellation is scheduled. Solo access remains available through the verified paid service period."
+          : subscription.status === "trialing"
+            ? "Your 30-day Solo Beta trial, workspace, membership, and access are verified. Your first $74.50 monthly renewal is due after the trial unless you cancel first."
+            : "Your paid Solo subscription, workspace, membership, and access are verified.",
         destination: `/solo/${tenant.account_number}/command-center`,
       });
     }
-    if (chainVerified && ["past_due", "canceled", "unpaid", "paused"].includes(subscription.status)) {
+    if (chainVerified && ["past_due", "unpaid", "paused"].includes(subscription.status)) {
       return json(200, {
-        state: "access_ended", reference_id: referenceId, retryable: false,
-        message: subscription.status === "canceled"
-          ? "Your paid Solo service period has ended. Review billing history or contact support to discuss a new enrollment."
-          : "Paige verified that this subscription is not active. Review billing to update payment details, or contact support with this reference.",
+        state: "payment_recovery", reference_id: referenceId, retryable: false,
+        message: "Paige verified that this subscription needs billing attention. Update payment details in billing or contact support with this reference; access is not being inferred while recovery is required.",
+        billing_destination: `/solo/${tenant.account_number}/settings/billing`,
+      });
+    }
+    if (chainVerified && subscription.status === "canceled") {
+      const canceledDuringTrial = subscription.trial_ends_at
+        && new Date(subscription.trial_ends_at).getTime() > Date.now();
+      return json(200, {
+        state: canceledDuringTrial ? "canceled_trial" : "canceled_paid",
+        reference_id: referenceId,
+        retryable: false,
+        message: canceledDuringTrial
+          ? "Your Solo Beta trial was canceled. No first paid renewal is scheduled, and trial access has ended."
+          : "Your paid Solo subscription is canceled and its service period has ended. Review billing history or contact support with this reference.",
         billing_destination: `/solo/${tenant.account_number}/settings/billing`,
       });
     }

@@ -4,7 +4,8 @@ CREATE OR REPLACE FUNCTION public.solo_beta_sync_subscription(
   _event_id text, _subscription_id text, _product_id text, _price_id text,
   _livemode boolean, _unit_amount integer, _currency text, _interval text,
   _interval_count integer, _subscription_status text,
-  _period_start timestamptz, _period_end timestamptz, _cancel_at_period_end boolean
+  _period_start timestamptz, _period_end timestamptz,
+  _trial_start timestamptz, _trial_end timestamptz, _cancel_at_period_end boolean
 ) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
 DECLARE _offer public.platform_subscription_offers; _sub public.platform_subscriptions;
@@ -14,7 +15,9 @@ BEGIN
   IF NOT FOUND OR _offer.status<>'test_ready' OR _livemode IS DISTINCT FROM false
     OR _product_id<>_offer.stripe_product_id OR _price_id<>_offer.stripe_price_id
     OR _unit_amount<>7450 OR lower(_currency)<>'usd' OR _interval<>'month'
-    OR _interval_count<>1 OR _subscription_status NOT IN ('active','past_due','canceled') THEN
+    OR _interval_count<>1 OR _offer.trial_days<>30
+    OR _trial_start IS NULL OR _trial_end IS NULL OR (_trial_end-_trial_start)<>interval '30 days'
+    OR _subscription_status NOT IN ('trialing','active','past_due','canceled') THEN
     RAISE EXCEPTION 'solo_beta_provider_contract_mismatch';
   END IF;
   SELECT * INTO _sub FROM public.platform_subscriptions
@@ -22,10 +25,11 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'solo_beta_subscription_not_fulfilled'; END IF;
   UPDATE public.platform_subscriptions SET status=_subscription_status,
     current_period_start=_period_start,current_period_end=_period_end,
+    trial_started_at=_trial_start,trial_ends_at=_trial_end,
     cancel_at_period_end=coalesce(_cancel_at_period_end,false),provider_verified_at=now(),updated_at=now()
   WHERE id=_sub.id;
   UPDATE public.user_subscriptions SET status=_subscription_status,
-    current_period_start=_period_start,current_period_end=_period_end,trial_ends_at=NULL,updated_at=now()
+    current_period_start=_period_start,current_period_end=_period_end,trial_ends_at=_trial_end,updated_at=now()
   WHERE stripe_subscription_id=_subscription_id;
   INSERT INTO public.stripe_event_log(event_id,type,livemode,lifecycle_state,offer_code,stripe_subscription_id,received_at,validated_at,processing_at,processed_at,completed_at,attempt_count)
   VALUES (_event_id,'solo_beta.subscription.lifecycle',false,'completed',_offer.offer_code,_subscription_id,now(),now(),now(),now(),now(),1)
@@ -36,9 +40,9 @@ BEGIN
   ));
 END $$;
 
-REVOKE ALL ON FUNCTION public.solo_beta_sync_subscription(text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,boolean)
+REVOKE ALL ON FUNCTION public.solo_beta_sync_subscription(text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,timestamptz,timestamptz,boolean)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.solo_beta_sync_subscription(text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,boolean)
+GRANT EXECUTE ON FUNCTION public.solo_beta_sync_subscription(text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,timestamptz,timestamptz,boolean)
   TO service_role;
 
 COMMIT;

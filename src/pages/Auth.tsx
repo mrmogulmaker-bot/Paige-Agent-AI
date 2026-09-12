@@ -147,8 +147,8 @@ const Auth = () => {
     : (hasInvite
           ? "Your invite includes access selected by the workspace owner — create your login to continue"
           : hasPlanIntent
-            ? "$74.50/month, billed monthly with no trial. Create your account, verify your email, then finish your Solo setup."
-            : "Paige Solo Beta is available for $74.50/month, billed monthly with no trial.");
+            ? "Start your 30-day trial. Then $74.50/month unless you cancel before your first paid renewal. Create your account, verify your email, then finish your Solo setup."
+            : "Paige Solo Beta includes a 30-day trial, then renews at $74.50/month unless you cancel before your first paid renewal.");
 
   useEffect(() => {
     setIsLogin(isClientInvite || searchParams.get("mode") !== "signup");
@@ -569,7 +569,7 @@ const Auth = () => {
       <ForgotPasswordDialog open={showForgotPassword} onOpenChange={setShowForgotPassword} />
 
       {/* Left Panel — Brand / Value Prop */}
-      <div className="hidden lg:flex lg:w-[48%] relative overflow-hidden bg-primary flex-col justify-between p-10 animate-in fade-in slide-in-from-left-8 duration-700 motion-reduce:animate-none">
+      <div className="hidden xl:flex xl:w-[48%] relative overflow-hidden bg-primary flex-col justify-between p-10 animate-in fade-in slide-in-from-left-8 duration-700 motion-reduce:animate-none">
         {/* Decorative Elements */}
         <div className="absolute inset-0">
           <div className="absolute inset-0 opacity-[0.04]" style={{
@@ -683,7 +683,7 @@ const Auth = () => {
       {/* Right Panel — Auth Form */}
       <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150 fill-mode-both motion-reduce:animate-none">
         {/* Top nav */}
-        <div className="flex items-center justify-between px-6 sm:px-10 py-5">
+        <div className={`flex items-center justify-between px-6 sm:px-10 ${isLogin ? "py-5" : "py-2 sm:py-3"}`}>
           {isClientInvite ? (
             <span aria-hidden className="w-4" />
           ) : (
@@ -707,7 +707,7 @@ const Auth = () => {
               <span className="text-lg font-semibold text-[#F8F5EE]" style={{ fontFamily: HEAD }}>{brandName}</span>
             </div>
           ) : (
-            <Link to="/" className="lg:hidden inline-flex items-center gap-2">
+            <Link to="/" className="xl:hidden inline-flex items-center gap-2">
               <PaigeCommandMark plated={false} className="h-8 w-8" />
               <span className="text-lg font-semibold text-[#F8F5EE]" style={{ fontFamily: HEAD }}>
                 Paige <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-[#F0C86A]/90">Agent</span>
@@ -728,8 +728,8 @@ const Auth = () => {
         </div>
 
         {/* Form Area */}
-        <div className="flex-1 flex items-center justify-center px-6 sm:px-10 pb-10">
-          <div className="w-full max-w-[400px] space-y-8">
+        <div className="flex-1 flex items-center justify-center px-6 pb-8 sm:px-10">
+          <div className={`w-full ${isLogin ? "max-w-[400px] space-y-8" : "max-w-[640px] space-y-4"}`}>
             {/* Heading */}
             <div className="space-y-2">
               {isClientInvite && (
@@ -764,7 +764,7 @@ const Auth = () => {
                 </Button>
               </div>
             )}
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className={isLogin ? "space-y-5" : "space-y-3"}>
               {!isLogin && (
                 <div className="grid grid-cols-[1fr_4.5rem_1fr] gap-2">
                   <div className="space-y-2">
@@ -775,7 +775,7 @@ const Auth = () => {
                       id="firstName" type="text" placeholder="John"
                       value={firstName} onChange={(e) => setFirstName(e.target.value)}
                       required disabled={isLoading}
-                      className="h-12 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40"
+                      className="h-10 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40"
                     />
                   </div>
                   <div className="space-y-2">
@@ -786,7 +786,7 @@ const Auth = () => {
                       id="middleInitial" type="text" maxLength={1} placeholder="Q"
                       value={middleInitial} onChange={(e) => setMiddleInitial(e.target.value)}
                       disabled={isLoading}
-                      className="h-12 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all text-center placeholder:text-muted-foreground/40"
+                      className="h-10 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all text-center placeholder:text-muted-foreground/40"
                     />
                   </div>
                   <div className="space-y-2">
@@ -797,7 +797,7 @@ const Auth = () => {
                       id="lastName" type="text" placeholder="Doe"
                       value={lastName} onChange={(e) => setLastName(e.target.value)}
                       required disabled={isLoading}
-                      className="h-12 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40"
+                      className="h-10 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40"
                     />
                   </div>
                 </div>
@@ -815,14 +815,14 @@ const Auth = () => {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   disabled={isLoading}
-                  className="h-12 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40"
+                  className={`${isLogin ? "h-12" : "h-10"} bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40`}
                 />
               </div>
 
               {!isLogin && !isClientInvite && (
                 <div className="space-y-2">
                   <Label htmlFor="mobile" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Mobile Number <span className="normal-case tracking-normal">(optional)</span>
+                    Mobile Number <span className="normal-case tracking-normal">(optional; required for texts)</span>
                   </Label>
                   <Input
                     id="mobile"
@@ -833,9 +833,9 @@ const Auth = () => {
                     value={mobileNumber}
                     onChange={(e) => setMobileNumber(e.target.value)}
                     disabled={isLoading}
-                    className="h-12 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40"
+                    className="h-10 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40"
                   />
-                  <p className="text-xs text-muted-foreground">Include the country code. A mobile number is required only if you choose text messages.</p>
+                  <p className="sr-only">Include the country code.</p>
                 </div>
               )}
 
@@ -864,7 +864,7 @@ const Auth = () => {
                     required
                     disabled={isLoading}
                     minLength={6}
-                    className="h-12 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40 pr-10"
+                    className={`${isLogin ? "h-12" : "h-10"} bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40 pr-10`}
                   />
                   <button
                     type="button"
@@ -879,7 +879,7 @@ const Auth = () => {
               </div>
 
               {!isLogin && (
-                <div className="space-y-3 rounded-lg border border-primary-foreground/25 bg-primary-foreground/[0.07] p-4 ring-1 ring-inset ring-primary-foreground/10">
+                <div className="grid gap-2.5 rounded-lg border border-primary-foreground/25 bg-primary-foreground/[0.07] p-3 ring-1 ring-inset ring-primary-foreground/10 sm:grid-cols-2">
                   <label className="flex items-start gap-2.5 cursor-pointer">
                     <Checkbox
                       checked={consentAgreements}
@@ -887,7 +887,7 @@ const Auth = () => {
                       className="mt-0.5 h-5 w-5 border-2 border-primary-foreground/60 bg-primary-foreground/10 data-[state=checked]:bg-accent data-[state=checked]:border-accent data-[state=checked]:text-[#241645]"
                       aria-required
                     />
-                    <span className="text-xs text-foreground/85 leading-relaxed">
+                    <span className="text-xs text-foreground/85 leading-snug">
                       I have read and agree to the{isClientInvite ? "" : " Paige Agent"}{" "}
                       <Link to="/legal/terms" target="_blank" className="underline text-accent hover:opacity-80">
                         Terms of Service
@@ -915,7 +915,7 @@ const Auth = () => {
                       className="mt-0.5 h-5 w-5 border-2 border-primary-foreground/60 bg-primary-foreground/10 data-[state=checked]:bg-accent data-[state=checked]:border-accent data-[state=checked]:text-[#241645]"
                       aria-required
                     />
-                    <span className="text-xs text-foreground/85 leading-relaxed">
+                    <span className="text-xs text-foreground/85 leading-snug">
                       I understand that my data is used exclusively to provide
                       {isClientInvite ? " the services I signed up for" : " my Paige Agent services"} and is{" "}
                       <strong>never sold to third parties or advertisers</strong>.{" "}
@@ -932,7 +932,7 @@ const Auth = () => {
                         onCheckedChange={(v) => setConsentSms(!!v)}
                         className="mt-0.5 h-5 w-5 border-2 border-primary-foreground/60 bg-primary-foreground/10 data-[state=checked]:bg-accent data-[state=checked]:border-accent data-[state=checked]:text-[#241645]"
                       />
-                      <span className="text-xs text-foreground/85 leading-relaxed">
+                      <span className="text-xs text-foreground/85 leading-snug">
                         I agree to receive account and service text messages from Paige Agent AI at the mobile number I provided. Consent is not a condition of purchase. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help. See our{" "}
                         <Link to="/privacy" target="_blank" className="underline text-accent hover:opacity-80">Privacy Policy</Link>
                         {" "}and{" "}
@@ -948,7 +948,7 @@ const Auth = () => {
                         onCheckedChange={(v) => setConsentMarketing(!!v)}
                         className="mt-0.5 h-5 w-5 border-2 border-primary-foreground/60 bg-primary-foreground/10 data-[state=checked]:bg-accent data-[state=checked]:border-accent data-[state=checked]:text-[#241645]"
                       />
-                      <span className="text-xs text-foreground/70 leading-relaxed">
+                      <span className="text-xs text-foreground/70 leading-snug">
                         I agree to receive marketing communications about Paige Agent products and
                         updates. <em>(Optional — uncheck to receive only service notifications)</em>
                       </span>
@@ -1040,7 +1040,7 @@ const Auth = () => {
               disabled={isLoading}
               className="w-full h-11 text-sm border-border/60 text-muted-foreground hover:text-foreground hover:border-accent/40 transition-all"
             >
-              {isLogin ? "Start the paid Solo Beta" : "Sign in instead"}
+              {isLogin ? "Start your 30-day Solo trial" : "Sign in instead"}
             </Button>
             </>}
 

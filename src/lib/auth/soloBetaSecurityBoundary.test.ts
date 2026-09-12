@@ -19,12 +19,12 @@ const portal = readFileSync("supabase/functions/solo-beta-billing-portal/index.t
 const routeGate = readFileSync("src/components/auth/RequireSoloBetaEntitlement.tsx", "utf8");
 
 describe("Solo Beta security boundary", () => {
-  it("encodes one immutable test-mode 7450 USD monthly offer with no trial", () => {
+  it("encodes one immutable test-mode 7450 USD monthly offer with a 30-day trial", () => {
     expect(migration).toContain("'paige-solo-beta-monthly-v1'");
     expect(migration).toContain("unit_amount_cents = 7450");
     expect(migration).toContain("provider_mode = 'test'");
     expect(migration).toContain("billing_interval = 'month'");
-    expect(migration).toContain("trial_days = 0");
+    expect(migration).toContain("trial_days = 30");
   });
 
   it("removes browser authority from generic provisioning and actor-explicit signup reads", () => {
@@ -33,7 +33,7 @@ describe("Solo Beta security boundary", () => {
   });
 
   it("requires exact server/provider evidence before atomic fulfillment", () => {
-    for (const guard of ["_product_id<>_offer.stripe_product_id", "_price_id<>_offer.stripe_price_id", "_unit_amount<>7450", "lower(_currency)<>'usd'", "_interval<>'month'", "_interval_count<>1", "_subscription_status<>'active'"]) {
+    for (const guard of ["_product_id<>_offer.stripe_product_id", "_price_id<>_offer.stripe_price_id", "_unit_amount<>7450", "lower(_currency)<>'usd'", "_interval<>'month'", "_interval_count<>1", "_offer.trial_days<>30"]) {
       expect(migration).toContain(guard);
     }
     expect(migration).toContain("solo_beta_agreement_unpersisted");
@@ -72,7 +72,7 @@ describe("Solo Beta security boundary", () => {
   });
 
   it("fails closed when checkout or status authority reads fail", () => {
-    expect(checkout).toContain("ownedResult.error || membershipsResult.error || intakeResult.error || offerResult.error");
+    expect(checkout).toContain("ownedResult.error || membershipsResult.error || subscriptionHistoryResult.error || intakeResult.error || offerResult.error");
     expect(checkout).toContain("acceptanceError");
     expect(status).toContain("enrollmentResult.error || membershipsResult.error");
     expect(status).toContain("intakeResult.error || agreementResult.error");
@@ -99,6 +99,13 @@ describe("Solo Beta security boundary", () => {
     expect(checkout).toContain('idempotencyKey: `solo-beta-checkout-${user.id}-${idempotencySlot}`');
   });
 
+  it("never opens a second trial after subscription creation or prior subscription history", () => {
+    expect(checkout).toContain('admin.from("user_subscriptions")');
+    expect(checkout).toContain('(subscriptionHistory?.length ?? 0) > 0');
+    expect(integrity).toContain("SET state='verification_pending',stripe_subscription_id=_subscription_id");
+    expect(migration).toContain("THEN 'verification_pending' ELSE 'retryable_failure'");
+  });
+
   it("authorizes a freshly provisioned Solo owner from tenant scope without a fake global admin role", () => {
     expect(provisioner).toContain("values (_owner, 'user')");
     expect(provisioner).toContain("values (_tenant.id, _owner, 'owner', 'active', true, now())");
@@ -116,23 +123,42 @@ describe("Solo Beta security boundary", () => {
     expect(webhook).not.toContain("email_confirm: true");
   });
 
-  it("checkout rejects caller-selected tiers, intervals, and trials", () => {
+  it("records signed Checkout expiration atomically and idempotently", () => {
+    expect(webhook).toContain('event.type === "checkout.session.expired"');
+    expect(webhook).toContain('admin.rpc("solo_beta_expire_checkout"');
+    expect(integrity).toContain("CREATE FUNCTION public.solo_beta_expire_checkout");
+    expect(integrity).toContain("'checkout.session.expired',false,_payload_digest,'completed'");
+    expect(integrity).toContain("ON CONFLICT (event_id) DO NOTHING");
+    expect(integrity).toContain("SET state='expired',last_error_code='checkout_expired'");
+  });
+
+  it("checkout rejects caller-selected tiers and fixes the trial server-side", () => {
     expect(checkout).toContain('body.offer_code !== SOLO_BETA_OFFER_CODE');
     expect(checkout).toContain('"plan_slug" in body');
     expect(checkout).toContain('"account_type" in body');
     expect(checkout).toContain('"billing_period" in body');
     expect(checkout).toContain('"trial_period_days" in body');
-    expect(checkout).not.toContain("trial_period_days:");
+    expect(checkout).toContain("trial_period_days: SOLO_BETA_TRIAL_DAYS");
+    expect(checkout).toContain('payment_method_collection: "always"');
     expect(checkout).toContain('session.status !== "open"');
   });
 
   it("derives current-shell destination only after membership and entitlement readback", () => {
-    expect(status).toContain('subscription.status === "active"');
+    expect(status).toContain('["trialing", "active"].includes(subscription.status)');
     expect(status).toContain('membership.is_owner === true');
     // tier-feature-exempt: assertion covers canonical account-type routing, not a feature toggle.
     expect(status).toContain('tenant?.account_type === "standalone"');
     expect(status).toContain('destination: `/solo/${tenant.account_number}/command-center`');
     expect(status).not.toContain('destination: "/app"');
+  });
+
+  it("separates trialing, paid, recovery, canceled-trial, and canceled-paid customer states", () => {
+    expect(status).toContain('["trialing", "active"].includes(subscription.status)');
+    expect(status).toContain('state: "payment_recovery"');
+    expect(status).toContain('"canceled_trial" : "canceled_paid"');
+    expect(welcome).toContain('payment_recovery: { title: "Payment recovery is required"');
+    expect(welcome).toContain('canceled_trial: { title: "Your Solo Beta trial is canceled"');
+    expect(welcome).toContain('canceled_paid: { title: "Your paid Solo subscription has ended"');
   });
 
   it("uses the Stripe Basil invoice parent and item billing periods", () => {
@@ -177,8 +203,8 @@ describe("Solo Beta security boundary", () => {
   });
 
   it("syncs cancellation and payment state from a verified subscription contract", () => {
-    expect(lifecycle).toContain("_subscription_status NOT IN ('active','past_due','canceled')");
+    expect(lifecycle).toContain("_subscription_status NOT IN ('trialing','active','past_due','canceled')");
     expect(lifecycle).toContain("cancel_at_period_end=coalesce(_cancel_at_period_end,false)");
-    expect(lifecycle).toContain("trial_ends_at=NULL");
+    expect(lifecycle).toContain("trial_ends_at=_trial_end");
   });
 });

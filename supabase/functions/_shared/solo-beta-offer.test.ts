@@ -23,8 +23,10 @@ const validOffer = (
   unitAmountCents: 7_450,
   currency: "usd",
   recurring: { interval: "month", intervalCount: 1 },
-  trialEnd: null,
-  subscriptionStatus: "active",
+  trialStart: 1_700_000_000,
+  trialEnd: 1_702_592_000,
+  paymentMethodCollected: true,
+  subscriptionStatus: "trialing",
   ...overrides,
 });
 
@@ -40,7 +42,8 @@ Deno.test("Solo Beta offer accepts the exact approved test-mode monthly offer", 
       currency: "usd",
       interval: "month",
       intervalCount: 1,
-      subscriptionStatus: "active",
+      trialDays: 30,
+      subscriptionStatus: "trialing",
     },
   });
 });
@@ -115,16 +118,22 @@ Deno.test("Solo Beta offer requires monthly recurring interval count one", () =>
   );
 });
 
-Deno.test("Solo Beta offer rejects any trial", () => {
-  assertEquals(validateSoloBetaOffer(validOffer({ trialEnd: 1_800_000_000 })), {
-    ok: false,
-    code: "trial_not_allowed",
-  });
-  assertEquals(validateSoloBetaOffer(validOffer({ trialEnd: 0 })).ok, true);
+Deno.test("Solo Beta offer requires exactly one 30-day trial", () => {
+  for (const mutation of [
+    { trialStart: null },
+    { trialEnd: null },
+    { trialEnd: 1_702_505_600 },
+    { trialEnd: 1_702_678_400 },
+  ]) {
+    assertEquals(validateSoloBetaOffer(validOffer(mutation)).ok, false);
+  }
 });
 
-Deno.test("checkout fulfillment requires an active subscription", () => {
-  for (const status of ["past_due", "canceled", "trialing", "incomplete"]) {
+Deno.test("checkout fulfillment accepts trialing and active provider subscriptions", () => {
+  for (const status of ["trialing", "active"]) {
+    assertEquals(validateSoloBetaOffer(validOffer({ subscriptionStatus: status })).ok, true);
+  }
+  for (const status of ["past_due", "canceled", "incomplete"]) {
     const result = validateSoloBetaOffer(
       validOffer({ subscriptionStatus: status }),
     );
@@ -133,8 +142,8 @@ Deno.test("checkout fulfillment requires an active subscription", () => {
   }
 });
 
-Deno.test("lifecycle sync recognizes active plus entitlement-revoking paid states", () => {
-  for (const subscriptionStatus of ["active", "past_due", "canceled", "unpaid", "paused"]) {
+Deno.test("lifecycle sync recognizes trialing, paid, and entitlement-revoking states", () => {
+  for (const subscriptionStatus of ["trialing", "active", "past_due", "canceled", "unpaid", "paused"]) {
     assertEquals(
       validateSoloBetaOffer(
         validOffer({ purpose: "lifecycle_sync", subscriptionStatus }),
@@ -144,7 +153,6 @@ Deno.test("lifecycle sync recognizes active plus entitlement-revoking paid state
   }
 
   for (const subscriptionStatus of [
-    "trialing",
     "incomplete",
     "incomplete_expired",
   ]) {

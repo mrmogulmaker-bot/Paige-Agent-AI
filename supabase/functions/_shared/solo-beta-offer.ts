@@ -11,8 +11,11 @@ export const SOLO_BETA_UNIT_AMOUNT_CENTS = 7_450 as const;
 export const SOLO_BETA_CURRENCY = "usd" as const;
 export const SOLO_BETA_INTERVAL = "month" as const;
 export const SOLO_BETA_INTERVAL_COUNT = 1 as const;
+export const SOLO_BETA_TRIAL_DAYS = 30 as const;
+const SOLO_BETA_TRIAL_SECONDS = SOLO_BETA_TRIAL_DAYS * 24 * 60 * 60;
 
 export type SoloBetaValidationPurpose =
+  | "checkout_configuration"
   | "checkout_fulfillment"
   | "lifecycle_sync";
 
@@ -29,7 +32,9 @@ export type SoloBetaOfferErrorCode =
   | "recurring_required"
   | "interval_mismatch"
   | "interval_count_mismatch"
-  | "trial_not_allowed"
+  | "trial_required"
+  | "trial_duration_mismatch"
+  | "payment_method_required"
   | "subscription_status_not_eligible";
 
 export interface SoloBetaOfferValidationInput {
@@ -47,7 +52,9 @@ export interface SoloBetaOfferValidationInput {
     interval: string | null;
     intervalCount: number | null;
   } | null;
+  trialStart: number | null;
   trialEnd: number | null;
+  paymentMethodCollected: boolean | null;
   subscriptionStatus: string | null;
 }
 
@@ -60,14 +67,15 @@ export interface ValidatedSoloBetaOffer {
   currency: typeof SOLO_BETA_CURRENCY;
   interval: typeof SOLO_BETA_INTERVAL;
   intervalCount: typeof SOLO_BETA_INTERVAL_COUNT;
-  subscriptionStatus: "active" | "past_due" | "canceled" | "unpaid" | "paused";
+  trialDays: typeof SOLO_BETA_TRIAL_DAYS;
+  subscriptionStatus: "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "paused";
 }
 
 export type SoloBetaOfferValidationResult =
   | { ok: true; offer: ValidatedSoloBetaOffer }
   | { ok: false; code: SoloBetaOfferErrorCode };
 
-const LIFECYCLE_STATUSES = new Set(["active", "past_due", "canceled", "unpaid", "paused"]);
+const LIFECYCLE_STATUSES = new Set(["trialing", "active", "past_due", "canceled", "unpaid", "paused"]);
 
 function missingIdentifier(value: string | null): boolean {
   return value === null || value.length === 0;
@@ -122,12 +130,22 @@ export function validateSoloBetaOffer(
   if (input.recurring.intervalCount !== SOLO_BETA_INTERVAL_COUNT) {
     return { ok: false, code: "interval_count_mismatch" };
   }
-  if (input.trialEnd !== null && input.trialEnd !== 0) {
-    return { ok: false, code: "trial_not_allowed" };
+  if (input.purpose !== "checkout_configuration") {
+    if (!Number.isSafeInteger(input.trialStart) || !Number.isSafeInteger(input.trialEnd)) {
+      return { ok: false, code: "trial_required" };
+    }
+    if ((input.trialEnd as number) - (input.trialStart as number) !== SOLO_BETA_TRIAL_SECONDS) {
+      return { ok: false, code: "trial_duration_mismatch" };
+    }
+  }
+  if (input.purpose === "checkout_fulfillment" && input.paymentMethodCollected !== true) {
+    return { ok: false, code: "payment_method_required" };
   }
 
-  const statusEligible = input.purpose === "checkout_fulfillment"
-    ? input.subscriptionStatus === "active"
+  const statusEligible = input.purpose === "checkout_configuration"
+    ? input.subscriptionStatus === null
+    : input.purpose === "checkout_fulfillment"
+    ? input.subscriptionStatus === "trialing" || input.subscriptionStatus === "active"
     : input.subscriptionStatus !== null &&
       LIFECYCLE_STATUSES.has(input.subscriptionStatus);
 
@@ -146,7 +164,9 @@ export function validateSoloBetaOffer(
       currency: SOLO_BETA_CURRENCY,
       interval: SOLO_BETA_INTERVAL,
       intervalCount: SOLO_BETA_INTERVAL_COUNT,
+      trialDays: SOLO_BETA_TRIAL_DAYS,
       subscriptionStatus: input.subscriptionStatus as
+        | "trialing"
         | "active"
         | "past_due"
         | "canceled"

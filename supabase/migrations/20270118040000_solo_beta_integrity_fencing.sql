@@ -156,6 +156,13 @@ BEGIN
      OR _row.provider_created_at IS DISTINCT FROM _provider_created_at THEN
     RAISE EXCEPTION 'solo_beta_event_identity_mismatch';
   END IF;
+  IF _event_type='checkout.session.completed' THEN
+    UPDATE public.solo_beta_enrollments
+    SET state='verification_pending',stripe_subscription_id=_subscription_id,updated_at=now()
+    WHERE user_id=_user_id AND checkout_session_id=_session_id
+      AND stripe_customer_id=_customer_id AND state IN ('checkout_open','verification_pending');
+    IF NOT FOUND THEN RAISE EXCEPTION 'solo_beta_event_identity_mismatch'; END IF;
+  END IF;
   IF _row.lifecycle_state='completed' THEN
     RETURN QUERY SELECT false,_row.lifecycle_state; RETURN;
   END IF;
@@ -173,12 +180,13 @@ REVOKE ALL ON FUNCTION public.solo_beta_claim_stripe_event(text,text,boolean,tex
 GRANT EXECUTE ON FUNCTION public.solo_beta_claim_stripe_event(text,text,boolean,text,uuid,text,text,text,timestamptz)
   TO service_role;
 
-DROP FUNCTION IF EXISTS public.solo_beta_fulfill_checkout(text,uuid,text,text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,boolean);
+DROP FUNCTION IF EXISTS public.solo_beta_fulfill_checkout(text,uuid,text,text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,timestamptz,timestamptz,boolean);
 CREATE FUNCTION public.solo_beta_fulfill_checkout(
   _event_id text,_user_id uuid,_attempt integer,_fencing_token uuid,
   _customer_id text,_subscription_id text,_session_id text,_product_id text,_price_id text,
   _livemode boolean,_unit_amount integer,_currency text,_interval text,_interval_count integer,
-  _subscription_status text,_period_start timestamptz,_period_end timestamptz,_cancel_at_period_end boolean
+  _subscription_status text,_period_start timestamptz,_period_end timestamptz,
+  _trial_start timestamptz,_trial_end timestamptz,_cancel_at_period_end boolean
 ) RETURNS TABLE(tenant_id uuid,account_number bigint,subscription_id uuid,reference_id uuid)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
 DECLARE
@@ -192,7 +200,10 @@ BEGIN
   IF NOT FOUND OR _offer.status<>'test_ready' OR _offer.provider_mode<>'test'
     OR _livemode IS DISTINCT FROM false OR _product_id IS DISTINCT FROM _offer.stripe_product_id
     OR _price_id IS DISTINCT FROM _offer.stripe_price_id OR _unit_amount IS DISTINCT FROM 7450 OR lower(_currency) IS DISTINCT FROM 'usd'
-    OR _interval IS DISTINCT FROM 'month' OR _interval_count IS DISTINCT FROM 1 OR _subscription_status IS DISTINCT FROM 'active' THEN
+    OR _interval IS DISTINCT FROM 'month' OR _interval_count IS DISTINCT FROM 1
+    OR _offer.trial_days IS DISTINCT FROM 30 OR _trial_start IS NULL OR _trial_end IS NULL
+    OR (_trial_end-_trial_start) IS DISTINCT FROM interval '30 days'
+    OR _subscription_status NOT IN ('trialing','active') THEN
     RAISE EXCEPTION 'solo_beta_provider_contract_mismatch';
   END IF;
 
@@ -280,22 +291,24 @@ BEGIN
   VALUES (_tenant.id,_customer_id,'v2','checkout',_user_id);
   INSERT INTO public.platform_subscriptions(
     tenant_id,plan_id,status,billing_period,current_period_start,current_period_end,
+    trial_started_at,trial_ends_at,
     stripe_subscription_id,stripe_customer_id,cancel_at_period_end,metadata,offer_code,
     provider_mode,stripe_product_id,stripe_price_id,provider_verified_at,
     provider_event_created_at,provider_event_precedence
   ) VALUES (
-    _tenant.id,_offer.plan_id,'active','monthly',_period_start,_period_end,
+    _tenant.id,_offer.plan_id,_subscription_status,'monthly',_period_start,_period_end,
+    _trial_start,_trial_end,
     _subscription_id,_customer_id,coalesce(_cancel_at_period_end,false),
     jsonb_build_object('offer_code',_offer.offer_code,'provider_mode','test'),
     _offer.offer_code,'test',_product_id,_price_id,now(),_event.provider_created_at,10
   ) RETURNING * INTO _sub;
 
-  UPDATE public.user_subscriptions SET plan_slug='solo',status='active',trial_ends_at=NULL,
+  UPDATE public.user_subscriptions SET plan_slug='solo',status=_subscription_status,trial_ends_at=_trial_end,
     current_period_start=_period_start,current_period_end=_period_end,
     stripe_subscription_id=_subscription_id,updated_at=now() WHERE user_id=_user_id;
   IF NOT FOUND THEN
     INSERT INTO public.user_subscriptions(user_id,plan_slug,status,trial_ends_at,current_period_start,current_period_end,stripe_subscription_id)
-    VALUES (_user_id,'solo','active',NULL,_period_start,_period_end,_subscription_id);
+    VALUES (_user_id,'solo',_subscription_status,_trial_end,_period_start,_period_end,_subscription_id);
   END IF;
   UPDATE public.signup_intake SET consumed_at=coalesce(consumed_at,now()) WHERE user_id=_user_id;
   UPDATE public.solo_beta_enrollments
@@ -316,18 +329,19 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'solo_beta_event_not_processing'; END IF;
   RETURN QUERY SELECT _tenant.id,_tenant.account_number,_sub.id,_ref;
 END $$;
-REVOKE ALL ON FUNCTION public.solo_beta_fulfill_checkout(text,uuid,integer,uuid,text,text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,boolean)
+REVOKE ALL ON FUNCTION public.solo_beta_fulfill_checkout(text,uuid,integer,uuid,text,text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,timestamptz,timestamptz,boolean)
   FROM PUBLIC,anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.solo_beta_fulfill_checkout(text,uuid,integer,uuid,text,text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,boolean)
+GRANT EXECUTE ON FUNCTION public.solo_beta_fulfill_checkout(text,uuid,integer,uuid,text,text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,timestamptz,timestamptz,boolean)
   TO service_role;
 
-DROP FUNCTION IF EXISTS public.solo_beta_sync_subscription(text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,boolean);
+DROP FUNCTION IF EXISTS public.solo_beta_sync_subscription(text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,timestamptz,timestamptz,boolean);
 CREATE FUNCTION public.solo_beta_sync_subscription(
   _event_id text,_event_type text,_provider_created_at timestamptz,
   _subscription_id text,_customer_id text,_user_id uuid,
   _product_id text,_price_id text,_livemode boolean,_unit_amount integer,_currency text,
   _interval text,_interval_count integer,_subscription_status text,
-  _period_start timestamptz,_period_end timestamptz,_cancel_at_period_end boolean
+  _period_start timestamptz,_period_end timestamptz,
+  _trial_start timestamptz,_trial_end timestamptz,_cancel_at_period_end boolean
 ) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
 DECLARE
   _sub public.platform_subscriptions; _event public.stripe_event_log;
@@ -354,7 +368,9 @@ BEGIN
     OR _sub.stripe_product_id IS DISTINCT FROM _product_id
     OR _sub.stripe_price_id IS DISTINCT FROM _price_id
     OR _unit_amount IS DISTINCT FROM 7450 OR lower(_currency) IS DISTINCT FROM 'usd' OR _interval IS DISTINCT FROM 'month'
-    OR _interval_count IS DISTINCT FROM 1 OR _subscription_status IS NULL OR _subscription_status NOT IN ('active','past_due','canceled','unpaid','paused')
+    OR _interval_count IS DISTINCT FROM 1 OR _trial_start IS NULL OR _trial_end IS NULL
+    OR (_trial_end-_trial_start) IS DISTINCT FROM interval '30 days'
+    OR _subscription_status IS NULL OR _subscription_status NOT IN ('trialing','active','past_due','canceled','unpaid','paused')
     OR _precedence=0 OR NOT EXISTS (
       SELECT 1 FROM public.solo_beta_enrollments e
       WHERE e.user_id=_user_id AND e.tenant_id=_sub.tenant_id
@@ -370,11 +386,12 @@ BEGIN
   ELSE
     UPDATE public.platform_subscriptions SET status=_subscription_status,
       current_period_start=_period_start,current_period_end=_period_end,
+      trial_started_at=_trial_start,trial_ends_at=_trial_end,
       cancel_at_period_end=coalesce(_cancel_at_period_end,false),provider_verified_at=now(),
       provider_event_created_at=_provider_created_at,provider_event_precedence=_precedence,updated_at=now()
     WHERE id=_sub.id;
     UPDATE public.user_subscriptions SET status=_subscription_status,
-      current_period_start=_period_start,current_period_end=_period_end,trial_ends_at=NULL,updated_at=now()
+      current_period_start=_period_start,current_period_end=_period_end,trial_ends_at=_trial_end,updated_at=now()
     WHERE stripe_subscription_id=_subscription_id AND user_id=_user_id;
     IF NOT FOUND THEN RAISE EXCEPTION 'solo_beta_user_subscription_missing'; END IF;
     _outcome := 'applied';
@@ -390,8 +407,51 @@ BEGIN
   WHERE event_id=_event_id AND lifecycle_state='processing';
   IF NOT FOUND THEN RAISE EXCEPTION 'solo_beta_event_not_processing'; END IF;
 END $$;
-REVOKE ALL ON FUNCTION public.solo_beta_sync_subscription(text,text,timestamptz,text,text,uuid,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,boolean)
+REVOKE ALL ON FUNCTION public.solo_beta_sync_subscription(text,text,timestamptz,text,text,uuid,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,timestamptz,timestamptz,boolean)
   FROM PUBLIC,anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.solo_beta_sync_subscription(text,text,timestamptz,text,text,uuid,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,boolean)
+GRANT EXECUTE ON FUNCTION public.solo_beta_sync_subscription(text,text,timestamptz,text,text,uuid,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,timestamptz,timestamptz,boolean)
+  TO service_role;
+
+CREATE FUNCTION public.solo_beta_expire_checkout(
+  _event_id text,_payload_digest text,_provider_created_at timestamptz,
+  _user_id uuid,_session_id text,_customer_id text
+) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+DECLARE _enrollment public.solo_beta_enrollments; _event public.stripe_event_log;
+BEGIN
+  IF _event_id IS NULL OR _payload_digest IS NULL OR _provider_created_at IS NULL
+    OR _user_id IS NULL OR _session_id IS NULL OR _customer_id IS NULL THEN
+    RAISE EXCEPTION 'solo_beta_event_not_eligible';
+  END IF;
+  SELECT * INTO _enrollment FROM public.solo_beta_enrollments WHERE user_id=_user_id FOR UPDATE;
+  IF NOT FOUND OR _enrollment.offer_code<>'paige-solo-beta-monthly-v1'
+    OR _enrollment.checkout_session_id IS DISTINCT FROM _session_id
+    OR _enrollment.stripe_customer_id IS DISTINCT FROM _customer_id THEN
+    RAISE EXCEPTION 'solo_beta_event_identity_mismatch';
+  END IF;
+  INSERT INTO public.stripe_event_log(
+    event_id,type,livemode,payload_digest,lifecycle_state,offer_code,owner_user_id,
+    checkout_session_id,stripe_customer_id,provider_created_at,received_at,
+    validated_at,processing_at,processed_at,completed_at,attempt_count,last_attempt_at
+  ) VALUES (
+    _event_id,'checkout.session.expired',false,_payload_digest,'completed','paige-solo-beta-monthly-v1',_user_id,
+    _session_id,_customer_id,_provider_created_at,now(),now(),now(),now(),now(),1,now()
+  ) ON CONFLICT (event_id) DO NOTHING;
+  SELECT * INTO _event FROM public.stripe_event_log WHERE event_id=_event_id FOR UPDATE;
+  IF _event.type IS DISTINCT FROM 'checkout.session.expired' OR _event.livemode IS DISTINCT FROM false
+    OR _event.payload_digest IS DISTINCT FROM _payload_digest OR _event.owner_user_id IS DISTINCT FROM _user_id
+    OR _event.checkout_session_id IS DISTINCT FROM _session_id OR _event.stripe_customer_id IS DISTINCT FROM _customer_id
+    OR _event.provider_created_at IS DISTINCT FROM _provider_created_at THEN
+    RAISE EXCEPTION 'solo_beta_event_identity_mismatch';
+  END IF;
+  IF _enrollment.state='checkout_open' THEN
+    UPDATE public.solo_beta_enrollments SET state='expired',last_error_code='checkout_expired',updated_at=now()
+    WHERE user_id=_user_id;
+  ELSIF _enrollment.state NOT IN ('expired','verification_pending','fulfilled') THEN
+    RAISE EXCEPTION 'solo_beta_checkout_state_mismatch';
+  END IF;
+END $$;
+REVOKE ALL ON FUNCTION public.solo_beta_expire_checkout(text,text,timestamptz,uuid,text,text)
+  FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.solo_beta_expire_checkout(text,text,timestamptz,uuid,text,text)
   TO service_role;
 COMMIT;

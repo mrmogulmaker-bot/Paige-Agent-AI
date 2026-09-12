@@ -48,12 +48,31 @@ Deno.serve(async (req) => {
   let eventClaimed = false;
 
   try {
+    if (event.type === "checkout.session.expired") {
+      const session = event.data.object as Stripe.Checkout.Session;
+      const userId = session.metadata?.actor_user_id;
+      const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
+      if (session.metadata?.offer_code !== SOLO_BETA_OFFER_CODE || session.livemode
+        || session.mode !== "subscription" || !userId || !customerId) {
+        return json(400, { error: "event_not_eligible" });
+      }
+      const { error } = await admin.rpc("solo_beta_expire_checkout", {
+        _event_id: event.id,
+        _payload_digest: payloadDigest,
+        _provider_created_at: providerCreatedAt,
+        _user_id: userId,
+        _session_id: session.id,
+        _customer_id: customerId,
+      });
+      if (error) throw new Error("checkout_expiration_failed");
+      return json(200, { received: true });
+    }
     if (event.type === "checkout.session.completed") {
       const hinted = event.data.object as Stripe.Checkout.Session;
       if (hinted.metadata?.offer_code !== SOLO_BETA_OFFER_CODE) return json(400, { error: "event_not_eligible" });
       const session = await stripe.checkout.sessions.retrieve(hinted.id, { expand: ["subscription"] });
-      if (session.livemode || session.mode !== "subscription" || session.payment_status !== "paid") {
-        return json(400, { error: "checkout_not_verified_paid" });
+      if (session.livemode || session.mode !== "subscription" || !["paid", "no_payment_required"].includes(session.payment_status)) {
+        return json(400, { error: "checkout_not_verified" });
       }
       const userId = session.metadata?.actor_user_id;
       const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
@@ -90,7 +109,9 @@ Deno.serve(async (req) => {
         unitAmountCents: price.unit_amount,
         currency: price.currency,
         recurring: price.recurring ? { interval: price.recurring.interval, intervalCount: price.recurring.interval_count } : null,
+        trialStart: subscription.trial_start,
         trialEnd: subscription.trial_end,
+        paymentMethodCollected: Boolean(subscription.default_payment_method),
         subscriptionStatus: subscription.status,
       });
       if (!validation.ok) return json(400, { error: "event_not_eligible" });
@@ -125,6 +146,8 @@ Deno.serve(async (req) => {
         _unit_amount: price.unit_amount, _currency: price.currency,
         _interval: price.recurring?.interval, _interval_count: price.recurring?.interval_count,
         _subscription_status: subscription.status, _period_start: period.start, _period_end: period.end,
+        _trial_start: subscription.trial_start ? new Date(subscription.trial_start * 1000).toISOString() : null,
+        _trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
         _cancel_at_period_end: subscription.cancel_at_period_end,
       });
       if (fulfillError) throw new Error("atomic_fulfillment_failed");
@@ -171,7 +194,9 @@ Deno.serve(async (req) => {
         configuredPriceId: persisted.stripe_price_id, observedProductId: productId,
         observedPriceId: price.id, priceActive: price.active, unitAmountCents: price.unit_amount,
         currency: price.currency, recurring: price.recurring ? { interval: price.recurring.interval, intervalCount: price.recurring.interval_count } : null,
-        trialEnd: subscription.trial_end, subscriptionStatus: normalizedStatus,
+        trialStart: subscription.trial_start, trialEnd: subscription.trial_end,
+        paymentMethodCollected: Boolean(subscription.default_payment_method),
+        subscriptionStatus: normalizedStatus,
       });
       if (!validation.ok) return json(400, { error: "event_not_eligible" });
       const { data: claimed, error: claimError } = await admin.rpc("solo_beta_claim_stripe_event", {
@@ -197,6 +222,8 @@ Deno.serve(async (req) => {
         _currency: price.currency, _interval: price.recurring?.interval,
         _interval_count: price.recurring?.interval_count, _subscription_status: normalizedStatus,
         _period_start: period.start, _period_end: period.end,
+        _trial_start: subscription.trial_start ? new Date(subscription.trial_start * 1000).toISOString() : null,
+        _trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
         _cancel_at_period_end: subscription.cancel_at_period_end,
       });
       if (syncError) throw new Error("lifecycle_sync_failed");

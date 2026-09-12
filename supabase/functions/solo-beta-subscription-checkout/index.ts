@@ -3,6 +3,7 @@ import Stripe from "https://esm.sh/stripe@18.5.0";
 import {
   SOLO_BETA_OFFER_CODE,
   SOLO_BETA_PRODUCT_NAME,
+  SOLO_BETA_TRIAL_DAYS,
   validateSoloBetaOffer,
 } from "../_shared/solo-beta-offer.ts";
 
@@ -51,20 +52,22 @@ Deno.serve(async (req) => {
   const user = authData.user;
   if (authError || !user) return json(401, { error: "authentication_required" });
 
-  const [ownedResult, membershipsResult, intakeResult, offerResult] = await Promise.all([
+  const [ownedResult, membershipsResult, subscriptionHistoryResult, intakeResult, offerResult] = await Promise.all([
     admin.from("tenants").select("id").eq("owner_user_id", user.id).is("parent_tenant_id", null).limit(1),
     admin.from("tenant_members").select("tenant_id").eq("user_id", user.id).eq("status", "active").limit(1),
+    admin.from("user_subscriptions").select("stripe_subscription_id,status").eq("user_id", user.id).not("stripe_subscription_id", "is", null).limit(1),
     admin.from("signup_intake").select("plan_slug,billing_period,account_type,agreement_slug,agreement_version,terms_accepted_at").eq("user_id", user.id).maybeSingle(),
     admin.from("platform_subscription_offers").select("offer_code,status,provider_mode,stripe_product_id,stripe_price_id,unit_amount_cents,currency,billing_interval,interval_count,trial_days").eq("offer_code", SOLO_BETA_OFFER_CODE).maybeSingle(),
   ]);
-  if (ownedResult.error || membershipsResult.error || intakeResult.error || offerResult.error) {
+  if (ownedResult.error || membershipsResult.error || subscriptionHistoryResult.error || intakeResult.error || offerResult.error) {
     return json(503, { error: "solo_beta_eligibility_unavailable" });
   }
   const owned = ownedResult.data;
   const memberships = membershipsResult.data;
+  const subscriptionHistory = subscriptionHistoryResult.data;
   const intake = intakeResult.data;
   const offer = offerResult.data;
-  if ((owned?.length ?? 0) > 0 || (memberships?.length ?? 0) > 0) {
+  if ((owned?.length ?? 0) > 0 || (memberships?.length ?? 0) > 0 || (subscriptionHistory?.length ?? 0) > 0) {
     return json(409, { error: "existing_account_not_beta_eligible" });
   }
   if (!intake || intake.plan_slug !== "solo" || intake.billing_period !== "monthly" || intake.account_type !== "standalone" || !intake.terms_accepted_at || intake.agreement_slug !== "saas-standalone" || !intake.agreement_version) {
@@ -81,7 +84,7 @@ Deno.serve(async (req) => {
     .eq("document_version", currentAgreement.version).limit(1).maybeSingle();
   if (acceptanceError) return json(503, { error: "solo_beta_eligibility_unavailable" });
   if (!acceptance) return json(409, { error: "solo_beta_agreement_unpersisted" });
-  if (!offer || offer.status !== "test_ready" || offer.provider_mode !== "test" || !offer.stripe_product_id || !offer.stripe_price_id || offer.trial_days !== 0) {
+  if (!offer || offer.status !== "test_ready" || offer.provider_mode !== "test" || !offer.stripe_product_id || !offer.stripe_price_id || offer.trial_days !== SOLO_BETA_TRIAL_DAYS) {
     return json(503, { error: "solo_beta_configuration_unavailable" });
   }
 
@@ -94,7 +97,7 @@ Deno.serve(async (req) => {
     const product = typeof price.product === "string" ? null : price.product;
     const validation = validateSoloBetaOffer({
       offerCode: SOLO_BETA_OFFER_CODE,
-      purpose: "checkout_fulfillment",
+      purpose: "checkout_configuration",
       livemode: price.livemode,
       configuredProductId: offer.stripe_product_id,
       configuredPriceId: offer.stripe_price_id,
@@ -104,8 +107,10 @@ Deno.serve(async (req) => {
       unitAmountCents: price.unit_amount,
       currency: price.currency,
       recurring: price.recurring ? { interval: price.recurring.interval, intervalCount: price.recurring.interval_count } : null,
+      trialStart: null,
       trialEnd: null,
-      subscriptionStatus: "active",
+      paymentMethodCollected: null,
+      subscriptionStatus: null,
     });
     const productDeleted = product && "deleted" in product ? product.deleted : false;
     if (!validation.ok || !product || productDeleted || !("active" in product) || product.active !== true
@@ -155,13 +160,17 @@ Deno.serve(async (req) => {
     const origin = origins.has(originHeader) ? originHeader : "https://app.paigeagent.ai";
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
+      payment_method_collection: "always",
       customer: customerId,
       line_items: [{ price: offer.stripe_price_id, quantity: 1 }],
       success_url: `${origin}/welcome?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/welcome?checkout=cancelled`,
       client_reference_id: user.id,
       metadata: { offer_code: SOLO_BETA_OFFER_CODE, actor_user_id: user.id, provider_mode: "test" },
-      subscription_data: { metadata: { offer_code: SOLO_BETA_OFFER_CODE, actor_user_id: user.id, provider_mode: "test" } },
+      subscription_data: {
+        trial_period_days: SOLO_BETA_TRIAL_DAYS,
+        metadata: { offer_code: SOLO_BETA_OFFER_CODE, actor_user_id: user.id, provider_mode: "test" },
+      },
     }, { idempotencyKey: `solo-beta-checkout-${user.id}-${idempotencySlot}` });
     if (session.livemode || session.status !== "open" || !session.url) throw new Error("checkout_session_invalid");
     const { error: openedError } = await admin.rpc("solo_beta_checkout_opened", { _user_id: user.id, _attempt: attempt, _fencing_token: fencingToken, _customer_id: customerId, _session_id: session.id });

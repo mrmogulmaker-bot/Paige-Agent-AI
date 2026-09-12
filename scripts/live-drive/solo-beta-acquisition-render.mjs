@@ -41,8 +41,17 @@ async function pageFacts(page) {
       .map((node) => ({
         text: (node.getAttribute("aria-label") || node.textContent || "").replace(/\s+/g, " ").trim(),
         href: node instanceof HTMLAnchorElement ? node.getAttribute("href") : null,
+        bottom: Math.round(node.getBoundingClientRect().bottom),
       }));
-    const animations = document.getAnimations().filter((animation) => animation.playState === "running").length;
+    const runningAnimations = document.getAnimations().filter((animation) => animation.playState === "running");
+    const animations = runningAnimations.map((animation) => {
+      const target = animation.effect?.target;
+      return {
+        animationName: target instanceof Element ? getComputedStyle(target).animationName : "",
+        className: target instanceof Element ? target.className : "",
+        tag: target instanceof Element ? target.tagName : "",
+      };
+    });
     return {
       title: document.title,
       body: document.body.innerText.replace(/\s+/g, " ").trim(),
@@ -51,6 +60,7 @@ async function pageFacts(page) {
       horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
       viewportMeta: document.querySelector('meta[name="viewport"]')?.getAttribute("content") || "",
       htmlClass: document.documentElement.className,
+      viewportHeight: window.innerHeight,
     };
   });
 }
@@ -96,23 +106,23 @@ try {
 
       await page.goto(`${BASE}/pricing`, { waitUntil: "domcontentloaded", timeout: 45_000 });
       await settle(page);
-      await page.getByRole("button", { name: /Continue with Paige Solo/i }).waitFor({ state: "visible", timeout: 20_000 });
+      await page.getByRole("button", { name: /Start your 30-day trial/i }).waitFor({ state: "visible", timeout: 20_000 });
       const pricing = await pageFacts(page);
       const prefix = `${theme} ${viewport.name} pricing`;
       record(!pricing.horizontalOverflow, `${prefix}: no horizontal overflow`);
       record(/\$74\.50/.test(pricing.body) && /Paige Solo Beta/i.test(pricing.body), `${prefix}: approved Solo Beta offer is visible`);
-      record(!/\$149|14-day|free trial/i.test(pricing.body), `${prefix}: obsolete price and trial are absent`);
+      record(/30-day trial/i.test(pricing.body) && !/\$149|14-day|no trial/i.test(pricing.body), `${prefix}: exact 30-day trial replaces obsolete offers`);
       const unsupportedActions = pricing.interactive.filter(({ text, href }) =>
         /(agency|enterprise|platform operator|client portal|subaccount)/i.test(`${text} ${href || ""}`));
       record(unsupportedActions.length === 0, `${prefix}: no unsupported enrollment action`, unsupportedActions);
-      const soloActions = pricing.interactive.filter(({ text }) => /Continue with Paige Solo/i.test(text));
+      const soloActions = pricing.interactive.filter(({ text }) => /Start your 30-day trial/i.test(text));
       record(soloActions.length === 1, `${prefix}: exactly one Solo continuation action is present`, soloActions);
-      record(pricing.animations === 0, `${prefix}: reduced motion leaves no running animation`, { animations: pricing.animations });
+      record(pricing.animations.length === 0, `${prefix}: reduced motion leaves no running animation`, { animations: pricing.animations });
       record(!/maximum-scale\s*=\s*1|user-scalable\s*=\s*no/i.test(pricing.viewportMeta), `${prefix}: zoom is not disabled`, { viewportMeta: pricing.viewportMeta });
       await checkFocus(page, prefix);
       await page.screenshot({ path: path.join(OUT, `pricing-${theme}-${viewport.name}.png`), fullPage: true });
 
-      await page.getByRole("button", { name: /Continue with Paige Solo/i }).click();
+      await page.getByRole("button", { name: /Start your 30-day trial/i }).click({ noWaitAfter: true });
       await page.waitForURL((url) => url.pathname === "/auth" && url.searchParams.get("mode") === "signup", { timeout: 15_000 });
       record(page.url().includes(CANONICAL_SIGNUP), `${prefix}: the real CTA reaches canonical paid Solo signup`, { finalUrl: new URL(page.url()).pathname + new URL(page.url()).search });
 
@@ -120,10 +130,12 @@ try {
       const auth = await pageFacts(page);
       const authPrefix = `${theme} ${viewport.name} auth`;
       record(!auth.horizontalOverflow, `${authPrefix}: no horizontal overflow`);
-      record(/Solo Beta/i.test(auth.body) && /\$74\.50\/month/i.test(auth.body) && /no trial/i.test(auth.body), `${authPrefix}: signup names the exact paid Solo offer`);
-      record(!/\$149|14-day|free trial|create.*agency|create.*portal/i.test(auth.body), `${authPrefix}: no obsolete or unsupported signup promise`);
+      record(/Solo Beta/i.test(auth.body) && /30-day trial/i.test(auth.body) && /\$74\.50\/month/i.test(auth.body), `${authPrefix}: signup names the exact trial and renewal offer`);
+      record(!/\$149|14-day|no trial|create.*agency|create.*portal/i.test(auth.body), `${authPrefix}: no obsolete or unsupported signup promise`);
       record(auth.interactive.some(({ text }) => /Create Solo Beta account/i.test(text)), `${authPrefix}: one truthful primary signup action is present`);
-      record(auth.animations === 0, `${authPrefix}: reduced motion leaves no running animation`, { animations: auth.animations });
+      const signupAction = auth.interactive.find(({ text }) => /Create Solo Beta account/i.test(text));
+      record(Boolean(signupAction && signupAction.bottom <= auth.viewportHeight), `${authPrefix}: primary signup action fits in the initial viewport`, { signupAction, viewportHeight: auth.viewportHeight });
+      record(auth.animations.length === 0, `${authPrefix}: reduced motion leaves no running animation`, { animations: auth.animations });
       await checkFocus(page, authPrefix);
       await page.screenshot({ path: path.join(OUT, `auth-${theme}-${viewport.name}.png`), fullPage: true });
       record(pageErrors.length === 0, `${theme} ${viewport.name}: no uncaught page errors`, pageErrors);
@@ -146,7 +158,7 @@ try {
   for (const label of [/Hire Paige/i, /Start with Paige/i]) {
     await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded", timeout: 45_000 });
     await settle(page);
-    await page.getByRole("button", { name: label }).click();
+    await page.getByRole("button", { name: label }).click({ noWaitAfter: true });
     await page.waitForURL((url) => url.pathname === "/auth" && url.searchParams.get("mode") === "signup", { timeout: 15_000 });
     record(page.url().includes(CANONICAL_SIGNUP), `homepage ${label}: reaches canonical paid Solo signup`, { finalUrl: new URL(page.url()).pathname + new URL(page.url()).search });
   }

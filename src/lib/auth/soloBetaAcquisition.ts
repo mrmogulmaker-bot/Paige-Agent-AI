@@ -30,7 +30,7 @@ export function keepPublicSoloPlan<T extends { slug: string; is_active: boolean 
   return plans.filter((plan) => plan.is_active && plan.slug === SOLO_BETA_PLAN_SLUG);
 }
 
-export const VERIFIED_SUBSCRIPTION_STATUSES = new Set(["active"]);
+export const VERIFIED_SUBSCRIPTION_STATUSES = new Set(["trialing", "active"]);
 
 export function isVerifiedSoloEntitlement(row: { plan_slug?: string | null; status?: string | null } | null): boolean {
   return Boolean(

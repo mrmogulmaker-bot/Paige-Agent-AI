@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
       .select("stripe_customer_id,stripe_account").eq("tenant_id", tenantId).maybeSingle(),
     admin.from("tenants").select("account_number").eq("id", tenantId).maybeSingle(),
     admin.from("platform_subscription_offers")
-      .select("stripe_product_id,stripe_price_id,status,provider_mode")
+      .select("stripe_product_id,stripe_price_id,status,provider_mode,trial_days")
       .eq("offer_code", SOLO_BETA_OFFER_CODE).maybeSingle(),
   ]);
   if (subscriptionResult.error || mappingResult.error || tenantResult.error || offerResult.error) {
@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
   if (!mapping || mapping.stripe_account !== "v2"
     || mapping.stripe_customer_id !== persisted.stripe_customer_id
     || persisted.provider_mode !== "test" || !persisted.stripe_subscription_id
-    || !offer || offer.status !== "test_ready" || offer.provider_mode !== "test"
+    || !offer || offer.status !== "test_ready" || offer.provider_mode !== "test" || offer.trial_days !== 30
     || offer.stripe_product_id !== persisted.stripe_product_id
     || offer.stripe_price_id !== persisted.stripe_price_id) {
     return json(409, { error: "billing_account_unresolvable" });
@@ -111,7 +111,9 @@ Deno.serve(async (req) => {
       recurring: price.recurring
         ? { interval: price.recurring.interval, intervalCount: price.recurring.interval_count }
         : null,
+      trialStart: subscription.trial_start,
       trialEnd: subscription.trial_end,
+      paymentMethodCollected: Boolean(subscription.default_payment_method),
       subscriptionStatus: subscription.status,
     });
     if (!validation.ok || item.quantity !== 1 || !readSubscriptionItemPeriod(item)

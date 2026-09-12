@@ -854,9 +854,9 @@
         "read": "Explain the one approved public Solo Beta offer and the caller's server-verified enrollment state without exposing provider or tenant internals.",
         "draft": "Prepare identity recovery, setup, and checkout continuation for the customer; no side effect is represented as complete.",
         "auto": "Within the fixed Solo offer policy and its one-user, one-workspace, one-active-checkout limits, the service may perform idempotent reconciliation after signed provider evidence; the browser and Paige hold no enrollment or billing authority.",
-        "confirm": "The customer explicitly submits signup/setup and enters provider-hosted checkout; no broader account type or trial choice exists.",
+        "confirm": "The customer explicitly submits signup/setup and enters provider-hosted checkout for one server-fixed 30-day trial followed by $74.50 monthly renewal; no broader account type, trial length, or free-plan choice exists.",
         "prohibited": "Never infer payment from a return URL, compose tenant authority client-side, expose Stripe identifiers, enroll a non-Solo account, or let Paige claim billing/support resolution she cannot perform.",
-        "completion_criterion": "A new verified identity receives exactly one standalone owner workspace and current Solo destination only after signed payment plus receipt/subscription/membership readback; interruption is safely resumable."
+        "completion_criterion": "A new verified identity receives exactly one standalone owner workspace and current Solo destination only after a signed exact-contract trialing or active subscription plus receipt/subscription/membership readback; interruption is safely resumable and trial eligibility is not reusable."
       },
       "surface": "Public website -> Solo Beta identity, checkout, verification, and current Solo handoff",
       "group": "public-acquisition",

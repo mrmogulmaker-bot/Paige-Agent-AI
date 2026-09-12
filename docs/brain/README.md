@@ -390,6 +390,6 @@ The authenticated-proof framework: **`scripts/live-drive/PROOF-LANE.md`** (the f
 
 | Record | Owns | Read before |
 |---|---|---|
-| `docs/evidence/ui-delivery/solo-beta-acquisition.md` | The candidate-only public Solo entry, ordinary Auth verification/recovery, fenced test-mode checkout, atomic standalone provisioning, receipt-backed entitlement, current Solo handoff, collision map, and separated proof classes | Any public CTA/pricing/signup/auth callback/onboarding/checkout/webhook/enrollment-status or new-Solo destination change |
+| `docs/evidence/ui-delivery/solo-beta-acquisition.md` | The candidate-only public Solo entry, ordinary Auth verification/recovery, fixed 30-day-trial test-mode checkout, atomic standalone provisioning, receipt-backed trialing/paid entitlement, current Solo handoff, collision map, and separated proof classes | Any public CTA/pricing/signup/auth callback/onboarding/checkout/webhook/enrollment-status or new-Solo destination change |
 
 Candidate only: not merged, deployed, provider-accepted, or owner-accepted. PR #899 payment-setup ordering and PR #724 canonical destination remain carried forward; existing authorized non-Solo access is not re-enrolled.

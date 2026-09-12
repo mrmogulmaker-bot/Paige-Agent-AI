@@ -16,7 +16,7 @@ CREATE TABLE public.platform_subscription_offers (
   currency text NOT NULL CHECK (currency = 'usd'),
   billing_interval text NOT NULL CHECK (billing_interval = 'month'),
   interval_count integer NOT NULL CHECK (interval_count = 1),
-  trial_days integer NOT NULL CHECK (trial_days = 0),
+  trial_days integer NOT NULL CHECK (trial_days = 30),
   status text NOT NULL CHECK (status IN ('configuration_required','test_ready','retired')),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -32,7 +32,7 @@ INSERT INTO public.platform_subscription_offers (
   unit_amount_cents, currency, billing_interval, interval_count, trial_days, status
 )
 SELECT 'paige-solo-beta-monthly-v1', id, 'standalone', 'test', 'v2',
-       7450, 'usd', 'month', 1, 0, 'configuration_required'
+       7450, 'usd', 'month', 1, 30, 'configuration_required'
 FROM public.platform_subscription_plans
 WHERE slug = 'solo'
 ON CONFLICT (offer_code) DO NOTHING;
@@ -52,6 +52,8 @@ ALTER TABLE public.platform_subscriptions
   ADD COLUMN IF NOT EXISTS provider_mode text,
   ADD COLUMN IF NOT EXISTS stripe_product_id text,
   ADD COLUMN IF NOT EXISTS stripe_price_id text,
+  ADD COLUMN IF NOT EXISTS trial_started_at timestamptz,
+  ADD COLUMN IF NOT EXISTS trial_ends_at timestamptz,
   ADD COLUMN IF NOT EXISTS provider_verified_at timestamptz;
 CREATE UNIQUE INDEX IF NOT EXISTS platform_subscriptions_stripe_subscription_uidx
   ON public.platform_subscriptions(stripe_subscription_id)
@@ -199,7 +201,11 @@ BEGIN
   SET lifecycle_state='retryable_failure',last_error_code=left(coalesce(_error_code,'fulfillment_failed'),120),processed_at=NULL
   WHERE event_id=_event_id AND lifecycle_state<>'completed';
   UPDATE public.solo_beta_enrollments e
-  SET state='retryable_failure',last_error_code=left(coalesce(_error_code,'fulfillment_failed'),120),updated_at=now()
+  SET state=CASE WHEN s.type='checkout.session.completed' AND s.stripe_subscription_id IS NOT NULL
+      THEN 'verification_pending' ELSE 'retryable_failure' END,
+      checkout_session_id=coalesce(e.checkout_session_id,s.checkout_session_id),
+      stripe_subscription_id=coalesce(e.stripe_subscription_id,s.stripe_subscription_id),
+      last_error_code=left(coalesce(_error_code,'fulfillment_failed'),120),updated_at=now()
   FROM public.stripe_event_log s WHERE s.event_id=_event_id AND e.user_id=s.owner_user_id AND e.state<>'fulfilled';
 END $$;
 REVOKE ALL ON FUNCTION public.solo_beta_fail_stripe_event(text,text) FROM PUBLIC, anon, authenticated;
@@ -210,6 +216,7 @@ CREATE OR REPLACE FUNCTION public.solo_beta_fulfill_checkout(
   _session_id text, _product_id text, _price_id text, _livemode boolean,
   _unit_amount integer, _currency text, _interval text, _interval_count integer,
   _subscription_status text, _period_start timestamptz, _period_end timestamptz,
+  _trial_start timestamptz, _trial_end timestamptz,
   _cancel_at_period_end boolean
 ) RETURNS TABLE(tenant_id uuid, account_number bigint, subscription_id uuid, reference_id uuid)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
@@ -227,7 +234,9 @@ BEGIN
      OR _offer.stripe_price_id IS NULL OR _product_id<>_offer.stripe_product_id
      OR _price_id<>_offer.stripe_price_id OR _unit_amount<>7450
      OR lower(_currency)<>'usd' OR _interval<>'month' OR _interval_count<>1
-     OR _subscription_status<>'active' THEN
+     OR _offer.trial_days<>30 OR _trial_start IS NULL OR _trial_end IS NULL
+     OR (_trial_end-_trial_start)<>interval '30 days'
+     OR _subscription_status NOT IN ('trialing','active') THEN
     RAISE EXCEPTION 'solo_beta_provider_contract_mismatch';
   END IF;
   IF _event_id IS NULL OR _user_id IS NULL OR _customer_id IS NULL OR _subscription_id IS NULL OR _session_id IS NULL THEN
@@ -285,21 +294,23 @@ BEGIN
 
   INSERT INTO public.platform_subscriptions(
     tenant_id,plan_id,status,billing_period,current_period_start,current_period_end,
+    trial_started_at,trial_ends_at,
     stripe_subscription_id,stripe_customer_id,cancel_at_period_end,metadata,
     offer_code,provider_mode,stripe_product_id,stripe_price_id,provider_verified_at
   ) VALUES (
-    _tenant.id,_offer.plan_id,'active','monthly',_period_start,_period_end,
+    _tenant.id,_offer.plan_id,_subscription_status,'monthly',_period_start,_period_end,
+    _trial_start,_trial_end,
     _subscription_id,_customer_id,coalesce(_cancel_at_period_end,false),
     jsonb_build_object('offer_code',_offer.offer_code,'provider_mode','test'),
     _offer.offer_code,'test',_product_id,_price_id,now()
   ) RETURNING * INTO _sub;
 
-  UPDATE public.user_subscriptions SET plan_slug='solo',status='active',trial_ends_at=NULL,
+  UPDATE public.user_subscriptions SET plan_slug='solo',status=_subscription_status,trial_ends_at=_trial_end,
     current_period_start=_period_start,current_period_end=_period_end,
     stripe_subscription_id=_subscription_id,updated_at=now() WHERE user_id=_user_id;
   IF NOT FOUND THEN
     INSERT INTO public.user_subscriptions(user_id,plan_slug,status,trial_ends_at,current_period_start,current_period_end,stripe_subscription_id)
-    VALUES (_user_id,'solo','active',NULL,_period_start,_period_end,_subscription_id);
+    VALUES (_user_id,'solo',_subscription_status,_trial_end,_period_start,_period_end,_subscription_id);
   END IF;
 
   UPDATE public.signup_intake SET consumed_at=coalesce(consumed_at,now()) WHERE user_id=_user_id;
@@ -318,7 +329,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'solo_beta_event_not_processing'; END IF;
   RETURN QUERY SELECT _tenant.id,_tenant.account_number,_sub.id,_ref;
 END $$;
-REVOKE ALL ON FUNCTION public.solo_beta_fulfill_checkout(text,uuid,text,text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,boolean) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.solo_beta_fulfill_checkout(text,uuid,text,text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,boolean) TO service_role;
+REVOKE ALL ON FUNCTION public.solo_beta_fulfill_checkout(text,uuid,text,text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,timestamptz,timestamptz,boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.solo_beta_fulfill_checkout(text,uuid,text,text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,timestamptz,timestamptz,boolean) TO service_role;
 
 COMMIT;

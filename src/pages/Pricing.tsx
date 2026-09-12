@@ -97,8 +97,8 @@ export default function Pricing() {
   return (
     <>
       <PageHead
-        title="Paige Solo beta — $74.50/month"
-        description="Paige Solo is the beta available now for founders running client-service businesses."
+        title="Paige Solo beta — 30 days, then $74.50/month"
+        description="Start Paige Solo with a 30-day trial, then $74.50/month unless you cancel before your first paid renewal."
         path="/pricing"
       />
       <div className="min-h-screen bg-background">
@@ -121,7 +121,8 @@ export default function Pricing() {
               <span className="text-5xl font-extrabold tabular-nums">$74.50</span>
               <span className="text-sm text-muted-foreground">/month</span>
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">Billed monthly. Access begins only after server-side payment and membership verification.</p>
+            <p className="mt-2 text-sm font-medium leading-relaxed text-foreground">Start your 30-day trial. Then $74.50/month unless you cancel before your first paid renewal.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Payment details are collected in Checkout. Access begins only after server-side subscription and membership verification.</p>
 
             <div className="my-6 border-y border-border py-5">
               <ul className="space-y-2.5">
@@ -145,7 +146,7 @@ export default function Pricing() {
             </div>
 
             <Button variant="gold" size="lg" className="w-full font-bold" disabled={continuing} onClick={continueToSolo}>
-              {continuing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Checking your account…</> : "Continue with Paige Solo"}
+              {continuing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Checking your account…</> : "Start your 30-day trial"}
             </Button>
           </Card>
 

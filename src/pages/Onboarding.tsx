@@ -139,7 +139,7 @@ export default function Onboarding() {
                 Let's set up your workspace.
               </h1>
               <p className="mt-3 text-muted-foreground">
-                Tell us about your business, review the Solo agreement, then continue to the approved $74.50 monthly checkout.
+                Tell us about your business, review the Solo agreement, then start your 30-day trial. After the trial, Paige Solo renews at $74.50/month unless you cancel before your first paid renewal.
               </p>
             </header>
             <WorkspaceProvisioner

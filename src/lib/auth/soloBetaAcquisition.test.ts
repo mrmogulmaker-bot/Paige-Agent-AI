@@ -43,11 +43,12 @@ describe("Solo-only beta acquisition contract", () => {
   it("repeats the exact paid offer at pricing and account commitment", () => {
     expect(pricing).toContain("Paige Solo Beta");
     expect(pricing).toContain("$74.50");
-    expect(pricing).toContain("Billed monthly");
+    expect(pricing).toContain("30-day trial");
     expect(auth).toContain("Start Paige Solo Beta");
-    expect(auth).toContain("$74.50/month, billed monthly with no trial");
+    expect(auth).toContain("Start your 30-day trial. Then $74.50/month unless you cancel before your first paid renewal.");
     expect(auth).toContain("Create Solo Beta account");
     expect(auth).not.toContain("14-day");
+    expect(auth).not.toContain("no trial");
     expect(auth).not.toContain("$149");
   });
 
@@ -76,7 +77,7 @@ describe("Solo-only beta acquisition contract", () => {
 
   it("accepts only a server-returned live Solo entitlement", () => {
     expect(isVerifiedSoloEntitlement({ plan_slug: "solo", status: "active" })).toBe(true);
-    expect(isVerifiedSoloEntitlement({ plan_slug: "solo", status: "trialing" })).toBe(false);
+    expect(isVerifiedSoloEntitlement({ plan_slug: "solo", status: "trialing" })).toBe(true);
     expect(isVerifiedSoloEntitlement({ plan_slug: "agency", status: "active" })).toBe(false);
     expect(isVerifiedSoloEntitlement({ plan_slug: "solo", status: "past_due" })).toBe(false);
     expect(isVerifiedSoloEntitlement(null)).toBe(false);

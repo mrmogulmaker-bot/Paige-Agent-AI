@@ -22,8 +22,10 @@ const exact = (overrides: Partial<SoloBetaOfferValidationInput> = {}): SoloBetaO
   unitAmountCents: 7_450,
   currency: "usd",
   recurring: { interval: "month", intervalCount: 1 },
-  trialEnd: null,
-  subscriptionStatus: "active",
+  trialStart: 1_700_000_000,
+  trialEnd: 1_702_592_000,
+  paymentMethodCollected: true,
+  subscriptionStatus: "trialing",
   ...overrides,
 });
 
@@ -41,7 +43,9 @@ describe("Solo Beta Stripe contract", () => {
     ["wrong currency", { currency: "eur" }],
     ["annual interval", { recurring: { interval: "year", intervalCount: 1 } }],
     ["multi-month interval", { recurring: { interval: "month", intervalCount: 12 } }],
-    ["trial", { trialEnd: 1_900_000_000 }],
+    ["missing trial", { trialEnd: null }],
+    ["29-day trial", { trialEnd: 1_702_505_600 }],
+    ["31-day trial", { trialEnd: 1_702_678_400 }],
     ["unverified status", { subscriptionStatus: "incomplete" }],
   ] satisfies Array<[string, Partial<SoloBetaOfferValidationInput>]>)(("fails closed for %s"), (_label, mutation) => {
     expect(validateSoloBetaOffer(exact(mutation)).ok).toBe(false);
