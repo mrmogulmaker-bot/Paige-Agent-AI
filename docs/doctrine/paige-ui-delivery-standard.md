@@ -52,8 +52,40 @@ No tenant/account number, tenant name, fixture, demo state, or URL value may for
 
 Use `PASS`, `FAIL`, `BLOCKED`, `INVALID`, and `UNVERIFIED` for delivery outcomes without softening them.
 
+## The five composable quality skills
+
+The standard above is executed through five composable skill modules. They are not five competing
+policies: each is an operational module that routes back to this doctrine, the
+`.agents/skills/paige-ui-design/references/paige-quality-gates.md` reference, and the one evidence
+template. `paige-ui-design` remains the mandatory entry router (`CLAUDE.md` §00); it routes to these
+five, in order, for any visible, interactive, user-flow, domain-contract, or behaviorally
+significant change. A module adds no new source of truth; it points at the slice of this doctrine it
+governs and names the evidence fields that prove it.
+
+| # | Skill | Governs (this doctrine's slice) | Evidence it requires |
+|---|---|---|---|
+| 1 | `paige-owner-intent-fidelity` | the Owner Intent & Experience Contract — the [Design contract](#design-contract) extended with **what must NOT happen** and **what must be preserved** | `OWNER_INTENT`, `MUST_NOT_HAPPEN`, `MUST_PRESERVE`, `ACCEPTANCE_CRITERIA` |
+| 2 | `paige-visual-immersive-quality` | the [Design contract](#design-contract) visual bar + the premium/motion standard | `VISUAL_DIRECTION`, `MOTION_PURPOSE` |
+| 3 | `paige-interaction-geometry-accessibility` | [Solo requirements](#solo-requirements) + accessibility | the eight `SOLO_*` records, `KEYBOARD_FOCUS`, `ZOOM_REFLOW`, `REDUCED_MOTION`, `STATE_COVERAGE` |
+| 4 | `paige-protected-behavior-regression` | `CLAUDE.md` §58 anti-regression + the protected-seam declaration | `PROTECTED_SEAMS` — each impacted seam tested, each unaffected seam named |
+| 5 | `paige-release-acceptance-evidence` | the [Evidence contract](#evidence-contract) + [Truth labels](#truth-labels) + release governance | the six evidence classes + the seven `RELEASE_*` fields |
+
+**Backward compatibility (so the upgrade breaks no in-flight work).** The new evidence fields
+(`OWNER_INTENT`, `MUST_NOT_HAPPEN`, `MUST_PRESERVE`, `ACCEPTANCE_CRITERIA`, `MOTION_PURPOSE`,
+`PROTECTED_SEAMS`) are added to `docs/evidence/ui-delivery/TEMPLATE.md` as they are wired. The CI
+guardrail **recognizes them without hard-requiring them** on existing records, so open UI PRs do not
+break. They become required only per a dated, announced step once the open-PR window clears — never
+silently.
+
+**Backend-to-visible routing.** A backend, RPC, edge-function, entitlement, or provider-contract
+change that alters a visible customer flow is in scope for this standard **even when it touches no UI
+file**. The CI guardrail routes such a change to an evidence record when it declares a visible-flow
+impact; the declaration is the agent's, and omitting it when a visible flow changed is itself a
+reviewable defect. See `scripts/ci/ui-delivery-evidence.mjs`.
+
 ## Ownership and exceptions
 
-This doctrine, the project skill, evidence schema, and CI guardrail are owned together. A change to their meaning requires an explicit standards review. Exceptions must name their scope, reason, approver, expiry or follow-up, and remaining `UNVERIFIED` behavior; silence is not an exception.
+This doctrine, the project skill, the five composable quality skills, the evidence schema, and the CI
+guardrail are owned together. A change to their meaning requires an explicit standards review. Exceptions must name their scope, reason, approver, expiry or follow-up, and remaining `UNVERIFIED` behavior; silence is not an exception.
 
 The owner-facing process is summarized in `docs/guides/how-paige-ui-work-gets-designed-tested-released.md`.

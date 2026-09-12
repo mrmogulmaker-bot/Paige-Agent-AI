@@ -22,6 +22,18 @@ Read these files completely before acting:
 
 The vendored core is pinned and read-only. Paige-specific rules in this skill and its references take precedence where the upstream is generic.
 
+## The five composable modules
+
+For any visible, interactive, user-flow, domain-contract, or behaviorally significant change, this skill routes to five mandatory composable modules, in order. Each points back to `docs/doctrine/paige-ui-delivery-standard.md` and the references above; none forks a new standard.
+
+1. `paige-owner-intent-fidelity` — the pre-edit Owner Intent & Experience Contract (what must happen, what must NOT happen, what must be preserved, acceptance criteria).
+2. `paige-visual-immersive-quality` — the premium visual bar and purposeful motion, faithful to the approved Claude Design pack.
+3. `paige-interaction-geometry-accessibility` — real interaction proof, accessibility, and the four Solo viewports PAIGE-open and closed.
+4. `paige-protected-behavior-regression` — the protected-seam declaration; test every impacted seam, name every unaffected one.
+5. `paige-release-acceptance-evidence` — evidence separated by class with truthful labels; nothing is LIVE because it merely compiles, renders, or passes a structural harness.
+
+Read each module's `.agents/skills/<name>/SKILL.md` when its concern applies; a presentation-only change still records which modules it did not need and why.
+
 ## Required workflow
 
 1. State the user's job, audience, primary action, and visual direction. Inspect the real page, data contract, permissions, existing tokens, and neighboring states.
