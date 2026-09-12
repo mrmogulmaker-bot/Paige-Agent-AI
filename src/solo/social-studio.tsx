@@ -14,7 +14,7 @@
 //   ⑤ ZION Insights — bottom slide-up cards with natural-language reads
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
 import {
   BarChart3, Calendar, Check, ChevronRight, Copy, Eye, GripVertical,
   Image as ImageIcon, Plus, Sparkles, Trash2, Video, X, Zap
@@ -464,8 +464,8 @@ export function SocialStudio() {
     setError(null);
     try {
       // Load from paige_social_posts (RLS-gated to tenant)
-      const { data, error: err } = await (window as any).__supabase
-        ?.from("paige_social_posts")
+      const { data, error: err } = await supabase
+        .from("paige_social_posts")
         .select("*")
         .order("created_at", { ascending: false })
         .limit(50);
@@ -514,7 +514,7 @@ export function SocialStudio() {
       <AmbientCanvas dominantColor={dominantColor} />
 
       {/* Header */}
-      <div style={{ position: "relative", zIndex: 1, padding: "16px 20px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ position: "relative", zIndex: 10, padding: "16px 20px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-.03em" }}>Social Studio</h2>
           <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>NEXUS operates · you approve · ZION interprets</p>
@@ -537,11 +537,11 @@ export function SocialStudio() {
       </div>
 
       {/* Presence strip */}
-      <div style={{ position: "relative", zIndex: 1, padding: "0 20px", marginBottom: 12 }}>
+      <div style={{ position: "relative", zIndex: 10, padding: "0 20px", marginBottom: 12 }}>
         <div style={{ display: "flex", gap: 12, padding: "8px 14px", borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", overflowX: "auto" }}>
           {Object.entries(PLATFORM_META).slice(0, 6).map(([id, meta]) => (
             <div key={id} style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}>
-              <PlatformChip platform={id} size="sm" />
+              <PlatformChip platform={id} size="md" />
               <span style={{ fontSize: 11, fontWeight: 650, color: "rgba(255,255,255,0.7)" }}>—</span>
             </div>
           ))}
@@ -550,7 +550,7 @@ export function SocialStudio() {
       </div>
 
       {/* Pipeline filter bar */}
-      <div style={{ position: "relative", zIndex: 1, padding: "0 20px", marginBottom: 14, display: "flex", gap: 6 }}>
+      <div style={{ position: "relative", zIndex: 10, padding: "0 20px", marginBottom: 14, display: "flex", gap: 6 }}>
         {([
           ["all", "All", posts.length],
           ["draft", "Drafts", counts.draft],
@@ -572,7 +572,7 @@ export function SocialStudio() {
       </div>
 
       {/* Content canvas */}
-      <div style={{ position: "relative", zIndex: 1, flex: 1, overflow: "auto", padding: "0 20px 20px" }}>
+      <div style={{ position: "relative", zIndex: 10, flex: 1, overflow: "auto", padding: "0 20px 20px", WebkitOverflowScrolling: "touch" }}>
         {loading ? (
           <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
             <div style={{ fontSize: 28, color: "rgba(255,255,255,0.15)" }}>
