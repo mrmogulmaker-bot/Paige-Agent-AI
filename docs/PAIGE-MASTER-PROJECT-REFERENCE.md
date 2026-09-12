@@ -657,6 +657,31 @@ Reference or any domain ledger; it governs how their facts become release and cu
 
 ### 4.0 Shipped Delivery Log
 
+**2026-09-12 Social publishing server-side containment — INTERIM guard, LIVE (PR #1164, main `19ccb13`, owner-approved Gate A):**
+Denies Social PUBLICATION at both content-publication seams — `paige-social` `post` (Upload-Post) and
+`meta-schedule-post` (Meta Graph FB `/feed` + IG `/media_publish`) — with an honest `UNAVAILABLE` (reason +
+setup path) returned BEFORE any provider call, success claim, or receipt/Rail. New pure
+`_shared/social-publish-containment.ts` decides on the action name alone, so a configured
+`UPLOAD_POST_API_KEY`/`META_PAGE_ACCESS_TOKEN` cannot flip the denial (§13/§38 — "connected/configured ≠
+authorized"). The contained response carries `success:false`+`ok:false`+`error`+`contained:true` so a denied
+attempt is recorded FAILED, never a false "succeeded" receipt (the audit false-receipt hole the §39 review
+found). Reads (`accounts`/`analytics`/`post_analytics`/`audience`/`comments`/`status`/`scheduled`) and
+`cancel_scheduled` are preserved; account `connect` is NOT wired and is no longer over-claimed in the copy
+(Codex P2). §37 producer inventory: the two seams are the only content publishers (Chat `social_post`, a
+direct service-role call, and cron all pass through them). Proven: `social-publish-containment` 13/13 (unit +
+structural + perturbation), `lint:action-risk` + `lint:governed-execution` green, `ui-delivery-evidence` PASS
+(record + `Visible-Flow-Impact: yes` trailer — Codex P1). Edge deploy: `paige-social` + `meta-schedule-post`
+redeploy via `deploy-edge-functions.yml` (run #282 on `19ccb13`). **OWNER RULING (2026-09-12): this is INTERIM
+containment, NOT the canonical Social implementation.** Codex PR #1162 (Social Operations Gate A — containment +
+canonical foundation) is canonical; on its rebase onto fresh main it MUST preserve/strengthen every denial here
+(no silent re-enable of `social_post`, Upload-Post, Meta publishing, false receipts, or any alternate
+publication seam) and resolve the `paige-social/index.ts` overlap once, retaining the stronger canonical impl —
+never two permanent containment modules. **PROOF OWED (§32.c):** the authenticated "Paige refuses to publish"
+live drive is owed to a browser-capable session (this headless session cannot drive the authed app); the denial
+is a unit+structure-proven backend fact. Evidence: `docs/evidence/ui-delivery/social-publish-containment.md`.
+**Customer-release eligibility:** none — internal safeguard; Social publishing stays UNAVAILABLE by design; no
+customer-facing capability added.
+
 **2026-09-12 Harness Layer G — proof-lane authenticated-proof framework (PR #1163, owner-approved Gate A):**
 Shipped `scripts/live-drive/proof-lane.mjs` — a reusable framework that turns an authenticated governed
 flow into data + a runner (extends `live-drive.mjs`, no fork). Honest by construction (§13/§32): reports
