@@ -2,12 +2,42 @@
 
 Status: GATE A REVIEW CANDIDATE — NOT MERGED OR DEPLOYED
 
-FLOW_BY_FLOW: PASS — Deep/R3 discovery covers public acquisition, identity, tenant provisioning, Stripe test-mode checkout, verified entitlement, recovery, current-Solo routing, and preservation of existing non-Solo access.
+UI_DELIVERY_EVIDENCE_VERSION: 1
+FLOW_BY_FLOW: PASS: This record's affected-flow and state maps cover public entry, identity, intake/agreement, fixed checkout, atomic fulfillment, verified entitlement, recovery, current-Solo routing, and preservation of existing non-Solo access.
+PAIGE_UI_DESIGN: PASS: Read the complete `.agents/skills/paige-ui-design/SKILL.md` bundle and applied the existing Paige tokens, accessibility checklist, and approved Gate B interaction direction.
+MATERIAL_FLOW_CHANGE: YES: Replaces unsafe and obsolete enrollment paths with one paid Solo journey and intentional pending, failure, cancellation, retry, expiry, and recovery states.
+FLOW_PROTOTYPE: PASS: The owner's 2026-09-12 Beta Activation Gate B instruction approved the complete customer-visible interaction contract and this record's deterministic state map before production implementation.
+PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: A new Solo founder follows one obvious action from the public offer through identity, checkout verification, and the server-authorized current Solo workspace.
+VISUAL_DIRECTION: PASS: Existing Paige premium dark/mineral themes, typography, command mark, restrained progress motion, and one-primary-action hierarchy were preserved under the approved Gate B direction.
+AUTOMATED_EVIDENCE: PASS: Focused Vitest 23/23, dedicated Deno 16/16, and `ci:regression` passed; whole-repository baseline failures remain separately disclosed below.
+STATIC_EVIDENCE: PASS: Local production build for `c971226413aaa06fa9853934bbe03fa22b3241dd`, project typecheck, Deno checks for all three dedicated Edge handlers, 13/13 TypeScript ratchet, Binding Ledger lint, and diff integrity passed.
+RENDERED_EVIDENCE: PASS: Structural browser checks covered Pricing and Auth at all four required viewports in both themes with no horizontal overflow or nested scroll and reachable primary CTA; pixel-level screenshot inspection was unavailable and remains outside this PASS.
+BEHAVIORAL_EVIDENCE: PASS: Signed-out public Pricing/Auth routes, intentional state labels, CTA reachability, visible keyboard focus, and reduced-motion behavior were exercised structurally; authenticated and provider-backed outcomes were not represented as passed.
+AUTHENTICATED_RUNTIME: UNVERIFIED: No approved non-production authenticated account and provider environment was available to exercise real Solo provisioning, entitlement readback, or current-shell entry.
+KEYBOARD_FOCUS: PASS: Keyboard traversal showed visible focus on the public Pricing and Auth actions at the required structural viewport checks.
+ZOOM_REFLOW: UNVERIFIED: Pinch zoom is allowed by the viewport metadata, but a complete 200 percent zoom and reflow drive was not performed.
+REDUCED_MOTION: PASS: With reduced motion requested, Auth decorative loops and entrance motion stopped and the browser reported no running decorative animations.
+STATE_COVERAGE: PASS: Public offer, signup/sign-in, identity recovery, checkout wait/cancel/failure/expiry/retry, and safe exits are represented and each has a viable next action.
+TRUTHFUL_STATE_LABELS: PASS: Public copy names Solo Beta only, treats a browser return as untrusted, and distinguishes in-progress, confirmed, failed, and recovery states.
+SOLO_UI: YES: Public Solo Beta Pricing, Auth, Welcome verification, onboarding continuation, and current-Solo handoff are affected.
+UNVERIFIED: Authenticated tenant provisioning and current-shell entry could not run without an approved non-production identity/database/provider environment; Stripe provider behavior and pixel-level screenshot review were also unavailable.
+SOLO_1536X770_PAIGE_CLOSED: PASS: Pricing and Auth structural checks in both themes found no horizontal overflow or nested scroll and kept the primary action reachable.
+SOLO_1536X770_PAIGE_OPEN: NOT_APPLICABLE: Public acquisition does not mount the Paige panel; authenticated current-shell panel geometry is owned and proven separately.
+SOLO_1366X768_PAIGE_CLOSED: PASS: Pricing and Auth structural checks in both themes found no horizontal overflow or nested scroll and kept the primary action reachable.
+SOLO_1366X768_PAIGE_OPEN: NOT_APPLICABLE: Public acquisition does not mount the Paige panel; authenticated current-shell panel geometry is owned and proven separately.
+SOLO_1024X768_PAIGE_CLOSED: PASS: Pricing and Auth structural checks in both themes found no horizontal overflow or nested scroll and kept the primary action reachable.
+SOLO_1024X768_PAIGE_OPEN: NOT_APPLICABLE: Public acquisition does not mount the Paige panel; authenticated current-shell panel geometry is owned and proven separately.
+SOLO_900X1000_PAIGE_CLOSED: PASS: Pricing and Auth structural checks in both themes found no horizontal overflow or nested scroll and kept the primary action reachable.
+SOLO_900X1000_PAIGE_OPEN: NOT_APPLICABLE: Public acquisition does not mount the Paige panel; authenticated current-shell panel geometry is owned and proven separately.
 
-MATERIAL_FLOW_CHANGE: YES — this work replaces multiple unsafe and obsolete enrollment paths with one paid Solo customer journey and adds truthful pending, failure, cancellation, retry, expiry, and recovery states.
-
-FLOW_PROTOTYPE: PASS — the owner’s 2026-09-12 Beta Activation Gate B instruction explicitly approves the complete customer-visible interaction contract, every required state, the existing Paige visual system, and production implementation. A deterministic throwaway model is being used to pressure-test the state map; no prototype control or mock adapter may ship.
-
+<!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
+INTERNAL_BUILD_IDENTITY: c971226413aaa06fa9853934bbe03fa22b3241dd; deployment=NOT_DEPLOYED; environment=local; migrations=PROOF_OWED(non-production_database_connection_unavailable); edge=PROOF_OWED(no_approved_non-production_provider_deployment); evidence=docs/evidence/ui-delivery/solo-beta-acquisition.md
+RELEASE_CHANNEL: development: local build and structural browser evidence only; no preview, staged, or production promotion was performed.
+RELEASE_CLASSIFICATION: internal-only: Gate A review candidate with authenticated, provider, migration, deployment, and owner acceptance unavailable.
+CUSTOMER_RELEASE_IDENTITY: none: no owner-approved customer release identity exists for this unmerged local candidate.
+RELEASE_NOTE_REQUIRED: NO: internal-only candidate with no deployment or customer release identity.
+RELEASE_TRUTH_BOUNDARY: PARTIAL: focused automated, static, local build, and public structural browser evidence passed; authenticated, provider, migration, pixel-review, deployment, and owner acceptance remain unavailable.
+RELEASE_RECOVERY: position=do-not-merge-or-deploy; reference=PR #1148 and docs/evidence/ui-delivery/solo-beta-acquisition.md
 ## Intended usable outcome
 
 A legitimate new customer can enter through any public Paige conversion path, create or resume a verified identity, persist the Solo intake and current agreement, complete the approved $74.50/month Stripe test-mode checkout, and only after signed payment receive an atomic standalone tenant, owner membership, subscription, entitlement, and fulfillment receipt before landing in `/solo/{server-resolved account_number}/command-center`; interruption never creates duplicates or routes the customer into `/app`, while existing authorized non-Solo users retain their current server-derived access.
@@ -99,4 +129,5 @@ Base: `299c39b2bc6c10eb0440ce415a626fb0d534f5ca` from fresh `origin/main` on 202
 - **Authenticated — PROOF OWED:** disposable new Solo identity, existing non-Solo preservation, refresh/deep-link/account-switch in approved environment.
 - **Payment/provider — PROOF OWED:** safe Stripe test success/cancel/failure/expiry/retry/delayed/duplicate webhook and provider readback.
 - **Database/migration — UNAVAILABLE locally:** no local PostgreSQL service; pgTAP and forward migration execution not claimed.
+- **PR #1148 database-contract — BLOCKED before Solo migrations:** current-main `20270117000000_social_operations.sql` attempts to index the missing `public.paige_social_posts.tenant_id` column before any new Solo migration is reached. This is a pre-existing Social schema/workstream failure; every Solo migration in this candidate remains unexecuted and no database proof is claimed.
 - **Deployed production — UNVERIFIED. Owner acceptance — UNVERIFIED.** Explicit owner go-live approval is required before merge or deployment.
