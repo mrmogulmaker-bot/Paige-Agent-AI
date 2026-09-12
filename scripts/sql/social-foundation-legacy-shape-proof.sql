@@ -51,7 +51,7 @@ create table public.paige_social_posts (
 insert into public.paige_social_posts(platform,caption,status)
 values('facebook','legacy row with no provable tenant','scheduled');
 
-\ir ../../supabase/migrations/20270120500000_social_foundation_tenant_recovery.sql
+\ir ../../supabase/migrations/20270122000000_social_foundation_tenant_recovery.sql
 
 do $$
 begin

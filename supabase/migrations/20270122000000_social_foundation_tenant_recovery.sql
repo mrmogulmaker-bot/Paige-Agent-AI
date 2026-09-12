@@ -7,6 +7,8 @@
 --   1. the 20260627 operator/legacy table with no tenant_id; and
 --   2. the 20270117 tenant-shaped table that some deployed catalogs already have.
 --
+-- This migration follows the merged 20270121000000 Vibe migration so ordinary
+-- deployed-catalog upgrades never require out-of-order migration application.
 -- No tenant is inferred. The old table is preserved byte-for-byte in private.
 -- Only rows already carrying an explicit tenant_id are mapped, and they enter the
 -- new lifecycle as archived legacy drafts with no executable target/provider claim.

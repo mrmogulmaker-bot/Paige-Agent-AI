@@ -69,7 +69,7 @@ insert into public.paige_social_posts(
   'Tenant-bound legacy draft','{}'::jsonb,'draft','5c100000-0000-4000-8000-000000000001'
 );
 
-\ir ../../supabase/migrations/20270120500000_social_foundation_tenant_recovery.sql
+\ir ../../supabase/migrations/20270122000000_social_foundation_tenant_recovery.sql
 
 do $$
 begin

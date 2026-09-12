@@ -3,7 +3,7 @@ begin;
 set local lock_timeout='2s';
 set local statement_timeout='30s';
 
-\ir ../../supabase/migrations/20270120500000_social_foundation_tenant_recovery.sql
+\ir ../../supabase/migrations/20270122000000_social_foundation_tenant_recovery.sql
 
 do $$
 begin
