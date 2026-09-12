@@ -103,9 +103,10 @@ BEGIN
     RAISE EXCEPTION 'pgtap: closure math wrong (consume or open holds)';
   END IF;
 
-  -- Release after consume: a NO-OP, never a credit return.
-  IF ((SELECT count(*) FROM public.paige_media_credit_entries
-       WHERE tenant_id = _t AND entry_type = 'release') <> 0) IS NOT TRUE THEN
+  -- Release after consume: a NO-OP, never a credit return (a consume-closed
+  -- hold has nothing open to release; the RPC would answer no_open_hold).
+  IF EXISTS (SELECT 1 FROM public.paige_media_credit_entries
+             WHERE tenant_id = _t AND entry_type = 'release') THEN
     RAISE EXCEPTION 'pgtap: unexpected release row';
   END IF;
 END $$;
