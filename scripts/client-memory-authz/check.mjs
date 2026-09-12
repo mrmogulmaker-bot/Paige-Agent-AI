@@ -1305,6 +1305,23 @@ const mirrorConfirms = (st) => (t, row) => {
   assert("14.8b …and every exemption states why it persists nothing",
     [...exempt.values()].every((why) => typeof why === "string" && why.length > 20),
     JSON.stringify([...exempt]));
+
+  // ── 14.9 THE EVALUATION-LOOP + SOCIAL PUBLISH SEAM, classified by name (2026-09-12 repair).
+  // These three shipped (#1123 / social) as declared writes with NO classification. `social_post`
+  // and `improvement_propose` read as writes (caught by 14.8 once it regressed); `improvement_decide`
+  // did NOT, because `decide` was absent from MUTATION_VERB — so it read as a query, skipped the
+  // MUTATING_TOOLS gate entirely, and ran from chat with no rendered approval card. Named here so a
+  // future change that drops a class is caught by name, not only in aggregate: propose stages and is
+  // ordinary; post goes public and is high; decide is the governed sign-off and is high, and being
+  // high puts it back inside the gate (14.1/14.4/14.6 then prove it cannot run on the model's word).
+  assert("14.9 improvement_propose is ordinary (stages a proposal; applies nothing)",
+    classifyAction("improvement_propose") === "ordinary", classifyAction("improvement_propose"));
+  assert("14.9b social_post is high (public, client-visible, not cleanly reversible)",
+    classifyAction("social_post") === "high", classifyAction("social_post"));
+  assert("14.9c improvement_decide is high (the governed sign-off; never runs from chat uncarded)",
+    classifyAction("improvement_decide") === "high", classifyAction("improvement_decide"));
+  assert("14.9d `decide` now reads as a mutation verb, so an unclassified *_decide cannot slip through",
+    MUTATION_VERB.test("improvement_decide") === true, String(MUTATION_VERB.test("improvement_decide")));
 }
 
 // ── 15. §67 — PAIGE BUILDS A PROCESS, BUT NEVER GRANTS HERSELF ONE ───────────────────────────
