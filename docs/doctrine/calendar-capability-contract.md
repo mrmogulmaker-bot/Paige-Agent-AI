@@ -117,6 +117,41 @@ Recorded, not started. None of these are in-scope for a Calendar hotfix.
   is written by the E6 pass (see the E6 package). Still OWED: the richer `record_rail_event` emission for
   a Paige-driven preset action, and reminder-OUTCOME readability from a tenant surface (task #244).
 
+## Calendar-link SHARING (E7) — a comms-governed send of a read-only link
+
+**SHIPPED LIVE 2026-09-13, Gate A** (owner authorized the release; PR #1252 squash `5fbb7c1b`;
+`deploy-migrations` #269 + `deploy-edge-functions` #323, db-live=edge-live=`5fbb7c1b`, zero migration +
+edge drift). This is a NEW capability class, distinct from FU-1/2/3 above and from the
+FU-2 booking/reschedule/cancel WRITE path: Paige prepares a **published** calendar's public booking
+link (`/book/{slug}`) and, after the confirm gate, **shares** it with a tenant contact by **email or
+SMS** — a **comms-governed send of a read-only link**, not a calendar write.
+
+- **Shareability gate (NEW, §18/§59):** `public.calendar_link_shareable(_cal,_tenant)` (migration
+  `20270315000000`) — reuses `_assert_can_manage_preset` for caller scope and mirrors public-booking
+  `loadCalendar` exactly (`enabled=true` AND ≥1 host). Draft/paused/archived/setup-required refuse
+  (`CALENDAR_NOT_PUBLIC`); enabled-but-hostless refuses (`CALENDAR_NO_HOST`). No link is composed for
+  a non-public calendar.
+- **Send (§18 one home):** routes through the ONE canonical comms seam `send-message`
+  (email/SMS), forwarding the CALLER JWT so its §9 caller-tenant gate stays live. It reuses
+  `runPreSend` (consent/DND/suppression/quiet-hours) and `send-message`'s own `comms.outbound` Rail
+  record — no second consent model, message queue, social adapter, provider call, or Rail event.
+  `calendar_link_send` is classified `high` in `action-risk.ts` and confirm-gated; the
+  `calendar_link_prepare` / `calendar_link_social_copy` reads are `read_only`.
+- **Social = copy-ready only (owner ruling 2026-09-13):** the governed social-**post** executor does
+  not exist and E7 must not invent an adapter, so E7 enumerates connected accounts
+  (`social_account_status`) and returns copy-ready post text — it **never posts and never claims a
+  post**.
+- **Honesty (§13/§70):** success is reported ONLY when `send-message` returns `outcome==="sent"`; a
+  queued/blocked/failed/`needs_config` send is reported as itself, never as sent. When no channel is
+  eligible, E7 returns copy-ready text.
+- **Proof:** pgTAP `calendar_link_shareable.sql` (24 assertions) + the adapter adversarial smoke
+  `scripts/calendar-link-share-smoke.mjs`-class (`.mts`, 42 assertions), both wired into
+  `calendar-preset-seam.yml`. Full record: `docs/evidence/proofs/calendar-link-sharing-e7/README.md`.
+  MAJOR-2 catalogue-preservation PROVEN on real PG16 (0 rows dropped/overwritten, +1 `calendar_link_send`);
+  `deno check`/typecheck-ratchet/build green in CI on `647b30f6`; migration PERSISTED on prod
+  (`deploy-migrations` #269 verify + zero drift). STILL PROOF OWED (§32.c, browser/JWT/prod-SQL session):
+  authenticated in-chat live-drive, `/book` origin confirm, direct prod-SQL object read.
+
 **Cross-references:** §7 (tenant-authored portal) · §9 (tenant isolation) · §10
 (Paige-governable seams) · §13 (honest reporting) · §16 (autonomy lanes) · §18 (one home) ·
 §67 (autonomy attaches to a process) · §68 (no authority is permanent) · task #244
