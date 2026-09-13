@@ -47,8 +47,8 @@ freeze its invariants. The program's job is **adoption + packaging + external ex
    increment-1 `chat-governed-adapter.ts`, which is not on `main`). The seam + gateway + adapters landed
    piecemeal via other PRs; the *unified kernel every caller uses* is therefore **not yet achieved**, and
    #1157 is **not an active collision**.
-3. **`paige-spine-tool-migration-map.md` (2026-09-02): "1 registered Spine capability."** Now **27
-   capability keys across 9 domains** in `registry.ts` (the registry grew).
+3. **`paige-spine-tool-migration-map.md` (2026-09-02): "1 registered Spine capability."** Now **37
+   capability keys across 11 domains** in `registry.ts` (the registry grew).
 4. **Same map: "105 inline Chat tools."** The `chat-tool-registry` baseline is now **94** (campaign-brief
    and other tools landed); the current inline count is ~87–94, not 105.
 5. **`integration-registry` "Marketplace Brain decision" grounding input** — no artifact exists under
@@ -72,8 +72,8 @@ registry (in code), a two-lane Rail/receipt system, and ~50 CI guards that keep 
 anyone outside our own code**. Concretely: (a) the flagship chat runtime still runs its own inline copy of
 the governance sequence and is pinned to one model provider; (b) the MCP "door" is live but **refuses every
 consequential action** (68 mutations structurally blocked — a connection authorizes reading, never
-acting); (c) there is **no public developer API, no published SDK, no sandbox, no rate limiting, and no
-signed webhooks**; (d) the autonomous *event → action* engine exists but only one event producer and one
+acting); (c) there is **no public developer API, no published SDK, no sandbox, no rate limiting on the
+API/MCP surface (it exists only on a few public consumer endpoints), and no signed webhooks**; (d) the autonomous *event → action* engine exists but only one event producer and one
 executor are wired, so the platform cannot yet reliably act on its own when something happens; (e) secrets
 are read 991 different ad-hoc ways vs. 27 through the intended one-home resolver.
 
@@ -159,8 +159,10 @@ whether the underlying capability exists.
 2. **Server-derived tenant** — `current_user_tenant_id()` DB RPC (raises on a mismatched passed id). MCP
    re-implements this in TS as `actorTenantId`. Provenance is an *adapter assertion* the seam trusts.
 3. **Actor tier/role** — `getActorTier` (fails closed to `client`).
-4. **Capability identity + risk** — `action-risk.ts` `classifyAction` (frozen Map, fail-closed; 62
-   classified actions). CI `lint:action-risk`.
+4. **Capability identity + risk** — `action-risk.ts` `classifyAction` (frozen Map, fail-closed; **134
+   classified action keys**: 72 `high` / 59 `ordinary` / 3 `owner_only`). CI `lint:action-risk`.
+   (The older "62" in the tool-migration map counted only *chat-declared* classified actions at a
+   2026-09-02 SHA; the full `RISK` array is 134 today.)
 5. **Autonomy lane** — `resolve_tool_autonomy`/`resolve_automation_autonomy` then `clampLaneByRisk`
    (`auto`-on-`high` → `confirm`; `off` always survives). §67/§68 Trust Compass + decay; RE-2
    standing-grant substrate exists but is **dark** (no consumer).
@@ -337,7 +339,7 @@ durable memory eligibility; fail closed on switch/revoke/expiry.
 
 The MCP door is today's closest thing to a public capability API: `paige-mcp/index.ts`, **119 tools**,
 OAuth 2.1 + Dynamic Client Registration + PKCE-S256 (`paige_mcp_oauth_*`), 14 enforced scopes, a governed
-door that classifies **68 mutate / 52 read** by verified handler-read and **structurally refuses all 68
+door that classifies **68 mutate / 51 read** by verified handler-read and **structurally refuses all 68
 mutations** (a connection authorizes the door, not consequential action). It is the substrate to build on;
 the gaps below are what a genuine external developer API/SDK still needs.
 
@@ -351,14 +353,14 @@ the gaps below are what a genuine external developer API/SDK still needs.
 | **Receipts** | **EXISTS (internal)** | `recordCapabilityRun` → Rail + redacted durable receipt; not yet exposed as an external, fetchable receipt resource. |
 | **Versioning** | **MISSING** | No `/v1`, no published schema/OpenAPI, no deprecation policy. |
 | **Sandbox** | **MISSING** | No sandbox/test tenant for external developers; the *internal* proof lane is itself blocked on a test tenant (D-6). |
-| **Rate limits** | **MISSING** | **No rate limiting anywhere** on the MCP door or edge functions — a hard prerequisite before any external exposure. |
+| **Rate limits** | **MISSING (for the API/MCP surface)** | **No rate limiting on the MCP door or any general API surface.** It exists today *only* on a few public consumer endpoints (`public-booking`, `paige-public-chat`, `booking-manage`) via `_shared/rateLimit.ts` → `check_public_rate_limit`. A general limiter is a hard prerequisite before any external exposure. |
 | **Webhooks** | **PARTIAL/legacy** | `fire-outbound-webhooks` works but is **unsigned (no HMAC)** and **not tenant-scoped**; native-event bus has one live producer. Needs signing + tenant scope + a published event schema (P5). |
 | **Support / observability** | **PARTIAL** | `paige_llm_trace` + audit + Rail exist internally; no external status page, error taxonomy doc, or developer support contract. |
 | **Mutations over the API** | **BLOCKED (by design)** | MCP refuses all 68 mutations until an approval channel exists (D-3). Read-first external API is safe today; write requires the approval-channel decision. |
 
 **Readiness verdict:** the platform is **read-ready** for a carefully-scoped external API (auth, tenant
 scope, outcomes, receipts all exist), but **not write-ready** (approval channel) and **not
-exposure-ready** (no versioning, no rate limiting, no sandbox, unsigned webhooks). The plan builds these
+exposure-ready** (no versioning, no API-surface rate limiting, no sandbox, unsigned webhooks). The plan builds these
 in P5/P6/P8 before any public exposure.
 
 ---
