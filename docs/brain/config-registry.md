@@ -135,6 +135,7 @@ owner has driven it.
 
 | Plan | Interval | Price ID | Amount | Product | lookup_key |
 |---|---|---|---|---|---|
+| Solo Beta | monthly | `price_1UF50HLUcYKxolNapbjC1zlJ` | $74.50 | `prod_VFaAS9EPa2ehkj` | `paige_solo_beta_monthly_v1` |
 | Solo | monthly | `price_1TzkVaLUcYKxolNaTMOGad1D` | $149.00 | `prod_UzjzWtdtKzWlIp` | `solo_monthly` |
 | Solo | annual | `price_1TzkVdLUcYKxolNaKu56Gkjh` | $1,490.00 | `prod_UzjzWtdtKzWlIp` | `solo_annual` |
 | Agency | monthly | `price_1TzkVgLUcYKxolNahULDkCfw` | $397.00 | `prod_UzjziZpD2L269e` | `agency_monthly` |
@@ -145,6 +146,9 @@ owner has driven it.
 Solo + Agency** active prices (`has_more:false`). Enterprise is registered in the plan table with no
 active Stripe price yet — confirm whether that's intentional (sales-led/manual invoicing) before
 wiring an Enterprise checkout.
+
+
+**Solo Beta live binding (2026-09-13):** the row above is the sole public acquisition offer. Server Checkout enforces a non-reusable 30-day trial; trial length is not a Price attribute. Production database/Stripe/Edge/Vercel readback is verified at merge `4ccb8a9a`. First authorized customer fulfillment is PROOF OWED. Stripe has no active Billing Portal configuration; the portal seam remains fail-closed until the conservative configuration is created.
 
 **Webhook endpoints** (✅ Stripe MCP `GetWebhookEndpoints`, both → `.../functions/v1/stripe-webhook`):
 

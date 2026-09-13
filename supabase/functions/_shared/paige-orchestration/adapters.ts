@@ -15,6 +15,7 @@
 // paige-n8n's run/execution_get via a shared seam — never a forked n8n client), still contract-stable here.
 
 import { isNativeActionKind, nativeAdapter } from "./native-adapter.ts";
+import { n8nExecuteAdapter } from "./n8n-adapter.ts";
 
 export type AdapterKind = "n8n" | "native" | "unsupported" | (string & {});
 
@@ -106,7 +107,13 @@ const n8nAdapter: ActionAdapter = {
     if (resolveAdapterKind(actionKind) !== "n8n") return null;
     return { id: actionKind, effect: "mutate", outcomeChannel: "paige_act_executions" };
   },
-  // dispatch/readback: slice 2 (shared paige-n8n run/execution_get seam).
+  // C3: dispatch/readback drive the SHARED paige-n8n run/execution_get seam (never a forked client, §18).
+  // ASYNC by construction — dispatch fires + returns accepted_for_execution + the execution id; readback
+  // POLLS the execution (n8n has no completion callback). HIGH-risk governance is UNCHANGED: in the auto
+  // drainer an n8n act clamps to approval_pending and this dispatch is never reached; it fires only for an
+  // approved `execute` decision.
+  dispatch: n8nExecuteAdapter.dispatch,
+  readback: n8nExecuteAdapter.readback,
 };
 
 const REGISTRY: ReadonlyMap<AdapterKind, ActionAdapter> = new Map<AdapterKind, ActionAdapter>([
@@ -119,6 +126,13 @@ const REGISTRY: ReadonlyMap<AdapterKind, ActionAdapter> = new Map<AdapterKind, A
 /** Resolve the adapter for an adapter kind, or null when no governed adapter is registered for it. */
 export function getAdapter(kind: AdapterKind): ActionAdapter | null {
   return REGISTRY.get(kind) ?? null;
+}
+
+/** The kinds that actually have a registered adapter. Exposed so the C4 contract-conformance suite can assert
+ *  its coverage table names EVERY registered adapter — a newly-registered kind then fails the suite until it
+ *  is covered, mechanizing the connector-neutral promise (no adapter escapes the contract by omission). */
+export function registeredAdapterKinds(): AdapterKind[] {
+  return [...REGISTRY.keys()];
 }
 
 /** Resolve the adapter for an act's action_kind directly (kind resolution + registry lookup). */

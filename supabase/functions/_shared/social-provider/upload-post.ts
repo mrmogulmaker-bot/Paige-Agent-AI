@@ -15,11 +15,20 @@ import {
 
 const DEFAULT_API_BASE = "https://api.upload-post.com/api/uploadposts";
 const PROFILE_KEY_PATTERN = /^ps_[a-f0-9]{40}$/;
-// Current hosted-page OAuth catalogue from the provider contract. Manual-secret
-// channels stay excluded until Paige has an approved Vault-backed custody flow.
-const HOSTED_OAUTH_PLATFORMS = [
-  "tiktok", "instagram", "linkedin", "youtube", "facebook", "x", "threads", "google_business",
+// Current Connect API catalogue. Reddit is deliberately absent because the
+// provider currently reports its OAuth path as unavailable.
+export const SOCIAL_OAUTH_PLATFORMS = [
+  "tiktok", "instagram", "facebook", "linkedin", "youtube", "x", "threads",
+  "pinterest", "google_business", "snapchat",
 ] as const;
+
+const AUTHORIZATION_HOSTS: Readonly<Record<string, readonly string[]>> = {
+  tiktok: ["tiktok.com"], instagram: ["instagram.com", "facebook.com"],
+  facebook: ["facebook.com"], linkedin: ["linkedin.com"], youtube: ["google.com"],
+  x: ["x.com", "twitter.com"], threads: ["threads.net", "facebook.com"],
+  pinterest: ["pinterest.com"], google_business: ["google.com"],
+  snapchat: ["snapchat.com"], internal_bounce: ["upload-post.com"],
+};
 
 function env(name: string): string | undefined {
   const deno = (globalThis as { Deno?: { env?: { get(key: string): string | undefined } } }).Deno;
@@ -42,6 +51,16 @@ function assertProfileKey(value: string): void {
   }
 }
 
+function connectPlatform(value: string): typeof SOCIAL_OAUTH_PLATFORMS[number] {
+  if (!SOCIAL_OAUTH_PLATFORMS.includes(value as typeof SOCIAL_OAUTH_PLATFORMS[number])) {
+    throw new SocialProviderError("unsupported_oauth_platform", 400, "This Social OAuth platform is unavailable.");
+  }
+  return value as typeof SOCIAL_OAUTH_PLATFORMS[number];
+}
+
+const hostnameMatches = (hostname: string, expected: string) =>
+  hostname === expected || hostname.endsWith(`.${expected}`);
+
 async function request(path: string, init: RequestInit = {}): Promise<unknown> {
   const response = await safeFetch(`${apiBase()}${path}`, {
     ...init,
@@ -52,7 +71,14 @@ async function request(path: string, init: RequestInit = {}): Promise<unknown> {
     },
   }, { timeoutMs: 15_000, maxBytes: 262_144 });
   if (response.status < 200 || response.status >= 300) {
-    const code = response.status === 401 || response.status === 403
+    let providerCode = "";
+    try {
+      const body = response.body ? JSON.parse(response.body) as Record<string, unknown> : {};
+      providerCode = typeof body.error_code === "string" ? body.error_code.toUpperCase() : "";
+    } catch { providerCode = ""; }
+    const code = providerCode === "PROFILE_LIMIT_REACHED" || providerCode === "PROFILE_BLOCKED"
+      ? "provider_profile_limit"
+      : response.status === 401 || response.status === 403
       ? "provider_authorization_rejected"
       : response.status === 404
         ? "provider_profile_not_found"
@@ -147,28 +173,28 @@ export const uploadPostSocialAdapter: SocialProviderAdapter = {
       throw error;
     }
   },
-  async createConnectUrl({ providerProfileKey, redirectUrl, platforms }) {
+  async createConnectUrl({ providerProfileKey, redirectUrl, platform }) {
     assertProfileKey(providerProfileKey);
-    const requested = platforms?.filter((platform) => HOSTED_OAUTH_PLATFORMS.includes(platform as typeof HOSTED_OAUTH_PLATFORMS[number]));
-    const payload = await request("/users/generate-jwt", {
+    const requested = connectPlatform(platform);
+    const providerPath = requested === "google_business" ? "google-business" : requested;
+    const payload = await request(`/oauth/${providerPath}/start`, {
       method: "POST",
       body: JSON.stringify({
-        username: providerProfileKey,
+        profile: providerProfileKey,
         redirect_url: redirectUrl,
-        connect_title: "Connect Social",
-        connect_description: "Choose the Social accounts you authorize Paige to use.",
-        redirect_button_text: "Return to Paige",
-        show_calendar: false,
-        platforms: requested?.length ? requested : HOSTED_OAUTH_PLATFORMS,
       }),
     }) as Record<string, unknown>;
-    const url = text(payload.access_url);
+    const url = text(payload.authorize_url, 4096);
     let authorization: URL | null = null;
     try { authorization = url ? new URL(url) : null; } catch { authorization = null; }
-    if (!authorization || authorization.origin !== "https://app.upload-post.com" || authorization.username || authorization.password) {
+    const expectedHosts = [...(AUTHORIZATION_HOSTS[requested] ?? []), ...AUTHORIZATION_HOSTS.internal_bounce];
+    if (!authorization || authorization.protocol !== "https:" || authorization.username || authorization.password
+        || !expectedHosts.some((host) => hostnameMatches(authorization!.hostname, host))) {
       throw new SocialProviderError("invalid_authorization_url", 502, "The Social provider did not return a secure authorization URL.");
     }
-    return { url: authorization.href, expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() };
+    const expiresIn = typeof payload.expires_in === "number" && payload.expires_in > 0 && payload.expires_in <= 900
+      ? payload.expires_in : 900;
+    return { url: authorization.href, expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString() };
   },
   async readProfile({ providerProfileKey }) {
     assertProfileKey(providerProfileKey);

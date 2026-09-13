@@ -42,6 +42,7 @@ import {
   type ActOutcome,
   type EventFacts,
 } from "./decide.ts";
+import { FINAL_OUTCOME_SET } from "./outcomes.ts";
 import { recordCapabilityRun, stableRunId } from "../capability-record.ts";
 import { emitAutomationRail } from "../railAutomation.ts";
 import { resolveNativeCapabilityStatus } from "../paige-capability-status/gatherer.ts";
@@ -194,13 +195,11 @@ async function loadActs(db: EngineDb, automationId: string): Promise<LoadActsRes
   return { ok: true, acts: data as ActRow[] };
 }
 
-/** Outcomes that are FINAL for the drainer — mirrors `_final` in the monotonic RPC (20270126000000). Once a
- *  row holds one of these, phase 5 adopts it and NEVER re-dispatches (idempotency across re-drains). */
-const FINAL_OR_SETTLED: ReadonlySet<string> = new Set([
-  "condition_not_matched", "held_by_lane", "approval_pending",
-  "refused_authority", "refused_budget", "refused_trust_compass", "refused_consent",
-  "executed", "failed", "cancelled",
-]);
+/** Outcomes that are FINAL for the drainer. DERIVED from the one canonical home (outcomes.ts `FINAL_OUTCOMES`,
+ *  C4/§18), which is pinned set-for-set to `_final` in the monotonic RPC (20270126000000) by the drift guard —
+ *  so the engine's "never re-dispatch a final row" set can no longer drift from the RPC's. Once a row holds one
+ *  of these, phase 5 adopts it and NEVER re-dispatches (idempotency across re-drains). */
+const FINAL_OR_SETTLED: ReadonlySet<string> = FINAL_OUTCOME_SET;
 
 /** Read the CURRENT ledger outcome for one (event, act). `outcome:null` = the row does not exist yet.
  *  An infra read error returns `{ ok:false }` so phase 5 retries rather than acting blind (§13/§32). */

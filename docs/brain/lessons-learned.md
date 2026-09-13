@@ -23,6 +23,11 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 - **Symptom.** The business-verifier PR closed the cross-tenant verify IDOR at the direct edge endpoint and asserted "closes the cross-tenant IDOR." An internal §39 peer-gate on the pushed diff caught that the SAME capability is still reachable unscoped through a sibling door: `paige-mcp`'s `verify_business` tool forwarded an arbitrary body `business_id` with the service-role key → classified `system` → blanket-allowed with zero tenant scoping, verifying any tenant's business and burning paid-adapter budget. The claim was true of the endpoint, false of the capability.
 - **Root cause.** The §37 producer inventory enumerated the producers but didn't verify that each one that reaches the capability via a DIFFERENT path also enforces scope. `system` (service-role) being a blanket-allow at the door means the capability's safety depends on EVERY service-role caller self-scoping first — skill-runner did (`.eq("tenant_id", callerTenantId)`), paige-mcp did not. A green endpoint + a clean external review (Codex) both passed; only the adversarial read that explicitly asked "what else calls this, and does IT scope?" surfaced it.
 - **Rule.** When a door trusts `system`/service-role as a blanket allow and defers scoping to the dispatcher, the §37 inventory is incomplete until you've OPENED each such dispatcher and confirmed it tenant-scopes the target before calling — a sibling tool reaching the same capability is part of the same bypass, not a separate slice. And a security claim ("closes X") must be scoped to what actually shipped: either close every door to the capability in the slice, or qualify the claim to the doors closed and name the open ones as the immediate next work (not buried as a vague follow-up). Closing one door while the headline says the capability is closed is the §13 honesty failure this catches.
+## A SECURITY DEFINER helper in an RLS policy must be EXECUTE-granted to EVERY role the policy runs under; and fixing a pgTAP's first failure EXPOSES the next one it was masking (2026-09-13)
+
+- **Symptom.** After reordering a SET-ROLE pgTAP fixture to satisfy `guard_active_tenant_membership()` (its first, masking failure), the proof hit a SECOND failure at the account-switch case: `permission denied for function is_tenant_admin`, raised while evaluating the `threads_select_owner_or_admin` RLS policy on `paige_chat_threads` as the `authenticated` role.
+- **Root cause (two traps).** (1) `is_tenant_admin(uuid)` is `SECURITY DEFINER` and is referenced by that policy's admin-oversight branch, but it was EXECUTE-granted only to `anon` (`20260703131428`), never `authenticated` — while its sibling in the SAME policy, `is_platform_owner()`, DID get the `authenticated` grant (`20260628220854`). A caller needs EXECUTE to INVOKE a definer function even though the body then runs as owner; the asymmetry left the admin client-thread oversight read unable to evaluate for `authenticated`. (2) A pgTAP that aborts on `ON_ERROR_STOP` at its first failing statement HIDES every later failure; fixing the first (the membership-guard order) is not "the fix" — it only reveals the next latent one. Expect to iterate until the terminal row prints.
+- **Rule.** When an RLS policy calls a SECURITY DEFINER helper, confirm that EXECUTE is granted to every role the policy is declared `TO` (here `authenticated`), not just `anon` — audit the whole helper family for parity, since these grants were added per-role in batches and one can be missed. And treat a green pgTAP as proven only when it reaches its explicit terminal row (`...PROVEN`) and `ROLLBACK`; a single `permission denied`/`RAISE` aborts the rest, so re-read the LAST psql line, not the step's red/green alone. The platform-level grant fix is tracked as issue #1204 (kept OUT of the task↔thread slice; the slice's proof grants it in its own harness with a comment).
 
 ## A service-role write-back keyed on a caller-supplied target, gated on a GLOBAL role, is a cross-tenant write IDOR (2026-09-13)
 
@@ -2484,3 +2489,28 @@ non-array object), THEN read its contents — and the self-test must replace the
 type (`null`/string/number/array), not only mutate a value inside it. This is why three independent review
 layers (§39 adversarial + §5 compliance + an external reviewer) and CI are LAYERED, never substitutes: the
 pass my own crew missed is exactly the pass the third reviewer caught (§39's own "none alone is sufficient"). Proven across FOUR external catches on this one PR: (a) a non-object `field_schema` that skipped the contract; (b) a Deepgram seam mis-attributed to ElevenLabs; (c) DIRECTORY anchors that could not detect file-level drift — so an anchor must name an exact adapter FILE and the resolver must require a file, not a directory; and (d) an ORPHAN anchor (an unimported `_shared` helper) standing in for the reachable client that actually backs the provider — so an anchor must point at code that is actually REACHABLE/called, not merely provider-named-and-present. "Exists" has three distinct failure modes a naive check misses: wrong provider, wrong granularity (dir vs file), and unreachable (orphan).
+### A service-role write that stamps a client-supplied reference bypasses the RLS that would validate it (2026-09-13)
+
+**What happened.** `crm_create_task` recorded a task's originating conversation by stamping
+`tasks.source_thread_id` from the request-body `threadId` — through a SERVICE-ROLE insert. The
+service-role client bypasses RLS, so the thread id was never checked against the caller: a client
+could POST another tenant's thread id (or a forged uuid) and the task would record it as provenance.
+It read as safe because "a dangling uuid grants no read" (the thread stays RLS-gated on its own), so
+no transcript leaked — but it is a §9 integrity hole and exactly the "client-supplied id stamped on
+faith" the owner forbids. The tell that masked it: the insert correctly server-resolved `tenant_id`,
+so the row LOOKED tenant-safe; the foreign-reference field riding alongside it did not get the same
+scrutiny.
+
+**The lesson (the class).** When a service-role (RLS-bypassing) write stamps a field that REFERENCES
+another tenant-scoped row — a foreign key, a thread id, a contact id, any "this belongs to X" pointer
+— and the value originates from the request (body or model), that field must be VALIDATED on the
+CALLER's RLS client before it reaches the service-role write. Server-resolving the row's OWN
+`tenant_id` is not enough; every client-supplied reference it carries needs its own owner+tenant
+check. The validation belongs on the caller-JWT client (RLS-enforced) with explicit
+`id`+`tenant_id`+`owner` filters — defense in depth — and an unresolved reference resolves to NULL,
+never the unvalidated claim. Put the decision in one home so every writer of that reference shares it.
+
+**How to catch it:** for any service-role insert/update, list every column whose value comes from the
+request and is a reference to another row; each one is a potential cross-tenant stamp unless validated
+on the RLS client first. "The row's tenant_id is server-resolved" answers only the row's own scope,
+never the scope of what it points at.
