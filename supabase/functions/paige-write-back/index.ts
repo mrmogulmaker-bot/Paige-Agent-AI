@@ -1,6 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
+import { resolveTenantForUser } from "../_shared/tenant-for-user.ts";
+import {
+  authorizeWriteBackTarget,
+  decideWriteBack,
+  writeBackGovernedAuditRow,
+  type WriteBackAuthzDeps,
+  type WriteBackGovernedAudit,
+} from "../_shared/paige-write-back/governed-adapter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -87,6 +95,30 @@ const writeBackSchema = z.object({
   document_type: z.string().max(120).optional(),
 });
 
+/**
+ * Write ONE governed-decision row to paige_audit_log (service-role). The only trace of a REFUSED
+ * cross-user write, since a refusal performs no write and reaches no `audit_logs` insert. Non-fatal:
+ * a logging failure never changes the decision (mirrors skill-runner's `writeGovernedSkillAudit`).
+ */
+// deno-lint-ignore no-explicit-any -- the supabase client type is intentionally loose here, matching
+// skill-runner and _shared/tenant-for-user.ts: a precise client type trips TS2589 for every caller.
+async function writeGovernedWriteBackAudit(
+  admin: any,
+  actorUserId: string,
+  audit: WriteBackGovernedAudit,
+): Promise<void> {
+  try {
+    const row = writeBackGovernedAuditRow(audit);
+    await admin.from("paige_audit_log").insert({
+      actor_user_id: actorUserId,
+      actor_role: `write_back:${audit.principal}`,
+      ...row,
+    });
+  } catch (e) {
+    console.error("paige-write-back governed audit not recorded", String(e));
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -133,32 +165,120 @@ serve(async (req) => {
 
     const targetUserId = validated.target_user_id || user.id;
 
-    // Check authorization: user can update own data, admins/coaches can update assigned clients
+    // ── CROSS-USER WRITE — tenant-scoped authorization + the ONE governed pathway ─────────────────
+    // A SELF-write (targetUserId === user.id) is the caller editing their OWN record: no IDOR, no
+    // workspace scoping, and its legitimate callers include tenant-less portal consumers (the client
+    // portal's own SSN/profile save) — so it stays on the direct path below, ungoverned by the
+    // workspace seam, which is correct (a workspace gate would refuse a consumer saving their own
+    // profile). A CROSS-USER write is where the §9 cross-tenant IDOR lived: the prior guard consulted
+    // the GLOBAL `user_roles` table, which has NO tenant predicate (the §53/§59 global-role trap), so
+    // a tenant-A admin could write a tenant-B user's credit/identity record. It is now authorized by
+    // the TENANT bond (the caller's active workspace must own the target), with a platform owner (super_admin)
+    // as the one sanctioned cross-tenant caller, and routed through `decideGovernedExecution` exactly
+    // like the skill and mcp doors.
     if (targetUserId !== user.id) {
-      const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
-      const userRoles = (roles || []).map((r: any) => r.role);
-      const isAdmin = userRoles.includes("admin");
-      const isCoach = userRoles.includes("coach");
+      const startedAtMs = Date.now();
 
-      if (!isAdmin && !isCoach) {
-        return new Response(JSON.stringify({ error: "Not authorized to update this user's data" }), {
-          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      const authzDeps: WriteBackAuthzDeps = {
+        // is_platform_owner() (super_admin ONLY, §53) derives from the VERIFIED JWT (auth.uid()), so it
+        // MUST use the caller's token client. Super_admin — NOT is_platform_operator() — because §53
+        // scopes platform_admin to all-tenant READ/fleet ops, never cross-tenant credit/identity WRITES;
+        // this matches paige-ai-chat:808, the sibling cross-tenant client-data write gate.
+        isPlatformOwner: async () => {
+          const { data } = await authClient.rpc("is_platform_owner");
+          return data === true;
+        },
+        // The global role is necessary, NEVER sufficient — the tenant bond below authorizes the write.
+        callerRoles: async () => {
+          const { data } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+          // deno-lint-ignore no-explicit-any -- row shape from a dynamic select
+          return (data || []).map((r: any) => String(r.role));
+        },
+        // The caller's ACTIVE workspace, resolved server-side from the JWT (current_user_tenant_id) —
+        // the same resolution the chat uses to authorize a scoped client.
+        callerActiveTenant: async () => {
+          const { data, error } = await authClient.rpc("current_user_tenant_id");
+          if (error) return null;
+          return (data ?? null) as string | null;
+        },
+        // The workspace a target belongs to (for the platform-owner path's audit scope). Service-role, so
+        // get_user_primary_tenant bypasses its self-or-owner guard; falls back to the CRM clients row
+        // for a target that is a clients.id / linked_user_id rather than a tenant member. `t` is a
+        // zod-validated uuid (writeBackSchema.target_user_id), so the `.or()` interpolation carries no
+        // PostgREST filter-injection surface; a deterministic `.order("id")` picks a stable row when a
+        // linked_user_id maps to clients in more than one tenant (the #588 LIMIT-1-without-ORDER-BY lesson).
+        resolveTargetTenant: async (t) => {
+          const primary = await resolveTenantForUser(supabase, t);
+          if (primary.tenantId) return primary.tenantId;
+          const { data } = await supabase
+            .from("clients")
+            .select("tenant_id")
+            .or(`id.eq.${t},linked_user_id.eq.${t}`)
+            .not("tenant_id", "is", null)
+            .order("id", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          // deno-lint-ignore no-explicit-any -- single-column select row
+          return (((data as any)?.tenant_id) ?? null) as string | null;
+        },
+        // The §9 boundary: is the target a MEMBER (auth user) or a CRM CLIENT of the caller's active
+        // workspace? Either establishes the same-workspace bond; neither means a different workspace.
+        // `t` is a zod-validated uuid, and the clients `.or()` is AND-scoped by the caller's tenant_id,
+        // so there is no filter-injection surface and no cross-tenant match is possible. Result is a
+        // boolean existence check, so row order is irrelevant here.
+        targetSharesTenant: async (callerTenantId, t) => {
+          const { data: member } = await supabase
+            .from("tenant_members")
+            .select("tenant_id")
+            .eq("user_id", t)
+            .eq("tenant_id", callerTenantId)
+            .eq("status", "active")
+            .maybeSingle();
+          if (member) return true;
+          const { data: client } = await supabase
+            .from("clients")
+            .select("id")
+            .or(`id.eq.${t},linked_user_id.eq.${t}`)
+            .eq("tenant_id", callerTenantId)
+            .limit(1)
+            .maybeSingle();
+          return !!client;
+        },
+        // The direct coach↔client assignment, kept exactly as the prior guard had it — now behind the
+        // same-tenant bond, so it can never reach across workspaces.
+        coachAssigned: async (coachUserId, t) => {
+          const { data } = await supabase
+            .from("coach_clients")
+            .select("id")
+            .eq("coach_user_id", coachUserId)
+            .eq("client_user_id", t)
+            .eq("status", "active")
+            .maybeSingle();
+          return !!data;
+        },
+      };
+
+      const authz = await authorizeWriteBackTarget(authzDeps, { callerUserId: user.id, targetUserId });
+      const { outcome, audit } = decideWriteBack({
+        authenticated: true,
+        userId: user.id,
+        targetUserId,
+        tenantId: authz.tenantId,
+        access: { allowed: authz.allowed, reason: authz.reason },
+        authzBasis: authz.basis,
+        fieldPaths: validated.updates.map((u) => u.field_path),
+        startedAtMs,
+        nowIso: new Date().toISOString(),
+      });
+
+      // The governed receipt — the ONLY trace of a refused cross-user write, since a refusal performs
+      // no write and never reaches the audit_logs insert below.
+      await writeGovernedWriteBackAudit(supabase, user.id, audit);
+
+      if (outcome.kind === "refuse") {
+        return new Response(JSON.stringify({ error: outcome.message }), {
+          status: outcome.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
-      }
-
-      if (isCoach && !isAdmin) {
-        const { data: assignment } = await supabase
-          .from("coach_clients")
-          .select("id")
-          .eq("coach_user_id", user.id)
-          .eq("client_user_id", targetUserId)
-          .eq("status", "active")
-          .maybeSingle();
-        if (!assignment) {
-          return new Response(JSON.stringify({ error: "Not assigned to this client" }), {
-            status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
       }
     }
 

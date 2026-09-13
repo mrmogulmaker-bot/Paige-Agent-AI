@@ -6,6 +6,13 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## A service-role write-back keyed on a caller-supplied target, gated on a GLOBAL role, is a cross-tenant write IDOR (2026-09-13)
+
+- **Symptom.** `paige-write-back` let a tenant-A admin/coach write a tenant-B user's credit/identity record (`businesses`/`profiles`/`intake`/`credit_*`) — a §9 cross-tenant write. Surfaced during the A/B governed-adoption caller inventory, not by a failing test (the endpoint "worked" for every legitimate caller).
+- **Root cause.** The endpoint authenticates on an anon client, then writes through a SERVICE-ROLE client (RLS bypassed). For a cross-user write it checked `user_roles` for an `admin`/`coach` role — but `user_roles` is GLOBAL (no `tenant_id`), the §53/§59 global-role trap. A global role is necessary, NEVER sufficient: nothing bound the caller's workspace to the target's. The RLS the service client bypassed was the only thing that would have stopped it, and it was bypassed by design.
+- **Rule.** Any SECURITY DEFINER / service-role path that writes tenant/PII data keyed on a CALLER-SUPPLIED target must re-enforce the caller's scope IN-BODY: a TENANT BOND (caller's server-resolved `current_user_tenant_id()` owns the target), not a global role; cross-tenant authority is `is_platform_owner()` (super_admin, §53), never a tenant-level app_role; fail closed on any unresolved identity/tenant/read. The grant is never the guard (§59). And the class of proof that misses this is a green test suite — only a caller inventory against the tenant matrix (§37/§51) surfaces "works for everyone, including the attacker."
+- **Companion trap (same session).** Concluding a §58 behavior change from a PARTIAL diff read: the first 120 lines of the diff showed only the role check removed, which read as "the coach-assignment requirement is NEW" — the REST of the diff showed the old code already had the `coach_clients` check, so the only real change was the tenant bond (the IDOR fix), no collateral regression. I had already written a "§13 correction" comment asserting the false claim before catching it. Rule: read the WHOLE diff before asserting what behavior changed, and never let a half-read drive a code comment or a §58 flag.
+
 ## A client write-gate must be evaluated against the VIEWED tenant, not `current_user_tenant_id()` (2026-09-13)
 
 - **Symptom.** On Settings › Connections › Calendars, "New preset" (and edit/enable/hosts) was disabled/hidden for an owner who could actually write — the surface read but could not be operated. The reported "empty state with no way to create" was really a write-gate that resolved false.
