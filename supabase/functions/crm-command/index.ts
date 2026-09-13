@@ -19,8 +19,15 @@ const PREVIEW_REQUIRED_ACTIONS = new Set<CrmAction>([
   "contact.merge", "contact.hard_delete", "contact.bulk_update", "task.delete", "deal.delete",
 ]);
 
+const actionSchema = z.custom<CrmAction>(
+  (value): value is CrmAction => typeof value === "string"
+    && Object.prototype.hasOwnProperty.call(ACTION_CAPABILITY, value),
+  { message: "Unknown CRM action." },
+);
+const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected an ISO calendar date (YYYY-MM-DD).");
+
 const commandSchema = z.object({
-  action: z.enum(Object.keys(ACTION_CAPABILITY) as [CrmAction, ...CrmAction[]]),
+  action: actionSchema,
   contact_id: z.string().uuid().nullable().optional(),
   loser_contact_id: z.string().uuid().nullable().optional(),
   expected_loser_updated_at: z.string().datetime({ offset: true }).optional(),
@@ -35,12 +42,12 @@ const commandSchema = z.object({
   title: z.string().trim().min(1).max(300).optional(),
   value_cents: z.number().int().nonnegative().optional(),
   currency: z.string().regex(/^[A-Z]{3}$/).optional(),
-  expected_close_date: z.string().date().optional(),
+  expected_close_date: dateSchema.optional(),
   offer_type: z.string().trim().max(120).optional(),
   tags: z.array(z.string().trim().min(1).max(80)).max(50).optional(),
   notes: z.string().max(10000).optional(),
   outcome_type: z.enum(["won", "lost", "not_fit", "closed_without_decision"] as const).optional(),
-  outcome_date: z.string().date().optional(),
+  outcome_date: dateSchema.optional(),
   pipeline_id: z.string().uuid().optional(),
   target_stage_id: z.string().uuid().optional(),
   expected_version: z.number().int().positive().optional(),
