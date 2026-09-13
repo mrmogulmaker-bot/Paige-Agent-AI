@@ -707,3 +707,5 @@ jobs:
           node-version: 22
       - name: Smoke — web_fetch SSRF guard refuses private/DNS-rebind/redirect/credentialed targets and fences fetched content
         run: node --experimental-transform-types scripts/web-fetch-hardening-smoke.mjs
+      - name: Smoke — kb-ingest-url SSRF guard refuses DNS-rebind/private/redirect targets (canonical assertPublicHttpUrl)
+        run: node --experimental-transform-types scripts/kb-ingest-url-ssrf-smoke.mjs
