@@ -154,6 +154,7 @@ settings.security-data = INTENTIONALLY_ISOLATED
 analytics = UNAVAILABLE
 marketplace = UNAVAILABLE
 operator.platform = PARTIAL
+platform.promotional-solo-access = PARTIAL
 public.solo-beta-acquisition = PARTIAL
 ```
 <!-- LEDGER-SNAPSHOT:END -->
