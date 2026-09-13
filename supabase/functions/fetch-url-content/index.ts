@@ -83,7 +83,7 @@ serve(async (req) => {
 
     if (!url || typeof url !== 'string') {
       return new Response(
-        JSON.stringify({ error: 'Valid URL is required', reason: 'invalid_url' }),
+        JSON.stringify({ success: false, error: 'Valid URL is required', reason: 'invalid_url' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -179,10 +179,14 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error fetching URL:', error);
+    // `internal_error` (not `request_failed`) keeps reason→status 1:1: `request_failed` is the
+    // transport reason safeFetch raises (→ 502 via statusForReason); this 500 is an unexpected
+    // server-side throw. `success:false` matches every other failure branch (contract uniformity).
     return new Response(
       JSON.stringify({
+        success: false,
         error: error instanceof Error ? error.message : 'Failed to fetch URL content',
-        reason: 'request_failed',
+        reason: 'internal_error',
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

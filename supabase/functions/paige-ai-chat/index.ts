@@ -8723,8 +8723,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               } else {
                 // Honest refusal/failure — never a fabricated page (§13). Surface the stable
                 // reason so Paige can tell the user why (e.g. a private/redirecting URL).
-                const reason = typeof (wfData as any)?.reason === "string" ? (wfData as any).reason : "fetch_failed";
-                const errMsg = typeof (wfData as any)?.error === "string" ? (wfData as any).error : `Could not fetch that URL (${reason}).`;
+                // §39 P3-2 defense-in-depth: reason/error are platform-static / the SsrfReason
+                // enum today (never page-derived), but fence + bound them anyway so a future
+                // change that lets an upstream-derived string reach here cannot steer the model
+                // through an unfenced field, matching the success path's treatment.
+                const reason = sanitizeUntrustedText(typeof (wfData as any)?.reason === "string" ? (wfData as any).reason : "fetch_failed").replace(/[\r\n]+/g, " ").trim().slice(0, 120);
+                const errMsg = sanitizeUntrustedText(typeof (wfData as any)?.error === "string" ? (wfData as any).error : `Could not fetch that URL (${reason}).`).replace(/[\r\n]+/g, " ").trim().slice(0, 300);
                 toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, reason, error: errMsg }) });
               }
             }

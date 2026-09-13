@@ -1470,6 +1470,7 @@ five of six surfaces without any ledger row noticing.
 | OWNER-ONLY action approvable from chat | — | — | — | — | — | — | 403 |
 | Unclassified write refused before dispatch | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
 | `update_client_data` completable by a client seat | n/a | n/a | n/a | n/a | n/a | ✓ | 403 |
+| `web_fetch` a public URL — SSRF-guarded + injection-fenced (read; functional PR #1227, was inert) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (in `CLIENT_SEAT_ALLOW`) | 403 |
 | One approval executes exactly once | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
 | A declined proposal is cancelled, not left live | — | — | — | ✓ | ✓ | — | 403 |
 | Every executed write files an attribution row | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |

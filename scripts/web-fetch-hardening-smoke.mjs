@@ -11,9 +11,8 @@
 // hostname that resolves to 127.0.0.1 — the exact DNS→private bypass this upgrade closes.
 //
 // Run:
-//   node --experimental-transform-types \
-//     supabase/functions/_shared/../../../scripts/web-fetch-hardening-smoke.mjs
-// (plain: `node --experimental-transform-types scripts/web-fetch-hardening-smoke.mjs`)
+//   npm run smoke:web-fetch-hardening
+//   (or directly: node --experimental-transform-types scripts/web-fetch-hardening-smoke.mjs)
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { if (cond) { pass++; } else { fail++; console.error("  ✗ FAIL:", name); } };
@@ -113,8 +112,8 @@ function buildToolResult(wfData, fetchUrlArg) {
     const safeTitle = wfData.title ? sanitizeUntrustedText(wfData.title).replace(/[\r\n]+/g, " ").trim().slice(0, 300) : null;
     return { success: true, untrusted: true, url: safeUrl, title: safeTitle, fetched_at: new Date().toISOString(), truncated: wfData.truncated === true, content: `${RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE}\n\n${sanitizeUntrustedText(wfData.content)}` };
   }
-  const reason = typeof wfData?.reason === "string" ? wfData.reason : "fetch_failed";
-  return { success: false, reason, error: typeof wfData?.error === "string" ? wfData.error : `Could not fetch that URL (${reason}).` };
+  const reason = sanitizeUntrustedText(typeof wfData?.reason === "string" ? wfData.reason : "fetch_failed").replace(/[\r\n]+/g, " ").trim().slice(0, 120);
+  return { success: false, reason, error: sanitizeUntrustedText(typeof wfData?.error === "string" ? wfData.error : `Could not fetch that URL (${reason}).`).replace(/[\r\n]+/g, " ").trim().slice(0, 300) };
 }
 const good = buildToolResult({ success: true, url: "https://public.example.test", title: "Home === x", content: "page === body ​ text", truncated: true }, "https://public.example.test");
 ok("success result carries provenance", good.success && good.url && good.fetched_at && good.truncated === true);
