@@ -33,7 +33,8 @@ INSERT INTO public.clients(id,tenant_id,account_number,created_by,first_name,las
  ('c7100000-0000-4000-8000-00000000c102','c7100000-0000-4000-8000-000000001111','CLT-CGA-2','c7100000-0000-4000-8000-000000000001','Delete','Fixture','delete@tests.invalid','2026-09-13 00:00:00+00'),
  ('c7100000-0000-4000-8000-00000000c103','c7100000-0000-4000-8000-000000001111','CLT-CGA-3','c7100000-0000-4000-8000-000000000001','Merge','Fixture','merge@tests.invalid','2026-09-13 00:00:00+00'),
  ('c7100000-0000-4000-8000-00000000c104','c7100000-0000-4000-8000-000000001111','CLT-CGA-4','c7100000-0000-4000-8000-000000000001','Bulk','Fixture','bulk@tests.invalid','2026-09-13 00:00:00+00'),
- ('c7100000-0000-4000-8000-00000000c105','c7100000-0000-4000-8000-000000001111','CLT-CGA-5','c7100000-0000-4000-8000-000000000001','Coach','Fixture','coach@tests.invalid','2026-09-13 00:00:00+00');
+ ('c7100000-0000-4000-8000-00000000c105','c7100000-0000-4000-8000-000000001111','CLT-CGA-5','c7100000-0000-4000-8000-000000000001','Coach','Fixture','coach@tests.invalid','2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c106','c7100000-0000-4000-8000-000000001111','CLT-CGA-6','c7100000-0000-4000-8000-000000000001','Unlink','Fixture','unlink@tests.invalid','2026-09-13 00:00:00+00');
 UPDATE public.clients SET linked_user_id='c7100000-0000-4000-8000-000000000002' WHERE id='c7100000-0000-4000-8000-00000000c103';
 UPDATE public.clients SET linked_user_id='c7200000-0000-4000-8000-000000000001' WHERE id='c7200000-0000-4000-8000-00000000c201';
 INSERT INTO public.businesses(id,tenant_id,owner_user_id,legal_name,is_active,is_primary,updated_at) VALUES
@@ -41,7 +42,7 @@ INSERT INTO public.businesses(id,tenant_id,owner_user_id,legal_name,is_active,is
  ('c7100000-0000-4000-8000-00000000b102','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Coach Scope Fixture',true,false,'2026-09-13 00:00:00+00'),
  ('c7200000-0000-4000-8000-00000000b201','c7200000-0000-4000-8000-000000002222','c7200000-0000-4000-8000-000000000001','Archived Primary',false,true,'2026-09-13 00:00:00+00'),
  ('c7200000-0000-4000-8000-00000000b202','c7200000-0000-4000-8000-000000002222','c7200000-0000-4000-8000-000000000001','Active Primary',true,true,'2026-09-13 00:00:00+00');
-UPDATE public.clients SET entity_name='Unlink Fixture LLC',primary_business_id='c7100000-0000-4000-8000-00000000b102' WHERE id='c7100000-0000-4000-8000-00000000c104';
+UPDATE public.clients SET entity_name='Unlink Fixture LLC',primary_business_id='c7100000-0000-4000-8000-00000000b102' WHERE id='c7100000-0000-4000-8000-00000000c106';
 SELECT set_config('app.pipeline_created_through','paige',true);
 SELECT set_config('app.pipeline_requested_by','c7100000-0000-4000-8000-000000000001',true);
 INSERT INTO public.pipelines(tenant_id,name,is_default) VALUES
@@ -82,9 +83,9 @@ CREATE TEMP TABLE auto_stub_primary_guard AS SELECT public.execute_crm_command(
 SELECT is((SELECT count(*)::integer FROM public.businesses WHERE tenant_id='c7200000-0000-4000-8000-000000002222' AND owner_user_id='c7200000-0000-4000-8000-000000000001' AND is_active AND is_primary),1,'contact auto-stub preserves exactly one active primary company for the owner');
 CREATE TEMP TABLE unlink_result AS SELECT public.execute_crm_command(
  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
- jsonb_build_object('approval_channel','operator_card','action','contact.unlink_company','contact_id','c7100000-0000-4000-8000-00000000c104','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c104')),
+ jsonb_build_object('approval_channel','operator_card','action','contact.unlink_company','contact_id','c7100000-0000-4000-8000-00000000c106','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c106')),
  'unlink-auto-stub-guard-1') result;
-SELECT is((SELECT primary_business_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c104'),NULL::uuid,'explicit company unlink remains unlinked despite a populated entity name');
+SELECT is((SELECT primary_business_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c106'),NULL::uuid,'explicit company unlink remains unlinked despite a populated entity name');
 SELECT is((SELECT count(*)::integer FROM public.businesses WHERE tenant_id='c7100000-0000-4000-8000-000000001111'),2,'explicit company unlink creates no replacement auto-stub company');
 SELECT is((SELECT count(*)::integer FROM public.businesses WHERE tenant_id='c7200000-0000-4000-8000-000000002222' AND owner_user_id='c7200000-0000-4000-8000-000000000001' AND legal_name='Secondary Auto Stub' AND is_active AND NOT is_primary),1,'contact auto-stub creates the requested linked company without promoting a second primary');
 CREATE TEMP TABLE task_metadata_fixture AS SELECT public.execute_crm_command(
