@@ -28,10 +28,18 @@ direct SQL inspection via MCP was permission-denied). The fix hardens the door r
 
 - Authority is derived from **server facts, per target** — never from a caller-supplied id matching
   itself. Removing the `IS DISTINCT FROM _target_client_id` self-reference closes defect 1.
-- The global `has_role('admin')` disjunct is replaced by resource/tenant-scoped checks: an **active
-  `coach_clients`** assignment to the target user, a **same-tenant owner/admin** (`is_tenant_admin`), a
-  **platform operator** (`is_platform_operator`, §53 — the helper the `client_memory` RESTRICTIVE fence
-  itself uses), and the canonical **`can_access_contact`** helper for the client branch. Closes defect 2.
+- The global `has_role('admin')` disjunct is replaced by resource-scoped checks. **Cross-USER** access
+  (rows keyed on `_target_user_id`) is limited to **self** and **platform operator**
+  (`is_platform_operator`, §53 — the helper the `client_memory` RESTRICTIVE fence uses). **Cross-CONTACT**
+  access (rows keyed on `_target_client_id`, a `clients.id`) goes through the canonical
+  **`can_access_contact`**, which resolves THAT contact's own tenant. Closes defect 2.
+- **A per-user coach/tenant-admin cross-user grant was deliberately NOT used** (peer-review §39 Finding 1):
+  a `client_memory` row's tenant is optional (`client_id` nullable) and `chat_message_embeddings` has **no
+  tenant column**, so a per-user staff grant cannot be tenant-scoped and would over-return a MULTI-TENANT
+  subject's other-tenant rows. Staff read a specific client's memory via the CLIENT branch
+  (`can_access_contact`, per-contact tenant-correct). No current authenticated producer needs the
+  cross-user staff path (sole caller is `service_role`), so this is "preserve only where source evidence
+  proves required", not a capability regression.
 - **Each DATA-predicate branch is gated on its own per-target authorization flag**, so a caller
   authorized for target A can never pull target B's rows in the same call.
 - **Search parameters are bounded:** threshold clamped to `[0,1]` (a negative threshold no longer
@@ -74,7 +82,7 @@ direct SQL inspection via MCP was permission-denied). The fix hardens the door r
 | `python3 .github/scripts/lint_migrations.py <migration>` | **PASS** (local) — 0 warnings |
 | `npm run ci:tsc` (tsc-ratchet; non-required `verify` job) | Reports **only** the pre-existing **#1186** error (`src/lib/auth/signupMobile.ts` TS2307 `libphonenumber-js/min`) — this diff touches zero TypeScript, so the error is not diff-owned (same base condition prior slices documented) |
 | `npm run test:client-memory-authz` (affected-flow) | **268 pass / 1 fail** — the 1 fail is **19.8** (`every executable mutation names the entity it touches`), a **pre-existing base failure reproduced identically on clean `main`** (268/1), outside the memory/search seam; not diff-owned (§13) |
-| Boundary proof `supabase/tests/match_paige_memory_authz.sql` via `.github/workflows/match-paige-memory-authz.yml` | **RUNS IN CI** on the PR (pgvector image). Local execution blocked this session (no container-registry access; no cached postgres). 13 boundary cases: legitimate service retrieval · self · authorized coach · same-tenant admin · operator cross-tenant · cross-tenant denial · **forged-ID refusal** · **global-admin-ambiguity refusal** · **per-branch gating (no B leak via `_target_user_id`)** · negative-threshold clamp · no-identity refusal · retry idempotence · replay idempotence (`\ir` ×2) · no data-bearing refusal · anon-revoked grant |
+| Boundary proof `supabase/tests/match_paige_memory_authz.sql` via `.github/workflows/match-paige-memory-authz.yml` | **RUNS IN CI** on the PR (pgvector image). Local execution blocked this session (no container-registry access; no cached postgres). 16 boundary cases: legitimate service retrieval · self · self-cross denial · **forged-ID refusal** · **global-admin-ambiguity refusal** · authorized staff via `can_access_contact` (assigned coach; same-tenant admin) · cross-tenant denial · **per-branch gating (no B leak via `_target_user_id`)** · super_admin + **platform_admin** operator cross-tenant · **threshold-clamp discriminator (opposite-embedding row excluded)** · **Finding-1 multi-tenant-subject user-branch denial** · **count-clamp demonstrator (60→50)** · no-identity refusal · retry + replay idempotence (`\ir` ×2) · no data-bearing refusal · anon-revoked grant |
 | `premerge-migration-proof.yml` (advisory) | RUNS IN CI — applies the migration on the prod-schema baseline |
 | Authenticated production drive (§32.c) | **PROOF OWED** — no isolated test tenant headless; exact minimal owner test below |
 
@@ -88,6 +96,28 @@ direct SQL inspection via MCP was permission-denied). The fix hardens the door r
    session, trigger a chat turn scoped to a client the account may access and confirm semantic memory
    recall works (no `match_paige_memory` error in `paige_llm_trace`); and confirm a chat turn cannot
    surface another tenant's memory. Owed to a browser-capable session with a scoped test tenant.
+
+## Peer review (§39 adversarial + §5 compliance, on the pushed diff)
+
+Two independent reviews read the pushed diff. **§5 (compliance):** scope-faithful, honest,
+closeout-complete — SHIP contingent on the boundary suite green in CI. **§39 (adversarial):** confirmed
+both named defects closed, per-branch gating airtight, migration correctness, and §37 accuracy — but
+found **Finding 1**, a residual cross-tenant read: the original `_may_user` branch granted a per-USER
+coach/tenant-admin authority, which is not per-ROW-tenant, so a tenant-admin/coach could read a
+multi-tenant subject's other-tenant rows (`chat_message_embeddings` has no tenant column, so this cannot
+be per-row-scoped at all). **Fixed** by limiting cross-USER access to self + operator and routing staff
+cross-CONTACT access through `can_access_contact` (per-contact tenant-correct) — see the fix section.
+Findings 2 (clamp assertions were non-discriminating) addressed by the C11 opposite-embedding + C16
+60→50 demonstrators; N2 (platform_admin coverage) added as C15; N4 (stale R1 §7 planning marker)
+corrected. Re-proof is the same CI boundary run (now 16 cases incl. the Finding-1 regression).
+
+## Follow-ups (tracked, not folded in — §13)
+
+- **N5:** `docs/sprints/bootstrap-byo-schema.sql` (a point-in-time schema export) still carries the
+  pre-fix `match_paige_memory` body + old grants. Not applied migration, not falsified doctrine, out of
+  this slice's scope — regenerate at the next bootstrap-schema refresh so a fresh BYO deploy doesn't
+  start from the vulnerable body.
+- Row-count re-confirmation and the §32.c authenticated production drive (above) remain PROOF OWED.
 
 ## Post-merge (stamped in the closeout)
 

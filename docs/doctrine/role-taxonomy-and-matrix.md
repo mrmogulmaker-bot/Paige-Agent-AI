@@ -144,8 +144,9 @@ Each slice is its own PR with a §37 producer inventory, §32 proof, and §39 pe
 - **R3 — Fix class (c) defects**, highest-severity first, one family per PR.
   - **R3a — `match_paige_memory` ✅ DONE 2026-09-13** (migration `20270304000000`, §53/§59). The confirmed
     §4c defect: closed the forged-ID self-reference bypass + the global-`admin` trap; per-target
-    resource-scoped authority (self / active `coach_clients` / same-tenant `is_tenant_admin` /
-    `is_platform_operator` / `can_access_contact`), per-branch data gating, bounded search params, and an
+    resource-scoped authority (cross-USER: self / `is_platform_operator`; staff cross-CONTACT via
+    `can_access_contact`; the per-user coach/tenant-admin grant was dropped — §39 Finding 1, as
+    `chat_message_embeddings` has no tenant column), per-branch data gating, bounded search params, and an
     explicit `service_role` trust branch so the legitimate `paige-ai-chat` path works. Boundary proof
     `supabase/tests/match_paige_memory_authz.sql`; evidence `docs/evidence/match-paige-memory-authz.md`.
     (The remaining c1 candidates + the c2 policy queue are NOT swept here — narrow, evidence-led slice.)

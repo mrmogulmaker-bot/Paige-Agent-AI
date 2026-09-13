@@ -149,25 +149,39 @@ END $$;
 INSERT INTO public.tenants(id) VALUES
   ('00000000-0000-4000-8000-0000000000a0'), ('00000000-0000-4000-8000-0000000000b0');
 INSERT INTO public.user_roles(user_id, role) VALUES
-  ('00000000-0000-4000-8000-00000000dead','admin'),      -- attacker: GLOBAL admin, no tenant/operator authority
-  ('00000000-0000-4000-8000-00000000a001','admin'),      -- ownerA: also global admin (realistic sync) — still not operator
-  ('00000000-0000-4000-8000-000000005a5a','super_admin');-- operator
+  ('00000000-0000-4000-8000-00000000dead','admin'),        -- attacker: GLOBAL admin, no tenant/operator authority
+  ('00000000-0000-4000-8000-00000000a001','admin'),        -- ownerA: also global admin (realistic sync) — still not operator
+  ('00000000-0000-4000-8000-000000005a5a','super_admin'),  -- operator (super_admin)
+  ('00000000-0000-4000-8000-0000000000ad','platform_admin');-- operator (delegated platform_admin) [C15/N2]
 INSERT INTO public.tenant_members(tenant_id, user_id, role, status) VALUES
   ('00000000-0000-4000-8000-0000000000a0','00000000-0000-4000-8000-00000000a001','owner','active'),
   ('00000000-0000-4000-8000-0000000000a0','00000000-0000-4000-8000-00000000a0c1','coach','active'),
   ('00000000-0000-4000-8000-0000000000b0','00000000-0000-4000-8000-00000000b001','owner','active'),
-  ('00000000-0000-4000-8000-0000000000b0','00000000-0000-4000-8000-00000000b0c1','coach','active');
-INSERT INTO public.clients(id, tenant_id, linked_user_id) VALUES
-  ('00000000-0000-4000-8000-0000000000ca','00000000-0000-4000-8000-0000000000a0','00000000-0000-4000-8000-00000000a0c1'),
-  ('00000000-0000-4000-8000-0000000000cb','00000000-0000-4000-8000-0000000000b0','00000000-0000-4000-8000-00000000b0c1');
+  ('00000000-0000-4000-8000-0000000000b0','00000000-0000-4000-8000-00000000b0c1','coach','active'),
+  -- V is a MULTI-TENANT subject: an active member of tenant A, but with memory that belongs to tenant B.
+  ('00000000-0000-4000-8000-0000000000a0','00000000-0000-4000-8000-00000000d00d','coach','active');
+INSERT INTO public.clients(id, tenant_id, assigned_coach_user_id, linked_user_id) VALUES
+  ('00000000-0000-4000-8000-0000000000ca','00000000-0000-4000-8000-0000000000a0','00000000-0000-4000-8000-00000000a0ca','00000000-0000-4000-8000-00000000a0c1'), -- contactA: assigned coach = coachA [C6]
+  ('00000000-0000-4000-8000-0000000000cb','00000000-0000-4000-8000-0000000000b0',NULL,'00000000-0000-4000-8000-00000000b0c1'),
+  ('00000000-0000-4000-8000-0000000000cd','00000000-0000-4000-8000-0000000000b0',NULL,'00000000-0000-4000-8000-00000000d00d'); -- V's contact, in tenant B [C14/Finding 1]
 INSERT INTO public.coach_clients(coach_user_id, client_user_id, status) VALUES
   ('00000000-0000-4000-8000-00000000a0ca','00000000-0000-4000-8000-00000000a0c1','active');
 INSERT INTO public.client_memory(client_user_id, client_id, memory_type, content, is_active, embedding) VALUES
   ('00000000-0000-4000-8000-00000000a0c1','00000000-0000-4000-8000-0000000000ca','session_summary','A-mem-secret',true,'[1,0,0]'),
-  ('00000000-0000-4000-8000-00000000b0c1','00000000-0000-4000-8000-0000000000cb','session_summary','B-mem-secret',true,'[1,0,0]');
+  ('00000000-0000-4000-8000-00000000b0c1','00000000-0000-4000-8000-0000000000cb','session_summary','B-mem-secret',true,'[1,0,0]'),
+  -- V is a member of tenant A, but this memory row belongs to tenant B (client_id=cd → tenant B). A
+  -- tenant-A admin must NOT reach it via the user branch (Finding 1). [C14]
+  ('00000000-0000-4000-8000-00000000d00d','00000000-0000-4000-8000-0000000000cd','session_summary','V-tenantB-secret',true,'[1,0,0]'),
+  -- Opposite embedding: similarity to the query is -1, so it is returned ONLY if the threshold is left
+  -- below 0 (i.e. the clamp is missing). Discriminates the threshold clamp. [C11]
+  ('00000000-0000-4000-8000-00000000a0c1',NULL,'session_summary','A-opposite-secret',true,'[-1,0,0]');
 INSERT INTO public.chat_message_embeddings(message_id, user_id, client_user_id, role, content_excerpt, embedding) VALUES
   (gen_random_uuid(),'00000000-0000-4000-8000-00000000a0c1',NULL,'user','A-chat-secret','[1,0,0]'),
   (gen_random_uuid(),'00000000-0000-4000-8000-00000000b0c1',NULL,'user','B-chat-secret','[1,0,0]');
+-- Count-clamp subject W: 60 same-similarity rows, so the [0,50] LIMIT clamp is observable. [C16]
+INSERT INTO public.client_memory(client_user_id, memory_type, content, is_active, embedding)
+  SELECT '00000000-0000-4000-8000-0000000000e0','session_summary','W-mem-'||g,true,'[1,0,0]'
+  FROM generate_series(1,60) g;
 
 -- ── The boundary matrix. Every assertion RAISEs on failure; a final sentinel prints on success. ──
 DO $$
@@ -179,6 +193,9 @@ DECLARE
   coachA   uuid := '00000000-0000-4000-8000-00000000a0ca';
   attacker uuid := '00000000-0000-4000-8000-00000000dead';
   super    uuid := '00000000-0000-4000-8000-000000005a5a';
+  padmin   uuid := '00000000-0000-4000-8000-0000000000ad';
+  V        uuid := '00000000-0000-4000-8000-00000000d00d';
+  W        uuid := '00000000-0000-4000-8000-0000000000e0';
   cA uuid := '00000000-0000-4000-8000-0000000000ca';
   cB uuid := '00000000-0000-4000-8000-0000000000cb';
   n int; leaked int;
@@ -187,7 +204,7 @@ BEGIN
   PERFORM set_config('request.jwt.claims','{"role":"service_role"}',false);
   SELECT count(*) INTO n FROM public.match_paige_memory(q, A_user, cA, 0.7, 5, 5);
   IF n <> 2 THEN RAISE EXCEPTION 'C1 service legitimate retrieval: expected 2 rows, got %', n; END IF;
-  SELECT count(*) INTO leaked FROM public.match_paige_memory(q, A_user, cA, 0.7, 5, 5) WHERE content LIKE 'B-%';
+  SELECT count(*) INTO leaked FROM public.match_paige_memory(q, A_user, cA, 0.7, 5, 5) WHERE content LIKE 'B-%' OR content LIKE 'V-%';
   IF leaked <> 0 THEN RAISE EXCEPTION 'C1 service leaked cross-tenant content'; END IF;
 
   -- C2 self sees own memory + own chat only.
@@ -210,17 +227,18 @@ BEGIN
   -- C5 GLOBAL-ADMIN ambiguity: a global 'admin' with no tenant/operator authority over B is refused.
   PERFORM public._assert_denied(q, B_user, cB, 0.7, 5, 5, 'C5 global-admin');
 
-  -- C6 authorized coach (active coach_clients assignment) reads the assigned client's memory.
+  -- C6 authorized staff reads a specific client's memory through the CLIENT branch (can_access_contact
+  -- honors coachA as contactA's assigned coach). The user branch is gated off (coachA is not self/op).
   PERFORM set_config('request.jwt.claims', json_build_object('sub',coachA,'role','authenticated')::text, false);
-  SELECT count(*) INTO n FROM public.match_paige_memory(q, A_user, NULL, 0.7, 5, 5);
-  IF n <> 2 THEN RAISE EXCEPTION 'C6 coach: expected 2 rows, got %', n; END IF;
+  SELECT count(*) INTO n FROM public.match_paige_memory(q, A_user, cA, 0.7, 5, 5);
+  IF n <> 1 THEN RAISE EXCEPTION 'C6 authorized-contact (assigned coach): expected 1 row, got %', n; END IF;
 
-  -- C7 same-tenant owner/admin reads a member's memory in their own tenant.
+  -- C7 same-tenant owner/admin reads a client's memory in their own tenant via the CLIENT branch.
   PERFORM set_config('request.jwt.claims', json_build_object('sub',ownerA,'role','authenticated')::text, false);
-  SELECT count(*) INTO n FROM public.match_paige_memory(q, A_user, NULL, 0.7, 5, 5);
-  IF n <> 2 THEN RAISE EXCEPTION 'C7 same-tenant admin: expected 2 rows, got %', n; END IF;
+  SELECT count(*) INTO n FROM public.match_paige_memory(q, A_user, cA, 0.7, 5, 5);
+  IF n <> 1 THEN RAISE EXCEPTION 'C7 same-tenant admin (contact branch): expected 1 row, got %', n; END IF;
 
-  -- C8 cross-tenant denial: owner of A cannot read tenant B.
+  -- C8 cross-tenant denial: owner of A cannot read tenant B (neither user nor contact branch admits).
   PERFORM public._assert_denied(q, B_user, cB, 0.7, 5, 5, 'C8 cross-tenant');
 
   -- C9 PER-BRANCH GATING: ownerA is authorized for contact A; passing victim B as _target_user_id
@@ -235,13 +253,32 @@ BEGIN
   SELECT count(*) INTO n FROM public.match_paige_memory(q, B_user, cB, 0.7, 5, 5);
   IF n <> 2 THEN RAISE EXCEPTION 'C10 operator: expected 2 rows, got %', n; END IF;
 
-  -- C11 negative threshold cannot widen disclosure past authorization: self with threshold=-1
-  -- still gets only A's rows (clamped + authorization-gated), never B's.
+  -- C11 threshold clamp + gating: self with threshold=-1 gets only A's above-clamp rows. The clamp
+  -- forces the floor to 0, so the opposite-embedding row (similarity -1) is EXCLUDED — if the clamp
+  -- were missing, threshold=-1 would admit it. This assertion fails if the clamp is removed.
   PERFORM set_config('request.jwt.claims', json_build_object('sub',A_user,'role','authenticated')::text, false);
   SELECT count(*) INTO n FROM public.match_paige_memory(q, A_user, NULL, -1, 100000, 100000);
-  IF n <> 2 THEN RAISE EXCEPTION 'C11 negative-threshold self: expected 2 rows, got %', n; END IF;
-  SELECT count(*) INTO leaked FROM public.match_paige_memory(q, A_user, NULL, -1, 100000, 100000) WHERE content LIKE 'B-%';
-  IF leaked <> 0 THEN RAISE EXCEPTION 'C11 negative-threshold LEAKED cross-tenant content'; END IF;
+  IF n <> 2 THEN RAISE EXCEPTION 'C11 threshold-clamp self: expected 2 rows (opposite excluded), got %', n; END IF;
+  SELECT count(*) INTO leaked FROM public.match_paige_memory(q, A_user, NULL, -1, 100000, 100000)
+   WHERE content LIKE 'B-%' OR content LIKE 'A-opposite%';
+  IF leaked <> 0 THEN RAISE EXCEPTION 'C11 threshold clamp missing / cross-tenant leak (opposite or B row returned)'; END IF;
+
+  -- C14 FINDING-1 REGRESSION (multi-tenant subject): V is an active member of tenant A but the memory
+  -- row belongs to tenant B. A tenant-A admin passing V's user id must be REFUSED — the old per-user
+  -- is_tenant_admin branch would have returned V's tenant-B memory. Cross-tenant read is closed.
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',ownerA,'role','authenticated')::text, false);
+  PERFORM public._assert_denied(q, V, NULL, 0.7, 5, 5, 'C14 multi-tenant subject via user branch');
+
+  -- C15 delegated operator (platform_admin) may read cross-tenant, like super_admin (§53).
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',padmin,'role','authenticated')::text, false);
+  SELECT count(*) INTO n FROM public.match_paige_memory(q, B_user, cB, 0.7, 5, 5);
+  IF n <> 2 THEN RAISE EXCEPTION 'C15 platform_admin operator: expected 2 rows, got %', n; END IF;
+
+  -- C16 COUNT CLAMP: W has 60 same-similarity rows; a service call asking for 100000 must return the
+  -- clamped 50, not 60. This assertion fails if the [0,50] count clamp is removed.
+  PERFORM set_config('request.jwt.claims','{"role":"service_role"}',false);
+  SELECT count(*) INTO n FROM public.match_paige_memory(q, W, NULL, 0.7, 100000, 100000);
+  IF n <> 50 THEN RAISE EXCEPTION 'C16 count clamp: expected 50 (clamped from 60), got %', n; END IF;
 
   -- C12 no identity and not service_role: refused.
   PERFORM set_config('request.jwt.claims','{}',false);
@@ -264,4 +301,4 @@ DO $$ BEGIN
   END IF;
 END $$;
 
-SELECT 'PASS: match_paige_memory resource-scoped authz — forged-id closed, global-admin trap closed, per-branch gating, bounded params, service/self/coach/tenant-admin/operator preserved, cross-tenant denied, no leaked content on refusal, replay-idempotent, anon-revoked' AS result;
+SELECT 'PASS: match_paige_memory resource-scoped authz — forged-id closed, global-admin trap closed, per-branch gating, threshold+count clamps demonstrated, cross-USER limited to self/operator, staff cross-CONTACT via can_access_contact, multi-tenant-subject user-branch denied (Finding 1), super_admin + platform_admin operator reads, cross-tenant denied, no leaked content on refusal, replay-idempotent, anon-revoked' AS result;

@@ -87,8 +87,10 @@ bypasses the vocab + correction + confirmation discipline; prefer the seam.
 - **FIXED 2026-09-13 (migration `20270304000000`, §53/§59, R3a):** `match_paige_memory` (CLIENT-memory +
   chat-embedding recall) — the §59 caller-scope defect is closed. It carried a forged-ID self-reference
   bypass (`_target_client_id := auth.uid()` self-authorized reading a different `_target_user_id`) AND
-  the global-role trap. Now authority is derived per-target from server facts (self / active
-  `coach_clients` / same-tenant `is_tenant_admin` / `is_platform_operator` / `can_access_contact`), each
+  the global-role trap. Now cross-USER access is limited to self / `is_platform_operator`, and staff
+  reach a specific client via `can_access_contact` (cross-CONTACT, per-contact tenant-correct); the
+  per-user coach/tenant-admin grant was dropped (§39 Finding 1 — `chat_message_embeddings` has no tenant
+  column so a per-user staff grant can't be tenant-scoped). Each
   data-branch gated on its own flag, search params bounded, and `service_role` trusted to pass
   server-resolved ids (as this seam does) so the legitimate `paige-ai-chat` path — previously DEAD under
   the `auth.uid()`-only guard — works. Boundary proof `supabase/tests/match_paige_memory_authz.sql`;

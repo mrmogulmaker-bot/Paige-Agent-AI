@@ -25,11 +25,18 @@
 -- THE FIX (owner-directed 2026-09-13; keep the slice narrow and evidence-led):
 --   • Authority is derived from SERVER facts, PER TARGET — never from a caller-supplied id matching
 --     itself. Removing the `IS DISTINCT FROM _target_client_id` self-reference closes defect 1.
---   • The global `has_role('admin')` disjunct is replaced by resource/tenant-scoped checks: an
---     ACTIVE `coach_clients` assignment to the target user, a same-tenant owner/admin over the
---     target's workspace (`is_tenant_admin`), a platform operator (`is_platform_operator`, §53 — the
---     same helper the `client_memory` RESTRICTIVE tenant fence uses), or the canonical contact-access
---     helper `can_access_contact` for the client branch. Closes defect 2.
+--   • The global `has_role('admin')` disjunct is replaced by resource-scoped checks. Cross-USER
+--     access (rows keyed on `_target_user_id`) is limited to SELF and platform operator
+--     (`is_platform_operator`, §53 — the same helper the `client_memory` RESTRICTIVE fence uses).
+--     Cross-CONTACT access (rows keyed on `_target_client_id`, a `clients.id`) goes through the
+--     canonical `can_access_contact`, which resolves THAT contact's own tenant. Closes defect 2.
+--   • A per-user coach/tenant-admin cross-user grant was deliberately NOT used (§39 Finding 1): a
+--     `client_memory` row's tenant is optional (`client_id` nullable) and `chat_message_embeddings`
+--     has NO tenant column, so a per-user staff grant cannot be tenant-scoped and would over-return a
+--     MULTI-TENANT subject's other-tenant rows. Staff read a specific client's memory via the CLIENT
+--     branch, where `can_access_contact` is per-contact tenant-correct. No current authenticated
+--     producer needs the cross-user staff path (the sole runtime caller is service_role), so this is
+--     "preserve only where source evidence proves required", not a capability regression.
 --   • Each DATA-predicate branch is gated on its OWN per-target authorization flag, so a caller
 --     authorized for target A can never pull target B's rows in the same call.
 --   • Search parameters are BOUNDED so they cannot widen disclosure: the similarity threshold is
@@ -92,27 +99,25 @@ BEGIN
     -- Authenticated caller. Authority is derived from SERVER facts per target — NEVER from the
     -- caller-supplied id matching itself (that self-reference was the forged-id bypass, R1 §4c).
     --
-    -- USER-keyed rows (`_target_user_id` is an auth user id): self, an ACTIVE coach_clients
-    -- assignment to the target, a same-tenant owner/admin over the target's workspace, or a
-    -- platform operator (§53; the helper the client_memory RESTRICTIVE fence itself uses).
+    -- USER-keyed rows (`_target_user_id` is an auth user id → cm.client_user_id / ce.user_id):
+    -- limited to SELF and platform operator. A per-user coach/tenant-admin grant CANNOT be made
+    -- tenant-safe here (§39 Finding 1): a `client_memory` row's tenant is optional (`client_id`
+    -- nullable) and `chat_message_embeddings` has NO tenant column at all, so a per-user staff grant
+    -- over-returns a MULTI-TENANT subject's other-tenant rows — the exact §9/§53 cross-tenant read
+    -- this slice exists to close. Staff reach a specific client's memory through the CLIENT branch
+    -- below, where `can_access_contact` resolves THAT contact's own tenant. Self reads own memory
+    -- (the client_memory RLS "own memory" arm); operator is the sanctioned cross-tenant read (§53,
+    -- the helper the client_memory RESTRICTIVE fence itself uses). No current authenticated producer
+    -- exists (the sole runtime caller is service_role); this leaves a tenant-safe §10 direct-API path.
     _may_user := _target_user_id IS NOT NULL AND (
          _caller = _target_user_id
       OR public.is_platform_operator()
-      OR EXISTS (
-           SELECT 1 FROM public.coach_clients cc
-            WHERE cc.coach_user_id = _caller
-              AND cc.status = 'active'
-              AND cc.client_user_id = _target_user_id)
-      OR EXISTS (
-           SELECT 1 FROM public.tenant_members tm
-            WHERE tm.user_id = _target_user_id
-              AND tm.status = 'active'
-              AND public.is_tenant_admin(tm.tenant_id))
     );
-    -- CLIENT-keyed rows (`_target_client_id` is a clients.id): the canonical resource-scoped
-    -- contact-access helper (operator / same-tenant owner-admin / direct relationship / active
-    -- assignment). can_access_contact(caller, <an auth uid>) is FALSE — no clients row has that id —
-    -- so a forged `_target_client_id := auth.uid()` no longer self-authorizes.
+    -- CLIENT-keyed rows (`_target_client_id` is a clients.id → cm.client_id): the canonical
+    -- resource-scoped helper resolves THAT contact's tenant (operator / same-tenant owner-admin /
+    -- direct relationship / active assignment), so this branch is per-contact tenant-correct and
+    -- cannot over-return across tenants. can_access_contact(caller, <an auth uid>) is FALSE — no
+    -- clients row has that id — so a forged `_target_client_id := auth.uid()` never self-authorizes.
     _may_client := _target_client_id IS NOT NULL
                    AND public.can_access_contact(_caller, _target_client_id);
   END IF;
