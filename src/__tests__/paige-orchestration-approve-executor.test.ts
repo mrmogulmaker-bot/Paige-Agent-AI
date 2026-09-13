@@ -163,6 +163,19 @@ describe("approve-executor — fail-closed + honest (nothing consumed, nothing d
     expect(cfg.calls.rpc.map((c) => c.fn)).not.toContain("paige_approve_act_execution");
   });
 
+  it("a tenant mismatch on a foreign TERMINAL row does NOT echo its outcome (no cross-tenant disclosure, not consumed) (§39/§9/§13)", async () => {
+    // A crafted approval in tenant OTHER points at tenant t1's already-EXECUTED act. The guard must not leak
+    // t1's terminal outcome (§9) and must return a non-terminal the execute-approval `executed|failed` gate will
+    // NOT consume as an attempt (§13) — otherwise the crafted approval gets stamped `approved`.
+    const cfg = baseCfg({ paige_act_executions: [{ outcome: "executed", capability_key: "crm.advance_journey_stage", correlation_ref: "c", idempotency_key: "c", tenant_id: "t1", automation_id: "a1", act_position: 1, detail: {} }] });
+    const res = await run(cfg, { expectedTenantId: "OTHER" });
+    expect(res.reason).toBe("tenant_authorization_mismatch");
+    expect(res.outcome).not.toBe("executed");   // the foreign terminal state is NOT disclosed
+    expect(res.executed).toBe(false);            // never consumed as a real attempt by the caller
+    expect(cfg.calls.rpc.map((c) => c.fn)).not.toContain("paige_approve_act_execution");
+    expect(cfg.calls.rpc.map((c) => c.fn)).not.toContain("set_journey_stage");
+  });
+
   it("a tenant-integrity mismatch (event tenant ≠ ledger tenant) STOPS before redeeming", async () => {
     const cfg = baseCfg({ paige_native_events: [{ subject_table: "clients", subject_id: "c1", tenant_id: "OTHER" }] });
     const res = await run(cfg);

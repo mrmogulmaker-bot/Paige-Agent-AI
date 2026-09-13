@@ -62,8 +62,15 @@ import { resolveNativeCapabilityStatus } from "../paige-capability-status/gather
 import { recordCapabilityRun, stableRunId } from "../capability-record.ts";
 import { emitAutomationRail } from "../railAutomation.ts";
 
-/** The minimal client surface the executor needs (a read chain + rpc) — kept structural so a fake proves it. */
-export type ApproveExecutorDb = AdapterDb;
+/** The minimal client surface the executor needs (a read chain + rpc) — kept structural so a fake proves it.
+ *  Mirrors EngineDb rather than reusing AdapterDb verbatim: the rpc `args` is OPTIONAL here so this type stays
+ *  assignable to the shared seams the executor hands `db` to whose own rpc arg is optional (emitAutomationRail's
+ *  RpcClient). A REQUIRED-arg rpc there is a genuine Deno-strict rejection (§32 — the exact trap engine.ts
+ *  documents). It is still assignable to the adapter's DispatchInput.db (an optional-arg fn satisfies a
+ *  required-arg param), so dispatch/readback still accept it, and `from` is inherited unchanged from AdapterDb. */
+export type ApproveExecutorDb = Omit<AdapterDb, "rpc"> & {
+  rpc: (fn: string, args?: Record<string, unknown>) => ReturnType<AdapterDb["rpc"]>;
+};
 
 export type ApproveExecInput = {
   db: ApproveExecutorDb;
@@ -203,7 +210,13 @@ export async function executeApprovedLayerCAct(input: ApproveExecInput): Promise
   // authorised for tenant A could otherwise point a crafted approval at tenant B's held act and drive it via
   // the service-role client (a §9/§45/§59 cross-tenant IDOR gated only by UUID secrecy, which is no defense).
   if (!input.expectedTenantId || row.tenant_id !== input.expectedTenantId) {
-    return { ok: false, outcome: row.outcome, executed: false, reason: "tenant_authorization_mismatch" };
+    // Return a CONSTANT non-terminal outcome, NEVER `row.outcome` (§39 peer-gate): this guard fires BEFORE the
+    // RESUMABLE gate below, so `row.outcome` here is unfiltered and could be a foreign tenant's terminal
+    // `executed`/`failed`. Echoing it would (a) DISCLOSE another tenant's ledger outcome cross-tenant to a caller
+    // authorised only for a different tenant (§9), and (b) be consumed by execute-approval's `executed|failed`
+    // gate as a real attempt — stamping the crafted approval `approved` and misreporting a security refusal as a
+    // completion (§13). A fixed non-terminal sentinel discloses nothing and is never consumed.
+    return { ok: false, outcome: "approval_pending", executed: false, reason: "tenant_authorization_mismatch" };
   }
 
   // A terminal/settled row (executed / failed / cancelled / a settled non-execute) is not resumable — report
@@ -264,6 +277,13 @@ export async function executeApprovedLayerCAct(input: ApproveExecInput): Promise
   //    correlation — NEVER re-run the governed gate (authorisation already happened at redemption). An
   //    accepted-but-never-landed row is re-dispatched (idempotent); an ambiguous row is NEVER blind re-dispatched
   //    (owner rule, engine phase-5). This is the recovery path for §P3/§P4.
+  //    §68 CONSCIOUS DECISION (§39 peer note): the accepted-never-landed re-dispatch below does NOT re-resolve
+  //    Gateway availability — it matches engine phase-5's accepted re-dispatch exactly (engine.ts:550-555), the
+  //    proven pattern (§30), and the effect is a benign idempotent in-tenant CRM write behind the door's atomic
+  //    claim + a fresh human re-approval. The narrow §68 window (authority revoked AFTER redemption but the
+  //    effect never landed) is a tracked follow-up: re-resolve availability on the re-dispatch (bundled with the
+  //    slice-2 durable ambiguous-reconcile sweeper). The readback-confirm path must NOT gate on current
+  //    availability — a landed effect is recorded truthfully regardless of a later availability change (§13).
   if (row.outcome === "accepted_for_execution" || row.outcome === "ambiguous") {
     let recon: DispatchResult;
     try { recon = await adapter.readback(null, dispatchInput); }

@@ -21,7 +21,7 @@
 // not a second. (Dormant until the engine mints those rows — the companion-minting is the next slice; this
 // branch fires only for orchestration-sourced rows and changes nothing for existing approvals, §58.)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { executeApprovedLayerCAct } from "../_shared/paige-orchestration/approve-executor.ts";
+import { executeApprovedLayerCAct, type ApproveExecutorDb } from "../_shared/paige-orchestration/approve-executor.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -166,7 +166,10 @@ Deno.serve(async (req) => {
   const metaLc = (typeof (approval as any).metadata === "object" && (approval as any).metadata) || {};
   if (metaLc && (metaLc as any).source === "paige_orchestration" && (metaLc as any).event_id && (metaLc as any).act_id) {
     const res = await executeApprovedLayerCAct({
-      db: admin, eventId: String((metaLc as any).event_id), actId: String((metaLc as any).act_id), approverUserId: user.id,
+      // The supabase-js client is bridged to the executor's minimal structural db the same way the engine's
+      // drainer bridges it (`admin as unknown as EngineDb`): the SDK's rpc returns a thenable builder, not a bare
+      // Promise, so a direct assignment is a Deno-strict type error (§32) — the cast is the sanctioned seam.
+      db: admin as unknown as ApproveExecutorDb, eventId: String((metaLc as any).event_id), actId: String((metaLc as any).act_id), approverUserId: user.id,
       // §9/§59: the caller was authorised above against THIS approval row's tenant; the executor refuses unless
       // the held act's ledger tenant is the SAME (a crafted approval in tenant A must not drive tenant B's act).
       expectedTenantId: approval.tenant_id ?? null,
