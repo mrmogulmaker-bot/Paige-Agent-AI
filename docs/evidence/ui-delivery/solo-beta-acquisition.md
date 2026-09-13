@@ -1,6 +1,6 @@
 # Solo Beta acquisition — Gate A affected-flow and collision record
 
-Status: PR #1148 MERGED; PRODUCTION DATABASE RECOVERY HOTFIX — REVIEW CANDIDATE
+Status: PR #1148 + #1190 MERGED; LIVE BILLING BINDING PR #1200 MERGED AND DEPLOYED — AUTHENTICATED FIRST ENROLLMENT PROOF OWED
 
 UI_DELIVERY_EVIDENCE_VERSION: 1
 FLOW_BY_FLOW: PASS: This record's affected-flow and state maps cover public entry, identity, intake/agreement, fixed checkout, atomic fulfillment, verified entitlement, recovery, current-Solo routing, and preservation of existing non-Solo access.
@@ -60,7 +60,7 @@ A legitimate new customer can enter through any public Paige conversion path, cr
 | Discover the available beta | Home, pricing, marketing CTA, direct signup | Public Solo offer contract | Solo signup/sign-in intent | Unsupported enrollment receives an intentional Solo-only explanation |
 | Establish identity | Email/password or configured OAuth | Supabase Auth session and callback continuation | Pending Solo enrollment | Verification pending/expired, denied consent, duplicate identity, provider failure, retry |
 | Stage Solo setup | Authenticated pending enrollment | `auth.uid()`, `signup_intake`, exact current `saas-standalone` acceptance | Checkout-eligible intake; no tenant yet | Safe resume; no planless/free fallback |
-| Start the paid subscription trial | Verified identity plus staged intake/agreement and no prior Solo Beta fulfillment | Server-selected test Price, fixed 30-day trial, Stripe Checkout payment-method collection, signed metadata and stable idempotency slot | Signed provider-confirmed trialing result awaiting fulfillment | Cancel, expiry, provider failure, retry, duplicate request |
+| Start the paid subscription trial | Verified identity plus staged intake/agreement and no prior Solo Beta fulfillment | Server-selected live Price, fixed 30-day trial, Stripe Checkout payment-method collection, signed metadata and stable idempotency slot | Signed provider-confirmed trialing result awaiting fulfillment | Cancel, expiry, provider failure, retry, duplicate request |
 | Fulfill and verify access | Signed trialing/active webhook, checkout return, refresh, sign-in, deep link | One atomic transaction creates tenant + owner membership + subscription + entitlement + receipt; fresh receipt/billing/membership readback | Canonical current Solo destination | Delayed webhook, stale state, first-payment failure, support reference |
 | Begin using Paige | Current Solo Command Center | Server-resolved tenant/tier/capability truth | Honest first setup action | Unavailable domains remain labeled and non-actionable |
 
@@ -98,7 +98,7 @@ Initial base: `299c39b2bc6c10eb0440ce415a626fb0d534f5ca` from fresh `origin/main
 - Existing tenants, memberships, products, subscriptions, and authorized non-Solo routes are read-only to this acquisition change.
 - Checkout success is an untrusted hint; access requires server-side membership and paid-entitlement verification.
 - Provisioning, checkout creation, and webhook fulfillment are idempotent and concurrency-tested.
-- No live Stripe mutation, production credential use, production deployment, real charge, or existing-customer migration is authorized.
+- Live Stripe Product/Price binding and production deployment were owner-authorized and completed without creating a Customer, Subscription, Invoice, Payment, or Charge; existing customers were not altered.
 - A browser cannot select trial length. The fixed server contract requires exactly 30 days, collects a payment method in Checkout, and permanently blocks a second trial after a completed fulfillment.
 
 ## Proof plan
@@ -107,7 +107,7 @@ Initial base: `299c39b2bc6c10eb0440ce415a626fb0d534f5ca` from fresh `origin/main
 - Static: typecheck, lint, build, secret/security scan, migration checks, RLS/definer audit.
 - Rendered: both themes at 1536x770, 1366x768, 1024x768, and 900x1000; overflow, scroll owner, reachability, zoom/reflow, keyboard, focus, labels, contrast, and reduced motion.
 - Authenticated: disposable new Solo user plus existing multi-account/non-Solo regression in an approved non-production environment.
-- Payment/provider: Stripe test-mode success, cancellation, failure, expired session, retry, delayed/duplicate webhook, refresh, cancellation-at-period-end, and server readback.
+- Payment/provider: live Product/Price/webhook/configuration readback is verified; first authorized live Checkout, signed fulfillment, cancellation/failure/retry, and cancellation-at-period-end remain proof owed without creating a test customer or charge.
 - Deployed production and owner acceptance: PROOF OWED; no release claim before explicit final go-live approval.
 
 
@@ -141,4 +141,14 @@ Fresh base: `1c18215605b7714cb5f4a3cff4bf511ebf72e99b`. The affected customer fl
 - **Stripe catalog — VERIFIED (LIVE):** account `acct_1TvndiLUcYKxolNa`; Product `prod_VFaAS9EPa2ehkj` (`Paige Solo Beta`, active, live); Price `price_1UF50HLUcYKxolNapbjC1zlJ` (active, live, `usd`, `7450`, recurring `month`, interval count `1`, licensed) with the Product relationship expanded and re-read. The 30-day trial remains a server-owned Checkout subscription parameter, not a Price attribute. No Customer, Subscription, Invoice, Payment, or Charge was created for setup or proof.
 - **Stripe webhook — VERIFIED (LIVE configuration):** enabled endpoint `we_1U2NB0LUcYKxolNaxGCRBI0y` targets the canonical Supabase `stripe-webhook` ingress and subscribes to Checkout completion/expiration, subscription lifecycle, and invoice payment events. Secret value was neither read nor recorded. Signed-event fulfillment remains `PROOF OWED` until the first owner-authorized live enrollment.
 - **Billing Portal — BLOCKED / PROOF OWED:** Stripe readback returned no active portal configuration. The mounted Stripe API surface exposes portal reads but no configuration create operation; this does not block the live offer binding. The application portal seam remains fail-closed until the conservative Dashboard configuration is created.
-- **Canonical database binding — PROOF OWED before migration apply:** migration `20270129000000_solo_beta_live_stripe_activation.sql` binds the IDs above to the sole `paige-solo-beta-monthly-v1` row and changes the offer/RPC contract to live-only. Rollback-only validation against the exact production schema completed successfully before durable apply.
+- **Canonical database binding — VERIFIED:** migration `20270129000000_solo_beta_live_stripe_activation.sql` durably binds the IDs above to the sole `paige-solo-beta-monthly-v1` row and enforces the offer/RPC contract as live-only. Production readback and grants are recorded below.
+
+### Live billing production closeout — 2026-09-13
+
+- **Merge/deployment — VERIFIED:** PR #1200 exact head `f018ac570352240c9fea5bd1eb2d514cc2e2059f` was squash-merged as `4ccb8a9a4003c9d70cf407e5be00da2bad4bc4d8`. Vercel deployment `Bt8h3e7pdSHmBcWYzmfofQQkbmw1`, `deploy-migrations` run `34740266614`, and `deploy-edge-functions` run `34740266609` succeeded for that merge. `db-live` equals `4ccb8a9a`; the later `edge-live` `822e513f` contains the Solo functions with zero affected-function drift.
+- **Production database — VERIFIED:** migration `20270129000000` is present exactly once. The sole canonical offer reads `standalone`, `live`, `legacy`, `live_ready`, Product bound, Price bound, `7450`, `usd`, `month`, interval count `1`, trial days `30`. The four fulfillment/lifecycle RPCs expose zero browser-role EXECUTE grants and all four service-role grants.
+- **Stripe provider — VERIFIED LIVE configuration:** the protected Product and Price identifiers recorded above re-read as one active live `Paige Solo Beta` Product with one active live licensed USD 7450 monthly Price, interval count 1, and the canonical lookup key. The 30-day trial is enforced by server-owned Checkout configuration. The enabled live webhook targets the canonical Supabase ingress and covers Checkout, subscription lifecycle, and invoice-payment events. Secrets were never read or recorded.
+- **Fail-closed production probes — VERIFIED:** public offer status returned HTTP 200 with `available:true` and only the safe name/amount/currency/interval/trial contract; unauthenticated Checkout returned HTTP 401; a forged webhook signature returned HTTP 400. No Checkout Session or billing object was created.
+- **Rendered production — VERIFIED signed-out:** live Pricing and Signup returned HTTP 200 at 1536×770, 1366×768, 1024×768, and 900×1000 with the 30-day/$74.50 terms, no enrollment-closed language, the international country selector, and no horizontal overflow under reduced motion.
+- **Aggregate CI boundary:** PR and exact base `ba1103eb` had the identical inherited red `verify` steps; PR-specific audit, contract, database-contract, migration lint, UI evidence, affected-edge Deno ratchet, focused billing/security tests, and production build passed. Merge-time Security Audit, UI evidence, PAIGE Spine, database-contract, migrations, Edge, Vercel, and Supabase Preview passed; merge-time aggregate CI was concurrency-cancelled after the subsequent main push.
+- **Still PROOF OWED:** an actual authorized customer providing a payment method, signed live webhook fulfillment, exactly-one tenant/membership/entitlement/receipt readback, current-shell entry, cancellation/failure/retry/renewal behavior, and existing-customer no-second-trial behavior. Billing Portal configuration is absent in live Stripe and remains fail-closed until the owner-approved conservative portal settings are created. No customer, subscription, invoice, payment, or charge was created merely to test.

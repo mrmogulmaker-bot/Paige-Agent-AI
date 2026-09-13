@@ -231,8 +231,8 @@
       "rail_mind_memory": "Rail: billing outcome events (no sender/secret). Mind: safe billing-status only (platform-billing-spine-source-contract). Memory: none of card/PII.",
       "status": "PARTIAL",
       "owner": "Money Spine workstream",
-      "dependency": "B-iv Connect direct-charge posture verification (§38); M1 real-money spend-control wiring for any autonomous charge.",
-      "next_slice": "Bind safe billing status into Paige (Phase 8); verify Connect direct-charge posture.",
+      "dependency": "Live Solo acquisition binding is deployed; first authorized live Checkout/fulfillment and Billing Portal activation remain proof owed. Connect direct-charge posture and M1 controls remain separate.",
+      "next_slice": "Prove one authorized live Solo enrollment and conservative Billing Portal behavior; separately bind safe billing status into Paige and verify Connect direct-charge posture.",
       "tier_eligibility": { "platform": "eligible", "solo": "eligible", "agency_future": "eligible", "enterprise_future": "eligible" },
       "expense_and_operations": {
         "cost_responsibility": "shared",
@@ -257,7 +257,10 @@
       },
       "code_anchors": [
         { "path": "supabase/functions/handle-stripe-webhook/index.ts", "role": "callback_readback", "note": "platform billing webhook receiver." },
-        { "path": "supabase/functions/stripe-webhook/index.ts", "role": "callback_readback" },
+        { "path": "supabase/functions/stripe-webhook/index.ts", "role": "callback_readback", "note": "Signed live canonical ingress routes the fixed Solo offer to its dedicated handler." },
+        { "path": "supabase/functions/solo-beta-subscription-checkout/index.ts", "role": "provider_adapter", "note": "Server-resolved live Product/Price and fixed 30-day trial Checkout." },
+        { "path": "supabase/functions/solo-beta-stripe-webhook/index.ts", "role": "callback_readback", "note": "Exact-contract subscription readback and idempotent fulfillment/lifecycle handler." },
+        { "path": "supabase/functions/solo-beta-billing-portal/index.ts", "role": "provider_adapter", "note": "Owner-scoped portal-session seam; fails closed until a live portal configuration exists." },
         { "path": "supabase/functions/tenant-stripe-connect/index.ts", "role": "provider_adapter", "note": "per-tenant Stripe Connect facilitator seam (§38)." },
         { "path": "supabase/functions/_shared/stripe-webhook-signature.ts", "role": "provider_adapter", "note": "Stripe-specific webhook signature verification." }
       ],
