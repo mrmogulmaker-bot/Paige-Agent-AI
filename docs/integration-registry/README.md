@@ -186,8 +186,15 @@ cost-driver / M1-track; a duplicate id; a `LIVE` entry without a real canonical 
 `marketplace_metadata_only` entry that carries per-tenant credential/usage/purchase/billing data (R4);
 a taxonomy group with no catalogued provider; a **real-money-moving provider whose M1 track is not
 `m1_real_money_spend_control`** (owner ruling); an **unqualified "M1"** in a base `m1_dependency`; a
-**date-stamped price with no official source**; or a malformed `public_presence_roadmap` item. It is
-regex/JSON-only and dependency-free, with a `--self-test` (29 mutations). It is a **tripwire** for the
+**date-stamped price with no official source**; a malformed `public_presence_roadmap` item; a
+**runtime-claiming provider (LIVE/PARTIAL/PROOF_OWED) missing `code_anchors`** or an **unbuilt provider
+(UNAVAILABLE/DEFERRED/PROPOSED) that declares them**; or a **cited `code_anchors` path that does not exist
+on disk** (the dead-anchor resolve `findDeadCodeAnchors`, run in `main`, mirrors binding-ledger's own
+anchor check — §18). Each anchor's `role` is a **controlled, lint-enforced vocabulary** — `provider_adapter` ·
+`callback_readback` · `fail_closed_containment` · `proven_runtime` (the last reserved for genuine §32.c
+runtime proof; none today) — so a code anchor proves only that a code PATH EXISTS, never that the provider
+works or is LIVE. It is regex/JSON-only and dependency-free, with a `--self-test` (42 mutations + a
+dead-anchor resolver + glob-matcher proof). It is a **tripwire** for the
 honesty invariants, not a semantic parser — whether a lane mapping or a cost figure is materially
 correct stays a human §5/§39 responsibility.
 
@@ -221,7 +228,11 @@ Any PR that adds, changes, or removes a provider integration — or changes a pr
 scope/authority/receipt/Rail-Mind-Memory posture, or lands an owner ruling about one — **updates the
 relevant `integration-capability-registry.json` entry in the same commit**, updates this README's
 summary table, and re-runs `npm run lint:integration-registry`. Record the honest state — never imply a
-provider is connected/available/autonomous because it is listed (R1).
+provider is connected/available/autonomous because it is listed (R1). A runtime-claiming entry
+(LIVE/PARTIAL/PROOF_OWED) MUST carry `code_anchors` citing the real adapter/entry-point code that backs
+it; a rename, move, or deletion of that code updates the anchors in the **same** commit, or the
+dead-anchor resolve fails CI (an entry may not claim a built runtime while pointing at code that no
+longer exists).
 
 ## Per-provider summary (the JSON is the source of truth)
 

@@ -117,7 +117,7 @@ export function HeroSection() {
           <div className="flex gap-3 shrink-0">
             <Button
               className="bg-gradient-to-br from-[#a855f7] to-[#7c3aed] text-white hover:from-[#b06bff] hover:to-[#8b40f0] font-bold shadow-[0_10px_40px_rgba(124,58,237,0.5)] hover:scale-105 transition-all border-0"
-              onClick={() => navigate("/auth?mode=signup")}
+              onClick={() => navigate("/auth?mode=signup&plan=solo&billing=monthly")}
             >
               Start Your Workspace
               <ArrowRight className="w-4 h-4 ml-2" />

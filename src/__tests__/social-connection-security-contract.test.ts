@@ -1,0 +1,121 @@
+// @vitest-environment node
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const read = (rel: string) => readFileSync(join(process.cwd(), rel), "utf8");
+const endpoint = read("supabase/functions/paige-social/index.ts");
+const callback = read("supabase/functions/paige-social-callback/index.ts");
+const migration = read("supabase/migrations/20270127000000_social_connection_lifecycle.sql");
+const hook = read("src/solo/data/useSocialConnections.ts");
+const drawer = read("src/solo/settings-integrations-social.tsx");
+const catalogue = read("src/solo/settings-integrations.tsx");
+
+describe("Social connection authority and tenant isolation", () => {
+  it("authenticates, resolves the active tenant server-side, and treats a body tenant only as a stale-workspace assertion", () => {
+    const authAt = endpoint.indexOf("auth.getUser()");
+    const tenantAt = endpoint.indexOf('caller.rpc("current_user_tenant_id")');
+    const actionAt = endpoint.indexOf('if (action === "start")');
+    expect(authAt).toBeGreaterThan(-1);
+    expect(tenantAt).toBeGreaterThan(authAt);
+    expect(actionAt).toBeGreaterThan(tenantAt);
+    expect(endpoint).toContain("expectedTenant !== tenantId");
+    expect(endpoint).not.toMatch(/body\.tenant_id/);
+  });
+
+  it("governs every customer mutation before creating a connection, selecting an account, or disconnecting", () => {
+    for (const capability of [
+      "social_connection_start",
+      "social_account_select",
+      "social_connection_disconnect",
+    ]) expect(endpoint).toContain(capability);
+    expect(endpoint.indexOf('const result = await govern(\n      "social_connection_start"'))
+      .toBeLessThan(endpoint.indexOf('.insert({\n        id: connectionId'));
+    expect(endpoint).toContain("approval_fingerprint");
+    expect(migration).toContain("p.args->>'connection_id'=_connection_id::text and p.args->>'account_id'=_account_id::text");
+    expect(migration).toContain("p.args->>'connection_id'=_connection_id::text");
+  });
+
+  it("binds accounts to a tenant-matched connection and exposes no service-only correlation through status RPCs", () => {
+    expect(migration).toContain("foreign key (tenant_id,connection_id)");
+    expect(migration).toContain("SOCIAL_ACCOUNT_CONNECTION_MISMATCH");
+    expect(migration).toContain("constraint paige_social_connections_provider_profile_key unique (provider_key,provider_profile_key)");
+    expect(migration).toContain("alter table public.paige_social_connections force row level security");
+    expect(migration).toContain("alter table public.paige_social_connection_attempts force row level security");
+    expect(migration).toMatch(/revoke all on public\.paige_social_connections,public\.paige_social_connection_attempts\s+from public,anon,authenticated/);
+    const statusProjection = migration.slice(migration.indexOf("create function public.social_account_status()"));
+    expect(statusProjection).not.toContain("provider_profile_key");
+    expect(statusProjection).not.toContain("token_hash");
+  });
+});
+
+describe("Social authorization callback", () => {
+  it("keeps the one-time token on the service callback and never sends it through the app", () => {
+    expect(endpoint).toContain("/functions/v1/paige-social-callback");
+    expect(endpoint).toContain('callback.searchParams.set("token", callbackToken)');
+    expect(endpoint).not.toContain('callback.searchParams.set("social_token"');
+    expect(hook).not.toContain("callback_token");
+    expect(hook).not.toContain("social_token");
+    expect(hook).toContain('params.get("social_result")');
+  });
+
+  it("fails closed without an explicitly configured customer return origin", () => {
+    expect(endpoint).toContain('const configured = Deno.env.get("PUBLIC_SITE_URL")');
+    expect(callback).toContain('const configured = Deno.env.get("PUBLIC_SITE_URL")');
+    expect(endpoint).not.toContain('?? "https://paigeagent.ai"');
+    expect(callback).not.toContain('?? "https://paigeagent.ai"');
+  });
+
+  it("derives tenant, actor, connection, and return path only from the single-use stored attempt", () => {
+    expect(callback).toContain('admin.rpc("social_claim_connection_callback"');
+    expect(callback).not.toMatch(/searchParams\.get\("(tenant|actor|connection|return)/);
+    expect(callback).not.toMatch(/body\??\.tenant_id/);
+    expect(migration).toContain("where a.id=_attempt_id and a.token_hash=_token_hash and a.expires_at>_claimed_at");
+    expect(migration).toContain("p.server_issued_at is not null and p.consumed_at is not null");
+    expect(migration).toContain("if auth.role()<>'service_role' then raise exception 'SOCIAL_CALLBACK_CLAIM_FORBIDDEN'");
+  });
+
+  it("requires provider readback before recording verified state and redirects without secrets", () => {
+    const readAt = callback.indexOf("adapter.readProfile");
+    const applyAt = callback.indexOf('admin.rpc("social_apply_connection_readback"');
+    const receiptAt = callback.indexOf("const railRecorded = await recordCapabilityRun");
+    const redirectAt = callback.indexOf('resultRedirect(claim.return_path, "verified"');
+    expect(readAt).toBeGreaterThan(-1);
+    expect(applyAt).toBeGreaterThan(readAt);
+    expect(receiptAt).toBeGreaterThan(applyAt);
+    expect(redirectAt).toBeGreaterThan(receiptAt);
+    expect(callback).toContain('"Cache-Control": "no-store"');
+    expect(callback).toContain('"Referrer-Policy": "no-referrer"');
+    expect(callback).toMatch(/new Response\(null,[\s\S]*Location: url\.href,[\s\S]*"Cache-Control": "no-store",[\s\S]*"Referrer-Policy": "no-referrer"/);
+    expect(callback).not.toContain('url.searchParams.set("token"');
+  });
+
+  it("cannot apply callback readback after disconnect wins the connection lock", () => {
+    expect(migration).toMatch(/where c\.tenant_id=_tenant_id and c\.id=_connection_id\s+and c\.status='authorizing'\s+and a\.id=_attempt_id/);
+    expect(migration).toContain("state in ('created','redirected','processing')");
+  });
+
+  it("recreates a provider profile only when reconnect readback proves it is missing", () => {
+    expect(endpoint).toContain('error.code === "provider_profile_not_found"');
+    expect(endpoint).toContain("createdProfile = (await adapter.createProfile({ providerProfileKey })).created");
+  });
+});
+
+describe("customer-facing identity truth", () => {
+  it("uses only Social language and contains no provider-company or owner-brand identity", () => {
+    const customerSources = [drawer, catalogue, hook].join("\n");
+    expect(customerSources).not.toMatch(/upload[\s-]?post/i);
+    expect(customerSources).not.toMatch(/mogul maker/i);
+    expect(customerSources).not.toMatch(/academy/i);
+  });
+
+  it("starts without a default identity or target and selects only an explicit discovered account", () => {
+    expect(hook).toContain("connections: [], accounts: []");
+    expect(drawer).toContain("No Social identities are connected");
+    expect(drawer).toContain("Select this account");
+    expect(endpoint).toContain('.eq("tenant_id", tenantId).eq("connection_id", connectionId).eq("id", accountId)');
+    expect(migration).toContain("not selected or status='connected'");
+    expect(migration).toContain("provider_account_id text;");
+    expect(migration).not.toMatch(/\n\s+account_id text;/);
+  });
+});

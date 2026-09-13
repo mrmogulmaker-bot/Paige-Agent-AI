@@ -66,9 +66,9 @@ export function Header({ autoHide = false }: { autoHide?: boolean }) {
     const route = await Promise.race<string>([
       resolveLandingRoute(user.id).catch((e) => {
         console.error("[Header] resolveLandingRoute failed:", e);
-        return "/app";
+        return "/auth?mode=login";
       }),
-      new Promise<string>((resolve) => setTimeout(() => resolve("/app"), 4000)),
+      new Promise<string>((resolve) => setTimeout(() => resolve("/auth?mode=login"), 4000)),
     ]);
     setRouting(false);
     navigate(route);
@@ -120,9 +120,9 @@ export function Header({ autoHide = false }: { autoHide?: boolean }) {
                 <Button variant="ghost" onClick={() => navigate("/auth?mode=login")}>Sign In</Button>
                 <Button
                   className="bg-gradient-gold text-accent-foreground hover:shadow-glow-lg hover:scale-105 transition-all duration-300 font-bold border-0"
-                  onClick={() => navigate("/auth?mode=signup")}
+                  onClick={() => navigate("/auth?mode=signup&plan=solo&billing=monthly")}
                 >
-                  Get Started Free
+                  Explore Paige Solo
                 </Button>
               </>
             )}
@@ -172,9 +172,9 @@ export function Header({ autoHide = false }: { autoHide?: boolean }) {
                   </Button>
                   <Button
                     className="w-full bg-gradient-gold text-accent-foreground hover:shadow-glow-lg font-bold border-0"
-                    onClick={() => navigate("/auth?mode=signup")}
+                    onClick={() => navigate("/auth?mode=signup&plan=solo&billing=monthly")}
                   >
-                    Get Started Free
+                    Explore Paige Solo
                   </Button>
                 </>
               )}

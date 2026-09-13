@@ -725,7 +725,32 @@ Reference or any domain ledger; it governs how their facts become release and cu
 
 ## 4. What's SHIPPED (stop asking about these)
 
+> **Solo Beta Gate A candidate — not shipped (2026-09-12; offer corrected 2026-09-12).** The review candidate narrows public acquisition to the fixed paid Solo offer: one server-verified 30-day trial, then `$74.50/month` unless canceled before the first paid renewal. It adds verified/fenced fulfillment and safe recovery while preserving existing authorized non-Solo access. Focused new-scope automated/static checks and exact-implementation-head fresh migration replay are green; whole-repository Vitest/ESLint retain documented baseline failures. Incremental non-production apply, Stripe test acceptance, authenticated runtime, deployment, and owner acceptance remain `PROOF OWED`/`UNVERIFIED`. It therefore has no Section 4.0 shipped row yet. PR #899's payment-setup ordering intent and PR #724's canonical Solo destination are carried forward; only obsolete new-public-Solo detours are superseded. Authority: [Solo Beta acquisition evidence](evidence/ui-delivery/solo-beta-acquisition.md).
+
 ### 4.0 Shipped Delivery Log
+
+**2026-09-13 Paige Runtime Harness · Layer C · C1 — connector-neutral governed event→act engine foundation (PR [#1173](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1173), squash-merged to `main` as [`7784571944`](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/commit/7784571944a8144cdead0310a6cfba12a847f212) from head `76084dd5`; internal build identity `7784571944`; release channel **production** (deployed via the merge pipelines); Gate A):**
+Shipped the per-act outcome ledger `public.paige_act_executions` + the atomic monotonic `paige_record_act_execution` RPC (migration `20270126000000`), the pure decision core, the connector-neutral `ActionAdapter` registry (n8n first, every other kind fail-closed), the person-attributed governed engine, the independent subject-derived tenant-integrity check, and the native-event dispatcher wiring — with owner corrections #2 (subject-derived tenant validation), #3 (fail-closed per-act persistence), #4 (atomic monotonic transitions), and #6 (event/subscriber/act levels kept distinct) folded in. | **Merged and PERSISTED; NO customer-facing behavior** — the engine performs no external send (an authorized act stops at `accepted_for_execution`; real dispatch is later slices). §32 persisted-apply: deploy-migrations run #251 **success**; `db-live` advanced to `7784571944`; `20270126000000` is in the db-live tree; `db-live..main` shows **zero migration drift**; `edge-live` moved. Reviewed by the §39 adversarial verifier + §5 compliance officer on the pushed diff (both ITERATE → all findings folded pre-merge). Test proof: 53/53 targeted unit tests; full suite green apart from 18 pre-existing failures in three untouched `src/solo` files; `ci:tsc`/`deno check` clean; `database-contract` fresh-replay green on the merged head; the monotonic RPC proven headless against PG16. | **No.** Internal governance foundation; no provider action, no customer release record.
+**2026-09-13 skill-runner routed through the canonical governed seam — §9 cross-tenant leak + spoofable authority closed (PR [#1179](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1179), squash-merged to `main` as `a52b194` from head `26bd6d2`, internal channel, Gate A; edge deployed via `deploy-edge-functions` run 292):**
+The direct `skill-runner` Edge route now enforces the governed truth ITSELF instead of trusting an upstream caller
+(Chat/MCP). `resolveSkillCaller` derives actor + tenant + approving authority SERVER-SIDE from the verified JWT (a
+service-role caller is `principal:"service"`, which the seam refuses for this `high` mutation — a machine credential
+is nobody's yes), never from `body.tenant_id`/`body.contact_id`/`body.invoker_kind`; `decideSkillRun` routes through
+the shared `decideGovernedExecution` (§18 — the `skill` door mirrors the `mcp` door; a refusal writes no run row and
+no side effect, audited only). Every subject lookup (`draft_and_email_document`, `build_game_plan`,
+`verify_business_sos`, interpreter path) is scoped `.eq("tenant_id", callerTenantId)`, so a cross-tenant id resolves
+to nothing rather than leaking tenant B under tenant B's identity. The one external send (`draft_and_email_document`)
+is bound to a durable, single-use, fingerprint-bound approval in the EXISTING `paige_pending_confirmations` table
+(fingerprint over action+tenant+contact+recipient+sender+doc_type+content SHA-256; atomic compare-and-set claim
+excluding the minting request), and a failed send is reported honestly (`send_failed` → 502, never "succeeded"). No
+migration, no new deps. Two INDEPENDENT reviewers (§39 adversarial + §5 compliance) read the real pushed diff; their
+one converged §13 finding (failed-send-reported-as-success) was folded before merge. Proof: matrix 19/19 + reused-seam
+142/142 + four governance lints, run locally; edge-deploy pipeline green on `a52b194`. **KNOWN LIMITATION (§32/§70):**
+the authenticated runtime live-drive of the deployed function (the JWT→tenant derivation lives in Deno, not
+unit-testable headless) is the owed proof class — owner/live-drive confirmation pending. LOW residuals (non-email-skill
+governed-`propose` is honored via the pre-existing first-run confirm gate — the per-skill claim store is named
+follow-up; `active_tenant_id` integrity is the platform pattern; any authenticated tenant member may run skills — a
+§51 access decision) are pre-existing/disclosed, not regressions. **Post-merge hardening (PR [#1183](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1183)):** a THIRD independent reviewer (Codex, on the merged head) flagged two §13 receipt-honesty gaps in `recordReceipt` that the §39/§5 passes missed — (P1) the `paige_skill_runs`/`communication_log` write results were unchecked, so a failed receipt write after a successful send still returned a clean `succeeded` (AGENTS.md L48-49); (P2) the receipt recorded the redemption `body.inputs` rather than the APPROVED claimed inputs, so an altered phase-2 redemption could misdescribe the sent message. Fixed forward in #1183: the receipt write is checked (a sent-but-unrecorded send returns `succeeded_unrecorded`, never a silent clean success), and the run row records the claimed `doc_type`/`contact_id`/`content_sha256`. Host-code hardening, validated by the deno edge-ratchet typecheck; the live-drive remains the owed runtime proof.
 
 **2026-09-13 Controlled provider proof — EXECUTED (owner-authorized ≤$1.25):** the IMAGE proof is
 **COMPLETE end-to-end** on production: one `fal-ai/nano-banana` image (est $0.039 ≤ $0.25 cap) →
@@ -2343,6 +2368,19 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
     enterprise recorded honestly. Provider API fees are separate from customer money movement; Paige is
     never merchant of record (§38). The correction is go-forward only — historical closeouts are NOT
     rewritten (§58).
+  - **v1.2 — code_anchors accountability (2026-09-13, docs + CI-guard only):** a new `field_schema.code_anchors`
+    contract makes every runtime-claiming provider (LIVE/PARTIAL/PROOF_OWED) cite the REAL adapter/entry-point
+    code that backs it ({path, role, note?}); unbuilt providers (UNAVAILABLE/DEFERRED/PROPOSED) stay unanchored.
+    Backfilled on all 16 runtime-claiming providers (50 anchors, each verified to exist on disk), with two §13
+    escalations preserved in-anchor — **meta** is contained to HTTP 503 (all four anchors `fail_closed_containment`,
+    NOT LIVE) and **google-workspace** has only Calendar OAuth, no Drive/Docs adapter. `role` is a controlled,
+    lint-enforced vocabulary (`provider_adapter`/`callback_readback`/`fail_closed_containment`/`proven_runtime`);
+    a code anchor proves a code PATH EXISTS, never that a provider works/connected/LIVE, and it raised NO status.
+    The guard `scripts/ci/integration-registry-lint.mjs` gained a pure `findDeadCodeAnchors` dead-anchor resolve
+    (fails CI on a cited path missing from disk) reusing the binding-ledger's `findDeadAnchors` pattern (§18 — no
+    new lint/npm-script/CI-step). Closes the mechanism gap the registry's `registry_steward_role` named (Upload-Post
+    / fal.ai merged owing entries); a reverse coupling check (a provider DIFF must update its entry) remains a
+    tracked follow-up. Schema bumped 1.1.0 -> 1.2.0.
   - **§13 grounding note:** the brief named a *"Marketplace Brain decision"* that has **no artifact
     under that phrase repo-wide** — the Marketplace rule is grounded on `MARKETPLACE-DATA-MODEL.md`
     instead; recorded as unresolved, not invented.

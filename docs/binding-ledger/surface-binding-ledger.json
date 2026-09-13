@@ -407,26 +407,26 @@
       "surface": "Campaigns -> Social (accounts a business posts from)",
       "group": "campaigns",
       "tier_scope": ["solo"],
-      "owner_component": "src/solo/social-command.tsx:578 (useSocialCommand/social-truth)",
-      "canonical_source": "tenants.features->social_handles (record-only); Spine read get_social_presence_evidence; write record_social_handles. The deployed paige_social_* lifecycle tables are a service-only, non-executable foundation and are not yet a surface source.",
+      "owner_component": "Campaigns: src/solo/social-command.tsx (useSocialCommand/social-truth); connections: src/solo/settings-integrations-social.tsx (useSocialConnections)",
+      "canonical_source": "Declared handles remain capture-only through tenants.features->social_handles. Tenant-owned connection/account truth comes only from service-managed paige_social_connections + paige_social_accounts and the tenant-resolved social_connection_status/social_account_status projections. Provider profile correlations and callback attempts are never a browser source.",
       "chain": {
-        "canonical_source": {"status": "real", "note": "record-only handles; NO provider metrics"},
-        "tenant_scope": {"status": "server_resolved", "note": "get_social_presence_evidence: DEFINER, tenant server-resolved, is_tenant_admin gate guarded on auth.uid() IS NOT NULL"},
+        "canonical_source": {"status": "real", "note": "record-only handles plus tenant-owned Social connection/account status after provider readback; NO provider metrics"},
+        "tenant_scope": {"status": "server_resolved", "note": "connection status RPCs resolve the active tenant from the authenticated caller; connection mutations resolve tenant/user/admin in-function and use body tenant only as a stale-workspace refusal"},
         "safe_context": {"status": "wired", "note": "social.presence registered; buildSocialPresenceBlock injected per tenant turn; returns the raw handle (a PUBLIC identifier, deliberate)"},
-        "authority": {"status": "governed", "note": "write record_social_handles is a §10 callable seam reached by JWT and by paige-mcp (crm.write), never an inline chat tool"},
-        "governed_write": {"status": "wired", "note": "record_social_handles has its own in-body gate"},
-        "verified_outcome": {"status": "none", "note": "the Spine entry declares the presence READ only; social_post is hard-off and no provider executor, readback, receipt, or Rail outcome exists"},
-        "rail_evidence": {"producer": "none", "read": "n/a"},
+        "authority": {"status": "governed", "note": "handle capture and connection start/select/disconnect use the shared governed execution decision and exact single-use confirmation claims; only workspace owner/admin may mutate connections"},
+        "governed_write": {"status": "wired", "note": "connection mutations are tenant-resolved and fail closed on missing configuration, authority, consent, stored confirmation, provider readback, or tenant/account binding"},
+        "verified_outcome": {"status": "partial", "note": "provider profile readback is required before an account becomes connected and no account is selected implicitly. Publishing, scheduling, analytics, comments, messaging, ads, and provider post receipts remain unavailable"},
+        "rail_evidence": {"producer": "record_capability_run for Social connection start/readback/select/disconnect", "read": "owner-visible connection UI plus canonical Rail; authenticated production proof owed"},
         "mind_eligibility": {"axis_a": "PARTIAL", "axis_b": "NO", "note": "read chat-injected, unit-tested, no authenticated drive. SUPERSEDES the Mind matrix, which recorded Social UNAVAILABLE at its 2026-09-03 grounding — social.presence shipped 2026-09-05"},
         "memory_retention": {"status": "n/a"}
       },
       "prohibited_context": ["any provider metric (none exist)", "provider credentials/tokens"],
       "state": "PROOF_OWED",
-      "state_reason": "social.presence read+write wired and unit-tested; authenticated runtime proof absent. PR #1162 deployed the tenant-safe lifecycle substrate and fail-closed containment, but connection, durable-draft consumers, provider actions/readback, receipts, metrics, and recommendations remain UNAVAILABLE.",
+      "state_reason": "Declared-handle presence remains PARTIAL. The tenant-owned multi-identity connection lifecycle, provider-hosted OAuth handoff, account discovery/readback, explicit selection, reconnect, disconnect, and connection receipts are implemented and tested but remain PROOF_OWED until deployment and authenticated owner consent. Publishing, scheduling, analytics, comments, messaging, ads, and recommendations remain UNAVAILABLE.",
       "evidence_class": ["production_catalog", "automated_test", "rendered_structural", "source_read"],
-      "linked": ["PR #1162"],
-      "next_slice": "Authenticated drive of the declared-handle read/write remains owed. Separately, the owner must select and authorize the Beta provider/platform/OAuth/test-account boundary before the canonical account lifecycle can be implemented.",
-      "sources": ["docs/brain/paige-spine-and-rail-state.md", "supabase/functions/_shared/paige-spine/domains/social.ts", "supabase/migrations/20270122000000_social_foundation_tenant_recovery.sql", "docs/evidence/ui-delivery/social-operations-phase-0-truth-containment.md", "docs/delivery/solo-social-command.md", "docs/architecture/paige-mind-integration-matrix.md#campaigns-social-performance (SUPERSEDED — predates social.presence)"]
+      "linked": ["PR #1162", "Social connection delivery candidate"],
+      "next_slice": "Deploy and run authenticated owner consent against an authorized Social identity; prove account discovery, explicit selection, account switching, reconnect, disconnect, denial, callback replay rejection, receipt/Rail visibility, and responsive UI. Do not publish.",
+      "sources": ["docs/brain/paige-spine-and-rail-state.md", "supabase/functions/_shared/paige-spine/domains/social.ts", "supabase/functions/paige-social/index.ts", "supabase/functions/paige-social-callback/index.ts", "supabase/migrations/20270122000000_social_foundation_tenant_recovery.sql", "supabase/migrations/20270127000000_social_connection_lifecycle.sql", "docs/evidence/ui-delivery/social-operations-phase-0-truth-containment.md", "docs/delivery/solo-social-command.md", "docs/architecture/paige-mind-integration-matrix.md#campaigns-social-performance (SUPERSEDED — predates social.presence)"]
     },
     {
       "id": "campaigns.performance",
@@ -848,6 +848,40 @@
       "sources": ["docs/architecture/paige-mind-integration-matrix.md", "docs/evidence/ui-delivery/business-vault-phase2-foundation.md"]
     },
     {
+      "id": "public.solo-beta-acquisition",
+      "consequential": true,
+      "intended_capability": {
+        "read": "Explain the one approved public Solo Beta offer and the caller's server-verified enrollment state without exposing provider or tenant internals.",
+        "draft": "Prepare identity recovery, setup, and checkout continuation for the customer; no side effect is represented as complete.",
+        "auto": "Within the fixed Solo offer policy and its one-user, one-workspace, one-active-checkout limits, the service may perform idempotent reconciliation after signed provider evidence; the browser and Paige hold no enrollment or billing authority.",
+        "confirm": "The customer explicitly submits signup/setup and enters provider-hosted checkout for one server-fixed 30-day trial followed by $74.50 monthly renewal; no broader account type, trial length, or free-plan choice exists.",
+        "prohibited": "Never infer payment from a return URL, compose tenant authority client-side, expose Stripe identifiers, enroll a non-Solo account, or let Paige claim billing/support resolution she cannot perform.",
+        "completion_criterion": "A new verified identity receives exactly one standalone owner workspace and current Solo destination only after a signed exact-contract trialing or active subscription plus receipt/subscription/membership readback; interruption is safely resumable and trial eligibility is not reusable."
+      },
+      "surface": "Public website -> Solo Beta identity, checkout, verification, and current Solo handoff",
+      "group": "public-acquisition",
+      "tier_scope": ["anonymous", "solo"],
+      "owner_component": "src/pages/PaigeHome.tsx; src/pages/Pricing.tsx; src/pages/Auth.tsx; src/pages/Onboarding.tsx; src/pages/Welcome.tsx",
+      "canonical_source": "solo-beta-enrollment-status plus dedicated fixed-offer checkout/webhook and atomic fulfillment receipt",
+      "chain": {
+        "canonical_source": {"status": "wired", "note": "Dedicated test-mode fixed offer and receipt-backed status are implemented in the review candidate; provider acceptance remains proof owed."},
+        "tenant_scope": {"status": "server_resolved", "note": "Tenant, account number, owner membership, subscription, and destination are service-resolved; route/query/local storage never confer authority."},
+        "safe_context": {"status": "eligible", "note": "Customer responses contain bounded state, message, reference id, retryability, and a strict current-Solo destination only when verified."},
+        "authority": {"status": "governed", "note": "Ordinary identity/setup intent plus signed Stripe evidence; fixed offer, fencing, immutable event identity, and atomic readback."},
+        "governed_write": {"status": "wired", "note": "Service-only standalone provisioning, subscription, receipt, and evidence transaction; no Paige callable action."},
+        "verified_outcome": {"status": "partial", "note": "Automated/static proof verified; database apply, authenticated flow, and Stripe test acceptance are proof owed."},
+        "rail_evidence": {"producer": "wired", "read": "none", "note": "One bounded usage evidence row per fulfillment/lifecycle event; no customer/provider payload."},
+        "mind_eligibility": {"axis_a": "UNAVAILABLE", "axis_b": "NO", "note": "Enrollment and billing internals do not become Mind facts."},
+        "memory_retention": {"status": "n/a", "note": "No signup, checkout, or provider payload enters Paige Memory."}
+      },
+      "prohibited_context": ["Stripe secrets or raw payloads", "client-selected tenant or account type", "return-URL payment assertions", "unsupported account enrollment", "raw legal/provider errors"],
+      "state": "PARTIAL",
+      "state_reason": "Gate A review candidate: public Solo-only flow and dedicated server contracts are implemented with automated/static proof. No database apply, Stripe test acceptance, authenticated runtime, deployment, or owner acceptance is claimed.",
+      "evidence_class": ["source_read", "automated_test", "rendered_structural"],
+      "linked": ["PR #899 intent carried forward", "PR #724 destination contract carried forward"],
+      "next_slice": "Run migrations and Stripe test-mode acceptance in an approved environment, complete authenticated four-viewport/two-theme recovery proof, independent review, then request explicit owner go-live approval.",
+      "sources": ["docs/evidence/ui-delivery/solo-beta-acquisition.md", "docs/doctrine/tier-matrix.md", "docs/handoff/platform-billing-spine-source-contract.md"]
+    },    {
       "id": "settings.billing",
       "consequential": true,
       "intended_capability": {

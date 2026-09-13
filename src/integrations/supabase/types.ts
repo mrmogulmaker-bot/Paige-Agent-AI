@@ -12412,6 +12412,9 @@ export type Database = {
           avatar_url: string | null
           connected_at: string | null
           connected_by: string | null
+          connection_id: string | null
+          capabilities: string[]
+          capabilities_verified_at: string | null
           created_at: string
           credentials_vault_ref: string | null
           display_name: string | null
@@ -12436,6 +12439,9 @@ export type Database = {
           avatar_url?: string | null
           connected_at?: string | null
           connected_by?: string | null
+          connection_id?: string | null
+          capabilities?: string[]
+          capabilities_verified_at?: string | null
           created_at?: string
           credentials_vault_ref?: string | null
           display_name?: string | null
@@ -12460,6 +12466,9 @@ export type Database = {
           avatar_url?: string | null
           connected_at?: string | null
           connected_by?: string | null
+          connection_id?: string | null
+          capabilities?: string[]
+          capabilities_verified_at?: string | null
           created_at?: string
           credentials_vault_ref?: string | null
           display_name?: string | null
@@ -12478,7 +12487,143 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "paige_social_accounts_connection_fk"
+            columns: ["tenant_id", "connection_id"]
+            isOneToOne: false
+            referencedRelation: "paige_social_connections"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
             foreignKeyName: "paige_social_accounts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_social_connection_attempts: {
+        Row: {
+          completed_at: string | null
+          confirmation_id: string
+          connection_id: string
+          created_at: string
+          created_by: string
+          expires_at: string
+          id: string
+          processing_at: string | null
+          provider_error_code: string | null
+          provider_status: string | null
+          return_path: string
+          state: string
+          tenant_id: string
+          token_hash: string
+        }
+        Insert: {
+          completed_at?: string | null
+          confirmation_id: string
+          connection_id: string
+          created_at?: string
+          created_by: string
+          expires_at: string
+          id?: string
+          processing_at?: string | null
+          provider_error_code?: string | null
+          provider_status?: string | null
+          return_path: string
+          state?: string
+          tenant_id: string
+          token_hash: string
+        }
+        Update: {
+          completed_at?: string | null
+          confirmation_id?: string
+          connection_id?: string
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          id?: string
+          processing_at?: string | null
+          provider_error_code?: string | null
+          provider_status?: string | null
+          return_path?: string
+          state?: string
+          tenant_id?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_social_connection_attempts_confirmation_id_fkey"
+            columns: ["confirmation_id"]
+            isOneToOne: false
+            referencedRelation: "paige_pending_confirmations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_social_connection_attempts_connection_fk"
+            columns: ["tenant_id", "connection_id"]
+            isOneToOne: false
+            referencedRelation: "paige_social_connections"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "paige_social_connection_attempts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_social_connections: {
+        Row: {
+          authorization_expires_at: string | null
+          connected_by: string | null
+          created_at: string
+          disconnected_at: string | null
+          failure_code: string | null
+          id: string
+          label: string | null
+          last_verified_at: string | null
+          provider_key: string
+          provider_profile_key: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          authorization_expires_at?: string | null
+          connected_by?: string | null
+          created_at?: string
+          disconnected_at?: string | null
+          failure_code?: string | null
+          id?: string
+          label?: string | null
+          last_verified_at?: string | null
+          provider_key: string
+          provider_profile_key: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          authorization_expires_at?: string | null
+          connected_by?: string | null
+          created_at?: string
+          disconnected_at?: string | null
+          failure_code?: string | null
+          id?: string
+          label?: string | null
+          last_verified_at?: string | null
+          provider_key?: string
+          provider_profile_key?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_social_connections_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -21035,7 +21180,9 @@ export type Database = {
           account_kind: string
           authorization_expires_at: string | null
           avatar_url: string | null
+          capabilities: string[]
           connected_at: string | null
+          connection_id: string
           display_name: string | null
           handle: string | null
           id: string
@@ -21046,7 +21193,68 @@ export type Database = {
           status: string
         }[]
       }
+      social_apply_connection_readback: {
+        Args: {
+          _accounts: Json
+          _actor_id: string
+          _attempt_id: string
+          _connection_id: string
+          _observed_at?: string
+          _tenant_id: string
+          _token_hash: string
+        }
+        Returns: Json
+      }
+      social_claim_connection_callback: {
+        Args: { _attempt_id: string; _claimed_at?: string; _token_hash: string }
+        Returns: Json
+      }
+      social_connection_access: { Args: never; Returns: boolean }
+      social_connection_status: {
+        Args: never
+        Returns: {
+          account_count: number
+          authorization_expires_at: string | null
+          disconnected_at: string | null
+          failure_code: string | null
+          id: string
+          label: string | null
+          last_verified_at: string | null
+          status: string
+        }[]
+      }
       social_current_tenant_id: { Args: never; Returns: string }
+      social_mark_connection_disconnected: {
+        Args: {
+          _actor_id: string
+          _confirmation_id: string
+          _connection_id: string
+          _disconnected_at?: string
+          _tenant_id: string
+        }
+        Returns: Json
+      }
+      social_release_connection_attempt: {
+        Args: {
+          _actor_id: string
+          _attempt_id: string
+          _failure_code: string
+          _released_at?: string
+          _tenant_id: string
+        }
+        Returns: undefined
+      }
+      social_set_selected_account: {
+        Args: {
+          _account_id: string
+          _actor_id: string
+          _confirmation_id: string
+          _connection_id: string
+          _selected_at?: string
+          _tenant_id: string
+        }
+        Returns: Json
+      }
       list_tool_autonomy: {
         Args: { _tenant_id?: string }
         Returns: {

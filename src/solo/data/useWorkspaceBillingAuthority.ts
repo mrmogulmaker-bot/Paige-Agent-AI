@@ -83,6 +83,21 @@ export const PORTAL_REFUSAL_COPY: Record<PortalRefusal, string> = {
 
 const KNOWN: ReadonlySet<string> = new Set(Object.keys(PORTAL_REFUSAL_COPY));
 
+async function invokeWorkspacePortal() {
+  const beta = await supabase.functions.invoke("solo-beta-billing-portal");
+  if (beta.error || (beta.data && typeof (beta.data as { error?: unknown }).error === "string")) {
+    const body = await readFunctionErrorBody(beta.error, beta.data);
+    if (body?.error === "not_solo_beta") {
+      return supabase.functions.invoke("platform-billing-portal");
+    }
+    // A FunctionsHttpError response body is a one-shot stream. Preserve the
+    // parsed refusal for decidePortalOpen instead of asking it to consume the
+    // same Response a second time and incorrectly collapsing it to `network`.
+    if (typeof body?.error === "string") return { data: body, error: null };
+  }
+  return beta;
+}
+
 function asScope(v: unknown): BillingScope {
   return v === "sub_account" || v === "agency" || v === "enterprise" || v === "top_level_solo" ? v : "none";
 }
@@ -182,7 +197,10 @@ export function useWorkspaceBillingAuthority() {
   const openPortal = useCallback(async (): Promise<PortalResult> => {
     const captured = tenantRef.current;
     // No body: the server derives the workspace and the actor from the token alone.
-    const response = await supabase.functions.invoke("platform-billing-portal");
+    // The fixed test-mode Beta lane verifies its exact provider contract first.
+    // A server-proven non-Beta workspace falls back to the existing portal path,
+    // preserving every pre-existing customer's billing behavior.
+    const response = await invokeWorkspacePortal();
     const decision = await decidePortalOpen(captured, response);
     // A response that arrives after the workspace changed is discarded, whatever it says.
     const stillHere = tenantRef.current === captured;

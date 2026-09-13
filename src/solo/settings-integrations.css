@@ -14,6 +14,7 @@
 .ss-provider-mark { display: inline-grid; place-items: center; min-width: 34px; height: 26px; padding: 0 6px; border: 1px solid color-mix(in srgb, var(--ss-provider-accent, var(--pg-violet)) 74%, var(--pg-line)); border-radius: 7px; background: color-mix(in srgb, var(--ss-provider-accent, var(--pg-violet)) 18%, var(--pg-raised)); color: var(--pg-ink); font: 750 9.5px/1 var(--pg-font-data, ui-monospace, monospace); letter-spacing: -.02em; }
 .ss-provider-mark[data-provider-mark="n8n"], .ss-provider-mark[data-provider-mark="zapier"] { background: var(--ss-provider-accent); color: #040506; }
 [data-provider="n8n"], [data-provider-mark="n8n"] { --ss-provider-accent: #EA4B71; }
+[data-provider="social"], [data-provider-mark="social"] { --ss-provider-accent: var(--pg-gold-core); }
 [data-provider="zapier"], [data-provider-mark="zapier"] { --ss-provider-accent: #FF4A00; }
 [data-provider="mcp"], [data-provider-mark="mcp"] { --ss-provider-accent: var(--pg-violet, var(--pg-violet)); }
 [data-provider="stripe"] { --ss-provider-accent: #635BFF; }
@@ -132,6 +133,66 @@
     transition-duration: .01ms !important;
   }
   .ig-card:hover, .ig-btn:active:not(:disabled), .ig-bar button:active { transform: none; }
+}
+
+/* Social is a catalogue provider and uses the same contextual drawer. Its
+   richer interior represents connection state, not a second Integrations IA. */
+.social-ig-panel { width: min(520px, 100vw); }
+.social-ig-panel .ig-panel-body { display: grid; align-content: start; gap: 14px; }
+.social-ig-intro { display: grid; gap: 8px; padding: 4px 2px 2px; }
+.social-ig-intro h3, .social-ig-connection h3, .social-ig-boundary h3, .social-ig-empty h3 {
+  margin: 0; color: var(--pg-ink); font: 620 14px/1.3 var(--pg-font-display);
+}
+.social-ig-intro > p, .social-ig-empty p, .social-ig-boundary p {
+  margin: 0; color: var(--pg-muted); font: 400 11.5px/1.55 var(--pg-font-ui);
+}
+.social-ig-kicker { color: var(--pg-gold-core); font: 740 8.5px/1 var(--pg-font-ui); letter-spacing: .13em; text-transform: uppercase; }
+.social-ig-empty { display: grid; justify-items: start; gap: 13px; padding: 20px; overflow: hidden; border: 1px solid var(--pg-line); border-radius: 14px; background: radial-gradient(circle at 0 0, color-mix(in srgb, var(--pg-violet) 12%, transparent), transparent 45%), var(--pg-surface); box-shadow: var(--pg-e1), var(--pg-rim); }
+.social-ig-orbit { position: relative; display: grid; width: 46px; height: 46px; place-items: center; border: 1px solid color-mix(in srgb, var(--pg-gold-core) 48%, var(--pg-line)); border-radius: 50%; }
+.social-ig-orbit::before { position: absolute; width: 64px; height: 22px; border: 1px solid color-mix(in srgb, var(--pg-violet) 54%, var(--pg-line)); border-radius: 50%; content: ""; transform: rotate(-19deg); }
+.social-ig-orbit span { width: 11px; height: 11px; border-radius: 50%; background: var(--pg-gold-core); box-shadow: 0 0 20px color-mix(in srgb, var(--pg-gold-core) 48%, transparent); }
+.social-ig-notice { display: flex; align-items: flex-start; gap: 7px; margin: 0; padding: 10px 11px; border: 1px solid color-mix(in srgb, var(--pg-positive) 35%, var(--pg-line)); border-radius: 9px; background: color-mix(in srgb, var(--pg-positive) 7%, transparent); color: var(--pg-positive); font-size: 11px; line-height: 1.45; }
+.social-ig-notice svg { flex: none; margin-top: 1px; }
+.social-ig-connections { display: grid; gap: 12px; }
+.social-ig-connection { display: grid; gap: 12px; padding: 13px; border: 1px solid var(--pg-line); border-radius: 13px; background: var(--pg-surface); box-shadow: var(--pg-e1), var(--pg-rim); }
+.social-ig-connection-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.social-ig-connection-head > div { display: grid; gap: 5px; min-width: 0; }
+.social-ig-connection-head .ig-card-state { grid-column: auto; flex: none; justify-content: flex-end; }
+.social-ig-connection .ig-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
+.social-ig-connection .ig-facts > div { display: block; }
+.social-ig-connection .ig-facts > div + div { border-top: 0; border-left: 1px solid var(--pg-line-soft); }
+.social-ig-connection .ig-facts dd { margin-top: 3px; }
+.social-ig-accounts, .social-ig-capabilities { margin: 0; padding: 0; list-style: none; }
+.social-ig-accounts { display: grid; gap: 8px; }
+.social-ig-accounts > li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; padding: 11px; border: 1px solid var(--pg-line-soft); border-radius: 10px; background: var(--pg-lift); }
+.social-ig-accounts > li[data-selected] { border-color: color-mix(in srgb, var(--pg-gold-core) 52%, var(--pg-line)); background: color-mix(in srgb, var(--pg-gold-core) 7%, var(--pg-lift)); }
+.social-ig-accounts img, .social-ig-avatar { width: 34px; height: 34px; border-radius: 9px; }
+.social-ig-accounts img { object-fit: cover; border: 1px solid var(--pg-line-soft); }
+.social-ig-avatar { display: grid; place-items: center; border: 1px solid var(--pg-line); background: var(--pg-raised); color: var(--pg-muted); font: 700 9px/1 var(--pg-font-data); }
+.social-ig-account-main { display: grid; gap: 8px; min-width: 0; }
+.social-ig-account-main > div:first-child { display: grid; gap: 2px; }
+.social-ig-account-main strong { overflow-wrap: anywhere; color: var(--pg-ink); font: 620 12px/1.3 var(--pg-font-display); }
+.social-ig-account-main > div:first-child span { overflow-wrap: anywhere; color: var(--pg-faint); font: 500 9.5px/1.35 var(--pg-font-ui); }
+.social-ig-account-main .ig-card-state { grid-column: auto; }
+.social-ig-account-main .ig-note { margin: 0; }
+.social-ig-capabilities { display: flex; flex-wrap: wrap; gap: 5px; }
+.social-ig-capabilities li { padding: 4px 7px; border: 1px solid var(--pg-line-soft); border-radius: 999px; background: var(--pg-surface); color: var(--pg-muted); font: 580 9px/1 var(--pg-font-ui); }
+.social-ig-add { justify-self: start; }
+.social-ig-boundary { display: grid; gap: 9px; padding: 13px; border: 1px solid var(--pg-line-soft); border-radius: 11px; background: var(--pg-lift); }
+.social-ig-boundary ul { display: grid; gap: 5px; margin: 0; padding-left: 17px; color: var(--pg-ink-2); font: 500 10.5px/1.45 var(--pg-font-ui); }
+.social-ig-approval strong { display: block; margin-bottom: 5px; color: var(--pg-ink); font: 650 12px/1.3 var(--pg-font-display); }
+.social-ig-panel .ig-btn { border: 1px solid var(--pg-line); color: var(--pg-ink); background: var(--pg-surface); font: 650 11px/1 var(--pg-font-ui); }
+.social-ig-panel .ig-btn[data-primary] { border-color: color-mix(in srgb, var(--pg-gold-core) 60%, var(--pg-line)); background: color-mix(in srgb, var(--pg-gold-core) 15%, var(--pg-raised)); }
+.social-ig-panel .ig-btn[data-danger] { border-color: color-mix(in srgb, var(--pg-negative) 46%, var(--pg-line)); color: var(--pg-negative); }
+.social-ig-panel :is(.ig-btn,.ig-close):focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 2px; }
+@media (max-width: 560px) {
+  .social-ig-connection .ig-facts { grid-template-columns: 1fr; }
+  .social-ig-connection .ig-facts > div + div { border-top: 1px solid var(--pg-line-soft); border-left: 0; }
+  .social-ig-connection-head { display: grid; }
+  .social-ig-connection-head .ig-card-state { justify-content: flex-start; }
+}
+@media (forced-colors: active) {
+  .social-ig-empty, .social-ig-connection, .social-ig-accounts > li { border: 1px solid CanvasText; }
 }
 
 

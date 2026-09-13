@@ -109,6 +109,11 @@ jobs:
       - run: supabase test db supabase/tests/solo_team_invite_recipient_binding.sql
       - run: supabase test db supabase/tests/solo_team_removal_authority.sql
       - run: supabase test db supabase/tests/solo_team_invite_lifecycle.sql
+      # Solo Beta acquisition rides the same freshly replayed database. These two files prove
+      # that ordinary browser callers cannot use generic provisioning or cross-user status reads,
+      # and that the fixed offer/atomic fulfillment functions retain their least-privilege grants.
+      - run: supabase test db supabase/tests/solo_beta_authz_hardening.sql
+      - run: supabase test db supabase/tests/solo_beta_offer_boundary.sql
       - run: supabase test db supabase/tests/resend_receipt_reliability.sql
       - run: node scripts/proof/resend-receipt-concurrency.mjs
         env:
@@ -128,6 +133,7 @@ jobs:
       - run: supabase test db supabase/tests/business_mission_foundation.sql
       - run: supabase test db supabase/tests/social_foundation.sql
       - run: supabase test db supabase/tests/social_foundation_rls.sql
+      - run: supabase test db supabase/tests/social_connection_lifecycle.sql
       - run: psql -v ON_ERROR_STOP=1 -f scripts/sql/social-foundation-legacy-shape-proof.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       - run: psql -v ON_ERROR_STOP=1 -f scripts/sql/social-foundation-tenant-shaped-proof.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       - run: node scripts/proof/business-mission-concurrency.mjs

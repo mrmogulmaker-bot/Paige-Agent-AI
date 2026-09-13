@@ -6,6 +6,18 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## A client write-gate must be evaluated against the VIEWED tenant, not `current_user_tenant_id()` (2026-09-13)
+
+- **Symptom.** On Settings › Connections › Calendars, "New preset" (and edit/enable/hosts) was disabled/hidden for an owner who could actually write — the surface read but could not be operated. The reported "empty state with no way to create" was really a write-gate that resolved false.
+- **Root cause.** `canWrite` was read from `is_current_user_tenant_admin()`, which is `is_tenant_admin_as(auth.uid(), current_user_tenant_id())` — admin of the caller's OWN active tenant (`profiles.active_tenant_id`), not the account being VIEWED (`activeTenantId`). Those diverge on a stale profile pointer, a tenant switch before the profile persists, and when an operator/agency acts as another account — the same read-scope divergence the surface already handled for readiness but not for authority. A single boolean gate was also sourced from a different tenant AND a different predicate than the RLS write it guards.
+- **Rule.** Evaluate a client write-gate against the tenant the surface is showing, using the SAME predicate the write's RLS enforces (`is_platform_admin() OR is_tenant_admin(viewed)` mirrors the `calendars` manage policy). Never gate a write on `current_user_tenant_id()` when the surface can view another account. Prove parity two ways: a hook test that the gate calls the tenant-scoped check with the viewed id (plus stale-profile, platform-admin, tenant-switch), and a local-Postgres RLS-parity harness that the gate predicate matches the actual INSERT outcome. Prefer existing deployed+granted helpers so the fix is live on frontend deploy with no migration.
+
+## A booking write refusal must classify into an honest, actionable category — never a raw dump, never a false success (2026-09-13)
+
+- **Symptom.** A real "New appointment" refusal could surface a raw PostgREST/SQLSTATE string (or, for an RPC that failed to resolve, a cryptic schema-cache message); the concern was that a failure could read like a booked appointment.
+- **Root cause.** `createBooking` mapped only the overlap codes (23505/23P01) and passed every other `err.message` through verbatim. A `PGRST202`/`PGRST203` (function not deployed / ambiguous overload) or a transport failure had no honest category.
+- **Rule.** Route every booking write error through one shared classifier (`classifyBookingWriteError` → `{category,message}`) covering conflict/forbidden/not_found/invalid/unavailable/network/unknown; an RPC that never resolved reads as "nothing was booked — try again", a transport failure as a connection problem, and an unrecognised cause is surfaced verbatim (§13, never swallowed). The submit UI closes only on `ok` so a refusal can never present as a save. Server seams are proven sound by a faithful local-Postgres replay before concluding a live failure is client-side.
+
 ## Security reconciliation must promote prevention controls, not preserve stale warnings (2026-09-12)
 
 - **Symptom.** Historical audits, open issues, green workflow definitions and merged migrations were read as if they described today's deployed platform, while older direct Edge paths sat beside newer canonical Harness controls without inheriting them.
@@ -2413,3 +2425,35 @@ drifts. Bind the mapping to a required, stable, model-reproduced id — and make
 honest terminal, not a re-ask. **Accepted edge (noted so it is not rediscovered as a new loop):** if
 the model drifts the SUBJECT id itself, the narrow finds 0 matches and a fresh card is recorded — the
 premise is that `action_id` is reproduced verbatim; subject-id drift is a separate, accepted edge.
+### A code anchor proves a path EXISTS — never that the provider WORKS; couple the claim to code via a CI-resolved, controlled-kind anchor (2026-09-13)
+
+**What happened (the gap this closed).** The Integration Capability Registry catalogued 23 providers with
+a DELIVERY status (LIVE/PARTIAL/PROOF_OWED/…) but nothing coupled a "this is built" claim to the real code
+that backs it — exactly why Upload-Post and fal.ai merged owing entries (its own `registry_steward_role`
+note named the mechanism gap). The fix: a `code_anchors` field citing the real adapter/entry-point code,
+plus a `findDeadCodeAnchors` CI resolve that fails on a cited path missing from disk (reusing the binding
+-ledger's `findDeadAnchors` pattern, §18 — no new lint).
+
+**The lesson (two durable halves).** (1) A doc field that ASSERTS something is built must be mechanically
+coupled to the artifact it claims, or it drifts and lies with authority (§BRAIN) — the binding-ledger
+already proved this for surfaces; the same dead-anchor resolve is the right tool for any registry that
+cites code. (2) **A code anchor proves only that a relevant code PATH EXISTS — never that the provider
+works, is connected, available, or customer-ready, and it must NEVER raise status** (§13/§32 — the
+existence≠function distinction, the sibling of "a green build is not a working render"). Enforce the
+distinction in the data with a controlled, lint-enforced `role` vocabulary where the only "it genuinely
+runs end-to-end" kind (`proven_runtime`) requires real §32.c authenticated proof and is used by default on
+NOTHING; a contained/refusing path (e.g. a 503) is anchored as `fail_closed_containment` precisely so it
+can be traced WITHOUT ever reading as LIVE (Meta's social 503 is the anchor case). And every provider must
+cite ≥1 PROVIDER-SPECIFIC path — a generic dispatcher/router (model-router, generic send-message, generic
+mcp-client) is traceability padding, never sole evidence a specific provider is wired.
+
+**The Codex-hardening half (a guard you can evade by malforming its own anchor field is not a guard).**
+The first pass gated the `code_anchors`-contract check behind `field_schema && typeof === "object"`, so a
+`null`/string/number/**array** `field_schema` short-circuited it — CI would have accepted a registry with
+the entire newly-required accountability contract silently removed. An independent Codex pass caught it
+(P2), not my §39/§5 crew: the honesty guard had a hole in exactly the field it exists to enforce. The
+durable rule: **a check on a container's CONTENTS must first prove the container's SHAPE** (non-null,
+non-array object), THEN read its contents — and the self-test must replace the container with each wrong
+type (`null`/string/number/array), not only mutate a value inside it. This is why three independent review
+layers (§39 adversarial + §5 compliance + an external reviewer) and CI are LAYERED, never substitutes: the
+pass my own crew missed is exactly the pass the third reviewer caught (§39's own "none alone is sufficient"). Proven across FOUR external catches on this one PR: (a) a non-object `field_schema` that skipped the contract; (b) a Deepgram seam mis-attributed to ElevenLabs; (c) DIRECTORY anchors that could not detect file-level drift — so an anchor must name an exact adapter FILE and the resolver must require a file, not a directory; and (d) an ORPHAN anchor (an unimported `_shared` helper) standing in for the reachable client that actually backs the provider — so an anchor must point at code that is actually REACHABLE/called, not merely provider-named-and-present. "Exists" has three distinct failure modes a naive check misses: wrong provider, wrong granularity (dir vs file), and unreachable (orphan).

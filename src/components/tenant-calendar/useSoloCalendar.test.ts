@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  addDays, bookingWriteMessage, findConflicts, foldClassSeats, rangeFor, rangeLabel, startOfWeek,
+  addDays, bookingWriteMessage, classifyBookingWriteError, findConflicts, foldClassSeats,
+  rangeFor, rangeLabel, startOfWeek,
   type SoloBooking,
 } from "./useSoloCalendar";
 
@@ -248,5 +249,51 @@ describe("bookingWriteMessage", () => {
   it("surfaces an unrecognised failure verbatim instead of swallowing it", () => {
     expect(bookingWriteMessage({ code: "08006", message: "connection failure" })).toBe("connection failure");
     expect(bookingWriteMessage({ message: "no code at all" })).toBe("no code at all");
+  });
+});
+
+describe("classifyBookingWriteError", () => {
+  // The create seam routes refusals through this so a real live failure reports an
+  // honest, actionable CATEGORY and never reads as a booked appointment (§13/§32).
+  it("classifies an overlap as a conflict for both constraint codes", () => {
+    for (const code of ["23505", "23P01"]) {
+      expect(classifyBookingWriteError({ code, message: "x" }, "add")).toEqual({
+        category: "conflict", message: "Something is already on your schedule at that time.",
+      });
+    }
+  });
+
+  it("phrases a 42501 as an authority/workspace problem on add, and a change refusal on change", () => {
+    expect(classifyBookingWriteError({ code: "42501", message: "BOOKING_FORBIDDEN: staff of this tenant required" }, "add"))
+      .toEqual({ category: "forbidden", message: expect.stringMatching(/can’t add an appointment here/i) });
+    expect(classifyBookingWriteError({ code: "42501", message: "BOOKING_FORBIDDEN: auth required" }, "change"))
+      .toEqual({ category: "forbidden", message: "You can't change that booking." });
+  });
+
+  it("reads the RPC not resolving (not deployed / ambiguous overload) as 'nothing was booked', by code OR message", () => {
+    const owed = { category: "unavailable" as const, message: expect.stringMatching(/nothing was booked/i) };
+    expect(classifyBookingWriteError({ code: "PGRST202", message: "Could not find the function public.create_internal_booking(...) in the schema cache" }, "add")).toEqual(owed);
+    expect(classifyBookingWriteError({ code: "PGRST203", message: "Could not choose the best candidate function" }, "add")).toEqual(owed);
+    // Even with no recognised code, the tell in the message routes to unavailable.
+    expect(classifyBookingWriteError({ message: "No function matches the given name and argument types" }, "add")).toEqual(owed);
+  });
+
+  it("splits 22023 into the real invalid reason by the guard's prefix", () => {
+    expect(classifyBookingWriteError({ code: "22023", message: "BOOKING_TITLE_REQUIRED" }, "add").message).toMatch(/needs a title/i);
+    expect(classifyBookingWriteError({ code: "22023", message: "BOOKING_BAD_CALENDAR: calendar not in this tenant" }, "add").message).toMatch(/no longer available/i);
+    expect(classifyBookingWriteError({ code: "22023", message: "BOOKING_BAD_HOST: host is not a member of this tenant" }, "add").message).toMatch(/host isn’t on this workspace/i);
+    expect(classifyBookingWriteError({ code: "22023", message: "BOOKING_BAD_TIME: end must be after start" }, "add").message).toMatch(/time could not be used/i);
+    for (const c of ["22023"]) expect(classifyBookingWriteError({ code: c, message: "x" }, "add").category).toBe("invalid");
+  });
+
+  it("names a transport failure as network when there is no SQLSTATE, and surfaces any other cause verbatim", () => {
+    expect(classifyBookingWriteError({ message: "TypeError: Failed to fetch" }, "add")).toEqual({
+      category: "network", message: expect.stringMatching(/couldn’t reach the scheduling service/i),
+    });
+    expect(classifyBookingWriteError({ message: "" }, "add").category).toBe("network");
+    // A coded-but-unmapped failure keeps its real cause (never swallowed).
+    expect(classifyBookingWriteError({ code: "40001", message: "serialization failure" }, "add")).toEqual({
+      category: "unknown", message: "serialization failure",
+    });
   });
 });

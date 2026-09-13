@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowRight, Clock, Sparkles, TicketX } from "lucide-react";
+import { ArrowRight, Sparkles, TicketX } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -33,10 +33,7 @@ type InviteInfo = {
 
 // get_platform_invite returns only the slug (leak-safe); map it to the launch name.
 // Any future self-serve slug falls back to a capitalized slug, never a raw token.
-const PLAN_NAME_BY_SLUG: Record<string, string> = {
-  solo: "Solo",
-  agency: "Agency",
-};
+const PLAN_NAME_BY_SLUG: Record<string, string> = { solo: "Paige Solo" };
 
 export default function GetStarted() {
   const [searchParams] = useSearchParams();
@@ -87,7 +84,7 @@ export default function GetStarted() {
   const isValid = useMemo(() => {
     if (!invite) return false;
     if (invite.valid !== true) return false;
-    return Boolean(invite.plan_slug);
+    return invite.plan_slug === "solo";
   }, [invite]);
 
   const planName = invite?.plan_slug
@@ -99,7 +96,7 @@ export default function GetStarted() {
   const onContinue = () => {
     if (!isValid || !invite?.plan_slug) return;
     navigate(
-      `/auth?mode=signup&plan=${encodeURIComponent(invite.plan_slug)}&invite=${encodeURIComponent(token)}`,
+      `/auth?mode=signup&plan=solo&billing=monthly`,
     );
   };
 
@@ -150,20 +147,10 @@ export default function GetStarted() {
                   </h1>
                   <p className="mx-auto max-w-sm text-sm text-muted-foreground">
                     Your workspace runs on the{" "}
-                    <span className="font-semibold text-foreground">{planName}</span> plan.
-                    {trialDays > 0
-                      ? " Your first stretch is on the house — set it up now and Paige gets to work on day one."
-                      : " Set it up now and Paige gets to work on day one."}
+                    <span className="font-semibold text-foreground">{planName}</span> plan. Set it up now to continue through verified Solo enrollment.
                   </p>
                 </div>
 
-                {trialDays > 0 && (
-                  <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3.5 py-2 text-sm">
-                    <Clock className="h-4 w-4 text-muted-foreground" aria-hidden />
-                    <span className="font-medium text-foreground">{trialDays}-day free trial</span>
-                    <span className="text-muted-foreground">included</span>
-                  </div>
-                )}
 
                 <Button
                   variant="gold"
