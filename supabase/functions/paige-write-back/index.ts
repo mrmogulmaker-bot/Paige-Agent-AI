@@ -218,6 +218,18 @@ serve(async (req) => {
           // deno-lint-ignore no-explicit-any -- single-column select row
           return (((data as any)?.role) ?? null) as string | null;
         },
+        // Agency DELEGATION: does the caller manage callerTenantId as a child? `agency_can_manage_child`
+        // is the SAME predicate current_user_tenant_id() uses to let an agency owner/admin (or scoped
+        // team specialist) operate in a child they hold no direct membership in — admin-equivalent over
+        // that child. SECURITY DEFINER, granted to service_role; called with the explicit (child, actor)
+        // overload since the service client carries no auth.uid().
+        callerManagesTenantViaAgency: async (callerTenantId) => {
+          const { data } = await supabase.rpc("agency_can_manage_child", {
+            _child: callerTenantId,
+            _actor: user.id,
+          });
+          return data === true;
+        },
         // The workspace a target belongs to (for the platform-owner path's audit scope). Service-role, so
         // get_user_primary_tenant bypasses its self-or-owner guard; falls back to the CRM clients row
         // for a target that is a clients.id / linked_user_id rather than a tenant member. `t` is a

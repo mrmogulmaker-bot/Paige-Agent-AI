@@ -38,6 +38,9 @@ type Scenario = {
   /** The caller's TENANT-SCOPED role in their active workspace (tenant_members.role), or null when
    *  they are not an active member of it. This — not a global user_roles list — is the authority. */
   tenantRole?: string | null;
+  /** Whether the caller manages the active workspace as an agency child (agency_can_manage_child) —
+   *  admin-equivalent delegated authority even with no direct membership row. */
+  agencyManages?: boolean;
   callerTenant?: string | null;
   targetTenant?: string | null;
   sharesTenant?: boolean;
@@ -48,6 +51,7 @@ const deps = (s: Scenario): WriteBackAuthzDeps => ({
   isPlatformOwner: async () => !!s.platformOwner,
   callerActiveTenant: async () => (s.callerTenant === undefined ? "tenant-A" : s.callerTenant),
   callerRoleInTenant: async () => (s.tenantRole === undefined ? null : s.tenantRole),
+  callerManagesTenantViaAgency: async () => !!s.agencyManages,
   resolveTargetTenant: async () => (s.targetTenant === undefined ? "tenant-A" : s.targetTenant),
   targetSharesTenant: async () => !!s.sharesTenant,
   coachAssigned: async () => !!s.coachAssigned,
@@ -94,18 +98,45 @@ describe("authorizeWriteBackTarget — the cross-tenant write IDOR matrix", () =
   it("THE GLOBAL-ROLE TRAP (§53/§59): a caller who is only a PLAIN MEMBER of the active workspace is DENIED — even if they hold admin/coach in some OTHER tenant", async () => {
     // The Codex P1 regression guard. The authority is the TENANT-SCOPED role: a global admin of
     // tenant A who switched their active workspace to tenant B (where they are a plain member) resolves
-    // tenantRole "member" here. The global role is simply not an input, so it can never authorize.
-    const a = await authorize({ tenantRole: "member", callerTenant: "tenant-B", sharesTenant: true });
+    // tenantRole "member" here, and does NOT manage B via agency. The global role is not an input.
+    const a = await authorize({ tenantRole: "member", agencyManages: false, callerTenant: "tenant-B", sharesTenant: true });
     expect(a.allowed).toBe(false);
     expect(a.basis).toBe("denied");
     expect(a.reason).toMatch(/not authorized/i);
     expect(a.tenantId).toBe("tenant-B"); // workspace resolved first; denial carries it (→ access_denied)
   });
 
-  it("a caller who is not a member of the active workspace at all (null role) is DENIED", async () => {
-    const a = await authorize({ tenantRole: null, callerTenant: "tenant-A", sharesTenant: true });
+  it("a caller who is not a member of the active workspace at all (null role, no agency) is DENIED", async () => {
+    const a = await authorize({ tenantRole: null, agencyManages: false, callerTenant: "tenant-A", sharesTenant: true });
     expect(a.allowed).toBe(false);
     expect(a.reason).toMatch(/not authorized/i);
+  });
+
+  it("AGENCY DELEGATION (Codex P1 regression fix): an agency operator managing the child — no direct membership row — is ALLOWED", async () => {
+    // `current_user_tenant_id()` resolved the child via agency_can_manage_child, so the operator holds
+    // NO direct tenant_members row there (tenantRole null) but legitimately manages it. Must be allowed.
+    const a = await authorize({ tenantRole: null, agencyManages: true, callerTenant: "child-C", sharesTenant: true });
+    expect(a.allowed).toBe(true);
+    expect(a.basis).toBe("agency_manager");
+    expect(a.tenantId).toBe("child-C");
+  });
+
+  it("an agency operator managing the child, but whose target is in a DIFFERENT workspace, is DENIED (the bond still holds)", async () => {
+    const a = await authorize({ tenantRole: null, agencyManages: true, callerTenant: "child-C", sharesTenant: false });
+    expect(a.allowed).toBe(false);
+    expect(a.reason).toMatch(/different workspace/i);
+  });
+
+  it("a DIRECT admin never consults the agency-delegation path (it is the fallback only)", async () => {
+    let agencyChecked = false;
+    const d: WriteBackAuthzDeps = {
+      ...deps({ tenantRole: "admin", callerTenant: "tenant-A", sharesTenant: true }),
+      callerManagesTenantViaAgency: async () => { agencyChecked = true; return true; },
+    };
+    const a = await authorizeWriteBackTarget(d, { callerUserId: "admin-A", targetUserId: "client-B" });
+    expect(a.allowed).toBe(true);
+    expect(a.basis).toBe("same_tenant_admin");
+    expect(agencyChecked).toBe(false);
   });
 
   it("a caller whose ACTIVE workspace cannot be resolved is DENIED before the role is read (fail closed)", async () => {

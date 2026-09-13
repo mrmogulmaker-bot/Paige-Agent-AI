@@ -27,13 +27,17 @@
  * THE FIX. A cross-user write is permitted only when:
  *   - the caller is a PLATFORM OWNER (`is_platform_owner()` — super_admin ONLY per §53 — the one
  *     sanctioned cross-tenant PII-write caller, JWT-derived, never a body field), OR
- *   - the caller's role IN their SERVER-RESOLVED active workspace (`tenant_members.role` for
- *     `current_user_tenant_id()`, NOT the tenant-agnostic `user_roles`) is owner/admin/coach, AND the
+ *   - the caller's authority over their SERVER-RESOLVED active workspace is admin/coach, AND the
  *     target shares that workspace, AND — for a coach — an active `coach_clients` assignment exists.
- *     The role is resolved TENANT-SCOPED, so a global admin/coach who is only a plain member of the
- *     active workspace cannot write there — the residual §53/§59 trap a global-role check leaves open;
- *     the tenant bond still gates the target. (Same correction as migration 20261180000000, which
- *     replaced the tenant-agnostic `has_role()` with tenant-scoped `is_tenant_admin()` for this class.)
+ *     Authority is resolved TENANT-SCOPED: a DIRECT `tenant_members.role` (owner/admin → admin; coach)
+ *     for `current_user_tenant_id()`, OR — when the caller holds no direct role — agency DELEGATION
+ *     (`agency_can_manage_child()`, admin-equivalent over a managed child). NOT the tenant-agnostic
+ *     `user_roles`, so a global admin/coach who is only a plain member of the active workspace cannot
+ *     write there — the residual §53/§59 trap a global-role check leaves open; the tenant bond still
+ *     gates the target. (Same correction as migration 20261180000000, which replaced `has_role()` with
+ *     tenant-scoped `is_tenant_admin()` for this class.) The agency-delegation path mirrors exactly how
+ *     `current_user_tenant_id()` itself lets an agency operator operate in a child, so a direct-only
+ *     check does not wrongly deny a legitimate agency write.
  * It FAILS CLOSED: an unresolved caller tenant, an unresolved target, or any read failure denies.
  *
  * SELF-WRITES ARE NOT ROUTED THROUGH THIS DOOR, DELIBERATELY (§13). A user editing their OWN record
@@ -99,6 +103,7 @@ export type WriteBackAuthzBasis =
   | "self"
   | "platform_owner"
   | "same_tenant_admin"
+  | "agency_manager"
   | "assigned_coach"
   | "denied";
 
@@ -128,6 +133,12 @@ export type WriteBackAuthz = {
  *   - `callerRoleInTenant` — the caller's TENANT-SCOPED role in that workspace (`tenant_members.role`
  *     for the resolved tenant), NOT the tenant-agnostic `user_roles`. This is the authority source:
  *     a role a caller holds for some OTHER tenant never authorizes a write here.
+ *   - `callerManagesTenantViaAgency` — whether the caller is an agency operator who legitimately
+ *     MANAGES the resolved workspace as a child (`agency_can_manage_child(callerTenantId, caller)`):
+ *     an agency owner/admin (or scoped team specialist) holds their membership on the PARENT, not a
+ *     direct row in the child, yet `current_user_tenant_id()` already lets them operate in it. This is
+ *     admin-equivalent authority over the child; a plain member does NOT manage it, so it never
+ *     re-opens the §53/§59 escalation.
  *   - `resolveTargetTenant` — the workspace a target belongs to, for the platform-owner path's audit scope.
  *   - `targetSharesTenant` — whether the target is a member (auth user) or a CRM client of the
  *     caller's active workspace. This is the §9 boundary the write is gated on.
@@ -139,6 +150,9 @@ export type WriteBackAuthzDeps = {
   /** The caller's role IN the resolved workspace (`tenant_members.role`), or null if not an active
    *  member of it. Tenant-scoped authority — never the global `user_roles`. */
   callerRoleInTenant: (callerTenantId: string) => Promise<string | null>;
+  /** Whether the caller manages the resolved workspace as an agency child
+   *  (`agency_can_manage_child`). Admin-equivalent delegated authority over that child. */
+  callerManagesTenantViaAgency: (callerTenantId: string) => Promise<boolean>;
   resolveTargetTenant: (targetUserId: string) => Promise<string | null>;
   targetSharesTenant: (callerTenantId: string, targetUserId: string) => Promise<boolean>;
   coachAssigned: (coachUserId: string, targetUserId: string) => Promise<boolean>;
@@ -187,8 +201,18 @@ export async function authorizeWriteBackTarget(
   // client records. `current_user_tenant_id()` admits an active membership at ANY role, so the role
   // MUST be re-read per tenant. A global role is never sufficient; the tenant-scoped role is.
   const tenantRole = await deps.callerRoleInTenant(callerTenantId);
-  const isAdmin = tenantRole === "owner" || tenantRole === "admin";
+  const directAdmin = tenantRole === "owner" || tenantRole === "admin";
   const isCoach = tenantRole === "coach";
+  // AGENCY DELEGATION. An agency owner/admin (or scoped team specialist) managing this workspace as a
+  // CHILD holds their membership on the PARENT, so `callerRoleInTenant` is null for them — yet
+  // `current_user_tenant_id()` already let them operate in the child via `agency_can_manage_child()`.
+  // That delegation is admin-equivalent authority over the child; resolving it here restores the
+  // legitimate agency-operator write that a direct-membership-only check wrongly denied, WITHOUT
+  // re-opening the §53/§59 escalation — a plain member does NOT manage the child. Consulted only when
+  // there is no direct admin role (so it also elevates an agency operator who happens to hold a coach
+  // row over the coach path), which keeps it off the common direct-admin path.
+  const agencyAdmin = directAdmin ? false : await deps.callerManagesTenantViaAgency(callerTenantId);
+  const isAdmin = directAdmin || agencyAdmin;
   if (!isAdmin && !isCoach) {
     return {
       allowed: false,
@@ -227,6 +251,9 @@ export async function authorizeWriteBackTarget(
     return { allowed: true, reason: "assigned coach", tenantId: callerTenantId, basis: "assigned_coach" };
   }
 
+  if (agencyAdmin) {
+    return { allowed: true, reason: "agency manager", tenantId: callerTenantId, basis: "agency_manager" };
+  }
   return { allowed: true, reason: "same-tenant admin", tenantId: callerTenantId, basis: "same_tenant_admin" };
 }
 
