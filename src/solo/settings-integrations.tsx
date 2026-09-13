@@ -844,7 +844,7 @@ export function SoloIntegrationsView() {
           const connectionIds = new Set(platformConnections.map((connection) => connection.id));
           const platformAccounts = social.accounts.filter((account) => account.platform === platform.key && connectionIds.has(account.connectionId));
           const state = platform.oauthAvailable
-            ? socialCardState({ loading: social.loading, error: social.error, connections: platformConnections, accounts: platformAccounts })
+            ? socialCardState({ loading: social.loading, statusError: social.statusError, connections: platformConnections, accounts: platformAccounts })
             : { account: "OAuth unavailable", tone: "neutral" as const };
           return <li key={`social:${platform.key}`}><button type="button" className="ig-card social-platform-card" data-provider={`social-${platform.key}`} data-owner="social" onClick={() => setSocialOpen({ platform, scope: scopeKey })} aria-haspopup="dialog">
             <span className="ss-provider-mark social-platform-mark" data-social-platform={platform.key} aria-hidden>{platform.mark}</span>
