@@ -10,8 +10,8 @@ FLOW_PROTOTYPE: PASS: owner explicitly authorized the existing source candidate 
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: owner/admin/authorized coach asks Paige to perform supported CRM work and opens the exact changed contact/deal when the router owns it.
 VISUAL_DIRECTION: PASS: existing Paige Chat card, status, button, focus, and responsive primitives are reused without new layout ownership.
 AUTOMATED_EVIDENCE: PASS: focused CRM/Chat/Gateway/Pipeline/result-card suites passed locally before review; review repairs add regression assertions for stable retry identity, consequential approval summaries, and truthful company route status. Exact final-head CI status is recorded on PR #1234, not inferred here.
-STATIC_EVIDENCE: PASS FOR DIFF-OWNED CHECKS: action-risk classification, autonomy catalogue visibility, registry, migration/definer guards, Deno ratchet, TypeScript ratchet, Edge checks, and production build passed on repaired source head `3b0a4401ce5e27874ce713bda7fd0b801192aeac` in CI run `34774469641`. The workflow remains red only on separately identified pre-existing repository-wide guards.
-DATABASE_RLS_EVIDENCE: PARTIAL: PAIGE Spine run `34774468607` passed fresh Supabase startup, full migration reset, and all 40 assertions in `supabase/tests/governed_crm_commands.sql` at repaired source head `3b0a4401ce5e27874ce713bda7fd0b801192aeac`. Supabase Preview was cancelled at the concurrent preview-branch limit, so preview-branch proof remains PROOF OWED.
+STATIC_EVIDENCE: PASS FOR DIFF-OWNED CHECKS: action-risk classification, autonomy catalogue visibility, registry, migration/definer guards, Deno ratchet, TypeScript ratchet, Edge checks, and production build passed on repaired source head `851b9911063f01c512fb14eb26fa93126ef3a345` in CI run `34775506167`. The workflow remains red only on separately identified pre-existing repository-wide guards.
+DATABASE_RLS_EVIDENCE: PASS IN APPROVED CI; DEPLOYED PROOF OWED: PAIGE Spine run `34775505252` passed fresh Supabase startup, full migration reset, and all 44 assertions in `supabase/tests/governed_crm_commands.sql` at repaired source head `851b9911063f01c512fb14eb26fa93126ef3a345`. This includes same-tenant durable readback, cross-tenant and forged-target refusal, stale membership and tenant suspension, role denial with no collateral effect, replay/payload mismatch, optimistic conflict, rollback, receipt persistence, bulk binding, merge conflict/version binding, and internal-only activity behavior. Supabase Preview was cancelled at the concurrent preview-branch limit, so preview-branch and deployed-runtime proof remain PROOF OWED.
 RENDERED_EVIDENCE: UNVERIFIED: Vercel built a Ready preview for the initial candidate, but no authenticated or viewport render was driven in this session. Rendering is not claimed from deployment status.
 BEHAVIORAL_EVIDENCE: UNVERIFIED: component contracts exercise the result card and route locators, but the authenticated Chat-to-record pathway was not driven in a browser.
 AUTHENTICATED_RUNTIME: UNVERIFIED: no authorized authenticated tenant session was available. Same-tenant mutation/readback, cross-tenant/forged-target denial, account switch, stale membership/version, replay, receipt persistence, and no-effect refusal remain PROOF OWED at deployed runtime.
@@ -21,7 +21,7 @@ REDUCED_MOTION: NOT_APPLICABLE: no new motion or animation was introduced.
 STATE_COVERAGE: PASS at source/contract level: approval required, setup required, unavailable, permission refusal, invalid request, stale/account-changed conflict, execution failure, replay, readback success, absence readback, receipt failure, exact link, surface-only link, and no-link states are represented. Authenticated runtime execution remains UNVERIFIED.
 TRUTHFUL_STATE_LABELS: PASS: no mutation is reported successful without canonical readback; company/task routes remain `surface_only` until owned by a record router; internal email/SMS/call activity logging states that it performs no external send or call.
 SOLO_UI: YES: Paige Chat result cards link into existing Solo Clients/People and Campaigns/Pipeline route owners only where an exact record query is supported.
-UNVERIFIED: authenticated deployed Chat drive, all required viewports with Paige open/closed, keyboard/focus, 200% zoom/reflow, and the new CRM pgTAP suite.
+UNVERIFIED: authenticated deployed Chat drive, all required viewports with Paige open/closed, keyboard/focus, and 200% zoom/reflow. The CRM pgTAP suite is proven in the approved CI environment; deployment-specific database proof remains PROOF OWED.
 SOLO_1536X770_PAIGE_CLOSED: UNVERIFIED: browser drive not available.
 SOLO_1536X770_PAIGE_OPEN: UNVERIFIED: browser drive not available.
 SOLO_1366X768_PAIGE_CLOSED: UNVERIFIED: browser drive not available.
@@ -44,7 +44,7 @@ RELEASE_CHANNEL: development draft only; no merge, production deployment, migrat
 RELEASE_CLASSIFICATION: internal pre-release candidate.
 CUSTOMER_RELEASE_IDENTITY: none.
 RELEASE_NOTE_REQUIRED: NO: nothing is merged or deployed.
-RELEASE_TRUTH_BOUNDARY: PARTIAL: source and automated contracts exist; authenticated production behavior, the new CRM pgTAP suite, deployment identity, and viewport evidence remain PROOF OWED.
+RELEASE_TRUTH_BOUNDARY: PARTIAL: source, automated contracts, and fresh-migration database/RLS proof exist; authenticated production behavior, deployment identity, preview-branch/database parity, and viewport evidence remain PROOF OWED.
 RELEASE_RECOVERY: revert the focused PR commits before merge; no migration has been applied by this workstream.
 
 ## Review and limitations
