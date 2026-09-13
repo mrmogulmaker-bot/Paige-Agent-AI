@@ -35,6 +35,35 @@ begin
 end$$;
 alter table public.paige_invoices validate constraint paige_invoices_tenant_deal_crm_fk;
 
+-- One current-record authorization rule for both mutation and durable replay. Owners/admins
+-- retain tenant-wide CRM access; coaches are limited to their assigned contacts, related
+-- companies, and tasks they or their assigned contacts own. Deals remain admin-only because the
+-- canonical Pipeline command core requires tenant-admin authority.
+create or replace function public.crm_actor_can_access_record(
+  _tenant_id uuid,_actor_id uuid,_record_kind text,_record_id uuid
+) returns boolean language plpgsql stable security definer set search_path='' as $$
+declare v_role text;
+begin
+  if _tenant_id is null or _actor_id is null or _record_id is null then return false; end if;
+  select tm.role into v_role from public.tenant_members tm
+   where tm.tenant_id=_tenant_id and tm.user_id=_actor_id and tm.status='active' and tm.role in ('owner','admin','coach');
+  if v_role in ('owner','admin') then return true; end if;
+  if v_role is distinct from 'coach' then return false; end if;
+  if _record_kind='contact' then
+    return exists(select 1 from public.clients c where c.id=_record_id and c.tenant_id=_tenant_id and c.assigned_coach_user_id=_actor_id);
+  elsif _record_kind='company' then
+    return exists(select 1 from public.businesses b join public.clients c on c.tenant_id=b.tenant_id
+      and (c.primary_business_id=b.id or c.linked_user_id=b.owner_user_id)
+      where b.id=_record_id and b.tenant_id=_tenant_id and c.assigned_coach_user_id=_actor_id);
+  elsif _record_kind='task' then
+    return exists(select 1 from public.tasks t where t.id=_record_id and t.tenant_id=_tenant_id and (
+      t.user_id=_actor_id or exists(select 1 from public.clients c where c.tenant_id=_tenant_id
+        and c.linked_user_id=t.user_id and c.assigned_coach_user_id=_actor_id)));
+  end if;
+  return false;
+end$$;
+revoke all on function public.crm_actor_can_access_record(uuid,uuid,text,uuid) from public,anon,authenticated,service_role;
+
 create or replace function public.execute_crm_command_reversible(
   _tenant_id uuid,
   _actor_id uuid,
@@ -131,6 +160,17 @@ begin
     'activity.log','deal.create','deal.update','deal.move','deal.close','deal.reopen'
   ) then
     raise exception 'CRM_ACTION_UNAVAILABLE' using errcode = '0A000';
+  end if;
+  if v_action in ('contact.create','contact.update') and v_patch ? 'tags' then
+    if pg_catalog.jsonb_typeof(v_patch->'tags') is distinct from 'array' then
+      raise exception 'CRM_TAGS_INVALID' using errcode='22023';
+    end if;
+    if exists(
+      select 1 from pg_catalog.jsonb_array_elements(v_patch->'tags') tag
+       where pg_catalog.jsonb_typeof(tag) is distinct from 'string'
+          or pg_catalog.length(tag #>> '{}') > 80
+          or pg_catalog.btrim(tag #>> '{}') = ''
+    ) then raise exception 'CRM_TAGS_INVALID' using errcode='22023'; end if;
   end if;
 
   if v_action like 'deal.%' then
@@ -279,7 +319,7 @@ begin
     if not found then
       raise exception 'CRM_CONTACT_NOT_FOUND' using errcode = 'P0002';
     end if;
-    v_can_touch_contact := v_is_admin or v_contact.assigned_coach_user_id = v_actor;
+    v_can_touch_contact := public.crm_actor_can_access_record(v_tenant,v_actor,'contact',v_contact.id);
     if not v_can_touch_contact then
       raise exception 'CRM_FORBIDDEN' using errcode = '42501';
     end if;
@@ -369,7 +409,7 @@ begin
       select * into v_contact from public.clients c
        where c.id = (v_patch->>'contact_id')::uuid and c.tenant_id = v_tenant;
       if not found then raise exception 'CRM_CONTACT_NOT_FOUND' using errcode = 'P0002'; end if;
-      if not (v_is_admin or v_contact.assigned_coach_user_id = v_actor) then
+      if not public.crm_actor_can_access_record(v_tenant,v_actor,'contact',v_contact.id) then
         raise exception 'CRM_FORBIDDEN' using errcode = '42501';
       end if;
     end if;
@@ -403,9 +443,7 @@ begin
     end if;
     select * into v_task from public.tasks t where t.id=(_command->>'task_id')::uuid and t.tenant_id=v_tenant for update;
     if not found then raise exception 'CRM_TASK_NOT_FOUND' using errcode = 'P0002'; end if;
-    if not (v_is_admin or v_task.user_id=v_actor or exists(
-      select 1 from public.clients c where c.tenant_id=v_tenant and c.linked_user_id=v_task.user_id and c.assigned_coach_user_id=v_actor
-    )) then raise exception 'CRM_FORBIDDEN' using errcode = '42501'; end if;
+    if not public.crm_actor_can_access_record(v_tenant,v_actor,'task',v_task.id) then raise exception 'CRM_FORBIDDEN' using errcode = '42501'; end if;
     if coalesce(_command->>'expected_updated_at','') = '' then raise exception 'CRM_EXPECTED_VERSION_REQUIRED' using errcode = '22023'; end if;
     begin v_expected := (_command->>'expected_updated_at')::timestamptz;
     exception when others then raise exception 'CRM_EXPECTED_VERSION_INVALID' using errcode = '22023'; end;
@@ -457,7 +495,7 @@ begin
     end if;
     select * into v_contact from public.clients c where c.id=(_command->>'contact_id')::uuid and c.tenant_id=v_tenant for update;
     if not found then raise exception 'CRM_CONTACT_NOT_FOUND' using errcode='P0002'; end if;
-    if not (v_is_admin or v_contact.assigned_coach_user_id=v_actor) then raise exception 'CRM_FORBIDDEN' using errcode='42501'; end if;
+    if not public.crm_actor_can_access_record(v_tenant,v_actor,'contact',v_contact.id) then raise exception 'CRM_FORBIDDEN' using errcode='42501'; end if;
     if coalesce(v_patch->>'channel','') not in ('call','email','sms','meeting','note') then raise exception 'CRM_ACTIVITY_CHANNEL_INVALID' using errcode='22023'; end if;
     if coalesce(btrim(v_patch->>'subject'),'')='' and coalesce(btrim(v_patch->>'body'),'')='' then raise exception 'CRM_ACTIVITY_CONTENT_REQUIRED' using errcode='22023'; end if;
     insert into public.client_notes(contact_id,tenant_id,author_user_id,body,tags)
@@ -484,7 +522,7 @@ begin
      where c.id = (_command->>'contact_id')::uuid and c.tenant_id = v_tenant
      for update;
     if not found then raise exception 'CRM_CONTACT_NOT_FOUND' using errcode = 'P0002'; end if;
-    if not (v_is_admin or v_contact.assigned_coach_user_id = v_actor) then
+    if not public.crm_actor_can_access_record(v_tenant,v_actor,'contact',v_contact.id) then
       raise exception 'CRM_FORBIDDEN' using errcode = '42501';
     end if;
     if jsonb_typeof(v_patch) <> 'object' or coalesce(btrim(v_patch->>'legal_name'),'') = '' then
@@ -525,11 +563,7 @@ begin
      where b.id = (_command->>'company_id')::uuid and b.tenant_id = v_tenant
      for update;
     if not found then raise exception 'CRM_BUSINESS_NOT_FOUND' using errcode = 'P0002'; end if;
-    if not v_is_admin and not exists (
-      select 1 from public.clients c
-       where c.tenant_id = v_tenant and c.assigned_coach_user_id = v_actor
-         and (c.primary_business_id = v_business.id or c.linked_user_id = v_business.owner_user_id)
-    ) then raise exception 'CRM_FORBIDDEN' using errcode = '42501'; end if;
+    if not public.crm_actor_can_access_record(v_tenant,v_actor,'company',v_business.id) then raise exception 'CRM_FORBIDDEN' using errcode = '42501'; end if;
     if coalesce(_command->>'expected_updated_at','') = '' then
       raise exception 'CRM_EXPECTED_VERSION_REQUIRED' using errcode = '22023';
     end if;
@@ -1021,6 +1055,7 @@ create or replace function public.read_crm_command_result(
 declare
   v_active_tenant uuid; v_cached public.crm_command_results%rowtype; v_effective jsonb;
   v_operator_hash text; v_standing_hash text;
+  v_actor_role text; v_record_kind text; v_record_id uuid;
 begin
   if coalesce(auth.jwt()->>'role','')<>'service_role' or auth.uid() is not null then raise exception 'CRM_INTERNAL_EXECUTOR_REQUIRED' using errcode='42501'; end if;
   if _tenant_id is null or _actor_id is null or pg_catalog.jsonb_typeof(_command)<>'object' or coalesce(pg_catalog.btrim(_idempotency_key),'')='' or pg_catalog.length(_idempotency_key)>200 then raise exception 'CRM_COMMAND_INVALID' using errcode='22023'; end if;
@@ -1028,7 +1063,7 @@ begin
   if not found then raise exception 'CRM_TENANT_SUSPENDED' using errcode='42501'; end if;
   select profile_row.active_tenant_id into v_active_tenant from public.profiles profile_row where profile_row.user_id=_actor_id for share;
   if not found or v_active_tenant is distinct from _tenant_id then raise exception 'CRM_ACTIVE_ACCOUNT_CHANGED' using errcode='42501'; end if;
-  perform 1 from public.tenant_members tm where tm.tenant_id=_tenant_id and tm.user_id=_actor_id and tm.status='active' and tm.role in ('owner','admin','coach') for share;
+  select tm.role into v_actor_role from public.tenant_members tm where tm.tenant_id=_tenant_id and tm.user_id=_actor_id and tm.status='active' and tm.role in ('owner','admin','coach') for share;
   if not found then raise exception 'CRM_FORBIDDEN' using errcode='42501'; end if;
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('crm-command:'||_tenant_id::text||':'||_actor_id::text||':'||_idempotency_key,0));
   select * into v_cached from public.crm_command_results r where r.tenant_id=_tenant_id and r.actor_user_id=_actor_id and r.idempotency_key=_idempotency_key for share;
@@ -1038,6 +1073,27 @@ begin
   v_effective:=public.crm_effective_command(_command||pg_catalog.jsonb_build_object('approval_channel','standing_autonomy_setting'));
   v_standing_hash:=pg_catalog.encode(extensions.digest(pg_catalog.convert_to(v_effective::text,'UTF8'),'sha256'),'hex');
   if v_cached.command_hash not in (v_operator_hash,v_standing_hash) then raise exception 'CRM_IDEMPOTENCY_REUSE' using errcode='22023'; end if;
+  if v_actor_role='coach' then
+    if v_cached.action not in (
+      'contact.create','contact.update','contact.archive','contact.restore','contact.link_company','contact.unlink_company',
+      'company.create','company.update','company.restore',
+      'task.create','task.update','task.reschedule','task.complete','task.reopen','task.cancel','activity.log'
+    ) then raise exception 'CRM_FORBIDDEN' using errcode='42501'; end if;
+    v_record_kind:=case
+      when v_cached.action like 'contact.%' then 'contact'
+      when v_cached.action like 'company.%' then 'company'
+      when v_cached.action like 'task.%' then 'task'
+      when v_cached.action='activity.log' then 'contact'
+    end;
+    if v_record_kind='contact' and v_cached.action='activity.log' then
+      if coalesce(v_cached.result->'readback'->>'contact_id','') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then v_record_id:=(v_cached.result->'readback'->>'contact_id')::uuid; end if;
+    elsif coalesce(v_cached.result->'readback'->>'id','') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+      v_record_id:=(v_cached.result->'readback'->>'id')::uuid;
+    end if;
+    if not public.crm_actor_can_access_record(_tenant_id,_actor_id,v_record_kind,v_record_id) then
+      raise exception 'CRM_FORBIDDEN' using errcode='42501';
+    end if;
+  end if;
   return v_cached.result||pg_catalog.jsonb_build_object('replayed',true);
 end$$;
 revoke all on function public.read_crm_command_result(uuid,uuid,jsonb,text) from public,anon,authenticated;

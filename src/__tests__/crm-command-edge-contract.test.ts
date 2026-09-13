@@ -71,6 +71,8 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain('recordId && action.startsWith("contact.")');
     expect(edge).not.toContain('action.startsWith("contact.") || action.startsWith("company.")');
     expect(edge).toContain('At least one reversible deal field is required for deal.update.');
+    expect(edge).toContain('Contact tags must be an array of 1-80 character strings.');
+    expect(edge).toContain('Object.prototype.hasOwnProperty.call(command.patch, "tags")');
   });
 
   it("records the governed decision without CRM field values", () => {
