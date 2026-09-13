@@ -727,6 +727,24 @@ Reference or any domain ledger; it governs how their facts become release and cu
 
 ### 4.0 Shipped Delivery Log
 
+**2026-09-13 Controlled provider proof — EXECUTED (owner-authorized ≤$1.25):** the IMAGE proof is
+**COMPLETE end-to-end** on production: one `fal-ai/nano-banana` image (est $0.039 ≤ $0.25 cap) →
+governed submit → signed fal webhook → Storage copy (`paige-generated`) → library row with full
+media metadata → ledger consume (300→296) → Rail receipt (`vibe_media_image/capability_succeeded`,
+job-attempt correlation) → platform accrual $0.039. The VIDEO proof (veo3.1 Fast 6s, est $0.90 ≤
+$1.00, approval-gated: submitted `blocked` → approved → dispatched) GENERATED at fal (charge
+stands) but its artifact copy lapsed: the pre-patch webhook discarded fal's result payload and
+re-fetched URLs that 405 post-completion — reconciled truthfully to `failed`, the 90 reserved
+credits CONSUMED (submitted-failure settlement, no leak), receipt recorded. Five integration
+defects found and fixed BY the live proof, all merged to main: the fal result endpoint form
+(`/response` first), Veo 3.1's `duration` string enum (bare numbers 422), the sweeper's missing
+`verify_jwt=false` (every cron tick 401'd at the gateway), the approve-path ladder reading the
+pre-rename discriminant (every approval was budget-denied), and the webhook now using the verified
+payload as the primary result source. **Spend truth:** platform-recorded $1.689 (image $0.039 +
+the validation-rejected first video $0.75 + the generated video $0.90); likely fal-actual $0.939
+(fal does not bill 422 validation rejections — the dashboard is the authority). Guardrails held
+throughout: daily ceiling $2, platform guard $25, video flag+approval, credit hold-before-dispatch.
+
 **2026-09-13 Platform Operator Command Center — Phase 0 map + Phase 2 first view: Platform health (PR [#1181](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1181), squash-merged to `main` as `000a6012` from head `f925b99d`, development channel, owner-mandated Gate A):**
 The owner's 2026-09-12 Command Center mandate releases the parked `operator.platform` seam. Ships the Phase 0 map
 (`docs/delivery/platform-operator-command-center.md`: where the Command Center lives — the owner-locked v3 console,
