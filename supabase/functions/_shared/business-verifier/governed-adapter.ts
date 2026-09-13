@@ -296,7 +296,15 @@ export function businessVerifyGovernedAuditRow(audit: BusinessVerifyGovernedAudi
       capability: audit.capability,
       effect: audit.effect,
       risk: audit.risk,
-      enforcement: "enforced",
+      // HONEST SCOPE OF ENFORCEMENT (§13): this door ENFORCES the AUTHORITY dimension (a denied
+      // caller is refused before any run/provider contact). It deliberately does NOT run the
+      // autonomy/budget clamp — `business_verify` is `high`, and from this door's vantage a `system`
+      // caller is indistinguishable between an autonomous Paige loop, a human-triggered skill, and the
+      // DB trigger, so that decision belongs UPSTREAM at the initiator (the mcp/orchestrator/skill
+      // layer that knows the intent), a separate §67 governed-adoption target. So the receipt says
+      // exactly what was enforced here, never a blanket "enforced" that would overclaim the autonomy gate.
+      enforcement: "authority",
+      autonomy_gate: "deferred_upstream",
       decision: audit.decision,
       authz_basis: audit.authz_basis,
       principal: audit.principal,

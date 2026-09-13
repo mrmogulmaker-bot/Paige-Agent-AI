@@ -195,6 +195,11 @@ describe("buildBusinessVerifyAudit + businessVerifyGovernedAuditRow — the rece
     expect(row.payload.authz_basis).toBe("same_tenant_admin");
     expect(row.payload.source).toBe("admin"); // provenance only
     expect(row.payload.risk).toBe("high");
+    // Honest scope of enforcement (§13): AUTHORITY is enforced here; the autonomy/budget clamp for
+    // `high` is deliberately deferred upstream — the receipt must say exactly that, never a blanket
+    // "enforced" that would overclaim the autonomy gate this door does not run.
+    expect(row.payload.enforcement).toBe("authority");
+    expect(row.payload.autonomy_gate).toBe("deferred_upstream");
   });
 
   it("a REFUSE row is labelled as such (the only trace of a refused verification)", () => {

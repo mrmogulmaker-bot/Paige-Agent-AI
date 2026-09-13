@@ -133,10 +133,20 @@ Deno.serve(async (req) => {
     const businessTenantId = (biz.tenant_id ?? null) as string | null;
 
     const authzDeps: BusinessVerifyAuthzDeps = {
-      // super_admin ONLY (§53), derived from the VERIFIED JWT (auth.uid()) via the token client — never
-      // the body. The one sanctioned cross-tenant caller. Inert for a `system` caller (not consulted).
+      // super_admin ONLY (§53), keyed on the VERIFIED caller uid — never the body. The one sanctioned
+      // cross-tenant caller. Uses the EXPLICIT is_platform_owner(_user_id) overload: a no-arg
+      // .rpc("is_platform_owner") is AMBIGUOUS under PostgREST (both () and (uuid) overloads exist →
+      // PGRST203 "could not choose the best candidate function"), which would swallow to `false` and
+      // silently deny a legitimate operator (the paige-operator-sms-send D.1 live-500 lesson). Passing
+      // _user_id disambiguates to the uuid overload. Errors are logged and fail closed (never a silent
+      // opaque swallow, §32/§13). Inert for a `system` caller (not consulted).
       isPlatformOwner: async () => {
-        const { data } = await authClient.rpc("is_platform_owner");
+        if (!callerUserId) return false;
+        const { data, error } = await authClient.rpc("is_platform_owner", { _user_id: callerUserId });
+        if (error) {
+          console.error("business-verifier is_platform_owner check failed", error.message ?? String(error));
+          return false;
+        }
         return data === true;
       },
       // owner/admin of the BUSINESS'S tenant, JWT-derived (is_tenant_admin keys on auth.uid() +
