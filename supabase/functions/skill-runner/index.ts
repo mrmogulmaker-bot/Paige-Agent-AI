@@ -15,6 +15,22 @@ import {
   secureBrowserNeedsAdminConfirmation,
   type SecureBrowserAuthority,
 } from "../_shared/secure-browser-authority.ts";
+// THE ONE GOVERNED PATHWAY — the direct Edge route enforces the governed truth ITSELF, never trusting
+// an upstream caller (Chat/MCP). decideSkillRun re-resolves authority/tenancy/access/classification
+// server-side and refuses a spoofed or cross-tenant or unattended-service attempt (§9/§14/§59/§67).
+import {
+  decideSkillRun,
+  skillGovernedAuditRow,
+  SKILL_DEFAULT_LANE,
+} from "../_shared/paige-skill/governed-adapter.ts";
+// The external-SEND skill (draft_and_email_document) additionally requires a durable, single-use,
+// fingerprint-bound approval — reusing the canonical paige_pending_confirmations table + the
+// confirm-fingerprint pattern (§18), never a parallel approval system.
+import {
+  governedDraftAndEmail,
+  type EmailProposalArgs,
+} from "../_shared/paige-skill/email-approval.ts";
+import { confirmFingerprint } from "../_shared/confirm-fingerprint.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -178,6 +194,391 @@ async function resolveBrowserAuthority(req: Request, body: RunRequest, admin: an
   );
 }
 
+/**
+ * The CALLER of a skill run, resolved SERVER-SIDE — this route never trusts an upstream caller to have
+ * governed the call. The acting tenant, the actor, and the authority all come from the verified JWT
+ * (or an explicitly-trusted internal service credential), NEVER from `body.tenant_id`, `body.contact_id`,
+ * or `body.invoker_kind`.
+ */
+interface SkillCaller {
+  authenticated: boolean;
+  principal: "person" | "service";
+  userId: string | null;
+  tenantId: string | null;
+  access: { allowed: boolean; reason?: string };
+  /** JWT-derived: platform owner / tenant admin / agency manager of the RESOLVED tenant. This — never
+   *  `body.invoker_kind` — is what lets a caller skip the first-run admin-confirmation gate. */
+  isApprovingAuthority: boolean;
+  /** A provenance label for the run row / interpreter actorRole. Not an authority. */
+  actorRole: string | null;
+}
+
+async function resolveSkillCaller(
+  req: Request,
+  body: RunRequest,
+  admin: any,
+  browserAuthority: SecureBrowserAuthority | null,
+): Promise<SkillCaller> {
+  // A browser skill already resolved a HUMAN owner/admin/agency actor + tenant server-side
+  // (resolveSecureBrowserAuthority threw otherwise). Reuse it verbatim — do NOT re-derive #1046's
+  // browser-authority logic.
+  if (browserAuthority) {
+    return {
+      authenticated: true,
+      principal: "person",
+      userId: browserAuthority.actorUserId,
+      tenantId: browserAuthority.tenantId,
+      access: { allowed: true },
+      isApprovingAuthority: true,
+      actorRole: browserAuthority.actorRole,
+    };
+  }
+
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const presented = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+  // A TRUSTED INTERNAL caller (paige-mcp, a sibling edge fn, a CI harness) authenticates with the
+  // platform service-role key — infrastructure, not a person. principal:"service"; the governed seam
+  // then refuses it from making this `high` change on its own (§14/§67 — a machine credential is
+  // nobody's yes), which is also what stops an unattended run impersonating a person. Its
+  // already-resolved tenant is honored for SCOPING only. A JWT caller cannot reach this branch: they
+  // do not hold the service-role key.
+  if (SERVICE_KEY.length > 0 && presented === SERVICE_KEY) {
+    return {
+      authenticated: true,
+      principal: "service",
+      userId: body.invoker_user_id ?? null,
+      tenantId: body.tenant_id ?? null,
+      access: { allowed: true },
+      isApprovingAuthority: false,
+      actorRole: body.invoker_kind ?? "system",
+    };
+  }
+
+  // A real JWT. Derive the acting identity + tenant SERVER-SIDE. Never the body, never the contact.
+  let actorUserId: string | null = null;
+  try {
+    const { data } = await admin.auth.getUser(presented);
+    actorUserId = data?.user?.id ?? null;
+  } catch { actorUserId = null; }
+  if (!actorUserId) {
+    return {
+      authenticated: false, principal: "person", userId: null, tenantId: null,
+      access: { allowed: false, reason: "No verified session behind this request." },
+      isApprovingAuthority: false, actorRole: null,
+    };
+  }
+
+  // Active tenant from the caller's OWN profile (mirrors current_user_tenant_id()); a platform owner
+  // with no active tenant falls back to the operator workspace, exactly as the browser path does.
+  let tenantId: string | null = null;
+  try {
+    const { data: prof } = await admin.from("profiles").select("active_tenant_id").eq("user_id", actorUserId).maybeSingle();
+    tenantId = prof?.active_tenant_id ? String(prof.active_tenant_id) : null;
+  } catch { /* resolved below / left null */ }
+  let platformOwner = false;
+  try {
+    const { data } = await admin.rpc("is_platform_owner", { _user_id: actorUserId });
+    platformOwner = data === true;
+  } catch { platformOwner = false; }
+  if (!tenantId && platformOwner) tenantId = await platformOperatorTenantId(admin);
+  if (!tenantId) {
+    return {
+      authenticated: true, principal: "person", userId: actorUserId, tenantId: null,
+      access: { allowed: false, reason: "No workspace resolved for this account." },
+      isApprovingAuthority: false, actorRole: null,
+    };
+  }
+
+  // Is the caller an APPROVING AUTHORITY for THIS resolved tenant? This — not body.invoker_kind — is
+  // the first-run confirm-bypass authority.
+  let tenantAdmin = false;
+  let agencyManager = false;
+  try {
+    const [a, b] = await Promise.all([
+      admin.rpc("is_tenant_admin_as", { _actor: actorUserId, _tenant: tenantId }),
+      admin.rpc("agency_can_manage_child", { _child: tenantId, _actor: actorUserId }),
+    ]);
+    tenantAdmin = a?.data === true;
+    agencyManager = b?.data === true;
+  } catch { /* default false — a failed authority check never grants authority */ }
+  const isApprovingAuthority = platformOwner || tenantAdmin || agencyManager;
+  return {
+    authenticated: true,
+    principal: "person",
+    userId: actorUserId,
+    tenantId,
+    // An authenticated member of their OWN resolved tenant may run skills — the pre-existing posture
+    // (any authenticated tenant user could invoke), now with the acting tenant server-derived. The
+    // governed gate + the §9 contact/business scoping + the per-skill approval provide the real
+    // protection; a stricter staff-only access policy is a separate §51 decision, out of this slice.
+    access: { allowed: true },
+    isApprovingAuthority,
+    // 'admin' | 'coach' — both non-operator, which the interpreter's provenance gate requires.
+    actorRole: isApprovingAuthority ? "admin" : "coach",
+  };
+}
+
+/** Write ONE governed-decision row to paige_audit_log (service-role). The only trace of a refused
+ *  run, since a refusal writes NO paige_skill_runs row. Non-fatal — a logging failure never changes
+ *  the decision. */
+async function writeGovernedSkillAudit(
+  admin: any, caller: SkillCaller, audit: ReturnType<typeof decideSkillRun>["audit"],
+): Promise<void> {
+  try {
+    const row = skillGovernedAuditRow(audit);
+    await admin.from("paige_audit_log").insert({
+      actor_user_id: caller.userId,
+      actor_role: `skill:${caller.principal}`,
+      ...row,
+    });
+  } catch (e) {
+    console.error("skill-runner governed audit not recorded", String(e));
+  }
+}
+
+/** SHA-256 hex — binds an approval to the EXACT drafted bytes. */
+async function sha256Hex(s: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * THE HOST WIRING for the external-SEND skill. Resolves the contact SCOPED to the caller's tenant,
+ * then drives the pure `governedDraftAndEmail` flow with real deps (LLM draft, get_tenant_sender, the
+ * canonical confirm fingerprint, a single-use claim against paige_pending_confirmations, Resend, and
+ * the durable receipt). Every branch below is one of the pure module's outcomes — the I/O lives here,
+ * the decision lives there, so the whole matrix is unit-tested without this runtime.
+ */
+async function runDraftAndEmailDocument(
+  body: RunRequest,
+  admin: any,
+  skill: any,
+  callerTenantId: string,
+  skillCaller: SkillCaller,
+  requestNonce: string,
+): Promise<Response> {
+  const json = (status: number, payload: Record<string, unknown>) =>
+    new Response(JSON.stringify(payload), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+  const contactId = body.contact_id ?? null;
+  if (!contactId) return json(400, { status: "failed", error: "contact_id required" });
+  if (!skillCaller.userId) return json(403, { status: "refused", code: "unauthenticated", error: "This action needs a signed-in person behind it." });
+
+  // §9 — look up the contact SCOPED to the caller's resolved tenant. A cross-tenant contact_id returns
+  // nothing, which the pure flow then denies before any draft or send.
+  const { data: contact } = await admin
+    .from("clients").select("id, first_name, last_name, email, tenant_id")
+    .eq("id", contactId).eq("tenant_id", callerTenantId).maybeSingle();
+
+  const docType = (body.inputs?.doc_type as string) ?? "summary";
+  const prompt = (body.inputs?.prompt as string) ?? "";
+
+  let sentRunId: string | null = null;
+
+  const outcome = await governedDraftAndEmail(
+    {
+      tenantId: callerTenantId,
+      userId: skillCaller.userId,
+      contactId,
+      recipientEmail: (contact?.email as string) ?? null,
+      contactTenantId: (contact?.tenant_id as string) ?? null,
+      recipientName: contact ? `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() : undefined,
+      docType,
+      prompt,
+      confirmToken: body.confirm_token,
+      requestNonce,
+    },
+    {
+      draft: async ({ docType, prompt, recipientName }) => {
+        const ai = await gatewayCompat("anthropic", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              { role: "system", content: `You are Paige. Draft a professional client ${docType} in HTML (no <html>/<body> wrapper). Keep tone confident, plainspoken, compliance-safe.` },
+              { role: "user", content: `Client: ${recipientName ?? ""}\n\nRequest:\n${prompt}` },
+            ],
+          }),
+        });
+        const aiData = await ai.json();
+        const inner = aiData?.choices?.[0]?.message?.content ?? "";
+        // Return the FINAL bytes that will be sent, so the fingerprint binds exactly what ships.
+        return `<div style="font-family:Inter,sans-serif;max-width:640px;margin:0 auto;padding:24px">${inner}</div>`;
+      },
+      resolveSender: async (tenantId) => {
+        const { data: senderRow } = await admin.rpc("get_tenant_sender", { _tenant_id: tenantId });
+        const sRow = Array.isArray(senderRow) ? senderRow[0] : senderRow;
+        return {
+          fromName: sRow?.from_name || "Paige",
+          fromEmail: sRow?.from_email || "notify@mail.paigeagent.ai",
+        };
+      },
+      fingerprint: confirmFingerprint,
+      sha256Hex,
+      recordProposal: async (row) => {
+        try {
+          const { error } = await admin.from("paige_pending_confirmations").insert({
+            user_id: row.userId,
+            tenant_id: row.tenantId,
+            thread_id: null,
+            scoped_client_id: row.contactId,
+            tool_name: "draft_and_email_document",
+            fingerprint: row.fingerprint,
+            issued_in_request: row.requestNonce,
+            server_issued_at: new Date().toISOString(),
+            args: row.args,
+            summary: row.summary,
+          });
+          if (error) return error.code === "23505" ? "exists" : "failed";
+          return "created";
+        } catch (e) {
+          console.error("skill-runner draft_and_email proposal not recorded", String(e));
+          return "failed";
+        }
+      },
+      claimProposal: async ({ userId, tenantId, fingerprint, requestNonce }) => {
+        try {
+          // ATOMIC single-use: the compare-and-set on consumed_at is the replay/forge guard. A
+          // second claim of the same fingerprint after consumption matches nothing → null → denied.
+          // The minting-request exclusion mirrors the canonical mechanism (20261026000000).
+          const { data, error } = await admin.from("paige_pending_confirmations")
+            .update({ consumed_at: new Date().toISOString() })
+            .eq("user_id", userId)
+            .eq("tenant_id", tenantId)
+            .eq("fingerprint", fingerprint)
+            .eq("tool_name", "draft_and_email_document")
+            .is("consumed_at", null)
+            .gt("expires_at", new Date().toISOString())
+            .not("server_issued_at", "is", null)
+            .neq("issued_in_request", requestNonce)
+            .not("issued_in_request", "is", null)
+            .select("args")
+            .maybeSingle();
+          if (error) {
+            console.error("skill-runner draft_and_email claim failed", String(error.code ?? error));
+            return null;
+          }
+          const args = (data as { args?: unknown } | null)?.args;
+          return args && typeof args === "object" && !Array.isArray(args) ? args as EmailProposalArgs : null;
+        } catch (e) {
+          console.error("skill-runner draft_and_email claim threw", String(e));
+          return null;
+        }
+      },
+      send: async ({ fromHeader, to, subject, html }) => {
+        const resendKey = Deno.env.get("RESEND_API_KEY");
+        if (!resendKey) return { ok: false, id: null };
+        try {
+          const emailRes = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${resendKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ from: fromHeader, to: [to], subject, html }),
+          });
+          const emailData = await emailRes.json().catch(() => ({}));
+          return { ok: emailRes.ok, id: (emailData as { id?: string })?.id ?? null };
+        } catch (e) {
+          console.error("skill-runner draft_and_email send threw", String(e));
+          return { ok: false, id: null };
+        }
+      },
+      recordReceipt: async (r) => {
+        // The durable, readable execution receipt — written at most once per approval (only after a
+        // successful single-use claim). communication_log is the client-facing send record; the
+        // paige_skill_runs row is the run receipt.
+        const status = r.ok ? "succeeded" : "failed";
+        const { data: runRow } = await admin.from("paige_skill_runs").insert({
+          skill_id: skill.id,
+          skill_slug: "draft_and_email_document",
+          contact_id: r.contact_id,
+          invoker_kind: body.invoker_kind ?? "admin",
+          invoker_user_id: skillCaller.userId,
+          inputs: body.inputs ?? {},
+          status,
+          steps_log: [{ step: "draft", ok: true }, { step: "send", ok: r.ok, id: r.resendId }],
+          outputs: { resend_id: r.resendId, recipient: r.recipient },
+          completed_at: new Date().toISOString(),
+        }).select("id").maybeSingle();
+        sentRunId = (runRow as { id?: string } | null)?.id ?? null;
+        // §13 — only record a client-facing OUTBOUND communication when the send actually succeeded.
+        // A failed/never-sent email (e.g. no RESEND_API_KEY) must NOT appear in the client's comm
+        // history as though it went out; the failed run is still recorded on paige_skill_runs above.
+        if (r.ok) {
+          await admin.from("communication_log").insert({
+            client_id: r.contact_id,
+            channel: "email",
+            direction: "outbound",
+            subject: r.subject,
+            body: r.html,
+            metadata: { source: "skill:draft_and_email_document", resend_id: r.resendId, run_id: sentRunId },
+          }).then(() => {}).catch(() => {});
+        }
+        await admin.from("paige_skills")
+          .update({ run_count: skill.run_count + 1, success_count: skill.success_count + (r.ok ? 1 : 0) })
+          .eq("id", skill.id);
+      },
+    },
+  );
+
+  if (outcome.kind === "denied") {
+    // No run row, no send, no success receipt. Audited for forensics (non-fatal).
+    admin.from("paige_audit_log").insert({
+      actor_user_id: skillCaller.userId,
+      actor_role: `skill:${skillCaller.principal}`,
+      action: "skill_run_email_denied",
+      tenant_id: callerTenantId,
+      target_type: "paige_skill",
+      target_id: null,
+      payload: { skill_slug: "draft_and_email_document", code: outcome.code, contact_id: contactId },
+    }).then(() => {}).catch(() => {});
+    return json(403, { status: "refused", code: outcome.code, error: outcome.message });
+  }
+
+  if (outcome.kind === "awaiting_confirm") {
+    const { data: run } = await admin.from("paige_skill_runs").insert({
+      skill_id: skill.id,
+      skill_slug: "draft_and_email_document",
+      contact_id: contactId,
+      invoker_kind: body.invoker_kind ?? "admin",
+      invoker_user_id: skillCaller.userId,
+      inputs: body.inputs ?? {},
+      status: "awaiting_confirm",
+      outputs: { confirm_fingerprint: outcome.confirm_fingerprint },
+    }).select("id").maybeSingle();
+    return json(200, {
+      run_id: (run as { id?: string } | null)?.id ?? null,
+      status: "awaiting_confirm",
+      requires_operator_approval: true,
+      confirm_fingerprint: outcome.confirm_fingerprint,
+      confirm_summary: outcome.summary,
+      message: "Drafted. Re-run this skill with this confirm_token to send it once; the approval is single-use.",
+    });
+  }
+
+  if (outcome.kind === "send_failed") {
+    // §13 — the approval was consumed but the email did NOT go out. Never a 200/"succeeded": the
+    // durable paige_skill_runs row was already written `failed` and no communication_log outbound
+    // record was created, and the caller must hear the same truth. 502 (the upstream send / sender
+    // identity failed, not a client error) so a caller checking HTTP status also sees the failure —
+    // matching the old inline handler, which threw on a failed send. The one-time approval is spent.
+    return json(502, {
+      run_id: sentRunId,
+      status: "failed",
+      code: "send_failed",
+      error: "The document was drafted and approved, but the email send failed. The one-time approval has been used — re-draft to send again.",
+      outputs: { resend_id: outcome.resend_id, recipient: outcome.recipient },
+    });
+  }
+
+  // sent
+  return json(200, {
+    run_id: sentRunId,
+    status: "succeeded",
+    outputs: { resend_id: outcome.resend_id, recipient: outcome.recipient },
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -204,18 +605,56 @@ Deno.serve(async (req) => {
       ? await resolveBrowserAuthority(req, body, admin)
       : null;
 
-    // First-N admin confirmation gate
+    // ── THE GOVERNED GATE (§9/§59) — the direct Edge route enforces the governed truth ITSELF. ──
+    // Resolve the caller SERVER-SIDE (JWT actor + tenant + authority, or a trusted internal service
+    // credential). Then run the ONE governed pathway. A refusal (unauthenticated, request-supplied
+    // tenant, access-denied, service principal acting alone, owner-only) leaves NO run row and NO
+    // side effect — the attempt is recorded only on paige_audit_log.
+    const skillCaller = await resolveSkillCaller(req, body, admin, browserAuthority);
+    const callerTenantId = skillCaller.tenantId;
+    const requestNonce = crypto.randomUUID();
+    const governed = decideSkillRun({
+      skillSlug: skill.slug,
+      authenticated: skillCaller.authenticated,
+      userId: skillCaller.userId,
+      principal: skillCaller.principal,
+      tenantId: skillCaller.tenantId,
+      access: skillCaller.access,
+      autonomyLane: SKILL_DEFAULT_LANE,
+      args: body.inputs ?? {},
+      startedAtMs: Date.now(),
+      nowIso: new Date().toISOString(),
+    });
+    if (governed.outcome.kind === "refuse") {
+      await writeGovernedSkillAudit(admin, skillCaller, governed.audit);
+      return new Response(
+        JSON.stringify({ status: "refused", code: governed.outcome.code, error: governed.outcome.message }),
+        { status: governed.outcome.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ── EXTERNAL SEND — draft_and_email_document requires a durable, single-use, fingerprint-bound
+    // approval (reusing paige_pending_confirmations + confirm-fingerprint, §18). Its flow is two-phase,
+    // so it is handled here rather than through the generic run-row-then-dispatch path below. ──
+    if (skill.slug === "draft_and_email_document") {
+      return await runDraftAndEmailDocument(body, admin, skill, callerTenantId!, skillCaller, requestNonce);
+    }
+
+    // First-N admin confirmation gate — now driven by the JWT-DERIVED authority (never body.invoker_kind).
+    // The governed gate returns `propose` for a `high` skill, which this honors through skill-runner's
+    // existing first-run admin-confirmation mechanism; after the first N runs a skill proceeds as before.
     let needsConfirm = false;
-    if (skill.require_admin_confirm_first_n > 0 && skill.run_count < skill.require_admin_confirm_first_n) {
-      const effectiveInvokerKind = browserAuthority?.invocationKind ?? body.invoker_kind;
+    if (governed.outcome.kind === "propose"
+      && skill.require_admin_confirm_first_n > 0
+      && skill.run_count < skill.require_admin_confirm_first_n) {
       needsConfirm = browserAuthority
         ? secureBrowserNeedsAdminConfirmation(
           skill.require_admin_confirm_first_n,
           skill.run_count,
-          effectiveInvokerKind,
+          browserAuthority.invocationKind,
           body.confirm_token,
         )
-        : effectiveInvokerKind !== "admin" && !body.confirm_token;
+        : !skillCaller.isApprovingAuthority && !body.confirm_token;
     }
 
     const { data: run, error: runErr } = await admin
@@ -224,8 +663,10 @@ Deno.serve(async (req) => {
         skill_id: skill.id,
         skill_slug: skill.slug,
         contact_id: body.contact_id ?? null,
+        // `invoker_kind` is a non-authoritative LABEL only; the authority above is JWT-derived. The
+        // recorded actor is the server-resolved one, never a body-trusted id.
         invoker_kind: browserAuthority?.invocationKind ?? (body.invoker_kind ?? "admin"),
-        invoker_user_id: browserAuthority?.actorUserId ?? body.invoker_user_id ?? null,
+        invoker_user_id: skillCaller.userId,
         inputs: body.inputs ?? {},
         status: needsConfirm ? "awaiting_confirm" : "running",
       })
@@ -251,21 +692,14 @@ Deno.serve(async (req) => {
       // the 4 shipped slugs stay on their bespoke handlers below — byte-identical (§58 by construction),
       // since force_interpreter defaults false and only NON-bespoke slugs otherwise take this path.
       if (shouldUseInterpreter(skill.slug, body.force_interpreter)) {
-        // Resolve the tenant server-side (§9/§59). A browser recipe additionally requires an authenticated
-        // owner/admin actor before its service-role session writer is reachable.
-        let contactTenantId: string | null = null;
-        if (body.contact_id) {
-          const { data: c } = await admin.from("clients").select("tenant_id").eq("id", body.contact_id).maybeSingle();
-          contactTenantId = (c?.tenant_id as string) ?? null;
-        }
-
-        let resolvedTenantId = browserAuthority?.tenantId ?? contactTenantId ?? body.tenant_id ?? null;
-        let resolvedActorId = browserAuthority?.actorUserId ?? body.invoker_user_id ?? null;
-        let resolvedActorRole = browserAuthority?.actorRole ?? (body.invoker_kind === "admin" ? "admin" : (body.invoker_kind ?? null));
-
-        if (!browserAuthority && contactTenantId && body.tenant_id && body.tenant_id !== contactTenantId) {
-          throw new Error("tenant_mismatch: body tenant_id does not match the contact's tenant");
-        }
+        // §9/§59 — the acting tenant is the CALLER's, resolved server-side above, NEVER the contact's
+        // tenant and NEVER body.tenant_id. interpretSkill already scopes its OWN contact lookup to this
+        // tenant (`.eq("tenant_id", tenantId)`), so a cross-tenant contact_id simply resolves to no
+        // context ("not found in your workspace") instead of leaking tenant B's record under tenant B's
+        // identity. The previous derivation (`contactTenantId ?? body.tenant_id`) is exactly the leak.
+        const resolvedTenantId = callerTenantId;
+        const resolvedActorId = skillCaller.userId;
+        const resolvedActorRole = browserAuthority?.actorRole ?? skillCaller.actorRole;
 
         const interp = await interpretSkill(
           { forge, admin, browse: browseViaHost, browsePublic: browsePublicViaHost },
@@ -312,6 +746,11 @@ Deno.serve(async (req) => {
         case "verify_business_sos": {
           const business_id = (body.inputs?.business_id as string) ?? null;
           if (!business_id) throw new Error("business_id required");
+          // §9 — the business must belong to the CALLER's resolved tenant. A cross-tenant business_id
+          // returns nothing here and is refused BEFORE any outbound verification is triggered.
+          const { data: ownedBiz } = await admin
+            .from("businesses").select("id").eq("id", business_id).eq("tenant_id", callerTenantId).maybeSingle();
+          if (!ownedBiz) throw new Error("business not found in your workspace");
           const res = await fetch(`${SUPABASE_URL}/functions/v1/business-verifier`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}` },
@@ -360,7 +799,12 @@ Deno.serve(async (req) => {
         case "build_game_plan": {
           const contact_id = body.contact_id;
           if (!contact_id) throw new Error("contact_id required");
-          const { data: contact } = await admin.from("clients").select("*").eq("id", contact_id).maybeSingle();
+          // §9 — scope the contact to the CALLER's resolved tenant. A cross-tenant contact_id returns
+          // nothing and is refused BEFORE any memory is read or written under another tenant's client.
+          const { data: contact } = await admin.from("clients").select("*").eq("id", contact_id).eq("tenant_id", callerTenantId).maybeSingle();
+          if (!contact) throw new Error("contact not found in your workspace");
+          // client_memory carries no tenant_id; the contact above is already proven to be the caller's,
+          // so its memory (keyed by client_id) is in-tenant by construction.
           const { data: memory } = await admin.from("client_memory").select("*").eq("client_id", contact_id).order("created_at", { ascending: false }).limit(10);
           stepsLog.push({ step: "context", memory_count: memory?.length ?? 0 });
           {
@@ -388,65 +832,10 @@ Deno.serve(async (req) => {
           }
           break;
         }
-        case "draft_and_email_document": {
-          const contact_id = body.contact_id;
-          const doc_type = (body.inputs?.doc_type as string) ?? "summary";
-          const prompt = (body.inputs?.prompt as string) ?? "";
-          if (!contact_id) throw new Error("contact_id required");
-          const { data: contact } = await admin.from("clients").select("id, first_name, last_name, email, tenant_id").eq("id", contact_id).maybeSingle();
-          if (!contact?.email) throw new Error("contact has no email on file");
-
-          const ai = await gatewayCompat("anthropic", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: "google/gemini-2.5-flash",
-              messages: [
-                { role: "system", content: `You are Paige. Draft a professional client ${doc_type} in HTML (no <html>/<body> wrapper). Keep tone confident, plainspoken, compliance-safe.` },
-                { role: "user", content: `Client: ${contact.first_name ?? ""} ${contact.last_name ?? ""}\n\nRequest:\n${prompt}` },
-              ],
-            }),
-          });
-          const aiData = await ai.json();
-          const html = aiData?.choices?.[0]?.message?.content ?? "";
-          stepsLog.push({ step: "draft", ok: ai.ok });
-
-          // Email via Resend (already configured)
-          const resendKey = Deno.env.get("RESEND_API_KEY");
-          if (!resendKey) throw new Error("RESEND_API_KEY missing");
-          // Resolve the tenant's per-tenant sending identity (unique shared-domain
-          // address on the verified sending domain) so this client-facing doc goes
-          // out under the coach's brand — never a shared hardcoded platform address.
-          const { data: senderRow } = await admin.rpc("get_tenant_sender", { _tenant_id: contact.tenant_id ?? null });
-          const sRow = Array.isArray(senderRow) ? senderRow[0] : senderRow;
-          const fromName = sRow?.from_name || "Paige";
-          const fromEmail = sRow?.from_email || "notify@mail.paigeagent.ai";
-          const fromHeader = `${fromName} <${fromEmail}>`;
-          const emailRes = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${resendKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              from: fromHeader,
-              to: [contact.email],
-              subject: `Your ${doc_type} from Paige`,
-              html: `<div style="font-family:Inter,sans-serif;max-width:640px;margin:0 auto;padding:24px">${html}</div>`,
-            }),
-          });
-          const emailData = await emailRes.json();
-          stepsLog.push({ step: "send", ok: emailRes.ok, id: emailData?.id });
-
-          await admin.from("communication_log").insert({
-            client_id: contact_id,
-            channel: "email",
-            direction: "outbound",
-            subject: `Your ${doc_type} from Paige`,
-            body: html,
-            metadata: { source: "skill:draft_and_email_document", resend_id: emailData?.id },
-          }).then(() => {}).catch(() => {});
-
-          outputs = { resend_id: emailData?.id, recipient: contact.email };
-          break;
-        }
+        // NOTE: `draft_and_email_document` is NOT dispatched here. As the one EXTERNAL-SEND skill it is
+        // handled before this switch by `runDraftAndEmailDocument`, which binds a durable, single-use,
+        // fingerprint-bound approval to the exact send (tenant + contact + recipient + sender + doc +
+        // content) and only then calls Resend. Leaving a case here would be a second, un-gated send path.
         default:
           // Unreachable in practice: a non-bespoke slug is handled by the interpreter above. Kept as a
           // defensive guard in case BESPOKE_SKILL_SLUGS and the switch ever drift.

@@ -2325,3 +2325,45 @@ did not touch — the full `vitest run` (or the CI it mirrors) is what catches i
 assertions over source-string matching where the behavior is importable: this fix replaced the broken
 source-slice assertions with direct `clampLaneByRisk(...)` calls (real code), keeping only the one
 source check that genuinely needs source (the clamp is APPLIED above the branch it protects).
+
+## A direct Edge route must enforce the governed truth ITSELF — the acting tenant is the CALLER's, never the target's (2026-09-13)
+
+**What happened.** `skill-runner` ran `draft_and_email_document`, `build_game_plan`, `verify_business_sos`,
+and the interpreter path by deriving the acting tenant from the REQUEST — the target `contact_id`'s own
+tenant (an unscoped `clients` lookup), or `body.tenant_id`, or `body.invoker_kind` — instead of the
+authenticated caller's server-resolved tenant. A caller could pass another tenant's `contact_id` and the
+function would draft/email/read under tenant B's identity (the §9 cross-tenant leak), and `body.invoker_kind`
+was trusted to skip the first-run admin-confirmation gate (spoofable authority). The function leaned on
+upstream callers (Chat/MCP) to have governed the call; the DIRECT Edge route governed nothing itself.
+
+**The lesson (the class).** A callable seam with an external effect must re-resolve actor, tenant,
+role, and authority SERVER-SIDE from the verified credential, and scope every subject lookup to the
+caller's own tenant — `.eq("tenant_id", callerTenantId)`, so a cross-tenant id resolves to *nothing* rather
+than leaking. Never derive the acting tenant from the thing being acted ON (a contact, a business) or from
+any request-body field; those are inputs, not authority. "An upstream door already checked" is not a
+property of THIS route — every door enforces the full governed decision itself (the §BRAIN "shared seam
+carries the full intersection" lesson, applied to a second door). The fix routes skill-runner through the
+canonical `decideGovernedExecution` and binds the one external send to a durable, single-use,
+fingerprint-bound approval in the existing `paige_pending_confirmations` table — never a parallel system.
+
+**The proof class that missed it.** There was no negative test driving a *cross-tenant* `contact_id`, a
+*spoofed* `invoker_kind`, or a *replayed/forged* approval against the route — only happy-path runs. A seam
+whose whole job is authority is unproven until its refusals are proven: the new matrix
+(`src/__tests__/skill-runner-governed.test.ts`) asserts same-tenant allowed, cross-tenant denied,
+service-principal denied, body-tenant inert, and missing/expired/replayed/forged/cross-target/minting-request
+approvals all denied with NO send and NO receipt. The JWT→tenant derivation itself lives in Deno and is the
+authenticated-live-drive class of proof, owed separately — a unit test of the pure decision cannot stand in
+for it.
+
+**A second proof-class miss the §39 peer-gate + §5 compliance caught (and the author + integrator did not).**
+The first cut reported a FAILED external send (Resend 4xx/5xx, or a missing key) as `status: "succeeded"` —
+the pure flow returned `{kind:"sent"}` unconditionally and the host mapped it to HTTP 200/succeeded, while the
+durable `paige_skill_runs` row and `communication_log` were honest. The integrator's own review fixed the
+`communication_log` half but missed the response-status half; the test's injected `send` double **always
+returned `{ok:true}`**, so the failed-send path had zero coverage. TWO independent reviewers (adversarial +
+compliance), reading the real pushed diff, both surfaced it — the exact §39 value: a defect the proof's own
+assertions structurally could not reach because the double never failed. Lesson: when a seam has an external
+effect, the test double must exercise the effect's FAILURE, and "a fire is not a delivery" (§13) binds the
+response contract, not only the durable record. Fixed with a distinct `send_failed` outcome → a
+502/`status:"failed"` response (consume-then-execute means the one-time approval is already spent, so the
+caller re-drafts) + a failed-send test.
