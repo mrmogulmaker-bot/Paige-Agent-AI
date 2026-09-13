@@ -881,7 +881,43 @@
       "linked": ["PR #899 intent carried forward", "PR #724 destination contract carried forward"],
       "next_slice": "Complete one authorized live enrollment and prove signed fulfillment, exactly-one tenant/membership/entitlement/receipt, current Solo entry, lifecycle recovery, and the conservative Stripe Billing Portal configuration.",
       "sources": ["docs/evidence/ui-delivery/solo-beta-acquisition.md", "docs/doctrine/tier-matrix.md", "docs/handoff/platform-billing-spine-source-contract.md"]
-    },    {
+    },
+    {
+      "id": "platform.promotional-solo-access",
+      "consequential": true,
+      "intended_capability": {
+        "read": "Explain an authorized workspace's server-derived promotional Solo access and metering posture without exposing operator or provider internals.",
+        "draft": "None; this is a platform-issued access decision, not a Paige-authored proposal.",
+        "auto": "Within the owner-approved promotional grant policy and its one-recipient, one-top-level-workspace, zero-provider-binding limits, a trusted service may idempotently converge the already authorized grant only after independently proving the platform-owner actor, existing identity, safe standalone topology, and absence of paid/provider conflicts.",
+        "confirm": "The platform owner explicitly authorizes the recipient, workspace name, and durable promotional reason before the service operation.",
+        "prohibited": "Never expose this as public enrollment, infer it from missing billing data, create a free/trial fallback, clear provider bindings, alter unrelated memberships, or permit browser execution.",
+        "completion_criterion": "Exactly one active standalone owner workspace, explicit promotional classification, active metered/no-expiry Solo subscription, profile selection, and one audit plus usage receipt are freshly read back; retry creates no duplicate."
+      },
+      "surface": "Platform service grant -> existing Solo Billing and account switching",
+      "group": "platform-governance",
+      "tier_scope": ["platform", "solo"],
+      "owner_component": "public.platform_grant_promotional_solo; existing Solo Billing and account switcher",
+      "canonical_source": "tenant_revenue_classification plus platform_subscriptions, tenant_members, profiles, platform_usage_events, and paige_audit_log",
+      "chain": {
+        "canonical_source": {"status": "real", "note": "Production grant and retry readback verified exactly one canonical workspace/subscription/receipt set."},
+        "tenant_scope": {"status": "server_resolved", "note": "Recipient identity and existing topology are read server-side; no route, browser value, or active-tenant hint grants authority."},
+        "safe_context": {"status": "eligible", "note": "Customer surfaces receive only the resulting promotional status and authorized workspace list."},
+        "authority": {"status": "governed", "note": "service_role execution plus separately proven platform-owner actor; authenticated and anon EXECUTE are revoked."},
+        "governed_write": {"status": "live", "note": "One atomic, idempotent transaction; paid/provider conflicts and ambiguous topology fail closed."},
+        "verified_outcome": {"status": "partial", "note": "Production migration, grant, canonical readback, membership preservation, and idempotent retry are verified; authenticated browser sign-in/Billing/account-switch proof is owed."},
+        "rail_evidence": {"producer": "live", "read": "canonical", "note": "Exactly one bounded promotional_solo_granted usage event and platform.promotional_solo.granted audit row."},
+        "mind_eligibility": {"axis_a": "UNAVAILABLE", "axis_b": "NO", "note": "Billing/grant internals do not become Mind facts."},
+        "memory_retention": {"status": "n/a", "note": "No operator identity, billing details, or grant payload enters Paige Memory."}
+      },
+      "prohibited_context": ["operator identifiers", "provider secrets or IDs", "client-selected tenant", "implicit promotional classification", "paid enrollment mutation"],
+      "state": "PARTIAL",
+      "state_reason": "Production service grant is live and one owner-authorized identity is verified exactly once with metering/audit evidence and no Stripe binding. Authenticated browser sign-in, Billing rendering, and account switching remain proof owed.",
+      "evidence_class": ["source_read", "automated_test", "production_catalog", "production_data"],
+      "linked": ["PR #1202", "PR #1210", "deploy run 34743013452"],
+      "next_slice": "Exercise the granted identity through authenticated sign-in, truthful Billing rendering, current Solo destination, and account switching.",
+      "sources": ["docs/evidence/ui-delivery/promotional-solo-grandfathering.md", "docs/evidence/ui-delivery/promotional-solo-deployment-recovery.md", "docs/doctrine/tier-matrix.md"]
+    },
+    {
       "id": "settings.billing",
       "consequential": true,
       "intended_capability": {
