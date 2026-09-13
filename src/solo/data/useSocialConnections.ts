@@ -6,6 +6,7 @@ import { createSettingsRequestGate } from "../settings-contract";
 
 export type SocialConnection = {
   id: string;
+  requestedPlatform: string | null;
   label: string | null;
   status: "setup_required" | "authorizing" | "connected" | "needs_reauth" | "disconnected" | "error";
   authorizationExpiresAt: string | null;
@@ -64,6 +65,7 @@ function connections(value: unknown): SocialConnection[] {
     if (!["setup_required", "authorizing", "connected", "needs_reauth", "disconnected", "error"].includes(row.status)) return [];
     return [{
       id: row.id,
+      requestedPlatform: typeof row.requested_platform === "string" ? row.requested_platform : null,
       label: typeof row.label === "string" ? row.label : null,
       status: row.status as SocialConnection["status"],
       authorizationExpiresAt: date(row.authorization_expires_at),
@@ -211,9 +213,11 @@ export function useSocialConnections() {
     const params = new URLSearchParams(location.search);
     const callbackResult = params.get("social_result");
     const receipt = params.get("social_receipt");
+    const reason = params.get("social_reason");
     if (!callbackResult) return;
     params.delete("social_result");
     params.delete("social_receipt");
+    params.delete("social_reason");
     navigate({ pathname: location.pathname, search: params.toString() }, { replace: true });
     if (callbackResult === "verified") {
       setState((current) => ({
@@ -226,14 +230,18 @@ export function useSocialConnections() {
     } else {
       setState((current) => ({
         ...current,
-        error: "Social authorization could not be verified. Reconnect to retry; no account was selected.",
+        error: reason === "account_already_linked"
+          ? "That exact Social account is already connected to another Social identity. Disconnect it there before reconnecting it here."
+          : reason === "consent_cancelled" ? "Social authorization was canceled. No account was connected or selected."
+            : reason === "platform_mismatch" ? "The provider returned a different platform than the one requested. Nothing was connected."
+              : "Social authorization could not be verified. Reconnect to retry; no account was selected.",
       }));
     }
     void reload();
   }, [activeTenantId, location.pathname, location.search, navigate, reload, tenantLoading]);
 
-  const start = useCallback((returnPath: string, label?: string, connectionId?: string) =>
-    invoke({ action: "start", return_path: returnPath, label: label?.trim() || null, ...(connectionId ? { connection_id: connectionId } : {}) }), [invoke]);
+  const start = useCallback((returnPath: string, platform: string, label?: string, connectionId?: string) =>
+    invoke({ action: "start", return_path: returnPath, platform, label: label?.trim() || null, ...(connectionId ? { connection_id: connectionId } : {}) }), [invoke]);
   const select = useCallback((connectionId: string, accountId: string) =>
     invoke({ action: "select", connection_id: connectionId, account_id: accountId }), [invoke]);
   const disconnect = useCallback((connectionId: string) =>

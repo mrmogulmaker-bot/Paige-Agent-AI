@@ -12356,6 +12356,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         // durable local record, so it names the provider the way `zapier_run_action` does.
         improvement_propose: "paige_improvement_proposals",
         improvement_decide: "paige_improvement_proposals",
+        // Social connection operations are executed by the provider-neutral Social seam rather
+        // than Chat, but the shared action classifier still enrolls them in the Harness. Name the
+        // durable tenant record each act governs so any future Gateway execution is attributable.
+        social_connection_start: "paige_social_connections",
+        social_connection_disconnect: "paige_social_connections",
+        social_account_select: "paige_social_accounts",
         social_post: "external_provider",
         // ── The inbound MCP door's acts, added 2026-09-05 with task #45.
         //
@@ -12429,7 +12435,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       const TARGET_ID_KEYS = [
         "contact_id", "client_id", "deleted", "deal_id", "task_id", "pipeline_id", "stage_id",
         "page_id", "funnel_id", "content_id", "booking_id", "log_id", "automation_id", "mission_id", "plan_id",
-        "item_id", "workflow_id", "subagent_id", "action_id", "tenant_id", "id",
+        "item_id", "workflow_id", "subagent_id", "action_id", "connection_id", "account_id", "tenant_id", "id",
       ] as const;
       const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       const resolveWriteTargetId = (args: any, out: any): string | null => {

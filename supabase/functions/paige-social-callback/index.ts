@@ -28,11 +28,14 @@ function safeBase(): string | null {
   }
 }
 
-function resultRedirect(returnPath: string, result: string, receipt?: boolean): Response {
+const SAFE_REASONS = new Set(["consent_cancelled", "account_already_linked", "platform_mismatch", "connection_failed", "readback_failed"]);
+
+function resultRedirect(returnPath: string, result: string, receipt?: boolean, reason?: string): Response {
   const base = safeBase();
   if (!base || !RETURN_PATH.test(returnPath)) return errorPage(500, "Social could not return to a verified Paige destination.");
   const url = new URL(returnPath, base);
   url.searchParams.set("social_result", result);
+  if (reason && SAFE_REASONS.has(reason)) url.searchParams.set("social_reason", reason);
   if (receipt !== undefined) url.searchParams.set("social_receipt", receipt ? "recorded" : "missing");
   return new Response(null, {
     status: 303,
@@ -71,14 +74,36 @@ Deno.serve(async (req: Request) => {
   if (claimed.error || !claim || claim.provider_key !== adapter.key
       || typeof claim.tenant_id !== "string" || typeof claim.actor_id !== "string"
       || typeof claim.connection_id !== "string" || typeof claim.provider_profile_key !== "string"
+      || typeof claim.requested_platform !== "string"
       || typeof claim.return_path !== "string" || !RETURN_PATH.test(claim.return_path)) {
     return errorPage(409, "This secure return link is expired, already used, or could not be matched.");
+  }
+
+  const providerStatus = url.searchParams.get("connect_status");
+  const returnedPlatform = (url.searchParams.get("platform") ?? "").replace(/-/g, "_");
+  if (providerStatus !== "success" || returnedPlatform !== claim.requested_platform) {
+    const reportedCode = (url.searchParams.get("error_code") ?? "").toUpperCase();
+    const safeReason = reportedCode === "ACCOUNT_ALREADY_LINKED" ? "account_already_linked"
+      : providerStatus === "cancelled" ? "consent_cancelled"
+        : returnedPlatform !== claim.requested_platform ? "platform_mismatch" : "connection_failed";
+    const failureCode = providerStatus === "cancelled" && reportedCode === "ACCESS_DENIED"
+      ? "provider_consent_cancelled"
+      : returnedPlatform !== claim.requested_platform ? "provider_platform_mismatch" : "provider_connection_failed";
+    await admin.rpc("social_release_connection_attempt", {
+      _tenant_id: claim.tenant_id, _attempt_id: attemptId, _actor_id: claim.actor_id,
+      _failure_code: failureCode, _released_at: new Date().toISOString(),
+    });
+    return resultRedirect(claim.return_path, providerStatus === "cancelled" ? "cancelled" : "verification_failed", undefined, safeReason);
   }
 
   try {
     const profile = await adapter.readProfile({ providerProfileKey: claim.provider_profile_key });
     if (profile.providerProfileKey !== claim.provider_profile_key) {
       throw new SocialProviderError("profile_mismatch", 502, "Profile mismatch");
+    }
+    const exactAccounts = profile.accounts.filter((account) => account.platform === claim.requested_platform);
+    if (!exactAccounts.length) {
+      throw new SocialProviderError("account_readback_missing", 502, "The connected Social account was not present in provider readback.");
     }
     const observedAt = new Date().toISOString();
     const applied = await admin.rpc("social_apply_connection_readback", {
@@ -87,7 +112,7 @@ Deno.serve(async (req: Request) => {
       _attempt_id: attemptId,
       _token_hash: tokenHash,
       _actor_id: claim.actor_id,
-      _accounts: profile.accounts,
+      _accounts: exactAccounts,
       _observed_at: observedAt,
     });
     const readback = object(applied.data);
@@ -101,6 +126,7 @@ Deno.serve(async (req: Request) => {
       runId: await stableRunId(["social", "connection_readback", claim.tenant_id, attemptId]),
       detail: {
         connection_id: claim.connection_id,
+        platform: claim.requested_platform,
         account_count: readback.account_count,
         verified_at: readback.verified_at,
       },
@@ -112,6 +138,6 @@ Deno.serve(async (req: Request) => {
       _tenant_id: claim.tenant_id, _attempt_id: attemptId, _actor_id: claim.actor_id,
       _failure_code: failureCode, _released_at: new Date().toISOString(),
     });
-    return resultRedirect(claim.return_path, "verification_failed");
+    return resultRedirect(claim.return_path, "verification_failed", undefined, "readback_failed");
   }
 });

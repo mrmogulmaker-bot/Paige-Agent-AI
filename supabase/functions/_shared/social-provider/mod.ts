@@ -23,7 +23,7 @@ export interface SocialProviderAdapter {
   createConnectUrl(input: {
     providerProfileKey: string;
     redirectUrl: string;
-    platforms?: string[];
+    platform: string;
   }): Promise<{ url: string; expiresAt: string }>;
   readProfile(input: { providerProfileKey: string }): Promise<SocialProviderProfile>;
   deleteProfile(input: { providerProfileKey: string }): Promise<void>;
