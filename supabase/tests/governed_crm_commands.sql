@@ -15,15 +15,15 @@ INSERT INTO auth.users(id,aud,role,email) VALUES
 INSERT INTO public.tenants(id,slug,name,status,account_type,account_number_prefix,account_number,features) VALUES
  ('c7100000-0000-4000-8000-000000001111','crm-governed-a','CRM Governed A','active','standalone','CGA',8710001,'{}'),
  ('c7200000-0000-4000-8000-000000002222','crm-governed-b','CRM Governed B','active','standalone','CGB',8720002,'{}');
+INSERT INTO public.tenant_members(tenant_id,user_id,role,status,is_owner,joined_at) VALUES
+ ('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','owner','active',true,now()),
+ ('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000002','member','active',false,now()),
+ ('c7200000-0000-4000-8000-000000002222','c7200000-0000-4000-8000-000000000001','owner','active',true,now());
 INSERT INTO public.profiles(user_id,active_tenant_id) VALUES
  ('c7100000-0000-4000-8000-000000000001','c7100000-0000-4000-8000-000000001111'),
  ('c7100000-0000-4000-8000-000000000002','c7100000-0000-4000-8000-000000001111'),
  ('c7200000-0000-4000-8000-000000000001','c7200000-0000-4000-8000-000000002222')
 ON CONFLICT(user_id) DO UPDATE SET active_tenant_id=excluded.active_tenant_id;
-INSERT INTO public.tenant_members(tenant_id,user_id,role,status,is_owner,joined_at) VALUES
- ('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','owner','active',true,now()),
- ('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000002','member','active',false,now()),
- ('c7200000-0000-4000-8000-000000002222','c7200000-0000-4000-8000-000000000001','owner','active',true,now());
 INSERT INTO public.clients(id,tenant_id,account_number,created_by,first_name,last_name,email,updated_at) VALUES
  ('c7100000-0000-4000-8000-00000000c101','c7100000-0000-4000-8000-000000001111','CLT-CGA-1','c7100000-0000-4000-8000-000000000001','Safe','Contact','before@tests.invalid','2026-09-13 00:00:00+00'),
  ('c7200000-0000-4000-8000-00000000c201','c7200000-0000-4000-8000-000000002222','CLT-CGB-1','c7200000-0000-4000-8000-000000000001','Other','Tenant','other@tests.invalid','2026-09-13 00:00:00+00'),
