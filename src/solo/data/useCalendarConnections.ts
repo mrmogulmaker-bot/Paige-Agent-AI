@@ -280,19 +280,32 @@ export function useCalendarConnections() {
     // — which would otherwise read as a confident "this workspace cannot send"
     // when the truth is "we were not allowed to look". So the caller's own tenant
     // is resolved first and the two are compared before any negative is believed.
-    const [calendarRead, identityRead, phoneRead, a2pRead, brandRead, adminRead, scopeRead] = await Promise.all([
+    // WRITE GATE — resolved against the VIEWED tenant (`activeTenantId`), never the
+    // caller's own `current_user_tenant_id()`. The retired gate used
+    // `is_current_user_tenant_admin()`, which is `is_tenant_admin_as(auth.uid(),
+    // current_user_tenant_id())` — it answers "am I an admin of MY OWN active
+    // tenant", not "of the account I am looking at". Those diverge on a tenant
+    // switch (before `profiles.active_tenant_id` persists), on a stale profile
+    // pointer, and whenever an operator/agency acts as another account — exactly
+    // the readiness-scope divergence this load already handles below. The gate now
+    // mirrors the `calendars` "manage" RLS rule (platform admin OR tenant admin of
+    // the row's tenant) evaluated for the VIEWED tenant, so the button can neither
+    // be hidden from someone the write would accept nor shown to someone it refuses.
+    const [calendarRead, identityRead, phoneRead, a2pRead, brandRead, viewedAdminRead, scopeRead, platformAdminRead] = await Promise.all([
       supabase.from("calendars").select(SELECT_COLS).eq("tenant_id", activeTenantId).order("created_at", { ascending: false }),
       untyped.from("tenant_email_identities").select("tenant_id").eq("tenant_id", activeTenantId).limit(1),
       untyped.from("tenant_phone_numbers").select("id").eq("tenant_id", activeTenantId).eq("is_primary", true).limit(1),
       untyped.from("tenant_a2p_registrations").select("tenant_id").eq("tenant_id", activeTenantId).limit(1),
       supabase.from("tenants").select("brand").eq("id", activeTenantId).maybeSingle(),
-      untyped.rpc("is_current_user_tenant_admin"),
+      untyped.rpc("is_tenant_admin", { _tenant: activeTenantId }),
       untyped.rpc("current_user_tenant_id"),
+      untyped.rpc("is_platform_admin"),
     ]) as [
       { data: unknown; error: { message: string } | null },
       { data: unknown[] | null; error: { message: string } | null },
       { data: unknown[] | null; error: { message: string } | null },
       { data: unknown[] | null; error: { message: string } | null },
+      { data: unknown; error: { message: string } | null },
       { data: unknown; error: { message: string } | null },
       { data: unknown; error: { message: string } | null },
       { data: unknown; error: { message: string } | null },
@@ -441,7 +454,12 @@ export function useCalendarConnections() {
       hostCandidates,
       hostsError,
       readiness,
-      canWrite: !adminRead.error && adminRead.data === true,
+      // Manage rights = tenant admin of the VIEWED tenant OR a platform admin,
+      // mirroring the `calendars` manage-RLS. A read error on either check is
+      // treated as "not authorized" so the surface fails closed (§9/§13).
+      canWrite:
+        (!viewedAdminRead.error && viewedAdminRead.data === true) ||
+        (!platformAdminRead.error && platformAdminRead.data === true),
     });
     // `identityOf` is stable (empty deps, reads a ref), so naming it here costs
     // no extra reload and keeps the lint honest rather than silenced.
