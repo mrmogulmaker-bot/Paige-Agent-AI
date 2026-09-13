@@ -1,0 +1,69 @@
+# Repeatable proof transcript — booking-preset lifecycle server seam
+# Re-run: cat harness.sql <migration> assertions.sql | psql -v ON_ERROR_STOP=on
+# Regenerated 2026-09-13T04:38:27Z against 20270129000000_calendar_booking_preset_lifecycle.sql
+# (renamed from 20270127000000 to clear a version collision with the merged
+#  20270127000000_social_connection_lifecycle.sql). Covers the §39 auto-pause fix (T19-T24).
+# ON_ERROR_STOP aborts on the first failed assertion, so a clean tail through the
+# final banner is the whole matrix passing.
+
+NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+NOTICE:  PASS assert : T1 draft-by-default: enabled=false, published_at NULL
+NOTICE:  PASS assert : T1 creator registered as host
+NOTICE:  PASS assert : T1 audit row written
+NOTICE:  PASS expect 42501 : select public.create_calendar_preset('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb
+NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+NOTICE:  PASS expect 23505 : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+NOTICE:  PASS expect 22023 : select public.publish_calendar_preset((select id from public.calendars w
+NOTICE:  PASS assert : T5 refused publish left it a draft
+NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+NOTICE:  PASS expect 22023 : select public.publish_calendar_preset((select id from public.calendars w
+NOTICE:  PASS ok     : select public.publish_calendar_preset((select id from public.calendars w
+NOTICE:  PASS assert : T6 round_robin publishes only with >=2 hosts
+NOTICE:  PASS ok     : select public.publish_calendar_preset((select id from public.calendars w
+NOTICE:  PASS assert : T7 personal publishes live (enabled=true, published_at set)
+NOTICE:  PASS assert : T8 republish keeps original published_at
+NOTICE:  PASS ok     : select public.pause_calendar_preset((select id from public.calendars whe
+NOTICE:  PASS assert : T9 pause keeps published_at -> Paused distinguishable from Draft
+NOTICE:  PASS ok     : select public.update_calendar_preset((select id from public.calendars wh
+NOTICE:  PASS assert : T10 update changes config only; enabled/published_at/slug immune
+NOTICE:  PASS expect 42501 : select public.update_calendar_preset((select id from public.calendars wh
+NOTICE:  PASS expect 42501 : select public.publish_calendar_preset((select id from public.calendars w
+NOTICE:  PASS expect 42501 : select public.pause_calendar_preset((select id from public.calendars whe
+NOTICE:  PASS ok     : select public.update_calendar_preset((select id from public.calendars wh
+NOTICE:  PASS assert : T12 platform admin manages cross-tenant
+NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+NOTICE:  PASS assert : T13 service-role create registers the passed creator as host
+NOTICE:  PASS ok     : select public.publish_calendar_preset((select id from public.calendars w
+NOTICE:  PASS expect 42501 : select public.publish_calendar_preset((select id from public.calendars w
+NOTICE:  PASS expect 42501 : select public.publish_calendar_preset((select id from public.calendars w
+NOTICE:  PASS expect 42501 : select public.update_calendar_preset((select id from public.calendars wh
+NOTICE:  PASS expect P0002 : select public.publish_calendar_preset('00000000-0000-0000-0000-000000000
+NOTICE:  PASS assert : T16 migration backfill: a pre-existing enabled preset reads as published (=created_at), never Draft
+NOTICE:  PASS assert : T17 admin reads the tenant's presets
+NOTICE:  PASS assert : T17 p-one derives as Paused (enabled=false, published_at set)
+NOTICE:  PASS assert : T17 p-rr derives as Live
+NOTICE:  PASS assert : T17 p-nowin derives as Draft (never published)
+NOTICE:  PASS expect 42501 : select * from public.get_calendar_presets('aaaaaaaa-aaaa-aaaa-aaaa-aaaaa
+NOTICE:  PASS assert : T17 service-role read is scoped to the named tenant only
+NOTICE:  PASS assert : T18 resolver gate (enabled=true) admits neither a Draft (p-nowin) nor a Paused (p-one) preset
+NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+NOTICE:  PASS ok     : select public.publish_calendar_preset((select id from public.calendars w
+NOTICE:  PASS assert : T19 preset is Live before the breaking edit
+NOTICE:  PASS assert : T19 breaking edit returns auto_paused=true with the blocking reason
+NOTICE:  PASS assert : T19 auto-paused: enabled=false, published_at RETAINED (reads as Paused, not Draft)
+NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+NOTICE:  PASS ok     : select public.publish_calendar_preset((select id from public.calendars w
+NOTICE:  PASS assert : T20 valid edit to a Live preset keeps it Live (auto_paused=false)
+NOTICE:  PASS assert : T20 Live preset stays Live after a valid, still-bookable edit
+NOTICE:  PASS assert : T21 editing a Draft does not auto-pause
+NOTICE:  PASS assert : T21 Draft stays a Draft after an edit
+NOTICE:  PASS expect 22023 : select public.update_calendar_preset((select id from public.calendars wh
+NOTICE:  PASS ok     : select public.update_calendar_preset((select id from public.calendars wh
+NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+NOTICE:  PASS expect 22023 : select public.publish_calendar_preset((select id from public.calendars w
+NOTICE:  PASS ok     : select public.update_calendar_preset((select id from public.calendars wh
+NOTICE:  PASS ok     : select public.publish_calendar_preset((select id from public.calendars w
+NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+NOTICE:  PASS expect 22023 : select public.publish_calendar_preset((select id from public.calendars w
+ ==== ALL PRESET-LIFECYCLE ASSERTIONS PASSED ====

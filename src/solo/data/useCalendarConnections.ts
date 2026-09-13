@@ -31,8 +31,8 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import { identityFor, reloadIsCurrent } from "@/lib/calendar/account-identity";
 import { createSettingsRequestGate } from "../settings-contract";
 import {
-  DEFAULT_AVAIL, SELECT_COLS, availToJson, blankDraft, buildCalendarPatch, randomSuffix, slugify,
-  type CalendarRow,
+  DEFAULT_AVAIL, SELECT_COLS, buildCalendarPatch, randomSuffix, slugify,
+  type AvailState, type CalendarDraft, type CalendarRow,
 } from "@/lib/calendar/config";
 import { armOAuthReturn, clearOAuthReturn } from "./oauthReturn";
 
@@ -47,6 +47,36 @@ import { armOAuthReturn, clearOAuthReturn } from "./oauthReturn";
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const untyped = supabase as any;
+
+/**
+ * Turn a lifecycle-RPC failure into an honest, actionable sentence (§15). The
+ * server RAISEs a tagged message (PRESET_NEEDS_HOSTS, PRESET_NO_HOURS, …); a
+ * real refusal must read as the specific thing to fix, never a generic "failed"
+ * and never a fabricated success. The server stays authoritative — this only
+ * translates its actual reason for the owner.
+ */
+function classifyPresetError(
+  error: { message?: string; code?: string } | null,
+  verb: "create" | "save" | "publish" | "pause",
+): string {
+  const raw = error?.message ?? "";
+  if (error?.code === "23505" || raw.includes("PRESET_SLUG_TAKEN")) {
+    return "That booking link is already taken — try a different name.";
+  }
+  if (raw.includes("PRESET_NEEDS_HOSTS")) {
+    // The server message already names the count needed vs assigned.
+    const detail = raw.split("PRESET_NEEDS_HOSTS:")[1]?.trim();
+    return detail ? `Add more hosts first — ${detail}.` : "Add more hosts before publishing this scheduling model.";
+  }
+  if (raw.includes("PRESET_NO_HOURS")) return "Add at least one open window before you can publish this preset.";
+  if (raw.includes("PRESET_NO_METHOD")) return "Choose how the meeting happens before you can publish this preset.";
+  if (raw.includes("PRESET_FORBIDDEN")) return "You don’t have permission to change this preset in this workspace.";
+  if (raw.includes("PRESET_NOT_FOUND")) return "That preset no longer exists — refresh and try again.";
+  if (raw.includes("PRESET_SLUG_REQUIRED") || raw.includes("PRESET_TENANT_REQUIRED")) {
+    return "Something was missing — give the preset a name and try again.";
+  }
+  return raw.replace(/^PRESET_[A-Z_]+:\s*/, "") || `Could not ${verb} the preset.`;
+}
 
 /* ------------------------------------------------------------- providers */
 
@@ -474,27 +504,50 @@ export function useCalendarConnections() {
   /* ------------------------------------------------------------- writes */
 
   /**
-   * Persist one calendar. The caller supplies a patch built by
+   * Persist one preset's configuration. The caller supplies a patch built by
    * `buildCalendarPatch`, so the clamp and drop rules are the same ones the
    * legacy builder applies — there is one set of them (§18).
+   *
+   * This routes through the `update_calendar_preset` RPC rather than a direct
+   * table UPDATE so the Settings surface and Paige's chat capability edit a preset
+   * through the SAME server-authorized seam (§10). The RPC applies a fixed column
+   * allowlist and can never touch the lifecycle (`enabled`/`published_at`) or the
+   * identity (`slug`/`tenant_id`) — publish/pause own the first, create owns the
+   * second. The row is re-read afterward so the surface shows exactly what
+   * persisted, not what was sent (§13).
    */
   const saveCalendar = useCallback(async (id: string, patch: Record<string, unknown>) => {
     setBusy(id);
-    const { data, error } = await supabase
-      .from("calendars")
-      .update(patch as never)
-      .eq("id", id)
-      .select(SELECT_COLS)
-      .single();
+    const { data: rpcData, error } = await untyped.rpc("update_calendar_preset", { _cal: id, _patch: patch, _tenant: activeTenantId });
+    if (error) {
+      setBusy(null);
+      return { ok: false as const, message: classifyPresetError(error, "save") };
+    }
+    // The server auto-pauses a LIVE preset that this edit pushed below the publish
+    // bar (dropped its last host, blanked its hours, removed its only method) — a
+    // Live public page that can no longer take a booking is taken off the air
+    // rather than left lying (§13/§32). The surface must SAY that happened, so the
+    // owner is never surprised that a save quietly unpublished their page.
+    const autoPaused = Boolean((rpcData as { auto_paused?: boolean } | null)?.auto_paused);
+    const autoPauseReason = (rpcData as { reason?: string | null } | null)?.reason ?? null;
+    const { data, error: readErr } = await supabase
+      .from("calendars").select(SELECT_COLS).eq("id", id).maybeSingle();
     setBusy(null);
-    if (error || !data) {
-      const conflict = (error as { code?: string } | null)?.code === "23505";
-      return { ok: false as const, message: conflict ? "That booking link is already taken — pick another." : (error?.message ?? "Save failed") };
+    if (readErr || !data) {
+      // The write succeeded but the read-back did not; refresh from the server
+      // rather than claim a row shape we did not confirm.
+      await load();
+      return {
+        ok: false as const,
+        message: autoPaused
+          ? "Saved — but this change took the live page off the air, so it’s now paused. Refresh to confirm."
+          : "Saved, but the preset could not be re-read — refresh to confirm.",
+      };
     }
     const saved = data as unknown as CalendarRow;
     setState((s) => ({ ...s, calendars: s.calendars.map((c) => (c.id === saved.id ? saved : c)) }));
-    return { ok: true as const, row: saved };
-  }, []);
+    return { ok: true as const, row: saved, autoPaused, autoPauseReason };
+  }, [activeTenantId, load]);
 
   /**
    * Rewrite WHO takes bookings on a calendar, in priority order.
@@ -547,117 +600,87 @@ export function useCalendarConnections() {
   }, [load]);
 
   /**
-   * Create a booking preset, live and bookable from the moment it exists.
+   * Create a booking preset as a private DRAFT — never live on creation.
    *
-   * Two things here are not optional, and both are carried over from the builder
-   * this surface replaced rather than re-invented (§18):
+   * This is the whole point of the seam: the `create_calendar_preset` RPC inserts
+   * the row with `enabled = false` and registers the creator as its first host in
+   * one atomic server-side step, and NOTHING here flips it live. A preset's
+   * `/book/:slug` page is public only after its owner's explicit Publish. The old
+   * client-side insert-then-flip-`enabled` dance (which made a new preset bookable
+   * the instant it was created) is gone; draft-by-default is now enforced on the
+   * server where Paige and the UI both go through it (§10), not just hidden in the
+   * UI (§13/§32).
    *
-   *  1. THE CREATOR IS REGISTERED AS A HOST. A calendar with no host has no
-   *     availability to offer, so its public page cannot be booked. Creating one
-   *     without a host produces a live link that is broken on arrival.
-   *  2. A FAILED HOST INSERT ROLLS THE CALENDAR BACK. There is no way to add a
-   *     host from this surface, so a calendar that loses this race would be
-   *     permanently unbookable and unrepairable here. Deleting it is better than
-   *     leaving that behind, and the delete is tenant-scoped so it can only ever
-   *     remove the row we just wrote (§9).
-   *
-   * The slug carries a random suffix because booking links are unique across the
+   * The caller supplies a DRAFT (a `blankDraft` or a `draftForTemplate` variant),
+   * so the chosen scheduling model and its editable defaults come over intact. The
+   * slug carries a random suffix because booking links are unique across the
    * platform: two workspaces both creating "Discovery call" must not collide.
    */
-  const createCalendar = useCallback(async (title: string) => {
-    const name = title.trim();
-    if (!name) return { ok: false as const, message: "Give the calendar a name first." };
+  const createCalendar = useCallback(async (draft: CalendarDraft, avail: AvailState = DEFAULT_AVAIL) => {
+    const name = (draft.title ?? "").trim();
+    if (!name) return { ok: false as const, message: "Give the preset a name first." };
     if (!activeTenantId) return { ok: false as const, message: "No active workspace — pick one first." };
 
     setBusy("new");
-    const draft = blankDraft(name);
-    const patch = buildCalendarPatch(draft, DEFAULT_AVAIL);
+    const patch = buildCalendarPatch(draft, avail);
     const slug = `${slugify(name) || "calendar"}-${randomSuffix()}`;
-
-    const { data, error } = await supabase
-      .from("calendars")
-      .insert({
-        ...patch,
-        tenant_id: activeTenantId,
-        slug,
-        // Created as a DRAFT and flipped live only once a host exists. A live
-        // calendar with no host is a public link that accepts nothing, and
-        // nothing on this surface can add a host to repair it — so the window
-        // between the two inserts must never be a bookable one.
-        enabled: false,
-        availability_json: availToJson(DEFAULT_AVAIL),
-      } as never)
-      .select(SELECT_COLS)
-      .single();
-
-    if (error || !data) {
-      setBusy(null);
-      const conflict = (error as { code?: string } | null)?.code === "23505";
-      return {
-        ok: false as const,
-        message: conflict ? "That booking link is already taken — try a different name." : (error?.message ?? "Could not create the calendar"),
-      };
-    }
-
-    const created = data as unknown as CalendarRow;
     const { data: auth } = await supabase.auth.getUser();
     const uid = auth.user?.id ?? null;
-    const hostError = uid
-      ? (await supabase.from("calendar_hosts").insert({ calendar_id: created.id, user_id: uid, priority: 0 })).error
-      : { message: "no-session" };
 
-    if (hostError) {
-      // Best-effort removal. It is deliberately NOT load-bearing: the same lost
-      // session that blocked the host insert also blocks this delete, so the
-      // result is checked rather than assumed, and what is said depends on what
-      // actually happened. The leftover is a draft either way (see above), so
-      // the worst case is an unfinished calendar, never a live unbookable link.
-      // `.select()` so the RESULT is the evidence. A delete that matches no row
-      // — RLS hid it, the filters missed it — succeeds with `error === null`, so
-      // checking only the error would let "nothing was created" be said over a
-      // draft that is still there. Absence of an error is not proof of effect.
-      const { data: removed, error: rollbackError } = await supabase
-        .from("calendars").delete().eq("id", created.id).eq("tenant_id", activeTenantId).select("id");
+    const { data, error } = await untyped.rpc("create_calendar_preset", {
+      _tenant: activeTenantId,
+      _slug: slug,
+      _patch: patch,
+      _created_by: uid,
+    });
+    if (error) {
       setBusy(null);
-      if (rollbackError || (removed?.length ?? 0) === 0) {
-        await load();
-        return {
-          ok: false as const,
-          message: `“${created.title}” was created but couldn’t be finished, and removing it didn’t work either. It is saved as a draft, so it is not taking bookings — sign in again and delete or finish it.`,
-        };
-      }
-      return {
-        ok: false as const,
-        message: uid
-          ? "Couldn't finish setting the calendar up, so nothing was created. Please try again."
-          : "Your session expired — sign in again and retry.",
-      };
+      return { ok: false as const, message: classifyPresetError(error, "create") };
     }
 
-    // The host is registered, so the link can actually be booked. The state
-    // that comes BACK is what is reported, not the absence of an error: an
-    // update matching zero rows returns no error while `enabled` stays false,
-    // and announcing "live — ready to share" over that is a fabricated status
-    // on the one screen whose job is to report the truth. If the flip did not
-    // take, the calendar is a draft and the surface says draft.
-    const { data: live } = await supabase
-      .from("calendars").update({ enabled: true }).eq("id", created.id).eq("tenant_id", activeTenantId)
-      .select("enabled").maybeSingle();
-
+    const calId = (data as { calendar_id?: string } | null)?.calendar_id ?? null;
+    // Read the created draft back as the truth the surface renders (the RPC
+    // returns ids/status, not the row). It is a Draft (enabled=false); the editor
+    // opens on it and the owner publishes when ready.
+    const { data: row } = calId
+      ? await supabase.from("calendars").select(SELECT_COLS).eq("id", calId).maybeSingle()
+      : { data: null };
     setBusy(null);
     await load();
-    return { ok: true as const, row: { ...created, enabled: (live as { enabled?: boolean } | null)?.enabled === true } };
+    return { ok: true as const, row: (row as unknown as CalendarRow) ?? null, calendarId: calId };
   }, [activeTenantId, load]);
 
-  /** Flip a calendar between Live and Draft. Draft means the link stops accepting bookings. */
-  const setEnabled = useCallback(async (id: string, enabled: boolean) => {
+  /**
+   * Publish a preset — the ONLY way to make its `/book/:slug` page public. The
+   * server (`publish_calendar_preset`) revalidates that the page can honestly take
+   * a booking (manage permission, enough hosts for the scheduling model, an open
+   * window, a usable method) and refuses with a specific reason otherwise. A
+   * refusal is surfaced as the exact thing to fix, never a fake success (§13).
+   */
+  const publish = useCallback(async (id: string) => {
     setBusy(id);
-    const { error } = await supabase.from("calendars").update({ enabled }).eq("id", id);
+    const { error } = await untyped.rpc("publish_calendar_preset", { _cal: id, _tenant: activeTenantId });
     setBusy(null);
-    if (error) return { ok: false as const, message: error.message };
-    setState((s) => ({ ...s, calendars: s.calendars.map((c) => (c.id === id ? { ...c, enabled } : c)) }));
+    if (error) return { ok: false as const, message: classifyPresetError(error, "publish") };
+    // Re-read the whole set: publish sets enabled + published_at server-side, and
+    // the surface's lifecycle labels derive from those two facts (§13).
+    await load();
     return { ok: true as const };
-  }, []);
+  }, [activeTenantId, load]);
+
+  /**
+   * Pause a live preset — take its public page off the air. `enabled` goes false
+   * (so the resolver refuses it, exactly like a Draft) but `published_at` is kept,
+   * which is what lets the surface call it Paused rather than Draft.
+   */
+  const pause = useCallback(async (id: string) => {
+    setBusy(id);
+    const { error } = await untyped.rpc("pause_calendar_preset", { _cal: id, _tenant: activeTenantId });
+    setBusy(null);
+    if (error) return { ok: false as const, message: classifyPresetError(error, "pause") };
+    await load();
+    return { ok: true as const };
+  }, [activeTenantId, load]);
 
   /**
    * Start a provider OAuth handshake. This returns the provider's own
@@ -713,8 +736,8 @@ export function useCalendarConnections() {
 
   const loading = tenantLoading || state.loading;
   return useMemo(
-    () => ({ ...state, loading, busy, refresh: load, createCalendar, saveCalendar, saveHosts, setEnabled, connect, disconnect,
+    () => ({ ...state, loading, busy, refresh: load, createCalendar, saveCalendar, saveHosts, publish, pause, connect, disconnect,
              errorMessage: firstMessage(state.error, state.providersError) }),
-    [state, loading, busy, load, createCalendar, saveCalendar, saveHosts, setEnabled, connect, disconnect],
+    [state, loading, busy, load, createCalendar, saveCalendar, saveHosts, publish, pause, connect, disconnect],
   );
 }

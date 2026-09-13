@@ -7,6 +7,14 @@
  * built. So these cover the three honesty seams — provider support, send
  * capability, and write authority — alongside the structural cover that all ten
  * configuration areas are present and answer themselves when closed.
+ *
+ * THE SHAPE is master/detail (owner direction 2026-09-13). The main page is a
+ * LIST — connected accounts + compact preset cards + a "New preset" chooser —
+ * and the full ten-area editor is reached only by OPENING a preset. Every test
+ * that asserts editor content therefore clicks a preset card first (`openPreset`)
+ * to enter editor mode; creation drives the chooser, and the lifecycle is driven
+ * through Publish / Pause rather than the retired live/draft toggle. None of the
+ * honesty seams changed — only the navigation to reach them.
  */
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -24,7 +32,11 @@ const calendar = (over: Partial<CalendarRow> = {}): CalendarRow => ({
   buffer_before_min: 15, buffer_after_min: 15, min_notice_min: 240, booking_horizon_days: 30,
   capacity: 1, redirect_url: "", timezone: "America/New_York",
   availability_json: [{ day: 1, start: "09:00", end: "17:00" }, { day: 2, start: "09:00", end: "17:00" }],
-  enabled: true, group_id: null, created_by: null, theme: "light", subtitle: null,
+  // enabled=true, published_at=null → Live by `presetLifecycle` (enabled wins). A
+  // draft fixture sets `enabled:false` and keeps `published_at:null` (→ Draft); a
+  // paused one sets `enabled:false` WITH a `published_at` timestamp (→ Paused).
+  enabled: true, published_at: null,
+  group_id: null, created_by: null, theme: "light", subtitle: null,
   show_company_name: true, location_type: "google_meet", location_value: null,
   location_options: [{ type: "google_meet", value: null }], intake_questions: [],
   appointment_types: [], date_overrides: [], notify_config: normalizeNotify(null),
@@ -63,7 +75,12 @@ function seam(over: Record<string, unknown> = {}) {
     readiness: READY,
     canWrite: true,
     hostCandidates: { "cal-1": [{ user_id: "u2", full_name: "Sam Okafor" }] },
-    refresh: vi.fn(), createCalendar: vi.fn(), saveCalendar: vi.fn(), setEnabled: vi.fn(), connect: vi.fn(), disconnect: vi.fn(),
+    refresh: vi.fn(), createCalendar: vi.fn(), saveCalendar: vi.fn(),
+    // The lifecycle transitions that replaced the live/draft toggle. Each returns
+    // {ok:true} or {ok:false,message}; the surface drives them from Publish/Pause.
+    publish: vi.fn(async () => ({ ok: true as const })),
+    pause: vi.fn(async () => ({ ok: true as const })),
+    connect: vi.fn(), disconnect: vi.fn(),
     saveHosts: vi.fn(async () => ({ ok: true as const })),
     ...over,
   };
@@ -85,6 +102,35 @@ function mount(over: Record<string, unknown> = {}) {
 const text = () => container.textContent ?? "";
 const buttons = () => [...container.querySelectorAll<HTMLButtonElement>("button")];
 const byText = (re: RegExp) => buttons().find((b) => re.test(b.textContent ?? ""));
+
+/**
+ * Enter EDITOR mode by opening a preset card — the master/detail navigation every
+ * editor assertion now depends on. The click and the resulting draft-hydration
+ * effect both flush inside one `act`, so the ten areas are rendered when it
+ * returns. Defaults to the first card.
+ */
+const openPreset = (index = 0) => act(() => {
+  [...container.querySelectorAll<HTMLButtonElement>(".cc-preset-card")][index]?.click();
+});
+
+/* ------------------------------------------------------- the create chooser */
+// Creating a preset is a guided chooser now, not a name field: open it, pick a
+// booking model, then a starter template (or a custom name). These drive that flow.
+const openChooser = () => act(() => { byText(/New preset/)?.click(); });
+const pickCategory = (re: RegExp) => act(() => {
+  [...container.querySelectorAll<HTMLButtonElement>(".cc-chooser-cat")].find((c) => re.test(c.textContent ?? ""))?.click();
+});
+const chooserNameField = () => container.querySelector<HTMLInputElement>('input[aria-label="Name for the new booking preset"]');
+const typeChooserName = (value: string) => {
+  const f = chooserNameField();
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+  act(() => { setter.call(f!, value); f!.dispatchEvent(new Event("input", { bubbles: true })); });
+};
+const pickTemplate = async (index = 0) => {
+  await act(async () => {
+    [...container.querySelectorAll<HTMLButtonElement>(".cc-chooser-tpl")][index]?.click();
+  });
+};
 
 beforeEach(() => { document.body.innerHTML = ""; });
 
@@ -129,6 +175,7 @@ describe("connected accounts — the surface says what is real", () => {
 describe("the ten configuration areas", () => {
   it("renders all ten, numbered, in the order the builder has always had", () => {
     mount();
+    openPreset();
     const numbers = [...container.querySelectorAll(".cc-area-n")].map((n) => n.textContent);
     expect(numbers).toEqual(["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]);
     for (const title of [
@@ -139,6 +186,7 @@ describe("the ten configuration areas", () => {
 
   it("states each closed area's current value, so scanning the page is an answer", () => {
     mount();
+    openPreset();
     const values = [...container.querySelectorAll(".cc-area-v")].map((v) => v.textContent);
     // Details is open by default, so nine values are on show.
     expect(values).toHaveLength(9);
@@ -149,15 +197,17 @@ describe("the ten configuration areas", () => {
 
   it("names the round-robin strategy on the closed Team row only when the type uses one", () => {
     mount({ calendars: [calendar({ type: "round_robin", assignment_strategy: { mode: "priority" } })] });
+    openPreset();
     expect([...container.querySelectorAll(".cc-area-v")].some((v) => /priority/.test(v.textContent ?? ""))).toBe(true);
 
     mount();
+    openPreset();
     expect([...container.querySelectorAll(".cc-area-v")].some((v) => /balanced/.test(v.textContent ?? ""))).toBe(false);
   });
 });
 
 describe("send capability is reported, never asserted", () => {
-  const openNotify = () => act(() => { byText(/^10Notifications/)?.click(); });
+  const openNotify = () => { openPreset(); act(() => { byText(/^10Notifications/)?.click(); }); };
 
   it("marks a reminder that cannot send, and keeps the rule rather than dropping it", () => {
     mount({ readiness: readiness("no", "no", [{ channel: "email", label: "no sending email address" }]) });
@@ -222,6 +272,7 @@ describe("stored values reach the controls", () => {
         }),
       })],
     });
+    openPreset();
     act(() => { byText(/^10Notifications/)?.click(); });
     const whens = [...container.querySelectorAll<HTMLSelectElement>("select")].filter((s) => /before/.test(s.options[s.selectedIndex]?.text ?? ""));
     expect(whens.map((s) => s.options[s.selectedIndex].text)).toEqual(["1 day before", "1 hour before"]);
@@ -231,6 +282,7 @@ describe("stored values reach the controls", () => {
 
   it("shows the stored timezone and booking window rather than defaulting", () => {
     mount({ calendars: [calendar({ timezone: "Europe/London", booking_horizon_days: 90 })] });
+    openPreset();
     act(() => { byText(/^02Schedule/)?.click(); });
     expect(select(/Timezone/)?.value).toBe("Europe/London");
     act(() => { byText(/^04Booking rules/)?.click(); });
@@ -239,6 +291,7 @@ describe("stored values reach the controls", () => {
 
   it("keeps a stored timezone that is not in the shortlist selectable", () => {
     mount({ calendars: [calendar({ timezone: "Pacific/Auckland" })] });
+    openPreset();
     act(() => { byText(/^02Schedule/)?.click(); });
     const tz = select(/Timezone/);
     expect(tz?.value).toBe("Pacific/Auckland");
@@ -247,6 +300,7 @@ describe("stored values reach the controls", () => {
 
   it("keeps a stored reminder offset that is not a preset selectable", () => {
     mount({ calendars: [calendar({ notify_config: normalizeNotify({ reminders: [{ channel: "email", offset_min: 37, to: "guest" }] }) })] });
+    openPreset();
     act(() => { byText(/^10Notifications/)?.click(); });
     const when = [...container.querySelectorAll<HTMLSelectElement>("select")].find((s) => s.value === "37");
     expect(when?.options[when.selectedIndex].text).toBe("37 min before");
@@ -256,15 +310,17 @@ describe("stored values reach the controls", () => {
 describe("authority and state", () => {
   it("disables every control instead of hiding them when the account cannot write", () => {
     mount({ canWrite: false });
+    openPreset();
     expect(text()).toMatch(/read this configuration but not change it/i);
     const nameInput = container.querySelector<HTMLInputElement>(".cc-in");
     expect(nameInput?.disabled).toBe(true);
   });
 
-  it("says the link will not take bookings while the calendar is a draft", () => {
+  it("says a draft preset's page is private and not yet bookable", () => {
     mount({ calendars: [calendar({ enabled: false })] });
-    expect(text()).toMatch(/will not accept bookings/i);
+    openPreset();
     expect(text()).toMatch(/Draft/);
+    expect(text()).toMatch(/no visitor can see or\s+book it/i);
   });
 
   it("names the failing read and offers a retry rather than rendering an empty page", () => {
@@ -283,9 +339,87 @@ describe("authority and state", () => {
 
   it("warns when a calendar has no host, because its page cannot be booked", () => {
     mount({ hosts: {} });
+    openPreset();
     act(() => { byText(/^06Team & hosts/)?.click(); });
     expect(text()).toMatch(/No host is registered/i);
     expect(text()).toMatch(/cannot be booked/i);
+  });
+});
+
+describe("publishing, pausing, and the honest booking link", () => {
+  it("shows a live preset's real link with a working Open", () => {
+    mount({ calendars: [calendar({ enabled: true, published_at: "2026-01-01T00:00:00.000Z" })] });
+    openPreset();
+    const link = container.querySelector(".cc-link");
+    expect(link?.getAttribute("data-public")).toBe("true");
+    expect(text()).toMatch(/Public booking link/i);
+    // Open is a real anchor for a live page.
+    expect(link?.querySelector("a.cc-btn")).toBeTruthy();
+  });
+
+  it("presents a draft's URL as reserved and not public, with a disabled Open", () => {
+    mount({ calendars: [calendar({ enabled: false })] });
+    openPreset();
+    const link = container.querySelector(".cc-link");
+    expect(link?.getAttribute("data-public")).toBe("false");
+    expect(text()).toMatch(/Reserved URL — inactive until published/i);
+    expect(text()).toMatch(/Copy future URL — not public yet/i);
+    // Open is a DISABLED button, never a live anchor, until the page is published.
+    expect(link?.querySelector("a.cc-btn")).toBeNull();
+    const openBtn = [...link!.querySelectorAll<HTMLButtonElement>("button")].find((b) => /Open/.test(b.textContent ?? ""));
+    expect(openBtn?.disabled).toBe(true);
+  });
+
+  it("publishes a draft through conn.publish", async () => {
+    const publish = vi.fn().mockResolvedValue({ ok: true });
+    mount({ publish, calendars: [calendar({ enabled: false })] });
+    openPreset();
+    const pub = byText(/Publish/);
+    expect(pub).toBeTruthy();
+    await act(async () => { pub?.click(); });
+    expect(publish).toHaveBeenCalledWith("cal-1");
+    expect(text()).toMatch(/Published\. The booking link is live/i);
+  });
+
+  it("reports a refused publish as the thing to fix, not a fake live status", async () => {
+    const publish = vi.fn().mockResolvedValue({ ok: false, message: "Add at least one open window before you can publish this preset." });
+    mount({ publish, calendars: [calendar({ enabled: false })] });
+    openPreset();
+    await act(async () => { byText(/Publish/)?.click(); });
+    expect(publish).toHaveBeenCalledWith("cal-1");
+    expect(text()).toMatch(/Add at least one open window/i);
+    expect(text()).not.toMatch(/booking link is live/i);
+  });
+
+  it("pauses a live preset through conn.pause", async () => {
+    const pause = vi.fn().mockResolvedValue({ ok: true });
+    mount({ pause, calendars: [calendar({ enabled: true, published_at: "2026-01-01T00:00:00.000Z" })] });
+    openPreset();
+    const p = byText(/Pause/);
+    expect(p).toBeTruthy();
+    await act(async () => { p?.click(); });
+    expect(pause).toHaveBeenCalledWith("cal-1");
+    expect(text()).toMatch(/Paused\. The public link no longer accepts bookings/i);
+  });
+
+  it("warns loudly when a LIVE page can no longer take a booking (a legacy/host-removed row)", () => {
+    // enabled=true but no host → publishReadiness fails. The auto-pause gate now
+    // stops an UPDATE leaving a preset here, but a row born enabled (a provisioned
+    // default, the agency builder) or a host removed via set_calendar_hosts still
+    // can, and a Live page a visitor finds nothing on must never read as healthy.
+    mount({ calendars: [calendar({ enabled: true, published_at: "2026-01-01T00:00:00.000Z" })], hosts: {} });
+    openPreset();
+    const banner = [...container.querySelectorAll(".cc-notice")].find((n) => /can’t currently take a booking/i.test(n.textContent ?? ""));
+    expect(banner).toBeTruthy();
+    // It is the alert tone (a real problem), and it names the missing piece.
+    expect(banner?.getAttribute("data-tone")).toBe("bad");
+    expect(banner?.textContent ?? "").toMatch(/host/i);
+  });
+
+  it("does not show the Live-unbookable warning when a live page is genuinely bookable", () => {
+    mount({ calendars: [calendar({ enabled: true, published_at: "2026-01-01T00:00:00.000Z" })] });
+    openPreset();
+    expect(text()).not.toMatch(/can’t currently take a booking/i);
   });
 });
 
@@ -305,6 +439,7 @@ describe("what the surface must not silently destroy or misreport", () => {
         }],
       })],
     });
+    openPreset();
     openArea(/^03Date-specific hours/);
     const times = () => [...container.querySelectorAll<HTMLInputElement>('.cc-windows input[type="time"]')];
     expect(times().map((t) => t.value)).toEqual(["09:00", "12:00", "14:00", "17:00"]);
@@ -323,6 +458,7 @@ describe("what the surface must not silently destroy or misreport", () => {
     mount({
       calendars: [calendar({ date_overrides: [{ date: "2026-12-24", blocked: false, windows: [{ start: "09:00", end: "12:00" }] }] })],
     });
+    openPreset();
     openArea(/^03Date-specific hours/);
     const times = () => [...container.querySelectorAll<HTMLInputElement>('.cc-windows input[type="time"]')];
     expect(times()).toHaveLength(2);
@@ -337,6 +473,7 @@ describe("what the surface must not silently destroy or misreport", () => {
       calendars: [calendar({ notify_config: normalizeNotify({ reminders: [{ channel: "email", offset_min: 1440, to: "guest" }] }) })],
       readiness: readiness("yes", "no", [{ channel: "sms", label: "no phone number or texting registration" }]),
     });
+    openPreset();
     act(() => { byText(/^10Notifications/)?.click(); });
     expect(text()).toMatch(/Will send/);
     expect(text()).not.toMatch(/cannot send yet/i);
@@ -345,6 +482,7 @@ describe("what the surface must not silently destroy or misreport", () => {
 
   it("reports a failed host read as unreadable, not as a calendar with no host", () => {
     mount({ hosts: {}, hostsError: "permission denied for table calendar_hosts" });
+    openPreset();
     expect([...container.querySelectorAll(".cc-area-v")].some((v) => /could not be read/.test(v.textContent ?? ""))).toBe(true);
     act(() => { byText(/^06Team & hosts/)?.click(); });
     expect(text()).toMatch(/The host list could not be read/i);
@@ -362,6 +500,7 @@ describe("what the surface must not silently destroy or misreport", () => {
         }),
       })],
     });
+    openPreset();
     act(() => { byText(/^10Notifications/)?.click(); });
     const textareas = [...container.querySelectorAll<HTMLTextAreaElement>("textarea")];
     expect(textareas.some((t) => t.value === "Heads up — {{guest_name}} cancelled.")).toBe(true);
@@ -381,6 +520,7 @@ describe("what the surface must not silently destroy or misreport", () => {
         intake_questions: [{ id: "q1", label: "Which package?", type: "radio", required: true, options: [], placeholder: null }],
       })],
     });
+    openPreset();
     expect(text()).toMatch(/2 things need attention/i);
     const issues = [...container.querySelectorAll<HTMLButtonElement>(".cc-issue")];
     expect(issues.map((i) => i.textContent)).toEqual(
@@ -401,6 +541,7 @@ describe("what the surface must not silently destroy or misreport", () => {
         { date: "2026-09-02", blocked: false, windows: [{ start: "14:00", end: "10:00" }] },
       ],
     })] });
+    openPreset();
     expect(text()).toMatch(/1 date set · 1 date will not save/i);
     const plate = [...container.querySelectorAll(".cc-area-v")].find((v) => /will not save/i.test(v.textContent ?? ""));
     expect(plate?.getAttribute("data-tone")).toBe("warn");
@@ -413,6 +554,7 @@ describe("what the surface must not silently destroy or misreport", () => {
         { id: "q2", type: "short_text", label: "  ", required: false, options: [], placeholder: null },
       ],
     })] });
+    openPreset();
     expect(text()).toMatch(/1 question · 1 question will not save/i);
   });
 
@@ -423,6 +565,7 @@ describe("what the surface must not silently destroy or misreport", () => {
     // counted as kept, so collapsing the area reported "1 date set" over one the
     // save rejects outright.
     mount({ calendars: [calendar()] });
+    openPreset();
     const open = () => [...container.querySelectorAll<HTMLButtonElement>(".cc-area-t")]
       .find((b) => /Date-specific hours/.test(b.textContent ?? ""));
     act(() => { open()?.click(); });
@@ -441,6 +584,7 @@ describe("what the surface must not silently destroy or misreport", () => {
         { date: "2026-09-03", blocked: true, windows: [] },
       ],
     })] });
+    openPreset();
     expect(text()).toMatch(/2 dates set/i);
     expect(text()).not.toMatch(/will not save/i);
   });
@@ -448,31 +592,51 @@ describe("what the surface must not silently destroy or misreport", () => {
   it("does not offer an editor over a snapshot the last read failed to confirm", () => {
     // load() keeps the same account's rows so a refresh does not blank the page.
     // Mounting the editor on top of them after a FAILED read would let a save
-    // overwrite whatever changed since the last successful one.
+    // overwrite whatever changed since the last successful one. The error state
+    // shows its notice and offers no preset cards, so the editor is unreachable.
     mount({ error: "Network error", calendars: [calendar()] });
     expect(text()).toMatch(/Couldn’t load your calendars/i);
     expect(container.querySelector(".cc-selected")).toBeNull();
+    expect(container.querySelector(".cc-preset-card")).toBeNull();
   });
 
-  it("refuses to switch preset while there are unsaved edits, rather than dropping them", () => {
-    // The hydration effect replaces the draft with the newly selected row, so
-    // switching used to discard the edits silently — with the unsaved-changes
-    // bar on screen the whole time.
+  it("refuses to leave a preset with unsaved edits, rather than dropping them", () => {
+    // "All presets" is the master/detail way back to the list. The hydration
+    // effect replaces the draft with whatever is selected next, so leaving with
+    // unsaved edits used to discard them silently — with the unsaved-changes bar
+    // on screen the whole time. The honest behaviour is to refuse and name the
+    // two ways out.
     const a = calendar({ id: "cal-a", title: "Discovery call" });
     const b = calendar({ id: "cal-b", title: "Strategy session", slug: "strategy" });
     mount({ calendars: [a, b] });
-    const nameField = container.querySelector<HTMLInputElement>('input[aria-label*="Name"], .cc-in');
+    openPreset(0);
+    const nameField = container.querySelector<HTMLInputElement>(".cc-in");
     expect(nameField).toBeTruthy();
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     act(() => { setter.call(nameField!, "Discovery call EDITED"); nameField!.dispatchEvent(new Event("input", { bubbles: true })); });
 
-    const other = [...container.querySelectorAll<HTMLButtonElement>(".cc-preset-card")]
-      .find((c) => /Strategy session/.test(c.textContent ?? ""));
-    act(() => { other?.click(); });
+    act(() => { byText(/All presets/)?.click(); });
 
-    expect(text()).toMatch(/Save or discard your changes before switching/i);
-    // …and the edit is still there, on the preset it belongs to.
+    expect(text()).toMatch(/Save or discard your changes before leaving/i);
+    // …and the edit is still there, on the preset it belongs to (still in editor).
     expect(container.querySelector<HTMLInputElement>(".cc-in")?.value).toBe("Discovery call EDITED");
+  });
+
+  it("keeps a new create from silently dropping unsaved edits — the chooser is not reachable from a dirty editor", () => {
+    // In master/detail the "New preset" chooser lives only on the LIST; a dirty
+    // editor has to leave first, and leaving is itself guarded (test above). So
+    // the create-then-lose-edits path the `create` dirty-guard was added for is
+    // structurally closed — you cannot open the chooser without passing the guard.
+    mount({ calendars: [calendar()] });
+    openPreset();
+    const field = container.querySelector<HTMLInputElement>(".cc-in");
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => { setter.call(field!, "Edited name"); field!.dispatchEvent(new Event("input", { bubbles: true })); });
+    // No create control is on screen while the editor holds unsaved edits.
+    expect(byText(/New preset/)).toBeFalsy();
+    // And the one way back is refused, so the edits cannot be lost this way.
+    act(() => { byText(/All presets/)?.click(); });
+    expect(text()).toMatch(/Save or discard your changes before leaving/i);
   });
 
   it("reports a provider read failure as not checked, and offers no connect", () => {
@@ -505,31 +669,11 @@ describe("what the surface must not silently destroy or misreport", () => {
     expect(typeof stored.intake_questions).toBe("object");
   });
 
-  it("refuses to create a preset while there are unsaved edits", () => {
-    // Creating selects the new calendar, and the hydration effect would replace
-    // the current draft with it — the same silent loss as switching, one door over.
-    const createCalendar = vi.fn();
-    mount({ createCalendar, calendars: [calendar()] });
-    const field = container.querySelector<HTMLInputElement>(".cc-in");
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    act(() => { setter.call(field!, "Edited name"); field!.dispatchEvent(new Event("input", { bubbles: true })); });
-
-    const opener = [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .find((b) => /New preset/.test(b.textContent ?? ""));
-    act(() => { opener?.click(); });
-    const nameField = container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]');
-    if (nameField) {
-      act(() => { setter.call(nameField, "Another"); nameField.dispatchEvent(new Event("input", { bubbles: true })); });
-      act(() => { container.querySelector("form.cc-new")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
-    }
-    expect(createCalendar).not.toHaveBeenCalled();
-    expect(text()).toMatch(/Save or discard your changes before creating/i);
-  });
-
   it("does not invent a fault where the stored value is a legitimate default", () => {
     // An empty availability_json means "the default weekday hours", not "closed".
     // Reporting it as no open hours would send someone to fix a working calendar.
     mount({ calendars: [calendar({ availability_json: [] })] });
+    openPreset();
     expect(text()).not.toMatch(/no open hours/i);
   });
 });
@@ -578,6 +722,7 @@ describe("jumping to an area never depends on a browser-only method", () => {
     // call here throws two animation frames after the click, from inside a frame
     // callback no test can catch — so the guard is asserted, not assumed.
     mount({ hosts: {} });
+    openPreset();
     const issue = container.querySelector<HTMLButtonElement>(".cc-issue");
     expect(issue).toBeTruthy();
     act(() => { issue?.click(); });
@@ -593,109 +738,96 @@ describe("jumping to an area never depends on a browser-only method", () => {
 });
 
 describe("a booking preset can actually be created", () => {
-  // jsdom does not implement form submission, so clicking a type="submit" button
-  // never fires onSubmit there. Real browsers do (and that is what gives the
-  // field Enter-to-create), so the event is dispatched directly — the same
-  // pattern the existing phone-search test uses.
-  const submitNewPreset = () =>
-    container.querySelector("form.cc-new")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-
-  const typeInto = (el: HTMLInputElement, value: string) => {
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    act(() => {
-      setter.call(el, value);
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-  };
-
   it("offers the control in the empty state that promises it", () => {
-    // The empty copy says creating one gives you a public link straight away.
-    // Before this, it said that and offered nothing — the surface could not
-    // create the thing it exists to manage.
+    // The empty copy says a booking model starts a private draft. Before this,
+    // it said that and offered nothing — the surface could not create the thing
+    // it exists to manage.
     mount({ empty: true, calendars: [] });
-    expect(text()).toMatch(/gives you a public link straight away/i);
+    expect(text()).toMatch(/Pick a booking model to start a private draft/i);
     expect(byText(/New preset/)).toBeTruthy();
   });
 
-  it("creates from a name alone, then selects what it made", async () => {
-    const created = calendar({ id: "cal-new", title: "Strategy session", slug: "strategy-session-ab12" });
-    const createCalendar = vi.fn().mockResolvedValue({ ok: true, row: created });
+  it("creates from the chooser with a CalendarDraft, then selects what it made", async () => {
+    const created = calendar({ id: "cal-new", title: "Strategy session", slug: "strategy-session-ab12", enabled: false });
+    const createCalendar = vi.fn().mockResolvedValue({ ok: true, row: created, calendarId: "cal-new" });
     mount({ createCalendar, calendars: [calendar(), created] });
 
-    act(() => { byText(/New preset/)?.click(); });
-    const field = container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]');
-    expect(field).toBeTruthy();
-    typeInto(field!, "Strategy session");
-    await act(async () => { submitNewPreset(); });
+    openChooser();
+    pickCategory(/One-on-one/);
+    typeChooserName("Strategy session");
+    await pickTemplate(0);
 
-    expect(createCalendar).toHaveBeenCalledWith("Strategy session");
-    expect(text()).toMatch(/is live — its booking link is ready to share/i);
-    // The new one is now the selected preset, with its Details open to configure.
+    // Called with a CalendarDraft — the chosen model and typed name carried over —
+    // not a bare title string.
+    const [draftArg] = createCalendar.mock.calls[0];
+    expect(draftArg.type).toBe("personal");
+    expect(draftArg.title).toBe("Strategy session");
+    // The result is ALWAYS a private draft, never live.
+    expect(text()).toMatch(/started as a private draft/i);
+    expect(text()).not.toMatch(/is live/i);
+    // The new one is now the selected preset, opened for configuration.
     expect(text()).toMatch(/Strategy session/);
   });
 
   it("reports a failed creation instead of pretending it worked", async () => {
     const createCalendar = vi.fn().mockResolvedValue({ ok: false, message: "That booking link is already taken — try a different name." });
     mount({ createCalendar });
-    act(() => { byText(/New preset/)?.click(); });
-    const field = container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]');
-    typeInto(field!, "Discovery call");
-    await act(async () => { submitNewPreset(); });
+    openChooser();
+    pickCategory(/One-on-one/);
+    await pickTemplate(0);
     expect(text()).toMatch(/already taken/i);
   });
 
-  // The previous version of the test above used the DEFAULT fixture, which has
-  // calendars and therefore a selected preset — and the failure notice used to
-  // live inside the selected-preset block. So it passed while the empty-state
-  // flow, the only one the control was added for, showed nothing at all. This
-  // drives the flow that was actually broken.
   it("shows why the FIRST preset could not be created, with no calendar selected", async () => {
+    // The failure notice is raised at surface level in BOTH modes, so the
+    // empty-state flow — the only one this control was added for — surfaces the
+    // reason rather than swallowing it.
     const createCalendar = vi.fn().mockResolvedValue({ ok: false, message: "That booking link is already taken — try a different name." });
     mount({ createCalendar, empty: true, calendars: [] });
-    act(() => { byText(/New preset/)?.click(); });
-    const field = container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]');
-    typeInto(field!, "Discovery call");
-    await act(async () => { submitNewPreset(); });
+    openChooser();
+    pickCategory(/One-on-one/);
+    await pickTemplate(0);
     expect(text()).toMatch(/already taken/i);
   });
 
-  it("keeps the typed name and the form open when creation fails", async () => {
+  it("keeps the typed name and the chooser open when creation fails", async () => {
     const createCalendar = vi.fn().mockResolvedValue({ ok: false, message: "That booking link is already taken — try a different name." });
     mount({ createCalendar, empty: true, calendars: [] });
-    act(() => { byText(/New preset/)?.click(); });
-    typeInto(container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]')!, "Discovery call");
-    await act(async () => { submitNewPreset(); });
-    const field = container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]');
+    openChooser();
+    pickCategory(/One-on-one/);
+    typeChooserName("Discovery call");
+    await pickTemplate(0);
+    // The chooser stays open on its step, and the typed name survives, so the
+    // reason can be read and the attempt retried.
+    expect(container.querySelector(".cc-chooser")).toBeTruthy();
+    const field = chooserNameField();
     expect(field).toBeTruthy();
     expect(field!.value).toBe("Discovery call");
   });
 
-  it("calls a calendar that came back as a draft a draft, not live", async () => {
-    // The row is created disabled and flipped live only once its host exists.
-    // If that flip did not take, saying "is live" would be a fabricated status.
+  it("calls a created preset a draft, never live", async () => {
+    // The row is created disabled and only its owner's explicit Publish makes it
+    // public. Saying "is live" here would be a fabricated status (§13).
     const created = calendar({ id: "cal-draft", title: "Strategy session", enabled: false });
-    const createCalendar = vi.fn().mockResolvedValue({ ok: true, row: created });
+    const createCalendar = vi.fn().mockResolvedValue({ ok: true, row: created, calendarId: "cal-draft" });
     mount({ createCalendar, calendars: [calendar(), created] });
-    act(() => { byText(/New preset/)?.click(); });
-    typeInto(container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]')!, "Strategy session");
-    await act(async () => { submitNewPreset(); });
-    expect(text()).toMatch(/was created as a draft/i);
+    openChooser();
+    pickCategory(/One-on-one/);
+    typeChooserName("Strategy session");
+    await pickTemplate(0);
+    expect(text()).toMatch(/started as a private draft/i);
     expect(text()).not.toMatch(/Strategy session” is live/i);
   });
 
   it("refuses a second concurrent create while one is already running", async () => {
-    // The empty state renders two of these forms — header and empty body. Once
-    // open they used to ignore `disabled`, so the second could submit while the
-    // first was still in flight and create a duplicate preset.
+    // With a create in flight the "New preset" control is disabled, so the
+    // chooser cannot be opened to fire a duplicate write.
     const createCalendar = vi.fn().mockResolvedValue({ ok: true, row: calendar({ id: "cal-new" }) });
     mount({ createCalendar, empty: true, calendars: [], busy: "new" });
-    const opener = [...container.querySelectorAll("button")].find((b) => /New preset/.test(b.textContent ?? ""));
-    act(() => { opener?.click(); });
-    const field = container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]');
-    if (field) {
-      typeInto(field, "Discovery call");
-      await act(async () => { submitNewPreset(); });
-    }
+    const openers = [...container.querySelectorAll<HTMLButtonElement>("button")].filter((b) => /New preset/.test(b.textContent ?? ""));
+    expect(openers.length).toBeGreaterThan(0);
+    expect(openers.every((b) => b.disabled)).toBe(true);
+    act(() => { openers[0]?.click(); });  // disabled → no-op, no chooser
     expect(createCalendar).not.toHaveBeenCalled();
   });
 
@@ -755,20 +887,6 @@ describe("creation during the identity window", () => {
     container.querySelector<HTMLButtonElement>("button[data-move]")?.click();
   });
 
-  const openCreate = () => act(() => {
-    [...container.querySelectorAll("button")].find((b) => /New preset/.test(b.textContent ?? ""))?.click();
-  });
-
-  const typeName = (value: string) => {
-    const field = container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]');
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    act(() => { setter.call(field!, value); field!.dispatchEvent(new Event("input", { bubbles: true })); });
-  };
-
-  const submitCreate = () => act(() => {
-    container.querySelector("form.cc-new")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-  });
-
   it("stops offering creation once the route names an account the data has not caught up to", () => {
     mountRouted();
     const opener = () => [...container.querySelectorAll("button")].find((b) => /New preset/.test(b.textContent ?? ""));
@@ -777,26 +895,27 @@ describe("creation during the identity window", () => {
     expect(opener()?.disabled).toBe(true);
   });
 
-  it("refuses a form that was already open when the route moved", async () => {
+  it("refuses a chooser that was already open when the route moved", async () => {
     // The finding this covers: the closed button being gated is not enough,
-    // because the form the person had already opened keeps its own state and
+    // because the chooser the person had already opened keeps its own state and
     // would submit into the departing account. The post-write identity check
     // cannot catch it — it compares the new route against the old tenant on
     // BOTH readings, so it sees no change and waves the result through, by
     // which point the row exists.
     const createCalendar = vi.fn();
     mountRouted({ createCalendar });
-    openCreate();
-    typeName("Discovery call");
+    openChooser();
+    pickCategory(/One-on-one/);
+    typeChooserName("Discovery call");
     move();
-    await submitCreate();
+    await pickTemplate(0);
     expect(createCalendar).not.toHaveBeenCalled();
   });
 
   it("gates the empty state's own creation control, not only the header's", () => {
-    // The empty body carries a second copy of the same form. Gating one and not
-    // the other leaves the identical write reachable by the identical click on
-    // the surface a freshly-provisioned account actually lands on.
+    // The empty body carries a second copy of the same chooser. Gating one and
+    // not the other leaves the identical write reachable by the identical click
+    // on the surface a freshly-provisioned account actually lands on.
     mountRouted({ empty: true, calendars: [], hosts: {} });
     const inEmpty = () => container.querySelector<HTMLButtonElement>(".cc-empty-act button");
     expect(inEmpty()?.disabled).toBe(false);
@@ -814,8 +933,9 @@ describe("creation during the identity window", () => {
     let settle: (r: unknown) => void = () => {};
     const saveCalendar = vi.fn(() => new Promise((res) => { settle = res; }));
     const a = calendar({ id: "cal-a", title: "Discovery call" });
-    mountRouted({ calendars: [a], hosts: { "cal-a": [] }, saveCalendar });
+    mountRouted({ calendars: [a], hosts: { "cal-a": [{ user_id: "u1", full_name: "Alex Reed", priority: 0, hasCustomHours: false, timezone: null }] }, saveCalendar });
 
+    openPreset();
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     const nameField = container.querySelector<HTMLInputElement>(".cc-in");
     act(() => { setter.call(nameField!, "A EDITED"); nameField!.dispatchEvent(new Event("input", { bubbles: true })); });
@@ -832,8 +952,10 @@ describe("creation during the identity window", () => {
 
     await act(async () => { settle({ ok: true, row: { ...a, title: "A EDITED" } }); });
 
-    expect(container.querySelector<HTMLInputElement>(".cc-in")?.value).toBe("B preset");
+    // The save's result was dropped — no success notice bled into B, and the
+    // surface shows B's list rather than A's edited draft.
     expect(text()).not.toMatch(/The public page now uses these settings/i);
+    expect(text()).toMatch(/B preset/);
   });
 });
 
@@ -921,6 +1043,11 @@ describe("identity safety — no callback may act or report for a departed accou
     [...container.querySelectorAll("button")].find((b) => re.test(b.textContent ?? ""))?.click();
   });
 
+  /** The Copy button lives in the editor's link block. */
+  const clickCopy = () => act(() => {
+    [...container.querySelectorAll<HTMLButtonElement>(".cc-link button")].find((b) => /Copy/.test(b.textContent ?? ""))?.click();
+  });
+
   describe("a notice that ALREADY landed", () => {
     /**
      * The other half of the class, and the one the guards structurally cannot
@@ -934,7 +1061,8 @@ describe("identity safety — no callback may act or report for a departed accou
         configurable: true, value: { writeText: vi.fn(() => write.promise) },
       });
       mountRouted();
-      click(/^\s*Copy\s*$/);
+      openPreset();
+      clickCopy();
       await act(async () => { write.settle(); });
     }
 
@@ -975,7 +1103,8 @@ describe("identity safety — no callback may act or report for a departed accou
       Object.defineProperty(navigator, "clipboard", { configurable: true, value: clipboard });
 
       mountRouted();
-      click(/^\s*Copy\s*$/);
+      openPreset();
+      clickCopy();
       expect(clipboard.writeText).toHaveBeenCalled();
       move();
       settleTenant({});
@@ -985,13 +1114,16 @@ describe("identity safety — no callback may act or report for a departed accou
     });
   });
 
-  describe("live toggle", () => {
-    it("does not report a failed flip into the account that inherited the screen", async () => {
+  describe("pause", () => {
+    it("does not report a failed pause into the account that inherited the screen", async () => {
+      // The lifecycle transition that replaced the live toggle. A refusal that
+      // resolves after the route moved must not be reported into the new account.
       const flip = deferred<{ ok: boolean; message: string }>();
-      const setEnabled = vi.fn(() => flip.promise);
-      mountRouted({ setEnabled });
+      const pause = vi.fn(() => flip.promise);
+      mountRouted({ pause, calendars: [calendar({ enabled: true, published_at: "2026-01-01T00:00:00.000Z" })] });
 
-      act(() => { container.querySelector<HTMLButtonElement>(".cc-toggle, [role=switch]")?.click(); });
+      openPreset();
+      click(/Pause/);
       move();
       await act(async () => { flip.settle({ ok: false, message: "Could not switch this calendar." }); });
 
@@ -1143,7 +1275,9 @@ describe("identity safety — no callback may act or report for a departed accou
  * bookings, so these assert on the entire array, never on one element.
  */
 describe("team & hosts — the owner can say who takes the bookings", () => {
+  // Enter the editor, then open the Team area within it.
   const openTeam = () => {
+    openPreset();
     const head = buttons().find((b) => /Team & hosts/.test(b.textContent ?? ""));
     if (head) act(() => { head.click(); });
   };

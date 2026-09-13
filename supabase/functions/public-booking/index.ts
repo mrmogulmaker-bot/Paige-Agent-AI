@@ -424,6 +424,12 @@ async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string
     .select("id, tenant_id, type, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, theme, subtitle, show_company_name, location_type, location_value, notify_config, location_options, booking_horizon_days, redirect_url, intake_questions, appointment_types, date_overrides, capacity, assignment_strategy")
     .eq("slug", slug)
     .maybeSingle();
+  // `enabled` is the authoritative bookability gate and the ONLY lifecycle state
+  // a public visitor is allowed past. A Draft (never published) and a Paused
+  // preset both carry enabled=false, so both are refused here — an unauthenticated
+  // visitor can never resolve a preset its owner has not explicitly published.
+  // (Publish is the only seam that sets enabled=true; see
+  // 20270129000000_calendar_booking_preset_lifecycle.sql / publish_calendar_preset.)
   if (!cal || cal.enabled !== true) return null;
   // Load the FULL host pool (priority-ordered). Single-host calendars book the
   // primary; round-robin/collective calendars use the whole pool.

@@ -15,6 +15,7 @@ import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCalendarConnections } from "./useCalendarConnections";
+import { blankDraft } from "@/lib/calendar/config";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -28,6 +29,8 @@ const rpc = vi.hoisted(() => ({
   adminByTenant: {} as Record<string, boolean>, // is_tenant_admin resolves per _tenant
   platformAdmin: false,
   callerTenant: null as string | null,          // current_user_tenant_id()
+  presetError: null as unknown,                 // arm a lifecycle-RPC failure
+  presetUpdateData: { ok: true } as unknown,    // arm update_calendar_preset's success payload (auto_paused/reason)
 }));
 const tables = vi.hoisted(() => ({ calendars: [] as unknown[], calendarsError: null as unknown }));
 
@@ -49,14 +52,21 @@ vi.mock("@/integrations/supabase/client", () => {
     rpc: (name: string, args?: unknown) => {
       rpc.calls.push({ name, args });
       let data: unknown = null;
+      let error: unknown = null;
       if (name === "is_tenant_admin") {
         const t = (args as { _tenant?: string } | undefined)?._tenant ?? "";
         data = rpc.adminByTenant[t] ?? false;
       } else if (name === "is_platform_admin") data = rpc.platformAdmin;
       else if (name === "current_user_tenant_id") data = rpc.callerTenant;
+      // The booking-preset lifecycle RPCs — the shared server seam the hook now
+      // drives instead of direct table writes. Return a canned success unless the
+      // test armed an error, so a test can assert WHICH RPC was called with what.
+      else if (name === "create_calendar_preset") { data = rpc.presetError ? null : { calendar_id: "cal-new", enabled: false, status: "draft" }; error = rpc.presetError; }
+      else if (name === "update_calendar_preset") { data = rpc.presetError ? null : rpc.presetUpdateData; error = rpc.presetError; }
+      else if (name === "publish_calendar_preset" || name === "pause_calendar_preset") { data = rpc.presetError ? null : { ok: true }; error = rpc.presetError; }
       return {
         then: (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
-          Promise.resolve({ data, error: null }).then(res, rej),
+          Promise.resolve({ data, error }).then(res, rej),
       };
     },
     auth: { getUser: () => Promise.resolve({ data: { user: { id: "u1" } }, error: null }) },
@@ -91,6 +101,8 @@ async function mount() {
 
 beforeEach(() => {
   rpc.calls = []; rpc.adminByTenant = {}; rpc.platformAdmin = false; rpc.callerTenant = null;
+  rpc.presetError = null;
+  rpc.presetUpdateData = { ok: true };
   tables.calendars = []; tables.calendarsError = null;
   tenantCtx.activeTenantId = "t-viewed"; tenantCtx.loading = false;
   latest = null;
@@ -144,5 +156,78 @@ describe("Calendar write gate — evaluated against the viewed tenant", () => {
     const admin = rpc.calls.find((c) => c.name === "is_tenant_admin");
     expect(admin?.args).toEqual({ _tenant: "t2" }); // asked about the new tenant
     expect(latest?.canWrite).toBe(false);           // and denied there
+  });
+});
+
+describe("Booking-preset lifecycle — the hook drives the shared server RPCs, not direct table writes", () => {
+  it("createCalendar creates a DRAFT via create_calendar_preset, never a table insert + enabled flip", async () => {
+    rpc.adminByTenant = { "t-viewed": true };
+    tables.calendars = [{ id: "cal-new", tenant_id: "t-viewed", slug: "x", title: "X", type: "personal", enabled: false, published_at: null }];
+    await mount();
+    await act(async () => { await latest!.createCalendar(blankDraft("New preset")); });
+    const call = rpc.calls.find((c) => c.name === "create_calendar_preset");
+    expect(call).toBeTruthy();
+    expect((call!.args as { _tenant?: string })._tenant).toBe("t-viewed");
+    // The old draft-then-flip dance is gone: the hook never registers hosts or
+    // flips enabled itself — the RPC does it server-side and draft-by-default.
+    expect(rpc.calls.some((c) => c.name === "set_calendar_hosts")).toBe(false);
+  });
+
+  it("publish calls publish_calendar_preset for the VIEWED tenant", async () => {
+    rpc.adminByTenant = { "t-viewed": true };
+    await mount();
+    await act(async () => { await latest!.publish("cal-1"); });
+    expect(rpc.calls.find((c) => c.name === "publish_calendar_preset")?.args).toEqual({ _cal: "cal-1", _tenant: "t-viewed" });
+  });
+
+  it("pause calls pause_calendar_preset for the VIEWED tenant", async () => {
+    rpc.adminByTenant = { "t-viewed": true };
+    await mount();
+    await act(async () => { await latest!.pause("cal-1"); });
+    expect(rpc.calls.find((c) => c.name === "pause_calendar_preset")?.args).toEqual({ _cal: "cal-1", _tenant: "t-viewed" });
+  });
+
+  it("saveCalendar routes config edits through update_calendar_preset (the shared edit seam)", async () => {
+    rpc.adminByTenant = { "t-viewed": true };
+    tables.calendars = [{ id: "cal-1", tenant_id: "t-viewed", slug: "x", title: "X", type: "personal", enabled: false, published_at: null }];
+    await mount();
+    await act(async () => { await latest!.saveCalendar("cal-1", { title: "Renamed" }); });
+    const call = rpc.calls.find((c) => c.name === "update_calendar_preset");
+    expect(call?.args).toMatchObject({ _cal: "cal-1", _tenant: "t-viewed" });
+  });
+
+  it("saveCalendar surfaces the server's auto_paused/reason so the UI can warn the page went off the air", async () => {
+    // The server auto-pauses a Live preset an edit pushed below the publish bar; the
+    // hook must carry that fact up so the surface says so, not hide a silent unpublish.
+    rpc.adminByTenant = { "t-viewed": true };
+    rpc.presetUpdateData = { ok: true, auto_paused: true, reason: "PRESET_NO_HOURS: add at least one open window before publishing" };
+    tables.calendars = [{ id: "cal-1", tenant_id: "t-viewed", slug: "x", title: "X", type: "personal", enabled: true, published_at: "2027-01-01T00:00:00Z" }];
+    await mount();
+    let res: { ok: boolean; autoPaused?: boolean; autoPauseReason?: string | null } = { ok: false };
+    await act(async () => { res = await latest!.saveCalendar("cal-1", { availability_json: [] }) as typeof res; });
+    expect(res.ok).toBe(true);
+    expect(res.autoPaused).toBe(true);
+    expect(res.autoPauseReason ?? "").toMatch(/PRESET_NO_HOURS/);
+  });
+
+  it("saveCalendar reports auto_paused=false on an ordinary edit that keeps the page bookable", async () => {
+    rpc.adminByTenant = { "t-viewed": true };
+    rpc.presetUpdateData = { ok: true, auto_paused: false, reason: null };
+    tables.calendars = [{ id: "cal-1", tenant_id: "t-viewed", slug: "x", title: "X", type: "personal", enabled: true, published_at: "2027-01-01T00:00:00Z" }];
+    await mount();
+    let res: { ok: boolean; autoPaused?: boolean } = { ok: false };
+    await act(async () => { res = await latest!.saveCalendar("cal-1", { title: "Still bookable" }) as typeof res; });
+    expect(res.ok).toBe(true);
+    expect(res.autoPaused).toBe(false);
+  });
+
+  it("a server refusal surfaces as an actionable message, never a fabricated success", async () => {
+    rpc.adminByTenant = { "t-viewed": true };
+    rpc.presetError = { code: "22023", message: "PRESET_NEEDS_HOSTS: needs at least 2 host(s); 1 assigned" };
+    await mount();
+    let res: { ok: boolean; message?: string } = { ok: true };
+    await act(async () => { res = await latest!.publish("cal-1"); });
+    expect(res.ok).toBe(false);
+    expect(res.message ?? "").toMatch(/host/i);
   });
 });
