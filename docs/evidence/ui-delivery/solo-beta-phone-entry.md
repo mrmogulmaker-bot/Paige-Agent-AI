@@ -9,7 +9,7 @@ PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: A new Solo customer selects their country
 VISUAL_DIRECTION: PASS: The native accessible country selector is contained within the existing signup field hierarchy with no added decoration or competing action.
 AUTOMATED_EVIDENCE: PASS: Retained implementation head 77df71e44536d2d58de8266e91f677aa4d27fbca passed 181/181 focused phone, migration-recovery, acquisition, billing, webhook, and Solo security regressions; local normalization covers US, UK, Australia, explicit E.164 override, invalid input, and more than 200 country options.
 STATIC_EVIDENCE: PASS: Production build, ci:regression, migration-version, managed-schema, definer-function, Rail-grant, Binding Ledger, release-governance, and diff-integrity checks passed locally.
-RENDERED_EVIDENCE: PASS: Fresh production build passed 178/178 browser checks at 1536x770, 1366x768, 1024x768, and 900x1000 in light and dark themes; artifacts remain under the existing gitignored scripts/live-drive/artifacts/solo-beta-acquisition home.
+RENDERED_EVIDENCE: PASS: The deployed paigeagent.ai production flow passed 178/178 browser checks at 1536x770, 1366x768, 1024x768, and 900x1000 in light and dark themes; artifacts remain under the existing gitignored scripts/live-drive/artifacts/solo-beta-acquisition home.
 BEHAVIORAL_EVIDENCE: PASS: Each rendered Auth state defaulted to United States, exposed more than 200 labeled countries/calling codes, accepted 4244575247 without +1, kept the primary action reachable, and produced no page error or horizontal overflow.
 AUTHENTICATED_RUNTIME: UNVERIFIED: No disposable production customer was created; persistence through Supabase Auth remains subject to the production migration recovery and safe released-flow proof.
 KEYBOARD_FOCUS: PASS: The signup drive traversed the real Auth controls and retained visible focus; the country selector is a labeled native keyboard control.
@@ -36,13 +36,13 @@ SOLO_900X1000_PAIGE_CLOSED: PASS: light/dark Auth screenshots; responsive phone 
 SOLO_900X1000_PAIGE_OPEN: NOT_APPLICABLE: public Auth does not mount the Paige panel.
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
-INTERNAL_BUILD_IDENTITY: 77df71e44536d2d58de8266e91f677aa4d27fbca; deployment=NOT_DEPLOYED; environment=local; migrations=PROOF_OWED(production_recovery_hotfix); edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/solo-beta-phone-entry.md
-RELEASE_CHANNEL: development: retained implementation build and rendered proof; owner-approved production promotion follows exact-head PR checks.
+INTERNAL_BUILD_IDENTITY: 77df71e44536d2d58de8266e91f677aa4d27fbca; deployment=VERIFIED(vercel_deployment_6417319452,merge_42ad0d36107cfaf9198988606754b22f3de01c81); environment=production; migrations=VERIFIED(deploy_migrations_run_34735838226,db_live_42ad0d36,zero_drift); edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/solo-beta-phone-entry.md
+RELEASE_CHANNEL: production: phone entry and database recovery are deployed from merge 42ad0d36107cfaf9198988606754b22f3de01c81.
 RELEASE_CLASSIFICATION: patch: customer-visible phone repair plus fail-closed migration convergence.
-CUSTOMER_RELEASE_IDENTITY: none: hotfix not yet merged or deployed.
+CUSTOMER_RELEASE_IDENTITY: 42ad0d36107cfaf9198988606754b22f3de01c81; application deployment 6417319452.
 RELEASE_NOTE_REQUIRED: YES: customer-visible signup entry changes.
-RELEASE_TRUTH_BOUNDARY: PARTIAL: local normalization and rendered behavior are verified; production Auth persistence and migration recovery remain proof owed.
-RELEASE_RECOVERY: position=forward-fix-on-main; reference=PR #1148 merge a725633b and failed migration run 34731904027.
+RELEASE_TRUTH_BOUNDARY: PARTIAL: production phone interaction, public flow, and migration recovery are verified; authenticated Auth persistence, SMS delivery, and Stripe live financial activation remain proof owed.
+RELEASE_RECOVERY: position=forward-fix-complete; reference=PR #1190 merge 42ad0d36, migration run 34735838226, deployment 6417319452, db-live 42ad0d36.
 
 ## Scope and collisions
 
