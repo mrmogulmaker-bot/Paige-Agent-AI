@@ -35,7 +35,7 @@ BEGIN;
 -- SET-ROLE proof can exercise the real validation read; it does not change any assertion below (the
 -- helper is body-scoped to auth.uid(), §59). The missing migration-level `authenticated` grant — a
 -- latent gap in the admin client-thread oversight branch, OUTSIDE this task↔thread slice — is filed
--- separately for its own §37-verified fix; it is not masked here.
+-- as issue #1204 for its own §37-verified fix; it is not masked here.
 GRANT EXECUTE ON FUNCTION public.is_tenant_admin(uuid) TO authenticated;
 
 INSERT INTO auth.users (id, aud, role, email) VALUES

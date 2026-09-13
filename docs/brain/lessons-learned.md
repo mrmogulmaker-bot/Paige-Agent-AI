@@ -6,6 +6,12 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## A SECURITY DEFINER helper in an RLS policy must be EXECUTE-granted to EVERY role the policy runs under; and fixing a pgTAP's first failure EXPOSES the next one it was masking (2026-09-13)
+
+- **Symptom.** After reordering a SET-ROLE pgTAP fixture to satisfy `guard_active_tenant_membership()` (its first, masking failure), the proof hit a SECOND failure at the account-switch case: `permission denied for function is_tenant_admin`, raised while evaluating the `threads_select_owner_or_admin` RLS policy on `paige_chat_threads` as the `authenticated` role.
+- **Root cause (two traps).** (1) `is_tenant_admin(uuid)` is `SECURITY DEFINER` and is referenced by that policy's admin-oversight branch, but it was EXECUTE-granted only to `anon` (`20260703131428`), never `authenticated` — while its sibling in the SAME policy, `is_platform_owner()`, DID get the `authenticated` grant (`20260628220854`). A caller needs EXECUTE to INVOKE a definer function even though the body then runs as owner; the asymmetry left the admin client-thread oversight read unable to evaluate for `authenticated`. (2) A pgTAP that aborts on `ON_ERROR_STOP` at its first failing statement HIDES every later failure; fixing the first (the membership-guard order) is not "the fix" — it only reveals the next latent one. Expect to iterate until the terminal row prints.
+- **Rule.** When an RLS policy calls a SECURITY DEFINER helper, confirm that EXECUTE is granted to every role the policy is declared `TO` (here `authenticated`), not just `anon` — audit the whole helper family for parity, since these grants were added per-role in batches and one can be missed. And treat a green pgTAP as proven only when it reaches its explicit terminal row (`...PROVEN`) and `ROLLBACK`; a single `permission denied`/`RAISE` aborts the rest, so re-read the LAST psql line, not the step's red/green alone. The platform-level grant fix is tracked as issue #1204 (kept OUT of the task↔thread slice; the slice's proof grants it in its own harness with a comment).
+
 ## A service-role write-back keyed on a caller-supplied target, gated on a GLOBAL role, is a cross-tenant write IDOR (2026-09-13)
 
 - **Symptom.** `paige-write-back` let a tenant-A admin/coach write a tenant-B user's credit/identity record (`businesses`/`profiles`/`intake`/`credit_*`) — a §9 cross-tenant write. Surfaced during the A/B governed-adoption caller inventory, not by a failing test (the endpoint "worked" for every legitimate caller).
