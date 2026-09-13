@@ -15,6 +15,7 @@
 // paige-n8n's run/execution_get via a shared seam — never a forked n8n client), still contract-stable here.
 
 import { isNativeActionKind, nativeAdapter } from "./native-adapter.ts";
+import { n8nExecuteAdapter } from "./n8n-adapter.ts";
 
 export type AdapterKind = "n8n" | "native" | "unsupported" | (string & {});
 
@@ -106,7 +107,13 @@ const n8nAdapter: ActionAdapter = {
     if (resolveAdapterKind(actionKind) !== "n8n") return null;
     return { id: actionKind, effect: "mutate", outcomeChannel: "paige_act_executions" };
   },
-  // dispatch/readback: slice 2 (shared paige-n8n run/execution_get seam).
+  // C3: dispatch/readback drive the SHARED paige-n8n run/execution_get seam (never a forked client, §18).
+  // ASYNC by construction — dispatch fires + returns accepted_for_execution + the execution id; readback
+  // POLLS the execution (n8n has no completion callback). HIGH-risk governance is UNCHANGED: in the auto
+  // drainer an n8n act clamps to approval_pending and this dispatch is never reached; it fires only for an
+  // approved `execute` decision.
+  dispatch: n8nExecuteAdapter.dispatch,
+  readback: n8nExecuteAdapter.readback,
 };
 
 const REGISTRY: ReadonlyMap<AdapterKind, ActionAdapter> = new Map<AdapterKind, ActionAdapter>([
