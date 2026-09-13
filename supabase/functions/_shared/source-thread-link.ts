@@ -38,8 +38,11 @@
  * OWN thread in the resolved tenant. Returns null for foreign / forged / expired / absent threads.
  * MUST be RLS-scoped (run on the caller's JWT client) AND explicitly filtered by the server-resolved
  * auth uid and tenant — never the service-role client, which would bypass the RLS half of the fence.
- * A genuine lookup ERROR (not a "not found") should be thrown by the implementation so the caller can
- * decide; "not found" is represented as null.
+ * "not found" is represented as null. A genuine lookup ERROR also SAFE-DEGRADES to null — a
+ * traceability read must never fail the task write it rides on — but the implementation LOGS the
+ * error (§13/§32) so a systematic validation break (an RLS/column drift that nulls every link) is
+ * visible rather than silently swallowed. An errored read can never yield a foreign link (its data
+ * is null → this returns null).
  */
 export type OwnedThreadLookup = (claimedThreadId: string) => Promise<string | null>;
 

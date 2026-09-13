@@ -8,7 +8,7 @@
 // injected validation `lookup`. The lookup's REAL security — cross-tenant / forged / expired denial
 // via RLS + owner+tenant filters — is proven by the SQL SET-ROLE test
 // (supabase/tests/source_thread_link_scope.sql) and the edge wiring assertions
-// (capability-status-tool-wiring.test.ts); here we prove the decision is correct for each case.
+// (task-thread-link-wiring.test.ts); here we prove the decision is correct for each case.
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, it, expect } from "vitest";
