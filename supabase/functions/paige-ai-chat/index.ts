@@ -8696,12 +8696,29 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             try { fetchUrlArg = String(JSON.parse(tc.function.arguments || "{}")?.url ?? "").trim(); } catch { /* malformed model args */ }
             if (!fetchUrlArg) {
               toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "No URL provided to fetch." }) });
+            } else if (WALL_CLOCK_MS - (Date.now() - startedAt) <= 500) {
+              // §39-P2 turn-budget bound: the model may emit several web_fetch calls in one
+              // round and executeToolCalls awaits them serially, each otherwise able to consume
+              // fetch-url-content's full 15s safeFetch bound — enough to run the turn past
+              // WALL_CLOCK_MS and risk termination with no reply. Once the turn's wall-clock is
+              // effectively spent, skip the fetch with an honest result rather than start another.
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, reason: "turn_budget_exhausted", error: "Ran out of time this turn to fetch that URL." }) });
             } else {
-              const wfResponse = await fetch(`${supabaseUrl}/functions/v1/fetch-url-content`, {
-                method: "POST",
-                headers: { Authorization: authHeader, "Content-Type": "application/json" },
-                body: JSON.stringify({ url: fetchUrlArg }),
-              });
+              // Cap THIS fetch by whatever is left of the turn, never exceeding fetch-url-content's
+              // own 15s bound — so N serial fetches can never exceed the turn's wall-clock.
+              const wfController = new AbortController();
+              const wfTimer = setTimeout(() => wfController.abort(), Math.min(15_000, WALL_CLOCK_MS - (Date.now() - startedAt)));
+              let wfResponse: Response;
+              try {
+                wfResponse = await fetch(`${supabaseUrl}/functions/v1/fetch-url-content`, {
+                  method: "POST",
+                  headers: { Authorization: authHeader, "Content-Type": "application/json" },
+                  body: JSON.stringify({ url: fetchUrlArg }),
+                  signal: wfController.signal,
+                });
+              } finally {
+                clearTimeout(wfTimer);
+              }
               const wfData = await wfResponse.json().catch(() => ({} as Record<string, unknown>));
               if (wfResponse.ok && (wfData as any)?.success && typeof (wfData as any).content === "string") {
                 const d = wfData as any;
