@@ -18,28 +18,40 @@ import { describe, it, expect } from "vitest";
 import {
   executeApprovedLayerCAct,
   type ApproveExecutorDb,
+  type ApproveExecInput,
 } from "../../supabase/functions/_shared/paige-orchestration/approve-executor.ts";
 
 // ── A chainable, thenable mock of the supabase-js surface the executor + native adapter use. ────────────
 type Rows = Record<string, unknown[]>;
 type Cfg = {
   rows: Rows;                                   // table → rows returned by a select
-  rpc: Record<string, (args: any) => { data: any; error: any }>;
-  calls: { rpc: Array<{ fn: string; args: any }> };
+  rpc: Record<string, (args: Record<string, unknown>) => { data: unknown; error: unknown }>;
+  calls: { rpc: Array<{ fn: string; args: Record<string, unknown> }> };
+};
+// A chainable, thenable stand-in for the supabase-js query builder. Deliberately structural: the executor
+// only ever selects/eq/order/limit then awaits, so the mock resolves the table's seeded rows.
+type QueryResult = { data: unknown[]; error: null };
+type QueryMock = {
+  select: () => QueryMock;
+  eq: () => QueryMock;
+  order: () => QueryMock;
+  limit: () => QueryMock;
+  then: <R1, R2>(onF: (v: QueryResult) => R1, onR: (e: unknown) => R2) => Promise<R1 | R2>;
 };
 function mockDb(cfg: Cfg): ApproveExecutorDb {
-  const makeQuery = (table: string) => {
-    const q: any = {
+  const makeQuery = (table: string): QueryMock => {
+    const q: QueryMock = {
       select() { return q; },
       eq() { return q; },
       order() { return q; },
       limit() { return q; },
-      then(onF: any, onR: any) {
-        return Promise.resolve({ data: cfg.rows[table] ?? [], error: null }).then(onF, onR);
+      then(onF, onR) {
+        return Promise.resolve<QueryResult>({ data: cfg.rows[table] ?? [], error: null }).then(onF, onR);
       },
     };
     return q;
   };
+  // The executor consumes this through the real ApproveExecutorDb type; the double stands in at that boundary.
   return {
     from: (t: string) => makeQuery(t),
     rpc: async (fn: string, args: Record<string, unknown>) => {
@@ -48,7 +60,7 @@ function mockDb(cfg: Cfg): ApproveExecutorDb {
       if (h) return h(args);
       return { data: null, error: null }; // best-effort telemetry rpcs (record_capability_run/record_rail_event/…)
     },
-  };
+  } as unknown as ApproveExecutorDb;
 }
 
 const liveAvailability = () => Promise.resolve({ ok: true as const, status: { availability: "live" as const } });
@@ -72,13 +84,13 @@ const baseCfg = (over: Partial<Cfg["rows"]> = {}, rpcOver: Partial<Cfg["rpc"]> =
   rpc: {
     paige_approve_act_execution: () => ({ data: { outcome: "accepted_for_execution" }, error: null }),
     set_journey_stage: () => ({ data: { unchanged: false }, error: null }), // changed → reconcile by correlation
-    paige_record_act_execution: (a: any) => ({ data: { id: "row1", outcome: a._outcome }, error: null }),
+    paige_record_act_execution: (a: Record<string, unknown>) => ({ data: { id: "row1", outcome: a._outcome }, error: null }),
     ...rpcOver,
   },
 });
 
 const run = (cfg: Cfg, over: Record<string, unknown> = {}) =>
-  executeApprovedLayerCAct({ db: mockDb(cfg), eventId: "e1", actId: "act1", approverUserId: "u1", expectedTenantId: "t1", resolveAvailability: liveAvailability as any, ...over });
+  executeApprovedLayerCAct({ db: mockDb(cfg), eventId: "e1", actId: "act1", approverUserId: "u1", expectedTenantId: "t1", resolveAvailability: liveAvailability as unknown as ApproveExecInput["resolveAvailability"], ...over });
 
 describe("approve-executor — happy path: a held native act is redeemed, dispatched, and executed", () => {
   it("redeems via the approve RPC, dispatches the native adapter, advances the ledger to executed", async () => {
@@ -123,7 +135,7 @@ describe("approve-executor — happy path: a held native act is redeemed, dispat
     const cfg = baseCfg({}, { set_journey_stage: () => ({ data: { unchanged: true }, error: null }) });
     const res = await run(cfg);
     expect(res.outcome).toBe("executed");
-    expect((res.detail as any).already_at_requested_stage).toBe(true);
+    expect((res.detail as Record<string, unknown>).already_at_requested_stage).toBe(true);
     // no record_rail_event on an idempotent no-op
     expect(cfg.calls.rpc.map((c) => c.fn)).not.toContain("record_rail_event");
   });
@@ -209,7 +221,7 @@ describe("approve-executor — fail-closed + honest (nothing consumed, nothing d
     expect(res.outcome).toBe("accepted_for_execution"); // the TRUE persisted state, not "executed"
     expect(res.executed).toBe(false);
     expect(res.reason).toBe("ledger_write_failed");
-    expect((res.detail as any).attempted_outcome).toBe("executed"); // traceable, but not consumed by the caller
+    expect((res.detail as Record<string, unknown>).attempted_outcome).toBe("executed"); // traceable, but not consumed by the caller
   });
 });
 
