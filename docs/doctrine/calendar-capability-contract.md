@@ -119,8 +119,9 @@ Recorded, not started. None of these are in-scope for a Calendar hotfix.
 
 ## Calendar-link SHARING (E7) — a comms-governed send of a read-only link
 
-**RELEASE-READY DRAFT, HELD 2026-09-13** (branch `claude/calendar-e7-link-sharing`; owner reserved a
-separate release decision). This is a NEW capability class, distinct from FU-1/2/3 above and from the
+**SHIPPED LIVE 2026-09-13, Gate A** (owner authorized the release; PR #1252 squash `5fbb7c1b`;
+`deploy-migrations` #269 + `deploy-edge-functions` #323, db-live=edge-live=`5fbb7c1b`, zero migration +
+edge drift). This is a NEW capability class, distinct from FU-1/2/3 above and from the
 FU-2 booking/reschedule/cancel WRITE path: Paige prepares a **published** calendar's public booking
 link (`/book/{slug}`) and, after the confirm gate, **shares** it with a tenant contact by **email or
 SMS** — a **comms-governed send of a read-only link**, not a calendar write.
@@ -144,9 +145,12 @@ SMS** — a **comms-governed send of a read-only link**, not a calendar write.
   queued/blocked/failed/`needs_config` send is reported as itself, never as sent. When no channel is
   eligible, E7 returns copy-ready text.
 - **Proof:** pgTAP `calendar_link_shareable.sql` (24 assertions) + the adapter adversarial smoke
-  `scripts/calendar-link-share-smoke.mjs`-class (`.mts`, 39 assertions), both wired into
+  `scripts/calendar-link-share-smoke.mjs`-class (`.mts`, 42 assertions), both wired into
   `calendar-preset-seam.yml`. Full record: `docs/evidence/proofs/calendar-link-sharing-e7/README.md`.
-  Authenticated live-drive + `deno check` + prod-SQL persisted-confirm are PROOF OWED (§32.c).
+  MAJOR-2 catalogue-preservation PROVEN on real PG16 (0 rows dropped/overwritten, +1 `calendar_link_send`);
+  `deno check`/typecheck-ratchet/build green in CI on `647b30f6`; migration PERSISTED on prod
+  (`deploy-migrations` #269 verify + zero drift). STILL PROOF OWED (§32.c, browser/JWT/prod-SQL session):
+  authenticated in-chat live-drive, `/book` origin confirm, direct prod-SQL object read.
 
 **Cross-references:** §7 (tenant-authored portal) · §9 (tenant isolation) · §10
 (Paige-governable seams) · §13 (honest reporting) · §16 (autonomy lanes) · §18 (one home) ·
