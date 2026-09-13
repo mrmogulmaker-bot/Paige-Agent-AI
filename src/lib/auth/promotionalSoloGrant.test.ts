@@ -5,6 +5,10 @@ const migration = readFileSync(
   "supabase/migrations/20270131000000_platform_promotional_solo_grant.sql",
   "utf8",
 );
+const recoveryMigration = readFileSync(
+  "supabase/migrations/20270201000000_platform_promotional_solo_grant_recovery.sql",
+  "utf8",
+);
 const contractWorkflow = readFileSync(
   ".github/workflows/paige-spine-contract.yml",
   "utf8",
@@ -41,6 +45,8 @@ describe("platform promotional Solo grant contract", () => {
     expect(migration).toContain("pg_advisory_xact_lock");
     expect(migration).toContain("ON CONFLICT ON CONSTRAINT tenant_members_tenant_user_unique");
     expect(migration).not.toContain("min(ps.id)");
+    expect(recoveryMigration).toContain("CREATE OR REPLACE FUNCTION public.platform_grant_promotional_solo");
+    expect(recoveryMigration).toContain("TO service_role");
     expect(migration).toContain("platform_subscriptions_promotional_grant_tenant_uidx");
     expect(migration).toContain("paige_audit_log_promotional_solo_grant_uidx");
     expect(migration).toContain("platform_usage_events_promotional_solo_grant_uidx");
