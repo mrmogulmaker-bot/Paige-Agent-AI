@@ -8485,7 +8485,18 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 // an approval of them, so it must still get its own card, not the terminal.
                 else if (!lookupError && (matches?.length ?? 0) >= 1
                          && (identityVal !== null || gateArgs.confirm === true)) approvedSetAmbiguous = true;
-              } catch { /* A failed lookup cannot approve an action. */ }
+                // A lookup FAILURE (a PostgREST error, or the jsonb `args->>…` path filter being
+                // rejected) must NOT fall through to recordConfirmation — that would mint a drifted
+                // proposal and recreate the exact re-ask loop this patch contains. This block only
+                // runs when the operator IS approving (the `approvedConfirmations.size > 0` guard
+                // above), so any failure here is mid-approval: resolve it to FIX B's honest terminal
+                // (nothing claimed, nothing recorded), never a fresh proposal. (Codex P1, 2026-09-13.)
+                else if (lookupError) approvedSetAmbiguous = true;
+              } catch {
+                // A THROWN failure is the same hazard as the returned error above, and the entry
+                // guard (size > 0) means we are always mid-approval here — fail to the honest terminal.
+                approvedSetAmbiguous = true;
+              }
             }
             const surfaceApproved = approvedFingerprint !== undefined;
             // CHANNEL 2 — the model's word that the operator said yes. Necessary, because five of
