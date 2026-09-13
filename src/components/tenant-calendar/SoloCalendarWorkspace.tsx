@@ -79,6 +79,13 @@ function sameDay(a: Date, b: Date) {
  *  removing it would quietly rewrite the day's history. */
 function isOff(b: SoloBooking) { return b.status === "cancelled" || b.status === "no_show"; }
 
+/** A class session and its seats share one start/end. `reschedule_internal_booking`
+ *  moves a SINGLE row, so moving the session marker would leave every attendee seat
+ *  at the old time — an orphaned, corrupted group. Until an atomic group-move seam
+ *  exists, a grouped booking is not reschedulable from here (its details can still
+ *  be edited — that never touches time). */
+function isGrouped(b: SoloBooking) { return b.booking_kind === "class_session" || b.booking_kind === "class_seat"; }
+
 interface RailGroupProps {
   title: string;
   defaultOpen?: boolean;
@@ -565,12 +572,16 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
               {/* Move and edit REPLACE this drawer (see the day-drawer convention):
                   each hands off to its own form so two dialogs never stack. A
                   cancelled booking is not moved or re-detailed — it is re-created —
-                  so both are withheld once it is off the schedule. */}
+                  so both are withheld once it is off the schedule. A class session
+                  and its seats move together or not at all: single-row reschedule
+                  would orphan the seats, so Reschedule is withheld for grouped
+                  bookings until an atomic group-move seam exists. */}
               <button
                 type="button"
                 className="sc-btn"
                 onClick={() => { setRescheduling(detail); setDetail(null); setActionMsg(null); }}
-                disabled={isOff(detail)}
+                disabled={isOff(detail) || isGrouped(detail)}
+                title={isGrouped(detail) ? "A class and its attendees move together — group reschedule isn't available yet." : undefined}
               >
                 Reschedule
               </button>

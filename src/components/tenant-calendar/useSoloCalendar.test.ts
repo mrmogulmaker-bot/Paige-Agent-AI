@@ -231,6 +231,20 @@ describe("bookingWriteMessage", () => {
       .toBe("That time could not be used.");
   });
 
+  // 22023 is shared: reschedule raises it for a bad time, but the edit seam also
+  // raises it for a missing title or a calendar that left the tenant. Reporting
+  // "that time could not be used" for a details edit that never touched the time
+  // would be a lie (§13) — the guard's prefix decides the sentence.
+  it("tells 22023 sub-cases apart by the guard's message prefix", () => {
+    expect(bookingWriteMessage({ code: "22023", message: "BOOKING_TITLE_REQUIRED" }))
+      .toBe("An appointment needs a title.");
+    expect(bookingWriteMessage({ code: "22023", message: "BOOKING_BAD_CALENDAR: calendar not in this tenant" }))
+      .toBe("That calendar is no longer available.");
+    // A bare/unknown 22023 (e.g. a genuine bad time) keeps the time sentence.
+    expect(bookingWriteMessage({ code: "22023", message: "some other 22023" }))
+      .toBe("That time could not be used.");
+  });
+
   it("surfaces an unrecognised failure verbatim instead of swallowing it", () => {
     expect(bookingWriteMessage({ code: "08006", message: "connection failure" })).toBe("connection failure");
     expect(bookingWriteMessage({ message: "no code at all" })).toBe("no code at all");

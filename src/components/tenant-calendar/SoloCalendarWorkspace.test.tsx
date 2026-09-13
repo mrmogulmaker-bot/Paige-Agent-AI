@@ -325,6 +325,16 @@ describe("Solo Calendar — the detail drawer", () => {
     expect((buttonByText(/Edit details/i, document.body) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("withholds Reschedule on a class session — a single-row move would orphan its seats", () => {
+    // reschedule_internal_booking moves ONE row; a class marker and its seats share
+    // a start/end, so moving just the marker separates the class from its attendees.
+    // Until an atomic group-move seam exists the action is disabled — but the class's
+    // details can still be edited, which never touches time.
+    openDetail({ booking_kind: "class_session", capacity: 8 });
+    expect((buttonByText(/Reschedule/i, document.body) as HTMLButtonElement).disabled).toBe(true);
+    expect((buttonByText(/Edit details/i, document.body) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("edits details through the update seam, carrying the current values", async () => {
     openDetail(); // title "Discovery call", guest "A. Guest"
     click(buttonByText(/Edit details/i, document.body));

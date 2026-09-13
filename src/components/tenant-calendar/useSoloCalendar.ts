@@ -441,6 +441,7 @@ export interface EditBookingInput {
  * a swallowed real cause is exactly what §13/§32 forbid.
  */
 export function bookingWriteMessage(err: { code?: string; message: string }): string {
+  const message = err.message ?? "";
   switch (err.code) {
     case "23505":
     case "23P01":
@@ -450,9 +451,16 @@ export function bookingWriteMessage(err: { code?: string; message: string }): st
     case "P0002":
       return "That appointment no longer exists.";
     case "22023":
+      // 22023 is shared across the booking seams: reschedule raises it for a bad
+      // time, but the edit seam also raises it for a missing title or a calendar
+      // that no longer belongs to the tenant. Reporting "that time could not be
+      // used" for a details edit that never touched the time is a lie (§13), so
+      // the guard's own prefix decides the sentence.
+      if (message.includes("BOOKING_TITLE_REQUIRED")) return "An appointment needs a title.";
+      if (message.includes("BOOKING_BAD_CALENDAR")) return "That calendar is no longer available.";
       return "That time could not be used.";
     default:
-      return err.message;
+      return message || err.message;
   }
 }
 
