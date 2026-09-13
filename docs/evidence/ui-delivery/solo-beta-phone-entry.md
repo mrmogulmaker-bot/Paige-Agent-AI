@@ -7,7 +7,7 @@ MATERIAL_FLOW_CHANGE: YES: A customer can choose a country and enter a local mob
 FLOW_PROTOTYPE: PASS: Owner approved no-+1 entry and an international setting in this task before implementation.
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: A new Solo customer selects their country, enters the familiar local number, and continues through the unchanged Create Solo Beta account action.
 VISUAL_DIRECTION: PASS: The native accessible country selector is contained within the existing signup field hierarchy with no added decoration or competing action.
-AUTOMATED_EVIDENCE: PASS: Exact hotfix head 557874d5 passed 41/41 phone, recovery, and Solo security regressions; local normalization covers US, UK, Australia, explicit E.164 override, invalid input, and more than 200 country options.
+AUTOMATED_EVIDENCE: PASS: Retained implementation head 357582bd735edf110ddcc6dc69d620438fd3df40 passed 181/181 focused phone, migration-recovery, acquisition, billing, webhook, and Solo security regressions; local normalization covers US, UK, Australia, explicit E.164 override, invalid input, and more than 200 country options.
 STATIC_EVIDENCE: PASS: Production build, ci:regression, migration-version, managed-schema, definer-function, Rail-grant, Binding Ledger, release-governance, and diff-integrity checks passed locally.
 RENDERED_EVIDENCE: PASS: Fresh production build passed 178/178 browser checks at 1536x770, 1366x768, 1024x768, and 900x1000 in light and dark themes; artifacts remain under the existing gitignored scripts/live-drive/artifacts/solo-beta-acquisition home.
 BEHAVIORAL_EVIDENCE: PASS: Each rendered Auth state defaulted to United States, exposed more than 200 labeled countries/calling codes, accepted 4244575247 without +1, kept the primary action reachable, and produced no page error or horizontal overflow.
@@ -36,8 +36,8 @@ SOLO_900X1000_PAIGE_CLOSED: PASS: light/dark Auth screenshots; responsive phone 
 SOLO_900X1000_PAIGE_OPEN: NOT_APPLICABLE: public Auth does not mount the Paige panel.
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
-INTERNAL_BUILD_IDENTITY: 557874d5c5d75ac5dbafb2bf0b8958769ae6261b; deployment=NOT_DEPLOYED; environment=local; migrations=PROOF_OWED(production_recovery_hotfix); edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/solo-beta-phone-entry.md
-RELEASE_CHANNEL: development: local exact-head build and rendered proof; owner-approved production promotion follows green PR checks.
+INTERNAL_BUILD_IDENTITY: 357582bd735edf110ddcc6dc69d620438fd3df40; deployment=NOT_DEPLOYED; environment=local; migrations=PROOF_OWED(production_recovery_hotfix); edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/solo-beta-phone-entry.md
+RELEASE_CHANNEL: development: retained implementation build and rendered proof; owner-approved production promotion follows exact-head PR checks.
 RELEASE_CLASSIFICATION: patch: customer-visible phone repair plus fail-closed migration convergence.
 CUSTOMER_RELEASE_IDENTITY: none: hotfix not yet merged or deployed.
 RELEASE_NOTE_REQUIRED: YES: customer-visible signup entry changes.
