@@ -2345,6 +2345,7 @@ export type Database = {
           logo_url: string | null
           min_notice_min: number
           notify_config: Json
+          published_at: string | null
           redirect_url: string | null
           show_company_name: boolean
           slug: string
@@ -2382,6 +2383,7 @@ export type Database = {
           logo_url?: string | null
           min_notice_min?: number
           notify_config?: Json
+          published_at?: string | null
           redirect_url?: string | null
           show_company_name?: boolean
           slug: string
@@ -2419,6 +2421,7 @@ export type Database = {
           logo_url?: string | null
           min_notice_min?: number
           notify_config?: Json
+          published_at?: string | null
           redirect_url?: string | null
           show_company_name?: boolean
           slug?: string
