@@ -1085,7 +1085,6 @@
         "next_slice": "Harden + reach (capability-system slice 4): reconcile SSRF guards and complete the §32.c authenticated drive."
       },
       "code_anchors": [
-        { "path": "supabase/functions/browser-use/index.ts", "role": "provider_adapter", "note": "browser-worker entry point." },
         { "path": "supabase/functions/paige-deep-research/index.ts", "role": "provider_adapter", "note": "deep-research seam (Firecrawl/web)." },
         { "path": "services/paige-browser/server.js", "role": "provider_adapter", "note": "SSRF-hardened Playwright browser Fly service." },
         { "path": "supabase/functions/_shared/secure-browser-authority.ts", "role": "fail_closed_containment", "note": "authority fence — Paige-driven writes (login/submit/click/download) are allowlist-REJECTED; read-only egress (#1042)." }

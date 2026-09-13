@@ -263,6 +263,7 @@ export function validateRegistry(reg) {
             continue;
           }
           if (!nonEmptyStr(a.path)) E(`provider "${tag}": code_anchors entry missing non-empty string "path"`);
+          else if (a.path.startsWith("/") || a.path.split("/").includes("..")) E(`provider "${tag}": code_anchors path "${a.path}" must be repo-relative — no absolute path, no ".." traversal (an anchor must identify repository code, never a CI-host file — Codex P2)`);
           if (!nonEmptyStr(a.role)) E(`provider "${tag}": code_anchors entry missing non-empty string "role"`);
           else if (!CODE_ANCHOR_ROLES.includes(a.role)) E(`provider "${tag}": code_anchors entry role "${a.role}" is not one of ${CODE_ANCHOR_ROLES.join("|")} (a controlled, drift-proof vocabulary — owner refinement 2026-09-13)`);
           if ("note" in a && typeof a.note !== "string") E(`provider "${tag}": code_anchors entry "note" must be a string when present`);
@@ -353,6 +354,10 @@ export function findDeadCodeAnchors(reg, exists) {
 // in its LAST path segment) must match ≥1 FILE. Dependency-free; only a last-segment `*` is supported.
 function anchorExists(p) {
   if (typeof p !== "string" || !p) return false;
+  // Repo-containment backstop (Codex P2): never stat a path outside the repo tree — an absolute path
+  // (/etc/passwd) or a `..` escape must not satisfy the dead-anchor check with a CI-host file. The pure
+  // validateRegistry already rejects such shapes structurally; this is defense-in-depth at the fs layer.
+  if (p.startsWith("/") || p.split("/").includes("..")) return false;
   const isFile = (f) => { try { return fs.statSync(f).isFile(); } catch { return false; } };
   if (!p.includes("*")) return isFile(p);
   const slash = p.lastIndexOf("/");
@@ -483,6 +488,15 @@ function selfTest() {
   mustFail("null field_schema skips the code_anchors contract", (r) => {
     r.field_schema = null;
   });
+  // A code_anchor path must be repo-relative — an absolute path or a `..` escape must fail (Codex P2).
+  mustFail("code_anchor path is absolute (escapes the repo)", (r) => {
+    const p = r.providers.find((x) => ["LIVE", "PARTIAL", "PROOF_OWED"].includes(x.status));
+    p.code_anchors = [{ path: "/etc/passwd", role: "provider_adapter" }];
+  });
+  mustFail("code_anchor path uses .. traversal (escapes the repo)", (r) => {
+    const p = r.providers.find((x) => ["LIVE", "PARTIAL", "PROOF_OWED"].includes(x.status));
+    p.code_anchors = [{ path: "../../../etc/passwd", role: "provider_adapter" }];
+  });
 
   // Prove the DEAD-ANCHOR RESOLVER actually catches a missing path — not just the structural rules.
   // With exists=()=>false, every cited anchor on the real registry must be flagged (>=1).
@@ -503,6 +517,13 @@ function selfTest() {
   }
   if (!anchorExists("supabase/functions/_shared/twilio.ts")) {
     fails.push("anchorExists rejected a real file 'supabase/functions/_shared/twilio.ts' — the file resolver is broken");
+  }
+  // Prove the repo-containment backstop (Codex P2): a path outside the repo tree must NOT resolve.
+  if (anchorExists("/etc/passwd")) {
+    fails.push("anchorExists accepted an absolute path outside the repo (Codex P2)");
+  }
+  if (anchorExists("../package.json")) {
+    fails.push("anchorExists accepted a parent-traversal path escaping the repo (Codex P2)");
   }
 
   if (fails.length) {
