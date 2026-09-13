@@ -1,6 +1,6 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(65);
+SELECT plan(66);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
@@ -79,6 +79,7 @@ CREATE TEMP TABLE auto_stub_primary_guard AS SELECT public.execute_crm_command(
  'c7200000-0000-4000-8000-000000002222','c7200000-0000-4000-8000-000000000001',
  '{"approval_channel":"operator_card","action":"contact.create","patch":{"first_name":"Auto","last_name":"Stub","entity_name":"Secondary Auto Stub"}}','auto-stub-primary-guard-1') result;
 SELECT is((SELECT count(*)::integer FROM public.businesses WHERE tenant_id='c7200000-0000-4000-8000-000000002222' AND owner_user_id='c7200000-0000-4000-8000-000000000001' AND is_active AND is_primary),1,'contact auto-stub preserves exactly one active primary company for the owner');
+SELECT is((SELECT count(*)::integer FROM public.businesses WHERE tenant_id='c7200000-0000-4000-8000-000000002222' AND owner_user_id='c7200000-0000-4000-8000-000000000001' AND legal_name='Secondary Auto Stub' AND is_active AND NOT is_primary),1,'contact auto-stub creates the requested linked company without promoting a second primary');
 CREATE TEMP TABLE task_metadata_fixture AS SELECT public.execute_crm_command(
  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
  '{"approval_channel":"operator_card","action":"task.create","patch":{"title":"Metadata Fixture"}}','task-metadata-create-1') result;

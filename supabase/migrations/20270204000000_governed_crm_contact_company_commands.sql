@@ -87,7 +87,7 @@ returns trigger language plpgsql security definer set search_path='' as $$
 declare
   existing_business_id uuid; new_business_id uuid; trimmed_name text; owner_user_id uuid;
 begin
-  trimmed_name:=pg_catalog.nullif(pg_catalog.btrim(pg_catalog.coalesce(new.entity_name,'')),'');
+  trimmed_name:=nullif(pg_catalog.btrim(coalesce(new.entity_name,'')),'');
   if trimmed_name is null or new.primary_business_id is not null then return new; end if;
   if new.linked_user_id is not null and exists(select 1 from auth.users u where u.id=new.linked_user_id) then
     owner_user_id:=new.linked_user_id;
@@ -100,7 +100,7 @@ begin
   if owner_user_id=new.linked_user_id then
     select b.id into existing_business_id from public.businesses b
      where b.tenant_id=new.tenant_id and b.owner_user_id=owner_user_id
-     order by pg_catalog.coalesce(b.is_primary,false) desc,b.created_at asc limit 1;
+     order by coalesce(b.is_primary,false) desc,b.created_at asc limit 1;
     if existing_business_id is not null then
       update public.clients c set primary_business_id=existing_business_id,updated_at=pg_catalog.now()
        where c.id=new.id and c.primary_business_id is null;
