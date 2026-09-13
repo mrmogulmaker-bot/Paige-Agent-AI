@@ -1,8 +1,10 @@
 import type { SpineCapability } from "../contracts.ts";
 
-// Booking-PRESET lifecycle — the conversational create / revise / publish / pause / list path onto the
-// EXISTING governed booking-preset seam (migration 20270127000000: create_calendar_preset,
-// update_calendar_preset, publish_calendar_preset, pause_calendar_preset, get_calendar_presets).
+// Booking-PRESET lifecycle — the conversational create / revise / publish / pause / list path (plus the
+// S1 duplicate / archive / restore) onto the EXISTING governed booking-preset seam: migration
+// 20270301000000 (create_calendar_preset, update_calendar_preset, publish_calendar_preset,
+// pause_calendar_preset, get_calendar_presets) and 20270302000000 (duplicate_calendar_preset,
+// archive_calendar_preset, restore_calendar_preset, + the archived guard and the 'archived' lifecycle).
 // Registered here, in its own domain, so the Chat handler consumes it THROUGH the Spine rather than
 // hand-wiring a tool — the exact same server-authorized RPC path the Settings › Connections › Calendars
 // UI uses (owner ruling 2026-09-13; §10 callable seam). There is NO second preset model and NO chat-only
