@@ -85,21 +85,21 @@ revoke all on function public.crm_actor_can_access_record(uuid,uuid,text,uuid) f
 create or replace function public.auto_stub_business_from_contact()
 returns trigger language plpgsql security definer set search_path='' as $$
 declare
-  existing_business_id uuid; new_business_id uuid; trimmed_name text; owner_user_id uuid;
+  existing_business_id uuid; new_business_id uuid; trimmed_name text; v_owner_user_id uuid;
 begin
   trimmed_name:=nullif(pg_catalog.btrim(coalesce(new.entity_name,'')),'');
   if trimmed_name is null or new.primary_business_id is not null then return new; end if;
   if new.linked_user_id is not null and exists(select 1 from auth.users u where u.id=new.linked_user_id) then
-    owner_user_id:=new.linked_user_id;
+    v_owner_user_id:=new.linked_user_id;
   elsif new.created_by is not null and exists(select 1 from auth.users u where u.id=new.created_by) then
-    owner_user_id:=new.created_by;
+    v_owner_user_id:=new.created_by;
   else
     return new;
   end if;
-  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('business-primary:'||new.tenant_id::text||':'||owner_user_id::text,0));
-  if owner_user_id=new.linked_user_id then
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('business-primary:'||new.tenant_id::text||':'||v_owner_user_id::text,0));
+  if v_owner_user_id=new.linked_user_id then
     select b.id into existing_business_id from public.businesses b
-     where b.tenant_id=new.tenant_id and b.owner_user_id=owner_user_id
+     where b.tenant_id=new.tenant_id and b.owner_user_id=v_owner_user_id
      order by coalesce(b.is_primary,false) desc,b.created_at asc limit 1;
     if existing_business_id is not null then
       update public.clients c set primary_business_id=existing_business_id,updated_at=pg_catalog.now()
@@ -108,16 +108,16 @@ begin
     end if;
   end if;
   insert into public.businesses(tenant_id,owner_user_id,legal_name,entity_type,is_primary,is_active,organizational_level,display_order)
-  values(new.tenant_id,owner_user_id,trimmed_name,new.entity_type::public.entity_type,
-    not exists(select 1 from public.businesses b where b.tenant_id=new.tenant_id and b.owner_user_id=owner_user_id and b.is_primary),true,0,0)
+  values(new.tenant_id,v_owner_user_id,trimmed_name,new.entity_type::public.entity_type,
+    not exists(select 1 from public.businesses b where b.tenant_id=new.tenant_id and b.owner_user_id=v_owner_user_id and b.is_primary),true,0,0)
   returning id into new_business_id;
   update public.clients c set primary_business_id=new_business_id,updated_at=pg_catalog.now()
    where c.id=new.id and c.primary_business_id is null;
   begin
     insert into public.paige_audit_log(actor_user_id,action,target_type,target_id,metadata)
     values(null,'auto_stub_business_from_contact','business',new_business_id,pg_catalog.jsonb_build_object(
-      'contact_id',new.id,'owner_user_id',owner_user_id,
-      'owner_source',case when owner_user_id=new.linked_user_id then 'linked_user_id' else 'created_by_fallback' end,
+      'contact_id',new.id,'owner_user_id',v_owner_user_id,
+      'owner_source',case when v_owner_user_id=new.linked_user_id then 'linked_user_id' else 'created_by_fallback' end,
       'legal_name',trimmed_name,'trigger_op',tg_op));
   exception when others then null;
   end;
