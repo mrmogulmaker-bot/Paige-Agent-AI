@@ -142,7 +142,7 @@ Each slice is its own PR with a §37 producer inventory, §32 proof, and §39 pe
   Output: a checked-in inventory. Still no behaviour change.
 - **R2 — Fix class (a).** Swap operator-intent checks to the operator helpers. Low risk, well-understood.
 - **R3 — Fix class (c) defects**, highest-severity first, one family per PR.
-  - **R3a — `match_paige_memory` ✅ DONE 2026-09-13** (migration `20270304000000`, §53/§59). The confirmed
+  - **R3a — `match_paige_memory` ✅ FIX SHIPPED 2026-09-13** (migration `20270304000000`, §53/§59; deployed + persisted + boundary-proven, prod runtime PROOF OWED §32.c/§70). The confirmed
     §4c defect: closed the forged-ID self-reference bypass + the global-`admin` trap; per-target
     resource-scoped authority (cross-USER: self / `is_platform_operator`; staff cross-CONTACT via
     `can_access_contact`; the per-user coach/tenant-admin grant was dropped — §39 Finding 1, as

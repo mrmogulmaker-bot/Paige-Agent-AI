@@ -7,8 +7,18 @@
 **Primary lens = the owner's seven Harness layers (A–G).** §4 is the concise layer-state map the
 directive asks for (which layers are real / partial / absent, their exact code+data seams, shared
 dependencies, next phase). §5 is the per-domain installation-contract detail behind it. Per the
-directive's §7, this Map is produced and then the program continues **phase by phase under Gate A** —
-no manufactured approval pause.
+directive's §7 (as of the 2026-09-12 survey), this Map was produced and the program then ran
+**phase by phase under Gate A** — no manufactured approval pause.
+
+> **STATUS UPDATE 2026-09-13 (owner-ruled) — the Harness Completion Program is COMPLETE; active Harness
+> construction has STOPPED.** The final Harness-owned slice was the `match_paige_memory` §53/§59
+> authority-correctness fix (PR #1233, `0060f575`; decision-log 2026-09-13). This is a
+> **construction-program** status — NOT a claim that every A–G layer is verified/LIVE. **The per-layer
+> states in §4/§5 below remain exactly as recorded (several PARTIAL), and are the source of truth for
+> per-layer reality.** The remaining layer work is parked for its own workstreams (Marketplace,
+> Financial Integrations, provider activation, R2b wrapper-closure, R3b rest-of-c1/c2). Remaining Harness
+> involvement is support/review only. The §10 "immediate next action" plan below is therefore
+> **superseded** and retained only as the pre-completion record.
 
 ## 0. What this document is — and what it is NOT
 
@@ -342,12 +352,18 @@ If this Map and a canonical record ever disagree, **the canonical record wins** 
 
 ---
 
-## 10. Immediate next action (directive §7)
+## 10. Immediate next action (directive §7) — ⚠️ SUPERSEDED 2026-09-13
 
-Per the standing directive, the program now continues **phase by phase under Gate A** — no manufactured
-approval pause. The next phase that proceeds **without duplicating current merged or open work** is
-chosen by grounding the concrete open PRs first (#1157 Layers A/B, the Social audit, Vibe Media) and
-avoiding a competing version:
+> **SUPERSEDED by the owner ruling of 2026-09-13 (see the STATUS UPDATE in §0 and decision-log
+> 2026-09-13): active Harness construction has STOPPED and this "immediate next action" plan no longer
+> directs work.** It is retained below only as the pre-completion record of what the next phases *would*
+> have been. The phases named here (P1/P2 and the per-domain slices) are parked for their own
+> workstreams; Harness involvement is now support/review only.
+
+Per the standing directive **as it stood on 2026-09-12**, the program then continued **phase by phase
+under Gate A** — no manufactured approval pause. The next phase that proceeds **without duplicating
+current merged or open work** was to be chosen by grounding the concrete open PRs first (#1157 Layers
+A/B, the Social audit, Vibe Media) and avoiding a competing version:
 
 - **P2 (the keystone, Layer C) waits on #1157 landing Layers A/B** — the act-execution engine must call
   the one kernel, never fork a second authority model (directive §1/§4).
