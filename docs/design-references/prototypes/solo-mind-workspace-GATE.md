@@ -170,16 +170,58 @@ them; do not have CC decide them:
 - A **Suggestions lens** was added (owner requirement (d) + §36 draft-first "drafts awaiting you");
   the drafted-follow-up record moved from Activity into Suggestions.
 
-## THE GATE — the approval question
+## Recommended phased implementation plan — each phase mapped to the EXISTING seams it reuses
 
-Pre-launch, §4/§69 say build through and merge; but this deliverable's own instruction is to **stop
-at review**. So this pack requests exactly one decision:
+**Ground rules (owner's mission):** *turn the fragmented foundations into one coherent workspace —
+NOT invent a parallel brain, memory store, knowledge base, or audit system.* So every phase **reuses
+a seam that already ships** (§18 one-home, §14 compose don't fork, §30 reuse-don't-rebuild). Each
+phase is independently shippable, Solo-first, and leaves an honest UNAVAILABLE for what it does not
+yet wire (§70). Each ships with the full gate: failing-first tests + headless smoke + the
+authenticated §32.c live-drive on a real Solo tenant + the §70 usability gate (a human completes the
+flow) + the §5/§39 two passes + the §51 per-tier check. Nothing is called LIVE without an
+authenticated drive.
 
-> **Does this Mind Workspace direction — orb-anchored, provenance-first, truth-state on every item,
-> Memory honestly "not available yet," all states honest — match what you want built? Which of the
-> five change-requests above do you want raised at the round table, and how do you want the
-> Knowledge-ownership decision resolved, before implementation?**
+| Phase | Goal (what a Solo owner can DO) | EXISTING seams it reuses (all already deployed) | New backend? | Honest state move |
+|---|---|---|---|---|
+| **1 — The understandable read workspace** | Open Mind; understand what Paige knows, where it came from, how sure she is; every item truthfully labelled; honest "not available yet" for the rest | `src/solo/SoloMindWorkspace.tsx` + `mind-orb/engine.ts` (the shipped, §28-frozen orb) · `useSoloKnowledge` → `tenant_knowledge_docs` (RLS, LIVE read) · `useN8nSpineReadiness` → `get_n8n_spine_readiness` · `useCommandCenter` → pending-approvals · `KnowledgePanel` delete/share · `mindOrbitPreference.ts` (localStorage prefs) | **NONE** — UI only (lenses, truth-state chips, provenance drawer, honesty banner, 9 states) | SOURCE-BUILT reads → a LIVE, understandable workspace once driven on a real tenant |
+| **2 — Knowledge provenance completeness** | Each doc shows its origin link + a real "last-verified", not just type+date | `tenant_knowledge_docs` (existing table — `source_url` ALREADY stored) · `kb-ingest-*` · `useSoloKnowledge` (add the field to the select) | **Small, additive** (CR2): surface stored `source_url`; add + populate a `last_verified` column. One additive migration, no new table | provenance PARTIAL → complete |
+| **3 — Owner-memory: view · correct · forget** | See the durable decisions/preferences Paige holds about the business; correct one; ask her to forget one | **The governed seam already ships, boundary-proven, with ZERO product callers:** `record_/get_/forget_paige_memory` (migration `20261223000000`, SECURITY DEFINER, §59 in-body scope) · `paige_owner_memory` · `match_paige_owner_memory` | **NONE new** — wire the deployed seam to a UI caller + the confirmed-only projection the memory contract already defines | Memory lens: UNAVAILABLE → LIVE. **Highest value-per-effort: no new backend contract, closes the map's sharpest §70 gap** |
+| **4 — Second-Brain history (receipts · decisions · suggestions)** | See what Paige has done, decided, and proposed — each typed and truthfully labelled | `get_solo_rail_activity` / `get_client_rail` (safe SECURITY DEFINER resolvers) · `record_capability_run` (receipt writer, 20+ adopters) · Phase-3 owner-memory `decision`/`agent_outcome` reads · `paige_pending_confirmations` (propose→confirm queue, for Suggestions) | **NONE** for the read (data grows as capabilities emit receipts; near-empty today, shown honestly) | receipts/decisions SOURCE-BUILT/PARTIAL → surfaced, honest |
+| **5 — Structured citations + workspace-scoped facts** | Click a cited claim → see its source; "current facts" render on the workspace, not only inside a client chat | `mindEvidence.ts` `rail:<uuid>` producer · `resolveEvidence.ts` envelope · deep-research `[n]` producer | **YES — the genuinely new backend (§00 round-table):** a structured `citations[]` payload/SSE + resolve endpoint (CR1); a scoped read path so a governed fact loads outside a client-scoped turn (C4/CR5); optionally SCR-2 (non-client subjects) + SCR-3 (richer safe facts) | citations PARTIAL/in-prose → verifiable; "current facts" PROOF-OWED → real |
 
-On approval, CC owns the implementation end-to-end through the canonical Solo seams, wiring every
-value to a real read or an honest absence, with the §70 usability gate and per-tier (§51) proof —
-and the losing/throwaway prototype is deleted, never left in production.
+**Cross-cutting dependency (NOT a Mind phase):** §60 Solo ≡ Sub-account. The workspace is built ON
+the Solo shell, so it reaches sub-accounts **automatically** the moment the owner-sequenced routing
+slice mounts `SoloApp` at `/business` (documented at `src/lib/routing/tierBranches.ts:624-648`). No
+Mind-specific work — it inherits.
+
+**Why this order:** Phase 1 delivers the whole understandable experience with zero backend risk;
+Phases 2–4 each *wire a seam that already exists* (the §14/§18 win — the hard backend is built,
+it just has no UI); Phase 5 is deliberately last because it is the only genuinely net-new backend and
+needs the §00 round table. Value lands early and honestly; the one big backend change is isolated.
+
+## THE FIRST DECISION I need before any production build begins
+
+Everything above is verified and ready; Phase 1 needs **no** backend. The one call that gates Phase 1
+— because it decides whether we build two knowledge homes or one (§18) — is:
+
+> **Should the Mind Workspace BECOME the single home for tenant-knowledge (understand **and** manage —
+> add / delete / share / organize), with the separate Solo Paige → Knowledge tab collapsed and
+> redirected into it? Or should Mind be the read/understand projection only, with management staying
+> in the Paige → Knowledge tab (Mind links to it)?**
+
+- **My recommendation (an architecture/seam call — CC's domain, not a visual verdict): consolidate —
+  Mind is the one knowledge home.** Reasons: (a) your assignment scope explicitly lists editing /
+  organizing / deletion as Mind responsibilities; (b) §18 forbids two homes for one capability, and
+  both surfaces already read the same `useSoloKnowledge` seam today; (c) it serves §7's one
+  intelligent surface. The old tab collapses redirect-safe (§58 — no 404).
+- **The lighter alternative:** Mind read-only, management stays in the tab. Smaller Phase 1, but
+  leaves two knowledge surfaces — a standing §18 smell we'd carry forward.
+
+Tell me **consolidate** or **read-only**, and I start Phase 1 (no new backend, so it moves fast). The
+five change-requests only gate Phases 2–5, so they do not block the start — but if you already know
+you want the owner-memory surface (Phase 3, no new backend either) or the citation contract (Phase 5,
+the one real backend change) prioritized, say so and I'll sequence to it.
+
+On approval, CC owns implementation end-to-end through the canonical Solo seams, wiring every value to
+a real read or an honest absence, with the §70 usability gate and §51 per-tier proof — and this
+throwaway prototype is deleted, never left in production.

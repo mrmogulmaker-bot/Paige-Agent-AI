@@ -62,7 +62,8 @@ safe-by-construction seam layer** with a **thin usable edge**:
 - **The Solo Mind orb reads real data but is read-only** — a visualization over three tenant-scoped
   hooks. It is **not** the governed Mind evidence contract (that contract binds exactly one capability,
   pipeline, inside a client-scoped chat turn).
-- **Memory** for the *client* audience is LIVE (chat auto-write + coach `ClientMemoryTab`). Memory for
+- **Memory** for the *client* audience is LIVE — code-wired (chat auto-write + coach `ClientMemoryTab`),
+  auth re-confirm owed this session. Memory for
   the *owner* — the governed `record/get/forget` seam, the confirmed-only projection, any owner-facing
   view/correct/forget UI — is `SOURCE-BUILT` or `UNAVAILABLE`: **zero product callers, no UI.**
 - **Second Brain** (receipts via the Rail, current facts via the Spine, decisions/outcomes/lessons via
