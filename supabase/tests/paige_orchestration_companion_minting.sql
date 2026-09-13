@@ -1,4 +1,5 @@
--- Layer C · C5 slice 2 — companion-minting + cancellation-sync + direct-approve guard + durable reconciler.
+-- Layer C · C5 slice 2 (+ fix-forward 20270306000000) — companion-minting, readable description, ledger-proven
+-- direct-approve guard, cancellation-sync, durable reconciler (RPC-return-truthful), and the idempotent backfill.
 -- Behavioural proof against the schema `supabase db reset` replayed from zero (house pgTAP style; synthetic
 -- opaque fixtures; the enclosing transaction is ALWAYS rolled back — no production/customer records).
 --
@@ -8,24 +9,14 @@
 -- then RE-ENABLED and exercised via real INSERT/UPDATE, and the reconciler is called as the cron/service
 -- context (auth.uid() NULL) exactly as pg_cron invokes it.
 begin;
-select plan(34);
+select plan(53);
 
--- ── Fixture ids ───────────────────────────────────────────────────────────────────────────────────────
--- tenant, events (E1..E8), acts (AC1..AC8), ledger rows (AD1..AD8), clients (C1,C5..C8).
--- E4/AD4 is an already-EXECUTED act (the cancellation no-clobber control). E5..E8 are reconciler orphans.
-
--- Seed the tenant in NORMAL mode (triggers ON) so its account_number-assignment trigger fires — the exact
--- column set + mode the passing contract tests use. `account_number` is NOT NULL and trigger-assigned;
--- seeding it with triggers disabled would suppress that trigger and the insert would violate NOT NULL.
--- tenants is a root table (no inbound FK deps here), so a triggers-on insert is safe and done up front.
+-- Seed the tenant in NORMAL mode (triggers ON) so its account_number-assignment trigger fires.
 insert into public.tenants(id, slug, name, status, account_type, account_number_prefix, features) values
   ('11111111-1111-4111-8111-111111111111', 'paige-c5s2-proof-tenant', 'Paige C5S2 Proof Tenant', 'active', 'standalone', 'PC5', '{}'::jsonb);
 
--- CI's supabase-test-db session does not honor session_replication_role (it is superuser-gated), so seed
--- WITHOUT a full parent graph using OWNER-privilege operations instead (postgres owns these tables): drop the
--- FK constraints on the three fixture tables and disable their USER triggers while seeding, so held/ambiguous
--- rows can be inserted with synthetic un-parented ids + explicit timestamps and the mint does not auto-fire.
--- Everything here is inside the enclosing BEGIN…ROLLBACK, so these schema changes revert with the transaction.
+-- OWNER-privilege seeding (see header): drop FK constraints + disable USER triggers on the fixture tables so
+-- held/ambiguous/orphan rows insert with synthetic ids + explicit timestamps and the mint does not auto-fire.
 do $$
 declare r record;
 begin
@@ -40,8 +31,8 @@ begin
     execute format('alter table %s drop constraint %I', r.tbl, r.conname);
   end loop;
 end $$;
-alter table public.paige_act_executions    disable trigger user;   -- mint + touch(updated_at) off while seeding
-alter table public.paige_pending_approvals disable trigger user;   -- policy/notify/sync/guard off while seeding
+alter table public.paige_act_executions    disable trigger user;
+alter table public.paige_pending_approvals disable trigger user;
 
 -- Native events (processing_state='done' = the orphan case the sweeper cannot re-drive).
 insert into public.paige_native_events(id, event_key, tenant_id, subject_table, subject_id, dedup_key, processing_state) values
@@ -52,18 +43,19 @@ insert into public.paige_native_events(id, event_key, tenant_id, subject_table, 
   ('1e000005-0000-4000-8000-000000000005','contact.created','11111111-1111-4111-8111-111111111111','clients','c0000005-0000-4000-8000-000000000005','dk-5','done'),
   ('1e000006-0000-4000-8000-000000000006','contact.created','11111111-1111-4111-8111-111111111111','clients','c0000006-0000-4000-8000-000000000006','dk-6','done'),
   ('1e000007-0000-4000-8000-000000000007','contact.created','11111111-1111-4111-8111-111111111111','clients','c0000007-0000-4000-8000-000000000007','dk-7','done'),
-  ('1e000008-0000-4000-8000-000000000008','contact.created','11111111-1111-4111-8111-111111111111','clients','c0000008-0000-4000-8000-000000000008','dk-8','done');
+  ('1e000008-0000-4000-8000-000000000008','contact.created','11111111-1111-4111-8111-111111111111','clients','c0000008-0000-4000-8000-000000000008','dk-8','done'),
+  ('1e00000b-0000-4000-8000-00000000000b','contact.created','11111111-1111-4111-8111-111111111111','clients','c000000b-0000-4000-8000-00000000000b','dk-b','done'),
+  ('1e00000c-0000-4000-8000-00000000000c','contact.created','11111111-1111-4111-8111-111111111111','clients','c000000c-0000-4000-8000-00000000000c','dk-c','done');
 
--- L1..L3: held acts seeded at accepted_for_execution (NO companion yet — the mint trigger is disabled during
--- seeding). They are transitioned into approval_pending after the triggers are re-enabled below, which fires
--- the mint. detail carries the engine's snapshot + risk.
+-- L1..L3: held acts seeded at accepted_for_execution (mint disabled); transitioned to approval_pending after
+-- triggers re-enable, firing the mint. detail carries the engine's snapshot + risk.
 insert into public.paige_act_executions
   (id, event_id, automation_id, act_id, act_position, tenant_id, adapter_kind, capability_key, effective_lane, outcome, idempotency_key, correlation_ref, detail) values
   ('ad000001-0000-4000-8000-000000000001','1e000001-0000-4000-8000-000000000001','a0000001-0000-4000-8000-000000000001','ac000001-0000-4000-8000-000000000001',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','accepted_for_execution','idem-1','corr-1', jsonb_build_object('snapshot_args', jsonb_build_object('stage_slug','engaged'), 'risk','high')),
   ('ad000002-0000-4000-8000-000000000002','1e000002-0000-4000-8000-000000000002','a0000002-0000-4000-8000-000000000002','ac000002-0000-4000-8000-000000000002',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','accepted_for_execution','idem-2','corr-2', jsonb_build_object('snapshot_args', jsonb_build_object('stage_slug','won'), 'risk','ordinary')),
   ('ad000003-0000-4000-8000-000000000003','1e000003-0000-4000-8000-000000000003','a0000003-0000-4000-8000-000000000003','ac000003-0000-4000-8000-000000000003',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','accepted_for_execution','idem-3','corr-3', jsonb_build_object('snapshot_args', jsonb_build_object('stage_slug','lead')));
 
--- L4: an already-EXECUTED held act + its still-pending companion (the cancellation no-clobber control).
+-- L4: an already-EXECUTED held act + its still-pending companion (cancellation no-clobber control).
 insert into public.paige_act_executions
   (id, event_id, automation_id, act_id, act_position, tenant_id, adapter_kind, capability_key, effective_lane, outcome, idempotency_key, correlation_ref, settled_at, detail) values
   ('ad000004-0000-4000-8000-000000000004','1e000004-0000-4000-8000-000000000004','a0000004-0000-4000-8000-000000000004','ac000004-0000-4000-8000-000000000004',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','executed','idem-4','corr-4', now(), '{}'::jsonb);
@@ -71,8 +63,7 @@ insert into public.paige_pending_approvals(type, draft_content, category, tenant
   ('other','{}'::jsonb,'crm.advance_journey_stage','11111111-1111-4111-8111-111111111111','paige_orchestration','pending','medium',
    jsonb_build_object('source','paige_orchestration','event_id','1e000004-0000-4000-8000-000000000004','act_id','ac000004-0000-4000-8000-000000000004'));
 
--- L5..L8: reconciler orphans (ambiguous, event done). updated_at backdated past the 10-min staleness bar
--- (except L8, which is fresh → must be EXCLUDED). created_at controls the 24h hard-fail deadline.
+-- L5..L8: reconciler orphans (ambiguous, event done). L8 is fresh → excluded by the 10-min bar.
 insert into public.paige_act_executions
   (id, event_id, automation_id, act_id, act_position, tenant_id, adapter_kind, capability_key, effective_lane, outcome, idempotency_key, correlation_ref, detail, created_at, updated_at, dispatched_at) values
   ('ad000005-0000-4000-8000-000000000005','1e000005-0000-4000-8000-000000000005','a0000005-0000-4000-8000-000000000005','ac000005-0000-4000-8000-000000000005',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','ambiguous','idem-5','corr-5', jsonb_build_object('snapshot_args', jsonb_build_object('stage_slug','engaged')), now()-interval '20 minutes', now()-interval '20 minutes', now()-interval '20 minutes'),
@@ -80,7 +71,7 @@ insert into public.paige_act_executions
   ('ad000007-0000-4000-8000-000000000007','1e000007-0000-4000-8000-000000000007','a0000007-0000-4000-8000-000000000007','ac000007-0000-4000-8000-000000000007',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','ambiguous','idem-7','corr-7', '{}'::jsonb, now()-interval '20 minutes', now()-interval '20 minutes', now()-interval '20 minutes'),
   ('ad000008-0000-4000-8000-000000000008','1e000008-0000-4000-8000-000000000008','a0000008-0000-4000-8000-000000000008','ac000008-0000-4000-8000-000000000008',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','ambiguous','idem-8','corr-8', '{}'::jsonb, now(), now(), now());
 
--- Companions (pending) for the reconciler orphans that will be resolved (L5 + L6).
+-- Companions (pending) for the reconciler orphans resolved (L5 + L6).
 insert into public.paige_pending_approvals(type, draft_content, category, tenant_id, source, status, risk_level, metadata) values
   ('other','{}'::jsonb,'crm.advance_journey_stage','11111111-1111-4111-8111-111111111111','paige_orchestration','pending','medium',
    jsonb_build_object('source','paige_orchestration','event_id','1e000005-0000-4000-8000-000000000005','act_id','ac000005-0000-4000-8000-000000000005')),
@@ -91,12 +82,36 @@ insert into public.paige_pending_approvals(type, draft_content, category, tenant
 insert into public.paige_journey_stage_transitions(contact_id, to_stage_id, source_event) values
   ('c0000005-0000-4000-8000-000000000005', 1, 'corr-5');
 
+-- LB: an already-EXECUTED held act + a pending companion — the guard's "approve LIVES when the ledger is
+-- resolved" control (the sanctioned service-role executor path).
+insert into public.paige_act_executions
+  (id, event_id, automation_id, act_id, act_position, tenant_id, adapter_kind, capability_key, effective_lane, outcome, idempotency_key, correlation_ref, settled_at, detail) values
+  ('ad00000b-0000-4000-8000-00000000000b','1e00000b-0000-4000-8000-00000000000b','a000000b-0000-4000-8000-00000000000b','ac00000b-0000-4000-8000-00000000000b',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','executed','idem-b','corr-b', now(), '{}'::jsonb);
+insert into public.paige_pending_approvals(id, type, draft_content, category, tenant_id, source, status, metadata) values
+  ('9a00000b-0000-4000-8000-00000000000b','other','{}'::jsonb,'crm.advance_journey_stage','11111111-1111-4111-8111-111111111111','paige_orchestration','pending',
+   jsonb_build_object('source','paige_orchestration','event_id','1e00000b-0000-4000-8000-00000000000b','act_id','ac00000b-0000-4000-8000-00000000000b'));
+
+-- LC: a held act at approval_pending with NO companion (mint disabled at seed) — the BACKFILL orphan.
+insert into public.paige_act_executions
+  (id, event_id, automation_id, act_id, act_position, tenant_id, adapter_kind, capability_key, effective_lane, outcome, idempotency_key, correlation_ref, detail) values
+  ('ad00000c-0000-4000-8000-00000000000c','1e00000c-0000-4000-8000-00000000000c','a000000c-0000-4000-8000-00000000000c','ac00000c-0000-4000-8000-00000000000c',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','approval_pending','idem-c','corr-c', jsonb_build_object('snapshot_args', jsonb_build_object('stage_slug','nurtured')));
+
+-- LD: an approval_pending act WITH a slice-1-style companion (draft_content='{}', NO summary) — the Codex P2
+-- "production-window" case the INSERT backfill can NOT reach (NOT EXISTS is false, a companion already exists).
+-- Seeded directly (triggers disabled) so it mimics exactly what 20270303000000's mint wrote before this
+-- fix-forward; the (4b) repair UPDATE must make it readable.
+insert into public.paige_act_executions
+  (id, event_id, automation_id, act_id, act_position, tenant_id, adapter_kind, capability_key, effective_lane, outcome, idempotency_key, correlation_ref, detail) values
+  ('ad00000d-0000-4000-8000-00000000000d','1e00000d-0000-4000-8000-00000000000d','a000000d-0000-4000-8000-00000000000d','ac00000d-0000-4000-8000-00000000000d',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','approval_pending','idem-d','corr-d', jsonb_build_object('snapshot_args', jsonb_build_object('stage_slug','won')));
+insert into public.paige_pending_approvals(id, type, draft_content, category, tenant_id, source, status, metadata) values
+  ('9a00000d-0000-4000-8000-00000000000d','other','{}'::jsonb,'crm.advance_journey_stage','11111111-1111-4111-8111-111111111111','paige_orchestration','pending',
+   jsonb_build_object('source','paige_orchestration','event_id','1e00000d-0000-4000-8000-00000000000d','act_id','ac00000d-0000-4000-8000-00000000000d'));
+
 -- A NON-orchestration approval (the direct-approve guard must NOT touch it).
 insert into public.paige_pending_approvals(id, type, draft_content, category, tenant_id, source, status, metadata) values
   ('9a000001-0000-4000-8000-000000000001','cs_draft','{}'::jsonb,'followup','11111111-1111-4111-8111-111111111111','paige_action_bus','pending','{}'::jsonb);
 
--- §59 cancellation-sync guard fixtures: two held acts + companions in tenant …1111, and an ACTIVE membership
--- for the legit approver (…7777) but NONE for the foreign caller (…8888). (event_id FKs bypassed in replica.)
+-- §59 cancellation-sync fixtures + memberships.
 insert into public.paige_act_executions
   (id, event_id, automation_id, act_id, act_position, tenant_id, adapter_kind, capability_key, effective_lane, outcome, idempotency_key, correlation_ref, detail) values
   ('ad000009-0000-4000-8000-000000000009','1e000009-0000-4000-8000-000000000009','a0000009-0000-4000-8000-000000000009','ac000009-0000-4000-8000-000000000009',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','approval_pending','idem-9','corr-9', '{}'::jsonb),
@@ -109,13 +124,11 @@ insert into public.paige_pending_approvals(id, type, draft_content, category, te
 insert into public.tenant_members(user_id, tenant_id, status) values
   ('77777777-7777-4777-8777-777777777777','11111111-1111-4111-8111-111111111111','active');
 
--- Re-enable the user triggers — now exercise the seams under test (mint on the UPDATE→approval_pending;
--- cancellation-sync + direct-approve guard on companion status UPDATEs). The FK constraints stay dropped for
--- the remainder of this transaction (reverted at ROLLBACK); the reconciler/guards read rows, not FKs.
+-- Re-enable the user triggers — now exercise the seams under test.
 alter table public.paige_act_executions    enable trigger user;
 alter table public.paige_pending_approvals enable trigger user;
 
--- ══ (A) MINT: transitioning a ledger row into approval_pending mints exactly one companion ══════════════
+-- ══ (A) MINT: transitioning a ledger row into approval_pending mints exactly one READABLE companion ══════
 update public.paige_act_executions set outcome='approval_pending' where id='ad000001-0000-4000-8000-000000000001';
 
 select is((select count(*)::int from public.paige_pending_approvals where source='paige_orchestration' and metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
@@ -132,8 +145,15 @@ select is((select risk_level from public.paige_pending_approvals where metadata-
           'high', 'mint: risk_level high mapped from detail.risk=high');
 select ok((select contact_id is null from public.paige_pending_approvals where metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
           'mint: contact_id is NULL (§9 — the held act never leaks into the client portal)');
-select is((select draft_content::text from public.paige_pending_approvals where metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
-          '{}', 'mint: draft_content is empty object');
+-- READABLE OUTPUT (finding #1): no more "(no summary)".
+select is((select draft_content->>'subject' from public.paige_pending_approvals where metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
+          'Advance Journey Stage (stage slug: engaged)', 'mint readable: subject humanizes the capability_key AND names the target args (§70 — operator sees WHICH stage)');
+select is((select summary from public.paige_pending_approvals where metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
+          'Advance Journey Stage (stage slug: engaged)', 'mint readable: summary carries the action AND the args — the only field ApprovalRow/ApprovalsInbox render (Codex P1), never just "(no summary)"');
+select ok((select draft_content->>'preview' like '%stage slug: engaged%' from public.paige_pending_approvals where metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
+          'mint readable: draft_content.preview renders the snapshot args');
+select ok((select draft_content->>'body' like '%Paige needs your approval%' from public.paige_pending_approvals where metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
+          'mint readable: draft_content.body explains the action to approve');
 select is((select metadata->>'event_id' from public.paige_pending_approvals where metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
           '1e000001-0000-4000-8000-000000000001', 'mint: metadata.event_id carried');
 select is((select metadata->>'act_execution_id' from public.paige_pending_approvals where metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
@@ -141,9 +161,12 @@ select is((select metadata->>'act_execution_id' from public.paige_pending_approv
 select is((select metadata->>'capability_id' from public.paige_pending_approvals where metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
           'crm.advance_journey_stage', 'mint: metadata.capability_id carried');
 select is((select metadata->'snapshot_args'->>'stage_slug' from public.paige_pending_approvals where metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
-          'engaged', 'mint: metadata.snapshot_args carried (the immutable governed args the reviewer sees)');
+          'engaged', 'mint: metadata.snapshot_args carried (the immutable governed args)');
 select ok((select submitted_by_user_id is null from public.paige_pending_approvals where metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
-          'mint: submitted_by_user_id NULL (proposed by Paige autonomously; no submitting human)');
+          'mint: submitted_by_user_id NULL (proposed by Paige autonomously)');
+-- the content helper also folds in a subject (client) label when present — proved directly (no clients fixture needed).
+select is((select public.paige_orchestration_approval_content('crm.advance_journey_stage','{"stage_slug":"engaged"}'::jsonb,'Jane Client')->>'subject'),
+          'Advance Journey Stage for Jane Client (stage slug: engaged)', 'content helper: subject names the record (client) AND the target args');
 
 -- risk mapping: 'ordinary' and absent both map to medium.
 update public.paige_act_executions set outcome='approval_pending' where id='ad000002-0000-4000-8000-000000000002';
@@ -153,14 +176,16 @@ select is((select risk_level from public.paige_pending_approvals where metadata-
 select is((select risk_level from public.paige_pending_approvals where metadata->>'act_id'='ac000003-0000-4000-8000-000000000003'),
           'medium', 'mint: risk_level medium mapped when detail.risk absent');
 
--- ══ (B) IDEMPOTENCY: a re-derive that leaves outcome at approval_pending does not double-mint ═══════════
+-- ══ (B) IDEMPOTENCY ═════════════════════════════════════════════════════════════════════════════════════
 update public.paige_act_executions set detail = detail || '{"redrain":true}'::jsonb where id='ad000001-0000-4000-8000-000000000001';
 select is((select count(*)::int from public.paige_pending_approvals where source='paige_orchestration' and metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
           1, 'idempotency: a re-derive (outcome stays approval_pending) never double-mints');
-select ok((select (tgtype & 4) > 0 and (tgtype & 16) > 0 from pg_trigger where tgname='trg_paige_mint_orchestration_approval'),
-          'mint trigger is wired AFTER INSERT OR UPDATE (fires on the real INSERT prod path too)');
+-- AFTER-ness is proven, not just implied: tgtype bit 2 (value 2) is the BEFORE flag, so (& 2)=0 means AFTER;
+-- bits 4 (INSERT) and 16 (UPDATE) prove the events. Together: AFTER INSERT OR UPDATE (fires on the real prod INSERT).
+select ok((select (tgtype & 2) = 0 and (tgtype & 4) > 0 and (tgtype & 16) > 0 from pg_trigger where tgname='trg_paige_mint_orchestration_approval'),
+          'mint trigger is wired AFTER (tgtype BEFORE-bit clear) INSERT OR UPDATE (fires on the real INSERT prod path too)');
 
--- ══ (C) CANCELLATION-SYNC: an inbox reject/skip settles a still-held act to cancelled, never clobbers ═══
+-- ══ (C) CANCELLATION-SYNC ═══════════════════════════════════════════════════════════════════════════════
 update public.paige_pending_approvals set status='rejected' where source='paige_orchestration' and metadata->>'act_id'='ac000001-0000-4000-8000-000000000001';
 select is((select outcome::text from public.paige_act_executions where id='ad000001-0000-4000-8000-000000000001'),
           'cancelled', 'cancellation-sync: reject settles the held act to cancelled');
@@ -172,57 +197,215 @@ select is((select outcome::text from public.paige_act_executions where id='ad000
 update public.paige_pending_approvals set status='rejected' where source='paige_orchestration' and metadata->>'act_id'='ac000004-0000-4000-8000-000000000004';
 select is((select outcome::text from public.paige_act_executions where id='ad000004-0000-4000-8000-000000000004'),
           'executed', 'cancellation-sync: reject does NOT clobber an already-executed act (guarded on approval_pending)');
-
--- §59 in-body caller-scope guard: a JWT caller NOT in the act's tenant cannot cancel it (the weak table RLS
--- may let them flip the status, but the ledger effect is refused); an active member of the tenant can.
-set request.jwt.claim.sub = '88888888-8888-4888-8888-888888888888';   -- foreign admin, not a member of …1111
+set request.jwt.claim.sub = '88888888-8888-4888-8888-888888888888';
 update public.paige_pending_approvals set status='rejected' where id='9a000009-0000-4000-8000-000000000009';
 reset request.jwt.claim.sub;
 select is((select outcome::text from public.paige_act_executions where id='ad000009-0000-4000-8000-000000000009'),
           'approval_pending', 'cancellation-sync §59: a cross-tenant JWT caller does NOT cancel the held act (safe degrade)');
-set request.jwt.claim.sub = '77777777-7777-4777-8777-777777777777';   -- active member of …1111
+set request.jwt.claim.sub = '77777777-7777-4777-8777-777777777777';
 update public.paige_pending_approvals set status='rejected' where id='9a00000a-0000-4000-8000-00000000000a';
 reset request.jwt.claim.sub;
 select is((select outcome::text from public.paige_act_executions where id='ad00000a-0000-4000-8000-00000000000a'),
           'cancelled', 'cancellation-sync §59: an active member of the act''s tenant DOES cancel the held act');
 
--- ══ (D) DIRECT-APPROVE GUARD: an orchestration approval reaches approved ONLY with an act_outcome stamp ═
+-- ══ (D) DIRECT-APPROVE GUARD — LEDGER-PROVEN, no client-writable bypass (finding #2) ════════════════════
+-- (D1) a JWT/browser caller may NEVER flip an orchestration approval to approved — even forging act_outcome.
+set request.jwt.claim.sub = '88888888-8888-4888-8888-888888888888';
 select throws_ok(
-  $$ update public.paige_pending_approvals set status='approved' where source='paige_orchestration' and metadata->>'act_id'='ac000003-0000-4000-8000-000000000003' $$,
-  '42501', NULL,
-  'direct-approve guard: an orchestration approval cannot be approved without the executor''s act_outcome stamp');
-select lives_ok(
   $$ update public.paige_pending_approvals set status='approved', metadata = metadata || '{"act_outcome":"executed"}'::jsonb where source='paige_orchestration' and metadata->>'act_id'='ac000003-0000-4000-8000-000000000003' $$,
-  'direct-approve guard: an orchestration approval WITH act_outcome (the executor path) is allowed');
+  '42501', NULL,
+  'guard (forged JWT write): a JWT caller cannot self-approve an orchestration act even with a forged metadata.act_outcome');
+reset request.jwt.claim.sub;
+-- (D2) even the service role cannot approve while the LEDGER act is not resolved (ac000003 is approval_pending).
+select throws_ok(
+  $$ update public.paige_pending_approvals set status='approved', metadata = metadata || '{"act_outcome":"executed"}'::jsonb where source='paige_orchestration' and metadata->>'act_id'='ac000003-0000-4000-8000-000000000003' $$,
+  '42501', NULL,
+  'guard (ledger cross-check): approval refused while the canonical ledger act is not terminal, forged act_outcome notwithstanding');
+-- (D3) the sanctioned path LIVES: service role, ledger act executed (ad00000b) → approve allowed.
+select lives_ok(
+  $$ update public.paige_pending_approvals set status='approved', metadata = metadata || '{"act_outcome":"executed"}'::jsonb where id='9a00000b-0000-4000-8000-00000000000b' $$,
+  'guard: service-role approve is allowed when the canonical ledger act is executed (the executor path)');
+-- (D4) a NON-orchestration approval is unaffected.
 select lives_ok(
   $$ update public.paige_pending_approvals set status='approved' where id='9a000001-0000-4000-8000-000000000001' $$,
-  'direct-approve guard: a NON-orchestration approval is unaffected (fast no-op)');
+  'guard: a NON-orchestration approval is unaffected (fast no-op)');
 
--- ══ (E) DURABLE RECONCILER: orphaned advanceable native acts the sweeper cannot re-drive ═══════════════
+-- ══ (E) DURABLE RECONCILER — advances via the monotonic RPC and stamps the companion from its ACTUAL return ═
 select public.paige_reconcile_orchestration_acts();
 
 select is((select outcome::text from public.paige_act_executions where id='ad000005-0000-4000-8000-000000000005'),
           'executed', 'reconciler: a landed correlation transition advances the orphan to executed');
 select is((select status from public.paige_pending_approvals where source='paige_orchestration' and metadata->>'act_id'='ac000005-0000-4000-8000-000000000005'),
-          'approved', 'reconciler: the companion approval is stamped approved (§70 inbox stays truthful)');
+          'approved', 'reconciler: the executed orphan''s companion is stamped approved (§70 inbox stays truthful)');
 select is((select metadata->>'act_outcome' from public.paige_pending_approvals where source='paige_orchestration' and metadata->>'act_id'='ac000005-0000-4000-8000-000000000005'),
-          'executed', 'reconciler: the companion carries act_outcome=executed');
+          'executed', 'reconciler (finding #3): companion act_outcome = the RPC''s ACTUAL executed outcome');
 select is((select outcome::text from public.paige_act_executions where id='ad000006-0000-4000-8000-000000000006'),
-          'failed', 'reconciler: >24h with no stamped transition advances to failed (never a silent forever-ambiguous)');
+          'failed', 'reconciler: >24h with no stamped transition advances to failed');
+select is((select metadata->>'act_outcome' from public.paige_pending_approvals where source='paige_orchestration' and metadata->>'act_id'='ac000006-0000-4000-8000-000000000006'),
+          'failed', 'reconciler (finding #3): the failed orphan''s companion carries act_outcome=failed (tracks the ledger, never a stale requested value)');
 select is((select refusal_code from public.paige_act_executions where id='ad000006-0000-4000-8000-000000000006'),
           'reconcile_exhausted', 'reconciler: the failed orphan records reconcile_exhausted');
 select is((select outcome::text from public.paige_act_executions where id='ad000007-0000-4000-8000-000000000007'),
           'ambiguous', 'reconciler: a recent (<24h) unconfirmed orphan is left ambiguous for a later tick');
 select is((select outcome::text from public.paige_act_executions where id='ad000008-0000-4000-8000-000000000008'),
           'ambiguous', 'reconciler: a FRESH (not-yet-stale) row is excluded by the 10-min staleness bar');
-
--- in-body §59 guard: a JWT caller (auth.uid() non-null) is refused even though the SQL is otherwise valid.
 set request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
 select throws_ok(
   $$ select public.paige_reconcile_orchestration_acts() $$,
   '42501', NULL,
   'reconciler: refuses a JWT caller (§59 in-body guard) — cron/service-role only');
 reset request.jwt.claim.sub;
+
+-- ══ (F) BACKFILL — a held act that predates the mint gets an idempotent companion (finding #4) ═══════════
+-- The orphan ad00000c is approval_pending with NO companion (mint was disabled at seed and it was never
+-- transitioned). Confirm the gap, then run the migration's backfill statement and confirm a readable companion
+-- appears exactly once — and that a second run is a no-op (idempotent).
+select is((select count(*)::int from public.paige_pending_approvals where source='paige_orchestration' and metadata->>'act_id'='ac00000c-0000-4000-8000-00000000000c'),
+          0, 'backfill precondition: the pre-mint held act has NO companion');
+
+-- (the backfill statement — byte-for-byte the migration's, so this proves the migration''s own query)
+insert into public.paige_pending_approvals (
+  type, draft_content, summary, category, contact_id, conversation_id, tenant_id,
+  source, status, risk_level, submitted_by_user_id, metadata
+)
+select
+  'other', ct.content, ct.content->>'subject', ae.capability_key, null, null, ae.tenant_id,
+  'paige_orchestration', 'pending',
+  case when (ae.detail->>'risk') = 'high' then 'high' else 'medium' end, null,
+  jsonb_build_object('source','paige_orchestration','event_id',ae.event_id,'act_id',ae.act_id,
+    'act_execution_id',ae.id,'automation_id',ae.automation_id,'capability_id',ae.capability_key,
+    'snapshot_args',ae.detail->'snapshot_args','backfilled',true)
+from public.paige_act_executions ae
+left join public.paige_native_events ev on ev.id = ae.event_id
+left join public.clients c on ev.subject_table = 'clients' and c.id = ev.subject_id
+cross join lateral (
+  select public.paige_orchestration_approval_content(
+    ae.capability_key, ae.detail->'snapshot_args',
+    case when ev.subject_table = 'clients'
+         then nullif(trim(coalesce(c.first_name, '') || ' ' || coalesce(c.last_name, '')), '')
+         else null end) as content) ct
+where ae.outcome = 'approval_pending'
+  and not exists (select 1 from public.paige_pending_approvals pa
+                   where pa.source='paige_orchestration'
+                     and (pa.metadata->>'event_id') = ae.event_id::text
+                     and (pa.metadata->>'act_id')   = ae.act_id::text)
+on conflict ((metadata->>'event_id'), (metadata->>'act_id')) where source = 'paige_orchestration'
+do nothing;
+
+select is((select count(*)::int from public.paige_pending_approvals where source='paige_orchestration' and metadata->>'act_id'='ac00000c-0000-4000-8000-00000000000c'),
+          1, 'backfill: exactly one companion minted for the pre-existing held act');
+select is((select summary from public.paige_pending_approvals where source='paige_orchestration' and metadata->>'act_id'='ac00000c-0000-4000-8000-00000000000c'),
+          'Advance Journey Stage (stage slug: nurtured)', 'backfill: the backfilled companion carries the readable summary incl. the target args');
+select ok((select (metadata->>'backfilled')::boolean from public.paige_pending_approvals where source='paige_orchestration' and metadata->>'act_id'='ac00000c-0000-4000-8000-00000000000c'),
+          'backfill: the companion is marked backfilled=true (auditable provenance)');
+
+-- second run — idempotent (NOT EXISTS + ON CONFLICT DO NOTHING): still exactly one.
+insert into public.paige_pending_approvals (
+  type, draft_content, summary, category, contact_id, conversation_id, tenant_id,
+  source, status, risk_level, submitted_by_user_id, metadata
+)
+select
+  'other', ct.content, ct.content->>'subject', ae.capability_key, null, null, ae.tenant_id,
+  'paige_orchestration', 'pending',
+  case when (ae.detail->>'risk') = 'high' then 'high' else 'medium' end, null,
+  jsonb_build_object('source','paige_orchestration','event_id',ae.event_id,'act_id',ae.act_id,
+    'act_execution_id',ae.id,'automation_id',ae.automation_id,'capability_id',ae.capability_key,
+    'snapshot_args',ae.detail->'snapshot_args','backfilled',true)
+from public.paige_act_executions ae
+left join public.paige_native_events ev on ev.id = ae.event_id
+left join public.clients c on ev.subject_table = 'clients' and c.id = ev.subject_id
+cross join lateral (
+  select public.paige_orchestration_approval_content(
+    ae.capability_key, ae.detail->'snapshot_args',
+    case when ev.subject_table = 'clients'
+         then nullif(trim(coalesce(c.first_name, '') || ' ' || coalesce(c.last_name, '')), '')
+         else null end) as content) ct
+where ae.outcome = 'approval_pending'
+  and not exists (select 1 from public.paige_pending_approvals pa
+                   where pa.source='paige_orchestration'
+                     and (pa.metadata->>'event_id') = ae.event_id::text
+                     and (pa.metadata->>'act_id')   = ae.act_id::text)
+on conflict ((metadata->>'event_id'), (metadata->>'act_id')) where source = 'paige_orchestration'
+do nothing;
+
+select is((select count(*)::int from public.paige_pending_approvals where source='paige_orchestration' and metadata->>'act_id'='ac00000c-0000-4000-8000-00000000000c'),
+          1, 'backfill: a second run is idempotent (still exactly one companion)');
+
+-- ══ (G) LEGACY REPAIR — a companion minted BEFORE this fix-forward is made readable by the (4b) UPDATE ═════
+-- The INSERT backfill can NOT reach ad00000d (it already has a companion — NOT EXISTS is false), so without the
+-- (4b) repair its slice-1 companion stays draft_content='{}' / "(no summary)" (Codex P2). Prove the empty
+-- precondition, run the migration's (4b) UPDATE byte-for-byte, confirm it becomes readable (args included), and
+-- confirm a second run is idempotent.
+select ok((select coalesce(summary,'') = '' from public.paige_pending_approvals where id='9a00000d-0000-4000-8000-00000000000d'),
+          'repair precondition: the pre-fix-forward companion has an empty summary (renders "(no summary)")');
+
+-- (the repair UPDATE — byte-for-byte the migration's (4b), so this proves the migration''s own query)
+update public.paige_pending_approvals ppa
+   set draft_content = ct.content, summary = ct.content->>'subject'
+  from public.paige_act_executions ae
+  left join public.paige_native_events ev on ev.id = ae.event_id
+  left join public.clients c on ev.subject_table = 'clients' and c.id = ev.subject_id
+  cross join lateral (
+    select public.paige_orchestration_approval_content(
+      ae.capability_key, ae.detail->'snapshot_args',
+      case when ev.subject_table = 'clients'
+           then nullif(trim(coalesce(c.first_name, '') || ' ' || coalesce(c.last_name, '')), '')
+           else null end) as content) ct
+ where ppa.source = 'paige_orchestration'
+   and (ppa.metadata->>'event_id') = ae.event_id::text
+   and (ppa.metadata->>'act_id')   = ae.act_id::text
+   and coalesce(ppa.summary, '') = '';
+
+select is((select summary from public.paige_pending_approvals where id='9a00000d-0000-4000-8000-00000000000d'),
+          'Advance Journey Stage (stage slug: won)', 'repair: the legacy empty companion now carries a readable summary incl. args');
+select is((select draft_content->>'subject' from public.paige_pending_approvals where id='9a00000d-0000-4000-8000-00000000000d'),
+          'Advance Journey Stage (stage slug: won)', 'repair: draft_content.subject rebuilt from the immutable ledger');
+
+-- second run — idempotent: coalesce(summary,'')='' now excludes the repaired row, so the value is stable.
+update public.paige_pending_approvals ppa
+   set draft_content = ct.content, summary = ct.content->>'subject'
+  from public.paige_act_executions ae
+  left join public.paige_native_events ev on ev.id = ae.event_id
+  left join public.clients c on ev.subject_table = 'clients' and c.id = ev.subject_id
+  cross join lateral (
+    select public.paige_orchestration_approval_content(
+      ae.capability_key, ae.detail->'snapshot_args',
+      case when ev.subject_table = 'clients'
+           then nullif(trim(coalesce(c.first_name, '') || ' ' || coalesce(c.last_name, '')), '')
+           else null end) as content) ct
+ where ppa.source = 'paige_orchestration'
+   and (ppa.metadata->>'event_id') = ae.event_id::text
+   and (ppa.metadata->>'act_id')   = ae.act_id::text
+   and coalesce(ppa.summary, '') = '';
+select is((select summary from public.paige_pending_approvals where id='9a00000d-0000-4000-8000-00000000000d'),
+          'Advance Journey Stage (stage slug: won)', 'repair: idempotent — a second run leaves the readable summary unchanged');
+
+-- ══ (H) GUARD HARDENING — the orchestration classification is immutable; the gate reads the STORED source, ═══
+-- so a caller cannot launder `source` to skip the executor-only approve gate (Codex re-review P1). 9a00000d is
+-- an orchestration companion still pending here; a same-tenant admin (JWT) attempts both launder shapes.
+set request.jwt.claim.sub = '77777777-7777-4777-8777-777777777777';
+select throws_ok(
+  $$ update public.paige_pending_approvals set status='approved', source='paige_action_bus'
+       where id='9a00000d-0000-4000-8000-00000000000d' $$,
+  '42501', NULL,
+  'guard: a combined status=approved + source-rewrite UPDATE is refused (source-immutability pin — closes the same-statement launder)');
+select throws_ok(
+  $$ update public.paige_pending_approvals set source='paige_action_bus'
+       where id='9a00000d-0000-4000-8000-00000000000d' $$,
+  '42501', NULL,
+  'guard: a source-ONLY rewrite of an orchestration approval is refused (broadened BEFORE UPDATE trigger — closes the two-step launder)');
+-- Coordinate repoint (Codex re-review P1): repointing metadata.event_id/act_id at an already-terminal act would
+-- let execute-approval approve off an unrelated result while the real held act stays approval_pending. Refused.
+select throws_ok(
+  $$ update public.paige_pending_approvals
+        set metadata = jsonb_set(metadata, '{event_id}', '"1e00000b-0000-4000-8000-00000000000b"')
+       where id='9a00000d-0000-4000-8000-00000000000d' $$,
+  '42501', NULL,
+  'guard: repointing an orchestration approval''s ledger coordinates (metadata.event_id) is refused (coords-immutability pin)');
+reset request.jwt.claim.sub;
+select ok((select source='paige_orchestration' and status='pending'
+             from public.paige_pending_approvals where id='9a00000d-0000-4000-8000-00000000000d'),
+          'guard: after the refused launder attempts the row is unchanged (still orchestration + pending)');
 
 select * from finish();
 rollback;
