@@ -9,6 +9,11 @@ import {
   type BusinessVerifyGovernedAudit,
   type BusinessVerifyPrincipal,
 } from "../_shared/business-verifier/governed-adapter.ts";
+import {
+  resolveFundingCoachingGate,
+  fundingGateAuditRow,
+  recordFundingGateDecision,
+} from "../_shared/funding-coaching-gate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -212,6 +217,36 @@ Deno.serve(async (req) => {
 
     if (!authz.allowed) {
       return jsonResponse({ ok: false, error: "NOT_AUTHORIZED", message: authz.reason }, 403);
+    }
+
+    // ── FUNDING & COACHING TOOLS GATE (owner ruling 2026-09-13) — FAIL CLOSED before the adapter fan-out ──
+    // business-verifier is part of the optional Funding & Coaching Tools package (§2: finance is never a
+    // platform default). It runs ONLY when the BUSINESS'S workspace holds the package AND has the required
+    // Financial connection/consent — and this gate runs BEFORE the ALL_ADAPTERS fan-out, so EVEN the public
+    // sources (Secretary of State, OpenCorporates, SEC EDGAR) refuse without the package, never just the
+    // paid adapters. Absent the package → setup_required / unavailable, NO run row, NO provider contact.
+    // Today the package is unseeded, so this refuses for every workspace (incl. the auto-verify trigger,
+    // paige-mcp, and skill-runner — all `system` callers, which correctly no-op).
+    const fundingGate = await resolveFundingCoachingGate(admin, { tenantId: businessTenantId, providerKey: "business_verifier" });
+    if (!fundingGate.allowed) {
+      await recordFundingGateDecision(admin, {
+        actorUserId: callerUserId,
+        actorRole: `business_verify:${principal}`,
+        row: fundingGateAuditRow({
+          actionPrefix: "business_verify", capability: "business_verify", targetType: "business_verify",
+          providerKey: "business_verifier", tenantId: businessTenantId, subjectKind: "business", subjectId: business_id,
+          verdict: fundingGate, startedAtMs, nowIso: new Date().toISOString(),
+        }),
+      });
+      return jsonResponse({
+        ok: false,
+        available: false,
+        result: fundingGate.result,
+        state: fundingGate.state,
+        reason: fundingGate.reason,
+        message: fundingGate.reason,
+        error: fundingGate.result === "unavailable" ? "FUNDING_TOOLS_UNAVAILABLE" : "FUNDING_TOOLS_SETUP_REQUIRED",
+      }, 200);
     }
 
     // Resolve contact_id (best-effort) via owner

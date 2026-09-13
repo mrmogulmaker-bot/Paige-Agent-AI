@@ -23,6 +23,11 @@ import {
   type ContactScopedGovernedAudit,
   type ContactScopedPrincipal,
 } from "../_shared/contact-authz/governed-adapter.ts";
+import {
+  resolveFundingCoachingGate,
+  fundingGateAuditRow,
+  recordFundingGateDecision,
+} from "../_shared/funding-coaching-gate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -119,6 +124,37 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "scope_violation", field: violation }, 400);
   }
 
+  // Resolve the CONTACT's workspace (server-side, never the body) — both the Funding & Coaching Tools
+  // gate scope and the provider call need it. The caller is already authorized for this contact above.
+  const { data: contact } = await admin
+    .from("clients")
+    .select("id, email, first_name, last_name, tenant_id")
+    .eq("id", contact_id)
+    .maybeSingle();
+  if (!contact) return jsonResponse({ error: "contact not found" }, 404);
+  const contactTenantId = (contact.tenant_id ?? null) as string | null;
+
+  // ── FUNDING & COACHING TOOLS GATE (owner ruling 2026-09-13) — FAIL CLOSED before any provider contact ──
+  // SmartCredit is one of ten finance/credit providers in the optional Funding & Coaching Tools package
+  // (§2: finance is never a platform default). It runs ONLY when the CONTACT's workspace holds the package
+  // AND has the required Financial connection/consent. Absent either → setup_required / unavailable, NO
+  // SmartCredit contact, NO snapshot write. Today the package is unseeded, so this refuses for every tenant.
+  const fundingGate = await resolveFundingCoachingGate(admin, { tenantId: contactTenantId, providerKey: "smartcredit" });
+  if (!fundingGate.allowed) {
+    await recordFundingGateDecision(admin, {
+      actorUserId: callerUserId,
+      actorRole: `${ACTION_PREFIX}:${principal}`,
+      row: fundingGateAuditRow({
+        actionPrefix: ACTION_PREFIX, capability: CAPABILITY, targetType: ACTION_TYPE, providerKey: "smartcredit",
+        tenantId: contactTenantId, subjectKind: "contact", subjectId: contact_id,
+        verdict: fundingGate, startedAtMs, nowIso: new Date().toISOString(),
+      }),
+    });
+    // `activated:false` + `message` match SmartCredit's existing "not available" idiom so any consumer
+    // keying on that shape stays honest (§37), alongside the canonical `available/result/state/reason`.
+    return jsonResponse({ available: false, activated: false, result: fundingGate.result, state: fundingGate.state, reason: fundingGate.reason, message: fundingGate.reason }, 200);
+  }
+
   // Config / provider readiness — platform-global, not tenant data; an unconfigured provider is an
   // honest no-op (no pull, so no execute audit), exactly as before.
   const { data: cfg } = await admin.from("paige_config").select("smartcredit_enabled").eq("id", 1).maybeSingle();
@@ -126,13 +162,6 @@ Deno.serve(async (req) => {
 
   const apiKey = Deno.env.get("SMARTCREDIT_API_KEY");
   if (!apiKey) return jsonResponse({ activated: false, message: "SMARTCREDIT_API_KEY missing" }, 200);
-
-  const { data: contact } = await admin
-    .from("clients")
-    .select("id, email, first_name, last_name, tenant_id")
-    .eq("id", contact_id)
-    .maybeSingle();
-  if (!contact) return jsonResponse({ error: "contact not found" }, 404);
 
   // The governed execute receipt, scoped to the CONTACT's own tenant (server-resolved, never the body).
   await writeGovernedAudit(
