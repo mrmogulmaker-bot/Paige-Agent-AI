@@ -185,13 +185,18 @@ Deno.serve(async (req) => {
     //    delivery whose per-act outcome was not durably recorded. `acts_executed` is legacy per-subscriber
     //    metadata (true only on a real `executed` outcome, never in C1) — never proof by itself. --
     const persistFailed = new Set(engine.persist_failures);
+    const infraRetry = new Set(engine.subscriber_retry);
     for (const sub of subscribers) {
       if (alreadyDone.has(sub.id)) { delivered.push(sub.id); continue; }
       const actRecs = engine.records.filter((r) => r.automation_id === sub.id);
       const acts = actRecs.map((r) => ({
         act_id: r.act_id, position: r.act_position, adapter: r.adapter_kind, outcome: r.outcome,
       }));
+      // NOT durably delivered when: an infra read/resolve failed (no records governed at all), OR any of
+      // this subscriber's per-act ledger writes failed. Either way → status 'error' → the event fails →
+      // the sweeper retries (never a silent 'done' whose acts were not governed/recorded, §13/§32 F2).
       const anyPersistFailed = actRecs.some((r) => persistFailed.has(r.act_id));
+      const needsRetry = infraRetry.has(sub.id) || anyPersistFailed;
       const anyExecuted = actRecs.some((r) => r.outcome === "executed");
       const { error: upErr } = await admin
         .from("paige_event_dispatches")
@@ -200,19 +205,18 @@ Deno.serve(async (req) => {
             event_id: eventId,
             automation_id: sub.id,
             tenant_id: tenantId,
-            status: anyPersistFailed ? "error" : "done",
+            status: needsRetry ? "error" : "done",
             result: {
-              delivered: !anyPersistFailed,
+              delivered: !needsRetry,
               acts_governed: actRecs.length,
-              acts_executed: anyPersistFailed ? false : anyExecuted,
+              acts_executed: needsRetry ? false : anyExecuted,
               acts,
             },
-            error: anyPersistFailed ? "act_ledger_write_failed" : null,
+            error: needsRetry ? (infraRetry.has(sub.id) ? "engine_infra_error" : "act_ledger_write_failed") : null,
           },
           { onConflict: "event_id,automation_id" },
         );
-      // a write error OR a persist failure both mean this subscriber is NOT durably delivered → retry.
-      if (upErr || anyPersistFailed) { failed.push(sub.id); }
+      if (upErr || needsRetry) { failed.push(sub.id); }
       else { delivered.push(sub.id); }
     }
 

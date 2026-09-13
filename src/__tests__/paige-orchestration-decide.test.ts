@@ -14,6 +14,7 @@ import {
   type EventFacts,
   type ActOutcome,
 } from "../../supabase/functions/_shared/paige-orchestration/decide.ts";
+import { GOVERNED_REFUSAL_CODES } from "../../supabase/functions/_shared/paige-spine/governedExecution.ts";
 
 const facts: EventFacts = {
   event_key: "contact.created",
@@ -91,14 +92,23 @@ describe("laneNonExecuteOutcome — only auto proceeds; everything else is a non
 });
 
 describe("refusalToOutcome — a governed refusal maps to the exact refused_* outcome, never a success", () => {
-  it("maps budget / trust / consent, and defaults unmapped codes to refused_authority", () => {
+  it("maps the forward-looking budget / trust / consent literals, and defaults everything else to refused_authority", () => {
     expect(refusalToOutcome("budget_exceeded")).toBe("refused_budget");
     expect(refusalToOutcome("trust_ceiling")).toBe("refused_trust_compass");
-    expect(refusalToOutcome("autonomy_off")).toBe("refused_trust_compass");
+    expect(refusalToOutcome("autonomy_off")).toBe("refused_trust_compass"); // the ONE real code today
     expect(refusalToOutcome("consent_required")).toBe("refused_consent");
     expect(refusalToOutcome("access_denied")).toBe("refused_authority");
     expect(refusalToOutcome("tenant_not_server_derived")).toBe("refused_authority");
     expect(refusalToOutcome("anything_unmapped")).toBe("refused_authority");
+  });
+
+  it("is TOTAL over the seam's real GOVERNED_REFUSAL_CODES — every one maps to a refused_* (never a success)", () => {
+    const REFUSED: ActOutcome[] = ["refused_authority", "refused_budget", "refused_trust_compass", "refused_consent"];
+    for (const code of GOVERNED_REFUSAL_CODES) {
+      expect(REFUSED, `real refusal code '${code}' must map to a refused_* outcome`).toContain(refusalToOutcome(code));
+    }
+    // the one code the seam emits today that is NOT a generic authority refusal:
+    expect(refusalToOutcome("autonomy_off")).toBe("refused_trust_compass");
   });
 });
 

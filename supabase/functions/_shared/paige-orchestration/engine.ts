@@ -137,11 +137,14 @@ export type ActExecutionRecord = {
 };
 
 /** Verify the process's authorizing person is still an active member of the tenant. An `auto` mutation is
- *  attributed to this person; without a valid one we fail closed (refused_authority). */
+ *  attributed to this person. The result DISTINGUISHES an infra error (retry — the caller must not decide)
+ *  from a genuine non-member (`userId: null` — a real refused_authority). A swallowed read error must never
+ *  masquerade as a settled "authority refused" (§13/§32). */
+type PersonResult = { ok: true; userId: string | null } | { ok: false; error: string };
 async function resolveAuthorizingPerson(
   db: EngineDb, createdBy: string | null, tenantId: string,
-): Promise<string | null> {
-  if (!createdBy) return null;
+): Promise<PersonResult> {
+  if (!createdBy) return { ok: true, userId: null };   // genuinely no configured author — a real refusal
   const { data, error } = await db
     .from("tenant_members")
     .select("user_id")
@@ -149,18 +152,23 @@ async function resolveAuthorizingPerson(
     .eq("user_id", createdBy)
     .eq("status", "active")
     .limit(1);
-  if (error || !Array.isArray(data) || data.length === 0) return null;
-  return createdBy;
+  if (error) return { ok: false, error: error.message ?? String(error) };  // INFRA error — retry, not a refusal
+  if (!Array.isArray(data) || data.length === 0) return { ok: true, userId: null }; // genuinely not an active member
+  return { ok: true, userId: createdBy };
 }
 
-async function loadActs(db: EngineDb, automationId: string): Promise<ActRow[]> {
+/** Load an automation's acts. DISTINGUISHES an infra error (retry) from a genuinely empty act list — a
+ *  swallowed read error must never look like "no acts" and let the event complete silently (§13/§32). */
+type LoadActsResult = { ok: true; acts: ActRow[] } | { ok: false; error: string };
+async function loadActs(db: EngineDb, automationId: string): Promise<LoadActsResult> {
   const { data, error } = await db
     .from("paige_automation_acts")
     .select("id, position, action_kind, tool_key, config")
     .eq("automation_id", automationId)
     .order("position", { ascending: true });
-  if (error || !Array.isArray(data)) return [];
-  return data as ActRow[];
+  if (error) return { ok: false, error: error.message ?? String(error) };
+  if (!Array.isArray(data)) return { ok: false, error: "paige_automation_acts returned a non-array" };
+  return { ok: true, acts: data as ActRow[] };
 }
 
 /** Build one ledger record for an act, running the governed pathway where the lane permits. Pure except
@@ -229,6 +237,10 @@ export type EngineResult = {
   /** act_ids whose durable ledger write FAILED. A non-empty list fails the dispatch for retry (owner
    *  correction #3): the drainer must NOT complete an event whose per-act outcome was not durably recorded. */
   persist_failures: string[];
+  /** automation_ids skipped because an INFRA read/resolve FAILED (act load, autonomy resolve, or the
+   *  authorizing-person read). The engine recorded NOTHING for them — no false condition_not_matched /
+   *  held_by_lane / refused_authority — and the drainer fails their delivery for retry (§13/§32, F2). */
+  subscriber_retry: string[];
 };
 
 /** Orchestrate all acts for a claimed event across its live subscribers, writing the exact per-act
@@ -243,10 +255,14 @@ export async function runEventActs(
     payload: event.payload ?? {},
   };
   const records: ActExecutionRecord[] = [];
+  const subscriber_retry: string[] = [];
 
   for (const automation of subscribers) {
-    const acts = await loadActs(db, automation.id);
-    if (acts.length === 0) continue;
+    // Load acts. An INFRA error is a RETRYABLE subscriber — never a false "no acts" that completes silently.
+    const actsRes = await loadActs(db, automation.id);
+    if (!actsRes.ok) { subscriber_retry.push(automation.id); continue; }
+    const acts = actsRes.acts;
+    if (acts.length === 0) continue;   // genuinely no acts to govern — nothing to record
 
     // 1 — conditions (closes TODO F3): a non-match records condition_not_matched for every act.
     const verdict = evaluateConditions(automation.conditions, facts);
@@ -261,8 +277,11 @@ export async function runEventActs(
     }
 
     // 2 — effective autonomy lane = grant ∧ most-restrictive act floor ∧ Trust-Compass ceiling ∧ §68 decay.
-    const { data: laneRow } = await db.rpc("resolve_automation_autonomy", { _automation_id: automation.id });
-    const effectiveLane: string = (laneRow && typeof laneRow.effective === "string") ? laneRow.effective : "off";
+    //     An INFRA/malformed resolve is a RETRYABLE subscriber — NEVER coerced to a false `off`/held_by_lane
+    //     (a FINAL state that would bake a transient error as a permanent governance verdict, §13/§32 F2).
+    const { data: laneRow, error: laneErr } = await db.rpc("resolve_automation_autonomy", { _automation_id: automation.id });
+    if (laneErr || !laneRow || typeof laneRow.effective !== "string") { subscriber_retry.push(automation.id); continue; }
+    const effectiveLane: string = laneRow.effective;
     const laneOutcome = laneNonExecuteOutcome(effectiveLane); // null → auto proceeds
     if (laneOutcome) {
       for (const act of acts) {
@@ -273,11 +292,13 @@ export async function runEventActs(
       continue;
     }
 
-    // 3 — auto lane: resolve the authorizing person once, then run the pathway per act.
-    const personUserId = await resolveAuthorizingPerson(db, automation.created_by, event.tenant_id);
+    // 3 — auto lane: resolve the authorizing person once. An INFRA error is a RETRYABLE subscriber; a genuine
+    //     non-member (userId null) is a real refused_authority (decideActRecord records it).
+    const personRes = await resolveAuthorizingPerson(db, automation.created_by, event.tenant_id);
+    if (!personRes.ok) { subscriber_retry.push(automation.id); continue; }
     for (const act of acts) {
       records.push(await decideActRecord({
-        event, automation, act, effectiveLane, laneOutcome: null, personUserId,
+        event, automation, act, effectiveLane, laneOutcome: null, personUserId: personRes.userId,
       }));
     }
   }
@@ -308,5 +329,5 @@ export async function runEventActs(
 
   const by_outcome: Record<string, number> = {};
   for (const rec of records) by_outcome[rec.outcome] = (by_outcome[rec.outcome] ?? 0) + 1;
-  return { records, by_outcome, persist_failures };
+  return { records, by_outcome, persist_failures, subscriber_retry };
 }

@@ -80,6 +80,8 @@ type MockConfig = {
   recorded: Array<Record<string, unknown>>;         // every paige_record_act_execution call the engine made
   persistFail?: Set<string>;                        // act_ids whose durable ledger write should fail
   persistOutcomeOverride?: Record<string, string>;  // act_id → the outcome the RPC actually persisted (monotonic)
+  fromErrors?: Set<string>;                         // table names whose READ returns an infra error
+  laneError?: boolean;                              // resolve_automation_autonomy returns an infra error
 };
 function mockDb(cfg: MockConfig): EngineDb {
   const makeQuery = (table: string) => {
@@ -91,6 +93,9 @@ function mockDb(cfg: MockConfig): EngineDb {
       eq(k: string, v: unknown) { state[k] = v; return q; },
       limit() { return q; },
       then(onF: any, onR: any) {
+        if (cfg.fromErrors?.has(table)) {
+          return Promise.resolve({ data: null, error: { message: `${table}_read_failed` } }).then(onF, onR);
+        }
         let data: unknown = [];
         if (table === "paige_automation_acts") data = cfg.acts[state.automation_id as string] ?? [];
         else if (table === "tenant_members") {
@@ -105,6 +110,7 @@ function mockDb(cfg: MockConfig): EngineDb {
     from: (t: string) => makeQuery(t),
     rpc: async (fn: string, args: Record<string, unknown>) => {
       if (fn === "resolve_automation_autonomy") {
+        if (cfg.laneError) return { data: null, error: { message: "resolve_automation_autonomy_failed" } };
         return { data: cfg.lanes[args._automation_id as string] ?? { effective: "off" }, error: null };
       }
       if (fn === "paige_record_act_execution") {
@@ -225,5 +231,42 @@ describe("runEventActs — fail-closed persistence + monotonic outcome surfacing
     expect(cfg.recorded[0]._outcome).toBe("approval_pending"); // what it TRIED to write
     expect(res.records[0].outcome).toBe("executed");           // what actually persisted, and what it reports
     expect(res.by_outcome.executed).toBe(1);
+  });
+});
+
+describe("runEventActs — infra read/resolve errors RETRY, never a false terminal outcome (§13/§32, verifier F2)", () => {
+  it("an act-LOAD error → subscriber_retry, records NOTHING (never a silent 'no acts' completion)", async () => {
+    const cfg: MockConfig = {
+      acts: { a1: [{ id: "act1", position: 1, action_kind: "n8n_run_workflow", tool_key: null, config: {} }] },
+      activeMembers: new Set(["t1:owner1"]), lanes: { a1: { effective: "auto" } }, recorded: [],
+      fromErrors: new Set(["paige_automation_acts"]),
+    };
+    const res = await runEventActs(mockDb(cfg), event, [auto({})]);
+    expect(res.subscriber_retry).toEqual(["a1"]);
+    expect(res.records).toHaveLength(0);        // no false condition_not_matched / held_by_lane / refused
+    expect(cfg.recorded).toHaveLength(0);       // and nothing was persisted
+  });
+
+  it("a LANE-resolve error → subscriber_retry, never a false held_by_lane (which is FINAL)", async () => {
+    const cfg: MockConfig = {
+      acts: { a1: [{ id: "act1", position: 1, action_kind: "n8n_run_workflow", tool_key: null, config: {} }] },
+      activeMembers: new Set(["t1:owner1"]), lanes: {}, recorded: [], laneError: true,
+    };
+    const res = await runEventActs(mockDb(cfg), event, [auto({})]);
+    expect(res.subscriber_retry).toEqual(["a1"]);
+    expect(res.records).toHaveLength(0);
+    expect(res.by_outcome.held_by_lane ?? 0).toBe(0);   // a transient error is NOT baked as a permanent 'off'
+  });
+
+  it("an authorizing-PERSON read error (auto lane) → subscriber_retry, never a false refused_authority", async () => {
+    const cfg: MockConfig = {
+      acts: { a1: [{ id: "act1", position: 1, action_kind: "n8n_run_workflow", tool_key: null, config: {} }] },
+      activeMembers: new Set(["t1:owner1"]), lanes: { a1: { effective: "auto" } }, recorded: [],
+      fromErrors: new Set(["tenant_members"]),   // acts load fine; the person read errors
+    };
+    const res = await runEventActs(mockDb(cfg), event, [auto({})]);
+    expect(res.subscriber_retry).toEqual(["a1"]);
+    expect(res.records).toHaveLength(0);
+    expect(res.by_outcome.refused_authority ?? 0).toBe(0);  // a transient error is NOT baked as a refusal
   });
 });

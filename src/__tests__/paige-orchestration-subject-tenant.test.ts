@@ -33,7 +33,12 @@ describe("verifySubjectTenant — the subject's real tenant must equal the claim
   it("FAILS CLOSED on a tenant MISMATCH (the event claimed a different tenant than the subject owns)", async () => {
     const v = await verifySubjectTenant(mockDb({ data: [{ tenant_id: "t2" }], error: null }), "clients", "c1", "t1");
     expect(v.ok).toBe(false);
-    if (v.ok === false) { expect(v.code).toBe("subject_tenant_mismatch"); expect(v.reason).toContain("t2"); }
+    if (v.ok === false) {
+      expect(v.code).toBe("subject_tenant_mismatch");
+      // the reason must NOT leak the foreign tenant id into the claimed tenant's readable last_error (§9)
+      expect(v.reason).not.toContain("t2");
+      expect(v.reason).toContain("different tenant");
+    }
   });
 
   it("FAILS CLOSED when the subject row does not exist", async () => {

@@ -82,10 +82,13 @@ export async function verifySubjectTenant(
     return { ok: false, code: "subject_tenant_null", reason: `subject ${subjectTable}:${subjectId} has no tenant` };
   }
   if (actual !== claimedTenantId) {
+    // Deliberately do NOT embed the SUBJECT's (foreign) tenant id in the reason: this string flows to
+    // paige_native_events.last_error, which the CLAIMED tenant can read (pne_tenant_read). The `code` is
+    // enough signal for ops; surfacing another tenant's id to the claimed tenant is avoided (§9, §39 NIT).
     return {
       ok: false,
       code: "subject_tenant_mismatch",
-      reason: `claimed event tenant ${claimedTenantId} != subject tenant ${String(actual)}`,
+      reason: `the event's subject is owned by a different tenant than the event claims`,
     };
   }
   return { ok: true, tenantId: claimedTenantId };

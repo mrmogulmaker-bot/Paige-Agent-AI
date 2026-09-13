@@ -99,7 +99,9 @@ create index if not exists idx_pae_provider_ref  on public.paige_act_executions 
 
 -- keep updated_at honest
 create or replace function public.paige_act_executions_touch()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql
+set search_path to 'public'
+as $$
 begin
   new.updated_at := now();
   return new;

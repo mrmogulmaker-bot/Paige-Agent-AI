@@ -134,9 +134,16 @@ export function laneNonExecuteOutcome(effectiveLane: string): ActOutcome | null 
 
 /**
  * Map a GovernedRefusalCode (from decideGovernedExecution) to the exact refused_* outcome. Codes are kept as
- * string literals rather than importing the union so this stays dependency-light and unit-testable; the set
- * is asserted against the seam's enum in the engine test. Anything unmapped → refused_authority (the safe
- * default: an unclassified refusal is an authority refusal, never a success).
+ * string literals rather than importing the union so this stays dependency-light and unit-testable.
+ *
+ * HONESTLY (§13) about what the seam emits TODAY: of the literals below, only `autonomy_off` is currently a
+ * real `GovernedRefusalCode`. The budget / consent / trust-decay literals are FORWARD-LOOKING — placeholders
+ * for gates not yet wired into the seam (a budget cap, a consent/quiet-hours check, §68 authority decay) —
+ * so they map now to the right bucket for when those land. Every OTHER real refusal code the seam can emit
+ * today (identity, tenancy, access, capability-availability, effect, outcome-channel, approval-claim) is
+ * UNMAPPED and falls to `refused_authority` — the safe default: an unbucketed refusal is an authority
+ * refusal, never a success. TOTALITY (every real code maps to some `refused_*`) is asserted against the
+ * seam's `GOVERNED_REFUSAL_CODES` in `paige-orchestration-decide.test.ts`.
  */
 export function refusalToOutcome(code: string): Extract<ActOutcome,
   "refused_authority" | "refused_budget" | "refused_trust_compass" | "refused_consent"> {
