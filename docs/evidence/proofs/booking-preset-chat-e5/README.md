@@ -61,6 +61,36 @@ send, external event, meeting link, or booking is reachable.
   deliberately does NOT fold in a fix (owner: don't broaden scope; avoid the collision).
 - `chat-tool-registry`: `improvement_*`, `inbox_list`, `integrations_list` baseline.
 
+## Review outcomes (§1/§5/§39 crew on the real pushed diff `b1f02fa8`)
+
+- **§5 compliance officer → SHIP** (for a held draft). Confirmed: exact canonical RPCs / no parallel
+  model, UI-matching draft defaults, sound risk classes, no-false-success verification, §58 catalogue
+  diff (0 removed / 7 added), honest DRAFT/owed-live-drive labeling. Non-blocking notes NB-1 (tier-
+  matrix Agency phrasing), NB-2 (model-facing note strings — pre-existing sibling convention), NB-3
+  (master-doc/brain updates owed on merge).
+- **§39 adversarial peer-gate → FIX-FIRST**, then fixed. Confirmed clean: §9/§59 tenant scope (caller-
+  JWT client, tenant re-resolved never taken from a model arg, cross-tenant presetId rejected twice),
+  the confirm-lane clamp (a high verb can NOT be model-self-approved — it needs the body-borne card
+  fingerprint), §58 catalogue, tool-name consistency across all 5 surfaces, the lint edit, and the
+  actual RPC bodies vs what the tenant-brain composes. Two findings, both fixed in the follow-up commit:
+  1. **MEDIUM — `toolCallLabel` mislabeled a verified-but-Rail-failed mutation for 6 of 7 verbs.** On
+     `CALENDAR_PRESET_RAIL_WRITE_FAILED` the result is `success:false` but `verified:true` (the mutation
+     PERSISTED); only `revise` special-cased it, so a verified **publish** whose Rail write failed would
+     render "Could not publish / not live" while the `/book` page is actually live and publicly bookable
+     (a §13/§32/§70 false-negative hiding a real exposure). FIXED: all 6 verbs now special-case that code
+     with the truthful persisted state (publish → "public /book page IS live · Rail not recorded").
+  2. **LOW — the revise success `note` omitted the coarse-projector caveat its docstring promised.**
+     FIXED: the revise success note now states that title/type/duration/capacity were confirmed against
+     the projection while finer fields (notice/buffers/description) were accepted by the server but not
+     independently re-read.
+- Also applied compliance **NB-1**: the tier-matrix E5 paragraph now says availability is bounded by the
+  RPCs' §59 authority (an agency owner can drive it on its OWN book — own-tenant only), not a false
+  tier-gate exclusion. Post-fix: tenant-brain suite 25/25, tsc 0-new, regression clean.
+- **Honest bound on the label fix (§13):** `toolCallLabel` is a Deno-only function in the 12k-line
+  `paige-ai-chat/index.ts` and cannot be imported into the Vitest harness, so the label fix is a
+  mechanical mirror of the already-shipped/proven `revise` + `campaign_brief` cases, verified by
+  re-reading the diff — not by a new unit test.
+
 ## Owed to a capable session (§32.c) — NOT claimed here
 
 The authenticated, in-app live drive of Paige actually creating/publishing/etc. a booking calendar
