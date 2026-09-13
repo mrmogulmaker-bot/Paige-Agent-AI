@@ -27,10 +27,13 @@
  * THE FIX. A cross-user write is permitted only when:
  *   - the caller is a PLATFORM OWNER (`is_platform_owner()` — super_admin ONLY per §53 — the one
  *     sanctioned cross-tenant PII-write caller, JWT-derived, never a body field), OR
- *   - the caller holds an `admin`/`coach` role AND the target shares the caller's SERVER-RESOLVED
- *     active workspace (`current_user_tenant_id()`), AND — for a coach — an active `coach_clients`
- *     assignment exists. The global role is necessary, never sufficient: the tenant bond is what
- *     authorizes the write.
+ *   - the caller's role IN their SERVER-RESOLVED active workspace (`tenant_members.role` for
+ *     `current_user_tenant_id()`, NOT the tenant-agnostic `user_roles`) is owner/admin/coach, AND the
+ *     target shares that workspace, AND — for a coach — an active `coach_clients` assignment exists.
+ *     The role is resolved TENANT-SCOPED, so a global admin/coach who is only a plain member of the
+ *     active workspace cannot write there — the residual §53/§59 trap a global-role check leaves open;
+ *     the tenant bond still gates the target. (Same correction as migration 20261180000000, which
+ *     replaced the tenant-agnostic `has_role()` with tenant-scoped `is_tenant_admin()` for this class.)
  * It FAILS CLOSED: an unresolved caller tenant, an unresolved target, or any read failure denies.
  *
  * SELF-WRITES ARE NOT ROUTED THROUGH THIS DOOR, DELIBERATELY (§13). A user editing their OWN record
@@ -101,11 +104,12 @@ export type WriteBackAuthzBasis =
 
 export type WriteBackAuthz = {
   allowed: boolean;
-  /** A caller-facing reason. It surfaces as the seam's `access_denied` message ONLY for refusals that
-   *  carry a resolved `tenantId` — the security-critical cross-tenant ("different workspace") and
-   *  coach-unassigned denials. The role-less and unresolved-workspace denials return `tenantId: null`,
-   *  so the seam's tenancy gate (which runs before the access gate) reports them as `tenant_unresolved`
-   *  instead; the refusal is still a 403 with `authz_basis: "denied"` recorded, so forensics are intact. */
+  /** A caller-facing reason. It surfaces as the seam's `access_denied` message for every refusal that
+   *  carries a resolved `tenantId` — the role-insufficient, cross-tenant ("different workspace"), and
+   *  coach-unassigned denials (all resolve the workspace first now). Only the unresolved-workspace
+   *  denial returns `tenantId: null`, so the seam's tenancy gate (which runs before the access gate)
+   *  reports THAT one as `tenant_unresolved`; it is still a 403 with `authz_basis: "denied"` recorded,
+   *  so forensics are intact. */
   reason: string;
   /** The workspace the write is scoped to (the caller's active tenant for staff; the target's for a
    *  platform owner). Null when no workspace resolved, which is itself a refusal. Feeds the seam. */
@@ -120,9 +124,10 @@ export type WriteBackAuthz = {
  * ADAPTER OBLIGATIONS (identical in spirit to the skill/mcp doors):
  *   - `isPlatformOwner` — `is_platform_owner()` (super_admin ONLY, §53) derived from the VERIFIED
  *     JWT (`auth.uid()`), never a request body. The one sanctioned cross-tenant PII-write caller.
- *   - `callerRoles` — the caller's global `user_roles`. Necessary, NEVER sufficient: the tenant bond
- *     below is the real authorization.
  *   - `callerActiveTenant` — `current_user_tenant_id()` from the JWT. The caller's active workspace.
+ *   - `callerRoleInTenant` — the caller's TENANT-SCOPED role in that workspace (`tenant_members.role`
+ *     for the resolved tenant), NOT the tenant-agnostic `user_roles`. This is the authority source:
+ *     a role a caller holds for some OTHER tenant never authorizes a write here.
  *   - `resolveTargetTenant` — the workspace a target belongs to, for the platform-owner path's audit scope.
  *   - `targetSharesTenant` — whether the target is a member (auth user) or a CRM client of the
  *     caller's active workspace. This is the §9 boundary the write is gated on.
@@ -130,8 +135,10 @@ export type WriteBackAuthz = {
  */
 export type WriteBackAuthzDeps = {
   isPlatformOwner: () => Promise<boolean>;
-  callerRoles: () => Promise<string[]>;
   callerActiveTenant: () => Promise<string | null>;
+  /** The caller's role IN the resolved workspace (`tenant_members.role`), or null if not an active
+   *  member of it. Tenant-scoped authority — never the global `user_roles`. */
+  callerRoleInTenant: (callerTenantId: string) => Promise<string | null>;
   resolveTargetTenant: (targetUserId: string) => Promise<string | null>;
   targetSharesTenant: (callerTenantId: string, targetUserId: string) => Promise<boolean>;
   coachAssigned: (coachUserId: string, targetUserId: string) => Promise<boolean>;
@@ -160,20 +167,8 @@ export async function authorizeWriteBackTarget(
     return { allowed: true, reason: "platform owner", tenantId, basis: "platform_owner" };
   }
 
-  // STAFF. A global role is necessary but never sufficient.
-  const roles = await deps.callerRoles();
-  const isAdmin = roles.includes("admin");
-  const isCoach = roles.includes("coach");
-  if (!isAdmin && !isCoach) {
-    return {
-      allowed: false,
-      reason: "Not authorized to update this user's data.",
-      tenantId: null,
-      basis: "denied",
-    };
-  }
-
-  // THE TENANT BOND — the IDOR close. The caller's ACTIVE workspace must own the target.
+  // THE RESOLVED WORKSPACE. Server-resolved from the JWT. Every non-self, non-owner write is scoped
+  // to it, so it is resolved FIRST — the caller's authority is then read against THIS tenant.
   const callerTenantId = await deps.callerActiveTenant();
   if (!callerTenantId) {
     return {
@@ -184,6 +179,26 @@ export async function authorizeWriteBackTarget(
     };
   }
 
+  // STAFF — resolved TENANT-SCOPED, never from a global role (§53/§59). The caller's authority is
+  // their role in THIS workspace (`tenant_members.role` for callerTenantId), not a `user_roles` row
+  // they may hold for some other tenant. This closes the residual global-role trap: a global
+  // admin/coach of tenant A who is only a plain member of tenant B, with B as their active workspace,
+  // resolves 'member' here and is denied — where a global-role check would have let them write B's
+  // client records. `current_user_tenant_id()` admits an active membership at ANY role, so the role
+  // MUST be re-read per tenant. A global role is never sufficient; the tenant-scoped role is.
+  const tenantRole = await deps.callerRoleInTenant(callerTenantId);
+  const isAdmin = tenantRole === "owner" || tenantRole === "admin";
+  const isCoach = tenantRole === "coach";
+  if (!isAdmin && !isCoach) {
+    return {
+      allowed: false,
+      reason: "Not authorized to update this user's data in this workspace.",
+      tenantId: callerTenantId,
+      basis: "denied",
+    };
+  }
+
+  // THE TENANT BOND — the target must belong to that SAME workspace (the IDOR close).
   const sameTenant = await deps.targetSharesTenant(callerTenantId, targetUserId);
   if (!sameTenant) {
     // The cross-tenant refusal: a tenant-A admin/coach acting on a tenant-B target.

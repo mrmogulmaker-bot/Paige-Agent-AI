@@ -109,13 +109,21 @@ async function writeGovernedWriteBackAudit(
 ): Promise<void> {
   try {
     const row = writeBackGovernedAuditRow(audit);
-    await admin.from("paige_audit_log").insert({
+    // supabase-js resolves a DB rejection as `{ error }` rather than THROWING, so the catch below
+    // never sees it. For a REFUSED cross-user write this row is the ONLY trace — a silently-dropped
+    // insert would erase a security-relevant attempt. Inspect and log the returned error loudly.
+    const { error } = await admin.from("paige_audit_log").insert({
       actor_user_id: actorUserId,
       actor_role: `write_back:${audit.principal}`,
       ...row,
     });
+    if (error) {
+      console.error("paige-write-back governed audit not recorded", error.message ?? String(error));
+    }
   } catch (e) {
-    console.error("paige-write-back governed audit not recorded", String(e));
+    // A network/unexpected throw. Still non-fatal: a logging failure never changes the decision,
+    // which has already been returned to the caller.
+    console.error("paige-write-back governed audit not recorded (threw)", String(e));
   }
 }
 
@@ -188,18 +196,27 @@ serve(async (req) => {
           const { data } = await authClient.rpc("is_platform_owner");
           return data === true;
         },
-        // The global role is necessary, NEVER sufficient — the tenant bond below authorizes the write.
-        callerRoles: async () => {
-          const { data } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
-          // deno-lint-ignore no-explicit-any -- row shape from a dynamic select
-          return (data || []).map((r: any) => String(r.role));
-        },
         // The caller's ACTIVE workspace, resolved server-side from the JWT (current_user_tenant_id) —
         // the same resolution the chat uses to authorize a scoped client.
         callerActiveTenant: async () => {
           const { data, error } = await authClient.rpc("current_user_tenant_id");
           if (error) return null;
           return (data ?? null) as string | null;
+        },
+        // The caller's TENANT-SCOPED role in the resolved workspace — tenant_members.role for
+        // (callerTenantId, caller), the SAME source is_tenant_admin() keys on — NOT the global
+        // user_roles (§53/§59): a role held for another tenant must never authorize a write here.
+        // Service-role read (UNIQUE(tenant_id,user_id) → at most one row); null when not an active member.
+        callerRoleInTenant: async (callerTenantId) => {
+          const { data } = await supabase
+            .from("tenant_members")
+            .select("role")
+            .eq("tenant_id", callerTenantId)
+            .eq("user_id", user.id)
+            .eq("status", "active")
+            .maybeSingle();
+          // deno-lint-ignore no-explicit-any -- single-column select row
+          return (((data as any)?.role) ?? null) as string | null;
         },
         // The workspace a target belongs to (for the platform-owner path's audit scope). Service-role, so
         // get_user_primary_tenant bypasses its self-or-owner guard; falls back to the CRM clients row
