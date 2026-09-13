@@ -31,8 +31,10 @@
 --  closeout once the merge SHA and the persisted-apply proof exist (§0/§13: no pre-merge entry with a guessed SHA).)
 --
 -- APPROACH (§18/§12 — extend, do not fork). The four objects already exist (20270303000000); this migration
--- CREATE OR REPLACEs the four functions in place. The mint / cancellation-sync / reconciler TRIGGER definitions
--- are unchanged (they call their functions by name); the direct-approve GUARD trigger is DELIBERATELY re-created
+-- CREATE OR REPLACEs THREE of them in place — the mint, the direct-approve guard, and the reconciler — and adds
+-- ONE new pure helper; the fourth, cancellation-sync (paige_sync_orchestration_act_on_decision), is UNTOUCHED.
+-- The mint / cancellation-sync / reconciler TRIGGER definitions are unchanged (they call their functions by
+-- name); the direct-approve GUARD trigger is DELIBERATELY re-created
 -- with a broader event (BEFORE UPDATE OF status -> BEFORE UPDATE) so the source- + coordinate-immutability pins
 -- also catch a metadata-only rewrite (Codex re-review P1 — coverage-only, §58). It adds ONE pure helper for the
 -- readable description (the single home for the mint AND the backfill/repair) and runs a one-time idempotent
