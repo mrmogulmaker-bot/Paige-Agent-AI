@@ -39,8 +39,11 @@
 -- also catch a metadata-only rewrite (Codex re-review P1 — coverage-only, §58). It adds ONE pure helper for the
 -- readable description (the single home for the mint AND the backfill/repair) and runs a one-time idempotent
 -- backfill + repair. Additive: it alters no existing table and creates no new table/column/index — so the
--- forward-cleanup recovery DROPs these objects and restores the prior bodies + the guard trigger's prior scope
--- (see the PR recovery note; a git revert does NOT reverse applied SQL).
+-- forward-cleanup recovery DROPs ONLY the new helper (the sole object this migration creates), CREATE OR
+-- REPLACEs the three functions back to their 20270303000000 bodies, and restores the guard trigger's prior
+-- BEFORE UPDATE OF status scope. It must KEEP the slice-1 index paige_ppa_orchestration_act_uk (created by
+-- 20270303000000, not here) — the restored mint's ON CONFLICT arbiter still needs it (see the PR recovery note;
+-- a git revert does NOT reverse applied SQL).
 --
 -- RLS NOTE (§13, honest scope). Finding #2's fix is the guard above, which is SUFFICIENT to prevent a browser
 -- caller from setting a paige_orchestration approval to approved: it fires on EVERY update path (it is a
