@@ -1,7 +1,8 @@
 # Booking-preset Chat capability — adoption contract (hand-off to the Chat owner)
 
-**Status: ADOPTED (E5, 2026-09-13). Shared SERVER seam LIVE; Chat wiring landed on branch
-`claude/calendar-paige-e5` / PR #1220 (DRAFT — held for the owner's separate release decision).**
+**Status: ADOPTED & SHIPPED LIVE (E5, 2026-09-13). Shared SERVER seam LIVE; Chat wiring merged via
+PR #1220 (`688613db`, edge-live) with migration-renumber hotfix #1237 (`5d65a96f`, db-live) — zero
+migration drift; the authenticated in-chat live-drive is owed to the owner's validation pass (§32.c).**
 Authored 2026-09-13 alongside the booking-preset Draft→Publish lifecycle. This was the precise,
 self-contained contract for wiring the booking-preset capabilities into the Chat handler — so the
 Calendar-preset work did NOT duplicate Chat infrastructure (owner ruling 2026-09-13; §10, §18).
