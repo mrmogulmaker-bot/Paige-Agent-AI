@@ -1,0 +1,100 @@
+// Paige Runtime Harness — Layer C: the CONNECTOR-NEUTRAL action-adapter contract + registry.
+//
+// An act (`paige_automation_acts`) names an `action_kind`. The engine resolves it to (a) an adapter KIND
+// (which governed connector carries it) and (b) the governed CAPABILITY it must be decided as — then
+// governs EVERY kind through the one `decideGovernedExecution` pathway, and (slice 2) dispatches through
+// the adapter and reads the outcome back. n8n is the FIRST adapter; Zapier · Make · Google · M365/Teams ·
+// Slack · Telegram · direct-CRM · native-Paige · specialist-job all plug in by REGISTERING an adapter —
+// the engine, the ledger, and the governed pathway never change (owner directive: connector-neutral, "do
+// not build an n8n-specific engine or a second action/receipt system").
+//
+// This file is PURE contract + registry + kind/capability resolution — unit-provable. The actual external
+// dispatch/readback (the `dispatch`/`readback` methods) is declared here so the contract is stable, and
+// implemented per adapter in slice 2 (the n8n adapter reuses paige-n8n's run/execution_get via a shared
+// seam — never a forked n8n client).
+
+export type AdapterKind = "n8n" | "native" | "unsupported" | (string & {});
+
+/** The governed capability an act is decided as (fed to decideGovernedExecution's `capability`). */
+export type AdapterCapability = {
+  /** canonical action-risk key (the act's action_kind slug is that key). */
+  id: string;
+  effect: "read" | "mutate";
+  /** required for a mutation — decideGovernedExecution enforces a non-empty channel on mutate. */
+  outcomeChannel?: string;
+};
+
+/** Context the engine hands an adapter to dispatch a governed act (slice 2). */
+export type DispatchInput = {
+  tenantId: string;
+  actionKind: string;
+  /** the arguments decideGovernedExecution returned on the `execute` branch (never the raw model args). */
+  args: unknown;
+  /** the durable correlation id Paige minted BEFORE dispatch (== the ledger idempotency_key). */
+  correlationRef: string;
+};
+
+/** The connector-neutral result of a dispatch or a readback. `outcome` is the exact per-act outcome the
+ *  ledger records; `providerRef` is the provider's own execution/correlation id once known. */
+export type DispatchResult = {
+  outcome: "accepted_for_execution" | "retrying" | "executed" | "failed" | "ambiguous" | "cancelled";
+  providerRef?: string | null;
+  detail?: Record<string, unknown>;
+  error?: string | null;
+};
+
+export interface ActionAdapter {
+  kind: AdapterKind;
+  /** Map an act's action_kind to the governed capability. Pure. Returns null if this adapter does not
+   *  own the action_kind (the engine then fails closed as unsupported). */
+  resolveCapability(actionKind: string): AdapterCapability | null;
+  /** slice 2: perform the external action. Declared now so the contract is stable across adapters. */
+  dispatch?(input: DispatchInput): Promise<DispatchResult>;
+  /** slice 2: confirm a prior dispatch (async providers). */
+  readback?(providerRef: string, input: DispatchInput): Promise<DispatchResult>;
+}
+
+// ── Kind resolution: action_kind → adapter kind. Prefix-based for the first roster; a DB-backed mapping
+//    (config-as-data, §10) can replace this later without touching callers. Unknown → "unsupported". ────
+const KIND_PREFIXES: ReadonlyArray<readonly [string, AdapterKind]> = [
+  ["n8n", "n8n"],
+  ["native_", "native"],
+  ["paige_", "native"],
+];
+
+export function resolveAdapterKind(actionKind: string | null | undefined): AdapterKind {
+  if (!actionKind) return "unsupported";
+  for (const [prefix, kind] of KIND_PREFIXES) {
+    if (actionKind === prefix || actionKind.startsWith(prefix)) return kind;
+  }
+  return "unsupported";
+}
+
+// ── The registry. n8n is the first registered adapter. Every unregistered kind resolves to null →
+//    the engine records a fail-closed outcome (an unsupported adapter never silently "succeeds"). ───────
+
+/** The n8n workflow-runtime adapter (Route A). resolveCapability treats any n8n action_kind as a MUTATION
+ *  (running a workflow is an external effect); the capability id is the action_kind slug itself (which is
+ *  the canonical action-risk key). dispatch/readback land in slice 2 over the shared n8n run seam. */
+const n8nAdapter: ActionAdapter = {
+  kind: "n8n",
+  resolveCapability(actionKind: string): AdapterCapability | null {
+    if (resolveAdapterKind(actionKind) !== "n8n") return null;
+    return { id: actionKind, effect: "mutate", outcomeChannel: "paige_act_executions" };
+  },
+  // dispatch/readback: slice 2 (shared paige-n8n run/execution_get seam).
+};
+
+const REGISTRY: ReadonlyMap<AdapterKind, ActionAdapter> = new Map<AdapterKind, ActionAdapter>([
+  ["n8n", n8nAdapter],
+]);
+
+/** Resolve the adapter for an adapter kind, or null when no governed adapter is registered for it. */
+export function getAdapter(kind: AdapterKind): ActionAdapter | null {
+  return REGISTRY.get(kind) ?? null;
+}
+
+/** Resolve the adapter for an act's action_kind directly (kind resolution + registry lookup). */
+export function adapterForAction(actionKind: string | null | undefined): ActionAdapter | null {
+  return getAdapter(resolveAdapterKind(actionKind));
+}

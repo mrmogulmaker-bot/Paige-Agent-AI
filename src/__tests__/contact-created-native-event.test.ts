@@ -178,8 +178,11 @@ describe("the edge drainer — fail-closed, tenant-from-claim, fire-once, honest
     expect(fn).toContain('onConflict: "event_id,automation_id"');
   });
 
-  it("is honest (§947): it records delivery WITHOUT claiming an external send that did not happen", () => {
-    expect(fn).toContain("acts_executed: false");
+  it("is honest (§947/§13): acts_executed is legacy metadata derived from a REAL executed outcome, never a blanket flag", () => {
+    // acts_executed is true only when an act actually reached the `executed` outcome (never in C1) — the
+    // per-act ledger (paige_act_executions) is the real proof, not this per-subscriber flag.
+    expect(fn).toContain('const anyExecuted = actRecs.some((r) => r.outcome === "executed");');
+    expect(fn).toContain("acts_executed: needsRetry ? false : anyExecuted");
     // completes only when nothing failed; otherwise fails so the sweeper retries only the failures
     expect(fn).toContain("if (failed.length === 0) {");
     expect(fn).toContain('admin.rpc("paige_complete_event"');
@@ -191,8 +194,18 @@ describe("the edge drainer — fail-closed, tenant-from-claim, fire-once, honest
     expect(fn).toContain('terminal = compErr ? "complete_error" : "done";');
   });
 
-  it("flags that subscriber conditions must gate act execution before acts are wired (§39 F3 TODO)", () => {
-    expect(fn).toContain("paige_automations.conditions is NOT");
+  it("runs the governed act engine — evaluates conditions, records per-act outcomes, fails closed (closes the F3 TODO)", () => {
+    // the former F3 TODO ("conditions not yet evaluated") is CLOSED: the drainer runs runEventActs, which
+    // evaluates each subscriber's conditions and governs every act, recording the exact per-act outcome.
+    expect(fn).toContain("runEventActs(");
+    // event-integrity gate (owner correction #2): the subject-derived tenant must match the claimed tenant
+    expect(fn).toContain("verifySubjectTenant(");
+    expect(fn).toContain('terminal: "integrity_failed"');
+    // fail-closed (owner correction #3): an infra error OR a failed per-act ledger write → retry, not 'done'
+    expect(fn).toContain("engine.subscriber_retry");
+    expect(fn).toContain("const needsRetry =");
+    // event-level distinction (owner correction #6): no_subscriber is separate from delivery / per-act outcome
+    expect(fn).toContain("no_subscriber: subscribers.length === 0");
   });
 
   it("a concurrent claim loser no-ops (idempotent), never double-drains", () => {

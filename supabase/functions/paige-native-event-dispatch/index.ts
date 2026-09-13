@@ -10,13 +10,22 @@
 //   * paige_automations                         - the subscribers (§67 Process Records) by trigger_key
 //   * paige_event_dispatches                    - the fire-once ledger, UNIQUE(event_id, automation_id)
 //
-// -- SCOPE (honest, §13/§947) -----------------------------------------------------------------
-// This delivers the EVENT to its subscribers and records the delivery. It does NOT execute a
-// subscriber's acts and performs NO external send — Telegram/email stay off until their own
-// security design lands (owner directive). Each dispatch row therefore records delivered:true with
-// acts_executed:false, so Paige can truthfully say "the event fired and reached N subscribers"
-// without ever claiming a notification was sent that was not. Executing subscriber acts, and the
-// owner-facing Rail projection, are the next increments.
+// -- SCOPE (honest, §13) — Layer C · C1 (the safe engine foundation) ---------------------------
+// This delivers the EVENT to its subscribers AND runs the governed act-execution engine
+// (_shared/paige-orchestration). Before any of that it runs an INDEPENDENT event-integrity check
+// (owner correction #2): the tenant is re-derived from the canonical SUBJECT record and asserted to
+// equal the claimed event tenant — a mismatch/unknown subject fails CLOSED (truthful failure recorded,
+// NO subscriber load, NO authority/adapter/provider decision). Per subscriber it then evaluates
+// conditions, resolves the effective autonomy lane (grant ∧ most-restrictive act floor ∧ Trust-Compass
+// ceiling ∧ §68 decay), and runs the ONE governed pathway (decideGovernedExecution) per act, recording
+// the EXACT per-act outcome in paige_act_executions through the ATOMIC, MONOTONIC transition RPC
+// (paige_record_act_execution) — a final outcome is never overwritten, and every durable write is
+// CHECKED (a failed write fails the dispatch for retry, correction #3). It performs NO external send
+// yet — an authorized act stops at `accepted_for_execution`; the connector-neutral adapter DISPATCH +
+// signed readback + canonical domain update is C2+. THREE distinct levels are preserved (correction #6):
+// event-level `no_subscriber`, subscriber-level paige_event_dispatches delivery, per-act
+// paige_act_executions outcome. `acts_executed` is legacy per-subscriber metadata only (true only on a
+// real `executed` outcome, never in C1) — never owner-visible proof by itself; the per-act ledger is.
 //
 // -- SECURITY (§9/§13) ------------------------------------------------------------------------
 // NOT user-facing. Authorized ONLY by (a) the service-role bearer, or (b) a valid Vault cron token
@@ -33,6 +42,8 @@
 // top-level error.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { runEventActs, type AutomationRow, type ClaimedEvent, type EngineDb } from "../_shared/paige-orchestration/engine.ts";
+import { verifySubjectTenant, type SubjectDb } from "../_shared/paige-orchestration/subject-tenant.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -100,10 +111,32 @@ Deno.serve(async (req) => {
   };
 
   try {
+    // -- 1.5 INDEPENDENT event-integrity check (§9, owner correction #2). The tenant the acts will run
+    //    under must be the tenant that actually OWNS the event's subject — not merely the tenant the event
+    //    row claims. Re-derive it from the canonical subject record and assert equality. On ANY mismatch,
+    //    missing subject, or unrecognised subject table we FAIL CLOSED: record the truthful failure and
+    //    make NO authority/adapter/provider decision (no subscriber load, no engine, no dispatch). --
+    const integrity = await verifySubjectTenant(
+      admin as unknown as SubjectDb, claim.subject_table, claim.subject_id, tenantId,
+    );
+    if (!integrity.ok) {
+      await failEvent(`event_integrity:${integrity.code}: ${integrity.reason}`);
+      return json({
+        event_id: eventId,
+        event_key: eventKey,
+        claimed: true,
+        event_integrity: { ok: false, code: integrity.code, reason: integrity.reason },
+        subscriber_count: 0,
+        delivered: [],
+        failed: [],
+        terminal: "integrity_failed",
+      }, 200);
+    }
+
     // -- 2. Load this event's approved, live subscribers for THIS tenant (§67 Process Records). --
     const { data: subs, error: subErr } = await admin
       .from("paige_automations")
-      .select("id, name, granted_lane")
+      .select("id, name, granted_lane, conditions, created_by, state")
       .eq("tenant_id", tenantId)
       .eq("trigger_key", eventKey)
       .eq("state", "live");
@@ -125,15 +158,46 @@ Deno.serve(async (req) => {
     const delivered: string[] = [];
     const failed: string[] = [];
 
-    // -- 4. Deliver to each subscriber, recording the TRUE outcome (done|error), fire-once. --
-    //    MVP: delivery = recording that the event reached the subscriber. No acts are executed and
-    //    nothing is sent externally (acts_executed:false) — honest by construction (§13/§947).
-    //    TODO (§39 F3 — MUST land before acts are wired): paige_automations.conditions is NOT
-    //    evaluated here yet. For the MVP that is harmless (nothing runs), but once act execution is
-    //    added, a subscriber whose conditions do not match this event MUST be skipped — otherwise a
-    //    process fires on events its conditions exclude. Gate on conditions before executing acts.
+    // -- 4. Run the governed act-execution engine (Layer C). For each subscriber it evaluates the
+    //    process's conditions (this CLOSES the former TODO F3 — a subscriber whose conditions exclude
+    //    the event no longer even reaches an act), resolves the effective autonomy lane (grant ∧
+    //    most-restrictive act floor ∧ Trust-Compass ceiling ∧ §68 decay), and runs the ONE governed
+    //    pathway per act — recording the EXACT per-act outcome (condition_not_matched / held_by_lane /
+    //    approval_pending / refused_* / accepted_for_execution / failed) in paige_act_executions,
+    //    fire-once. SLICE 1 stops at accepted_for_execution; the external adapter dispatch + signed
+    //    readback + CRM update is slice 2. A high external-effect act on an `auto` process correctly
+    //    HOLDS for approval — the lane alone never authorizes a high act (§67 / RE-2 grant lift). --
+    const engine = await runEventActs(
+      admin as unknown as EngineDb,
+      {
+        event_id: eventId, tenant_id: tenantId, event_key: eventKey,
+        subject_table: claim.subject_table, subject_id: claim.subject_id, payload: claim.payload ?? {},
+      } as ClaimedEvent,
+      (subscribers as any[]).map((s): AutomationRow => ({
+        id: s.id, name: s.name, granted_lane: s.granted_lane,
+        conditions: s.conditions, created_by: s.created_by ?? null, state: s.state,
+      })),
+    );
+
+    // -- 5. Record DELIVERY per subscriber (paige_event_dispatches), now carrying the EXACT per-act
+    //    outcomes from the engine. FAIL CLOSED (§13 / owner correction #3): if ANY of a subscriber's
+    //    per-act ledger writes failed, its delivery is recorded 'error' (retry) — never a 'done'
+    //    delivery whose per-act outcome was not durably recorded. `acts_executed` is legacy per-subscriber
+    //    metadata (true only on a real `executed` outcome, never in C1) — never proof by itself. --
+    const persistFailed = new Set(engine.persist_failures);
+    const infraRetry = new Set(engine.subscriber_retry);
     for (const sub of subscribers) {
       if (alreadyDone.has(sub.id)) { delivered.push(sub.id); continue; }
+      const actRecs = engine.records.filter((r) => r.automation_id === sub.id);
+      const acts = actRecs.map((r) => ({
+        act_id: r.act_id, position: r.act_position, adapter: r.adapter_kind, outcome: r.outcome,
+      }));
+      // NOT durably delivered when: an infra read/resolve failed (no records governed at all), OR any of
+      // this subscriber's per-act ledger writes failed. Either way → status 'error' → the event fails →
+      // the sweeper retries (never a silent 'done' whose acts were not governed/recorded, §13/§32 F2).
+      const anyPersistFailed = actRecs.some((r) => persistFailed.has(r.act_id));
+      const needsRetry = infraRetry.has(sub.id) || anyPersistFailed;
+      const anyExecuted = actRecs.some((r) => r.outcome === "executed");
       const { error: upErr } = await admin
         .from("paige_event_dispatches")
         .upsert(
@@ -141,13 +205,18 @@ Deno.serve(async (req) => {
             event_id: eventId,
             automation_id: sub.id,
             tenant_id: tenantId,
-            status: "done",
-            result: { delivered: true, acts_executed: false, note: "event delivered to subscriber; act execution not yet wired" },
-            error: null,
+            status: needsRetry ? "error" : "done",
+            result: {
+              delivered: !needsRetry,
+              acts_governed: actRecs.length,
+              acts_executed: needsRetry ? false : anyExecuted,
+              acts,
+            },
+            error: needsRetry ? (infraRetry.has(sub.id) ? "engine_infra_error" : "act_ledger_write_failed") : null,
           },
           { onConflict: "event_id,automation_id" },
         );
-      if (upErr) { failed.push(sub.id); }
+      if (upErr || needsRetry) { failed.push(sub.id); }
       else { delivered.push(sub.id); }
     }
 
@@ -168,9 +237,14 @@ Deno.serve(async (req) => {
       event_id: eventId,
       event_key: eventKey,
       claimed: true,
+      event_integrity: { ok: true },
+      // event-level distinction (owner correction #6): the event FIRED with zero live subscribers — a
+      // legitimate 'done', distinct from a subscriber-level delivery result or a per-act outcome.
+      no_subscriber: subscribers.length === 0,
       subscriber_count: subscribers.length,
       delivered,
       failed,
+      act_outcomes: engine.by_outcome,
       terminal,
     }, 200);
   } catch (e) {
