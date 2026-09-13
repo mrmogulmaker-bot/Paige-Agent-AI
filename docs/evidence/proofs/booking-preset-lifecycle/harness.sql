@@ -1,4 +1,4 @@
--- Faithful fixture for proving 20270130000000_calendar_booking_preset_lifecycle.sql.
+-- Faithful fixture for proving 20270301000000_calendar_booking_preset_lifecycle.sql.
 -- Real calendars/calendar_hosts DDL (with the shipped CHECK constraints) + the
 -- authority helpers verbatim; auth.uid() reads GUC app.uid, is_platform_admin()
 -- reads GUC app.platform_admin. The migration itself is applied AFTER this file

@@ -378,7 +378,7 @@ The tenant booking-PRESET surface — Settings › Connections › Calendars (`c
 
 Enterprise inherits the Standalone Solo column (§60/§61 hybrid — Solo ∪ Agency), so it gets the same booking-preset base capability; the column is omitted above for width, not because Enterprise lacks it.
 
-Honest note (§13/§32/§66): nothing here is LIVE — the owner explicitly withheld merge/deploy. The server seam is proven by a local-Postgres replay (0 fail) but prod persisted-apply of migration `20270130000000` is owed via `deploy-migrations` on eventual merge, and the authenticated owner-drive is §32.c/§70 PROOF OWED. The Paige chat capability that drives the same RPCs is authored (`domains/calendar_preset.ts`) but not registered/wired — handed off in `docs/architecture/booking-preset-capability-adoption.md`.
+Honest note (§13/§32/§66): nothing here is LIVE — the owner explicitly withheld merge/deploy. The server seam is proven by a local-Postgres replay (0 fail) but prod persisted-apply of migration `20270301000000` is owed via `deploy-migrations` on eventual merge, and the authenticated owner-drive is §32.c/§70 PROOF OWED. The Paige chat capability that drives the same RPCs is authored (`domains/calendar_preset.ts`) but not registered/wired — handed off in `docs/architecture/booking-preset-capability-adoption.md`.
 
 ### Trust Compass — the governed control surface (Command Center 3rd sub-tab, 2026-09-05)
 
