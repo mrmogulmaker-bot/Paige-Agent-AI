@@ -31,6 +31,20 @@ const TIER_VALUES = ["eligible", "ineligible", "resell", "deferred", "na"];
 // A status that means "nothing usable is built" may not also declare a real acting lane — the only
 // lane an unbuilt integration currently supports is `prohibited` (R1/R2 honesty).
 const UNBUILT_STATUSES = ["UNAVAILABLE", "DEFERRED", "PROPOSED"];
+// A status that CLAIMS a live runtime. Such a provider MUST cite the real adapter/entry-point code
+// that backs it (code_anchors), and those paths MUST exist on disk — the §13/§32 accountability the
+// registry steward note named as owed (Upload-Post / fal.ai merged owing entries). The complement of
+// UNBUILT_STATUSES.
+const RUNTIME_CLAIMING_STATUSES = ["LIVE", "PARTIAL", "PROOF_OWED"];
+// CONTROLLED code_anchor `role` vocabulary (owner refinement 2026-09-13). A code anchor proves only
+// that a relevant code PATH EXISTS — never that the provider works/connected/customer-ready. The kind
+// is drift-proof (lint-enforced), never free prose:
+//   provider_adapter       — the provider's own integration code (API client, send seam, OAuth, adapter)
+//   callback_readback      — webhook receiver / status callback that reads back the provider's outcome
+//   fail_closed_containment — a path that deliberately refuses/contains (e.g. a 503)
+//   proven_runtime         — ONLY where genuine authenticated end-to-end §32.c runtime proof exists
+//                            (default: DO NOT use — none today; code existing is never runtime proof)
+const CODE_ANCHOR_ROLES = ["provider_adapter", "callback_readback", "fail_closed_containment", "proven_runtime"];
 // Fields a marketplace-metadata-only entry must NEVER carry (rule R4): per-tenant credentials/usage/
 // purchases/billing. The tripwire scans the entry's safe_readable_context for these tokens.
 const MARKETPLACE_FORBIDDEN = /\b(credential|token|purchase|billing|per-tenant usage|tenant usage|client material)\b/i;
@@ -124,6 +138,16 @@ export function validateRegistry(reg) {
 
   for (const k of TOP_LEVEL) if (!(k in reg)) E(`missing top-level key: ${k}`);
   if (!nonEmptyStr(reg.cardinal_rule)) E("cardinal_rule must be a non-empty string");
+
+  // field_schema must be a non-null object AND declare the code_anchors contract (the accountability
+  // field, v1.2). A non-object field_schema (null/string/number/array) would otherwise skip this
+  // check and silently drop the entire code_anchors requirement — a hole in the honesty guard itself
+  // (Codex P2). Require the object first, then that it describes code_anchors.
+  if (reg.field_schema == null || typeof reg.field_schema !== "object" || Array.isArray(reg.field_schema)) {
+    E("field_schema must be a non-null object (its legend declares the code_anchors contract)");
+  } else if (!nonEmptyStr(reg.field_schema.code_anchors)) {
+    E('field_schema is missing the "code_anchors" field description');
+  }
 
   // status vocabulary must be EXACTLY the six task-mandated words (no ninth vocabulary — §18).
   const vocab = reg.status_vocabulary && typeof reg.status_vocabulary === "object"
@@ -221,6 +245,35 @@ export function validateRegistry(reg) {
     // API Expense & Operations Layer (v1.1): every provider carries an expense block + a QUALIFIED m1.
     validateExpenseBlock(p.expense_and_operations, `provider "${tag}"`, E);
     checkBaseM1(p.m1_dependency, `provider "${tag}"`, E);
+
+    // HONESTY INVARIANT 4 (v1.2) — code_anchors accountability. A runtime-claiming status
+    // (LIVE/PARTIAL/PROOF_OWED) MUST cite the real adapter/entry-point code that backs it, each entry
+    // a {path, role, note?} object with non-empty string path + role. An unbuilt status
+    // (UNAVAILABLE/DEFERRED/PROPOSED) has no runtime to anchor, so code_anchors MUST be absent or []
+    // — declaring real anchors on an unbuilt integration is the dishonesty (mirrors INVARIANT 1). The
+    // dead-anchor resolve (findDeadCodeAnchors, in main) then proves each cited path exists on disk.
+    const anchors = p.code_anchors;
+    if (RUNTIME_CLAIMING_STATUSES.includes(p.status)) {
+      if (!nonEmptyArr(anchors)) {
+        E(`provider "${tag}": status ${p.status} requires a non-empty code_anchors array citing the real adapter/entry-point code that backs it (§13/§32)`);
+      } else {
+        for (const a of anchors) {
+          if (a == null || typeof a !== "object" || Array.isArray(a)) {
+            E(`provider "${tag}": each code_anchors entry must be an object {path, role, note?}`);
+            continue;
+          }
+          if (!nonEmptyStr(a.path)) E(`provider "${tag}": code_anchors entry missing non-empty string "path"`);
+          else if (a.path.startsWith("/") || a.path.split("/").includes("..")) E(`provider "${tag}": code_anchors path "${a.path}" must be repo-relative — no absolute path, no ".." traversal (an anchor must identify repository code, never a CI-host file — Codex P2)`);
+          if (!nonEmptyStr(a.role)) E(`provider "${tag}": code_anchors entry missing non-empty string "role"`);
+          else if (!CODE_ANCHOR_ROLES.includes(a.role)) E(`provider "${tag}": code_anchors entry role "${a.role}" is not one of ${CODE_ANCHOR_ROLES.join("|")} (a controlled, drift-proof vocabulary — owner refinement 2026-09-13)`);
+          if ("note" in a && typeof a.note !== "string") E(`provider "${tag}": code_anchors entry "note" must be a string when present`);
+        }
+      }
+    } else if (UNBUILT_STATUSES.includes(p.status)) {
+      if (anchors !== undefined && !(Array.isArray(anchors) && anchors.length === 0)) {
+        E(`provider "${tag}": status ${p.status} is unbuilt — code_anchors must be ABSENT or [] (declaring real anchors on an unbuilt integration is dishonest, R1/R2)`);
+      }
+    }
   }
 
   // COVERAGE — every taxonomy group must have at least one catalogued provider.
@@ -274,6 +327,52 @@ export function validateRegistry(reg) {
   }
 
   return errors;
+}
+
+// DEAD CODE ANCHORS (v1.2) — mirrors binding-ledger-lint's findDeadAnchors. The registry cites the
+// real adapter/entry-point code in each runtime-claiming provider's code_anchors. A rename or delete
+// leaves an anchor pointing at code that no longer exists while the provider still claims a built
+// runtime — the registry lying with authority (§BRAIN). `exists` is injected so this stays a PURE,
+// unit-testable function; main() passes anchorExists (fs-backed), the self-test passes a fake.
+export function findDeadCodeAnchors(reg, exists) {
+  const findings = [];
+  for (const p of reg?.providers ?? []) {
+    if (!Array.isArray(p?.code_anchors)) continue; // structural validity is validateRegistry's job
+    for (const a of p.code_anchors) {
+      const path = a && typeof a.path === "string" ? a.path : null;
+      if (!path) continue;
+      if (!exists(path)) findings.push(`provider "${p.id}": code_anchor '${path}' does not exist`);
+    }
+  }
+  return findings;
+}
+
+// Resolve a code_anchor path to a concrete adapter FILE. A bare DIRECTORY is rejected: directory
+// existence does not detect file-level drift — a provider's adapter file can be deleted or moved
+// while sibling files keep the directory alive, so a dir anchor would report green after the seam
+// disappeared (Codex P2). A concrete path must therefore resolve to a FILE, and a glob (a single `*`
+// in its LAST path segment) must match ≥1 FILE. Dependency-free; only a last-segment `*` is supported.
+function anchorExists(p) {
+  if (typeof p !== "string" || !p) return false;
+  // Repo-containment backstop (Codex P2): never stat a path outside the repo tree — an absolute path
+  // (/etc/passwd) or a `..` escape must not satisfy the dead-anchor check with a CI-host file. The pure
+  // validateRegistry already rejects such shapes structurally; this is defense-in-depth at the fs layer.
+  if (p.startsWith("/") || p.split("/").includes("..")) return false;
+  // lstatSync (NOT statSync) so a SYMLINK does not satisfy the check: statSync follows a link, so a
+  // committed anchor `adapter.ts -> /etc/passwd` would resolve to a CI-host file (Codex P2). lstat does
+  // not follow — a symlink is isSymbolicLink()=true / isFile()=false, so it is rejected; a real regular
+  // file is isFile()=true either way.
+  const isFile = (f) => { try { return fs.lstatSync(f).isFile(); } catch { return false; } };
+  if (!p.includes("*")) return isFile(p);
+  const slash = p.lastIndexOf("/");
+  const dir = slash === -1 ? "." : p.slice(0, slash);
+  const pattern = p.slice(slash + 1);
+  const star = pattern.indexOf("*");
+  const pre = pattern.slice(0, star);
+  const suf = pattern.slice(star + 1);
+  let entries;
+  try { entries = fs.readdirSync(dir); } catch { return false; }
+  return entries.some((e) => e.length >= pre.length + suf.length && e.startsWith(pre) && e.endsWith(suf) && isFile(`${dir}/${e}`));
 }
 
 // ---- self-test: prove the guard catches what it claims ----------------------------------------
@@ -368,13 +467,75 @@ function selfTest() {
   mustFail("roadmap order not contiguous", (r) => {
     r.public_presence_roadmap.items[0].order = 99;
   });
+  // --- code_anchors accountability (v1.2) ---
+  mustFail("runtime provider missing code_anchors", (r) => {
+    const p = r.providers.find((x) => ["LIVE", "PARTIAL", "PROOF_OWED"].includes(x.status));
+    delete p.code_anchors;
+  });
+  mustFail("unbuilt provider declares code_anchors", (r) => {
+    const p = r.providers.find((x) => ["UNAVAILABLE", "DEFERRED", "PROPOSED"].includes(x.status));
+    p.code_anchors = [{ path: "supabase/functions/_shared/twilio.ts", role: "send seam" }];
+  });
+  mustFail("runtime code_anchor entry missing role", (r) => {
+    const p = r.providers.find((x) => ["LIVE", "PARTIAL", "PROOF_OWED"].includes(x.status));
+    p.code_anchors = [{ path: "supabase/functions/_shared/twilio.ts" }];
+  });
+  mustFail("code_anchor role outside the controlled vocabulary", (r) => {
+    const p = r.providers.find((x) => ["LIVE", "PARTIAL", "PROOF_OWED"].includes(x.status));
+    p.code_anchors = [{ path: "supabase/functions/_shared/twilio.ts", role: "send seam" }];
+  });
+  // A non-object field_schema must fail — otherwise the code_anchors contract check is silently
+  // skipped and CI accepts a registry with the whole accountability field removed (Codex P2).
+  mustFail("non-object field_schema (string) skips the code_anchors contract", (r) => {
+    r.field_schema = "not an object";
+  });
+  mustFail("null field_schema skips the code_anchors contract", (r) => {
+    r.field_schema = null;
+  });
+  // A code_anchor path must be repo-relative — an absolute path or a `..` escape must fail (Codex P2).
+  mustFail("code_anchor path is absolute (escapes the repo)", (r) => {
+    const p = r.providers.find((x) => ["LIVE", "PARTIAL", "PROOF_OWED"].includes(x.status));
+    p.code_anchors = [{ path: "/etc/passwd", role: "provider_adapter" }];
+  });
+  mustFail("code_anchor path uses .. traversal (escapes the repo)", (r) => {
+    const p = r.providers.find((x) => ["LIVE", "PARTIAL", "PROOF_OWED"].includes(x.status));
+    p.code_anchors = [{ path: "../../../etc/passwd", role: "provider_adapter" }];
+  });
+
+  // Prove the DEAD-ANCHOR RESOLVER actually catches a missing path — not just the structural rules.
+  // With exists=()=>false, every cited anchor on the real registry must be flagged (>=1).
+  const deadProof = findDeadCodeAnchors(real, () => false);
+  if (deadProof.length === 0) {
+    fails.push("findDeadCodeAnchors with exists=()=>false flagged nothing — the dead-anchor resolver is not reading code_anchors paths");
+  }
+  // Prove the anchorExists glob branch resolves a single `*` in the last segment (both directions).
+  if (!anchorExists("supabase/functions/_shared/twilio*.ts")) {
+    fails.push("anchorExists glob matcher failed to resolve a real glob 'supabase/functions/_shared/twilio*.ts'");
+  }
+  if (anchorExists("supabase/functions/_shared/zzz-no-such-file*.ts")) {
+    fails.push("anchorExists glob matcher wrongly resolved a non-existent glob");
+  }
+  // Prove a bare DIRECTORY is REJECTED (Codex P2 — dir existence must not satisfy a file-level anchor).
+  if (anchorExists("supabase/functions/")) {
+    fails.push("anchorExists accepted a bare directory — a dir anchor cannot detect file-level drift (Codex P2)");
+  }
+  if (!anchorExists("supabase/functions/_shared/twilio.ts")) {
+    fails.push("anchorExists rejected a real file 'supabase/functions/_shared/twilio.ts' — the file resolver is broken");
+  }
+  // Prove the repo-containment backstop (Codex P2): a path outside the repo tree must NOT resolve.
+  if (anchorExists("/etc/passwd")) {
+    fails.push("anchorExists accepted an absolute path outside the repo (Codex P2)");
+  }
+  if (anchorExists("../package.json")) {
+    fails.push("anchorExists accepted a parent-traversal path escaping the repo (Codex P2)");
+  }
 
   if (fails.length) {
     console.error("✗ integration-registry-lint SELF-TEST FAILED:");
     for (const f of fails) console.error(`    • ${f}`);
     process.exit(1);
   }
-  console.log(`✓ integration-registry-lint self-test: real registry valid; ${mutationCount} honesty/structure mutations all caught.`);
+  console.log(`✓ integration-registry-lint self-test: real registry valid; ${mutationCount} honesty/structure mutations all caught; dead-anchor resolver + glob matcher proven.`);
   process.exit(0);
 }
 
@@ -390,6 +551,9 @@ function main() {
   }
 
   const errors = validateRegistry(reg);
+  // Dead-anchor resolve (v1.2): every cited code_anchor path must exist on disk. A runtime-claiming
+  // provider may not point at code that has been renamed or deleted (§13/§32/§BRAIN).
+  errors.push(...findDeadCodeAnchors(reg, anchorExists));
   if (errors.length) {
     console.error("");
     console.error("✗ integration-registry-lint FAILED — the Integration Capability Registry is incomplete or dishonest:");
@@ -401,7 +565,8 @@ function main() {
     process.exit(1);
   }
 
-  console.log(`✓ integration-registry-lint: ${reg.providers.length} providers, all ${reg.taxonomy.length} taxonomy groups covered, honest status vocabulary.`);
+  const anchorCount = reg.providers.reduce((n, p) => n + (Array.isArray(p.code_anchors) ? p.code_anchors.length : 0), 0);
+  console.log(`✓ integration-registry-lint: ${reg.providers.length} providers, all ${reg.taxonomy.length} taxonomy groups covered, honest status vocabulary, ${anchorCount} code_anchors all resolve on disk.`);
   process.exit(0);
 }
 
