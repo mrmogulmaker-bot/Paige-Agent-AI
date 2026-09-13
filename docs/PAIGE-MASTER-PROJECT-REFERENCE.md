@@ -727,6 +727,29 @@ Reference or any domain ledger; it governs how their facts become release and cu
 
 ### 4.0 Shipped Delivery Log
 
+**2026-09-13 Platform Operator Command Center — Phase 0 map + Phase 2 first view: Platform health (PR [#1181](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1181), squash-merged to `main` as `000a6012` from head `f925b99d`, development channel, owner-mandated Gate A):**
+The owner's 2026-09-12 Command Center mandate releases the parked `operator.platform` seam. Ships the Phase 0 map
+(`docs/delivery/platform-operator-command-center.md`: where the Command Center lives — the owner-locked v3 console,
+Phase 1's shell/guard already shipped — reuse map, collision map, §58 Team-Pulse displacement record, the ten
+AGENTS.md capability-routing answers) and Phase 2's first view: **Analytics → Platform health**, porting the v3
+pack's own drawing (`paige-ia.js` L268–L294 + L496–L508) with real reads behind every figure — latest-run ledger
+from the `systems_check_snapshot` seam (react-query-shared with Systems Check), platform-health ledger rows
+resolving from real registry checks (`operator_cross_tenant_canary`/`operator_rls_coverage`/
+`operator_migration_drift`) plus run history and alert firings, sweep-outcome stackbars from
+`paige_systems_check_run`, real `acknowledged_at` latency, and honest absences where no substrate exists
+(LLM error rate names the missing metric series rather than drawing one). `FleetTeamPulseSurface` (a retired-pack
+stopgap) displaced with its §58 record — kept on disk, owed to the Settings → Team port. Also repairs
+`dev-loop.mjs`'s Windows reference URL. **Delivery/proof boundary:** static content-asserting tests (9 new),
+operator suite 232/232, eslint clean, dev-loop both themes with geometry matching CD's compiled reference
+(rail 216 / spine 416), binding-ledger lint green; **authenticated-runtime drive at the guarded route remains
+PROOF OWED** (no operator credentials in the build environment; §63) and 200% zoom untested. Canonical records:
+Binding Ledger `operator.platform` UNAVAILABLE→PARTIAL with the release recorded + portfolio matrix snapshot
+moved in-change; brain index row + decision-log entry; UI evidence record
+`docs/evidence/ui-delivery/operator-platform-health-view.md`. Out-of-scope finding filed: **#1180** (main's
+`ci:tsc` ratchet red from #1175 vocabulary vs the gateway test — verified pre-existing on clean main; `verify`
+red on the same pre-existing set as the #1162 precedent). **Customer-release eligibility: No** — internal
+Platform Operator surface, no tenant-visible change.
+
 **2026-09-13 Capability Portfolio — the One Paige Operating Platform delivery standard (PR [#1175](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1175), squash-merged to `main` from head `43544cac`, internal channel, owner-approved Gate A):**
 Makes the one-governed-platform model binding for every future agent on `main`. Master Reference §3 gains the
 **Capability Portfolio rule** — one entry path (Gateway → tenant/actor/role/connection truth → authority/approval/
