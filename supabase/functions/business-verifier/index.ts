@@ -137,15 +137,20 @@ Deno.serve(async (req) => {
 
     const authzDeps: BusinessVerifyAuthzDeps = {
       // super_admin ONLY (§53), keyed on the VERIFIED caller uid — never the body. The one sanctioned
-      // cross-tenant caller. Uses the EXPLICIT is_platform_owner(_user_id) overload: a no-arg
+      // cross-tenant caller. Uses the EXPLICIT is_platform_owner(_user_id) overload (body is
+      // `SELECT is_super_admin(_user_id)`, SECURITY DEFINER, keyed on the PASSED uid): a no-arg
       // .rpc("is_platform_owner") is AMBIGUOUS under PostgREST (both () and (uuid) overloads exist →
-      // PGRST203 "could not choose the best candidate function"), which would swallow to `false` and
-      // silently deny a legitimate operator (the paige-operator-sms-send D.1 live-500 lesson). Passing
-      // _user_id disambiguates to the uuid overload. Errors are logged and fail closed (never a silent
-      // opaque swallow, §32/§13). Inert for a `system` caller (not consulted).
+      // PGRST203), which would swallow to `false` and silently deny a legitimate operator (the
+      // paige-operator-sms-send D.1 live-500 lesson). Called through the SERVICE-ROLE `admin` client, not
+      // the caller's JWT client: the answer depends only on the explicit `_user_id` we pass (the verified
+      // auth.uid(), never a body value), so the result is identical, and it does NOT depend on the
+      // authenticated PUBLIC EXECUTE grant on the (uuid) overload remaining in place — a future REVOKE to
+      // service_role-only (which a sibling migration's comment already asserts) would otherwise make this
+      // fast-path fail closed and silently deny a super_admin. Errors are logged and fail closed
+      // (§32/§13). Inert for a `system` caller (not consulted).
       isPlatformOwner: async () => {
         if (!callerUserId) return false;
-        const { data, error } = await authClient.rpc("is_platform_owner", { _user_id: callerUserId });
+        const { data, error } = await admin.rpc("is_platform_owner", { _user_id: callerUserId });
         if (error) {
           console.error("business-verifier is_platform_owner check failed", error.message ?? String(error));
           return false;
