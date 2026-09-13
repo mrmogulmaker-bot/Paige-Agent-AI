@@ -192,6 +192,12 @@ export const falAdapter: MediaProviderAdapter = {
     const resp = await fetch(`${QUEUE_BASE}/${ref.model}/requests/${encodeURIComponent(ref.providerRequestId)}/status`, {
       headers: { authorization: `Key ${key}` },
     });
+    if (resp.status === 404 || resp.status === 405) {
+      // Observed live (2026-09-13): the status route can vanish once a request
+      // completes. Report COMPLETED so the caller proceeds to fetchResult —
+      // the result fetch is the authority on whether the artifact survives.
+      return { status: "COMPLETED" };
+    }
     if (!resp.ok) {
       const detail = await resp.text().catch(() => "");
       throw new Error(`fal status ${resp.status}: ${detail.slice(0, 300)}`);
