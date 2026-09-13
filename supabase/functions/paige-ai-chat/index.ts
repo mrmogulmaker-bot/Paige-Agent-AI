@@ -4,6 +4,10 @@ import { CAMPAIGN_BRIEF_TOOLS } from '../_shared/paige-spine/domains/campaigns.t
 import { executeVerifiedCampaignBriefMutation, resolveCampaignBriefListContext } from '../_shared/campaign-brief-tenant-brain.ts';
 import { CALENDAR_PRESET_TOOLS } from '../_shared/paige-spine/domains/calendar_preset.ts';
 import { executeVerifiedCalendarPresetMutation, resolveCalendarPresetListContext, type CalendarPresetMutationTool } from '../_shared/calendar-preset-tenant-brain.ts';
+// E7 — governed calendar-link sharing (prepare/send/social-copy). The send routes through the
+// canonical send-message seam (caller JWT forwarded); prepare/social-copy are reads.
+import { CALENDAR_LINK_TOOLS } from '../_shared/paige-spine/domains/calendar_link.ts';
+import { prepareCalendarLinkShare, sendCalendarLink, calendarLinkSocialCopy, type SendMessageFn } from '../_shared/calendar-link-tenant-brain.ts';
 import { N8N_MANAGEMENT_TOOLS, runN8nManagement } from '../_shared/n8n-management.ts';
 const N8N_MANAGEMENT_TOOL_NAMES = new Set(N8N_MANAGEMENT_TOOLS.map(tool => tool.function.name));
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -243,6 +247,16 @@ function describeStep(
       ? { label: "Restored a booking calendar, evidence incomplete", group: "owner", detail: "back to draft/paused · Rail not recorded" }
       : { label: failed ? "Could not restore that booking calendar" : "Restored a booking calendar", group: "owner", detail: failed ? "nothing changed" : "back to draft/paused · not public · Rail recorded" };
     case "booking_preset_list": return { label: failed ? "Couldn't read your booking calendars" : "Checked your booking calendars", group: "owner" };
+    // Calendar-link sharing (E7). prepare/social_copy are reads (never `failed`); send keys on the
+    // TRUE outcome — a queued send is NOT "sent", and a refused/failed send is never a success (§13).
+    case "calendar_link_prepare": return { label: "Prepared a booking link to share", group: "owner", detail: out?.shareable === false ? "calendar isn't public yet" : undefined };
+    case "calendar_link_social_copy": return { label: "Prepared social post copy", group: "owner", detail: "copy-ready · nothing posted" };
+    case "calendar_link_send": {
+      const oc = out?.outcome;
+      if (oc === "sent") return { label: "Sent your booking link", group: "owner", detail: `by ${out?.channel === "sms" ? "text" : "email"}` };
+      if (oc === "queued") return { label: "Booking link held to send later", group: "owner", detail: "not sent yet" };
+      return { label: "Couldn't send the booking link", group: "owner", detail: oc === "refused" ? "recipient can't be messaged" : undefined };
+    }
     // CRM (client)
     case "crm_search_contacts": return { label: "Looking through your contacts", group: "client", detail: typeof out?.count === "number" ? `${out.count} found` : undefined };
     case "crm_get_contact_summary": return { label: "Pulling up the contact", group: "client" };
@@ -6493,6 +6507,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           ...BUSINESS_MISSION_TOOLS,
           ...CAMPAIGN_BRIEF_TOOLS,
           ...CALENDAR_PRESET_TOOLS,
+          ...CALENDAR_LINK_TOOLS,
           {
             type: "function",
             function: {
@@ -7332,6 +7347,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       booking_preset_archive: "archiving a booking calendar",
       booking_preset_restore: "restoring a booking calendar",
       booking_preset_list: "checking your booking calendars",
+      calendar_link_prepare: "preparing a booking link to share",
+      calendar_link_send: "sending a booking link to a contact",
+      calendar_link_social_copy: "preparing social post copy for a booking link",
       update_client_data: "saving details to a client's file",
       delegate_to_subagent: "handing work to one of her specialists",
       comms_buy_number: "buying a phone number",
@@ -7638,6 +7656,26 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         case "booking_preset_restore": {
           const p = await bookingPreset(a?.presetId);
           return `Restore the archived booking calendar ${p.label} — bring it back to Draft or Paused. It does NOT go back on the air; publishing is a separate step.`;
+        }
+        case "calendar_link_send": {
+          const p = await bookingPreset(a?.calendarId);
+          const ch = a?.channel === "sms" ? "text message (SMS)" : "email";
+          // Name the RECIPIENT on the outward-facing high-risk card (§70 consent clarity — the operator
+          // approves a NAMED recipient, not "this contact"). Reads the channel address in-tenant under
+          // the caller JWT (RLS-scoped; a cross-tenant/forged id returns no row → "this contact"), §13-safe.
+          let who = "this contact";
+          const cidForCard = typeof a?.contactId === "string" ? a.contactId.trim() : "";
+          const tenantForCard = personaCtx?.tenant_id ?? null;
+          if (UUIDISH.test(cidForCard) && tenantForCard) {
+            try {
+              const { data } = await supabaseClient.from("clients").select("email, phone").eq("id", cidForCard).eq("tenant_id", tenantForCard).maybeSingle();
+              const addr = a?.channel === "sms"
+                ? (typeof data?.phone === "string" ? data.phone.trim() : "")
+                : (typeof data?.email === "string" ? data.email.trim() : "");
+              if (addr) who = addr;
+            } catch { /* fall through to "this contact" (§13 — better unnamed than wrongly named) */ }
+          }
+          return `Send the public booking link for ${p.label} to ${who} by ${ch}. A real person receives a link to your /book page. The server refuses a calendar that isn't public and a recipient who can't be messaged; it does not post to social or book a meeting.`;
         }
         case "deal_create":
           return `Add a deal "${a?.title || "Untitled"}"${typeof a?.value_cents === "number" ? ` worth ${(a.value_cents / 100).toLocaleString(undefined, { style: "currency", currency: a?.currency || "USD" })}` : ""} to the pipeline.`;
@@ -12432,6 +12470,62 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:"The booking calendar was not changed.", note:"No work ran and no calendar result may be claimed." }) });
           }
         } else if (
+          tc.function.name === "calendar_link_prepare" || tc.function.name === "calendar_link_send" ||
+          tc.function.name === "calendar_link_social_copy"
+        ) {
+          // E7 — governed calendar-link SHARING. prepare/social_copy are READS (caller JWT). The SEND
+          // routes through the ONE canonical send-message seam, FORWARDING THE CALLER JWT so its §9
+          // caller-tenant gate stays live (never the service-role internal bearer). The adapter maps the
+          // TRUTHFUL outcome — a queued/blocked/failed send is reported as itself, success ONLY on
+          // outcome="sent" (§13/§70) — and relies on send-message's own comms.outbound Rail record (no
+          // second Rail event). No provider is called directly; no second consent/queue/adapter exists;
+          // social is copy-ready only (there is no governed social-post executor). The generic confirm
+          // gate above already clamped calendar_link_send by its action-risk `high` class.
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const tid = personaCtx?.tenant_id ?? null;
+            const publicSiteUrl = (Deno.env.get("PUBLIC_SITE_URL") ?? "https://paigeagent.ai").replace(/\/+$/, "");
+            if (!tid) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:"No workspace is active. Reopen the workspace and try again." }) });
+            } else if (tc.function.name === "calendar_link_prepare") {
+              const r = await prepareCalendarLinkShare({ caller: supabaseClient, admin: supabase, expectedTenantId: tid, calendarId: args.calendarId, contactId: args.contactId ?? null, publicSiteUrl });
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(r) });
+            } else if (tc.function.name === "calendar_link_social_copy") {
+              const r = await calendarLinkSocialCopy({ caller: supabaseClient, expectedTenantId: tid, calendarId: args.calendarId, publicSiteUrl });
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(r) });
+            } else {
+              // calendar_link_send — the confirmed high-risk send. Forward the caller JWT to send-message.
+              const forwardedAuth = authHeader ?? ""; // string (the handler 401s above if the header is absent)
+              const sendMessage: SendMessageFn = async (i) => {
+                try {
+                  const resp = await fetch(`${supabaseUrl}/functions/v1/send-message`, {
+                    method: "POST",
+                    headers: { "Authorization": forwardedAuth, "apikey": supabaseKey, "Content-Type": "application/json" },
+                    body: JSON.stringify({ channel: i.channel, to: i.to, subject: i.subject, body: i.body, contact_id: i.contact_id }),
+                  });
+                  let j: Record<string, unknown> = {};
+                  try { j = await resp.json(); } catch { /* non-JSON body → treated as unknown outcome */ }
+                  return {
+                    httpOk: resp.ok,
+                    status: (j?.status as string) ?? null,
+                    outcome: (j?.outcome as string) ?? null,
+                    reason: (j?.reason as string) ?? null,
+                    vendor_message_id: (j?.vendor_message_id as string) ?? null,
+                    audit_id: (j?.audit_id as string) ?? null,
+                    message_id: (j?.message_id as string) ?? null,
+                    error: (j?.error as string) ?? null,
+                  };
+                } catch (e) {
+                  return { httpOk: false, reason: e instanceof Error ? e.message : "send-message could not be reached" };
+                }
+              };
+              const r = await sendCalendarLink({ caller: supabaseClient, admin: supabase, sendMessage, expectedTenantId: tid, calendarId: args.calendarId, contactId: args.contactId, channel: args.channel, subject: args.subject ?? null, message: args.message ?? null, publicSiteUrl });
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(r) });
+            }
+          } catch (e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:"The booking link was not shared.", note:"No send ran and no delivery may be claimed." }) });
+          }
+        } else if (
           tc.function.name === "plan_set_reminder" ||
           tc.function.name === "plan_create" ||
           tc.function.name === "plan_add_milestone" ||
@@ -12623,6 +12717,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         booking_preset_publish: "calendars", booking_preset_pause: "calendars",
         booking_preset_duplicate: "calendars", booking_preset_archive: "calendars",
         booking_preset_restore: "calendars",
+        calendar_link_prepare: "calendars", calendar_link_send: "calendars", calendar_link_social_copy: "calendars",
         plan_create: "plans", plan_add_milestone: "plans", plan_set_reminder: "plans",
         plan_update_item: "plans", plan_remove_item: "plans",
         author_event_kind: "paige_event_kinds",

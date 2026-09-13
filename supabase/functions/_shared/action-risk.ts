@@ -213,6 +213,12 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   ["booking_preset_pause", "ordinary", "takes a booking preset off the air (reversible by publishing again); removes visibility rather than exposing anything"],
   ["booking_preset_duplicate", "ordinary", "copies an existing preset into a new PRIVATE DRAFT (enabled=false); nothing public — the same draft-by-default class as create"],
   ["booking_preset_restore", "ordinary", "brings an archived preset back to Draft or Paused; it exposes nothing (restore never re-publishes)"],
+  // ── Calendar-link SHARING (E7, 2026-09-13). Only the SEND is classified: sharing a published
+  // calendar's public /book link to a real contact by email/SMS is outward-facing (a person
+  // receives it), so it is `high` and carries the rendered approval card. `calendar_link_prepare`
+  // and `calendar_link_social_copy` are READS (no mutation verb) — copy-ready previews that send
+  // and post nothing — so they are intentionally NOT classified here.
+  ["calendar_link_send", "high", "sends a published calendar's public booking link to a real contact by email or SMS — outward-facing; the server refuses a non-public calendar and the comms seam refuses a cross-tenant, suppressed, or unconsented recipient, and it never posts to social or books a meeting"],
   ["deal_create", "ordinary", "adds an opportunity"],
   ["deal_move_stage", "ordinary", "moves a deal between stages"],
   // The client seat's ONLY write, and on the portal it is the client editing their own profile.
