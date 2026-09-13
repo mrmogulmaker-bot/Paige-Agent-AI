@@ -2,6 +2,8 @@ import { BUSINESS_MISSION_TOOLS } from '../_shared/paige-spine/domains/business_
 import { executeVerifiedMissionMutation, resolveBusinessMissionThreadContext, resolveSelectedBusinessMissionContext } from '../_shared/business-mission-tenant-brain.ts';
 import { CAMPAIGN_BRIEF_TOOLS } from '../_shared/paige-spine/domains/campaigns.ts';
 import { executeVerifiedCampaignBriefMutation, resolveCampaignBriefListContext } from '../_shared/campaign-brief-tenant-brain.ts';
+import { CALENDAR_PRESET_TOOLS } from '../_shared/paige-spine/domains/calendar_preset.ts';
+import { executeVerifiedCalendarPresetMutation, resolveCalendarPresetListContext, type CalendarPresetMutationTool } from '../_shared/calendar-preset-tenant-brain.ts';
 import { N8N_MANAGEMENT_TOOLS, runN8nManagement } from '../_shared/n8n-management.ts';
 const N8N_MANAGEMENT_TOOL_NAMES = new Set(N8N_MANAGEMENT_TOOLS.map(tool => tool.function.name));
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -209,6 +211,19 @@ function describeStep(
       ? { label: "Campaign Brief revision saved, evidence incomplete", group: "owner", detail: "canonical planning record verified · Rail not recorded" }
       : { label: failed ? "Could not verify that Campaign Brief revision" : "Revised and verified a Campaign Brief", group: "owner", detail: failed ? "no verified outcome" : "planning record · Rail recorded · nothing launched" };
     case "campaign_brief_list": return { label: failed ? "Couldn't read your campaign briefs" : "Checked your campaign briefs", group: "owner" };
+    // Calendar booking presets (owner) — a preset is a bookable /book PAGE; only publish makes it public.
+    case "booking_preset_create": return { label: failed ? "Could not create that booking calendar" : "Created a booking calendar", group: "owner", detail: failed ? "nothing changed" : "private draft · Rail recorded · not public yet" };
+    case "booking_preset_duplicate": return { label: failed ? "Could not duplicate that booking calendar" : "Duplicated a booking calendar", group: "owner", detail: failed ? "nothing changed" : "private draft copy · Rail recorded · not public yet" };
+    case "booking_preset_revise": return out?.code === "CALENDAR_PRESET_RAIL_WRITE_FAILED"
+      ? { label: "Booking calendar saved, evidence incomplete", group: "owner", detail: "canonical change verified · Rail not recorded" }
+      : { label: failed ? "Could not revise that booking calendar" : "Revised a booking calendar", group: "owner", detail: failed ? "nothing changed" : "config change · Rail recorded · nothing published" };
+    case "booking_preset_publish": return failed
+      ? { label: "Could not publish that booking calendar", group: "owner", detail: "not live" }
+      : { label: "Published a booking calendar", group: "owner", detail: "public /book page live · Rail recorded" };
+    case "booking_preset_pause": return { label: failed ? "Could not pause that booking calendar" : "Paused a booking calendar", group: "owner", detail: failed ? "nothing changed" : "off the air · Rail recorded" };
+    case "booking_preset_archive": return { label: failed ? "Could not archive that booking calendar" : "Archived a booking calendar", group: "owner", detail: failed ? "nothing changed" : "put away · off the air · Rail recorded" };
+    case "booking_preset_restore": return { label: failed ? "Could not restore that booking calendar" : "Restored a booking calendar", group: "owner", detail: failed ? "nothing changed" : "back to draft/paused · not public · Rail recorded" };
+    case "booking_preset_list": return { label: failed ? "Couldn't read your booking calendars" : "Checked your booking calendars", group: "owner" };
     // CRM (client)
     case "crm_search_contacts": return { label: "Looking through your contacts", group: "client", detail: typeof out?.count === "number" ? `${out.count} found` : undefined };
     case "crm_get_contact_summary": return { label: "Pulling up the contact", group: "client" };
@@ -6458,6 +6473,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           },
           ...BUSINESS_MISSION_TOOLS,
           ...CAMPAIGN_BRIEF_TOOLS,
+          ...CALENDAR_PRESET_TOOLS,
           {
             type: "function",
             function: {
@@ -7289,6 +7305,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       campaign_brief_create: "saving a campaign brief",
       campaign_brief_revise: "revising a campaign brief",
       campaign_brief_list: "checking your campaign briefs",
+      booking_preset_create: "creating a booking calendar (a private draft)",
+      booking_preset_revise: "revising a booking calendar",
+      booking_preset_publish: "publishing a booking calendar's public page",
+      booking_preset_pause: "pausing a booking calendar",
+      booking_preset_duplicate: "duplicating a booking calendar (a private draft)",
+      booking_preset_archive: "archiving a booking calendar",
+      booking_preset_restore: "restoring a booking calendar",
+      booking_preset_list: "checking your booking calendars",
       update_client_data: "saving details to a client's file",
       delegate_to_subagent: "handing work to one of her specialists",
       comms_buy_number: "buying a phone number",
@@ -12199,6 +12223,79 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:"The campaign brief was not saved.", note:"No work ran and no campaign result may be claimed." }) });
           }
         } else if (
+          tc.function.name === "booking_preset_create" || tc.function.name === "booking_preset_revise" ||
+          tc.function.name === "booking_preset_publish" || tc.function.name === "booking_preset_pause" ||
+          tc.function.name === "booking_preset_duplicate" || tc.function.name === "booking_preset_archive" ||
+          tc.function.name === "booking_preset_restore" || tc.function.name === "booking_preset_list"
+        ) {
+          // Solo Tenant Brain — booking-preset lifecycle. The helper uses the CALLER JWT for
+          // tenant/role resolution and the EXISTING create/update/publish/pause/duplicate/archive/
+          // restore RPCs the Settings › Connections › Calendars UI drives, then independently reopens
+          // get_calendar_presets and checks the per-verb post-condition before the EXISTING service-role
+          // capability recorder runs. No provider, invitation, external event, meeting link, booking,
+          // Mind, Memory, or second approval system is reachable here (§10/§13). The generic confirm gate
+          // above already clamped this by the action-risk class (publish/revise/archive = high → the
+          // rendered approval card; create/pause/duplicate/restore = ordinary → the compact confirm).
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const tid = personaCtx?.tenant_id ?? null;
+            if (tc.function.name === "booking_preset_list") {
+              const listResult = tid ? await resolveCalendarPresetListContext({ caller: supabaseClient, expectedTenantId: tid }) : { ok: false as const, code: "CALENDAR_PRESET_TENANT_NOT_RESOLVED" };
+              if (!listResult.ok) {
+                const friendly = listResult.code === "PRESET_FORBIDDEN"
+                  ? "You don't have access to this workspace's booking calendars."
+                  : listResult.code === "ACTIVE_ACCOUNT_CHANGED"
+                    ? "The active workspace changed. Reopen Calendars in the current workspace."
+                    : "Could not read the booking calendars. Reopen the workspace and try again.";
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:friendly }) });
+              } else {
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:true, source:listResult.context, presets:listResult.presets, note:"These are booking-preset lifecycle records from the current canonical projection. A 'live' label means the public /book page is reachable; Draft/Paused/Archived are NOT public. Nothing here is a provider connection, an invitation, or a booking. Mind and Memory are UNAVAILABLE." }) });
+              }
+            } else {
+              const tool = tc.function.name as CalendarPresetMutationTool;
+              const runId = await stableRunId(["calendar_preset", tool, tid ?? "", tc.id]);
+              const result = tid ? await executeVerifiedCalendarPresetMutation({
+                caller: supabaseClient,
+                expectedTenantId: tid,
+                actorId: user.id,
+                tool,
+                args,
+                runId,
+                recordRun: (run) => recordCapabilityRun(supabase, run),
+              }) : { success: false, verified: false, code: "CALENDAR_PRESET_TENANT_NOT_RESOLVED" };
+              const code = String(result.code ?? "");
+              const friendly =
+                  code === "PRESET_NOT_FOUND" ? "That booking calendar isn't in this workspace. List the calendars again to get the current one."
+                : code === "PRESET_FORBIDDEN" ? "Only an authorized owner or workspace administrator can change booking calendars."
+                : code === "PRESET_ARCHIVED" ? "That calendar is archived. Restore it before editing or publishing it."
+                : code === "PRESET_NEEDS_HOSTS" ? "It needs more hosts before it can go live — Round Robin and Collective need two or more."
+                : code === "PRESET_NO_HOURS" ? "Add at least one open window before this calendar can be published."
+                : code === "PRESET_NO_METHOD" ? "Choose how the meeting happens before this calendar can be published."
+                : code === "PRESET_SLUG_TAKEN" ? "That booking link is already taken. Try a different name."
+                : code === "CALENDAR_PRESET_ARGUMENTS_INVALID" ? "One or more calendar fields were malformed. Nothing was written; clarify the intended values before trying again."
+                : code === "ACTIVE_ACCOUNT_CHANGED" ? "The active workspace changed. The calendar outcome was not verified here; reopen Calendars in the current workspace before doing anything else."
+                : code === "CALENDAR_PRESET_RAIL_WRITE_FAILED" ? "The calendar change was verified, but its Rail evidence did not finish after a same-key retry. Do not call the operation fully done and do not repeat it; evidence repair is still required."
+                : code.includes("READ") || code.includes("WRITE_RESULT") || code.includes("WRITE_OUTCOME") || code.includes("READBACK")
+                  ? "The calendar may have changed, but Paige could not verify the canonical result. Reopen Calendars before retrying."
+                  : "The booking calendar was not changed or could not be verified. Reopen Calendars and try again.";
+              toolResults.push({
+                tool_call_id: tc.id,
+                role: "tool",
+                content: JSON.stringify(result.success ? result : {
+                  ...result,
+                  error: friendly,
+                  note: result.verified === true
+                    ? "The canonical booking-preset change is verified, but Rail evidence is incomplete. Do not claim end-to-end success. Nothing was published unless this was a publish; nothing connected a provider, sent, or booked."
+                    : result.mutationMayHavePersisted
+                      ? "Do not claim success and do not retry until the calendar is reopened and re-read. No successful Rail outcome was written."
+                      : "Nothing was verified as changed. Do not claim success. No successful Rail outcome was written.",
+                }),
+              });
+            }
+          } catch (e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:"The booking calendar was not changed.", note:"No work ran and no calendar result may be claimed." }) });
+          }
+        } else if (
           tc.function.name === "plan_set_reminder" ||
           tc.function.name === "plan_create" ||
           tc.function.name === "plan_add_milestone" ||
@@ -12384,6 +12481,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         save_to_knowledge_base: "knowledge_base",
         mission_create: "business_missions", mission_revise: "business_missions", mission_transition: "business_missions",
         campaign_brief_create: "campaign_briefs", campaign_brief_revise: "campaign_briefs",
+        // Calendar booking presets — every verb's durable subject is the calendars row (the
+        // booking /book page). duplicate mints a new row; the rest act on the named one.
+        booking_preset_create: "calendars", booking_preset_revise: "calendars",
+        booking_preset_publish: "calendars", booking_preset_pause: "calendars",
+        booking_preset_duplicate: "calendars", booking_preset_archive: "calendars",
+        booking_preset_restore: "calendars",
         plan_create: "plans", plan_add_milestone: "plans", plan_set_reminder: "plans",
         plan_update_item: "plans", plan_remove_item: "plans",
         author_event_kind: "paige_event_kinds",

@@ -200,6 +200,19 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // owner sets, not evidence a campaign is running.
   ["campaign_brief_create", "ordinary", "saves a campaign PLANNING brief the operator can edit or archive; it launches, sends, and publishes nothing"],
   ["campaign_brief_revise", "ordinary", "edits a campaign PLANNING brief; nothing is launched, sent, or published"],
+  // ── Calendar booking presets (E5, 2026-09-13). The SAME server-authorized RPCs the Settings ›
+  // Connections › Calendars UI drives, adopted into Chat (no parallel model). Per-tool risk assumes
+  // each tool's HIGHEST-impact use (the table is per-tool, not per-call): a tool that CAN change or
+  // take down a LIVE, client-facing /book page is `high` and carries the rendered approval card; a
+  // tool whose worst case is a reversible, in-tenant, nothing-public draft is `ordinary` — the class
+  // a tenant owner MAY grant standing authority over. `booking_preset_list` is a read (not classified).
+  ["booking_preset_publish", "high", "makes a booking preset's /book page PUBLIC and bookable by anyone with the link — outward-facing; the server revalidates and refuses an unbookable page, and this never sends, connects a provider, or books a meeting"],
+  ["booking_preset_revise", "high", "edits a booking preset's configuration; the same tool can change a LIVE, client-facing booking page, so it assumes that use — it never publishes, pauses, or changes the public link"],
+  ["booking_preset_archive", "high", "takes a booking preset OUT OF SERVICE — its /book page stops accepting bookings; outward-facing, reversible via restore"],
+  ["booking_preset_create", "ordinary", "creates a PRIVATE DRAFT booking preset (enabled=false); nothing is public, no provider is connected, nothing is sent — publishing is the separate high-risk act"],
+  ["booking_preset_pause", "ordinary", "takes a booking preset off the air (reversible by publishing again); removes visibility rather than exposing anything"],
+  ["booking_preset_duplicate", "ordinary", "copies an existing preset into a new PRIVATE DRAFT (enabled=false); nothing public — the same draft-by-default class as create"],
+  ["booking_preset_restore", "ordinary", "brings an archived preset back to Draft or Paused; it exposes nothing (restore never re-publishes)"],
   ["deal_create", "ordinary", "adds an opportunity"],
   ["deal_move_stage", "ordinary", "moves a deal between stages"],
   // The client seat's ONLY write, and on the portal it is the client editing their own profile.
