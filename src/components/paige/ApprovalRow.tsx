@@ -73,7 +73,8 @@ export function ApprovalRow({
     const reason = rationale.trim();
     if (!reason) { toast.error("Add a quick reason so Paige learns what to change."); return; }
     setRejectBusy(true);
-    // Reject-with-reason: the same RLS-protected UPDATE ApprovalDetail ships (§18) —
+    // Reject-with-reason: a decline is a decision write (not the execute transition), so it uses
+    // this surviving surface's own tenant-scoped RLS-protected UPDATE directly (§18) —
     // permissive admin|coach + RESTRICTIVE tenant policy gate it server-side.
     const { error } = await supabase
       .from("paige_pending_approvals")

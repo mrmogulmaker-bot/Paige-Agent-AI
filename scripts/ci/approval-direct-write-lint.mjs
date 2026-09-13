@@ -69,12 +69,14 @@ const SAFE_STATUS = new Set(["rejected", "skipped", "escalated", "changes_reques
 
 // Locate `from("paige_pending_approvals")` — tolerating a TS assertion on the table argument
 // (`from("paige_pending_approvals" as any)`, the repo's common untyped-Supabase idiom; `[^)]*` spans
-// the ` as <type>` up to the closing paren) — immediately chained to `.update(`/`.upsert(`/`.insert(`
-// (whitespace/newlines only between the `)` and the write — a `.select()`/`.eq()` in between is a
-// read, not this write, and the tight adjacency also means a read here + an approved-write to a
-// DIFFERENT table nearby is NOT conflated). The capture ends at the `(` of the write; the argument
-// list is then extracted with a brace/paren/string-aware walker. Backtick table names are covered too.
-const FROM_WRITE = /from\(\s*["'`]paige_pending_approvals["'`][^)]*\)\s*\.(?:update|upsert|insert)\(/g;
+// the ` as <type>` up to the closing paren) and whitespace before EITHER call paren (`from (…)`,
+// `.update (…)` — JS allows it and no lint forbids it) — immediately chained to
+// `.update(`/`.upsert(`/`.insert(` (whitespace/newlines only between the `)` and the write — a
+// `.select()`/`.eq()` in between is a read, not this write, and the tight adjacency also means a read
+// here + an approved-write to a DIFFERENT table nearby is NOT conflated). The capture ends at the `(`
+// of the write; the argument list is then extracted with a brace/paren/string-aware walker. Backtick
+// table names are covered too.
+const FROM_WRITE = /from\s*\(\s*["'`]paige_pending_approvals["'`][^)]*\)\s*\.(?:update|upsert|insert)\s*\(/g;
 
 // Comments are BLANKED, not deleted, so reported line numbers still match the real file.
 const strip = (t) =>
@@ -266,6 +268,11 @@ if (process.argv.includes("--self-test")) {
       [["f.ts", 'supabase.from("paige_pending_approvals" as any).update({ status: "approved" }).eq("id", id);']], 1],
     ["ignores a decline with an `as any` table assertion",
       [["f.ts", 'supabase.from("paige_pending_approvals" as any).update({ status: "rejected" }).eq("id", id);']], 0],
+    // Codex 2026-09-13 round 5 P2 — whitespace before either call paren must not evade the match.
+    ["catches an approved write with a space before from(",
+      [["f.ts", 'supabase.from ("paige_pending_approvals").update({ status: "approved" }).eq("id", id);']], 1],
+    ["catches an approved write with a space before update(",
+      [["f.ts", 'supabase.from("paige_pending_approvals").update ({ status: "approved" }).eq("id", id);']], 1],
     // TS `as const` / `as T` assertions on the status literal must be tolerated (idiomatic here).
     ["allows a decline literal with an `as const` assertion",
       [["f.ts", 'supabase.from("paige_pending_approvals").insert({ status: "pending" as const, tenant_id: t });']], 0],
