@@ -70,6 +70,7 @@
     "smoke:n8n-ssrf": "node scripts/paige-n8n-ssrf-smoke.mjs",
     "smoke:n8n-egress": "node scripts/n8n-egress-smoke.mjs",
     "smoke:web-fetch-hardening": "node --experimental-transform-types scripts/web-fetch-hardening-smoke.mjs",
+    "smoke:kb-ingest-url-ssrf": "node --experimental-transform-types scripts/kb-ingest-url-ssrf-smoke.mjs",
     "lint:action-authority": "node scripts/ci/action-authority-lint.mjs",
     "smoke:comms-tenant-scope": "node scripts/comms-tenant-scope-smoke.mjs",
     "lint:conversation-tenant": "node scripts/comms-conversation-tenant-lint.mjs",

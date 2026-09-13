@@ -11,6 +11,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
+import { assertPublicHttpUrl, SsrfError } from "../_shared/ssrfGuard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,25 +31,12 @@ const BodySchema = z.object({
 // enough to capture a full article/SOP page rather than a chat-sized snippet.
 const MAX_CONTENT = 200_000;
 
-// SSRF blocklist (regex, per-hostname). NOTE (2026-09-13): this is NO LONGER identical to
-// fetch-url-content's guard — that function migrated to `_shared/ssrfGuard.ts` safeFetch, which
-// is STRICTER (resolves the host and validates every IP numerically, closing the DNS→private /
-// IPv4-mapped-IPv6 gaps this regex cannot see; refuses redirects; bounds time+bytes). Migrating
-// this fork onto safeFetch is a tracked §18 follow-up; until then do not weaken what is here.
-const BLOCKED_HOST_PATTERNS = [
-  /^localhost$/i,
-  /^127\./,
-  /^10\./,
-  /^192\.168\./,
-  /^172\.(1[6-9]|2[0-9]|3[01])\./,
-  /^169\.254\./,
-  /^::1$/,
-  /^0\.0\.0\.0$/,
-  /^fc00:/i,
-  /^fd00:/i,
-  /\.local$/i,
-  /\.internal$/i,
-];
+// SSRF guard: the canonical `_shared/ssrfGuard.ts assertPublicHttpUrl` (§18 one home).
+// It is STRICTER than the per-hostname regex this file used to carry — it resolves the
+// host and validates every resolved IP numerically, closing the DNS→private /
+// IPv4-mapped-IPv6 / encoded-literal gaps a hostname regex cannot see — and it also
+// enforces https-only and rejects embedded credentials. It is applied to the initial URL
+// AND every redirect hop below (see safeFetch).
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -57,25 +45,35 @@ function json(body: unknown, status = 200) {
   });
 }
 
-// HTTPS-only + blocklist guard. Returns an error string if the URL is not a
-// safe public target, else null. Applied to the initial URL AND every redirect
-// hop so a public URL can't 3xx-bounce (or DNS-rebind) into an internal target.
-function unsafeReason(raw: string): string | null {
-  let u: URL;
-  try { u = new URL(raw); } catch { return "Invalid URL format"; }
-  if (u.protocol !== "https:") return "Only HTTPS URLs are allowed";
-  if (BLOCKED_HOST_PATTERNS.some((p) => p.test(u.hostname.toLowerCase()))) return "URL not allowed";
-  return null;
+// Map an SSRF-guard refusal to an honest caller-facing message + HTTP status.
+// Never leaks the resolved address or the caller's URL — only the stable reason class.
+function ssrfResponse(err: SsrfError): { message: string; status: number } {
+  switch (err.reason) {
+    case "invalid_url":
+      return { message: "Invalid URL format", status: 400 };
+    case "url_must_be_https":
+      return { message: "Only HTTPS URLs are allowed", status: 400 };
+    case "url_has_embedded_credentials":
+      return { message: "URLs with embedded credentials aren't allowed", status: 400 };
+    case "url_host_not_allowed":
+    case "url_host_unresolvable":
+    case "url_resolves_to_private_address":
+    case "url_redirect_refused":
+      return { message: "That link points somewhere we can't fetch.", status: 403 };
+    default:
+      return { message: "That link can't be fetched.", status: 400 };
+  }
 }
 
 // Fetch following redirects MANUALLY so each hop's Location is re-validated
 // against the SSRF guard before we follow it (Deno's default redirect:"follow"
-// would chase a 302 → http://169.254.169.254 without re-checking).
+// would chase a 302 → http://169.254.169.254 without re-checking). The guard now
+// resolves DNS + validates every IP numerically per hop, so a public hostname that
+// rebinds to a private address (or an encoded-IP literal) is refused, not followed.
 async function safeFetch(startUrl: string, maxHops = 5): Promise<Response> {
   let current = startUrl;
   for (let hop = 0; hop <= maxHops; hop++) {
-    const bad = unsafeReason(current);
-    if (bad) throw new Error(bad);
+    await assertPublicHttpUrl(current); // throws SsrfError on a non-public / non-https target
     const res = await fetch(current, {
       headers: { "User-Agent": "Paige-AI-Bot/1.0" },
       redirect: "manual",
@@ -128,24 +126,25 @@ serve(async (req) => {
     if (!parsed.success) return json({ error: parsed.error.flatten() }, 400);
     const { url, title, category, tags, share_to_network, tenant_id } = parsed.data;
 
-    // SSRF + HTTPS validation.
+    // Parse for the hostname title-fallback. The SSRF/HTTPS guard runs inside safeFetch
+    // (the initial URL AND every redirect hop) via assertPublicHttpUrl.
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(url);
     } catch {
       return json({ error: "Invalid URL format" }, 400);
     }
-    const initialBad = unsafeReason(url);
-    if (initialBad) return json({ error: initialBad }, initialBad === "URL not allowed" ? 403 : 400);
 
-    // Fetch the page (redirects re-validated per hop against the SSRF guard).
+    // Fetch the page (SSRF-guarded on the initial URL and re-validated per redirect hop).
     let res: Response;
     try {
       res = await safeFetch(url);
     } catch (e) {
-      const msg = (e as Error).message;
-      if (msg === "URL not allowed") return json({ error: "That link redirected somewhere we can't fetch." }, 403);
-      return json({ error: `Couldn't reach the page: ${msg}` }, 400);
+      if (e instanceof SsrfError) {
+        const { message, status } = ssrfResponse(e);
+        return json({ error: message }, status);
+      }
+      return json({ error: `Couldn't reach the page: ${(e as Error).message}` }, 400);
     }
     if (!res.ok) return json({ error: `Failed to fetch URL: ${res.status} ${res.statusText}` }, 400);
 
