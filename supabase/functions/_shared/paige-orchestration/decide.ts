@@ -10,24 +10,14 @@
 //   2. LANE → non-execute outcome — an effective lane of `off` holds the act; `confirm` sends it to approval.
 //   3. REFUSAL → outcome — maps a GovernedRefusalCode to the exact refused_* outcome the owner requires.
 //
-// The outcome vocabulary mirrors the SQL domain `paige_act_outcome` (20270126000000). One definition per
-// side; widening is one edit each. Nothing here is n8n- or Telegram-specific.
+// The outcome vocabulary is now defined ONCE in `outcomes.ts` (C4, §18) and pinned to the SQL domain
+// `paige_act_outcome` (20270126000000) by a bidirectional drift guard. Nothing here is n8n- or Telegram-specific.
 
-/** The exact per-act outcome vocabulary — mirrors the SQL domain `public.paige_act_outcome`. */
-export type ActOutcome =
-  | "condition_not_matched"
-  | "held_by_lane"
-  | "approval_pending"
-  | "refused_authority"
-  | "refused_budget"
-  | "refused_trust_compass"
-  | "refused_consent"
-  | "accepted_for_execution"
-  | "retrying"
-  | "executed"
-  | "failed"
-  | "ambiguous"
-  | "cancelled";
+// The exact per-act outcome type lives in the one canonical home (outcomes.ts). It is imported for local use
+// in the signatures below AND re-exported so every existing importer of `ActOutcome` from decide.ts keeps
+// working unchanged (§58 — no consumer churn).
+import type { ActOutcome } from "./outcomes.ts";
+export type { ActOutcome };
 
 /**
  * A single condition on a §67 process record (`paige_automations.conditions`, a jsonb array). This is the

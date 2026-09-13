@@ -14,6 +14,12 @@ import {
   type EventFacts,
   type ActOutcome,
 } from "../../supabase/functions/_shared/paige-orchestration/decide.ts";
+import {
+  ACT_OUTCOMES,
+  FINAL_OUTCOMES,
+  ADVANCEABLE_OUTCOMES,
+  isFinalOutcome,
+} from "../../supabase/functions/_shared/paige-orchestration/outcomes.ts";
 import { GOVERNED_REFUSAL_CODES } from "../../supabase/functions/_shared/paige-spine/governedExecution.ts";
 
 const facts: EventFacts = {
@@ -112,20 +118,62 @@ describe("refusalToOutcome — a governed refusal maps to the exact refused_* ou
   });
 });
 
-describe("outcome vocabulary parity — TS type ↔ SQL domain paige_act_outcome", () => {
-  it("every ActOutcome the code can produce is a value in the SQL domain CHECK", () => {
-    const producible: ActOutcome[] = [
-      "condition_not_matched", "held_by_lane", "approval_pending",
-      "refused_authority", "refused_budget", "refused_trust_compass", "refused_consent",
-      "accepted_for_execution", "retrying", "executed", "failed", "ambiguous", "cancelled",
-    ];
-    const migration = readFileSync(
-      resolve(process.cwd(), "supabase/migrations/20270126000000_paige_act_execution_ledger.sql"),
-      "utf8",
-    );
-    // the domain block lists each value as a quoted literal; every producible outcome must appear there
-    for (const o of producible) {
-      expect(migration.includes(`'${o}'`), `SQL domain must include '${o}'`).toBe(true);
-    }
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// C4 — the BIDIRECTIONAL "exact state semantics" drift guard. The outcome vocabulary AND the FINAL/SETTLED
+// set each live in TWO languages (the canonical TS `outcomes.ts` and the shipped SQL migration). A drift is a
+// SILENT correctness bug (a state FINAL in the RPC but advanceable in the engine can never settle; the reverse
+// drops a reconcile). This guard parses the ALREADY-SHIPPED migration and asserts BOTH sides are set-for-set
+// identical, in BOTH directions — the same mechanical pin as the F5 registry-sync guard, not a human
+// remembering to edit two files. It upgrades the prior one-way substring check (TS ⊆ SQL only), which could
+// not catch a SQL value with no TS counterpart, and did not cover `_final` at all.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+describe("exact state semantics — TS `outcomes.ts` ↔ SQL migration parity (C4 drift guard)", () => {
+  const migration = readFileSync(
+    resolve(process.cwd(), "supabase/migrations/20270126000000_paige_act_execution_ledger.sql"),
+    "utf8",
+  );
+  // Strip SQL line comments FIRST: several domain entries carry a trailing `-- …` whose prose contains an
+  // apostrophe (e.g. "the automation's conditions"), which would otherwise poison a naive quoted-token scan.
+  const clean = migration.replace(/--[^\n]*/g, "");
+  const tokens = (block: string | undefined): string[] =>
+    (block?.match(/'([a-z_]+)'/g) ?? []).map((s) => s.slice(1, -1));
+  const sorted = (xs: readonly string[]): string[] => [...xs].slice().sort();
+
+  it("the SQL domain `paige_act_outcome` CHECK equals ACT_OUTCOMES, set-for-set (both directions)", () => {
+    const m = clean.match(/create domain public\.paige_act_outcome[\s\S]*?value in \(([\s\S]*?)\)\s*\)/i);
+    expect(m, "could not locate the paige_act_outcome domain CHECK block in the migration").toBeTruthy();
+    const sqlDomain = tokens(m?.[1]);
+    expect(sqlDomain.length).toBeGreaterThan(0);
+    // bidirectional: no TS-only member (SQL would reject it at write time) and no SQL-only member (a state the
+    // TS side can never name). sort() both so the assertion message names any exact divergence.
+    expect(sorted(sqlDomain)).toEqual(sorted(ACT_OUTCOMES));
+  });
+
+  it("the SQL `_final` array equals FINAL_OUTCOMES, set-for-set (both directions)", () => {
+    const m = clean.match(/_final\s+constant\s+text\[\]\s*:=\s*array\[([\s\S]*?)\]/i);
+    expect(m, "could not locate the `_final` array in paige_record_act_execution").toBeTruthy();
+    const sqlFinal = tokens(m?.[1]);
+    expect(sqlFinal.length).toBeGreaterThan(0);
+    expect(sorted(sqlFinal)).toEqual(sorted(FINAL_OUTCOMES));
+  });
+
+  it("FINAL_OUTCOMES ⊂ ACT_OUTCOMES and ADVANCEABLE is exactly the complement (one partition, no drift)", () => {
+    // FINAL and ADVANCEABLE are two views of ONE partition of the vocabulary — derived, never hand-listed.
+    for (const f of FINAL_OUTCOMES) expect(ACT_OUTCOMES as readonly string[]).toContain(f);
+    expect(sorted([...FINAL_OUTCOMES, ...ADVANCEABLE_OUTCOMES])).toEqual(sorted(ACT_OUTCOMES));
+    // the advanceable states are exactly the dispatch/reconcile ones the engine + adapters may still move.
+    expect(sorted(ADVANCEABLE_OUTCOMES)).toEqual(sorted(["accepted_for_execution", "retrying", "ambiguous"]));
+    // the canonical predicate agrees with the partition on every member, and fails safe on a null/absent value.
+    for (const f of FINAL_OUTCOMES) expect(isFinalOutcome(f), `${f} is final`).toBe(true);
+    for (const a of ADVANCEABLE_OUTCOMES) expect(isFinalOutcome(a), `${a} is advanceable`).toBe(false);
+    expect(isFinalOutcome(null)).toBe(false);
+    expect(isFinalOutcome(undefined)).toBe(false);
+    expect(isFinalOutcome("not_an_outcome")).toBe(false);
+  });
+
+  it("every ActOutcome the code can produce is a real vocabulary member (no orphan literal)", () => {
+    // A belt-and-suspenders type-level check: the producible list the code paths emit is exactly the vocabulary.
+    const producible: ActOutcome[] = [...ACT_OUTCOMES];
+    expect(sorted(producible)).toEqual(sorted(ACT_OUTCOMES));
   });
 });
