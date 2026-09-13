@@ -1,6 +1,6 @@
 # UI delivery evidence: Layer-C held-act approvals are readable in the owner inbox
 
-Declared via a `Visible-Flow-Impact: yes` commit trailer because migration `20270304000000` changes what
+Declared via a `Visible-Flow-Impact: yes` commit trailer because migration `20270306000000` changes what
 the owner sees in the EXISTING approvals inbox: a held Layer-C act's companion approval row now carries a
 human-readable description (`summary` + `draft_content.subject/preview/body`) instead of rendering
 "(no summary)". No React/UI file changes and no redesign of the inbox — the existing `ApprovalRow.tsx`
@@ -15,8 +15,8 @@ MATERIAL_FLOW_CHANGE: NO: the approvals inbox — its surfaces, states, transiti
 FLOW_PROTOTYPE: NOT_REQUIRED: no visual surface or interface-flow change to prototype (a backend migration populating data the existing inbox already renders); not a convenience skip
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: audience = operator/tenant approvers (admin/coach) of a tenant with a held Layer-C act; primary action = read the held act's readable summary/description in the approvals inbox and approve (drives execution) or decline (cancels); purpose = make the high-risk held-act approval self-explanatory (§70 — the owner must know what and whom they are approving) instead of "(no summary)"
 VISUAL_DIRECTION: NOT_APPLICABLE: no visual surface changed; no pack, tokens, layout, or motion involved (backend migration; the inbox component is unchanged)
-AUTOMATED_EVIDENCE: PASS: supabase/tests/paige_orchestration_companion_minting.sql 45/45 — proven locally against a native PostgreSQL 16 cluster with BOTH migrations (20270303000000 + 20270304000000) applied in order, and wired into the required database-contract CI job (full prod-schema replay); includes readable-output assertions (subject/summary/preview/body), the ledger-proven guard (JWT forge refused, unresolved-ledger refused, executed-ledger allowed), reconciler actual-outcome stamping, and idempotent backfill
-STATIC_EVIDENCE: PASS: lints green — migration-versions (20270304000000 unique), definer-fns, managed-schema, action-authority, write-targets, governed-execution, approval-gate; the helper is a pure (non-DEFINER) content builder
+AUTOMATED_EVIDENCE: PASS: supabase/tests/paige_orchestration_companion_minting.sql 45/45 — proven locally against a native PostgreSQL 16 cluster with BOTH migrations (20270303000000 + 20270306000000) applied in order, and wired into the required database-contract CI job (full prod-schema replay); includes readable-output assertions (subject/summary/preview/body), the ledger-proven guard (JWT forge refused, unresolved-ledger refused, executed-ledger allowed), reconciler actual-outcome stamping, and idempotent backfill
+STATIC_EVIDENCE: PASS: lints green — migration-versions (20270306000000 unique; renumbered up from 20270304000000 as E5 #1220/#1237 and #1233 successively occupied 20270304/20270305 on main), definer-fns, managed-schema, action-authority, write-targets, governed-execution, approval-gate; the helper is a pure (non-DEFINER) content builder
 RENDERED_EVIDENCE: NOT_APPLICABLE: no visual surface is rendered by this change; the existing ApprovalRow.tsx / paige_approval_queue_v renderer is unchanged and reads the now-populated fields
 BEHAVIORAL_EVIDENCE: PASS: the 45-assertion pgTAP exercises the real triggers + reconciler + backfill against the replayed schema — mint writes a readable summary/draft_content (never "(no summary)"), the direct-approve guard refuses a JWT caller and any not-yet-resolved ledger act (forged metadata.act_outcome notwithstanding) and admits only the service-role executor path with a terminal ledger, the reconciler stamps the companion from the RPC's ACTUAL outcome, and the backfill is idempotent; the authenticated end-to-end drive is under AUTHENTICATED_RUNTIME
 AUTHENTICATED_RUNTIME: UNVERIFIED: the authenticated approve→execute live-drive on a real held act (create an approval-required governed act → confirm one inbox row → approve once → one canonical domain action + durable readback + Rail + receipt, no duplicate) is owed to a browser/JWT/prod-SQL-capable session — this headless session has no authenticated user session and its MCP prod SQL is permission-denied; affects the claim that the owner can complete the approve flow on the live platform
@@ -29,7 +29,7 @@ SOLO_UI: NO: not a Solo operator interface change; a backend migration to the sh
 UNVERIFIED: the authenticated approve→execute live-drive (§32.c/§70) on a real held act — owed to a browser/JWT/prod-SQL-capable session unavailable to this headless run; all DB behavior is proven headless via the 45-assertion pgTAP
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
-INTERNAL_BUILD_IDENTITY: 2ca7588e5650862d178d1116ec227096ce84b5a7; deployment=none-pre-merge; environment=development; migrations=PROOF_OWED(persisted-apply-on-merge-via-deploy-migrations-db-live); edge=NOT_APPLICABLE; evidence=fix-forward-PR-and-supabase/tests/paige_orchestration_companion_minting.sql
+INTERNAL_BUILD_IDENTITY: d9ff74baa9dc968a7f2c69259662ba2c54c0369f; deployment=none-pre-merge; environment=development; migrations=PROOF_OWED(persisted-apply-on-merge-via-deploy-migrations-db-live); edge=NOT_APPLICABLE; evidence=fix-forward-PR-and-supabase/tests/paige_orchestration_companion_minting.sql
 RELEASE_CHANNEL: development: docs + migration on the fix-forward branch; the migration applies to production on merge via deploy-migrations
 RELEASE_CLASSIFICATION: internal-only: a backend correctness/§70/§13 hardening of the Layer-C companion-mint seam; no owner-decided customer release
 CUSTOMER_RELEASE_IDENTITY: none: internal engine-seam hardening, no owner-decided customer release
@@ -39,7 +39,7 @@ RELEASE_RECOVERY: position=ship a FORWARD cleanup migration that DROPs the four 
 
 ## Scope and collisions
 
-- Classification: backend migration (`20270304000000`) with a declared visible-flow impact; no UI source file changed.
+- Classification: backend migration (`20270306000000`) with a declared visible-flow impact; no UI source file changed.
 - Affected flow: an operator/tenant approver opens the approvals inbox, sees a held Layer-C act's companion approval with a readable description (action + record + args), and approves (drives execution via execute-approval) or declines (cancels the held act).
 - Neighboring regressions: none — the mint/guard/cancellation-sync/reconciler are CREATE OR REPLACE of the existing 20270303000000 functions; the trigger definitions are unchanged; the approvals inbox component and view are untouched.
 - Active-owner/file collisions: none — #1225 (the base slice) and #1232 (its closeout) are merged; this fix-forward owns the current migration + test + doc corrections.
