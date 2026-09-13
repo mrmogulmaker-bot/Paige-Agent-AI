@@ -47,10 +47,14 @@ describe("classifyBusinessVerifyResponse — outcome mapping for server-to-serve
     expect(classifyBusinessVerifyResponse(false, { ok: false, result: "unavailable" })).toBe("operational_failure");
   });
 
-  it("null / unparseable body on a 2xx is treated as a run (matches business-verifier always emitting ok)", () => {
-    // paige-mcp's `.catch(() => ({}))` yields {} on a parse failure; business-verifier always emits valid
-    // JSON with an `ok` field, so this only guards against a malformed 2xx — kept as the prior behavior.
-    expect(classifyBusinessVerifyResponse(true, {})).toBe("ran");
-    expect(classifyBusinessVerifyResponse(true, null)).toBe("ran");
+  it("a malformed / empty 2xx (no literal ok:true) is an operational_failure, NOT a false success (Codex #1228 P2)", () => {
+    // `ok === true` is the ONLY success signal. paige-mcp's `.catch(() => ({}))` yields {} on a JSON parse
+    // failure; a body missing `ok` (or ok:undefined) is a malformed response, not a run — it must fail
+    // closed to operational_failure so a caller never reports it as a completed verification (§13).
+    expect(classifyBusinessVerifyResponse(true, {})).toBe("operational_failure");
+    expect(classifyBusinessVerifyResponse(true, null)).toBe("operational_failure");
+    expect(classifyBusinessVerifyResponse(true, { ok: undefined })).toBe("operational_failure");
+    // A 2xx with an explicit ok:false and no policy `result` is still an operational failure.
+    expect(classifyBusinessVerifyResponse(true, { ok: false })).toBe("operational_failure");
   });
 });

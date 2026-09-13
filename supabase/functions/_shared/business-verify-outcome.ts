@@ -27,11 +27,14 @@ export function classifyBusinessVerifyResponse(
   httpOk: boolean,
   body: { ok?: unknown; result?: unknown } | null | undefined,
 ): BusinessVerifyCallerOutcome {
-  // A run that happened: 2xx and not an explicit `ok:false`. business-verifier returns `ok:true` for every
-  // run that executed (incl. a `status:"failed"` no-match), so a real run is never mislabeled a failure.
-  if (httpOk && body?.ok !== false) return "ran";
+  // A run that happened: 2xx AND a LITERAL `ok:true`. business-verifier emits `ok:true` for every run that
+  // executed (incl. a `status:"failed"` no-match), so `ok === true` is the ONLY success signal — a
+  // malformed / empty 2xx (e.g. paige-mcp's `{}` JSON-parse fallback, or any body missing `ok`) is NOT a
+  // run and must never be reported as a successful verification (§13; Codex #1228 P2). Fail closed.
+  if (httpOk && body?.ok === true) return "ran";
   // A policy refusal: the funding-gate refusal is the ONLY HTTP-200 path that sets `result`.
   if (httpOk && (body?.result === "setup_required" || body?.result === "unavailable")) return "policy_refusal";
-  // Everything else non-success (authz 403, 4xx/5xx, or a 200 operational error) is a real failure.
+  // Everything else non-success (authz 403, 4xx/5xx, a 200 operational error, or a malformed 2xx) is a
+  // real failure a caller must surface to monitoring/retry — never a benign policy cancel, never a success.
   return "operational_failure";
 }
