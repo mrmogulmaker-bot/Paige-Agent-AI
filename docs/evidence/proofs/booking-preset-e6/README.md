@@ -1,9 +1,16 @@
 # E6 — Calendar Security · Proof · Reviews — RELEASE-READY DRAFT (HOLD release)
 
-**Status: RELEASE-READY DRAFT, HELD.** Owner ruling (2026-09-13): *"Keep E6 strictly separate from E5.
-… do not fold it into #1220 or release it without its own review, evidence, and release decision."*
-This is the ONE Calendar slice where §4/§69 pre-launch merge-on-verified is **overridden by an explicit
-owner HOLD** — E6 is a draft PR presented for the owner's release decision, not an auto-merge.
+**Status: SHIPPED LIVE (2026-09-13, Gate A — owner-authorized release).** PR #1246 squash-merged to
+`main` as `e560a4ab`; `deploy-migrations` #268 persisted `20270312000000` and advanced `db-live` to
+`e560a4ab`; `deploy-edge-functions` #322 redeployed `public-booking` + `booking-manage` and advanced
+`edge-live` to `e560a4ab`; **zero migration drift AND zero edge drift**; the seam pgTAP gate
+(`calendar-preset-seam.yml`, 112 + 5) passed in CI. The earlier HOLD (owner ruling 2026-09-13:
+*"do not release without its own review, evidence, and release decision"*) was satisfied by the §39
+peer-gate + §5 compliance + this package, and the owner then authorized the release under Gate A.
+**PROOF OWED (§32.c/§70):** the authenticated `/book` + `/manage` live-drive (headless session cannot
+drive it) and a direct prod-SQL read of the `schema_migrations` row / the live `create_class_booking`
+guard (MCP prod SQL is permission-denied to this session) — the pipeline's persisted-verify + `db-live`
+advance + zero drift is the CI proof of persistence.
 
 **What E6 is (grounded, §13):** E3 (server seam), E4 (human surface), and E5 (Paige chat adoption) each
 already SHIPPED and are LIVE (`edge-live=688613db`, `db-live=5d65a96f`, zero drift). The 11 Calendar
@@ -212,4 +219,4 @@ FU-1 per-capability Trust-Compass autonomy clamp (depends on §67/§68; interim:
 - **Release note required:** no (internal pre-launch).
 - **Recovery:** `git revert` — additive (a new test + workflow + a doc-heavy diff + one resolver function simplified); the edge bundle redeploys the prior version.
 
-**HELD:** do not merge/release without the owner's review + explicit release decision (owner ruling 2026-09-13).
+**RELEASED (Gate A, owner-authorized 2026-09-13):** squash-merged as `e560a4ab`. `deploy-migrations` #268 persisted `20270312000000` (db-live=`e560a4ab`, zero migration drift); `deploy-edge-functions` #322 redeployed `public-booking` + `booking-manage` (edge-live=`e560a4ab`, zero edge drift); the seam pgTAP gate passed in CI. PROOF OWED: the authenticated `/book`+`/manage` live-drive and a direct prod-SQL row read (MCP prod SQL permission-denied this session).
