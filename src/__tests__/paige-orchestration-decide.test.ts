@@ -4,7 +4,7 @@
  * mapping, and that the TS outcome vocabulary stays in lock-step with the SQL domain `paige_act_outcome`.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   evaluateConditions,
@@ -175,5 +175,29 @@ describe("exact state semantics — TS `outcomes.ts` ↔ SQL migration parity (C
     // A belt-and-suspenders type-level check: the producible list the code paths emit is exactly the vocabulary.
     const producible: ActOutcome[] = [...ACT_OUTCOMES];
     expect(sorted(producible)).toEqual(sorted(ACT_OUTCOMES));
+  });
+
+  it("20270126000000 is the SOLE authority for the domain + the record RPC — a later migration that touches them fails loudly", () => {
+    // Codex P2 (post-merge review of #1208): the two parses above read ONLY the founding migration, so a LATER
+    // immutable migration that altered the domain or replaced the RPC (with a new _final), while the TS
+    // vocabulary was left stale, would compare stale-TS vs stale-founding-SQL and PASS while the deployed schema
+    // had diverged. Close that hole mechanically (the C4 principle — a lock, not a comment): assert the founding
+    // migration is the ONLY one that creates the domain or defines the RPC, and that NOTHING alters the domain
+    // later. If any of these trip, the effective schema moved: update ACT_OUTCOMES/FINAL_OUTCOMES AND repoint the
+    // parses above at the new effective definition, in the SAME commit (§66/§BRAIN.3).
+    const FOUNDING = "20270126000000_paige_act_execution_ledger.sql";
+    const dir = resolve(process.cwd(), "supabase/migrations");
+    const createsDomain: string[] = [];
+    const definesRpc: string[] = [];
+    const altersDomain: string[] = [];
+    for (const f of readdirSync(dir).filter((n) => n.endsWith(".sql"))) {
+      const sql = readFileSync(resolve(dir, f), "utf8");
+      if (/create\s+domain\s+public\.paige_act_outcome\b/i.test(sql)) createsDomain.push(f);
+      if (/create\s+or\s+replace\s+function\s+public\.paige_record_act_execution\b/i.test(sql)) definesRpc.push(f);
+      if (/alter\s+domain\s+(public\.)?paige_act_outcome\b/i.test(sql)) altersDomain.push(f);
+    }
+    expect(createsDomain).toEqual([FOUNDING]);
+    expect(definesRpc).toEqual([FOUNDING]);
+    expect(altersDomain).toEqual([]); // an ALTER DOMAIN ... ADD VALUE would widen the domain past this guard
   });
 });
