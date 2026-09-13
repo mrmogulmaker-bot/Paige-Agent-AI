@@ -1,3 +1,5 @@
+import { confirmFingerprint } from "../confirm-fingerprint.ts";
+
 export const CRM_ACTION_CAPABILITY = {
   "contact.create": "crm_create_contact", "contact.update": "crm_update_contact",
   "contact.archive": "crm_archive_contact", "contact.restore": "crm_restore_contact",
@@ -23,6 +25,42 @@ export const CRM_TOOL_TO_ACTION = Object.freeze(Object.fromEntries(
   Object.entries(CRM_ACTION_CAPABILITY).map(([action, capability]) => [capability, action]),
 )) as Readonly<Record<CrmCapability, CrmAction>>;
 export const CRM_COMMAND_TOOL_NAMES = new Set<CrmCapability>(Object.keys(CRM_TOOL_TO_ACTION) as CrmCapability[]);
+
+function stableCommandValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableCommandValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value as Record<string, unknown>).sort()
+      .map((key) => [key, stableCommandValue((value as Record<string, unknown>)[key])]));
+  }
+  return value;
+}
+
+// Canonical stable subject used only to disambiguate one command inside the operator's already-
+// approved same-tool set. The subject is always a required opaque record id (or the exact bulk set)
+// when the action has one. Consequential argument drift is safe because the stored proposal executes;
+// two approved effects for the same subject deliberately remain ambiguous and fail closed. Create
+// actions have no pre-existing record id, so they fall back to the normalized full proposed command.
+export async function crmApprovalSubject(action: CrmAction, command: Record<string, unknown>): Promise<string> {
+  let identity: unknown;
+  if (action === "contact.bulk_update") {
+    identity = Array.isArray(command.target_ids) ? [...command.target_ids].map(String).sort() : null;
+  } else if (action.startsWith("contact.") && !["contact.create"].includes(action)) {
+    identity = command.contact_id ?? null;
+  } else if (action === "company.create") {
+    identity = command.contact_id ?? null;
+  } else if (action.startsWith("company.")) {
+    identity = command.company_id ?? null;
+  } else if (action.startsWith("task.") && action !== "task.create") {
+    identity = command.task_id ?? null;
+  } else if (action === "activity.log") {
+    identity = command.contact_id ?? null;
+  } else if (action.startsWith("deal.") && action !== "deal.create") {
+    identity = command.deal_id ?? null;
+  } else {
+    identity = stableCommandValue({ ...command, action });
+  }
+  return await confirmFingerprint(`crm_approval_subject:${action}`, { identity });
+}
 
 const properties = {
   idempotency_key: { type: "string", description: "Optional stable retry key. Paige may omit it; the server settles one." },

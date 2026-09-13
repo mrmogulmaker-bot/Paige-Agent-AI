@@ -547,6 +547,7 @@ begin
         and exists(select 1 from public.tenant_members tm where tm.tenant_id=t.id and tm.user_id=t.owner_user_id and tm.status='active' and tm.role='owner');
       if v_company_owner is null then raise exception 'CRM_COMPANY_OWNER_SETUP_REQUIRED' using errcode='42501'; end if;
     end if;
+    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('business-primary:'||v_tenant::text||':'||v_company_owner::text,0));
     insert into public.businesses(
       tenant_id, owner_user_id, legal_name, entity_type, dba, website, business_email, business_phone,
       naics, revenue_band, state_of_formation, is_active, is_primary, updated_at
@@ -609,7 +610,18 @@ begin
        where b.id = v_business.id returning * into v_business;
     elsif v_action = 'company.restore' then
       if not v_is_admin then raise exception 'CRM_FORBIDDEN' using errcode = '42501'; end if;
-      update public.businesses b set is_active = true, updated_at = clock_timestamp()
+      perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('business-primary:'||v_tenant::text||':'||v_business.owner_user_id::text,0));
+      -- Restoring an archived primary after another active primary appeared must not create two.
+      -- Keep the already-active primary stable and truthfully restore this row as secondary; changing
+      -- the other company would be an unapproved collateral mutation.
+      update public.businesses b set
+        is_active = true,
+        is_primary = case when b.is_primary and exists(
+          select 1 from public.businesses sibling
+           where sibling.tenant_id=v_tenant and sibling.owner_user_id=b.owner_user_id
+             and sibling.id<>b.id and sibling.is_active and sibling.is_primary
+        ) then false else b.is_primary end,
+        updated_at = clock_timestamp()
        where b.id = v_business.id returning * into v_business;
     end if;
     v_capability := case v_action when 'company.update' then 'crm_update_company' when 'company.archive' then 'crm_archive_company' else 'crm_restore_company' end;
@@ -955,8 +967,16 @@ begin
     if cached.consumed_at is not null and cached.result is not null then
       return cached.result||pg_catalog.jsonb_build_object('replayed',true);
     end if;
-    if cached.expires_at<=pg_catalog.now() or cached.consumed_at is not null then raise exception 'CRM_PREVIEW_EXPIRED' using errcode='22023'; end if;
-    return cached.preview||pg_catalog.jsonb_build_object('preview_id',cached.id,'replayed',true,'expires_at',cached.expires_at);
+    if cached.expires_at<=pg_catalog.now() then
+      -- The advisory lock makes replacement single-writer. An expired, unexecuted preview is not an
+      -- approval and may be replaced under the same stable retry key after every target/version check
+      -- below runs again. A cached result above remains immutable and replayable.
+      delete from public.crm_command_previews where id=cached.id;
+    elsif cached.consumed_at is not null then
+      raise exception 'CRM_PREVIEW_EXPIRED' using errcode='22023';
+    else
+      return cached.preview||pg_catalog.jsonb_build_object('preview_id',cached.id,'replayed',true,'expires_at',cached.expires_at);
+    end if;
   end if;
 
   if a in ('contact.merge','contact.hard_delete') then

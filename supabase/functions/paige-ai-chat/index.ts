@@ -1,7 +1,7 @@
 import { BUSINESS_MISSION_TOOLS } from '../_shared/paige-spine/domains/business_mission.ts';
 import { executeVerifiedMissionMutation, resolveBusinessMissionThreadContext, resolveSelectedBusinessMissionContext } from '../_shared/business-mission-tenant-brain.ts';
 import { CAMPAIGN_BRIEF_TOOLS } from '../_shared/paige-spine/domains/campaigns.ts';
-import { CRM_COMMAND_TOOLS, CRM_COMMAND_TOOL_NAMES, CRM_TOOL_TO_ACTION } from '../_shared/crm-command/catalog.ts';
+import { CRM_COMMAND_TOOLS, CRM_COMMAND_TOOL_NAMES, CRM_TOOL_TO_ACTION, crmApprovalSubject } from '../_shared/crm-command/catalog.ts';
 import { executeVerifiedCampaignBriefMutation, resolveCampaignBriefListContext } from '../_shared/campaign-brief-tenant-brain.ts';
 import { CALENDAR_PRESET_TOOLS } from '../_shared/paige-spine/domains/calendar_preset.ts';
 import { executeVerifiedCalendarPresetMutation, resolveCalendarPresetListContext, type CalendarPresetMutationTool } from '../_shared/calendar-preset-tenant-brain.ts';
@@ -8200,14 +8200,27 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           delete crmArgs.idempotency_key;
           delete crmArgs.confirm;
           let approvedFingerprint: string | undefined;
+          let approvalResolutionFailed = false;
           if (approvedConfirmations.size > 0 && personaCtx?.tenant_id) {
             const gateAdmin = createClient(supabaseUrl, supabaseServiceKey);
-            const { data: approvedRows } = await gateAdmin.from("paige_pending_confirmations")
+            const approvalSubject = await crmApprovalSubject(action, { action, ...crmArgs });
+            // Narrow THIS call within the operator-echoed set by the canonical, full consequential
+            // command subject stored by crm-command. Two identical approved commands remain
+            // ambiguous and fail closed; arguments from the model never replace the stored call.
+            const { data: approvedRows, error: approvedRowsError } = await gateAdmin.from("paige_pending_confirmations")
               .select("fingerprint").eq("tenant_id", personaCtx.tenant_id).eq("user_id", user.id)
               .eq("tool_name", tc.function.name).in("fingerprint", [...approvedConfirmations])
+              .filter("args->>approval_subject", "eq", approvalSubject)
               .is("thread_id", null).is("scoped_client_id", null).is("consumed_at", null)
+              .not("server_issued_at", "is", null).not("issued_in_request", "is", null)
               .gt("expires_at", new Date().toISOString()).limit(2);
-            if (approvedRows?.length === 1 && typeof approvedRows[0]?.fingerprint === "string") approvedFingerprint = approvedRows[0].fingerprint;
+            if (!approvedRowsError && approvedRows?.length === 1 && typeof approvedRows[0]?.fingerprint === "string") approvedFingerprint = approvedRows[0].fingerprint;
+            else approvalResolutionFailed = true;
+          }
+          if (approvalResolutionFailed) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, outcome: "refused",
+              error: "The approved CRM batch could not be matched to exactly one stored command. Nothing changed; reopen the approval card and review the individual actions." }) });
+            continue;
           }
           const { data: crmData, error: crmError } = await supabaseClient.functions.invoke("crm-command", {
             headers: { Authorization: authHeader },

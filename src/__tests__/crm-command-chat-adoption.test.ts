@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { CRM_ACTION_CAPABILITY, CRM_COMMAND_TOOLS, CRM_TOOL_TO_ACTION } from "../../supabase/functions/_shared/crm-command/catalog.ts";
+import { CRM_ACTION_CAPABILITY, CRM_COMMAND_TOOLS, CRM_TOOL_TO_ACTION, crmApprovalSubject } from "../../supabase/functions/_shared/crm-command/catalog.ts";
 
 const chat = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
 
@@ -16,6 +16,16 @@ describe("Paige Chat canonical CRM adoption", () => {
     expect((dealUpdate?.function.parameters as { anyOf?: unknown[] }).anyOf).toHaveLength(7);
   });
 
+  it("uses one stable record subject to disambiguate same-tool approval batches", async () => {
+    const first = await crmApprovalSubject("task.cancel", { action: "task.cancel", task_id: "task-a", expected_updated_at: "v1" });
+    const reordered = await crmApprovalSubject("task.cancel", { expected_updated_at: "v1", task_id: "task-a", action: "task.cancel" });
+    const second = await crmApprovalSubject("task.cancel", { action: "task.cancel", task_id: "task-b", expected_updated_at: "v1" });
+    const changedVersion = await crmApprovalSubject("task.cancel", { action: "task.cancel", task_id: "task-a", expected_updated_at: "v2" });
+    expect(first).toBe(reordered);
+    expect(first).not.toBe(second);
+    expect(first).toBe(changedVersion);
+    expect(first).toMatch(/^[0-9a-f]{16}$/);
+  });
   it("does not accept tenant, actor, role, account, approval, or authority as model arguments", () => {
     const serialized = JSON.stringify(CRM_COMMAND_TOOLS);
     for (const forbidden of ["tenant_id", "actor_id", "actor_role", "account_id", "approved_fingerprint", "authority"]) {
@@ -43,6 +53,8 @@ describe("Paige Chat canonical CRM adoption", () => {
     expect(chat).toContain("receipt_recorded: parsed.receipt_recorded === true");
     expect(chat).toContain('confirmFingerprint("crm_command_idempotency"');
     expect(chat).toContain("tool_index: toolIndex");
+    expect(chat).toContain('.filter("args->>approval_subject", "eq", approvalSubject)');
+    expect(chat).toContain("approvedRows?.length === 1");
     expect(chat).not.toContain("const idempotencyKey = suppliedKey || crypto.randomUUID()");
   });
 });

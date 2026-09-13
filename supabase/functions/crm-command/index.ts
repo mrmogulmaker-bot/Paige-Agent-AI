@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
 import { confirmFingerprint } from "../_shared/confirm-fingerprint.ts";
 import { decideGovernedExecution } from "../_shared/paige-spine/governedExecution.ts";
-import { CRM_ACTION_CAPABILITY as ACTION_CAPABILITY, type CrmAction } from "../_shared/crm-command/catalog.ts";
+import { CRM_ACTION_CAPABILITY as ACTION_CAPABILITY, crmApprovalSubject, type CrmAction } from "../_shared/crm-command/catalog.ts";
 import { canonicalAppUrl, type CanonicalTier } from "../_shared/canonical-app-url.ts";
 
 const cors = {
@@ -388,7 +388,8 @@ serve(async (req) => {
     if (!(await activeTenantStillMatches())) {
       return response(409, { ok: false, outcome: "refused", code: "CRM_ACTIVE_ACCOUNT_CHANGED", message: "The active workspace changed. Reopen the record there before trying again." });
     }
-    let proposalArgs: JsonObject = requestArgs;
+    const approvalSubject = await crmApprovalSubject(body.command.action, body.command as Record<string, unknown>);
+    let proposalArgs: JsonObject = { ...requestArgs, approval_subject: approvalSubject };
     let preview: JsonObject | null = null;
     if (PREVIEW_REQUIRED_ACTIONS.has(body.command.action)) {
       const { data: previewData, error: previewError } = await admin.rpc("preview_crm_command", {
@@ -414,6 +415,7 @@ serve(async (req) => {
       proposalArgs = {
         command: { action: body.command.action, preview_id: preview.preview_id },
         idempotency_key: body.idempotency_key,
+        approval_subject: approvalSubject,
       };
     }
     const fingerprint = await confirmFingerprint(capability, proposalArgs);
