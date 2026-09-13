@@ -261,6 +261,30 @@ describe("approve-executor — RESUME (recovery): a redeemed-but-unadvanced / un
     expect(fns).toContain("set_journey_stage");               // re-dispatched
   });
 
+  it("§68: accepted_for_execution + NO landed transition + availability REVOKED → STOPS the re-dispatch (never blind re-fires)", async () => {
+    // The narrow §68 window: authority/availability was revoked AFTER redemption but BEFORE the effect landed.
+    // The re-dispatch must re-run the availability+governed gate and DECLINE rather than fire an effect the
+    // current posture forbids. The row stays accepted_for_execution → the caller consumes nothing → recoverable.
+    const notForTier = () => Promise.resolve({ ok: true as const, status: { availability: "not_for_tier" as const } });
+    const cfg = accepted({ paige_journey_stage_transitions: [] });
+    const res = await run(cfg, { resolveAvailability: notForTier });
+    expect(res.outcome).toBe("accepted_for_execution"); // stays recoverable — NOT executed, NOT approval_pending
+    expect(res.executed).toBe(false);
+    expect(res.reason?.startsWith("governed_")).toBe(true);
+    const fns = cfg.calls.rpc.map((c) => c.fn);
+    expect(fns).not.toContain("set_journey_stage");            // the effect was NOT re-fired
+    expect(fns).not.toContain("paige_approve_act_execution");  // never re-redeemed
+  });
+
+  it("§68: accepted_for_execution + NO landed transition + availability INFRA error → STOPS (retryable), no re-fire", async () => {
+    const infra = () => Promise.resolve({ ok: false as const, error: "gateway_down" });
+    const cfg = accepted({ paige_journey_stage_transitions: [] });
+    const res = await run(cfg, { resolveAvailability: infra });
+    expect(res.outcome).toBe("accepted_for_execution");
+    expect(res.reason).toBe("availability_infra_error");
+    expect(cfg.calls.rpc.map((c) => c.fn)).not.toContain("set_journey_stage");
+  });
+
   it("ambiguous + a landed transition → reconciled to executed by correlation, never re-dispatched", async () => {
     const cfg = ambiguous(); // transitions present → readback confirms
     const res = await run(cfg);
