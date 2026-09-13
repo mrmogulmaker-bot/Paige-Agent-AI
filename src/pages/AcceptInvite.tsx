@@ -66,8 +66,8 @@ export default function AcceptInvitePage() {
           setInfo(data as InviteInfo);
           setFullName(data.displayName ?? "");
         }
-      } catch (e: any) {
-        setError(e?.message ?? "Unable to verify invite");
+      } catch (error: unknown) {
+        setError(error instanceof Error ? error.message : "Unable to verify invite");
       } finally {
         setLoading(false);
       }
@@ -104,8 +104,8 @@ export default function AcceptInvitePage() {
         throw new Error(`Account activated, but sign-in failed: ${signInErr.message}`);
       }
       navigate(safeRedirectOr(data.redirectTo, "/app"), { replace: true });
-    } catch (e: any) {
-      setError(e?.message ?? "Activation failed");
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : "Activation failed");
       setSubmitting(false);
     }
   }
@@ -157,6 +157,29 @@ export default function AcceptInvitePage() {
           </CardHeader>
           <CardContent>
             <Button onClick={() => navigate("/auth")}>Go to sign in</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isBtf) {
+    return (
+      <div className="workspace-theme min-h-screen flex items-center justify-center px-6 py-12">
+        <Helmet>
+          <title>Enrollment unavailable · {info.brand?.name || "Client Portal"}</title>
+          <meta name="robots" content="noindex,nofollow" />
+        </Helmet>
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <CardTitle>Client Portal enrollment is not open</CardTitle>
+            <CardDescription>
+              Paige Solo is the beta currently available. This invitation cannot create a new Client Portal account.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button onClick={() => navigate("/auth?mode=login")}>Sign in to an existing account</Button>
+            <Button variant="outline" onClick={() => navigate("/")}>Return to Paige</Button>
           </CardContent>
         </Card>
       </div>

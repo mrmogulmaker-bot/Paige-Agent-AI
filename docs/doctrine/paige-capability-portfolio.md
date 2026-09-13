@@ -74,7 +74,7 @@ the binding ledger is itself grounded at `ae0a16a0` / generated 2026-09-07 (file
 `b17599cd` / 2026-09-12. **Merges after those SHAs are not reflected in the labels below.** Always
 re-read the owning record; never cite this file's label as current.
 
-- **Zero of the 28 binding-ledger surfaces are `LIVE`.** The counts are **14 `UNAVAILABLE` · 7
+- **Zero of the 29 binding-ledger surfaces are `LIVE`.** The counts are **14 `UNAVAILABLE` · 8
   `PARTIAL` · 5 `PROOF_OWED` · 2 `INTENTIONALLY_ISOLATED`**. The ledger says it plainly:
   *"As of the grounding SHA, NO surface is LIVE."*
 - **27 Spine capability keys** exist across **9 domains** — and **15 of the 27 are `integrations.*`**
@@ -105,7 +105,7 @@ is itself the finding.
 | 8 | **Client Portal** | `Clients -> Portal` **`PARTIAL`** — the §7 MVP differentiator | Portal workstream | Client-scoped projection; Layer A re-resolution per client read | Ledger row; Master §3 portal subsection | An external client completing the 8-step vertical, failing closed where not permitted |
 | 9 | **Vault** | `Settings -> Vault` **`INTENTIONALLY_ISOLATED`** | Solo Settings | **Isolation is the contract** — content must not enter Paige/Mind/Memory | Ledger row (isolation_note required) | Proof of *non-reach*: the isolation holds. Do not "complete" this into Paige access |
 | 10 | **Marketplace + integrations** | Marketplace `UNAVAILABLE` ("most blocked") · `Settings -> Integrations` `PARTIAL` · `Settings -> Connections` `UNAVAILABLE` | Marketplace / Integrations | Registry; MCP door; tier eligibility (§60/§61) | **Integration Registry (mandatory)**; ledger rows; Spine (`integrations.*`, 15 keys) | Install→chat-reachable→metered, with the provider entry updated in the same commit |
-| 11 | **Billing + usage** | `Settings -> Billing` **`PARTIAL`**; Billing P0 authenticated owner setup **FAIL** (brain README) | Billing | Stripe (`PARTIAL`); §38 money boundary; M1 metering | Ledger row; Integration Registry; `../brain/config-registry.md`; §4.0 | Authenticated owner setup succeeding — and **M1**: `paige_llm_trace → platform_metered_events` |
+| 11 | **Billing + usage** | `Settings -> Billing` **`PARTIAL`**; public Solo Beta acquisition **`PARTIAL`**; Billing P0 authenticated owner setup **FAIL** (brain README) | Billing | Stripe (`PARTIAL`); §38 money boundary; M1 metering | Ledger rows; Integration Registry; `../brain/config-registry.md`; §4.0 | Authenticated owner setup and test-provider Solo enrollment succeeding — and **M1**: `paige_llm_trace → platform_metered_events` |
 | 12 | **Analytics + intelligence** | `Analytics` **`UNAVAILABLE`** | Analytics | Read adapter over canonical records; Mind boundary | Ledger row; Spine (**no `analytics.*` key**) | A real figure traced to its canonical source — never a fixture, never an estimate shown as fact |
 | 13 | **Communications** | `Clients -> Conversations` `UNAVAILABLE`; operator SMS works, **tenant SMS hard-blocked** | Comms | Twilio (`PARTIAL`); A2P registration; approval gate | Ledger row; Integration Registry; Spine (`comms.messages_read`) | A tenant-scoped send with a provider receipt and a Rail outcome (R8) |
 | 14 | **Team / people** | `Settings -> Team / Roles & Access` **`PROOF_OWED`** | Solo Settings | Role stores; §53 operator tiers; §51 tier matrix | Ledger row; Spine (`team.authority`); `../brain/roles-permissions.md`; **tier matrix (§66)** | Authenticated role change proven across tiers — including a tier you did not build on (§51) |
@@ -154,6 +154,7 @@ settings.security-data = INTENTIONALLY_ISOLATED
 analytics = UNAVAILABLE
 marketplace = UNAVAILABLE
 operator.platform = PARTIAL
+public.solo-beta-acquisition = PARTIAL
 ```
 <!-- LEDGER-SNAPSHOT:END -->
 

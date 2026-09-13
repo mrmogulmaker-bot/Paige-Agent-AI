@@ -132,12 +132,19 @@ createRoot(document.getElementById("root")!).render(
 function dismissPaigeSplash() {
   const el = document.getElementById("paige-splash");
   if (!el) return;
+  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
   el.classList.add("paige-splash--done");
+  if (reducedMotion) {
+    window.dispatchEvent(new Event("paige:boot-splash-unmount"));
+    el.remove();
+    return;
+  }
   window.setTimeout(() => {
     window.dispatchEvent(new Event("paige:boot-splash-unmount"));
     el.remove();
   }, 700);
 }
+const splashHoldMs = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? 0 : 550;
 requestAnimationFrame(() =>
-  requestAnimationFrame(() => window.setTimeout(dismissPaigeSplash, 550)),
+  requestAnimationFrame(() => window.setTimeout(dismissPaigeSplash, splashHoldMs)),
 );

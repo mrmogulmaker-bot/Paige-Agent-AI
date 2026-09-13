@@ -33,8 +33,8 @@ const INDEX_HTML = resolve(ROOT, "index.html");
 // Add here (with a one-line rationale) to legitimately extend the SEO fallback. Keep it minimal:
 // hero H1 + one value-prop paragraph + one primary CTA. NO product-decision-driven content.
 const ALLOWED_ROOT_TEXT = [
-  "Paige — Your AI Business Operations Partner",            // hero H1 (brand + category; stable)
-  "Built for coaches, consultants, and agencies who are serious about scaling. Paige manages your clients, automates your busywork, drafts your outreach, and keeps your entire operation moving — in one conversation.", // value-prop paragraph
+  "Paige",                                                  // stable brand name only; offer copy stays in React
+  "Your AI operations partner.",                            // stable category line; no tier or feature claim
   "Get started",                                            // primary CTA
 ];
 

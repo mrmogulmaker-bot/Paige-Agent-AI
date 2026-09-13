@@ -6,7 +6,7 @@ const footerLinks = {
     { name: "How It Works", href: "#how-paige-works" },
     { name: "What Paige Knows", href: "#what-paige-knows" },
     { name: "Pricing", href: "/pricing" },
-    { name: "Dashboard", href: "/app" },
+    { name: "Sign in", href: "/auth?mode=login" },
   ],
   company: [
     { name: "About", href: "/about" },

@@ -109,6 +109,11 @@ jobs:
       - run: supabase test db supabase/tests/solo_team_invite_recipient_binding.sql
       - run: supabase test db supabase/tests/solo_team_removal_authority.sql
       - run: supabase test db supabase/tests/solo_team_invite_lifecycle.sql
+      # Solo Beta acquisition rides the same freshly replayed database. These two files prove
+      # that ordinary browser callers cannot use generic provisioning or cross-user status reads,
+      # and that the fixed offer/atomic fulfillment functions retain their least-privilege grants.
+      - run: supabase test db supabase/tests/solo_beta_authz_hardening.sql
+      - run: supabase test db supabase/tests/solo_beta_offer_boundary.sql
       - run: supabase test db supabase/tests/resend_receipt_reliability.sql
       - run: node scripts/proof/resend-receipt-concurrency.mjs
         env:

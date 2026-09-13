@@ -32,6 +32,8 @@ import { Navigate, useLocation } from "react-router-dom";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { resolveTierKey } from "@/lib/tier/tierFeatures";
 
+// Pure route policy is exported for regression tests; it has no React state or side effects.
+// eslint-disable-next-line react-refresh/only-export-components
 export function canonicalSetupPath(
   tierKey: ReturnType<typeof resolveTierKey>,
   accountNumber: number | string | null | undefined,
@@ -74,6 +76,13 @@ export function RequireSetupComplete({ children }: { children: React.ReactNode }
   // them to the chooser. (Without /admin/setup here, the gate bounced tenants away from the
   // very chooser they were sent to find.)
   const onChooser = setupPath != null && location.pathname.startsWith(setupPath);
+  // A paid Solo Beta workspace whose provider state needs attention must always
+  // be able to reach its server-verified Billing recovery surface, even before
+  // the owner has chosen a playbook.
+  const onSoloBetaBillingRecovery =
+    tierKey === "solo" &&
+    features?.solo_beta_offer_code === "paige-solo-beta-monthly-v1" &&
+    /^\/solo\/\d+\/settings\/billing\/?$/.test(location.pathname);
 
   // Decide at RENDER time (not in a post-paint effect): a gated tenant then never commits
   // a frame of the dashboard before the bounce (§11/§36 — no flash), and there is no
@@ -83,7 +92,8 @@ export function RequireSetupComplete({ children }: { children: React.ReactNode }
   // (client/anonymous/unresolved), a non-business tier (agency/enterprise), already chose a
   // playbook (grandfathered), or already on the chooser/setup subtree.
   const shouldRedirect =
-    !loading && !isPlatformStaff && !!activeTenant && gatedTier && !hasPlaybook && !onChooser;
+    !loading && !isPlatformStaff && !!activeTenant && gatedTier && !hasPlaybook
+    && !onChooser && !onSoloBetaBillingRecovery;
   if (shouldRedirect) return <Navigate to={setupPath ?? "/choose-account"} replace />;
   return <>{children}</>;
 }
