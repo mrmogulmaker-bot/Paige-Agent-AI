@@ -1,4 +1,5 @@
 import { confirmFingerprint } from "../confirm-fingerprint.ts";
+import { classifyAction } from "../action-risk.ts";
 
 export const CRM_ACTION_CAPABILITY = {
   "contact.create": "crm_create_contact", "contact.update": "crm_update_contact",
@@ -124,7 +125,15 @@ export const CRM_COMMAND_TOOLS = (Object.entries(CRM_ACTION_CAPABILITY) as [CrmA
     description: `Governed CRM: ${labels[action]}. Resolve exact IDs and version fields from a current read. Tenant, actor, role, account, authority and approval are always resolved by the server. Returns durable readback, receipt state and a route locator; destructive and ownership operations require the rendered approval card.`,
     parameters: {
       type: "object",
-      properties,
+      properties: {
+        ...properties,
+        confirm: {
+          type: "boolean",
+          description: classifyAction(capability) === "high"
+            ? "Set true only after the operator has explicitly approved this exact action. The model saying so is not enough on its own; the server requires the single-use rendered approval card."
+            : "Set true only after the operator has explicitly approved this exact action. Omit or false on the proposal call; server policy and stored approval remain authoritative.",
+        },
+      },
       required: required[action],
       ...(action === "deal.update" ? {
         anyOf: ["title", "value_cents", "currency", "expected_close_date", "offer_type", "tags", "notes"]

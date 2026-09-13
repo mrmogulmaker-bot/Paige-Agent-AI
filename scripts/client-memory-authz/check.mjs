@@ -2083,9 +2083,10 @@ const mirrorConfirms = (st) => (t, row) => {
   // reassuring half of the story, which is worse than none — it is the half you would check.
   const failedWrite = await drive({
     clientId: OWN, stream: true, extraBody: { threadId: THREAD },
-    toolCall: { name: "crm_create_task", args: { title: "x" } },
+    toolCall: { name: "crm_add_note", args: { contact_id: OWN, body: "x" } },
     ...AUTO,
-    tableErrorsExtra: { "tasks:insert": { message: "denied", code: "42501" } },
+    tablesExtra: { user_roles: () => [{ role: "admin" }] },
+    tableErrorsExtra: { "client_notes:insert": { message: "denied", code: "42501" } },
   });
   const failRow = auditRows(failedWrite)[0];
   assert("19.6 a write that failed is recorded, and recorded as having failed",

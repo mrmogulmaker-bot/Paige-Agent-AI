@@ -2255,11 +2255,10 @@ JSON:`;
     // arbitrary-output runners (`n8n_run_workflow`, `zapier_run_action`, the n8n authoring calls)
     // deliberately land. When in doubt about a new tool, leave it OUT.
     const TOOL_RESULT_IS_RECEIPT = new Set<string>([
-      // CRM writes — the result echoes the model's own arguments plus a row id.
-      "crm_create_contact", "crm_update_contact", "crm_delete_contact", "update_business_profile",
-      "crm_update_pipeline_stage", "crm_assign_coach", "crm_assign_contact",
-      "crm_create_task", "crm_log_activity",
-      "pipeline_create", "pipeline_add_stage", "deal_create", "deal_move_stage",
+      // Canonical CRM command results are deliberately absent: they contain durable tenant readback
+      // and therefore protect the turn. Legacy non-command receipts remain ids/argument echoes only.
+      "crm_delete_contact", "update_business_profile", "crm_update_pipeline_stage", "crm_assign_contact",
+      "pipeline_create", "pipeline_add_stage",
       "member_grant_role", "member_revoke_role", "calendar_book_meeting", "program_enroll",
       // Action bus, plans, marketplace, authoring — ids and acknowledgements.
       "action_file", "action_advance",
@@ -12786,6 +12785,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // guessed from context.
       const WRITE_TARGET: Record<string, string> = {
         crm_create_contact: "clients", crm_update_contact: "clients", crm_delete_contact: "clients",
+        crm_archive_contact: "clients", crm_restore_contact: "clients",
+        crm_link_contact_company: "clients", crm_unlink_contact_company: "clients",
+        crm_assign_contact_owner: "clients", crm_merge_contacts: "clients",
+        crm_hard_delete_contact: "clients", crm_bulk_update_contacts: "clients",
+        crm_create_company: "businesses", crm_update_company: "businesses",
+        crm_archive_company: "businesses", crm_restore_company: "businesses",
+        crm_update_deal: "deals", crm_assign_deal_owner: "deals", crm_assign_deal_contact: "deals",
+        crm_close_deal: "deals", crm_reopen_deal: "deals", crm_delete_deal: "deals",
+        crm_update_task: "tasks", crm_assign_task: "tasks", crm_reschedule_task: "tasks",
+        crm_complete_task: "tasks", crm_reopen_task: "tasks", crm_cancel_task: "tasks", crm_delete_task: "tasks",
         crm_assign_contact: "clients", crm_assign_coach: "clients", crm_update_pipeline_stage: "clients",
         program_enroll: "clients", update_client_data: "clients",
         crm_log_activity: "communication_log", crm_add_note: "client_notes", crm_file_document: "client_files", crm_create_task: "tasks", plan_assign_task: "tasks",
@@ -12878,7 +12887,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         crm_append_contact_notes: "clients", crm_update_lifecycle_stage: "clients",
         crm_advance_journey_stage: "clients", client_log_progress: "clients",
         privacy_handle_request: "clients", ingest_confirm_proposal: "clients",
-        crm_update_task: "tasks", crm_delete_task: "tasks",
         crm_propose_contact_update: "paige_ingestion_proposals",
         ingest_credit_scores: "paige_ingestion_proposals",
         ingest_banking_snapshot: "paige_ingestion_proposals",
