@@ -1,7 +1,9 @@
 // §32 behavioural + scope checks for the three silent runtime defects in paige-ai-chat.
 //
-// Run from the repo root:
-//   node --experimental-strip-types \
+// Run from the repo root (see README.md — --experimental-transform-types, not strip-types:
+// the behavioural section imports the real index.ts, whose transitive _shared tree now carries
+// a TS parameter property strip-only mode cannot parse):
+//   node --experimental-transform-types \
 //     --import ./supabase/functions/paige-ai-chat/__checks__/register-edge-stub.mjs \
 //     supabase/functions/paige-ai-chat/__checks__/runtime-correctness-check.mjs
 //
