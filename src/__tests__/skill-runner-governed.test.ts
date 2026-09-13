@@ -124,7 +124,7 @@ type StoredRow = {
 /** An in-memory stand-in for paige_pending_confirmations that enforces the SAME rules the real claim
  *  enforces: single-use (compare-and-set on consumed), server-issued-only, and the minting-request
  *  exclusion. `recordProposal`/`claimProposal` are the only way in or out. */
-function makeStore(opts: { expired?: boolean } = {}) {
+function makeStore(opts: { expired?: boolean; sendFails?: boolean } = {}) {
   const rows: StoredRow[] = [];
   const calls = { draft: 0, send: 0, receipt: 0, record: 0, claim: 0 };
   const sends: Array<{ to: string; subject: string; html: string; fromHeader: string }> = [];
@@ -166,7 +166,7 @@ function makeStore(opts: { expired?: boolean } = {}) {
     send: async (p) => {
       calls.send++;
       sends.push(p);
-      return { ok: true, id: `resend_${calls.send}` };
+      return opts.sendFails ? { ok: false, id: null } : { ok: true, id: `resend_${calls.send}` };
     },
     recordReceipt: async () => {
       calls.receipt++;
@@ -287,6 +287,20 @@ describe("governedDraftAndEmail — durable single-use fingerprint-bound approva
     );
     expect(out.kind).toBe("denied");
     expect(s.calls.send).toBe(0);
+  });
+
+  it("a FAILED send (Resend rejects / no key) is NEVER reported as sent — §13 — and the approval is still consumed", async () => {
+    const s = makeStore({ sendFails: true });
+    const mint = await governedDraftAndEmail(input(), s.deps);
+    const token = mint.kind === "awaiting_confirm" ? mint.confirm_fingerprint : "";
+    const out = await governedDraftAndEmail(input({ confirmToken: token, requestNonce: "req-claim" }), s.deps);
+    expect(out.kind).toBe("send_failed");   // NOT "sent" — a fire is not a delivery
+    expect(s.calls.send).toBe(1);           // the send was attempted
+    expect(s.calls.receipt).toBe(1);        // an HONEST failure receipt is still written (status failed)
+    // consume-then-execute: the one-time approval is spent even though the send failed → replay denied.
+    const replay = await governedDraftAndEmail(input({ confirmToken: token, requestNonce: "req-claim-2" }), s.deps);
+    expect(replay.kind).toBe("denied");
+    expect(s.calls.send).toBe(1);           // no second send
   });
 
   it("the fingerprint BINDS recipient, sender, doc_type and content — any change yields a different token", async () => {

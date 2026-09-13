@@ -58,10 +58,14 @@ export type EmailProposalRow = {
 export type EmailApprovalOutcome =
   /** Phase 1 — drafted and proposed; NOTHING sent. The caller re-submits `confirm_fingerprint`. */
   | { kind: "awaiting_confirm"; confirm_fingerprint: string; summary: string }
-  /** Phase 2 — approval claimed once; the stored draft was sent. */
+  /** Phase 2 — approval claimed once AND the stored draft was SENT successfully. */
   | { kind: "sent"; resend_id: string | null; recipient: string }
-  /** Any denial — cross-tenant/scoped-out, forged/expired/replayed approval, unrecordable proposal,
-   *  or a failed send. NOTHING was sent on a pre-send denial, and no success receipt is written. */
+  /** Phase 2 — the approval was claimed (single-use: now consumed) but the external SEND FAILED. §13:
+   *  this is never reported as success — the email did not go out and the one-time approval is spent,
+   *  so the caller must be told plainly and re-draft to try again. "A fire is not a delivery." */
+  | { kind: "send_failed"; resend_id: string | null; recipient: string }
+  /** Any denial — cross-tenant/scoped-out, forged/expired/replayed approval, unrecordable proposal.
+   *  NOTHING was sent on a pre-send denial, and no success receipt is written. */
   | { kind: "denied"; code: string; message: string };
 
 export type EmailApprovalInput = {
@@ -161,9 +165,14 @@ export async function governedDraftAndEmail(
       html: claimed.html,
     });
     // The one-time execution receipt. Written only after the single-use claim succeeded, so it is
-    // written at most once per approval (a replay never reaches here).
+    // written at most once per approval (a replay never reaches here). It carries `ok` so the durable
+    // record is honest whether or not the send landed.
     await deps.recordReceipt({ ...claimed, resendId: res.id, ok: res.ok });
-    return { kind: "sent", resend_id: res.id, recipient: claimed.recipient };
+    // §13 — report the TRUTH. The approval is already consumed (single-use, consume-then-execute: the
+    // replay-safe ordering), so a failed send is `send_failed`, never `sent`; the caller re-drafts.
+    return res.ok
+      ? { kind: "sent", resend_id: res.id, recipient: claimed.recipient }
+      : { kind: "send_failed", resend_id: res.id, recipient: claimed.recipient };
   }
 
   // 3 — PHASE 1: no approval submitted. Resolve the sender, draft, bind the fingerprint, record a

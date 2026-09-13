@@ -2340,3 +2340,16 @@ service-principal denied, body-tenant inert, and missing/expired/replayed/forged
 approvals all denied with NO send and NO receipt. The JWT→tenant derivation itself lives in Deno and is the
 authenticated-live-drive class of proof, owed separately — a unit test of the pure decision cannot stand in
 for it.
+
+**A second proof-class miss the §39 peer-gate + §5 compliance caught (and the author + integrator did not).**
+The first cut reported a FAILED external send (Resend 4xx/5xx, or a missing key) as `status: "succeeded"` —
+the pure flow returned `{kind:"sent"}` unconditionally and the host mapped it to HTTP 200/succeeded, while the
+durable `paige_skill_runs` row and `communication_log` were honest. The integrator's own review fixed the
+`communication_log` half but missed the response-status half; the test's injected `send` double **always
+returned `{ok:true}`**, so the failed-send path had zero coverage. TWO independent reviewers (adversarial +
+compliance), reading the real pushed diff, both surfaced it — the exact §39 value: a defect the proof's own
+assertions structurally could not reach because the double never failed. Lesson: when a seam has an external
+effect, the test double must exercise the effect's FAILURE, and "a fire is not a delivery" (§13) binds the
+response contract, not only the durable record. Fixed with a distinct `send_failed` outcome → a
+502/`status:"failed"` response (consume-then-execute means the one-time approval is already spent, so the
+caller re-drafts) + a failed-send test.

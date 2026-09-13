@@ -556,6 +556,21 @@ async function runDraftAndEmailDocument(
     });
   }
 
+  if (outcome.kind === "send_failed") {
+    // §13 — the approval was consumed but the email did NOT go out. Never a 200/"succeeded": the
+    // durable paige_skill_runs row was already written `failed` and no communication_log outbound
+    // record was created, and the caller must hear the same truth. 502 (the upstream send / sender
+    // identity failed, not a client error) so a caller checking HTTP status also sees the failure —
+    // matching the old inline handler, which threw on a failed send. The one-time approval is spent.
+    return json(502, {
+      run_id: sentRunId,
+      status: "failed",
+      code: "send_failed",
+      error: "The document was drafted and approved, but the email send failed. The one-time approval has been used — re-draft to send again.",
+      outputs: { resend_id: outcome.resend_id, recipient: outcome.recipient },
+    });
+  }
+
   // sent
   return json(200, {
     run_id: sentRunId,
