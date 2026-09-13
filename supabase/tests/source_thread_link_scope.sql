@@ -126,7 +126,15 @@ BEGIN
 
   -- (3) ACCOUNT-SWITCH denial — re-seat user A into tenant B; A can no longer validate A's thread,
   --     because current_user_tenant_id() is now B. (We flip the active tenant the resolver reads.)
+  -- CLEAR the JWT first (→ auth.uid() NULL, the trusted service/provisioning path): the
+  -- `enforce_tenant_member_consent` trigger (SECURITY INVOKER) NEUTRALIZES a foreign-active
+  -- tenant_members insert to 'pending' whenever a NON-NULL caller writes another user's active
+  -- membership. With B's JWT still set from case 2, inserting A's active membership as B would
+  -- demote it to 'pending', and `guard_active_tenant_membership` would then reject the profiles
+  -- flip below. A null caller (exactly how the setup block seeded its members) writes the active
+  -- membership directly, which is the real provisioning path.
   PERFORM set_config('role','postgres', true);
+  PERFORM set_config('request.jwt.claims', '', true);
   INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at) VALUES
     ('57a00000-0000-0000-0000-00000000bbbb','57a00000-0000-0000-0000-0000000000a1','admin','active',false, now());
   UPDATE public.profiles SET active_tenant_id='57a00000-0000-0000-0000-00000000bbbb'
