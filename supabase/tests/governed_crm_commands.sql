@@ -1,6 +1,6 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(59);
+SELECT plan(60);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
@@ -57,6 +57,21 @@ GRANT SELECT ON public.businesses TO service_role;
 
 SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT is(
+  (SELECT count(*)::integer FROM public.list_tool_autonomy(NULL)
+   WHERE tool_key = ANY (ARRAY[
+     'crm_create_contact','crm_update_contact','crm_archive_contact','crm_restore_contact',
+     'crm_link_contact_company','crm_unlink_contact_company','crm_assign_coach','crm_assign_contact_owner',
+     'crm_merge_contacts','crm_hard_delete_contact','crm_bulk_update_contacts',
+     'crm_create_company','crm_update_company','crm_archive_company','crm_restore_company',
+     'crm_create_task','crm_update_task','crm_assign_task','crm_reschedule_task',
+     'crm_complete_task','crm_reopen_task','crm_cancel_task','crm_delete_task',
+     'crm_log_activity','deal_create','crm_update_deal','crm_assign_deal_owner',
+     'crm_assign_deal_contact','deal_move_stage','crm_close_deal','crm_reopen_deal','crm_delete_deal'
+   ])),
+  32,
+  'the latest autonomy catalogue exposes all 32 governed CRM command controls'
+);
 CREATE TEMP TABLE crm_result AS SELECT public.execute_crm_command(
  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
  '{"approval_channel":"operator_card","action":"contact.update","contact_id":"c7100000-0000-4000-8000-00000000c101","expected_updated_at":"2026-09-13T00:00:00+00:00","patch":{"email":"after@tests.invalid"}}','same-tenant-update-1') result;
