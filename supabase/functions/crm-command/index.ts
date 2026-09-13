@@ -80,6 +80,10 @@ const commandSchema = z.object({
   if (command.action === "deal.create") { requireField("title"); requireField("pipeline_id"); requireField("stage_id"); }
   if (command.action === "deal.update") {
     requireField("deal_id"); requireField("expected_version");
+    if (!["title", "value_cents", "currency", "expected_close_date", "offer_type", "tags", "notes"]
+      .some((field) => command[field as keyof typeof command] !== undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["action"], message: "At least one reversible deal field is required for deal.update." });
+    }
     if (command.owner_user_id !== undefined || command.contact_id !== undefined) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["action"], message: "Use the separately governed deal assignment action." });
     }
@@ -242,6 +246,24 @@ serve(async (req) => {
       },
     });
   };
+
+  // A committed command whose HTTP response was lost is a readback, not a second mutation.
+  // Recover it before the approval decision so an identical retry never asks the operator to
+  // approve the already-completed action again. The service-only RPC revalidates the tenant,
+  // active account, membership, actor, and exact command hash before returning anything.
+  if (accessAllowed && !PREVIEW_REQUIRED_ACTIONS.has(body.command.action) && await activeTenantStillMatches()) {
+    const { data: cachedData, error: cachedError } = await admin.rpc("read_crm_command_result", {
+      _tenant_id: tenantId,
+      _actor_id: user.id,
+      _command: body.command,
+      _idempotency_key: body.idempotency_key,
+    });
+    const cachedResult = object(cachedData);
+    if (!cachedError && cachedResult) return successfulResultResponse(cachedResult, body.command.action);
+    if (cachedError?.message === "CRM_IDEMPOTENCY_REUSE") {
+      return response(409, { ok: false, outcome: "failed", code: "CRM_IDEMPOTENCY_REUSE" });
+    }
+  }
 
   let lane = "unresolved";
   const { data: resolvedLane, error: laneError } = await caller.rpc("resolve_tool_autonomy", {

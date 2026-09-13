@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const sql = readFileSync(
-  "supabase/migrations/20270203000000_governed_crm_contact_company_commands.sql",
+  "supabase/migrations/20270204000000_governed_crm_contact_company_commands.sql",
   "utf8",
 );
 
@@ -52,7 +52,10 @@ describe("canonical CRM contact/company command", () => {
     expect(sql).toContain("pg_advisory_xact_lock");
     expect(sql).toContain("CRM_IDEMPOTENCY_REUSE");
     expect(sql).toContain("command_hash");
-    expect(sql).toContain("'replayed', true");
+    expect(sql).toContain("'replayed',true");
+    expect(sql).toContain("public.crm_effective_command(_command)");
+    expect(sql).toContain("public.read_crm_command_result");
+    expect(sql).toContain("v_cached.command_hash not in (v_operator_hash,v_standing_hash)");
   });
 
   it("covers reversible and preview-bound high-risk CRM operations without external sends", () => {
@@ -100,6 +103,10 @@ describe("canonical CRM contact/company command", () => {
     expect(sql).toContain("if not v_is_admin then raise exception 'CRM_FORBIDDEN'");
     expect(sql).toMatch(/b\.is_active is true\s+for update/i);
     expect(sql).toContain("CRM_ABSENCE_READBACK_FAILED");
+    expect(sql).toContain("paige_invoices_tenant_deal_crm_fk");
+    expect(sql).toContain("CRM_CROSS_TENANT_DEPENDENCY");
+    expect(sql).toContain("CRM_DEAL_PATCH_REQUIRED");
+    expect(sql).toMatch(/update public\.paige_invoices set deal_id=null[^;]+tenant_id=_tenant_id/i);
     expect(sql).toContain("left join public.clients target_client");
     expect(sql).toContain("tags=coalesce((select pg_catalog.array_agg");
     for (const dependency of ["paige_invoices", "stage_automation_events", "pipeline_move_approvals", "pipeline_deal_outcomes", "deal_activities"]) expect(sql).toContain(dependency);
@@ -120,7 +127,8 @@ describe("canonical CRM contact/company command", () => {
       expect(sql).toContain(field);
     }
     expect(sql).toContain("app.crm_approval_channel");
-    expect(sql).toContain("effective_command jsonb:=_command");
+    expect(sql).toContain("effective_command jsonb;");
+    expect(sql).toContain("effective_command:=public.crm_effective_command(_command);");
     expect(sql).toContain("convert_to(effective_command::text");
   });
 
@@ -142,5 +150,7 @@ describe("canonical CRM contact/company command", () => {
     expect(sql).toMatch(/revoke all on function public\.execute_crm_command\(uuid,uuid,jsonb,text\) from public,\s*anon,\s*authenticated/i);
     expect(sql).toMatch(/grant execute on function public\.execute_crm_command\(uuid,uuid,jsonb,text\) to service_role/i);
     expect(sql).not.toMatch(/grant execute on function public\.execute_crm_command\(uuid,uuid,jsonb,text\) to authenticated/i);
+    expect(sql).toMatch(/revoke all on function public\.read_crm_command_result\(uuid,uuid,jsonb,text\) from public,anon,authenticated/i);
+    expect(sql).toMatch(/grant execute on function public\.read_crm_command_result\(uuid,uuid,jsonb,text\) to service_role/i);
   });
 });

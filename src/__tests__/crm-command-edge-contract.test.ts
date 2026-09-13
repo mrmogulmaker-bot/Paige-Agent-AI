@@ -46,6 +46,9 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain("command: { action: body.command.action, preview_id: preview.preview_id }");
     expect(edge).toContain('preview.ok === true && preview.outcome === "succeeded"');
     expect(edge).toContain("return successfulResultResponse(preview, body.command.action)");
+    expect(edge).toContain('admin.rpc("read_crm_command_result"');
+    expect(edge.indexOf('admin.rpc("read_crm_command_result"')).toBeLessThan(edge.indexOf('caller.rpc("resolve_tool_autonomy"'));
+    expect(edge).toContain('cachedError?.message === "CRM_IDEMPOTENCY_REUSE"');
     expect(edge).not.toMatch(/confirm:\s*z\.boolean/);
   });
 
@@ -67,6 +70,7 @@ describe("canonical CRM action door", () => {
     }
     expect(edge).toContain('recordId && action.startsWith("contact.")');
     expect(edge).not.toContain('action.startsWith("contact.") || action.startsWith("company.")');
+    expect(edge).toContain('At least one reversible deal field is required for deal.update.');
   });
 
   it("records the governed decision without CRM field values", () => {

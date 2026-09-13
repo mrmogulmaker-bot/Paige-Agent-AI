@@ -84,6 +84,15 @@ export const CRM_COMMAND_TOOLS = (Object.entries(CRM_ACTION_CAPABILITY) as [CrmA
   function: {
     name: capability,
     description: `Governed CRM: ${labels[action]}. Resolve exact IDs and version fields from a current read. Tenant, actor, role, account, authority and approval are always resolved by the server. Returns durable readback, receipt state and a route locator; destructive and ownership operations require the rendered approval card.`,
-    parameters: { type: "object", properties, required: required[action], additionalProperties: false },
+    parameters: {
+      type: "object",
+      properties,
+      required: required[action],
+      ...(action === "deal.update" ? {
+        anyOf: ["title", "value_cents", "currency", "expected_close_date", "offer_type", "tags", "notes"]
+          .map((field) => ({ required: [field] })),
+      } : {}),
+      additionalProperties: false,
+    },
   },
 }));

@@ -20,6 +20,21 @@ alter table public.crm_command_results enable row level security;
 revoke all on public.crm_command_results from public, anon, authenticated;
 grant select, insert, update on public.crm_command_results to service_role;
 
+-- An invoice and its optional deal must belong to the same tenant. The historical single-column
+-- FK cannot express this invariant and its ON DELETE SET NULL could otherwise detach a foreign
+-- tenant's invoice. Validation intentionally fails closed if legacy corruption already exists.
+do $$
+begin
+  if not exists(select 1 from pg_catalog.pg_constraint where conname='deals_tenant_id_id_crm_key' and conrelid='public.deals'::pg_catalog.regclass) then
+    alter table public.deals add constraint deals_tenant_id_id_crm_key unique (tenant_id,id);
+  end if;
+  if not exists(select 1 from pg_catalog.pg_constraint where conname='paige_invoices_tenant_deal_crm_fk' and conrelid='public.paige_invoices'::pg_catalog.regclass) then
+    alter table public.paige_invoices add constraint paige_invoices_tenant_deal_crm_fk
+      foreign key (tenant_id,deal_id) references public.deals(tenant_id,id) on delete no action not valid;
+  end if;
+end$$;
+alter table public.paige_invoices validate constraint paige_invoices_tenant_deal_crm_fk;
+
 create or replace function public.execute_crm_command_reversible(
   _tenant_id uuid,
   _actor_id uuid,
@@ -151,6 +166,16 @@ begin
             'tags',coalesce(_command->'tags','[]'::jsonb),'notes',_command->>'notes'
           )),_idempotency_key,'paige');
         elsif v_action='deal.update' then
+          if (_command ? 'owner_user_id' and coalesce(_command->>'receipt_action','')<>'deal.assign_owner')
+            or (_command ? 'contact_id' and coalesce(_command->>'receipt_action','')<>'deal.assign_contact') then
+            raise exception 'CRM_DEAL_ASSIGNMENT_ACTION_REQUIRED' using errcode='42501';
+          end if;
+          if not (_command ? 'title' or _command ? 'value_cents' or _command ? 'currency'
+            or _command ? 'expected_close_date' or _command ? 'offer_type' or _command ? 'tags' or _command ? 'notes'
+            or (_command ? 'owner_user_id' and _command->>'receipt_action'='deal.assign_owner')
+            or (_command ? 'contact_id' and _command->>'receipt_action'='deal.assign_contact')) then
+            raise exception 'CRM_DEAL_PATCH_REQUIRED' using errcode='22023';
+          end if;
           v_pipeline_result:=public.configure_tenant_pipeline_core_identity(v_tenant,
             jsonb_strip_nulls(jsonb_build_object(
               'type','update-deal','dealId',_command->>'deal_id','expectedVersion',_command->'expected_version',
@@ -945,7 +970,8 @@ begin
     select * into d from public.deals where id=(_command->>'deal_id')::uuid and tenant_id=_tenant_id for update;
     if not found then raise exception 'CRM_DEAL_NOT_FOUND' using errcode='P0002'; end if;
     if d.version<>coalesce((_command->>'expected_version')::bigint,0) then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
-    deps:=pg_catalog.jsonb_build_object('tasks',(select count(*) from public.tasks where deal_id=d.id),'invoices',(select count(*) from public.paige_invoices where deal_id=d.id),'activities',(select count(*) from public.deal_activities where deal_id=d.id),'automation_events',(select count(*) from public.stage_automation_events where deal_id=d.id),'move_approvals',(select count(*) from public.pipeline_move_approvals where deal_id=d.id),'outcomes',(select count(*) from public.pipeline_deal_outcomes where deal_id=d.id));
+    if exists(select 1 from public.paige_invoices where deal_id=d.id and tenant_id is distinct from _tenant_id) then raise exception 'CRM_CROSS_TENANT_DEPENDENCY' using errcode='42501'; end if;
+    deps:=pg_catalog.jsonb_build_object('tasks',(select count(*) from public.tasks where deal_id=d.id and tenant_id=_tenant_id),'invoices',(select count(*) from public.paige_invoices where deal_id=d.id and tenant_id=_tenant_id),'activities',(select count(*) from public.deal_activities where deal_id=d.id),'automation_events',(select count(*) from public.stage_automation_events where deal_id=d.id and tenant_id=_tenant_id),'move_approvals',(select count(*) from public.pipeline_move_approvals where deal_id=d.id and tenant_id=_tenant_id),'outcomes',(select count(*) from public.pipeline_deal_outcomes where deal_id=d.id and tenant_id=_tenant_id));
     snap:=pg_catalog.jsonb_build_object('deal_id',d.id,'version',d.version,'dependency_counts',deps);
     outp:=pg_catalog.jsonb_build_object('action',a,'record_kind','deal','record_id',d.id,'title',d.title,'dependency_counts',deps,'affected_count',1+(deps->>'tasks')::int+(deps->>'invoices')::int+(deps->>'activities')::int+(deps->>'automation_events')::int+(deps->>'move_approvals')::int+(deps->>'outcomes')::int,'deleted_dependency_count',(deps->>'activities')::int+(deps->>'automation_events')::int+(deps->>'move_approvals')::int+(deps->>'outcomes')::int,'detached_task_count',(deps->>'tasks')::int,'detached_invoice_count',(deps->>'invoices')::int,'eligible',true);
   else
@@ -972,6 +998,51 @@ end$$;
 revoke all on function public.preview_crm_command(uuid,uuid,jsonb,text) from public,anon,authenticated;
 grant execute on function public.preview_crm_command(uuid,uuid,jsonb,text) to service_role;
 
+-- One canonical normalization for action aliases. Both execution and durable-result recovery hash
+-- this payload, so a retry cannot drift from the command that actually committed.
+create or replace function public.crm_effective_command(_command jsonb)
+returns jsonb language sql immutable set search_path='' as $$
+  select case when _command->>'action' in ('deal.assign_owner','deal.assign_contact') then
+    pg_catalog.jsonb_build_object(
+      'action','deal.update','deal_id',_command->>'deal_id','expected_version',_command->'expected_version',
+      'receipt_action',_command->>'action','approval_channel',_command->>'approval_channel'
+    )
+    || case when _command->>'action'='deal.assign_owner' then pg_catalog.jsonb_build_object('owner_user_id',_command->'owner_user_id') else '{}'::jsonb end
+    || case when _command->>'action'='deal.assign_contact' then pg_catalog.jsonb_build_object('contact_id',_command->'contact_id') else '{}'::jsonb end
+  else _command end
+$$;
+revoke all on function public.crm_effective_command(jsonb) from public,anon,authenticated,service_role;
+
+-- Read-only lost-response recovery. This never executes a command: it revalidates trusted
+-- tenant/account/membership authority and returns only an exact actor+tenant+payload match.
+create or replace function public.read_crm_command_result(
+  _tenant_id uuid,_actor_id uuid,_command jsonb,_idempotency_key text
+) returns jsonb language plpgsql security definer set search_path='' as $$
+declare
+  v_active_tenant uuid; v_cached public.crm_command_results%rowtype; v_effective jsonb;
+  v_operator_hash text; v_standing_hash text;
+begin
+  if coalesce(auth.jwt()->>'role','')<>'service_role' or auth.uid() is not null then raise exception 'CRM_INTERNAL_EXECUTOR_REQUIRED' using errcode='42501'; end if;
+  if _tenant_id is null or _actor_id is null or pg_catalog.jsonb_typeof(_command)<>'object' or coalesce(pg_catalog.btrim(_idempotency_key),'')='' or pg_catalog.length(_idempotency_key)>200 then raise exception 'CRM_COMMAND_INVALID' using errcode='22023'; end if;
+  perform 1 from public.tenants tenant_row where tenant_row.id=_tenant_id and tenant_row.status in ('trial','active','past_due') for share;
+  if not found then raise exception 'CRM_TENANT_SUSPENDED' using errcode='42501'; end if;
+  select profile_row.active_tenant_id into v_active_tenant from public.profiles profile_row where profile_row.user_id=_actor_id for share;
+  if not found or v_active_tenant is distinct from _tenant_id then raise exception 'CRM_ACTIVE_ACCOUNT_CHANGED' using errcode='42501'; end if;
+  perform 1 from public.tenant_members tm where tm.tenant_id=_tenant_id and tm.user_id=_actor_id and tm.status='active' and tm.role in ('owner','admin','coach') for share;
+  if not found then raise exception 'CRM_FORBIDDEN' using errcode='42501'; end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('crm-command:'||_tenant_id::text||':'||_actor_id::text||':'||_idempotency_key,0));
+  select * into v_cached from public.crm_command_results r where r.tenant_id=_tenant_id and r.actor_user_id=_actor_id and r.idempotency_key=_idempotency_key for share;
+  if not found then return null; end if;
+  v_effective:=public.crm_effective_command(_command||pg_catalog.jsonb_build_object('approval_channel','operator_card'));
+  v_operator_hash:=pg_catalog.encode(extensions.digest(pg_catalog.convert_to(v_effective::text,'UTF8'),'sha256'),'hex');
+  v_effective:=public.crm_effective_command(_command||pg_catalog.jsonb_build_object('approval_channel','standing_autonomy_setting'));
+  v_standing_hash:=pg_catalog.encode(extensions.digest(pg_catalog.convert_to(v_effective::text,'UTF8'),'sha256'),'hex');
+  if v_cached.command_hash not in (v_operator_hash,v_standing_hash) then raise exception 'CRM_IDEMPOTENCY_REUSE' using errcode='22023'; end if;
+  return v_cached.result||pg_catalog.jsonb_build_object('replayed',true);
+end$$;
+revoke all on function public.read_crm_command_result(uuid,uuid,jsonb,text) from public,anon,authenticated;
+grant execute on function public.read_crm_command_result(uuid,uuid,jsonb,text) to service_role;
+
 create or replace function public.execute_crm_command(
   _tenant_id uuid,_actor_id uuid,_command jsonb,_idempotency_key text
 ) returns jsonb language plpgsql security definer set search_path='' as $$
@@ -980,7 +1051,7 @@ declare
   c public.clients%rowtype; loser public.clients%rowtype; t public.tasks%rowtype; d public.deals%rowtype;
   deps jsonb; now_snap jsonb; v_result jsonb; readback jsonb; run_id uuid; changed int; target_count int;
   resolutions jsonb; owner_id uuid; field text; choice text; v_capability text;
-  v_hash text; v_cached public.crm_command_results%rowtype; effective_command jsonb:=_command;
+  v_hash text; v_cached public.crm_command_results%rowtype; effective_command jsonb;
   v_active_tenant uuid; v_actor_role text; v_autonomy_mode text; v_approval_channel text:=nullif(_command->>'approval_channel','');
 begin
   if coalesce(auth.jwt()->>'role','') <> 'service_role' or auth.uid() is not null then raise exception 'CRM_INTERNAL_EXECUTOR_REQUIRED' using errcode='42501'; end if;
@@ -992,12 +1063,7 @@ begin
   select tm.role into v_actor_role from public.tenant_members tm
     where tm.tenant_id=_tenant_id and tm.user_id=_actor_id and tm.status='active' and tm.role in ('owner','admin','coach') for update;
   if not found then raise exception 'CRM_FORBIDDEN' using errcode='42501'; end if;
-  if a in ('deal.assign_owner','deal.assign_contact') then
-    effective_command:=pg_catalog.jsonb_build_object('action','deal.update','deal_id',_command->>'deal_id','expected_version',_command->'expected_version',
-      'receipt_action',a,'approval_channel',_command->>'approval_channel')
-      || case when a='deal.assign_owner' then pg_catalog.jsonb_build_object('owner_user_id',_command->'owner_user_id') else '{}'::jsonb end
-      || case when a='deal.assign_contact' then pg_catalog.jsonb_build_object('contact_id',_command->'contact_id') else '{}'::jsonb end;
-  end if;
+  effective_command:=public.crm_effective_command(_command);
   v_hash:=pg_catalog.encode(extensions.digest(pg_catalog.convert_to(effective_command::text,'UTF8'),'sha256'),'hex');
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('crm-command:'||_tenant_id::text||':'||_actor_id::text||':'||_idempotency_key,0));
   select * into v_cached from public.crm_command_results r where r.tenant_id=_tenant_id and r.actor_user_id=_actor_id and r.idempotency_key=_idempotency_key for update;
@@ -1060,10 +1126,11 @@ begin
     elsif a='deal.delete' then
       select * into d from public.deals where id=(p.target_snapshot->>'deal_id')::uuid and tenant_id=_tenant_id for update;
       if not found or d.version<>(p.target_snapshot->>'version')::bigint then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
-      deps:=pg_catalog.jsonb_build_object('tasks',(select count(*) from public.tasks where deal_id=d.id),'invoices',(select count(*) from public.paige_invoices where deal_id=d.id),'activities',(select count(*) from public.deal_activities where deal_id=d.id),'automation_events',(select count(*) from public.stage_automation_events where deal_id=d.id),'move_approvals',(select count(*) from public.pipeline_move_approvals where deal_id=d.id),'outcomes',(select count(*) from public.pipeline_deal_outcomes where deal_id=d.id));
+      if exists(select 1 from public.paige_invoices where deal_id=d.id and tenant_id is distinct from _tenant_id) then raise exception 'CRM_CROSS_TENANT_DEPENDENCY' using errcode='42501'; end if;
+      deps:=pg_catalog.jsonb_build_object('tasks',(select count(*) from public.tasks where deal_id=d.id and tenant_id=_tenant_id),'invoices',(select count(*) from public.paige_invoices where deal_id=d.id and tenant_id=_tenant_id),'activities',(select count(*) from public.deal_activities where deal_id=d.id),'automation_events',(select count(*) from public.stage_automation_events where deal_id=d.id and tenant_id=_tenant_id),'move_approvals',(select count(*) from public.pipeline_move_approvals where deal_id=d.id and tenant_id=_tenant_id),'outcomes',(select count(*) from public.pipeline_deal_outcomes where deal_id=d.id and tenant_id=_tenant_id));
       if deps is distinct from p.target_snapshot->'dependency_counts' then raise exception 'CRM_DEPENDENCY_CONFLICT' using errcode='40001'; end if;
-      update public.tasks set deal_id=null,updated_at=pg_catalog.clock_timestamp() where deal_id=d.id;
-      update public.paige_invoices set deal_id=null,updated_at=pg_catalog.clock_timestamp() where deal_id=d.id;
+      update public.tasks set deal_id=null,updated_at=pg_catalog.clock_timestamp() where deal_id=d.id and tenant_id=_tenant_id;
+      update public.paige_invoices set deal_id=null,updated_at=pg_catalog.clock_timestamp() where deal_id=d.id and tenant_id=_tenant_id;
       delete from public.deals where id=d.id and tenant_id=_tenant_id;
       if exists(select 1 from public.deals where id=d.id) then raise exception 'CRM_ABSENCE_READBACK_FAILED' using errcode='P0002'; end if;
       readback:=pg_catalog.jsonb_build_object('id',d.id,'absent',true,'deleted_count',1,'dependency_counts',deps);

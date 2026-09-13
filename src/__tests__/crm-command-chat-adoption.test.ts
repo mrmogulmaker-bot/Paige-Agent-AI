@@ -11,6 +11,9 @@ describe("Paige Chat canonical CRM adoption", () => {
     expect(new Set(CRM_COMMAND_TOOLS.map((tool) => tool.function.name)).size).toBe(32);
     for (const [action, tool] of Object.entries(CRM_ACTION_CAPABILITY)) expect(CRM_TOOL_TO_ACTION[tool]).toBe(action);
     expect(chat).toContain("toolDefs.push(...CRM_COMMAND_TOOLS as any)");
+    const dealUpdate = CRM_COMMAND_TOOLS.find((tool) => tool.function.name === "crm_update_deal");
+    expect(dealUpdate?.function.parameters).toMatchObject({ anyOf: expect.any(Array) });
+    expect((dealUpdate?.function.parameters as { anyOf?: unknown[] }).anyOf).toHaveLength(7);
   });
 
   it("does not accept tenant, actor, role, account, approval, or authority as model arguments", () => {

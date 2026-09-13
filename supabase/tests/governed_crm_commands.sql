@@ -1,12 +1,14 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(44);
+SELECT plan(50);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
 SELECT ok(has_function_privilege('service_role','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'only the trusted service action door can execute');
 SELECT ok(NOT has_table_privilege('authenticated','public.crm_command_results','SELECT'),'browser callers cannot read the private replay store');
 SELECT ok(NOT has_table_privilege('authenticated','public.crm_command_previews','SELECT'),'browser callers cannot read the private destructive preview store');
+SELECT ok(NOT has_function_privilege('authenticated','public.read_crm_command_result(uuid,uuid,jsonb,text)','EXECUTE'),'browser callers cannot read the private durable replay seam');
+SELECT ok(has_function_privilege('service_role','public.read_crm_command_result(uuid,uuid,jsonb,text)','EXECUTE'),'only the trusted action door can recover an exact durable result');
 
 INSERT INTO auth.users(id,aud,role,email) VALUES
  ('c7100000-0000-4000-8000-000000000001','authenticated','authenticated','crm-owner-a@tests.invalid'),
@@ -36,6 +38,15 @@ UPDATE public.clients SET linked_user_id='c7100000-0000-4000-8000-000000000002' 
 INSERT INTO public.businesses(id,tenant_id,owner_user_id,legal_name,is_active,updated_at) VALUES
  ('c7100000-0000-4000-8000-00000000b101','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Archived Fixture',false,'2026-09-13 00:00:00+00'),
  ('c7100000-0000-4000-8000-00000000b102','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Coach Scope Fixture',true,'2026-09-13 00:00:00+00');
+INSERT INTO public.pipelines(id,tenant_id,name,is_default,created_by) VALUES
+ ('c7100000-0000-4000-8000-00000000a101','c7100000-0000-4000-8000-000000001111','CRM Review Pipeline',true,'c7100000-0000-4000-8000-000000000001');
+INSERT INTO public.pipeline_stages(id,pipeline_id,tenant_id,label,order_index,probability,stage_type) VALUES
+ ('c7100000-0000-4000-8000-00000000a201','c7100000-0000-4000-8000-00000000a101','c7100000-0000-4000-8000-000000001111','Review Stage',1,10,'open');
+INSERT INTO public.deals(id,tenant_id,title,pipeline_id,stage_id,version,created_by) VALUES
+ ('c7100000-0000-4000-8000-00000000d101','c7100000-0000-4000-8000-000000001111','Tenant-bound Deal','c7100000-0000-4000-8000-00000000a101','c7100000-0000-4000-8000-00000000a201',1,'c7100000-0000-4000-8000-000000000001');
+SELECT throws_ok($$INSERT INTO public.paige_invoices(tenant_id,contact_id,deal_id,invoice_number,amount_total_cents,created_by)
+ VALUES ('c7200000-0000-4000-8000-000000002222','c7200000-0000-4000-8000-00000000c201','c7100000-0000-4000-8000-00000000d101','INV-CRM-CROSS-TENANT',100,'c7200000-0000-4000-8000-000000000001')$$,
+ '23503','insert or update on table "paige_invoices" violates foreign key constraint "paige_invoices_tenant_deal_crm_fk"','a tenant cannot attach its invoice to another tenant deal');
 
 -- Test-only privileges for direct durable-state assertions; the transaction rollback removes them.
 -- The executor itself remains SECURITY DEFINER and is the only production mutation surface.
@@ -57,6 +68,9 @@ SELECT is((SELECT result->'readback'->>'email' FROM crm_create_result),'created@
 SELECT is((SELECT created_by_channel_type FROM public.clients WHERE id=((SELECT result->'readback'->>'id' FROM crm_create_result))::uuid),'api','Paige contact create uses canonical programmatic provenance');
 SELECT is((SELECT count(*)::integer FROM public.paige_workspace_events WHERE tenant_id='c7100000-0000-4000-8000-000000001111' AND capability_key='crm_update_contact' AND outcome='capability_succeeded'),1,'canonical Rail receipt persists once');
 SELECT is((public.execute_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"approval_channel":"operator_card","action":"contact.update","contact_id":"c7100000-0000-4000-8000-00000000c101","expected_updated_at":"2026-09-13T00:00:00+00:00","patch":{"email":"after@tests.invalid"}}','same-tenant-update-1')->>'replayed')::boolean,true,'same-payload retry is idempotent');
+SELECT is((public.read_crm_command_result('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"action":"contact.update","contact_id":"c7100000-0000-4000-8000-00000000c101","expected_updated_at":"2026-09-13T00:00:00+00:00","patch":{"email":"after@tests.invalid"}}','same-tenant-update-1')->>'replayed')::boolean,true,'lost-response recovery returns the exact durable result before another approval');
+SELECT throws_ok($$SELECT public.read_crm_command_result('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"action":"contact.update","contact_id":"c7100000-0000-4000-8000-00000000c101","expected_updated_at":"2026-09-13T00:00:00+00:00","patch":{"email":"different@tests.invalid"}}','same-tenant-update-1')$$,'22023','CRM_IDEMPOTENCY_REUSE','lost-response recovery refuses a changed payload');
+SELECT throws_ok($$SELECT public.execute_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"approval_channel":"operator_card","action":"deal.update","deal_id":"c7100000-0000-4000-8000-00000000d101","expected_version":1}','deal-noop-1')$$,'22023','CRM_DEAL_PATCH_REQUIRED','a no-op deal update cannot advance version or fabricate activity');
 SELECT throws_ok($$SELECT public.execute_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"approval_channel":"operator_card","action":"contact.update","contact_id":"c7100000-0000-4000-8000-00000000c101","expected_updated_at":"2026-09-13T00:00:00+00:00","patch":{"email":"changed@tests.invalid"}}','same-tenant-update-1')$$,'22023','CRM_IDEMPOTENCY_REUSE','changed-payload replay is refused');
 SELECT throws_ok($$SELECT public.execute_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"approval_channel":"operator_card","action":"contact.update","contact_id":"c7100000-0000-4000-8000-00000000c101","expected_updated_at":"2026-09-13T00:00:00+00:00","patch":{"email":"stale@tests.invalid"}}','stale-version-1')$$,'40001','CRM_VERSION_CONFLICT','stale optimistic version is refused');
 SELECT throws_ok($$SELECT public.execute_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"approval_channel":"operator_card","action":"contact.update","contact_id":"c7200000-0000-4000-8000-00000000c201","expected_updated_at":"2026-09-13T00:00:00+00:00","patch":{"email":"forged@tests.invalid"}}','forged-target-1')$$,'P0002','CRM_CONTACT_NOT_FOUND','known cross-tenant target is refused without disclosure');
