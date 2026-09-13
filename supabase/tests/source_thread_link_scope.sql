@@ -103,10 +103,24 @@ BEGIN
       AND caller_user_id = auth.uid();
   IF _n <> 0 THEN RAISE EXCEPTION 'FAIL_CROSS_TENANT: user B validated tenant A''s thread (% rows)', _n; END IF;
 
-  -- (4) NO DISCOVERY / NO LEAK — user B owns a task linked to A's thread, but the uuid grants no read:
-  --     the task is visible to B, the linked conversation is NOT.
-  SELECT count(*) INTO _n FROM public.tasks WHERE id='57a00000-0000-0000-0000-00000000ca51';
-  IF _n <> 1 THEN RAISE EXCEPTION 'SETUP_FAIL: owner B cannot see their own task (% rows)', _n; END IF;
+  -- (4) NO DISCOVERY / NO LEAK — B owns a task linked to A's thread, but the uuid grants no thread read.
+  --     ACCESS-MODEL NOTE: `public.tasks` is SERVICE-ROLE-only — the edge reads it exclusively through
+  --     the admin (service-role) client in crm_list_tasks, and `authenticated` has NO table SELECT on
+  --     tasks by design (RLS is enabled but no authenticated table grant), so a DIRECT authenticated
+  --     read is "permission denied" and is not a path the app uses. So we confirm B OWNS the task as
+  --     postgres (the privileged role that actually reads tasks), then prove the security-relevant
+  --     claim — the foreign source_thread_id grants B NO read of A's thread — as authenticated-B, which
+  --     IS the app's thread read path (RLS). The leak check is what matters; the task check is setup sanity.
+  PERFORM set_config('role','postgres', true);
+  SELECT count(*) INTO _n FROM public.tasks
+    WHERE id='57a00000-0000-0000-0000-00000000ca51'
+      AND user_id='57a00000-0000-0000-0000-0000000000b1'
+      AND tenant_id='57a00000-0000-0000-0000-00000000bbbb'
+      AND source_thread_id='57a00000-0000-0000-0000-00000000face';
+  IF _n <> 1 THEN RAISE EXCEPTION 'SETUP_FAIL: B''s task row (with the foreign link) is not present (% rows)', _n; END IF;
+  PERFORM set_config('role','authenticated', true);
+  PERFORM set_config('request.jwt.claims',
+    '{"sub":"57a00000-0000-0000-0000-0000000000b1","role":"authenticated"}', true);
   SELECT count(*) INTO _n FROM public.paige_chat_threads WHERE id='57a00000-0000-0000-0000-00000000face';
   IF _n <> 0 THEN RAISE EXCEPTION 'FAIL_DISCOVERY: user B read tenant A''s thread via the task link (% rows)', _n; END IF;
 
