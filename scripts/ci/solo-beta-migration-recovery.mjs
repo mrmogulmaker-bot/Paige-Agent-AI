@@ -4,14 +4,45 @@ import { pathToFileURL } from "node:url";
 
 export const SOLO_BETA_MIGRATION_SHA256 = "c613e2ec559f8ccefd8b8a58efb96df055dee7bc7ae42b0bfe6884d429b386a6";
 
-const requiredTables = {
-  platform_subscription_offers: ["offer_code text", "plan_id uuid", "account_type text", "provider_mode text", "stripe_account text", "unit_amount_cents integer", "currency text", "billing_interval text", "interval_count integer", "trial_days integer", "status text"],
-  solo_beta_enrollments: ["user_id uuid", "offer_code text", "state text", "checkout_attempt integer", "stripe_customer_id text", "checkout_session_id text", "stripe_subscription_id text", "tenant_id uuid", "reference_id uuid"],
-  solo_beta_fulfillment_receipts: ["event_id text", "user_id uuid", "tenant_id uuid", "subscription_id uuid", "offer_code text", "outcome text", "reference_id uuid"],
-};
+const requiredOfferColumns = [
+  ["offer_code", "text", ["not null"]],
+  ["plan_id", "uuid", ["not null"]],
+  ["account_type", "text", ["not null"]],
+  ["provider_mode", "text", ["not null"]],
+  ["stripe_account", "text", ["not null"]],
+  ["stripe_product_id", "text", []],
+  ["stripe_price_id", "text", []],
+  ["unit_amount_cents", "integer", ["not null"]],
+  ["currency", "text", ["not null"]],
+  ["billing_interval", "text", ["not null"]],
+  ["interval_count", "integer", ["not null"]],
+  ["trial_days", "integer", ["not null"]],
+  ["status", "text", ["not null"]],
+  ["created_at", "timestamp with time zone", ["not null", "default now()"]],
+  ["updated_at", "timestamp with time zone", ["not null", "default now()"]],
+];
+
+const requiredOfferConstraints = [
+  ["platform_subscription_offers_pkey", ["primary key", "offer_code"]],
+  ["platform_subscription_offers_plan_id_fkey", ["foreign key", "plan_id", "references public.platform_subscription_plans", "id"]],
+  ["platform_subscription_offers_account_type_check", ["check", "account_type", "standalone"]],
+  ["platform_subscription_offers_provider_mode_check", ["check", "provider_mode", "test"]],
+  ["platform_subscription_offers_stripe_account_check", ["check", "stripe_account", "v2"]],
+  ["platform_subscription_offers_unit_amount_cents_check", ["check", "unit_amount_cents", "7450"]],
+  ["platform_subscription_offers_currency_check", ["check", "currency", "usd"]],
+  ["platform_subscription_offers_billing_interval_check", ["check", "billing_interval", "month"]],
+  ["platform_subscription_offers_interval_count_check", ["check", "interval_count", "1"]],
+  ["platform_subscription_offers_trial_days_check", ["check", "trial_days", "30"]],
+  ["platform_subscription_offers_status_check", ["check", "status", "configuration_required", "test_ready", "retired"]],
+  ["platform_subscription_offers_check", ["check", "status", "test_ready", "stripe_product_id", "stripe_price_id", "not null"]],
+];
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalize(value) {
+  return value.replaceAll('"', "").replace(/::[a-z ]+/gi, "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 function tableBlock(schemaSql, table) {
@@ -20,41 +51,40 @@ function tableBlock(schemaSql, table) {
   return match?.[1] ?? null;
 }
 
-function hasColumn(block, declaration) {
-  const [column, ...typeParts] = declaration.split(" ");
-  const type = typeParts.join("\\s+");
-  return new RegExp(`(?:"${escapeRegex(column)}"|${escapeRegex(column)})\\s+${type}\\b`, "i").test(block);
+function constraintBlock(schemaSql, name) {
+  const escaped = escapeRegex(name);
+  const match = schemaSql.match(new RegExp(`ADD CONSTRAINT\\s+(?:"${escaped}"|${escaped})\\s+([\\s\\S]*?);`, "i"));
+  return match?.[1] ?? null;
 }
 
 export function recoverSoloBetaMigration(schemaSql, migrationSql, expectedHash = SOLO_BETA_MIGRATION_SHA256) {
   const offers = tableBlock(schemaSql, "platform_subscription_offers");
   if (!offers) return { needed: false, migrationSql };
 
-  for (const [table, columns] of Object.entries(requiredTables)) {
-    const block = tableBlock(schemaSql, table);
-    if (!block) continue;
-    const missing = columns.filter((column) => !hasColumn(block, column));
-    if (missing.length) throw new Error(`solo_beta_recovery_schema_mismatch:${table}:${missing.join(",")}`);
+  const offerLines = offers.split(/\r?\n/).map(normalize);
+  const missing = [];
+  for (const [column, type, requirements] of requiredOfferColumns) {
+    const line = offerLines.find((candidate) => candidate.startsWith(`${column} `));
+    if (!line || !line.startsWith(`${column} ${type}`) || requirements.some((requirement) => !line.includes(requirement))) {
+      missing.push(`column:${column}`);
+    }
   }
+  for (const [name, fragments] of requiredOfferConstraints) {
+    const block = constraintBlock(schemaSql, name);
+    const normalized = block ? normalize(block) : "";
+    if (!block || fragments.some((fragment) => !normalized.includes(fragment))) missing.push(`constraint:${name}`);
+  }
+  if (missing.length) throw new Error(`solo_beta_recovery_schema_mismatch:platform_subscription_offers:${missing.join(",")}`);
 
   const digest = createHash("sha256").update(migrationSql).digest("hex");
   if (expectedHash && digest !== expectedHash) throw new Error("solo_beta_recovery_source_digest_mismatch");
 
-  const replacements = [
-    ["CREATE TABLE public.platform_subscription_offers (", "CREATE TABLE IF NOT EXISTS public.platform_subscription_offers ("],
-    ["CREATE TABLE public.solo_beta_enrollments (", "CREATE TABLE IF NOT EXISTS public.solo_beta_enrollments ("],
-    ["CREATE UNIQUE INDEX solo_beta_enrollments_customer_uidx", "CREATE UNIQUE INDEX IF NOT EXISTS solo_beta_enrollments_customer_uidx"],
-    ["CREATE UNIQUE INDEX solo_beta_enrollments_session_uidx", "CREATE UNIQUE INDEX IF NOT EXISTS solo_beta_enrollments_session_uidx"],
-    ["CREATE UNIQUE INDEX solo_beta_enrollments_subscription_uidx", "CREATE UNIQUE INDEX IF NOT EXISTS solo_beta_enrollments_subscription_uidx"],
-    ["CREATE TABLE public.solo_beta_fulfillment_receipts (", "CREATE TABLE IF NOT EXISTS public.solo_beta_fulfillment_receipts ("],
-  ];
-
-  let patched = migrationSql;
-  for (const [from, to] of replacements) {
-    if (!patched.includes(from)) throw new Error("solo_beta_recovery_transform_anchor_missing");
-    patched = patched.replace(from, to);
-  }
-  return { needed: true, migrationSql: patched };
+  const anchor = "CREATE TABLE public.platform_subscription_offers (";
+  if (!migrationSql.includes(anchor)) throw new Error("solo_beta_recovery_transform_anchor_missing");
+  return {
+    needed: true,
+    migrationSql: migrationSql.replace(anchor, "CREATE TABLE IF NOT EXISTS public.platform_subscription_offers ("),
+  };
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
@@ -63,8 +93,8 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
   const result = recoverSoloBetaMigration(readFileSync(schemaPath, "utf8"), readFileSync(migrationPath, "utf8"));
   if (result.needed) {
     writeFileSync(migrationPath, result.migrationSql);
-    console.log("Solo Beta migration recovery: validated existing catalog and applied idempotent runtime transform.");
+    console.log("Solo Beta migration recovery: validated the existing offer contract and transformed only its create statement.");
   } else {
-    console.log("Solo Beta migration recovery: no pre-existing catalog object; canonical migration remains unchanged.");
+    console.log("Solo Beta migration recovery: no pre-existing offer table; canonical migration remains unchanged.");
   }
 }

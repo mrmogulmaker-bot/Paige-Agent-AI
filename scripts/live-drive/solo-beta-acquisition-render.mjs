@@ -188,7 +188,7 @@ try {
   for (const label of [/Hire Paige/i, /Start with Paige/i]) {
     await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded", timeout: 45_000 });
     await settle(page);
-    await page.getByRole("button", { name: label }).click({ noWaitAfter: true, force: true });
+    await page.getByRole("button", { name: label }).click({ noWaitAfter: true });
     await page.waitForURL((url) => url.pathname === "/auth" && url.searchParams.get("mode") === "signup", { timeout: 15_000 });
     record(page.url().includes(CANONICAL_SIGNUP), `homepage ${label}: reaches canonical paid Solo signup`, { finalUrl: new URL(page.url()).pathname + new URL(page.url()).search });
   }
