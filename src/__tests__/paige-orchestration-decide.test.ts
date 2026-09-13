@@ -18,6 +18,7 @@ import {
   ACT_OUTCOMES,
   FINAL_OUTCOMES,
   ADVANCEABLE_OUTCOMES,
+  isFinalOutcome,
 } from "../../supabase/functions/_shared/paige-orchestration/outcomes.ts";
 import { GOVERNED_REFUSAL_CODES } from "../../supabase/functions/_shared/paige-spine/governedExecution.ts";
 
@@ -162,6 +163,12 @@ describe("exact state semantics — TS `outcomes.ts` ↔ SQL migration parity (C
     expect(sorted([...FINAL_OUTCOMES, ...ADVANCEABLE_OUTCOMES])).toEqual(sorted(ACT_OUTCOMES));
     // the advanceable states are exactly the dispatch/reconcile ones the engine + adapters may still move.
     expect(sorted(ADVANCEABLE_OUTCOMES)).toEqual(sorted(["accepted_for_execution", "retrying", "ambiguous"]));
+    // the canonical predicate agrees with the partition on every member, and fails safe on a null/absent value.
+    for (const f of FINAL_OUTCOMES) expect(isFinalOutcome(f), `${f} is final`).toBe(true);
+    for (const a of ADVANCEABLE_OUTCOMES) expect(isFinalOutcome(a), `${a} is advanceable`).toBe(false);
+    expect(isFinalOutcome(null)).toBe(false);
+    expect(isFinalOutcome(undefined)).toBe(false);
+    expect(isFinalOutcome("not_an_outcome")).toBe(false);
   });
 
   it("every ActOutcome the code can produce is a real vocabulary member (no orphan literal)", () => {

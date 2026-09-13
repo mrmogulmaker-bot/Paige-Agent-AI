@@ -22,6 +22,7 @@ import {
   resolveAdapterKind,
   adapterForAction,
   getAdapter,
+  registeredAdapterKinds,
   type DispatchResult,
 } from "../../supabase/functions/_shared/paige-orchestration/adapters.ts";
 import { ACT_OUTCOME_SET } from "../../supabase/functions/_shared/paige-orchestration/outcomes.ts";
@@ -66,6 +67,16 @@ describe.each(REGISTERED)("ActionAdapter contract conformance — the $kind adap
   });
 });
 
+describe("ActionAdapter contract — the conformance table covers EVERY registered adapter (self-enforcing)", () => {
+  it("REGISTERED names every kind in the live registry — a new adapter fails this until it is covered", () => {
+    // Mechanizes the connector-neutral promise: adding adapter #3 to the registry without a REGISTERED row
+    // breaks this assertion, so no adapter can escape the contract suite by omission (§18/§13).
+    const covered = new Set(REGISTERED.map((r) => r.kind));
+    const registered = new Set(registeredAdapterKinds());
+    expect([...covered].sort()).toEqual([...registered].sort());
+  });
+});
+
 describe("ActionAdapter contract — FAIL CLOSED on an unsupported kind (never a silent success, §13)", () => {
   it("an unknown action_kind resolves to 'unsupported' and adapterForAction returns null", () => {
     for (const unknown of ["frobnicate_thing", "totally_unknown", "", "  ", null, undefined]) {
@@ -80,13 +91,15 @@ describe("ActionAdapter contract — FAIL CLOSED on an unsupported kind (never a
 
 describe("ActionAdapter contract — DispatchResult.outcome ⊆ the canonical outcome vocabulary (state semantics)", () => {
   it("every outcome an adapter may return is a real ledger vocabulary member (never a domain-rejected value)", () => {
-    // This list is COMPILE-TIME-CHECKED to equal the DispatchResult.outcome union: if the union ever gains a
-    // member, this array must too (or tsc fails) — and each member must be in the ledger's outcome domain, so
-    // an adapter can never hand the RPC an outcome its CHECK constraint would reject at write time.
-    const dispatchOutcomes: ReadonlyArray<DispatchResult["outcome"]> = [
-      "accepted_for_execution", "retrying", "executed", "failed", "ambiguous", "cancelled",
-    ];
-    for (const o of dispatchOutcomes) {
+    // A Record keyed by the union enforces EXHAUSTIVENESS at compile time: if DispatchResult.outcome ever gains
+    // a member, this object literal fails tsc until the new key is added here (a bare `Union[]` array would
+    // NOT — it only checks assignability, not coverage). Its keys are then the complete set of outcomes an
+    // adapter can return, and every one must be in the ledger's outcome domain — so an adapter can never hand
+    // the RPC an outcome its CHECK constraint would reject at write time.
+    const DISPATCH_OUTCOME_KEYS: Record<DispatchResult["outcome"], true> = {
+      accepted_for_execution: true, retrying: true, executed: true, failed: true, ambiguous: true, cancelled: true,
+    };
+    for (const o of Object.keys(DISPATCH_OUTCOME_KEYS)) {
       expect(ACT_OUTCOME_SET.has(o), `DispatchResult outcome '${o}' must be a paige_act_outcome value`).toBe(true);
     }
   });
