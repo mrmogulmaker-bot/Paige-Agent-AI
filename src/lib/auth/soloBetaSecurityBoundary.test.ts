@@ -4,9 +4,11 @@ import { describe, expect, it } from "vitest";
 const migration = readFileSync("supabase/migrations/20270118010000_solo_beta_atomic_fulfillment.sql", "utf8");
 const lifecycle = readFileSync("supabase/migrations/20270118020000_solo_beta_subscription_lifecycle.sql", "utf8");
 const integrity = readFileSync("supabase/migrations/20270118040000_solo_beta_integrity_fencing.sql", "utf8");
+const liveActivation = readFileSync("supabase/migrations/20270129000000_solo_beta_live_stripe_activation.sql", "utf8");
 const authz = readFileSync("supabase/migrations/20270119010000_solo_beta_authz_hardening.sql", "utf8");
 const checkout = readFileSync("supabase/functions/solo-beta-subscription-checkout/index.ts", "utf8");
 const webhook = readFileSync("supabase/functions/solo-beta-stripe-webhook/index.ts", "utf8");
+const webhookIngress = readFileSync("supabase/functions/stripe-webhook/index.ts", "utf8");
 const status = readFileSync("supabase/functions/solo-beta-enrollment-status/index.ts", "utf8");
 const welcome = readFileSync("src/pages/Welcome.tsx", "utf8");
 const offerValidator = readFileSync("supabase/functions/_shared/solo-beta-offer.ts", "utf8");
@@ -28,10 +30,10 @@ const platformInvites = readFileSync("src/pages/admin/PlatformInvites.tsx", "utf
 const onboarding = readFileSync("src/pages/Onboarding.tsx", "utf8");
 
 describe("Solo Beta security boundary", () => {
-  it("encodes one immutable test-mode 7450 USD monthly offer with a 30-day trial", () => {
+  it("activates one immutable live 7450 USD monthly offer with a 30-day trial", () => {
     expect(migration).toContain("'paige-solo-beta-monthly-v1'");
     expect(migration).toContain("unit_amount_cents = 7450");
-    expect(migration).toContain("provider_mode = 'test'");
+    expect(liveActivation).toContain("provider_mode = 'live'");
     expect(migration).toContain("billing_interval = 'month'");
     expect(migration).toContain("trial_days = 30");
   });
@@ -90,7 +92,7 @@ describe("Solo Beta security boundary", () => {
 
   it("uses immutable fulfilled subscription facts for lifecycle and converges revoking states", () => {
     expect(webhook).toContain('admin.from("platform_subscriptions")');
-    expect(webhook).toContain('persisted.provider_mode !== "test"');
+    expect(webhook).toContain('persisted.provider_mode !== "live"');
     expect(offerValidator).toContain('"unpaid", "paused"');
     expect(integrity).toContain("_sub.stripe_product_id IS DISTINCT FROM _product_id");
     expect(integrity).toContain("'active','past_due','canceled','unpaid','paused'");
@@ -135,9 +137,9 @@ describe("Solo Beta security boundary", () => {
 
   it("advertises enrollment only from a safe exact-contract server readiness read", () => {
     expect(functionConfig).toMatch(/\[functions\.solo-beta-offer-status\][\s\S]*verify_jwt = false/);
-    expect(offerStatus).toContain('offer.status === "test_ready"');
-    expect(offerStatus).toContain('offer.provider_mode === "test"');
-    expect(offerStatus).toContain('Deno.env.get("STRIPE_SECRET_KEY_V2")');
+    expect(offerStatus).toContain('offer.status === "live_ready"');
+    expect(offerStatus).toContain('offer.provider_mode === "live"');
+    expect(offerStatus).toContain('Deno.env.get("STRIPE_SECRET_KEY")');
     expect(offerStatus).toContain('stripe.prices.retrieve(offer.stripe_price_id');
     expect(offerStatus).toContain('purpose: "checkout_configuration"');
     expect(offerStatus).toContain('validateSoloBetaOffer({');
@@ -175,7 +177,7 @@ describe("Solo Beta security boundary", () => {
     expect(webhook).toContain('event.type === "checkout.session.expired"');
     expect(webhook).toContain('admin.rpc("solo_beta_expire_checkout"');
     expect(integrity).toContain("CREATE FUNCTION public.solo_beta_expire_checkout");
-    expect(integrity).toContain("'checkout.session.expired',false,_payload_digest,'completed'");
+    expect(liveActivation).toContain("'checkout.session.expired',true,_payload_digest,'completed'");
     expect(integrity).toContain("ON CONFLICT (event_id) DO NOTHING");
     expect(integrity).toContain("SET state='expired',last_error_code='checkout_expired'");
   });
@@ -245,10 +247,10 @@ describe("Solo Beta security boundary", () => {
     expect(status).toContain('entitlement.status === subscription.status');
   });
 
-  it("opens a dedicated exact-contract test-mode portal for Beta billing recovery", () => {
+  it("opens a dedicated exact-contract live-mode portal for Beta billing recovery", () => {
     expect(portal).toContain('admin.from("solo_beta_enrollments")');
     expect(portal).toContain('["active", "suspended"].includes(membership.status)');
-    expect(portal).toContain('persisted.provider_mode !== "test"');
+    expect(portal).toContain('persisted.provider_mode !== "live"');
     expect(portal).toContain("validateSoloBetaOffer");
     expect(portal).toContain("SOLO_BETA_PRODUCT_NAME");
     expect(portal).toContain("stripe.billingPortal.sessions.create");
@@ -256,6 +258,9 @@ describe("Solo Beta security boundary", () => {
     expect(portal).not.toContain('offer.status === "test_ready"');
     expect(welcome).toContain('supabase.functions.invoke("solo-beta-billing-portal")');
     expect(status).toContain("can_manage_billing: true");
+    expect(webhookIngress).toContain("single Stripe endpoint stays the ingress");
+    expect(webhookIngress.indexOf("isSoloBetaEvent")).toBeLessThan(webhookIngress.indexOf("Idempotency gate"));
+    expect(webhookIngress).toContain("/functions/v1/solo-beta-stripe-webhook");
   });
 
   it("removes retired public acquisition detours and blocks new invite-created account types", () => {

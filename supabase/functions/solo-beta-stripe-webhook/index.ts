@@ -27,8 +27,8 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { error: "method_not_allowed" });
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY_V2") ?? "";
-  const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET_SOLO_BETA_TEST") ?? "";
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
+  const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET") ?? "";
   if (!supabaseUrl || !serviceKey || !stripeKey || !webhookSecret) {
     return json(503, { error: "solo_beta_configuration_unavailable" });
   }
@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
   } catch {
     return json(400, { error: "invalid_signature" });
   }
-  if (event.livemode) return json(400, { error: "live_event_rejected" });
+  if (!event.livemode) return json(400, { error: "test_event_rejected" });
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
   const payloadDigest = await digest(raw);
   const providerCreatedAt = new Date(event.created * 1000).toISOString();
@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
       const session = event.data.object as Stripe.Checkout.Session;
       const userId = session.metadata?.actor_user_id;
       const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
-      if (session.metadata?.offer_code !== SOLO_BETA_OFFER_CODE || session.livemode
+      if (session.metadata?.offer_code !== SOLO_BETA_OFFER_CODE || !session.livemode
         || session.mode !== "subscription" || !userId || !customerId) {
         return json(400, { error: "event_not_eligible" });
       }
@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
       const hinted = event.data.object as Stripe.Checkout.Session;
       if (hinted.metadata?.offer_code !== SOLO_BETA_OFFER_CODE) return json(400, { error: "event_not_eligible" });
       const session = await stripe.checkout.sessions.retrieve(hinted.id, { expand: ["subscription"] });
-      if (session.livemode || session.mode !== "subscription" || !["paid", "no_payment_required"].includes(session.payment_status)) {
+      if (!session.livemode || session.mode !== "subscription" || !["paid", "no_payment_required"].includes(session.payment_status)) {
         return json(400, { error: "checkout_not_verified" });
       }
       const userId = session.metadata?.actor_user_id;
@@ -181,7 +181,7 @@ Deno.serve(async (req) => {
         .select("offer_code,provider_mode,stripe_product_id,stripe_price_id,stripe_customer_id")
         .eq("stripe_subscription_id", subscription.id).maybeSingle();
       if (persistedError) return json(503, { error: "solo_beta_subscription_unavailable" });
-      if (!persisted || persisted.offer_code !== SOLO_BETA_OFFER_CODE || persisted.provider_mode !== "test"
+      if (!persisted || persisted.offer_code !== SOLO_BETA_OFFER_CODE || persisted.provider_mode !== "live"
         || persisted.stripe_customer_id !== customerId) return json(400, { error: "event_not_eligible" });
       const normalizedStatus = event.type === "customer.subscription.deleted"
         ? "canceled"

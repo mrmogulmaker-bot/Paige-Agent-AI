@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY_V2") ?? "";
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
   if (!supabaseUrl || !anonKey || !serviceKey || !stripeKey) {
     return json(503, { error: "solo_beta_configuration_unavailable" });
   }
@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
     .eq("document_version", currentAgreement.version).limit(1).maybeSingle();
   if (acceptanceError) return json(503, { error: "solo_beta_eligibility_unavailable" });
   if (!acceptance) return json(409, { error: "solo_beta_agreement_unpersisted" });
-  if (!offer || offer.status !== "test_ready" || offer.provider_mode !== "test" || !offer.stripe_product_id || !offer.stripe_price_id || offer.trial_days !== SOLO_BETA_TRIAL_DAYS) {
+  if (!offer || offer.status !== "live_ready" || offer.provider_mode !== "live" || !offer.stripe_product_id || !offer.stripe_price_id || offer.trial_days !== SOLO_BETA_TRIAL_DAYS) {
     return json(503, { error: "solo_beta_configuration_unavailable" });
   }
 
@@ -188,13 +188,13 @@ Deno.serve(async (req) => {
       success_url: `${origin}/welcome?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/welcome?checkout=cancelled`,
       client_reference_id: user.id,
-      metadata: { offer_code: SOLO_BETA_OFFER_CODE, actor_user_id: user.id, provider_mode: "test" },
+      metadata: { offer_code: SOLO_BETA_OFFER_CODE, actor_user_id: user.id, provider_mode: "live" },
       subscription_data: {
         trial_period_days: SOLO_BETA_TRIAL_DAYS,
-        metadata: { offer_code: SOLO_BETA_OFFER_CODE, actor_user_id: user.id, provider_mode: "test" },
+        metadata: { offer_code: SOLO_BETA_OFFER_CODE, actor_user_id: user.id, provider_mode: "live" },
       },
     }, { idempotencyKey: `solo-beta-checkout-${user.id}-${idempotencySlot}` });
-    if (session.livemode || session.status !== "open" || !session.url) throw new Error("checkout_session_invalid");
+    if (!session.livemode || session.status !== "open" || !session.url) throw new Error("checkout_session_invalid");
     const { error: openedError } = await admin.rpc("solo_beta_checkout_opened", { _user_id: user.id, _attempt: attempt, _fencing_token: fencingToken, _customer_id: customerId, _session_id: session.id });
     if (openedError) throw new Error("checkout_open_persist_failed");
     return json(200, { url: session.url, reference_id: enrollment?.reference_id });
