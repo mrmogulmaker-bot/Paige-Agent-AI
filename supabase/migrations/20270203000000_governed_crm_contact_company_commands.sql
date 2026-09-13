@@ -792,6 +792,29 @@ alter table public.crm_command_previews enable row level security;
 revoke all on public.crm_command_previews from public,anon,authenticated;
 grant select,insert,update on public.crm_command_previews to service_role;
 
+-- One transaction-ordering key for every autonomy writer and CRM executor. The trigger covers
+-- canonical RPC writes and any trusted service/migration write so an absent policy row cannot race
+-- an INSERT to off while an executor assumes the default confirm lane.
+create or replace function public.lock_tenant_tool_autonomy_write()
+returns trigger language plpgsql set search_path='' as $$
+declare old_key text; new_key text;
+begin
+  if tg_op in ('UPDATE','DELETE') then old_key:='tool-autonomy:'||old.tenant_id::text||':'||old.tool_key; end if;
+  if tg_op in ('INSERT','UPDATE') then new_key:='tool-autonomy:'||new.tenant_id::text||':'||new.tool_key; end if;
+  if tg_op='UPDATE' and old_key is distinct from new_key then
+    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(pg_catalog.least(old_key,new_key),0));
+    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(pg_catalog.greatest(old_key,new_key),0));
+  else
+    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(pg_catalog.coalesce(new_key,old_key),0));
+  end if;
+  if tg_op='DELETE' then return old; end if;
+  return new;
+end$$;
+revoke all on function public.lock_tenant_tool_autonomy_write() from public,anon,authenticated;
+drop trigger if exists tenant_tool_autonomy_serialize_writes on public.tenant_tool_autonomy;
+create trigger tenant_tool_autonomy_serialize_writes before insert or update or delete on public.tenant_tool_autonomy
+for each row execute function public.lock_tenant_tool_autonomy_write();
+
 create or replace function public.crm_contact_dependency_snapshot(_contact_id uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare
@@ -832,14 +855,22 @@ declare
   cached public.crm_command_previews%rowtype; c1 public.clients%rowtype; c2 public.clients%rowtype;
   t public.tasks%rowtype; d public.deals%rowtype; snap jsonb; outp jsonb; deps jsonb;
   ids uuid[]; requested int; eligible int; refused int; patch jsonb:=pg_catalog.coalesce(_command->'patch','{}'::jsonb);
-  unknown text[]; conflict_rows jsonb; unresolved int;
+  unknown text[]; conflict_rows jsonb; unresolved int; active_tenant uuid; actor_role text; capability text; autonomy_mode text;
 begin
   if pg_catalog.coalesce(auth.jwt()->>'role','') <> 'service_role' or auth.uid() is not null then raise exception 'CRM_INTERNAL_EXECUTOR_REQUIRED' using errcode='42501'; end if;
   if _tenant_id is null or _actor_id is null or pg_catalog.coalesce(pg_catalog.btrim(_preview_key),'')='' or pg_catalog.length(_preview_key)>200
     or pg_catalog.jsonb_typeof(_command)<>'object' then raise exception 'CRM_PREVIEW_INVALID' using errcode='22023'; end if;
-  if not exists(select 1 from public.tenant_members tm where tm.tenant_id=_tenant_id and tm.user_id=_actor_id and tm.status='active' and tm.role in ('owner','admin'))
-    then raise exception 'CRM_FORBIDDEN' using errcode='42501'; end if;
+  select p.active_tenant_id into active_tenant from public.profiles p where p.user_id=_actor_id for update;
+  if not found or active_tenant is distinct from _tenant_id then raise exception 'CRM_ACTIVE_ACCOUNT_CHANGED' using errcode='42501'; end if;
+  select tm.role into actor_role from public.tenant_members tm
+    where tm.tenant_id=_tenant_id and tm.user_id=_actor_id and tm.status='active' and tm.role in ('owner','admin') for update;
+  if not found then raise exception 'CRM_FORBIDDEN' using errcode='42501'; end if;
   if a not in ('contact.merge','contact.hard_delete','task.delete','deal.delete','contact.bulk_update') then raise exception 'CRM_PREVIEW_UNAVAILABLE' using errcode='0A000'; end if;
+  capability:=case a when 'contact.merge' then 'crm_merge_contacts' when 'contact.hard_delete' then 'crm_hard_delete_contact'
+    when 'contact.bulk_update' then 'crm_bulk_update_contacts' when 'task.delete' then 'crm_delete_task' when 'deal.delete' then 'crm_delete_deal' end;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('tool-autonomy:'||_tenant_id::text||':'||capability,0));
+  select ta.mode into autonomy_mode from public.tenant_tool_autonomy ta where ta.tenant_id=_tenant_id and ta.tool_key=capability;
+  if pg_catalog.coalesce(autonomy_mode,'confirm')='off' then raise exception 'CRM_AUTONOMY_REFUSED' using errcode='42501'; end if;
   h:=pg_catalog.encode(extensions.digest(pg_catalog.convert_to(_command::text,'UTF8'),'sha256'),'hex');
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('crm-preview:'||_tenant_id::text||':'||_actor_id::text||':'||_preview_key,0));
   select * into cached from public.crm_command_previews where tenant_id=_tenant_id and actor_user_id=_actor_id and preview_key=_preview_key for update;
@@ -935,10 +966,15 @@ declare
   deps jsonb; now_snap jsonb; v_result jsonb; readback jsonb; run_id uuid; changed int; target_count int;
   resolutions jsonb; owner_id uuid; field text; choice text; v_capability text;
   v_hash text; v_cached public.crm_command_results%rowtype; effective_command jsonb:=_command;
+  v_active_tenant uuid; v_actor_role text; v_autonomy_mode text; v_approval_channel text:=nullif(_command->>'approval_channel','');
 begin
   if pg_catalog.coalesce(auth.jwt()->>'role','') <> 'service_role' or auth.uid() is not null then raise exception 'CRM_INTERNAL_EXECUTOR_REQUIRED' using errcode='42501'; end if;
   if _tenant_id is null or _actor_id is null or a is null or pg_catalog.coalesce(pg_catalog.btrim(_idempotency_key),'')='' or pg_catalog.length(_idempotency_key)>200 or pg_catalog.jsonb_typeof(_command)<>'object' then raise exception 'CRM_COMMAND_INVALID' using errcode='22023'; end if;
-  if not exists(select 1 from public.tenant_members tm where tm.tenant_id=_tenant_id and tm.user_id=_actor_id and tm.status='active' and tm.role in ('owner','admin','coach')) then raise exception 'CRM_FORBIDDEN' using errcode='42501'; end if;
+  select p.active_tenant_id into v_active_tenant from public.profiles p where p.user_id=_actor_id for update;
+  if not found or v_active_tenant is distinct from _tenant_id then raise exception 'CRM_ACTIVE_ACCOUNT_CHANGED' using errcode='42501'; end if;
+  select tm.role into v_actor_role from public.tenant_members tm
+    where tm.tenant_id=_tenant_id and tm.user_id=_actor_id and tm.status='active' and tm.role in ('owner','admin','coach') for update;
+  if not found then raise exception 'CRM_FORBIDDEN' using errcode='42501'; end if;
   if a in ('deal.assign_owner','deal.assign_contact') then
     effective_command:=pg_catalog.jsonb_build_object('action','deal.update','deal_id',_command->>'deal_id','expected_version',_command->'expected_version',
       'receipt_action',a,'approval_channel',_command->>'approval_channel')
@@ -952,6 +988,31 @@ begin
     if v_cached.command_hash<>v_hash then raise exception 'CRM_IDEMPOTENCY_REUSE' using errcode='22023'; end if;
     return v_cached.result||pg_catalog.jsonb_build_object('replayed',true);
   end if;
+  v_capability:=case a
+    when 'contact.create' then 'crm_create_contact' when 'contact.update' then 'crm_update_contact'
+    when 'contact.archive' then 'crm_archive_contact' when 'contact.restore' then 'crm_restore_contact'
+    when 'contact.link_company' then 'crm_link_contact_company' when 'contact.unlink_company' then 'crm_unlink_contact_company'
+    when 'contact.assign_coach' then 'crm_assign_coach' when 'contact.assign_owner' then 'crm_assign_contact_owner'
+    when 'contact.merge' then 'crm_merge_contacts' when 'contact.hard_delete' then 'crm_hard_delete_contact'
+    when 'contact.bulk_update' then 'crm_bulk_update_contacts' when 'company.create' then 'crm_create_company'
+    when 'company.update' then 'crm_update_company' when 'company.archive' then 'crm_archive_company'
+    when 'company.restore' then 'crm_restore_company' when 'task.create' then 'crm_create_task'
+    when 'task.update' then 'crm_update_task' when 'task.assign' then 'crm_assign_task'
+    when 'task.reschedule' then 'crm_reschedule_task' when 'task.complete' then 'crm_complete_task'
+    when 'task.reopen' then 'crm_reopen_task' when 'task.cancel' then 'crm_cancel_task'
+    when 'task.delete' then 'crm_delete_task' when 'activity.log' then 'crm_log_activity'
+    when 'deal.create' then 'deal_create' when 'deal.update' then 'crm_update_deal'
+    when 'deal.assign_owner' then 'crm_assign_deal_owner' when 'deal.assign_contact' then 'crm_assign_deal_contact'
+    when 'deal.move' then 'deal_move_stage' when 'deal.close' then 'crm_close_deal'
+    when 'deal.reopen' then 'crm_reopen_deal' when 'deal.delete' then 'crm_delete_deal' else null end;
+  if v_capability is null then raise exception 'CRM_ACTION_UNAVAILABLE' using errcode='0A000'; end if;
+  if v_approval_channel not in ('operator_card','standing_autonomy_setting') then raise exception 'CRM_AUTHORITY_REQUIRED' using errcode='42501'; end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('tool-autonomy:'||_tenant_id::text||':'||v_capability,0));
+  select ta.mode into v_autonomy_mode from public.tenant_tool_autonomy ta where ta.tenant_id=_tenant_id and ta.tool_key=v_capability;
+  v_autonomy_mode:=pg_catalog.coalesce(v_autonomy_mode,'confirm');
+  if v_autonomy_mode='off' or (v_autonomy_mode='confirm' and v_approval_channel<>'operator_card') then raise exception 'CRM_AUTONOMY_REFUSED' using errcode='42501'; end if;
+  if a in ('contact.assign_coach','contact.assign_owner','contact.merge','contact.hard_delete','contact.bulk_update','task.assign','task.cancel','task.delete','deal.assign_owner','deal.assign_contact','deal.close','deal.reopen','deal.delete')
+    and v_approval_channel<>'operator_card' then raise exception 'CRM_APPROVAL_REQUIRED' using errcode='42501'; end if;
   if a in ('contact.create','contact.update','contact.archive','contact.restore','contact.link_company','contact.unlink_company','company.create','company.update','company.archive','company.restore','task.create','task.update','task.assign','task.reschedule','task.complete','task.reopen','task.cancel','activity.log','deal.create','deal.update','deal.move','deal.close','deal.reopen') then
     return public.execute_crm_command_reversible(_tenant_id,_actor_id,_command,_idempotency_key);
   end if;

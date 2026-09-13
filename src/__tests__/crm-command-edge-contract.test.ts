@@ -52,7 +52,9 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain("_tenant_id: tenantId");
     expect(edge).toContain("_actor_id: user.id");
     expect(edge).toContain("record_locator");
+    expect(edge).toContain("const executionCommand = {");
     expect(edge).toContain('approval_channel: decision.audit.laneEffective');
+    expect(edge).not.toContain('decidedCommand.action.startsWith("deal.")');
     expect(edge).toContain("readback");
     expect(edge).toContain('outcome: "setup_required"');
   });

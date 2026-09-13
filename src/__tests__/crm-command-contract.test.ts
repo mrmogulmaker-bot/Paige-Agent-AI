@@ -34,6 +34,17 @@ describe("canonical CRM contact/company command", () => {
     expect(sql).toMatch(/b\.tenant_id\s*=\s*v_tenant/i);
   });
 
+  it("revalidates active account, membership, autonomy, and approval authority inside the write transaction", () => {
+    expect(sql).toMatch(/from public.profiles p where p.user_id=_actor_id for update/i);
+    expect(sql).toContain("where tm.tenant_id=_tenant_id and tm.user_id=_actor_id and tm.status='active' and tm.role in ('owner','admin','coach') for update");
+    expect(sql).toContain("tenant_tool_autonomy_serialize_writes");
+    expect(sql).toContain("'tool-autonomy:'||_tenant_id::text||':'||v_capability");
+    expect(sql).toContain("CRM_ACTIVE_ACCOUNT_CHANGED");
+    expect(sql).toContain("CRM_AUTHORITY_REQUIRED");
+    expect(sql).toContain("CRM_AUTONOMY_REFUSED");
+    expect(sql).toContain("CRM_APPROVAL_REQUIRED");
+  });
+
   it("uses tenant-bound idempotency and refuses changed-payload replay", () => {
     expect(sql).toContain("primary key (tenant_id, actor_user_id, idempotency_key)");
     expect(sql).toContain("pg_advisory_xact_lock");

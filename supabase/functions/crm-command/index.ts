@@ -388,9 +388,10 @@ serve(async (req) => {
   if (!(await activeTenantStillMatches())) {
     return response(409, { ok: false, outcome: "refused", code: "CRM_ACTIVE_ACCOUNT_CHANGED", message: "The active workspace changed. Nothing was executed; reopen the record in the current workspace." });
   }
-  const executionCommand = typeof decidedCommand.action === "string" && decidedCommand.action.startsWith("deal.")
-    ? { ...decidedCommand, approval_channel: decision.audit.laneEffective === "confirm" ? "operator_card" : "standing_autonomy_setting" }
-    : decidedCommand;
+  const executionCommand = {
+    ...decidedCommand,
+    approval_channel: decision.audit.laneEffective === "confirm" ? "operator_card" : "standing_autonomy_setting",
+  };
   const { data: result, error: commandError } = await admin.rpc("execute_crm_command", {
     _tenant_id: tenantId,
     _actor_id: user.id,
