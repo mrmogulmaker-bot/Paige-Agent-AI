@@ -40,10 +40,11 @@
  * .update|upsert|insert(<payload>, …)` in src/ is flagged UNLESS its FIRST argument (the payload —
  * PostgREST's optional second `{ count }` options arg is never the payload) is statically provable
  * approve-free: a single inline object literal with no spread, no dynamic (`[expr]`) key, whose
- * top-level `status` — recognised as a bare, quoted, OR computed-static-string key — is either
- * absent or a NON-APPROVE string literal (rejected|skipped|escalated|changes_requested|pending). A
- * variable payload, a spread, a dynamic computed key, a shorthand/computed/ternary status, or an
- * `approved` literal all FAIL.
+ * top-level `status` — recognised as a bare, quoted, OR computed-static-string key (an ESCAPED key
+ * such as `"\x73tatus"` fails closed; a real column key never carries an escape) — is either absent
+ * or a NON-APPROVE string literal (rejected|skipped|escalated|changes_requested|pending). A variable
+ * payload, a spread, a dynamic computed key, a shorthand/computed/ternary status, or an `approved`
+ * literal all FAIL.
  *
  * DEFENSE IN DEPTH, not the sole enforcement (§13 honesty about a text lint's limits). This is a
  * regression tripwire on the realistic frontend shape (`supabase.from(...).write(...)`). It cannot
@@ -122,12 +123,20 @@ function classifyEntry(entry) {
   // computed key: [ ... ] : value
   if (e.startsWith("[")) {
     const mStatic = /^\[\s*(["'`])([^"'`]*)\1\s*\]\s*:\s*([\s\S]+)$/.exec(e);
-    if (mStatic) return { key: mStatic[2] === "status" ? "status" : "other", value: mStatic[3].trim() };
+    if (mStatic) {
+      // A backslash escape (e.g. ["status"]) decodes to a real key we don't cheaply resolve —
+      // it could BE status, so fail closed. A genuine column key never contains an escape.
+      if (mStatic[2].includes("\\")) return { key: "unknown", value: null };
+      return { key: mStatic[2] === "status" ? "status" : "other", value: mStatic[3].trim() };
+    }
     return { key: "unknown", value: null }; // dynamic computed key — could BE status
   }
   // quoted key: "status": value | 'status': value | `status`: value
   const mQuoted = /^(["'`])([^"'`]*)\1\s*:\s*([\s\S]+)$/.exec(e);
-  if (mQuoted) return { key: mQuoted[2] === "status" ? "status" : "other", value: mQuoted[3].trim() };
+  if (mQuoted) {
+    if (mQuoted[2].includes("\\")) return { key: "unknown", value: null }; // escaped key (e.g. "\x73tatus") could decode to status
+    return { key: mQuoted[2] === "status" ? "status" : "other", value: mQuoted[3].trim() };
+  }
   // bare identifier: status: value | status (shorthand) | otherName: value | otherName
   const mBare = /^([A-Za-z_$][\w$]*)\s*(?::\s*([\s\S]+))?$/.exec(e);
   if (mBare) {
@@ -229,6 +238,11 @@ if (process.argv.includes("--self-test")) {
       [["f.ts", 'supabase.from("paige_pending_approvals").update({ ["status"]: "approved" }).eq("id", id);']], 1],
     ["FAIL-CLOSED: catches a DYNAMIC computed key (could be status)",
       [["f.ts", 'supabase.from("paige_pending_approvals").update({ [col]: val }).eq("id", id);']], 1],
+    // Codex 2026-09-13 round 3 P2 — an escaped static key decodes to `status` but reads differently raw.
+    ["FAIL-CLOSED: catches an escaped quoted status key (\\x escape decodes to status)",
+      [["f.ts", 'supabase.from("paige_pending_approvals").update({ "\\x73tatus": "approved" }).eq("id", id);']], 1],
+    ["FAIL-CLOSED: catches an escaped computed-static status key (\\u escape)",
+      [["f.ts", 'supabase.from("paige_pending_approvals").update({ ["\\u0073tatus"]: "approved" }).eq("id", id);']], 1],
     ["allows a QUOTED status key with a decline literal ({ \"status\": \"rejected\" })",
       [["f.ts", 'supabase.from("paige_pending_approvals").update({ "status": "rejected" }).eq("id", id);']], 0],
     // Codex 2026-09-13 P2 #3 — the insert path.
