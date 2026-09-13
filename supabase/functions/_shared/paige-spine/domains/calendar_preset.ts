@@ -8,7 +8,8 @@ import type { SpineCapability } from "../contracts.ts";
 // Registered here, in its own domain, so the Chat handler consumes it THROUGH the Spine rather than
 // hand-wiring a tool — the exact same server-authorized RPC path the Settings › Connections › Calendars
 // UI uses (owner ruling 2026-09-13; §10 callable seam). There is NO second preset model and NO chat-only
-// calendar implementation: the UI and Paige both drive these five RPCs.
+// calendar implementation: the UI and Paige both drive these eight RPCs (the five from migration
+// 20270301000000 + the three S1 duplicate/archive/restore from 20270302000000 registered below).
 //
 // THE THREE THINGS THIS CAPABILITY IS NOT (§13, and the owner's explicit boundary 2026-09-13):
 //   1. It is NOT the internal-appointment seam. Booking a real meeting on the calendar is

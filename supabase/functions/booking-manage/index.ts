@@ -223,16 +223,20 @@ function hostAlertHtml(accent: string, heading: string, title: string, whenLabel
     </td></tr>`);
 }
 
-// Comma-joined display names for a host roster (full_name, falling back to
-// their auth email) — so the guest email names who they're meeting.
+// Comma-joined display names for a host roster — so the guest response / email names
+// who they're meeting. Uses the profile `full_name` ONLY; a host with no display name
+// is OMITTED, never identified by their auth email: this string is returned to an
+// external manage-link holder (the `manage` details response + the reschedule/cancel
+// emails), so leaking a staff email here is an anon PII disclosure (E6 §39 MED-2 sibling
+// of the public-booking fix, 2026-09-13). The separate resolveHostEmails() below still
+// fetches host emails as SEND recipients (staff-facing) — that is not a leak.
 async function resolveHostNames(admin: ReturnType<typeof createClient>, hostIds: string[]): Promise<string | null> {
   if (!hostIds.length) return null;
   const { data: profs } = await admin.from("profiles").select("user_id, full_name").in("user_id", hostIds);
   const nameByUid = new Map((profs ?? []).map((p) => [p.user_id as string, p.full_name as string | null]));
-  const names = (await Promise.all(hostIds.map(async (uid) => {
-    const { data: u } = await admin.auth.admin.getUserById(uid);
-    return nameByUid.get(uid) || (u as { user?: { email?: string } } | null)?.user?.email || null;
-  }))).filter((n): n is string => !!n);
+  const names = hostIds
+    .map((uid) => nameByUid.get(uid) || null)
+    .filter((n): n is string => !!n);
   return names.length ? names.join(", ") : null;
 }
 async function resolveHostEmails(admin: ReturnType<typeof createClient>, hostIds: string[]): Promise<string[]> {
