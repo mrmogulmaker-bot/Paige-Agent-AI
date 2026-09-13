@@ -63,7 +63,7 @@ export async function crmApprovalSubject(action: CrmAction, command: Record<stri
 }
 
 const properties = {
-  idempotency_key: { type: "string", description: "Optional stable retry key. Paige may omit it; the server settles one." },
+  idempotency_key: { type: "string", maxLength: 192, description: "Optional stable retry key. Paige may omit it; the server settles one." },
   contact_id: { type: ["string", "null"], description: "Exact contact UUID from a current CRM read." },
   loser_contact_id: { type: "string", description: "Exact losing contact UUID for merge." },
   company_id: { type: "string", description: "Exact company UUID from a current CRM read." },

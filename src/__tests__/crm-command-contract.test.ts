@@ -106,6 +106,8 @@ describe("canonical CRM contact/company command", () => {
     expect(sql).toContain("delete from public.crm_command_previews where id=cached.id");
     expect(sql).toContain("sibling.id<>b.id and sibling.is_active and sibling.is_primary");
     expect(sql.match(/business-primary:/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(sql).toContain("create or replace function public.auto_stub_business_from_contact()");
+    expect(sql).toContain("CRM_TASK_METADATA_INVALID");
     expect(sql).toContain("v_contact.merged_into_contact_id is not null");
     expect(sql).toContain("CRM_MERGE_IDENTITY_RESOLUTION_REQUIRED");
     expect(sql).toContain("if not v_is_admin then raise exception 'CRM_FORBIDDEN'");

@@ -82,6 +82,12 @@ const commandSchema = z.object({
     requireField("task_id"); requireField("expected_updated_at");
   }
   if (["task.update", "task.assign", "task.reschedule"].includes(command.action)) requireField("patch");
+  if (["task.create", "task.update"].includes(command.action) && command.patch && Object.prototype.hasOwnProperty.call(command.patch, "metadata")) {
+    const metadata = command.patch.metadata;
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["patch", "metadata"], message: "Task metadata must be an object." });
+    }
+  }
   if (command.action === "activity.log") { requireField("contact_id"); requireField("patch"); }
   if (command.action === "deal.create") { requireField("title"); requireField("pipeline_id"); requireField("stage_id"); }
   if (command.action === "deal.update") {
@@ -109,7 +115,7 @@ const commandSchema = z.object({
 
 const bodySchema = z.object({
   command: commandSchema,
-  idempotency_key: z.string().trim().min(1).max(200),
+  idempotency_key: z.string().trim().min(1).max(192),
   approved_fingerprint: z.string().regex(/^[0-9a-f]{16}$/).optional(),
 }).strict();
 

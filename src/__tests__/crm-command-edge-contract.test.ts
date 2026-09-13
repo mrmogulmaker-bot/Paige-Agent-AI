@@ -16,6 +16,8 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain('caller.rpc("current_user_tenant_id")');
     expect(edge.match(/caller\.rpc\("current_user_tenant_id"\)/g)?.length).toBeGreaterThanOrEqual(2);
     expect(edge).toContain("CRM_ACTIVE_ACCOUNT_CHANGED");
+    expect(edge).toContain("idempotency_key: z.string().trim().min(1).max(192)");
+    expect(edge).toContain("Task metadata must be an object.");
   });
 
   it("binds each command to an existing classified capability", () => {

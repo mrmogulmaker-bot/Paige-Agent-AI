@@ -79,6 +79,54 @@ begin
 end$$;
 revoke all on function public.crm_actor_can_access_record(uuid,uuid,text,uuid) from public,anon,authenticated,service_role;
 
+-- The legacy contact auto-stub is also a primary-company writer. Replace it forward so every
+-- primary decision shares the same owner lock and an existing primary (active or archived) is never
+-- duplicated. This remains the existing trigger/function seam; no parallel company lifecycle.
+create or replace function public.auto_stub_business_from_contact()
+returns trigger language plpgsql security definer set search_path='' as $$
+declare
+  existing_business_id uuid; new_business_id uuid; trimmed_name text; owner_user_id uuid;
+begin
+  trimmed_name:=pg_catalog.nullif(pg_catalog.btrim(pg_catalog.coalesce(new.entity_name,'')),'');
+  if trimmed_name is null or new.primary_business_id is not null then return new; end if;
+  if new.linked_user_id is not null and exists(select 1 from auth.users u where u.id=new.linked_user_id) then
+    owner_user_id:=new.linked_user_id;
+  elsif new.created_by is not null and exists(select 1 from auth.users u where u.id=new.created_by) then
+    owner_user_id:=new.created_by;
+  else
+    return new;
+  end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('business-primary:'||new.tenant_id::text||':'||owner_user_id::text,0));
+  if owner_user_id=new.linked_user_id then
+    select b.id into existing_business_id from public.businesses b
+     where b.tenant_id=new.tenant_id and b.owner_user_id=owner_user_id
+     order by pg_catalog.coalesce(b.is_primary,false) desc,b.created_at asc limit 1;
+    if existing_business_id is not null then
+      update public.clients c set primary_business_id=existing_business_id,updated_at=pg_catalog.now()
+       where c.id=new.id and c.primary_business_id is null;
+      return new;
+    end if;
+  end if;
+  insert into public.businesses(tenant_id,owner_user_id,legal_name,entity_type,is_primary,is_active,organizational_level,display_order)
+  values(new.tenant_id,owner_user_id,trimmed_name,new.entity_type::public.entity_type,
+    not exists(select 1 from public.businesses b where b.tenant_id=new.tenant_id and b.owner_user_id=owner_user_id and b.is_primary),true,0,0)
+  returning id into new_business_id;
+  update public.clients c set primary_business_id=new_business_id,updated_at=pg_catalog.now()
+   where c.id=new.id and c.primary_business_id is null;
+  begin
+    insert into public.paige_audit_log(actor_user_id,action,target_type,target_id,metadata)
+    values(null,'auto_stub_business_from_contact','business',new_business_id,pg_catalog.jsonb_build_object(
+      'contact_id',new.id,'owner_user_id',owner_user_id,
+      'owner_source',case when owner_user_id=new.linked_user_id then 'linked_user_id' else 'created_by_fallback' end,
+      'legal_name',trimmed_name,'trigger_op',tg_op));
+  exception when others then null;
+  end;
+  return new;
+exception when others then
+  raise warning 'auto_stub_business_from_contact failed for contact %: %',new.id,sqlerrm;
+  return new;
+end$$;
+revoke all on function public.auto_stub_business_from_contact() from public,anon,authenticated;
 create or replace function public.execute_crm_command_reversible(
   _tenant_id uuid,
   _actor_id uuid,
@@ -410,6 +458,7 @@ begin
     end if;
     select array_agg(k order by k) into v_unknown from jsonb_object_keys(v_patch) k
      where k not in ('title','description','assignee_user_id','contact_id','company_id','deal_id','due_date','track','metadata');
+    if v_patch ? 'metadata' and pg_catalog.jsonb_typeof(v_patch->'metadata') is distinct from 'object' then raise exception 'CRM_TASK_METADATA_INVALID' using errcode='22023'; end if;
     if coalesce(array_length(v_unknown, 1), 0) > 0 then
       raise exception 'CRM_PATCH_FIELDS_INVALID:%', array_to_string(v_unknown, ',') using errcode = '22023';
     end if;
@@ -459,6 +508,7 @@ begin
 
     if v_action = 'task.update' then
       if jsonb_typeof(v_patch) <> 'object' or v_patch = '{}'::jsonb then raise exception 'CRM_PATCH_INVALID' using errcode = '22023'; end if;
+      if v_patch ? 'metadata' and pg_catalog.jsonb_typeof(v_patch->'metadata') is distinct from 'object' then raise exception 'CRM_TASK_METADATA_INVALID' using errcode='22023'; end if;
       select array_agg(k order by k) into v_unknown from jsonb_object_keys(v_patch) k where k not in ('title','description','track','metadata');
       if coalesce(array_length(v_unknown,1),0)>0 then raise exception 'CRM_PATCH_FIELDS_INVALID:%',array_to_string(v_unknown,',') using errcode='22023'; end if;
       if v_patch ? 'title' and coalesce(btrim(v_patch->>'title'),'')='' then raise exception 'CRM_TASK_TITLE_REQUIRED' using errcode='22023'; end if;
