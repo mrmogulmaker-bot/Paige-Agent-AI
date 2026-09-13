@@ -1125,7 +1125,9 @@ begin
   select * into v_cached from public.crm_command_results r where r.tenant_id=_tenant_id and r.actor_user_id=_actor_id and r.idempotency_key=_idempotency_key for update;
   if found then
     if v_cached.command_hash<>v_hash then raise exception 'CRM_IDEMPOTENCY_REUSE' using errcode='22023'; end if;
-    return v_cached.result||pg_catalog.jsonb_build_object('replayed',true);
+    -- Reuse the one cached-result authorization path so service-side retries cannot bypass
+    -- current record access after a coach reassignment.
+    return public.read_crm_command_result(_tenant_id,_actor_id,_command,_idempotency_key);
   end if;
   v_capability:=case a
     when 'contact.create' then 'crm_create_contact' when 'contact.update' then 'crm_update_contact'

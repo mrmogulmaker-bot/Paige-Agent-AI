@@ -266,8 +266,16 @@ serve(async (req) => {
     });
     const cachedResult = object(cachedData);
     if (!cachedError && cachedResult) return successfulResultResponse(cachedResult, body.command.action);
-    if (cachedError?.message === "CRM_IDEMPOTENCY_REUSE") {
-      return response(409, { ok: false, outcome: "failed", code: "CRM_IDEMPOTENCY_REUSE" });
+    if (cachedError) {
+      const code = /^(CRM|PIPELINE)_[A-Z0-9_:,-]+$/.test(cachedError.message ?? "")
+        ? cachedError.message
+        : "CRM_READBACK_UNAVAILABLE";
+      const status = code === "CRM_IDEMPOTENCY_REUSE" || code === "CRM_ACTIVE_ACCOUNT_CHANGED"
+        ? 409
+        : code === "CRM_FORBIDDEN"
+        ? 403
+        : 503;
+      return response(status, { ok: false, outcome: "refused", code });
     }
   }
 

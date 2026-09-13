@@ -48,7 +48,9 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain("return successfulResultResponse(preview, body.command.action)");
     expect(edge).toContain('admin.rpc("read_crm_command_result"');
     expect(edge.indexOf('admin.rpc("read_crm_command_result"')).toBeLessThan(edge.indexOf('caller.rpc("resolve_tool_autonomy"'));
-    expect(edge).toContain('cachedError?.message === "CRM_IDEMPOTENCY_REUSE"');
+    expect(edge).toContain("if (cachedError) {");
+    expect(edge).toContain('code === "CRM_FORBIDDEN"');
+    expect(edge).toContain('"CRM_READBACK_UNAVAILABLE"');
     expect(edge).not.toMatch(/confirm:\s*z\.boolean/);
   });
 

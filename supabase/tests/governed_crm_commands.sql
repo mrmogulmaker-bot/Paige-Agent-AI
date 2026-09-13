@@ -1,6 +1,6 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(53);
+SELECT plan(54);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
@@ -103,6 +103,10 @@ SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 SELECT throws_ok($$SELECT public.read_crm_command_result(
   'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000002',command,'coach-recovery-1'
 ) FROM coach_command_input$$,'42501','CRM_FORBIDDEN','cached readback is refused after the coach loses current record authorization');
+SELECT throws_ok($$SELECT public.execute_crm_command(
+  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000002',
+  command||jsonb_build_object('approval_channel','operator_card'),'coach-recovery-1'
+) FROM coach_command_input$$,'42501','CRM_FORBIDDEN','executor cache replay cannot bypass current record authorization');
 RESET ROLE;
 UPDATE public.clients SET assigned_coach_user_id='c7100000-0000-4000-8000-000000000002' WHERE id='c7100000-0000-4000-8000-00000000c105';
 SET LOCAL ROLE service_role;
