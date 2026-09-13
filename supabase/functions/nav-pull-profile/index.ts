@@ -1,19 +1,138 @@
+// deno-lint-ignore-file no-explicit-any
 // Nav.com: pull a business credit profile for a contact.
 // SCOPE: business credit only. PAIGE_SCOPE_GUARD applies.
-import { requireAdmin, corsHeaders, jsonResponse } from "../_shared/adminAuth.ts";
+//
+// GOVERNED AUTHORITY (mirrors business-verifier): this endpoint was `requireAdmin`-gated — a GLOBAL
+// `user_roles` admin role, tenant-AGNOSTIC (§53/§59 trap) — then trusted the BODY `contact_id`, read
+// `clients` via a SERVICE-ROLE client with NO tenant filter, contacted the PAID Nav.com API, and wrote
+// `paige_business_credit_profiles`. So any global admin could pull ANY tenant's contact's business
+// credit (§9 cross-tenant IDOR) and burn provider budget. The fix: authenticate the caller (verified
+// user JWT → `person`, actor = auth.uid(); else the bearer == service-role key → trusted `system` — the
+// `nav-refresh-scores` cron; else 401), authorize a person against the CONTACT's OWN tenant via
+// `can_access_contact(auth.uid(), contact_id)` (the canonical tenant-scoped helper the target table's RLS
+// itself uses — super_admin / tenant owner-admin / agency parent / direct-or-coach relationship), derive
+// the actor from the JWT never the body, authorize BEFORE any provider contact or write (a denied caller
+// burns ZERO budget), and write a governed audit receipt for every decision. The `high` risk class is
+// recorded honestly; the §67 autonomy clamp is deferred UPSTREAM (see the adapter header).
+import { corsHeaders, jsonResponse } from "../_shared/adminAuth.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { fireAndForgetBridge } from "../_shared/mmaOsBridge.ts";
+import {
+  authorizeNavPull,
+  buildNavPullAudit,
+  navPullGovernedAuditRow,
+  type NavPullAuthzDeps,
+  type NavPullGovernedAudit,
+  type NavPullPrincipal,
+} from "../_shared/nav-pull-profile/governed-adapter.ts";
 
 const NAV_API = "https://api.nav.com/v1";
 
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+/**
+ * Write ONE governed-decision row to `paige_audit_log` (service-role). For a REFUSED pull this is the
+ * ONLY trace, since a refusal contacts no provider and writes no profile. Non-fatal: a logging failure
+ * never changes the decision. supabase-js resolves a DB rejection as `{ error }` rather than throwing,
+ * so inspect and log the returned error loudly (mirrors business-verifier's writeGovernedVerifyAudit).
+ */
+async function writeGovernedNavAudit(
+  admin: any,
+  actorUserId: string | null,
+  audit: NavPullGovernedAudit,
+): Promise<void> {
+  try {
+    const row = navPullGovernedAuditRow(audit);
+    const { error } = await admin.from("paige_audit_log").insert({
+      actor_user_id: actorUserId,
+      actor_role: `nav_pull:${audit.principal}`,
+      ...row,
+    });
+    if (error) {
+      console.error("nav-pull-profile governed audit not recorded", error.message ?? String(error));
+    }
+  } catch (e) {
+    console.error("nav-pull-profile governed audit not recorded (threw)", String(e));
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  const gate = await requireAdmin(req);
-  if (!gate.ok) return gate.response;
-  const { admin } = gate;
+
+  // ── AUTHENTICATE — person (verified user JWT) or system (trusted service-role caller) ─────────────
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) {
+    return jsonResponse({ error: "unauthorized", message: "Authorization is required." }, 401);
+  }
+  const bearer = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+  const authClient = createClient(SUPABASE_URL, ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const { data: { user } } = await authClient.auth.getUser();
+
+  let principal: NavPullPrincipal;
+  let callerUserId: string | null;
+  if (user) {
+    principal = "person";
+    callerUserId = user.id;
+  } else if (bearer && bearer === SERVICE_KEY) {
+    principal = "system";
+    callerUserId = null;
+  } else {
+    return jsonResponse({ error: "unauthorized", message: "Invalid or unauthorized token." }, 401);
+  }
 
   const { contact_id } = await req.json().catch(() => ({}));
   if (!contact_id) return jsonResponse({ error: "contact_id required" }, 400);
 
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const startedAtMs = Date.now();
+
+  // ── AUTHORIZE — BEFORE any contact read, provider contact or write (a denied caller burns no budget)
+  // The person path resolves the canonical tenant-scoped contact helper, keyed on the VERIFIED uid
+  // (explicit `_user_id`), never a body field. A cross-tenant caller — or a non-existent contact, which
+  // resolves no access row — is refused uniformly (no existence oracle). System (the cron) is allowed.
+  const authzDeps: NavPullAuthzDeps = {
+    callerCanAccessContact: async () => {
+      if (!callerUserId) return false;
+      const { data, error } = await admin.rpc("can_access_contact", {
+        _user_id: callerUserId,
+        _contact_id: contact_id,
+      });
+      if (error) {
+        console.error("nav-pull-profile can_access_contact check failed", error.message ?? String(error));
+        return false;
+      }
+      return data === true;
+    },
+  };
+
+  const authz = await authorizeNavPull(authzDeps, { principal, callerUserId });
+
+  if (!authz.allowed) {
+    // The ONLY trace of a refused pull. Tenant is not resolved for a denied caller (no contact read).
+    await writeGovernedNavAudit(
+      admin,
+      callerUserId,
+      buildNavPullAudit({
+        principal,
+        userId: callerUserId,
+        contactId: contact_id,
+        tenantId: null,
+        authzBasis: authz.basis,
+        allowed: false,
+        startedAtMs,
+        nowIso: new Date().toISOString(),
+      }),
+    );
+    return jsonResponse({ error: "not_authorized", message: authz.reason }, 403);
+  }
+
+  // Authorized. Nav configuration is platform-global, not tenant data — an unconfigured provider is an
+  // honest no-op (no pull, so no execute audit), exactly as before.
   const apiKey = Deno.env.get("NAV_API_KEY");
   const partnerId = Deno.env.get("NAV_PARTNER_ID");
   if (!apiKey || !partnerId) {
@@ -22,10 +141,26 @@ Deno.serve(async (req) => {
 
   const { data: contact } = await admin
     .from("clients")
-    .select("id, business_name, ein, email")
+    .select("id, business_name, ein, email, tenant_id")
     .eq("id", contact_id)
     .maybeSingle();
   if (!contact) return jsonResponse({ error: "contact not found" }, 404);
+
+  // The governed execute receipt, scoped to the CONTACT's own tenant (server-resolved, never the body).
+  await writeGovernedNavAudit(
+    admin,
+    callerUserId,
+    buildNavPullAudit({
+      principal,
+      userId: callerUserId,
+      contactId: contact_id,
+      tenantId: (contact.tenant_id ?? null) as string | null,
+      authzBasis: authz.basis,
+      allowed: true,
+      startedAtMs,
+      nowIso: new Date().toISOString(),
+    }),
+  );
 
   let navData: Record<string, unknown> = {};
   try {
