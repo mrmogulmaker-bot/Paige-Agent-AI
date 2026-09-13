@@ -201,17 +201,26 @@ export const falAdapter: MediaProviderAdapter = {
 
   async fetchResult(ref: ProviderRef): Promise<{ artifactUrls: string[] }> {
     const key = falKey();
-    const resp = await fetch(`${QUEUE_BASE}/${ref.model}/requests/${encodeURIComponent(ref.providerRequestId)}`, {
-      headers: { authorization: `Key ${key}` },
-    });
-    if (!resp.ok) {
-      const detail = await resp.text().catch(() => "");
-      throw new Error(`fal result ${resp.status}: ${detail.slice(0, 300)}`);
+    // fal documents BOTH result forms: the submit response's `response_url`
+    // (.../requests/{id}/response) and the bare queue GET (.../requests/{id}).
+    // Some models (nano-banana observed live, 2026-09-12) return output only at
+    // the /response form, so try it FIRST and fall back to the bare form.
+    const id = encodeURIComponent(ref.providerRequestId);
+    const attempts = [`${QUEUE_BASE}/${ref.model}/requests/${id}/response`, `${QUEUE_BASE}/${ref.model}/requests/${id}`];
+    let lastDetail = "";
+    for (const url of attempts) {
+      const resp = await fetch(url, { headers: { authorization: `Key ${key}` } });
+      if (!resp.ok) {
+        lastDetail = `${resp.status}: ${(await resp.text().catch(() => "")).slice(0, 200)}`;
+        continue;
+      }
+      const data = await resp.json().catch(() => null);
+      // The /response form IS the output; the bare form nests it under `output`.
+      const urls = normalizeFalOutput(data?.output ?? data);
+      if (urls.length) return { artifactUrls: urls };
+      lastDetail = "no artifact url in payload";
     }
-    const output = (await resp.json())?.output;
-    const urls = normalizeFalOutput(output);
-    if (!urls.length) throw new Error("fal result carried no artifact url");
-    return { artifactUrls: urls };
+    throw new Error(`fal result carried no artifact url (${lastDetail})`);
   },
 
   async cancel(ref: ProviderRef) {
