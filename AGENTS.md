@@ -10,6 +10,59 @@ These instructions apply to Codex, Claude, and every other implementation agent 
 
 Do not begin design or implementation until the applicable skills have been read. A wrapper, summary, checkbox, fixture, or rendered screenshot is not a substitute.
 
+## Capability routing (MANDATORY pre-edit gate)
+
+Paige is **one governed operating platform**, not a collection of apps. The binding rule, the
+required capability entry path, and the truthful completion rule live in
+`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` → "Capability Portfolio — the One Paige Operating Platform
+rule". Read it before any substantive feature work. Where a capability belongs, and what proof it
+owes, is `docs/doctrine/paige-capability-portfolio.md`.
+
+**This is a PRE-EDIT gate, answered before the first line of code — not a second ship-time
+checklist.** The ship-time gate already exists and is unchanged: the six-part checklist in
+`docs/brain/paige-brain-wiring-standard.md` §3 (second-brain entry · callable seam · context · tool ·
+tier availability · honest-when-it-cannot-answer · modality-neutral acceptance). Answer the ten
+questions below to decide **where the work goes and what it must reuse**; answer those six to decide
+**whether it is done**. They are two moments in one lifecycle, never two competing lists.
+
+State the answers out loud in the plan or the first message of the build. "I checked" with nothing
+named did not happen.
+
+1. **Intended owner outcome** — the real job a human completes, not the component that renders.
+2. **Domain owner** — which portfolio family owns this (matrix, column 1), and who else is in flight.
+3. **Harness / Gateway dependency** — which shared layer (A–G) it needs, and whether that layer is
+   real today per `docs/delivery/harness-completion-map.md`. If the layer is absent, say so; do not
+   route around it.
+4. **Spine capability** — the exact `domain.capability` key it reads or registers in
+   `supabase/functions/_shared/paige-spine/registry.ts`, **or** an explicit honest `UNAVAILABLE`
+   with its reason. Never a key you intend to add later, stated as if present.
+5. **Provider / connection requirement** — the Integration Capability Registry entry
+   (`docs/integration-registry/`) read before, updated before merge. No entry yet → record the
+   missing-entry requirement in the work packet and proceed only with work that does not invent
+   provider authority. **Listed is never connected** (R1).
+6. **Approval / budget / autonomy lane** — its `action-risk` class, its `MUTATION_VERB`, its
+   Trust-Compass lane (§67/§68), and the one approval gate
+   (`docs/doctrine/one-approval-gate.md`). No slice builds its own confirm channel.
+7. **Durable job / event need** — whether it needs the native-event bus or a durable job, and which
+   existing producer/drainer it extends. Never a parallel scheduler.
+8. **Readback / receipt / Rail** — what proves the act actually happened, and what Paige is allowed
+   to say about it. An act with no readback may not be reported as done (R8).
+9. **Visible surface + Binding Ledger state** — the `surface` row in
+   `docs/binding-ledger/surface-binding-ledger.json`, its current state, and the state this change
+   moves it to. A surface not in the ledger is not owner-visible yet.
+10. **Authenticated / provider proof required** — the exact evidence class that will make the claim
+    true, and what stays `PROOF OWED` or `UNVERIFIED` at merge.
+
+**Prohibited, and blocking.** No domain may create a second Harness, authority or execution engine,
+tool registry, job system, browser system, evidence or receipt stream, provider registry, memory, or
+orchestrator. If a capability appears to need one, that is a routing conversation, not a build.
+
+**Fixture-backed capability claims are prohibited.** A capability is not real because a component
+renders, a tool exists, a fixture or structural test passes, a provider name appears in
+documentation, a flag is set, a migration merged, a preview deployed, or a previous agent's report
+said so. State `UNVERIFIED` or `UNAVAILABLE` honestly instead — that is always an acceptable answer,
+and a false `LIVE` never is.
+
 ## Interface standard
 
 Design around the user's actual job, real data contracts, permissions, and complete flow. Reuse Paige's established tokens and design system before creating replacements. Do not fabricate metrics, activity, history, health, providers, authorization, or capabilities. Do not ship generic card grids, decorative gradients, empty dashboard chrome, static-looking controls, or purposeless effects.

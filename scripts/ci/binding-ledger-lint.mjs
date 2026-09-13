@@ -306,6 +306,67 @@ if (invokedDirectly() && process.argv.includes("--self-test")) {
   process.exit(bad ? 1 : 0);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// EXTENSION (Capability Portfolio delivery, 2026-09-12). Two mechanical checks
+// that close holes this lint already had, WITHOUT a new lint or npm script (§18 —
+// one home; the ledger's own guard owns the ledger and anything mirroring it).
+//
+// 1. DEAD CODE ANCHORS. The ledger cites real repo paths in `owner_component` and
+//    `canonical_source`. A rename or delete leaves a row pointing at a file that no
+//    longer exists while still asserting its state — the ledger lying with authority
+//    (§BRAIN). Nothing checked this before.
+//
+// 2. MIRROR PARITY. `docs/doctrine/paige-capability-portfolio.md` carries a
+//    snapshot of ledger states so agents can route without opening the JSON. A COPY
+//    OF A CI-ENFORCED FIELD THAT CI DOES NOT CHECK IS A SECOND SOURCE OF TRUTH —
+//    exactly the "maintained live list" failure the attention register §1 prohibits.
+//    This makes the copy impossible to drift: the snapshot must match the ledger
+//    exactly, or CI fails and the matrix is the bug (never the ledger).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MATRIX = "docs/doctrine/paige-capability-portfolio.md";
+const SNAPSHOT_BEGIN = "<!-- LEDGER-SNAPSHOT:BEGIN";
+const SNAPSHOT_END = "<!-- LEDGER-SNAPSHOT:END";
+const PATH_TOKEN = /\b(?:src|supabase|scripts|docs|public)\/[A-Za-z0-9._\/-]+\.[A-Za-z0-9]{1,6}\b/g;
+
+/** Pure: dead `owner_component` / `canonical_source` anchors. `exists` is injected so this stays unit-testable. */
+export function findDeadAnchors(ledger, exists) {
+  const findings = [];
+  for (const s of ledger?.surfaces ?? []) {
+    for (const field of ["owner_component", "canonical_source"]) {
+      const v = s?.[field];
+      if (typeof v !== "string") continue;
+      for (const tok of v.match(PATH_TOKEN) ?? []) {
+        if (!exists(tok)) findings.push(`${s.id}: ${field} cites '${tok}', which does not exist`);
+      }
+    }
+  }
+  return findings;
+}
+
+/** Pure: the routing matrix's ledger snapshot must match the ledger exactly. */
+export function findMirrorDrift(ledger, matrixText) {
+  if (typeof matrixText !== "string" || !matrixText.includes(SNAPSHOT_BEGIN)) return [];
+  const body = matrixText.split(SNAPSHOT_BEGIN)[1]?.split(SNAPSHOT_END)[0] ?? "";
+  const truth = new Map((ledger?.surfaces ?? []).map((s) => [s.id, s.state]));
+  const findings = [];
+  const claimed = new Set();
+  for (const line of body.split("\n")) {
+    const m = line.match(/^\s*([a-z0-9][a-z0-9._-]*)\s*=\s*([A-Z_]+)\s*$/);
+    if (!m) continue;
+    const [, id, state] = m;
+    claimed.add(id);
+    if (!truth.has(id)) findings.push(`${MATRIX}: snapshot names '${id}', which is not a ledger surface`);
+    else if (truth.get(id) !== state) {
+      findings.push(`${MATRIX}: snapshot says ${id}=${state}, ledger says ${truth.get(id)} — the matrix is the bug, not the ledger`);
+    }
+  }
+  for (const id of truth.keys()) {
+    if (!claimed.has(id)) findings.push(`${MATRIX}: snapshot omits ledger surface '${id}' — the mirror must be complete or it misleads`);
+  }
+  return findings;
+}
+
 function runLedgerLint() {
   if (!fs.existsSync(LEDGER)) {
     console.log(`✗ binding-ledger-lint: ${LEDGER} is missing — that is a resolver failure, not a pass.`);
@@ -319,6 +380,13 @@ function runLedgerLint() {
     process.exit(1);
   }
   const findings = validateLedger(ledger);
+  findings.push(...findDeadAnchors(ledger, (p) => fs.existsSync(p)));
+  if (!fs.existsSync(MATRIX)) {
+    // A guard that silently no-ops when its target is renamed reports green forever (§32).
+    findings.push(`${MATRIX} is missing — the ledger mirror cannot be verified. Restore the file or remove this check deliberately; do NOT let it pass silently.`);
+  } else {
+    findings.push(...findMirrorDrift(ledger, fs.readFileSync(MATRIX, "utf8")));
+  }
   if (findings.length) {
     console.log(`✗ binding-ledger-lint: ${findings.length} finding(s) in ${LEDGER}\n`);
     for (const f of findings) console.log(`  • ${f}`);

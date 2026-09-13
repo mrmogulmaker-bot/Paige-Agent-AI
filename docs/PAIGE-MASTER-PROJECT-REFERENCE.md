@@ -627,6 +627,76 @@ provider or connected app is involved—`docs/integration-registry/README.md`. P
 also reads `docs/architecture/platform-operator-tenant-200.md`. Current delivery status still comes
 from Section 4 and the relevant detailed record, never from this architecture decision alone.
 
+### Capability Portfolio — the One Paige Operating Platform rule (owner-approved 2026-09-12)
+
+**The rule.** Paige is one AI COO, not a collection of disconnected apps. Every capability —
+Calendar, Social, Vibe, CRM, Client Portal, Marketplace, browser research, sandbox work, skills,
+agents, billing, analytics, automations, and every future domain — plugs into the same shared
+governed path. A capability that reaches a provider, a record, or an owner by any other route is not
+a faster capability; it is an ungoverned one, and it does not ship.
+
+**The required capability entry path (binding on every domain, every tier, every modality):**
+
+`Capability Gateway → tenant/actor/role/connection truth → authority / approval / budget / policy
+checks → domain adapter or canonical write → readback / reconciliation → receipt + Rail → truthful
+Paige explanation and owner control`
+
+This is the same governed core as the canonical modality-neutral path recorded above; the Gateway
+naming states the entry obligation explicitly so no domain can read "my surface is different" into
+it. **Nothing in this rule grants authority.** Breadth of coordination is never breadth of
+permission: at every read, tool call, job step and act, the Harness re-resolves tenant, actor,
+workspace, role, tool scope, provider state, approval rule, budget and verification requirement, and
+a later step never inherits a wider authority because an earlier one succeeded.
+
+**Division of labour (who builds what).**
+
+- **The Harness** builds the roads, power grid, authority, event engine, receipts, proof, budgets and
+  specialist runtime. Its per-layer state is `docs/delivery/harness-completion-map.md` (Layers A–G).
+- **Chat** builds the owner cockpit through which the owner discovers, directs, approves, monitors
+  and understands the system.
+- **Domain teams** build their domain capabilities **on those shared primitives**.
+
+**Prohibited by this rule — a domain may not create its own:** Harness · authority or execution
+engine · tool registry · job or scheduler system · browser system · evidence or receipt stream ·
+provider registry · memory · orchestrator. This restates, and does not replace, the existing
+"One Paige across all capability domains" contract above and
+`docs/brain/paige-brain-wiring-standard.md` §1.
+
+**The 200-capability portfolio is OWNER-APPROVED PRODUCT DIRECTION — binding, not aspirational.**
+The long-term target is a large portfolio of capabilities inside one governed platform, not two
+hundred independently-architected products each with its own runtime and its own idea of the truth.
+It is a portfolio, never 200 apps. **Capability count measures reach across one platform; it is never
+a licence to fork the platform.**
+
+> **Every portfolio capability remains intended product direction; each becomes real only through the
+> shared Harness path and its domain-specific completion proof.**
+
+**Its canonical home is `docs/doctrine/paige-capability-portfolio.md`** — the one owner-vision
+artifact. It preserves the capability families and their intended outcomes and maps each family to
+its domain and shared Harness dependencies. It **claims no runtime availability**, and it is **not**
+a second Binding Ledger, Integration Capability Registry, Spine registry, or roadmap tracker: for
+current status and delivery proof it points at those records, which own those answers.
+
+**Two guardrails on the number itself (§13).** (1) "200" is **never** a delivery-percentage or
+`LIVE`-coverage score — there is no "we are at N/200," because the portfolio is intent and the
+canonical records hold reality. (2) Runtime truth, provider status, surface binding and delivery
+state are **never duplicated** out of their owning records into the portfolio artifact; it cites
+them. Scope is binding; **availability is only ever what the owning record proves.**
+
+**The truthful completion rule.** A capability is complete only when a real owner or client outcome
+is reachable through the path above and proven at the evidence class claimed. Explicitly, **none of
+these is completion**: a component renders · a tool exists in a registry · a fixture or structural
+test passes · a provider name appears in documentation · a config flag is set · a migration merged ·
+a preview deploys · a prior agent's report says so. Evidence classes and their honest labels
+(`LIVE` / `PARTIAL` / `UNAVAILABLE` / `UNVERIFIED`, plus the ledger's `PROOF_OWED` and
+`INTENTIONALLY_ISOLATED`) are already defined in `AGENTS.md`, `docs/doctrine/paige-ui-delivery-standard.md`
+and `docs/binding-ledger/README.md` — this rule adds no vocabulary and forks none.
+
+**Routing.** Which canonical home answers which capability question — and what proof each portfolio
+family owes — is `docs/doctrine/paige-capability-portfolio.md`. That artifact is the owner-vision
+portfolio plus a routing and sequencing map: it cites the Binding Ledger, Integration Capability Registry, Spine, Rail and
+Harness Completion Map, and replaces none of them (§18).
+
 ### Integration Capability Registry (provider-governance delivery record — MANDATORY)
 
 **`docs/integration-registry/`** (README + `integration-capability-registry.json`, the source of
@@ -656,6 +726,38 @@ Reference or any domain ledger; it governs how their facts become release and cu
 ## 4. What's SHIPPED (stop asking about these)
 
 ### 4.0 Shipped Delivery Log
+
+**2026-09-13 Capability Portfolio — the One Paige Operating Platform delivery standard (PR [#1175](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1175), squash-merged to `main` from head `43544cac`, internal channel, owner-approved Gate A):**
+Makes the one-governed-platform model binding for every future agent on `main`. Master Reference §3 gains the
+**Capability Portfolio rule** — one entry path (Gateway → tenant/actor/role/connection truth → authority/approval/
+budget/policy → adapter or canonical write → readback → receipt + Rail → truthful explanation), a prohibition on
+per-domain Harnesses/authority engines/registries/job systems/memories/orchestrators, and the **200-capability
+portfolio recorded as owner-approved BINDING product direction** with two guardrails: "200" is never a
+delivery-percentage or `LIVE`-coverage score, and runtime truth is never duplicated out of its owning record.
+`docs/doctrine/paige-capability-portfolio.md` is the ONE owner-vision artifact — Part A the fifteen families and
+intended outcomes (quoted from the ledger's own owner-approved `completion_criterion`, claiming **no runtime
+availability**), Part B routing to the records that own status, Part C a **CI-verified** ledger mirror.
+`AGENTS.md` gains a ten-question PRE-EDIT routing gate, scoped deliberately as pre-edit and deferring to the
+existing six-part ship-time checklist in `docs/brain/paige-brain-wiring-standard.md` §3 so the two are one
+lifecycle, not rival lists. Second Brain index + PR template carry the same routing with honest "not applicable"
+required. **Enforcement added no new lint, npm script or workflow** — a CI survey found the requested checks
+substantially covered, so `scripts/ci/binding-ledger-lint.mjs` was EXTENDED twice (§18): dead code-anchor
+detection (clean on current `main`, blocks nothing today) and mirror parity (Part C must match the ledger or CI
+fails, which is what stops a copy of a CI-enforced field becoming a second source of truth). The mirror guard's
+first implementation reported GREEN on a corrupted mirror because its path was stale after a rename — the §32
+false-green this standard exists to prevent — and now fails loudly on a missing file; proven four ways (clean ·
+drifted state · omitted row · missing file). **Two owner rulings recorded in the same PR:** Registry Steward →
+the **Harness workstream** (governance/consistency, never a build bottleneck; domains keep their adapters and
+propose their own entries), and `ui-delivery-evidence` **to become a required status check**.
+**Proof boundary (§13):** green — `lint:binding-ledger` + its 35-case self-test, `lint:integration-registry`,
+`audit`, `Validate UI delivery evidence`, Vercel; all 12 relative links resolve. **`verify` is RED and it is NOT
+this PR's** — `lint:views`, `lint:chat-tool-registry` and `Test` (10 failed files / 15 failed tests) reproduce
+identically on clean `origin/main` with this diff absent, verified in a separate worktree; other lanes' baseline
+debt, no fix existed to port, one standing-down comment posted and no re-run spent. **`ui-delivery-evidence`
+remains ADVISORY** — branch protection is a repository setting, a headless session measured `403 Resource not
+accessible by integration` on `GET /branches/main/protection`, so neither the change nor its read-back can be
+made or claimed from here; owner action owed. **Customer-release eligibility: NO** — internal delivery
+governance, no customer capability, no release record.
 
 **2026-09-12 Vibe Media credits — LIVE (PR #1168 → main `f1645d4c`, plus fix-forwards `6e393930`/`5cd9a03e`):** the durable tenant-scoped Media Credit ledger (migration `20270123000000`, renumbered off the collided 20270122 slot) — append-only BY TRIGGER (UPDATE/DELETE/TRUNCATE raise; service_role SELECT+INSERT only; RESTRICT parents), closure-model hold/consume/release with the anti-leakage gate (submitted jobs consume — fal already charged), lazy monthly included grant (300 credits = $3.00; 1 cr = $0.01) + all-prior-month lapse, the settlement companion, the ENFORCED platform spend guard inside hold under a global-class lock (`media_spend_ceiling_usd` $25 default — `media_provider_ceiling_usd` documented as the activation gate it always was), and the R22 owner-only `get_workspace_media_usage` billing read. Veo 3.1 correction (deprecated veo3 replaced; audio-on estimates). paige-media: platform guard + credit hold BEFORE any provider call; truthful 402 insufficient-credit. Billing: the Vibe Media card on the ONE surface (allowance/remaining/purchased/reserved-in-flight/50-80-100 notices/category breakdown/receipt trail/packs-as-roadmap) + the presentation contract + Vibe rail credit line. 12 contract + 12 seam tests + the 22-assertion pgTAP suite in CI's database-contract job (which caught and fixed: the jsonb setting reads, the missing authenticated grant, the grant-RPC split inconsistency). The authorized controlled proof ran against production: the FULL governed ladder proven live (authorization → workspace-scoped job → budget ladder → 300-credit lazy mint → hold 4 credits → truthful provider failure → anti-leakage release → credits restored → platform spend $0 → Rail receipt), plus two real bugs found-and-fixed by the live probe (capabilities read on the wrong client; the RPC 42702 alias collision — fix-forward `20270124000000`). **BLOCKED at the provider boundary: fal rejects the FAL_KEY credential (403) — the secret exists by name but is invalid/expired/malformed; zero provider spend occurred. The owner re-issues the fal key (id:secret form) as the FAL_KEY secret and the paid proof resumes.** No Stripe products, no charge path, no customer activation.
 

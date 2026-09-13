@@ -1403,7 +1403,7 @@
   },
   "known_owed_entries": {
     "note": "Found at the registry-build closeout sweep (2026-09-06): pre-existing slices declared an 'Integration Capability Registry dependency' + a 'Registry Steward' role BEFORE this registry existed. The entries below preserve the specific provider obligations those slices recorded. NOTE on the Solo Tenant Brain Business Mission slice (docs/delivery/solo-tenant-brain-business-mission-mvp.md:64): its dependency was on delivery INFRASTRUCTURE (the Supabase deploy path), which is already covered by excluded_delivery_infrastructure + config-registry.md, and the slice explicitly said 'do not invent an entry' — so NO owed provider entry is recorded for it here (cross-link the shipped registry as its home; do not create a duplicate infrastructure entry). Google Search Console and Google Business Profile now have full controlling entries; the later Public Presence providers have an authoritative sequenced Steward handoff but remain deliberately unavailable. The Registry Steward role is still unnamed, and provider-action blockers remain in force until tenant authorization and authenticated provider proof exist.",
-    "registry_steward_role": "UNDEFINED here. The RE-2 M1-a, Solo Tenant Brain Business Mission, and Public Presence slices reference a 'Registry Steward' who must add/cross-link canonical entries before provider-facing work. This registry ships a per-entry `owner` field + the delivery rule instead of a named Steward — an owner decision on whether that satisfies the requirement is owed.",
+    "registry_steward_role": "ASSIGNED to the Harness workstream (owner ruling 2026-09-12). A governance and consistency role — NOT a feature-development bottleneck and NOT an approval queue. Harness owns the canonical registry contract, the allowed truth states, cross-domain reconciliation, and escalation of unowned or unsafe entries. Domain workstreams remain responsible for their own provider adapters and propose their own capability/connection entries; nobody waits on the Steward to build, and the per-entry `owner` field still names the domain owner. No new registry, approval queue, or dependency chain is created. The RE-2 M1-a, Solo Tenant Brain Business Mission, and Public Presence slices that reference a Registry Steward now have an executable escalation path. Note (§13): the remaining gap is MECHANISM, not ownership — no CI check couples a provider-touching diff to its registry entry, which is why Upload-Post (6e35c60e) and fal.ai (d5387376/#1153) merged owing entries; a `code_anchors` schema field + resolve check is the sequenced fix.",
     "entries": [
       {
         "owed_by": "RE-2 M1-a money backbone (docs/brain/decision-log.md ~L63-77, PR #1014)",
@@ -1496,7 +1496,7 @@
             "api_quota_billing": "unknown per network; no aggregator capability is assumed"
           }
         ],
-        "limitations": "The Registry Steward role remains unnamed, so this committed handoff is the authoritative record but no out-of-band steward receipt is claimed. Provider names in UI or registry never imply connection, authorization, or capability."
+        "limitations": "The Registry Steward is the Harness workstream (owner ruling 2026-09-12); this committed handoff remains the authoritative record and no out-of-band steward receipt is claimed. Provider names in UI or registry never imply connection, authorization, or capability."
 
       }
     ]

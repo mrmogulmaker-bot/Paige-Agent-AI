@@ -48,15 +48,35 @@ The `ui-delivery-evidence` workflow (`.github/workflows/ui-delivery-evidence.yml
 **`Validate UI delivery evidence`**) validates the UI-delivery evidence record on every PR and routes
 a declared backend→visible change (a `Visible-Flow-Impact: yes` commit trailer on a
 `supabase/functions/**` / `supabase/migrations/**` change) to the same record. It is **not** in the
-documented required-check set above, so today it is **advisory** (runs + reports, does not block) —
-this is the honest current state per this doc; a live read of `main`'s detailed branch-protection
-required-check list is **UNVERIFIED** from a headless agent session (no admin/API access to the
-protection endpoint) and is owed to an owner/web check. To make it blocking, the owner adds the check
-**`ui-delivery-evidence / Validate UI delivery evidence`** to the required list in **Settings →
-Branches → main → Require status checks to pass**. Before making it required, let the open-UI-PR window
-clear: the five-skill evidence fields are recognized-but-optional and only a dated, announced cutover
-(never silent) would make any of them required. Making the workflow itself required does **not** make
-those optional fields required — it only enforces that the existing evidence record + routing validate.
+documented required-check set above.
+
+**OWNER RULING 2026-09-12: it BECOMES a required status check for merges to `main`.** Its scoped
+behaviour is preserved exactly — a UI-affecting change must supply the required evidence; a non-UI
+change passes honestly as not-applicable. This supersedes the earlier "let the open-UI-PR window
+clear first" sequencing note below.
+
+**The exact required-check context is `ui-delivery-evidence / Validate UI delivery evidence`**
+(workflow `name:` / job `name:`). The job name alone does not match, and a context string that does
+not match silently protects nothing — which is the failure this ruling exists to end.
+
+**CURRENT STATUS: NOT YET IN FORCE (§13).** This is a repository branch-protection setting, not a
+file in this repo, so merging this doc changes nothing about whether merges are blocked. Measured
+2026-09-12 from a headless agent session: `GET /repos/.../branches/main/protection` returns
+**`403 Resource not accessible by integration`** — this session can neither set the requirement nor
+read back the required-check list. **Workflow YAML is never proof that merges are blocked.**
+
+**Owner action to complete it:** Settings → Branches → `main` → *Require status checks to pass* → add
+`ui-delivery-evidence / Validate UI delivery evidence` → save, then confirm it is listed. Until that
+read-back is confirmed, the gate remains **advisory in practice** and this passage must not be edited
+to claim otherwise.
+
+**Measured impact at the time of the ruling:** 41 pull requests were open, a substantial number of
+them touching UI paths. Making the check required means any of those that lack a conforming evidence
+record will be blocked until one is added. That is the intended effect, recorded so it is not a
+surprise. (Prior sequencing note, now superseded: the five-skill evidence fields are
+recognized-but-optional and only a dated, announced cutover — never silent — would make any of them
+required. Making the workflow itself required does **not** make those optional fields required; it
+only enforces that the existing evidence record + routing validate.)
 
 ### Regenerating the tsc baseline (ratchet it DOWN)
 When you fix pre-existing type errors, shrink the baseline:
