@@ -10,7 +10,7 @@
 //   * paige_automations                         - the subscribers (§67 Process Records) by trigger_key
 //   * paige_event_dispatches                    - the fire-once ledger, UNIQUE(event_id, automation_id)
 //
-// -- SCOPE (honest, §13) — Layer C · C1 (the safe engine foundation) ---------------------------
+// -- SCOPE (honest, §13) — Layer C · C2 (one bounded native auto-execute vertical) --------------
 // This delivers the EVENT to its subscribers AND runs the governed act-execution engine
 // (_shared/paige-orchestration). Before any of that it runs an INDEPENDENT event-integrity check
 // (owner correction #2): the tenant is re-derived from the canonical SUBJECT record and asserted to
@@ -20,12 +20,15 @@
 // ceiling ∧ §68 decay), and runs the ONE governed pathway (decideGovernedExecution) per act, recording
 // the EXACT per-act outcome in paige_act_executions through the ATOMIC, MONOTONIC transition RPC
 // (paige_record_act_execution) — a final outcome is never overwritten, and every durable write is
-// CHECKED (a failed write fails the dispatch for retry, correction #3). It performs NO external send
-// yet — an authorized act stops at `accepted_for_execution`; the connector-neutral adapter DISPATCH +
-// signed readback + canonical domain update is C2+. THREE distinct levels are preserved (correction #6):
+// CHECKED (a failed write fails the dispatch for retry, correction #3). C2 adds the NATIVE synchronous
+// execute path: a governed-authorized `crm_advance_journey_stage` is dispatched to the in-tenant
+// set_journey_stage RPC AFTER its durable accepted_for_execution record persists, the canonical record
+// is re-read to CONFIRM (§32), and the ledger advances to `executed` (or `ambiguous` → reconcile, never
+// blind retry). An EXTERNAL-EFFECT adapter (n8n) still stops at accepted_for_execution / approval_pending
+// — its dispatch + signed readback is C3+. THREE distinct levels are preserved (correction #6):
 // event-level `no_subscriber`, subscriber-level paige_event_dispatches delivery, per-act
-// paige_act_executions outcome. `acts_executed` is legacy per-subscriber metadata only (true only on a
-// real `executed` outcome, never in C1) — never owner-visible proof by itself; the per-act ledger is.
+// paige_act_executions outcome. `acts_executed` is legacy per-subscriber metadata only (now true for a
+// confirmed native `executed`) — never owner-visible proof by itself; the per-act ledger is.
 //
 // -- SECURITY (§9/§13) ------------------------------------------------------------------------
 // NOT user-facing. Authorized ONLY by (a) the service-role bearer, or (b) a valid Vault cron token
@@ -163,10 +166,11 @@ Deno.serve(async (req) => {
     //    the event no longer even reaches an act), resolves the effective autonomy lane (grant ∧
     //    most-restrictive act floor ∧ Trust-Compass ceiling ∧ §68 decay), and runs the ONE governed
     //    pathway per act — recording the EXACT per-act outcome (condition_not_matched / held_by_lane /
-    //    approval_pending / refused_* / accepted_for_execution / failed) in paige_act_executions,
-    //    fire-once. SLICE 1 stops at accepted_for_execution; the external adapter dispatch + signed
-    //    readback + CRM update is slice 2. A high external-effect act on an `auto` process correctly
-    //    HOLDS for approval — the lane alone never authorizes a high act (§67 / RE-2 grant lift). --
+    //    approval_pending / refused_* / accepted_for_execution / executed / failed / ambiguous) in
+    //    paige_act_executions, fire-once. C2: a native, synchronous execute (crm_advance_journey_stage)
+    //    dispatches + confirms in-engine and advances to `executed`; an external-effect adapter (n8n)
+    //    still stops at accepted_for_execution, and a high external-effect act on an `auto` process
+    //    correctly HOLDS for approval — the lane alone never authorizes a high act (§67 / RE-2 grant lift). --
     const engine = await runEventActs(
       admin as unknown as EngineDb,
       {
