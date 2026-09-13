@@ -9,7 +9,7 @@
 -- then RE-ENABLED and exercised via real INSERT/UPDATE, and the reconciler is called as the cron/service
 -- context (auth.uid() NULL) exactly as pg_cron invokes it.
 begin;
-select plan(52);
+select plan(53);
 
 -- Seed the tenant in NORMAL mode (triggers ON) so its account_number-assignment trigger fires.
 insert into public.tenants(id, slug, name, status, account_type, account_number_prefix, features) values
@@ -394,6 +394,14 @@ select throws_ok(
        where id='9a00000d-0000-4000-8000-00000000000d' $$,
   '42501', NULL,
   'guard: a source-ONLY rewrite of an orchestration approval is refused (broadened BEFORE UPDATE trigger — closes the two-step launder)');
+-- Coordinate repoint (Codex re-review P1): repointing metadata.event_id/act_id at an already-terminal act would
+-- let execute-approval approve off an unrelated result while the real held act stays approval_pending. Refused.
+select throws_ok(
+  $$ update public.paige_pending_approvals
+        set metadata = jsonb_set(metadata, '{event_id}', '"1e00000b-0000-4000-8000-00000000000b"')
+       where id='9a00000d-0000-4000-8000-00000000000d' $$,
+  '42501', NULL,
+  'guard: repointing an orchestration approval''s ledger coordinates (metadata.event_id) is refused (coords-immutability pin)');
 reset request.jwt.claim.sub;
 select ok((select source='paige_orchestration' and status='pending'
              from public.paige_pending_approvals where id='9a00000d-0000-4000-8000-00000000000d'),

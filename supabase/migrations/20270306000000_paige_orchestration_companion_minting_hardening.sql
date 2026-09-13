@@ -31,10 +31,13 @@
 --  closeout once the merge SHA and the persisted-apply proof exist (§0/§13: no pre-merge entry with a guessed SHA).)
 --
 -- APPROACH (§18/§12 — extend, do not fork). The four objects already exist (20270303000000); this migration
--- CREATE OR REPLACEs the three functions in place (the triggers call them by name — unchanged trigger defs),
--- adds ONE pure helper for the readable description (the single home for both the trigger and the backfill),
--- and runs the one-time idempotent backfill. Additive + order-independent: it alters no existing table and
--- creates no new table/column/index — so the forward-cleanup recovery is a DROP of exactly these objects
+-- CREATE OR REPLACEs the four functions in place. The mint / cancellation-sync / reconciler TRIGGER definitions
+-- are unchanged (they call their functions by name); the direct-approve GUARD trigger is DELIBERATELY re-created
+-- with a broader event (BEFORE UPDATE OF status -> BEFORE UPDATE) so the source- + coordinate-immutability pins
+-- also catch a metadata-only rewrite (Codex re-review P1 — coverage-only, §58). It adds ONE pure helper for the
+-- readable description (the single home for the mint AND the backfill/repair) and runs a one-time idempotent
+-- backfill + repair. Additive: it alters no existing table and creates no new table/column/index — so the
+-- forward-cleanup recovery DROPs these objects and restores the prior bodies + the guard trigger's prior scope
 -- (see the PR recovery note; a git revert does NOT reverse applied SQL).
 --
 -- RLS NOTE (§13, honest scope). Finding #2's fix is the guard above, which is SUFFICIENT to prevent a browser
@@ -188,6 +191,24 @@ begin
   -- Gate on the STORED source (old.source), NEVER the mutable new.source: a combined UPDATE cannot flip source
   -- in the same statement to dodge the check, and (with the pin above) a source-only update cannot pre-launder it.
   if coalesce(old.source, '') <> 'paige_orchestration' then return new; end if;
+  -- Pin the ledger COORDINATES (Codex re-review P1): metadata.event_id/act_id (+act_execution_id) bind this
+  -- companion to its held act and are the keys BOTH this cross-check AND execute-approval resolve
+  -- (execute-approval/index.ts reads metadata.event_id/act_id). They live in a browser-writable jsonb column and
+  -- the broadened trigger permits a metadata-ONLY update (status unchanged, so the approve-gate below never
+  -- fires). Without this, a same-tenant admin could repoint a pending companion at an ALREADY-terminal act, then
+  -- drive execute-approval to stamp it approved off that unrelated terminal result while the real held act stays
+  -- approval_pending. Refuse any change to the coordinates. Legitimate writers (execute-approval, reconciler)
+  -- SPREAD the existing metadata, so they preserve these keys and never trip this.
+  if coalesce(new.metadata->>'event_id', '')        is distinct from coalesce(old.metadata->>'event_id', '')
+    or coalesce(new.metadata->>'act_id', '')          is distinct from coalesce(old.metadata->>'act_id', '')
+    or coalesce(new.metadata->>'act_execution_id', '') is distinct from coalesce(old.metadata->>'act_execution_id', '')
+  then
+    raise exception
+      'ORCH_APPROVAL_COORDS_IMMUTABLE: a paige_orchestration approval''s ledger coordinates '
+      '(metadata.event_id/act_id/act_execution_id) cannot be rewritten — repointing them would drive '
+      'execute-approval to approve off an unrelated act while the real held act stays approval_pending'
+      using errcode = '42501';
+  end if;
   if new.status = 'approved' and old.status <> 'approved' then
     -- (a) The ONLY sanctioned approver is the SERVICE-ROLE Layer-C executor/reconciler (auth.uid() IS NULL):
     --     execute-approval stamps the approval with the service-role client (verified). A JWT/browser caller may
@@ -223,8 +244,9 @@ comment on function public.paige_guard_orchestration_direct_approve() is
   'C5 s2 (fix-forward): a source=paige_orchestration approval may reach status=approved ONLY when written by '
   'the service-role Layer-C executor/reconciler (auth.uid() NULL) AND the canonical paige_act_executions '
   'ledger row for (event_id, act_id) is terminal (executed|failed). Gates on the STORED source (old.source) and '
-  'refuses any source rewrite, so the classification cannot be laundered to dodge the gate. Refuses any JWT '
-  'caller and never trusts the browser-editable metadata.act_outcome (§13/§70). No-op for non-orchestration rows.';
+  'refuses any rewrite of source OR the ledger coordinates (metadata.event_id/act_id/act_execution_id), so the '
+  'row can neither be reclassified nor repointed at a different act to dodge the gate. Refuses any JWT caller and '
+  'never trusts the browser-editable metadata.act_outcome (§13/§70). No-op for non-orchestration rows.';
 
 -- Broaden the guard trigger from BEFORE UPDATE OF status to BEFORE UPDATE (all columns) so the source-immutability
 -- pin above also fires on a source-ONLY rewrite (Codex re-review P1 — a `BEFORE UPDATE OF status` trigger never
