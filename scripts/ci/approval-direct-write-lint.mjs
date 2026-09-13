@@ -82,14 +82,29 @@ const SAFE_STATUS = new Set(["rejected", "skipped", "escalated", "changes_reques
 const FROM_WRITE = /from(?:\s*<[^(]*>)?\s*\(\s*["'`]paige_pending_approvals["'`][^)]*\)\s*\??\.\s*(?:update|upsert|insert)(?:\s*<[^(]*>)?\s*\(/g;
 
 // Comments are BLANKED to spaces (newlines kept), not deleted, so reported line numbers still match
-// the real file. String/template-literal aware — a `//` or `/*` INSIDE a string is left intact, and a
-// TRAILING line comment (not just a line-start one) is blanked, so a comment placed between a
-// `from(...)` and its chained `.update(...)` can never split the match (Codex round 8). A regex/
-// division `/` that is not `//` or `/*` is copied verbatim; a `${…}` interpolation is treated as part
-// of its template literal (no from()->write chain is ever authored inside one — irrelevant to scope).
+// the real file. This is a mini-LEXER for the three constructs that contain a `/` ambiguously —
+// string/template literals, comments, and REGEX literals — so none of them can be mis-read as the
+// other: a `//`/`/*` inside a string or a regex is left intact (Codex round 8), and a regex literal
+// whose body contains `/*` (e.g. `/[/*]/`) is NOT mistaken for an unterminated block comment that
+// would blank the rest of the file (Codex round 9). A TRAILING line comment (not just a line-start
+// one) is blanked so a comment between a `from(...)` and its chained `.update(...)` can never split
+// the match. A `${…}` interpolation is treated as part of its template literal (no from()->write
+// chain is ever authored inside one — irrelevant to scope).
+//
+// regex-vs-division: a `/` begins a regex literal when an expression is expected — i.e. the previous
+// significant char is a punctuator that cannot end a value, or the preceding token is a keyword
+// (return/typeof/…). Otherwise it is the division operator (or a comment, handled above). This is the
+// standard tokenizer heuristic; an imperfect call only matters here if it changed a
+// paige_pending_approvals from()->write match, which a `/`-token never participates in.
+const EXPR_BEFORE_REGEX = new Set([..."(,=:[!&|?{;<>+-*%^~"]);
+const REGEX_KEYWORD = /(?:^|[^\w$])(?:return|typeof|instanceof|in|of|new|delete|void|do|else|yield|await|case)$/;
 function strip(t) {
   let out = "";
   let str = null; // active string delimiter: ' " or `
+  const lastSignificant = () => {
+    for (let k = out.length - 1; k >= 0; k--) if (!/\s/.test(out[k])) return out[k];
+    return "";
+  };
   for (let i = 0; i < t.length; ) {
     const c = t[i];
     if (str) {
@@ -109,6 +124,27 @@ function strip(t) {
       while (i < t.length && !(t[i] === "*" && t[i + 1] === "/")) { out += t[i] === "\n" ? "\n" : " "; i += 1; }
       if (i < t.length) { out += "  "; i += 2; }
       continue;
+    }
+    if (c === "/") { // a lone `/` — regex literal or division?
+      const p = lastSignificant();
+      if (p === "" || EXPR_BEFORE_REGEX.has(p) || REGEX_KEYWORD.test(out)) {
+        // regex literal: copy verbatim, respecting \ escapes and [...] classes (a `/` inside a class
+        // does not close it); bail on a newline (a regex literal cannot span lines).
+        out += c; i += 1;
+        let inClass = false;
+        while (i < t.length) {
+          const rc = t[i];
+          if (rc === "\n") break;
+          out += rc;
+          if (rc === "\\") { if (i + 1 < t.length) out += t[i + 1]; i += 2; continue; }
+          if (rc === "[") inClass = true;
+          else if (rc === "]") inClass = false;
+          else if (rc === "/" && !inClass) { i += 1; break; }
+          i += 1;
+        }
+        continue;
+      }
+      out += c; i += 1; continue; // division operator
     }
     out += c;
     i += 1;
@@ -319,6 +355,11 @@ if (process.argv.includes("--self-test")) {
       [["f.ts", 'supabase.from("paige_pending_approvals") // target queue\n  .update({ status: "approved" }).eq("id", id);']], 1],
     ["does NOT blank a // that lives inside the table string literal",
       [["f.ts", 'supabase.from("paige_pending_approvals").update({ status: "approved", note: "see http://x" }).eq("id", id);']], 1],
+    // Codex 2026-09-13 round 9 P2 — a regex literal containing /* must NOT be read as a block comment.
+    ["a regex literal containing /* does not blank a later approved write",
+      [["f.ts", 'const separator = /[/*]/;\nsupabase.from("paige_pending_approvals").update({ status: "approved" }).eq("id", id);']], 1],
+    ["a regex with an escaped slash does not swallow a later approved write",
+      [["f.ts", 'const re = /a\\/\\*b/;\nsupabase.from("paige_pending_approvals").update({ status: "approved" });']], 1],
     // TS `as const` / `as T` assertions on the status literal must be tolerated (idiomatic here).
     ["allows a decline literal with an `as const` assertion",
       [["f.ts", 'supabase.from("paige_pending_approvals").insert({ status: "pending" as const, tenant_id: t });']], 0],
