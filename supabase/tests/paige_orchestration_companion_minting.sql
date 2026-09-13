@@ -15,7 +15,7 @@ select plan(36);
 
 set session_replication_role = replica;   -- FK + triggers OFF for fixture construction
 
-insert into public.tenants(id) values ('11111111-1111-4111-8111-111111111111');
+insert into public.tenants(id, slug) values ('11111111-1111-4111-8111-111111111111', 'paige-c5s2-proof-tenant');
 
 -- Native events (processing_state='done' = the orphan case the sweeper cannot re-drive).
 insert into public.paige_native_events(id, event_key, tenant_id, subject_table, subject_id, dedup_key, processing_state) values
