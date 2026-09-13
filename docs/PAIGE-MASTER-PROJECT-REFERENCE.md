@@ -2661,6 +2661,10 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
+### Agent-control experience — PROPOSED / NOT BUILT, gated behind #1234 (owner-accepted 2026-09-13)
+
+A future owner-facing **agent-control** experience (watch + govern the work Paige and her bounded agents do: status, history, approve/decline, resume/readback, and — where truthful — pause/retry/cancel) has an **accepted read-only backend grounding map** but **no code and no claimed capability**. Truth from the grounding pass: the **Layer C approve→resume→readback fabric** (`paige_act_executions` ledger + companion `paige_pending_approvals` inbox + `approve-executor.ts` + reconciler cron) is the canonical seam to REUSE; **status-list is PARTIAL** (per-store readbacks, no unified query, no surface reads the ledger today), **resume/readback is REUSE** (NATIVE acts only), **cancel/retry are PARTIAL** (decline-a-pending / automatic only), and **pause is UNAVAILABLE** (no in-flight pause state; needs new backend). **Build sequencing (owner directive):** do NOT build the agent-control backend or coordinate edits against the CRM/Pipeline command surface (**PR #1234**, HIGH collision on `paige-ai-chat`/`action-risk`/capability-gateway/spine-registry); **wait for #1234 to merge + establish its canonical `crm-command` surface, then re-ground on fresh `main` and build from the real seams.** The visual prototype proceeds now via the design agent (§00; `npx impeccable update` → `flow-prototype`) and must render pause/retry/cancel/unsupported as explicitly unavailable or absent, never as live controls. Full map: `docs/delivery/agent-control-capability-map.md`.
+
 ### Paige modality neutrality — OWNER-LOCKED platform rule (2026-09-06; acceptance contract, not a capability claim)
 
 Text chat, Live Conversation, future phone/SIP, Secure Browser interactions, contextual handoffs,
