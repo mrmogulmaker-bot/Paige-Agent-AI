@@ -10,15 +10,15 @@ import { CAMPAIGN_BRIEF_CAPABILITIES } from "./domains/campaigns.ts";
 import { COMMS_MESSAGES_READ } from "./domains/comms.ts";
 import { INTEGRATIONS_LIST, INTEGRATIONS_HEALTH } from "./domains/integrations_surface.ts";
 import { CONTACT_EVENT_STATUS } from "./domains/contact.ts";
-// NOTE: ./domains/calendar_preset.ts (booking-preset lifecycle capabilities) is authored and ready to
-// adopt, but is DELIBERATELY not registered here yet. Registering a mutating capability asserts a LIVE
-// Chat binding (the validator requires it), which is only true once the Chat handler declares the tools
-// through the adapter and dispatches them to the RPCs — the Chat-owner's file. Registering it before
-// that wiring would bake in a false "chat-live" claim (§13). The shared SERVER seam it targets — the
-// create/update/publish/pause/get_calendar_presets RPCs — is live and proven; the Chat adoption is
-// handed off in docs/architecture/booking-preset-capability-adoption.md. Register + wire together.
+// Booking-preset lifecycle capabilities (create/revise/publish/pause/list + the S1
+// duplicate/archive/restore). ADOPTED with the Chat wiring in the same change (E5): the
+// handler declares CALENDAR_PRESET_TOOLS through the adapter spread and dispatches them to
+// the canonical create/update/publish/pause/duplicate/archive/restore + get_calendar_presets
+// RPCs via calendar-preset-tenant-brain.ts, so the LIVE chatBinding the validator requires is
+// now true (§10/§13). No second preset model — the UI and Paige drive the same RPCs.
+import { CALENDAR_PRESET_CAPABILITIES } from "./domains/calendar_preset.ts";
 
-export const PAIGE_SPINE_CAPABILITIES = [PIPELINE_DEAL_STAGE_EVIDENCE, BUSINESS_CONTEXT_READINESS, TEAM_AUTHORITY, SOCIAL_PRESENCE, N8N_CONNECTION_READINESS, ...N8N_MANAGEMENT_CAPABILITIES, ...BUSINESS_MISSION_CAPABILITIES, ...CAMPAIGN_BRIEF_CAPABILITIES, COMMS_MESSAGES_READ, INTEGRATIONS_LIST, INTEGRATIONS_HEALTH, CONTACT_EVENT_STATUS] as const;
+export const PAIGE_SPINE_CAPABILITIES = [PIPELINE_DEAL_STAGE_EVIDENCE, BUSINESS_CONTEXT_READINESS, TEAM_AUTHORITY, SOCIAL_PRESENCE, N8N_CONNECTION_READINESS, ...N8N_MANAGEMENT_CAPABILITIES, ...BUSINESS_MISSION_CAPABILITIES, ...CAMPAIGN_BRIEF_CAPABILITIES, ...CALENDAR_PRESET_CAPABILITIES, COMMS_MESSAGES_READ, INTEGRATIONS_LIST, INTEGRATIONS_HEALTH, CONTACT_EVENT_STATUS] as const;
 
 const KEY_PATTERN = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/;
 const SERVER_SYMBOL_PATTERN = /^public\.[a-z][a-z0-9_]*$/;

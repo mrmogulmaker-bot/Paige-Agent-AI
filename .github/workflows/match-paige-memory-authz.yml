@@ -1,0 +1,40 @@
+name: match_paige_memory authorization boundary
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*match_paige_memory_resource_scoped_authz.sql'
+      - 'supabase/tests/match_paige_memory_authz.sql'
+      - '.github/workflows/match-paige-memory-authz.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*match_paige_memory_resource_scoped_authz.sql'
+      - 'supabase/tests/match_paige_memory_authz.sql'
+      - '.github/workflows/match-paige-memory-authz.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-role-simulation:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # pgvector image: the function signature + fixtures need the `vector` type / `<=>` operator.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: paige_memory_authz_contract
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGDATABASE: paige_memory_authz_contract
+    steps:
+      - uses: actions/checkout@v4
+      - name: Synthetic role/authz proof only - never production
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/tests/match_paige_memory_authz.sql

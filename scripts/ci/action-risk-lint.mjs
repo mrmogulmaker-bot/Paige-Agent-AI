@@ -253,6 +253,13 @@ if (chatSrc.includes('...CAMPAIGN_BRIEF_TOOLS')) {
   if (!campaignTools.length) throw new Error('Campaign Brief catalog could not be parsed');
   importedTools.push(...campaignTools);
 }
+if (chatSrc.includes('...CALENDAR_PRESET_TOOLS')) {
+  if (!/import\s*\{[^}]*CALENDAR_PRESET_TOOLS[^}]*\}\s*from\s*['"]\.\.\/_shared\/paige-spine\/domains\/calendar_preset\.ts['"]/.test(chatSrc)) throw new Error('Unresolved Calendar Preset catalog import');
+  const source = fs.readFileSync('supabase/functions/_shared/paige-spine/domains/calendar_preset.ts', 'utf8');
+  const calendarTools = [...source.matchAll(/\bname:\s*"(booking_preset_[a-z_]+)"/g)].map(m => m[1]);
+  if (!calendarTools.length) throw new Error('Calendar Preset catalog could not be parsed');
+  importedTools.push(...calendarTools);
+}
 const mcpCanonicals = parseMcpCanonicals(fs.readFileSync(MCP_POLICY, "utf8"));
 const governedEdgeActions = parseGovernedEdgeActions(fs.readFileSync(SOCIAL_HANDLER, "utf8"));
 if (!mcpCanonicals.length) {

@@ -84,11 +84,21 @@ bypasses the vocab + correction + confirmation discipline; prefer the seam.
 - **DEFERRED, labeled not delivered:** the chat-runtime AUTO-WRITE of conversation/agent memory (slice
   4b) is NOT wired — this ships the seam it will call; a capable caller (Paige's MCP agent) can drive it
   now. Semantic recall of the new types via `match_paige_owner_memory` is available but unwired into chat.
-- **Follow-ups (filed, not folded in):** `match_paige_memory` (CLIENT-memory recall) carries a §59
-  global-role trap (latent — callers pass authorized ids; a different table/audience with its own §37
-  producer set); GDPR bulk hard-delete of owner/prompt memory via `process-data-deletion` (self-serve
-  `forget` ships now). `match_paige_owner_memory`'s NULL-tenant `=` filter is a documented latent trap
-  for a future operator semantic-recall path.
+- **FIXED 2026-09-13 (migration `20270304000000`, §53/§59, R3a):** `match_paige_memory` (CLIENT-memory +
+  chat-embedding recall) — the §59 caller-scope defect is closed. It carried a forged-ID self-reference
+  bypass (`_target_client_id := auth.uid()` self-authorized reading a different `_target_user_id`) AND
+  the global-role trap. Now cross-USER access is limited to self / `is_platform_operator`, and staff
+  reach a specific client via `can_access_contact` (cross-CONTACT, per-contact tenant-correct); the
+  per-user coach/tenant-admin grant was dropped (§39 Finding 1 — `chat_message_embeddings` has no tenant
+  column so a per-user staff grant can't be tenant-scoped). Each
+  data-branch gated on its own flag, search params bounded, and `service_role` trusted to pass
+  server-resolved ids (as this seam does) so the legitimate `paige-ai-chat` path — previously DEAD under
+  the `auth.uid()`-only guard — works. Boundary proof `supabase/tests/match_paige_memory_authz.sql`;
+  evidence `docs/evidence/match-paige-memory-authz.md`. Row-count re-confirm PROOF OWED.
+- **Follow-ups (filed, not folded in):** GDPR bulk hard-delete of owner/prompt memory via
+  `process-data-deletion` (self-serve `forget` ships now). `match_paige_owner_memory`'s NULL-tenant `=`
+  filter is a documented latent trap for a future operator semantic-recall path (a DIFFERENT function /
+  owner-memory audience — separate handoff, not folded into the R3a client-memory slice).
 
 **Cross-references:** §7 (memory is the moat) · §8 (Owner-Ops vs Client audiences) · §9/§51 (tenant
 isolation) · §10 (callable seam) · §18 (one home) · §59 (in-body caller scope) · §26 (voyage-3 @1024,

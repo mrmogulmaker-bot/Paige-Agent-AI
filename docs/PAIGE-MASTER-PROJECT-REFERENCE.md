@@ -3814,13 +3814,20 @@ self-knowledge (§18).
   literal tokens `has_role|has_any_role|user_roles`. Policies/functions that gate via `is_admin()`,
   `is_staff()`, `studio_role_ok()` or `check_feature_access()` reach `user_roles` one level down and
   **never enter the corpus** — so the true call-site count is **higher than 186 + 118**.
-- ❌ **R3a — `match_paige_memory` structural auth bypass (LATENT, no role required).** Passing
-  `_target_client_id := auth.uid()` makes the guard's AND-chain false so the RAISE never fires, while
-  the data predicate keys on the attacker-supplied `_target_user_id`; `authenticated`-reachable and
-  `SECURITY DEFINER`. **Not exposed today — both target tables have 0 rows** — but it arms itself on
-  the memory fabric's first write. Deferred deliberately: a correct fix must also scope the data
-  predicate's `client_id` branch, and it has a live caller (`paige-ai-chat`) whose two legitimate
-  paths must survive.
+- ✅ **R3a — `match_paige_memory` structural auth bypass — RESOLVED 2026-09-13** (migration
+  `20270304000000`, §53/§59, Gate A; deploy + exact SHA stamped in the Shipped Delivery Log §4.0
+  closeout). Closed the forged-ID self-reference bypass (passing `_target_client_id := auth.uid()` no
+  longer self-authorizes reading a different `_target_user_id`) AND the global-`admin` trap. Authority
+  is now per-target: cross-USER limited to self / `is_platform_operator`; staff cross-CONTACT via
+  `can_access_contact` (per-contact tenant-correct). The per-user coach/tenant-admin grant was dropped
+  (§39 peer-review Finding 1 — `chat_message_embeddings` has no tenant column, so a per-user staff grant
+  can't be tenant-scoped and would over-return a multi-tenant subject's other-tenant rows). **Each
+  data-predicate branch is gated on its own per-target flag**, search params
+  are bounded (`threshold`→[0,1], counts→[0,50]), and an explicit `service_role` trust branch preserves
+  the legitimate `paige-ai-chat` path (which the old `auth.uid()`-only guard left DEAD). Boundary proof
+  `supabase/tests/match_paige_memory_authz.sql`; evidence `docs/evidence/match-paige-memory-authz.md`.
+  Row-count re-confirm PROOF OWED. (R2b + R3b remain open below — this was a narrow, evidence-led slice,
+  not a full c1/c2 sweep.)
 - ❌ **R3b — remaining c1 (26 of 31 DEFINER functions) and the c2 review queue (98 policies).**
   Subagent-audited as candidates; **not** independently confirmed object-by-object.
 - ❌ **R4/R5 — backfill + dual-read, then the `user_roles` Class-A-only CHECK.** Do not skip to R5.
