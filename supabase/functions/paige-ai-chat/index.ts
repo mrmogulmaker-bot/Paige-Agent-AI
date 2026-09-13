@@ -212,17 +212,33 @@ function describeStep(
       : { label: failed ? "Could not verify that Campaign Brief revision" : "Revised and verified a Campaign Brief", group: "owner", detail: failed ? "no verified outcome" : "planning record · Rail recorded · nothing launched" };
     case "campaign_brief_list": return { label: failed ? "Couldn't read your campaign briefs" : "Checked your campaign briefs", group: "owner" };
     // Calendar booking presets (owner) — a preset is a bookable /book PAGE; only publish makes it public.
-    case "booking_preset_create": return { label: failed ? "Could not create that booking calendar" : "Created a booking calendar", group: "owner", detail: failed ? "nothing changed" : "private draft · Rail recorded · not public yet" };
-    case "booking_preset_duplicate": return { label: failed ? "Could not duplicate that booking calendar" : "Duplicated a booking calendar", group: "owner", detail: failed ? "nothing changed" : "private draft copy · Rail recorded · not public yet" };
+    // Each verb special-cases CALENDAR_PRESET_RAIL_WRITE_FAILED: there the mutation IS verified and
+    // PERSISTED (only the Rail evidence did not finish), so the chip must state the TRUE persisted
+    // state — never "nothing changed" and never (for publish) "not live" (§13/§32/§70: a verified-but-
+    // unrecorded publish leaves the /book page publicly bookable, and the chip must say so).
+    case "booking_preset_create": return out?.code === "CALENDAR_PRESET_RAIL_WRITE_FAILED"
+      ? { label: "Created a booking calendar, evidence incomplete", group: "owner", detail: "private draft created · Rail not recorded" }
+      : { label: failed ? "Could not create that booking calendar" : "Created a booking calendar", group: "owner", detail: failed ? "nothing changed" : "private draft · Rail recorded · not public yet" };
+    case "booking_preset_duplicate": return out?.code === "CALENDAR_PRESET_RAIL_WRITE_FAILED"
+      ? { label: "Duplicated a booking calendar, evidence incomplete", group: "owner", detail: "private draft copy created · Rail not recorded" }
+      : { label: failed ? "Could not duplicate that booking calendar" : "Duplicated a booking calendar", group: "owner", detail: failed ? "nothing changed" : "private draft copy · Rail recorded · not public yet" };
     case "booking_preset_revise": return out?.code === "CALENDAR_PRESET_RAIL_WRITE_FAILED"
       ? { label: "Booking calendar saved, evidence incomplete", group: "owner", detail: "canonical change verified · Rail not recorded" }
       : { label: failed ? "Could not revise that booking calendar" : "Revised a booking calendar", group: "owner", detail: failed ? "nothing changed" : "config change · Rail recorded · nothing published" };
-    case "booking_preset_publish": return failed
-      ? { label: "Could not publish that booking calendar", group: "owner", detail: "not live" }
-      : { label: "Published a booking calendar", group: "owner", detail: "public /book page live · Rail recorded" };
-    case "booking_preset_pause": return { label: failed ? "Could not pause that booking calendar" : "Paused a booking calendar", group: "owner", detail: failed ? "nothing changed" : "off the air · Rail recorded" };
-    case "booking_preset_archive": return { label: failed ? "Could not archive that booking calendar" : "Archived a booking calendar", group: "owner", detail: failed ? "nothing changed" : "put away · off the air · Rail recorded" };
-    case "booking_preset_restore": return { label: failed ? "Could not restore that booking calendar" : "Restored a booking calendar", group: "owner", detail: failed ? "nothing changed" : "back to draft/paused · not public · Rail recorded" };
+    case "booking_preset_publish": return out?.code === "CALENDAR_PRESET_RAIL_WRITE_FAILED"
+      ? { label: "Published a booking calendar, evidence incomplete", group: "owner", detail: "public /book page IS live · Rail not recorded" }
+      : failed
+        ? { label: "Could not publish that booking calendar", group: "owner", detail: "not live" }
+        : { label: "Published a booking calendar", group: "owner", detail: "public /book page live · Rail recorded" };
+    case "booking_preset_pause": return out?.code === "CALENDAR_PRESET_RAIL_WRITE_FAILED"
+      ? { label: "Paused a booking calendar, evidence incomplete", group: "owner", detail: "off the air · Rail not recorded" }
+      : { label: failed ? "Could not pause that booking calendar" : "Paused a booking calendar", group: "owner", detail: failed ? "nothing changed" : "off the air · Rail recorded" };
+    case "booking_preset_archive": return out?.code === "CALENDAR_PRESET_RAIL_WRITE_FAILED"
+      ? { label: "Archived a booking calendar, evidence incomplete", group: "owner", detail: "put away · off the air · Rail not recorded" }
+      : { label: failed ? "Could not archive that booking calendar" : "Archived a booking calendar", group: "owner", detail: failed ? "nothing changed" : "put away · off the air · Rail recorded" };
+    case "booking_preset_restore": return out?.code === "CALENDAR_PRESET_RAIL_WRITE_FAILED"
+      ? { label: "Restored a booking calendar, evidence incomplete", group: "owner", detail: "back to draft/paused · Rail not recorded" }
+      : { label: failed ? "Could not restore that booking calendar" : "Restored a booking calendar", group: "owner", detail: failed ? "nothing changed" : "back to draft/paused · not public · Rail recorded" };
     case "booking_preset_list": return { label: failed ? "Couldn't read your booking calendars" : "Checked your booking calendars", group: "owner" };
     // CRM (client)
     case "crm_search_contacts": return { label: "Looking through your contacts", group: "client", detail: typeof out?.count === "number" ? `${out.count} found` : undefined };

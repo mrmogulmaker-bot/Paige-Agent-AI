@@ -532,12 +532,18 @@ export async function executeVerifiedCalendarPresetMutation(input: {
     };
   }
 
+  // The revise caveat the file's docstring promises (§13): get_calendar_presets is a COARSE projector,
+  // so a revision is verified STRICTLY only on the fields it carries; finer fields it does not project
+  // are recorded as accepted by the server, not independently re-read. The note must say so rather than
+  // imply the whole patch was confirmed.
+  const baseNote = "The canonical booking-preset change was verified against a fresh projection and recorded on the workspace Rail. Nothing was published unless this was a publish, and nothing connected a provider, sent an invitation, created an external event, made a meeting link, or took a booking. Mind and Memory remain unavailable.";
+  const reviseCaveat = " Revision note: the title, type, duration and capacity were confirmed against the projection; finer fields it does not carry (reminder notice, buffers, description) were accepted by the server but not independently re-read here.";
   return {
     success: true,
     verified: true,
     railRecorded: true,
     preset,
     receipt,
-    note: "The canonical booking-preset change was verified against a fresh projection and recorded on the workspace Rail. Nothing was published unless this was a publish, and nothing connected a provider, sent an invitation, created an external event, made a meeting link, or took a booking. Mind and Memory remain unavailable.",
+    note: input.tool === "booking_preset_revise" ? baseNote + reviseCaveat : baseNote,
   };
 }
