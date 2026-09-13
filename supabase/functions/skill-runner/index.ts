@@ -795,7 +795,24 @@ Deno.serve(async (req) => {
             body: JSON.stringify({ business_id, triggered_by: "skill" }),
           });
           outputs = await res.json();
-          stepsLog.push({ step: "business-verifier", ok: res.ok });
+          // A refused/errored verification is NOT a skill success. business-verifier returns `ok:true` for
+          // any run that HAPPENED (even a `status:"failed"` no-match), and `ok:false` only for a refusal
+          // (the authz 403, or the Funding & Coaching Tools gate's HTTP-200 refusal) or a thrown error. So
+          // `res.ok && outputs.ok !== false` is the only true completion — anything else must NOT leave
+          // runStatus at its `succeeded` default (line ~725), or success_count inflates and the agent is
+          // told the tool completed when no provider ran (§13 "a fire is not a delivery"; §37 producer/
+          // consumer inventory — this server caller keys on the outcome, not just the HTTP status).
+          const bvOk = res.ok && (outputs as { ok?: boolean })?.ok !== false;
+          stepsLog.push({ step: "business-verifier", ok: bvOk });
+          if (!bvOk) {
+            // A policy refusal (200 `ok:false`, or a 403) stopped before a deliverable → `cancelled`,
+            // matching the interpreter's needs_config/denied honesty; a transport/5xx → `failed`.
+            runStatus = res.ok ? "cancelled" : "failed";
+            runError = (outputs as { reason?: string; message?: string; error?: string })?.reason
+              ?? (outputs as { message?: string })?.message
+              ?? (outputs as { error?: string })?.error
+              ?? "business verification did not run";
+          }
           break;
         }
         case "research_to_concept_brief": {

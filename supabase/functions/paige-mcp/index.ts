@@ -3590,7 +3590,15 @@ mcp.tool("verify_business", {
     });
     const body = await r.json().catch(() => ({}));
     await audit("verify_business", "business", business_id, { status: r.status, composite_score: (body as { composite_score?: number })?.composite_score ?? null });
-    if (r.status >= 300) return err(typeof body === "object" ? JSON.stringify(body) : String(body));
+    // A non-2xx OR a 200 refusal (`ok:false` — e.g. the Funding & Coaching Tools gate refuses BEFORE any
+    // provider contact) means the verification did NOT run; `ok(body)` would tell the calling agent the
+    // tool completed (§13 "a fire is not a delivery"; §37 — this MCP consumer must read the outcome, not
+    // just the HTTP status). business-verifier returns `ok:true` for any run that happened (even a
+    // `status:"failed"` no-match), so a real run is never mislabeled.
+    const bv = body as { ok?: boolean; error?: string; message?: string; reason?: string };
+    if (r.status >= 300 || bv?.ok === false) {
+      return err(bv?.reason ?? bv?.message ?? bv?.error ?? (typeof body === "object" ? JSON.stringify(body) : String(body)));
+    }
     return ok(body);
   },
 });

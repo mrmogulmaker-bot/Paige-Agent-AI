@@ -14,6 +14,7 @@ import {
   resolveFundingCoachingGate,
   fundingGateAuditRow,
   recordFundingGateDecision,
+  FUNDING_TOOLS_REMEDIATION_LIVE,
   type FundingGateDb,
   type FundingConnectionFact,
 } from "../../supabase/functions/_shared/funding-coaching-gate.ts";
@@ -75,42 +76,70 @@ function mockDb(cfg: MockCfg): FundingGateDb {
 const connAbsent: FundingConnectionFact = { satisfied: false, missing: "connection" };
 
 describe("decideFundingCoachingGate — the pure decision matrix (fail-closed, most-restrictive)", () => {
-  it("not entitled → setup_required / entitlement_missing, 'install the package' (entitlement decided first)", () => {
-    const v = decideFundingCoachingGate({ entitlement: "not_entitled", connection: { satisfied: true, via: "connection" } });
+  // When the remediation surfaces are LIVE, a refusal names the action (install/connect). Codex #1222.
+  it("remediationLive: not entitled → setup_required / entitlement_missing, 'install the package' (entitlement decided first)", () => {
+    const v = decideFundingCoachingGate({ entitlement: "not_entitled", connection: { satisfied: true, via: "connection" }, remediationLive: true });
     expect(v.allowed).toBe(false);
     expect(v.result).toBe("setup_required");
     expect(v.state).toBe("entitlement_missing");
     expect(v.reason).toMatch(/Install the Funding & Coaching Tools/);
   });
 
-  it("an entitlement READ ERROR → unavailable / entitlement_missing (fail closed — never a silent allow, never 'install')", () => {
-    const v = decideFundingCoachingGate({ entitlement: "read_error", connection: { satisfied: true, via: "connection" } });
+  // DEFAULT (surfaces NOT live — the shipped state today): a refusal must resolve `unavailable`, never a
+  // dead "install/connect" instruction the tenant cannot act on (Codex #1222 · owner: keep it UNAVAILABLE).
+  it("default (surfaces not live): not entitled → unavailable / entitlement_missing, NO 'install' instruction", () => {
+    const v = decideFundingCoachingGate({ entitlement: "not_entitled", connection: { satisfied: true, via: "connection" } });
     expect(v.allowed).toBe(false);
     expect(v.result).toBe("unavailable");
-    expect(v.state).toBe("entitlement_missing");
-    expect(v.reason).not.toMatch(/Install the Funding/); // a read error must NOT tell the tenant to install
+    expect(v.state).toBe("entitlement_missing"); // state preserved for the audit trail
+    expect(v.reason).not.toMatch(/Install/);
+    expect(v.reason).toMatch(/isn't available/);
   });
 
-  it("entitled but connection ABSENT → setup_required / connection_missing", () => {
-    const v = decideFundingCoachingGate({ entitlement: "entitled", connection: connAbsent });
+  it("an entitlement READ ERROR → unavailable / entitlement_missing (fail closed — never a silent allow, never 'install')", () => {
+    // read_error is unavailable regardless of remediationLive.
+    for (const remediationLive of [true, false]) {
+      const v = decideFundingCoachingGate({ entitlement: "read_error", connection: { satisfied: true, via: "connection" }, remediationLive });
+      expect(v.allowed).toBe(false);
+      expect(v.result).toBe("unavailable");
+      expect(v.state).toBe("entitlement_missing");
+      expect(v.reason).not.toMatch(/Install the Funding/); // a read error must NOT tell the tenant to install
+    }
+  });
+
+  it("remediationLive: entitled but connection ABSENT → setup_required / connection_missing", () => {
+    const v = decideFundingCoachingGate({ entitlement: "entitled", connection: connAbsent, remediationLive: true });
     expect(v.allowed).toBe(false);
     expect(v.result).toBe("setup_required");
     expect(v.state).toBe("connection_missing");
+    expect(v.reason).toMatch(/Connect your Financial data source/);
   });
 
-  it("entitled but CONSENT missing → setup_required / consent_missing", () => {
-    const v = decideFundingCoachingGate({ entitlement: "entitled", connection: { satisfied: false, missing: "consent" } });
+  it("default (surfaces not live): entitled but connection ABSENT → unavailable / connection_missing, NO 'connect' instruction", () => {
+    const v = decideFundingCoachingGate({ entitlement: "entitled", connection: connAbsent });
     expect(v.allowed).toBe(false);
-    expect(v.state).toBe("consent_missing");
-    expect(v.result).toBe("setup_required");
+    expect(v.result).toBe("unavailable");
+    expect(v.state).toBe("connection_missing"); // diagnostic state preserved
+    expect(v.reason).not.toMatch(/Connect/);
   });
 
-  it("entitled + connection satisfied → ok / allowed", () => {
+  it("remediationLive: entitled but CONSENT missing → setup_required / consent_missing; default → unavailable / consent_missing", () => {
+    const live = decideFundingCoachingGate({ entitlement: "entitled", connection: { satisfied: false, missing: "consent" }, remediationLive: true });
+    expect(live.state).toBe("consent_missing");
+    expect(live.result).toBe("setup_required");
+    const def = decideFundingCoachingGate({ entitlement: "entitled", connection: { satisfied: false, missing: "consent" } });
+    expect(def.state).toBe("consent_missing");
+    expect(def.result).toBe("unavailable");
+  });
+
+  it("entitled + connection satisfied → ok / allowed (remediationLive irrelevant to an allow)", () => {
     for (const via of ["connection", "consent"] as const) {
-      const v = decideFundingCoachingGate({ entitlement: "entitled", connection: { satisfied: true, via } });
-      expect(v.allowed).toBe(true);
-      expect(v.result).toBe("ok");
-      expect(v.state).toBe("allowed");
+      for (const remediationLive of [true, false]) {
+        const v = decideFundingCoachingGate({ entitlement: "entitled", connection: { satisfied: true, via }, remediationLive });
+        expect(v.allowed).toBe(true);
+        expect(v.result).toBe("ok");
+        expect(v.state).toBe("allowed");
+      }
     }
   });
 
@@ -141,10 +170,22 @@ describe("resolveFundingCoachingGate — the async resolver reads the EXACT is_f
   const call = (cfg: MockCfg, over: Partial<{ tenantId: string | null; authorized: boolean }> = {}) =>
     resolveFundingCoachingGate(mockDb(cfg), { tenantId: "t1", providerKey: "smartcredit", ...over });
 
-  it("no active is_finance install and no finance_in_scope flag → not_entitled → setup_required", async () => {
+  it("no active is_finance install and no finance_in_scope flag → not_entitled → unavailable (shipped: remediation surfaces not live)", async () => {
     const v = await call({ installs: [], tenantFeatures: {} });
     expect(v.state).toBe("entitlement_missing");
-    expect(v.result).toBe("setup_required");
+    // The SHIPPED resolver passes FUNDING_TOOLS_REMEDIATION_LIVE (false today), so a refusal is the honest
+    // `unavailable`, never a dead "install the package" instruction (Codex #1222 · owner ruling).
+    expect(v.result).toBe("unavailable");
+  });
+
+  it("SHIPPED DEFAULT: the resolver never emits a `setup_required` remediation while the surfaces are not live", async () => {
+    // The constant is the single deliberate switch; assert it is false so a future flip is caught by review.
+    expect(FUNDING_TOOLS_REMEDIATION_LIVE).toBe(false);
+    // Entitled-but-connection-absent (the universal case today) also resolves unavailable, not "connect".
+    const entitled = await call({ installs: [], tenantFeatures: { finance_in_scope: true } });
+    expect(entitled.state).toBe("connection_missing");
+    expect(entitled.result).toBe("unavailable");
+    expect(entitled.reason).not.toMatch(/Connect|Install/);
   });
 
   it("an ACTIVE install of an is_finance item → entitled (then connection absent → connection_missing)", async () => {
