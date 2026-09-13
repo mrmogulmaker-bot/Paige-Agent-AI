@@ -92,6 +92,9 @@ describe("canonical CRM contact/company command", () => {
     }
     expect(sql).toContain("public.preview_crm_command");
     expect(sql).toContain("CRM_PREVIEW_INVALID_OR_EXPIRED");
+    expect(sql).toContain("cached.consumed_at is not null and cached.result is not null");
+    expect(sql).toContain("v_contact.merged_into_contact_id is not null");
+    expect(sql).toMatch(/b\.is_active is true\s+for update/i);
     expect(sql).toContain("CRM_ABSENCE_READBACK_FAILED");
     expect(sql).toContain("left join public.clients target_client");
     expect(sql).toContain("tags=coalesce((select pg_catalog.array_agg");

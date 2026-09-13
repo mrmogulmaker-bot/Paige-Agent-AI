@@ -307,6 +307,9 @@ begin
       update public.clients c set status = 'archived', updated_at = clock_timestamp()
        where c.id = v_contact.id returning * into v_contact;
     elsif v_action = 'contact.restore' then
+      if v_contact.merged_into_contact_id is not null then
+        raise exception 'CRM_CONTACT_MERGED' using errcode = '42501';
+      end if;
       update public.clients c set status = 'active', updated_at = clock_timestamp()
        where c.id = v_contact.id returning * into v_contact;
     elsif v_action in ('contact.link_company','contact.unlink_company') then
@@ -315,7 +318,8 @@ begin
           raise exception 'CRM_BUSINESS_NOT_FOUND' using errcode = 'P0002';
         end if;
         select * into v_business from public.businesses b
-         where b.id = (_command->>'company_id')::uuid and b.tenant_id = v_tenant;
+         where b.id = (_command->>'company_id')::uuid and b.tenant_id = v_tenant and b.is_active is true
+         for update;
         if not found then raise exception 'CRM_BUSINESS_NOT_FOUND' using errcode = 'P0002'; end if;
       end if;
       update public.clients c
@@ -876,6 +880,9 @@ begin
   select * into cached from public.crm_command_previews where tenant_id=_tenant_id and actor_user_id=_actor_id and preview_key=_preview_key for update;
   if found then
     if cached.command_hash<>h then raise exception 'CRM_PREVIEW_IDEMPOTENCY_REUSE' using errcode='22023'; end if;
+    if cached.consumed_at is not null and cached.result is not null then
+      return cached.result||pg_catalog.jsonb_build_object('replayed',true);
+    end if;
     if cached.expires_at<=pg_catalog.now() or cached.consumed_at is not null then raise exception 'CRM_PREVIEW_EXPIRED' using errcode='22023'; end if;
     return cached.preview||pg_catalog.jsonb_build_object('preview_id',cached.id,'replayed',true,'expires_at',cached.expires_at);
   end if;
@@ -898,13 +905,13 @@ begin
       if not found then raise exception 'CRM_CONTACT_NOT_FOUND' using errcode='P0002'; end if;
       if coalesce(_command->>'expected_loser_updated_at','')='' or c2.updated_at is distinct from (_command->>'expected_loser_updated_at')::timestamptz
         then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
-      select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('field',x.field,'survivor',x.sv,'loser',x.lv,'resolution',coalesce(_command->'resolutions'->>x.field,'survivor')) order by x.field),'[]'::jsonb)
+      select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('field',x.field,'survivor',x.sv,'loser',x.lv,'resolution',coalesce(_command->'resolutions'->>x.field,case when x.sv is null and x.lv is not null then 'loser' else 'survivor' end)) order by x.field),'[]'::jsonb)
         into conflict_rows
         from (values
           ('email',c1.email,c2.email),('phone',c1.phone,c2.phone),('entity_name',c1.entity_name,c2.entity_name),('title',c1.title,c2.title),
           ('linked_user_id',c1.linked_user_id::text,c2.linked_user_id::text),('primary_business_id',c1.primary_business_id::text,c2.primary_business_id::text),
           ('assigned_coach_user_id',c1.assigned_coach_user_id::text,c2.assigned_coach_user_id::text),('lead_owner_user_id',c1.lead_owner_user_id::text,c2.lead_owner_user_id::text)
-        ) x(field,sv,lv) where x.sv is not null and x.lv is not null and x.sv<>x.lv;
+        ) x(field,sv,lv) where x.sv is distinct from x.lv and (x.sv is not null or x.lv is not null);
       if pg_catalog.jsonb_typeof(coalesce(_command->'resolutions','{}'::jsonb))<>'object' then raise exception 'CRM_MERGE_RESOLUTIONS_INVALID' using errcode='22023'; end if;
       select count(*) into unresolved from pg_catalog.jsonb_each_text(coalesce(_command->'resolutions','{}'::jsonb)) r
        where r.value not in ('survivor','loser') or r.key not in ('email','phone','entity_name','title','linked_user_id','primary_business_id','assigned_coach_user_id','lead_owner_user_id');
@@ -1283,6 +1290,8 @@ BEGIN
       ('update_social_accounts',            'Record the accounts you post from', 'Business'),
       ('ingest_client_memory',              'Remember something about a client', 'Client file'),
       ('ingest_credit_scores',              'Record reported score figures on a client''s file', 'Client file'),
+      ('nav_pull_business_credit',           'Pull a paid NAV business credit report', 'Client file'),
+      ('smartcredit_pull_snapshot',           'Pull a paid SmartCredit snapshot', 'Client file'),
       ('ingest_banking_snapshot',           'Record reported account figures on a client''s file', 'Client file'),
       ('ingest_confirm_proposal',           'Confirm a staged change to a client''s file', 'Client file'),
       ('ingest_reject_proposal',            'Discard a staged change to a client''s file', 'Client file'),

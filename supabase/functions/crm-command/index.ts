@@ -214,6 +214,34 @@ serve(async (req) => {
     .eq("id", tenantId).maybeSingle();
   const capability = ACTION_CAPABILITY[body.command.action];
   const requestArgs = { command: body.command, idempotency_key: body.idempotency_key };
+  const successfulResultResponse = (resultObject: JsonObject, action: string): Response => {
+    const readback = object(resultObject.readback);
+    const destination = action.startsWith("deal.") ? "pipeline" : action.startsWith("task.") ? "tasks" : "contacts";
+    const accountType = typeof tenantRoute?.account_type === "string" ? tenantRoute.account_type : "standalone";
+    const tier: CanonicalTier = tenantRoute?.parent_tenant_id ? "sub_account"
+      : accountType === "agency" ? "agency" : accountType === "enterprise" ? "enterprise" : "solo";
+    const surfaceUrl = canonicalAppUrl({ actor: "account", tier, account: tenantRoute?.account_number ?? null, destination });
+    // The current Solo routers own unified People/business focus (`?person=`) and Pipeline deal
+    // focus (`?deal=`). CRM tasks still have no human record router, so task actions return only
+    // the truthful Command Center surface URL and explicitly label it surface_only.
+    const recordId = typeof readback?.id === "string" && readback.absent !== true ? readback.id : null;
+    const deepLink = surfaceUrl && tier === "solo" && recordId && action.startsWith("contact.")
+      ? `${surfaceUrl}?person=${encodeURIComponent(recordId)}`
+      : surfaceUrl && tier === "solo" && recordId && action.startsWith("deal.")
+        ? `${surfaceUrl}?deal=${encodeURIComponent(recordId)}` : null;
+    return response(200, {
+      ...resultObject,
+      capability,
+      record_locator: {
+        surface: action.startsWith("deal.") ? "campaigns" : action.startsWith("task.") ? "command-center" : "clients",
+        tab: action.startsWith("deal.") ? "pipeline" : action.startsWith("task.") ? "tasks" : "people",
+        record_id: readback?.id ?? null,
+        surface_url: surfaceUrl,
+        deep_link: deepLink,
+        deep_link_status: deepLink ? "exact" : surfaceUrl ? "surface_only" : "unavailable",
+      },
+    });
+  };
 
   let lane = "unresolved";
   const { data: resolvedLane, error: laneError } = await caller.rpc("resolve_tool_autonomy", {
@@ -325,6 +353,9 @@ serve(async (req) => {
         const code = /^(CRM|PIPELINE)_[A-Z0-9_:,-]+$/.test(previewError?.message ?? "") ? previewError!.message : "CRM_PREVIEW_FAILED";
         return response(code.includes("VERSION_CONFLICT") ? 409 : 422, { ok: false, outcome: "failed", code });
       }
+      if (preview.ok === true && preview.outcome === "succeeded") {
+        return successfulResultResponse(preview, body.command.action);
+      }
       if (preview.eligible !== true) {
         return response(422, { ok: false, outcome: "refused", code: "CRM_PREVIEW_INELIGIBLE", preview });
       }
@@ -405,31 +436,6 @@ serve(async (req) => {
   }
 
   const resultObject = object(result) ?? { ok: false, outcome: "failed" };
-  const readback = object(resultObject.readback);
   const action = typeof decidedCommand.action === "string" ? decidedCommand.action : body.command.action;
-  const destination = action.startsWith("deal.") ? "pipeline" : action.startsWith("task.") ? "tasks" : "contacts";
-  const accountType = typeof tenantRoute?.account_type === "string" ? tenantRoute.account_type : "standalone";
-  const tier: CanonicalTier = tenantRoute?.parent_tenant_id ? "sub_account"
-    : accountType === "agency" ? "agency" : accountType === "enterprise" ? "enterprise" : "solo";
-  const surfaceUrl = canonicalAppUrl({ actor: "account", tier, account: tenantRoute?.account_number ?? null, destination });
-  // The current Solo routers own unified People/business focus (`?person=`) and Pipeline deal
-  // focus (`?deal=`). CRM tasks still have no human record router, so task actions return only
-  // the truthful Command Center surface URL and explicitly label it surface_only.
-  const recordId = typeof readback?.id === "string" && readback.absent !== true ? readback.id : null;
-  const deepLink = surfaceUrl && tier === "solo" && recordId && action.startsWith("contact.")
-    ? `${surfaceUrl}?person=${encodeURIComponent(recordId)}`
-    : surfaceUrl && tier === "solo" && recordId && action.startsWith("deal.")
-      ? `${surfaceUrl}?deal=${encodeURIComponent(recordId)}` : null;
-  return response(200, {
-    ...resultObject,
-    capability,
-    record_locator: {
-      surface: action.startsWith("deal.") ? "campaigns" : action.startsWith("task.") ? "command-center" : "clients",
-      tab: action.startsWith("deal.") ? "pipeline" : action.startsWith("task.") ? "tasks" : "people",
-      record_id: readback?.id ?? null,
-      surface_url: surfaceUrl,
-      deep_link: deepLink,
-      deep_link_status: deepLink ? "exact" : surfaceUrl ? "surface_only" : "unavailable",
-    },
-  });
+  return successfulResultResponse(resultObject, action);
 });
