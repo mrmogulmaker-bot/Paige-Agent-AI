@@ -263,7 +263,13 @@ async function decideActRecord(params: {
 
   // Lane already decided a non-execute outcome (off → held, confirm → approval_pending).
   if (laneOutcome) {
-    return { record: { ...base, outcome: laneOutcome, detail: { effective_lane: effectiveLane } } };
+    const detail: Record<string, unknown> = { effective_lane: effectiveLane };
+    // C5/§P1 (Codex peer-gate): a HELD (approval_pending) act SNAPSHOTS its governed args into the IMMUTABLE
+    // ledger row, so the approval-executor dispatches EXACTLY what the reviewer approved — never the live
+    // paige_automation_acts.config, which a tenant admin can mutate between the hold and the approval (a
+    // confused-deputy / TOCTOU: approval could execute a stage slug different from the one the reviewer saw, §70.2).
+    if (laneOutcome === "approval_pending") detail.snapshot_args = act.config ?? {};
+    return { record: { ...base, outcome: laneOutcome, detail } };
   }
 
   // auto lane — resolve the adapter + governed capability, then the one pathway.
@@ -295,6 +301,9 @@ async function decideActRecord(params: {
     error: dec.error ?? null,
     detail: { capability: capability.id, decision: decision.kind, risk: decision.audit.risk },
   };
+  // C5/§P1 (Codex peer-gate): a HIGH act clamped auto→propose also lands approval_pending — snapshot its
+  // governed args into the immutable ledger row (same reason as the confirm-lane branch above).
+  if (dec.outcome === "approval_pending") record.detail.snapshot_args = act.config ?? {};
 
   // C2: a governed-AUTHORIZED native, synchronous execute becomes a dispatch plan. It runs ONLY after the
   // durable accepted_for_execution record persists (phase 5), so a crash before dispatch leaves a
