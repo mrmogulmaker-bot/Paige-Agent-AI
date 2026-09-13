@@ -32,6 +32,7 @@ on:
       - "supabase/functions/solo-team-invitations/**"
       - "supabase/functions/handle-resend-webhook/**"
       - "supabase/tests/resend_receipt_reliability.sql"
+      - "supabase/tests/promotional_solo_grant.sql"
       - "scripts/proof/resend-receipt-concurrency.mjs"
       - "scripts/proof/business-mission-concurrency.mjs"
       - "src/__tests__/paige-spine-*.test.ts"
@@ -66,6 +67,7 @@ on:
       - "supabase/functions/solo-team-invitations/**"
       - "supabase/functions/handle-resend-webhook/**"
       - "supabase/tests/resend_receipt_reliability.sql"
+      - "supabase/tests/promotional_solo_grant.sql"
       - "scripts/proof/resend-receipt-concurrency.mjs"
       - "scripts/proof/business-mission-concurrency.mjs"
       - "src/__tests__/paige-spine-*.test.ts"
@@ -125,6 +127,9 @@ jobs:
       # and that the fixed offer/atomic fulfillment functions retain their least-privilege grants.
       - run: supabase test db supabase/tests/solo_beta_authz_hardening.sql
       - run: supabase test db supabase/tests/solo_beta_offer_boundary.sql
+      # Platform-issued promotional Solo access is a separate service-only lane:
+      # no Stripe binding, one explicit grant, one workspace, and retry-safe receipts.
+      - run: supabase test db supabase/tests/promotional_solo_grant.sql
       - run: supabase test db supabase/tests/resend_receipt_reliability.sql
       - run: node scripts/proof/resend-receipt-concurrency.mjs
         env:
