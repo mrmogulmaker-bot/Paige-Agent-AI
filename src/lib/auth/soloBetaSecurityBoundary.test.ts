@@ -98,6 +98,21 @@ describe("Solo Beta security boundary", () => {
     expect(integrity).toContain("'active','past_due','canceled','unpaid','paused'");
   });
 
+  it("gives established memberships precedence over stale acquisition continuations", () => {
+    const establishedChoice = auth.indexOf("if (!isClientInvite && shouldPauseForWorkspaceChoiceAtLogin({");
+    expect(establishedChoice).toBeGreaterThan(-1);
+    expect(establishedChoice).toBeLessThan(auth.indexOf("// Plan-intent"));
+    expect(establishedChoice).toBeLessThan(auth.indexOf("// Honor ?next="));
+    expect(auth).toContain('navigate("/choose-account", { replace: true })');
+  });
+
+  it("recovers established memberships to account choice instead of claiming enrollment failure", () => {
+    expect(status).toContain('state: "choose_account"');
+    expect(status).toContain('destination: "/choose-account"');
+    expect(welcome).toContain('next.state === "choose_account"');
+    expect(welcome).toContain('next.destination !== "/choose-account"');
+  });
+
   it("verifies fulfilled users before current-agreement acquisition checks", () => {
     expect(status.indexOf('enrollment?.state === "fulfilled"')).toBeLessThan(status.indexOf('admin.from("signup_intake")'));
     expect(status).toContain('admin.from("solo_beta_fulfillment_receipts")');

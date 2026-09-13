@@ -2380,7 +2380,15 @@ route now refuses.
 > compatibility destination, or special case. The historical `/admin`-door analysis below remains
 > evidence of the defect repaired by #811, not an active route contract.
 
-**`/agency/*` is deliberately NOT gated, and that is a stated gap rather than an oversight.** A first
+> **SUPERSEDING OWNER DECISION — 2026-09-13:** every established authenticated person with at
+> least one active direct membership pauses at `/choose-account` on each fresh login, including a
+> one-workspace person. The card remains visible until selected; only then may guarded `switchTenant`
+> enter the server-authorized canonical workspace. A stale Solo plan or
+> `/welcome?checkout=success|recovery` continuation cannot replace this choice. Genuine
+> membership-less Solo acquisition and signed invite acceptance remain separate. The in-workspace
+> exit control still appears only when another context exists; fresh-login confirmation does not
+> manufacture a second destination.
+>**`/agency/*` is deliberately NOT gated, and that is a stated gap rather than an oversight.** A first
 revision of this change gated the numeric leg too, and CI proved it destroyed a shipped capability
 (§58): during an agency act-as, `activeTenant` becomes the CHILD while the operator's authority comes
 from the parent, so a tier gate read `sub_account` and ejected the operator out of the

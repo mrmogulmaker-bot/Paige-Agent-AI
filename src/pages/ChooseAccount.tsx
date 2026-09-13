@@ -118,26 +118,13 @@ export default function ChooseAccount() {
   useEffect(() => {
     if (loading || error) return;
     if (context.accountContextLoading || context.accountContextStatus !== "ready") return;
-    if (context.isPlatformStaff || choices.length >= 2) return;
-    void (async () => {
-      if (choices.length === 1) {
-        const only = choices[0].tenant;
-        const root = workspaceRootForTenant(only);
-        if (!root) {
-          setError("Paige couldn't confirm this account's canonical workspace address. Your access has not changed.");
-          return;
-        }
-        if (!(await enterWorkspace(only))) return;
-        // A real switch just happened, so re-resolve every provider from scratch
-        // rather than carry the previous workspace's caches across.
-        if (only.id !== context.activeTenantId) window.location.assign(root);
-        else navigate(root, { replace: true });
-        return;
-      }
-      setError(
-        "Paige couldn't confirm a workspace for this account. Sign in with a different account or contact support.",
-      );
-    })();
+    // Every established user pauses here on fresh login, including someone with
+    // one workspace. The choice card is an intentional confirmation of scope, not
+    // a shortcut that silently selects on the person's behalf.
+    if (context.isPlatformStaff || choices.length >= 1) return;
+    setError(
+      "Paige couldn't confirm a workspace for this account. Sign in with a different account or contact support.",
+    );
   }, [
     choices,
     context,
