@@ -122,11 +122,11 @@ const openPreset = (index = 0) => act(() => {
 /* ------------------------------------------------------- the create chooser */
 // Creating a preset is a guided chooser now, not a name field: open it, pick a
 // booking model, then a starter template (or a custom name). These drive that flow.
-const openChooser = () => act(() => { byText(/New preset/)?.click(); });
+const openChooser = () => act(() => { byText(/New calendar/)?.click(); });
 const pickCategory = (re: RegExp) => act(() => {
   [...container.querySelectorAll<HTMLButtonElement>(".cc-chooser-cat")].find((c) => re.test(c.textContent ?? ""))?.click();
 });
-const chooserNameField = () => container.querySelector<HTMLInputElement>('input[aria-label="Name for the new booking preset"]');
+const chooserNameField = () => container.querySelector<HTMLInputElement>('input[aria-label="Name for the new booking calendar"]');
 const typeChooserName = (value: string) => {
   const f = chooserNameField();
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
@@ -338,7 +338,7 @@ describe("authority and state", () => {
 
   it("explains what a preset is when there are none, and keeps accounts reachable", () => {
     mount({ empty: true, calendars: [] });
-    expect(text()).toMatch(/No booking presets yet/i);
+    expect(text()).toMatch(/No booking calendars yet/i);
     expect(text()).toMatch(/Connecting a calendar account above is separate/i);
     expect(text()).toMatch(/Google Calendar/);
   });
@@ -457,7 +457,7 @@ describe("duplicate, archive and restore — the full preset object lifecycle", 
     mount({ calendars: [calendar({ enabled: false, published_at: null, archived_at: "2026-02-01T00:00:00.000Z" })] });
     openPreset();
     // The archived banner explains the read-only state.
-    expect(text()).toMatch(/This preset is\s*Archived/i);
+    expect(text()).toMatch(/This calendar is\s*Archived/i);
     expect(text()).toMatch(/read-only while it’s archived/i);
     // Restore + Duplicate are offered; Publish and Pause are not.
     expect(byText(/Restore/)).toBeTruthy();
@@ -689,7 +689,7 @@ describe("what the surface must not silently destroy or misreport", () => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     act(() => { setter.call(nameField!, "Discovery call EDITED"); nameField!.dispatchEvent(new Event("input", { bubbles: true })); });
 
-    act(() => { byText(/All presets/)?.click(); });
+    act(() => { byText(/All calendars/)?.click(); });
 
     expect(text()).toMatch(/Save or discard your changes before leaving/i);
     // …and the edit is still there, on the preset it belongs to (still in editor).
@@ -707,9 +707,9 @@ describe("what the surface must not silently destroy or misreport", () => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     act(() => { setter.call(field!, "Edited name"); field!.dispatchEvent(new Event("input", { bubbles: true })); });
     // No create control is on screen while the editor holds unsaved edits.
-    expect(byText(/New preset/)).toBeFalsy();
+    expect(byText(/New calendar/)).toBeFalsy();
     // And the one way back is refused, so the edits cannot be lost this way.
-    act(() => { byText(/All presets/)?.click(); });
+    act(() => { byText(/All calendars/)?.click(); });
     expect(text()).toMatch(/Save or discard your changes before leaving/i);
   });
 
@@ -818,7 +818,7 @@ describe("a booking preset can actually be created", () => {
     // it exists to manage.
     mount({ empty: true, calendars: [] });
     expect(text()).toMatch(/Pick a booking model to start a private draft/i);
-    expect(byText(/New preset/)).toBeTruthy();
+    expect(byText(/New calendar/)).toBeTruthy();
   });
 
   it("creates from the chooser with a CalendarDraft, then selects what it made", async () => {
@@ -898,7 +898,7 @@ describe("a booking preset can actually be created", () => {
     // chooser cannot be opened to fire a duplicate write.
     const createCalendar = vi.fn().mockResolvedValue({ ok: true, row: calendar({ id: "cal-new" }) });
     mount({ createCalendar, empty: true, calendars: [], busy: "new" });
-    const openers = [...container.querySelectorAll<HTMLButtonElement>("button")].filter((b) => /New preset/.test(b.textContent ?? ""));
+    const openers = [...container.querySelectorAll<HTMLButtonElement>("button")].filter((b) => /New calendar/.test(b.textContent ?? ""));
     expect(openers.length).toBeGreaterThan(0);
     expect(openers.every((b) => b.disabled)).toBe(true);
     act(() => { openers[0]?.click(); });  // disabled → no-op, no chooser
@@ -907,7 +907,7 @@ describe("a booking preset can actually be created", () => {
 
   it("does not offer creation to an account that cannot write", () => {
     mount({ canWrite: false });
-    expect(byText(/New preset/)?.disabled).toBe(true);
+    expect(byText(/New calendar/)?.disabled).toBe(true);
   });
 });
 
@@ -963,7 +963,7 @@ describe("creation during the identity window", () => {
 
   it("stops offering creation once the route names an account the data has not caught up to", () => {
     mountRouted();
-    const opener = () => [...container.querySelectorAll("button")].find((b) => /New preset/.test(b.textContent ?? ""));
+    const opener = () => [...container.querySelectorAll("button")].find((b) => /New calendar/.test(b.textContent ?? ""));
     expect(opener()?.disabled).toBe(false);
     move();
     expect(opener()?.disabled).toBe(true);
