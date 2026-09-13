@@ -556,3 +556,14 @@ verify_jwt = true
 # and rejects live events; the dedicated test webhook secret is the caller gate.
 [functions.solo-beta-stripe-webhook]
 verify_jwt = false
+
+[functions.paige-social]
+# Owner/admin JWT is verified by the gateway and again in-function. Tenant is
+# always resolved from the caller's active workspace; body tenant is refusal-only.
+verify_jwt = true
+
+[functions.paige-social-callback]
+# The provider cannot present a Supabase JWT. A high-entropy, single-use nonce
+# claims one trusted-server-issued connection attempt and resolves tenant/actor
+# only from that stored row. No request tenant or identity is accepted.
+verify_jwt = false
