@@ -103,14 +103,11 @@ const journeyStageExecutor: NativeExecutor = {
     id: "crm_advance_journey_stage",
     effect: "mutate",
     outcomeChannel: "paige_act_executions",
-    // HONEST availability (§13, owner correction #5): advancing a journey stage is a baseline in-tenant CRM
-    // write present for EVERY tenant — no external connection, no per-tenant provider, no consent leg to
-    // resolve — so "live" is the truthful, resolved availability, not a hardcoded `unknown` standing in for
-    // tenant truth. Authority (active authorizing person) + the effective autonomy lane (resolved via
-    // resolve_automation_autonomy in the engine) + slug validity (checked, fail-closed) are the only gates.
-    // EXTERNAL-EFFECT adapters (n8n, C3+) MUST NOT declare "live" here — they owe a real per-tenant
-    // capability/connection/consent resolution through the canonical Gateway (flagged for the round table).
-    availability: "live",
+    // NO availability is asserted here (owner correction, 2026-09-13): the adapter never declares a
+    // Layer-C availability. The engine resolves this capability's REAL availability + tier/connection
+    // posture THROUGH the canonical Gateway seam (resolveNativeCapabilityStatus) before any dispatch, and
+    // feeds it to decideGovernedExecution's availability gate. A Layer-C `live` literal was exactly the
+    // fallback rule the correction forbids.
   },
   async dispatch(input: DispatchInput): Promise<DispatchResult> {
     const { db, subjectTable, subjectId, args, correlationRef } = input;
@@ -143,9 +140,11 @@ const journeyStageExecutor: NativeExecutor = {
     }
     const out = (res.data ?? {}) as Record<string, unknown>;
     // No-op: already on the target slug (set_journey_stage returns BEFORE any write). The contact is in the
-    // confirmed desired state → executed, and NO duplicate transition row was written (idempotent).
+    // confirmed desired state → executed, and NO duplicate transition row was written (idempotent). Reported
+    // HONESTLY (owner) as `already_at_requested_stage` — NEVER as a newly advanced journey (the caller
+    // suppresses the "advanced" Rail on this flag; the receipt records the no-op truthfully).
     if (out.unchanged === true) {
-      return { outcome: "executed", providerRef: null, detail: { unchanged: true, stage_slug: targetSlug } };
+      return { outcome: "executed", providerRef: null, detail: { already_at_requested_stage: true, stage_slug: targetSlug } };
     }
     // Changed: confirm the write persisted via the independent canonical re-read (§32).
     return confirmJourney(input, targetSlug);
@@ -178,7 +177,7 @@ export const nativeAdapter: ActionAdapter = {
     if (!ex) return { outcome: "failed", providerRef: null, error: "native_action_unsupported", detail: { action_kind: input.actionKind } };
     return ex.dispatch(input);
   },
-  async readback(providerRef: string, input: DispatchInput): Promise<DispatchResult> {
+  async readback(providerRef: string | null, input: DispatchInput): Promise<DispatchResult> {
     const ex = NATIVE_EXECUTORS[input.actionKind];
     if (!ex) return { outcome: "failed", providerRef: null, error: "native_action_unsupported", detail: { action_kind: input.actionKind } };
     return ex.readback(providerRef, input);

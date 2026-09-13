@@ -4351,11 +4351,12 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       const resolveEffectiveLane = async (toolKey: string): Promise<"auto" | "confirm" | "off"> =>
         clampLaneByRisk((await resolveToolAutonomy(toolKey)) as "auto" | "confirm" | "off", toolKey);
       const [
-        contactCreateLane, campaignCreateLane, workflowsLane,
+        contactCreateLane, journeyAdvanceLane, campaignCreateLane, workflowsLane,
         documentCreateLane, knowledgeSaveLane, planningCreateLane, delegateLane,
         ownerOpsEligible,
       ] = await Promise.all([
         resolveEffectiveLane("crm_create_contact"),
+        resolveEffectiveLane("crm_advance_journey_stage"),
         resolveEffectiveLane("campaign_brief_create"),
         resolveEffectiveLane("n8n_run_workflow"),
         resolveEffectiveLane("document_generate"),
@@ -4372,6 +4373,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
         callerTier,
         ownerOpsEligible,
         contactCreateLane,
+        journeyAdvanceLane,
         campaignCreateLane,
         workflowsLane,
         documentCreateLane,

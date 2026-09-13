@@ -44,6 +44,8 @@ import {
 } from "./decide.ts";
 import { recordCapabilityRun, stableRunId } from "../capability-record.ts";
 import { emitAutomationRail } from "../railAutomation.ts";
+import { resolveNativeCapabilityStatus } from "../paige-capability-status/gatherer.ts";
+import type { CapabilityAvailability } from "../paige-capability-status/resolver.ts";
 
 // ── Inputs the drainer hands the engine ──────────────────────────────────────────────────────────────
 export type ClaimedEvent = {
@@ -85,8 +87,13 @@ export function buildGovernedInputs(params: {
   effectiveLane: string;       // the resolved effective lane ("auto" on this path)
   capability: AdapterCapability;
   actConfig: unknown;
+  /** The availability RESOLVED THROUGH THE CANONICAL GATEWAY (never a Layer-C literal — owner correction,
+   *  2026-09-13). A native execute act threads the Gateway's per-tenant status here; a non-native adapter
+   *  (n8n) passes nothing → `"unknown"`, a no-op at the availability gate (its real per-tenant resolution
+   *  is owed in C3+). The gate refuses a `not_for_tier`/`needs_setup`/`unavailable`/`planned` value. */
+  availability?: CapabilityAvailability | "unknown";
 }): GovernedInputs {
-  const { tenantId, personUserId, effectiveLane, capability, actConfig } = params;
+  const { tenantId, personUserId, effectiveLane, capability, actConfig, availability } = params;
   return {
     caller: {
       authenticated: true,
@@ -101,11 +108,7 @@ export function buildGovernedInputs(params: {
       id: capability.id,
       effect: capability.effect,
       ...(capability.effect === "mutate" ? { outcomeChannel: capability.outcomeChannel ?? "paige_act_executions" } : {}),
-      // The adapter's RESOLVED availability (owner correction #5). A native baseline in-tenant capability
-      // declares "live" honestly; an adapter that declares nothing (n8n today) stays "unknown" — a no-op at
-      // the availability gate, NOT a claim (its real per-tenant resolution is owed in C3+). Never a
-      // hardcoded stand-in for tenant truth.
-      availability: capability.availability ?? ("unknown" as const),
+      availability: availability ?? "unknown",
     },
     approval: { autonomyLane: effectiveLane }, // no claimedArgs — the grant, not a single-use human claim
     requestArgs: actConfig ?? {},
@@ -187,6 +190,29 @@ async function loadActs(db: EngineDb, automationId: string): Promise<LoadActsRes
   return { ok: true, acts: data as ActRow[] };
 }
 
+/** Outcomes that are FINAL for the drainer — mirrors `_final` in the monotonic RPC (20270126000000). Once a
+ *  row holds one of these, phase 5 adopts it and NEVER re-dispatches (idempotency across re-drains). */
+const FINAL_OR_SETTLED: ReadonlySet<string> = new Set([
+  "condition_not_matched", "held_by_lane", "approval_pending",
+  "refused_authority", "refused_budget", "refused_trust_compass", "refused_consent",
+  "executed", "failed", "cancelled",
+]);
+
+/** Read the CURRENT ledger outcome for one (event, act). `outcome:null` = the row does not exist yet.
+ *  An infra read error returns `{ ok:false }` so phase 5 retries rather than acting blind (§13/§32). */
+type CurrentOutcome = { ok: true; outcome: string | null } | { ok: false; error: string };
+async function readActOutcome(db: EngineDb, eventId: string, actId: string): Promise<CurrentOutcome> {
+  const { data, error } = await db
+    .from("paige_act_executions")
+    .select("outcome")
+    .eq("event_id", eventId)
+    .eq("act_id", actId)
+    .limit(1);
+  if (error) return { ok: false, error: error.message ?? String(error) };
+  const rows = Array.isArray(data) ? data : [];
+  return { ok: true, outcome: rows.length > 0 ? ((rows[0] as { outcome?: unknown }).outcome as string ?? null) : null };
+}
+
 /** A governed-authorized native, synchronous act to dispatch AFTER its accepted_for_execution record
  *  persists (C2). Only produced for an `execute` decision whose adapter is a native executor. */
 export type NativeExecutePlan = {
@@ -208,8 +234,11 @@ async function decideActRecord(params: {
   laneOutcome: ActOutcome | null;   // non-null → a non-execute outcome already decided by the lane
   effectiveLane: string;
   personUserId: string | null;
+  /** For a NATIVE act, the availability resolved through the canonical Gateway (owner correction). A
+   *  refusing value makes decideGovernedExecution refuse at the availability gate — never a dispatch. */
+  gatewayAvailability?: CapabilityAvailability;
 }): Promise<ActBuild> {
-  const { event, automation, act, laneOutcome, effectiveLane, personUserId } = params;
+  const { event, automation, act, laneOutcome, effectiveLane, personUserId, gatewayAvailability } = params;
   const adapterKind = resolveAdapterKind(act.action_kind);
   const idempotency_key = await stableRunId(["paige-act", event.event_id, act.id]);
   const base = {
@@ -248,8 +277,12 @@ async function decideActRecord(params: {
       },
     };
   }
+  // Availability threads THROUGH the Gateway for a native act (resolved by the caller); a non-native
+  // adapter passes nothing → "unknown" (a gate no-op — unchanged C1 behavior for n8n).
+  const availability: CapabilityAvailability | "unknown" =
+    adapterKind === "native" ? (gatewayAvailability ?? "unavailable") : "unknown";
   const decision = decideGovernedExecution(buildGovernedInputs({
-    tenantId: event.tenant_id, personUserId, effectiveLane, capability, actConfig: act.config ?? {},
+    tenantId: event.tenant_id, personUserId, effectiveLane, capability, actConfig: act.config ?? {}, availability,
   }));
   const dec = outcomeFromDecision(decision);
   const record: ActExecutionRecord = {
@@ -345,9 +378,29 @@ export async function runEventActs(
     //     non-member (userId null) is a real refused_authority (decideActRecord records it).
     const personRes = await resolveAuthorizingPerson(db, automation.created_by, event.tenant_id);
     if (!personRes.ok) { subscriber_retry.push(automation.id); continue; }
+    const personUserId = personRes.userId;
+
+    // 3.5 — for each NATIVE act, resolve its availability THROUGH the canonical Gateway seam BEFORE the
+    //       governed decision (owner correction, 2026-09-13 — never a Layer-C availability literal). Only
+    //       meaningful when there IS an authorizing person (otherwise the act is refused_authority anyway).
+    //       An INFRA failure of the Gateway resolution is a RETRYABLE subscriber — never a false refusal.
+    const availByAct = new Map<string, CapabilityAvailability>();
+    if (personUserId) {
+      let gatewayInfraError = false;
+      for (const act of acts) {
+        if (resolveAdapterKind(act.action_kind) !== "native") continue;
+        const g = await resolveNativeCapabilityStatus(db, {
+          actorUserId: personUserId, tenantId: event.tenant_id, actionKind: act.action_kind ?? "",
+        });
+        if (!g.ok) { gatewayInfraError = true; break; }
+        availByAct.set(act.id, g.status.availability);
+      }
+      if (gatewayInfraError) { subscriber_retry.push(automation.id); continue; }
+    }
     for (const act of acts) {
       collect(await decideActRecord({
-        event, automation, act, effectiveLane, laneOutcome: null, personUserId: personRes.userId,
+        event, automation, act, effectiveLane, laneOutcome: null, personUserId,
+        gatewayAvailability: availByAct.get(act.id),
       }));
     }
   }
@@ -359,6 +412,11 @@ export async function runEventActs(
   //     re-drain that lands on an already-final row reports THAT final outcome, never our recomputed guess.
   const persist_failures: string[] = [];
   for (const rec of records) {
+    // A native execute record is handled ENTIRELY by phase 5 (read-current → reconcile-or-dispatch), which
+    // writes its own durable accepted_for_execution record before the domain write. Persisting it here would
+    // blindly overwrite an existing `ambiguous` row back to accepted and re-dispatch it (owner: ambiguous
+    // reconciles before any retry, never blind re-dispatch), so it is skipped in phase 4.
+    if (executePlans.has(rec.act_id)) continue;
     const { data, error } = await db.rpc("paige_record_act_execution", {
       _event_id: rec.event_id, _automation_id: rec.automation_id, _act_id: rec.act_id,
       _act_position: rec.act_position, _tenant_id: rec.tenant_id,
@@ -376,41 +434,70 @@ export async function runEventActs(
     if (typeof persisted === "string") rec.outcome = persisted as ActOutcome;
   }
 
-  // 5 — NATIVE AUTO-EXECUTE (C2). Each record the governed pathway AUTHORIZED and that PERSISTED as
-  //     accepted_for_execution, whose adapter is a native synchronous executor, is dispatched NOW: the
-  //     in-tenant write runs, the canonical record is re-read to CONFIRM (§32), and the ledger is advanced
-  //     to the EXACT terminal outcome (executed|failed|ambiguous) through the SAME monotonic RPC
-  //     (accepted_for_execution is the advanceable start state). The `=== accepted_for_execution` guard is
-  //     the idempotency fence: a re-drain of an already-terminal act read its FINAL row back in phase 4
-  //     (outcome now != accepted_for_execution), so it is skipped here — never a second dispatch. `ambiguous`
-  //     is left for a reconcile pass, NEVER blind-resent (owner correction #4). A confirmed, DURABLE
-  //     `executed` then files the receipt + owner Rail (best-effort telemetry, idempotent on a stable id).
-  // Snapshot phase-4 failures BEFORE phase 5 appends its own: an act whose durable pre-dispatch record
-  // did NOT persist must never be dispatched here (correction #3 — no external/native effect without a
-  // durable pre-dispatch record). The retry re-runs phase 4 first, then dispatches.
-  const preDispatchFailed = new Set(persist_failures);
+  // 5 — NATIVE AUTO-EXECUTE (C2), READ-CURRENT-FIRST so a re-drain NEVER blind re-dispatches (owner:
+  //     `ambiguous` reconciles by readback/correlation before any retry). For each governed-AUTHORIZED
+  //     native plan, read the CURRENT ledger row and branch:
+  //       * FINAL/settled row      → adopt its outcome (idempotent; a prior drain already settled it).
+  //       * `ambiguous` row        → RECONCILE ONLY via the adapter's readback (canonical re-read + the
+  //                                  act's own correlation) — NO domain write — then advance if confirmed.
+  //       * absent                 → write the durable accepted_for_execution pre-dispatch record FIRST
+  //                                  (correction #3 — no native effect without a durable record), then dispatch.
+  //       * accepted_for_execution → dispatch (a prior drain wrote accepted but crashed before dispatch; the
+  //                                  native write is idempotent, a no-op if it already landed).
+  //     The terminal outcome is advanced through the SAME monotonic RPC; a confirmed, DURABLE `executed`
+  //     files the receipt (always, with honest detail) + owner Rail (suppressed on an idempotent no-op —
+  //     "already at requested stage" is never reported as a newly advanced journey). Best-effort telemetry,
+  //     idempotent on a stable run id.
   const nowIso = new Date().toISOString();
   for (const rec of records) {
     const plan = executePlans.get(rec.act_id);
-    if (!plan || preDispatchFailed.has(rec.act_id) || rec.outcome !== "accepted_for_execution") continue;
+    if (!plan) continue;
+
+    const dispatchInput = {
+      tenantId: event.tenant_id,
+      actionKind: rec.capability_key ?? "",
+      args: plan.args,
+      correlationRef: rec.correlation_ref,
+      db,
+      subjectTable: event.subject_table,
+      subjectId: event.subject_id,
+    };
+
+    // Read the CURRENT durable state — never act blind on a re-drain.
+    const cur = await readActOutcome(db, rec.event_id, rec.act_id);
+    if (!cur.ok) { persist_failures.push(rec.act_id); continue; }                 // infra read error → retry
+    if (cur.outcome && FINAL_OR_SETTLED.has(cur.outcome)) { rec.outcome = cur.outcome as ActOutcome; continue; }
 
     let result: DispatchResult;
-    try {
-      result = await plan.adapter.dispatch!({
-        tenantId: event.tenant_id,
-        actionKind: rec.capability_key ?? "",
-        args: plan.args,
-        correlationRef: rec.correlation_ref,
-        db,
-        subjectTable: event.subject_table,
-        subjectId: event.subject_id,
-      });
-    } catch (e) {
-      // The adapter itself faulted — the write MAY have committed, so this is ambiguous (reconcile, never
-      // blind-retry), NOT a terminal failure that would strand a possibly-executed act.
-      result = { outcome: "ambiguous", providerRef: null, error: e instanceof Error ? e.message : String(e), detail: { reason: "adapter_threw" } };
+    if (cur.outcome === "ambiguous") {
+      // RECONCILE ONLY — confirm via readback (canonical re-read + correlation), NEVER a blind re-dispatch.
+      if (typeof plan.adapter.readback !== "function") { rec.outcome = "ambiguous"; continue; } // cannot reconcile; leave for a later pass
+      try { result = await plan.adapter.readback(null, dispatchInput); }
+      catch (e) { result = { outcome: "ambiguous", providerRef: null, error: e instanceof Error ? e.message : String(e), detail: { reason: "readback_threw" } }; }
+    } else {
+      // absent → write the durable accepted_for_execution pre-dispatch record FIRST (correction #3); a
+      // prior-crash `accepted_for_execution` row is already durable, so dispatch straight away.
+      if (cur.outcome == null) {
+        const { data: acc, error: accErr } = await db.rpc("paige_record_act_execution", {
+          _event_id: rec.event_id, _automation_id: rec.automation_id, _act_id: rec.act_id,
+          _act_position: rec.act_position, _tenant_id: rec.tenant_id,
+          _adapter_kind: rec.adapter_kind, _capability_key: rec.capability_key,
+          _effective_lane: rec.effective_lane, _outcome: "accepted_for_execution", _refusal_code: null,
+          _idempotency_key: rec.idempotency_key, _correlation_ref: rec.correlation_ref,
+          _provider_ref: null, _detail: rec.detail, _error: null,
+          _dispatched_at: null, _settled_at: null,
+        });
+        if (accErr || acc == null) { persist_failures.push(rec.act_id); continue; }
+      }
+      try { result = await plan.adapter.dispatch!(dispatchInput); }
+      catch (e) {
+        // The adapter itself faulted — the write MAY have committed, so this is ambiguous (reconcile, never
+        // blind-retry), NOT a terminal failure that would strand a possibly-executed act.
+        result = { outcome: "ambiguous", providerRef: null, error: e instanceof Error ? e.message : String(e), detail: { reason: "adapter_threw" } };
+      }
     }
 
+    // Advance the ledger to the terminal outcome through the monotonic RPC (executed|failed|ambiguous).
     const settled = result.outcome === "executed" || result.outcome === "failed"; // ambiguous stays advanceable
     const { data, error } = await db.rpc("paige_record_act_execution", {
       _event_id: rec.event_id, _automation_id: rec.automation_id, _act_id: rec.act_id,
@@ -427,10 +514,13 @@ export async function runEventActs(
     const persisted = (data as { outcome?: unknown }).outcome;
     if (typeof persisted === "string") rec.outcome = persisted as ActOutcome;
 
-    // Receipt + Rail ONLY on a CONFIRMED, DURABLE executed (§13 — never a hoped-for result). Both are
-    // best-effort (they never fail the dispatch) and idempotent on the stable run id, so a retry that
-    // re-confirms `executed` folds to one receipt / one Rail card.
+    // Receipt + Rail ONLY on a CONFIRMED, DURABLE executed (§13 — never a hoped-for result). The receipt is
+    // filed with honest detail (a no-op carries `already_at_requested_stage`); the owner Rail — which reads
+    // as "advanced the journey" — is SUPPRESSED on an idempotent no-op so a no-op is never reported as a
+    // newly advanced journey (owner). Best-effort, idempotent on the stable run id.
     if (rec.outcome === "executed") {
+      const detail = (result.detail ?? {}) as Record<string, unknown>;
+      const wasNoop = detail.already_at_requested_stage === true;
       const runId = await stableRunId(["paige-cap", rec.event_id, rec.act_id]);
       await recordCapabilityRun(db, {
         tenantId: event.tenant_id,
@@ -438,16 +528,18 @@ export async function runEventActs(
         capabilityKey: plan.capabilityKey,
         outcome: "capability_succeeded",
         runId,
-        detail: { correlation_ref: rec.correlation_ref, ...(result.detail ?? {}) },
+        detail: { correlation_ref: rec.correlation_ref, event_id: rec.event_id, act_id: rec.act_id, contact_id: event.subject_id, ...detail },
       });
-      await emitAutomationRail(db, {
-        tenantId: event.tenant_id,
-        contactId: event.subject_id,
-        workflowName: plan.automationName,
-        phase: "completed",
-        refTable: "paige_act_executions",
-        refId: (data as { id?: string }).id ?? null,
-      });
+      if (!wasNoop) {
+        await emitAutomationRail(db, {
+          tenantId: event.tenant_id,
+          contactId: event.subject_id,
+          workflowName: plan.automationName,
+          phase: "completed",
+          refTable: "paige_act_executions",
+          refId: (data as { id?: string }).id ?? null,
+        });
+      }
     }
   }
 

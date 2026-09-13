@@ -18,19 +18,16 @@ import { isNativeActionKind, nativeAdapter } from "./native-adapter.ts";
 
 export type AdapterKind = "n8n" | "native" | "unsupported" | (string & {});
 
-/** The governed capability an act is decided as (fed to decideGovernedExecution's `capability`). */
+/** The governed capability an act is decided as (fed to decideGovernedExecution's `capability`). NOTE: an
+ *  adapter NEVER declares availability here (owner correction, 2026-09-13). Availability is resolved by the
+ *  engine THROUGH the canonical Gateway seam (paige-capability-status) and passed to buildGovernedInputs —
+ *  a Layer-C availability literal is the forbidden fallback rule. */
 export type AdapterCapability = {
   /** canonical action-risk key (the act's action_kind slug is that key). */
   id: string;
   effect: "read" | "mutate";
   /** required for a mutation — decideGovernedExecution enforces a non-empty channel on mutate. */
   outcomeChannel?: string;
-  /** The RESOLVED availability the adapter asserts for this capability, fed to the availability gate
-   *  (decideGovernedExecution step 5.5). Absent → the engine treats it as `"unknown"` (a no-op at the
-   *  gate, C1's declared-non-adoption behavior). A native baseline in-tenant capability declares `"live"`
-   *  honestly; an EXTERNAL-EFFECT adapter must NOT hardcode `"live"` — it owes a real per-tenant
-   *  capability/connection/consent resolution (owner correction #5; the Gateway contract is C3+). */
-  availability?: "live" | "needs_approval" | "unknown";
 };
 
 /** The minimal supabase-js surface a native adapter's dispatch/readback needs (RPC + a read chain). Kept
@@ -70,10 +67,12 @@ export interface ActionAdapter {
   /** Map an act's action_kind to the governed capability. Pure. Returns null if this adapter does not
    *  own the action_kind (the engine then fails closed as unsupported). */
   resolveCapability(actionKind: string): AdapterCapability | null;
-  /** slice 2: perform the external action. Declared now so the contract is stable across adapters. */
+  /** perform the action. Declared here so the contract is stable across adapters (native: C2; n8n: C3+). */
   dispatch?(input: DispatchInput): Promise<DispatchResult>;
-  /** slice 2: confirm a prior dispatch (async providers). */
-  readback?(providerRef: string, input: DispatchInput): Promise<DispatchResult>;
+  /** confirm a prior dispatch WITHOUT re-performing it — the canonical readback/reconcile. `providerRef` is
+   *  null for a synchronous native reconcile (it re-reads by the act's own correlation), a provider id for
+   *  an async provider (C3+). */
+  readback?(providerRef: string | null, input: DispatchInput): Promise<DispatchResult>;
 }
 
 // ── Kind resolution: action_kind → adapter kind. Prefix-based for the first roster; a DB-backed mapping
