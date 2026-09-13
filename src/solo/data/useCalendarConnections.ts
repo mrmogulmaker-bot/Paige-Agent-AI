@@ -57,11 +57,14 @@ const untyped = supabase as any;
  */
 function classifyPresetError(
   error: { message?: string; code?: string } | null,
-  verb: "create" | "save" | "publish" | "pause",
+  verb: "create" | "save" | "publish" | "pause" | "duplicate" | "archive" | "restore",
 ): string {
   const raw = error?.message ?? "";
   if (error?.code === "23505" || raw.includes("PRESET_SLUG_TAKEN")) {
     return "That booking link is already taken — try a different name.";
+  }
+  if (raw.includes("PRESET_ARCHIVED")) {
+    return "This preset is archived — restore it before you can edit or publish it.";
   }
   if (raw.includes("PRESET_NEEDS_HOSTS")) {
     // The server message already names the count needed vs assigned.
@@ -683,6 +686,75 @@ export function useCalendarConnections() {
   }, [activeTenantId, load]);
 
   /**
+   * Duplicate a preset — start a new one from an existing config. The server
+   * (`duplicate_calendar_preset`) copies every config column and the source's host
+   * pool into a fresh private DRAFT (enabled=false, never published, never
+   * archived) with a new unique slug, and registers the caller as a host so they
+   * can manage the copy. It is the SAME seam Paige's chat capability will use (§10);
+   * nothing here writes the `calendars` table directly. The new draft is read back
+   * as the truth the surface opens on (§13 — the RPC returns ids, not the row).
+   *
+   * The slug is minted client-side from the copy's title with a random suffix,
+   * because booking links are unique platform-wide; a collision surfaces as the
+   * honest "that link is taken" rather than a silent overwrite.
+   */
+  const duplicate = useCallback(async (id: string, sourceTitle: string | null) => {
+    if (!activeTenantId) return { ok: false as const, message: "No active workspace — pick one first." };
+    setBusy(id);
+    const base = (sourceTitle ?? "").trim();
+    const newTitle = base ? `${base} (copy)` : "Booking preset (copy)";
+    const slug = `${slugify(newTitle) || "calendar"}-${randomSuffix()}`;
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth.user?.id ?? null;
+    const { data, error } = await untyped.rpc("duplicate_calendar_preset", {
+      _cal: id, _new_slug: slug, _new_title: newTitle, _tenant: activeTenantId, _created_by: uid,
+    });
+    if (error) {
+      setBusy(null);
+      return { ok: false as const, message: classifyPresetError(error, "duplicate") };
+    }
+    const calId = (data as { calendar_id?: string } | null)?.calendar_id ?? null;
+    const { data: row } = calId
+      ? await supabase.from("calendars").select(SELECT_COLS).eq("id", calId).maybeSingle()
+      : { data: null };
+    setBusy(null);
+    await load();
+    return { ok: true as const, row: (row as unknown as CalendarRow) ?? null, calendarId: calId };
+  }, [activeTenantId, load]);
+
+  /**
+   * Archive a preset — put it away without destroying it. The server
+   * (`archive_calendar_preset`) sets `archived_at` and forces `enabled=false`, so
+   * the public `/book/:slug` resolver refuses it at once (its enabled gate is the
+   * authoritative bookability check). `published_at` is preserved, so a restore
+   * returns it to Paused rather than Draft. Idempotent server-side.
+   */
+  const archive = useCallback(async (id: string) => {
+    setBusy(id);
+    const { error } = await untyped.rpc("archive_calendar_preset", { _cal: id, _tenant: activeTenantId });
+    setBusy(null);
+    if (error) return { ok: false as const, message: classifyPresetError(error, "archive") };
+    await load();
+    return { ok: true as const };
+  }, [activeTenantId, load]);
+
+  /**
+   * Restore an archived preset — bring it back to Draft or Paused. The server
+   * (`restore_calendar_preset`) clears `archived_at` and leaves `enabled=false`, so
+   * a restored preset is NEVER straight back on the air: re-publishing is a separate
+   * validated act through `publish`. It returns to Draft (never published) or Paused
+   * (published before) per `published_at`.
+   */
+  const restore = useCallback(async (id: string) => {
+    setBusy(id);
+    const { error } = await untyped.rpc("restore_calendar_preset", { _cal: id, _tenant: activeTenantId });
+    setBusy(null);
+    if (error) return { ok: false as const, message: classifyPresetError(error, "restore") };
+    await load();
+    return { ok: true as const };
+  }, [activeTenantId, load]);
+
+  /**
    * Start a provider OAuth handshake. This returns the provider's own
    * authorization URL and the browser leaves — nothing is connected here, and
    * nothing is claimed until the callback writes the row and this hook re-reads.
@@ -736,8 +808,10 @@ export function useCalendarConnections() {
 
   const loading = tenantLoading || state.loading;
   return useMemo(
-    () => ({ ...state, loading, busy, refresh: load, createCalendar, saveCalendar, saveHosts, publish, pause, connect, disconnect,
+    () => ({ ...state, loading, busy, refresh: load, createCalendar, saveCalendar, saveHosts, publish, pause,
+             duplicate, archive, restore, connect, disconnect,
              errorMessage: firstMessage(state.error, state.providersError) }),
-    [state, loading, busy, load, createCalendar, saveCalendar, saveHosts, publish, pause, connect, disconnect],
+    [state, loading, busy, load, createCalendar, saveCalendar, saveHosts, publish, pause,
+     duplicate, archive, restore, connect, disconnect],
   );
 }

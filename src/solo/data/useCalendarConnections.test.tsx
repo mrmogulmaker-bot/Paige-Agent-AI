@@ -64,6 +64,9 @@ vi.mock("@/integrations/supabase/client", () => {
       else if (name === "create_calendar_preset") { data = rpc.presetError ? null : { calendar_id: "cal-new", enabled: false, status: "draft" }; error = rpc.presetError; }
       else if (name === "update_calendar_preset") { data = rpc.presetError ? null : rpc.presetUpdateData; error = rpc.presetError; }
       else if (name === "publish_calendar_preset" || name === "pause_calendar_preset") { data = rpc.presetError ? null : { ok: true }; error = rpc.presetError; }
+      // The S1 seam: duplicate returns a new draft id; archive/restore return ok.
+      else if (name === "duplicate_calendar_preset") { data = rpc.presetError ? null : { calendar_id: "cal-dup", source_id: (args as { _cal?: string } | undefined)?._cal, enabled: false, status: "draft" }; error = rpc.presetError; }
+      else if (name === "archive_calendar_preset" || name === "restore_calendar_preset") { data = rpc.presetError ? null : { ok: true }; error = rpc.presetError; }
       return {
         then: (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
           Promise.resolve({ data, error }).then(res, rej),
@@ -229,5 +232,59 @@ describe("Booking-preset lifecycle — the hook drives the shared server RPCs, n
     await act(async () => { res = await latest!.publish("cal-1"); });
     expect(res.ok).toBe(false);
     expect(res.message ?? "").toMatch(/host/i);
+  });
+});
+
+describe("Booking-preset duplicate / archive / restore — the S1 governed seam", () => {
+  it("duplicate calls duplicate_calendar_preset for the VIEWED tenant with a fresh slug + copy title", async () => {
+    rpc.adminByTenant = { "t-viewed": true };
+    tables.calendars = [{ id: "cal-dup", tenant_id: "t-viewed", slug: "x-copy", title: "X (copy)", type: "personal", enabled: false, published_at: null, archived_at: null }];
+    await mount();
+    let res: { ok: boolean; calendarId?: string | null } = { ok: false };
+    await act(async () => { res = await latest!.duplicate("cal-1", "X") as typeof res; });
+    const call = rpc.calls.find((c) => c.name === "duplicate_calendar_preset");
+    expect(call).toBeTruthy();
+    const args = call!.args as { _cal?: string; _new_slug?: string; _new_title?: string; _tenant?: string };
+    expect(args._cal).toBe("cal-1");
+    expect(args._tenant).toBe("t-viewed");
+    expect(args._new_title).toBe("X (copy)");
+    // A random suffix keeps booking links unique platform-wide — the slug is derived
+    // from the copy's title, never reused verbatim from the source.
+    expect(args._new_slug ?? "").toMatch(/^x-copy-[a-z0-9]+$/);
+    expect(res.ok).toBe(true);
+  });
+
+  it("archive calls archive_calendar_preset for the VIEWED tenant", async () => {
+    rpc.adminByTenant = { "t-viewed": true };
+    await mount();
+    await act(async () => { await latest!.archive("cal-1"); });
+    expect(rpc.calls.find((c) => c.name === "archive_calendar_preset")?.args).toEqual({ _cal: "cal-1", _tenant: "t-viewed" });
+  });
+
+  it("restore calls restore_calendar_preset for the VIEWED tenant", async () => {
+    rpc.adminByTenant = { "t-viewed": true };
+    await mount();
+    await act(async () => { await latest!.restore("cal-1"); });
+    expect(rpc.calls.find((c) => c.name === "restore_calendar_preset")?.args).toEqual({ _cal: "cal-1", _tenant: "t-viewed" });
+  });
+
+  it("a PRESET_ARCHIVED refusal surfaces the restore-first message, never a fabricated success", async () => {
+    rpc.adminByTenant = { "t-viewed": true };
+    rpc.presetError = { code: "22023", message: "PRESET_ARCHIVED: restore this preset before publishing" };
+    await mount();
+    let res: { ok: boolean; message?: string } = { ok: true };
+    await act(async () => { res = await latest!.publish("cal-1"); });
+    expect(res.ok).toBe(false);
+    expect(res.message ?? "").toMatch(/archived/i);
+  });
+
+  it("a duplicate refusal surfaces the taken-link message, never a fabricated success", async () => {
+    rpc.adminByTenant = { "t-viewed": true };
+    rpc.presetError = { code: "23505", message: "PRESET_SLUG_TAKEN: that booking link is already in use" };
+    await mount();
+    let res: { ok: boolean; message?: string } = { ok: true };
+    await act(async () => { res = await latest!.duplicate("cal-1", "X") as typeof res; });
+    expect(res.ok).toBe(false);
+    expect(res.message ?? "").toMatch(/taken|link/i);
   });
 });

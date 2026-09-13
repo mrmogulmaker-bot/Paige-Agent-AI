@@ -139,6 +139,16 @@
 }
 .cc-preset-card:hover .cc-preset-go { transform: translateX(2px); color: var(--pg-muted); }
 
+/* Archived group — put-away presets, held below the active ones. A hairline rule
+   and muted heading separate it without competing for attention; the cards read
+   slightly recessed so the active list stays the focus. */
+.cc-archived { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--pg-line-soft); }
+.cc-archived-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.cc-archived-head small { color: var(--pg-muted); font-size: 11.5px; line-height: 1.5; }
+.cc-archived .cc-preset-card { background: transparent; }
+.cc-archived .cc-preset-card:hover { background: var(--pg-lift); }
+.cc-preset-card[data-life="archived"] .cc-preset-n { color: var(--pg-muted); }
+
 /* -------------------------------------------------------- selected preset */
 
 /* The one block that answers "is this working, and where do I send people?"

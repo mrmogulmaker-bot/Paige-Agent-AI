@@ -91,11 +91,16 @@ Recorded, not started. None of these are in-scope for a Calendar hotfix.
   booking, reschedule, cancellation or reminder.
   **PARTIAL (2026-09-13, DRAFT — pre-merge, branch `claude/busy-archimedes-bsvrdi`):** the booking-
   PRESET-config slice of this contract is built and proven — `create_/update_/publish_/pause_calendar_preset`
-  (migration `20270301000000`), SECURITY DEFINER with §59 in-body caller scope, tenant-authorized,
-  fail-closed, publish server-revalidated. It is the ONE server-authorized path both the Settings UI
-  and Paige's (handed-off) chat capability use. This covers **preset configuration** writes only; the
-  broader FU-2 for a Paige-initiated **booking/reschedule/cancellation/reminder** remains owed. Not
-  merged/deployed (owner withheld release).
+  (migration `20270301000000`) plus `duplicate_/archive_/restore_calendar_preset` (migration
+  `20270302000000`, the S1 full-object-management slice), all SECURITY DEFINER with §59 in-body caller
+  scope, tenant-authorized, fail-closed, publish server-revalidated, archived-frozen. Together they are the
+  ONE server-authorized path both the Settings UI and Paige's (handed-off) chat capability use to CREATE,
+  EDIT, PUBLISH, PAUSE, DUPLICATE, ARCHIVE and RESTORE a booking preset. Proven by a 34-group local-Postgres
+  replay (`docs/evidence/proofs/booking-preset-lifecycle/`, 95 PASS/0 fail). This covers **preset
+  configuration + object lifecycle** writes only; the broader FU-2 for a Paige-initiated
+  **booking/reschedule/cancellation/reminder** remains owed, as does registering the duplicate/archive/restore
+  capabilities in the Spine `calendar_preset` domain (the E5/S2 Paige-adoption slice — the descriptor today
+  carries create/revise/publish/pause/list only). Not merged/deployed (owner withheld release).
 - **FU-3 — Calendar Rail provenance/outcome contract.** What Calendar records onto the
   existing Rail, and the explicit exclusion of raw messages, provider payloads, secret
   references, hidden reasoning and unrestricted transcript/notes content from general

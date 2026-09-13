@@ -879,6 +879,69 @@ export function CalendarsView() {
   }, [selected, conn, identity, note]);
 
   /**
+   * Duplicate this preset — start a new private draft from its SAVED settings.
+   *
+   * The copy is made server-side from the stored row, not the on-screen draft, so
+   * unsaved edits would not be in it — which would be a quiet surprise. So this is
+   * guarded like create/switch: Save or Discard first. On success the new draft's
+   * editor opens (it is always a private draft — never live, never archived).
+   */
+  const duplicatePreset = useCallback(async () => {
+    if (!selected || identity.isStale()) return;
+    if (dirtyRef.current) {
+      note("warn", "Save or discard your changes before duplicating — the copy is made from the saved settings.");
+      return;
+    }
+    const token = identity.capture();
+    const r = await conn.duplicate(selected.id, selected.title);
+    if (!identity.stillCurrent(token)) return;
+    if (!r.ok || !r.row) {
+      note("bad", r.ok ? "Duplicated, but couldn’t open the copy — refresh to find it in the list." : r.message);
+      return;
+    }
+    setSelectedId(r.row.id);
+    setOpen({ details: true });
+    note("info", `Duplicated as “${r.row.title}” — a private draft. Configure it below, then Publish when you’re ready.`);
+  }, [selected, conn, identity, note]);
+
+  /**
+   * Archive this preset — put it away and take it off the air. The server forces
+   * `enabled=false`, so its public page stops taking bookings at once. Guarded
+   * against losing unsaved edits, then drops back to the list so the move into the
+   * Archived group is visible. Restore brings it back (as Draft or Paused).
+   */
+  const archivePreset = useCallback(async () => {
+    if (!selected || identity.isStale()) return;
+    if (dirtyRef.current) {
+      note("warn", "Save or discard your changes before archiving this preset — they would be lost otherwise.");
+      return;
+    }
+    const token = identity.capture();
+    const editing = selected.id;
+    const r = await conn.archive(selected.id);
+    if (!identity.stillCurrent(token) || liveSelected.current !== editing) return;
+    if (!r.ok) { note("bad", r.message); return; }
+    setSelectedId(null);
+    note("info", "Archived. It’s off the air and moved to Archived below — restore it any time.");
+  }, [selected, conn, identity, note]);
+
+  /**
+   * Restore an archived preset — bring it back to Draft or Paused. It never returns
+   * straight to Live: re-publishing is the separate, validated Publish act. The
+   * editor stays open on it and becomes editable again once the reload clears the
+   * archived flag.
+   */
+  const restorePreset = useCallback(async () => {
+    if (!selected || identity.isStale()) return;
+    const token = identity.capture();
+    const editing = selected.id;
+    const r = await conn.restore(selected.id);
+    if (!identity.stillCurrent(token) || liveSelected.current !== editing) return;
+    if (!r.ok) { note("bad", r.message); return; }
+    note("info", "Restored. It’s back as a draft (or paused) — edit it, or Publish when you’re ready.");
+  }, [selected, conn, identity, note]);
+
+  /**
    * Leave the editor for the preset list. Guarded like a preset switch: unsaved
    * edits are not silently thrown away — Save or Discard first.
    */
@@ -891,7 +954,13 @@ export function CalendarsView() {
     setNotice(null);
   }, [note]);
 
-  const ro = !conn.canWrite || saving;
+  // An archived preset is FROZEN (the server refuses edit/publish on it), so the
+  // editor opens read-only: `ro` folds `archived` in, which disables every field,
+  // the slug input, and the Save bar (dirty can never become true with the inputs
+  // disabled). Restore is the one write offered on it, and it is gated on canWrite,
+  // not `ro`, so it stays clickable.
+  const archived = Boolean(selected?.archived_at);
+  const ro = !conn.canWrite || saving || archived;
   const hosts = selected ? conn.hosts[selected.id] ?? [] : [];
   const summaryInput: SummaryInput | null = draft
     ? { d: draft, avail, hosts, hostsError: conn.hostsError, readiness: conn.readiness }
@@ -975,12 +1044,15 @@ export function CalendarsView() {
           <SelectedPreset
             row={selected} draft={draft} hosts={hosts} hostsError={conn.hostsError}
             readiness={conn.readiness} busy={conn.busy === selected.id} disabled={ro}
-            canWrite={conn.canWrite} publishCheck={publishCheck}
+            canWrite={conn.canWrite} publishCheck={publishCheck} archived={archived}
             issues={issues.map(([key, s]) => ({ key, title: AREA_META.find((a) => a.key === key)!.title, ...s }))}
             onJump={jumpTo}
             onCopy={() => copyLink(selected.slug)}
             onPublish={publishPreset}
             onPause={pausePreset}
+            onDuplicate={duplicatePreset}
+            onArchive={archivePreset}
+            onRestore={restorePreset}
           />
 
           {!conn.canWrite && (
@@ -1080,39 +1152,41 @@ export function CalendarsView() {
             ) : conn.empty ? (
               <EmptyBody canWrite={conn.canWrite} onCreate={create} disabled={conn.busy === "new" || identityStale} />
             ) : (
-              <div className="cc-presets" aria-label="Booking presets">
-                {conn.calendars.map((c) => {
-                  const life = presetLifecycle(c);
-                  const hostList = conn.hosts[c.id] ?? [];
-                  const hostSummary = conn.hostsError
-                    ? ""
-                    : hostList.length === 0 ? "No host" : hostList.length === 1 ? "1 host" : `${hostList.length} hosts`;
-                  return (
-                    <button key={c.id} type="button" className="cc-preset-card"
-                      aria-label={`Open ${c.title || "Untitled preset"} — ${LIFECYCLE_LABEL[life]}`}
-                      onClick={() => selectPreset(c.id)}>
-                      {/* The NAME gets the whole first line — it is the one thing on
-                          the card you pick by, and sharing the line truncated real
-                          titles at four cards across. */}
-                      <span className="cc-preset-t">
-                        <span className="cc-swatch" style={{ background: c.color ?? "var(--pg-violet)" }} />
-                        <span className="cc-preset-n">{c.title || "Untitled preset"}</span>
-                      </span>
-                      <span className="cc-preset-m">
-                        <span>{TYPE_LABEL[c.type] ?? c.type}</span>
-                        <em>{c.duration_min} min</em>
-                        {hostSummary && <span className="cc-preset-hosts"><Users aria-hidden /> {hostSummary}</span>}
-                        <span className="cc-preset-state">
-                          <Pill tone={life === "live" ? "live" : life === "paused" ? "warn" : undefined}>
-                            {LIFECYCLE_LABEL[life]}
-                          </Pill>
-                        </span>
-                      </span>
-                      <ChevronRight className="cc-preset-go" aria-hidden />
-                    </button>
-                  );
-                })}
-              </div>
+              (() => {
+                // Active presets lead; archived ones drop to their own labelled
+                // group so "what people can book" is not diluted by things that are
+                // put away. Both open the same editor — archived opens read-only,
+                // with Restore/Duplicate the way back (§70).
+                const activeCals = conn.calendars.filter((c) => !c.archived_at);
+                const archivedCals = conn.calendars.filter((c) => c.archived_at);
+                return (
+                  <>
+                    <div className="cc-presets" aria-label="Booking presets">
+                      {activeCals.map((c) => (
+                        <PresetCard key={c.id} c={c} hosts={conn.hosts[c.id] ?? []}
+                          hostsError={conn.hostsError} onOpen={() => selectPreset(c.id)} />
+                      ))}
+                    </div>
+                    {activeCals.length === 0 && (
+                      <Hint>No active presets — your archived ones are below. Open one to restore or duplicate it, or start a new preset above.</Hint>
+                    )}
+                    {archivedCals.length > 0 && (
+                      <div className="cc-archived">
+                        <div className="cc-archived-head">
+                          <span className="cc-eyebrow">Archived</span>
+                          <small>Put away and off the air. Open one to restore it, or duplicate it into a new preset.</small>
+                        </div>
+                        <div className="cc-presets" aria-label="Archived booking presets">
+                          {archivedCals.map((c) => (
+                            <PresetCard key={c.id} c={c} hosts={conn.hosts[c.id] ?? []}
+                              hostsError={conn.hostsError} onOpen={() => selectPreset(c.id)} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()
             )}
           </section>
         </>
@@ -1128,6 +1202,46 @@ function LoadingBody() {
     <div className="cc-presets" aria-busy="true">
       {[0, 1, 2].map((i) => <div key={i} className="cc-skel" style={{ height: 62 }} />)}
     </div>
+  );
+}
+
+/**
+ * One compact preset card in the list — name, model, duration, host summary and
+ * the derived lifecycle pill. It is the pick-by row; opening it swaps to the
+ * focused editor (read-only for an archived preset). Extracted so the active and
+ * archived groups render the identical card rather than two copies that drift.
+ */
+function PresetCard({
+  c, hosts, hostsError, onOpen,
+}: { c: CalendarRow; hosts: CalendarHost[]; hostsError: string | null; onOpen: () => void }) {
+  const life = presetLifecycle(c);
+  const hostSummary = hostsError
+    ? ""
+    : hosts.length === 0 ? "No host" : hosts.length === 1 ? "1 host" : `${hosts.length} hosts`;
+  return (
+    <button type="button" className="cc-preset-card" data-life={life}
+      aria-label={`Open ${c.title || "Untitled preset"} — ${LIFECYCLE_LABEL[life]}`}
+      onClick={onOpen}>
+      {/* The NAME gets the whole first line — it is the one thing on the card you
+          pick by, and sharing the line truncated real titles at four cards across. */}
+      <span className="cc-preset-t">
+        <span className="cc-swatch" style={{ background: c.color ?? "var(--pg-violet)" }} />
+        <span className="cc-preset-n">{c.title || "Untitled preset"}</span>
+      </span>
+      <span className="cc-preset-m">
+        <span>{TYPE_LABEL[c.type] ?? c.type}</span>
+        <em>{c.duration_min} min</em>
+        {hostSummary && <span className="cc-preset-hosts"><Users aria-hidden /> {hostSummary}</span>}
+        <span className="cc-preset-state">
+          {/* Gold is never spent on a resting pill (§11): Live/Paused carry status
+              tones, Draft and Archived are neutral. */}
+          <Pill tone={life === "live" ? "live" : life === "paused" ? "warn" : undefined}>
+            {LIFECYCLE_LABEL[life]}
+          </Pill>
+        </span>
+      </span>
+      <ChevronRight className="cc-preset-go" aria-hidden />
+    </button>
   );
 }
 
@@ -1307,12 +1421,15 @@ function ConnectedAccounts({ conn, returnTo, identity }: { conn: ReturnType<type
  * and every configuration problem as a control that jumps straight to it.
  */
 function SelectedPreset({
-  row, draft, hosts, hostsError, readiness, busy, disabled, canWrite, publishCheck, issues, onJump, onCopy, onPublish, onPause,
+  row, draft, hosts, hostsError, readiness, busy, disabled, canWrite, publishCheck, archived, issues,
+  onJump, onCopy, onPublish, onPause, onDuplicate, onArchive, onRestore,
 }: {
   row: CalendarRow; draft: CalendarDraft; hosts: CalendarHost[]; hostsError: string | null;
   readiness: SendReadiness; busy: boolean; disabled: boolean; canWrite: boolean; publishCheck: PublishCheck;
+  archived: boolean;
   issues: { key: AreaKey; title: string; value: string; tone?: Tone }[];
   onJump: (key: AreaKey) => void; onCopy: () => void; onPublish: () => void; onPause: () => void;
+  onDuplicate: () => void; onArchive: () => void; onRestore: () => void;
 }) {
   const verdict = sendVerdict(draft.notify_config, readiness);
   const reminderLabel = verdict.silent
@@ -1337,9 +1454,20 @@ function SelectedPreset({
           <h3>{draft.title || "Untitled preset"}</h3>
           <p>{TYPE_LABEL[draft.type] ?? draft.type} · {draft.duration_min} minutes · {draft.timezone}</p>
         </div>
+        {/* Lifecycle actions. The primary act depends on state: Restore for an
+            archived preset, else Pause (Live) or Publish (Draft/Paused). Duplicate
+            is offered in every state; Archive only when not already archived. These
+            secondary verbs are gated on canWrite + busy, NOT on `disabled` — an
+            archived preset makes `disabled` (=read-only) true, but Duplicate and
+            Restore must stay usable there (§70). */}
         <div className="cc-selected-life">
           <Pill tone={lifeTone}>{LIFECYCLE_LABEL[life]}</Pill>
-          {isPublic ? (
+          {archived ? (
+            <Btn size="s" kind="act" onClick={onRestore} disabled={busy || !canWrite}
+              title="Bring this preset back as a draft">
+              {busy ? <Loader2 className="cc-spin" aria-hidden /> : <Undo2 aria-hidden />} Restore
+            </Btn>
+          ) : isPublic ? (
             <Btn size="s" kind="ghost" onClick={onPause} disabled={disabled || busy || !canWrite}
               title="Take this booking page off the air">
               {busy ? <Loader2 className="cc-spin" aria-hidden /> : <Pause aria-hidden />} Pause
@@ -1349,6 +1477,16 @@ function SelectedPreset({
               disabled={disabled || busy || !canWrite || !publishCheck.ready}
               title={publishCheck.ready ? "Make this booking page public" : `Not ready to publish: ${publishCheck.blockers.join(" ")}`}>
               {busy ? <Loader2 className="cc-spin" aria-hidden /> : <Rocket aria-hidden />} Publish
+            </Btn>
+          )}
+          <Btn size="s" kind="ghost" onClick={onDuplicate} disabled={busy || !canWrite}
+            title="Start a new preset from these settings">
+            <Copy aria-hidden /> Duplicate
+          </Btn>
+          {!archived && (
+            <Btn size="s" kind="ghost" onClick={onArchive} disabled={busy || !canWrite}
+              title="Put this preset away — it goes off the air and can be restored later">
+              <CalendarX2 aria-hidden /> Archive
             </Btn>
           )}
         </div>
@@ -1391,7 +1529,14 @@ function SelectedPreset({
         <div><dt>Reminders</dt><dd><Pill tone={reminderTone}>{reminderLabel}</Pill></dd></div>
       </dl>
 
-      {life === "draft" && (
+      {archived && (
+        <Notice tone="info" icon={<Info aria-hidden />}>
+          This preset is <strong>Archived</strong> — put away and off the air. Every field below is
+          read-only while it’s archived. <strong>Restore</strong> it to edit or publish again, or
+          <strong> Duplicate</strong> it to start a new preset from these settings.
+        </Notice>
+      )}
+      {!archived && life === "draft" && (
         <Notice tone="warn" icon={<TriangleAlert aria-hidden />}>
           This preset is a <strong>Draft</strong>. Its booking page is private — no visitor can see or
           book it{publishCheck.ready
@@ -1402,7 +1547,7 @@ function SelectedPreset({
           )}
         </Notice>
       )}
-      {life === "paused" && (
+      {!archived && life === "paused" && (
         <Notice tone="warn" icon={<TriangleAlert aria-hidden />}>
           This preset is <strong>Paused</strong>. Its link is kept, but visitors cannot book it right
           now — Publish again to put it back on the air.
@@ -1417,7 +1562,7 @@ function SelectedPreset({
           default, the agency builder), or a host removed through set_calendar_hosts
           (a different seam). A visitor who opens this page finds nothing to book, so
           it must not read as healthy — this is the one Live-state warning (§13/§70). */}
-      {life === "live" && !publishCheck.ready && (
+      {!archived && life === "live" && !publishCheck.ready && (
         <Notice tone="bad" icon={<TriangleAlert aria-hidden />}>
           This page is <strong>Live</strong>, but it can’t currently take a booking — a visitor who
           opens it will find nothing to book. Fix what’s missing, or Pause it until it’s ready:
@@ -1425,7 +1570,7 @@ function SelectedPreset({
         </Notice>
       )}
 
-      {issues.length > 0 && (
+      {!archived && issues.length > 0 && (
         <div className="cc-issues">
           <span className="cc-issues-h">
             {issues.length} {issues.length === 1 ? "thing needs" : "things need"} attention

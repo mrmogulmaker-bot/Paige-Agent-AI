@@ -127,6 +127,12 @@ export interface CalendarRow {
   // authoritative bookability gate; this only labels the lifecycle. See
   // 20270301000000_calendar_booking_preset_lifecycle.sql.
   published_at: string | null;
+  // When this preset was archived (put away). NULL = active. Archive also sets
+  // enabled=false (so the public resolver's enabled gate keeps it off the air);
+  // restore clears this column and returns the preset to Draft or Paused per
+  // published_at. Never gates a booking directly. See
+  // 20270302000000_calendar_preset_duplicate_archive_restore.sql.
+  archived_at: string | null;
   group_id: string | null;
   created_by: string | null;
   theme: string;
@@ -151,7 +157,7 @@ export interface CalendarGroup {
 /* -------------------------------------------------------------- constants */
 
 export const SELECT_COLS =
-  "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, capacity, redirect_url, timezone, availability_json, enabled, published_at, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, intake_questions, appointment_types, date_overrides, notify_config, assignment_strategy";
+  "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, capacity, redirect_url, timezone, availability_json, enabled, published_at, archived_at, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, intake_questions, appointment_types, date_overrides, notify_config, assignment_strategy";
 
 export const ASSIGNMENT_MODES: { value: AssignmentStrategy["mode"]; label: string; desc: string }[] = [
   { value: "balanced", label: "Balanced", desc: "Spread evenly — the next booking goes to the free host with the fewest upcoming." },
@@ -682,15 +688,23 @@ export function bookingUrl(slug: string): string {
 
 /* ---------------------------------------------------------------- lifecycle
  *
- * Draft → Live / Paused, derived from the two facts the server persists —
- * `enabled` (the authoritative bookability gate the /book/:slug resolver reads)
- * and `published_at` (whether it has ever been published). Never a third stored
- * status, so no two columns can disagree (§57). Mirrors the SQL in
- * 20270301000000_calendar_booking_preset_lifecycle.sql.
+ * Archived → Draft → Live / Paused, derived from the facts the server persists —
+ * `archived_at` (put away), `enabled` (the authoritative bookability gate the
+ * /book/:slug resolver reads) and `published_at` (whether it has ever been
+ * published). Never a third stored status, so no two columns can disagree (§57).
+ * Precedence matches the SQL: archived wins over everything (archive forces
+ * enabled=false, so an archived preset can never also read as Live). Mirrors
+ * 20270301000000_calendar_booking_preset_lifecycle.sql +
+ * 20270302000000_calendar_preset_duplicate_archive_restore.sql.
  */
-export type PresetLifecycle = "draft" | "live" | "paused";
+export type PresetLifecycle = "draft" | "live" | "paused" | "archived";
 
-export function presetLifecycle(row: { enabled: boolean; published_at: string | null }): PresetLifecycle {
+export function presetLifecycle(row: {
+  enabled: boolean;
+  published_at: string | null;
+  archived_at?: string | null;
+}): PresetLifecycle {
+  if (row.archived_at) return "archived";
   if (row.enabled) return "live";
   return row.published_at ? "paused" : "draft";
 }
@@ -699,6 +713,7 @@ export const LIFECYCLE_LABEL: Record<PresetLifecycle, string> = {
   draft: "Draft",
   live: "Live",
   paused: "Paused",
+  archived: "Archived",
 };
 
 /**

@@ -208,4 +208,125 @@ select pg_temp.expect_ok($$select public.publish_calendar_preset((select id from
 select pg_temp.expect_ok($$select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','p-badtime','{"type":"personal","availability_json":[{"day":1,"start":"9:00","end":"17:00"}]}'::jsonb)$$);
 select pg_temp.expect_code($$select public.publish_calendar_preset((select id from public.calendars where slug='p-badtime'))$$, '22023');
 
+-- ============================================================================
+-- S1 assertions (20270302000000): DUPLICATE · ARCHIVE · RESTORE + archived guards.
+-- These extend the ONE seam; they prove the new verbs enforce the SAME §59 caller
+-- scope, that archive takes a preset off the air and freezes it, that restore
+-- returns it to Draft/Paused (never straight to Live), and that the read derives
+-- the 'archived' lifecycle with correct precedence.
+-- ============================================================================
+set app.platform_admin = 'false';
+set app.uid = '22222222-2222-2222-2222-222222222222';
+
+-- T25 — admin duplicates the LIVE round-robin preset. The copy is a DRAFT with a
+-- fresh slug, copies config faithfully, carries the source's host pool, and writes
+-- an audit row. p-rr has 2 hosts (creator 2222 + 6666), so the copy has 2.
+select pg_temp.expect_ok($$select public.duplicate_calendar_preset((select id from public.calendars where slug='p-rr'), 'p-rr-copy', 'RR Copy')$$);
+select pg_temp.assert(
+  (select enabled=false and published_at is null and archived_at is null and title='RR Copy' and type='round_robin'
+     from public.calendars where slug='p-rr-copy'),
+  'T25 duplicate is a fresh DRAFT (enabled=false, published_at/archived_at NULL) with the given title + copied type');
+select pg_temp.assert(
+  (select c2.availability_json = c1.availability_json and c2.duration_min = c1.duration_min
+     from public.calendars c1, public.calendars c2 where c1.slug='p-rr' and c2.slug='p-rr-copy'),
+  'T25 duplicate copies config faithfully (availability_json + duration_min)');
+select pg_temp.assert(
+  (select count(*) from public.calendar_hosts h join public.calendars c on c.id=h.calendar_id where c.slug='p-rr-copy') = 2,
+  'T25 duplicate carries the source host pool (2 hosts)');
+select pg_temp.assert((select exists(select 1 from public.audit_logs where action='duplicate_calendar_preset')), 'T25 duplicate audit row written');
+
+-- T26 — duplicate into a taken slug is a clean 23505 (never a silent overwrite).
+select pg_temp.expect_code($$select public.duplicate_calendar_preset((select id from public.calendars where slug='p-rr'), 'p-one', NULL)$$, '23505');
+
+-- T27 — owner of B cannot duplicate A's preset (must manage the SOURCE): 42501.
+set app.uid = '55555555-5555-5555-5555-555555555555';
+select pg_temp.expect_code($$select public.duplicate_calendar_preset((select id from public.calendars where slug='p-rr'), 'p-steal', NULL)$$, '42501');
+
+-- T28 — service-role duplicate: trusted for the tenant it NAMES, must supply the
+-- creator, and a tenant that mismatches the source is refused.
+set app.uid = '';
+select pg_temp.expect_ok($$select public.duplicate_calendar_preset((select id from public.calendars where slug='p-rr'), 'p-rr-svc', 'SVC copy', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '33333333-3333-3333-3333-333333333333')$$);
+select pg_temp.assert(
+  (select exists(select 1 from public.calendar_hosts h join public.calendars c on c.id=h.calendar_id where c.slug='p-rr-svc' and h.user_id='33333333-3333-3333-3333-333333333333')),
+  'T28 service-role duplicate registers the passed creator as a host');
+select pg_temp.expect_code($$select public.duplicate_calendar_preset((select id from public.calendars where slug='p-rr'), 'p-rr-mismatch', NULL, 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '33333333-3333-3333-3333-333333333333')$$, '42501');
+select pg_temp.expect_code($$select public.duplicate_calendar_preset((select id from public.calendars where slug='p-rr'), 'p-rr-nocreator', NULL, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', NULL)$$, '22023');
+
+-- T29 — archive the LIVE p-rr: archived_at set, enabled=false (off the air),
+-- published_at preserved. Idempotent — a second archive keeps the first instant.
+set app.uid = '22222222-2222-2222-2222-222222222222';
+select pg_temp.expect_ok($$select public.archive_calendar_preset((select id from public.calendars where slug='p-rr'))$$);
+select pg_temp.assert((select archived_at is not null and enabled=false and published_at is not null from public.calendars where slug='p-rr'), 'T29 archive sets archived_at + enabled=false, keeps published_at');
+select pg_temp.assert((select count(*) from public.calendars where slug='p-rr' and enabled=true) = 0, 'T29 archived preset fails the public resolver gate (enabled<>true) — off the air');
+do $$
+declare _first timestamptz; _second timestamptz;
+begin
+  select archived_at into _first from public.calendars where slug='p-rr';
+  perform public.archive_calendar_preset((select id from public.calendars where slug='p-rr'));
+  select archived_at into _second from public.calendars where slug='p-rr';
+  if _first is distinct from _second then raise exception 'FAIL assert : T29 re-archive changed archived_at % -> %', _first, _second; end if;
+  raise notice 'PASS assert : T29 archive is idempotent (archived_at preserved)';
+end $$;
+
+-- T30 — an archived preset is FROZEN: publish and edit both refuse with the tagged
+-- PRESET_ARCHIVED reason (§13 — no silent un-archive-and-go-live, no silent edit).
+-- p-rr is otherwise fully publishable, so the 22023 can only be the archived guard.
+do $$
+begin
+  begin perform public.publish_calendar_preset((select id from public.calendars where slug='p-rr'));
+    raise exception 'FAIL assert : T30 publish of an archived preset should have raised';
+  exception when others then
+    if sqlstate='22023' and sqlerrm like 'PRESET_ARCHIVED%' then raise notice 'PASS assert : T30 publish refused with PRESET_ARCHIVED';
+    else raise exception 'FAIL assert : T30 publish wrong error % (%)', sqlstate, sqlerrm; end if;
+  end;
+end $$;
+do $$
+begin
+  begin perform public.update_calendar_preset((select id from public.calendars where slug='p-rr'), '{"title":"nope"}'::jsonb);
+    raise exception 'FAIL assert : T30 update of an archived preset should have raised';
+  exception when others then
+    if sqlstate='22023' and sqlerrm like 'PRESET_ARCHIVED%' then raise notice 'PASS assert : T30 update refused with PRESET_ARCHIVED';
+    else raise exception 'FAIL assert : T30 update wrong error % (%)', sqlstate, sqlerrm; end if;
+  end;
+end $$;
+
+-- T30b — a non-manager (owner B) cannot archive/restore A's preset (42501), and the
+-- §59 scope is enforced on the new verbs exactly as on the lifecycle verbs.
+set app.uid = '55555555-5555-5555-5555-555555555555';
+select pg_temp.expect_code($$select public.archive_calendar_preset((select id from public.calendars where slug='p-live-ok'))$$, '42501');
+select pg_temp.expect_code($$select public.restore_calendar_preset((select id from public.calendars where slug='p-rr'))$$, '42501');
+
+-- T31 — restore p-rr: archived_at cleared, enabled STAYS false, and because it had
+-- been published it returns to Paused — never straight to Live. Then it is editable
+-- again, and can be re-published through the validated seam.
+set app.uid = '22222222-2222-2222-2222-222222222222';
+select pg_temp.expect_ok($$select public.restore_calendar_preset((select id from public.calendars where slug='p-rr'))$$);
+select pg_temp.assert((select archived_at is null and enabled=false and published_at is not null from public.calendars where slug='p-rr'), 'T31 restore clears archived_at, keeps enabled=false + published_at -> Paused');
+select pg_temp.assert((select lifecycle from public.get_calendar_presets('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') where slug='p-rr')='paused', 'T31 restored preset derives as Paused');
+select pg_temp.expect_ok($$select public.update_calendar_preset((select id from public.calendars where slug='p-rr'), '{"title":"Restored RR"}'::jsonb)$$);
+select pg_temp.expect_ok($$select public.publish_calendar_preset((select id from public.calendars where slug='p-rr'))$$);
+select pg_temp.assert((select enabled=true from public.calendars where slug='p-rr'), 'T31 a restored preset can be edited and re-published');
+
+-- T32 — archive a never-published DRAFT (p-nowin) and restore it: returns to Draft
+-- (published_at still NULL), proving restore honors the original lifecycle.
+select pg_temp.expect_ok($$select public.archive_calendar_preset((select id from public.calendars where slug='p-nowin'))$$);
+select pg_temp.assert((select lifecycle from public.get_calendar_presets('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') where slug='p-nowin')='archived', 'T32 archived draft derives as archived (precedence over draft)');
+select pg_temp.expect_ok($$select public.restore_calendar_preset((select id from public.calendars where slug='p-nowin'))$$);
+select pg_temp.assert((select archived_at is null and enabled=false and published_at is null from public.calendars where slug='p-nowin'), 'T32 restored draft returns to Draft (published_at still NULL)');
+
+-- T33 — the read exposes archived_at and derives 'archived' with precedence over
+-- every other state; archived rows sort last. Archive p-two (a draft) and confirm.
+select pg_temp.expect_ok($$select public.archive_calendar_preset((select id from public.calendars where slug='p-two'))$$);
+select pg_temp.assert(
+  (select lifecycle from public.get_calendar_presets('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') where slug='p-two')='archived'
+  and (select archived_at is not null from public.get_calendar_presets('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') where slug='p-two'),
+  'T33 get_calendar_presets exposes archived_at and derives the archived lifecycle');
+
+-- T34 — service-role archive/restore is trusted for the tenant it NAMES and refused
+-- on a mismatch (parity with the lifecycle verbs).
+set app.uid = '';
+select pg_temp.expect_ok($$select public.archive_calendar_preset((select id from public.calendars where slug='p-live-ok'), 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')$$);
+select pg_temp.expect_code($$select public.restore_calendar_preset((select id from public.calendars where slug='p-live-ok'), 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')$$, '42501');
+select pg_temp.expect_ok($$select public.restore_calendar_preset((select id from public.calendars where slug='p-live-ok'), 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')$$);
+
 select '==== ALL PRESET-LIFECYCLE ASSERTIONS PASSED ====' as result;

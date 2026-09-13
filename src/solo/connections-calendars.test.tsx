@@ -34,8 +34,9 @@ const calendar = (over: Partial<CalendarRow> = {}): CalendarRow => ({
   availability_json: [{ day: 1, start: "09:00", end: "17:00" }, { day: 2, start: "09:00", end: "17:00" }],
   // enabled=true, published_at=null → Live by `presetLifecycle` (enabled wins). A
   // draft fixture sets `enabled:false` and keeps `published_at:null` (→ Draft); a
-  // paused one sets `enabled:false` WITH a `published_at` timestamp (→ Paused).
-  enabled: true, published_at: null,
+  // paused one sets `enabled:false` WITH a `published_at` timestamp (→ Paused); an
+  // archived one sets an `archived_at` timestamp (→ Archived, precedence over all).
+  enabled: true, published_at: null, archived_at: null,
   group_id: null, created_by: null, theme: "light", subtitle: null,
   show_company_name: true, location_type: "google_meet", location_value: null,
   location_options: [{ type: "google_meet", value: null }], intake_questions: [],
@@ -80,6 +81,11 @@ function seam(over: Record<string, unknown> = {}) {
     // {ok:true} or {ok:false,message}; the surface drives them from Publish/Pause.
     publish: vi.fn(async () => ({ ok: true as const })),
     pause: vi.fn(async () => ({ ok: true as const })),
+    // The S1 lifecycle verbs. duplicate returns the new draft row so the editor can
+    // open on it; archive/restore return ok.
+    duplicate: vi.fn(async () => ({ ok: true as const, row: calendar({ id: "cal-dup", slug: "copy", title: "Copy", enabled: false, published_at: null, archived_at: null }), calendarId: "cal-dup" })),
+    archive: vi.fn(async () => ({ ok: true as const })),
+    restore: vi.fn(async () => ({ ok: true as const })),
     connect: vi.fn(), disconnect: vi.fn(),
     saveHosts: vi.fn(async () => ({ ok: true as const })),
     ...over,
@@ -420,6 +426,74 @@ describe("publishing, pausing, and the honest booking link", () => {
     mount({ calendars: [calendar({ enabled: true, published_at: "2026-01-01T00:00:00.000Z" })] });
     openPreset();
     expect(text()).not.toMatch(/can’t currently take a booking/i);
+  });
+});
+
+describe("duplicate, archive and restore — the full preset object lifecycle", () => {
+  it("offers Duplicate and Archive on an active preset, and duplicating drives conn.duplicate", async () => {
+    const duplicate = vi.fn(async () => ({ ok: true as const, row: calendar({ id: "cal-dup", slug: "copy", title: "Discovery call (copy)" }), calendarId: "cal-dup" }));
+    mount({ duplicate, calendars: [calendar({ enabled: false })] });
+    openPreset();
+    const dup = byText(/Duplicate/);
+    const arc = byText(/Archive/);
+    expect(dup).toBeTruthy();
+    expect(arc).toBeTruthy();
+    await act(async () => { dup?.click(); });
+    expect(duplicate).toHaveBeenCalledWith("cal-1", "Discovery call");
+  });
+
+  it("archiving an active preset drives conn.archive and returns to the list with a message", async () => {
+    const archive = vi.fn(async () => ({ ok: true as const }));
+    mount({ archive, calendars: [calendar({ enabled: true, published_at: "2026-01-01T00:00:00.000Z" })] });
+    openPreset();
+    await act(async () => { byText(/Archive/)?.click(); });
+    expect(archive).toHaveBeenCalledWith("cal-1");
+    // Dropped back to the list (no editor), and said what happened.
+    expect(container.querySelector(".cc-selected")).toBeNull();
+    expect(text()).toMatch(/Archived\. It’s off the air/i);
+  });
+
+  it("an archived preset opens READ-ONLY: Restore + Duplicate offered, no Publish/Pause, fields disabled", () => {
+    mount({ calendars: [calendar({ enabled: false, published_at: null, archived_at: "2026-02-01T00:00:00.000Z" })] });
+    openPreset();
+    // The archived banner explains the read-only state.
+    expect(text()).toMatch(/This preset is\s*Archived/i);
+    expect(text()).toMatch(/read-only while it’s archived/i);
+    // Restore + Duplicate are offered; Publish and Pause are not.
+    expect(byText(/Restore/)).toBeTruthy();
+    expect(byText(/Duplicate/)).toBeTruthy();
+    expect(byText(/^Publish/)).toBeUndefined();
+    expect(byText(/^Pause/)).toBeUndefined();
+    // The title input in Details is disabled — archived is genuinely read-only.
+    const titleInput = container.querySelector<HTMLInputElement>(".cc-in");
+    expect(titleInput?.disabled).toBe(true);
+  });
+
+  it("Restore on an archived preset drives conn.restore", async () => {
+    const restore = vi.fn(async () => ({ ok: true as const }));
+    mount({ restore, calendars: [calendar({ enabled: false, archived_at: "2026-02-01T00:00:00.000Z" })] });
+    openPreset();
+    await act(async () => { byText(/Restore/)?.click(); });
+    expect(restore).toHaveBeenCalledWith("cal-1");
+    expect(text()).toMatch(/Restored\. It’s back as a draft/i);
+  });
+
+  it("groups archived presets under an Archived heading, below the active ones", () => {
+    mount({
+      calendars: [
+        calendar({ id: "cal-1", slug: "active-one", title: "Active one", enabled: true, published_at: "2026-01-01T00:00:00.000Z" }),
+        calendar({ id: "cal-2", slug: "put-away", title: "Put away", enabled: false, archived_at: "2026-02-01T00:00:00.000Z" }),
+      ],
+      hosts: {},
+    });
+    // The Archived group exists and carries its explanatory subhead.
+    const group = container.querySelector(".cc-archived");
+    expect(group).toBeTruthy();
+    expect(group?.textContent ?? "").toMatch(/Archived/);
+    // The archived preset's card shows the Archived pill.
+    const archivedCard = [...container.querySelectorAll<HTMLElement>(".cc-preset-card")].find((c) => /Put away/.test(c.textContent ?? ""));
+    expect(archivedCard?.getAttribute("data-life")).toBe("archived");
+    expect(archivedCard?.textContent ?? "").toMatch(/Archived/);
   });
 });
 

@@ -12,7 +12,7 @@ import {
   DEFAULT_AVAIL, availToJson, blankDraft, buildCalendarPatch, draftFromRow, jsonToAvail,
   willSaveDateOverride, willSaveQuestion, willSaveAppointmentType,
   normalizeLocationOptions, normalizeNotify, slugify, type CalendarDraft, type CalendarRow,
-  PRESET_CATALOG, draftForTemplate, presetLifecycle, publishReadiness,
+  PRESET_CATALOG, draftForTemplate, presetLifecycle, publishReadiness, LIFECYCLE_LABEL,
 } from "./config";
 
 const draft = (over: Partial<CalendarDraft> = {}): CalendarDraft => ({
@@ -264,6 +264,21 @@ describe("presetLifecycle — derived from enabled + published_at, never a third
   });
   it("a disabled preset that HAS been published is Paused, not a Draft", () => {
     expect(presetLifecycle({ enabled: false, published_at: "2027-01-01T00:00:00Z" })).toBe("paused");
+  });
+  it("an archived preset reads as Archived, with precedence over every other state", () => {
+    // Archive forces enabled=false server-side, so enabled+archived cannot co-occur;
+    // but even if a row somehow carried both, archived must WIN (it is put away).
+    expect(presetLifecycle({ enabled: false, published_at: null, archived_at: "2027-02-01T00:00:00Z" })).toBe("archived");
+    expect(presetLifecycle({ enabled: false, published_at: "2027-01-01T00:00:00Z", archived_at: "2027-02-01T00:00:00Z" })).toBe("archived");
+    expect(presetLifecycle({ enabled: true, published_at: "2027-01-01T00:00:00Z", archived_at: "2027-02-01T00:00:00Z" })).toBe("archived");
+  });
+  it("a null archived_at never changes the draft/live/paused derivation", () => {
+    expect(presetLifecycle({ enabled: false, published_at: null, archived_at: null })).toBe("draft");
+    expect(presetLifecycle({ enabled: true, published_at: null, archived_at: null })).toBe("live");
+    expect(presetLifecycle({ enabled: false, published_at: "2027-01-01T00:00:00Z", archived_at: null })).toBe("paused");
+  });
+  it("LIFECYCLE_LABEL carries a human label for every lifecycle including archived", () => {
+    expect(LIFECYCLE_LABEL.archived).toBe("Archived");
   });
 });
 

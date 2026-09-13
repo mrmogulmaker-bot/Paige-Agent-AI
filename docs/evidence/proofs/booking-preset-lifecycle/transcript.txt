@@ -1,69 +1,543 @@
-# Repeatable proof transcript — booking-preset lifecycle server seam
-# Re-run: cat harness.sql <migration> assertions.sql | psql -v ON_ERROR_STOP=on
-# Regenerated 2026-09-13T04:38:27Z against 20270129000000_calendar_booking_preset_lifecycle.sql
-# (renamed from 20270127000000 to clear a version collision with the merged
-#  20270127000000_social_connection_lifecycle.sql). Covers the §39 auto-pause fix (T19-T24).
-# ON_ERROR_STOP aborts on the first failed assertion, so a clean tail through the
-# final banner is the whole matrix passing.
+# Local PostgreSQL replay — booking-preset lifecycle + duplicate/archive/restore (S1)
+# Generated 2026-09-13T09:09:30Z against a real PostgreSQL instance.
+# harness.sql (faithful fixture) -> 20270301000000 -> 20270302000000 -> assertions.sql
+# ON_ERROR_STOP=1 aborts on the FIRST failure, so reaching the banner == every assertion held.
+# ------------------------------------------------------------------------------------------
+harness.sql: applied
+20270301000000_calendar_booking_preset_lifecycle.sql: applied
+20270302000000_calendar_preset_duplicate_archive_restore.sql: applied
+# ------------------------------------------------------------------------------------------
+NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+ expect_ok 
+-----------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T1 draft-by-default: enabled=false, published_at NULL
+ assert 
+--------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T1 creator registered as host
+ assert 
+--------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T1 audit row written
+ assert 
+--------
+ 
+(1 row)
+
+NOTICE:  PASS expect 42501 : select public.create_calendar_preset('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb
+ expect_code 
+-------------
+ 
+(1 row)
 
 NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
-NOTICE:  PASS assert : T1 draft-by-default: enabled=false, published_at NULL
-NOTICE:  PASS assert : T1 creator registered as host
-NOTICE:  PASS assert : T1 audit row written
-NOTICE:  PASS expect 42501 : select public.create_calendar_preset('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb
-NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS expect 23505 : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+ expect_code 
+-------------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS expect 22023 : select public.publish_calendar_preset((select id from public.calendars w
+ expect_code 
+-------------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T5 refused publish left it a draft
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS expect 22023 : select public.publish_calendar_preset((select id from public.calendars w
+ expect_code 
+-------------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.publish_calendar_preset((select id from public.calendars w
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T6 round_robin publishes only with >=2 hosts
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.publish_calendar_preset((select id from public.calendars w
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T7 personal publishes live (enabled=true, published_at set)
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T8 republish keeps original published_at
 NOTICE:  PASS ok     : select public.pause_calendar_preset((select id from public.calendars whe
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T9 pause keeps published_at -> Paused distinguishable from Draft
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.update_calendar_preset((select id from public.calendars wh
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T10 update changes config only; enabled/published_at/slug immune
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS expect 42501 : select public.update_calendar_preset((select id from public.calendars wh
+ expect_code 
+-------------
+ 
+(1 row)
+
 NOTICE:  PASS expect 42501 : select public.publish_calendar_preset((select id from public.calendars w
+ expect_code 
+-------------
+ 
+(1 row)
+
 NOTICE:  PASS expect 42501 : select public.pause_calendar_preset((select id from public.calendars whe
+ expect_code 
+-------------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.update_calendar_preset((select id from public.calendars wh
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T12 platform admin manages cross-tenant
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T13 service-role create registers the passed creator as host
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.publish_calendar_preset((select id from public.calendars w
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS expect 42501 : select public.publish_calendar_preset((select id from public.calendars w
+ expect_code 
+-------------
+ 
+(1 row)
+
 NOTICE:  PASS expect 42501 : select public.publish_calendar_preset((select id from public.calendars w
+ expect_code 
+-------------
+ 
+(1 row)
+
 NOTICE:  PASS expect 42501 : select public.update_calendar_preset((select id from public.calendars wh
+ expect_code 
+-------------
+ 
+(1 row)
+
 NOTICE:  PASS expect P0002 : select public.publish_calendar_preset('00000000-0000-0000-0000-000000000
+ expect_code 
+-------------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T16 migration backfill: a pre-existing enabled preset reads as published (=created_at), never Draft
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T17 admin reads the tenant's presets
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T17 p-one derives as Paused (enabled=false, published_at set)
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T17 p-rr derives as Live
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T17 p-nowin derives as Draft (never published)
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS expect 42501 : select * from public.get_calendar_presets('aaaaaaaa-aaaa-aaaa-aaaa-aaaaa
+ expect_code 
+-------------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T17 service-role read is scoped to the named tenant only
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T18 resolver gate (enabled=true) admits neither a Draft (p-nowin) nor a Paused (p-one) preset
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.publish_calendar_preset((select id from public.calendars w
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T19 preset is Live before the breaking edit
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T19 breaking edit returns auto_paused=true with the blocking reason
 NOTICE:  PASS assert : T19 auto-paused: enabled=false, published_at RETAINED (reads as Paused, not Draft)
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.publish_calendar_preset((select id from public.calendars w
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T20 valid edit to a Live preset keeps it Live (auto_paused=false)
 NOTICE:  PASS assert : T20 Live preset stays Live after a valid, still-bookable edit
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS assert : T21 editing a Draft does not auto-pause
 NOTICE:  PASS assert : T21 Draft stays a Draft after an edit
+ assert 
+--------
+ 
+(1 row)
+
 NOTICE:  PASS expect 22023 : select public.update_calendar_preset((select id from public.calendars wh
+ expect_code 
+-------------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.update_calendar_preset((select id from public.calendars wh
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS expect 22023 : select public.publish_calendar_preset((select id from public.calendars w
+ expect_code 
+-------------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.update_calendar_preset((select id from public.calendars wh
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.publish_calendar_preset((select id from public.calendars w
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS ok     : select public.create_calendar_preset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa
+ expect_ok 
+-----------
+ 
+(1 row)
+
 NOTICE:  PASS expect 22023 : select public.publish_calendar_preset((select id from public.calendars w
+ expect_code 
+-------------
+ 
+(1 row)
+
+NOTICE:  PASS ok     : select public.duplicate_calendar_preset((select id from public.calendars
+ expect_ok 
+-----------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T25 duplicate is a fresh DRAFT (enabled=false, published_at/archived_at NULL) with the given title + copied type
+ assert 
+--------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T25 duplicate copies config faithfully (availability_json + duration_min)
+ assert 
+--------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T25 duplicate carries the source host pool (2 hosts)
+ assert 
+--------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T25 duplicate audit row written
+ assert 
+--------
+ 
+(1 row)
+
+NOTICE:  PASS expect 23505 : select public.duplicate_calendar_preset((select id from public.calendars
+ expect_code 
+-------------
+ 
+(1 row)
+
+NOTICE:  PASS expect 42501 : select public.duplicate_calendar_preset((select id from public.calendars
+ expect_code 
+-------------
+ 
+(1 row)
+
+NOTICE:  PASS ok     : select public.duplicate_calendar_preset((select id from public.calendars
+ expect_ok 
+-----------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T28 service-role duplicate registers the passed creator as a host
+ assert 
+--------
+ 
+(1 row)
+
+NOTICE:  PASS expect 42501 : select public.duplicate_calendar_preset((select id from public.calendars
+ expect_code 
+-------------
+ 
+(1 row)
+
+NOTICE:  PASS expect 22023 : select public.duplicate_calendar_preset((select id from public.calendars
+ expect_code 
+-------------
+ 
+(1 row)
+
+NOTICE:  PASS ok     : select public.archive_calendar_preset((select id from public.calendars w
+ expect_ok 
+-----------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T29 archive sets archived_at + enabled=false, keeps published_at
+ assert 
+--------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T29 archived preset fails the public resolver gate (enabled<>true) — off the air
+ assert 
+--------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T29 archive is idempotent (archived_at preserved)
+NOTICE:  PASS assert : T30 publish refused with PRESET_ARCHIVED
+NOTICE:  PASS assert : T30 update refused with PRESET_ARCHIVED
+NOTICE:  PASS expect 42501 : select public.archive_calendar_preset((select id from public.calendars w
+ expect_code 
+-------------
+ 
+(1 row)
+
+NOTICE:  PASS expect 42501 : select public.restore_calendar_preset((select id from public.calendars w
+ expect_code 
+-------------
+ 
+(1 row)
+
+NOTICE:  PASS ok     : select public.restore_calendar_preset((select id from public.calendars w
+ expect_ok 
+-----------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T31 restore clears archived_at, keeps enabled=false + published_at -> Paused
+ assert 
+--------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T31 restored preset derives as Paused
+ assert 
+--------
+ 
+(1 row)
+
+NOTICE:  PASS ok     : select public.update_calendar_preset((select id from public.calendars wh
+ expect_ok 
+-----------
+ 
+(1 row)
+
+NOTICE:  PASS ok     : select public.publish_calendar_preset((select id from public.calendars w
+ expect_ok 
+-----------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T31 a restored preset can be edited and re-published
+ assert 
+--------
+ 
+(1 row)
+
+NOTICE:  PASS ok     : select public.archive_calendar_preset((select id from public.calendars w
+ expect_ok 
+-----------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T32 archived draft derives as archived (precedence over draft)
+ assert 
+--------
+ 
+(1 row)
+
+NOTICE:  PASS ok     : select public.restore_calendar_preset((select id from public.calendars w
+ expect_ok 
+-----------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T32 restored draft returns to Draft (published_at still NULL)
+ assert 
+--------
+ 
+(1 row)
+
+NOTICE:  PASS ok     : select public.archive_calendar_preset((select id from public.calendars w
+ expect_ok 
+-----------
+ 
+(1 row)
+
+NOTICE:  PASS assert : T33 get_calendar_presets exposes archived_at and derives the archived lifecycle
+ assert 
+--------
+ 
+(1 row)
+
+NOTICE:  PASS ok     : select public.archive_calendar_preset((select id from public.calendars w
+ expect_ok 
+-----------
+ 
+(1 row)
+
+NOTICE:  PASS expect 42501 : select public.restore_calendar_preset((select id from public.calendars w
+ expect_code 
+-------------
+ 
+(1 row)
+
+NOTICE:  PASS ok     : select public.restore_calendar_preset((select id from public.calendars w
+ expect_ok 
+-----------
+ 
+(1 row)
+
+                      result                      
+--------------------------------------------------
  ==== ALL PRESET-LIFECYCLE ASSERTIONS PASSED ====
+(1 row)
+

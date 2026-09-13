@@ -1030,11 +1030,12 @@ function CalendarTypeChooser({ open, onOpenChange, onPick }: {
 }
 
 // Blank draft for create mode — every field the builder edits, with sane defaults.
-// `published_at` is excluded too: it is the booking-preset lifecycle column owned by
-// the create/publish/pause RPC seam (20270301000000_calendar_booking_preset_lifecycle.sql),
-// not an editable field of this legacy builder — which inserts enabled:true directly and
-// never sets it. Excluding it keeps this draft shape honest and off the lifecycle column.
-function blankDraft(): Omit<CalendarRow, "id" | "slug" | "tenant_id" | "created_by" | "published_at"> {
+// `published_at` AND `archived_at` are excluded too: they are the booking-preset
+// lifecycle columns owned by the create/publish/pause/archive RPC seam
+// (20270301000000 + 20270302000000), not editable fields of this legacy builder —
+// which inserts enabled:true directly and sets neither. Excluding them keeps this
+// draft shape honest and off the lifecycle columns.
+function blankDraft(): Omit<CalendarRow, "id" | "slug" | "tenant_id" | "created_by" | "published_at" | "archived_at"> {
   return {
     type: "personal",
     title: "",

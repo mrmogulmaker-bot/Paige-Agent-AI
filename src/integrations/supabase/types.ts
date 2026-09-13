@@ -2322,6 +2322,7 @@ export type Database = {
         Row: {
           accent: string | null
           appointment_types: Json
+          archived_at: string | null
           assignment_strategy: Json
           availability_json: Json | null
           booking_horizon_days: number
@@ -2360,6 +2361,7 @@ export type Database = {
         Insert: {
           accent?: string | null
           appointment_types?: Json
+          archived_at?: string | null
           assignment_strategy?: Json
           availability_json?: Json | null
           booking_horizon_days?: number
@@ -2398,6 +2400,7 @@ export type Database = {
         Update: {
           accent?: string | null
           appointment_types?: Json
+          archived_at?: string | null
           assignment_strategy?: Json
           availability_json?: Json | null
           booking_horizon_days?: number
