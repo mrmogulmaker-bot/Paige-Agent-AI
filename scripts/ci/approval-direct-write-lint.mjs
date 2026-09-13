@@ -29,6 +29,22 @@
  *
  * If you have a genuine exception, mark the offending line `// approval-write-exempt: <reason>`.
  *
+ * FAIL-CLOSED (Codex peer-gate, 2026-09-13). The guard does NOT merely grep for the literal
+ * "approved": that misses the payload-variable style (`const patch = { status: "approved" };
+ * .update(patch)`) and the shorthand `.update({ status })`, both of which bypass execute-approval.
+ * Instead, EVERY `from("paige_pending_approvals").update(<arg>)` in src/ is flagged UNLESS <arg> is
+ * statically provable approve-free: a single inline object literal with no spread whose top-level
+ * `status` is either absent (the update sets no status — e.g. a reassign) or a decline string
+ * literal (rejected|skipped|escalated|changes_requested). A variable payload, a spread, a shorthand
+ * `status`, a computed/ternary status, or a non-literal argument all FAIL.
+ *
+ * DEFENSE IN DEPTH, not the sole enforcement (§13 honesty about a text lint's limits). This is a
+ * regression tripwire on the realistic frontend shape (`supabase.from(...).update(...)`). It cannot
+ * see through an aliased client, a table name held in a variable (`from(tbl)`), or a chain split
+ * across statements (`const q = supabase.from(...); q.update(...)`). The REAL enforcement is the
+ * server execute-approval seam + the DB direct-approve guard (which throws 42501 on an orchestration
+ * row); this guard keeps the frontend honest so a regression surfaces in CI, not in production.
+ *
  *   node scripts/ci/approval-direct-write-lint.mjs
  *   node scripts/ci/approval-direct-write-lint.mjs --self-test
  */
@@ -37,12 +53,14 @@ import path from "node:path";
 
 const ROOT = "src";
 const ESCAPE = "approval-write-exempt:";
+const DECLINE = new Set(["rejected", "skipped", "escalated", "changes_requested"]);
 
-// A direct `from("paige_pending_approvals") ... .update({ ... status: <expr containing "approved"> })`.
-// The `[^,}]*` after `status:` lets the literal be reached past a ternary (status: x ? "approved" : "rejected")
-// while still stopping at the field boundary, so a sibling `status: "rejected"` field never matches.
-const APPROVED_WRITE =
-  /from\(\s*["']paige_pending_approvals["']\s*\)[\s\S]{0,400}?\.update\(\s*\{[\s\S]{0,400}?status\s*:\s*[^,}]*["']approved["']/g;
+// Locate `from("paige_pending_approvals")` immediately chained to `.update(`/`.upsert(`
+// (whitespace/newlines only between them — a `.select()`/`.eq()` in between is a read, not this
+// write, and the tight adjacency also means a read here + an approved-write to a DIFFERENT table
+// nearby is NOT conflated). The capture ends at the `(` of the write; the argument is then
+// extracted with a brace/paren/string-aware walker. Backtick table names are covered too.
+const FROM_UPDATE = /from\(\s*["'`]paige_pending_approvals["'`]\s*\)\s*\.(?:update|upsert)\(/g;
 
 // Comments are BLANKED, not deleted, so reported line numbers still match the real file.
 const strip = (t) =>
@@ -51,22 +69,74 @@ const strip = (t) =>
 
 const lineAt = (text, index) => text.slice(0, index).split("\n").length;
 
+// From `text[open]` == "(" of `.update(`, return the argument source (between the parens),
+// respecting nested (){}[] and string literals. Returns null if unbalanced.
+function extractCallArg(text, openParen) {
+  let depth = 0, i = openParen, str = null;
+  for (; i < text.length; i++) {
+    const c = text[i];
+    if (str) { if (c === "\\") i++; else if (c === str) str = null; continue; }
+    if (c === '"' || c === "'" || c === "`") { str = c; continue; }
+    if (c === "(" || c === "{" || c === "[") depth++;
+    else if (c === ")" || c === "}" || c === "]") { depth--; if (depth === 0) return text.slice(openParen + 1, i); }
+  }
+  return null;
+}
+
+// Split an object-literal body into its TOP-LEVEL entries (depth-0 commas), string/nesting-aware.
+function topLevelEntries(body) {
+  const entries = [];
+  let depth = 0, str = null, start = 0;
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (str) { if (c === "\\") i++; else if (c === str) str = null; continue; }
+    if (c === '"' || c === "'" || c === "`") { str = c; continue; }
+    if (c === "(" || c === "{" || c === "[") depth++;
+    else if (c === ")" || c === "}" || c === "]") depth--;
+    else if (c === "," && depth === 0) { entries.push(body.slice(start, i)); start = i + 1; }
+  }
+  entries.push(body.slice(start));
+  return entries.map((e) => e.trim()).filter(Boolean);
+}
+
+// PROVABLY approve-free? Only a single inline object literal, no spread, whose top-level `status`
+// is absent or a decline string literal. Everything else is unprovable → caller flags it.
+function isProvablyApproveFree(arg) {
+  const a = arg.trim();
+  if (!(a.startsWith("{") && a.endsWith("}"))) return false; // variable / call / non-literal
+  const entries = topLevelEntries(a.slice(1, -1));
+  for (const e of entries) {
+    if (e.startsWith("...")) return false; // a spread could carry status:'approved'
+    const kv = /^status\s*(?::\s*(.+))?$/s.exec(e);
+    if (!kv) continue; // some other field — irrelevant
+    const value = kv[1]?.trim();
+    if (value === undefined) return false; // shorthand `{ status }` — the variable is unprovable
+    const lit = /^["'`](rejected|skipped|escalated|changes_requested)["'`]$/.exec(value);
+    if (!lit) return false; // approved, a variable, a ternary, a computed value — unprovable
+  }
+  return true; // no status entry, or every status entry is a decline literal
+}
+
 export function scan(files) {
   const problems = [];
   for (const [p, raw] of files) {
     const stripped = strip(raw);
     const rawLines = raw.split("\n");
-    APPROVED_WRITE.lastIndex = 0;
+    FROM_UPDATE.lastIndex = 0;
     let m;
-    while ((m = APPROVED_WRITE.exec(stripped)) !== null) {
-      // Report the line of the offending status literal (end of the match).
-      const ln = lineAt(stripped, m.index + m[0].length);
+    while ((m = FROM_UPDATE.exec(stripped)) !== null) {
+      const openParen = m.index + m[0].length - 1; // the "(" of ".update("
+      const arg = extractCallArg(stripped, openParen);
+      if (arg === null) continue; // unbalanced — leave it to tsc/eslint
+      if (isProvablyApproveFree(arg)) continue;
+      const ln = lineAt(stripped, openParen);
       if ((rawLines[ln - 1] ?? "").includes(ESCAPE)) continue; // a deliberate, explained exception
       problems.push(
-        `${p}:${ln} — direct paige_pending_approvals write of status='approved'. ` +
+        `${p}:${ln} — a paige_pending_approvals .update()/.upsert() whose payload is not provably approve-free. ` +
         `Route approve through supabase.functions.invoke("execute-approval", { body: { approval_id } }) ` +
         `(§10/§18) — it re-scopes the id server-side, claims once, EXECUTES, and writes Rail + receipt. ` +
-        `A direct approved write bypasses the seam and silent-drops a message send.`,
+        `A direct status='approved' write bypasses the seam and silent-drops a message send. ` +
+        `(Allowed: an inline literal whose status is absent or a decline — rejected/skipped/escalated/changes_requested.)`,
       );
     }
   }
@@ -87,16 +157,34 @@ function walk(dir) {
 
 if (process.argv.includes("--self-test")) {
   const cases = [
-    ["catches a direct approved write",
+    ["catches a direct approved write (inline literal)",
       [["f.ts", 'await supabase.from("paige_pending_approvals").update({ status: "approved", reviewed_at: x }).in("id", ids);']], 1],
     ["catches a ternary that can produce approved",
       [["f.ts", 'supabase.from("paige_pending_approvals").update({ status: decision === "approve" ? "approved" : "rejected" }).eq("id", id);']], 1],
     ["catches approved even when status is not the first field",
       [["f.ts", 'supabase.from("paige_pending_approvals").update({ reviewed_at: now, status: "approved" }).eq("id", id);']], 1],
-    ["ignores a decline (rejected) write",
+    ["FAIL-CLOSED: catches a variable payload (.update(patch))",
+      [["f.ts", 'const patch = { status: "approved" };\nsupabase.from("paige_pending_approvals").update(patch).eq("id", id);']], 1],
+    ["FAIL-CLOSED: catches a variable/computed status",
+      [["f.ts", 'supabase.from("paige_pending_approvals").update({ status: st }).eq("id", id);']], 1],
+    ["FAIL-CLOSED: catches shorthand status",
+      [["f.ts", 'supabase.from("paige_pending_approvals").update({ status }).eq("id", id);']], 1],
+    ["FAIL-CLOSED: catches a spread payload (could carry approved)",
+      [["f.ts", 'supabase.from("paige_pending_approvals").update({ ...base, reviewed_at: now }).eq("id", id);']], 1],
+    ["FAIL-CLOSED: catches .upsert",
+      [["f.ts", 'supabase.from("paige_pending_approvals").upsert({ status: "approved" });']], 1],
+    ["FAIL-CLOSED: catches a backtick table + backtick approved literal",
+      [["f.ts", 'supabase.from(`paige_pending_approvals`).update({ status: `approved` });']], 1],
+    ["ignores a decline (rejected) inline write",
       [["f.ts", 'supabase.from("paige_pending_approvals").update({ status: "rejected", reviewed_at: x }).eq("id", id);']], 0],
+    ["ignores another decline state (skipped)",
+      [["f.ts", 'supabase.from("paige_pending_approvals").update({ status: "skipped" }).eq("id", id);']], 0],
+    ["ignores an update that sets NO status (e.g. a reassign)",
+      [["f.ts", 'supabase.from("paige_pending_approvals").update({ assigned_to_user_id: u, reviewed_at: x }).eq("id", id);']], 0],
     ["ignores a different table's approved write (readiness proposals)",
       [["f.ts", 'supabase.from("readiness_proposals").update({ status: "approved", approved_by: u }).eq("id", id);']], 0],
+    ["ignores a READ on the table then an approved write to a DIFFERENT table nearby (no cross-statement conflation)",
+      [["f.ts", 'const { data } = await supabase.from("paige_pending_approvals").select("id").eq("id", id);\nawait supabase.from("readiness_proposals").update({ status: "approved" }).eq("id", id);']], 0],
     ["ignores the canonical execute-approval seam call",
       [["f.ts", 'await supabase.functions.invoke("execute-approval", { body: { approval_id: id } });']], 0],
     ["ignores its own explanatory comment",
