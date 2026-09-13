@@ -16,11 +16,16 @@
 -- accepted→executed|failed|ambiguous step. No `outcomes.ts` / `_final` / drift-guard change (they stay as
 -- C4 locked them); this transition lives ONLY here.
 --
--- CONCURRENCY IS MOOT BY CONSTRUCTION. A held act's event completes `done` (approval_pending ∈
--- FINAL_OR_SETTLED → not in the engine's `reconcile_pending` → the drainer finishes the event and the
--- sweeper never re-drives a `done` event). So this transition runs out-of-band with no competing drain.
--- The atomic guarded UPDATE below is the single-use redemption: a second call finds outcome ≠
--- approval_pending and no-ops, returning the persisted row.
+-- CONCURRENCY IS SAFE (corrected reason, §39). An event whose acts are ALL held completes `done`
+-- (approval_pending ∈ FINAL_OR_SETTLED → not in `reconcile_pending`), so nothing re-drives it. But a
+-- MULTI-ACT event with a held act AND a sibling in an advanceable state (accepted/retrying/ambiguous) is
+-- NOT `done`, and the sweeper DOES re-drive it — so this transition is NOT guaranteed to run with no
+-- competing drain. It is safe anyway, for three reasons the engine already guarantees: (a) phase 4 skips
+-- every native record and phase 5 is READ-CURRENT-FIRST — a re-derived `approval_pending` is never written
+-- over an `accepted_for_execution`/`executed` row; (b) a confirm-lane act produces NO engine execute-plan,
+-- so the drainer never double-dispatches this act; (c) the monotonic guard converges every writer on the
+-- terminal outcome. The atomic guarded UPDATE below is the single-use redemption: a second call (this RPC
+-- or any writer) finds outcome ≠ approval_pending and no-ops, returning the persisted row.
 --
 -- AUTHORITY (§9/§59). This function is SERVICE-ROLE ONLY (in-body `auth.uid() IS NULL` guard). It performs
 -- a guarded STATE TRANSITION keyed on (event_id, act_id) — it is NOT the human-authority boundary and does

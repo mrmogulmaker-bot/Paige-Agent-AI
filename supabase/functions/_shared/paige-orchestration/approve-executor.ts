@@ -50,6 +50,13 @@ export type ApproveExecInput = {
   actId: string;
   /** the JWT-verified approver (execute-approval resolved + authorised this person). */
   approverUserId: string;
+  /** the tenant the caller was AUTHORISED against at the door (execute-approval verifies the approver is a
+   *  member of the approval row's tenant). REQUIRED as a §9/§59 guard: the executor refuses unless the held
+   *  act's ledger tenant EQUALS this — otherwise a caller authorised for tenant A could drive a held act in
+   *  tenant B (the approval-row's tenant and the act's ledger tenant are decoupled; the approval row is
+   *  insertable under a tenant-agnostic RLS policy). Fail-closed: absent or mismatched → refuse, nothing
+   *  redeemed or dispatched. Typed nullable because the door's `approval.tenant_id` may be null (→ refused). */
+  expectedTenantId?: string | null;
   /** TEST-INJECTION ONLY: override the Gateway availability resolver. Production omits this and the real
    *  canonical Gateway (`resolveNativeCapabilityStatus`) runs — never a Layer-C availability literal (C2
    *  correction). A test injects a fake so the executor is provable without mocking the whole Gateway. */
@@ -145,6 +152,16 @@ export async function executeApprovedLayerCAct(input: ApproveExecInput): Promise
     return { ok: row.outcome === "executed", outcome: row.outcome, executed: row.outcome === "executed", reason: "not_pending_approval" };
   }
 
+  // §9/§59 TENANT-AUTHORIZATION GUARD (fail-closed). The caller was authorised at the door against the
+  // APPROVAL row's tenant; this held act's LEDGER tenant must be the SAME. They are decoupled — the approval
+  // row is insertable under a tenant-agnostic RLS policy, so a caller authorised for tenant A could otherwise
+  // point a crafted approval at tenant B's held act and drive it via the service-role client (a §9/§45/§59
+  // cross-tenant IDOR gated only by UUID secrecy, which is no defense). Refuse unless the authorised tenant is
+  // present AND equals the ledger tenant — nothing redeemed, nothing dispatched.
+  if (!input.expectedTenantId || row.tenant_id !== input.expectedTenantId) {
+    return { ok: false, outcome: "approval_pending", executed: false, reason: "tenant_authorization_mismatch" };
+  }
+
   // 2 — NATIVE only this slice. A non-native held act is reported and NEVER fired (§13).
   const adapterKind = resolveAdapterKind(row.capability_key);
   const adapter = adapterForAction(row.capability_key);
@@ -178,7 +195,7 @@ export async function executeApprovedLayerCAct(input: ApproveExecInput): Promise
   // 5 — re-run the ONE governed pathway with the human's yes as the approval claim → expect `execute`.
   const decision = decideGovernedExecution({
     caller: { authenticated: true, userId: approverUserId, principal: "person", tenantId, tenantSource: "server", door: "automation", access: { allowed: true } },
-    capability: { id: capability.id, effect: "mutate", outcomeChannel: capability.outcomeChannel ?? "paige_act_executions", availability: gw.status.availability },
+    capability: { id: capability.id, effect: capability.effect, outcomeChannel: capability.outcomeChannel ?? "paige_act_executions", availability: gw.status.availability },
     approval: { autonomyLane: "confirm", claimedArgs: actConfig, claimedFor: capability.id },
     requestArgs: actConfig,
   });

@@ -167,15 +167,22 @@ Deno.serve(async (req) => {
   if (metaLc && (metaLc as any).source === "paige_orchestration" && (metaLc as any).event_id && (metaLc as any).act_id) {
     const res = await executeApprovedLayerCAct({
       db: admin, eventId: String((metaLc as any).event_id), actId: String((metaLc as any).act_id), approverUserId: user.id,
+      // §9/§59: the caller was authorised above against THIS approval row's tenant; the executor refuses unless
+      // the held act's ledger tenant is the SAME (a crafted approval in tenant A must not drive tenant B's act).
+      expectedTenantId: approval.tenant_id ?? null,
     });
-    if (res.outcome === "approval_pending") {
-      // The executor did NOT redeem (governed refusal / not-supported-in-slice / read error / integrity stop):
-      // nothing was consumed and nothing ran. Release the claim so the held act stays pending for a proper
-      // resolution, and report honestly (§13) — never mark it approved on a non-execution.
+    // Stamp `approved` ONLY on a real ATTEMPT (the act was redeemed + dispatched, and the ledger now records
+    // executed/failed/ambiguous). EVERY other outcome — approval_pending (governed refusal / not-supported /
+    // tenant-auth stop), `unknown` (a transient ledger_read_error), `absent` (act_execution_not_found), or an
+    // already-redeemed `accepted_for_execution` — consumed NOTHING here: release the claim so the held act stays
+    // recoverable and report honestly (§13). Stamping `approved` on a transient read blip would burn the human's
+    // approval with nothing executed and then the status='approved' idempotency guard blocks any retry (§39 fix).
+    const attempted = res.outcome === "executed" || res.outcome === "failed" || res.outcome === "ambiguous";
+    if (!attempted) {
       await releaseClaim();
-      return json(200, { ok: false, executed: false, act_outcome: "approval_pending", reason: res.reason, approval_id: approvalId });
+      return json(200, { ok: false, executed: false, act_outcome: res.outcome, reason: res.reason, approval_id: approvalId });
     }
-    // The executor redeemed + attempted; the ledger records the real outcome. Stamp the approval with it.
+    // A real attempt — the ledger records the outcome. Stamp the approval with it.
     const { error: lcErr } = await admin
       .from("paige_pending_approvals")
       .update({

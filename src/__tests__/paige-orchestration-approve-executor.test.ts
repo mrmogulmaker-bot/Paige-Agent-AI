@@ -70,7 +70,7 @@ const baseCfg = (over: Partial<Cfg["rows"]> = {}, rpcOver: Partial<Cfg["rpc"]> =
 });
 
 const run = (cfg: Cfg, over: Record<string, unknown> = {}) =>
-  executeApprovedLayerCAct({ db: mockDb(cfg), eventId: "e1", actId: "act1", approverUserId: "u1", resolveAvailability: liveAvailability as any, ...over });
+  executeApprovedLayerCAct({ db: mockDb(cfg), eventId: "e1", actId: "act1", approverUserId: "u1", expectedTenantId: "t1", resolveAvailability: liveAvailability as any, ...over });
 
 describe("approve-executor — happy path: a held native act is redeemed, dispatched, and executed", () => {
   it("redeems via the approve RPC, dispatches the native adapter, advances the ledger to executed", async () => {
@@ -112,6 +112,22 @@ describe("approve-executor — fail-closed + honest (nothing consumed, nothing d
     const res = await run(cfg);
     expect(res.outcome).toBe("approval_pending");
     expect(res.reason).toBe("not_supported_in_slice");
+    expect(cfg.calls.rpc.map((c) => c.fn)).not.toContain("paige_approve_act_execution");
+  });
+
+  it("a TENANT-AUTHORIZATION mismatch (caller authorised for a different tenant) STOPS before redeeming (§9/§59)", async () => {
+    const cfg = baseCfg();
+    const res = await run(cfg, { expectedTenantId: "OTHER" }); // ledger tenant is t1; caller authorised for OTHER
+    expect(res.outcome).toBe("approval_pending");
+    expect(res.reason).toBe("tenant_authorization_mismatch");
+    expect(cfg.calls.rpc.map((c) => c.fn)).not.toContain("paige_approve_act_execution");
+    expect(cfg.calls.rpc.map((c) => c.fn)).not.toContain("set_journey_stage");
+  });
+
+  it("a MISSING authorised tenant fails closed — the executor never acts without knowing the authorised tenant (§59)", async () => {
+    const cfg = baseCfg();
+    const res = await run(cfg, { expectedTenantId: null });
+    expect(res.reason).toBe("tenant_authorization_mismatch");
     expect(cfg.calls.rpc.map((c) => c.fn)).not.toContain("paige_approve_act_execution");
   });
 
