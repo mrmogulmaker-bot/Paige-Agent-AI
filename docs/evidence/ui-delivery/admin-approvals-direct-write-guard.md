@@ -59,7 +59,7 @@ UNVERIFIED: the guard is proven headless — frontend lint self-test 46/46 + gre
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
 
-INTERNAL_BUILD_IDENTITY: 849caa05b94b6f44c2a45ffa49749c64c698b5c0; deployment=none-pre-merge; environment=development; migrations=PROOF_OWED(20270317000000 persisted-apply on prod xygzykjyynhzqytbqnzu via deploy-migrations.yml post-merge); edge=NOT_APPLICABLE; evidence=this-PR-and-scripts/ci/approval-direct-write-lint.mjs(46-case-self-test)+supabase/tests/paige_orchestration_companion_minting.sql(plan-60)
+INTERNAL_BUILD_IDENTITY: 18a968a6346e555de759de9bfa815c0c6eacb2c3; deployment=none-pre-merge; environment=development; migrations=PROOF_OWED(20270317000000 persisted-apply on prod xygzykjyynhzqytbqnzu via deploy-migrations.yml post-merge); edge=NOT_APPLICABLE; evidence=this-PR-and-scripts/ci/approval-direct-write-lint.mjs(46-case-self-test)+supabase/tests/paige_orchestration_companion_minting.sql(plan-60)
 RELEASE_CHANNEL: development: branch build (environment=development); the frontend/CI change deploys via Vercel on merge and the added migration (20270317000000) deploys via deploy-migrations.yml on merge, moving db-live; no edge bundle changed so edge-live does not move
 RELEASE_CLASSIFICATION: internal-only: dead-code removal (§18) + a CI regression guard (§10/§18/§70) locking the frontend approve invariant + a DB guard extension closing the orchestration create-already-approved path (§9/§59/§70); no owner-decided customer release
 CUSTOMER_RELEASE_IDENTITY: none: internal engineering + security-integrity hardening, no customer-decided release
