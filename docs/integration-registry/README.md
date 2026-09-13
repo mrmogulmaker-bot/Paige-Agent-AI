@@ -244,7 +244,10 @@ longer exists).
 | Microsoft 365 / Outlook | productivity/documents | `DEFERRED` | prohibited | not wired; sequenced after Google parity |
 | Stripe | finance/accounting/payments | `PARTIAL` | confirm | §38 Connect direct-charge posture; bind safe billing status |
 | QuickBooks | finance/accounting/payments | `PROOF_OWED` | confirm | catalogue real capability; governed read proof |
-| Plaid | finance/accounting/payments | `PARTIAL` | read | §2/§194 opt-in gating; safe-read boundary |
+| Plaid | finance/accounting/payments | `PARTIAL` | read | Funding & Coaching Tools package + per-tenant Financial connection; safe-read boundary (§2/§194) |
+| SmartCredit | finance/accounting/payments | `PROOF_OWED` | read | Funding & Coaching Tools package-gated; dormant (0 producers); entitlement+connection fail-closed gate OWED (§2/§194) |
+| Nav.com (business credit) | finance/accounting/payments | `PROOF_OWED` | read | Funding & Coaching Tools package-gated; live producer (BusinessCreditAdmin) makes the OWED entitlement+connection gate load-bearing (§2/§194) |
+| Business verification (multi-source) | finance/accounting/payments | `PARTIAL` | read | Funding & Coaching Tools package-gated; OpenCorporates/SEC direct + SoS via Firecrawl real; D&B/LexisNexis/TU/Array are inert stubs; package-entitlement gate OWED (§2/§194) |
 | Twilio | CRM/calendar/communications | `PARTIAL` | confirm | per-tenant A2P go-live; vanity/premium number search |
 | Google Calendar | CRM/calendar/communications | `PARTIAL` | confirm | FU-3 Rail contract; attribution truthfulness (#786) |
 | Resend | CRM/calendar/communications | `PARTIAL` | confirm | per-tenant sending identity; send receipt on Rail |
