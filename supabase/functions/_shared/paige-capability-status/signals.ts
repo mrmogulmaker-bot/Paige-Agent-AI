@@ -49,6 +49,8 @@ export interface CapabilityFacts {
   // ── Ceiling-clamped autonomy lanes (resolve_tool_autonomy) for the mutating verbs we model ──
   /** resolve_tool_autonomy("crm_create_contact"). */
   contactCreateLane: Lane;
+  /** resolve_tool_autonomy("crm_advance_journey_stage") — the native journey-advance write (Layer C · C2). */
+  journeyAdvanceLane: Lane;
   /** resolve_tool_autonomy("campaign_brief_create"). */
   campaignCreateLane: Lane;
   /** resolve_tool_autonomy("n8n_run_workflow") — moot until n8n is connected, carried for correctness. */
@@ -143,6 +145,14 @@ export function buildCapabilitySignals(facts: CapabilityFacts): CapabilitySignal
     // Add a contact — the star write, shipped + classified in action-risk (ordinary), confirm-gated
     // at runtime. The ceiling-clamped lane decides live vs needs_approval. (Documented LIVE synthesis.)
     { key: "crm.create_contact", label: "Add a contact", actionKind: "create", maturity: "LIVE", tierEligible, requiresConnection: false, autonomyLane: facts.contactCreateLane },
+    // Move a client along their journey — the native, IN-TENANT governed write behind the §67 process
+    // engine (Layer C · C2): the `crm_advance_journey_stage` act → the tenant-aware `set_journey_stage`
+    // RPC. No external provider, no per-tenant connection to negotiate, so requiresConnection is false.
+    // There is no crm.* Spine entry, so a LIVE read/write seam is a DOCUMENTED synthesis from the classified
+    // chat tool that genuinely ships (action-risk `crm_advance_journey_stage`, ordinary — pinned by the
+    // grounding guard). The ceiling-clamped lane decides live vs needs_approval; this is the canonical
+    // availability the Layer C native adapter resolves THROUGH this seam (never a Layer-C inline literal).
+    { key: "crm.advance_journey_stage", label: "Move a client along their journey", actionKind: "update", maturity: "LIVE", tierEligible, requiresConnection: false, autonomyLane: facts.journeyAdvanceLane },
 
     // ── Connections ──────────────────────────────────────────────────────────────────────────
     // See your connected apps — the integrations read surface (integrations.list, PARTIAL today).

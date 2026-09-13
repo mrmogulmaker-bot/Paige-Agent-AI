@@ -8,7 +8,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { checkedWrite, writeOutcome } from "../_shared/checked-write.ts";
 import { classifyAction, clampLaneByRisk, mutatingTools, riskReason, unclassifiedWriteReason } from "../_shared/action-risk.ts";
-import { confirmFingerprint } from "../_shared/confirm-fingerprint.ts";
+import { confirmFingerprint, CONFIRM_IDENTITY_KEY, confirmIdentityValue } from "../_shared/confirm-fingerprint.ts";
 import { buildCreditProposal, buildCreditSyncPayload } from "../_shared/credit-extraction-payload.ts";
 import { projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
@@ -4351,11 +4351,12 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       const resolveEffectiveLane = async (toolKey: string): Promise<"auto" | "confirm" | "off"> =>
         clampLaneByRisk((await resolveToolAutonomy(toolKey)) as "auto" | "confirm" | "off", toolKey);
       const [
-        contactCreateLane, campaignCreateLane, workflowsLane,
+        contactCreateLane, journeyAdvanceLane, campaignCreateLane, workflowsLane,
         documentCreateLane, knowledgeSaveLane, planningCreateLane, delegateLane,
         ownerOpsEligible,
       ] = await Promise.all([
         resolveEffectiveLane("crm_create_contact"),
+        resolveEffectiveLane("crm_advance_journey_stage"),
         resolveEffectiveLane("campaign_brief_create"),
         resolveEffectiveLane("n8n_run_workflow"),
         resolveEffectiveLane("document_generate"),
@@ -4372,6 +4373,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
         callerTier,
         ownerOpsEligible,
         contactCreateLane,
+        journeyAdvanceLane,
         campaignCreateLane,
         workflowsLane,
         documentCreateLane,
@@ -8440,10 +8442,23 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // The model cannot author this request field. This is not proof of a physical click;
             // the trusted stored proposal, exact scope and atomic claim define the effect.
             let approvedFingerprint: string | undefined = approvedConfirmations.has(fp) ? fp : undefined;
+            // FIX B signal (P0 containment): the operator approved proposal(s) for this tool, but this
+            // re-emitted call could not be pinned to exactly one of them. Set below when the approved-set
+            // lookup finds ≥1 live proposal yet resolves no single fingerprint — a genuinely ambiguous
+            // approval that must end in a truthful terminal, never a fresh re-ask loop.
+            let approvedSetAmbiguous = false;
             // The card approves the stored call, not a model's byte-identical reconstruction.
             // Resolve only fingerprints the human submitted; never broaden to all pending calls.
             if (!approvedFingerprint && approvedConfirmations.size > 0 && await revalidateProposalScope()) {
               try {
+                // FIX A (P0 batch loop): within the operator's APPROVED set, map THIS call to the
+                // proposal for the SAME subject the model named — a required, stable id it reproduces
+                // verbatim (action_advance.action_id) — so a batch of same-tool approvals is no longer
+                // defeated by the model drifting a hashed arg on the approval turn. This ONLY narrows
+                // WITHIN approvedConfirmations; it never widens which proposals are claimable, and the
+                // STORED proposal arguments are still what execute, so drift never reaches the write.
+                const identityKey = CONFIRM_IDENTITY_KEY[tc.function.name];
+                const identityVal = identityKey ? confirmIdentityValue(tc.function.name, gateArgs) : null;
                 let lookup = supabase.from("paige_pending_confirmations")
                   .select("fingerprint").eq("user_id", user.id).eq("tool_name", tc.function.name)
                   .in("fingerprint", [...approvedConfirmations]).is("consumed_at", null)
@@ -8453,9 +8468,25 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 lookup = personaCtx?.tenant_id ? lookup.eq("tenant_id", personaCtx.tenant_id) : lookup.is("tenant_id", null);
                 lookup = payloadThreadId ? lookup.eq("thread_id", payloadThreadId) : lookup.is("thread_id", null);
                 lookup = scopedClientId ? lookup.eq("scoped_client_id", scopedClientId) : lookup.is("scoped_client_id", null);
+                // Narrow by the stable subject id when the tool declares one and this call carries it.
+                // With the filter a batch resolves to the single approved proposal for THIS subject;
+                // without a key (or a missing id) the original exactly-one-in-set behaviour is preserved.
+                // `identityKey` is a frozen allowlist value, never caller input. Uses the `.filter(col,
+                // "eq", val)` jsonb-text form already proven across the edge tree (embed-client-financials,
+                // ingest-rag-outcome, rebuild-client-financial-brief) rather than `.eq` string shorthand.
+                if (identityVal !== null) lookup = lookup.filter(`args->>${identityKey}`, "eq", identityVal);
                 const { data: matches, error: lookupError } = await lookup.limit(2);
                 if (!lookupError && matches?.length === 1 && typeof matches[0]?.fingerprint === "string"
                   && approvedConfirmations.has(matches[0].fingerprint)) approvedFingerprint = matches[0].fingerprint;
+                // ≥1 approved proposal exists for this tool but no single one resolved to this call (a
+                // batch the subject id did not disambiguate, or a no-identity-key tool) — the ambiguous
+                // approval FIX B turns into a truthful terminal rather than a re-ask-and-accumulate loop.
+                // GUARD (adversary #2): only an APPROVAL attempt counts as ambiguous — a precise
+                // subject-id narrow (identityVal) or the model asserting confirm. A no-identity tool's
+                // fresh `confirm:false` proposal that merely shares a tool with pending approvals is NOT
+                // an approval of them, so it must still get its own card, not the terminal.
+                else if (!lookupError && (matches?.length ?? 0) >= 1
+                         && (identityVal !== null || gateArgs.confirm === true)) approvedSetAmbiguous = true;
               } catch { /* A failed lookup cannot approve an action. */ }
             }
             const surfaceApproved = approvedFingerprint !== undefined;
@@ -8465,8 +8496,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             const modelAsserted = gateArgs.confirm === true;
             const claimBy: string | null | undefined = surfaceApproved
               ? approvedFingerprint                   // exact stored call the card displayed
-              : (modelAsserted && !highRisk)
-                ? null                                // by scope: tolerate the model's drift
+              : (modelAsserted && !highRisk && approvedConfirmations.size === 0)
+                ? null                                // by scope — ONLY on a CARD-LESS surface (no echo).
+                                                      // GUARD (adversary #1): when the surface DID echo
+                                                      // approvals, the model's word must never claim an
+                                                      // unapproved leftover proposal; only the echoed
+                                                      // fingerprint (surfaceApproved) may. Drift there
+                                                      // routes to FIX B's terminal / a fresh card.
                 : undefined;                          // nothing to redeem
 
             const approvedArgs = claimBy !== undefined
@@ -8474,6 +8510,45 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               : null;
 
             if (!approvedArgs) {
+              // ── FIX B (P0 containment): STOP THE LOOP, TELL THE TRUTH ──────────────────────────
+              // The operator IS approving, but this call could not be claimed and there is already a
+              // pending, turn-predating proposal for this action that cannot be safely picked — a
+              // genuinely ambiguous batch. Re-asking here is the loop: each drifted re-emission would
+              // mint ANOTHER proposal and make the ambiguity permanent. So present ONE truthful
+              // terminal state, record NOTHING, and let the operator decide. Nothing ran; nothing was
+              // sent. (FIX A resolves the common batch BEFORE here; this is the honest floor when it
+              // genuinely cannot — the state the owner required instead of a silent re-ask loop.)
+              let ambiguousApproval = approvedSetAmbiguous;
+              if (!ambiguousApproval && modelAsserted && !highRisk && approvedConfirmations.size === 0
+                  && await revalidateProposalScope()) {
+                // Typed-yes with no card echo: the by-scope claim refuses on ≥2 live proposals and
+                // would otherwise re-ask forever. Detect that ambiguity (≥2) the same way.
+                try {
+                  let pend = supabase.from("paige_pending_confirmations")
+                    .select("id").eq("user_id", user.id).eq("tool_name", tc.function.name)
+                    .is("consumed_at", null).gt("expires_at", new Date().toISOString())
+                    .not("server_issued_at", "is", null)
+                    .neq("issued_in_request", requestNonce).not("issued_in_request", "is", null);
+                  pend = personaCtx?.tenant_id ? pend.eq("tenant_id", personaCtx.tenant_id) : pend.is("tenant_id", null);
+                  pend = payloadThreadId ? pend.eq("thread_id", payloadThreadId) : pend.is("thread_id", null);
+                  pend = scopedClientId ? pend.eq("scoped_client_id", scopedClientId) : pend.is("scoped_client_id", null);
+                  const { data: pendRows, error: pendErr } = await pend.limit(2);
+                  if (!pendErr && (pendRows?.length ?? 0) >= 2) ambiguousApproval = true;
+                } catch { /* detection failure falls through to the normal re-ask; never executes */ }
+              }
+              if (ambiguousApproval) {
+                const subjectRef = confirmIdentityValue(tc.function.name, gateArgs);
+                console.warn("[paige] confirm ambiguous-approval terminal", JSON.stringify({ tool: tc.function.name, correlation_id: requestNonce }));
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+                  success: false,
+                  execution_unavailable: true,
+                  error: "Action execution is temporarily unavailable; nothing changed or sent.",
+                  ...(subjectRef ? { action_ref: subjectRef } : {}),
+                  correlation_id: requestNonce,
+                  note: "Say this to the operator in ONE plain line: this action could not be completed right now, and nothing was changed or sent. Do NOT re-read an approval card and do NOT call this tool again in this reply. If they still want it, they can approve the actions one at a time.",
+                }) });
+                continue;
+              }
               const summary = await describeConfirm(tc.function.name, gateArgs);
               // Persist BEFORE answering, so that when the person does say yes there is something
               // to redeem. If this write fails the gate still refuses, and says so honestly rather
@@ -11359,15 +11434,29 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               const isAdmin = roles.includes("admin");
               const isCoach = roles.includes("coach");
               if (!(isAdmin || isCoach)) {
-                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Improvement proposals are restricted to admins and coaches." }) });
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Improvement proposals are restricted to admins and coaches.", note: "Nothing was filed. Tell the operator plainly you could not file this and nothing was recorded — do NOT say it was filed or logged." }) });
                 continue;
               }
               if (tc.function.name === "improvement_decide" && !isAdmin) {
-                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Deciding improvement proposals is admin-only." }) });
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Deciding improvement proposals is admin-only.", note: "Nothing changed. Say plainly you could not do this; do NOT imply a decision was recorded." }) });
                 continue;
               }
               const impTenantId = personaCtx?.tenant_id ?? null;
-              if (!impTenantId) throw new Error("improvement tools require a resolved tenant");
+              if (!impTenantId) {
+                // An operator (God/Super-Admin, §53) has no tenant, so a tenant-scoped improvement
+                // proposal has nowhere to live. This is NOT a crash — it is an honest capability
+                // boundary (§13/§70): there is no operator-scoped proposal/bug store wired to this chat
+                // yet. Report it truthfully and NEVER let the reply claim the item was filed — the
+                // owner's explicit §13 instruction ("never promise a bug report was filed unless durable
+                // readback proves it"). A raw throw here surfaced as a generic error; this is honest.
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+                  success: false,
+                  availability: "unavailable",
+                  error: "This can only be filed from inside a specific workspace, and no workspace is resolved in the current context — so nothing was filed.",
+                  note: "Do NOT say it was filed or logged. Tell the operator plainly you could not file it from here and nothing was recorded; if they want it captured, it has to be done from inside a specific workspace.",
+                }) });
+                continue;
+              }
               if (tc.function.name === "improvement_propose") {
                 const { data, error } = await supabaseClient.from("paige_improvement_proposals").insert({
                   tenant_id: impTenantId,
