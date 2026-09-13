@@ -1,5 +1,6 @@
 // Shared SSRF guard + hardened outbound transport for any edge function that fetches a
 // caller/tenant-supplied URL (outbound webhooks, connected-app endpoints, MCP servers, …).
+declare const Deno: { resolveDns(host: string, kind: "A" | "AAAA"): Promise<string[]> };
 //
 // String matching alone is bypassable (IPv4-mapped IPv6, DNS → internal, link-local),
 // so we resolve the host and validate EVERY resolved IP numerically against

@@ -12,15 +12,16 @@ describe("Social Operations Phase 0 containment", () => {
     expect(growth).not.toContain('import { SocialStudio } from "./social-studio"');
   });
 
-  it("does not query or invoke a Social provider from the Settings readiness surface", () => {
+  it("keeps the Social drawer on the governed hook and preserves publishing containment", () => {
     const settings = read("src/solo/settings-integrations-social.tsx");
     expect(settings).not.toContain('@ts-nocheck');
     expect(settings).not.toContain('from("paige_social_accounts")');
     expect(settings).not.toContain('/functions/v1/paige-social');
     expect(settings).not.toContain('action: "connect"');
     expect(settings).not.toMatch(/>\s*Connect\s*</);
-    expect(settings).toContain("Provider authorization is not available yet");
-    expect(settings).toContain("Declared handles are capture-only records");
+    expect(settings).toContain("Paige discovers accounts only after secure consent");
+    expect(settings).toContain("Nothing is selected automatically");
+    expect(settings).toContain("Publishing and analytics stay unavailable");
   });
 
   it("neither advertises nor executes the legacy Chat Social tools", () => {
@@ -72,7 +73,6 @@ describe("Social Operations Phase 0 containment", () => {
     expect(shared).not.toContain("fetch(");
 
     for (const fn of [
-      "paige-social",
       "meta-schedule-post",
       "meta-get-insights",
       "meta-list-comments",
@@ -81,6 +81,13 @@ describe("Social Operations Phase 0 containment", () => {
       const source = read(`supabase/functions/${fn}/index.ts`);
       expect(source).toBe('import { serveSocialUnavailable } from "../_shared/socialUnavailable.ts";\n\nserveSocialUnavailable();\n');
     }
+    const connectionOnly = read("supabase/functions/paige-social/index.ts");
+    expect(connectionOnly).toContain('"social_connection_start"');
+    expect(connectionOnly).toContain('"social_connection_disconnect"');
+    expect(connectionOnly).toContain('"social_account_select"');
+    expect(connectionOnly).not.toContain("publish_post");
+    expect(connectionOnly).not.toContain("schedule_post");
+    expect(connectionOnly).not.toContain("social_analytics");
   });
 
   it("does not offer the unavailable Social tool as an autonomy control", () => {

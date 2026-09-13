@@ -4,6 +4,13 @@ set local lock_timeout='2s';
 set local statement_timeout='30s';
 
 -- Recreate the exact 20270117 Social shape inside a rollback-only transaction.
+-- The database entering this proof may already include the later connection
+-- lifecycle. Remove its status lens and service-only tables inside this
+-- transaction so the older foundation migration is exercised against its real
+-- predecessor shape; ROLLBACK restores the current catalog afterward.
+drop function if exists public.social_account_status();
+drop table if exists public.paige_social_connection_attempts cascade;
+drop table if exists public.paige_social_connections cascade;
 drop table if exists public.paige_social_provider_results cascade;
 drop table if exists public.paige_social_jobs cascade;
 drop table if exists public.paige_social_targets cascade;
