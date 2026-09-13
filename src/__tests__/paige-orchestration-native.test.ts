@@ -1,19 +1,30 @@
 /**
  * Layer C · C2 — the NATIVE synchronous auto-execute vertical, availability resolved THROUGH the Gateway.
  *
+ * The act's `action_kind` is the DOTTED action-bus slug `crm.advance_journey_stage` (FK to
+ * paige_action_kinds); the capability / tool / risk / receipt key is the UNDERSCORE
+ * `crm_advance_journey_stage`. The two are the standard dotted-kind ↔ underscore-tool seam and the tests
+ * hold that distinction explicitly.
+ *
  * Part A: the native adapter (`native-adapter.ts`) — dispatch calls set_journey_stage and RETURNS the
- *   terminal outcome after an independent canonical confirm (§32); a no-op is reported honestly as
+ *   terminal outcome after a CORRELATION reconcile (§32): a change is confirmed ONLY by a transition row
+ *   the RPC stamped with THIS act's correlation ref, NEVER by a bare current-slug match (a concurrent move
+ *   to the same stage can never false-confirm, §39 F3); a no-op is reported honestly as
  *   `already_at_requested_stage` (never a newly advanced journey); a RAISE is terminal failed; a throw is
- *   ambiguous; an unconfirmed change is ambiguous unless the act's OWN correlation transition proves it.
+ *   ambiguous; an unconfirmed change is ambiguous. readback reconciles by correlation ALONE — it needs no
+ *   stage slug, so a crash-recovery drain that no longer holds the governed args still confirms (§39 F4).
  *   The adapter declares NO availability — the Gateway owns it.
  * Part B: the engine (`engine.ts`) — a native act's availability is resolved THROUGH the canonical Gateway
  *   seam (resolveNativeCapabilityStatus) before the governed decision; a tier-ineligible actor is refused
- *   and NEVER dispatched. Phase 5 is READ-CURRENT-FIRST: a re-drain of a terminal row adopts it (no second
- *   dispatch); an `ambiguous` row is RECONCILED by readback (never blind re-dispatch); an absent row writes
- *   the durable accepted_for_execution record before the domain write. Receipt fires on executed; the owner
- *   Rail is suppressed on an idempotent no-op.
+ *   and NEVER dispatched. Phase 4 skips EVERY native record; phase 5 is READ-CURRENT-FIRST: a re-drain of a
+ *   terminal row adopts it (no second dispatch); an `ambiguous` row is RECONCILED by readback (never blind
+ *   re-dispatch, never overwritten by a re-flipped decision, §39 F2); an absent row writes the durable
+ *   accepted_for_execution record before the domain write. Receipt fires on executed; the owner Rail is
+ *   suppressed on an idempotent no-op.
  * Part C: the Gateway resolver (`gatherer.ts`) — resolves live / needs_approval / not_for_tier from the
  *   real (tier, owner-ops role, tool lane) with an explicit actor + tenant; an infra error returns {ok:false}.
+ * Part D: registry sync (§39 F5) — the native executor registry and the Gateway capability bindings must
+ *   carry IDENTICAL keys, or a vertical is dark (executor with no availability) / orphaned (binding with no run).
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -34,15 +45,22 @@ import {
   type AutomationRow,
   type EngineDb,
 } from "../../supabase/functions/_shared/paige-orchestration/engine.ts";
-import { resolveNativeCapabilityStatus } from "../../supabase/functions/_shared/paige-capability-status/gatherer.ts";
+import {
+  resolveNativeCapabilityStatus,
+  hasNativeCapabilityBinding,
+  nativeCapabilityBindingKeys,
+} from "../../supabase/functions/_shared/paige-capability-status/gatherer.ts";
+
+// The dotted action-bus slug (the act's action_kind) and the underscore tool/capability key it maps to.
+const KIND = "crm.advance_journey_stage";
+const TOOL = "crm_advance_journey_stage";
 
 // ── A fake supabase-js surface for the native adapter + engine + Gateway (chainable, thenable). ─────────
 type SetStageResult = { data?: unknown; error?: { message?: string } | null; throws?: boolean };
 type DbConfig = {
-  // native journey reads (adapter dispatch/readback)
-  clients?: { slug?: string | null; error?: boolean; missing?: boolean };
-  transitionExists?: boolean;
-  transitionsError?: boolean;
+  // native journey reconcile (adapter dispatch/readback) — correlation-only against the transition log
+  transitionExists?: boolean;        // a transition stamped with our correlation ref exists
+  transitionsError?: boolean;        // the transition read errors → ambiguous (canonical_read_error)
   setStage?: SetStageResult;
   // Gateway resolution (engine phase 3.5 / Part C)
   actorTier?: string;                 // get_actor_access.tier (default "tenant")
@@ -76,13 +94,9 @@ function mockDb(cfg: DbConfig): AdapterDb & EngineDb {
         cfg.queryFilters.push({ table, filters: { ...filters } });
         let data: unknown = [];
         let error: unknown = null;
-        if (table === "clients") {
-          if (cfg.clients?.error) error = { message: "clients_read_failed" };
-          else if (cfg.clients?.missing) data = [];
-          else data = [{ journey_stage_slug: cfg.clients?.slug ?? null }];
-        } else if (table === "paige_journey_stage_transitions") {
+        if (table === "paige_journey_stage_transitions") {
           if (cfg.transitionsError) error = { message: "transitions_read_failed" };
-          else data = cfg.transitionExists ? [{ id: "tr1" }] : [];
+          else data = cfg.transitionExists ? [{ id: "tr1", to_stage_slug: "engaged" }] : [];
         } else if (table === "paige_act_executions") {
           if (cfg.currentActReadError) error = { message: "act_read_failed" };
           else data = cfg.currentActOutcome == null ? [] : [{ outcome: cfg.currentActOutcome }];
@@ -136,7 +150,7 @@ function mockDb(cfg: DbConfig): AdapterDb & EngineDb {
 
 const baseInput = (cfg: DbConfig, over: Partial<DispatchInput> = {}): DispatchInput => ({
   tenantId: "t1",
-  actionKind: "crm_advance_journey_stage",
+  actionKind: KIND,
   args: { stage_slug: "engaged" },
   correlationRef: "corr-1",
   db: mockDb(cfg),
@@ -148,25 +162,27 @@ const baseInput = (cfg: DbConfig, over: Partial<DispatchInput> = {}): DispatchIn
 // ═══ Part A — the native adapter ════════════════════════════════════════════════════════════════════
 
 describe("native adapter — routing & capability (availability is NOT declared here — the Gateway owns it)", () => {
-  it("routes crm_advance_journey_stage to the native adapter (no native prefix, still native)", () => {
-    expect(isNativeActionKind("crm_advance_journey_stage")).toBe(true);
+  it("routes the DOTTED action_kind to the native adapter (no native prefix, still native)", () => {
+    expect(isNativeActionKind(KIND)).toBe(true);
+    expect(isNativeActionKind(TOOL)).toBe(false); // the underscore is the tool key, NOT the action_kind
     expect(isNativeActionKind("n8n_run_workflow")).toBe(false);
     expect(isNativeActionKind(null)).toBe(false);
-    expect(resolveAdapterKind("crm_advance_journey_stage")).toBe("native");
-    expect(adapterForAction("crm_advance_journey_stage")).toBe(nativeAdapter);
+    expect(resolveAdapterKind(KIND)).toBe("native");
+    expect(adapterForAction(KIND)).toBe(nativeAdapter);
   });
 
-  it("resolveCapability returns the mutating journey capability with NO availability literal (Gateway resolves it)", () => {
-    const cap = nativeAdapter.resolveCapability("crm_advance_journey_stage");
-    expect(cap).toEqual({ id: "crm_advance_journey_stage", effect: "mutate", outcomeChannel: "paige_act_executions" });
+  it("resolveCapability maps the dotted kind to the UNDERSCORE-keyed mutating capability, NO availability literal", () => {
+    const cap = nativeAdapter.resolveCapability(KIND);
+    expect(cap).toEqual({ id: TOOL, effect: "mutate", outcomeChannel: "paige_act_executions" });
     expect((cap as Record<string, unknown>).availability).toBeUndefined();
     expect(nativeAdapter.resolveCapability("frobnicate")).toBeNull();
+    expect(nativeAdapter.resolveCapability(TOOL)).toBeNull(); // the tool key is not an action_kind
   });
 
   it("buildGovernedInputs threads the EXPLICIT (Gateway-resolved) availability; absent → unknown", () => {
     const live = buildGovernedInputs({
       tenantId: "t1", personUserId: "u1", effectiveLane: "auto",
-      capability: { id: "crm_advance_journey_stage", effect: "mutate", outcomeChannel: "paige_act_executions" },
+      capability: { id: TOOL, effect: "mutate", outcomeChannel: "paige_act_executions" },
       actConfig: {}, availability: "live",
     });
     expect((live.capability as { availability?: string }).availability).toBe("live");
@@ -179,28 +195,34 @@ describe("native adapter — routing & capability (availability is NOT declared 
   });
 });
 
-describe("native adapter — dispatch outcomes (§32 confirm, §13 honest, no blind retry)", () => {
-  it("changed + canonical slug == target → executed (confirmed via clients.journey_stage_slug)", async () => {
-    const cfg: DbConfig = { setStage: { data: { ok: true, to_stage_slug: "engaged", from_stage_slug: "new" } }, clients: { slug: "engaged" }, rpcCalls: [], queryFilters: [] };
+describe("native adapter — dispatch outcomes (§32 correlation confirm, §13 honest, no blind retry)", () => {
+  it("changed + OUR correlation transition exists → executed (confirmed via transition_correlation, not the slug)", async () => {
+    const cfg: DbConfig = { setStage: { data: { ok: true, to_stage_slug: "engaged", from_stage_slug: "new" } }, transitionExists: true, rpcCalls: [], queryFilters: [] };
     const res = await nativeAdapter.dispatch!(baseInput(cfg));
     expect(res.outcome).toBe("executed");
-    expect((res.detail as { confirmed_via?: string })?.confirmed_via).toBe("clients.journey_stage_slug");
-    const call = cfg.rpcCalls.find((c) => c.fn === "set_journey_stage");
-    expect(call?.args._source_event).toBe("corr-1");
-    expect(call?.args._contact_id).toBe("c1");
-    expect(call?.args._stage_slug).toBe("engaged");
+    expect((res.detail as { confirmed_via?: string })?.confirmed_via).toBe("transition_correlation");
+    expect((res.detail as { stage_slug?: string })?.stage_slug).toBe("engaged");
+    const setCall = cfg.rpcCalls.find((c) => c.fn === "set_journey_stage");
+    expect(setCall?.args._source_event).toBe("corr-1");
+    expect(setCall?.args._contact_id).toBe("c1");
+    expect(setCall?.args._stage_slug).toBe("engaged");
+    // the reconcile query keyed on OUR subject + correlation (never a bare slug), so a concurrent move can't false-confirm
+    const tq = cfg.queryFilters.find((query) => query.table === "paige_journey_stage_transitions");
+    expect(tq?.filters.contact_id).toBe("c1");
+    expect(tq?.filters.source_event).toBe("corr-1");
+    expect(tq?.filters.to_stage_slug).toBeUndefined(); // correlation-ONLY — the target slug is not a filter
   });
 
-  it("no-op (already on target) → executed, reported as already_at_requested_stage (never a new advance), no canonical read", async () => {
+  it("no-op (already on target) → executed, reported as already_at_requested_stage (never a new advance), NO reconcile read", async () => {
     const cfg: DbConfig = { setStage: { data: { ok: true, unchanged: true, stage_slug: "engaged" } }, rpcCalls: [], queryFilters: [] };
     const res = await nativeAdapter.dispatch!(baseInput(cfg));
     expect(res.outcome).toBe("executed");
     expect((res.detail as { already_at_requested_stage?: boolean })?.already_at_requested_stage).toBe(true);
     expect((res.detail as { unchanged?: boolean })?.unchanged).toBeUndefined();
-    expect(cfg.queryFilters.some((query) => query.table === "clients")).toBe(false);
+    expect(cfg.queryFilters.some((query) => query.table === "paige_journey_stage_transitions")).toBe(false);
   });
 
-  it("a definitive RPC RAISE (unknown stage / cross-tenant) → terminal failed, no readback", async () => {
+  it("a definitive RPC RAISE (unknown stage / cross-tenant) → terminal failed, no reconcile read", async () => {
     const cfg: DbConfig = { setStage: { error: { message: "Unknown journey stage: engaged" } }, rpcCalls: [], queryFilters: [] };
     const res = await nativeAdapter.dispatch!(baseInput(cfg));
     expect(res.outcome).toBe("failed");
@@ -215,38 +237,40 @@ describe("native adapter — dispatch outcomes (§32 confirm, §13 honest, no bl
     expect((res.detail as { reason?: string })?.reason).toBe("dispatch_threw");
   });
 
-  it("changed but canonical slug != target AND no correlation transition → ambiguous (unconfirmed)", async () => {
-    const cfg: DbConfig = { setStage: { data: { ok: true, to_stage_slug: "engaged" } }, clients: { slug: "new" }, transitionExists: false, rpcCalls: [], queryFilters: [] };
+  it("changed but NO correlation transition → ambiguous (unconfirmed; our write is not proven landed)", async () => {
+    const cfg: DbConfig = { setStage: { data: { ok: true, to_stage_slug: "engaged" } }, transitionExists: false, rpcCalls: [], queryFilters: [] };
     const res = await nativeAdapter.dispatch!(baseInput(cfg));
     expect(res.outcome).toBe("ambiguous");
+    expect((res.detail as { reason?: string })?.reason).toBe("not_confirmed_by_correlation");
     expect(cfg.queryFilters.some((query) => query.table === "paige_journey_stage_transitions")).toBe(true);
   });
 
-  it("changed, canonical slug != target BUT our correlation transition exists → executed (reconciled)", async () => {
-    const cfg: DbConfig = { setStage: { data: { ok: true, to_stage_slug: "engaged" } }, clients: { slug: "closed_won" }, transitionExists: true, rpcCalls: [], queryFilters: [] };
+  it("changed but the correlation read ERRORS → ambiguous (canonical_read_error, never a false executed)", async () => {
+    const cfg: DbConfig = { setStage: { data: { ok: true, to_stage_slug: "engaged" } }, transitionsError: true, rpcCalls: [], queryFilters: [] };
     const res = await nativeAdapter.dispatch!(baseInput(cfg));
-    expect(res.outcome).toBe("executed");
-    expect((res.detail as { confirmed_via?: string })?.confirmed_via).toBe("transition_correlation");
-    const tq = cfg.queryFilters.find((query) => query.table === "paige_journey_stage_transitions");
-    expect(tq?.filters.source_event).toBe("corr-1");
-    expect(tq?.filters.to_stage_slug).toBe("engaged");
+    expect(res.outcome).toBe("ambiguous");
+    expect((res.detail as { reason?: string })?.reason).toBe("canonical_read_error");
   });
 
-  it("changed, canonical read ERRORS, correlation transition exists → executed; no transition → ambiguous", async () => {
-    const ok: DbConfig = { setStage: { data: { ok: true, to_stage_slug: "engaged" } }, clients: { error: true }, transitionExists: true, rpcCalls: [], queryFilters: [] };
-    expect((await nativeAdapter.dispatch!(baseInput(ok))).outcome).toBe("executed");
-    const no: DbConfig = { setStage: { data: { ok: true, to_stage_slug: "engaged" } }, clients: { error: true }, transitionExists: false, rpcCalls: [], queryFilters: [] };
-    expect((await nativeAdapter.dispatch!(baseInput(no))).outcome).toBe("ambiguous");
-  });
-
-  it("readback (the reconcile path) confirms WITHOUT calling set_journey_stage", async () => {
-    const cfg: DbConfig = { clients: { slug: "engaged" }, rpcCalls: [], queryFilters: [] };
+  it("readback (the reconcile path) confirms by correlation WITHOUT calling set_journey_stage", async () => {
+    const cfg: DbConfig = { transitionExists: true, rpcCalls: [], queryFilters: [] };
     const res = await nativeAdapter.readback!(null, baseInput(cfg));
     expect(res.outcome).toBe("executed");
+    expect((res.detail as { confirmed_via?: string })?.confirmed_via).toBe("transition_correlation");
     expect(cfg.rpcCalls.some((c) => c.fn === "set_journey_stage")).toBe(false); // NEVER re-dispatches
   });
 
-  it("fails CLOSED on a missing stage slug, and on a non-clients subject — WITHOUT calling the RPC", async () => {
+  it("readback needs NO stage slug — it reconciles from correlation alone (§39 F4 crash-recovery drain)", async () => {
+    // args is EMPTY (a crash-recovery drain no longer holds the governed target slug); readback still confirms.
+    const cfg: DbConfig = { transitionExists: true, rpcCalls: [], queryFilters: [] };
+    const res = await nativeAdapter.readback!(null, baseInput(cfg, { args: {} }));
+    expect(res.outcome).toBe("executed");
+    const cfg2: DbConfig = { transitionExists: false, rpcCalls: [], queryFilters: [] };
+    const res2 = await nativeAdapter.readback!(null, baseInput(cfg2, { args: {} }));
+    expect(res2.outcome).toBe("ambiguous"); // no landed transition → ambiguous, never a false failed/executed
+  });
+
+  it("dispatch fails CLOSED on a missing stage slug, and on a non-clients subject — WITHOUT calling the RPC", async () => {
     const noSlug: DbConfig = { rpcCalls: [], queryFilters: [] };
     const r1 = await nativeAdapter.dispatch!(baseInput(noSlug, { args: {} }));
     expect(r1.outcome).toBe("failed");
@@ -279,13 +303,14 @@ const event: ClaimedEvent = {
 const journeyAuto = (over: Partial<AutomationRow> = {}): AutomationRow => ({
   id: "a1", name: "Welcome journey", granted_lane: "auto", conditions: [], created_by: "owner1", state: "live", ...over,
 });
-const journeyActs = { a1: [{ id: "act1", position: 1, action_kind: "crm_advance_journey_stage", tool_key: null, config: { stage_slug: "engaged" } }] };
+const journeyActs = { a1: [{ id: "act1", position: 1, action_kind: KIND, tool_key: null, config: { stage_slug: "engaged" } }] };
 // The full happy-path config: an eligible actor (tenant tier + admin role), an auto tool lane (→ Gateway
-// availability "live"), an auto automation lane, and the journey advancing cleanly.
+// availability "live"), an auto automation lane, the journey advancing cleanly, and OUR correlation
+// transition landing (→ correlation-confirmed executed).
 const happy = (over: Partial<DbConfig> = {}): DbConfig => ({
   acts: journeyActs, activeMembers: new Set(["t1:owner1"]), lanes: { a1: { effective: "auto" } },
   actorTier: "tenant", actorRoles: ["admin"], toolLane: "auto",
-  setStage: { data: { ok: true, to_stage_slug: "engaged", from_stage_slug: "new" } }, clients: { slug: "engaged" },
+  setStage: { data: { ok: true, to_stage_slug: "engaged", from_stage_slug: "new" } }, transitionExists: true,
   currentActOutcome: null, rpcCalls: [], queryFilters: [], ...over,
 });
 
@@ -299,9 +324,9 @@ describe("runEventActs — native auto-execute: Gateway availability gate + phas
     expect(res.by_outcome.executed).toBe(1);
     expect(res.persist_failures).toEqual([]);
 
-    // the Gateway was consulted (get_actor_access + resolve_tool_autonomy) BEFORE dispatch
+    // the Gateway was consulted (get_actor_access + resolve_tool_autonomy on the UNDERSCORE tool key) BEFORE dispatch
     expect(cfg.rpcCalls.some((c) => c.fn === "get_actor_access")).toBe(true);
-    expect(cfg.rpcCalls.some((c) => c.fn === "resolve_tool_autonomy" && c.args._tool_key === "crm_advance_journey_stage")).toBe(true);
+    expect(cfg.rpcCalls.some((c) => c.fn === "resolve_tool_autonomy" && c.args._tool_key === TOOL)).toBe(true);
 
     // phase 5 wrote a durable accepted_for_execution record BEFORE dispatch, then advanced to executed
     const ledgerWrites = cfg.rpcCalls.filter((c) => c.fn === "paige_record_act_execution");
@@ -313,7 +338,7 @@ describe("runEventActs — native auto-execute: Gateway availability gate + phas
     // set_journey_stage carried the act's correlation ref; receipt + Rail filed on the confirmed executed
     expect(cfg.rpcCalls.find((c) => c.fn === "set_journey_stage")?.args._source_event).toBe(rec.correlation_ref);
     const receipt = cfg.rpcCalls.find((c) => c.fn === "record_capability_run");
-    expect(receipt?.args._capability_key).toBe("crm_advance_journey_stage");
+    expect(receipt?.args._capability_key).toBe(TOOL);
     expect(receipt?.args._actor_id).toBe("owner1");
     expect(cfg.rpcCalls.some((c) => c.fn === "record_rail_event")).toBe(true);
   });
@@ -323,7 +348,7 @@ describe("runEventActs — native auto-execute: Gateway availability gate + phas
     const res = await runEventActs(mockDb(cfg), event, [journeyAuto()]);
     expect(res.records[0].outcome).toBe("refused_authority");
     expect(cfg.rpcCalls.some((c) => c.fn === "set_journey_stage")).toBe(false); // no dispatch on a refused act
-    // no execute plan → not written by phase 5 as accepted; the refusal was recorded by phase 4
+    // no execute plan → phase 5 records the refusal (phase 4 skips ALL native records)
     expect(cfg.rpcCalls.some((c) => c.fn === "paige_record_act_execution" && c.args._outcome === "refused_authority")).toBe(true);
   });
 
@@ -355,9 +380,9 @@ describe("runEventActs — native auto-execute: Gateway availability gate + phas
     expect(cfg.rpcCalls.some((c) => c.fn === "record_capability_run")).toBe(false);
   });
 
-  it("RECONCILE: a re-drain whose ledger row is `ambiguous` confirms by readback — NEVER a blind re-dispatch", async () => {
-    // The row is ambiguous; the canonical slug now matches → readback confirms executed, WITHOUT set_journey_stage.
-    const cfg = happy({ currentActOutcome: "ambiguous", clients: { slug: "engaged" } });
+  it("RECONCILE: a re-drain whose ledger row is `ambiguous` confirms by correlation readback — NEVER a blind re-dispatch", async () => {
+    // The row is ambiguous; OUR correlation transition is present → readback confirms executed, WITHOUT set_journey_stage.
+    const cfg = happy({ currentActOutcome: "ambiguous", transitionExists: true });
     const res = await runEventActs(mockDb(cfg), event, [journeyAuto()]);
     expect(res.records[0].outcome).toBe("executed");
     expect(cfg.rpcCalls.some((c) => c.fn === "set_journey_stage")).toBe(false); // reconcile does NOT re-dispatch
@@ -365,8 +390,8 @@ describe("runEventActs — native auto-execute: Gateway availability gate + phas
     expect(advance?.args._outcome).toBe("executed");
   });
 
-  it("RECONCILE inconclusive: `ambiguous` row still unconfirmed → stays ambiguous, no dispatch, no receipt", async () => {
-    const cfg = happy({ currentActOutcome: "ambiguous", clients: { slug: "new" }, transitionExists: false });
+  it("RECONCILE inconclusive: `ambiguous` row still unconfirmed → stays ambiguous, no dispatch, no receipt (§39 F2 no overwrite)", async () => {
+    const cfg = happy({ currentActOutcome: "ambiguous", transitionExists: false });
     const res = await runEventActs(mockDb(cfg), event, [journeyAuto()]);
     expect(res.records[0].outcome).toBe("ambiguous");
     expect(cfg.rpcCalls.some((c) => c.fn === "set_journey_stage")).toBe(false);
@@ -374,7 +399,7 @@ describe("runEventActs — native auto-execute: Gateway availability gate + phas
   });
 
   it("an UNCONFIRMED first-drain change → ambiguous: advanced NOT settled, and NO receipt/Rail", async () => {
-    const cfg = happy({ clients: { slug: "new" }, transitionExists: false });
+    const cfg = happy({ transitionExists: false });
     const res = await runEventActs(mockDb(cfg), event, [journeyAuto()]);
     expect(res.records[0].outcome).toBe("ambiguous");
     const advance = cfg.rpcCalls.filter((c) => c.fn === "paige_record_act_execution").find((c) => c.args._dispatched_at != null);
@@ -429,7 +454,7 @@ describe("runEventActs — native auto-execute: Gateway availability gate + phas
 // ═══ Part C — the Gateway resolver (gatherer.ts) ═════════════════════════════════════════════════════
 
 describe("resolveNativeCapabilityStatus — availability resolved THROUGH the canonical Gateway", () => {
-  const call = (cfg: DbConfig) => resolveNativeCapabilityStatus(mockDb(cfg), { actorUserId: "u1", tenantId: "t1", actionKind: "crm_advance_journey_stage" });
+  const call = (cfg: DbConfig) => resolveNativeCapabilityStatus(mockDb(cfg), { actorUserId: "u1", tenantId: "t1", actionKind: KIND });
 
   it("eligible actor + auto tool lane → live", async () => {
     const r = await call({ actorTier: "tenant", actorRoles: ["admin"], toolLane: "auto", rpcCalls: [], queryFilters: [] });
@@ -460,8 +485,29 @@ describe("resolveNativeCapabilityStatus — availability resolved THROUGH the ca
     expect(r.ok && r.status.availability).toBe("not_for_tier");
   });
 
-  it("an unbound action_kind returns {ok:false} (never silently available)", async () => {
+  it("resolve_tool_autonomy is called with the UNDERSCORE tool key (the dotted-kind ↔ underscore-tool seam)", async () => {
+    const cfg: DbConfig = { actorTier: "tenant", actorRoles: ["admin"], toolLane: "auto", rpcCalls: [], queryFilters: [] };
+    await resolveNativeCapabilityStatus(mockDb(cfg), { actorUserId: "u1", tenantId: "t1", actionKind: KIND });
+    expect(cfg.rpcCalls.some((c) => c.fn === "resolve_tool_autonomy" && c.args._tool_key === TOOL)).toBe(true);
+  });
+
+  it("an unbound action_kind (incl. the underscore tool key) returns {ok:false} (never silently available)", async () => {
     const r = await resolveNativeCapabilityStatus(mockDb({ rpcCalls: [], queryFilters: [] }), { actorUserId: "u1", tenantId: "t1", actionKind: "frobnicate" });
     expect(r.ok).toBe(false);
+    const rTool = await resolveNativeCapabilityStatus(mockDb({ rpcCalls: [], queryFilters: [] }), { actorUserId: "u1", tenantId: "t1", actionKind: TOOL });
+    expect(rTool.ok).toBe(false);
+  });
+});
+
+// ═══ Part D — registry sync (§39 F5) ═════════════════════════════════════════════════════════════════
+
+describe("native registries stay in sync — no dark executor, no orphan binding (§39 F5)", () => {
+  it("the native executor registry and the Gateway capability bindings carry IDENTICAL keys", () => {
+    const executorKeys = Object.keys(nativeTest.NATIVE_EXECUTORS).sort();
+    const bindingKeys = [...nativeCapabilityBindingKeys()].sort();
+    expect(executorKeys).toEqual(bindingKeys);
+    // and the C2 vertical is present in both by its dotted action_kind
+    expect(executorKeys).toContain(KIND);
+    expect(hasNativeCapabilityBinding(KIND)).toBe(true);
   });
 });

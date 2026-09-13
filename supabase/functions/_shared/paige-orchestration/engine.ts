@@ -73,9 +73,13 @@ export type ActRow = {
 };
 
 // A minimal supabase-js-like client surface (keeps the engine testable without importing the SDK type).
+// `args` is OPTIONAL so EngineDb stays assignable to the shared seams the engine hands it to whose own
+// rpc arg is optional (emitAutomationRail's RpcClient) — the real Deno strict-null typecheck (which the
+// src tsc, strictNullChecks-off, does not enforce) rejects a required-arg rpc there (§32). Every engine
+// call still passes args; optional only widens assignability, never the runtime contract.
 export type EngineDb = {
   from: (t: string) => any;
-  rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: any; error: any }>;
+  rpc: (fn: string, args?: Record<string, unknown>) => Promise<{ data: any; error: any }>;
 };
 
 // ── PURE: build the one-governed-pathway inputs for a single act (auto lane, person-attributed) ────────
@@ -412,11 +416,12 @@ export async function runEventActs(
   //     re-drain that lands on an already-final row reports THAT final outcome, never our recomputed guess.
   const persist_failures: string[] = [];
   for (const rec of records) {
-    // A native execute record is handled ENTIRELY by phase 5 (read-current → reconcile-or-dispatch), which
-    // writes its own durable accepted_for_execution record before the domain write. Persisting it here would
-    // blindly overwrite an existing `ambiguous` row back to accepted and re-dispatch it (owner: ambiguous
-    // reconciles before any retry, never blind re-dispatch), so it is skipped in phase 4.
-    if (executePlans.has(rec.act_id)) continue;
+    // EVERY native-adapter record is handled ENTIRELY by phase 5 (read-current-first), whatever its
+    // decided outcome. Persisting a native record here would let a re-drain overwrite an advanceable
+    // `accepted`/`ambiguous` row (a prior drain's in-flight/unconfirmed dispatch) with a freshly-flipped
+    // FINAL non-execute decision (e.g. refused_authority) — permanently mis-recording a possibly-executed
+    // advance (§39 F2). Phase 5 reconciles an advanceable native row instead of overwriting it.
+    if (rec.adapter_kind === "native") continue;
     const { data, error } = await db.rpc("paige_record_act_execution", {
       _event_id: rec.event_id, _automation_id: rec.automation_id, _act_id: rec.act_id,
       _act_position: rec.act_position, _tenant_id: rec.tenant_id,
@@ -434,113 +439,116 @@ export async function runEventActs(
     if (typeof persisted === "string") rec.outcome = persisted as ActOutcome;
   }
 
-  // 5 — NATIVE AUTO-EXECUTE (C2), READ-CURRENT-FIRST so a re-drain NEVER blind re-dispatches (owner:
-  //     `ambiguous` reconciles by readback/correlation before any retry). For each governed-AUTHORIZED
-  //     native plan, read the CURRENT ledger row and branch:
-  //       * FINAL/settled row      → adopt its outcome (idempotent; a prior drain already settled it).
-  //       * `ambiguous` row        → RECONCILE ONLY via the adapter's readback (canonical re-read + the
-  //                                  act's own correlation) — NO domain write — then advance if confirmed.
-  //       * absent                 → write the durable accepted_for_execution pre-dispatch record FIRST
-  //                                  (correction #3 — no native effect without a durable record), then dispatch.
-  //       * accepted_for_execution → dispatch (a prior drain wrote accepted but crashed before dispatch; the
-  //                                  native write is idempotent, a no-op if it already landed).
-  //     The terminal outcome is advanced through the SAME monotonic RPC; a confirmed, DURABLE `executed`
-  //     files the receipt (always, with honest detail) + owner Rail (suppressed on an idempotent no-op —
-  //     "already at requested stage" is never reported as a newly advanced journey). Best-effort telemetry,
-  //     idempotent on a stable run id.
+  // 5 — NATIVE records (C2), READ-CURRENT-FIRST. Phase 4 skipped EVERY native record; phase 5 owns them so a
+  //     re-drain can never (a) blind re-dispatch, nor (b) overwrite an advanceable row (a prior drain's
+  //     in-flight/unconfirmed dispatch) with a freshly-flipped FINAL non-execute decision (§39 F2). Per record:
+  //       * FINAL/settled current  → adopt (idempotent).
+  //       * ADVANCEABLE current (accepted/retrying/ambiguous) → RECONCILE by the act's OWN correlation
+  //         (readback: a transition stamped with this correlationRef proves OUR write landed, independent of
+  //         the current slug — a concurrent move never false-confirms, §39 F3). Confirmed → executed (+Rail,
+  //         a real advance, §39 F4). Unconfirmed: an `ambiguous` row STAYS ambiguous (owner: never blind
+  //         re-dispatch); an `accepted` row that never landed IS dispatched when this drain still decides
+  //         execute; a flipped no-plan decision leaves the advanceable row untouched (never refuses a
+  //         possibly-executed advance, §39 F2).
+  //       * ABSENT current → a plan (execute) writes the durable accepted record then dispatches; a no-plan
+  //         (non-execute) decision records that exact decision now (moved out of phase 4).
+  //     A confirmed executed files the receipt (honest detail) + owner Rail (suppressed on an idempotent
+  //     no-op). Receipt/Rail need the plan's identity; a plan-less reconcile advances the durable ledger
+  //     truth and defers the best-effort receipt/Rail (§13 — the ledger is the source of truth).
   const nowIso = new Date().toISOString();
-  for (const rec of records) {
-    const plan = executePlans.get(rec.act_id);
-    if (!plan) continue;
 
-    const dispatchInput = {
-      tenantId: event.tenant_id,
-      actionKind: rec.capability_key ?? "",
-      args: plan.args,
-      correlationRef: rec.correlation_ref,
-      db,
-      subjectTable: event.subject_table,
-      subjectId: event.subject_id,
-    };
-
-    // Read the CURRENT durable state — never act blind on a re-drain.
-    const cur = await readActOutcome(db, rec.event_id, rec.act_id);
-    if (!cur.ok) { persist_failures.push(rec.act_id); continue; }                 // infra read error → retry
-    if (cur.outcome && FINAL_OR_SETTLED.has(cur.outcome)) { rec.outcome = cur.outcome as ActOutcome; continue; }
-
-    let result: DispatchResult;
-    if (cur.outcome === "ambiguous") {
-      // RECONCILE ONLY — confirm via readback (canonical re-read + correlation), NEVER a blind re-dispatch.
-      if (typeof plan.adapter.readback !== "function") { rec.outcome = "ambiguous"; continue; } // cannot reconcile; leave for a later pass
-      try { result = await plan.adapter.readback(null, dispatchInput); }
-      catch (e) { result = { outcome: "ambiguous", providerRef: null, error: e instanceof Error ? e.message : String(e), detail: { reason: "readback_threw" } }; }
-    } else {
-      // absent → write the durable accepted_for_execution pre-dispatch record FIRST (correction #3); a
-      // prior-crash `accepted_for_execution` row is already durable, so dispatch straight away.
-      if (cur.outcome == null) {
-        const { data: acc, error: accErr } = await db.rpc("paige_record_act_execution", {
-          _event_id: rec.event_id, _automation_id: rec.automation_id, _act_id: rec.act_id,
-          _act_position: rec.act_position, _tenant_id: rec.tenant_id,
-          _adapter_kind: rec.adapter_kind, _capability_key: rec.capability_key,
-          _effective_lane: rec.effective_lane, _outcome: "accepted_for_execution", _refusal_code: null,
-          _idempotency_key: rec.idempotency_key, _correlation_ref: rec.correlation_ref,
-          _provider_ref: null, _detail: rec.detail, _error: null,
-          _dispatched_at: null, _settled_at: null,
-        });
-        if (accErr || acc == null) { persist_failures.push(rec.act_id); continue; }
-      }
-      try { result = await plan.adapter.dispatch!(dispatchInput); }
-      catch (e) {
-        // The adapter itself faulted — the write MAY have committed, so this is ambiguous (reconcile, never
-        // blind-retry), NOT a terminal failure that would strand a possibly-executed act.
-        result = { outcome: "ambiguous", providerRef: null, error: e instanceof Error ? e.message : String(e), detail: { reason: "adapter_threw" } };
-      }
-    }
-
-    // Advance the ledger to the terminal outcome through the monotonic RPC (executed|failed|ambiguous).
-    const settled = result.outcome === "executed" || result.outcome === "failed"; // ambiguous stays advanceable
+  const persistNative = async (rec: ActExecutionRecord, outcome: ActOutcome, extra: {
+    providerRef?: string | null; detail?: Record<string, unknown>; error?: string | null;
+    dispatchedAt?: string | null; settledAt?: string | null;
+  }): Promise<{ ok: true; id: string | null } | { ok: false }> => {
     const { data, error } = await db.rpc("paige_record_act_execution", {
       _event_id: rec.event_id, _automation_id: rec.automation_id, _act_id: rec.act_id,
       _act_position: rec.act_position, _tenant_id: rec.tenant_id,
       _adapter_kind: rec.adapter_kind, _capability_key: rec.capability_key,
-      _effective_lane: rec.effective_lane, _outcome: result.outcome, _refusal_code: null,
+      _effective_lane: rec.effective_lane, _outcome: outcome, _refusal_code: rec.refusal_code,
       _idempotency_key: rec.idempotency_key, _correlation_ref: rec.correlation_ref,
-      _provider_ref: result.providerRef ?? null,
-      _detail: { ...(rec.detail ?? {}), dispatch: result.detail ?? {} },
-      _error: result.error ?? null,
-      _dispatched_at: nowIso, _settled_at: settled ? nowIso : null,
+      _provider_ref: extra.providerRef ?? null, _detail: extra.detail ?? rec.detail, _error: extra.error ?? null,
+      _dispatched_at: extra.dispatchedAt ?? null, _settled_at: extra.settledAt ?? null,
     });
-    if (error || data == null) { persist_failures.push(rec.act_id); continue; }
+    if (error || data == null) return { ok: false };
     const persisted = (data as { outcome?: unknown }).outcome;
     if (typeof persisted === "string") rec.outcome = persisted as ActOutcome;
+    return { ok: true, id: (data as { id?: string }).id ?? null };
+  };
 
-    // Receipt + Rail ONLY on a CONFIRMED, DURABLE executed (§13 — never a hoped-for result). The receipt is
-    // filed with honest detail (a no-op carries `already_at_requested_stage`); the owner Rail — which reads
-    // as "advanced the journey" — is SUPPRESSED on an idempotent no-op so a no-op is never reported as a
-    // newly advanced journey (owner). Best-effort, idempotent on the stable run id.
-    if (rec.outcome === "executed") {
+  // Advance the ledger to a dispatch/reconcile result and (only for a real executed WITH a plan) file the
+  // receipt + owner Rail (Rail suppressed on an idempotent no-op). Returns false on a durable-write failure.
+  const advanceNative = async (rec: ActExecutionRecord, plan: NativeExecutePlan | undefined, result: DispatchResult): Promise<boolean> => {
+    const settled = result.outcome === "executed" || result.outcome === "failed"; // ambiguous stays advanceable
+    const w = await persistNative(rec, result.outcome as ActOutcome, {
+      providerRef: result.providerRef ?? null,
+      detail: { ...(rec.detail ?? {}), dispatch: result.detail ?? {} },
+      error: result.error ?? null, dispatchedAt: nowIso, settledAt: settled ? nowIso : null,
+    });
+    if (!w.ok) { persist_failures.push(rec.act_id); return false; }
+    if (rec.outcome === "executed" && plan) {
       const detail = (result.detail ?? {}) as Record<string, unknown>;
       const wasNoop = detail.already_at_requested_stage === true;
       const runId = await stableRunId(["paige-cap", rec.event_id, rec.act_id]);
       await recordCapabilityRun(db, {
-        tenantId: event.tenant_id,
-        actorId: plan.personUserId,
-        capabilityKey: plan.capabilityKey,
-        outcome: "capability_succeeded",
-        runId,
+        tenantId: event.tenant_id, actorId: plan.personUserId, capabilityKey: plan.capabilityKey,
+        outcome: "capability_succeeded", runId,
         detail: { correlation_ref: rec.correlation_ref, event_id: rec.event_id, act_id: rec.act_id, contact_id: event.subject_id, ...detail },
       });
       if (!wasNoop) {
         await emitAutomationRail(db, {
-          tenantId: event.tenant_id,
-          contactId: event.subject_id,
-          workflowName: plan.automationName,
-          phase: "completed",
-          refTable: "paige_act_executions",
-          refId: (data as { id?: string }).id ?? null,
+          tenantId: event.tenant_id, contactId: event.subject_id, workflowName: plan.automationName,
+          phase: "completed", refTable: "paige_act_executions", refId: w.id,
         });
       }
     }
+    return true;
+  };
+
+  const ambiguousResult = (e: unknown, reason: string): DispatchResult =>
+    ({ outcome: "ambiguous", providerRef: null, error: e instanceof Error ? e.message : String(e), detail: { reason } });
+
+  for (const rec of records) {
+    if (rec.adapter_kind !== "native") continue;
+    const plan = executePlans.get(rec.act_id);
+    const adapter = plan?.adapter ?? adapterForAction(rec.capability_key);
+    const nativeInput = {
+      tenantId: event.tenant_id, actionKind: rec.capability_key ?? "", args: plan?.args ?? {},
+      correlationRef: rec.correlation_ref, db, subjectTable: event.subject_table, subjectId: event.subject_id,
+    };
+
+    const cur = await readActOutcome(db, rec.event_id, rec.act_id);
+    if (!cur.ok) { persist_failures.push(rec.act_id); continue; }                 // infra read error → retry
+    if (cur.outcome && FINAL_OR_SETTLED.has(cur.outcome)) { rec.outcome = cur.outcome as ActOutcome; continue; }
+
+    // ── current ADVANCEABLE (accepted/retrying/ambiguous): reconcile by correlation — never overwrite.
+    if (cur.outcome != null) {
+      const rb = adapter?.readback;
+      if (typeof rb !== "function") { rec.outcome = cur.outcome as ActOutcome; continue; } // can't reconcile; leave advanceable
+      let recon: DispatchResult;
+      try { recon = await rb(null, nativeInput); } catch (e) { recon = ambiguousResult(e, "readback_threw"); }
+      if (recon.outcome === "executed") { await advanceNative(rec, plan, recon); continue; }   // our write landed
+      if (cur.outcome === "ambiguous") { rec.outcome = "ambiguous"; continue; }                // owner: never blind re-dispatch
+      // an `accepted`/`retrying` row whose correlation shows NO landed transition → it never dispatched.
+      if (plan && typeof plan.adapter.dispatch === "function") {
+        let dr: DispatchResult;
+        try { dr = await plan.adapter.dispatch(nativeInput); } catch (e) { dr = ambiguousResult(e, "adapter_threw"); }
+        await advanceNative(rec, plan, dr); continue;
+      }
+      rec.outcome = cur.outcome as ActOutcome; continue; // no plan this drain → leave for a later drain/sweep
+    }
+
+    // ── current ABSENT.
+    if (plan && typeof plan.adapter.dispatch === "function") {
+      const acc = await persistNative(rec, "accepted_for_execution", { error: null }); // durable pre-dispatch record FIRST
+      if (!acc.ok) { persist_failures.push(rec.act_id); continue; }
+      let dr: DispatchResult;
+      try { dr = await plan.adapter.dispatch(nativeInput); } catch (e) { dr = ambiguousResult(e, "adapter_threw"); }
+      await advanceNative(rec, plan, dr); continue;
+    }
+    // a native record with a NON-execute decision (condition/held/approval/refused) — record it now.
+    const w = await persistNative(rec, rec.outcome, { error: rec.error });
+    if (!w.ok) persist_failures.push(rec.act_id);
   }
 
   const by_outcome: Record<string, number> = {};

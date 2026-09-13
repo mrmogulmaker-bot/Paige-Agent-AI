@@ -33,13 +33,23 @@ type Lane = "auto" | "confirm" | "off";
  * action to its DECLARED capability — and it lives in the Gateway seam, not Layer C. Extend it here as
  * native capabilities are declared in signals.ts. `crm_advance_journey_stage` is the C2 vertical.
  */
+// Keyed by the act's `action_kind` — the DOTTED action-bus slug. statusKey is the capability-status
+// manifest key (equal to the slug); toolKey is the UNDERSCORE tool key resolve_tool_autonomy expects.
 const NATIVE_CAPABILITY_BINDINGS: Readonly<Record<string, { statusKey: string; toolKey: string }>> = {
-  crm_advance_journey_stage: { statusKey: "crm.advance_journey_stage", toolKey: "crm_advance_journey_stage" },
+  "crm.advance_journey_stage": { statusKey: "crm.advance_journey_stage", toolKey: "crm_advance_journey_stage" },
 };
 
 /** Whether an action_kind has a declared native capability binding (so it can be resolved through here). */
 export function hasNativeCapabilityBinding(actionKind: string | null | undefined): boolean {
   return !!actionKind && Object.prototype.hasOwnProperty.call(NATIVE_CAPABILITY_BINDINGS, actionKind);
+}
+
+/** The action_kinds with a declared native capability binding. Exported so a test can assert the two native
+ *  registries stay in sync — an executor (native-adapter) without a Gateway binding would dispatch with an
+ *  UNRESOLVED availability; a binding without an executor would resolve a status the engine can never run
+ *  (§39 F5). Both are latent dark-in-prod bugs; the keys must match exactly. */
+export function nativeCapabilityBindingKeys(): readonly string[] {
+  return Object.keys(NATIVE_CAPABILITY_BINDINGS);
 }
 
 /**

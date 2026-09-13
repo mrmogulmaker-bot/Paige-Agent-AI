@@ -21,10 +21,11 @@
 // the EXACT per-act outcome in paige_act_executions through the ATOMIC, MONOTONIC transition RPC
 // (paige_record_act_execution) — a final outcome is never overwritten, and every durable write is
 // CHECKED (a failed write fails the dispatch for retry, correction #3). C2 adds the NATIVE synchronous
-// execute path: a governed-authorized `crm_advance_journey_stage` is dispatched to the in-tenant
-// set_journey_stage RPC AFTER its durable accepted_for_execution record persists, the canonical record
-// is re-read to CONFIRM (§32), and the ledger advances to `executed` (or `ambiguous` → reconcile, never
-// blind retry). An EXTERNAL-EFFECT adapter (n8n) still stops at accepted_for_execution / approval_pending
+// execute path: a governed-authorized act whose action_kind is `crm.advance_journey_stage` (the dotted
+// action-bus slug; `crm_advance_journey_stage` is its tool/capability key) is dispatched to the in-tenant
+// set_journey_stage RPC AFTER its durable accepted_for_execution record persists, OUR write is CONFIRMED
+// by a transition stamped with the act's correlation ref (§32, never a bare current-slug match), and the
+// ledger advances to `executed` (or `ambiguous` → correlation reconcile, never blind retry). An EXTERNAL-EFFECT adapter (n8n) still stops at accepted_for_execution / approval_pending
 // — its dispatch + signed readback is C3+. THREE distinct levels are preserved (correction #6):
 // event-level `no_subscriber`, subscriber-level paige_event_dispatches delivery, per-act
 // paige_act_executions outcome. `acts_executed` is legacy per-subscriber metadata only (now true for a
@@ -167,8 +168,8 @@ Deno.serve(async (req) => {
     //    most-restrictive act floor ∧ Trust-Compass ceiling ∧ §68 decay), and runs the ONE governed
     //    pathway per act — recording the EXACT per-act outcome (condition_not_matched / held_by_lane /
     //    approval_pending / refused_* / accepted_for_execution / executed / failed / ambiguous) in
-    //    paige_act_executions, fire-once. C2: a native, synchronous execute (crm_advance_journey_stage)
-    //    dispatches + confirms in-engine and advances to `executed`; an external-effect adapter (n8n)
+    //    paige_act_executions, fire-once. C2: a native, synchronous execute (action_kind
+    //    `crm.advance_journey_stage`) dispatches + confirms in-engine and advances to `executed`; an external-effect adapter (n8n)
     //    still stops at accepted_for_execution, and a high external-effect act on an `auto` process
     //    correctly HOLDS for approval — the lane alone never authorizes a high act (§67 / RE-2 grant lift). --
     const engine = await runEventActs(
