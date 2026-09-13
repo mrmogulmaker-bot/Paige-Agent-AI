@@ -23,6 +23,21 @@ const digest = async (raw: string) => {
   return Array.from(new Uint8Array(bytes)).map((b) => b.toString(16).padStart(2, "0")).join("");
 };
 
+const deliverVerifiedWelcome = async (supabaseUrl: string, serviceKey: string, fulfillmentEventId: string) => {
+  const response = await fetch(supabaseUrl + "/functions/v1/send-transactional-email", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + serviceKey,
+      apikey: serviceKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      templateName: "solo-beta-welcome",
+      fulfillmentEventId,
+    }),
+  });
+  if (!response.ok) throw new Error("welcome_delivery_failed");
+};
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { error: "method_not_allowed" });
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
@@ -124,7 +139,10 @@ Deno.serve(async (req) => {
       if (claimError) throw new Error("event_claim_failed");
       const claim = Array.isArray(claimed) ? claimed[0] : claimed;
       if (!claim?.claimed) {
-        if (claim?.lifecycle_state === "completed") return json(200, { received: true, duplicate: true });
+        if (claim?.lifecycle_state === "completed") {
+          await deliverVerifiedWelcome(supabaseUrl, serviceKey, event.id);
+          return json(200, { received: true, duplicate: true });
+        }
         return json(409, { error: "event_processing_retry" });
       }
       eventClaimed = true;
@@ -151,6 +169,7 @@ Deno.serve(async (req) => {
         _cancel_at_period_end: subscription.cancel_at_period_end,
       });
       if (fulfillError) throw new Error("atomic_fulfillment_failed");
+      await deliverVerifiedWelcome(supabaseUrl, serviceKey, event.id);
       return json(200, { received: true });
     }
 

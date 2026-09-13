@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
     const membership = memberships.find((row: Record<string, unknown>) => row.tenant_id === enrollment.tenant_id) as Record<string, unknown> | undefined;
     const tenantRaw = membership?.tenants;
     const tenant = (Array.isArray(tenantRaw) ? tenantRaw[0] : tenantRaw) as { account_number?: number; account_type?: string; parent_tenant_id?: string | null } | null | undefined;
-    const [subscriptionResult, receiptResult, entitlementResult] = await Promise.all([
+    const [subscriptionResult, receiptResult, entitlementResult, welcomeResult] = await Promise.all([
       admin.from("platform_subscriptions")
         .select("id,status,offer_code,provider_mode,provider_verified_at,stripe_subscription_id,cancel_at_period_end,current_period_end,trial_ends_at")
         .eq("tenant_id", enrollment.tenant_id).eq("stripe_subscription_id", enrollment.stripe_subscription_id).maybeSingle(),
@@ -59,11 +59,15 @@ Deno.serve(async (req) => {
       admin.from("user_subscriptions")
         .select("plan_slug,status,stripe_subscription_id,current_period_end,trial_ends_at")
         .eq("user_id", user.id).eq("stripe_subscription_id", enrollment.stripe_subscription_id).maybeSingle(),
+      admin.from("solo_beta_welcome_deliveries")
+        .select("state")
+        .eq("user_id", user.id).eq("tenant_id", enrollment.tenant_id).maybeSingle(),
     ]);
-    if (subscriptionResult.error || receiptResult.error || entitlementResult.error) return json(503, { error: "status_unavailable" });
+    if (subscriptionResult.error || receiptResult.error || entitlementResult.error || welcomeResult.error) return json(503, { error: "status_unavailable" });
     const subscription = subscriptionResult.data;
     const receipt = receiptResult.data;
     const entitlement = entitlementResult.data;
+    const welcomeDelivery = welcomeResult.data?.state ?? "pending";
     const chainVerified = membership && membership.is_owner === true && tenant?.account_type === "standalone"
       && tenant.parent_tenant_id === null && tenant.account_number
       && subscription?.offer_code === "paige-solo-beta-monthly-v1"
@@ -83,6 +87,7 @@ Deno.serve(async (req) => {
             ? "Your 30-day Solo Beta trial, workspace, membership, and access are verified. Your first $74.50 monthly renewal is due after the trial unless you cancel first."
             : "Your paid Solo subscription, workspace, membership, and access are verified.",
         destination: `/solo/${tenant.account_number}/command-center`,
+        welcome_delivery: welcomeDelivery,
       });
     }
     if (chainVerified && membership.status === "suspended" && ["past_due", "unpaid", "paused"].includes(subscription.status)) {

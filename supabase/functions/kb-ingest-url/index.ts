@@ -30,7 +30,11 @@ const BodySchema = z.object({
 // enough to capture a full article/SOP page rather than a chat-sized snippet.
 const MAX_CONTENT = 200_000;
 
-// SSRF blocklist — identical to fetch-url-content's guard. Do not weaken.
+// SSRF blocklist (regex, per-hostname). NOTE (2026-09-13): this is NO LONGER identical to
+// fetch-url-content's guard — that function migrated to `_shared/ssrfGuard.ts` safeFetch, which
+// is STRICTER (resolves the host and validates every IP numerically, closing the DNS→private /
+// IPv4-mapped-IPv6 gaps this regex cannot see; refuses redirects; bounds time+bytes). Migrating
+// this fork onto safeFetch is a tracked §18 follow-up; until then do not weaken what is here.
 const BLOCKED_HOST_PATTERNS = [
   /^localhost$/i,
   /^127\./,
