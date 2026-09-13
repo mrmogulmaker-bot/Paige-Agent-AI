@@ -67,6 +67,8 @@ function world(over: {
   n8n?: Record<string, unknown> | null;
   mcp?: Partial<Record<"n8n" | "zapier", Record<string, unknown>>> | null;
   zapierApi?: Record<string, unknown>;
+  socialConnections?: Record<string, unknown>[];
+  socialAccounts?: Record<string, unknown>[];
   admin?: boolean;
   writeError?: { message: string } | null;
 } = {}) {
@@ -76,6 +78,9 @@ function world(over: {
     if (name === "get_tenant_n8n_api_readiness") return Promise.resolve({ data: api, error: null });
     if (name === "get_tenant_mcp_connections") return Promise.resolve({ data: over.mcp ?? {}, error: null });
     if (name === "is_current_user_tenant_admin") return Promise.resolve({ data: over.admin !== false, error: null });
+    if (name === "social_connection_status") return Promise.resolve({ data: over.socialConnections ?? [], error: null });
+    if (name === "social_account_status") return Promise.resolve({ data: over.socialAccounts ?? [], error: null });
+    if (name === "social_connection_access") return Promise.resolve({ data: over.admin !== false, error: null });
     return Promise.resolve({ data: null, error: null });
   });
   invoke.mockImplementation((name: string, options: { body: Record<string, unknown> }) => {
@@ -88,11 +93,11 @@ function world(over: {
   });
 }
 
-async function render() {
+async function render(initialEntry = "/solo/1971670/settings/integrations") {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
-  await act(async () => root.render(<MemoryRouter initialEntries={["/solo/1971670/settings/integrations"]}><SoloIntegrationsView /></MemoryRouter>));
+  await act(async () => root.render(<MemoryRouter initialEntries={[initialEntry]}><SoloIntegrationsView /></MemoryRouter>));
   await act(async () => { await Promise.resolve(); });
   return { host, root };
 }
@@ -760,5 +765,140 @@ describe("Capability approval", () => {
     await openCard(host, "mcp");
     await click(capsButton(host, "Paige tools (MCP)"));
     expect(panel(host).querySelector(".ig-capability-approval")).toBeNull();
+  });
+});
+
+describe("Social tenant-owned connection flow", () => {
+  const tenantId = "0f0f0f0f-1111-4111-8111-222222222222";
+  const connectionId = "11111111-2222-4222-8222-333333333333";
+  const accountId = "44444444-5555-4555-8555-666666666666";
+
+  it("starts empty and assumes no workspace, identity, account, or target", async () => {
+    context.tenantId = tenantId;
+    world({ socialConnections: [], socialAccounts: [] });
+    const { host } = await render("/solo/workspace/settings/integrations");
+    const card = host.querySelector('.ig-card[data-provider="social"]');
+    expect(card?.textContent).toContain("Setup required");
+    await openCard(host, "social");
+    expect(host.textContent).toContain("No Social identities are connected");
+    expect(host.textContent).toContain("Add Social identity");
+    expect(host.textContent).not.toContain("Upload-Post");
+  });
+
+  it("renders only provider-read accounts for the active tenant and never chooses a target implicitly", async () => {
+    context.tenantId = tenantId;
+    world({
+      socialConnections: [{
+        id: connectionId, label: null, status: "connected",
+        last_verified_at: "2026-09-12T20:00:00Z", account_count: 1,
+      }],
+      socialAccounts: [{
+        id: accountId, connection_id: connectionId, platform: "instagram",
+        display_name: "Test identity 7", handle: "@test_identity_7",
+        status: "connected", selected: false, capabilities: ["video", "analytics"],
+        last_verified_at: "2026-09-12T20:00:00Z",
+      }],
+    });
+    const { host } = await render("/solo/workspace/settings/integrations");
+    await openCard(host, "social");
+    expect(host.textContent).toContain("Test identity 7");
+    expect(host.textContent).toContain("@test_identity_7");
+    expect(host.textContent).toContain("Select this account");
+    expect(host.textContent).not.toContain("Selected");
+  });
+
+  it("requires an exact one-time approval before selecting a discovered account", async () => {
+    context.tenantId = tenantId;
+    world({
+      socialConnections: [{ id: connectionId, status: "connected", account_count: 1 }],
+      socialAccounts: [{
+        id: accountId, connection_id: connectionId, platform: "linkedin",
+        display_name: "Test identity 9", status: "connected", selected: false, capabilities: [],
+      }],
+    });
+    const fallback = invoke.getMockImplementation();
+    invoke.mockImplementation((name: string, options: { body: Record<string, unknown> }) => {
+      if (name === "paige-social") return Promise.resolve({
+        data: {
+          ok: false,
+          state: "approval_required",
+          approval: {
+            fingerprint: "0123456789abcdef",
+            summary: "Select this connected Social account. Nothing will be published.",
+            expires_at: "2026-09-12T22:00:00Z",
+          },
+        },
+        error: null,
+      });
+      return fallback?.(name, options);
+    });
+    const { host } = await render("/solo/workspace/settings/integrations");
+    await openCard(host, "social");
+    await click(byText(host, "Select this account"));
+    expect(invoke).toHaveBeenCalledWith("paige-social", {
+      body: {
+        action: "select",
+        connection_id: connectionId,
+        account_id: accountId,
+        expected_tenant_id: tenantId,
+      },
+    });
+    expect(host.textContent).toContain("Confirm this Social change");
+    expect(host.textContent).toContain("Nothing will be published");
+  });
+
+  it("uses only the canonical approval for disconnect", async () => {
+    context.tenantId = tenantId;
+    world({
+      socialConnections: [{ id: connectionId, status: "connected", account_count: 1 }],
+      socialAccounts: [{
+        id: accountId, connection_id: connectionId, platform: "proofnet",
+        display_name: "Test identity 11", status: "connected", selected: true, capabilities: [],
+      }],
+    });
+    const fallback = invoke.getMockImplementation();
+    invoke.mockImplementation((name: string, options: { body: Record<string, unknown> }) => {
+      if (name === "paige-social" && options.body.action === "disconnect") return Promise.resolve({
+        data: {
+          ok: false,
+          state: "approval_required",
+          approval: {
+            fingerprint: "fedcba9876543210",
+            summary: "Disconnect this Social identity and revoke its provider profile.",
+            expires_at: "2026-09-12T22:00:00Z",
+          },
+        },
+        error: null,
+      });
+      return fallback?.(name, options);
+    });
+    const { host } = await render("/solo/workspace/settings/integrations");
+    await openCard(host, "social");
+    await click(byText(host, "Disconnect"));
+    expect(host.textContent).toContain("Confirm this Social change");
+    expect(host.textContent).toContain("Disconnect this Social identity");
+    expect(host.textContent).not.toContain("Continue");
+    expect(invoke.mock.calls.filter(([name, options]) =>
+      name === "paige-social" && options.body.action === "disconnect"
+    )).toHaveLength(1);
+  });
+
+  it("does not expose callback secrets and treats a verified return as readback, not selection", async () => {
+    context.tenantId = tenantId;
+    world({
+      socialConnections: [{ id: connectionId, status: "connected", account_count: 1 }],
+      socialAccounts: [{
+        id: accountId, connection_id: connectionId, platform: "facebook",
+        display_name: "Test identity 12", status: "connected", selected: false, capabilities: [],
+      }],
+    });
+    const { host } = await render("/solo/workspace/settings/integrations?social_result=verified&social_receipt=recorded");
+    await openCard(host, "social");
+    expect(host.textContent).toContain("Social accounts were verified");
+    expect(host.textContent).toContain("Choose the account");
+    expect(host.textContent).not.toContain("Selected");
+    expect(invoke.mock.calls.some(([name, options]) =>
+      name === "paige-social" && Object.prototype.hasOwnProperty.call(options?.body ?? {}, "callback_token")
+    )).toBe(false);
   });
 });

@@ -144,6 +144,11 @@ try {
       record(/Solo Beta/i.test(auth.body) && /30-day trial/i.test(auth.body) && /\$74\.50\/month/i.test(auth.body), `${authPrefix}: signup names the exact trial and renewal offer`);
       record(!/\$149|14-day|no trial|create.*agency|create.*portal/i.test(auth.body), `${authPrefix}: no obsolete or unsupported signup promise`);
       record(auth.interactive.some(({ text }) => /Create Solo Beta account/i.test(text)), `${authPrefix}: one truthful primary signup action is present`);
+      const countrySelector = page.locator("#mobile-country");
+      record(await countrySelector.inputValue() === "US", `${authPrefix}: phone country defaults to United States`);
+      record(await countrySelector.locator("option").count() > 200, `${authPrefix}: international phone-country choices are available`);
+      await page.locator("#mobile").fill("4244575247");
+      record(await page.locator("#mobile").inputValue() === "4244575247", `${authPrefix}: ordinary US number entry does not require +1`);
       const signupAction = auth.interactive.find(({ text }) => /Create Solo Beta account/i.test(text));
       record(Boolean(signupAction && signupAction.bottom <= auth.viewportHeight), `${authPrefix}: primary signup action fits in the initial viewport`, { signupAction, viewportHeight: auth.viewportHeight });
       record(auth.animations.length === 0, `${authPrefix}: reduced motion leaves no running animation`, { animations: auth.animations });

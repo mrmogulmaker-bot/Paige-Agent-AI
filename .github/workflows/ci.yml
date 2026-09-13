@@ -22,6 +22,14 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Manual exact-ref run (§24 CI reliability). A bot-authored PR's `pull_request` and `push`
+  # events are withheld from Actions (recursion prevention), so such a PR can never earn a real
+  # CI run from its own events. This lets the EXISTING gate be dispatched against an exact ref;
+  # the changed-file/edge gates below resolve their base from the live `origin/main` tip so the
+  # SAME checks run — no check is weakened, skipped, replaced, or de-required. PR/push behaviour
+  # is UNCHANGED: every event-conditional below still evaluates identically for those two events
+  # (the new `workflow_dispatch` branch only activates on a manual dispatch).
+  workflow_dispatch:
 
 # A newer push to the same ref supersedes an in-flight run.
 concurrency:
@@ -69,21 +77,31 @@ jobs:
       # fetch-depth:0 makes it resolvable. All three gates below share this one base.
       - name: Compute merge-base
         id: mergebase
-        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          EV: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
+          if [ "$EV" = "pull_request" ]; then
+            BASE="$PR_BASE"; HEAD="$PR_HEAD"
+          else
+            # workflow_dispatch: diff the dispatched ref against the CURRENT main tip. fetch-depth:0
+            # fetches only the checked-out ref's history, so main is fetched explicitly here.
+            git fetch --no-tags origin main
+            BASE="$(git rev-parse FETCH_HEAD)"; HEAD="$GITHUB_SHA"
+          fi
           mb="$(git merge-base "$BASE" "$HEAD")"
           echo "mb=$mb" >> "$GITHUB_OUTPUT"
+          echo "head=$HEAD" >> "$GITHUB_OUTPUT"
           echo "merge-base(base=$BASE, head=$HEAD) = $mb"
 
       - name: Compute changed files
         id: changed
-        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
         env:
           BASE: ${{ steps.mergebase.outputs.mb }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          HEAD: ${{ steps.mergebase.outputs.head }}
         run: |
           # AMR: include Renamed files (a rename+edit must still be linted). Same base/head the
           # regression lint uses, so the two gates never disagree about the change set.
@@ -99,16 +117,16 @@ jobs:
           echo "Changed edge-function files:"; cat changed_fns.txt || true
 
       - name: tsc baseline may only shrink
-        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
         env:
           BASE: ${{ steps.mergebase.outputs.mb }}
         run: node scripts/ci/baseline-guard.mjs
 
       - name: Regression lint (§3 phrases · jargon · non-restrictive policy — added lines)
-        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
         env:
           BASE_REF: ${{ steps.mergebase.outputs.mb }}
-          HEAD_REF: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ steps.mergebase.outputs.head }}
         run: npm run ci:regression
 
       - name: View security_invoker guard (§9/§30 — public views must not bypass RLS)
@@ -336,7 +354,7 @@ jobs:
         env:
           # Historical release records compare with the CURRENT PR base, not the branch fork point:
           # a stale branch must not erase a record that landed on main after it diverged.
-          RELEASE_GOVERNANCE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          RELEASE_GOVERNANCE_BASE: ${{ github.event.pull_request.base.sha || github.event.before || steps.mergebase.outputs.mb }}
         run: npm run lint:release-governance
 
       - name: Release-governance guard catches what it claims to
@@ -399,11 +417,11 @@ jobs:
         run: npm run lint:vector-path:test
 
       - name: ESLint (changed src)
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.src_count != '0' }}
+        if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && steps.changed.outputs.src_count != '0' }}
         run: xargs -r -a changed_src.txt ./node_modules/.bin/eslint
 
       - name: Gold-discipline (changed src)
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.src_count != '0' }}
+        if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && steps.changed.outputs.src_count != '0' }}
         run: xargs -r -a changed_src.txt node scripts/gold-discipline-lint.mjs
 
       # --- Edge functions: the gap this closes (task #142) ---------------------------------
@@ -433,7 +451,7 @@ jobs:
       # set CI CHECKS and the set CI DEPLOYS can never drift apart (§18: one home).
       - name: Resolve affected edge functions
         id: affected_fns
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.fn_count != '0' }}
+        if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && steps.changed.outputs.fn_count != '0' }}
         run: |
           # pipefail: GitHub's default shell is `bash -e {0}` with NO pipefail, so a pipeline
           # reports the LAST command's status. `... | tee affected_fns.txt` therefore returned
@@ -501,10 +519,10 @@ jobs:
       - name: Deno ratchet (affected edge functions — fails on NEW or increased diagnostics)
         # `count != ''` as well as `!= '0'`: an empty count means the resolve step did not run or
         # produced no output, and an unbounded run is a configuration error, not a no-op pass.
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.affected_fns.outputs.count != '' && steps.affected_fns.outputs.count != '0' }}
+        if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && steps.affected_fns.outputs.count != '' && steps.affected_fns.outputs.count != '0' }}
         env:
           BASE: ${{ steps.mergebase.outputs.mb }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          HEAD: ${{ steps.mergebase.outputs.head }}
           # The set CI resolved and the set the ratchet grades must be identical. Without this,
           # an empty or truncated affected_fns.txt makes the ratchet report "nothing to compare"
           # and exit 0 while functions were in fact affected.
@@ -519,7 +537,7 @@ jobs:
             --out deno-ratchet-evidence
 
       - name: Upload Deno ratchet evidence (base and head legs)
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.affected_fns.outputs.count != '' && steps.affected_fns.outputs.count != '0' }}
+        if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && steps.affected_fns.outputs.count != '' && steps.affected_fns.outputs.count != '0' }}
         uses: actions/upload-artifact@v4
         with:
           name: deno-ratchet-evidence
@@ -533,7 +551,7 @@ jobs:
       # The ratchet needs a PR base, so it cannot run on a push to main. Say so in the log: an
       # absent gate should never have to be inferred from a missing step.
       - name: Note — edge ratchet needs a PR base
-        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+        if: ${{ !cancelled() && github.event_name != 'pull_request' && github.event_name != 'workflow_dispatch' }}
         run: echo "::notice::deno edge ratchet skipped - no PR base for a ${{ github.event_name }} event; affected edge functions were NOT type-checked in this run."
 
       # --- Whole-repo hard gates (PR + push). `!cancelled` so one run surfaces every failure. ----

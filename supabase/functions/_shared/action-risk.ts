@@ -106,6 +106,9 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   ["n8n_archive_workflow", "high", "acts on the operator's provider account"],
   ["zapier_run_action", "high", "runs an action in a third-party app"],
   ["calendar_book_meeting", "high", "books a real event with a real person"],
+  ["social_connection_start", "high", "creates an external provider profile and begins authorization for a tenant Social identity"],
+  ["social_connection_disconnect", "high", "revokes a tenant Social identity at the external provider"],
+  ["social_account_select", "high", "changes the exact external account future Social actions may target"],
   // Solo Team invitations, added 2026-09-02. These are `high` twice over, and either reason alone
   // would be enough. They mint an access grant for a person who is not in the workspace yet, and
   // they put an email in a real stranger's inbox — which is the one effect in this whole file that

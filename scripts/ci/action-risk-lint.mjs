@@ -32,6 +32,7 @@ import fs from "node:fs";
 const POLICY = "supabase/functions/_shared/action-risk.ts";
 const CHAT = "supabase/functions/paige-ai-chat/index.ts";
 const MCP_POLICY = "supabase/functions/_shared/paige-mcp/capability-policy.ts";
+const SOCIAL_HANDLER = "supabase/functions/paige-social/index.ts";
 
 /** Every classified action, as `[tool, class, reason]`, read from the policy's own table. */
 export function parsePolicy(src) {
@@ -67,6 +68,11 @@ export function parseMcpCanonicals(src) {
   return [...src.slice(start).matchAll(/^\s*canonical:\s*"([a-z0-9_]+)",/gm)].map((m) => m[1]);
 }
 
+/** Domain-owned edge mutations that enter the same governed decision seam. */
+export function parseGovernedEdgeActions(src) {
+  return [...new Set([...src.matchAll(/await govern\(\s*"([a-z0-9_]+)"/g)].map((m) => m[1]))];
+}
+
 export function parseExemptions(src) {
   const at = src.indexOf("const NON_MUTATING_EXEMPT: ReadonlyMap<string, string> = new Map([");
   if (at < 0) return null;
@@ -82,7 +88,7 @@ const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|insta
 /** The rule: destroys, changes permissions, or goes public ⇒ never `ordinary`. */
 const IRREVERSIBLE_OR_OUTWARD = /(^|_)(delete|remove|revoke|publish|uninstall|install)(_|$)|(^|_)grant(_|$)/;
 
-export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanonicals = [] }) {
+export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanonicals = [], governedEdgeActions = [] }) {
   const out = [];
   const classified = new Map(policy.map((p) => [p.tool, p.risk]));
   const exempt = new Set(exemptions.map((e) => e.tool));
@@ -105,7 +111,7 @@ export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanon
   // 2. No ghosts: a classification NO surface points at. Chat declares tools by name; the MCP door
   //    declares them indirectly, by mapping a tool onto a canonical key. Either reference keeps a
   //    classification alive — an entry with neither is the line nobody deletes.
-  const declared = new Set([...chat.declared, ...mcpCanonicals]);
+  const declared = new Set([...chat.declared, ...mcpCanonicals, ...governedEdgeActions]);
   for (const { tool } of policy) {
     // Containment tombstones are deliberately classified while not being dispatched, so a future
     // accidental re-registration cannot inherit read semantics. They are named here rather than
@@ -190,6 +196,8 @@ function selfTest() {
       .join() === "x_create_y");
   bad += ok("the MCP canonical parser does not invent keys from an absent table",
     parseMcpCanonicals("no table here").length === 0);
+  bad += ok("a governed edge action is a real declaring surface",
+    parseGovernedEdgeActions('const result = await govern(\n  "widget_create_thing",\n  args,\n);').join() === "widget_create_thing");
   bad += ok("a re-introduced hand-list is caught",
     findings({ ...base, chat: { ...base.chat, hasHandList: true } }).some((f) => f.includes("drift")));
   bad += ok("a handler that stopped gating on the policy is caught",
@@ -246,11 +254,19 @@ if (chatSrc.includes('...CAMPAIGN_BRIEF_TOOLS')) {
   importedTools.push(...campaignTools);
 }
 const mcpCanonicals = parseMcpCanonicals(fs.readFileSync(MCP_POLICY, "utf8"));
+const governedEdgeActions = parseGovernedEdgeActions(fs.readFileSync(SOCIAL_HANDLER, "utf8"));
 if (!mcpCanonicals.length) {
   console.error(`✗ action-risk-lint: read no canonical keys out of ${MCP_POLICY}. That file is the MCP door's second declaring surface, so an empty read would silently condemn every MCP-only classification as a ghost. Fix this guard rather than letting it pass.`);
   process.exit(1);
 }
-const problems = findings({ policy, exemptions, chat: parseChat(chatSrc, importedTools), verbSourceMatches, mcpCanonicals });
+const problems = findings({
+  policy,
+  exemptions,
+  chat: parseChat(chatSrc, importedTools),
+  verbSourceMatches,
+  mcpCanonicals,
+  governedEdgeActions,
+});
 
 if (problems.length) {
   console.error(`✗ action-risk-lint: ${problems.length} problem(s).\n`);

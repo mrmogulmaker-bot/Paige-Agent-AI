@@ -146,6 +146,9 @@ export const TOOL_MAP: Readonly<Record<string, { capability: CapabilityKey; risk
   action_file: { capability: "autos", risk: "ordinary" },
   action_advance: { capability: "autos", risk: "ordinary" },
   author_event_kind: { capability: "autos", risk: "ordinary" },
+  social_connection_start: { capability: "autos", risk: "high" },
+  social_account_select: { capability: "autos", risk: "high" },
+  social_connection_disconnect: { capability: "autos", risk: "high" },
 
   // ── Team access (marketplace install/uninstall are undispatched tombstones — see below) ─────
   member_grant_role: { capability: "account", risk: "high" },
