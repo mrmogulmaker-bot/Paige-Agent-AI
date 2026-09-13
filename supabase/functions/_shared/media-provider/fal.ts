@@ -156,7 +156,12 @@ export const falAdapter: MediaProviderAdapter = {
     // image_edit: reference images travel as provider-fetchable urls.
     if (input.referenceUrls?.length) body.image_urls = input.referenceUrls;
     if (input.mode === "video") {
-      body.duration = Math.max(1, Math.min(12, Math.round(input.videoSeconds ?? 5)));
+      // Veo 3.1's schema: DurationEnum "4s" | "6s" | "8s" (a bare number 422s —
+      // found live by the controlled proof). Snap to the nearest allowed value.
+      const allowed = [4, 6, 8];
+      const want = Math.max(1, Math.min(12, Math.round(input.videoSeconds ?? 5)));
+      const snapped = allowed.reduce((best, v) => Math.abs(v - want) < Math.abs(best - want) ? v : best, allowed[0]);
+      body.duration = `${snapped}s`;
     }
 
     const resp = await fetch(url.toString(), {
