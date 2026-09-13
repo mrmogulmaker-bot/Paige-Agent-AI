@@ -19,7 +19,7 @@ describe("Social Operations Phase 0 containment", () => {
     expect(settings).not.toContain('/functions/v1/paige-social');
     expect(settings).not.toContain('action: "connect"');
     expect(settings).not.toMatch(/>\s*Connect\s*</);
-    expect(settings).toContain("Paige discovers accounts only after secure consent");
+    expect(settings).toContain("Paige sends you to {platform.name} for consent, then verifies the account by readback");
     expect(settings).toContain("Nothing is selected automatically");
     expect(settings).toContain("Publishing and analytics stay unavailable");
   });

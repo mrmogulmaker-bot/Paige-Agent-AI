@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { corsHeaders, jsonResponse } from "../_shared/adminAuth.ts";
 import { recordCapabilityRun, stableRunId, type CapabilityOutcome } from "../_shared/capability-record.ts";
-import { buildSocialProfileKey, uploadPostSocialAdapter } from "../_shared/social-provider/upload-post.ts";
+import { buildSocialProfileKey, SOCIAL_OAUTH_PLATFORMS, uploadPostSocialAdapter } from "../_shared/social-provider/upload-post.ts";
 import { governSocialMutation } from "../_shared/social-provider/governance.ts";
 import { SocialProviderError } from "../_shared/social-provider/mod.ts";
 
@@ -157,11 +157,13 @@ Deno.serve(async (req: Request) => {
     const returnPath = text(body.return_path, 300);
     const label = text(body.label, 120);
     const reconnectId = text(body.connection_id, 36);
-    if (!returnPath || !RETURN_PATH.test(returnPath) || (reconnectId && !UUID.test(reconnectId))) {
+    const platform = text(body.platform, 32);
+    if (!returnPath || !RETURN_PATH.test(returnPath) || (reconnectId && !UUID.test(reconnectId))
+        || !platform || !SOCIAL_OAUTH_PLATFORMS.includes(platform as typeof SOCIAL_OAUTH_PLATFORMS[number])) {
       return jsonResponse({ ok: false, code: "SOCIAL_REQUEST_INVALID" }, 400);
     }
     const configured = adapter.isConfigured() && Boolean(profileSecret) && Boolean(safePublicBase());
-    const args: Json = { return_path: returnPath, label, ...(reconnectId ? { connection_id: reconnectId } : {}) };
+    const args: Json = { return_path: returnPath, platform, label, ...(reconnectId ? { connection_id: reconnectId } : {}) };
     const result = await govern(
       "social_connection_start",
       args,
@@ -177,19 +179,22 @@ Deno.serve(async (req: Request) => {
     const approvedReturnPath = text(approved.return_path, 300);
     const approvedLabel = text(approved.label, 120);
     const approvedReconnectId = text(approved.connection_id, 36);
-    if (!approvedReturnPath || !RETURN_PATH.test(approvedReturnPath) || (approvedReconnectId && !UUID.test(approvedReconnectId)) || !profileSecret) {
+    const approvedPlatform = text(approved.platform, 32);
+    if (!approvedReturnPath || !RETURN_PATH.test(approvedReturnPath) || (approvedReconnectId && !UUID.test(approvedReconnectId))
+        || !approvedPlatform || !SOCIAL_OAUTH_PLATFORMS.includes(approvedPlatform as typeof SOCIAL_OAUTH_PLATFORMS[number])
+        || !profileSecret) {
       return jsonResponse({ ok: false, code: "SOCIAL_APPROVAL_INVALID" }, 409);
     }
 
-    let connectionId = approvedReconnectId ?? crypto.randomUUID();
+    const connectionId = approvedReconnectId ?? crypto.randomUUID();
     let providerProfileKey: string;
     let createdProfile = false;
     if (approvedReconnectId) {
       const existing = await admin.from("paige_social_connections")
-        .select("id,provider_key,provider_profile_key")
+        .select("id,provider_key,provider_profile_key,requested_platform")
         .eq("tenant_id", tenantId).eq("id", approvedReconnectId).maybeSingle();
       const row = object(existing.data);
-      if (existing.error || !row || row.provider_key !== adapter.key || typeof row.provider_profile_key !== "string") {
+      if (existing.error || !row || row.provider_key !== adapter.key || row.requested_platform !== approvedPlatform || typeof row.provider_profile_key !== "string") {
         return jsonResponse({ ok: false, code: "SOCIAL_CONNECTION_NOT_FOUND" }, 404);
       }
       providerProfileKey = row.provider_profile_key;
@@ -202,7 +207,7 @@ Deno.serve(async (req: Request) => {
       providerProfileKey = await buildSocialProfileKey(tenantId, connectionId, profileSecret);
       const inserted = await admin.from("paige_social_connections").insert({
         id: connectionId, tenant_id: tenantId, provider_key: adapter.key,
-        provider_profile_key: providerProfileKey, label: approvedLabel,
+        provider_profile_key: providerProfileKey, requested_platform: approvedPlatform, label: approvedLabel,
         status: "authorizing", connected_by: user.id,
       });
       if (inserted.error) return jsonResponse({ ok: false, code: "SOCIAL_STATE_WRITE_FAILED" }, 500);
@@ -223,18 +228,18 @@ Deno.serve(async (req: Request) => {
       }
       const attempt = await admin.from("paige_social_connection_attempts").insert({
         id: attemptId, tenant_id: tenantId, connection_id: connectionId,
-        confirmation_id: result.confirmationId, token_hash: tokenHash,
+        confirmation_id: result.confirmationId, token_hash: tokenHash, requested_platform: approvedPlatform,
         state: "created", return_path: approvedReturnPath,
-        expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(), created_by: user.id,
+        expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(), created_by: user.id,
       });
       if (attempt.error) throw new Error("attempt_write_failed");
       let authorization: Awaited<ReturnType<typeof adapter.createConnectUrl>>;
       try {
-        authorization = await adapter.createConnectUrl({ providerProfileKey, redirectUrl: callback.href });
+        authorization = await adapter.createConnectUrl({ providerProfileKey, redirectUrl: callback.href, platform: approvedPlatform });
       } catch (error) {
         if (!(approvedReconnectId && error instanceof SocialProviderError && error.code === "provider_profile_not_found")) throw error;
         createdProfile = (await adapter.createProfile({ providerProfileKey })).created;
-        authorization = await adapter.createConnectUrl({ providerProfileKey, redirectUrl: callback.href });
+        authorization = await adapter.createConnectUrl({ providerProfileKey, redirectUrl: callback.href, platform: approvedPlatform });
       }
       const update = await admin.from("paige_social_connections").update({
         authorization_expires_at: authorization.expiresAt,
@@ -248,6 +253,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({
         ok: true,
         state: "authorization_required",
+        platform: approvedPlatform,
         connection_id: connectionId,
         authorization_url: authorization.url,
         expires_at: authorization.expiresAt,
@@ -263,9 +269,12 @@ Deno.serve(async (req: Request) => {
         state: "failed", completed_at: new Date().toISOString(), provider_error_code: code,
       }).eq("tenant_id", tenantId).eq("id", attemptId).in("state", ["created", "redirected"]);
       await record("social_connection_start", result.confirmationId, "capability_failed", {
-        connection_id: connectionId, state: "error", failure_code: code, budget: "no_paid_action",
+        connection_id: connectionId, platform: approvedPlatform, state: "error", failure_code: code, budget: "no_paid_action",
       });
-      return jsonResponse({ ok: false, code: "SOCIAL_PROVIDER_UNAVAILABLE" }, 502);
+      const safeCode = code === "provider_profile_limit" || code === "provider_rate_limited"
+        ? code : "SOCIAL_PROVIDER_UNAVAILABLE";
+      const status = safeCode === "provider_profile_limit" ? 409 : safeCode === "provider_rate_limited" ? 429 : 502;
+      return jsonResponse({ ok: false, code: safeCode }, status);
     }
   }
 

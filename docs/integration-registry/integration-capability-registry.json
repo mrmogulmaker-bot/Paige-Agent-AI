@@ -636,9 +636,9 @@
       "name": "Upload-Post (internal Social adapter)",
       "taxonomy": "marketing_ads_social_presence_analytics",
       "business_reason": "Provider-neutral, tenant-owned Social account authorization and provider readback behind Paige's customer-facing Social integration.",
-      "paige_use_cases": ["create an opaque provider profile for one tenant-owned Social identity", "open provider-hosted OAuth consent", "discover and verify connected accounts", "reconnect or revoke an identity"],
+      "paige_use_cases": ["create one opaque provider profile per tenant-owned Social identity", "open exact-platform OAuth consent", "connect multiple distinct identities on the same platform", "discover and verify connected accounts", "reconnect or revoke an identity"],
       "connection_prerequisite": "Platform API credential plus SOCIAL_PROFILE_SIGNING_SECRET and an explicit PUBLIC_SITE_URL. The platform credential authenticates Paige only; it never establishes tenant publishing identity.",
-      "required_scopes": ["Provider-hosted OAuth scopes shown to and consented by the account owner; Paige does not infer or silently grant a platform scope."],
+      "required_scopes": ["Platform-native OAuth scopes shown to and consented by the account owner; the internal adapter handles the exchange and custody, while Paige does not infer or silently grant a platform scope."],
       "safe_readable_context": "Tenant-scoped connection health, stable provider account identifier, platform, display label, handle, avatar URL, per-account optional capability list, and last verification time. Provider profile keys, callback nonces, API credentials, and raw payloads are service-only.",
       "allowed_writes_external_effects": "Create/reconnect/delete an opaque provider profile and open secure account authorization after one exact owner/admin confirmation. Publishing, scheduling, analytics pulls, comments, replies, DMs, ads, and paid actions remain UNAVAILABLE.",
       "authority_lane": ["read", "confirm"],
@@ -647,7 +647,7 @@
       "rail_mind_memory": "Rail: connection start/readback/account selection/disconnect outcomes through record_capability_run. Mind and long-term Memory: no private provider payload, token, or audience data.",
       "status": "PROOF_OWED",
       "owner": "Growth/Social workstream",
-      "dependency": "Migration and functions must deploy, then an owner must complete provider-hosted OAuth on an authorized account. LIVE requires authenticated tenant-isolation, readback, account switching, reconnect, disconnect, failure, receipt, and UI evidence.",
+      "dependency": "Platform-scope migration and functions must deploy, then an owner must complete platform-native OAuth on an authorized account. Current OAuth catalogue: Instagram, Facebook Pages, X, TikTok, YouTube, LinkedIn, Threads, Pinterest, Google Business Profile, and Snapchat basic profile; Reddit OAuth is provider-unavailable. LIVE requires authenticated tenant-isolation, readback, repeated-platform identities, account switching, reconnect, disconnect, failure, receipt, and UI evidence.",
       "next_slice": "Deploy the connection candidate, present one secure authorization URL, and complete controlled owner consent plus tenant-scoped account discovery/readback. Do not publish.",
       "tier_eligibility": { "platform": "eligible", "solo": "eligible", "agency_future": "resell", "enterprise_future": "eligible" },
       "expense_and_operations": {
@@ -660,10 +660,10 @@
         "pricing_note": "No price is asserted in product or registry evidence until the provider subscription is verified by the owner.",
         "access_prerequisite": "Existing platform API credential, an approved callback origin, an opaque-profile signing secret, and an authorized tenant account owner completing provider-hosted consent.",
         "expected_cost_driver": ["api_calls", "other"],
-        "rate_limits_quotas": "Provider plan limits and rate limits must be read from the active subscription before production capacity claims.",
+        "rate_limits_quotas": "Each connection consumes one provider profile. Paige permits any tenant-owned count, but the active provider subscription can refuse creation with PROFILE_LIMIT_REACHED; exact duplicate platform identities can be linked to only one provider profile at a time.",
         "usage_review_cadence": "Monthly while connection-only; revisit before any publishing beta.",
         "renewal_deprecation_review": "Quarterly provider API, OAuth catalogue, callback, and account-readback contract review.",
-        "data_privacy_retention": "Opaque provider profile correlation and bounded account metadata only. API credentials remain environment secrets; callback tokens are stored only as SHA-256 hashes and expire after 48 hours.",
+        "data_privacy_retention": "Opaque provider profile correlation and bounded account metadata only. API credentials remain environment secrets; Paige callback tokens are stored only as SHA-256 hashes and the paired provider OAuth state expires after 15 minutes.",
         "money_movement": { "can_move_real_money": false, "m1_dependency_track": "none", "detail": "This slice creates and revokes connections only. Publishing and paid actions remain unavailable." },
         "receipt_reconciliation": "Provider profile readback is the connection authority; missing or mismatched readback fails closed and leaves no account selected.",
         "rail_outcome": "Connection lifecycle outcome through the canonical capability-run receipt/Rail seam; authenticated production evidence remains owed.",
@@ -675,7 +675,7 @@
         { "path": "supabase/functions/_shared/social-provider/upload-post.ts", "role": "provider_adapter", "note": "the Upload-Post provider adapter (api.upload-post.com/api/uploadposts) behind Paige's provider-neutral Social connection seam; reachable (imported by paige-social + paige-social-callback), fail-closed on a missing key." },
         { "path": "supabase/functions/paige-social-callback/index.ts", "role": "callback_readback", "note": "Upload-Post hosted-OAuth connection callback: completes owner consent and reads back the tenant-scoped account profile via uploadPostSocialAdapter. PROOF_OWED — authenticated end-to-end runtime proof not yet attached." }
       ],
-      "sources": ["supabase/functions/_shared/social-provider/upload-post.ts", "supabase/functions/paige-social/index.ts", "supabase/functions/paige-social-callback/index.ts", "supabase/migrations/20270127000000_social_connection_lifecycle.sql", "https://docs.upload-post.com/guides/user-profile-integration/", "https://docs.upload-post.com/api/user-profiles/"]
+      "sources": ["supabase/functions/_shared/social-provider/upload-post.ts", "supabase/functions/paige-social/index.ts", "supabase/functions/paige-social-callback/index.ts", "supabase/migrations/20270127000000_social_connection_lifecycle.sql", "supabase/migrations/20270130000000_social_connection_platform_scope.sql", "https://docs.upload-post.com/api/connect-api/", "https://docs.upload-post.com/api/user-profiles/"]
     },
     {
       "id": "meta",

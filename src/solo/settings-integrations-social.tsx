@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { Check, ExternalLink, Link2Off, Plus, RefreshCw, ShieldCheck, X } from "lucide-react";
 import type { useSocialConnections } from "./data/useSocialConnections";
+import type { SocialPlatformDefinition } from "./social-platform-catalog";
 
 type SocialState = ReturnType<typeof useSocialConnections>;
 
@@ -37,9 +39,11 @@ function CapabilityList({ values }: { values: string[] }) {
   </ul>;
 }
 
-export function SocialDrawer({ social, onClose }: { social: SocialState; onClose: () => void }) {
+export function SocialDrawer({ social, platform, onClose }: { social: SocialState; platform: SocialPlatformDefinition; onClose: () => void }) {
   const panel = useRef<HTMLElement>(null);
   const close = useRef<HTMLButtonElement>(null);
+  const location = useLocation();
+  const { decline, pending } = social;
 
   const requestClose = useCallback(() => {
     if (!social.busy) onClose();
@@ -57,7 +61,7 @@ export function SocialDrawer({ social, onClose }: { social: SocialState; onClose
       if (!root) return;
       if (event.key === "Escape") {
         event.preventDefault();
-        if (social.pending) void social.decline();
+        if (pending) void decline();
         else requestClose();
         return;
       }
@@ -72,17 +76,19 @@ export function SocialDrawer({ social, onClose }: { social: SocialState; onClose
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [requestClose, social]);
+  }, [decline, pending, requestClose]);
 
-  const start = (connectionId?: string) => void social.start(window.location.pathname, undefined, connectionId);
-  const activeConnections = social.connections.filter((connection) => connection.status !== "disconnected");
+  const start = (connectionId?: string) => void social.start(location.pathname, platform.key, undefined, connectionId);
+  const activeConnections = social.connections.filter((connection) =>
+    connection.status !== "disconnected" && connection.requestedPlatform === platform.key
+  );
 
   return <div className="ig-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
     <aside className="ig-panel social-ig-panel" ref={panel} role="dialog" aria-modal="true" aria-labelledby="ig-social-title">
       <header>
-        <span className="ss-provider-mark" data-provider-mark="social" aria-hidden>So</span>
-        <div><h2 id="ig-social-title">Social</h2><span>Workspace-owned account connections</span></div>
-        <button ref={close} className="ig-close" type="button" aria-label="Close Social" disabled={social.busy} onClick={requestClose}><X aria-hidden size={16} /></button>
+        <span className="ss-provider-mark social-platform-mark" data-social-platform={platform.key} aria-hidden>{platform.mark}</span>
+        <div><h2 id="ig-social-title">{platform.name}</h2><span>Social, workspace-owned accounts</span></div>
+        <button ref={close} className="ig-close" type="button" aria-label={`Close ${platform.name}`} disabled={social.busy} onClick={requestClose}><X aria-hidden size={16} /></button>
       </header>
 
       <div className="ig-panel-body">
@@ -95,8 +101,8 @@ export function SocialDrawer({ social, onClose }: { social: SocialState; onClose
         </div>}
 
         <div className="social-ig-intro">
-          <div><span className="social-ig-kicker">Connection control</span><h3>Authorize the identities this workspace owns.</h3></div>
-          <p>Paige discovers accounts only after secure consent. Nothing is selected automatically, and connecting never publishes content.</p>
+          <div><span className="social-ig-kicker">OAuth connection</span><h3>Choose the {platform.name} identity this workspace may use.</h3></div>
+          <p>Paige sends you to {platform.name} for consent, then verifies the account by readback. Nothing is selected automatically, and connecting never publishes content.</p>
         </div>
 
         {social.loading ? <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Checking Social connections…</p> : <>
@@ -105,15 +111,16 @@ export function SocialDrawer({ social, onClose }: { social: SocialState; onClose
           {!social.canManage && <p className="ig-note">You can inspect Social connection state. Only a workspace owner or admin can change it.</p>}
 
           {!activeConnections.length && !social.error ? <section className="social-ig-empty" aria-labelledby="social-empty-title">
-            <span className="social-ig-orbit" aria-hidden><span /></span>
-            <div><h3 id="social-empty-title">No Social identities are connected</h3>
-              <p>Start a secure authorization session, choose a platform, and consent there. Paige then reads the account back before it can appear here.</p></div>
-            {social.canManage && <button type="button" className="ig-btn" data-primary disabled={social.busy} onClick={() => start()}><Plus aria-hidden size={14} />Add Social identity</button>}
+            <div><h3 id="social-empty-title">No {platform.name} accounts are connected</h3>
+              <p>Start secure authorization and choose the exact account at {platform.name}. Paige reads it back before it can appear here.</p></div>
+            <p className="ig-note">{platform.connectionNote}</p>
+            {social.canManage && platform.oauthAvailable && <button type="button" className="ig-btn" data-primary disabled={social.busy} onClick={() => start()}><Plus aria-hidden size={14} />Connect {platform.name}</button>}
+            {!platform.oauthAvailable && <p className="ig-note" role="status">Connection is unavailable. Paige will not open a non-working authorization flow.</p>}
           </section> : <div className="social-ig-connections">
             {activeConnections.map((connection) => {
-              const linked = social.accounts.filter((account) => account.connectionId === connection.id && !["disconnected", "revoked"].includes(account.status));
+              const linked = social.accounts.filter((account) => account.connectionId === connection.id && account.platform === platform.key && !["disconnected", "revoked"].includes(account.status));
               return <section className="social-ig-connection" key={connection.id} aria-labelledby={`social-connection-${connection.id}`}>
-                <div className="social-ig-connection-head"><div><span className="social-ig-kicker">Social identity</span><h3 id={`social-connection-${connection.id}`}>{connection.label ?? (linked[0]?.displayName || linked[0]?.handle || "Connected identity")}</h3></div>
+                <div className="social-ig-connection-head"><div><span className="social-ig-kicker">{platform.name} identity</span><h3 id={`social-connection-${connection.id}`}>{connection.label ?? (linked[0]?.displayName || linked[0]?.handle || `${platform.name} account`)}</h3></div>
                   <span className="ig-card-state" data-tone={connection.status === "connected" ? "ok" : connection.status === "needs_reauth" || connection.status === "error" ? "warn" : "neutral"}><i aria-hidden />{connection.status === "connected" ? "Verified" : connection.status === "needs_reauth" ? "Reconnect needed" : connection.status === "error" ? "Needs attention" : "Setup not finished"}</span></div>
                 <dl className="ig-facts"><div><dt>Last verified</dt><dd>{checkedAt(connection.lastVerifiedAt)}</dd></div><div><dt>Accounts found</dt><dd>{linked.length}</dd></div></dl>
 
@@ -136,14 +143,14 @@ export function SocialDrawer({ social, onClose }: { social: SocialState; onClose
                 </div>
               </section>;
             })}
-            {social.canManage && <button type="button" className="ig-btn social-ig-add" disabled={social.busy} onClick={() => start()}><Plus aria-hidden size={14} />Add another Social identity</button>}
+            {social.canManage && platform.oauthAvailable && <button type="button" className="ig-btn social-ig-add" disabled={social.busy} onClick={() => start()}><Plus aria-hidden size={14} />Add another {platform.name} account</button>}
           </div>}
         </>}
 
         <section className="social-ig-boundary" aria-label="Social connection boundaries">
           <h3>What connection enables</h3>
           <ul><li>Account identity and authorization health after provider readback</li><li>Explicit account selection within this workspace</li><li>Reconnect and disconnect with durable receipts</li></ul>
-          <p>Platform actions vary by account. OAuth-capable platforms use secure provider consent. Manual-credential channels are not enabled here; Paige never asks you to paste those credentials into this screen.</p>
+          <p>{platform.connectionNote} Available actions come from this account's provider readback; Paige does not infer them from the platform name.</p>
         </section>
       </div>
       <footer><span>No password, token, provider profile key, or raw provider payload is shown here.</span></footer>

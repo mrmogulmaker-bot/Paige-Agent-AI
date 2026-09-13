@@ -1,7 +1,7 @@
 -- Social connection lifecycle, tenant-isolation, approval, and replay contract.
 -- Synthetic opaque fixtures only; the enclosing transaction is always rolled back.
 begin;
-select plan(30);
+select plan(31);
 
 select ok(to_regclass('public.paige_social_connections') is not null,'tenant Social connections exist');
 select ok(to_regclass('public.paige_social_connection_attempts') is not null,'single-use connection attempts exist');
@@ -45,24 +45,24 @@ insert into public.paige_pending_confirmations(
    'social_connection_disconnect','4444444444444444','{"connection_id":"61000000-0000-4000-8000-00000000d001"}','Disconnect exact identity',now(),now());
 
 insert into public.paige_social_connections(
-  id,tenant_id,provider_key,provider_profile_key,status,connected_by,last_verified_at
+  id,tenant_id,provider_key,provider_profile_key,requested_platform,status,connected_by,last_verified_at
 ) values
-  ('61000000-0000-4000-8000-00000000d001','61000000-0000-4000-8000-000000001111','upload_post','ps_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','authorizing','61000000-0000-4000-8000-000000000001',now()),
-  ('62000000-0000-4000-8000-00000000d002','62000000-0000-4000-8000-000000002222','upload_post','ps_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb','connected','62000000-0000-4000-8000-000000000002',now());
+  ('61000000-0000-4000-8000-00000000d001','61000000-0000-4000-8000-000000001111','upload_post','ps_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','youtube','authorizing','61000000-0000-4000-8000-000000000001',now()),
+  ('62000000-0000-4000-8000-00000000d002','62000000-0000-4000-8000-000000002222','upload_post','ps_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb','youtube','connected','62000000-0000-4000-8000-000000000002',now());
 insert into public.paige_social_accounts(
   id,tenant_id,provider_key,connection_id,platform,account_id,account_kind,status,selected,
   connected_by,connected_at,last_verified_at,capabilities,capabilities_verified_at
 ) values
-  ('61000000-0000-4000-8000-00000000a001','61000000-0000-4000-8000-000000001111','upload_post','61000000-0000-4000-8000-00000000d001','proofnet','acct-opaque-a','profile','connected',false,
+  ('61000000-0000-4000-8000-00000000a001','61000000-0000-4000-8000-000000001111','upload_post','61000000-0000-4000-8000-00000000d001','youtube','acct-opaque-a','profile','connected',false,
    '61000000-0000-4000-8000-000000000001',now(),now(),'{}',now()),
-  ('62000000-0000-4000-8000-00000000a002','62000000-0000-4000-8000-000000002222','upload_post','62000000-0000-4000-8000-00000000d002','proofnet','acct-opaque-b','profile','connected',false,
+  ('62000000-0000-4000-8000-00000000a002','62000000-0000-4000-8000-000000002222','upload_post','62000000-0000-4000-8000-00000000d002','youtube','acct-opaque-b','profile','connected',false,
    '62000000-0000-4000-8000-000000000002',now(),now(),'{}',now());
 insert into public.paige_social_connection_attempts(
-  id,tenant_id,connection_id,confirmation_id,token_hash,state,return_path,expires_at,created_by
+  id,tenant_id,connection_id,confirmation_id,token_hash,state,return_path,expires_at,created_by,requested_platform
 ) values (
   '61000000-0000-4000-8000-00000000e001','61000000-0000-4000-8000-000000001111','61000000-0000-4000-8000-00000000d001',
   '61000000-0000-4000-8000-00000000c001',repeat('a',64),'created','/solo/workspace/settings/integrations',now()+interval '1 hour',
-  '61000000-0000-4000-8000-000000000001'
+  '61000000-0000-4000-8000-000000000001','youtube'
 );
 
 set local role authenticated;
@@ -87,10 +87,14 @@ select is(
   (public.social_apply_connection_readback(
     '61000000-0000-4000-8000-000000001111','61000000-0000-4000-8000-00000000d001',
     '61000000-0000-4000-8000-00000000e001',repeat('a',64),'61000000-0000-4000-8000-000000000001',
-    '[{"providerAccountId":"acct-opaque-a","platform":"proofnet","status":"connected","displayName":"Test identity","capabilities":["analytics"]}]',
+
+    '[{"providerAccountId":"acct-opaque-a","platform":"youtube","status":"connected","displayName":"Test identity","capabilities":["analytics"]}]',
     now()
   )->>'account_count')::integer,
   1,'canonical provider readback is applied atomically');
+select throws_ok(
+  $$update public.paige_social_accounts set platform='instagram' where id='61000000-0000-4000-8000-00000000a001'$$,
+  '23514',null,'a platform-scoped connection rejects a different provider account platform');
 select is((select status from public.paige_social_accounts where id='61000000-0000-4000-8000-00000000a001'),'connected','readback keeps the exact discovered account connected');
 select ok(not (select selected from public.paige_social_accounts where id='61000000-0000-4000-8000-00000000a001'),'readback never selects an account implicitly');
 select throws_ok(
@@ -107,11 +111,11 @@ select is(
   '61000000-0000-4000-8000-00000000a001','selection consumes exact tenant connection and account authority');
 select ok((select selected from public.paige_social_accounts where id='61000000-0000-4000-8000-00000000a001'),'the explicitly selected account is marked selected');
 insert into public.paige_social_connection_attempts(
-  id,tenant_id,connection_id,confirmation_id,token_hash,state,return_path,expires_at,processing_at,created_by
+  id,tenant_id,connection_id,confirmation_id,token_hash,state,return_path,expires_at,processing_at,created_by,requested_platform
 ) values (
   '61000000-0000-4000-8000-00000000e002','61000000-0000-4000-8000-000000001111','61000000-0000-4000-8000-00000000d001',
   '61000000-0000-4000-8000-00000000c001',repeat('c',64),'processing','/solo/workspace/settings/integrations',
-  now()+interval '1 hour',now(),'61000000-0000-4000-8000-000000000001'
+  now()+interval '1 hour',now(),'61000000-0000-4000-8000-000000000001','youtube'
 );
 select throws_ok(
   $$select public.social_mark_connection_disconnected(
@@ -130,7 +134,7 @@ select throws_ok(
   $$select public.social_apply_connection_readback(
     '61000000-0000-4000-8000-000000001111','61000000-0000-4000-8000-00000000d001',
     '61000000-0000-4000-8000-00000000e002',repeat('c',64),'61000000-0000-4000-8000-000000000001',
-    '[{"providerAccountId":"acct-opaque-a","platform":"proofnet","status":"connected","displayName":"Test identity","capabilities":[]}]',
+    '[{"providerAccountId":"acct-opaque-a","platform":"youtube","status":"connected","displayName":"Test identity","capabilities":[]}]',
     now()
   )$$,
   'P0001',null,'a disconnected connection cannot be resurrected by callback readback');

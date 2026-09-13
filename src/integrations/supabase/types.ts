@@ -12513,6 +12513,7 @@ export type Database = {
           id: string
           processing_at: string | null
           provider_error_code: string | null
+          requested_platform: string | null
           provider_status: string | null
           return_path: string
           state: string
@@ -12529,6 +12530,7 @@ export type Database = {
           id?: string
           processing_at?: string | null
           provider_error_code?: string | null
+          requested_platform?: string | null
           provider_status?: string | null
           return_path: string
           state?: string
@@ -12545,6 +12547,7 @@ export type Database = {
           id?: string
           processing_at?: string | null
           provider_error_code?: string | null
+          requested_platform?: string | null
           provider_status?: string | null
           return_path?: string
           state?: string
@@ -12589,6 +12592,7 @@ export type Database = {
           provider_profile_key: string
           status: string
           tenant_id: string
+          requested_platform: string | null
           updated_at: string
         }
         Insert: {
@@ -12604,6 +12608,7 @@ export type Database = {
           provider_profile_key: string
           status?: string
           tenant_id: string
+          requested_platform?: string | null
           updated_at?: string
         }
         Update: {
@@ -12619,6 +12624,7 @@ export type Database = {
           provider_profile_key?: string
           status?: string
           tenant_id?: string
+          requested_platform?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -21221,6 +21227,7 @@ export type Database = {
           label: string | null
           last_verified_at: string | null
           status: string
+          requested_platform: string | null
         }[]
       }
       social_current_tenant_id: { Args: never; Returns: string }

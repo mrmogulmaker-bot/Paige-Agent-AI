@@ -148,9 +148,6 @@
 }
 .social-ig-kicker { color: var(--pg-gold-core); font: 740 8.5px/1 var(--pg-font-ui); letter-spacing: .13em; text-transform: uppercase; }
 .social-ig-empty { display: grid; justify-items: start; gap: 13px; padding: 20px; overflow: hidden; border: 1px solid var(--pg-line); border-radius: 14px; background: radial-gradient(circle at 0 0, color-mix(in srgb, var(--pg-violet) 12%, transparent), transparent 45%), var(--pg-surface); box-shadow: var(--pg-e1), var(--pg-rim); }
-.social-ig-orbit { position: relative; display: grid; width: 46px; height: 46px; place-items: center; border: 1px solid color-mix(in srgb, var(--pg-gold-core) 48%, var(--pg-line)); border-radius: 50%; }
-.social-ig-orbit::before { position: absolute; width: 64px; height: 22px; border: 1px solid color-mix(in srgb, var(--pg-violet) 54%, var(--pg-line)); border-radius: 50%; content: ""; transform: rotate(-19deg); }
-.social-ig-orbit span { width: 11px; height: 11px; border-radius: 50%; background: var(--pg-gold-core); box-shadow: 0 0 20px color-mix(in srgb, var(--pg-gold-core) 48%, transparent); }
 .social-ig-notice { display: flex; align-items: flex-start; gap: 7px; margin: 0; padding: 10px 11px; border: 1px solid color-mix(in srgb, var(--pg-positive) 35%, var(--pg-line)); border-radius: 9px; background: color-mix(in srgb, var(--pg-positive) 7%, transparent); color: var(--pg-positive); font-size: 11px; line-height: 1.45; }
 .social-ig-notice svg { flex: none; margin-top: 1px; }
 .social-ig-connections { display: grid; gap: 12px; }
@@ -375,3 +372,19 @@
   .ig-n8n-panel :is(.ig-btn, .ig-close, [role="tab"]):focus-visible { outline-color: Highlight; }
 }
 @media (prefers-reduced-motion: reduce) { .ig-n8n-panel .ig-n8n-tabs button { transition: none; } }
+.ig-category-note { max-width: 70ch; margin: -2px 0 12px; color: var(--pg-muted); font-size: 11px; line-height: 1.5; }
+/* Social is a catalogue category. Each tile represents one exact OAuth target;
+   visual identity supports scanning without changing the shared card grammar. */
+.social-platform-card { --ss-provider-accent: var(--pg-violet); }
+.social-platform-mark { font-family: var(--pg-font-display); letter-spacing: -.03em; }
+.social-platform-mark[data-social-platform="instagram"] { color: #b62e86; background: color-mix(in srgb, #d946a2 11%, var(--pg-surface)); }
+.social-platform-mark[data-social-platform="facebook"] { color: #1877f2; background: color-mix(in srgb, #1877f2 10%, var(--pg-surface)); }
+.social-platform-mark[data-social-platform="x"] { color: var(--pg-ink); background: var(--pg-lift); }
+.social-platform-mark[data-social-platform="tiktok"] { color: #db285f; background: color-mix(in srgb, #25f4ee 12%, var(--pg-surface)); }
+.social-platform-mark[data-social-platform="youtube"] { color: #e11d2e; background: color-mix(in srgb, #ff0033 9%, var(--pg-surface)); }
+.social-platform-mark[data-social-platform="linkedin"] { color: #0a66c2; background: color-mix(in srgb, #0a66c2 10%, var(--pg-surface)); }
+.social-platform-mark[data-social-platform="threads"] { color: var(--pg-ink); background: var(--pg-lift); }
+.social-platform-mark[data-social-platform="pinterest"] { color: #bd081c; background: color-mix(in srgb, #e60023 9%, var(--pg-surface)); }
+.social-platform-mark[data-social-platform="google_business"] { color: #2672ec; background: color-mix(in srgb, #34a853 9%, var(--pg-surface)); }
+.social-platform-mark[data-social-platform="snapchat"] { color: #746700; background: color-mix(in srgb, #fffc00 22%, var(--pg-surface)); }
+.social-platform-mark[data-social-platform="reddit"] { color: #d74200; background: color-mix(in srgb, #ff4500 9%, var(--pg-surface)); }
