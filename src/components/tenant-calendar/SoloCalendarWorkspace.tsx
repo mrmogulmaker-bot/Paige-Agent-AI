@@ -79,6 +79,13 @@ function sameDay(a: Date, b: Date) {
  *  removing it would quietly rewrite the day's history. */
 function isOff(b: SoloBooking) { return b.status === "cancelled" || b.status === "no_show"; }
 
+/** A class session and its seats share one start/end. `reschedule_internal_booking`
+ *  moves a SINGLE row, so moving the session marker would leave every attendee seat
+ *  at the old time — an orphaned, corrupted group. Until an atomic group-move seam
+ *  exists, a grouped booking is not reschedulable from here (its details can still
+ *  be edited — that never touches time). */
+function isGrouped(b: SoloBooking) { return b.booking_kind === "class_session" || b.booking_kind === "class_seat"; }
+
 interface RailGroupProps {
   title: string;
   defaultOpen?: boolean;
@@ -220,6 +227,11 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
    *  to the Tab order. */
   const boardRef = useRef<HTMLDivElement | null>(null);
   const [creating, setCreating] = useState(false);
+  /** The booking whose time is being moved / whose details are being edited. Each
+   *  opens its own drawer that REPLACES the detail drawer rather than stacking on
+   *  it — the day drawer already established that convention on this surface. */
+  const [rescheduling, setRescheduling] = useState<SoloBooking | null>(null);
+  const [editing, setEditing] = useState<SoloBooking | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [dayFocus, setDayFocus] = useState<{ day: Date; list: SoloBooking[] } | null>(null);
@@ -557,6 +569,30 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
           focusFallbackRef={boardRef}
           foot={
             <>
+              {/* Move and edit REPLACE this drawer (see the day-drawer convention):
+                  each hands off to its own form so two dialogs never stack. A
+                  cancelled booking is not moved or re-detailed — it is re-created —
+                  so both are withheld once it is off the schedule. A class session
+                  and its seats move together or not at all: single-row reschedule
+                  would orphan the seats, so Reschedule is withheld for grouped
+                  bookings until an atomic group-move seam exists. */}
+              <button
+                type="button"
+                className="sc-btn"
+                onClick={() => { setRescheduling(detail); setDetail(null); setActionMsg(null); }}
+                disabled={isOff(detail) || isGrouped(detail)}
+                title={isGrouped(detail) ? "A class and its attendees move together — group reschedule isn't available yet." : undefined}
+              >
+                Reschedule
+              </button>
+              <button
+                type="button"
+                className="sc-btn"
+                onClick={() => { setEditing(detail); setDetail(null); setActionMsg(null); }}
+                disabled={isOff(detail)}
+              >
+                Edit details
+              </button>
               {/* The five values `admin_set_booking_status` actually accepts. 'blocked'
                   is offered only from the create drawer, where it is what blocking time
                   means; offering it here would let a real appointment be silently
@@ -824,6 +860,23 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
           calendars={calendars}
           onClose={() => setCreating(false)}
           onCreate={cal.createBooking}
+        />
+      )}
+
+      {rescheduling && (
+        <RescheduleDrawer
+          booking={rescheduling}
+          onClose={() => setRescheduling(null)}
+          onReschedule={cal.reschedule}
+        />
+      )}
+
+      {editing && (
+        <EditDrawer
+          booking={editing}
+          calendars={calendars}
+          onClose={() => setEditing(null)}
+          onEdit={cal.edit}
         />
       )}
     </div>
@@ -1112,6 +1165,151 @@ function CreateDrawer({ calendars, onClose, onCreate }: {
       <p className="sc-note">
         The booking service refuses an appointment that overlaps one you already hold, so a clash
         is reported rather than double-booked.
+      </p>
+    </Drawer>
+  );
+}
+
+/* ------------------------------------------------------------- rescheduling --- */
+
+function RescheduleDrawer({ booking, onClose, onReschedule }: {
+  booking: SoloBooking;
+  onClose: () => void;
+  onReschedule: (id: string, startAt: Date, durationMinutes: number) => Promise<{ ok: boolean; message?: string }>;
+}) {
+  const start = new Date(booking.start_at);
+  // The booking's real length, preserved by default: floored at 5 and rounded to
+  // whole minutes so a moved meeting keeps its shape unless it is deliberately changed.
+  const currentDuration = Math.max(
+    5,
+    Math.round((new Date(booking.end_at).getTime() - start.getTime()) / 60000),
+  );
+  const [date, setDate] = useState(
+    () => `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`,
+  );
+  const [time, setTime] = useState(
+    () => `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`,
+  );
+  const [duration, setDuration] = useState(currentDuration);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  // Keep the current length as an option even when it is not a preset, so moving a
+  // 45- or 75-minute meeting never silently reshapes it.
+  const lengths = Array.from(new Set([15, 30, 45, 60, 90, currentDuration])).sort((a, b) => a - b);
+
+  const submit = async () => {
+    setBusy(true); setMsg(null);
+    const startAt = new Date(`${date}T${time}`);
+    if (Number.isNaN(startAt.getTime())) { setBusy(false); setMsg("That date and time could not be read."); return; }
+    const res = await onReschedule(booking.id, startAt, duration);
+    setBusy(false);
+    if (!res.ok) { setMsg(res.message ?? "That change was refused."); return; }
+    onClose();
+  };
+
+  return (
+    <Drawer
+      title="Reschedule"
+      sub={booking.title || "Appointment"}
+      onClose={onClose}
+      foot={
+        <>
+          <button type="button" className="sc-btn sc-btn--gold" onClick={() => void submit()} disabled={busy}>
+            {busy ? "Moving…" : "Move appointment"}
+          </button>
+          <button type="button" className="sc-btn" onClick={onClose} disabled={busy}>Cancel</button>
+        </>
+      }
+    >
+      {msg && <div className="sc-msg sc-msg--bad">{msg}</div>}
+      <div className="sc-field">
+        <label htmlFor="sc-rs-date">Date</label>
+        <input id="sc-rs-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </div>
+      <div className="sc-field">
+        <label htmlFor="sc-rs-time">Start</label>
+        <input id="sc-rs-time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+      </div>
+      <div className="sc-field">
+        <label htmlFor="sc-rs-dur">Length</label>
+        <select id="sc-rs-dur" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
+          {lengths.map((m) => <option key={m} value={m}>{m} minutes</option>)}
+        </select>
+      </div>
+      <p className="sc-note">
+        The booking service refuses a time that overlaps another appointment on the same host, so a
+        clash is reported rather than double-booked. The guest is not notified from here.
+      </p>
+    </Drawer>
+  );
+}
+
+/* ---------------------------------------------------------------- editing --- */
+
+function EditDrawer({ booking, calendars, onClose, onEdit }: {
+  booking: SoloBooking;
+  calendars: { id: string; title: string }[];
+  onClose: () => void;
+  onEdit: (input: {
+    id: string; title: string; guestName: string | null; notes: string | null; calendarId: string;
+  }) => Promise<{ ok: boolean; message?: string }>;
+}) {
+  const [title, setTitle] = useState(booking.title || "");
+  const [guest, setGuest] = useState(booking.guest_name || "");
+  const [notes, setNotes] = useState(booking.notes || "");
+  const [calendarId, setCalendarId] = useState(booking.calendar_id ?? UNASSIGNED_CALENDAR);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (!title.trim()) { setMsg("An appointment needs a title."); return; }
+    setBusy(true); setMsg(null);
+    const res = await onEdit({
+      id: booking.id, title, guestName: guest || null, notes: notes || null, calendarId,
+    });
+    setBusy(false);
+    if (!res.ok) { setMsg(res.message ?? "That change was refused."); return; }
+    onClose();
+  };
+
+  return (
+    <Drawer
+      title="Edit details"
+      sub={booking.title || "Appointment"}
+      onClose={onClose}
+      foot={
+        <>
+          <button type="button" className="sc-btn sc-btn--gold" onClick={() => void submit()} disabled={busy}>
+            {busy ? "Saving…" : "Save changes"}
+          </button>
+          <button type="button" className="sc-btn" onClick={onClose} disabled={busy}>Cancel</button>
+        </>
+      }
+    >
+      {msg && <div className="sc-msg sc-msg--bad">{msg}</div>}
+      <div className="sc-field">
+        <label htmlFor="sc-ed-title">Title</label>
+        <input id="sc-ed-title" value={title} onChange={(e) => setTitle(e.target.value)} />
+      </div>
+      <div className="sc-field">
+        <label htmlFor="sc-ed-guest">Guest name</label>
+        <input id="sc-ed-guest" value={guest} onChange={(e) => setGuest(e.target.value)} placeholder="Optional" />
+      </div>
+      <div className="sc-field">
+        <label htmlFor="sc-ed-cal">Calendar</label>
+        <select id="sc-ed-cal" value={calendarId} onChange={(e) => setCalendarId(e.target.value)}>
+          <option value={UNASSIGNED_CALENDAR}>Unassigned</option>
+          {calendars.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+        </select>
+      </div>
+      <div className="sc-field">
+        <label htmlFor="sc-ed-notes">Notes</label>
+        <textarea id="sc-ed-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Optional" />
+      </div>
+      <p className="sc-note">
+        This changes the appointment&rsquo;s details only — not its time or status. Moving it uses
+        Reschedule; cancelling uses Cancel appointment.
       </p>
     </Drawer>
   );
