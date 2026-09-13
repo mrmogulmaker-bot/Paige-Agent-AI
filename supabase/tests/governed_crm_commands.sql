@@ -30,6 +30,10 @@ INSERT INTO public.clients(id,tenant_id,account_number,created_by,first_name,las
  ('c7100000-0000-4000-8000-00000000c102','c7100000-0000-4000-8000-000000001111','CLT-CGA-2','c7100000-0000-4000-8000-000000000001','Delete','Fixture','delete@tests.invalid','2026-09-13 00:00:00+00'),
  ('c7100000-0000-4000-8000-00000000c103','c7100000-0000-4000-8000-000000001111','CLT-CGA-3','c7100000-0000-4000-8000-000000000001','Merge','Fixture','merge@tests.invalid','2026-09-13 00:00:00+00');
 
+-- Test-only privileges for direct durable-state assertions; the transaction rollback removes them.
+-- The executor itself remains SECURITY DEFINER and is the only production mutation surface.
+GRANT SELECT,UPDATE ON public.clients,public.paige_workspace_events TO service_role;
+
 SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 CREATE TEMP TABLE crm_result AS SELECT public.execute_crm_command(
