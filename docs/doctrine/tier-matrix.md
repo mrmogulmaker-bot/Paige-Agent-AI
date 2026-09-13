@@ -364,6 +364,26 @@ The mounted Solo Calendar (`SoloCalendarWorkspace`, via `TenantCanonicalCalendar
 
 Honest note (§13/§32): reschedule needs no migration (existing prod RPC) so it is live the moment the frontend deploys; edit's `update_internal_booking` is code-complete + lint-clean but **not live on prod** until `deploy-migrations` applies its migration — the UI surfaces an honest "function not found" message (never a crash) in any brief pre-apply window. Authenticated owner-drive of both is §32.c/§70 PROOF OWED to a browser-capable session (this headless session has no browser/prod reach).
 
+### Solo Booking Presets — Draft→Publish lifecycle + guided chooser (branch `claude/busy-archimedes-bsvrdi`, 2026-09-13; DRAFT — NOT merged/deployed)
+
+The tenant booking-PRESET surface — Settings › Connections › Calendars (`connections-calendars.tsx` + `useCalendarConnections`, the `calendars` model) — distinct from the internal-appointment Calendar above and from personal provider connections. This slice makes a preset a private **Draft** on create and requires an explicit, server-validated **Publish** to expose the public `/book/:slug` page, and reshapes the surface to master/detail with a guided chooser. **Withheld from release by the owner — built and proven on branch, not merged.** Booking-preset config is a Solo/Sub-account/Enterprise base capability (§60/§61: Agency-as-tenant uses `CalendarAdmin`, unchanged here — the legacy panel's live-on-create is a flagged follow-up, not reconciled in this slice).
+
+| Capability | God (act-as) | Agency-as-tenant | Standalone Solo | Sub-account | Client | Anonymous | Deploy state |
+|---|---|---|---|---|---|---|---|
+| Create preset as a private DRAFT — `create_calendar_preset` (chooser) | ✓ | — (uses CalendarAdmin) | ✓ | ✓ | — | 403 | **BUILT, pre-merge — NOT deployed** (owner withheld release) |
+| Edit preset config — `update_calendar_preset` | ✓ | — | ✓ | ✓ | — | 403 | **BUILT, pre-merge — NOT deployed** |
+| Publish (make `/book` public, server-validated) — `publish_calendar_preset` | ✓ | — | ✓ | ✓ | — | 403 | **BUILT, pre-merge — NOT deployed** |
+| Pause (take off the air) — `pause_calendar_preset` | ✓ | — | ✓ | ✓ | — | 403 | **BUILT, pre-merge — NOT deployed** |
+| Duplicate → fresh DRAFT (copies config + hosts) — `duplicate_calendar_preset` | ✓ | — | ✓ | ✓ | — | 403 | **BUILT, pre-merge — NOT deployed** (S1, migration `20270302000000`) |
+| Archive (put away, off the air) — `archive_calendar_preset` | ✓ | — | ✓ | ✓ | — | 403 | **BUILT, pre-merge — NOT deployed** (S1) |
+| Restore (back to Draft/Paused, never straight to Live) — `restore_calendar_preset` | ✓ | — | ✓ | ✓ | — | 403 | **BUILT, pre-merge — NOT deployed** (S1) |
+| Archived preset is FROZEN (edit/publish raise `PRESET_ARCHIVED`; editor opens read-only) | ✓ | — | ✓ | ✓ | — | 403 | **BUILT, pre-merge** (S1) |
+| Guest booking of a Draft/Paused/Archived preset (`/book/:slug`) | n/a | n/a | n/a | n/a | n/a | **404 (refused — `enabled=false`)** | **BUILT, pre-merge** (resolver `enabled` gate unchanged; draft-by-default + archive-forces-disabled make it real) |
+
+Enterprise inherits the Standalone Solo column (§60/§61 hybrid — Solo ∪ Agency), so it gets the same booking-preset base capability; the column is omitted above for width, not because Enterprise lacks it.
+
+Honest note (§13/§32/§66): nothing here is LIVE — the owner explicitly withheld merge/deploy. The server seam (both migrations, `20270301000000` + `20270302000000`) is proven by a 34-group local-Postgres replay (95 PASS/0 fail, `docs/evidence/proofs/booking-preset-lifecycle/`) but prod persisted-apply is owed via `deploy-migrations` on eventual merge, and the authenticated owner-drive is §32.c/§70 PROOF OWED. The Paige chat capability that drives the same RPCs is authored (`domains/calendar_preset.ts`, create/revise/publish/pause/list) but NOT registered/wired, and does NOT yet carry the duplicate/archive/restore capabilities — the E5/S2 Paige-adoption slice, handed off in `docs/architecture/booking-preset-capability-adoption.md`.
+
 ### Trust Compass — the governed control surface (Command Center 3rd sub-tab, 2026-09-05)
 
 Trust Compass moved from a top-level Solo branch to the **third Command Center sub-tab** (Business
