@@ -72,7 +72,7 @@ filter over what exists, never a type-picker the owner must clear first.
 | **Tenant-generic + truthful provenance/availability/authority** | The standing **honesty boundary** banner + per-item truth-state chips + the drawer's "Honesty boundary" section | never another tenant's knowledge, raw prompts, hidden reasoning, or internal build notes |
 
 **Truth-state as first-class UI** is the signature: every record and region wears a chip —
-**Live · Live source · Partial · Proof owed · Not available yet** — tinted per state, never bare gray.
+**Live · Source-built · Partial · Proof owed · Not available yet** — tinted per state, never bare gray.
 
 ## State & transition coverage
 
@@ -169,6 +169,13 @@ them; do not have CC decide them:
   generic "rings are indigo" rule, so these are ported as drawn, not corrected.
 - A **Suggestions lens** was added (owner requirement (d) + §36 draft-first "drafts awaiting you");
   the drafted-follow-up record moved from Activity into Suggestions.
+- The record drawer's **"Honesty boundary" note copy** is placeholder, de-jargoned for review (no
+  §NN anchors, no internal constraint IDs like C4/SCR-N, no process terms like "seam"/"envelope") —
+  **Claude Design owns the final coach-facing wording** at implementation (§00). Every string rendered
+  outside a `.reviewonly` container must stay free of internal jargon (§11 measurable).
+- Truth-state chip **labels** ("Source-built", "Proof owed", …) and the Knowledge read's down-label
+  ("Source-built" where the map calls the read "LIVE-via-source") are conservative/honest but lean
+  technical — the **owner-facing truth-state vocabulary is CD's call** to confirm at the gate.
 
 ## Recommended phased implementation plan — each phase mapped to the EXISTING seams it reuses
 

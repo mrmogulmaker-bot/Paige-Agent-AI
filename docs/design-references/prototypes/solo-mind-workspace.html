@@ -255,10 +255,10 @@ canvas.orb{width:100%;height:100%;display:block}
             <div class="kicker">Your business mind</div>
           </div>
           <div class="band-right">
-            <div class="freshness" id="freshness"><b>Read live</b> just now<br>from your own workspace only</div>
+            <div class="freshness" id="freshness"><b>Read</b> just now<br>from your own workspace only</div>
             <div class="acct"><b id="acctName">Northwind Advisory</b><span id="acctTier">Solo</span></div>
             <div class="band-actions">
-              <button class="btn" id="refreshBtn" title="Re-reads your live sources. Not a scan.">
+              <button class="btn" id="refreshBtn" title="Re-reads your sources. Not a scan.">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
                 Refresh
               </button>
@@ -293,7 +293,7 @@ canvas.orb{width:100%;height:100%;display:block}
         <section class="hero" aria-label="Mind overview">
           <span class="stand-in" title="The production surface renders the owner-approved 3D orb (React Three Fiber). This throwaway prototype uses a lightweight Canvas-2D stand-in.">◇ orb stand-in</span>
           <div class="hero-cap">
-            <p class="lede" id="heroLede">A living map of what Paige holds for your business — read live, from your workspace only.</p>
+            <p class="lede" id="heroLede">A living map of what Paige holds for your business — read straight from your workspace only.</p>
           </div>
           <div class="orb-wrap"><canvas class="orb" id="orb" width="720" height="560" role="img" aria-label="Rotating map of Paige's knowledge domains. A list of the same records is beside this."></canvas></div>
           <div class="orb-legend" id="orbLegend" aria-hidden="true"></div>
@@ -356,12 +356,12 @@ canvas.orb{width:100%;height:100%;display:block}
   var K=[
     {id:"k1",type:"knowledge",st:"source",title:"Reseller agreement — Northwind × Atlas",sub:"Uploaded PDF. Margin clause and renewal terms extracted into 4 searchable passages.",domain:"Legal",kind:"template",src:"Upload",when:"1d ago",source_url:"(stored, not shown today)",seam:"useSoloKnowledge → tenant_knowledge_docs (RLS)",note:"Paige can quote this in chat. She never shows it to another business."},
     {id:"k2",type:"knowledge",st:"source",title:"Positioning &amp; brand voice",sub:"Pasted note. Sets the tone Paige writes in for you.",domain:"Brand",kind:"template",src:"Paste",when:"2d ago",source_url:"—",seam:"kb-ingest-doc → voyage-3 embeddings → tenant_knowledge_chunks",note:"If embedding fails, nothing is saved — Paige tells you rather than pretending."},
-    {id:"k3",type:"knowledge",st:"owed",title:"Q3 offer page (from a link)",sub:"Read once from a URL you gave. Single page, not a crawl.",domain:"Offers",kind:"integration",src:"Link",when:"4d ago",source_url:"https://…/q3-offer (stored, not shown)",seam:"kb-ingest-url (SSRF-guarded) → kb-ingest-doc",note:"Provenance gap: the source link and a 'last-verified' date are stored or not-yet-modelled, and are not shown on the card today."},
-    {id:"f1",type:"facts",st:"partial",title:"Deal stage — Atlas expansion",sub:"What's true now: stage is a verified, source-backed fact Paige can cite — inside a chat about this client.",domain:"Pipeline",kind:"automation",src:"Spine",when:"live",source_url:"Deal record (client-scoped)",seam:"resolveEvidence.ts envelope → mindEvidence.ts (the one governed capability)",note:"Reaches Paige only inside a chat about that client (constraint C4). Showing it on this workspace surface standalone needs a new scoped read path — a backend change-request, not shippable as drawn."},
-    {id:"f2",type:"facts",st:"source",title:"Connected systems readiness",sub:"Which automations are wired and ready. Read live from your workspace.",domain:"Systems",kind:"integration",src:"Readiness",when:"live",source_url:"Systems readiness",seam:"useN8nSpineReadiness → get_n8n_spine_readiness RPC",note:"A readiness signal, not a full evidence envelope. Authenticated re-confirm owed."},
-    {id:"d1",type:"decisions",st:"unavail",title:"Reminder cadence set to weekly",sub:"How a decision Paige carries forward will read once the surface is wired — not available to view or correct yet.",domain:"Operating",kind:"agent",src:"Decision",when:"—",source_url:"Your saved decision",seam:"record_paige_memory (governed seam) — deployed, boundary-proven, no product caller/UI",note:"The write/correct/forget seam exists and is boundary-proven, but has no owner-facing surface today. This card is a preview of how it WILL read, not a live record."},
-    {id:"r1",type:"suggestions",st:"partial",title:"Draft follow-up — awaiting your approval",sub:"Paige drafted this; it waits for your one-click approve before anything is sent (draft-first).",domain:"Marketing",kind:"agent",src:"Draft",when:"6h ago",source_url:"Proposed action",seam:"propose→confirm queue → record_capability_run → get_solo_rail_activity (SECURITY DEFINER)",note:"Draft-first (§36): Paige proposes, you approve. The owner-facing queue/rail is safe by construction but PROOF OWED; near-empty data today."},
-    {id:"r2",type:"receipts",st:"partial",title:"Campaign brief created",sub:"A real produced artifact, read back after write. The activity card that shows it to you is still being proven.",domain:"Growth",kind:"skill",src:"Rail",when:"1d ago",source_url:"Campaign brief",seam:"campaign_brief_* producer LIVE post-readback; owner-facing card/rail lane PARTIAL / PROOF OWED",note:"The producer is the lone LIVE writer in this vertical, but the owner-facing lane that surfaces it here is PARTIAL / PROOF OWED — so this card reads PARTIAL, not Live."}
+    {id:"k3",type:"knowledge",st:"owed",title:"Q3 offer page (from a link)",sub:"Read once from a URL you gave. Single page, not a crawl.",domain:"Offers",kind:"integration",src:"Link",when:"4d ago",source_url:"https://…/q3-offer (stored, not shown)",seam:"kb-ingest-url (SSRF-guarded) → kb-ingest-doc",note:"The web link this came from, and a 'last checked' date, aren't shown on the card yet — Paige has the source but doesn't display it here today."},
+    {id:"f1",type:"facts",st:"partial",title:"Deal stage — Atlas expansion",sub:"What's true now: stage is a verified, source-backed fact Paige can cite — inside a chat about this client.",domain:"Pipeline",kind:"automation",src:"Spine",when:"live",source_url:"Deal record (client-scoped)",seam:"resolveEvidence.ts envelope → mindEvidence.ts (the one governed capability)",note:"Paige can use this only inside a chat about that client. Showing it here on its own is a planned addition, not available yet."},
+    {id:"f2",type:"facts",st:"source",title:"Connected systems readiness",sub:"Which automations are wired and ready. Read live from your workspace.",domain:"Systems",kind:"integration",src:"Readiness",when:"live",source_url:"Systems readiness",seam:"useN8nSpineReadiness → get_n8n_spine_readiness RPC",note:"A live readiness signal — which of your systems are wired and ready right now."},
+    {id:"d1",type:"decisions",st:"unavail",title:"Reminder cadence set to weekly",sub:"How a decision Paige carries forward will read once the surface is wired — not available to view or correct yet.",domain:"Operating",kind:"agent",src:"Decision",when:"—",source_url:"Your saved decision",seam:"record_paige_memory (governed seam) — deployed, boundary-proven, no product caller/UI",note:"There's no screen yet where you can see, correct, or forget the decisions Paige carries for you. This card previews how that will look — it isn't a live record yet."},
+    {id:"r1",type:"suggestions",st:"partial",title:"Draft follow-up — awaiting your approval",sub:"Paige drafted this; it waits for your one-click approve before anything is sent (draft-first).",domain:"Marketing",kind:"agent",src:"Draft",when:"6h ago",source_url:"Proposed action",seam:"propose→confirm queue → record_capability_run → get_solo_rail_activity (SECURITY DEFINER)",note:"Paige drafts, you approve before anything is sent. The queue that will surface these to you isn't fully finished yet, so there's little here today."},
+    {id:"r2",type:"receipts",st:"partial",title:"Campaign brief created",sub:"A real produced artifact, read back after write. The activity view that shows it to you is still being finished.",domain:"Growth",kind:"skill",src:"Rail",when:"1d ago",source_url:"Campaign brief",seam:"campaign_brief_* producer LIVE post-readback; owner-facing card/rail lane PARTIAL / PROOF OWED",note:"Paige really did create this. The activity view that shows it to you is still being finished, so it's marked in progress rather than done."}
   ];
   // Memory lens carries the sharpest honesty case — it is a STATE, not a list of fake memories.
   var MEMORY_UNAVAILABLE={
@@ -408,7 +408,7 @@ canvas.orb{width:100%;height:100%;display:block}
   }
   function counts(){
     var live=K.filter(function(r){return !state.dismissed[r.id];});
-    var by={all:live.length,knowledge:0,memory:1,facts:0,decisions:0,suggestions:0,receipts:0};
+    var by={all:live.length,knowledge:0,memory:0,facts:0,decisions:0,suggestions:0,receipts:0};
     live.forEach(function(r){ if(by[r.type]!=null) by[r.type]++; });
     // memory count reflects the one honest "unavailable" state, shown as a single item
     Object.keys(by).forEach(function(k){ var el=$("#ct-"+k); if(el) el.textContent=by[k]; });
@@ -602,9 +602,11 @@ canvas.orb{width:100%;height:100%;display:block}
 
   /* ---------- Orb (lightweight Canvas-2D stand-in for the shipped 3D orb) ---------- */
   var cv=$("#orb"), ctx=cv.getContext("2d"), t0=performance.now(), raf=null;
+  // Each node's hue = that domain's authoritative truth-state from the capability map.
+  // NOTHING is authenticated-LIVE in this vertical, so NO node wears the LIVE hue (§13 honesty).
   var DOMAINS=[
     {n:"Knowledge",v:"--st-source",r:1},{n:"Facts",v:"--st-partial",r:1},
-    {n:"Decisions",v:"--st-owed",r:1},{n:"Activity",v:"--st-live",r:1},
+    {n:"Decisions",v:"--st-unavail",r:1},{n:"Activity",v:"--st-owed",r:1},
     {n:"Identity",v:"--st-unavail",r:0},{n:"Offers",v:"--st-unavail",r:0}
   ];
   function cssv(v){return getComputedStyle(root).getPropertyValue(v).trim()||"#888";}
@@ -650,7 +652,7 @@ canvas.orb{width:100%;height:100%;display:block}
     else if(state.lens==="memory") lede.textContent="Paige carries durable notes about your business. A place to see, correct, and forget them is not built yet.";
     else if(state.view==="refusal") lede.textContent="Some of your Mind isn’t readable in your current role — shown as unavailable, never as empty.";
     else if(state.view==="empty"||state.view==="firstuse") lede.textContent="Your Mind is empty so far. What you give Paige shows up here.";
-    else lede.textContent="A living map of what Paige holds for your business — read live, from your workspace only.";
+    else lede.textContent="A living map of what Paige holds for your business — read straight from your workspace only.";
     // legend
     var lg=$("#orbLegend"); lg.innerHTML=DOMAINS.map(function(d){return '<span><span class="dot" style="background:'+(d.r?cssv(d.v):"transparent")+';border:'+(d.r?"0":"1.5px solid "+cssv(d.v))+'"></span>'+d.n+'</span>';}).join("");
     if(raf) cancelAnimationFrame(raf); fit(); raf=requestAnimationFrame(drawOrb);
@@ -705,7 +707,7 @@ canvas.orb{width:100%;height:100%;display:block}
     this.textContent=state.orbit?"Pause orbit":"Resume orbit"; announce(state.orbit?"Orbit resumed. Visual only.":"Orbit paused. Your data is unchanged."); paintOrbState();
   });
   $("#reduceBtn").addEventListener("click",toggleReduce);
-  $("#refreshBtn").addEventListener("click",function(){ setView("loading"); announce("Re-reading your live sources. This is not a scan."); setTimeout(function(){setView("populated");},850); });
+  $("#refreshBtn").addEventListener("click",function(){ setView("loading"); announce("Re-reading your sources. This is not a scan."); setTimeout(function(){setView("populated");},850); });
   $("#openPaige").addEventListener("click",function(){ announce("Opens the one PAIGE workspace chat. Prototype: no chat is launched."); });
 
   /* ---------- Seam-map inspector ---------- */

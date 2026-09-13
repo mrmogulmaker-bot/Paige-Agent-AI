@@ -57,7 +57,7 @@ safe-by-construction seam layer** with a **thin usable edge**:
 
 - **The one thing a person can actually DO** in this vertical today is **Tenant Knowledge** on Solo:
   read the indexed doc list (mounted, real read) and **delete / share-toggle** a doc, plus **ingest**
-  paste/URL/file (deployed edge functions). Even this is `SOURCE-BUILT` / `PROOF OWED` (no authenticated
+  paste/URL/file (deployed edge functions). Even the read is only `LIVE-via-source` / `PROOF OWED` (no authenticated
   drive taken) and its **metadata-edit and organize/folders are UNAVAILABLE**.
 - **The Solo Mind orb reads real data but is read-only** — a visualization over three tenant-scoped
   hooks. It is **not** the governed Mind evidence contract (that contract binds exactly one capability,
@@ -265,7 +265,10 @@ work" conversation), because none exists today.
   `tierBranches.ts:624-648` as a known, sequenced gap (the §11c/§60 target once `/business` mounts SoloApp)
   — not an accident. **Owner-facing implication:** the assignment's "Solo first and all account types by
   design" means the Mind Workspace must be designed so the Solo surface is the one that later mounts under
-  `/business`, not a Solo-only fork.
+  `/business`, not a Solo-only fork. **Per-tier target framing (consistent with the tier-matrix banner):**
+  Sub-account is the confirmed **§60** target (Solo ≡ Sub-account) and Enterprise is a **§61** target
+  (Enterprise inherits Solo); **Agency is N/A** — an agency manages sub-accounts, not its own client Mind,
+  so it is not a Mind target unless the owner rules otherwise. All three are UNAVAILABLE today.
 - **Memory management UI does not exist for any tenant tier.** The tables exist; no view/correct/forget
   surface does.
 

@@ -4082,21 +4082,24 @@ an `UNAVAILABLE` domain shows its hub with **no** satellites (a "pending"-colour
 > `SUB_ACCOUNT_BRANCHES` (`:401,648`) and Enterprise via `AGENCY_BRANCHES` (`:622`) — **neither has a
 > `mind` subtab.** The dated tierBranches comment (`:624-637`, 2026-08-18) states this explicitly and
 > names the §11c/§60 "Solo ≡ Sub-account" Mind as the **TARGET once `/business` mounts SoloApp**, not
-> current. So per tier today: **Solo = ✓ (read-only); Sub-account · Agency · Enterprise = UNAVAILABLE
-> (sequenced §60 target); God = — ; Client/Anon = —/403.** The row's own internal tell (Agency "—" but
-> Enterprise "✓", though both render through AgencyApp) confirms the ✓s were aspirational. Full
+> current. So per tier today: **Solo = ✓ (read-only); Sub-account = UNAVAILABLE (sequenced §60 target);
+> Enterprise = UNAVAILABLE (§61 target — inherits Solo); Agency = — (an agency manages sub-accounts,
+> not its own client Mind — not a Mind target unless the owner rules otherwise); God = —;
+> Client/Anon = —/403.** The row's own internal tell (Agency "—" but Enterprise "✓", though both
+> render through AgencyApp) confirms the ✓s were aspirational. This matches the capability map's
+> Domain-6 grid (all three UNAVAILABLE today). Full
 > grounding: `docs/architecture/mind-memory-knowledge-brain-capability-map.md` (Domain 6). The dated
 > entry is preserved per §58; only the false current-visibility cells are corrected here.
 
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
 |---|---|---|---|---|---|---|---|
-| See the Mind subtab (the orb + record list) | — (no Solo book) | — | ✗ (target, §60) | ✓ | ✗ (target, §60) | — | 403 |
+| See the Mind subtab (the orb + record list) | — (no Solo book) | — | ✗ (target) | ✓ | ✗ (target) | — | 403 |
 | Knowledge resources nodes ← `tenant_knowledge_docs` (LIVE, owner-indexed) | — | — | ✗ (target) | ✓ | ✗ (target) | — | 403 |
 | Connected sources nodes ← n8n readiness (LIVE, status only) | — | — | ✗ (target) | ✓ | ✗ (target) | — | 403 |
 | Operating decisions nodes ← pending approvals (LIVE) | — | — | ✗ (target) | ✓ | ✗ (target) | — | 403 |
 | Business context / Client relationships domains | honest ABSENCE — no frontend hook yet | | | | | | |
 | Offers & services domain | honest UNAVAILABLE — catalog lives in Campaigns, not a governed fact | | | | | | |
-| Open a record's evidence drawer (provenance + honesty boundary) | — | — | ✓ | ✓ | ✓ | — | 403 |
+| Open a record's evidence drawer (provenance + honesty boundary) | — | — | ✗ (target) | ✓ | ✗ (target) | — | 403 |
 | Any create/update/delete from Mind | ✗ read-only surface | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 
 **Honest source truth per domain (the orb never invents to fill a hub):** three of the six domains
