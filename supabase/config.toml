@@ -557,6 +557,10 @@ verify_jwt = true
 [functions.solo-beta-stripe-webhook]
 verify_jwt = false
 
+# Vault cron token or service-role bearer only; retries the existing welcome outbox.
+[functions.solo-beta-welcome-drainer]
+verify_jwt = false
+
 [functions.paige-social]
 # Owner/admin JWT is verified by the gateway and again in-function. Tenant is
 # always resolved from the caller's active workspace; body tenant is refusal-only.

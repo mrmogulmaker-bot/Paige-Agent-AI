@@ -46,6 +46,7 @@ import { template as supportTicketResolved } from './support-ticket-resolved.tsx
 import { template as featureRequestStatusUpdate } from './feature-request-status-update.tsx'
 import { template as brokerTeamInvitation } from './broker-team-invitation.tsx'
 import { template as betaLaunchWelcome } from './beta-launch-welcome.tsx'
+import { template as soloBetaWelcome } from './solo-beta-welcome.tsx'
 
 import { template as approvalNotification } from './approval-notification.tsx'
 import { template as securityCanaryRegression } from './security-canary-regression.tsx'
@@ -99,6 +100,7 @@ const RAW_TEMPLATES: Record<string, TemplateEntry> = {
   'feature-request-status-update': featureRequestStatusUpdate,
   'broker-team-invitation': brokerTeamInvitation,
   'beta-launch-welcome': betaLaunchWelcome,
+  'solo-beta-welcome': soloBetaWelcome,
 
   'approval-notification': approvalNotification,
   'security-canary-regression': securityCanaryRegression,

@@ -182,6 +182,8 @@ Deno.serve(async (req) => {
     const origin = origins.has(originHeader) ? originHeader : "https://app.paigeagent.ai";
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
+      // payment_method_types/options are deliberately omitted. Hosted Checkout uses
+      // the owner-configured Stripe methods and Stripe's per-session eligibility.
       payment_method_collection: "always",
       customer: customerId,
       line_items: [{ price: offer.stripe_price_id, quantity: 1 }],
