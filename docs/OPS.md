@@ -114,3 +114,20 @@ and treats a 404 as already-done (idempotent). Run once; it needs no repeat.
 Note: the legacy `orders` TABLE is intentionally NOT dropped -- it still has live read-consumers
 (`src/components/dashboard/PaymentHistory.tsx:44`, `supabase/functions/generate-invoice/index.ts:234`)
 plus an inbound FK. Left inert; migration to remove it is a tracked follow-up.
+
+## Exact-head CI on a bot-authored PR (2026-09-13)
+
+GitHub withholds `pull_request`/`push` Actions events for a PR authored or pushed by the
+session's GitHub App token (recursion prevention), so such a PR never earns a `ci / verify`
+run from its own events. `ci.yml` therefore carries a `workflow_dispatch` trigger: dispatch
+it against the PR's head branch to run the SAME gate on the exact head.
+
+```
+gh workflow run ci.yml --ref <pr-branch>          # or the Actions workflow-dispatch API
+```
+
+On a dispatch the changed-file/edge gates resolve their base from the live `origin/main` tip
+and head from the dispatched ref, so the changed-set, the tsc-baseline + regression ratchets,
+the eslint/gold changed-src gates, and the Deno edge ratchet all run exactly as they would on
+a PR. `pull_request` and `push` runs are unchanged. The dispatched ref's own `ci.yml` must
+carry the trigger, so sync `main` into a stale branch before dispatching it.
