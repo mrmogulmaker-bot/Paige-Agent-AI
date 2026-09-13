@@ -126,8 +126,11 @@ function describeStep(
   try { out = JSON.parse(res?.content ?? "{}"); } catch { /* ignore */ }
   const failed = out?.success === false;
 
-  // Drop policy-gated rejections (funding-not-enabled, permission-denied) and the
-  // web_fetch stub — never render these as work or as failure.
+  // Drop policy-gated rejections (funding-not-enabled, permission-denied) and web_fetch —
+  // never render these as work or as failure. web_fetch is now a functional SSRF-guarded
+  // read (routed through fetch-url-content), but it stays a silent retrieval rather than a
+  // rendered work chip: its result (and any honest failure) is conveyed to the model, and
+  // the rendering posture for a read is unchanged from when it was inert.
   if (name === "web_fetch") return null;
   if (failed && typeof out?.error === "string" &&
       /not enabled|disabled|permission|not allowed|restricted|forbidden/i.test(out.error)) return null;
@@ -8676,7 +8679,59 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }) });
           }
         } else if (tc.function.name === "web_fetch") {
-          toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ note: "Web fetch not executed in this flow" }) });
+          // web_fetch — hardened tenant-safe ROUTING (owner ruled 2026-09-13: do NOT retire;
+          // build it for the client seat too). The outbound fetch goes through the canonical
+          // SSRF-guarded `fetch-url-content` (now on `_shared/ssrfGuard.ts` `safeFetch`):
+          // public HTTPS only, no private/loopback/link-local/redirecting/credentialed
+          // targets, bounded wall-clock + bytes. The page body is attacker-controlled, so it
+          // is FENCED (§9/§13) — the untrusted-knowledge notice + `sanitizeUntrustedText`
+          // (breaks forged `===` markers, strips bidi/zero-width) — before it re-enters the
+          // model as a tool result, and returned with honest provenance
+          // {url,title,fetched_at,truncated}. The caller's seat/tenant was resolved once at
+          // the top of the handler (`callerTier`/`scopedClientId`); this takes NO identity
+          // from the tool args — only the URL the model proposed. A failure/refusal is
+          // reported honestly (never a fabricated page).
+          try {
+            let fetchUrlArg = "";
+            try { fetchUrlArg = String(JSON.parse(tc.function.arguments || "{}")?.url ?? "").trim(); } catch { /* malformed model args */ }
+            if (!fetchUrlArg) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "No URL provided to fetch." }) });
+            } else {
+              const wfResponse = await fetch(`${supabaseUrl}/functions/v1/fetch-url-content`, {
+                method: "POST",
+                headers: { Authorization: authHeader, "Content-Type": "application/json" },
+                body: JSON.stringify({ url: fetchUrlArg }),
+              });
+              const wfData = await wfResponse.json().catch(() => ({} as Record<string, unknown>));
+              if (wfResponse.ok && (wfData as any)?.success && typeof (wfData as any).content === "string") {
+                const d = wfData as any;
+                const safeUrl = sanitizeUntrustedText(d.url ?? fetchUrlArg).replace(/[\r\n]+/g, " ").trim().slice(0, 500);
+                const safeTitle = d.title ? sanitizeUntrustedText(d.title).replace(/[\r\n]+/g, " ").trim().slice(0, 300) : null;
+                toolResults.push({
+                  tool_call_id: tc.id,
+                  role: "tool",
+                  content: JSON.stringify({
+                    success: true,
+                    untrusted: true,
+                    url: safeUrl,
+                    title: safeTitle,
+                    fetched_at: new Date().toISOString(),
+                    truncated: d.truncated === true,
+                    content: `${RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE}\n\n${sanitizeUntrustedText(d.content)}`,
+                  }),
+                });
+              } else {
+                // Honest refusal/failure — never a fabricated page (§13). Surface the stable
+                // reason so Paige can tell the user why (e.g. a private/redirecting URL).
+                const reason = typeof (wfData as any)?.reason === "string" ? (wfData as any).reason : "fetch_failed";
+                const errMsg = typeof (wfData as any)?.error === "string" ? (wfData as any).error : `Could not fetch that URL (${reason}).`;
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, reason, error: errMsg }) });
+              }
+            }
+          } catch (err) {
+            console.error("[paige] web_fetch tool failed:", err instanceof Error ? err.message : err);
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Web fetch failed." }) });
+          }
         } else if (
           !fundingEnabled &&
           (tc.function.name === "search_regional_lenders" ||
