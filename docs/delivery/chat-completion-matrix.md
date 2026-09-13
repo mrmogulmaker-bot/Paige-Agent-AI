@@ -86,11 +86,11 @@ Until it merges, Chat presents skills as UNAVAILABLE/route‑to‑admin.
 |---|---|---|---|---|
 | In‑chat web search (`web_search`) | `index.ts:8768` → `paige-web-search` (Firecrawl v2), honest `configured:false` | **LIVE code / PROOF_OWED** on live results (`FIRECRAWL_API_KEY` prod presence unconfirmed) | `paige-web-search` edge fn | confirm key; one cited drive |
 | Public research w/ citations (`deep_research`) | `index.ts:8797` → `paige-deep-research` (plan→search→read→cite), anti‑fabrication, persists `research_runs`/`research_sources` | **LIVE code / PROOF_OWED** on live sourcing | `paige-deep-research` | cited run + persisted rows |
-| `web_fetch` model tool | **inert stub** — `index.ts:8591` returns "Web fetch not executed in this flow" | **UNAVAILABLE** (declared‑but‑inert dead tool) | none | route to `fetch-url-content`/`browse_public_url`, or remove the dead tool def |
-| Auto URL‑fetch on pasted link (non‑client tier) | `index.ts:1390` → `fetch-url-content`, https‑only, injection‑fenced | **LIVE** (non‑client) w/ SSRF caveat | `fetch-url-content` | uses inline regex not `_shared/ssrfGuard.ts safeFetch` (#138 DNS‑rebind gap) |
+| `web_fetch` model tool | **functional (PR #1227)** — routes to the hardened `fetch-url-content`, injection‑fenced (`RETRIEVED_KNOWLEDGE_UNTRUSTED_NOTICE` + `sanitizeUntrustedText`), provenance `{url,title,fetched_at,truncated}`, honest refusal/failure; all seats incl. **client** (owner ruled do‑NOT‑retire) | **LIVE code (edge‑deploy on merge) / PROOF_OWED** on an authenticated client‑seat drive | `fetch-url-content` (on `_shared/ssrfGuard.ts safeFetch`) | authenticated client `web_fetch` live‑drive owed (§32.c/§70) |
+| Auto URL‑fetch on pasted link (non‑client tier) | `index.ts:1390` → `fetch-url-content` (now `safeFetch`‑guarded), https‑only, injection‑fenced | **LIVE** (non‑client) | `fetch-url-content` | SSRF caveat RESOLVED (PR #1227 migrated it onto `_shared/ssrfGuard.ts safeFetch`; the remaining #138 DNS‑rebind is the documented ssrfGuard TOCTOU residual, not the old regex gap) |
 | Secure‑browser session (`browser-use`) | request boundary LIVE but **worker gated OFF** → 503 `secure_worker_under_setup`; no chat/UI entry point | **UNAVAILABLE** | `_shared/secure-browser-authority.ts` | clear vendor gates, wire worker, add entry point (#1046 in‑flight) |
 | `browse_public_url` skill | full chain wired; gated by `PAIGE_BROWSER_WILDCARD_ENABLED`; reachable only via `run_skill`, not the chat loop | **PARTIAL/PROOF_OWED** | interpreter → `skill-runner` → `paige-browser` → `paige_browser_usage` | verify flag prod value; expose in chat; §32.c drive |
-| Read‑only egress fence | `_shared/ssrfGuard.ts` + worker fence, exercised against real Chromium in CI | **LIVE (CI‑proven)** | ssrfGuard + `paige-browser/ssrf-guard.mjs` | migrate `fetch-url-content` onto it |
+| Read‑only egress fence | `_shared/ssrfGuard.ts` + worker fence, exercised against real Chromium in CI | **LIVE (CI‑proven)** | ssrfGuard + `paige-browser/ssrf-guard.mjs` | `fetch-url-content` migrated onto it (PR #1227, + a `smoke:web-fetch-hardening` CI gate); `kb-ingest-url` regex fork still owed (tracked follow-up) |
 
 *Doc gap (§66):* the tier‑matrix carries no Surface‑ledger row for this family.
 
@@ -170,7 +170,7 @@ generation → real artifact.
 3. **The Gateway governs only 2 reads** — the ~51 mutating tools' admissibility is still inline.
 4. **Uncited‑knowledge risk** — retrieved tenant knowledge reaches the owner with no source/date; the RAG
    rule weaves it as uncited natural assertion. Fabrication is fenced; attribution is not.
-5. **Dead tool** — `web_fetch` is offered to the model but inert.
+5. **Dead tool — RESOLVED (PR #1227):** `web_fetch` is now functional (hardened routing to `fetch-url-content`, injection‑fenced, client‑seat enabled); authenticated client‑seat live‑drive still PROOF_OWED.
 6. **Chat is the thinnest of three surfaces** — skills execution and run‑monitor/cancel/approve‑proposal
    exist on MCP + admin UI but not in the cockpit.
 
@@ -189,7 +189,7 @@ headless tests now and an authenticated drive when the test tenant lands.
    *(Continues #1166.)*
 2. **Persistent tasks/history:** wire a chat tool to set `tasks.source_thread_id` and a truthful
    task‑status/resume readback (the durable‑tasking gap).
-3. **Research/browser presentation:** retire or route the inert `web_fetch`; surface `web_search`/
+3. **Research/browser presentation:** ~~retire or route the inert `web_fetch`~~ ✅ DONE (PR #1227 — routed + hardened + client‑enabled, authenticated drive PROOF_OWED); remaining: surface `web_search`/
    `deep_research` state + citations truthfully (provider‑config‑honest); route‑only to Secure Browser
    until its worker merges.
 4. **Knowledge presentation:** thread source/date into tenant‑KB retrieval + a citation affordance
