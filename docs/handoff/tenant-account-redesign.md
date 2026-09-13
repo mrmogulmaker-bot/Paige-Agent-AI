@@ -482,7 +482,7 @@ Production integration reuses components rather than recreating them:
 | Clients / Contacts | `ContactsAdmin`, `ContactDetail`, `ClientJourney` |
 | Clients / Conversations | `ClientsConversations` and its subordinate tab family |
 | Clients / Pipeline | `PipelineAdmin`, `DealDrawer`, `NewDealDialog`, `PipelineFromProgramDialog` |
-| Work | `PlanningAdmin`, `CalendarAdmin`, `WorkflowsList`, `WorkflowRuns`, `WorkflowRunDetail`, `ApprovalsInbox`, `ApprovalDetail` |
+| Work | `PlanningAdmin`, `CalendarAdmin`, `WorkflowsList`, `WorkflowRuns`, `WorkflowRunDetail`; approvals reuse `ApprovalRow` (via `DraftsAwaitingPanel`/`GamePlanApprovals`) + the Command Center hooks — the standalone `ApprovalsInbox`/`ApprovalDetail` were unmounted dead code and were removed in #1250, so do NOT recreate them |
 | Studio | `StudioLayout`, `StudioHome`, `StudioLibrary`, `VibeStudio`, `StudioShell`; the session is PAIGE, so no second rail mounts |
 | Insights | `AnalyticsDashboard`; Sales/Forecast reads must reuse the Pipeline deal/stage scope |
 | Settings | existing `Setup*`, `IntegrationsHub`, `TeamHub`, `SubAgentsAdmin`, `SkillsHub`, Marketplace, knowledge, autonomy and billing components |

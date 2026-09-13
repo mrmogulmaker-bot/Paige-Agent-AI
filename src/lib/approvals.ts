@@ -52,7 +52,10 @@ export async function createApproval(input: CreateApprovalInput) {
     tenant_id: profile?.active_tenant_id ?? null,
   };
 
-  return supabase.from("paige_pending_approvals").insert(row).select("id").single();
+  // createApproval only ever MINTS a pending row — `row.status` is `"pending" as const` (above),
+  // never "approved" — so this is the create-a-pending-approval helper, not an approve write. The
+  // approve transition is the canonical execute-approval seam (§10/§18); see approval-direct-write-lint.
+  return supabase.from("paige_pending_approvals").insert(row).select("id").single(); // approval-write-exempt: mints status:"pending" (see row above), never "approved"
 }
 
 export const CATEGORY_LABEL: Record<ApprovalCategory, string> = {

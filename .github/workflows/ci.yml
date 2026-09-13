@@ -323,6 +323,19 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:approval-gate:test
 
+      # The FRONTEND never marks a paige_pending_approvals row 'approved' itself — that status
+      # comes only through the canonical execute-approval seam (§10/§18), which executes the
+      # consequence + writes Rail/receipt. A direct browser status='approved' write bypasses the
+      # seam and silent-drops a message send. The mounted approve surfaces already route through
+      # the seam; this locks that in so it cannot regress. (Declines stay direct — out of scope.)
+      - name: No direct approved-write to paige_pending_approvals from the frontend
+        if: ${{ !cancelled() }}
+        run: npm run lint:approval-direct-write
+
+      - name: Direct-approved-write guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:approval-direct-write:test
+
       # The Surface Binding Ledger is the Paige OS Integration release/regression contract. A surface
       # may not be reported LIVE / "Paige-connected" without a complete ledger entry proven by
       # authenticated runtime — a rendered page, a badge, a prototype, or an "Open Paige" button never

@@ -228,7 +228,7 @@ export function useAgencyCommandCenter(ctx: AgencyShellCtx): AgencyCommandCenter
 
   const decline = useCallback(
     async (id: string): Promise<{ ok: boolean; error?: string }> => {
-      // Reject-with-reason: the SAME RLS-protected UPDATE ApprovalRow/ApprovalDetail ship (§18).
+      // Reject-with-reason: the SAME tenant-scoped RLS-protected UPDATE ApprovalRow's decline path uses (§18).
       const { error } = await supabase
         .from("paige_pending_approvals")
         .update({

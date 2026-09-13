@@ -1,5 +1,8 @@
--- Layer C · C5 slice 2 (+ fix-forward 20270306000000) — companion-minting, readable description, ledger-proven
--- direct-approve guard, cancellation-sync, durable reconciler (RPC-return-truthful), and the idempotent backfill.
+-- Layer C · C5 slice 2 (+ fix-forward 20270306000000, + guard-INSERT #15 20270317000000) — companion-minting,
+-- readable description, ledger-proven direct-approve guard, cancellation-sync, durable reconciler
+-- (RPC-return-truthful), the idempotent backfill, AND (section I) the INSERT-path guard: a JWT caller cannot
+-- create a source='paige_orchestration' row already at status='approved' nor launder a non-orchestration row
+-- INTO orchestration; the service-role create path is ledger-gated. plan(60).
 -- Behavioural proof against the schema `supabase db reset` replayed from zero (house pgTAP style; synthetic
 -- opaque fixtures; the enclosing transaction is ALWAYS rolled back — no production/customer records).
 --
@@ -9,7 +12,7 @@
 -- then RE-ENABLED and exercised via real INSERT/UPDATE, and the reconciler is called as the cron/service
 -- context (auth.uid() NULL) exactly as pg_cron invokes it.
 begin;
-select plan(53);
+select plan(60);
 
 -- Seed the tenant in NORMAL mode (triggers ON) so its account_number-assignment trigger fires.
 insert into public.tenants(id, slug, name, status, account_type, account_number_prefix, features) values
@@ -90,6 +93,12 @@ insert into public.paige_act_executions
 insert into public.paige_pending_approvals(id, type, draft_content, category, tenant_id, source, status, metadata) values
   ('9a00000b-0000-4000-8000-00000000000b','other','{}'::jsonb,'crm.advance_journey_stage','11111111-1111-4111-8111-111111111111','paige_orchestration','pending',
    jsonb_build_object('source','paige_orchestration','event_id','1e00000b-0000-4000-8000-00000000000b','act_id','ac00000b-0000-4000-8000-00000000000b'));
+
+-- LE: an already-EXECUTED held act with NO companion — the #15 INSERT-guard "sanctioned shape" control
+-- (a service-role INSERT of an approved companion is admitted only when the ledger is terminal).
+insert into public.paige_act_executions
+  (id, event_id, automation_id, act_id, act_position, tenant_id, adapter_kind, capability_key, effective_lane, outcome, idempotency_key, correlation_ref, settled_at, detail) values
+  ('ad00000e-0000-4000-8000-00000000000e','1e00000e-0000-4000-8000-00000000000e','a000000e-0000-4000-8000-00000000000e','ac00000e-0000-4000-8000-00000000000e',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','executed','idem-e','corr-e', now(), '{}'::jsonb);
 
 -- LC: a held act at approval_pending with NO companion (mint disabled at seed) — the BACKFILL orphan.
 insert into public.paige_act_executions
@@ -406,6 +415,62 @@ reset request.jwt.claim.sub;
 select ok((select source='paige_orchestration' and status='pending'
              from public.paige_pending_approvals where id='9a00000d-0000-4000-8000-00000000000d'),
           'guard: after the refused launder attempts the row is unchanged (still orchestration + pending)');
+
+-- ══ (I) INSERT GUARD (#15) — the direct-approve guard now also fires on the CREATE path ═════════════════════
+-- The fix-forward guard closed the UPDATE bypass; this proves migration 20270317000000 also blocks CREATING a
+-- source='paige_orchestration' row already at status='approved'. NARROW: it fires ONLY for orchestration rows
+-- at status=approved on INSERT — the mint's own pending create and any non-orchestration create are untouched.
+-- (I0) the guard trigger is now wired BEFORE (bit 2 set) INSERT (bit 4) OR UPDATE (bit 16).
+select ok((select (tgtype & 2) > 0 and (tgtype & 4) > 0 and (tgtype & 16) > 0 from pg_trigger where tgname='trg_paige_guard_orchestration_direct_approve'),
+          'insert guard: the direct-approve trigger is BEFORE INSERT OR UPDATE (the create path is wired)');
+-- (I1) a JWT/browser caller may NEVER create an already-approved orchestration record.
+set request.jwt.claim.sub = '88888888-8888-4888-8888-888888888888';
+select throws_ok(
+  $$ insert into public.paige_pending_approvals(type, draft_content, category, tenant_id, source, status, metadata)
+       values('other','{}'::jsonb,'crm.advance_journey_stage','11111111-1111-4111-8111-111111111111','paige_orchestration','approved',
+         jsonb_build_object('source','paige_orchestration','event_id','1e0000f1-0000-4000-8000-0000000000f1','act_id','ac0000f1-0000-4000-8000-0000000000f1')) $$,
+  '42501', NULL,
+  'insert guard (#15): a JWT caller cannot CREATE an orchestration approval already at status=approved (create twin of the UPDATE bypass)');
+reset request.jwt.claim.sub;
+-- (I2) even the service role cannot create an approved orchestration row while the LEDGER is not terminal.
+select throws_ok(
+  $$ insert into public.paige_pending_approvals(type, draft_content, category, tenant_id, source, status, metadata)
+       values('other','{}'::jsonb,'crm.advance_journey_stage','11111111-1111-4111-8111-111111111111','paige_orchestration','approved',
+         jsonb_build_object('source','paige_orchestration','event_id','1e0000f2-0000-4000-8000-0000000000f2','act_id','ac0000f2-0000-4000-8000-0000000000f2')) $$,
+  '42501', NULL,
+  'insert guard (ledger cross-check): a service-role create-approved is refused while the canonical ledger act is not terminal');
+-- (I3) the sanctioned shape LIVES: service role + a terminal (executed) ledger act (ad00000e) with no companion yet.
+select lives_ok(
+  $$ insert into public.paige_pending_approvals(type, draft_content, category, tenant_id, source, status, metadata)
+       values('other','{}'::jsonb,'crm.advance_journey_stage','11111111-1111-4111-8111-111111111111','paige_orchestration','approved',
+         jsonb_build_object('source','paige_orchestration','event_id','1e00000e-0000-4000-8000-00000000000e','act_id','ac00000e-0000-4000-8000-00000000000e')) $$,
+  'insert guard: a service-role create-approved is allowed when the ledger act is executed (defense-in-depth twin of the UPDATE gate — not a blanket service-role block)');
+-- (I4) the normal mint create shape (orchestration, status=pending) is UNAFFECTED — the branch only fires on approved.
+select lives_ok(
+  $$ insert into public.paige_pending_approvals(type, draft_content, category, tenant_id, source, status, metadata)
+       values('other','{}'::jsonb,'crm.advance_journey_stage','11111111-1111-4111-8111-111111111111','paige_orchestration','pending',
+         jsonb_build_object('source','paige_orchestration','event_id','1e0000f4-0000-4000-8000-0000000000f4','act_id','ac0000f4-0000-4000-8000-0000000000f4')) $$,
+  'insert guard: an orchestration PENDING create (the mint''s own shape) is unaffected');
+-- (I5) NARROW SCOPE: a NON-orchestration approved create is untouched (the guard fast-returns for it).
+select lives_ok(
+  $$ insert into public.paige_pending_approvals(type, draft_content, category, tenant_id, source, status, metadata)
+       values('cs_draft','{}'::jsonb,'followup','11111111-1111-4111-8111-111111111111','paige_action_bus','approved','{}'::jsonb) $$,
+  'insert guard NARROW: a NON-orchestration approved create is NOT blocked (the DB does not globally block every direct approval write — that broader RLS is the next slice)');
+-- (I6) Codex P1 (LAUNDER-IN): the exact cross-branch bypass — insert an allowed non-orchestration approved
+-- row (I5 above), then UPDATE only its source to paige_orchestration. 9a000001 is non-orchestration and was
+-- set approved in (D4); a JWT caller attempts to relabel it into orchestration. The launder-IN pin refuses it,
+-- so it can never dodge the executor-only approve gate by acquiring the orchestration source after the fact.
+set request.jwt.claim.sub = '88888888-8888-4888-8888-888888888888';
+select throws_ok(
+  $$ update public.paige_pending_approvals set source='paige_orchestration' where id='9a000001-0000-4000-8000-000000000001' $$,
+  '42501', NULL,
+  'insert guard (Codex P1): a non-orchestration approved row cannot be reclassified INTO paige_orchestration (launder-in bypass closed)');
+reset request.jwt.claim.sub;
+-- BOUNDARY NOTE (§39 observation, folded into the §59 next slice / task #18, NOT #15): this guard — exactly
+-- like the pre-existing owner-approved UPDATE gate — keys on the literal status='approved'. The status CHECK
+-- also permits 'approved_pending_send'/'sent' (the comms/send lifecycle, never the orchestration act flow);
+-- a companion set to one of those does not run the held act (the ledger drives execution, not the row status),
+-- so it is a display-only boundary, not an execution bypass — mapped in the non-orchestration approvals-RLS slice.
 
 select * from finish();
 rollback;
