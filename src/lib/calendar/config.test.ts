@@ -12,6 +12,7 @@ import {
   DEFAULT_AVAIL, availToJson, blankDraft, buildCalendarPatch, draftFromRow, jsonToAvail,
   willSaveDateOverride, willSaveQuestion, willSaveAppointmentType,
   normalizeLocationOptions, normalizeNotify, slugify, type CalendarDraft, type CalendarRow,
+  PRESET_CATALOG, draftForTemplate, presetLifecycle, publishReadiness, LIFECYCLE_LABEL,
 } from "./config";
 
 const draft = (over: Partial<CalendarDraft> = {}): CalendarDraft => ({
@@ -248,5 +249,134 @@ describe("the drop predicates agree with what the save actually keeps", () => {
     const patch = buildCalendarPatch(draft({ appointment_types: [t] }), DEFAULT_AVAIL);
     expect(patch.appointment_types.length > 0).toBe(willSaveAppointmentType(t));
     expect(willSaveAppointmentType(t)).toBe(false);
+  });
+});
+
+/* --------------------------------------------------------------- lifecycle */
+
+describe("presetLifecycle — derived from enabled + published_at, never a third stored column", () => {
+  it("an enabled preset is Live regardless of published_at", () => {
+    expect(presetLifecycle({ enabled: true, published_at: null })).toBe("live");
+    expect(presetLifecycle({ enabled: true, published_at: "2027-01-01T00:00:00Z" })).toBe("live");
+  });
+  it("a disabled preset that has NEVER been published is a Draft", () => {
+    expect(presetLifecycle({ enabled: false, published_at: null })).toBe("draft");
+  });
+  it("a disabled preset that HAS been published is Paused, not a Draft", () => {
+    expect(presetLifecycle({ enabled: false, published_at: "2027-01-01T00:00:00Z" })).toBe("paused");
+  });
+  it("an archived preset reads as Archived, with precedence over every other state", () => {
+    // Archive forces enabled=false server-side, so enabled+archived cannot co-occur;
+    // but even if a row somehow carried both, archived must WIN (it is put away).
+    expect(presetLifecycle({ enabled: false, published_at: null, archived_at: "2027-02-01T00:00:00Z" })).toBe("archived");
+    expect(presetLifecycle({ enabled: false, published_at: "2027-01-01T00:00:00Z", archived_at: "2027-02-01T00:00:00Z" })).toBe("archived");
+    expect(presetLifecycle({ enabled: true, published_at: "2027-01-01T00:00:00Z", archived_at: "2027-02-01T00:00:00Z" })).toBe("archived");
+  });
+  it("a null archived_at never changes the draft/live/paused derivation", () => {
+    expect(presetLifecycle({ enabled: false, published_at: null, archived_at: null })).toBe("draft");
+    expect(presetLifecycle({ enabled: true, published_at: null, archived_at: null })).toBe("live");
+    expect(presetLifecycle({ enabled: false, published_at: "2027-01-01T00:00:00Z", archived_at: null })).toBe("paused");
+  });
+  it("LIFECYCLE_LABEL carries a human label for every lifecycle including archived", () => {
+    expect(LIFECYCLE_LABEL.archived).toBe("Archived");
+  });
+});
+
+describe("publishReadiness — the client mirror of the server publish gate", () => {
+  const win = [{ day: 1, start: "09:00", end: "17:00" }];
+  const phone = [{ type: "phone", value: null }];
+
+  it("a personal preset with a host, an open window and a method is ready", () => {
+    expect(publishReadiness({ type: "personal", availability_json: win, date_overrides: [], location_options: phone, hostCount: 1 }).ready).toBe(true);
+  });
+  it("refuses a personal preset with NO host", () => {
+    const r = publishReadiness({ type: "personal", availability_json: win, date_overrides: [], location_options: phone, hostCount: 0 });
+    expect(r.ready).toBe(false);
+    expect(r.blockers.join(" ")).toMatch(/host/i);
+  });
+  it("refuses round_robin / collective with fewer than two hosts (the honesty floor)", () => {
+    expect(publishReadiness({ type: "round_robin", availability_json: win, date_overrides: [], location_options: phone, hostCount: 1 }).ready).toBe(false);
+    expect(publishReadiness({ type: "collective", availability_json: win, date_overrides: [], location_options: phone, hostCount: 1 }).ready).toBe(false);
+    expect(publishReadiness({ type: "round_robin", availability_json: win, date_overrides: [], location_options: phone, hostCount: 2 }).ready).toBe(true);
+  });
+  it("refuses when there is no open window (weekly or override)", () => {
+    const r = publishReadiness({ type: "personal", availability_json: [], date_overrides: [], location_options: phone, hostCount: 1 });
+    expect(r.ready).toBe(false);
+    expect(r.blockers.join(" ")).toMatch(/window/i);
+  });
+  it("accepts a date-override window when there is no weekly window", () => {
+    const r = publishReadiness({
+      type: "personal", availability_json: [], hostCount: 1, location_options: phone,
+      date_overrides: [{ date: "2027-03-01", blocked: false, windows: [{ start: "10:00", end: "12:00" }] }],
+    });
+    expect(r.ready).toBe(true);
+  });
+  it("refuses when there is no usable method", () => {
+    const r = publishReadiness({ type: "personal", availability_json: win, date_overrides: [], location_options: [], location_type: null, hostCount: 1 });
+    expect(r.ready).toBe(false);
+    expect(r.blockers.join(" ")).toMatch(/meeting|method|happens/i);
+  });
+  it("refuses a bare ask_invitee with no concrete option — matches the stricter server bar", () => {
+    // The server helper (_calendar_preset_block_reason) does not count `ask_invitee`
+    // as a usable method by itself; the client mirror must not either, or it would
+    // enable Publish for a page the server then refuses (a false 'ready', §13).
+    const r = publishReadiness({ type: "personal", availability_json: win, date_overrides: [], location_options: [], location_type: "ask_invitee", hostCount: 1 });
+    expect(r.ready).toBe(false);
+    expect(r.blockers.join(" ")).toMatch(/meeting|method|happens/i);
+  });
+  it("accepts ask_invitee as location_type once a concrete option is offered", () => {
+    const r = publishReadiness({ type: "personal", availability_json: win, date_overrides: [], location_options: phone, location_type: "ask_invitee", hostCount: 1 });
+    expect(r.ready).toBe(true);
+  });
+  it("refuses a malformed weekly window ('9:00', not HH:MM) — matches the server's shape check", () => {
+    const bad = [{ day: 1, start: "9:00", end: "17:00" }];
+    const r = publishReadiness({ type: "personal", availability_json: bad, date_overrides: [], location_options: phone, hostCount: 1 });
+    expect(r.ready).toBe(false);
+    expect(r.blockers.join(" ")).toMatch(/window/i);
+  });
+});
+
+/* ------------------------------------------------------------ preset templates */
+
+describe("PRESET_CATALOG + draftForTemplate — recognizable models, editable defaults, §2/§63 clean", () => {
+  it("offers the six owner-named categories, custom last", () => {
+    expect(PRESET_CATALOG.map((c) => c.id)).toEqual([
+      "one_on_one", "round_robin", "collective", "group_class", "webinar", "custom",
+    ]);
+    expect(PRESET_CATALOG.at(-1)?.custom).toBe(true);
+  });
+  it("carries the honest host floor the server enforces (2 for team models)", () => {
+    const byId = Object.fromEntries(PRESET_CATALOG.map((c) => [c.id, c.minHosts]));
+    expect(byId.round_robin).toBe(2);
+    expect(byId.collective).toBe(2);
+    expect(byId.one_on_one).toBe(1);
+  });
+  it("webinar is honestly the event model (no separate streaming substrate)", () => {
+    const webinar = PRESET_CATALOG.find((c) => c.id === "webinar")!;
+    expect(webinar.model).toBe("event");
+    expect(webinar.detail).toMatch(/no separate streaming|same registration engine|registration engine as a group/i);
+  });
+  it("a standard template builds a Draft-shaped CalendarDraft with the model + duration", () => {
+    const cat = PRESET_CATALOG.find((c) => c.id === "one_on_one")!;
+    const tmpl = cat.templates.find((t) => t.id === "consult45")!;
+    const d = draftForTemplate(cat, tmpl, "");
+    expect(d.type).toBe("personal");
+    expect(d.duration_min).toBe(45);
+    expect(d.title.length).toBeGreaterThan(0); // falls back to the template title
+  });
+  it("an event template carries a real capacity (not the 1:1 default)", () => {
+    const cat = PRESET_CATALOG.find((c) => c.id === "group_class")!;
+    const d = draftForTemplate(cat, cat.templates[0], "");
+    expect(d.type).toBe("event");
+    expect(d.capacity).toBeGreaterThan(1);
+  });
+  it("custom takes the owner's name and chosen model, carries no baked identity", () => {
+    const custom = PRESET_CATALOG.find((c) => c.custom)!;
+    const d = draftForTemplate({ ...custom, model: "collective" }, null, "Strategy session");
+    expect(d.title).toBe("Strategy session");
+    expect(d.type).toBe("collective");
+    // No hardcoded tenant/brand/service/provider identity leaked into the draft (§2/§63).
+    expect(d.location_options).toEqual([{ type: "phone", value: null }]);
+    expect(d.appointment_types).toEqual([]);
   });
 });

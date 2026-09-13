@@ -2322,6 +2322,7 @@ export type Database = {
         Row: {
           accent: string | null
           appointment_types: Json
+          archived_at: string | null
           assignment_strategy: Json
           availability_json: Json | null
           booking_horizon_days: number
@@ -2345,6 +2346,7 @@ export type Database = {
           logo_url: string | null
           min_notice_min: number
           notify_config: Json
+          published_at: string | null
           redirect_url: string | null
           show_company_name: boolean
           slug: string
@@ -2359,6 +2361,7 @@ export type Database = {
         Insert: {
           accent?: string | null
           appointment_types?: Json
+          archived_at?: string | null
           assignment_strategy?: Json
           availability_json?: Json | null
           booking_horizon_days?: number
@@ -2382,6 +2385,7 @@ export type Database = {
           logo_url?: string | null
           min_notice_min?: number
           notify_config?: Json
+          published_at?: string | null
           redirect_url?: string | null
           show_company_name?: boolean
           slug: string
@@ -2396,6 +2400,7 @@ export type Database = {
         Update: {
           accent?: string | null
           appointment_types?: Json
+          archived_at?: string | null
           assignment_strategy?: Json
           availability_json?: Json | null
           booking_horizon_days?: number
@@ -2419,6 +2424,7 @@ export type Database = {
           logo_url?: string | null
           min_notice_min?: number
           notify_config?: Json
+          published_at?: string | null
           redirect_url?: string | null
           show_company_name?: boolean
           slug?: string

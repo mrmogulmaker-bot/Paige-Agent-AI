@@ -46,6 +46,7 @@ type State = {
   accounts: SocialAccount[];
   pending: PendingAction | null;
   error: string | null;
+  statusError: string | null;
   notice: string | null;
 };
 
@@ -97,6 +98,20 @@ function accounts(value: unknown): SocialAccount[] {
     }];
   });
 }
+async function invocationPayload(data: unknown, error: unknown): Promise<Record<string, unknown> | null> {
+  const direct = object(data);
+  if (direct) return direct;
+  const context = object(error)?.context;
+  if (typeof Response !== "undefined" && context instanceof Response) {
+    try {
+      return object(await context.clone().json());
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 
 function messageFor(code: string | null): string {
   if (code === "ACTIVE_ACCOUNT_CHANGED") return "Your workspace changed. Reopen Social in the intended workspace.";
@@ -106,6 +121,9 @@ function messageFor(code: string | null): string {
   if (code === "SOCIAL_DISCONNECT_UNCONFIRMED") return "The provider did not confirm disconnection. Nothing was marked disconnected in Paige.";
   if (code === "SOCIAL_DISCONNECT_RECONCILIATION_REQUIRED") return "The provider revoked access, but Paige could not finish the local record. Support reconciliation is required.";
   if (code === "capability_unavailable" || code === "SOCIAL_UNAVAILABLE") return "Social connection setup is not configured for this environment.";
+  if (code === "SOCIAL_PROVIDER_UNAVAILABLE") return "Social authorization could not start. No account was connected. Try again; if this continues, Social provider setup needs attention.";
+  if (code === "provider_profile_limit") return "This workspace has reached the current Social account capacity. No account was connected.";
+  if (code === "provider_rate_limited") return "Social authorization is temporarily rate-limited. No account was connected; try again shortly.";
   return "Social could not complete that request. Nothing else was changed.";
 }
 
@@ -119,14 +137,14 @@ export function useSocialConnections() {
   const navigate = useNavigate();
   const [state, setState] = useState<State>({
     scope: null, loading: true, busy: false, canManage: false,
-    connections: [], accounts: [], pending: null, error: null, notice: null,
+    connections: [], accounts: [], pending: null, error: null, statusError: null, notice: null,
   });
 
   const reload = useCallback(async () => {
     if (!mounted.current || tenantLoading || !activeTenantId) return;
     const token = gate.current.begin();
     const opened = scope;
-    setState((current) => ({ ...current, scope: null, loading: true, error: null }));
+    setState((current) => ({ ...current, scope: null, loading: true, statusError: null }));
     const [rawConnectionRows, rawAccountRows, rawAuthority] = await Promise.all([
       // These SECURITY DEFINER projections derive the active tenant from the caller's JWT.
       supabase.rpc("social_connection_status"),
@@ -145,7 +163,8 @@ export function useSocialConnections() {
       canManage: !authority.error && authority.data === true,
       connections: readError ? [] : connections(connectionRows.data),
       accounts: readError ? [] : accounts(accountRows.data),
-      error: readError ? "Social connection status could not be read. No connection is assumed." : null,
+      statusError: readError ? "Social connection status could not be read. No connection is assumed." : null,
+      error: readError ? "Social connection status could not be read. No connection is assumed." : current.error,
     }));
   }, [activeTenantId, scope, tenantLoading]);
 
@@ -164,7 +183,7 @@ export function useSocialConnections() {
       body: { ...request, expected_tenant_id: activeTenantId },
     });
     if (!mounted.current || identity.current !== opened) return null;
-    const payload = object(result.data);
+    const payload = await invocationPayload(result.data, result.error);
     if (!payload) {
       setState((current) => ({ ...current, busy: false, error: messageFor(null) }));
       return null;

@@ -944,6 +944,23 @@ mcp.tool("decide_pending_approval", {
     if (decision !== "approve" && !note?.trim()) {
       return err("note_required_for_non_approve_decision");
     }
+    // Layer C (C5, §18/§P2 Codex peer-gate): an ORCHESTRATION-sourced approval (a HELD paige_act_executions
+    // act) must NOT be decided through this decision-only tool. Flipping its status→'approved' here would
+    // dead-end the act: the execute-approval seam (the ONE approve door that redeems + dispatches) then no-ops
+    // on its 'approved' idempotency guard, leaving the act stuck at approval_pending forever. Refuse and route
+    // to that seam. (Full MCP routing of orchestration approvals through the same executor is a later slice;
+    // today no such rows exist yet — this guard closes the trap the moment slice-2 minting creates them.)
+    const { data: srcRow, error: srcErr } = await admin
+      .from("paige_pending_approvals")
+      .select("source, metadata")
+      .eq("id", approval_id)
+      .maybeSingle();
+    if (srcErr) return err(srcErr.message);
+    if (!srcRow) return err("approval_not_found");
+    const srcMeta = (srcRow.metadata && typeof srcRow.metadata === "object") ? srcRow.metadata as Record<string, unknown> : {};
+    if (srcRow.source === "paige_orchestration" || srcMeta.source === "paige_orchestration") {
+      return err("orchestration_approval_routed_through_executor: decide this via the execute-approval seam (it redeems + dispatches the held act), not decide_pending_approval");
+    }
     const statusMap: Record<string, string> = {
       approve: "approved",
       reject: "rejected",

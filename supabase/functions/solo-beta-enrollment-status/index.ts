@@ -37,8 +37,9 @@ Deno.serve(async (req) => {
 
   if (activeMemberships.length > 0 && !enrollment) {
     return json(200, {
-      state: "failed", reference_id: referenceId, retryable: false,
-      message: "Your existing workspace access is unchanged. Sign in through your usual workspace route; Solo Beta enrollment was not applied.",
+      state: "choose_account", reference_id: referenceId, retryable: false,
+      message: "Your existing workspace access is verified. Choose the workspace where you want to work.",
+      destination: "/choose-account",
     });
   }
 

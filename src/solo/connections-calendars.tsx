@@ -14,15 +14,17 @@
  *   rules, Service menu, Team, How to meet, Booking page, Intake questions,
  *   Notifications. Nothing was invented for this port and nothing was dropped.
  *
- * THE SHAPE, and why it is one long page rather than a fitted panel. Calendar
- * configuration is one of the few settings experiences where a deliberate
- * vertical scroll is the correct answer: there are connected accounts, several
- * presets, ten configuration areas and dozens of rules inside them. Forcing that
- * into a fixed-height pane produces nested scrollers, and a nested scroller is
- * where a control goes to hide. So the page reads top to bottom in the order a
- * person actually needs it — accounts, then presets, then the selected preset's
- * status and its link, then the builder — the sub-navigation stays pinned so the
- * context never leaves, and NOTHING on this surface owns its own scrollbar.
+ * THE SHAPE is master/detail (owner direction 2026-09-13). The main page is a
+ * LIST: connected accounts, then compact preset cards — name, model, duration,
+ * host summary and Draft/Live/Paused status — and a "New preset" chooser that
+ * opens on the recognizable booking models rather than a blank name field.
+ * Opening a preset swaps the whole surface to a focused EDITOR for that one
+ * preset: its status and link, then the ten configuration areas, with "All
+ * presets" the way back. The editor is still a deliberate top-to-bottom scroll —
+ * ten areas and dozens of rules do not belong in a fixed-height pane, where a
+ * nested scroller is exactly where a control goes to hide — but only ONE
+ * preset's configuration is ever on the page at a time, and NOTHING here owns its
+ * own scrollbar.
  *
  * WHAT A CLOSED AREA STILL TELLS YOU. Progressive disclosure only works if a
  * closed fold-out is still an answer, so every one carries the value that
@@ -40,17 +42,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import {
-  ArrowDown, ArrowUp, CalendarCheck, CalendarDays, CalendarX2, ChevronRight, Copy, ExternalLink,
-  Info, Link2, Loader2, Plus, RefreshCw, Trash2, TriangleAlert,
-  UserPlus, Users, Video, Undo2, ChevronsDownUp, ChevronsUpDown, CalendarPlus,
+  ArrowDown, ArrowLeft, ArrowUp, CalendarCheck, CalendarDays, CalendarX2, ChevronRight,
+  Copy, ExternalLink, Info, Link2, Loader2, Pause, Plus, RefreshCw, Rocket, Trash2, TriangleAlert,
+  UserPlus, Users, Video, Undo2, ChevronsDownUp, ChevronsUpDown, CalendarPlus, X,
 } from "lucide-react";
 import {
   type AvailState, type CalendarDraft, type CalendarRow, type NotifyConfig,
+  type PresetCategory, type PresetTemplate, type PublishCheck, type SchedulingModel,
   ASSIGNMENT_MODES, BOOKING_HORIZON_PRESETS, COMMON_TZ, DAY_NAMES, DURATION_PRESETS,
-  INTAKE_TYPES, LIFECYCLE_EVENTS, MEETING_METHODS, MERGE_FIELDS, NOTIFY_TARGETS, REMINDER_CHANNELS,
-  REMINDER_OFFSETS, FOLLOWUP_OFFSETS, SWATCHES, TYPES, TYPE_LABEL,
-  availToJson, bookingUrl, buildCalendarPatch, draftFromRow, jsonToAvail, newId, newQuestionId,
-  slugify, willSaveAppointmentType, willSaveDateOverride, willSaveQuestion,
+  INTAKE_TYPES, LIFECYCLE_EVENTS, LIFECYCLE_LABEL, MEETING_METHODS, MERGE_FIELDS, NOTIFY_TARGETS,
+  PRESET_CATALOG, REMINDER_CHANNELS, REMINDER_OFFSETS, FOLLOWUP_OFFSETS, SWATCHES, TYPES, TYPE_LABEL,
+  availToJson, bookingUrl, buildCalendarPatch, draftForTemplate, draftFromRow, jsonToAvail, newId,
+  newQuestionId, presetLifecycle, publishReadiness, slugify, willSaveAppointmentType,
+  willSaveDateOverride, willSaveQuestion,
 } from "@/lib/calendar/config";
 import { isStale as accountIsStale } from "@/lib/calendar/account-identity";
 import { useBeforeUnloadGuard } from "@/hooks/useBeforeUnloadGuard";
@@ -313,39 +317,73 @@ function areaState(key: AreaKey, { d, avail, hosts, hostsError, readiness }: Sum
 }
 
 /**
- * Creating a preset. Name it and it exists — live, bookable, hosted by you, with
- * working defaults — and the ten areas below are how you shape it from there.
+ * Creating a preset — a guided chooser, not a blank name field.
  *
- * A name is all that is asked for because everything else has a sane default and
- * is editable in place; demanding a form up front would put a wall in front of
- * the one thing this surface exists to let someone do.
+ * A booking preset is a scheduling MODEL first (one-on-one, a rotating team, a
+ * class, …), and a name second. Asking for a name before the owner has seen the
+ * models makes them invent a label for a thing they have not yet decided the
+ * shape of — the exact "learn the concept from an empty box" failure §36 exists
+ * to prevent. So this opens on the recognizable booking types (their meaning
+ * shown before selection), offers a few standard starting points inside each,
+ * and only then takes a name. Custom is the escape hatch: name it, pick how it
+ * schedules, start from a blank draft.
+ *
+ * Whatever is chosen, the result is a private DRAFT — the server creates it
+ * `enabled = false` and nothing here publishes it (§13). The ten-area editor is
+ * where it gets shaped; Publish is a separate, deliberate act.
  */
-function NewPreset({ onCreate, disabled }: { onCreate: (title: string) => Promise<boolean>; disabled: boolean }) {
+function NewPresetChooser({
+  onCreate, disabled,
+}: {
+  onCreate: (draft: CalendarDraft, avail?: AvailState) => Promise<{ ok: boolean; message?: string }>;
+  disabled: boolean;
+}) {
   const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
+  const [cat, setCat] = useState<PresetCategory | null>(null);
+  const [customModel, setCustomModel] = useState<SchedulingModel>("personal");
+  const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
-  useBeforeUnloadGuard(open && (title.trim().length > 0 || saving));
-  const inputRef = useRef<HTMLInputElement>(null);
+  // A create failure is shown INLINE here (not as a surface notice the modal
+  // would occlude), so the reason is readable where the attempt was made (§13/§15).
+  const [error, setError] = useState<string | null>(null);
+  const firstRef = useRef<HTMLButtonElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
+  const reset = useCallback(() => { setCat(null); setName(""); setCustomModel("personal"); setError(null); }, []);
+  const close = useCallback(() => { setOpen(false); reset(); }, [reset]);
 
-  const submit = async () => {
-    // `disabled` is in the guard, not just on the closed button. The empty state
-    // renders TWO of these forms — one in the header, one in the empty body —
-    // and once open they stop consulting it: submitting the first sets the
-    // shared busy flag, but the second, guarding only its OWN `saving`, would
-    // still go through and create a duplicate preset.
-    if (!title.trim() || saving || disabled) return;
+  useBeforeUnloadGuard(open && (saving || name.trim().length > 0));
+
+  // Focus the first actionable control whenever the step changes.
+  useEffect(() => {
+    if (!open) return;
+    if (cat) nameRef.current?.focus();
+    else firstRef.current?.focus();
+  }, [open, cat]);
+
+  // Escape closes the whole chooser (unless a create is in flight).
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !saving) close(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, saving, close]);
+
+  const createFrom = useCallback(async (category: PresetCategory, template: PresetTemplate | null) => {
+    if (saving || disabled) return;
+    if (category.custom && !name.trim()) { nameRef.current?.focus(); return; }
+    // Custom carries the owner's chosen scheduling behavior; a standard category
+    // carries its own fixed model.
+    const chosen = category.custom ? { ...category, model: customModel } : category;
+    setError(null);
     setSaving(true);
-    const created = await onCreate(title);
+    const res = await onCreate(draftForTemplate(chosen, template, name));
     setSaving(false);
-    // Only stand down on success. Closing the form after a failure threw away
-    // the name the person had typed and left them looking at a button again,
-    // with the reason for the failure rendered somewhere they were not.
-    if (!created) return;
-    setTitle("");
-    setOpen(false);
-  };
+    // Only stand down on success — a failure keeps the chooser (and the typed
+    // name) and shows the reason inline so it can be read and the attempt retried.
+    if (res.ok) close();
+    else setError(res.message ?? "Could not create the preset — please try again.");
+  }, [saving, disabled, name, customModel, onCreate, close]);
 
   if (!open) {
     return (
@@ -354,21 +392,99 @@ function NewPreset({ onCreate, disabled }: { onCreate: (title: string) => Promis
       </Btn>
     );
   }
+
   return (
-    <form className="cc-new" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
-      <input
-        ref={inputRef} className="cc-in" value={title} disabled={saving || disabled}
-        aria-label="Name for the new booking preset" placeholder="Discovery call"
-        onChange={(e) => setTitle(e.target.value)}
-        // Escape backs out without creating anything, and returns focus to the
-        // control that opened this.
-        onKeyDown={(e) => { if (e.key === "Escape") { setTitle(""); setOpen(false); } }}
-      />
-      <Btn kind="act" type="submit" size="s" disabled={saving || disabled || !title.trim()}>
-        {saving ? <Loader2 className="cc-spin" aria-hidden /> : <CalendarPlus aria-hidden />} Create
-      </Btn>
-      <Btn kind="ghost" size="s" onClick={() => { setTitle(""); setOpen(false); }} disabled={saving}>Cancel</Btn>
-    </form>
+    <div className="cc-chooser-backdrop" role="presentation"
+      onMouseDown={(e) => { if (e.currentTarget === e.target && !saving) close(); }}>
+      <div className="cc-chooser" role="dialog" aria-modal="true" aria-labelledby="cc-chooser-title">
+        <header className="cc-chooser-head">
+          <div>
+            <span>New booking preset</span>
+            <h2 id="cc-chooser-title">{cat ? cat.label : "What can people book?"}</h2>
+          </div>
+          <button type="button" className="cc-chooser-x" aria-label="Close" onClick={close} disabled={saving}>
+            <X aria-hidden />
+          </button>
+        </header>
+
+        {error && (
+          <div className="cc-chooser-err">
+            <Notice tone="bad" icon={<TriangleAlert aria-hidden />}>{error}</Notice>
+          </div>
+        )}
+
+        {!cat ? (
+          <div className="cc-chooser-body">
+            <p className="cc-chooser-lead">
+              Pick a booking model to start from. Each one creates a private draft you shape and
+              publish when you’re ready — nothing goes live yet.
+            </p>
+            <div className="cc-chooser-grid">
+              {PRESET_CATALOG.map((c, i) => (
+                <button key={c.id} type="button" ref={i === 0 ? firstRef : undefined}
+                  className="cc-chooser-cat" onClick={() => setCat(c)} disabled={saving}>
+                  <b>{c.label}</b>
+                  <span className="cc-chooser-sum">{c.summary}</span>
+                  <span className="cc-chooser-det">{c.detail}</span>
+                  {c.minHosts > 1 && <span className="cc-chooser-req"><Users aria-hidden /> Needs {c.minHosts}+ hosts</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : cat.custom ? (
+          <div className="cc-chooser-body">
+            <p className="cc-chooser-lead">{cat.detail}</p>
+            <label className="cc-chooser-field">
+              <span>Name</span>
+              <input ref={nameRef} className="cc-in" value={name} placeholder="e.g. Strategy session"
+                aria-label="Name for the new booking preset" disabled={saving}
+                onChange={(e) => setName(e.target.value)} />
+            </label>
+            <fieldset className="cc-chooser-models">
+              <legend>How it schedules</legend>
+              <div role="radiogroup" aria-label="How it schedules">
+                {TYPES.map((t) => (
+                  <button key={t.value} type="button" role="radio" aria-checked={customModel === t.value}
+                    className="cc-chooser-model" data-on={customModel === t.value} disabled={saving}
+                    onClick={() => setCustomModel(t.value as SchedulingModel)}>
+                    <b>{t.label}</b><span>{t.hint}</span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <div className="cc-chooser-actions">
+              <Btn kind="ghost" size="s" onClick={reset} disabled={saving}><ArrowLeft aria-hidden /> Back</Btn>
+              <Btn kind="act" size="s" onClick={() => void createFrom(cat, null)} disabled={saving || !name.trim()}>
+                {saving ? <Loader2 className="cc-spin" aria-hidden /> : <CalendarPlus aria-hidden />} Create draft
+              </Btn>
+            </div>
+          </div>
+        ) : (
+          <div className="cc-chooser-body">
+            <p className="cc-chooser-lead">{cat.detail}</p>
+            <label className="cc-chooser-field">
+              <span>Name <em>(optional — rename it any time)</em></span>
+              <input ref={nameRef} className="cc-in" value={name}
+                placeholder={cat.templates[0]?.title ?? cat.label}
+                aria-label="Name for the new booking preset" disabled={saving}
+                onChange={(e) => setName(e.target.value)} />
+            </label>
+            <div className="cc-chooser-list" role="list">
+              {cat.templates.map((t) => (
+                <button key={t.id} type="button" role="listitem" className="cc-chooser-tpl" disabled={saving}
+                  onClick={() => void createFrom(cat, t)}>
+                  <span><b>{t.label}</b><span>{t.blurb}</span></span>
+                  {saving ? <Loader2 className="cc-spin" aria-hidden /> : <ChevronRight aria-hidden />}
+                </button>
+              ))}
+            </div>
+            <div className="cc-chooser-actions">
+              <Btn kind="ghost" size="s" onClick={reset} disabled={saving}><ArrowLeft aria-hidden /> Back</Btn>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -481,8 +597,13 @@ export function CalendarsView() {
     [identity],
   );
 
+  // The preset the editor is open on, or null in LIST mode. It no longer falls
+  // through to the first row: the surface is a master/detail now — the main page
+  // shows the compact preset list and opens the focused editor only when the
+  // owner picks one (owner direction 2026-09-13). A stale selectedId (its row
+  // gone after a reload) resolves to null and drops back to the list.
   const selected = useMemo(
-    () => conn.calendars.find((c) => c.id === selectedId) ?? conn.calendars[0] ?? null,
+    () => conn.calendars.find((c) => c.id === selectedId) ?? null,
     [conn.calendars, selectedId],
   );
   /**
@@ -550,6 +671,14 @@ export function CalendarsView() {
     if (!selected || !patch) return;
     const title = String(patch.title ?? "").trim();
     if (!title) { note("warn", "Give this calendar a name before saving."); return; }
+    // Refused BEFORE the write, not after it — the same pre-await gate create,
+    // publish and pause already carry (§9). A save fired while the account is
+    // stale would UPDATE the DEPARTING account's calendar under a tenant that
+    // still names it, and the after-await `stillCurrent` guard cannot undo a write
+    // that already happened. Silent return, matching the sibling handlers: a
+    // notice raised here belongs to an account the reader has left. The dirty bar
+    // stays, so the edit is not lost — it re-offers Save once the account settles.
+    if (identity.isStale()) return;
     setSaving(true);
     const desired = slugify(slugInput);
     const body = desired && desired !== selected.slug ? { ...patch, slug: desired } : patch;
@@ -585,7 +714,17 @@ export function CalendarsView() {
     // and leaving those on screen would have the surface disagreeing with the
     // database about what exists, moments after saying the save worked.
     hydrate(result.row);
-    note("info", "Saved. The public page now uses these settings.");
+    // The server auto-pauses a LIVE preset that this edit pushed below the publish
+    // bar (dropped its last host, blanked its hours, removed its only method) — a
+    // Live public page that can no longer take a booking is taken off the air, not
+    // left lying. Say so plainly: a save that silently unpublished the page is
+    // exactly the surprise §13/§58 forbid. The re-hydrated row is now Paused, and
+    // the SelectedPreset banner spells out what to fix before re-publishing.
+    if (result.autoPaused) {
+      note("warn", "Saved — but this change means the page can no longer take a booking, so it’s now paused. Fix what’s flagged below, then Publish again.");
+    } else {
+      note("info", "Saved. The public page now uses these settings.");
+    }
   }, [selected, patch, slugInput, conn, hydrate, identity, note]);
 
   /**
@@ -632,38 +771,40 @@ export function CalendarsView() {
     }));
   }, []);
 
-  const create = useCallback(async (title: string) => {
+  const create = useCallback(async (newDraft: CalendarDraft, newAvail?: AvailState): Promise<{ ok: boolean; message?: string }> => {
+    // Every failure below RETURNS its reason rather than raising a surface notice,
+    // so the chooser can show it INLINE where the action was taken — a notice
+    // rendered on the surface would be occluded by the chooser modal, and "the
+    // reason can be read" (§13/§15) has to mean read here, not behind the dialog.
+    //
     // Checked BEFORE anything is created: the new calendar becomes the selection,
-    // and the hydration effect would replace the current draft with it. Guarding
-    // the preset cards left this second route to the same silent loss.
+    // and the hydration effect would replace the current draft with it.
     if (dirtyRef.current) {
-      note("warn", "Save or discard your changes before creating another preset — they would be lost otherwise.");
-      return false;
+      return { ok: false, message: "Save or discard your changes before creating another preset — they would be lost otherwise." };
     }
     // Refused BEFORE anything is written, because the check after the await
-    // structurally cannot cover this. That one compares the identity either
-    // side of the call, and in the window where the route has moved to the new
-    // account but the tenant has not, BOTH readings are the same mismatched
-    // pair — new route, old tenant — so it waves the result through on a
-    // calendar `createCalendar` has already inserted into the account being
-    // left. A write that has happened cannot be guarded after the fact; the
-    // only working guard is the one that declines to make it.
-    if (identity.isStale()) return false;
+    // structurally cannot cover the window where the route has moved to the new
+    // account but the tenant has not. A write that has happened cannot be guarded
+    // after the fact; the only working guard is the one that declines to make it.
+    if (identity.isStale()) {
+      return { ok: false, message: "This account just changed — reopen Calendars and create the preset there." };
+    }
     const token = identity.capture();
-    const r = await conn.createCalendar(title);
-    if (!identity.stillCurrent(token)) return false;
-    if (!r.ok) { note("bad", r.message); return false; }
-    // Select what was just made and open its Details, so naming it lands you
-    // straight in the thing you now have to configure.
+    const r = await conn.createCalendar(newDraft, newAvail);
+    if (!identity.stillCurrent(token)) {
+      return { ok: false, message: "The account changed while creating — nothing was created on this one." };
+    }
+    if (!r.ok || !r.row) {
+      return { ok: false, message: r.ok ? "Created, but could not open it — refresh and try again." : r.message };
+    }
+    // Open the new preset's editor on Details, so choosing a model lands the owner
+    // straight in the thing they now shape. It is ALWAYS a private draft — the
+    // server never publishes on create — so the notice says exactly that, and the
+    // owner publishes deliberately from the editor when it is ready.
     setSelectedId(r.row.id);
     setOpen({ details: true });
-    // `enabled` is what the row actually came back as, not what was intended:
-    // the calendar is created as a draft and flipped live once its host exists,
-    // and if that flip did not take, calling it live here would be a fabricated
-    // status on the one screen that is supposed to report the truth.
-    if (r.row.enabled) note("info", `“${r.row.title}” is live — its booking link is ready to share.`);
-    else note("warn", `“${r.row.title}” was created as a draft. Switch it to Live when you are ready to take bookings.`);
-    return true;
+    note("info", `“${r.row.title}” started as a private draft. Configure it below, then Publish when you’re ready to take bookings.`);
+    return { ok: true };
   }, [conn, identity, note]);
 
   /**
@@ -702,27 +843,124 @@ export function CalendarsView() {
       return;
     }
     if (!identity.stillCurrent(token)) return;
-    note("info", "Booking link copied.");
-  }, [identity, note]);
+    // Honest about what was copied: a Draft/Paused preset's page is not public, so
+    // its URL is a future/held one, not a live booking link (§13).
+    note("info", selected?.enabled
+      ? "Booking link copied."
+      : "Copied the future booking URL — it becomes public when you publish this preset.");
+  }, [identity, note, selected]);
 
   /**
-   * Flipping a preset between Live and Draft.
-   *
-   * Hoisted out of the JSX it used to be written inline in, because an inline
-   * arrow cannot be guarded without repeating the guard at the call site, and
-   * an unguarded one writes A's failure into B: the toggle cannot be CLICKED
-   * while the route is stale (the editor is hidden), but it can be clicked the
-   * instant before and land the instant after.
+   * Publish / pause a preset — the lifecycle transitions, each guarded the same
+   * way `save` is: refused BEFORE the write when the account is stale, and the
+   * result dropped if it belongs to an account or preset the reader has left.
+   * Publish is the ONLY path to a public link, and the server revalidates it — a
+   * refusal returns the exact thing to fix, which the surface shows rather than
+   * pretending the page went live (§13).
    */
-  const toggleLive = useCallback(async (v: boolean) => {
+  const publishPreset = useCallback(async () => {
     if (!selected || identity.isStale()) return;
     const token = identity.capture();
-    const r = await conn.setEnabled(selected.id, v);
-    if (!identity.stillCurrent(token)) return;
+    const editing = selected.id;
+    const r = await conn.publish(selected.id);
+    if (!identity.stillCurrent(token) || liveSelected.current !== editing) return;
     if (!r.ok) note("bad", r.message);
+    else note("info", "Published. The booking link is live and taking bookings.");
   }, [selected, conn, identity, note]);
 
-  const ro = !conn.canWrite || saving;
+  const pausePreset = useCallback(async () => {
+    if (!selected || identity.isStale()) return;
+    const token = identity.capture();
+    const editing = selected.id;
+    const r = await conn.pause(selected.id);
+    if (!identity.stillCurrent(token) || liveSelected.current !== editing) return;
+    if (!r.ok) note("bad", r.message);
+    else note("info", "Paused. The public link no longer accepts bookings.");
+  }, [selected, conn, identity, note]);
+
+  /**
+   * Duplicate this preset — start a new private draft from its SAVED settings.
+   *
+   * The copy is made server-side from the stored row, not the on-screen draft, so
+   * unsaved edits would not be in it — which would be a quiet surprise. So this is
+   * guarded like create/switch: Save or Discard first. On success the new draft's
+   * editor opens (it is always a private draft — never live, never archived).
+   */
+  const duplicatePreset = useCallback(async () => {
+    if (!selected || identity.isStale()) return;
+    if (dirtyRef.current) {
+      note("warn", "Save or discard your changes before duplicating — the copy is made from the saved settings.");
+      return;
+    }
+    const token = identity.capture();
+    const r = await conn.duplicate(selected.id, selected.title);
+    if (!identity.stillCurrent(token)) return;
+    if (!r.ok || !r.row) {
+      note("bad", r.ok ? "Duplicated, but couldn’t open the copy — refresh to find it in the list." : r.message);
+      return;
+    }
+    setSelectedId(r.row.id);
+    setOpen({ details: true });
+    note("info", `Duplicated as “${r.row.title}” — a private draft. Configure it below, then Publish when you’re ready.`);
+  }, [selected, conn, identity, note]);
+
+  /**
+   * Archive this preset — put it away and take it off the air. The server forces
+   * `enabled=false`, so its public page stops taking bookings at once. Guarded
+   * against losing unsaved edits, then drops back to the list so the move into the
+   * Archived group is visible. Restore brings it back (as Draft or Paused).
+   */
+  const archivePreset = useCallback(async () => {
+    if (!selected || identity.isStale()) return;
+    if (dirtyRef.current) {
+      note("warn", "Save or discard your changes before archiving this preset — they would be lost otherwise.");
+      return;
+    }
+    const token = identity.capture();
+    const editing = selected.id;
+    const r = await conn.archive(selected.id);
+    if (!identity.stillCurrent(token) || liveSelected.current !== editing) return;
+    if (!r.ok) { note("bad", r.message); return; }
+    setSelectedId(null);
+    note("info", "Archived. It’s off the air and moved to Archived below — restore it any time.");
+  }, [selected, conn, identity, note]);
+
+  /**
+   * Restore an archived preset — bring it back to Draft or Paused. It never returns
+   * straight to Live: re-publishing is the separate, validated Publish act. The
+   * editor stays open on it and becomes editable again once the reload clears the
+   * archived flag.
+   */
+  const restorePreset = useCallback(async () => {
+    if (!selected || identity.isStale()) return;
+    const token = identity.capture();
+    const editing = selected.id;
+    const r = await conn.restore(selected.id);
+    if (!identity.stillCurrent(token) || liveSelected.current !== editing) return;
+    if (!r.ok) { note("bad", r.message); return; }
+    note("info", "Restored. It’s back as a draft (or paused) — edit it, or Publish when you’re ready.");
+  }, [selected, conn, identity, note]);
+
+  /**
+   * Leave the editor for the preset list. Guarded like a preset switch: unsaved
+   * edits are not silently thrown away — Save or Discard first.
+   */
+  const backToPresets = useCallback(() => {
+    if (dirtyRef.current) {
+      note("warn", "Save or discard your changes before leaving this preset — they would be lost otherwise.");
+      return;
+    }
+    setSelectedId(null);
+    setNotice(null);
+  }, [note]);
+
+  // An archived preset is FROZEN (the server refuses edit/publish on it), so the
+  // editor opens read-only: `ro` folds `archived` in, which disables every field,
+  // the slug input, and the Save bar (dirty can never become true with the inputs
+  // disabled). Restore is the one write offered on it, and it is gated on canWrite,
+  // not `ro`, so it stays clickable.
+  const archived = Boolean(selected?.archived_at);
+  const ro = !conn.canWrite || saving || archived;
   const hosts = selected ? conn.hosts[selected.id] ?? [] : [];
   const summaryInput: SummaryInput | null = draft
     ? { d: draft, avail, hosts, hostsError: conn.hostsError, readiness: conn.readiness }
@@ -738,6 +976,31 @@ export function CalendarsView() {
   );
   const issues = states.filter(([, s]) => s.tone === "bad" || s.tone === "warn");
   const allOpen = AREA_META.every((a) => open[a.key]);
+
+  // Can this preset be published right now — the SAME three checks the server
+  // enforces (`publish_calendar_preset`), mirrored so the editor can enable or
+  // disable Publish and name what is missing before the owner clicks it. Computed
+  // from the SAVED row, because Publish acts on what is stored; unsaved edits are
+  // the Save bar's concern, and the server is the authority either way (§13).
+  const publishCheck: PublishCheck = useMemo(
+    () => (selected
+      ? publishReadiness({
+          type: selected.type,
+          availability_json: selected.availability_json,
+          date_overrides: selected.date_overrides ?? [],
+          location_options: selected.location_options ?? [],
+          location_type: selected.location_type,
+          hostCount: hosts.length,
+        })
+      : { ready: false, blockers: [] }),
+    [selected, hosts.length],
+  );
+
+  // Editor mode vs list mode. The editor opens only on a real selection with a
+  // hydrated draft, a verified read and a non-stale account — the guard the
+  // editor block always carried, promoted to decide the whole surface's shape
+  // (the master/detail split, owner direction 2026-09-13).
+  const editorMode = Boolean(selected && draft && summaryInput && !conn.error && !identityStale);
 
   /**
    * The address to come back to after an OAuth round trip.
@@ -756,91 +1019,46 @@ export function CalendarsView() {
   }, [location.pathname, location.search]);
 
   return (
-    <div className="cc">
-      <ConnectedAccounts conn={conn} returnTo={returnHere} identity={identity} />
-
-      <section className="cc-sec">
-        <div className="cc-head">
-          <div className="cc-head-t">
-            <span className="cc-eyebrow">Booking presets</span>
-            <h2>What people can book</h2>
-            <p>
-              Each preset is one bookable thing with its own public page — its length, its hours,
-              who hosts it, and what happens after. Changes here take effect on the live link.
-            </p>
-          </div>
-          {/* `identityStale` is in the disabled set for the same reason the editor
-              below is hidden by it: this control WRITES, under a tenant that
-              still names the account being left. Disabled rather than unmounted
-              so an already-open form keeps the name someone typed — `submit`
-              consults this flag too, so the open form refuses as well. */}
-          {!conn.loading && !conn.error && (
-            <NewPreset onCreate={create} disabled={!conn.canWrite || identityStale || conn.busy === "new"} />
-          )}
-        </div>
-
-        {conn.loading ? <LoadingBody /> : conn.error ? (
-          <Notice tone="bad" icon={<TriangleAlert aria-hidden />}>
-            <strong>Couldn’t load your calendars.</strong> {conn.error}{" "}
-            <Btn kind="ghost" size="s" onClick={conn.refresh}><RefreshCw aria-hidden /> Retry</Btn>
-          </Notice>
-        ) : conn.empty ? (
-          <EmptyBody canWrite={conn.canWrite} onCreate={create} disabled={conn.busy === "new" || identityStale} />
-        ) : (
-          <div className="cc-presets" role="tablist" aria-label="Booking presets">
-            {conn.calendars.map((c) => (
-              <button key={c.id} type="button" role="tab" className="cc-preset-card"
-                aria-selected={selected?.id === c.id}
-                onClick={() => selectPreset(c.id)}>
-                {/* The NAME gets the whole first line. Sharing it with the state
-                    pill truncated real titles to "Harness discov…" at four cards
-                    across, which is the one thing on the card you pick by. */}
-                <span className="cc-preset-t">
-                  <span className="cc-swatch" style={{ background: c.color ?? "var(--pg-violet)" }} />
-                  <span className="cc-preset-n">{c.title || "Untitled calendar"}</span>
-                </span>
-                <span className="cc-preset-m">
-                  <span>{TYPE_LABEL[c.type] ?? c.type}</span>
-                  <em>{c.duration_min} min</em>
-                  <span className="cc-preset-state">
-                    {c.enabled ? <Pill tone="live">Live</Pill> : <Pill>Draft</Pill>}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Outside the selected-calendar block on purpose. When the FIRST preset
-          fails to create there is no selection yet, so a notice rendered in
-          there would be mounted nowhere — silently swallowing the error in the
-          exact empty-state flow this control was added for. */}
+    <div className="cc" data-mode={editorMode ? "editor" : "list"}>
+      {/* The account-stamped notice shows in BOTH modes: a create refusal belongs
+          to the list, a save/publish refusal to the editor, and an empty-state
+          create error has no selection to live under (it would otherwise be
+          swallowed in the exact flow this control exists for). */}
       {notice && identity.stillCurrent(notice.at) && (
         <Notice tone={notice.tone} icon={notice.tone === "bad" ? <TriangleAlert aria-hidden /> : <Info aria-hidden />}>
           {notice.text}
         </Notice>
       )}
 
-      {/* Not while the last read FAILED. `load` keeps the previous rows for the
-          same account so a refresh does not blank the page, which is right — but
-          an editor mounted over an unverified snapshot lets a save overwrite
-          whatever changed since. The error notice and its retry stand alone. */}
-      {draft && selected && summaryInput && !conn.error && !identityStale && (
+      {editorMode && selected && draft && summaryInput ? (
+        /* ── EDITOR: one preset, focused ──────────────────────────────────────
+           The main page is the list; opening a preset swaps to this focused
+           editor and hides the accounts + list, so the ten areas are not spread
+           across the page (owner direction 2026-09-13). "All presets" is the way
+           back, guarded against losing unsaved edits. */
         <>
+          <div className="cc-editor-back">
+            <Btn kind="ghost" size="s" onClick={backToPresets}><ArrowLeft aria-hidden /> All presets</Btn>
+          </div>
+
           <SelectedPreset
             row={selected} draft={draft} hosts={hosts} hostsError={conn.hostsError}
             readiness={conn.readiness} busy={conn.busy === selected.id} disabled={ro}
+            canWrite={conn.canWrite} publishCheck={publishCheck} archived={archived}
             issues={issues.map(([key, s]) => ({ key, title: AREA_META.find((a) => a.key === key)!.title, ...s }))}
             onJump={jumpTo}
             onCopy={() => copyLink(selected.slug)}
-            onToggleLive={toggleLive}
+            onPublish={publishPreset}
+            onPause={pausePreset}
+            onDuplicate={duplicatePreset}
+            onArchive={archivePreset}
+            onRestore={restorePreset}
           />
 
           {!conn.canWrite && (
             <Notice tone="info" icon={<Info aria-hidden />}>
               You can read this configuration but not change it. Every control below is disabled
-              rather than hidden, so you can still see exactly how the calendar is set up.
+              rather than hidden, so you can still see exactly how the preset is set up.
             </Notice>
           )}
 
@@ -848,7 +1066,7 @@ export function CalendarsView() {
             <div className="cc-builder-head">
               <div className="cc-head-t">
                 <span className="cc-eyebrow">Configuration</span>
-                <h2>How this calendar behaves</h2>
+                <h2>How this preset behaves</h2>
               </div>
               <Btn size="s" kind="ghost"
                 onClick={() => setOpen(allOpen ? {} : { ...ALL_OPEN })}>
@@ -895,13 +1113,82 @@ export function CalendarsView() {
 
           {dirty && (
             <div className="cc-bar" role="status">
-              <span>Unsaved changes on <b>{draft.title || "this calendar"}</b>.</span>
+              <span>Unsaved changes on <b>{draft.title || "this preset"}</b>.</span>
               <Btn kind="ghost" size="s" onClick={revert} disabled={saving}><Undo2 aria-hidden /> Discard</Btn>
               <Btn kind="act" onClick={save} disabled={saving || !conn.canWrite}>
                 {saving ? <Loader2 className="cc-spin" aria-hidden /> : <CalendarCheck aria-hidden />} Save changes
               </Btn>
             </div>
           )}
+        </>
+      ) : (
+        /* ── LIST: what people can book ─────────────────────────────────────── */
+        <>
+          <ConnectedAccounts conn={conn} returnTo={returnHere} identity={identity} />
+
+          <section className="cc-sec">
+            <div className="cc-head">
+              <div className="cc-head-t">
+                <span className="cc-eyebrow">Booking presets</span>
+                <h2>What people can book</h2>
+                <p>
+                  Each preset is one bookable thing with its own public page — its length, its hours,
+                  who hosts it, and what happens after. New presets start as private drafts; publish
+                  one when you’re ready to take bookings.
+                </p>
+              </div>
+              {/* `identityStale` is in the disabled set because creating a preset
+                  WRITES, under a tenant that still names the account being left. */}
+              {!conn.loading && !conn.error && (
+                <NewPresetChooser onCreate={create} disabled={!conn.canWrite || identityStale || conn.busy === "new"} />
+              )}
+            </div>
+
+            {conn.loading ? <LoadingBody /> : conn.error ? (
+              <Notice tone="bad" icon={<TriangleAlert aria-hidden />}>
+                <strong>Couldn’t load your calendars.</strong> {conn.error}{" "}
+                <Btn kind="ghost" size="s" onClick={conn.refresh}><RefreshCw aria-hidden /> Retry</Btn>
+              </Notice>
+            ) : conn.empty ? (
+              <EmptyBody canWrite={conn.canWrite} onCreate={create} disabled={conn.busy === "new" || identityStale} />
+            ) : (
+              (() => {
+                // Active presets lead; archived ones drop to their own labelled
+                // group so "what people can book" is not diluted by things that are
+                // put away. Both open the same editor — archived opens read-only,
+                // with Restore/Duplicate the way back (§70).
+                const activeCals = conn.calendars.filter((c) => !c.archived_at);
+                const archivedCals = conn.calendars.filter((c) => c.archived_at);
+                return (
+                  <>
+                    <div className="cc-presets" aria-label="Booking presets">
+                      {activeCals.map((c) => (
+                        <PresetCard key={c.id} c={c} hosts={conn.hosts[c.id] ?? []}
+                          hostsError={conn.hostsError} onOpen={() => selectPreset(c.id)} />
+                      ))}
+                    </div>
+                    {activeCals.length === 0 && (
+                      <Hint>No active presets — your archived ones are below. Open one to restore or duplicate it, or start a new preset above.</Hint>
+                    )}
+                    {archivedCals.length > 0 && (
+                      <div className="cc-archived">
+                        <div className="cc-archived-head">
+                          <span className="cc-eyebrow">Archived</span>
+                          <small>Put away and off the air. Open one to restore it, or duplicate it into a new preset.</small>
+                        </div>
+                        <div className="cc-presets" aria-label="Archived booking presets">
+                          {archivedCals.map((c) => (
+                            <PresetCard key={c.id} c={c} hosts={conn.hosts[c.id] ?? []}
+                              hostsError={conn.hostsError} onOpen={() => selectPreset(c.id)} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()
+            )}
+          </section>
         </>
       )}
     </div>
@@ -918,21 +1205,68 @@ function LoadingBody() {
   );
 }
 
+/**
+ * One compact preset card in the list — name, model, duration, host summary and
+ * the derived lifecycle pill. It is the pick-by row; opening it swaps to the
+ * focused editor (read-only for an archived preset). Extracted so the active and
+ * archived groups render the identical card rather than two copies that drift.
+ */
+function PresetCard({
+  c, hosts, hostsError, onOpen,
+}: { c: CalendarRow; hosts: CalendarHost[]; hostsError: string | null; onOpen: () => void }) {
+  const life = presetLifecycle(c);
+  const hostSummary = hostsError
+    ? ""
+    : hosts.length === 0 ? "No host" : hosts.length === 1 ? "1 host" : `${hosts.length} hosts`;
+  return (
+    <button type="button" className="cc-preset-card" data-life={life}
+      aria-label={`Open ${c.title || "Untitled preset"} — ${LIFECYCLE_LABEL[life]}`}
+      onClick={onOpen}>
+      {/* The NAME gets the whole first line — it is the one thing on the card you
+          pick by, and sharing the line truncated real titles at four cards across. */}
+      <span className="cc-preset-t">
+        <span className="cc-swatch" style={{ background: c.color ?? "var(--pg-violet)" }} />
+        <span className="cc-preset-n">{c.title || "Untitled preset"}</span>
+      </span>
+      <span className="cc-preset-m">
+        <span>{TYPE_LABEL[c.type] ?? c.type}</span>
+        <em>{c.duration_min} min</em>
+        {hostSummary && <span className="cc-preset-hosts"><Users aria-hidden /> {hostSummary}</span>}
+        <span className="cc-preset-state">
+          {/* Gold is never spent on a resting pill (§11): Live/Paused carry status
+              tones, Draft and Archived are neutral. */}
+          <Pill tone={life === "live" ? "live" : life === "paused" ? "warn" : undefined}>
+            {LIFECYCLE_LABEL[life]}
+          </Pill>
+        </span>
+      </span>
+      <ChevronRight className="cc-preset-go" aria-hidden />
+    </button>
+  );
+}
+
 // `disabled`, not `busy`: it carries the in-flight create AND the window where
 // the route has moved but the loaded tenant has not, which is not busyness.
-function EmptyBody({ canWrite, onCreate, disabled }: { canWrite: boolean; onCreate: (title: string) => Promise<boolean>; disabled: boolean }) {
+function EmptyBody({
+  canWrite, onCreate, disabled,
+}: {
+  canWrite: boolean;
+  onCreate: (draft: CalendarDraft, avail?: AvailState) => Promise<{ ok: boolean; message?: string }>;
+  disabled: boolean;
+}) {
   return (
     <div className="cc-empty">
       <CalendarDays aria-hidden />
       <strong>No booking presets yet</strong>
       <p>
         A preset is one bookable thing — how long it runs, when you are open, who hosts it, and what
-        happens after. Creating one gives you a public link straight away. Connecting a calendar
-        account above is separate; you can do either first.
+        happens after. Pick a booking model to start a private draft; you publish it when it’s ready,
+        and nothing is public until you do. Connecting a calendar account above is separate; you can
+        do either first.
       </p>
       {/* The copy above promises creation, so the control that does it belongs
           here rather than only in the header the reader has scrolled past. */}
-      {canWrite && <div className="cc-empty-act"><NewPreset onCreate={onCreate} disabled={disabled} /></div>}
+      {canWrite && <div className="cc-empty-act"><NewPresetChooser onCreate={onCreate} disabled={disabled} /></div>}
     </div>
   );
 }
@@ -1087,12 +1421,15 @@ function ConnectedAccounts({ conn, returnTo, identity }: { conn: ReturnType<type
  * and every configuration problem as a control that jumps straight to it.
  */
 function SelectedPreset({
-  row, draft, hosts, hostsError, readiness, busy, disabled, issues, onJump, onCopy, onToggleLive,
+  row, draft, hosts, hostsError, readiness, busy, disabled, canWrite, publishCheck, archived, issues,
+  onJump, onCopy, onPublish, onPause, onDuplicate, onArchive, onRestore,
 }: {
   row: CalendarRow; draft: CalendarDraft; hosts: CalendarHost[]; hostsError: string | null;
-  readiness: SendReadiness; busy: boolean; disabled: boolean;
+  readiness: SendReadiness; busy: boolean; disabled: boolean; canWrite: boolean; publishCheck: PublishCheck;
+  archived: boolean;
   issues: { key: AreaKey; title: string; value: string; tone?: Tone }[];
-  onJump: (key: AreaKey) => void; onCopy: () => void; onToggleLive: (v: boolean) => void;
+  onJump: (key: AreaKey) => void; onCopy: () => void; onPublish: () => void; onPause: () => void;
+  onDuplicate: () => void; onArchive: () => void; onRestore: () => void;
 }) {
   const verdict = sendVerdict(draft.notify_config, readiness);
   const reminderLabel = verdict.silent
@@ -1100,27 +1437,86 @@ function SelectedPreset({
     : verdict.held ? "Held" : verdict.unchecked ? "Not checked" : "Sending";
   const reminderTone: Tone | undefined = verdict.silent
     ? undefined : verdict.held ? "bad" : verdict.unchecked ? "warn" : "live";
+  // Draft → Live / Paused, derived from the two facts the server persists. A
+  // Draft and a Paused preset are BOTH not public (enabled=false), and the link
+  // block below is careful never to present either as share-ready (§13).
+  const life = presetLifecycle(row);
+  const isPublic = row.enabled;
+  const url = bookingUrl(row.slug);
+  // The lifecycle tone: gold only on the true act (Publish), never on a resting
+  // pill (§11). Live/Paused pills carry status tones, not gold.
+  const lifeTone: Tone | undefined = life === "live" ? "live" : life === "paused" ? "warn" : undefined;
 
   return (
-    <section className="cc-selected">
+    <section className="cc-selected" data-life={life}>
       <div className="cc-selected-top">
         <div className="cc-selected-id">
-          <h3>{draft.title || "Untitled calendar"}</h3>
+          <h3>{draft.title || "Untitled preset"}</h3>
           <p>{TYPE_LABEL[draft.type] ?? draft.type} · {draft.duration_min} minutes · {draft.timezone}</p>
         </div>
-        <div className="cc-selected-live">
-          {row.enabled ? <Pill tone="live">Live</Pill> : <Pill>Draft</Pill>}
-          <Toggle on={row.enabled} onChange={onToggleLive} disabled={disabled || busy}
-            label={row.enabled ? "Take this calendar off the air" : "Put this calendar live"} />
+        {/* Lifecycle actions. The primary act depends on state: Restore for an
+            archived preset, else Pause (Live) or Publish (Draft/Paused). Duplicate
+            is offered in every state; Archive only when not already archived. These
+            secondary verbs are gated on canWrite + busy, NOT on `disabled` — an
+            archived preset makes `disabled` (=read-only) true, but Duplicate and
+            Restore must stay usable there (§70). */}
+        <div className="cc-selected-life">
+          <Pill tone={lifeTone}>{LIFECYCLE_LABEL[life]}</Pill>
+          {archived ? (
+            <Btn size="s" kind="act" onClick={onRestore} disabled={busy || !canWrite}
+              title="Bring this preset back as a draft">
+              {busy ? <Loader2 className="cc-spin" aria-hidden /> : <Undo2 aria-hidden />} Restore
+            </Btn>
+          ) : isPublic ? (
+            <Btn size="s" kind="ghost" onClick={onPause} disabled={disabled || busy || !canWrite}
+              title="Take this booking page off the air">
+              {busy ? <Loader2 className="cc-spin" aria-hidden /> : <Pause aria-hidden />} Pause
+            </Btn>
+          ) : (
+            <Btn size="s" kind="act" onClick={onPublish}
+              disabled={disabled || busy || !canWrite || !publishCheck.ready}
+              title={publishCheck.ready ? "Make this booking page public" : `Not ready to publish: ${publishCheck.blockers.join(" ")}`}>
+              {busy ? <Loader2 className="cc-spin" aria-hidden /> : <Rocket aria-hidden />} Publish
+            </Btn>
+          )}
+          <Btn size="s" kind="ghost" onClick={onDuplicate} disabled={busy || !canWrite}
+            title="Start a new preset from these settings">
+            <Copy aria-hidden /> Duplicate
+          </Btn>
+          {!archived && (
+            <Btn size="s" kind="ghost" onClick={onArchive} disabled={busy || !canWrite}
+              title="Put this preset away — it goes off the air and can be restored later">
+              <CalendarX2 aria-hidden /> Archive
+            </Btn>
+          )}
         </div>
       </div>
 
-      <div className="cc-link">
-        <code>{bookingUrl(row.slug)}</code>
-        <Btn size="s" onClick={onCopy}><Copy aria-hidden /> Copy</Btn>
-        <a className="cc-btn" data-size="s" href={bookingUrl(row.slug)} target="_blank" rel="noreferrer">
-          <ExternalLink aria-hidden /> Open
-        </a>
+      {/* The public address. For a Draft it is a RESERVED url, not a live one, and
+          for a Paused preset it is kept but off the air — so neither is dressed up
+          as share-ready, the copy says which, and Open is offered only when the
+          page is actually public (§13). */}
+      <div className="cc-link" data-public={isPublic}>
+        <span className="cc-link-tag">
+          {isPublic
+            ? "Public booking link"
+            : life === "paused"
+              ? "Booking link — paused, not public"
+              : "Reserved URL — inactive until published"}
+        </span>
+        <code>{url}</code>
+        <Btn size="s" onClick={onCopy}>
+          <Copy aria-hidden /> {isPublic ? "Copy link" : "Copy future URL — not public yet"}
+        </Btn>
+        {isPublic ? (
+          <a className="cc-btn" data-size="s" href={url} target="_blank" rel="noreferrer">
+            <ExternalLink aria-hidden /> Open
+          </a>
+        ) : (
+          <Btn size="s" disabled title="This page opens to visitors only after you publish it.">
+            <ExternalLink aria-hidden /> Open
+          </Btn>
+        )}
       </div>
 
       <dl className="cc-glance">
@@ -1133,14 +1529,48 @@ function SelectedPreset({
         <div><dt>Reminders</dt><dd><Pill tone={reminderTone}>{reminderLabel}</Pill></dd></div>
       </dl>
 
-      {!row.enabled && (
+      {archived && (
+        <Notice tone="info" icon={<Info aria-hidden />}>
+          This preset is <strong>Archived</strong> — put away and off the air. Every field below is
+          read-only while it’s archived. <strong>Restore</strong> it to edit or publish again, or
+          <strong> Duplicate</strong> it to start a new preset from these settings.
+        </Notice>
+      )}
+      {!archived && life === "draft" && (
         <Notice tone="warn" icon={<TriangleAlert aria-hidden />}>
-          This calendar is a <strong>Draft</strong>, so the link above will not accept bookings. Put it
-          live with the switch when you are ready.
+          This preset is a <strong>Draft</strong>. Its booking page is private — no visitor can see or
+          book it{publishCheck.ready
+            ? ", and it’s ready whenever you Publish."
+            : ", and it isn’t ready to publish yet:"}
+          {!publishCheck.ready && (
+            <ul className="cc-blockers">{publishCheck.blockers.map((b, i) => <li key={i}>{b}</li>)}</ul>
+          )}
+        </Notice>
+      )}
+      {!archived && life === "paused" && (
+        <Notice tone="warn" icon={<TriangleAlert aria-hidden />}>
+          This preset is <strong>Paused</strong>. Its link is kept, but visitors cannot book it right
+          now — Publish again to put it back on the air.
+          {!publishCheck.ready && (
+            <ul className="cc-blockers">{publishCheck.blockers.map((b, i) => <li key={i}>{b}</li>)}</ul>
+          )}
+        </Notice>
+      )}
+      {/* A LIVE preset that no longer clears the publish bar. The update RPC now
+          auto-pauses one that an edit breaks, so this is the honest surface for the
+          cases that route around it: a legacy row born enabled (a provisioned
+          default, the agency builder), or a host removed through set_calendar_hosts
+          (a different seam). A visitor who opens this page finds nothing to book, so
+          it must not read as healthy — this is the one Live-state warning (§13/§70). */}
+      {!archived && life === "live" && !publishCheck.ready && (
+        <Notice tone="bad" icon={<TriangleAlert aria-hidden />}>
+          This page is <strong>Live</strong>, but it can’t currently take a booking — a visitor who
+          opens it will find nothing to book. Fix what’s missing, or Pause it until it’s ready:
+          <ul className="cc-blockers">{publishCheck.blockers.map((b, i) => <li key={i}>{b}</li>)}</ul>
         </Notice>
       )}
 
-      {issues.length > 0 && (
+      {!archived && issues.length > 0 && (
         <div className="cc-issues">
           <span className="cc-issues-h">
             {issues.length} {issues.length === 1 ? "thing needs" : "things need"} attention

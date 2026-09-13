@@ -220,7 +220,7 @@ describe("ChooseAccount", () => {
   // merely record it and leave — it performs the switch, and only records the entry
   // once that succeeded. Recording an entry that never happened is exactly what made
   // the door and this page disagree forever.
-  it("actually switches into the single workspace before recording it as entered", async () => {
+  it("pauses on the chooser for a single workspace and enters it only after selection", async () => {
     const assign = vi.fn();
     const original = window.location;
     Object.defineProperty(window, "location", { configurable: true, value: { ...original, assign, search: "" } });
@@ -230,6 +230,15 @@ describe("ChooseAccount", () => {
     await act(async () => {
       root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
     });
+
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/choose-account");
+    expect(host.textContent).toContain("Mogul Maker Academy");
+    expect(harness.context.switchTenant).not.toHaveBeenCalled();
+    expect(assign).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("paige.workspace.entered")).toBeNull();
+
+    const button = Array.from(host.querySelectorAll("button")).find((candidate) => candidate.textContent?.includes("Mogul Maker Academy"));
+    await act(async () => { button?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
 
     expect(harness.context.switchTenant).toHaveBeenCalledWith("mogul");
     expect(assign).toHaveBeenCalledWith("/solo/222222/command-center");
@@ -249,6 +258,8 @@ describe("ChooseAccount", () => {
     await act(async () => {
       root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /></MemoryRouter>);
     });
+    const button = Array.from(host.querySelectorAll("button")).find((candidate) => candidate.textContent?.includes("Mogul Maker Academy"));
+    await act(async () => { button?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
 
     expect(assign).not.toHaveBeenCalled();
     expect(sessionStorage.getItem("paige.workspace.entered")).toBeNull();
