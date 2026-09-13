@@ -60,7 +60,11 @@ CREATE TEMP TABLE bulk_preview AS SELECT public.preview_crm_command(
 SELECT is((SELECT (result->>'eligible_count')::integer FROM bulk_preview),1,'bulk preview binds only same-tenant eligible targets');
 SELECT is((SELECT (result->>'refused_count')::integer FROM bulk_preview),1,'bulk preview reports forged or ineligible targets');
 SELECT is((SELECT jsonb_array_length(result->'eligible_targets') FROM bulk_preview),1,'bulk preview exposes the exact eligible set for approval');
-UPDATE public.clients SET current_notes='changed after preview',updated_at=clock_timestamp() WHERE id='c7100000-0000-4000-8000-00000000c101';
+CREATE TEMP TABLE bulk_intervening_update AS SELECT public.execute_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.update','contact_id','c7100000-0000-4000-8000-00000000c101',
+   'expected_updated_at',(SELECT result->'eligible_targets'->0->>'updated_at' FROM bulk_preview),
+   'patch',jsonb_build_object('current_notes','changed after preview')),'bulk-intervening-update-1') result;
 SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.bulk_update','preview_id',(SELECT result->>'preview_id' FROM bulk_preview))::text,'bulk-execute-1'),'40001','CRM_BULK_TARGET_VERSION_CONFLICT:1','bulk execution refuses a target changed after preview');
 SELECT isnt((SELECT lifecycle_stage FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c101'),'qualified','failed bulk execution changes no eligible target');
 
