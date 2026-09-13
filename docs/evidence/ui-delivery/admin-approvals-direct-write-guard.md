@@ -54,7 +54,7 @@ UNVERIFIED: the orchestration INSERT+UPDATE guard's DB logic is proven headless 
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
 
-INTERNAL_BUILD_IDENTITY: 2f7fc3a539a358675921c4bcad93263c61499250; deployment=none-pre-merge; environment=development; migrations=PROOF_OWED(20270317000000 persisted-apply on prod xygzykjyynhzqytbqnzu via deploy-migrations.yml post-merge); edge=NOT_APPLICABLE; evidence=this-PR-and-scripts/ci/approval-direct-write-lint.mjs(46-case-self-test)+supabase/tests/paige_orchestration_companion_minting.sql(plan-59)
+INTERNAL_BUILD_IDENTITY: e72c7ff2000687e8181b566590d9f7a41c11c3a9; deployment=none-pre-merge; environment=development; migrations=PROOF_OWED(20270317000000 persisted-apply on prod xygzykjyynhzqytbqnzu via deploy-migrations.yml post-merge); edge=NOT_APPLICABLE; evidence=this-PR-and-scripts/ci/approval-direct-write-lint.mjs(46-case-self-test)+supabase/tests/paige_orchestration_companion_minting.sql(plan-59)
 RELEASE_CHANNEL: development: branch build (environment=development); the frontend/CI change deploys via Vercel on merge and the added migration (20270317000000) deploys via deploy-migrations.yml on merge, moving db-live; no edge bundle changed so edge-live does not move
 RELEASE_CLASSIFICATION: internal-only: dead-code removal (§18) + a CI regression guard (§10/§18/§70) locking the frontend approve invariant + a DB guard extension closing the orchestration create-already-approved path (§9/§59/§70); no owner-decided customer release
 CUSTOMER_RELEASE_IDENTITY: none: internal engineering + security-integrity hardening, no customer-decided release
