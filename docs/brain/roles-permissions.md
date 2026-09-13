@@ -51,5 +51,6 @@ operator."** Measured 2026-08-18: 9 `admin` holders across 10 of 13 tenants; 1 `
 ## Migration state (6-slice plan, taxonomy doc §6)
 
 R0 doc ✅ · **R1 inventory ✅** · R2a workflow-registry seam ✅ · R2b wrapper closure ⬜ ·
-R3 c1/c2 defects ⬜ · R4 backfill + dual-read ⬜ · R5 Class-A-only CHECK ⬜.
+**R3a `match_paige_memory` ✅** (2026-09-13, migration `20270304000000`) · R3 rest of c1/c2 ⬜ ·
+R4 backfill + dual-read ⬜ · R5 Class-A-only CHECK ⬜.
 **Do not skip to R5** — the constraint is the end of the migration, not the start.

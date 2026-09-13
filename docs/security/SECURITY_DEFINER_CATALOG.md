@@ -149,9 +149,13 @@ Category: A — Intentional user-facing public API
 Justification: Returns tenant brand/from-address for compose UI. Requires `has_tenant_role`.
 
 ### Function: public.match_paige_memory / public.match_tenant_knowledge
-Grants: authenticated
+Grants: authenticated (+ service_role on match_paige_memory)
 Category: A — Intentional user-facing public API
-Justification: Vector search RPCs. Internally scope by tenant via `current_user_tenant_id()`.
+Justification: Vector search RPCs. Internally scope by tenant. `match_paige_memory` (2026-09-13,
+migration `20270304000000`, §53/§59) derives authority PER TARGET — cross-USER: self /
+`is_platform_operator`; staff cross-CONTACT via `can_access_contact` (per-contact tenant-correct) — with
+each data-branch gated on its own flag and search params bounded; `service_role` is trusted to pass
+server-resolved ids. anon/PUBLIC revoked.
 
 ### Function: public.get_approval_queue_counts / public.unassigned_queue_for_caller
 Grants: authenticated
