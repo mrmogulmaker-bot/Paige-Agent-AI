@@ -88,7 +88,17 @@ serve(async (req: Request) => {
 
   if (event.status === "OK") {
     try {
-      const { artifactUrls } = await falAdapter.fetchResult({ model: job.model, providerRequestId: requestId });
+      // The webhook payload IS the model output (fal docs) — prefer it over a
+      // result re-fetch, which 405s for some models once completed (veo3.1 seen
+      // live, 2026-09-13). The re-fetch stays as the fallback.
+      let artifactUrls: string[] = [];
+      const payloadOut = (event.payload as Record<string, unknown> | null)?.output ?? event.payload;
+      const { normalizeFalOutput } = await import("../_shared/media-provider/fal.ts");
+      artifactUrls = normalizeFalOutput(payloadOut);
+      if (!artifactUrls.length) {
+        const fetched = await falAdapter.fetchResult({ model: job.model, providerRequestId: requestId });
+        artifactUrls = fetched.artifactUrls;
+      }
       const result = await completeMediaJob(admin, { ...job, attempts: job.attempts ?? 1 }, artifactUrls[0]);
       return json({ completed: result.state === "succeeded", state: result.state });
     } catch (e) {
