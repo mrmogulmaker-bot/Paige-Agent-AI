@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
     const chainVerified = membership && membership.is_owner === true && tenant?.account_type === "standalone"
       && tenant.parent_tenant_id === null && tenant.account_number
       && subscription?.offer_code === "paige-solo-beta-monthly-v1"
-      && subscription.provider_mode === "test" && subscription.provider_verified_at
+      && subscription.provider_mode === "live" && subscription.provider_verified_at
       && receipt?.subscription_id === subscription.id && receipt?.reference_id === enrollment.reference_id
       && entitlement?.plan_slug === "solo"
       && entitlement.stripe_subscription_id === enrollment.stripe_subscription_id

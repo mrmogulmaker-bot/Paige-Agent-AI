@@ -14,7 +14,7 @@ const validOffer = (
 ): SoloBetaOfferValidationInput => ({
   offerCode: SOLO_BETA_OFFER_CODE,
   purpose: "checkout_fulfillment",
-  livemode: false,
+  livemode: true,
   configuredProductId: "prod_solo_beta",
   configuredPriceId: "price_solo_beta_monthly",
   observedProductId: "prod_solo_beta",
@@ -49,9 +49,9 @@ Deno.test("Solo Beta offer accepts the exact approved test-mode monthly offer", 
 });
 
 Deno.test("Solo Beta offer rejects live-mode evidence", () => {
-  assertEquals(validateSoloBetaOffer(validOffer({ livemode: true })), {
+  assertEquals(validateSoloBetaOffer(validOffer({ livemode: false })), {
     ok: false,
-    code: "provider_mode_not_test",
+    code: "provider_mode_not_live",
   });
 });
 
