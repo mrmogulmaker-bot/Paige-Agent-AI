@@ -1,16 +1,16 @@
 # Paige Agent AI — Consolidated Platform Audit
 
-**Prepared:** 2026-07-20 by Cowork (session with Antonio) · **Purpose:** one living rollup that reconciles the backlog (as Antonio described it in chat) against the two prior deep audits and against what's actually in prod today. **Not a new deep audit** — the prior audits are still mostly valid. This is the reconciliation layer they lack.
+**Prepared:** 2026-07-20 by Cowork (session with Antonio) · **Current-main reconciliation:** 2026-09-12 by Codex. **Purpose:** one living rollup of current merged-main health plus clearly historical point-in-time audits. Historical findings are leads, never current truth without fresh corroboration.
 
-> **This is a LIVING doc.** Per §8 below, update §1 (state) + §2 (what changed) at the end of every brain-build session. Do not rewrite the source audits — they capture point-in-time state and remain the authority for their lanes.
+> **This is a LIVING doc.** Section 1 is the pinned current-main health record. The source audits remain immutable point-in-time evidence for their lanes, but never override a freshly grounded current-main or production proof.
 
 ---
 
 ## 0. What this doc is (and isn't)
 
-**Is:** a normalized view of what's built, what's half-built, what's duplicated under different names, and what remains for launch — accurate as of the end of the 2026-07-20 brain-build session.
+**Is:** a normalized view of what merged `main` proves, what is partial, and what still needs runtime or production proof. The newest pinned reconciliation below is current; later dated sections are historical context unless revalidated.
 
-**Isn't:** a replacement for the prior audits. Both remain the source of truth for their respective lanes:
+**Isn't:** a deletion or rewrite of prior audits. They remain historical evidence for their respective lanes and must be revalidated before reuse:
 
 - `docs/paige-master-implementation-order.md` — the properly ordered master plan (spine → phases 1–10)
 - `docs/assessments/PLATFORM_ASSESSMENT_2026-07-13.md` — the deep state-of-the-platform assessment (500+ lines, still ~85% valid — see §2 for what's changed since)
@@ -19,11 +19,188 @@
 - `docs/security/AUDIT_213c_RETRO_2026_07_03.md` — migration hygiene retro
 - `docs/security/MIGRATION_B0_ROW_CLASSIFICATION_AUDIT.md` — data classification audit
 
-**Discipline going forward:** update THIS doc's §2 (what's changed) at the end of every brain-build session. Do not re-write the source audits — they capture point-in-time state. Layer deltas here.
+**Discipline going forward:** preserve each pinned reconciliation as an immutable point-in-time snapshot. When a finding is repaired, append a new exact-SHA entry naming the change and the proof that closed it; never silently rewrite this snapshot. Do not promote a local branch, PR, workflow definition, historical audit, or source-only control to shipped/deployed truth. Keep proposed remediation separate until it merges, and deployment truth separate until the exact runtime is verified.
 
 ---
 
-## 1. Where we are — end of 2026-07-20 session
+## 1. Current-main Platform Health & Security reconciliation — 2026-09-12
+
+### Grounding and limits
+
+- **Canonical repository:** `https://github.com/mrmogulmaker-bot/Paige-Agent-AI.git`.
+- **Pinned merged `main`:** `9cac02d66ab068a7cff6a032bca267c9a928a3c6` (`2026-09-12T20:20:45-04:00`), “fix(fal): fetchResult tries the documented /response form first…”.
+- **Audit timestamp:** `2026-09-12T20:23:44.2006964-04:00` (`America/New_York`). `main` advanced twice during the audit; the reconciliation was re-grounded on merged #1175 and then this one-file Vibe provider-readback fix. Earlier SHA/status snapshots were discarded.
+- **Truth boundary:** only artifacts reachable from that commit establish current platform health. Open PRs/issues establish ownership or proof debt only.
+- **CI/deploy artifacts:** exact-SHA CI run `34727731126` was `in_progress` at the last read. Exact-SHA UI Evidence `34727731188`, Security Audit `34727731290`, and Edge deployment `34727731169` succeeded. Prior-SHA CI runs were superseded/cancelled as `main` advanced. A workflow/run proves only the work and assertions it executed, not branch protection or full production inventory/readback.
+- **Unavailable evidence:** no secrets, credentials, production database catalogue, deployed Edge inventory, authenticated tenant, provider account, or customer data were accessed. Production reachability/parity and authenticated behavior are therefore `UNVERIFIED` or `PROOF OWED`.
+- **Local evidence:** `npm run lint:mcp-governed-door` and approval-gate lint passed; `lint:views` and `lint:chat-tool-registry` exposed the recorded gaps. Governed-execution lint could not start because this isolated worktree has no dependency tree; that is an environment limit, not a platform failure.
+
+### Current platform health — merged `main` only
+
+| Area | Truth label | Current state | Owner / collision |
+| --- | --- | --- | --- |
+| Runtime Harness | `PARTIAL` | Gateway/status, governed execution, receipts, events, proof and budget primitives exist; native events still record `acts_executed:false`. | Harness; PR #1173 owns Layer C. |
+| Main Paige Chat | `PARTIAL` | Honest contact outcome/status and Capability Portfolio doctrine are merged; five tools remain hand-wired outside the registry contract; authenticated proof is owed. | Chat/Capability Portfolio; #1175 is merged direction, not runtime completion. |
+| Tenant isolation | `PARTIAL` | Strong server-resolved patterns coexist with public/caller-selected identity and service-role seams below. Production RLS parity is unverified. | Platform Security; Conversations owns view/triage. |
+| Migrations | `PROOF OWED` | Social replay bridge is merged; this exact SHA was not replayed from empty here and production-catalog parity was unavailable. | Database/Social; #1161 owns final schema reconciliation. |
+| Providers / URL transport | `PARTIAL` | Canonical bounded `safeFetch` exists; URL ingestion and legacy automation bypass it. | Provider Gateway/Platform Security. |
+| Billing / spend | `PARTIAL` | Vibe media credits fail closed; general model routing proceeds when budget accrual is unknown. Broader billing is in PR #899. | Shared Budget/Billing; no second ledger. |
+| Events / automation | `PARTIAL` | Durable delivery exists; governed act execution is not on `main`; legacy direct webhook paths remain. | Harness Layer C; PR #1173. |
+| Social | `PARTIAL` | Publication is server-contained and honestly unavailable; schema/runtime proof remains open. | Social; #1154/#1161. |
+| Vibe | `PARTIAL` | Media credits are merged. A controlled provider generation succeeded; `fetchResult` now tries fal's `/response` form and its exact-SHA Edge deployment succeeded. Post-fix artifact readback remains proof owed. | Vibe/Media Provider. |
+| Rail / receipts | `PARTIAL` | Canonical primitives exist and newer capabilities use them; universal adoption/reconciliation/owner proof is incomplete. | Harness evidence; PR #776 owns resolver work. |
+| Tests / CI | `PARTIAL` | Two exact-SHA workflows succeeded; core CI remained in progress; local structural lints found live defects. | Platform CI; #1165 owns proof-vocabulary crosswalk. |
+| Deployment | `PARTIAL` | Exact-SHA Edge deploy run `34727731169` succeeded for the latest change; deployed function inventory, database parity and post-deploy behavior/readback remain unavailable. | Release Operations. |
+| Documentation | `PARTIAL` | Capability Portfolio routing is merged and this audit's stale opening is corrected locally; owning records still carry different grounding SHAs and must not be rounded up. | Second Brain/Harness Registry Steward. |
+
+### Current-main findings
+
+Each finding records exact source evidence, reachable boundary, current ownership, next proof, and the reusable control.
+
+#### PH-SEC-01 — Public unsubscribe selects identity (`VERIFIED`, High)
+
+- **Evidence / boundary:** `supabase/config.toml:230-231` sets `handle-unsubscribe` to `verify_jwt=false`; `handle-unsubscribe/index.ts:18,42-54,72-76` accepts `user_id` or resolves caller-supplied email/phone, uses admin/service-role authority, and upserts that user's preferences. Public request → identity/preferences write; deployed presence is `UNVERIFIED`.
+- **Status / owner / collision:** safely repairable by Platform Security; no concrete PR owns this file.
+- **Smallest next step / proof:** require authenticated server-resolved subject or signed, expiring, single-purpose authority; validate method/body and database errors. Prove forged user/email/phone denial and exact deployed readback.
+- **Lesson/control:** public identity-changing endpoints require signed, expiring, purpose-bound authority; caller-supplied identity is never authority.
+
+#### PH-SEC-02 — Legacy automation accepts caller authority and directly sends (`VERIFIED`, High)
+
+- **Evidence / boundary:** `dispatch-stage-automation/index.ts:32-35,75-79,105-121,147-150` accepts tenant/contact/webhook target, reads with service role, posts directly, and attributes to the body tenant. `fire-outbound-webhooks/index.ts:18-31,47,67-74,86-94` accepts event data, reads active configurations globally, posts directly, and persists the target URL, full caller-supplied request payload, and up to 2,000 characters of provider response alongside its summary. Function caller → cross-tenant lookup/external action and durable log-storage boundary; deployed reachability is `UNVERIFIED`.
+- **Status / owner / collision:** repair/retire under Harness Layer C. PR #1173 does not touch these files but owns the replacement event-to-act seam; do not fork its engine.
+- **Smallest next step / proof:** require purpose-bound internal authority, server-claimed tenant/actor/target, canonical `safeFetch`, and payload/response minimization or redaction; then retire direct dispatch as Layer C adopts the events. Prove forged-tenant denial, replay/idempotency, redirect denial, readback/receipt/Rail, and that stored logs exclude raw sensitive request/provider payloads.
+- **Lesson/control:** service-role functions derive tenant, actor, target, and authority server-side; an ordinary JWT is not internal-service authority.
+
+#### PH-SEC-03 — URL ingestion bypasses canonical SSRF transport (`VERIFIED`, High)
+
+- **Evidence / boundary:** `fetch-url-content/index.ts:57-97,118-133` uses hostname patterns, native redirect-following `fetch`, and full-body buffering before truncation. `_shared/ssrfGuard.ts:172-181,217-237` already provides DNS/IP validation, manual redirects, timeout and bounds. Authenticated URL → server network/memory; no live exploit was run.
+- **Status / owner / collision:** safely repairable by Platform Security/Provider Gateway; no active PR touches the file.
+- **Smallest next step / proof:** migrate to `safeFetch`; test redirect chains, IPv4/IPv6/DNS rebinding, credentialed URLs, timeout and size, then obtain deployed negative proof.
+- **Lesson/control:** URL ingestion uses the canonical bounded SSRF transport, including redirect and response-size controls.
+
+#### PH-SEC-04 — Tenant view does not preserve caller RLS semantics (`VERIFIED`; production exposure `UNVERIFIED`, High)
+
+- **Evidence / boundary:** `20270115000000_conversation_labels.sql:102-111` creates `paige_unclassified_inbound` without `security_invoker`; `lint:views` fails. `paige-inbox-triage/index.ts:85` consumes it with service role. Tenant messages → view/triage; deployed SELECT grants are unavailable.
+- **Status / owner / collision:** actively owned by Conversations issue #1140; no parallel inbox system.
+- **Smallest next step / proof:** make it security-invoker or expose a server-resolved scoped RPC, revoke unintended grants, test two tenants, and inspect deployed view/grants/policies.
+- **Lesson/control:** a view over tenant rows must preserve caller RLS deliberately; base-table RLS is not view-isolation proof.
+
+#### PH-SEC-05 — Inbox triage hard-codes autonomous filing (`VERIFIED`; runtime `UNVERIFIED`, High)
+
+- **Evidence / boundary:** `paige-inbox-triage/index.ts:78-81,139,143-161` hard-codes `defaultLane = "auto"`, applies labels as auto, and invokes `file_action`. Inbound customer content → durable labels/actions; cron/deploy reachability is unavailable.
+- **Status / owner / collision:** Conversations/Harness; issue #1140 and PR #1173 bound the shared triage/act seams.
+- **Smallest next step / proof:** fail closed unless current server-resolved Trust Compass authority permits the stable action; bind idempotency, approval and receipt. Prove off/confirm/auto, replay, cancel and scheduled deployment.
+- **Lesson/control:** a catalogue default or code constant is not owner authority; resolve the governed lane at execution time.
+
+#### PH-SEC-06 — Generic inbound webhook has global provisioning authority (`VERIFIED` source; deployed `UNVERIFIED`, High)
+
+- **Evidence / boundary:** `handle-inbound-webhook/index.ts` combines a platform API-key lookup, service-role access, admin user creation and client updates without a tenant/action-bound callback contract. Global-key bearer → identity provisioning/customer mutation. No value or invocation was accessed.
+- **Status / owner / collision:** owner decides retire versus redesign under Platform Security/Connections; no PR owns the file.
+- **Smallest next step / proof:** inventory legitimate callers without exposing secrets; if retained, bind tenant, purpose, expiry, replay/idempotency and allowed fields, then prove cross-tenant provisioning denial.
+- **Lesson/control:** global credentials do not confer arbitrary tenant or identity authority; callbacks are tenant-, purpose- and action-bound.
+
+#### PH-SEC-07 — General model budget accrual fails open (`VERIFIED`, High cost risk)
+
+- **Evidence / boundary:** `_shared/router-budget/mod.ts:30,170`, `_shared/claude.ts:577-578`, and `_shared/model-router.ts:203,215-216,885-895` explicitly proceed ungated when accrual is unknown; media budgeting separately fails closed. Tenant/model invocation → possible provider spend; incidents/provider reachability are untested.
+- **Status / owner / collision:** owner policy decision in shared Budget/Billing; reuse the ledger/reservation model.
+- **Smallest next step / proof:** define paid/consequential classes that fail closed on unknown accrual; enforce centrally and test outage, stale ledger, concurrency and usage/receipt reconciliation.
+- **Lesson/control:** an observable warning is not enforcement; unknown spend authority fails closed unless the owner explicitly accepts otherwise.
+
+#### PH-SEC-08 — Browser persists invitation bearer (`VERIFIED`, Medium)
+
+- **Evidence / boundary:** `src/pages/JoinWorkspace.tsx:112-115` writes `paige_pending_invite` to `localStorage`; `src/lib/auth/resolveLandingRoute.ts:318-330` reads and clears it; `src/pages/Auth.tsx:404,491,508` clears it on terminal/non-invite paths. Origin script/XSS → invitation bearer/membership attempt; the clear paths mitigate lifetime but do not remove script-readable persistence.
+- **Status / owner / collision:** safely hardenable under Auth/Invites after all resume-flow consumers are inventoried.
+- **Smallest next step / proof:** use short-lived server-bound continuation or one-time exchange; test refresh, abandonment, expiry, reuse, wrong account and storage absence.
+- **Lesson/control:** secret/bearer continuation material is not durable in script-readable browser storage.
+
+#### PH-SEC-09 — SECURITY DEFINER feature read accepts arbitrary tenant (`VERIFIED`, Medium)
+
+- **Evidence / boundary:** `20260701144912_324f9be7-bac9-4eee-b1cb-724cb74d451d.sql:59-73` grants authenticated callers `tenant_feature_enabled(_tenant_id,...)` with no in-body membership check. Authenticated caller → another tenant's configuration booleans; no customer rows/action are directly exposed.
+- **Status / owner / collision:** safely repairable under Tenant Platform after generated-type/consumer inventory.
+- **Smallest next step / proof:** validate membership in-body or replace browser access with scoped invoker read; test forged tenant/operator cases and deployed grants.
+- **Lesson/control:** even low-sensitivity SECURITY DEFINER reads validate scope in-body; tenant parameters are not authorization.
+
+#### PH-TRUTH-10 — Capability declarations exceed registry adoption (`PARTIAL`)
+
+- **Evidence / boundary:** `lint:chat-tool-registry` reports `improvement_propose`, `improvement_list`, `improvement_decide`, `inbox_list`, and `integrations_list`; declarations/handlers remain inline at `paige-ai-chat/index.ts:5995-6075,11307-11383`. Chat declaration → handler → owner claim.
+- **Status / owner / collision:** migrate under Chat/Capability Portfolio. Merged #1175 supplies routing doctrine but does not change these runtime lines.
+- **Smallest next step / proof:** migrate one family at a time into the existing Gateway truth model; prove declared/executable/proven/owner-visible states, denial/setup/approval, readback and receipts through the existing proof lane.
+- **Lesson/control:** a capability is not live until governed execution, readback, receipt/Rail and authenticated owner-visible proof agree.
+
+#### PH-DB-11 — Replay and production catalogue are separate obligations (`PROOF OWED`)
+
+- **Evidence / boundary:** the Social compatibility bridge is merged, both historical `paige_social_posts` lineages remain, and #1161 owns final reconciliation. No empty reset or production catalogue/apply read was available. Migration order/schema → tenant isolation/function compatibility/deployability.
+- **Status / owner / collision:** Database/Social active work; old issues do not prove current breakage and merged SQL does not prove production parity.
+- **Smallest next step / proof:** run exact-SHA from-zero replay; separately compare production migration history, columns, grants/policies and generated types; reconcile Social without fabricating ownership.
+- **Lesson/control:** fresh replay truth and production-catalog truth are distinct; neither a migration nor unrelated green workflow proves both.
+
+#### PH-EVIDENCE-12 — Authenticated/deployed proof is incomplete (`PROOF OWED`)
+
+- **Evidence / boundary:** `scripts/live-drive/PROOF-LANE.md` and `docs/evidence/proof-lane/README.md` define seven flows, all proof owed pending a least-privilege tenant/approved secret path. Repository claim → real tenant/action/provider behavior.
+- **Status / owner / collision:** preserve Harness Layer G; #1165 owns vocabulary crosswalk, not a second proof system.
+- **Smallest next step / proof:** run the existing lane with exact build identity; add Edge/database inventory and negative tenant/provider/readback assertions; store no raw credentials/payloads.
+- **Lesson/control:** a green workflow definition, structural test or source scan is not proof of a required gate or deployed behavior.
+
+#### PH-OPS-13 — Tracked environment file is an unowned credential-history concern (`UNVERIFIED`)
+
+- **Evidence / boundary:** `git ls-files --stage -- .env` confirms `.env` is tracked. Contents were deliberately not opened. Repository/history reader → potential secret material; actual secret presence, validity and exposure are unknown.
+- **Status / owner / collision:** no confirmed owner record was found for this exact tracked-file seam. Do not associate it with a private issue, print values, rotate credentials, or rewrite history without owner authority.
+- **Smallest next step / proof:** authorized scanner reports metadata only; owner decides rotation/history response only for confirmed live credentials.
+- **Lesson/control:** record exposure metadata, never values; discovery does not authorize rotation or history rewriting.
+
+#### PH-FIXED-14 — Historical MCP bypass warning is stale (`VERIFIED`, already fixed)
+
+- **Evidence / boundary:** current `npm run lint:mcp-governed-door` reports “119 registered tools, 119 governed, one door, no bypass.” MCP declaration → governed adapter.
+- **Status / owner / collision:** preserve the adapter/lint; no repair from the historical warning.
+- **Smallest next step / proof:** keep the lint required and add representative deployed authenticated proof; investigate only a newly reproduced bypass.
+- **Lesson/control:** historical findings are hypotheses until re-grounded; retire a warning when current source/enforcement disproves it.
+
+#### PH-OPS-15 — Required UI evidence gate is an owner ruling, not verified enforcement (`PROOF OWED`)
+
+- **Evidence / boundary:** merged #1175 records the exact required context `ui-delivery-evidence / Validate UI delivery evidence`, but also records a `403` on branch-protection readback and says the setting is not yet in force. Pull request → merge authority; the workflow file/run alone cannot block a merge.
+- **Status / owner / collision:** awaiting repository-owner action under Release Operations; no code or workflow duplicate is needed.
+- **Smallest next step / proof:** configure that exact context in `main` branch protection and read it back from the required-check list; then exercise a conforming and nonconforming UI PR.
+- **Lesson/control:** a green workflow definition or run is not proof that a required merge gate is enforced.
+
+#### PH-REG-16 — Two provider families lack canonical registry entries (`VERIFIED`)
+
+- **Evidence / boundary:** merged `docs/doctrine/paige-capability-portfolio.md` records Upload-Post and fal.ai as provider-facing families with no Integration Capability Registry entry; `integration-capability-registry.json` assigns the Registry Steward to Harness but does not add them. Latest `main` `9cac02d6` changes the fal adapter without closing that entry debt. Provider name/config → connection/capability truth.
+- **Status / owner / collision:** safely recordable by the Harness Registry Steward with the Social/Vibe domain owners; this does not authorize connection or provider execution.
+- **Smallest next step / proof:** add canonical entries with code anchors, owner, connection/capability/autonomy truth and limitations; extend existing registry lint to validate anchors. Prove lint failure on missing/drifted anchors.
+- **Lesson/control:** provider-facing code and documentation update the one Integration Capability Registry in the same change; listed never means connected or authorized.
+
+#### PH-SEC-17 — Private credential-access remediation remains a separate owner packet (`UNVERIFIED`)
+
+- **Evidence / boundary:** public issue #788 states only that a private in-tenant credential-access control is under review, row-level scoping held, and automatic rotation is prohibited because it could disconnect tenant operations. It explicitly withholds the affected seam and does not establish anonymous, public, cross-tenant, plaintext, `.env`, or repository-history exposure.
+- **Status / owner / collision:** Connections/Security owns the private packet; audit agents must not infer its hidden implementation or merge it with PH-OPS-13.
+- **Smallest next step / proof:** repository owner supplies the private handoff to an authorized repairer; any rotation, containment and verification sequence remains an owner decision. Public closeout reveals no secret or sensitive reproduction detail.
+- **Lesson/control:** separate disclosed metadata from withheld security facts; a private credential finding never authorizes guessed scope or automatic rotation.
+
+### Proposed or local remediation — non-shipped
+
+No runtime, schema, credential, provider, deployment or production change was made. This documentation PR can make the reconciliation canonical, but it does not ship any security repair or change the health claims above. Any local/proposed security patch remains explicitly non-shipped until separately merged and verified; this PR contains no such patch. Candidate repairs remain open; active PR #1173 is not absorbed. Merged #1175 is incorporated as current doctrine.
+
+The decision packets for `handle-inbound-webhook`, unknown-budget fail-closed behavior, branch-protection readback, and credential remediation remain owner decisions. Audit agents preserve their evidence and options; they do not silently choose policy, rotate credentials, rewrite history, or assert enforcement.
+
+### Ranked remediation program
+
+1. Contain PH-SEC-01, then PH-SEC-02/06. Stop when every reachable seam has server-derived/purpose-bound authority or is disabled, with deployed negative proof.
+2. Close PH-SEC-03/04. Stop on redirect/size/private-address tests and deployed two-tenant view/grant proof.
+3. Complete shared authority through PH-SEC-05/07 and PR #1173. Stop on stable identity, current autonomy, idempotency, budget, readback, receipt/Rail, retry and cancellation through one engine.
+4. Reconcile PH-TRUTH-10/PH-DB-11. Stop when Gateway adoption and exact-SHA replay plus production-catalog proofs agree; do not rebuild registries or Social ownership.
+5. Close PH-OPS-15/PH-REG-16 through the existing release and registry controls; do not create a new gate or registry.
+6. Discharge PH-EVIDENCE-12, PH-SEC-08/09, PH-OPS-13 and PH-SEC-17 only with least-privilege evidence and explicit owner decisions where credentials/history or spend policy are involved.
+
+### Owner-readable closeout
+
+- **What we learned:** the right shared primitives already exist; older caller-selected/direct-execution seams bypass them. The prevention rule is canonical adoption, not more architecture.
+- **What changed on `main`:** #1175 merged Capability Portfolio routing, assigned the Harness Registry Steward, and recorded—but did not prove—the required UI-evidence branch setting. Latest `9cac02d6` fixes fal result retrieval after a controlled provider generation succeeded, and its Edge deploy run succeeded; post-fix artifact readback is still owed. Shared capability truth, honest Chat contact outcome, Social containment/replay bridge, Layer-G proof and Vibe media credits are also merged. MCP governance is structurally enforced; Layer-C act execution is not.
+- **What still needs proof:** exact-SHA CI completion; post-fix Vibe artifact readback/receipt; empty replay; production catalogue/grants/function inventory; deployed denials for public/service-role/SSRF seams; seven authenticated flows; broader provider readback and build parity.
+- **What decision is needed:** retire versus redesign `handle-inbound-webhook`; fail-closed policy for unknown general model accrual; configure/read back the exact required UI-evidence check; separately decide metadata-only investigation/remediation for tracked `.env` and the private #788 credential-control handoff. Neither credential packet authorizes automatic rotation or history rewriting.
+
+---
+
+## Historical baseline — end of 2026-07-20 session (not current truth)
 
 **Brain build:**
 - L1 (Observability / paige_llm_trace) — LIVE, tenant_id soft-FK silent-drop fixed via #146

@@ -6,6 +6,20 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## Security reconciliation must promote prevention controls, not preserve stale warnings (2026-09-12)
+
+- **Symptom.** Historical audits, open issues, green workflow definitions and merged migrations were read as if they described today's deployed platform, while older direct Edge paths sat beside newer canonical Harness controls without inheriting them.
+- **Root cause.** Source, merged state, deployment, production catalogue, authenticated runtime and proposed repair were collapsed into one evidence class. Findings recorded an instance but not the invariant that prevents its next form.
+- **Rule.** Pin health statements to an exact merged-main SHA and timestamp; label `VERIFIED/PARTIAL/UNAVAILABLE/PROOF OWED/UNVERIFIED`; keep local remediation non-shipped; and inherit these controls:
+  - public identity-changing endpoints require signed, expiring, purpose-bound authority;
+  - service-role functions derive tenant, actor, target and authority server-side—an ordinary JWT is not internal-service authority;
+  - URL ingestion uses canonical bounded `safeFetch`, including redirects and response size;
+  - tenant views deliberately preserve RLS semantics and prove deployed grants;
+  - consequential automation resolves current authority, stable identity, idempotency, budget, readback and receipt/Rail through one path;
+  - a green workflow definition is not proof of a required gate or deployed behavior;
+  - a capability is not live until declared, executable, proven and owner-visible truth agree.
+  Preserve each reconciliation snapshot. A later repair appends a new exact-SHA entry naming what changed and which proof closed the finding; it never edits the older snapshot into a success it did not observe.
+
 ## A new result/status vocabulary must be cross-mapped to the existing CI-enforced one, not silently forked (2026-09-12)
 
 - **Symptom.** The proof-lane framework (Harness Layer G) introduced a runtime verdict vocabulary
