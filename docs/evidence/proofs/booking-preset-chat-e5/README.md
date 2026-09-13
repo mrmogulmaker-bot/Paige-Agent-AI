@@ -1,10 +1,11 @@
 # E5 — Paige governed adoption of the booking-preset action path (proof)
 
-**Branch `claude/calendar-paige-e5` / PR #1220 (DRAFT — held for the owner's separate release
-decision).** E5 wires Paige's chat handler to create / revise / publish / pause / duplicate /
-archive / restore booking presets through the EXACT canonical RPCs the Settings › Connections ›
-Calendars UI drives — never a direct table write, never a parallel Calendar model (owner ruling
-2026-09-13; §10). This records what was proven and, honestly (§13/§32), what is owed to a live drive.
+**SHIPPED LIVE 2026-09-13 — PR #1220 squash-merged `688613db` (edge-live); migration-renumber
+hotfix #1237 `5d65a96f` (db-live). Zero migration drift.** E5 wires Paige's chat handler to
+create / revise / publish / pause / duplicate / archive / restore booking presets through the EXACT
+canonical RPCs the Settings › Connections › Calendars UI drives — never a direct table write, never a
+parallel Calendar model (owner ruling 2026-09-13; §10). This records what was proven and, honestly
+(§13/§32), what is now persisted on prod and what remains owed to an authenticated live drive.
 
 ## What changed (7 files)
 
@@ -30,7 +31,7 @@ send, external event, meeting link, or booking is reachable.
 
 ## Proof (headless — this session has no Deno and no authenticated browser)
 
-- **Adversarial unit suite** `src/__tests__/calendar-preset-tenant-brain.test.ts` — **25/25 pass**
+- **Adversarial unit suite** `src/__tests__/calendar-preset-tenant-brain.test.ts` — **26/26 pass**
   (Vitest transpiles the `.ts`, so this also typechecks the helper). Covers every owner-required
   case: create/duplicate draft (asserting the UI-matching Mon–Fri + phone defaults — no parallel
   model), revise readback, publish → live, the three publish REFUSALS (`PRESET_NEEDS_HOSTS` /
@@ -50,8 +51,12 @@ send, external event, meeting link, or booking is reachable.
   `REVOKE`/`GRANT` apply cleanly under `ON_ERROR_STOP=1`; `list_tool_autonomy(NULL)` returns all 7
   `booking_preset_*` rows under category `Calendar` at `mode=confirm`, `is_default=true` (the safe
   default — no autonomy bypass). Catalogue key-diff vs the prior migration: **7 added, 0 removed**
-  (§58 no-regression). NOTE (§32): this proves the SQL applies + executes; the PERSISTED-on-prod
-  confirmation is owed to the `deploy-migrations` pipeline on merge (not done — PR is DRAFT).
+  (§58 no-regression). §32.a PERSISTED-ON-PROD (post-merge): migration `20270305000000` is live on
+  prod — the `deploy-migrations` pipeline advanced `db-live` to `5d65a96f` only after its §32
+  persisted-verify step, the migration file is present at that commit, and drift is zero
+  (`git diff db-live..origin/main -- supabase/migrations/**` empty). STILL OWED: a finer direct
+  prod-SQL read of the `schema_migrations` row + the 7 catalogue rows — Supabase MCP prod SQL is
+  permission-denied to this headless session (attempted 2026-09-13, `-32600` permission error).
 
 ## Inherited base failures (NOT E5 — present on `origin/main`, absent from this diff, per §13)
 
@@ -63,7 +68,7 @@ send, external event, meeting link, or booking is reachable.
 
 ## Review outcomes (§1/§5/§39 crew on the real pushed diff `b1f02fa8`)
 
-- **§5 compliance officer → SHIP** (for a held draft). Confirmed: exact canonical RPCs / no parallel
+- **§5 compliance officer → SHIP** (released to `main` 2026-09-13 per §4/§69 pre-launch). Confirmed: exact canonical RPCs / no parallel
   model, UI-matching draft defaults, sound risk classes, no-false-success verification, §58 catalogue
   diff (0 removed / 7 added), honest DRAFT/owed-live-drive labeling. Non-blocking notes NB-1 (tier-
   matrix Agency phrasing), NB-2 (model-facing note strings — pre-existing sibling convention), NB-3
