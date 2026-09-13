@@ -1787,10 +1787,14 @@ unretryable.
 | Measure | Value | Guard |
 |---|---|---|
 | Inline legacy Chat tools | **105** | `npm run lint:chat-tool-registry` |
-| Registered Spine capabilities | **1** | `scripts/ci/paige-spine-registry-lint.mjs` |
+| Registered Spine capabilities | **35** (2026-09-13, code-verified; was 1 on 2026-09-02 — all `maturity: PARTIAL`; only `pipeline.deal_stage_evidence` in the Mind envelope contract) | `scripts/ci/paige-spine-registry-lint.mjs` · `docs/architecture/mind-memory-knowledge-brain-capability-map.md` |
 | Classified actions | **62** — 32 `ordinary` · 28 `high` · 2 `owner_only` · 5 exempt · 0 unclassified writes | `npm run lint:action-risk` |
 
-**The Spine is PARTIAL and no department-wide connectivity is implied.** The one registered
+**The Spine is PARTIAL and no department-wide connectivity is implied.** _(§13 update 2026-09-13: the
+registry now holds **35** capabilities, all `maturity: PARTIAL` — the "one registered capability" below
+is the 2026-09-02 snapshot; the department-connectivity conclusion is UNCHANGED because still only
+`pipeline.deal_stage_evidence` is in the Mind envelope contract and nothing is authenticated-`LIVE`. See
+`docs/architecture/mind-memory-knowledge-brain-capability-map.md`.)_ The (2026-09-02) one registered
 capability is `pipeline.deal_stage_evidence` — a read, `chatBinding: PARTIAL`, and **`mindBinding:
 PARTIAL` since #747 merged (`dcddf676`, 2026-09-02)**, mapped to **no** Chat tool. The guards were
 re-run on the merged head: 105 · 1 · 62, all unchanged. PAIGE reaches every department today through the 105
@@ -3333,7 +3337,10 @@ Rail is readable only through a `SECURITY DEFINER` lens, and it holds **9 rows**
 count 2026-09-03T09:35Z). On top of that, four structural constraints — the Rail is per-client, the
 resolver accepts only a client subject, the safe summary is a constant with enumerated facts, and
 evidence loads only inside a client-scoped Chat turn — leave the registry at **exactly one capability**
-and put most departments behind Change Requests that have not been raised.
+and put most departments behind Change Requests that have not been raised. _(§13 update 2026-09-13:
+this was the plan on 2026-09-02; the registry has since grown to **35** capabilities, all still
+`maturity: PARTIAL` and only `pipeline.deal_stage_evidence` in the Mind envelope contract — see the
+consolidated capability map.)_
 
 **§13 — two tracker/record divergences this entry does NOT resolve, because only the owner can.**
 (1) **#746 is CLOSED on GitHub** (2026-09-02T18:21:05Z, merged PRs #785 and #801), while §10 of this
@@ -3462,7 +3469,10 @@ expanded into it.
 Full record: **`docs/brain/paige-spine-and-rail-state.md`**. Recorded here because these are
 platform-wide facts, not one department's, and because two of them are routinely misread.
 
-**The Spine is `PARTIAL`. One registered capability, 105 inline Chat tools.** Measured by the repo's
+**The Spine is `PARTIAL`. 35 registered capabilities (2026-09-13, code-verified; all `maturity: PARTIAL`),
+105 inline Chat tools.** _(The "1 capability" measurement below is the 2026-09-02 snapshot; the registry
+has since grown to 35 — see `docs/architecture/mind-memory-knowledge-brain-capability-map.md`. Nothing is
+authenticated-`LIVE`.)_ Measured by the repo's
 own guards on 2026-09-02: `paige-spine-registry-lint` → `PASS (1 capability)`;
 `chat-tool-registry-lint` → `105 tool(s) inline`. That one capability is
 `pipeline.deal_stage_evidence` — read-only, `chatBinding: PARTIAL`, `mindBinding: PARTIAL`
@@ -4143,6 +4153,29 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+
+ - **2026-09-13 — Mind · Memory · Tenant Knowledge · Second-Brain vertical re-grounded; a consolidated
+   capability map + a Mind Workspace design gate were produced. NOTHING SHIPPED.** A five-scout crew
+   re-grounded the whole vertical on fresh `main` (@ `af249ef`). **Correction (§13):** the Spine registry
+   is no longer "one capability" (the Mind matrix, 2026-09-03) nor "~17" (spine-and-rail-state,
+   2026-09-05) — it holds **35 capabilities, all `maturity: PARTIAL`, code-verified** (`registry.ts:21`,
+   12 domain modules). Still true and NOT changed: only **one** of the 35 (`pipeline.deal_stage_evidence`)
+   is wired into the C2/C3/C4 Mind envelope contract; nothing in the vertical is authenticated-runtime
+   `LIVE`. New docs: `docs/architecture/mind-memory-knowledge-brain-capability-map.md` (the consolidated
+   5-state status map — LIVE/SOURCE-BUILT/PARTIAL/UNAVAILABLE/PROOF OWED, screen→seam, per-tier grid,
+   internal-vs-tenant boundary = SAFE) and, for review, a throwaway Mind Workspace prototype +
+   `-GATE.md` under `docs/design-references/prototypes/`. The Mind-only matrix carries a dated banner
+   pointing to the consolidated map; `docs/brain/README.md` indexes it. **Global honesty caveat:**
+   Supabase MCP was denied this session, so authenticated-prod schema/RLS/grant/row-count re-confirm is
+   **PROOF OWED** across the map. **This is a grounding + design-gate deliverable only — no capability
+   shipped, no product code, no Chat/CRM/Calendar/Harness change; §4 Shipped Log unchanged. §66/§57/§13
+   tier-matrix CORRECTION (same PR): the Mind ledger falsely showed Sub-account AND Enterprise Mind as
+   ✓ ("Sub-account already received Mind pre-PR #933") — code-verified false on current `main` (only
+   `SoloMindWorkspace` mounts the orb; sub-account/agency/enterprise render via `AgencyApp` with no
+   `mind` subtab, `tierBranches.ts:401,648`; §11c/§60 Solo≡Sub-account Mind is the sequenced target).
+   Corrected with a dated §58-preserving banner. No NEW tier visibility shipped — a stale prior claim
+   was reconciled to code.** Next owning step: owner
+   reviews the map + prototype at the gate, then CC implements on approval. Detail: `docs/brain/decision-log.md` (2026-09-13).
 
  - **2026-09-13 — P0: Paige's consequential-action confirm gate looped instead of executing, and a
    "bug report" could be claimed filed when it was not. FIX BUILT on a fresh-main emergency branch;

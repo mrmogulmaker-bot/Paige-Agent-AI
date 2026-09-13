@@ -1,0 +1,737 @@
+<title>Mind Workspace</title>
+<meta name="description" content="What Paige knows, remembers, and has done — every item wearing its real truth-state and provenance.">
+<!--
+  THROWAWAY, READ-ONLY prototype (flow-prototype skill). Deleted or absorbed after approval.
+  No network, no mutation, no real data — every value is a labelled fixture (§13/§63).
+  Design language: the pack --pg-* token system (design-system-port.md), Schibsted Grotesk +
+  Gambetta, gold ONLY on the act, the owner-approved Solo Mind orb as the hero anchor.
+  The orb here is a LIGHTWEIGHT Canvas-2D stand-in for the shipped R3F orb — labelled as such.
+  Every screen/control maps to a real backend seam or an explicit UNAVAILABLE state; open the
+  "Seam map" inspector (bottom-right) to trace each one to the capability map.
+-->
+<style>
+/* ---- The pack token system, verbatim from design-system-port.md (both themes authored) ---- */
+[data-pg]{--pg-font-display:"Schibsted Grotesk","Segoe UI Variable Display","SF Pro Display",system-ui,sans-serif;--pg-font-ui:"Schibsted Grotesk","Segoe UI Variable Text","SF Pro Text",system-ui,sans-serif;--pg-font-editorial:"Gambetta","Newsreader","Iowan Old Style",Baskerville,serif;--pg-font-data:"JetBrains Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;font-synthesis-weight:none;font-variant-numeric:tabular-nums}
+[data-pg="dark"]{color-scheme:dark;--pg-env:#08070b;--pg-nav:#0d0b11;--pg-canvas:#100e14;--pg-spine:#121017;--pg-workspace:#16131a;--pg-surface:#19161e;--pg-raised:#211d27;--pg-artifact:#e9e4da;--pg-line-soft:rgba(244,237,222,.115);--pg-line:rgba(244,237,222,.195);--pg-line-strong:rgba(244,237,222,.30);--pg-line-authority:rgba(234,213,170,.40);--pg-ink:#f6f2ea;--pg-ink-2:#d6d0c9;--pg-muted:#aca69d;--pg-faint:#969089;--pg-gold-core:#fff0cf;--pg-gold:#ead5aa;--pg-gold-deep:#c7a978;--pg-gold-fill:#d4a752;--pg-gold-bloom:rgba(240,200,106,.28);--pg-graphite:#2a2730;--pg-lift:rgba(255,255,255,.018);--pg-violet:#9b8de0;--pg-positive:#8fd1ae;--pg-warning:#edc17f;--pg-negative:#eda093;
+--pg-rim:inset 0 1px 0 rgba(255,255,255,.07),inset 0 -1px 0 rgba(0,0,0,.5);
+--pg-lift-1:inset 0 1px 0 rgba(255,255,255,.055),0 1px 1px rgba(0,0,0,.3),0 4px 12px -4px rgba(0,0,0,.42);
+--pg-lift-2:inset 0 1px 0 rgba(255,255,255,.07),0 2px 4px rgba(0,0,0,.32),0 16px 34px -12px rgba(0,0,0,.52);
+--pg-lift-3:inset 0 1px 0 rgba(255,255,255,.085),0 6px 12px rgba(0,0,0,.36),0 36px 72px -20px rgba(0,0,0,.62);
+--pg-inset:inset 0 1px 2px rgba(0,0,0,.42),inset 0 -1px 0 rgba(255,255,255,.035);
+--pg-r-plate:13px;--pg-r-chip:9px;--pg-r-seal:11px;--pg-r-pill:999px;--k-skill:#c7a978;--k-automation:#8fa9c4;--k-integration:#8fb9a4;--k-template:#c2a3b8;--k-agent:#a99ad6}
+[data-pg="light"]{color-scheme:light;--pg-env:#e8e5df;--pg-nav:#f4f1eb;--pg-canvas:#fbf9f5;--pg-spine:#f1eee8;--pg-workspace:#f7f4ee;--pg-surface:#f5f2ec;--pg-raised:#fffdf8;--pg-artifact:#fffdf8;--pg-line-soft:rgba(45,40,50,.105);--pg-line:rgba(45,40,50,.185);--pg-line-strong:rgba(45,40,50,.28);--pg-line-authority:rgba(155,120,60,.44);--pg-ink:#201e23;--pg-ink-2:#3d3941;--pg-muted:#67616b;--pg-faint:#6a646e;--pg-gold-core:#6f5636;--pg-gold:#8b7049;--pg-gold-deep:#7a5c2e;--pg-gold-fill:#c9a96a;--pg-gold-bloom:rgba(201,169,106,.30);--pg-graphite:#b9b2a6;--pg-lift:rgba(45,40,50,.03);--pg-violet:#655a96;--pg-positive:#327458;--pg-warning:#986322;--pg-negative:#a5483d;
+--pg-rim:inset 0 1px 0 rgba(255,255,255,.9),inset 0 -1px 0 rgba(45,40,50,.07);
+--pg-lift-1:inset 0 1px 0 rgba(255,255,255,.9),0 1px 1px rgba(45,40,50,.055),0 4px 10px -4px rgba(45,40,50,.12);
+--pg-lift-2:inset 0 1px 0 rgba(255,255,255,.95),0 2px 4px rgba(45,40,50,.07),0 14px 30px -12px rgba(45,40,50,.17);
+--pg-lift-3:inset 0 1px 0 #fff,0 6px 12px rgba(45,40,50,.09),0 32px 64px -20px rgba(45,40,50,.22);
+--pg-inset:inset 0 1px 2px rgba(45,40,50,.1),inset 0 -1px 0 rgba(255,255,255,.85);
+--pg-r-plate:13px;--pg-r-chip:9px;--pg-r-seal:11px;--pg-r-pill:999px;--k-skill:#9a7638;--k-automation:#4d6f92;--k-integration:#3f7a5f;--k-template:#8d5f7c;--k-agent:#6f5eb0}
+
+/* Truth-state palette — one hue per capability state, tinted from the theme, never bare gray. */
+[data-pg="dark"]{--st-live:#8fd1ae;--st-live-bg:rgba(143,209,174,.14);--st-source:#8fa9c4;--st-source-bg:rgba(143,169,196,.14);--st-partial:#edc17f;--st-partial-bg:rgba(237,193,127,.14);--st-owed:#a99ad6;--st-owed-bg:rgba(169,154,214,.15);--st-unavail:#b8b0a6;--st-unavail-bg:rgba(184,176,166,.10)}
+[data-pg="light"]{--st-live:#2f7d5a;--st-live-bg:rgba(47,125,90,.12);--st-source:#3f6488;--st-source-bg:rgba(63,100,136,.12);--st-partial:#8a5d13;--st-partial-bg:rgba(153,99,34,.13);--st-owed:#5b4e93;--st-owed-bg:rgba(101,90,150,.13);--st-unavail:#6d675f;--st-unavail-bg:rgba(45,40,50,.06)}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--pg-env);color:var(--pg-ink);font:400 14px/1.55 var(--pg-font-ui);letter-spacing:-.002em;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4,p{margin:0}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0}
+[data-pg] ::selection{background:var(--pg-gold-bloom);color:var(--pg-ink)}
+[data-pg] ::-webkit-scrollbar{width:10px;height:10px}
+[data-pg] ::-webkit-scrollbar-track{background:transparent}
+[data-pg] ::-webkit-scrollbar-thumb{background:var(--pg-line-strong);border-radius:999px;border:3px solid transparent;background-clip:content-box}
+[data-pg] ::-webkit-scrollbar-thumb:hover{background:var(--pg-faint);background-clip:content-box}
+:focus-visible{outline:2px solid var(--pg-gold-core);outline-offset:3px;border-radius:4px}
+
+/* ---- Review bar (developer surface — kept visually separate from the product) ---- */
+.rv{position:sticky;top:0;z-index:60;background:#0b0a0e;color:#e9e4da;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;padding:9px 16px;border-bottom:1px solid rgba(244,237,222,.14)}
+.rv-l{font:600 10px/1 var(--pg-font-ui);letter-spacing:.13em;text-transform:uppercase;opacity:.55}
+.rv-g{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.rv-g > .rv-cap{font:600 11px/1 var(--pg-font-ui);letter-spacing:.09em;text-transform:uppercase;opacity:.55;margin-right:2px}
+.rv-btn{border:1px solid rgba(244,237,222,.22);border-radius:8px;padding:5px 9px;font-size:11px;color:#e9e4da;opacity:.72}
+.rv-btn:hover{opacity:.95}
+.rv-btn.on{opacity:1;border-color:var(--pg-gold-fill);background:rgba(212,167,82,.16);color:#fff0cf}
+.rv-note{margin-left:auto;font-size:12px;opacity:.62;max-width:42ch;text-align:right}
+
+/* ---- Stage + shell (matches the Solo prototype pattern) ---- */
+.stage{padding:20px 16px 64px;display:flex;justify-content:center}
+.shell{width:100%;max-width:1360px;background:var(--pg-canvas);border-radius:var(--pg-r-plate);overflow:hidden;box-shadow:var(--pg-lift-3);border:1px solid var(--pg-line-soft);position:relative}
+.shell[data-vw="laptop"]{max-width:1180px}
+.shell[data-vw="tablet"]{max-width:900px}
+.shell[data-vw="narrow"]{max-width:760px}
+.shell[data-vw="phone"]{max-width:402px}
+
+/* Band header */
+.band{background:linear-gradient(180deg,var(--pg-nav) 0%,var(--pg-canvas) 100%);padding:16px 22px 0;border-bottom:1px solid var(--pg-line-soft)}
+.band-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.mark{width:40px;height:40px;flex:0 0 auto;border-radius:var(--pg-r-plate);box-shadow:var(--pg-rim);background:var(--pg-surface);display:grid;place-items:center}
+.brand h1{font:500 27px/1.05 var(--pg-font-editorial);letter-spacing:-.01em;color:var(--pg-ink)}
+.brand .kicker{font:600 11px/1 var(--pg-font-ui);letter-spacing:.2em;text-transform:uppercase;color:var(--pg-muted);margin-top:5px}
+.band-right{margin-left:auto;display:flex;align-items:center;gap:14px}
+.acct{border:1px solid var(--pg-line);border-radius:var(--pg-r-chip);padding:7px 13px;background:var(--pg-surface);box-shadow:var(--pg-rim)}
+.acct b{display:block;font:550 13px/1.2 var(--pg-font-ui);color:var(--pg-ink)}
+.acct span{font:500 11px/1 var(--pg-font-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--pg-muted)}
+.freshness{font-size:12px;color:var(--pg-muted);text-align:right;line-height:1.45;max-width:26ch}
+.freshness b{color:var(--pg-ink-2);font-weight:600}
+.band-actions{display:flex;gap:8px;align-items:center}
+
+/* The standing honesty boundary — a visible promise, not chrome */
+.boundary{display:flex;gap:9px;align-items:flex-start;margin:13px 0 0;padding:9px 13px;border:1px solid var(--pg-line-authority);border-radius:var(--pg-r-chip);background:var(--pg-surface);font-size:12px;color:var(--pg-ink-2);line-height:1.5}
+.boundary svg{flex:0 0 auto;margin-top:1px}
+.boundary b{color:var(--pg-ink);font-weight:600}
+
+/* Lens filter (a filter over records — NOT artifact-type tabs, §18/§21) */
+.lenses{display:flex;gap:4px;margin-top:14px;overflow-x:auto;padding-bottom:1px}
+.lens{padding:8px 13px;font-size:13px;color:var(--pg-muted);border-bottom:2px solid transparent;white-space:nowrap;display:flex;gap:7px;align-items:center}
+.lens:hover{color:var(--pg-ink-2)}
+.lens.on{color:var(--pg-ink);border-bottom-color:var(--pg-gold-fill);font-weight:550}
+.lens .ct{font:500 10px/1 var(--pg-font-data);color:var(--pg-faint);background:var(--pg-surface);border:1px solid var(--pg-line-soft);border-radius:var(--pg-r-pill);padding:2px 6px}
+.lens.on .ct{color:var(--pg-ink-2)}
+
+/* Floor: orb hero + records */
+.floor{display:grid;grid-template-columns:minmax(360px,1.15fr) minmax(340px,1fr);gap:18px;padding:18px 22px 24px;align-items:start}
+.shell[data-vw="tablet"] .floor,.shell[data-vw="narrow"] .floor,.shell[data-vw="phone"] .floor{grid-template-columns:1fr}
+.shell[data-paige="open"] .floor{grid-template-columns:1fr}
+
+/* Orb hero */
+.hero{position:relative;border:1px solid var(--pg-line-soft);border-radius:var(--pg-r-plate);background:radial-gradient(120% 120% at 50% 12%,var(--pg-workspace),var(--pg-canvas));box-shadow:var(--pg-inset);min-height:420px;overflow:hidden;display:flex;flex-direction:column}
+.shell[data-vw="phone"] .hero{min-height:340px}
+.hero-cap{position:absolute;top:12px;left:14px;right:14px;display:flex;justify-content:space-between;gap:10px;z-index:3;pointer-events:none}
+.hero-cap .lede{font:500 13px/1.35 var(--pg-font-editorial);color:var(--pg-ink-2);max-width:30ch}
+.orb-wrap{flex:1;position:relative;display:grid;place-items:center}
+canvas.orb{width:100%;height:100%;display:block}
+.orb-legend{position:absolute;bottom:12px;left:14px;right:14px;display:flex;gap:8px;flex-wrap:wrap;z-index:3;font-size:12px;color:var(--pg-muted)}
+.orb-legend .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
+.orb-controls{position:absolute;bottom:12px;right:14px;display:flex;gap:6px;z-index:4}
+.iconbtn{border:1px solid var(--pg-line);border-radius:var(--pg-r-chip);padding:6px 10px;font-size:12px;color:var(--pg-ink-2);background:var(--pg-surface);box-shadow:var(--pg-rim);display:inline-flex;gap:6px;align-items:center;min-height:32px}
+.iconbtn:hover{border-color:var(--pg-line-strong)}
+.iconbtn[aria-pressed="true"]{border-color:var(--pg-gold-fill);color:var(--pg-gold-core);background:var(--pg-gold-bloom)}
+.stand-in{position:absolute;top:12px;right:14px;z-index:4;font:500 11px/1 var(--pg-font-data);letter-spacing:.04em;color:var(--pg-muted);background:var(--pg-surface);border:1px dashed var(--pg-line);border-radius:var(--pg-r-chip);padding:5px 8px}
+
+/* Records column */
+.records{display:flex;flex-direction:column;gap:11px;min-width:0}
+.rec-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.rec-head h2{font:500 18px/1.15 var(--pg-font-editorial);letter-spacing:-.01em;color:var(--pg-ink)}
+.rec-head p{color:var(--pg-muted);font-size:12.5px}
+.rec-list{display:flex;flex-direction:column;gap:10px}
+.rec{position:relative;text-align:left;width:100%;border:1px solid var(--pg-line-soft);border-radius:var(--pg-r-plate);background:var(--pg-surface);box-shadow:var(--pg-lift-1);padding:13px 14px;display:grid;grid-template-columns:34px 1fr auto;gap:12px;align-items:start;transition:transform .18s cubic-bezier(.2,.7,.3,1),box-shadow .18s,border-color .18s}
+.rec:hover{transform:translateY(-1px);box-shadow:var(--pg-lift-2);border-color:var(--pg-line)}
+.rec .plate{width:34px;height:34px;border-radius:var(--pg-r-chip);display:grid;place-items:center;box-shadow:var(--pg-rim);background:var(--pg-workspace)}
+.rec .body{min-width:0}
+.rec .title{font:550 14px/1.3 var(--pg-font-ui);color:var(--pg-ink);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rec .sub{color:var(--pg-muted);font-size:12.5px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.rec .prov{margin-top:7px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--pg-muted)}
+.rec .prov .glyph{display:inline-flex;gap:4px;align-items:center}
+.rec .right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.rec-dismiss{border:1px solid var(--pg-line-soft);border-radius:var(--pg-r-chip);width:26px;height:26px;display:grid;place-items:center;color:var(--pg-faint);background:transparent}
+.rec-dismiss:hover{color:var(--pg-ink-2);border-color:var(--pg-line)}
+
+/* State chip */
+.chip{font:600 9.5px/1 var(--pg-font-ui);letter-spacing:.08em;text-transform:uppercase;padding:4px 7px;border-radius:var(--pg-r-pill);border:1px solid transparent;white-space:nowrap}
+.chip.live{color:var(--st-live);background:var(--st-live-bg);border-color:color-mix(in srgb,var(--st-live) 40%,transparent)}
+.chip.source{color:var(--st-source);background:var(--st-source-bg);border-color:color-mix(in srgb,var(--st-source) 40%,transparent)}
+.chip.partial{color:var(--st-partial);background:var(--st-partial-bg);border-color:color-mix(in srgb,var(--st-partial) 40%,transparent)}
+.chip.owed{color:var(--st-owed);background:var(--st-owed-bg);border-color:color-mix(in srgb,var(--st-owed) 40%,transparent)}
+.chip.unavail{color:var(--st-unavail);background:var(--st-unavail-bg);border-color:color-mix(in srgb,var(--st-unavail) 35%,transparent)}
+
+/* Ingest / action row */
+.actionbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+.btn{border:1px solid var(--pg-line);border-radius:var(--pg-r-chip);padding:8px 13px;font-size:13px;color:var(--pg-ink-2);background:var(--pg-surface);box-shadow:var(--pg-rim);min-height:38px;display:inline-flex;gap:7px;align-items:center}
+.btn:hover{border-color:var(--pg-line-strong)}
+.btn.gold{border-color:transparent;background:var(--pg-gold-fill);color:#221a0a;font-weight:600;box-shadow:var(--pg-lift-1)}
+.btn.gold:hover{filter:brightness(1.04)}
+.btn:disabled,.btn[aria-disabled="true"]{opacity:.5;cursor:not-allowed;box-shadow:none}
+.btn .why{font-size:12px;color:var(--pg-muted);font-weight:400}
+
+/* Info / state panels */
+.panel{border:1px solid var(--pg-line-soft);border-radius:var(--pg-r-plate);background:var(--pg-surface);box-shadow:var(--pg-lift-1);padding:16px}
+.panel.emptyish{background:var(--pg-workspace);border-style:dashed;text-align:center;padding:26px 20px}
+.panel h3{font:550 14px/1.3 var(--pg-font-ui);color:var(--pg-ink);margin-bottom:6px}
+.panel p{color:var(--pg-muted);font-size:13px;line-height:1.55;max-width:52ch;margin:0 auto}
+.panel .why{margin-top:10px;font-size:12px;color:var(--pg-faint)}
+.spinner{width:22px;height:22px;border-radius:50%;border:2.5px solid var(--pg-line);border-top-color:var(--pg-gold);animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.skel{height:64px;border-radius:var(--pg-r-plate);background:linear-gradient(100deg,var(--pg-surface) 30%,var(--pg-workspace) 50%,var(--pg-surface) 70%);background-size:200% 100%;animation:shimmer 1.3s linear infinite;border:1px solid var(--pg-line-soft)}
+@keyframes shimmer{to{background-position:-200% 0}}
+
+/* Drawer (secondary detail retaining page context — not a modal) */
+.scrim{position:absolute;inset:0;background:rgba(8,7,11,.42);z-index:40;opacity:0;pointer-events:none;transition:opacity .2s}
+.scrim.on{opacity:1;pointer-events:auto}
+.drawer{position:absolute;top:0;right:0;bottom:0;width:min(440px,92%);background:var(--pg-canvas);border-left:1px solid var(--pg-line);box-shadow:var(--pg-lift-3);z-index:41;transform:translateX(100%);transition:transform .24s cubic-bezier(.2,.7,.3,1);display:flex;flex-direction:column}
+.drawer.on{transform:none}
+.drawer-h{padding:16px 18px;border-bottom:1px solid var(--pg-line-soft);display:flex;gap:12px;align-items:flex-start}
+.drawer-h h3{font:500 17px/1.25 var(--pg-font-editorial);flex:1;color:var(--pg-ink)}
+.drawer-b{padding:16px 18px;overflow:auto;display:flex;flex-direction:column;gap:14px}
+.drawer-sec h4{font:600 10px/1 var(--pg-font-ui);letter-spacing:.12em;text-transform:uppercase;color:var(--pg-muted);margin-bottom:7px}
+.drawer-sec .kv{font-size:13px;color:var(--pg-ink-2);line-height:1.6}
+.drawer-sec .kv b{color:var(--pg-ink);font-weight:600}
+.drawer-sec.honesty{border:1px solid var(--pg-line-authority);border-radius:var(--pg-r-chip);padding:12px;background:var(--pg-surface)}
+.drawer-sec .seam{font:500 12px/1.5 var(--pg-font-data);color:var(--pg-muted);word-break:break-word}
+.drawer-sec.reviewonly{border:1px dashed var(--pg-line);border-radius:var(--pg-r-chip);padding:11px 12px;background:var(--pg-workspace)}
+.ro-tag{font:600 11px/1 var(--pg-font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--pg-faint);border:1px solid var(--pg-line-soft);border-radius:var(--pg-r-pill);padding:2px 7px;margin-left:8px;vertical-align:middle}
+.closex{border:1px solid var(--pg-line);border-radius:var(--pg-r-chip);width:32px;height:32px;display:grid;place-items:center;color:var(--pg-ink-2);background:var(--pg-surface)}
+
+/* Restore cleared cards */
+.restore{margin-top:4px;text-align:center;font-size:12px;color:var(--pg-muted)}
+.restore button{color:var(--pg-gold-core);border-bottom:1px solid transparent}
+.restore button:hover{border-bottom-color:var(--pg-gold)}
+
+/* Non-Solo tier honesty banner */
+.tiernote{margin:0 22px 16px;border:1px dashed var(--pg-line);border-radius:var(--pg-r-chip);background:var(--pg-workspace);padding:11px 14px;font-size:12.5px;color:var(--pg-ink-2);line-height:1.5}
+.tiernote b{color:var(--pg-ink)}
+
+/* aria-live region */
+.sr-live{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* Seam-map inspector */
+.seamtoggle{position:fixed;bottom:16px;right:16px;z-index:70;border:1px solid var(--pg-gold-fill);background:#0b0a0e;color:#fff0cf;border-radius:var(--pg-r-pill);padding:9px 15px;font-size:12px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.seampanel{position:fixed;bottom:60px;right:16px;z-index:70;width:min(560px,94vw);max-height:70vh;overflow:auto;background:var(--pg-canvas);border:1px solid var(--pg-line);border-radius:var(--pg-r-plate);box-shadow:var(--pg-lift-3);padding:16px;display:none}
+.seampanel.on{display:block}
+.seampanel h3{font:500 16px/1.2 var(--pg-font-editorial);margin-bottom:4px;color:var(--pg-ink)}
+.seampanel p.note{font-size:12px;color:var(--pg-muted);margin-bottom:12px}
+.seampanel table{width:100%;border-collapse:collapse;font-size:12px}
+.seampanel th,.seampanel td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--pg-line-soft);vertical-align:top}
+.seampanel th{color:var(--pg-muted);font:600 11px/1 var(--pg-font-ui);letter-spacing:.08em;text-transform:uppercase}
+.seampanel td.seam{font:500 11px/1.45 var(--pg-font-data);color:var(--pg-ink-2)}
+
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+.rm-on *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important}
+</style>
+
+<div id="pgroot" data-pg="dark">
+  <!-- ============ REVIEW BAR (developer surface) ============ -->
+  <div class="rv" role="region" aria-label="Prototype review controls">
+    <span class="rv-l">Mind Workspace · prototype</span>
+    <div class="rv-g"><span class="rv-cap">Theme</span>
+      <button class="rv-btn on" data-theme="dark">Obsidian</button>
+      <button class="rv-btn" data-theme="light">Mineral</button>
+    </div>
+    <div class="rv-g"><span class="rv-cap">Viewport</span>
+      <button class="rv-btn on" data-vw="desktop">1536</button>
+      <button class="rv-btn" data-vw="laptop">1366</button>
+      <button class="rv-btn" data-vw="tablet">1024</button>
+      <button class="rv-btn" data-vw="narrow">900</button>
+      <button class="rv-btn" data-vw="phone">Phone</button>
+    </div>
+    <div class="rv-g"><span class="rv-cap">PAIGE</span>
+      <button class="rv-btn on" data-paige="closed">Closed</button>
+      <button class="rv-btn" data-paige="open">Open</button>
+    </div>
+    <div class="rv-g"><span class="rv-cap">State</span>
+      <button class="rv-btn on" data-state="populated">Populated</button>
+      <button class="rv-btn" data-state="firstuse">First&nbsp;use</button>
+      <button class="rv-btn" data-state="loading">Loading</button>
+      <button class="rv-btn" data-state="empty">Empty</button>
+      <button class="rv-btn" data-state="refusal">Refusal</button>
+      <button class="rv-btn" data-state="stale">Stale</button>
+      <button class="rv-btn" data-state="failed">Failed</button>
+      <button class="rv-btn" data-state="tenantswitch">Switch</button>
+      <button class="rv-btn" data-state="multiworkspace">Multi-ws</button>
+    </div>
+    <div class="rv-g"><span class="rv-cap">Tier</span>
+      <button class="rv-btn on" data-tier="solo">Solo</button>
+      <button class="rv-btn" data-tier="subaccount">Sub-acct</button>
+      <button class="rv-btn" data-tier="agency">Agency</button>
+    </div>
+    <div class="rv-g"><span class="rv-cap">A11y</span>
+      <button class="rv-btn" id="rvReduce" aria-pressed="false">Reduced motion</button>
+    </div>
+    <span class="rv-note">Throwaway &amp; read-only. Every value is a fixture; no network, no writes. Orb is a lightweight Canvas-2D stand-in for the shipped 3D orb.</span>
+  </div>
+
+  <!-- ============ THE PRODUCT ============ -->
+  <div class="stage">
+    <div class="shell" id="shell" data-vw="desktop" data-paige="closed">
+      <div class="band">
+        <div class="band-top">
+          <span class="mark" aria-hidden="true">
+            <svg viewBox="0 0 48 48" width="26" height="26" role="img" aria-label="PAIGE">
+              <polygon points="21,13.6 30.5,13.6 21,34.4 11.5,34.4" fill="var(--pg-gold-fill)" stroke="var(--pg-gold-fill)" stroke-width="3.2" stroke-linejoin="round"></polygon>
+              <circle cx="34.5" cy="30.5" r="5.5" fill="var(--pg-gold-core)"></circle>
+            </svg>
+          </span>
+          <div class="brand">
+            <h1>Mind</h1>
+            <div class="kicker">Your business mind</div>
+          </div>
+          <div class="band-right">
+            <div class="freshness" id="freshness"><b>Read live</b> just now<br>from your own workspace only</div>
+            <div class="acct"><b id="acctName">Northwind Advisory</b><span id="acctTier">Solo</span></div>
+            <div class="band-actions">
+              <button class="btn" id="refreshBtn" title="Re-reads your live sources. Not a scan.">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+                Refresh
+              </button>
+              <button class="btn gold" id="openPaige">
+                <svg width="14" height="14" viewBox="0 0 48 48" aria-hidden="true"><polygon points="21,13.6 30.5,13.6 21,34.4 11.5,34.4" fill="currentColor"/><circle cx="34.5" cy="30.5" r="5.5" fill="currentColor"/></svg>
+                Open PAIGE
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="boundary" role="note">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--pg-gold)" stroke-width="2" aria-hidden="true"><path d="M12 3l7 3v5c0 4.4-3 8-7 10-4-2-7-5.6-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+          <span><b>This is only your workspace.</b> Paige never shows another business's knowledge, her own raw instructions, her hidden reasoning, or Paige's internal build notes here. Every item below shows where it came from and how sure Paige is of it.</span>
+        </div>
+
+        <div class="lenses" role="group" aria-label="Filter what Paige holds">
+          <button class="lens on" aria-pressed="true" data-lens="all">All <span class="ct" id="ct-all">0</span></button>
+          <button class="lens" aria-pressed="false" data-lens="knowledge">Knowledge <span class="ct" id="ct-knowledge">0</span></button>
+          <button class="lens" aria-pressed="false" data-lens="memory">Memory <span class="ct" id="ct-memory">0</span></button>
+          <button class="lens" aria-pressed="false" data-lens="facts">Current facts <span class="ct" id="ct-facts">0</span></button>
+          <button class="lens" aria-pressed="false" data-lens="decisions">Decisions <span class="ct" id="ct-decisions">0</span></button>
+          <button class="lens" aria-pressed="false" data-lens="suggestions">Suggestions <span class="ct" id="ct-suggestions">0</span></button>
+          <button class="lens" aria-pressed="false" data-lens="receipts">Activity <span class="ct" id="ct-receipts">0</span></button>
+        </div>
+      </div>
+
+      <div class="tiernote" id="tierNote" hidden></div>
+
+      <div class="floor" id="floor">
+        <!-- HERO -->
+        <section class="hero" aria-label="Mind overview">
+          <span class="stand-in" title="The production surface renders the owner-approved 3D orb (React Three Fiber). This throwaway prototype uses a lightweight Canvas-2D stand-in.">◇ orb stand-in</span>
+          <div class="hero-cap">
+            <p class="lede" id="heroLede">A living map of what Paige holds for your business — read live, from your workspace only.</p>
+          </div>
+          <div class="orb-wrap"><canvas class="orb" id="orb" width="720" height="560" role="img" aria-label="Rotating map of Paige's knowledge domains. A list of the same records is beside this."></canvas></div>
+          <div class="orb-legend" id="orbLegend" aria-hidden="true"></div>
+          <div class="orb-controls">
+            <button class="iconbtn" id="orbitBtn" aria-pressed="true" title="Pause or resume the orbit (visual only — your data is unchanged)">Pause orbit</button>
+            <button class="iconbtn" id="reduceBtn" aria-pressed="false" title="Freeze motion and show a still map">Reduced motion</button>
+          </div>
+        </section>
+
+        <!-- RECORDS -->
+        <section class="records" aria-label="Records">
+          <div class="rec-head">
+            <h2 id="recTitle">Everything Paige holds</h2>
+            <p id="recDesc">Newest first. Open any card for its source, date, and honesty boundary.</p>
+          </div>
+          <div class="actionbar" id="actionbar"></div>
+          <div class="rec-list" id="recList"></div>
+          <div class="restore" id="restore" hidden></div>
+        </section>
+      </div>
+
+      <!-- Drawer -->
+      <div class="scrim" id="scrim"></div>
+      <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true">
+        <div class="drawer-h">
+          <h3 id="drawerTitle">Record</h3>
+          <button class="closex" id="drawerClose" aria-label="Close">✕</button>
+        </div>
+        <div class="drawer-b" id="drawerBody"></div>
+      </aside>
+
+      <div class="sr-live" aria-live="polite" id="live"></div>
+    </div>
+  </div>
+
+  <button class="seamtoggle" id="seamToggle" aria-expanded="false">Seam map ▾</button>
+  <div class="seampanel" id="seamPanel" role="region" aria-label="Screen to backend seam map">
+    <h3>Screen → backend seam</h3>
+    <p class="note">Every control maps to a real seam on <code>main</code> or an explicit UNAVAILABLE. Full grounding: <code>docs/architecture/mind-memory-knowledge-brain-capability-map.md</code>. Authenticated-prod re-confirm is PROOF OWED (MCP was denied at grounding).</p>
+    <table>
+      <thead><tr><th>Control / region</th><th>Real seam</th><th>State</th></tr></thead>
+      <tbody id="seamRows"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $=function(s,r){return (r||document).querySelector(s)};
+  var $$=function(s,r){return [].slice.call((r||document).querySelectorAll(s))};
+  var root=$("#pgroot"), shell=$("#shell"), live=$("#live");
+  var state={theme:"dark",vw:"desktop",paige:"closed",view:"populated",tier:"solo",lens:"all",orbit:true,reduce:false,dismissed:{}};
+
+  function announce(m){ live.textContent=""; setTimeout(function(){live.textContent=m;},30); }
+
+  /* ---------- Fixture data (LABELLED fixtures — never real, §13/§63) ---------- */
+  // type: knowledge | memory | facts | decisions | receipts
+  // st:   live | source | partial | owed | unavail
+  var K=[
+    {id:"k1",type:"knowledge",st:"source",title:"Reseller agreement — Northwind × Atlas",sub:"Uploaded PDF. Margin clause and renewal terms extracted into 4 searchable passages.",domain:"Legal",kind:"template",src:"Upload",when:"1d ago",source_url:"(stored, not shown today)",seam:"useSoloKnowledge → tenant_knowledge_docs (RLS)",note:"Paige can quote this in chat. She never shows it to another business."},
+    {id:"k2",type:"knowledge",st:"source",title:"Positioning &amp; brand voice",sub:"Pasted note. Sets the tone Paige writes in for you.",domain:"Brand",kind:"template",src:"Paste",when:"2d ago",source_url:"—",seam:"kb-ingest-doc → voyage-3 embeddings → tenant_knowledge_chunks",note:"If embedding fails, nothing is saved — Paige tells you rather than pretending."},
+    {id:"k3",type:"knowledge",st:"owed",title:"Q3 offer page (from a link)",sub:"Read once from a URL you gave. Single page, not a crawl.",domain:"Offers",kind:"integration",src:"Link",when:"4d ago",source_url:"https://…/q3-offer (stored, not shown)",seam:"kb-ingest-url (SSRF-guarded) → kb-ingest-doc",note:"Provenance gap: the source link and a 'last-verified' date are stored or not-yet-modelled, and are not shown on the card today."},
+    {id:"f1",type:"facts",st:"partial",title:"Deal stage — Atlas expansion",sub:"What's true now: stage is a verified, source-backed fact Paige can cite — inside a chat about this client.",domain:"Pipeline",kind:"automation",src:"Spine",when:"live",source_url:"Deal record (client-scoped)",seam:"resolveEvidence.ts envelope → mindEvidence.ts (the one governed capability)",note:"Reaches Paige only inside a chat about that client (constraint C4). Showing it on this workspace surface standalone needs a new scoped read path — a backend change-request, not shippable as drawn."},
+    {id:"f2",type:"facts",st:"source",title:"Connected systems readiness",sub:"Which automations are wired and ready. Read live from your workspace.",domain:"Systems",kind:"integration",src:"Readiness",when:"live",source_url:"Systems readiness",seam:"useN8nSpineReadiness → get_n8n_spine_readiness RPC",note:"A readiness signal, not a full evidence envelope. Authenticated re-confirm owed."},
+    {id:"d1",type:"decisions",st:"unavail",title:"Reminder cadence set to weekly",sub:"How a decision Paige carries forward will read once the surface is wired — not available to view or correct yet.",domain:"Operating",kind:"agent",src:"Decision",when:"—",source_url:"Your saved decision",seam:"record_paige_memory (governed seam) — deployed, boundary-proven, no product caller/UI",note:"The write/correct/forget seam exists and is boundary-proven, but has no owner-facing surface today. This card is a preview of how it WILL read, not a live record."},
+    {id:"r1",type:"suggestions",st:"partial",title:"Draft follow-up — awaiting your approval",sub:"Paige drafted this; it waits for your one-click approve before anything is sent (draft-first).",domain:"Marketing",kind:"agent",src:"Draft",when:"6h ago",source_url:"Proposed action",seam:"propose→confirm queue → record_capability_run → get_solo_rail_activity (SECURITY DEFINER)",note:"Draft-first (§36): Paige proposes, you approve. The owner-facing queue/rail is safe by construction but PROOF OWED; near-empty data today."},
+    {id:"r2",type:"receipts",st:"partial",title:"Campaign brief created",sub:"A real produced artifact, read back after write. The activity card that shows it to you is still being proven.",domain:"Growth",kind:"skill",src:"Rail",when:"1d ago",source_url:"Campaign brief",seam:"campaign_brief_* producer LIVE post-readback; owner-facing card/rail lane PARTIAL / PROOF OWED",note:"The producer is the lone LIVE writer in this vertical, but the owner-facing lane that surfaces it here is PARTIAL / PROOF OWED — so this card reads PARTIAL, not Live."}
+  ];
+  // Memory lens carries the sharpest honesty case — it is a STATE, not a list of fake memories.
+  var MEMORY_UNAVAILABLE={
+    title:"View, correct, or forget what Paige remembers about you",
+    body:"Paige keeps durable notes about how you run your business — decisions, commitments, corrections, preferences. Today there is no screen where you can see that list, correct an item, or ask her to forget it. The safe write/read/forget seam is built and tenant-scoped, but it is not wired to a surface yet.",
+    why:"UNAVAILABLE — governed memory seam deployed (record/get/forget_paige_memory), zero product callers, no UI. Confirmed-only projection into Paige's context is also not built.",
+    seam:"record/get/forget_paige_memory (20261223000000) — SECURITY DEFINER, §59 in-body scope · no UI caller"
+  };
+
+  var LENS_META={
+    all:{title:"Everything Paige holds",desc:"Newest first. Open any card for its source, date, and honesty boundary."},
+    knowledge:{title:"What Paige knows",desc:"Documents, pasted notes, and pages you gave her — searchable, quotable, yours only."},
+    memory:{title:"What Paige remembers",desc:"Durable notes she carries forward — and how to correct or forget them."},
+    facts:{title:"What's true right now",desc:"Current, source-backed facts Paige can cite — distinct from history."},
+    decisions:{title:"Decisions & commitments",desc:"Choices Paige is carrying forward on your behalf."},
+    suggestions:{title:"Suggestions awaiting you",desc:"Drafts and proposed moves Paige prepared — approve, edit, or decline (draft-first, §36)."},
+    receipts:{title:"What Paige has done",desc:"Receipts of real actions, recorded on your activity rail."}
+  };
+
+  var STATE_LABEL={live:"Live",source:"Source-built",partial:"Partial",owed:"Proof owed",unavail:"Not available yet"};
+  var KIND_VAR={skill:"--k-skill",automation:"--k-automation",integration:"--k-integration",template:"--k-template",agent:"--k-agent"};
+
+  function icon(type){
+    var p={
+      knowledge:'<path d="M4 5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M14 3v6h6"/>',
+      memory:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+      facts:'<path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/>',
+      decisions:'<path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/>',
+      suggestions:'<path d="M12 3a6 6 0 0 0-4 10c.7.7 1 1.4 1 2h6c0-.6.3-1.3 1-2a6 6 0 0 0-4-10z"/><path d="M9 18h6M10 21h4"/>',
+      receipts:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>'
+    };
+    return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(p[type]||p.knowledge)+'</svg>';
+  }
+  function srcGlyph(src){
+    var m={Upload:"M12 16V4M7 9l5-5 5 5M5 20h14",Paste:"M9 4h6v3H9zM7 6H5v14h14V6h-2",Link:"M10 14a4 4 0 0 0 6 0l2-2a4 4 0 0 0-6-6l-1 1M14 10a4 4 0 0 0-6 0l-2 2a4 4 0 0 0 6 6l1-1",Spine:"M12 3v18M6 8h12M6 16h12",Readiness:"M4 12h4l2-7 4 14 2-7h4",Decision:"M9 12l2 2 4-4",Draft:"M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z",Rail:"M4 7h16M4 12h16M4 17h16"};
+    return '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(m[src]||m.Rail)+'"/></svg>';
+  }
+
+  /* ---------- Records rendering ---------- */
+  function visibleRecords(){
+    var base=K.filter(function(r){return !state.dismissed[r.id];});
+    if(state.lens!=="all"&&state.lens!=="memory") base=base.filter(function(r){return r.type===state.lens;});
+    return base;
+  }
+  function counts(){
+    var live=K.filter(function(r){return !state.dismissed[r.id];});
+    var by={all:live.length,knowledge:0,memory:1,facts:0,decisions:0,suggestions:0,receipts:0};
+    live.forEach(function(r){ if(by[r.type]!=null) by[r.type]++; });
+    // memory count reflects the one honest "unavailable" state, shown as a single item
+    Object.keys(by).forEach(function(k){ var el=$("#ct-"+k); if(el) el.textContent=by[k]; });
+  }
+
+  function recCard(r){
+    var kv=KIND_VAR[r.kind]||"--k-skill";
+    var el=document.createElement("div");
+    el.className="rec"; el.setAttribute("role","group");
+    el.innerHTML=
+      '<div class="plate" style="color:var('+kv+')">'+icon(r.type)+'</div>'+
+      '<div class="body">'+
+        '<div class="title">'+r.title+'</div>'+
+        '<div class="sub">'+r.sub+'</div>'+
+        '<div class="prov">'+
+          '<span class="glyph">'+srcGlyph(r.src)+' '+r.src+'</span>'+
+          '<span>·</span><span>'+r.domain+'</span>'+
+          '<span>·</span><span>'+r.when+'</span>'+
+        '</div>'+
+      '</div>'+
+      '<div class="right">'+
+        '<span class="chip '+r.st+'">'+STATE_LABEL[r.st]+'</span>'+
+        '<button class="rec-dismiss" title="Clear from this view (does not delete the record)" aria-label="Clear from view">✕</button>'+
+      '</div>';
+    el.querySelector(".body").addEventListener("click",function(){openDrawer(r);});
+    el.querySelector(".title").tabIndex=0; el.querySelector(".title").setAttribute("role","button");
+    el.querySelector(".title").addEventListener("keydown",function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();openDrawer(r);}});
+    el.querySelector(".rec-dismiss").addEventListener("click",function(e){e.stopPropagation();dismiss(r.id,el);});
+    return el;
+  }
+
+  function dismiss(id,el){
+    // Capture the slot index BEFORE re-render; the old node is detached afterwards.
+    var idx=el&&el.parentNode?[].slice.call(el.parentNode.children).indexOf(el):0;
+    state.dismissed[id]=true;
+    render();
+    // Focus a LIVE element after the list is rebuilt — never the stale (detached) node.
+    var fresh=$$("#recList .rec-dismiss");
+    var target=fresh[Math.min(idx,fresh.length-1)]||$("#restoreBtn")||$("#recList");
+    if(target&&target.focus) target.focus();
+    announce("Card cleared from this view. The record is not deleted; use Restore to bring it back.");
+  }
+
+  function actionBar(){
+    var ab=$("#actionbar"); ab.innerHTML="";
+    if(state.lens==="knowledge"||state.lens==="all"){
+      var add=document.createElement("button"); add.className="btn gold";
+      add.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Add knowledge';
+      add.addEventListener("click",function(){openIngest();});
+      ab.appendChild(add);
+      var org=document.createElement("button"); org.className="btn"; org.setAttribute("aria-disabled","true"); org.disabled=true;
+      org.innerHTML='Organize into folders <span class="why">— not available yet</span>';
+      ab.appendChild(org);
+    }
+    if(state.lens==="memory"){
+      var forget=document.createElement("button"); forget.className="btn"; forget.setAttribute("aria-disabled","true"); forget.disabled=true;
+      forget.innerHTML='Correct or forget <span class="why">— not available yet</span>';
+      ab.appendChild(forget);
+    }
+  }
+
+  function render(){
+    counts();
+    var meta=LENS_META[state.lens]||LENS_META.all;
+    $("#recTitle").textContent=meta.title; $("#recDesc").textContent=meta.desc;
+    $$(".lens").forEach(function(b){var on=b.dataset.lens===state.lens;b.classList.toggle("on",on);b.setAttribute("aria-pressed",on?"true":"false");});
+    actionBar();
+
+    var listWrap=$("#recList"), restore=$("#restore");
+    listWrap.innerHTML=""; restore.hidden=true; listWrap.tabIndex=-1;
+
+    // Non-Solo tiers do NOT have this surface — suppress orb + records so it can't read as available.
+    if(state.tier!=="solo"){ listWrap.appendChild(tierPanel()); paintOrbState(); return; }
+
+    // Non-populated states own the record column entirely
+    if(state.view!=="populated"){ listWrap.appendChild(stateePanel()); paintOrbState(); return; }
+
+    // Memory lens = the honest UNAVAILABLE state (not fake memories)
+    if(state.lens==="memory"){
+      listWrap.appendChild(memoryPanel()); paintOrbState(); return;
+    }
+
+    var recs=visibleRecords();
+    if(!recs.length){
+      var p=document.createElement("div"); p.className="panel emptyish";
+      p.innerHTML='<h3>Nothing in this view</h3><p>You’ve cleared everything here, or nothing of this kind is on file yet.</p>';
+      listWrap.appendChild(p);
+    } else {
+      recs.forEach(function(r){ listWrap.appendChild(recCard(r)); });
+    }
+    var dn=Object.keys(state.dismissed).length;
+    if(dn){ restore.hidden=false; restore.innerHTML='<button id="restoreBtn">Restore '+dn+' cleared '+(dn>1?"cards":"card")+'</button>';
+      $("#restoreBtn").addEventListener("click",function(){state.dismissed={};render();announce("Cleared cards restored.");}); }
+    paintOrbState();
+  }
+
+  function tierPanel(){
+    var p=document.createElement("div"); p.className="panel emptyish"; p.setAttribute("role","status");
+    if(state.tier==="subaccount") p.innerHTML='<h3>Mind isn’t available on a sub-account yet</h3><p>By the "Solo ≡ Sub-account" rule, a sub-account should get this exact Mind — but today sub-accounts render through the agency shell, which has no Mind tab. This surface is designed so the Solo shell is the one that later mounts here.</p><p class="why">State: UNAVAILABLE (sequenced), by design.</p>';
+    else p.innerHTML='<h3>Mind isn’t an agency surface</h3><p>An agency manages its sub-accounts, not a single client Mind — so the orb Mind is intentionally not here. The agency’s Knowledge and Vault today are fixture-only stubs, not a real read.</p><p class="why">State: UNAVAILABLE for the orb; fixture-only for Knowledge.</p>';
+    return p;
+  }
+
+  function memoryPanel(){
+    var p=document.createElement("div"); p.className="panel";
+    p.innerHTML='<h3>'+MEMORY_UNAVAILABLE.title+'</h3>'+
+      '<p style="margin:0 0 4px">'+MEMORY_UNAVAILABLE.body+'</p>'+
+      '<div class="actionbar" style="margin-top:12px"><span class="chip unavail">Not available yet</span></div>'+
+      '<p class="why">'+MEMORY_UNAVAILABLE.why+'</p>';
+    return p;
+  }
+
+  function stateePanel(){
+    var p=document.createElement("div"); p.className="panel emptyish"; p.setAttribute("role","status");
+    var H={
+      firstuse:['Your Mind is ready to fill',"Paige hasn’t learned anything about your business yet. Add a document, paste a note, or give her a link, and it will show up here — searchable, and yours alone.",'<button class="btn gold" id="fuAdd" style="margin-top:14px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Add your first knowledge</button>'],
+      loading:['<div class="spinner"></div>Resolving this account’s Mind…',"Reading your workspace, live. This is not a scan — it’s the current state of what Paige holds.",''],
+      empty:['Nothing durable is indexed here yet',"Paige has looked and there is genuinely nothing on file for this view. This is different from ‘we couldn’t read it’ — see the Refusal state for that.",''],
+      refusal:['This isn’t available to you here',"Paige could not read this in your current role and scope — so this is <b>not</b> a record of nothing happening. If you believe you should see it, an admin can adjust your access.",'<p class="why" style="margin-top:12px">Rail resolver raised RAIL_FORBIDDEN (permission), not an empty result — the two are never conflated.</p>'],
+      stale:['Showing the last good read',"Paige couldn’t refresh just now, so this is what she last read <b>2h ago</b>. Nothing here is invented to fill the gap.",'<button class="btn" id="staleRetry" style="margin-top:14px">Try again</button>'],
+      failed:['That read didn’t go through',"A source didn’t answer this time. Nothing was changed, and nothing is shown that Paige couldn’t confirm.",'<button class="btn gold" id="failRetry" style="margin-top:14px">Retry</button>'],
+      tenantswitch:['<div class="spinner"></div>Switching workspace…',"Clearing the previous business’s Mind and loading this one. Paige never mixes two businesses’ knowledge.",''],
+      multiworkspace:['You’re viewing one of several workspaces',"This Mind shows <b>Northwind Advisory</b> only. Each business you run has its own separate Mind — switch from the account menu. Nothing crosses between them.",'']
+    };
+    var h=H[state.view]||H.empty;
+    p.innerHTML='<h3>'+h[0]+'</h3><p>'+h[1]+'</p>'+(h[2]||'');
+    setTimeout(function(){
+      var a=$("#fuAdd"); if(a)a.addEventListener("click",openIngest);
+      var s=$("#staleRetry"); if(s)s.addEventListener("click",function(){setView("loading");setTimeout(function(){setView("populated");},900);});
+      var f=$("#failRetry"); if(f)f.addEventListener("click",function(){setView("loading");setTimeout(function(){setView("populated");},900);});
+    },0);
+    return p;
+  }
+
+  /* ---------- Ingest (mock, labelled) ---------- */
+  function openIngest(){
+    openDrawerRaw("Add knowledge",
+      '<div class="drawer-sec"><h4>How Paige learns it</h4><div class="kv">Give Paige something to read. She chunks it, embeds it, and makes it searchable in your workspace only.</div></div>'+
+      '<div class="drawer-sec"><div class="actionbar">'+
+        '<button class="btn" data-ing="paste">Paste text</button>'+
+        '<button class="btn" data-ing="link">From a link</button>'+
+        '<button class="btn" data-ing="file">Upload a file</button>'+
+      '</div></div>'+
+      '<div class="drawer-sec honesty"><h4>What’s honest here</h4><div class="kv">If embedding fails, <b>nothing is saved</b> — Paige tells you rather than storing a half-item. A link is read once (one page), not crawled. Scanned files are read with OCR.</div></div>'+
+      '<div class="drawer-sec reviewonly"><h4>Seam <span class="ro-tag">review-only</span></h4><div class="seam">kb-ingest-doc · kb-ingest-url (SSRF-guarded) · kb-ingest-file (Claude OCR) → tenant_knowledge_docs / _chunks · voyage-3 @ 1024</div><p class="why" style="margin-top:8px">Shown for this review only; mocked here. State: SOURCE-BUILT / PROOF OWED.</p></div>'
+    );
+    $$("[data-ing]").forEach(function(b){b.addEventListener("click",function(){
+      announce("Prototype only — no document is actually ingested. Seam: "+b.dataset.ing);
+      b.classList.add("gold"); b.textContent=b.textContent+" (mock)";
+    });});
+  }
+
+  /* ---------- Drawer ---------- */
+  var lastFocus=null;
+  function openDrawerRaw(title,bodyHtml){
+    lastFocus=document.activeElement;
+    $("#drawerTitle").innerHTML=title; $("#drawerBody").innerHTML=bodyHtml;
+    var d=$("#drawer"); d.inert=false;
+    [$(".band"),$(".floor")].forEach(function(e){if(e)e.inert=true;}); // background not tabbable while modal is open
+    d.classList.add("on"); d.setAttribute("aria-hidden","false"); $("#scrim").classList.add("on");
+    $("#drawerClose").focus();
+  }
+  function openDrawer(r){
+    openDrawerRaw(r.title,
+      '<div class="drawer-sec"><span class="chip '+r.st+'">'+STATE_LABEL[r.st]+'</span></div>'+
+      '<div class="drawer-sec"><h4>What this is</h4><div class="kv">'+r.sub+'</div></div>'+
+      '<div class="drawer-sec"><h4>Source &amp; provenance</h4><div class="kv"><b>Source:</b> '+r.src+' &nbsp;·&nbsp; <b>Area:</b> '+r.domain+'<br><b>When:</b> '+r.when+'<br><b>Origin link:</b> '+r.source_url+'</div></div>'+
+      '<div class="drawer-sec honesty"><h4>Honesty boundary</h4><div class="kv">'+r.note+'</div></div>'+
+      '<div class="drawer-sec reviewonly"><h4>Backed by <span class="ro-tag">review-only</span></h4><div class="seam">'+r.seam+'</div><p class="why" style="margin-top:6px">Shown for this review only. The coach never sees backend names in the product (§11/§36) — this block does not port to the real drawer.</p></div>'+
+      (r.type==="knowledge"?'<div class="drawer-sec"><div class="actionbar"><button class="btn">Share to network</button><button class="btn" style="color:var(--pg-negative)">Delete</button><button class="btn" aria-disabled="true" disabled>Edit details <span class="why">— not available yet</span></button></div></div>':'')
+    );
+  }
+  function closeDrawer(){
+    var d=$("#drawer");
+    d.classList.remove("on"); d.setAttribute("aria-hidden","true"); d.inert=true; $("#scrim").classList.remove("on");
+    [$(".band"),$(".floor")].forEach(function(e){if(e)e.inert=false;});
+    if(lastFocus&&lastFocus.focus) lastFocus.focus();
+  }
+  $("#drawerClose").addEventListener("click",closeDrawer);
+  $("#scrim").addEventListener("click",closeDrawer);
+  document.addEventListener("keydown",function(e){ if(e.key==="Escape"&&$("#drawer").classList.contains("on")) closeDrawer(); });
+  // Focus trap: keep Tab / Shift+Tab inside the open drawer (aria-modal).
+  $("#drawer").addEventListener("keydown",function(e){
+    if(e.key!=="Tab")return;
+    var f=$$('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])', this).filter(function(el){return !el.disabled && el.offsetParent!==null;});
+    if(!f.length)return;
+    var first=f[0], last=f[f.length-1];
+    if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+  });
+
+  /* ---------- Orb (lightweight Canvas-2D stand-in for the shipped 3D orb) ---------- */
+  var cv=$("#orb"), ctx=cv.getContext("2d"), t0=performance.now(), raf=null;
+  var DOMAINS=[
+    {n:"Knowledge",v:"--st-source",r:1},{n:"Facts",v:"--st-partial",r:1},
+    {n:"Decisions",v:"--st-owed",r:1},{n:"Activity",v:"--st-live",r:1},
+    {n:"Identity",v:"--st-unavail",r:0},{n:"Offers",v:"--st-unavail",r:0}
+  ];
+  function cssv(v){return getComputedStyle(root).getPropertyValue(v).trim()||"#888";}
+  function fit(){ var box=cv.getBoundingClientRect(); var d=Math.min(2,window.devicePixelRatio||1);
+    cv.width=Math.max(320,box.width*d); cv.height=Math.max(280,box.height*d); ctx.setTransform(d,0,0,d,0,0);
+    cv._w=box.width; cv._h=box.height; }
+  function drawOrb(now){
+    var w=cv._w||cv.width,h=cv._h||cv.height,cx=w/2,cy=h/2, R=Math.min(w,h)*0.30;
+    if(state.tier!=="solo"){ ctx.clearRect(0,0,w,h); ctx.fillStyle=cssv("--pg-faint"); ctx.font='500 13px system-ui,sans-serif'; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("Mind is not available on this account type", cx, cy); raf=null; return; }
+    var running = state.orbit && !state.reduce && state.view==="populated" && state.lens!=="memory" && state.tier==="solo";
+    var ang = running ? (now-t0)/6000 : 0.6;
+    ctx.clearRect(0,0,w,h);
+    // core glow (breathing)
+    var pulse = state.reduce?0.5:(0.5+0.5*Math.sin((now-t0)/1400));
+    var grd=ctx.createRadialGradient(cx,cy,4,cx,cy,R*1.9);
+    var gold=cssv("--pg-gold-bloom");
+    grd.addColorStop(0,gold); grd.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.globalAlpha=0.55+0.35*pulse; ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(cx,cy,R*1.9,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
+    // core sphere
+    var core=ctx.createRadialGradient(cx-R*0.3,cy-R*0.35,R*0.1,cx,cy,R);
+    core.addColorStop(0,cssv("--pg-gold-core")); core.addColorStop(0.55,cssv("--pg-gold")); core.addColorStop(1,cssv("--pg-gold-deep"));
+    ctx.fillStyle=core; ctx.beginPath(); ctx.arc(cx,cy,R*0.62,0,Math.PI*2); ctx.fill();
+    // orbit ring
+    ctx.strokeStyle=cssv("--pg-line"); ctx.lineWidth=1; ctx.beginPath(); ctx.ellipse(cx,cy,R*1.45,R*0.62,0,0,Math.PI*2); ctx.stroke();
+    // satellites (domains) — greyed + hollow when UNAVAILABLE (honest)
+    DOMAINS.forEach(function(d,i){
+      var a=ang + (i/DOMAINS.length)*Math.PI*2;
+      var x=cx+Math.cos(a)*R*1.45, y=cy+Math.sin(a)*R*0.62;
+      var col=cssv(d.v);
+      ctx.beginPath(); ctx.arc(x,y,d.r?7:6,0,Math.PI*2);
+      if(d.r){ ctx.fillStyle=col; ctx.fill(); }
+      else { ctx.strokeStyle=col; ctx.lineWidth=1.6; ctx.stroke(); }
+      ctx.fillStyle=cssv("--pg-muted"); ctx.font='500 11px '+cssv("--pg-font-ui").split(",")[0].replace(/"/g,"")+', system-ui';
+      ctx.textAlign=(Math.cos(a)>=0)?"left":"right"; ctx.textBaseline="middle";
+      ctx.fillText(d.n+(d.r?"":" · none yet"), x+(Math.cos(a)>=0?11:-11), y);
+    });
+    if(running) raf=requestAnimationFrame(drawOrb); else raf=null;
+  }
+  function paintOrbState(){
+    // lede + legend reflect state honestly
+    var lede=$("#heroLede");
+    if(state.tier!=="solo") lede.textContent="Mind is a Solo/owner surface. This account type doesn’t have it — see the note beside this.";
+    else if(state.lens==="memory") lede.textContent="Paige carries durable notes about your business. A place to see, correct, and forget them is not built yet.";
+    else if(state.view==="refusal") lede.textContent="Some of your Mind isn’t readable in your current role — shown as unavailable, never as empty.";
+    else if(state.view==="empty"||state.view==="firstuse") lede.textContent="Your Mind is empty so far. What you give Paige shows up here.";
+    else lede.textContent="A living map of what Paige holds for your business — read live, from your workspace only.";
+    // legend
+    var lg=$("#orbLegend"); lg.innerHTML=DOMAINS.map(function(d){return '<span><span class="dot" style="background:'+(d.r?cssv(d.v):"transparent")+';border:'+(d.r?"0":"1.5px solid "+cssv(d.v))+'"></span>'+d.n+'</span>';}).join("");
+    if(raf) cancelAnimationFrame(raf); fit(); raf=requestAnimationFrame(drawOrb);
+  }
+
+  /* ---------- State setters ---------- */
+  function setView(v){ state.view=v; $$('[data-state]').forEach(function(b){b.classList.toggle("on",b.dataset.state===v);}); render();
+    if(v==="loading"||v==="tenantswitch"){ /* auto-resolve for review realism */ }
+  }
+  function applyTier(){
+    var tn=$("#tierNote");
+    if(state.tier==="solo"){ tn.hidden=true; $("#acctTier").textContent="Solo"; $("#acctName").textContent="Northwind Advisory"; }
+    else if(state.tier==="subaccount"){ tn.hidden=false; $("#acctTier").textContent="Sub-account"; $("#acctName").textContent="Northwind Advisory";
+      tn.innerHTML='<b>Sub-account.</b> By the “Solo ≡ Sub-account” rule (§60), a sub-account should get this exact Mind. Today it doesn’t — sub-accounts render through the agency shell, which has no Mind tab. This surface is designed so the Solo shell is the one that later mounts here. <b>State: UNAVAILABLE (sequenced), by design.</b>'; }
+    else { tn.hidden=false; $("#acctTier").textContent="Agency"; $("#acctName").textContent="Northwind Group";
+      tn.innerHTML='<b>Agency.</b> An agency manages sub-accounts, not a direct client Mind — so the orb Mind is intentionally not here. The agency’s Knowledge/Vault today are fixture-only stubs. <b>State: UNAVAILABLE for the orb; fixture-only for Knowledge.</b>'; }
+  }
+
+  /* ---------- Review-bar wiring ---------- */
+  $$('[data-theme]').forEach(function(b){b.addEventListener("click",function(){
+    state.theme=b.dataset.theme; root.setAttribute("data-pg",state.theme);
+    $$('[data-theme]').forEach(function(x){x.classList.toggle("on",x===b);}); paintOrbState();
+  });});
+  $$('[data-vw]').forEach(function(b){b.addEventListener("click",function(){
+    state.vw=b.dataset.vw; shell.setAttribute("data-vw",state.vw);
+    $$('[data-vw]').forEach(function(x){x.classList.toggle("on",x===b);}); setTimeout(paintOrbState,60);
+  });});
+  $$('[data-paige]').forEach(function(b){b.addEventListener("click",function(){
+    state.paige=b.dataset.paige; shell.setAttribute("data-paige",state.paige);
+    $$('[data-paige]').forEach(function(x){x.classList.toggle("on",x===b);}); setTimeout(paintOrbState,60);
+  });});
+  $$('[data-state]').forEach(function(b){b.addEventListener("click",function(){ setView(b.dataset.state); });});
+  $$('[data-tier]').forEach(function(b){b.addEventListener("click",function(){
+    state.tier=b.dataset.tier; $$('[data-tier]').forEach(function(x){x.classList.toggle("on",x===b);}); applyTier(); render();
+  });});
+  $("#rvReduce").addEventListener("click",function(){ toggleReduce(); });
+  function toggleReduce(){
+    state.reduce=!state.reduce;
+    $("#rvReduce").setAttribute("aria-pressed",state.reduce?"true":"false"); $("#rvReduce").classList.toggle("on",state.reduce);
+    $("#reduceBtn").setAttribute("aria-pressed",state.reduce?"true":"false");
+    $("#orbitBtn").textContent=state.reduce?"Resume orbit":(state.orbit?"Pause orbit":"Resume orbit");
+    root.classList.toggle("rm-on",state.reduce);
+    announce(state.reduce?"Reduced motion on. The orb is still; nothing animates.":"Reduced motion off.");
+    paintOrbState();
+  }
+
+  /* ---------- Product controls ---------- */
+  $$(".lens").forEach(function(b){b.addEventListener("click",function(){ state.lens=b.dataset.lens; render(); });});
+  $("#orbitBtn").addEventListener("click",function(){
+    if(state.reduce){ toggleReduce(); return; } // Resume from reduced = one-click start
+    state.orbit=!state.orbit; this.setAttribute("aria-pressed",state.orbit?"true":"false");
+    this.textContent=state.orbit?"Pause orbit":"Resume orbit"; announce(state.orbit?"Orbit resumed. Visual only.":"Orbit paused. Your data is unchanged."); paintOrbState();
+  });
+  $("#reduceBtn").addEventListener("click",toggleReduce);
+  $("#refreshBtn").addEventListener("click",function(){ setView("loading"); announce("Re-reading your live sources. This is not a scan."); setTimeout(function(){setView("populated");},850); });
+  $("#openPaige").addEventListener("click",function(){ announce("Opens the one PAIGE workspace chat. Prototype: no chat is launched."); });
+
+  /* ---------- Seam-map inspector ---------- */
+  var SEAM=[
+    ["Knowledge cards / orb knowledge nodes","useSoloKnowledge → tenant_knowledge_docs (RLS)","LIVE read (mounted) · PROOF OWED"],
+    ["Add knowledge → Paste / Link / File","kb-ingest-doc · kb-ingest-url (SSRF) · kb-ingest-file (OCR)","SOURCE-BUILT · PROOF OWED"],
+    ["Delete / Share-to-network","tenant_knowledge_docs .delete() / .update(share) (RLS)","LIVE (via source) · PROOF OWED"],
+    ["Edit details / Organize into folders","— no post-ingest edit UI/RPC; no folder model","UNAVAILABLE"],
+    ["Current facts (orb + card)","resolveEvidence.ts envelope → mindEvidence.ts (pipeline only, C4)","PARTIAL · PROOF OWED"],
+    ["Connected-systems readiness","useN8nSpineReadiness → get_n8n_spine_readiness","SOURCE-BUILT · PROOF OWED"],
+    ["Decisions / commitments","record_paige_memory (governed seam) — no product caller/UI","SOURCE-BUILT (seam) · UNAVAILABLE (UI)"],
+    ["Memory: view / correct / forget","record/get/forget_paige_memory — deployed, no UI","UNAVAILABLE"],
+    ["Activity receipts (rail)","record_capability_run → get_solo_rail_activity (DEFINER)","SOURCE-BUILT · PROOF OWED"],
+    ["Campaign brief receipt","campaign_brief producer (LIVE post-readback); owner lane PARTIAL","LIVE producer / PARTIAL lane"],
+    ["Citations shown to you","in-prose only (rail:<id> / [n]); no structured payload","PARTIAL · needs a new citation contract"],
+    ["Orbit / reduced-motion / clear card","localStorage (per-viewer); record never touched","SOURCE-BUILT (per-viewer pref)"],
+    ["Open PAIGE","expandRail() → the one workspace chat (no Mind context attached)","PARTIAL"],
+    ["Sub-account Mind","routes via agency shell — no Mind tab (§60 divergence)","UNAVAILABLE (sequenced)"]
+  ];
+  $("#seamRows").innerHTML=SEAM.map(function(r){return '<tr><td>'+r[0]+'</td><td class="seam">'+r[1]+'</td><td>'+r[2]+'</td></tr>';}).join("");
+  $("#seamToggle").addEventListener("click",function(){ var p=$("#seamPanel"); var on=p.classList.toggle("on"); this.setAttribute("aria-expanded",on?"true":"false"); this.textContent=on?"Seam map ▴":"Seam map ▾"; });
+
+  /* ---------- init ---------- */
+  $("#drawer").inert=true; // closed drawer is not tabbable
+  if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion:reduce)").matches){ state.reduce=true; $("#rvReduce").setAttribute("aria-pressed","true"); $("#rvReduce").classList.add("on"); $("#reduceBtn").setAttribute("aria-pressed","true"); root.classList.add("rm-on"); }
+  applyTier(); render();
+  window.addEventListener("resize",function(){ clearTimeout(window._rz); window._rz=setTimeout(paintOrbState,120); });
+})();
+</script>

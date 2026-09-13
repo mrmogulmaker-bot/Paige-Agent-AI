@@ -98,7 +98,8 @@ bypasses the vocab + correction + confirmation discipline; prefer the seam.
   production drive (legit recall works; no cross-tenant leak in the running product) remain PROOF OWED
   (§32.c/§70) — deployed + persisted + boundary-proven is not the same as production-verified.
 - **Follow-ups (filed, not folded in):** GDPR bulk hard-delete of owner/prompt memory via
-  `process-data-deletion` (self-serve `forget` ships now). `match_paige_owner_memory`'s NULL-tenant `=`
+  `process-data-deletion` (the self-serve `forget` **seam** ships — but as of 2026-09-13 it has **no
+  product UI caller, so it is not user-reachable**; §70. See the consolidated capability map, Domain 2). `match_paige_owner_memory`'s NULL-tenant `=`
   filter is a documented latent trap for a future operator semantic-recall path (a DIFFERENT function /
   owner-memory audience — separate handoff, not folded into the R3a client-memory slice).
 

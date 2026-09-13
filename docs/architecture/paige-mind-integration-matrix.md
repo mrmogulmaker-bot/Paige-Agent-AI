@@ -1,5 +1,15 @@
 # PAIGE Mind — the integration matrix
 
+> **⚠ GROUNDING DELTA (2026-09-13) — this doc's Spine-registry count is STALE; do not answer "how many
+> capabilities?" from it.** When grounded (2026-09-03) the registry held **1** capability; on `main`
+> today it holds **35** (code-verified). This doc also predates the 12 `SCR-N8N-MANAGEMENT`
+> capabilities, the first mutating Spine capabilities, and the 7 added chat context blocks. Its
+> **constraint definitions (C2/C3/C4), the safety posture, and "nothing is `maturity: LIVE`" remain
+> accurate.** For the current, whole-vertical status (Mind · Memory · Tenant Knowledge · Second Brain)
+> read **`docs/architecture/mind-memory-knowledge-brain-capability-map.md`** — the consolidated
+> capability map that supersedes this Mind-only matrix. The dated grounding below is preserved
+> deliberately (§13/§58); only the count is corrected, in place, at its line.
+
 **Read this before proposing, sequencing, or building any Mind capability.** It answers one
 question per Solo surface: *can this surface safely give PAIGE real, tenant-scoped, source-backed
 evidence — and if not, what exactly is in the way?*
@@ -104,6 +114,14 @@ design question is reached.
 (`registry.ts:4`), declared `classification: "read"`, `riskPolicyKey: "read_only"`,
 `approvalAuthority: "none"`, `chatBinding: "PARTIAL"`, `mindBinding: "PARTIAL"`, `maturity: "PARTIAL"`.
 Every other surface below needs a **new registry capability** at minimum.
+
+> **CORRECTION (2026-09-13, §13/§58):** the sentence above was true when grounded (2026-09-03). On
+> `main` today the registry holds **35** capabilities, assembled from 12 domain modules
+> (`registry.ts:21`), **still all `maturity: PARTIAL`** — none is `LIVE`. The C2/C3/C4 envelope
+> contract below still binds **only** `pipeline.deal_stage_evidence`; the other 34 (incl. the first
+> mutating capabilities and 12 `SCR-N8N-MANAGEMENT` reads) are served by parallel per-domain
+> projections outside the one resolver. See
+> `docs/architecture/mind-memory-knowledge-brain-capability-map.md` (Domain 1).
 
 Three Change Requests are named but **not raised and not approved**, using the shorthand established
 by `paige-spine-tool-migration-map.md:141-160`: **SCR-1** workspace-level outcome projection ·
