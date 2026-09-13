@@ -14,6 +14,8 @@ on:
       - "supabase/tests/social_foundation_rls.sql"
       - "scripts/sql/social-foundation-legacy-shape-proof.sql"
       - "scripts/sql/social-foundation-tenant-shaped-proof.sql"
+      - "supabase/tests/source_thread_link_scope.sql"
+      - "supabase/functions/_shared/source-thread-link.ts"
       # The Solo Team invitation proof must re-run when the seam it proves changes,
       # not only when a migration happens to touch it.
       - "supabase/tests/solo_team_invite_workspace_authority.sql"
@@ -46,6 +48,8 @@ on:
       - "supabase/tests/social_foundation_rls.sql"
       - "scripts/sql/social-foundation-legacy-shape-proof.sql"
       - "scripts/sql/social-foundation-tenant-shaped-proof.sql"
+      - "supabase/tests/source_thread_link_scope.sql"
+      - "supabase/functions/_shared/source-thread-link.ts"
       # The Solo Team invitation proof must re-run when the seam it proves changes,
       # not only when a migration happens to touch it.
       - "supabase/tests/solo_team_invite_workspace_authority.sql"
@@ -136,6 +140,11 @@ jobs:
       - run: supabase test db supabase/tests/social_connection_lifecycle.sql
       - run: psql -v ON_ERROR_STOP=1 -f scripts/sql/social-foundation-legacy-shape-proof.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       - run: psql -v ON_ERROR_STOP=1 -f scripts/sql/social-foundation-tenant-shaped-proof.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      # Trusted task↔thread link — RLS SET-ROLE proof that the edge's server-side validation read
+      # (id + tenant + caller_user_id) denies a cross-tenant/forged/account-switched thread, and that
+      # a foreign source_thread_id grants no discovery of the linked conversation (§9/§13). Rides this
+      # job for the same §24 reason as the proofs above — the cost is `supabase start` + `db reset`.
+      - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/source_thread_link_scope.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       - run: node scripts/proof/business-mission-concurrency.mjs
         env:
           BUSINESS_MISSION_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres

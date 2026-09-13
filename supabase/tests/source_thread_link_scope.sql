@@ -1,0 +1,115 @@
+-- ============================================================================
+-- Trusted task↔thread link — §9/§13 RLS SET-ROLE proof (VERIFY-ONLY, rolls back).
+--
+-- Owner ruling (2026-09-13): when Paige creates a task from a chat conversation, the thread
+-- association must come from TRUSTED server-side context — the caller's OWN thread in the RESOLVED
+-- tenant — never a client-supplied/forged thread id. The edge `crm_create_task` now validates the
+-- body thread CLAIM with an RLS-scoped read on the caller's JWT client, filtered by
+--   id = <claim> AND tenant_id = current_user_tenant_id() AND caller_user_id = auth.uid()
+-- and stamps `tasks.source_thread_id` ONLY when that returns the row (else NULL).
+--
+-- This test proves the SECURITY the edge relies on, at the RLS layer it cannot bypass:
+--   (1) SAME-TENANT owner: the validation read returns the caller's own thread → a link is allowed.
+--   (2) CROSS-TENANT denial: a caller in tenant B running the exact validation read for tenant A's
+--       thread gets 0 rows → the edge resolves NULL → the task is never attached to A's conversation.
+--   (3) ACCOUNT-SWITCH denial: the SAME user, re-seated into tenant B, cannot validate a thread that
+--       lives in tenant A (current_user_tenant_id() moved) → 0 rows.
+--   (4) NO DISCOVERY / NO LEAK: even if a task in tenant B already carried tenant A's thread id as
+--       source_thread_id, that uuid grants its owner NO read of the foreign thread — the task is
+--       visible to its owner, the linked conversation is not (RLS denies the cross-tenant thread read).
+-- Synthetic fixtures only; self-contained; rolls back. Terminal row 'SOURCE_THREAD_LINK_SCOPE_PROVEN'
+-- = pass; any RAISE = fail.
+--
+-- Run: psql "$DB_URL" -1 -f supabase/tests/source_thread_link_scope.sql
+-- ============================================================================
+BEGIN;
+
+INSERT INTO auth.users (id, aud, role, email) VALUES
+  ('57a00000-0000-0000-0000-0000000000a1','authenticated','authenticated','stl-user-a@example.invalid'),
+  ('57a00000-0000-0000-0000-0000000000b1','authenticated','authenticated','stl-user-b@example.invalid');
+
+-- Two INDEPENDENT tenants (no parent relationship) — a hard cross-tenant boundary.
+INSERT INTO public.tenants (id, slug, name, status, account_type, account_number_prefix, features) VALUES
+  ('57a00000-0000-0000-0000-00000000aaaa','stl-tenant-a','STL Tenant A','active','standalone','STA','{}'::jsonb),
+  ('57a00000-0000-0000-0000-00000000bbbb','stl-tenant-b','STL Tenant B','active','standalone','STB','{}'::jsonb);
+
+-- User A owns tenant A (active there); User B owns tenant B (active there).
+INSERT INTO public.profiles (user_id, active_tenant_id) VALUES
+  ('57a00000-0000-0000-0000-0000000000a1','57a00000-0000-0000-0000-00000000aaaa'),
+  ('57a00000-0000-0000-0000-0000000000b1','57a00000-0000-0000-0000-00000000bbbb');
+INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at) VALUES
+  ('57a00000-0000-0000-0000-00000000aaaa','57a00000-0000-0000-0000-0000000000a1','owner','active',true, now()),
+  ('57a00000-0000-0000-0000-00000000bbbb','57a00000-0000-0000-0000-0000000000b1','owner','active',true, now());
+
+-- User A's private thread in tenant A.
+INSERT INTO public.paige_chat_threads
+  (id, caller_user_id, contact_id, tenant_id, lens, title, consent_snapshot, auto_delete_at, last_message_at)
+VALUES ('57a00000-0000-0000-0000-00000000face','57a00000-0000-0000-0000-0000000000a1', NULL,
+        '57a00000-0000-0000-0000-00000000aaaa','coach','A private thread','{}'::jsonb,
+        now()+interval '90 days', now());
+
+-- A task in tenant B, owned by B, that ALREADY carries tenant A's thread id as its link — the exact
+-- foreign-link shape the hardening prevents at write time; here we prove it grants no cross read.
+INSERT INTO public.tasks (id, user_id, tenant_id, title, status, source_thread_id) VALUES
+  ('57a00000-0000-0000-0000-00000000ca51','57a00000-0000-0000-0000-0000000000b1',
+   '57a00000-0000-0000-0000-00000000bbbb','B task with a foreign link','pending',
+   '57a00000-0000-0000-0000-00000000face');
+
+DO $t$
+DECLARE _n int;
+BEGIN
+  -- (1) SAME-TENANT owner A validates their OWN thread (the edge lookup returns the row → link OK).
+  PERFORM set_config('role','authenticated', true);
+  PERFORM set_config('request.jwt.claims',
+    '{"sub":"57a00000-0000-0000-0000-0000000000a1","role":"authenticated"}', true);
+  IF public.is_platform_owner() THEN RAISE EXCEPTION 'SETUP_FAIL: user A resolves as platform owner'; END IF;
+  SELECT count(*) INTO _n FROM public.paige_chat_threads
+    WHERE id='57a00000-0000-0000-0000-00000000face'
+      AND tenant_id = public.current_user_tenant_id()
+      AND caller_user_id = auth.uid();
+  IF _n <> 1 THEN RAISE EXCEPTION 'FAIL_SAME_TENANT: owner A could not validate their own thread (% rows)', _n; END IF;
+
+  -- (2) CROSS-TENANT denial — user B runs the EXACT validation read for A's thread → 0 rows.
+  PERFORM set_config('request.jwt.claims',
+    '{"sub":"57a00000-0000-0000-0000-0000000000b1","role":"authenticated"}', true);
+  IF public.current_user_tenant_id() <> '57a00000-0000-0000-0000-00000000bbbb' THEN
+    RAISE EXCEPTION 'SETUP_FAIL: user B not scoped into tenant B (got %)', public.current_user_tenant_id();
+  END IF;
+  SELECT count(*) INTO _n FROM public.paige_chat_threads
+    WHERE id='57a00000-0000-0000-0000-00000000face'
+      AND tenant_id = public.current_user_tenant_id()
+      AND caller_user_id = auth.uid();
+  IF _n <> 0 THEN RAISE EXCEPTION 'FAIL_CROSS_TENANT: user B validated tenant A''s thread (% rows)', _n; END IF;
+
+  -- (4) NO DISCOVERY / NO LEAK — user B owns a task linked to A's thread, but the uuid grants no read:
+  --     the task is visible to B, the linked conversation is NOT.
+  SELECT count(*) INTO _n FROM public.tasks WHERE id='57a00000-0000-0000-0000-00000000ca51';
+  IF _n <> 1 THEN RAISE EXCEPTION 'SETUP_FAIL: owner B cannot see their own task (% rows)', _n; END IF;
+  SELECT count(*) INTO _n FROM public.paige_chat_threads WHERE id='57a00000-0000-0000-0000-00000000face';
+  IF _n <> 0 THEN RAISE EXCEPTION 'FAIL_DISCOVERY: user B read tenant A''s thread via the task link (% rows)', _n; END IF;
+
+  -- (3) ACCOUNT-SWITCH denial — re-seat user A into tenant B; A can no longer validate A's thread,
+  --     because current_user_tenant_id() is now B. (We flip the active tenant the resolver reads.)
+  PERFORM set_config('role','postgres', true);
+  INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at) VALUES
+    ('57a00000-0000-0000-0000-00000000bbbb','57a00000-0000-0000-0000-0000000000a1','admin','active',false, now());
+  UPDATE public.profiles SET active_tenant_id='57a00000-0000-0000-0000-00000000bbbb'
+    WHERE user_id='57a00000-0000-0000-0000-0000000000a1';
+  PERFORM set_config('role','authenticated', true);
+  PERFORM set_config('request.jwt.claims',
+    '{"sub":"57a00000-0000-0000-0000-0000000000a1","role":"authenticated"}', true);
+  IF public.current_user_tenant_id() <> '57a00000-0000-0000-0000-00000000bbbb' THEN
+    RAISE EXCEPTION 'SETUP_FAIL: user A did not switch into tenant B (got %)', public.current_user_tenant_id();
+  END IF;
+  SELECT count(*) INTO _n FROM public.paige_chat_threads
+    WHERE id='57a00000-0000-0000-0000-00000000face'
+      AND tenant_id = public.current_user_tenant_id()
+      AND caller_user_id = auth.uid();
+  IF _n <> 0 THEN RAISE EXCEPTION 'FAIL_ACCOUNT_SWITCH: A seated in B validated A''s thread (% rows)', _n; END IF;
+
+  PERFORM set_config('role','postgres', true);
+END
+$t$;
+
+SELECT 'SOURCE_THREAD_LINK_SCOPE_PROVEN' AS proof;
+ROLLBACK;

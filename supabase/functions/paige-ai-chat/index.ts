@@ -9,6 +9,7 @@ import { gatewayCompat } from "../_shared/claude.ts";
 import { checkedWrite, writeOutcome } from "../_shared/checked-write.ts";
 import { classifyAction, clampLaneByRisk, mutatingTools, riskReason, unclassifiedWriteReason } from "../_shared/action-risk.ts";
 import { confirmFingerprint, CONFIRM_IDENTITY_KEY, confirmIdentityValue } from "../_shared/confirm-fingerprint.ts";
+import { resolveSourceThreadLink } from "../_shared/source-thread-link.ts";
 import { buildCreditProposal, buildCreditSyncPayload } from "../_shared/credit-extraction-payload.ts";
 import { projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
@@ -10106,6 +10107,26 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             } else if (tc.function.name === "crm_create_task") {
               const assignee = args.assignee_user_id || user.id;
               crmWriteAttempted = true; // slice 3 (F05): dispatching the external write
+              // TRUSTED task↔thread provenance link (owner ruling 2026-09-13, §9/§13/§18). The body
+              // `threadId` is only a CLAIM: validate it server-side as the caller's OWN thread in the
+              // RESOLVED tenant before stamping. The validation runs under RLS on the caller's JWT
+              // client (`supabaseClient`) — NEVER the service-role `admin` client that bypasses RLS —
+              // with explicit owner + tenant filters, so a foreign / forged / expired / absent thread
+              // (incl. after an account switch, which re-resolves user.id + crmTenantId) yields null:
+              // no false or cross-tenant provenance, and no conversation attachable or discoverable
+              // through a task. The link is TRACEABILITY only; `status` below is the task's real
+              // state — a link is never evidence a task is complete (§13). The decision rule lives in
+              // one home: _shared/source-thread-link.ts.
+              const linkThreadId = await resolveSourceThreadLink(payloadThreadId, async (tid) => {
+                const { data: owned } = await supabaseClient
+                  .from("paige_chat_threads")
+                  .select("id")
+                  .eq("id", tid)
+                  .eq("tenant_id", crmTenantId)
+                  .eq("caller_user_id", user.id)
+                  .maybeSingle();
+                return owned?.id ?? null;
+              });
               const { data: row, error } = await admin
                 .from("tasks")
                 .insert({
@@ -10116,10 +10137,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   due_date: args.due_date || null,
                   track: args.track || null,
                   status: "pending",
-                  // 4a.3 §8/§12 — durable link back to the conversation this task was created from,
-                  // so the owner can jump task ↔ source chat. NULL for non-thread callers (client
-                  // portal / doc-only). The uuid alone grants no read; the thread stays RLS-gated (§9).
-                  source_thread_id: payloadThreadId ?? null,
+                  source_thread_id: linkThreadId,
                 })
                 .select()
                 .single();

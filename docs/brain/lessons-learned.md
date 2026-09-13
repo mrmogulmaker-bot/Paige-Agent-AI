@@ -2464,3 +2464,28 @@ non-array object), THEN read its contents — and the self-test must replace the
 type (`null`/string/number/array), not only mutate a value inside it. This is why three independent review
 layers (§39 adversarial + §5 compliance + an external reviewer) and CI are LAYERED, never substitutes: the
 pass my own crew missed is exactly the pass the third reviewer caught (§39's own "none alone is sufficient"). Proven across FOUR external catches on this one PR: (a) a non-object `field_schema` that skipped the contract; (b) a Deepgram seam mis-attributed to ElevenLabs; (c) DIRECTORY anchors that could not detect file-level drift — so an anchor must name an exact adapter FILE and the resolver must require a file, not a directory; and (d) an ORPHAN anchor (an unimported `_shared` helper) standing in for the reachable client that actually backs the provider — so an anchor must point at code that is actually REACHABLE/called, not merely provider-named-and-present. "Exists" has three distinct failure modes a naive check misses: wrong provider, wrong granularity (dir vs file), and unreachable (orphan).
+### A service-role write that stamps a client-supplied reference bypasses the RLS that would validate it (2026-09-13)
+
+**What happened.** `crm_create_task` recorded a task's originating conversation by stamping
+`tasks.source_thread_id` from the request-body `threadId` — through a SERVICE-ROLE insert. The
+service-role client bypasses RLS, so the thread id was never checked against the caller: a client
+could POST another tenant's thread id (or a forged uuid) and the task would record it as provenance.
+It read as safe because "a dangling uuid grants no read" (the thread stays RLS-gated on its own), so
+no transcript leaked — but it is a §9 integrity hole and exactly the "client-supplied id stamped on
+faith" the owner forbids. The tell that masked it: the insert correctly server-resolved `tenant_id`,
+so the row LOOKED tenant-safe; the foreign-reference field riding alongside it did not get the same
+scrutiny.
+
+**The lesson (the class).** When a service-role (RLS-bypassing) write stamps a field that REFERENCES
+another tenant-scoped row — a foreign key, a thread id, a contact id, any "this belongs to X" pointer
+— and the value originates from the request (body or model), that field must be VALIDATED on the
+CALLER's RLS client before it reaches the service-role write. Server-resolving the row's OWN
+`tenant_id` is not enough; every client-supplied reference it carries needs its own owner+tenant
+check. The validation belongs on the caller-JWT client (RLS-enforced) with explicit
+`id`+`tenant_id`+`owner` filters — defense in depth — and an unresolved reference resolves to NULL,
+never the unvalidated claim. Put the decision in one home so every writer of that reference shares it.
+
+**How to catch it:** for any service-role insert/update, list every column whose value comes from the
+request and is a reference to another row; each one is a potential cross-tenant stamp unless validated
+on the RLS client first. "The row's tenant_id is server-resolved" answers only the row's own scope,
+never the scope of what it points at.
