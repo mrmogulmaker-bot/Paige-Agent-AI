@@ -92,6 +92,8 @@
     "proof:tool-confirmation": "node scripts/run-tool-confirmation-proof.mjs",
     "lint:approval-gate": "node scripts/ci/one-approval-gate-lint.mjs",
     "lint:approval-gate:test": "node scripts/ci/one-approval-gate-lint.mjs --self-test",
+    "lint:approval-direct-write": "node scripts/ci/approval-direct-write-lint.mjs",
+    "lint:approval-direct-write:test": "node scripts/ci/approval-direct-write-lint.mjs --self-test",
     "lint:chat-tool-registry": "node scripts/ci/chat-tool-registry-lint.mjs",
     "lint:chat-tool-registry:test": "node scripts/ci/chat-tool-registry-lint.mjs --self-test",
     "lint:binding-ledger": "node scripts/ci/binding-ledger-lint.mjs",
