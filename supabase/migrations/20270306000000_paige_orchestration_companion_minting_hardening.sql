@@ -75,7 +75,14 @@ begin
     into _args_txt
     from jsonb_each_text(_args_obj) as e(k, v);
   return jsonb_build_object(
-    'subject', _label || case when coalesce(_subject_label, '') <> '' then ' for ' || _subject_label else '' end,
+    -- §70 (Codex P1): fold the governed args INTO the subject — hence into summary, since both
+    -- ApprovalRow.tsx and ApprovalsInbox.tsx render ONLY `a.summary ?? <draft_content fallback>` and never
+    -- surface preview/body separately. Args left only in preview/body are invisible, so every stage-advance
+    -- would read identically ("Advance Journey Stage for Jane Client") and the operator could approve without
+    -- seeing WHICH stage. Appending them here makes the target visible in the one field the inbox shows.
+    'subject', _label
+      || case when coalesce(_subject_label, '') <> '' then ' for ' || _subject_label else '' end
+      || case when coalesce(_args_txt, '') <> '' then ' (' || _args_txt || ')' else '' end,
     'preview', coalesce(_args_txt, ''),
     'body',
       'Paige needs your approval to run "' || _label || '"'
@@ -342,3 +349,28 @@ where ae.outcome = 'approval_pending'
        and (pa.metadata->>'act_id')   = ae.act_id::text)
 on conflict ((metadata->>'event_id'), (metadata->>'act_id')) where source = 'paige_orchestration'
 do nothing;
+
+-- ── (4b) repair companions minted BEFORE this fix-forward (Codex P2 — the production-window rows). ────────
+-- Slice-1's mint (20270303000000) wrote draft_content='{}' with NO summary, so any orchestration companion
+-- created between that deploy and this one still renders "(no summary)". The INSERT backfill above SKIPS them
+-- (NOT EXISTS is false — a companion row already exists), so without this UPDATE the exact rows this readability
+-- repair targets stay unreadable. Recompute the readable content from the immutable ledger for those legacy rows.
+-- Idempotent + narrow: only rows whose summary is still empty are touched (a repaired row has a non-empty
+-- summary, so a re-run is a no-op), and only source='paige_orchestration' rows whose ledger act still exists.
+update public.paige_pending_approvals ppa
+   set draft_content = ct.content,
+       summary       = ct.content->>'subject'
+  from public.paige_act_executions ae
+  left join public.paige_native_events ev on ev.id = ae.event_id
+  left join public.clients c on ev.subject_table = 'clients' and c.id = ev.subject_id
+  cross join lateral (
+    select public.paige_orchestration_approval_content(
+      ae.capability_key, ae.detail->'snapshot_args',
+      case when ev.subject_table = 'clients'
+           then nullif(trim(coalesce(c.first_name, '') || ' ' || coalesce(c.last_name, '')), '')
+           else null end) as content
+  ) ct
+ where ppa.source = 'paige_orchestration'
+   and (ppa.metadata->>'event_id') = ae.event_id::text
+   and (ppa.metadata->>'act_id')   = ae.act_id::text
+   and coalesce(ppa.summary, '') = '';

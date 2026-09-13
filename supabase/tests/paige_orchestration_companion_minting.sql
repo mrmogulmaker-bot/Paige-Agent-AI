@@ -9,7 +9,7 @@
 -- then RE-ENABLED and exercised via real INSERT/UPDATE, and the reconciler is called as the cron/service
 -- context (auth.uid() NULL) exactly as pg_cron invokes it.
 begin;
-select plan(45);
+select plan(49);
 
 -- Seed the tenant in NORMAL mode (triggers ON) so its account_number-assignment trigger fires.
 insert into public.tenants(id, slug, name, status, account_type, account_number_prefix, features) values
@@ -96,6 +96,17 @@ insert into public.paige_act_executions
   (id, event_id, automation_id, act_id, act_position, tenant_id, adapter_kind, capability_key, effective_lane, outcome, idempotency_key, correlation_ref, detail) values
   ('ad00000c-0000-4000-8000-00000000000c','1e00000c-0000-4000-8000-00000000000c','a000000c-0000-4000-8000-00000000000c','ac00000c-0000-4000-8000-00000000000c',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','approval_pending','idem-c','corr-c', jsonb_build_object('snapshot_args', jsonb_build_object('stage_slug','nurtured')));
 
+-- LD: an approval_pending act WITH a slice-1-style companion (draft_content='{}', NO summary) — the Codex P2
+-- "production-window" case the INSERT backfill can NOT reach (NOT EXISTS is false, a companion already exists).
+-- Seeded directly (triggers disabled) so it mimics exactly what 20270303000000's mint wrote before this
+-- fix-forward; the (4b) repair UPDATE must make it readable.
+insert into public.paige_act_executions
+  (id, event_id, automation_id, act_id, act_position, tenant_id, adapter_kind, capability_key, effective_lane, outcome, idempotency_key, correlation_ref, detail) values
+  ('ad00000d-0000-4000-8000-00000000000d','1e00000d-0000-4000-8000-00000000000d','a000000d-0000-4000-8000-00000000000d','ac00000d-0000-4000-8000-00000000000d',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','approval_pending','idem-d','corr-d', jsonb_build_object('snapshot_args', jsonb_build_object('stage_slug','won')));
+insert into public.paige_pending_approvals(id, type, draft_content, category, tenant_id, source, status, metadata) values
+  ('9a00000d-0000-4000-8000-00000000000d','other','{}'::jsonb,'crm.advance_journey_stage','11111111-1111-4111-8111-111111111111','paige_orchestration','pending',
+   jsonb_build_object('source','paige_orchestration','event_id','1e00000d-0000-4000-8000-00000000000d','act_id','ac00000d-0000-4000-8000-00000000000d'));
+
 -- A NON-orchestration approval (the direct-approve guard must NOT touch it).
 insert into public.paige_pending_approvals(id, type, draft_content, category, tenant_id, source, status, metadata) values
   ('9a000001-0000-4000-8000-000000000001','cs_draft','{}'::jsonb,'followup','11111111-1111-4111-8111-111111111111','paige_action_bus','pending','{}'::jsonb);
@@ -136,9 +147,9 @@ select ok((select contact_id is null from public.paige_pending_approvals where m
           'mint: contact_id is NULL (§9 — the held act never leaks into the client portal)');
 -- READABLE OUTPUT (finding #1): no more "(no summary)".
 select is((select draft_content->>'subject' from public.paige_pending_approvals where metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
-          'Advance Journey Stage', 'mint readable: draft_content.subject humanizes the capability_key');
+          'Advance Journey Stage (stage slug: engaged)', 'mint readable: subject humanizes the capability_key AND names the target args (§70 — operator sees WHICH stage)');
 select is((select summary from public.paige_pending_approvals where metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
-          'Advance Journey Stage', 'mint readable: summary is the readable subject (ApprovalRow shows it, not "(no summary)")');
+          'Advance Journey Stage (stage slug: engaged)', 'mint readable: summary carries the action AND the args — the only field ApprovalRow/ApprovalsInbox render (Codex P1), never just "(no summary)"');
 select ok((select draft_content->>'preview' like '%stage slug: engaged%' from public.paige_pending_approvals where metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
           'mint readable: draft_content.preview renders the snapshot args');
 select ok((select draft_content->>'body' like '%Paige needs your approval%' from public.paige_pending_approvals where metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
@@ -155,7 +166,7 @@ select ok((select submitted_by_user_id is null from public.paige_pending_approva
           'mint: submitted_by_user_id NULL (proposed by Paige autonomously)');
 -- the content helper also folds in a subject (client) label when present — proved directly (no clients fixture needed).
 select is((select public.paige_orchestration_approval_content('crm.advance_journey_stage','{"stage_slug":"engaged"}'::jsonb,'Jane Client')->>'subject'),
-          'Advance Journey Stage for Jane Client', 'content helper: names the record (client) in the subject');
+          'Advance Journey Stage for Jane Client (stage slug: engaged)', 'content helper: subject names the record (client) AND the target args');
 
 -- risk mapping: 'ordinary' and absent both map to medium.
 update public.paige_act_executions set outcome='approval_pending' where id='ad000002-0000-4000-8000-000000000002';
@@ -284,7 +295,7 @@ do nothing;
 select is((select count(*)::int from public.paige_pending_approvals where source='paige_orchestration' and metadata->>'act_id'='ac00000c-0000-4000-8000-00000000000c'),
           1, 'backfill: exactly one companion minted for the pre-existing held act');
 select is((select summary from public.paige_pending_approvals where source='paige_orchestration' and metadata->>'act_id'='ac00000c-0000-4000-8000-00000000000c'),
-          'Advance Journey Stage', 'backfill: the backfilled companion carries the readable summary');
+          'Advance Journey Stage (stage slug: nurtured)', 'backfill: the backfilled companion carries the readable summary incl. the target args');
 select ok((select (metadata->>'backfilled')::boolean from public.paige_pending_approvals where source='paige_orchestration' and metadata->>'act_id'='ac00000c-0000-4000-8000-00000000000c'),
           'backfill: the companion is marked backfilled=true (auditable provenance)');
 
@@ -319,6 +330,55 @@ do nothing;
 
 select is((select count(*)::int from public.paige_pending_approvals where source='paige_orchestration' and metadata->>'act_id'='ac00000c-0000-4000-8000-00000000000c'),
           1, 'backfill: a second run is idempotent (still exactly one companion)');
+
+-- ══ (G) LEGACY REPAIR — a companion minted BEFORE this fix-forward is made readable by the (4b) UPDATE ═════
+-- The INSERT backfill can NOT reach ad00000d (it already has a companion — NOT EXISTS is false), so without the
+-- (4b) repair its slice-1 companion stays draft_content='{}' / "(no summary)" (Codex P2). Prove the empty
+-- precondition, run the migration's (4b) UPDATE byte-for-byte, confirm it becomes readable (args included), and
+-- confirm a second run is idempotent.
+select ok((select coalesce(summary,'') = '' from public.paige_pending_approvals where id='9a00000d-0000-4000-8000-00000000000d'),
+          'repair precondition: the pre-fix-forward companion has an empty summary (renders "(no summary)")');
+
+-- (the repair UPDATE — byte-for-byte the migration's (4b), so this proves the migration''s own query)
+update public.paige_pending_approvals ppa
+   set draft_content = ct.content, summary = ct.content->>'subject'
+  from public.paige_act_executions ae
+  left join public.paige_native_events ev on ev.id = ae.event_id
+  left join public.clients c on ev.subject_table = 'clients' and c.id = ev.subject_id
+  cross join lateral (
+    select public.paige_orchestration_approval_content(
+      ae.capability_key, ae.detail->'snapshot_args',
+      case when ev.subject_table = 'clients'
+           then nullif(trim(coalesce(c.first_name, '') || ' ' || coalesce(c.last_name, '')), '')
+           else null end) as content) ct
+ where ppa.source = 'paige_orchestration'
+   and (ppa.metadata->>'event_id') = ae.event_id::text
+   and (ppa.metadata->>'act_id')   = ae.act_id::text
+   and coalesce(ppa.summary, '') = '';
+
+select is((select summary from public.paige_pending_approvals where id='9a00000d-0000-4000-8000-00000000000d'),
+          'Advance Journey Stage (stage slug: won)', 'repair: the legacy empty companion now carries a readable summary incl. args');
+select is((select draft_content->>'subject' from public.paige_pending_approvals where id='9a00000d-0000-4000-8000-00000000000d'),
+          'Advance Journey Stage (stage slug: won)', 'repair: draft_content.subject rebuilt from the immutable ledger');
+
+-- second run — idempotent: coalesce(summary,'')='' now excludes the repaired row, so the value is stable.
+update public.paige_pending_approvals ppa
+   set draft_content = ct.content, summary = ct.content->>'subject'
+  from public.paige_act_executions ae
+  left join public.paige_native_events ev on ev.id = ae.event_id
+  left join public.clients c on ev.subject_table = 'clients' and c.id = ev.subject_id
+  cross join lateral (
+    select public.paige_orchestration_approval_content(
+      ae.capability_key, ae.detail->'snapshot_args',
+      case when ev.subject_table = 'clients'
+           then nullif(trim(coalesce(c.first_name, '') || ' ' || coalesce(c.last_name, '')), '')
+           else null end) as content) ct
+ where ppa.source = 'paige_orchestration'
+   and (ppa.metadata->>'event_id') = ae.event_id::text
+   and (ppa.metadata->>'act_id')   = ae.act_id::text
+   and coalesce(ppa.summary, '') = '';
+select is((select summary from public.paige_pending_approvals where id='9a00000d-0000-4000-8000-00000000000d'),
+          'Advance Journey Stage (stage slug: won)', 'repair: idempotent — a second run leaves the readable summary unchanged');
 
 select * from finish();
 rollback;
