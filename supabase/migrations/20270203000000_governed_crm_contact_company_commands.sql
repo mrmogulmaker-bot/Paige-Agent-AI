@@ -802,10 +802,10 @@ begin
   if tg_op in ('UPDATE','DELETE') then old_key:='tool-autonomy:'||old.tenant_id::text||':'||old.tool_key; end if;
   if tg_op in ('INSERT','UPDATE') then new_key:='tool-autonomy:'||new.tenant_id::text||':'||new.tool_key; end if;
   if tg_op='UPDATE' and old_key is distinct from new_key then
-    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(pg_catalog.least(old_key,new_key),0));
-    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(pg_catalog.greatest(old_key,new_key),0));
+    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(least(old_key,new_key),0));
+    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(greatest(old_key,new_key),0));
   else
-    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(pg_catalog.coalesce(new_key,old_key),0));
+    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(coalesce(new_key,old_key),0));
   end if;
   if tg_op='DELETE' then return old; end if;
   return new;
@@ -854,11 +854,11 @@ declare
   a text:=nullif(pg_catalog.btrim(_command->>'action'),''); h text;
   cached public.crm_command_previews%rowtype; c1 public.clients%rowtype; c2 public.clients%rowtype;
   t public.tasks%rowtype; d public.deals%rowtype; snap jsonb; outp jsonb; deps jsonb;
-  ids uuid[]; requested int; eligible int; refused int; patch jsonb:=pg_catalog.coalesce(_command->'patch','{}'::jsonb);
+  ids uuid[]; requested int; eligible int; refused int; patch jsonb:=coalesce(_command->'patch','{}'::jsonb);
   unknown text[]; conflict_rows jsonb; unresolved int; active_tenant uuid; actor_role text; capability text; autonomy_mode text;
 begin
-  if pg_catalog.coalesce(auth.jwt()->>'role','') <> 'service_role' or auth.uid() is not null then raise exception 'CRM_INTERNAL_EXECUTOR_REQUIRED' using errcode='42501'; end if;
-  if _tenant_id is null or _actor_id is null or pg_catalog.coalesce(pg_catalog.btrim(_preview_key),'')='' or pg_catalog.length(_preview_key)>200
+  if coalesce(auth.jwt()->>'role','') <> 'service_role' or auth.uid() is not null then raise exception 'CRM_INTERNAL_EXECUTOR_REQUIRED' using errcode='42501'; end if;
+  if _tenant_id is null or _actor_id is null or coalesce(pg_catalog.btrim(_preview_key),'')='' or pg_catalog.length(_preview_key)>200
     or pg_catalog.jsonb_typeof(_command)<>'object' then raise exception 'CRM_PREVIEW_INVALID' using errcode='22023'; end if;
   select p.active_tenant_id into active_tenant from public.profiles p where p.user_id=_actor_id for update;
   if not found or active_tenant is distinct from _tenant_id then raise exception 'CRM_ACTIVE_ACCOUNT_CHANGED' using errcode='42501'; end if;
@@ -870,7 +870,7 @@ begin
     when 'contact.bulk_update' then 'crm_bulk_update_contacts' when 'task.delete' then 'crm_delete_task' when 'deal.delete' then 'crm_delete_deal' end;
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('tool-autonomy:'||_tenant_id::text||':'||capability,0));
   select ta.mode into autonomy_mode from public.tenant_tool_autonomy ta where ta.tenant_id=_tenant_id and ta.tool_key=capability;
-  if pg_catalog.coalesce(autonomy_mode,'confirm')='off' then raise exception 'CRM_AUTONOMY_REFUSED' using errcode='42501'; end if;
+  if coalesce(autonomy_mode,'confirm')='off' then raise exception 'CRM_AUTONOMY_REFUSED' using errcode='42501'; end if;
   h:=pg_catalog.encode(extensions.digest(pg_catalog.convert_to(_command::text,'UTF8'),'sha256'),'hex');
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('crm-preview:'||_tenant_id::text||':'||_actor_id::text||':'||_preview_key,0));
   select * into cached from public.crm_command_previews where tenant_id=_tenant_id and actor_user_id=_actor_id and preview_key=_preview_key for update;
@@ -881,10 +881,10 @@ begin
   end if;
 
   if a in ('contact.merge','contact.hard_delete') then
-    if pg_catalog.coalesce(_command->>'contact_id','') !~* '^[0-9a-f-]{36}$' then raise exception 'CRM_CONTACT_NOT_FOUND' using errcode='P0002'; end if;
+    if coalesce(_command->>'contact_id','') !~* '^[0-9a-f-]{36}$' then raise exception 'CRM_CONTACT_NOT_FOUND' using errcode='P0002'; end if;
     select * into c1 from public.clients where id=(_command->>'contact_id')::uuid and tenant_id=_tenant_id for update;
     if not found then raise exception 'CRM_CONTACT_NOT_FOUND' using errcode='P0002'; end if;
-    if pg_catalog.coalesce(_command->>'expected_updated_at','')='' or c1.updated_at is distinct from (_command->>'expected_updated_at')::timestamptz
+    if coalesce(_command->>'expected_updated_at','')='' or c1.updated_at is distinct from (_command->>'expected_updated_at')::timestamptz
       then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
     deps:=public.crm_contact_dependency_snapshot(c1.id);
     if a='contact.hard_delete' then
@@ -893,25 +893,25 @@ begin
         'eligible',c1.linked_user_id is null and (deps->>'total')::bigint=0,'dependency_counts',deps,
         'safe_refusal',case when c1.linked_user_id is not null then 'linked portal identity must be unlinked through its owning flow' when (deps->>'total')::bigint>0 then 'archive this contact or remove dependencies through their owning flows' else null end);
     else
-      if pg_catalog.coalesce(_command->>'loser_contact_id','') !~* '^[0-9a-f-]{36}$' or (_command->>'loser_contact_id')::uuid=c1.id then raise exception 'CRM_MERGE_TARGET_INVALID' using errcode='22023'; end if;
+      if coalesce(_command->>'loser_contact_id','') !~* '^[0-9a-f-]{36}$' or (_command->>'loser_contact_id')::uuid=c1.id then raise exception 'CRM_MERGE_TARGET_INVALID' using errcode='22023'; end if;
       select * into c2 from public.clients where id=(_command->>'loser_contact_id')::uuid and tenant_id=_tenant_id for update;
       if not found then raise exception 'CRM_CONTACT_NOT_FOUND' using errcode='P0002'; end if;
-      if pg_catalog.coalesce(_command->>'expected_loser_updated_at','')='' or c2.updated_at is distinct from (_command->>'expected_loser_updated_at')::timestamptz
+      if coalesce(_command->>'expected_loser_updated_at','')='' or c2.updated_at is distinct from (_command->>'expected_loser_updated_at')::timestamptz
         then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
-      select pg_catalog.coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('field',x.field,'survivor',x.sv,'loser',x.lv,'resolution',pg_catalog.coalesce(_command->'resolutions'->>x.field,'survivor')) order by x.field),'[]'::jsonb)
+      select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('field',x.field,'survivor',x.sv,'loser',x.lv,'resolution',coalesce(_command->'resolutions'->>x.field,'survivor')) order by x.field),'[]'::jsonb)
         into conflict_rows
         from (values
           ('email',c1.email,c2.email),('phone',c1.phone,c2.phone),('entity_name',c1.entity_name,c2.entity_name),('title',c1.title,c2.title),
           ('linked_user_id',c1.linked_user_id::text,c2.linked_user_id::text),('primary_business_id',c1.primary_business_id::text,c2.primary_business_id::text),
           ('assigned_coach_user_id',c1.assigned_coach_user_id::text,c2.assigned_coach_user_id::text),('lead_owner_user_id',c1.lead_owner_user_id::text,c2.lead_owner_user_id::text)
         ) x(field,sv,lv) where x.sv is not null and x.lv is not null and x.sv<>x.lv;
-      if pg_catalog.jsonb_typeof(pg_catalog.coalesce(_command->'resolutions','{}'::jsonb))<>'object' then raise exception 'CRM_MERGE_RESOLUTIONS_INVALID' using errcode='22023'; end if;
-      select count(*) into unresolved from pg_catalog.jsonb_each_text(pg_catalog.coalesce(_command->'resolutions','{}'::jsonb)) r
+      if pg_catalog.jsonb_typeof(coalesce(_command->'resolutions','{}'::jsonb))<>'object' then raise exception 'CRM_MERGE_RESOLUTIONS_INVALID' using errcode='22023'; end if;
+      select count(*) into unresolved from pg_catalog.jsonb_each_text(coalesce(_command->'resolutions','{}'::jsonb)) r
        where r.value not in ('survivor','loser') or r.key not in ('email','phone','entity_name','title','linked_user_id','primary_business_id','assigned_coach_user_id','lead_owner_user_id');
       if unresolved>0 then raise exception 'CRM_MERGE_RESOLUTIONS_INVALID' using errcode='22023'; end if;
       deps:=public.crm_contact_dependency_snapshot(c2.id);
       snap:=pg_catalog.jsonb_build_object('survivor_contact_id',c1.id,'survivor_updated_at',c1.updated_at,'loser_contact_id',c2.id,'loser_updated_at',c2.updated_at,
-        'dependency_snapshot',deps,'resolutions',pg_catalog.coalesce(_command->'resolutions','{}'::jsonb));
+        'dependency_snapshot',deps,'resolutions',coalesce(_command->'resolutions','{}'::jsonb));
       outp:=pg_catalog.jsonb_build_object('action',a,'record_kind','contact_merge','survivor',pg_catalog.jsonb_build_object('id',c1.id,'client_ref',c1.account_number),
         'loser',pg_catalog.jsonb_build_object('id',c2.id,'client_ref',c2.account_number),'conflicts',conflict_rows,'dependency_counts',deps,
         'eligible',(deps->>'unsupported')::bigint=0 and not (c1.linked_user_id is not null and c2.linked_user_id is not null and c1.linked_user_id<>c2.linked_user_id),
@@ -923,13 +923,13 @@ begin
   elsif a='task.delete' then
     select * into t from public.tasks where id=(_command->>'task_id')::uuid and tenant_id=_tenant_id for update;
     if not found then raise exception 'CRM_TASK_NOT_FOUND' using errcode='P0002'; end if;
-    if pg_catalog.coalesce(t.updated_at,t.created_at) is distinct from (_command->>'expected_updated_at')::timestamptz then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
-    snap:=pg_catalog.jsonb_build_object('task_id',t.id,'updated_at',pg_catalog.coalesce(t.updated_at,t.created_at));
+    if coalesce(t.updated_at,t.created_at) is distinct from (_command->>'expected_updated_at')::timestamptz then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
+    snap:=pg_catalog.jsonb_build_object('task_id',t.id,'updated_at',coalesce(t.updated_at,t.created_at));
     outp:=pg_catalog.jsonb_build_object('action',a,'record_kind','task','record_id',t.id,'title',t.title,'affected_count',1,'eligible',true);
   elsif a='deal.delete' then
     select * into d from public.deals where id=(_command->>'deal_id')::uuid and tenant_id=_tenant_id for update;
     if not found then raise exception 'CRM_DEAL_NOT_FOUND' using errcode='P0002'; end if;
-    if d.version<>pg_catalog.coalesce((_command->>'expected_version')::bigint,0) then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
+    if d.version<>coalesce((_command->>'expected_version')::bigint,0) then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
     deps:=pg_catalog.jsonb_build_object('tasks',(select count(*) from public.tasks where deal_id=d.id),'invoices',(select count(*) from public.paige_invoices where deal_id=d.id),'activities',(select count(*) from public.deal_activities where deal_id=d.id),'automation_events',(select count(*) from public.stage_automation_events where deal_id=d.id),'move_approvals',(select count(*) from public.pipeline_move_approvals where deal_id=d.id),'outcomes',(select count(*) from public.pipeline_deal_outcomes where deal_id=d.id));
     snap:=pg_catalog.jsonb_build_object('deal_id',d.id,'version',d.version,'dependency_counts',deps);
     outp:=pg_catalog.jsonb_build_object('action',a,'record_kind','deal','record_id',d.id,'title',d.title,'dependency_counts',deps,'affected_count',1+(deps->>'tasks')::int+(deps->>'invoices')::int+(deps->>'activities')::int+(deps->>'automation_events')::int+(deps->>'move_approvals')::int+(deps->>'outcomes')::int,'deleted_dependency_count',(deps->>'activities')::int+(deps->>'automation_events')::int+(deps->>'move_approvals')::int+(deps->>'outcomes')::int,'detached_task_count',(deps->>'tasks')::int,'detached_invoice_count',(deps->>'invoices')::int,'eligible',true);
@@ -937,18 +937,18 @@ begin
     if pg_catalog.jsonb_typeof(_command->'target_ids')<>'array' or pg_catalog.jsonb_array_length(_command->'target_ids')=0 or pg_catalog.jsonb_array_length(_command->'target_ids')>200 then raise exception 'CRM_BULK_TARGETS_INVALID' using errcode='22023'; end if;
     select pg_catalog.array_agg(distinct x::uuid order by x::uuid) into ids from pg_catalog.jsonb_array_elements_text(_command->'target_ids') x where x ~* '^[0-9a-f-]{36}$';
     requested:=pg_catalog.jsonb_array_length(_command->'target_ids');
-    select count(*) into eligible from public.clients where tenant_id=_tenant_id and id=any(pg_catalog.coalesce(ids,array[]::uuid[]));
+    select count(*) into eligible from public.clients where tenant_id=_tenant_id and id=any(coalesce(ids,array[]::uuid[]));
     refused:=requested-eligible;
     if pg_catalog.jsonb_typeof(patch)<>'object' or patch='{}'::jsonb then raise exception 'CRM_PATCH_INVALID' using errcode='22023'; end if;
     select pg_catalog.array_agg(k order by k) into unknown from pg_catalog.jsonb_object_keys(patch) k where k not in ('lifecycle_stage','tags','do_not_contact','assigned_coach_user_id');
-    if pg_catalog.coalesce(pg_catalog.array_length(unknown,1),0)>0 then raise exception 'CRM_PATCH_FIELDS_INVALID:%',pg_catalog.array_to_string(unknown,',') using errcode='22023'; end if;
-    if patch ? 'lifecycle_stage' and pg_catalog.coalesce(patch->>'lifecycle_stage','') not in ('new_lead','qualified','nurturing','hot_lead','negotiating','won','client_active','client_paused','client_churned','client_funded','client_alumni') then raise exception 'CRM_LIFECYCLE_INVALID' using errcode='22023'; end if;
+    if coalesce(pg_catalog.array_length(unknown,1),0)>0 then raise exception 'CRM_PATCH_FIELDS_INVALID:%',pg_catalog.array_to_string(unknown,',') using errcode='22023'; end if;
+    if patch ? 'lifecycle_stage' and coalesce(patch->>'lifecycle_stage','') not in ('new_lead','qualified','nurturing','hot_lead','negotiating','won','client_active','client_paused','client_churned','client_funded','client_alumni') then raise exception 'CRM_LIFECYCLE_INVALID' using errcode='22023'; end if;
     if patch ? 'tags' and pg_catalog.jsonb_typeof(patch->'tags')<>'array' then raise exception 'CRM_TAGS_INVALID' using errcode='22023'; end if;
     if patch ? 'do_not_contact' and pg_catalog.jsonb_typeof(patch->'do_not_contact')<>'boolean' then raise exception 'CRM_DO_NOT_CONTACT_INVALID' using errcode='22023'; end if;
     if patch ? 'assigned_coach_user_id' and nullif(patch->>'assigned_coach_user_id','') is not null and (patch->>'assigned_coach_user_id' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' or not exists(select 1 from public.tenant_members tm where tm.tenant_id=_tenant_id and tm.user_id=(patch->>'assigned_coach_user_id')::uuid and tm.status='active' and tm.role in ('owner','admin','coach'))) then raise exception 'CRM_ASSIGNEE_FORBIDDEN' using errcode='42501'; end if;
-    select pg_catalog.coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('id',c.id,'updated_at',c.updated_at) order by c.id),'[]'::jsonb) into snap from public.clients c where c.tenant_id=_tenant_id and c.id=any(pg_catalog.coalesce(ids,array[]::uuid[]));
+    select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('id',c.id,'updated_at',c.updated_at) order by c.id),'[]'::jsonb) into snap from public.clients c where c.tenant_id=_tenant_id and c.id=any(coalesce(ids,array[]::uuid[]));
     snap:=pg_catalog.jsonb_build_object('targets',snap,'patch',patch);
-    outp:=pg_catalog.jsonb_build_object('action',a,'record_kind','contact','requested_count',requested,'eligible_count',eligible,'refused_count',refused,'patch',patch,'eligible_targets',(select pg_catalog.coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'updated_at',c.updated_at) order by c.id),'[]'::jsonb) from public.clients c where c.tenant_id=_tenant_id and c.id=any(pg_catalog.coalesce(ids,array[]::uuid[]))),'eligible',eligible>0);
+    outp:=pg_catalog.jsonb_build_object('action',a,'record_kind','contact','requested_count',requested,'eligible_count',eligible,'refused_count',refused,'patch',patch,'eligible_targets',(select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'updated_at',c.updated_at) order by c.id),'[]'::jsonb) from public.clients c where c.tenant_id=_tenant_id and c.id=any(coalesce(ids,array[]::uuid[]))),'eligible',eligible>0);
   end if;
   insert into public.crm_command_previews(tenant_id,actor_user_id,preview_key,command_hash,action,target_snapshot,preview)
   values(_tenant_id,_actor_id,_preview_key,h,a,snap,outp) returning * into cached;
@@ -968,8 +968,8 @@ declare
   v_hash text; v_cached public.crm_command_results%rowtype; effective_command jsonb:=_command;
   v_active_tenant uuid; v_actor_role text; v_autonomy_mode text; v_approval_channel text:=nullif(_command->>'approval_channel','');
 begin
-  if pg_catalog.coalesce(auth.jwt()->>'role','') <> 'service_role' or auth.uid() is not null then raise exception 'CRM_INTERNAL_EXECUTOR_REQUIRED' using errcode='42501'; end if;
-  if _tenant_id is null or _actor_id is null or a is null or pg_catalog.coalesce(pg_catalog.btrim(_idempotency_key),'')='' or pg_catalog.length(_idempotency_key)>200 or pg_catalog.jsonb_typeof(_command)<>'object' then raise exception 'CRM_COMMAND_INVALID' using errcode='22023'; end if;
+  if coalesce(auth.jwt()->>'role','') <> 'service_role' or auth.uid() is not null then raise exception 'CRM_INTERNAL_EXECUTOR_REQUIRED' using errcode='42501'; end if;
+  if _tenant_id is null or _actor_id is null or a is null or coalesce(pg_catalog.btrim(_idempotency_key),'')='' or pg_catalog.length(_idempotency_key)>200 or pg_catalog.jsonb_typeof(_command)<>'object' then raise exception 'CRM_COMMAND_INVALID' using errcode='22023'; end if;
   select p.active_tenant_id into v_active_tenant from public.profiles p where p.user_id=_actor_id for update;
   if not found or v_active_tenant is distinct from _tenant_id then raise exception 'CRM_ACTIVE_ACCOUNT_CHANGED' using errcode='42501'; end if;
   select tm.role into v_actor_role from public.tenant_members tm
@@ -1009,7 +1009,7 @@ begin
   if v_approval_channel not in ('operator_card','standing_autonomy_setting') then raise exception 'CRM_AUTHORITY_REQUIRED' using errcode='42501'; end if;
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('tool-autonomy:'||_tenant_id::text||':'||v_capability,0));
   select ta.mode into v_autonomy_mode from public.tenant_tool_autonomy ta where ta.tenant_id=_tenant_id and ta.tool_key=v_capability;
-  v_autonomy_mode:=pg_catalog.coalesce(v_autonomy_mode,'confirm');
+  v_autonomy_mode:=coalesce(v_autonomy_mode,'confirm');
   if v_autonomy_mode='off' or (v_autonomy_mode='confirm' and v_approval_channel<>'operator_card') then raise exception 'CRM_AUTONOMY_REFUSED' using errcode='42501'; end if;
   if a in ('contact.assign_coach','contact.assign_owner','contact.merge','contact.hard_delete','contact.bulk_update','task.assign','task.cancel','task.delete','deal.assign_owner','deal.assign_contact','deal.close','deal.reopen','deal.delete')
     and v_approval_channel<>'operator_card' then raise exception 'CRM_APPROVAL_REQUIRED' using errcode='42501'; end if;
@@ -1030,13 +1030,13 @@ begin
   elsif a in ('deal.assign_owner','deal.assign_contact') then
     return public.execute_crm_command_reversible(_tenant_id,_actor_id,effective_command,_idempotency_key);
   else
-    if pg_catalog.coalesce(_command->>'preview_id','') !~* '^[0-9a-f-]{36}$' then raise exception 'CRM_PREVIEW_REQUIRED' using errcode='22023'; end if;
+    if coalesce(_command->>'preview_id','') !~* '^[0-9a-f-]{36}$' then raise exception 'CRM_PREVIEW_REQUIRED' using errcode='22023'; end if;
     select * into p from public.crm_command_previews where id=(_command->>'preview_id')::uuid and tenant_id=_tenant_id and actor_user_id=_actor_id and action=a and consumed_at is null and expires_at>pg_catalog.now() for update;
     if not found then raise exception 'CRM_PREVIEW_INVALID_OR_EXPIRED' using errcode='42501'; end if;
     update public.crm_command_previews set consumed_at=pg_catalog.clock_timestamp() where id=p.id;
     if a='task.delete' then
       select * into t from public.tasks where id=(p.target_snapshot->>'task_id')::uuid and tenant_id=_tenant_id for update;
-      if not found or pg_catalog.coalesce(t.updated_at,t.created_at) is distinct from (p.target_snapshot->>'updated_at')::timestamptz then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
+      if not found or coalesce(t.updated_at,t.created_at) is distinct from (p.target_snapshot->>'updated_at')::timestamptz then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
       delete from public.tasks where id=t.id and tenant_id=_tenant_id;
       if exists(select 1 from public.tasks where id=t.id) then raise exception 'CRM_ABSENCE_READBACK_FAILED' using errcode='P0002'; end if;
       readback:=pg_catalog.jsonb_build_object('id',t.id,'absent',true,'deleted_count',1);
@@ -1079,7 +1079,7 @@ begin
         primary_business_id=case when resolutions->>'primary_business_id'='loser' or c.primary_business_id is null then loser.primary_business_id else c.primary_business_id end,
         assigned_coach_user_id=case when resolutions->>'assigned_coach_user_id'='loser' or c.assigned_coach_user_id is null then loser.assigned_coach_user_id else c.assigned_coach_user_id end,
         lead_owner_user_id=case when resolutions->>'lead_owner_user_id'='loser' or c.lead_owner_user_id is null then loser.lead_owner_user_id else c.lead_owner_user_id end,
-        tags=(select pg_catalog.array_agg(distinct x order by x) from pg_catalog.unnest(pg_catalog.coalesce(c.tags,array[]::text[])||pg_catalog.coalesce(loser.tags,array[]::text[])) x),
+        tags=(select pg_catalog.array_agg(distinct x order by x) from pg_catalog.unnest(coalesce(c.tags,array[]::text[])||coalesce(loser.tags,array[]::text[])) x),
         updated_at=pg_catalog.clock_timestamp() where id=c.id returning * into c;
       update public.deals set contact_client_id=c.id,updated_at=pg_catalog.clock_timestamp() where contact_client_id=loser.id;
       update public.client_notes set contact_id=c.id,updated_at=pg_catalog.clock_timestamp() where contact_id=loser.id;
@@ -1099,7 +1099,7 @@ begin
         updated_at=pg_catalog.clock_timestamp()
       where c.tenant_id=_tenant_id and c.id in (select (x->>'id')::uuid from pg_catalog.jsonb_array_elements(p.target_snapshot->'targets') x);
       get diagnostics changed=row_count;
-      select pg_catalog.jsonb_build_object('updated_count',changed,'changed_since_preview_count',0,'refused_count',(p.preview->>'refused_count')::int,'records',pg_catalog.coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'lifecycle_stage',c.lifecycle_stage,'tags',c.tags,'do_not_contact',c.do_not_contact,'assigned_coach_user_id',c.assigned_coach_user_id,'updated_at',c.updated_at) order by c.id),'[]'::jsonb)) into readback
+      select pg_catalog.jsonb_build_object('updated_count',changed,'changed_since_preview_count',0,'refused_count',(p.preview->>'refused_count')::int,'records',coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'lifecycle_stage',c.lifecycle_stage,'tags',c.tags,'do_not_contact',c.do_not_contact,'assigned_coach_user_id',c.assigned_coach_user_id,'updated_at',c.updated_at) order by c.id),'[]'::jsonb)) into readback
        from public.clients c where c.tenant_id=_tenant_id and c.id in (select (x->>'id')::uuid from pg_catalog.jsonb_array_elements(p.target_snapshot->'targets') x);
     else raise exception 'CRM_ACTION_UNAVAILABLE' using errcode='0A000'; end if;
   end if;
