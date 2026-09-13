@@ -84,7 +84,7 @@ bypasses the vocab + correction + confirmation discipline; prefer the seam.
 - **DEFERRED, labeled not delivered:** the chat-runtime AUTO-WRITE of conversation/agent memory (slice
   4b) is NOT wired — this ships the seam it will call; a capable caller (Paige's MCP agent) can drive it
   now. Semantic recall of the new types via `match_paige_owner_memory` is available but unwired into chat.
-- **FIXED 2026-09-13 (migration `20270303000000`, §53/§59, R3a):** `match_paige_memory` (CLIENT-memory +
+- **FIXED 2026-09-13 (migration `20270304000000`, §53/§59, R3a):** `match_paige_memory` (CLIENT-memory +
   chat-embedding recall) — the §59 caller-scope defect is closed. It carried a forged-ID self-reference
   bypass (`_target_client_id := auth.uid()` self-authorized reading a different `_target_user_id`) AND
   the global-role trap. Now authority is derived per-target from server facts (self / active

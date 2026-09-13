@@ -23,12 +23,15 @@
 // a half-completed prior attempt is RECOVERABLE rather than stranded:
 //   * approval_pending          → FRESH: availability → governed execute → redeem → dispatch → advance.
 //   * accepted_for_execution    → RESUME: a prior attempt redeemed but its ledger-advance never persisted (a
-//                                  write blip). Reconcile by correlation; if never landed, re-dispatch
-//                                  (idempotent). The governed gate is NOT re-run — authorisation already
-//                                  happened at redemption.
+//                                  write blip). Reconcile by correlation; if it LANDED, adopt it (ungated). If
+//                                  it never landed, re-dispatch — but ONLY after the §68 gate (slice 2) re-
+//                                  confirms availability + governed authority, so authority revoked AFTER
+//                                  redemption declines to re-fire rather than firing blind.
 //   * ambiguous                 → RESUME: an unconfirmed prior dispatch. Reconcile by correlation ONLY —
 //                                  NEVER a blind re-dispatch (owner rule, engine phase-5). Still unconfirmed →
-//                                  report, consume NOTHING (the caller keeps the approval reclaimable).
+//                                  report, consume NOTHING (the caller keeps the approval reclaimable); the
+//                                  durable reconciler (paige_reconcile_orchestration_acts) sweeps it to a
+//                                  terminal state so an orphan whose event already completed never loops silently.
 // The caller (execute-approval) consumes the approval (stamps `approved`) ONLY for a terminal, durably-recorded
 // outcome (executed | failed). ambiguous / accepted_for_execution / a governed refusal / a read blip consume
 // NOTHING, so a re-approval re-enters here and reconciles.
@@ -53,6 +56,7 @@
 import {
   adapterForAction,
   resolveAdapterKind,
+  type AdapterCapability,
   type AdapterDb,
   type DispatchInput,
   type DispatchResult,
@@ -189,6 +193,37 @@ async function advanceLedger(
 const ambiguousFromThrow = (e: unknown, reason: string): DispatchResult =>
   ({ outcome: "ambiguous", providerRef: null, detail: { reason }, error: e instanceof Error ? e.message : String(e) });
 
+/** §68 (slice 2) — the ONE availability + governed gate, re-resolved THROUGH the canonical Gateway (never
+ *  cached) and re-run through the ONE governed pathway (`decideGovernedExecution`) with the human's yes as the
+ *  approval claim over the IMMUTABLE snapshot args. Returns the governed args to dispatch on `execute`, or a
+ *  stop-reason. Used on BOTH the FRESH approval AND the accepted-never-landed RESUME re-dispatch, so authority
+ *  or availability revoked AFTER the hold (or after redemption but before the effect landed) STOPS the act
+ *  rather than firing it blind (§68 "no authority is permanent"). The readback-confirm path is deliberately
+ *  NOT gated — a landed effect is recorded truthfully regardless of the current posture (§13). */
+async function governedGate(
+  db: ApproveExecutorDb,
+  p: {
+    approverUserId: string; tenantId: string; actionKind: string; capability: AdapterCapability;
+    governedArgs: Record<string, unknown>; resolveAvail: typeof resolveNativeCapabilityStatus;
+  },
+): Promise<{ ok: true; args: Record<string, unknown> } | { ok: false; reason: string }> {
+  const gw = await p.resolveAvail(db, { actorUserId: p.approverUserId, tenantId: p.tenantId, actionKind: p.actionKind });
+  if (!gw.ok) return { ok: false, reason: "availability_infra_error" };
+  const decision = decideGovernedExecution({
+    caller: { authenticated: true, userId: p.approverUserId, principal: "person", tenantId: p.tenantId, tenantSource: "server", door: "automation", access: { allowed: true } },
+    capability: { id: p.capability.id, effect: p.capability.effect, outcomeChannel: p.capability.outcomeChannel ?? "paige_act_executions", availability: gw.status.availability },
+    approval: { autonomyLane: "confirm", claimedArgs: p.governedArgs, claimedFor: p.capability.id },
+    requestArgs: p.governedArgs,
+  });
+  if (decision.kind !== "execute") {
+    const code = decision.kind === "refuse" ? decision.code : "not_executable";
+    return { ok: false, reason: `governed_${code}` };
+  }
+  // GovernedDecision types execute args as `unknown` (the governed layer does not constrain arg shape); the
+  // adapter's DispatchInput.args is Record<string, unknown>. Narrow at this one boundary, as the caller did.
+  return { ok: true, args: (decision.args ?? {}) as Record<string, unknown> };
+}
+
 /**
  * Drive a HELD native act to execution on a human's approval. Idempotent, resumable, and honest: a terminal
  * row returns the persisted state and dispatches nothing; a redeemed-but-unadvanced (accepted_for_execution)
@@ -273,53 +308,49 @@ export async function executeApprovedLayerCAct(input: ApproveExecInput): Promise
     automationName, subjectId: evRes.row.subject_id, approverUserId,
   };
 
-  // ── RESUME: a redeemed-but-unadvanced (accepted_for_execution) or unconfirmed (ambiguous) row. Reconcile by
-  //    correlation — NEVER re-run the governed gate (authorisation already happened at redemption). An
-  //    accepted-but-never-landed row is re-dispatched (idempotent); an ambiguous row is NEVER blind re-dispatched
-  //    (owner rule, engine phase-5). This is the recovery path for §P3/§P4.
-  //    §68 CONSCIOUS DECISION (§39 peer note): the accepted-never-landed re-dispatch below does NOT re-resolve
-  //    Gateway availability — it matches engine phase-5's accepted re-dispatch exactly (engine.ts:550-555), the
-  //    proven pattern (§30), and the effect is a benign idempotent in-tenant CRM write behind the door's atomic
-  //    claim + a fresh human re-approval. The narrow §68 window (authority revoked AFTER redemption but the
-  //    effect never landed) is a tracked follow-up: re-resolve availability on the re-dispatch (bundled with the
-  //    slice-2 durable ambiguous-reconcile sweeper). The readback-confirm path must NOT gate on current
-  //    availability — a landed effect is recorded truthfully regardless of a later availability change (§13).
+  // The §68 gate resolver — declared once, used by BOTH the RESUME re-dispatch and the FRESH path below.
+  // Production uses the canonical Gateway; a test may inject a fake (never a Layer-C availability literal).
+  const resolveAvail = input.resolveAvailability ?? resolveNativeCapabilityStatus;
+
+  // ── RESUME: a redeemed-but-unadvanced (accepted_for_execution) or unconfirmed (ambiguous) row.
+  //    * readback FIRST: a prior write that LANDED is adopted to executed — UNGATED (§13: a real effect is
+  //      recorded truthfully regardless of the current posture; the readback-confirm path never gates).
+  //    * accepted-but-never-landed → re-dispatch, but ONLY after the §68 gate (slice 2) re-confirms
+  //      availability + governed authority. Authority/availability revoked AFTER redemption declines to
+  //      re-fire rather than firing blind (§68 "no authority is permanent"). Fixes the prior conscious gap.
+  //    * ambiguous still unconfirmed → NEVER blind re-dispatched (owner rule, engine phase-5); reported
+  //      unconfirmed and left reclaimable — the durable reconciler (paige_reconcile_orchestration_acts, this
+  //      slice) sweeps it to executed once a correlation transition lands, or to failed after its bound.
+  //    This is the recovery path for §P3/§P4 + §68.
   if (row.outcome === "accepted_for_execution" || row.outcome === "ambiguous") {
     let recon: DispatchResult;
     try { recon = await adapter.readback(null, dispatchInput); }
     catch (e) { recon = ambiguousFromThrow(e, "readback_threw"); }
-    if (recon.outcome === "executed") return advanceLedger(db, base, recon, row.outcome); // our prior write landed
+    if (recon.outcome === "executed") return advanceLedger(db, base, recon, row.outcome); // our prior write landed → adopt (ungated)
     if (row.outcome === "accepted_for_execution") {
-      // redeemed but no transition stamped with our correlation → it never dispatched. Re-dispatch (idempotent).
+      // Redeemed but no transition stamped with our correlation → it never dispatched. §68: re-resolve
+      // availability + re-run the governed gate BEFORE re-dispatch. Not executable now → STOP; the row stays
+      // accepted_for_execution (the caller consumes nothing → recoverable), never a blind re-fire.
+      const gate = await governedGate(db, { approverUserId, tenantId, actionKind, capability, governedArgs, resolveAvail });
+      // `gate.ok === false` (not `!gate.ok`): src tsc runs strictNullChecks:false and does NOT narrow a
+      // discriminated union on the truthiness form, so `gate.reason` would not resolve (tsc-ratchet catches it).
+      if (gate.ok === false) return { ok: false, outcome: "accepted_for_execution", executed: false, reason: gate.reason };
       let dr: DispatchResult;
-      try { dr = await adapter.dispatch(dispatchInput); } catch (e) { dr = ambiguousFromThrow(e, "adapter_threw"); }
+      try { dr = await adapter.dispatch({ ...dispatchInput, args: gate.args }); } catch (e) { dr = ambiguousFromThrow(e, "adapter_threw"); }
       return advanceLedger(db, base, dr, "accepted_for_execution");
     }
-    // ambiguous, still unconfirmed → report honestly and consume NOTHING (the caller keeps it reclaimable).
+    // ambiguous, still unconfirmed → report honestly and consume NOTHING (the caller keeps it reclaimable; the
+    // durable reconciler sweeps it to executed once a correlation transition lands, or to failed after its bound).
     return { ok: false, outcome: "ambiguous", executed: false, reason: "reconcile_unconfirmed", detail: (recon.detail ?? {}) as Record<string, unknown> };
   }
 
   // ── FRESH approval_pending: availability → governed execute → redeem → dispatch → advance.
-  // 4 — re-resolve availability THROUGH the Gateway (approver + tenant + action_kind), never cached. Production
-  //     uses the canonical resolver; a test may inject a fake (never a Layer-C literal in production).
-  const resolveAvail = input.resolveAvailability ?? resolveNativeCapabilityStatus;
-  const gw = await resolveAvail(db, { actorUserId: approverUserId, tenantId, actionKind });
-  if (!gw.ok) return { ok: false, outcome: "approval_pending", executed: false, reason: "availability_infra_error" };
-
-  // 5 — re-run the ONE governed pathway with the human's yes as the approval claim (the IMMUTABLE snapshot args)
-  //     → expect `execute`.
-  const decision = decideGovernedExecution({
-    caller: { authenticated: true, userId: approverUserId, principal: "person", tenantId, tenantSource: "server", door: "automation", access: { allowed: true } },
-    capability: { id: capability.id, effect: capability.effect, outcomeChannel: capability.outcomeChannel ?? "paige_act_executions", availability: gw.status.availability },
-    approval: { autonomyLane: "confirm", claimedArgs: governedArgs, claimedFor: capability.id },
-    requestArgs: governedArgs,
-  });
-  if (decision.kind !== "execute") {
-    // The governed seam refused the approval (availability/authority/effect/claim) — surface it honestly; the
-    // row stays approval_pending (nothing redeemed, nothing dispatched).
-    const code = decision.kind === "refuse" ? decision.code : "not_executable";
-    return { ok: false, outcome: "approval_pending", executed: false, reason: `governed_${code}` };
-  }
+  // 4+5 — §68 gate: re-resolve availability THROUGH the Gateway (never cached) + re-run the ONE governed
+  //       pathway with the human's yes as the approval claim over the IMMUTABLE snapshot args → expect
+  //       `execute`. An infra error or a governed refusal (availability/authority/effect/claim) surfaces
+  //       honestly and the row stays approval_pending (nothing redeemed, nothing dispatched).
+  const gate = await governedGate(db, { approverUserId, tenantId, actionKind, capability, governedArgs, resolveAvail });
+  if (gate.ok === false) return { ok: false, outcome: "approval_pending", executed: false, reason: gate.reason };
 
   // 6 — REDEEM the approval atomically: approval_pending → accepted_for_execution (the sole sanctioned
   //     transition). The RPC returns the row's outcome AFTER the transition. It cannot distinguish "I redeemed
@@ -341,10 +372,10 @@ export async function executeApprovedLayerCAct(input: ApproveExecInput): Promise
   //     The row is now accepted_for_execution (redeemed) — that is the priorOutcome reported if the advance
   //     write itself fails (§P3), so the caller never consumes an outcome the ledger did not persist.
   let dr: DispatchResult;
-  try { dr = await adapter.dispatch({ ...dispatchInput, args: decision.args }); }
+  try { dr = await adapter.dispatch({ ...dispatchInput, args: gate.args }); }
   catch (e) { dr = ambiguousFromThrow(e, "adapter_threw"); }
   return advanceLedger(db, base, dr, "accepted_for_execution");
 }
 
 /** Exposed for unit tests. */
-export const __test = { advanceLedger, readOne };
+export const __test = { advanceLedger, readOne, governedGate };

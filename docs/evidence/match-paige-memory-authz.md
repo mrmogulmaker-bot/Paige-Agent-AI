@@ -24,7 +24,7 @@ authorization failures in its in-body guard:
 0 rows). Re-confirming current row counts is **PROOF OWED** to a DB-capable session (this session's
 direct SQL inspection via MCP was permission-denied). The fix hardens the door regardless of row count.
 
-## The fix (migration `20270303000000_match_paige_memory_resource_scoped_authz.sql`)
+## The fix (migration `20270304000000_match_paige_memory_resource_scoped_authz.sql`)
 
 - Authority is derived from **server facts, per target** — never from a caller-supplied id matching
   itself. Removing the `IS DISTINCT FROM _target_client_id` self-reference closes defect 1.
@@ -92,5 +92,5 @@ direct SQL inspection via MCP was permission-denied). The fix hardens the door r
 ## Post-merge (stamped in the closeout)
 
 Exact merge SHA, `deploy-migrations.yml` run + `db-live` tag against the merge SHA (zero drift),
-`migration list` confirmation that `20270303000000` is recorded on prod, and the Shipped Delivery Log
+`migration list` confirmation that `20270304000000` is recorded on prod, and the Shipped Delivery Log
 row — recorded after merge per §32.a (never hand-applied).

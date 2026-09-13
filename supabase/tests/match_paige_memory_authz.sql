@@ -123,8 +123,8 @@ CREATE OR REPLACE FUNCTION public.can_access_contact(_user_id uuid, _contact_id 
 $$;
 
 -- ── The function under test: apply the REAL migration TWICE (replay / idempotence). ──
-\ir ../migrations/20270303000000_match_paige_memory_resource_scoped_authz.sql
-\ir ../migrations/20270303000000_match_paige_memory_resource_scoped_authz.sql
+\ir ../migrations/20270304000000_match_paige_memory_resource_scoped_authz.sql
+\ir ../migrations/20270304000000_match_paige_memory_resource_scoped_authz.sql
 
 -- ── Denial assertion helper: the call must raise EXACTLY 'Unauthorized' (no data-bearing text). ──
 CREATE OR REPLACE FUNCTION public._assert_denied(

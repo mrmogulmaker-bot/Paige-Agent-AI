@@ -110,6 +110,65 @@ Deno.serve(async (req) => {
     .update({ claimed_at: null })
     .eq("id", approvalId);
 
+  // Layer C (C5): an orchestration-sourced approval carries the held act's coordinates. Delegate to the
+  // Layer-C approval-executor (the row is already atomically claimed above — that is the single-use guard;
+  // the executor's approve RPC is a second idempotency guard on the ledger row). NATIVE acts this slice.
+  //
+  // ORDERING (§37/§32, slice 2): this branch runs BEFORE the isComms heuristic below on purpose. The
+  // orchestration branch keys off metadata.source === 'paige_orchestration' — an AUTHORITATIVE, exact signal
+  // the engine set — whereas isComms is a substring heuristic over category/channel. A future native
+  // capability whose dotted action-kind happens to contain 'sms'/'email' would otherwise be mis-routed into
+  // the comms send path; checking the authoritative source first makes that impossible.
+  const metaLc = (typeof (approval as any).metadata === "object" && (approval as any).metadata) || {};
+  if (metaLc && (metaLc as any).source === "paige_orchestration" && (metaLc as any).event_id && (metaLc as any).act_id) {
+    const res = await executeApprovedLayerCAct({
+      // The supabase-js client is bridged to the executor's minimal structural db the same way the engine's
+      // drainer bridges it (`admin as unknown as EngineDb`): the SDK's rpc returns a thenable builder, not a bare
+      // Promise, so a direct assignment is a Deno-strict type error (§32) — the cast is the sanctioned seam.
+      db: admin as unknown as ApproveExecutorDb, eventId: String((metaLc as any).event_id), actId: String((metaLc as any).act_id), approverUserId: user.id,
+      // §9/§59: the caller was authorised above against THIS approval row's tenant; the executor refuses unless
+      // the held act's ledger tenant is the SAME (a crafted approval in tenant A must not drive tenant B's act).
+      expectedTenantId: approval.tenant_id ?? null,
+    });
+    // Consume the approval (stamp `approved`) ONLY for a TERMINAL, durably-recorded outcome — executed or
+    // failed. EVERY non-terminal outcome consumes NOTHING here: release the claim so the held act stays
+    // recoverable and report honestly (§13). This includes:
+    //   • approval_pending (governed refusal / not-supported / tenant-auth stop) — nothing was redeemed;
+    //   • `ambiguous` (§P4, Codex peer-gate) — the dispatch could NOT be confirmed; consuming it would burn the
+    //     approval with the act stuck unreconciled. Left pending, a re-approval re-enters the executor, which
+    //     RESUMES from the ambiguous ledger row and reconciles by correlation (never blind re-fires); the durable
+    //     reconciler (paige_reconcile_orchestration_acts) also sweeps it so it never loops silently (slice 2);
+    //   • `accepted_for_execution` (§P3) — a ledger-write blip left the row redeemed-but-unadvanced; a re-approval
+    //     RESUMES and, after the §68 gate, reconciles/re-dispatches idempotently;
+    //   • `unknown` (a transient ledger_read_error) / `absent` (act_execution_not_found) — nothing ran.
+    // Stamping `approved` on any of these would burn the human's approval and the status='approved' idempotency
+    // guard would then block the very retry that recovers it.
+    const attempted = res.outcome === "executed" || res.outcome === "failed";
+    if (!attempted) {
+      await releaseClaim();
+      return json(200, { ok: false, executed: false, act_outcome: res.outcome, reason: res.reason, approval_id: approvalId });
+    }
+    // A real attempt — the ledger records the outcome. Stamp the approval with it (metadata.act_outcome also
+    // satisfies the DB direct-approve guard that blocks a bypass approve on an orchestration row, slice 2).
+    const { error: lcErr } = await admin
+      .from("paige_pending_approvals")
+      .update({
+        status: "approved",
+        reviewed_by_user_id: user.id,
+        reviewed_at: new Date().toISOString(),
+        metadata: { ...(metaLc as Record<string, unknown>), executed: res.executed, act_outcome: res.outcome, execute_note: res.reason ?? null },
+      })
+      .eq("id", approvalId);
+    if (lcErr) {
+      // §5 slice 2: the ACT already ran (terminal in the ledger), but the approval-row STAMP failed → the row
+      // is still pending+claimed and would be stuck unrecoverable. Release the claim so it is reclaimable; the
+      // ledger is the source of truth and a re-approval will RESUME (see the row already terminal) and re-stamp.
+      await releaseClaim();
+      return json(500, { error: lcErr.message });
+    }
+    return json(200, { ok: res.ok, executed: res.executed, act_outcome: res.outcome, approval_id: approvalId });
+  }
+
   const dc = (approval.draft_content ?? {}) as Record<string, unknown>;
   const category = String(approval.category ?? approval.type ?? "").toLowerCase();
   const channelRaw = String(dc.channel ?? "").toLowerCase();
@@ -158,51 +217,6 @@ Deno.serve(async (req) => {
       return json(502, { ok: false, executed: false, error: sendResult?.error ?? "send_failed", detail: sendResult });
     }
     return json(200, { ok: true, executed: true, channel, approval_id: approvalId, audit_id: sendResult.audit_id });
-  }
-
-  // Layer C (C5): an orchestration-sourced approval carries the held act's coordinates. Delegate to the
-  // Layer-C approval-executor (the row is already atomically claimed above — that is the single-use guard;
-  // the executor's approve RPC is a second idempotency guard on the ledger row). NATIVE acts this slice.
-  const metaLc = (typeof (approval as any).metadata === "object" && (approval as any).metadata) || {};
-  if (metaLc && (metaLc as any).source === "paige_orchestration" && (metaLc as any).event_id && (metaLc as any).act_id) {
-    const res = await executeApprovedLayerCAct({
-      // The supabase-js client is bridged to the executor's minimal structural db the same way the engine's
-      // drainer bridges it (`admin as unknown as EngineDb`): the SDK's rpc returns a thenable builder, not a bare
-      // Promise, so a direct assignment is a Deno-strict type error (§32) — the cast is the sanctioned seam.
-      db: admin as unknown as ApproveExecutorDb, eventId: String((metaLc as any).event_id), actId: String((metaLc as any).act_id), approverUserId: user.id,
-      // §9/§59: the caller was authorised above against THIS approval row's tenant; the executor refuses unless
-      // the held act's ledger tenant is the SAME (a crafted approval in tenant A must not drive tenant B's act).
-      expectedTenantId: approval.tenant_id ?? null,
-    });
-    // Consume the approval (stamp `approved`) ONLY for a TERMINAL, durably-recorded outcome — executed or
-    // failed. EVERY non-terminal outcome consumes NOTHING here: release the claim so the held act stays
-    // recoverable and report honestly (§13). This includes:
-    //   • approval_pending (governed refusal / not-supported / tenant-auth stop) — nothing was redeemed;
-    //   • `ambiguous` (§P4, Codex peer-gate) — the dispatch could NOT be confirmed; consuming it would burn the
-    //     approval with the act stuck unreconciled. Left pending, a re-approval re-enters the executor, which
-    //     RESUMES from the ambiguous ledger row and reconciles by correlation (never blind re-fires);
-    //   • `accepted_for_execution` (§P3) — a ledger-write blip left the row redeemed-but-unadvanced; a re-approval
-    //     RESUMES and reconciles/re-dispatches idempotently;
-    //   • `unknown` (a transient ledger_read_error) / `absent` (act_execution_not_found) — nothing ran.
-    // Stamping `approved` on any of these would burn the human's approval and the status='approved' idempotency
-    // guard would then block the very retry that recovers it.
-    const attempted = res.outcome === "executed" || res.outcome === "failed";
-    if (!attempted) {
-      await releaseClaim();
-      return json(200, { ok: false, executed: false, act_outcome: res.outcome, reason: res.reason, approval_id: approvalId });
-    }
-    // A real attempt — the ledger records the outcome. Stamp the approval with it.
-    const { error: lcErr } = await admin
-      .from("paige_pending_approvals")
-      .update({
-        status: "approved",
-        reviewed_by_user_id: user.id,
-        reviewed_at: new Date().toISOString(),
-        metadata: { ...(metaLc as Record<string, unknown>), executed: res.executed, act_outcome: res.outcome, execute_note: res.reason ?? null },
-      })
-      .eq("id", approvalId);
-    if (lcErr) return json(500, { error: lcErr.message });
-    return json(200, { ok: res.ok, executed: res.executed, act_outcome: res.outcome, approval_id: approvalId });
   }
 
   // No automated executor for this category yet — acknowledge (mark approved)

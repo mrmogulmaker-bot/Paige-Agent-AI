@@ -152,7 +152,7 @@ Justification: Returns tenant brand/from-address for compose UI. Requires `has_t
 Grants: authenticated (+ service_role on match_paige_memory)
 Category: A — Intentional user-facing public API
 Justification: Vector search RPCs. Internally scope by tenant. `match_paige_memory` (2026-09-13,
-migration `20270303000000`, §53/§59) derives authority PER TARGET from server facts — self / active
+migration `20270304000000`, §53/§59) derives authority PER TARGET from server facts — self / active
 `coach_clients` / same-tenant `is_tenant_admin` / `is_platform_operator` / `can_access_contact` — with
 each data-branch gated on its own flag and search params bounded; `service_role` is trusted to pass
 server-resolved ids. anon/PUBLIC revoked.
