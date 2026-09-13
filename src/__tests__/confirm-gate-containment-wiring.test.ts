@@ -55,8 +55,9 @@ describe("FIX A — a batch is disambiguated by the stable subject id, WITHIN th
     // minting a drifted proposal and recreating the very re-ask loop the P0 contains. Both the
     // returned-error and the thrown path now set the ambiguous terminal. (Behavioral e2e on the
     // deployed Deno handler is §32.c PROOF OWED; this pins the wiring — the proof class of this file.)
-    expect(gate).toContain("else if (lookupError) approvedSetAmbiguous = true;");
-    expect(gate).toContain("A THROWN failure is the same hazard");
+    expect(gate).toMatch(/else if \(lookupError\) \{[\s\S]*?approvedSetAmbiguous = true;/);
+    expect(gate).toContain("confirm approved-set lookup failed"); // §68 loud-log on a returned error
+    expect(gate).toContain("A THROWN failure is the same hazard"); // the thrown-path catch also sets the terminal
   });
 });
 
