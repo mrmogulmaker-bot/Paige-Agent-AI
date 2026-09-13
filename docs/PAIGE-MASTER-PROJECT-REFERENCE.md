@@ -727,6 +727,38 @@ Reference or any domain ledger; it governs how their facts become release and cu
 
 ### 4.0 Shipped Delivery Log
 
+**2026-09-13 Capability Portfolio — the One Paige Operating Platform delivery standard (PR [#1175](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1175), squash-merged to `main` from head `43544cac`, internal channel, owner-approved Gate A):**
+Makes the one-governed-platform model binding for every future agent on `main`. Master Reference §3 gains the
+**Capability Portfolio rule** — one entry path (Gateway → tenant/actor/role/connection truth → authority/approval/
+budget/policy → adapter or canonical write → readback → receipt + Rail → truthful explanation), a prohibition on
+per-domain Harnesses/authority engines/registries/job systems/memories/orchestrators, and the **200-capability
+portfolio recorded as owner-approved BINDING product direction** with two guardrails: "200" is never a
+delivery-percentage or `LIVE`-coverage score, and runtime truth is never duplicated out of its owning record.
+`docs/doctrine/paige-capability-portfolio.md` is the ONE owner-vision artifact — Part A the fifteen families and
+intended outcomes (quoted from the ledger's own owner-approved `completion_criterion`, claiming **no runtime
+availability**), Part B routing to the records that own status, Part C a **CI-verified** ledger mirror.
+`AGENTS.md` gains a ten-question PRE-EDIT routing gate, scoped deliberately as pre-edit and deferring to the
+existing six-part ship-time checklist in `docs/brain/paige-brain-wiring-standard.md` §3 so the two are one
+lifecycle, not rival lists. Second Brain index + PR template carry the same routing with honest "not applicable"
+required. **Enforcement added no new lint, npm script or workflow** — a CI survey found the requested checks
+substantially covered, so `scripts/ci/binding-ledger-lint.mjs` was EXTENDED twice (§18): dead code-anchor
+detection (clean on current `main`, blocks nothing today) and mirror parity (Part C must match the ledger or CI
+fails, which is what stops a copy of a CI-enforced field becoming a second source of truth). The mirror guard's
+first implementation reported GREEN on a corrupted mirror because its path was stale after a rename — the §32
+false-green this standard exists to prevent — and now fails loudly on a missing file; proven four ways (clean ·
+drifted state · omitted row · missing file). **Two owner rulings recorded in the same PR:** Registry Steward →
+the **Harness workstream** (governance/consistency, never a build bottleneck; domains keep their adapters and
+propose their own entries), and `ui-delivery-evidence` **to become a required status check**.
+**Proof boundary (§13):** green — `lint:binding-ledger` + its 35-case self-test, `lint:integration-registry`,
+`audit`, `Validate UI delivery evidence`, Vercel; all 12 relative links resolve. **`verify` is RED and it is NOT
+this PR's** — `lint:views`, `lint:chat-tool-registry` and `Test` (10 failed files / 15 failed tests) reproduce
+identically on clean `origin/main` with this diff absent, verified in a separate worktree; other lanes' baseline
+debt, no fix existed to port, one standing-down comment posted and no re-run spent. **`ui-delivery-evidence`
+remains ADVISORY** — branch protection is a repository setting, a headless session measured `403 Resource not
+accessible by integration` on `GET /branches/main/protection`, so neither the change nor its read-back can be
+made or claimed from here; owner action owed. **Customer-release eligibility: NO** — internal delivery
+governance, no customer capability, no release record.
+
 **2026-09-12 Social Operations Phase 0 + canonical tenant-safe foundation — deployed containment/foundation,
 Social operations UNAVAILABLE (PR #1162, main `d71fa70f19dda13f3b8f8dc9d968bc9cbbcdbf65`, production):**
 The approved Solo Social destination now tells one conservative story across Campaigns, Settings, Admin,
