@@ -103,7 +103,13 @@ The `(uuid)` overload selects a column **`n8n_webhook_url` that does not exist**
 `n8n_webhook_url_ct`). Every call raises `42703`. It has **zero producers**. Caught only because the
 §32.a rollback proof refused to recreate it. Dropped rather than repaired.
 
-### 4c. LATENT — `match_paige_memory` structural auth bypass (no role required)
+### 4c. LATENT — `match_paige_memory` structural auth bypass (no role required) — ✅ RESOLVED 2026-09-13
+
+> **RESOLVED** by migration `20270303000000` (§53/§59, R3a). The forged-ID self-reference bypass and the
+> global-`admin` trap are closed; authority is now derived per-target from server facts with per-branch
+> data gating and bounded search params, and the legitimate `service_role` path (`paige-ai-chat`) is
+> preserved. Boundary proof `supabase/tests/match_paige_memory_authz.sql`; evidence
+> `docs/evidence/match-paige-memory-authz.md`. The finding as originally recorded follows.
 
 Guard:
 
