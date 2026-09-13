@@ -681,10 +681,6 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run smoke:n8n-egress
 
-      - name: Smoke — web_fetch SSRF guard refuses private/DNS-rebind/redirect targets and fences fetched content
-        if: ${{ !cancelled() }}
-        run: npm run smoke:web-fetch-hardening
-
       - name: Lint — every paige_conversations insert stamps a tenant (C-7)
         if: ${{ !cancelled() }}
         run: npm run lint:conversation-tenant
@@ -696,3 +692,18 @@ jobs:
       - name: Smoke — voice-twiml handler (nothing secret leaves on an unsigned request)
         if: ${{ !cancelled() }}
         run: npm run smoke:voice-twiml-handler
+
+  web-fetch-hardening-smoke:
+    # Its own job, deliberately on Node 22: the smoke imports the real
+    # `_shared/ssrfGuard.ts`, whose `SsrfError` uses a TS parameter property that needs
+    # `--experimental-transform-types` (the `verify` job runs Node 20 / strip-only mode,
+    # which cannot parse it). Isolated so the `verify` job's Node pin is untouched.
+    # No `npm ci`: the smoke imports only the two pure `_shared/*.ts` files + Node builtins.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Smoke — web_fetch SSRF guard refuses private/DNS-rebind/redirect/credentialed targets and fences fetched content
+        run: node --experimental-transform-types scripts/web-fetch-hardening-smoke.mjs
