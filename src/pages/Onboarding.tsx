@@ -50,6 +50,22 @@ export default function Onboarding() {
         return;
       }
 
+      // A resumed tab must not expose identity deletion once Checkout may have
+      // begun. The server is the authority; all post-checkout and uncertain
+      // states recover through Welcome instead of the pre-checkout shell.
+      const { data: enrollmentData, error: enrollmentError } = await supabase.functions.invoke(
+        "solo-beta-enrollment-status",
+      );
+      const enrollmentState = (enrollmentData as { state?: string } | null)?.state;
+      if (enrollmentError || !enrollmentState) {
+        navigate("/welcome?checkout=success", { replace: true });
+        return;
+      }
+      if (!["needs_intake", "needs_checkout"].includes(enrollmentState)) {
+        navigate("/welcome?checkout=success", { replace: true });
+        return;
+      }
+
       // Already a tenant operator (staff, owner, or member) or a REAL linked
       // client? Then there's nothing to provision — forward to their real home.
       // NOTE: handle_new_user autocreates a self-linked clients row (source
@@ -148,7 +164,7 @@ export default function Onboarding() {
 
             <div className="mt-8 pt-6 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <p className="text-xs text-muted-foreground">
-                Not ready yet? You can remove this sign-up — no account is created until you finish above.
+                Not ready yet? Before Checkout starts, you can remove this identity and saved setup.
               </p>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -164,8 +180,8 @@ export default function Onboarding() {
                   <AlertDialogHeader>
                     <AlertDialogTitle>Remove your sign-up?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This deletes the account you just started and signs you out. Nothing has been
-                      created yet, so there's nothing to lose — you can sign up again anytime.
+                      This deletes the identity and setup you just started, then signs you out. This
+                      option is available only before Checkout begins; you can sign up again anytime.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>

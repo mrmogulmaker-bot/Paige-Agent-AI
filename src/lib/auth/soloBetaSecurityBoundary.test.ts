@@ -22,6 +22,10 @@ const offerStatus = readFileSync("supabase/functions/solo-beta-offer-status/inde
 const pricing = readFileSync("src/pages/Pricing.tsx", "utf8");
 const provisionerUi = readFileSync("src/components/onboarding/WorkspaceProvisioner.tsx", "utf8");
 const functionConfig = readFileSync("supabase/config.toml", "utf8");
+const signupCancel = readFileSync("supabase/functions/signup-cancel/index.ts", "utf8");
+const legacyCheckout = readFileSync("supabase/functions/platform-subscription-checkout/index.ts", "utf8");
+const platformInvites = readFileSync("src/pages/admin/PlatformInvites.tsx", "utf8");
+const onboarding = readFileSync("src/pages/Onboarding.tsx", "utf8");
 
 describe("Solo Beta security boundary", () => {
   it("encodes one immutable test-mode 7450 USD monthly offer with a 30-day trial", () => {
@@ -266,6 +270,25 @@ describe("Solo Beta security boundary", () => {
     expect(auth).toContain("New Client Portal accounts are not open during the Solo Beta");
     expect(auth).toContain("!isClientInvite && <>");
     expect(auth).not.toContain("Create a free account");
+    expect(authz).toMatch(/REVOKE ALL ON FUNCTION public\.create_platform_invite\(text, integer\)[\s\S]+FROM PUBLIC, anon, authenticated/);
+    expect(authz).toMatch(/REVOKE ALL ON FUNCTION public\.get_platform_invite\(text\)[\s\S]+FROM PUBLIC, anon, authenticated/);
+    expect(legacyCheckout).toContain('error: "prospect_invite_enrollment_paused"');
+    expect(legacyCheckout).toContain('error: "legacy_public_enrollment_closed"');
+    expect(platformInvites).not.toContain('create_platform_invite');
+    expect(platformInvites).not.toContain('Copy invite link');
+  });
+
+  it("never deletes an identity after Solo billing work may have started", () => {
+    expect(signupCancel).toContain('.from("solo_beta_enrollments")');
+    expect(signupCancel).toContain('enrollment.state !== "intake_ready"');
+    expect(signupCancel).toContain("enrollment.stripe_customer_id");
+    expect(signupCancel).toContain("enrollment.checkout_session_id");
+    expect(signupCancel).toContain("enrollment.stripe_subscription_id");
+    expect(signupCancel).toContain("Could not verify billing state");
+    expect(signupCancel).toContain("Could not record the cancellation safely");
+    expect(signupCancel).not.toContain('.from("profiles").delete()');
+    expect(onboarding).toContain('supabase.functions.invoke(\n        "solo-beta-enrollment-status"');
+    expect(onboarding).toContain('/welcome?checkout=success');
   });
 
   it("offers immediate sign-in recovery for a signed-out checkout return", () => {

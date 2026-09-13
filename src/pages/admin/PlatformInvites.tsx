@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, Copy, Loader2, Sparkles, Ticket, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Loader2, Ticket, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -16,29 +16,13 @@ import {
 import { TableCell, TableRow } from "@/components/ui/table";
 
 /**
- * /admin/platform/invites — the operator's invite generator (B-Platform-v2, §9 God-level).
+ * /admin/platform/invites — legacy prospect invite containment.
  *
- * A super-admin picks a plan (Solo / Agency), clicks Generate → create_platform_invite,
- * and gets a copyable paigeagent.ai/get-started?invite=<token> link to hand to a prospect.
- * The prospect consumes it on the public /get-started page; the checkout webhook provisions
- * a tenant they own. This surface is operator-only (guarded by PlatformStaffOnly in the
- * route) — no tenant ever sees it.
- *
- * §36 obvious with zero docs: one plan picker, one Generate act, the link right there with
- * a copy button, the live invites in a table below with a one-click revoke.
- * §11 gold ONLY on the Generate act; the copy/revoke are neutral; StatePill carries status.
- * §13 nothing rendered that the RPC didn't return.
- *
- * Slug note: mirrors the DB-true plan slugs after the tier reconcile (solo / agency). Enterprise
- * is contact-sales (custom price) and is intentionally NOT invite-generatable here.
+ * New plan invitations are paused while Solo Beta is the only public enrollment
+ * path. Existing records remain visible for audit and revocation, without a
+ * copyable customer link or a misleading active state. The separate platform
+ * staff invitation contract is not owned by this surface.
  */
-
-const PLAN_OPTIONS = [
-  { slug: "solo", name: "Solo", price: "$149/mo" },
-  { slug: "agency", name: "Agency", price: "$397/mo" },
-] as const;
-
-const TRIAL_DAYS = 30;
 
 type PlatformInvite = {
   id?: string;
@@ -53,35 +37,27 @@ type PlatformInvite = {
   status?: string;
 };
 
-function inviteUrl(token: string): string {
-  const origin =
-    typeof window !== "undefined" && window.location?.origin
-      ? window.location.origin
-      : "https://paigeagent.ai";
-  return `${origin}/get-started?invite=${token}`;
-}
-
-function fmtDate(v?: string | null): string {
-  if (!v) return "—";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime())
+function fmtDate(value?: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
     ? "—"
-    : d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-/** Map an invite's lifecycle to a StatePill (never gold — gold is the Generate act). */
-function statusPill(inv: PlatformInvite): { state: PillState; label: string } {
-  if (inv.consumed_at || inv.status === "consumed") return { state: "off", label: "Consumed" };
-  if (inv.status === "revoked") return { state: "error", label: "Revoked" };
-  if (inv.status === "expired") return { state: "off", label: "Expired" };
-  if (inv.expires_at && new Date(inv.expires_at).getTime() < Date.now())
+function statusPill(invite: PlatformInvite): { state: PillState; label: string } {
+  if (invite.consumed_at || invite.status === "consumed") return { state: "off", label: "Consumed" };
+  if (invite.status === "revoked") return { state: "error", label: "Revoked" };
+  if (invite.status === "expired") return { state: "off", label: "Expired" };
+  if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
     return { state: "off", label: "Expired" };
-  return { state: "success", label: "Active" };
+  }
+  return { state: "off", label: "Enrollment paused" };
 }
 
 const COLUMNS: Column[] = [
-  { key: "plan", header: "Plan" },
-  { key: "trial", header: "Trial", numeric: true },
+  { key: "plan", header: "Prior plan" },
+  { key: "trial", header: "Prior trial", numeric: true },
   { key: "created", header: "Created" },
   { key: "expires", header: "Expires" },
   { key: "status", header: "Status" },
@@ -90,12 +66,6 @@ const COLUMNS: Column[] = [
 
 export default function PlatformInvites() {
   const { toast } = useToast();
-
-  const [planSlug, setPlanSlug] = useState<(typeof PLAN_OPTIONS)[number]["slug"]>("solo");
-  const [generating, setGenerating] = useState(false);
-  const [freshToken, setFreshToken] = useState<string | null>(null);
-  const [copiedFresh, setCopiedFresh] = useState(false);
-
   const [invites, setInvites] = useState<PlatformInvite[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [revoking, setRevoking] = useState<string | null>(null);
@@ -108,12 +78,11 @@ export default function PlatformInvites() {
         error: unknown;
       };
       if (error) throw error;
-      const rows = Array.isArray(data) ? data : [];
-      setInvites(rows);
+      setInvites(Array.isArray(data) ? data : []);
     } catch {
       toast({
-        title: "Couldn't load invites",
-        description: "Refresh to try again — your live invites will reappear.",
+        title: "Couldn't load legacy invites",
+        description: "Refresh to try again. No enrollment action is available from this page.",
         variant: "destructive",
       });
       setInvites([]);
@@ -126,88 +95,25 @@ export default function PlatformInvites() {
     void loadInvites();
   }, [loadInvites]);
 
-  const generate = async () => {
-    setGenerating(true);
-    setCopiedFresh(false);
-    try {
-      const { data, error } = (await supabase.rpc("create_platform_invite" as never, {
-        _plan_slug: planSlug,
-        _trial_period_days: TRIAL_DAYS,
-      } as never)) as { data: string | { token?: string } | Array<string | { token?: string }> | null; error: unknown };
-      if (error) throw error;
-      // create_platform_invite RETURNS text (a SCALAR token) — supabase-js hands it
-      // back as a plain string. Read it directly; tolerate an array/object shape only
-      // defensively so a future RETURNS TABLE change wouldn't silently break this.
-      const raw = Array.isArray(data) ? (data[0] ?? null) : data;
-      const newToken =
-        typeof raw === "string"
-          ? raw
-          : raw && typeof raw === "object"
-            ? (raw as { token?: string }).token
-            : undefined;
-      if (!newToken) throw new Error("no_token");
-      setFreshToken(newToken);
-      // Best-effort auto-copy so the operator can paste immediately (§36).
-      try {
-        await navigator.clipboard.writeText(inviteUrl(newToken));
-        setCopiedFresh(true);
-      } catch {
-        /* clipboard optional — the field + copy button still work */
-      }
-      toast({ title: "Invite ready", description: "The link is copied and ready to send." });
-      void loadInvites();
-    } catch {
-      toast({
-        title: "Couldn't generate invite",
-        description: "Something went wrong creating the link. Try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const copyLink = async (token: string, markFresh = false) => {
-    try {
-      await navigator.clipboard.writeText(inviteUrl(token));
-      if (markFresh) setCopiedFresh(true);
-      toast({ title: "Copied", description: "Invite link copied to your clipboard." });
-    } catch {
-      toast({
-        title: "Couldn't copy",
-        description: "Select the link and copy it manually.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const revoke = async (inv: PlatformInvite) => {
-    setRevoking(inv.token);
+  const revoke = async (invite: PlatformInvite) => {
+    setRevoking(invite.token);
     try {
       const { error } = await supabase.rpc("revoke_platform_invite" as never, {
-        _token: inv.token,
+        _token: invite.token,
       } as never);
       if (error) throw error;
-      if (freshToken === inv.token) setFreshToken(null);
-      toast({ title: "Invite revoked", description: "That link no longer works." });
+      toast({ title: "Invite revoked", description: "That legacy token can no longer be used." });
       void loadInvites();
     } catch {
       toast({
         title: "Couldn't revoke",
-        description: "The invite is still active. Try again.",
+        description: "The record was not changed. Refresh or try again.",
         variant: "destructive",
       });
     } finally {
       setRevoking(null);
     }
   };
-
-  const activePlanName = useMemo(
-    () => PLAN_OPTIONS.find((p) => p.slug === planSlug)?.name ?? "",
-    [planSlug],
-  );
-
-  const isEmpty = !loadingList && invites.length === 0;
 
   return (
     <PageShell width="wide">
@@ -216,170 +122,62 @@ export default function PlatformInvites() {
         icon={Ticket}
         eyebrow="Platform"
         title="Invites"
-        description="Generate a private invite link for a prospect. They set up their own workspace on the plan you choose — trial included."
+        description="Prospect plan invitations are paused while Paige Solo Beta is the only public enrollment path."
       />
 
-      {/* Generator */}
       <SectionCard
-        title="New invite"
-        description="Pick a plan and generate a link to send. Each link works once."
-        icon={Sparkles}
+        title="Solo-only enrollment is in effect"
+        description="New customers enroll through the fixed Solo Beta offer: a 30-day trial, then $74.50/month unless canceled before the first paid renewal. Agency and other plan invitations are not available."
+        icon={Ticket}
       >
-        <div className="space-y-5">
-          <div>
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Plan
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {PLAN_OPTIONS.map((p) => {
-                const selected = p.slug === planSlug;
-                return (
-                  <button
-                    key={p.slug}
-                    type="button"
-                    onClick={() => setPlanSlug(p.slug)}
-                    aria-pressed={selected}
-                    className={[
-                      "rounded-[var(--radius)] border px-4 py-3 text-left transition-colors",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
-                      selected
-                        ? "border-primary bg-primary/5"
-                        : "border-border bg-card hover:bg-muted/40",
-                    ].join(" ")}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="font-display text-sm font-semibold text-foreground">
-                        {p.name}
-                      </span>
-                      {selected && <Check className="h-4 w-4 text-primary" aria-hidden />}
-                    </div>
-                    <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">{p.price}</div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button variant="gold" onClick={generate} disabled={generating}>
-              {generating ? (
-                <>
-                  <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden />
-                  Generating…
-                </>
-              ) : (
-                <>
-                  <Sparkles className="mr-1 h-4 w-4" aria-hidden />
-                  Generate invite
-                </>
-              )}
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              {activePlanName} · {TRIAL_DAYS}-day trial
-            </span>
-          </div>
-
-          {freshToken && (
-            <div className="rounded-[var(--radius)] border border-border bg-muted/30 p-4">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Share this link
-                </span>
-                <StatePill state="success">Ready</StatePill>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <input
-                  readOnly
-                  value={inviteUrl(freshToken)}
-                  onFocus={(e) => e.currentTarget.select()}
-                  className="w-full flex-1 rounded-md border border-border bg-card px-3 py-2 font-mono text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-                  aria-label="Invite link"
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => copyLink(freshToken, true)}
-                  className="shrink-0"
-                >
-                  {copiedFresh ? (
-                    <>
-                      <Check className="mr-1 h-4 w-4" aria-hidden />
-                      Copied
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="mr-1 h-4 w-4" aria-hidden />
-                      Copy link
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          Existing invite records remain below only so they can be audited or revoked. They are not customer enrollment links.
+        </p>
       </SectionCard>
 
-      {/* Live invites */}
       <div className="space-y-3">
-        <h2 className="font-display text-base font-semibold text-foreground">Live invites</h2>
+        <h2 className="font-display text-base font-semibold text-foreground">Legacy invite records</h2>
         <DataTableShell
           columns={COLUMNS}
           loading={loadingList}
-          isEmpty={isEmpty}
+          isEmpty={!loadingList && invites.length === 0}
           empty={
             <EmptyState
               icon={Ticket}
-              title="No invites yet"
-              description="Generate your first invite above and it will show up here."
+              title="No legacy invites"
+              description="There are no prior customer-plan invitation records to manage."
             />
           }
         >
-          {invites.map((inv) => {
-            const pill = statusPill(inv);
-            const canRevoke = pill.label === "Active";
-            const rowKey = inv.id || inv.token;
+          {invites.map((invite) => {
+            const pill = statusPill(invite);
+            const canRevoke = pill.label === "Enrollment paused";
             return (
-              <TableRow key={rowKey}>
+              <TableRow key={invite.id || invite.token}>
                 <TableCell className="font-medium text-foreground">
-                  {inv.plan_name ||
-                    PLAN_OPTIONS.find((p) => p.slug === inv.plan_slug)?.name ||
-                    inv.plan_slug ||
-                    "—"}
+                  {invite.plan_name || invite.plan_slug || "—"}
                 </TableCell>
                 <TableCell className="text-right tabular-nums text-muted-foreground">
-                  {inv.trial_period_days != null ? `${inv.trial_period_days}d` : "—"}
+                  {invite.trial_period_days != null ? `${invite.trial_period_days}d` : "—"}
                 </TableCell>
-                <TableCell className="text-muted-foreground">{fmtDate(inv.created_at)}</TableCell>
-                <TableCell className="text-muted-foreground">{fmtDate(inv.expires_at)}</TableCell>
+                <TableCell className="text-muted-foreground">{fmtDate(invite.created_at)}</TableCell>
+                <TableCell className="text-muted-foreground">{fmtDate(invite.expires_at)}</TableCell>
+                <TableCell><StatePill state={pill.state}>{pill.label}</StatePill></TableCell>
                 <TableCell>
-                  <StatePill state={pill.state}>{pill.label}</StatePill>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center justify-end gap-1">
+                  {canRevoke && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => copyLink(inv.token)}
-                      aria-label="Copy invite link"
+                      onClick={() => revoke(invite)}
+                      disabled={revoking === invite.token}
+                      aria-label="Revoke legacy invite"
+                      className="text-muted-foreground hover:text-destructive"
                     >
-                      <Copy className="h-4 w-4" aria-hidden />
+                      {revoking === invite.token
+                        ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        : <Trash2 className="h-4 w-4" aria-hidden />}
                     </Button>
-                    {canRevoke && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => revoke(inv)}
-                        disabled={revoking === inv.token}
-                        aria-label="Revoke invite"
-                        className="text-muted-foreground hover:text-destructive"
-                      >
-                        {revoking === inv.token ? (
-                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                        ) : (
-                          <Trash2 className="h-4 w-4" aria-hidden />
-                        )}
-                      </Button>
-                    )}
-                  </div>
+                  )}
                 </TableCell>
               </TableRow>
             );

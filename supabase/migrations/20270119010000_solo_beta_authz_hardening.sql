@@ -20,6 +20,23 @@ REVOKE ALL ON FUNCTION public.is_signup_complete()
 GRANT EXECUTE ON FUNCTION public.is_signup_complete()
   TO authenticated, service_role;
 
+-- Retire the legacy prospect-acquisition invite surface without touching the
+-- separate create_platform_invite(text, app_role) platform-staff invitation
+-- contract. Existing tokens remain revocable/auditable, but browsers cannot
+-- mint or inspect a customer-plan invite during the Solo-only beta.
+REVOKE ALL ON FUNCTION public.create_platform_invite(text, integer)
+  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.get_platform_invite(text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_platform_invite(text)
+  TO service_role;
+
+COMMENT ON FUNCTION public.create_platform_invite(text, integer) IS
+  'Legacy prospect plan-invite minting is paused during the Solo-only beta. No browser role has EXECUTE; future internal reactivation requires an explicit product decision.';
+
+COMMENT ON FUNCTION public.get_platform_invite(text) IS
+  'Legacy prospect invite inspection is service-only during the Solo-only beta. Public /get-started acquisition resolves to the fixed Solo offer.';
+
 -- Main now owns the honest-outcome implementation in create_contact_v2 and
 -- keeps create_contact as a scalar compatibility shim. Harden the one logic
 -- home so this migration composes with that contract instead of replacing it.
