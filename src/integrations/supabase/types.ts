@@ -12403,50 +12403,526 @@ export type Database = {
           },
         ]
       }
-      paige_social_posts: {
+      paige_social_accounts: {
         Row: {
-          caption: string | null
+          account_id: string
+          account_kind: string
+          authorization_expires_at: string | null
+          authorization_scopes: string[]
+          avatar_url: string | null
+          connected_at: string | null
+          connected_by: string | null
           created_at: string
-          created_by: string | null
+          credentials_vault_ref: string | null
+          display_name: string | null
+          handle: string | null
           id: string
-          media_urls: Json
-          metrics: Json
-          platform: Database["public"]["Enums"]["paige_social_platform"]
-          platform_post_id: string | null
-          posted_at: string | null
-          scheduled_at: string | null
-          status: Database["public"]["Enums"]["paige_social_post_status"]
+          last_synced_at: string | null
+          last_verified_at: string | null
+          platform: string
+          provider_key: string
+          revoked_at: string | null
+          selected: boolean
+          selected_at: string | null
+          status: string
+          tenant_id: string
           updated_at: string
         }
         Insert: {
-          caption?: string | null
+          account_id: string
+          account_kind?: string
+          authorization_expires_at?: string | null
+          authorization_scopes?: string[]
+          avatar_url?: string | null
+          connected_at?: string | null
+          connected_by?: string | null
           created_at?: string
-          created_by?: string | null
+          credentials_vault_ref?: string | null
+          display_name?: string | null
+          handle?: string | null
           id?: string
-          media_urls?: Json
-          metrics?: Json
-          platform: Database["public"]["Enums"]["paige_social_platform"]
-          platform_post_id?: string | null
-          posted_at?: string | null
-          scheduled_at?: string | null
-          status?: Database["public"]["Enums"]["paige_social_post_status"]
+          last_synced_at?: string | null
+          last_verified_at?: string | null
+          platform: string
+          provider_key: string
+          revoked_at?: string | null
+          selected?: boolean
+          selected_at?: string | null
+          status?: string
+          tenant_id: string
           updated_at?: string
         }
         Update: {
-          caption?: string | null
+          account_id?: string
+          account_kind?: string
+          authorization_expires_at?: string | null
+          authorization_scopes?: string[]
+          avatar_url?: string | null
+          connected_at?: string | null
+          connected_by?: string | null
+          created_at?: string
+          credentials_vault_ref?: string | null
+          display_name?: string | null
+          handle?: string | null
+          id?: string
+          last_synced_at?: string | null
+          last_verified_at?: string | null
+          platform?: string
+          provider_key?: string
+          revoked_at?: string | null
+          selected?: boolean
+          selected_at?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_social_accounts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_social_jobs: {
+        Row: {
+          approval_id: string | null
+          attempt_count: number
+          claimed_at: string | null
+          confirmation_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          idempotency_key: string
+          job_kind: string
+          last_error_code: string | null
+          lease_until: string | null
+          max_attempts: number
+          next_attempt_at: string | null
+          receipt_event_id: string | null
+          reconciliation_required: boolean
+          scheduled_for: string | null
+          state: string
+          target_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approval_id?: string | null
+          attempt_count?: number
+          claimed_at?: string | null
+          confirmation_id?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
-          media_urls?: Json
-          metrics?: Json
-          platform?: Database["public"]["Enums"]["paige_social_platform"]
-          platform_post_id?: string | null
-          posted_at?: string | null
-          scheduled_at?: string | null
-          status?: Database["public"]["Enums"]["paige_social_post_status"]
+          idempotency_key: string
+          job_kind: string
+          last_error_code?: string | null
+          lease_until?: string | null
+          max_attempts?: number
+          next_attempt_at?: string | null
+          receipt_event_id?: string | null
+          reconciliation_required?: boolean
+          scheduled_for?: string | null
+          state?: string
+          target_id: string
+          tenant_id: string
           updated_at?: string
         }
-        Relationships: []
+        Update: {
+          approval_id?: string | null
+          attempt_count?: number
+          claimed_at?: string | null
+          confirmation_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idempotency_key?: string
+          job_kind?: string
+          last_error_code?: string | null
+          lease_until?: string | null
+          max_attempts?: number
+          next_attempt_at?: string | null
+          receipt_event_id?: string | null
+          reconciliation_required?: boolean
+          scheduled_for?: string | null
+          state?: string
+          target_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_social_jobs_approval_id_fkey"
+            columns: ["approval_id"]
+            isOneToOne: false
+            referencedRelation: "paige_pending_approvals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_social_jobs_confirmation_id_fkey"
+            columns: ["confirmation_id"]
+            isOneToOne: false
+            referencedRelation: "paige_pending_confirmations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_social_jobs_receipt_event_id_fkey"
+            columns: ["receipt_event_id"]
+            isOneToOne: false
+            referencedRelation: "paige_workspace_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_social_jobs_target_fk"
+            columns: ["tenant_id", "target_id"]
+            isOneToOne: false
+            referencedRelation: "paige_social_targets"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "paige_social_jobs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_social_post_versions: {
+        Row: {
+          content: string
+          content_hash: string
+          created_at: string
+          created_by: string | null
+          created_by_agent: string | null
+          id: string
+          media_assets: Json
+          post_id: string
+          tenant_id: string
+          version_number: number
+        }
+        Insert: {
+          content: string
+          content_hash: string
+          created_at?: string
+          created_by?: string | null
+          created_by_agent?: string | null
+          id?: string
+          media_assets?: Json
+          post_id: string
+          tenant_id: string
+          version_number: number
+        }
+        Update: {
+          content?: string
+          content_hash?: string
+          created_at?: string
+          created_by?: string | null
+          created_by_agent?: string | null
+          id?: string
+          media_assets?: Json
+          post_id?: string
+          tenant_id?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_social_post_versions_post_fk"
+            columns: ["tenant_id", "post_id"]
+            isOneToOne: false
+            referencedRelation: "paige_social_posts"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "paige_social_post_versions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_social_posts: {
+        Row: {
+          abandoned_at: string | null
+          archived_at: string | null
+          campaign_brief_id: string | null
+          created_at: string
+          created_by: string | null
+          created_by_agent: string | null
+          id: string
+          source_asset_id: string | null
+          source_asset_kind: string | null
+          source_kind: string
+          source_license: string | null
+          source_provenance: Json
+          source_provider: string | null
+          status: string
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          abandoned_at?: string | null
+          archived_at?: string | null
+          campaign_brief_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          created_by_agent?: string | null
+          id?: string
+          source_asset_id?: string | null
+          source_asset_kind?: string | null
+          source_kind?: string
+          source_license?: string | null
+          source_provenance?: Json
+          source_provider?: string | null
+          status?: string
+          tenant_id: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          abandoned_at?: string | null
+          archived_at?: string | null
+          campaign_brief_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          created_by_agent?: string | null
+          id?: string
+          source_asset_id?: string | null
+          source_asset_kind?: string | null
+          source_kind?: string
+          source_license?: string | null
+          source_provenance?: Json
+          source_provider?: string | null
+          status?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_social_posts_campaign_brief_id_fkey"
+            columns: ["campaign_brief_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_briefs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_social_posts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_social_provider_results: {
+        Row: {
+          canonical_post_url: string | null
+          created_at: string
+          id: string
+          job_id: string
+          outcome: string
+          provider_account_id: string
+          provider_key: string
+          provider_post_id: string | null
+          provider_request_id: string | null
+          readback: Json
+          readback_observed_at: string | null
+          target_id: string
+          tenant_id: string
+        }
+        Insert: {
+          canonical_post_url?: string | null
+          created_at?: string
+          id?: string
+          job_id: string
+          outcome: string
+          provider_account_id: string
+          provider_key: string
+          provider_post_id?: string | null
+          provider_request_id?: string | null
+          readback?: Json
+          readback_observed_at?: string | null
+          target_id: string
+          tenant_id: string
+        }
+        Update: {
+          canonical_post_url?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string
+          outcome?: string
+          provider_account_id?: string
+          provider_key?: string
+          provider_post_id?: string | null
+          provider_request_id?: string | null
+          readback?: Json
+          readback_observed_at?: string | null
+          target_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_social_provider_results_job_fk"
+            columns: ["tenant_id", "job_id"]
+            isOneToOne: false
+            referencedRelation: "paige_social_jobs"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "paige_social_provider_results_target_fk"
+            columns: ["tenant_id", "target_id"]
+            isOneToOne: false
+            referencedRelation: "paige_social_targets"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "paige_social_provider_results_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_social_targets: {
+        Row: {
+          account_id: string
+          approval_id: string | null
+          created_at: string
+          desired_publish_at: string | null
+          id: string
+          platform: string
+          post_id: string
+          status: string
+          tenant_id: string
+          updated_at: string
+          version_id: string
+        }
+        Insert: {
+          account_id: string
+          approval_id?: string | null
+          created_at?: string
+          desired_publish_at?: string | null
+          id?: string
+          platform: string
+          post_id: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          version_id: string
+        }
+        Update: {
+          account_id?: string
+          approval_id?: string | null
+          created_at?: string
+          desired_publish_at?: string | null
+          id?: string
+          platform?: string
+          post_id?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_social_targets_account_fk"
+            columns: ["tenant_id", "account_id"]
+            isOneToOne: false
+            referencedRelation: "paige_social_accounts"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "paige_social_targets_approval_id_fkey"
+            columns: ["approval_id"]
+            isOneToOne: false
+            referencedRelation: "paige_pending_approvals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_social_targets_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_social_targets_version_fk"
+            columns: ["tenant_id", "post_id", "version_id"]
+            isOneToOne: false
+            referencedRelation: "paige_social_post_versions"
+            referencedColumns: ["tenant_id", "post_id", "id"]
+          },
+        ]
+      }
+      paige_media_credit_entries: {
+        Row: {
+          id: string
+          tenant_id: string
+          entry_type: string
+          credits: number
+          job_id: string | null
+          idempotency_key: string
+          month_bucket: string | null
+          included_credits: number
+          purchased_credits: number
+          source: string
+          reason: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          entry_type: string
+          credits: number
+          job_id?: string | null
+          idempotency_key: string
+          month_bucket?: string | null
+          included_credits?: number
+          purchased_credits?: number
+          source?: string
+          reason?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          entry_type?: string
+          credits?: number
+          job_id?: string | null
+          idempotency_key?: string
+          month_bucket?: string | null
+          included_credits?: number
+          purchased_credits?: number
+          source?: string
+          reason?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_media_credit_entries_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_media_credit_entries_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "paige_media_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       paige_media_jobs: {
         Row: {
@@ -20553,6 +21029,24 @@ export type Database = {
         Args: { _away?: string; _ceiling?: number; _domains?: Json }
         Returns: Json
       }
+      social_account_status: {
+        Args: never
+        Returns: {
+          account_kind: string
+          authorization_expires_at: string | null
+          avatar_url: string | null
+          connected_at: string | null
+          display_name: string | null
+          handle: string | null
+          id: string
+          last_synced_at: string | null
+          last_verified_at: string | null
+          platform: string
+          selected: boolean
+          status: string
+        }[]
+      }
+      social_current_tenant_id: { Args: never; Returns: string }
       list_tool_autonomy: {
         Args: { _tenant_id?: string }
         Returns: {

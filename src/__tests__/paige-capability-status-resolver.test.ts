@@ -57,6 +57,19 @@ describe("resolveCapabilityStatus — one honest availability per capability (§
     expect(off.reason).toMatch(/manual/i);
   });
 
+  it("a built-but-unproven, fails-closed path is PROOF_OWED — Paige may attempt, never promise", () => {
+    // proofOwed wins over the cheerful live/approval below it, so the owner is never told a
+    // fails-closed path is something she can rely on (§13/§70).
+    const auto = one({ proofOwed: true, autonomyLane: "auto" });
+    expect(auto.availability).toBe("proof_owed");
+    expect(auto.reason).toMatch(/isn't proven/i);
+    expect(one({ proofOwed: true, actionKind: "read", autonomyLane: null }).availability).toBe("proof_owed");
+    // but a more-restrictive disposition still wins over proofOwed (most-restrictive order):
+    expect(one({ proofOwed: true, tierEligible: false }).availability).toBe("not_for_tier");
+    expect(one({ proofOwed: true, requiresConnection: true, connected: false }).availability).toBe("needs_setup");
+    expect(one({ proofOwed: true, maturity: "UNAVAILABLE" }).availability).toBe("planned");
+  });
+
   it("a read with a shipped seam is LIVE now", () => {
     expect(one({ key: "crm.list", label: "See your contacts", actionKind: "read", autonomyLane: null }).availability).toBe("live");
     // a PARTIAL read is still reachable now

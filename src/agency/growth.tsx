@@ -23,7 +23,7 @@ import React from "react";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, SubTabs, ScopeSeg, useReducedMotion } from "./_shared";
 import {
-  GROWTH_TABS, CAMPAIGNS, BRAND_TOKENS, SOCIAL_POSTS, PAGES_LIST, FUNNELS_LIST,
+  GROWTH_TABS, CAMPAIGNS, BRAND_TOKENS, PAGES_LIST, FUNNELS_LIST,
   FORMS_LIST, BUILDERS_LIST, SUBS, OWNERS, AGENCY,
 } from "./fixtures";
 import VibeStudio from "./vibe";
@@ -178,15 +178,18 @@ const BrandKit = ({ isAgency, perSub, sel }) => {
 
 // ── Social · Pages · Forms (flat lists — scope-invariant per the design) ────────
 const Social = () => (
-  <div className="card" style={{ overflow: "hidden" }}>{SOCIAL_POSTS.map((p, i) => (
-    <div key={i} className="row" style={{ gap: 12, padding: "12px 15px", borderBottom: i < SOCIAL_POSTS.length - 1 ? "1px solid var(--line-soft)" : 0, alignItems: "flex-start" }}>
-      <span className="pill pill-n" style={{ flex: "none" }}>{p.where}</span>
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>{p.text}</div>
-        <div className="mono sub" style={{ fontSize: 10.5, marginTop: 5 }}>{p.reach} reached · {p.eng} engaged · {p.when}</div>
+  <div className="card" style={{ padding: "18px 20px" }}>
+    <div className="row" style={{ alignItems: "flex-start", gap: 12 }}>
+      <span className="pill pill-w" style={{ flex: "none" }}>UNAVAILABLE</span>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 650 }}>Provider-backed Social activity is unavailable</div>
+        <p className="sub" style={{ marginTop: 6, maxWidth: 680, fontSize: 12, lineHeight: 1.6 }}>
+          No tenant-authorized provider source supplies posts, reach, engagement, publishing state,
+          or scheduling evidence to this Agency surface. Nothing is inferred from fixtures.
+        </p>
       </div>
     </div>
-  ))}</div>
+  </div>
 );
 
 const Pages = () => (

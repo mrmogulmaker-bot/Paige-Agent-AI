@@ -56,6 +56,13 @@ serve(async (req: Request) => {
       () => {},
       (e: unknown) => console.error("[media-sweeper] mark_exhausted failed:", e instanceof Error ? e.message : "unknown"),
     );
+    // Then settle any holds left open by terminal jobs (never-submitted ->
+    // release; submitted -> consume: the provider charge is recorded, never
+    // leaked back into the pool).
+    await admin.rpc("settle_media_credit_holds", { _limit: 50 }).then(
+      () => {},
+      (e: unknown) => console.error("[media-sweeper] settle_media_credit_holds failed:", e instanceof Error ? e.message : "unknown"),
+    );
 
     const { data: claimed, error: claimErr } = await admin.rpc("claim_due_media_jobs", { _limit: 10 });
     if (claimErr) return json({ error: "claim_failed", detail: claimErr.message }, 500);

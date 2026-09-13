@@ -240,7 +240,7 @@ provider is connected/available/autonomous because it is listed (R1).
 | HubSpot | CRM/calendar/communications | `UNAVAILABLE` | prohibited | not wired; native CRM is default |
 | ElevenLabs (optional Paige voice I/O) | CRM/calendar/communications | `PROOF_OWED` | read | transport disabled; owner-only metadata inspection in development cannot substitute for account scopes, voice, retention, quota, concurrency and cost proof |
 | Vapi (voice AI telephony) | CRM/calendar/communications | `UNAVAILABLE` | prohibited | not wired; provider-hosted agents cannot own Paige reasoning or actions |
-| Meta (FB + IG) | marketing/ads/social/analytics | `PARTIAL` | draft | per-tenant OAuth + `tenant_id` on posts table (owner decision owed) |
+| Meta (FB + IG) | marketing/ads/social/analytics | `PARTIAL` | draft | declared handles only; tenant-safe schema is deployed, but provider selection/OAuth/test-account authority and all runtime connection/publish proof remain owed |
 | PostHog | marketing/ads/social/analytics | `PARTIAL` | read | operator-scoped analytics only |
 | DocuSign | files/contracts/Vault | `PROOF_OWED` | confirm | Sales R2 rendered-prototype approval; governed send |
 | Vault OCR/DLP seam | files/contracts/Vault | `PROPOSED` | prohibited | Phase 7 inspected-fact promotion |

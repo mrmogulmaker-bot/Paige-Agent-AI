@@ -33,12 +33,19 @@ import { falAdapter } from "../_shared/media-provider/fal.ts";
 import {
   loadMediaConfig,
   resolveMediaCeiling,
+  MEDIA_CREDIT_PACKS,
 } from "../_shared/media-provider/config.ts";
 import {
   decideMediaBudget,
+  decidePlatformSpendGuard,
   readMediaAccrual,
+  readPlatformMediaAccrual,
   resolveApprovalPolicy,
 } from "../_shared/media-provider/budget.ts";
+import {
+  estimateCredits,
+  holdMediaCredits,
+} from "../_shared/media-provider/credits.ts";
 import { failMediaJob } from "../_shared/media-provider/complete.ts";
 import { NeedsConfigError } from "../_shared/provider-types.ts";
 
@@ -122,7 +129,33 @@ serve(async (req: Request) => {
             tenantId,
           ),
           draft_allowance_usd: config.draftAllowanceUsd,
+          platform_spend_ceiling_usd: config.platformSpendCeilingUsd,
         },
+        credits: await (async () => {
+          // The billing read self-heals the month (lazy mint) and carries the
+          // notices the Vibe surface needs — one RPC, the same truth Billing sees.
+          const { data, error } = await admin.rpc("get_workspace_media_usage");
+          if (error) return { readable: false, reason: error.message?.slice(0, 120) ?? "read failed" };
+          const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+          if (!row || row.usage_state !== "ok") return { readable: false, reason: "usage_unavailable" };
+          const allowance = Number(row.allowance_monthly) || 0;
+          const total = Number(row.total_remaining) || 0;
+          const consumed = Math.max(0, allowance - Number(row.included_remaining || 0));
+          const pct = allowance > 0 ? Math.round((consumed / allowance) * 100) : null;
+          return {
+            readable: true,
+            credit_usd: config.creditUsd,
+            allowance_monthly: allowance,
+            included_remaining: Number(row.included_remaining) || 0,
+            purchased_remaining: Number(row.purchased_remaining) || 0,
+            total_remaining: total,
+            month: row.month ?? null,
+            consumed_this_month: consumed,
+            allowance_pct_used: pct,
+            notice_band: pct == null ? null : pct >= 100 ? 100 : pct >= 80 ? 80 : pct >= 50 ? 50 : null,
+          };
+        })(),
+        packs: MEDIA_CREDIT_PACKS,
       });
     }
 
@@ -344,7 +377,7 @@ serve(async (req: Request) => {
       if (policy.approvalRequired) {
         return json({ job, awaiting_approval: true, reason: policy.reason, estimate });
       }
-      return await dispatchJob(admin, job, { authHeader, webhookUrl: `${supabaseUrl}/functions/v1/paige-media-webhook` });
+      return await dispatchJob(admin, job, { authHeader, webhookUrl: `${supabaseUrl}/functions/v1/paige-media-webhook` }, config);
     }
 
     // ── approve / reject: the approval boundary is SERVER-HELD state ─────────
@@ -393,7 +426,7 @@ serve(async (req: Request) => {
         .select()
         .single();
       if (upErr || !updated) return json({ error: "Couldn't approve the job (it may have been cancelled)." }, 409);
-      return await dispatchJob(admin, updated, { authHeader, webhookUrl: `${supabaseUrl}/functions/v1/paige-media-webhook` });
+      return await dispatchJob(admin, updated, { authHeader, webhookUrl: `${supabaseUrl}/functions/v1/paige-media-webhook` }, config);
     }
 
     // ── cancel: propagate to the provider where a request exists ─────────────
@@ -413,6 +446,15 @@ serve(async (req: Request) => {
         .select()
         .single();
       if (upErr || !updated) return json({ error: "Couldn't cancel the job." }, 500);
+
+      // The reservation returns to the workspace's pool on cancel (idempotent).
+      const { releaseMediaCredits } = await import("../_shared/media-provider/credits.ts");
+      await releaseMediaCredits(
+        (n: string, a: Record<string, unknown>) => admin.rpc(n, a),
+        tenantId,
+        jobId,
+        "cancelled by user",
+      ).then(() => {}, (e: unknown) => console.error("[paige-media] credit release failed:", e instanceof Error ? e.message : "unknown"));
 
       // Best-effort provider cancellation (fal only); a failed cancel of an
       // already-terminal-at-provider job is recorded, never hidden.
@@ -466,6 +508,7 @@ async function dispatchJob(
   admin: ReturnType<typeof createClient>,
   job: Record<string, unknown>,
   opts: { authHeader: string; webhookUrl: string },
+  config: { platformSpendCeilingUsd: number; creditUsd: number },
 ): Promise<Response> {
   const jobId = String(job.id);
   const provider = String(job.provider);
@@ -483,6 +526,32 @@ async function dispatchJob(
     .single();
   if (claimErr || !claimed) {
     return json({ job, dispatched: false, note: "Job is not dispatchable (already claimed, awaiting approval, or terminal)." });
+  }
+
+  // ── PLATFORM SPEND GUARD (owner correction 2026-09-12): the enforced
+  // platform-wide daily cap, actually metered (media_spend_today_all). ──
+  const platformAccrued = await readPlatformMediaAccrual((n: string, a: Record<string, unknown>) => admin.rpc(n, a));
+  const guard = decidePlatformSpendGuard({
+    platformAccruedUsd: platformAccrued,
+    platformCeilingUsd: config.platformSpendCeilingUsd,
+    estimatedCostUsd: Number(job.estimated_cost_usd) || 0,
+  });
+  if (!guard.ok) {
+    await failMediaJob(admin, { ...job, attempts: claimed.attempts } as never, guard.explanation ?? "platform media spend guard");
+    return json({ job: { ...job, state: "failed", error: guard.explanation }, platform_guard: true, error: guard.explanation }, 429);
+  }
+
+  // ── CREDIT GATE: reserve the estimate BEFORE any provider call (owner rule:
+  // no unbounded overage, no provider-cost leakage). Insufficient credits fail
+  // the job truthfully with the balance — never a silent negative. ──
+  const creditsNeeded = estimateCredits(Number(job.estimated_cost_usd) || 0, config.creditUsd);
+  const hold = await holdMediaCredits((n: string, a: Record<string, unknown>) => admin.rpc(n, a), String(job.tenant_id), jobId, creditsNeeded, Number(job.estimated_cost_usd) || undefined);
+  if (!hold.ok) {
+    const message = hold.insufficient
+      ? `Media credits needed: this job requires about ${creditsNeeded} credits and ${hold.balance ?? 0} remain in this workspace's allowance. Add Media Credits in Settings → Billing to continue.`
+      : `Media credit reservation failed: ${hold.error ?? "unknown"}. The job was not sent.`;
+    await failMediaJob(admin, { ...job, attempts: claimed.attempts } as never, message);
+    return json({ job: { ...job, state: "failed", error: message }, credits_insufficient: hold.insufficient === true, error: message }, 402);
   }
 
   if (provider === "fal") {

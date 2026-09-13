@@ -46,13 +46,15 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { Bell, CalendarClock, CircleDollarSign, CreditCard, ExternalLink, RefreshCw, TriangleAlert, Users } from "lucide-react";
+import { Bell, CalendarClock, CircleDollarSign, CreditCard, ExternalLink, RefreshCw, Sparkles, TriangleAlert, Users } from "lucide-react";
 import { Card, NotYours, Outcome, Status, type WriteState } from "./settings-primitives";
 import {
   PAYMENT_SETUP_DURABLE_REFUSALS, PAYMENT_SETUP_REFUSAL_COPY, resolveAiUsagePresentation,
-  resolveBillingPortalPresentation, resolveWorkspaceBillingStatusPresentation,
-  resolveWorkspacePaymentSetupPresentation,
+  resolveBillingPortalPresentation, resolveMediaUsagePresentation,
+  resolveWorkspaceBillingStatusPresentation, resolveWorkspacePaymentSetupPresentation,
 } from "./billing-contract";
+import { useWorkspaceMediaUsage } from "./data/useWorkspaceMediaUsage";
+import { supabase } from "@/integrations/supabase/client";
 import { useWorkspaceAiUsage } from "./data/useWorkspaceAiUsage";
 import { useWorkspaceBillingStatus } from "./data/useWorkspaceBillingStatus";
 import { usePlatformBillingConnect, consumePaymentSetupReturn, clearPaymentSetupReturn, verifyPaymentSetupActor } from "./data/usePlatformBillingConnect";
@@ -496,6 +498,85 @@ function UsageCard() {
   </Card>;
 }
 
+
+/**
+ * Vibe Media usage (owner build authorization 2026-09-12) — the FIRST metered
+ * customer-facing usage category. One server-owned read
+ * (get_workspace_media_usage — the ledger behind it is append-only and
+ * service-role-written); this card states and never enforces: the estimate/
+ * approval boundary lives in Vibe Studio, at the moment of spend.
+ *
+ * Also carries the receipt trail: the workspace's recent ledger entries
+ * (grants, holds, consumes, releases, lapses — RLS-scoped read), so an owner
+ * can see WHERE credits went without a support ticket. Purchased-credit packs
+ * are displayed as the roadmap only — no charge path exists on the platform.
+ */
+function MediaUsageCard() {
+  const { loading, error, usage, reload } = useWorkspaceMediaUsage();
+  const view = resolveMediaUsagePresentation({
+    loading,
+    readFailed: error !== null,
+    usageState: usage?.usageState ?? "no_workspace",
+    allowanceMonthly: usage?.allowanceMonthly ?? null,
+    includedRemaining: usage?.includedRemaining ?? null,
+    purchasedRemaining: usage?.purchasedRemaining ?? null,
+    totalRemaining: usage?.totalRemaining ?? null,
+    holdsOpen: usage?.holdsOpen ?? null,
+    imageCredits: usage?.imageCredits ?? null,
+    imageEditCredits: usage?.imageEditCredits ?? null,
+    videoCredits: usage?.videoCredits ?? null,
+    otherCredits: usage?.otherCredits ?? null,
+    jobsMonth: usage?.jobsMonth ?? null,
+    periodEnd: usage?.periodEnd ?? null,
+  });
+
+  // Receipt trail: this workspace's last ledger entries (RLS tenant-scoped).
+  const [entries, setEntries] = useState<Array<{ id: string; entry_type: string; credits: number; reason: string | null; created_at: string }> | null>(null);
+  useEffect(() => {
+    if (view.state !== "media-ok" && view.state !== "media-exhausted") return;
+    let alive = true;
+    void supabase
+      .from("paige_media_credit_entries")
+      .select("id, entry_type, credits, reason, created_at")
+      .order("created_at", { ascending: false })
+      .limit(6)
+      .then(({ data }) => {
+        if (alive) setEntries((data as typeof entries) ?? []);
+      });
+    return () => { alive = false; };
+  }, [view.state, usage?.tenantId]);
+
+  const ENTRY_LABEL: Record<string, string> = {
+    grant_included: "Monthly allowance added",
+    grant_purchased: "Credits added",
+    hold: "Reserved for a job",
+    consume: "Used by a completed job",
+    release: "Reservation returned",
+    expire: "Allowance lapse (month end)",
+    adjust: "Owner adjustment",
+  };
+
+  return <Card title="Vibe Media" icon={Sparkles} truth="PARTIAL">
+    <div className="ss-state" data-media-state={view.state} role={view.state === "media-loading" ? "status" : view.state === "media-error" ? "alert" : undefined}>
+      {view.state === "media-loading" ? <RefreshCw className="ss-spin" aria-hidden/> : view.state === "media-error" ? <TriangleAlert aria-hidden/> : <Sparkles aria-hidden/>}
+      <span><strong>{view.heading}</strong>{view.body}</span>
+      {view.canRetry && <button type="button" onClick={() => void reload()}>Retry</button>}
+    </div>
+    {view.fields.length > 0 && <div className="ss-fields" style={{ marginTop: 9 }}>
+      {view.fields.map((f) => <div className="ss-field" key={f.label}><span>{f.label}</span><strong>{f.value}</strong></div>)}
+    </div>}
+    {view.notice && <p className="ss-note" style={{ fontWeight: 600 }}>{view.notice}</p>}
+    {entries && entries.length > 0 && <div className="ss-fields" style={{ marginTop: 9 }} aria-label="Recent media credit activity">
+      {entries.map((e) => <div className="ss-field" key={e.id}>
+        <span>{ENTRY_LABEL[e.entry_type] ?? e.entry_type}{e.reason ? ` — ${e.reason.slice(0, 60)}` : ""}</span>
+        <strong>{e.credits.toLocaleString("en-US")} cr</strong>
+      </div>)}
+    </div>}
+    {view.note && <p className="ss-note">{view.note}</p>}
+    <p className="ss-note">Need more media? Credit packs arrive with checkout — until then, the included allowance resets monthly and anything beyond it asks before it runs.</p>
+  </Card>;
+}
+
 export function SoloBillingView() {
   // ONE authority read (portal act + contacts-write gating) and ONE status read (plan, usage,
   // provider readiness, primary-selection-needed) for the whole surface. The status read replaces
@@ -608,5 +689,6 @@ export function SoloBillingView() {
         decoration in a place like this reads as protection that isn't there. The switch is proven
         by the test instead ("never paints one workspace's usage total under the next one"). */}
     <UsageCard/>
+    <MediaUsageCard/>
   </div>;
 }

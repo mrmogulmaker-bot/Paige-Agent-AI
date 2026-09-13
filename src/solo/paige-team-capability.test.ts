@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { classifyAction, unclassifiedWriteReason } from "../../supabase/functions/_shared/action-risk";
+import { classifyAction, clampLaneByRisk, unclassifiedWriteReason } from "../../supabase/functions/_shared/action-risk";
 
 const HANDLER = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
 
@@ -100,26 +100,24 @@ describe("the handler's Team call sites (source-level proof, not runtime proof)"
     // meaning `automation_set_grant`, which is owner_only precisely because it changes how much
     // Paige may do alone, could have been switched to auto and then raised from a conversation.
     //
-    // The clamp is one-directional and sits ABOVE the branch so every path reaches it. `off` must
-    // survive it: a brake is the operator's to pull at any class, and a clamp that quietly
-    // re-enabled a disabled tool would be a worse bug than the one it fixed.
-    // Sliced to the clamp STATEMENT, not a fixed character window: the first window overran into
-    // the adjacent `if (autoMode === "off")` branch and failed the "off survives" assertion on
-    // neighbouring code rather than on the clamp. A test that reads past its subject is measuring
-    // whatever happens to sit next to it.
-    const clampStart = HANDLER.indexOf("const classForClamp = classifyAction(");
-    const clamp = HANDLER.slice(clampStart, HANDLER.indexOf('if (autoMode === "off")', clampStart));
-    expect(clamp).toContain('autoMode === "auto"');
-    expect(clamp).toContain('classForClamp === "high"');
-    expect(clamp).toContain('classForClamp === "owner_only"');
-    expect(clamp).toContain('autoMode = "confirm"');
-    expect(clamp).not.toContain('"off"');
-    // It has to precede the branch it protects, or it protects nothing.
-    expect(HANDLER.indexOf("const classForClamp = classifyAction("))
-      .toBeLessThan(HANDLER.indexOf('if (autoMode === "confirm") {'));
-    // And it must not be reachable only from the Solo path or only for team tools — it is keyed on
-    // the class, which is what makes it cover every high action, not just the five added with it.
-    expect(clamp).not.toContain("team_");
+    // The clamp RULE now lives in the shared `clampLaneByRisk` helper (§18 one home), so the manifest
+    // and the dispatch apply the identical rule and cannot diverge. Assert the rule on the REAL code
+    // (the stronger proof): a stored `auto` preference on a high/owner_only tool is forced to
+    // `confirm`, so the class's approval is never retired.
+    expect(clampLaneByRisk("auto", "automation_set_grant")).toBe("confirm"); // owner_only
+    expect(clampLaneByRisk("auto", "team_set_permission")).toBe("confirm");  // high
+    // The clamp is one-directional — `off` must survive it at every class: a brake is the operator's
+    // to pull, and a clamp that quietly re-enabled a disabled tool would be a worse bug than the one
+    // it fixed. And it is keyed on the CLASS, not the tool family, so an ordinary tool passes through.
+    expect(clampLaneByRisk("off", "automation_set_grant")).toBe("off");
+    expect(clampLaneByRisk("off", "team_set_permission")).toBe("off");
+    expect(clampLaneByRisk("auto", "crm_create_contact")).toBe("auto"); // ordinary — not clamped
+    // The dispatch must APPLY that clamp ABOVE the branch it protects, or it protects nothing: the
+    // `clampLaneByRisk(autoMode` call precedes the `if (autoMode === "confirm")` gate. (Source-level —
+    // the handler is a Deno edge fn with no seam this suite can drive; the weaker class of proof.)
+    const clampApplyAt = HANDLER.indexOf("clampLaneByRisk(autoMode");
+    expect(clampApplyAt).toBeGreaterThan(-1);
+    expect(clampApplyAt).toBeLessThan(HANDLER.indexOf('if (autoMode === "confirm") {'));
   });
 
   it("refuses to act when the seam's workspace is not the one this conversation is about", () => {

@@ -6,9 +6,14 @@ on:
       - "supabase/functions/_shared/paige-spine/**"
       - "supabase/migrations/**"
       - "supabase/tests/paige_spine_foundation.sql"
+      - "supabase/tests/media_credit_ledger.sql"
       - "supabase/tests/business_context_readiness.sql"
       - "supabase/tests/team_authority_readiness.sql"
       - "supabase/tests/business_mission_foundation.sql"
+      - "supabase/tests/social_foundation.sql"
+      - "supabase/tests/social_foundation_rls.sql"
+      - "scripts/sql/social-foundation-legacy-shape-proof.sql"
+      - "scripts/sql/social-foundation-tenant-shaped-proof.sql"
       # The Solo Team invitation proof must re-run when the seam it proves changes,
       # not only when a migration happens to touch it.
       - "supabase/tests/solo_team_invite_workspace_authority.sql"
@@ -33,9 +38,14 @@ on:
       - "supabase/functions/_shared/paige-spine/**"
       - "supabase/migrations/**"
       - "supabase/tests/paige_spine_foundation.sql"
+      - "supabase/tests/media_credit_ledger.sql"
       - "supabase/tests/business_context_readiness.sql"
       - "supabase/tests/team_authority_readiness.sql"
       - "supabase/tests/business_mission_foundation.sql"
+      - "supabase/tests/social_foundation.sql"
+      - "supabase/tests/social_foundation_rls.sql"
+      - "scripts/sql/social-foundation-legacy-shape-proof.sql"
+      - "scripts/sql/social-foundation-tenant-shaped-proof.sql"
       # The Solo Team invitation proof must re-run when the seam it proves changes,
       # not only when a migration happens to touch it.
       - "supabase/tests/solo_team_invite_workspace_authority.sql"
@@ -88,6 +98,9 @@ jobs:
       - run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector
       - run: supabase db reset
       - run: supabase test db supabase/tests/paige_spine_foundation.sql
+      # Vibe Media Credit Ledger: append-only, closure math, anti-leakage release
+      # gate, lazy mint, RLS, and the §59 service-role surface (2026-09-12).
+      - run: supabase test db supabase/tests/media_credit_ledger.sql
       # Behavioural proof for the Solo Team invitation seam, against the schema `db reset` just
       # replayed from zero. It rides this job deliberately rather than standing up a second
       # Postgres: the expensive part is `supabase start` + `db reset`, and duplicating it to run
@@ -113,6 +126,10 @@ jobs:
       - run: supabase test db supabase/tests/team_authority_readiness.sql
       # Business Mission owner/RLS/lifecycle proof and true concurrent replay/CAS proof.
       - run: supabase test db supabase/tests/business_mission_foundation.sql
+      - run: supabase test db supabase/tests/social_foundation.sql
+      - run: supabase test db supabase/tests/social_foundation_rls.sql
+      - run: psql -v ON_ERROR_STOP=1 -f scripts/sql/social-foundation-legacy-shape-proof.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      - run: psql -v ON_ERROR_STOP=1 -f scripts/sql/social-foundation-tenant-shaped-proof.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       - run: node scripts/proof/business-mission-concurrency.mjs
         env:
           BUSINESS_MISSION_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres

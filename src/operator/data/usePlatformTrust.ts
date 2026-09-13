@@ -300,7 +300,8 @@ function useTrustRead(enabled: boolean): PlatformTrust {
       if (catalogue.error) {
         setGrants(null);
       } else {
-        const rows = (catalogue.data ?? []) as { mode?: string | null }[];
+        const rows = ((catalogue.data ?? []) as { tool_key?: string | null; mode?: string | null }[])
+          .filter((row) => row.tool_key !== "social_post");
         const mapped = rows
           .map((r) => GRANT_OF_MODE[String(r.mode ?? "")])
           // A row whose mode is outside the enum is dropped rather than guessed at — it would

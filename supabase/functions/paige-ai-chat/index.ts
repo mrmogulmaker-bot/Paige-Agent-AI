@@ -7,7 +7,7 @@ const N8N_MANAGEMENT_TOOL_NAMES = new Set(N8N_MANAGEMENT_TOOLS.map(tool => tool.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { checkedWrite, writeOutcome } from "../_shared/checked-write.ts";
-import { classifyAction, mutatingTools, riskReason, unclassifiedWriteReason } from "../_shared/action-risk.ts";
+import { classifyAction, clampLaneByRisk, mutatingTools, riskReason, unclassifiedWriteReason } from "../_shared/action-risk.ts";
 import { confirmFingerprint } from "../_shared/confirm-fingerprint.ts";
 import { buildCreditProposal, buildCreditSyncPayload } from "../_shared/credit-extraction-payload.ts";
 import { projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
@@ -4343,18 +4343,41 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
 
     const gatherCapabilityManifest = async (workflowsConnected: boolean) => {
       const mat = (key: string) => getSpineCapability(key)?.maturity ?? null;
-      const [contactCreateLane, campaignCreateLane, workflowsLane, ownerOpsEligible] = await Promise.all([
-        resolveToolAutonomy("crm_create_contact"),
-        resolveToolAutonomy("campaign_brief_create"),
-        resolveToolAutonomy("n8n_run_workflow"),
+      // The EFFECTIVE lane the runtime would act on = the trust-compass clamp (resolve_tool_autonomy,
+      // §67/§68) THEN the action-class clamp (clampLaneByRisk — the SAME helper the chat dispatch uses
+      // at its gate, §18). Without the second clamp the manifest would show a HIGH tool on an `auto`
+      // grant as "no approval" while the dispatch always forces the card (the §39 over-claim). Resolving
+      // both here makes the manifest's answer identical to what actually happens (§13/§70).
+      const resolveEffectiveLane = async (toolKey: string): Promise<"auto" | "confirm" | "off"> =>
+        clampLaneByRisk((await resolveToolAutonomy(toolKey)) as "auto" | "confirm" | "off", toolKey);
+      const [
+        contactCreateLane, campaignCreateLane, workflowsLane,
+        documentCreateLane, knowledgeSaveLane, planningCreateLane, delegateLane,
+        ownerOpsEligible,
+      ] = await Promise.all([
+        resolveEffectiveLane("crm_create_contact"),
+        resolveEffectiveLane("campaign_brief_create"),
+        resolveEffectiveLane("n8n_run_workflow"),
+        resolveEffectiveLane("document_generate"),
+        resolveEffectiveLane("save_to_knowledge_base"),
+        resolveEffectiveLane("plan_create"),
+        resolveEffectiveLane("delegate_to_subagent"),
         resolveOwnerOpsEligible(),
       ]);
+      // Research (web_search/deep_research) degrades honestly to configured:false without a provider
+      // key; the manifest gates it on the REAL presence of that key (never the value — §34/§13),
+      // exactly as n8n gates on its connection.
+      const researchProviderConfigured = !!Deno.env.get("FIRECRAWL_API_KEY");
       const signals = buildCapabilitySignals({
         callerTier,
         ownerOpsEligible,
-        contactCreateLane: contactCreateLane as "auto" | "confirm" | "off",
-        campaignCreateLane: campaignCreateLane as "auto" | "confirm" | "off",
-        workflowsLane: workflowsLane as "auto" | "confirm" | "off",
+        contactCreateLane,
+        campaignCreateLane,
+        workflowsLane,
+        documentCreateLane,
+        knowledgeSaveLane,
+        planningCreateLane,
+        delegateLane,
         integrationsListMaturity: mat("integrations.list"),
         pipelineEvidenceMaturity: mat("pipeline.deal_stage_evidence"),
         commsReadMaturity: mat("comms.messages_read"),
@@ -4367,6 +4390,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
         campaignCreateMaturity: mat("campaign.create"),
         workflowsMaturity: mat("integrations.n8n_run_workflow"),
         workflowsConnected,
+        researchProviderConfigured,
       });
       return resolveCapabilityStatus(signals);
     };
@@ -6012,55 +6036,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   confirm: { type: "boolean", description: "Set true only after the operator approves this decision on the rendered card. Never set it in the same reply that proposes it." }
                 },
                 required: ["proposal_id", "decision", "rationale"]
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "social_post",
-              description: "Post content to connected social media accounts (TikTok, Instagram, YouTube, LinkedIn, Facebook, X, Threads, Pinterest, and more). This is NEXUS's domain — content creation and growth. ALWAYS confirm with the owner before posting. You can also schedule posts for later. Include the content, target platforms, and optionally a scheduled date.",
-              parameters: {
-                type: "object",
-                properties: {
-                  content_type: { type: "string", enum: ["text", "photos", "video", "document"], description: "The type of content to post." },
-                  title: { type: "string", description: "Post title/caption (for text posts, this is the content)." },
-                  description: { type: "string", description: "Additional description or body text." },
-                  platforms: { type: "array", items: { type: "string" }, description: "Target platforms: tiktok, instagram, youtube, linkedin, facebook, x, threads, pinterest, reddit, bluesky." },
-                  media_url: { type: "string", description: "Public URL of the video or photo to post (for video/photo posts)." },
-                  photos: { type: "array", items: { type: "string" }, description: "Array of photo URLs (for photo posts)." },
-                  scheduled_date: { type: "string", description: "ISO date to schedule the post for later (optional)." },
-                  profile: { type: "string", description: "The Upload-Post profile username to post from." },
-                  confirm: { type: "boolean", description: "Set true only after the operator approves posting on the rendered card. Never set it in the same reply that proposes it." }
-                },
-                required: ["content_type", "title", "platforms", "profile"]
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "social_analytics",
-              description: "Read cross-platform social media analytics — followers, views, impressions, reach, per-post metrics, and audience insights. NEXUS and ZION use this for growth strategy.",
-              parameters: {
-                type: "object",
-                properties: {
-                  platforms: { type: "array", items: { type: "string" }, description: "Platforms to query." },
-                  profile: { type: "string", description: "The Upload-Post profile username." },
-                  detail: { type: "string", enum: ["overview", "posts", "audience"], description: "Level of detail: account overview, per-post metrics, or audience insights." }
-                },
-                required: ["profile"]
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "social_accounts",
-              description: "List connected social media accounts across all platforms. Shows which platforms are connected, account handles, and connection status.",
-              parameters: {
-                type: "object",
-                properties: {}
               }
             }
           },
@@ -8354,10 +8329,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // should read belongs to whoever owns that surface. The hole is closed at the only place
           // that decides whether an action runs; the tidying is somebody's deliberate call, not a
           // side-effect of this merge.
-          const classForClamp = classifyAction(tc.function.name);
-          if (autoMode === "auto" && (classForClamp === "high" || classForClamp === "owner_only")) {
-            console.warn("[paige] autonomy clamped by action class", JSON.stringify({ tool: tc.function.name, from: "auto", to: "confirm", risk: classForClamp }));
-            autoMode = "confirm";
+          // The action-class clamp, via the shared `clampLaneByRisk` helper (§18 one home) — the SAME
+          // rule the capability manifest resolves its effective lane through, so the "what can you do"
+          // answer and what actually runs can never diverge (the §39 over-claim fix).
+          const clampedMode = clampLaneByRisk(autoMode as "auto" | "confirm" | "off", tc.function.name);
+          if (clampedMode !== autoMode) {
+            console.warn("[paige] autonomy clamped by action class", JSON.stringify({ tool: tc.function.name, from: autoMode, to: clampedMode, risk: classifyAction(tc.function.name) }));
+            autoMode = clampedMode;
           }
 
           if (autoMode === "off") {
@@ -11312,28 +11290,20 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               if (error) throw error;
               result = { success: true, ...(data as any) };
             } else if (tc.function.name === "social_post" || tc.function.name === "social_analytics" || tc.function.name === "social_accounts") {
-              // NEXUS's social media operations (Upload-Post API). Post = confirm-first.
-              const { data: roleRows } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
-              const roles = (roleRows || []).map((r: any) => r.role);
-              if (!(roles.includes("admin") || roles.includes("coach"))) {
-                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Social media operations are restricted to admins and coaches." }) });
-                continue;
-              }
-              const socialTenant = personaCtx?.tenant_id ?? null;
-              const socialUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/paige-social`;
-              const socialBody = tc.function.name === "social_post"
-                ? { action: "post", tenant_id: socialTenant, ...args }
-                : tc.function.name === "social_analytics"
-                  ? { action: args.detail === "posts" ? "post_analytics" : args.detail === "audience" ? "audience" : "analytics", tenant_id: socialTenant, ...args }
-                  : { action: "accounts", tenant_id: socialTenant };
-              const socialRes = await fetch(socialUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseServiceKey}`, apikey: supabaseServiceKey },
-                body: JSON.stringify(socialBody),
+              // Phase 0 containment. These legacy names are deliberately absent from the model's
+              // tool definitions. If a stale/forged tool call nevertheless reaches dispatch,
+              // fail closed before role lookup, tenant handling, credentials, or provider I/O.
+              toolResults.push({
+                tool_call_id: tc.id,
+                role: "tool",
+                content: JSON.stringify({
+                  success: false,
+                  code: "social_capability_unavailable",
+                  availability: "unavailable",
+                  error: "Social provider connections, publishing, scheduling, and analytics are not available for this workspace yet. No Social provider action was attempted.",
+                }),
               });
-              const socialText = await socialRes.text();
-              let socialPayload: any; try { socialPayload = JSON.parse(socialText); } catch { socialPayload = { raw: socialText }; }
-              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(socialPayload) });
+              continue;
             } else if (tc.function.name === "integrations_list") {
               // The integrations read verb (spine: integrations.list). Caller-scoped.
               const { data, error } = await supabaseClient.rpc("list_integration_surface");
