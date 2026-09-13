@@ -134,7 +134,11 @@ serve(async (req: Request) => {
         credits: await (async () => {
           // The billing read self-heals the month (lazy mint) and carries the
           // notices the Vibe surface needs — one RPC, the same truth Billing sees.
-          const { data, error } = await admin.rpc("get_workspace_media_usage");
+          // Called with the CALLER's client: get_workspace_media_usage is R22
+          // owner-only keyed on auth.uid(), so a service-role call reads as
+          // owner_only by design (the same reason the Billing hook calls it
+          // from the user's session).
+          const { data, error } = await authed.rpc("get_workspace_media_usage");
           if (error) return { readable: false, reason: error.message?.slice(0, 120) ?? "read failed" };
           const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
           if (!row || row.usage_state !== "ok") return { readable: false, reason: "usage_unavailable" };
