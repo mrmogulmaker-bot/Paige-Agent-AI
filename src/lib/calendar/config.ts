@@ -125,7 +125,7 @@ export interface CalendarRow {
   // publish, kept across pause — so a paused preset (enabled=false, published_at
   // set) is distinguishable from a never-published draft. `enabled` stays the
   // authoritative bookability gate; this only labels the lifecycle. See
-  // 20270129000000_calendar_booking_preset_lifecycle.sql.
+  // 20270130000000_calendar_booking_preset_lifecycle.sql.
   published_at: string | null;
   group_id: string | null;
   created_by: string | null;
@@ -686,7 +686,7 @@ export function bookingUrl(slug: string): string {
  * `enabled` (the authoritative bookability gate the /book/:slug resolver reads)
  * and `published_at` (whether it has ever been published). Never a third stored
  * status, so no two columns can disagree (§57). Mirrors the SQL in
- * 20270129000000_calendar_booking_preset_lifecycle.sql.
+ * 20270130000000_calendar_booking_preset_lifecycle.sql.
  */
 export type PresetLifecycle = "draft" | "live" | "paused";
 

@@ -1,6 +1,6 @@
 # Booking-preset lifecycle — server-seam proof (§32)
 
-A faithful local-Postgres replay of migration `20270129000000_calendar_booking_preset_lifecycle.sql`
+A faithful local-Postgres replay of migration `20270130000000_calendar_booking_preset_lifecycle.sql`
 against the real `calendars`/`calendar_hosts` DDL (+ CHECK constraints) and verbatim authority helpers.
 Prod MCP is permission-denied from the build session, so this is the pre-merge behavioral proof; prod
 persisted-apply is owed via `deploy-migrations.yml` on eventual merge.
@@ -8,7 +8,7 @@ persisted-apply is owed via `deploy-migrations.yml` on eventual merge.
 ## Run
 ```
 createdb presettest
-cat harness.sql ../../../../supabase/migrations/20270129000000_calendar_booking_preset_lifecycle.sql assertions.sql \
+cat harness.sql ../../../../supabase/migrations/20270130000000_calendar_booking_preset_lifecycle.sql assertions.sql \
   | psql -v ON_ERROR_STOP=1 -d presettest
 ```
 Expect: `==== ALL PRESET-LIFECYCLE ASSERTIONS PASSED ====`, 41 PASS, 0 fail, exit 0.

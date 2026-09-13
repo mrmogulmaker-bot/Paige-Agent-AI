@@ -429,7 +429,7 @@ async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string
   // preset both carry enabled=false, so both are refused here — an unauthenticated
   // visitor can never resolve a preset its owner has not explicitly published.
   // (Publish is the only seam that sets enabled=true; see
-  // 20270129000000_calendar_booking_preset_lifecycle.sql / publish_calendar_preset.)
+  // 20270130000000_calendar_booking_preset_lifecycle.sql / publish_calendar_preset.)
   if (!cal || cal.enabled !== true) return null;
   // Load the FULL host pool (priority-ordered). Single-host calendars book the
   // primary; round-robin/collective calendars use the whole pool.

@@ -91,7 +91,7 @@ Recorded, not started. None of these are in-scope for a Calendar hotfix.
   booking, reschedule, cancellation or reminder.
   **PARTIAL (2026-09-13, DRAFT — pre-merge, branch `claude/busy-archimedes-bsvrdi`):** the booking-
   PRESET-config slice of this contract is built and proven — `create_/update_/publish_/pause_calendar_preset`
-  (migration `20270127000000`), SECURITY DEFINER with §59 in-body caller scope, tenant-authorized,
+  (migration `20270130000000`), SECURITY DEFINER with §59 in-body caller scope, tenant-authorized,
   fail-closed, publish server-revalidated. It is the ONE server-authorized path both the Settings UI
   and Paige's (handed-off) chat capability use. This covers **preset configuration** writes only; the
   broader FU-2 for a Paige-initiated **booking/reschedule/cancellation/reminder** remains owed. Not

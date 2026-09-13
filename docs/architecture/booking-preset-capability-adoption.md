@@ -7,7 +7,7 @@ Chat infrastructure (owner ruling 2026-09-13; §10, §18).
 
 ## What is already shipped (the shared server seam — the thing both UI and Paige call)
 
-Migration `20270129000000_calendar_booking_preset_lifecycle.sql` — five `SECURITY DEFINER` RPCs,
+Migration `20270130000000_calendar_booking_preset_lifecycle.sql` — five `SECURITY DEFINER` RPCs,
 `REVOKE`d from anon, `GRANT`ed to `authenticated` + `service_role`, each with §59 in-body caller
 scope (an authenticated caller must satisfy `can_manage_calendar` / tenant membership; a service-role
 caller is trusted only for the tenant it names). Proven by a local-Postgres replay of 17 assertion
