@@ -2369,7 +2369,7 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
   - **v1.2 — code_anchors accountability (2026-09-13, docs + CI-guard only):** a new `field_schema.code_anchors`
     contract makes every runtime-claiming provider (LIVE/PARTIAL/PROOF_OWED) cite the REAL adapter/entry-point
     code that backs it ({path, role, note?}); unbuilt providers (UNAVAILABLE/DEFERRED/PROPOSED) stay unanchored.
-    Backfilled on all 16 runtime-claiming providers (52 anchors, each verified to exist on disk), with two §13
+    Backfilled on all 16 runtime-claiming providers (51 anchors, each verified to exist on disk), with two §13
     escalations preserved in-anchor — **meta** is contained to HTTP 503 (all four anchors `fail_closed_containment`,
     NOT LIVE) and **google-workspace** has only Calendar OAuth, no Drive/Docs adapter. `role` is a controlled,
     lint-enforced vocabulary (`provider_adapter`/`callback_readback`/`fail_closed_containment`/`proven_runtime`);
