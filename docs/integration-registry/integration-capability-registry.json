@@ -671,6 +671,10 @@
         "next_owner": "Growth/Social workstream",
         "next_slice": "Authenticated owner connection and disconnect proof after deployment; public posting remains a separate approval boundary."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/_shared/social-provider/upload-post.ts", "role": "provider_adapter", "note": "the Upload-Post provider adapter (api.upload-post.com/api/uploadposts) behind Paige's provider-neutral Social connection seam; reachable (imported by paige-social + paige-social-callback), fail-closed on a missing key." },
+        { "path": "supabase/functions/paige-social-callback/index.ts", "role": "callback_readback", "note": "Upload-Post hosted-OAuth connection callback: completes owner consent and reads back the tenant-scoped account profile via uploadPostSocialAdapter. PROOF_OWED — authenticated end-to-end runtime proof not yet attached." }
+      ],
       "sources": ["supabase/functions/_shared/social-provider/upload-post.ts", "supabase/functions/paige-social/index.ts", "supabase/functions/paige-social-callback/index.ts", "supabase/migrations/20270127000000_social_connection_lifecycle.sql", "https://docs.upload-post.com/guides/user-profile-integration/", "https://docs.upload-post.com/api/user-profiles/"]
     },
     {
