@@ -124,11 +124,14 @@ Deno.serve(async (req) => {
 
     // ── AUTHORIZE — the §9/§53/§59 authority decision, BEFORE any run insert or provider contact ────
     // The authority is resolved against the BUSINESS'S own tenant (`biz.tenant_id`): a person must be a
-    // platform owner (super_admin), an owner/admin of that tenant, or an agency operator managing it;
-    // a trusted service-role caller (`system`) is allowed. A denied person NEVER creates a run row and
-    // NEVER contacts a provider (no budget burned). See the adapter header for why a coach may not
-    // verify, and why this door records the `high` risk class but deliberately does not run the seam's
-    // autonomy/propose gate (§67 — the caller-initiated vs Paige-autonomous distinction).
+    // platform owner (super_admin), able to READ the business under RLS via their own JWT (the surface's
+    // OWN `businesses_tenant_staff_select` authority — owner_user_id or same-active-tenant staff of any
+    // staff app_role), or an agency operator managing it; a trusted service-role caller (`system`) is
+    // allowed. A denied person NEVER creates a run row and NEVER contacts a provider (no budget burned).
+    // See the adapter header for why authority mirrors the RLS read (so no same-tenant staffer who can
+    // reach the card is silently 403'd — §58/§70) while the autonomy/budget clamp for this `high` paid
+    // act is deliberately deferred UPSTREAM (§67 — the caller-initiated vs Paige-autonomous distinction),
+    // and why this door records the `high` risk class but does not run the seam's autonomy/propose gate.
     const startedAtMs = Date.now();
     const businessTenantId = (biz.tenant_id ?? null) as string | null;
 
@@ -149,12 +152,27 @@ Deno.serve(async (req) => {
         }
         return data === true;
       },
-      // owner/admin of the BUSINESS'S tenant, JWT-derived (is_tenant_admin keys on auth.uid() +
-      // tenant_members for the passed tenant, role IN ('owner','admin')). A role held for another
-      // tenant never authorizes here (§53/§59 global-role trap avoided).
-      callerIsTenantAdmin: async (tenantId) => {
-        const { data } = await authClient.rpc("is_tenant_admin", { _tenant: tenantId });
-        return data === true;
+      // SAME-TENANT authority == the surface's OWN read gate: can the caller SELECT this business under
+      // RLS, read through the caller's JWT client (`authClient`, anon key + the caller's bearer)? True ⟺
+      // the `businesses_tenant_staff_select` policy admits them (platform owner, the business's
+      // owner_user_id, or same-active-tenant staff of ANY staff app_role: admin/coach/sales_rep/cs_rep/
+      // finance/viewer). Mirroring the policy — rather than re-deriving a narrower tenant_members.role
+      // gate that would 403 a same-tenant sales_rep/cs_rep/finance/viewer (§58/§70) — makes "can reach
+      // the card" ⟺ "can verify," and closes the IDOR (a cross-tenant caller reads nothing). MUST be the
+      // JWT client, NEVER the service-role `admin` (which bypasses RLS and would re-open the hole). A
+      // read error fails closed (null → not authorized), never a silent allow (§13/§32).
+      callerCanReadBusiness: async () => {
+        if (!callerUserId) return false;
+        const { data, error } = await authClient
+          .from("businesses")
+          .select("id")
+          .eq("id", business_id)
+          .maybeSingle();
+        if (error) {
+          console.error("business-verifier RLS read-authority check failed", error.message ?? String(error));
+          return false;
+        }
+        return Boolean(data);
       },
       // agency DELEGATION over the business's tenant. agency_can_manage_child is SECURITY DEFINER,
       // granted to service_role; called with the explicit (child, actor) overload since the service

@@ -33,19 +33,23 @@
  *     workspace BEFORE dispatching, and paige-mcp is a separate governed-adoption target), OR
  *   - the caller is a PLATFORM OWNER (`is_platform_owner()` — super_admin ONLY per §53 — the one
  *     sanctioned cross-tenant caller, JWT-derived, never a body field), OR
- *   - the caller is an owner/admin of the BUSINESS'S OWN tenant (`is_tenant_admin(businessTenantId)`,
- *     JWT-derived via `auth.uid()`), OR — when they hold no direct role — an agency operator who
- *     MANAGES that tenant as a child (`agency_can_manage_child(businessTenantId, caller)`).
- * It FAILS CLOSED: a person whose business has no resolvable tenant, or who holds none of the above,
- * is denied and nothing runs.
+ *   - the caller CAN READ THE BUSINESS UNDER RLS through their own JWT — i.e. the surface's own
+ *     `businesses_tenant_staff_select` authority: the business's `owner_user_id`, or same-active-tenant
+ *     staff of any staff app_role (admin/coach/sales_rep/cs_rep/finance/viewer) — OR, when the RLS read
+ *     does not authorize them, an agency operator who MANAGES that tenant as a child
+ *     (`agency_can_manage_child(businessTenantId, caller)`).
+ * It FAILS CLOSED: a person whose business has no resolvable tenant (except a platform owner), or who
+ * cannot read the business and does not agency-manage its tenant, is denied and nothing runs.
  *
- * WHY THE TENANT BOND IS IMPLICIT (and simpler than write-back's). Write-back checks authority against
- * the caller's ACTIVE workspace and then separately proves the target shares it. Here the authority is
- * resolved DIRECTLY against the BUSINESS'S own tenant (`businesses.tenant_id`): if the caller is
- * owner/admin of — or agency-manages — the business's tenant, then by definition the business belongs
- * to a workspace they control, so there is no separate "shares tenant" step to get wrong. A tenant-A
- * admin verifying a tenant-B business fails `is_tenant_admin(tenantB)` and `agency_can_manage_child`
- * for tenant B, and is denied — the IDOR, closed at the identity that matters.
+ * WHY MIRROR THE RLS READ (rather than re-derive a role gate). The Verify card is visible to exactly the
+ * callers `businesses_tenant_staff_select` admits. Re-deriving a narrower gate — e.g. `tenant_members.role
+ * IN (owner,admin,coach)` — SILENTLY 403s a legitimate same-tenant `sales_rep`/`cs_rep`/`finance`/`viewer`
+ * staffer, because `map_app_role_to_tenant_role` maps every staff app_role except admin/coach to the
+ * `member` tenant_role while the RLS SELECT still admits them (a §58/§70 capability removal). Resolving
+ * authority by reading the business through the caller's JWT uses the surface's OWN policy verbatim, so
+ * "can reach the card" ⟺ "can verify," and it can never drift. A tenant-A staffer verifying a tenant-B
+ * business reads NOTHING under RLS (`tenant_id = current_user_tenant_id()` fails) and fails
+ * `agency_can_manage_child` for tenant B, and is denied — the IDOR, closed at the surface's own contract.
  *
  * THE ACTOR IS THE JWT, NEVER THE BODY. `triggered_by` is kept ONLY as a provenance LABEL on the
  * run/audit ("admin" / "mcp" / "skill"); it never establishes who acted or whether they may. The
@@ -53,19 +57,23 @@
  * principal. A forged `triggered_by` is inert.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────────
- * WHY A COACH MAY NOT VERIFY — the one deliberate scope decision (§13, stated so it is not silent)
+ * WHY SAME-TENANT AUTHORITY == THE SURFACE'S RLS READ, not a re-derived role gate (§13/§58/§67)
  * ─────────────────────────────────────────────────────────────────────────────────────────────────
- * A `businesses` row is a TENANT-LEVEL record (keyed by `tenant_id` + `owner_user_id`), NOT a
- * client-assigned artifact — there is no `coach_clients` bond that scopes a business to a coach the
- * way write-back's `update_client_data` scopes a client record to an assigned coach. And
- * `business_verify` is classified `high` precisely because it "sends a company's details to outside
- * registries and scrapers" and auto-activates PAID adapters (real budget). A workspace-level spend +
- * external-disclosure action's natural gate is owner/admin authority, so the person gate is
- * `is_tenant_admin` (owner/admin) + agency-manager + platform-owner. Admitting "any coach of the
- * tenant" would be BROADER than write-back's coach path (which required a specific assignment) for a
- * money-spending act — the wrong direction. This is a TIGHTENING of a previously-ungoverned endpoint,
- * not the removal of a scoped capability (§58): verification remains fully available to the admin/owner
- * who owns the workspace. Widening to `coach` later is a one-line additive change if the owner wants it.
+ * The bypass this slice closes is the CROSS-TENANT IDOR: any authenticated user of any tenant could
+ * verify any business. The minimal, §58-clean close scopes authority to the business's own tenant
+ * WITHOUT removing anyone who could already verify. The Verify card (`/admin` ContactDetail →
+ * BusinessTabPanel) is visible to exactly the callers the `businesses_tenant_staff_select` RLS admits:
+ * platform owner, the business's `owner_user_id`, and same-active-tenant staff of ANY staff app_role
+ * (admin/coach/sales_rep/cs_rep/finance/viewer). A tempting narrower gate — `tenant_members.role IN
+ * (owner,admin,coach)` — is WRONG: `map_app_role_to_tenant_role` maps every staff app_role except
+ * admin/coach to `member`, so a same-tenant `sales_rep`/`cs_rep`/`finance`/`viewer` who can see the card
+ * would newly 403 (a §58/§70 removal + a visible-flow regression). So authority is resolved by the
+ * surface's OWN policy — can the caller SELECT the business under RLS via their JWT — plus agency-manager
+ * and platform-owner. `business_verify` IS `high`/paid, but WHO MAY SPEND that budget (and whether a
+ * given role or an unattended loop should) is the AUTONOMY/BUDGET dimension — deferred UPSTREAM to the
+ * §67 governed-adoption of the initiators (see below), not solved by excluding a role at the AUTHORITY
+ * layer. Narrowing WHICH roles may spend later is a deliberate product decision + a §58-flagged visible
+ * change for the owner to make, not one to bundle into a security-IDOR close.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────────
  * WHY THIS DOOR DOES NOT RUN THE AUTONOMY / PROPOSE GATE (§67, deliberately deferred — not skipped)
@@ -106,7 +114,7 @@ export type BusinessVerifyPrincipal = "person" | "system";
 export type BusinessVerifyAuthzBasis =
   | "system"
   | "platform_owner"
-  | "same_tenant_admin"
+  | "tenant_authorized"
   | "agency_manager"
   | "denied";
 
@@ -128,18 +136,31 @@ export type BusinessVerifyAuthz = {
  * ADAPTER OBLIGATIONS (identical in spirit to the write-back door):
  *   - `isPlatformOwner` — `is_platform_owner()` (super_admin ONLY, §53) derived from the VERIFIED JWT
  *     (`auth.uid()`) via the caller's token client, never a request body. The one sanctioned
- *     cross-tenant caller.
- *   - `callerIsTenantAdmin` — `is_tenant_admin(businessTenantId)` derived from the VERIFIED JWT: is the
- *     caller an owner/admin of the BUSINESS'S OWN tenant? This is the authority source — a role held for
- *     some OTHER tenant never authorizes verification here (the §53/§59 global-role trap avoided by
- *     keying the check on the business's tenant).
+ *     cross-tenant caller, and the ONLY caller who may verify a legacy business with no tenant attached.
+ *   - `callerCanReadBusiness` — the SAME authority the Verify surface itself uses: can THIS caller SELECT
+ *     THIS business under RLS, read through the caller's own JWT client? The `businesses` SELECT policy
+ *     (`businesses_tenant_staff_select`) is `is_platform_owner() OR owner_user_id = auth.uid() OR
+ *     (tenant_id = current_user_tenant_id() AND has a staff app_role: admin/coach/sales_rep/cs_rep/
+ *     finance/viewer)`. Mirroring it — rather than re-deriving a NARROWER `tenant_members.role` gate —
+ *     is what makes this fix faithful: EVERY staffer who can reach and see the Verify card can still
+ *     verify (no §58 capability removal), while a cross-tenant caller's RLS read returns nothing so they
+ *     are refused (the IDOR, closed at the surface's own contract). It ALSO closes the §53/§59 global-role
+ *     trap for free: the app_role check inside the RLS policy is tenant-scoped (`tenant_id =
+ *     current_user_tenant_id()`), so a role held for another tenant never reads a business here.
  *   - `callerManagesTenantViaAgency` — `agency_can_manage_child(businessTenantId, caller)`: an agency
- *     operator who manages the business's tenant as a child holds no direct membership row in it, yet
- *     legitimately controls it. Admin-equivalent delegated authority; a plain member does NOT manage it.
+ *     operator who manages the business's tenant as a child. An explicit fallback for the case the RLS
+ *     read may miss (an agency operator whose active tenant / staff app_role does not satisfy the policy
+ *     for the child); admin-equivalent delegated authority. A plain member does NOT manage it.
  */
 export type BusinessVerifyAuthzDeps = {
   isPlatformOwner: () => Promise<boolean>;
-  callerIsTenantAdmin: (businessTenantId: string) => Promise<boolean>;
+  /** Can the caller SELECT the target business under RLS, read via the caller's OWN JWT client? True ⟺
+   *  the caller is authorized by the surface's own `businesses_tenant_staff_select` policy (platform
+   *  owner, the business's `owner_user_id`, or same-active-tenant staff of any staff app_role). This IS
+   *  the faithful same-tenant authority — it can never drift from what the Verify card actually shows,
+   *  and never re-derives a narrower role gate. Never a service-role read (that bypasses RLS and would
+   *  re-open the IDOR); never the request body. */
+  callerCanReadBusiness: () => Promise<boolean>;
   callerManagesTenantViaAgency: (businessTenantId: string) => Promise<boolean>;
 };
 
@@ -197,14 +218,20 @@ export async function authorizeBusinessVerify(
     };
   }
 
-  // OWNER/ADMIN of the business's tenant (JWT-derived, tenant-scoped). Owner/admin only — a coach/member
-  // is NOT sufficient for this `high` spend + external-disclosure act (see the header rationale).
-  if (await deps.callerIsTenantAdmin(businessTenantId)) {
-    return { allowed: true, reason: "same-tenant admin", tenantId: businessTenantId, basis: "same_tenant_admin" };
+  // SAME-TENANT STAFF — resolved by the surface's OWN authority: can the caller SELECT this business
+  // under RLS (read through the caller's JWT)? True ⟺ the caller is platform owner, the business's
+  // `owner_user_id`, or same-active-tenant staff of ANY staff app_role (admin/coach/sales_rep/cs_rep/
+  // finance/viewer) — exactly whom the Verify card is visible to. This closes the cross-tenant IDOR (a
+  // caller in another tenant reads nothing → refused) WITHOUT removing any staffer who could verify
+  // before (§58); who may SPEND the paid verification is the autonomy/budget dimension, deferred
+  // upstream (§67), not a role exclusion at the authority layer.
+  if (await deps.callerCanReadBusiness()) {
+    return { allowed: true, reason: "authorized in this workspace", tenantId: businessTenantId, basis: "tenant_authorized" };
   }
 
-  // AGENCY DELEGATION — an agency operator managing the business's tenant as a child. Consulted only
-  // when there is no direct admin role, and admin-equivalent authority over that child.
+  // AGENCY DELEGATION — an agency operator managing the business's tenant as a child. Consulted when the
+  // RLS read did not authorize the caller (e.g. an agency operator whose active tenant / staff app_role
+  // does not satisfy the child's policy); admin-equivalent authority over that child.
   if (await deps.callerManagesTenantViaAgency(businessTenantId)) {
     return { allowed: true, reason: "agency manager", tenantId: businessTenantId, basis: "agency_manager" };
   }

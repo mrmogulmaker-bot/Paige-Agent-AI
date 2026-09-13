@@ -8,17 +8,21 @@
  *     `classifyAction`.
  *
  * WHAT THIS PROVES (the acceptance matrix):
- *   platform owner (super_admin) → allowed · same-tenant owner/admin → allowed · agency manager →
- *   allowed · CROSS-TENANT person → DENIED (the IDOR) · non-admin person (coach/member) → DENIED (the
- *   deliberate "a coach may not verify" scope decision — a `high` spend act) · unresolved business
- *   tenant → fail closed (except a platform owner) · a service-role `system` caller → allowed
- *   (skill-runner / paige-mcp) · the ACTOR is never taken from the body (a forged `triggered_by` is a
- *   provenance label only and never grants authority) · `business_verify` is classified `high` and the
- *   class is recorded on every audit row even though the seam's autonomy gate is deliberately not run.
+ *   platform owner (super_admin) → allowed (basis `platform_owner`) · a caller who can READ the business
+ *   under RLS → allowed (basis `tenant_authorized` — the surface's own `businesses_tenant_staff_select`
+ *   authority: the business's owner_user_id or same-active-tenant staff of ANY staff app_role
+ *   admin/coach/sales_rep/cs_rep/finance/viewer; mirroring the read gate is what stops a same-tenant
+ *   sales_rep/cs_rep/finance/viewer from being silently 403'd, §58/§70) · agency manager → allowed ·
+ *   CROSS-TENANT / non-staff person who cannot read the business and does not agency-manage its tenant →
+ *   DENIED (the IDOR, closed at the surface's own contract) · unresolved business tenant → fail closed
+ *   (except a platform owner) · a service-role `system` caller → allowed (skill-runner / paige-mcp) ·
+ *   the ACTOR is never taken from the body (a forged `triggered_by` is a provenance label only and never
+ *   grants authority) · `business_verify` is classified `high` and the class is recorded on every audit
+ *   row even though the seam's autonomy gate is deliberately not run.
  *
  * WHAT IT DOES NOT PROVE (§13/§32): the authenticated runtime against the deployed function, and the
- * JWT→identity / service-key detection inside `business-verifier/index.ts` (Deno, not importable here)
- * — a separate evidence class, owed to a live drive, not claimed here.
+ * JWT→identity / service-key detection + the JWT-scoped RLS read inside `business-verifier/index.ts`
+ * (Deno, not importable here) — a separate evidence class, owed to a live drive, not claimed here.
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -34,15 +38,17 @@ import {
 
 type Scenario = {
   platformOwner?: boolean;
-  /** is_tenant_admin(businessTenantId) — owner/admin of the BUSINESS'S tenant. */
-  tenantAdmin?: boolean;
+  /** callerCanReadBusiness() — can the caller SELECT the target business under RLS via their OWN JWT?
+   *  True ⟺ the surface's `businesses_tenant_staff_select` policy admits them (owner_user_id, or
+   *  same-active-tenant staff of any staff app_role). A cross-tenant / non-staff caller reads nothing. */
+  canReadBusiness?: boolean;
   /** agency_can_manage_child(businessTenantId, caller) — agency delegation over the business's tenant. */
   agencyManages?: boolean;
 };
 
 const deps = (s: Scenario): BusinessVerifyAuthzDeps => ({
   isPlatformOwner: async () => !!s.platformOwner,
-  callerIsTenantAdmin: async () => !!s.tenantAdmin,
+  callerCanReadBusiness: async () => !!s.canReadBusiness,
   callerManagesTenantViaAgency: async () => !!s.agencyManages,
 });
 
@@ -70,39 +76,43 @@ describe("authorizeBusinessVerify — the cross-tenant verification IDOR matrix"
     expect(a.tenantId).toBeNull();
   });
 
-  it("a SAME-TENANT owner/admin (of the BUSINESS'S tenant) is allowed", async () => {
-    const a = await authorize({ tenantAdmin: true }, person("admin-A", "tenant-A"));
+  it("a caller who can READ the business under RLS is allowed (the surface's own staff authority)", async () => {
+    // callerCanReadBusiness() true ⟺ businesses_tenant_staff_select admits them: owner_user_id, or
+    // same-active-tenant staff of ANY staff app_role (admin/coach/sales_rep/cs_rep/finance/viewer).
+    // Mirroring the read gate is what keeps a same-tenant sales_rep/finance/viewer from a §58/§70 403.
+    const a = await authorize({ canReadBusiness: true }, person("staff-A", "tenant-A"));
     expect(a.allowed).toBe(true);
-    expect(a.basis).toBe("same_tenant_admin");
+    expect(a.basis).toBe("tenant_authorized");
     expect(a.tenantId).toBe("tenant-A");
   });
 
-  it("an AGENCY MANAGER of the business's tenant (no direct membership row) is allowed", async () => {
-    const a = await authorize({ tenantAdmin: false, agencyManages: true }, person("agency-op", "child-C"));
+  it("an AGENCY MANAGER of the business's tenant (RLS read did not authorize) is allowed", async () => {
+    const a = await authorize({ canReadBusiness: false, agencyManages: true }, person("agency-op", "child-C"));
     expect(a.allowed).toBe(true);
     expect(a.basis).toBe("agency_manager");
     expect(a.tenantId).toBe("child-C");
   });
 
-  it("THE IDOR: a CROSS-TENANT person (not owner, not admin of the business's tenant, not agency mgr) is DENIED", async () => {
-    // A tenant-A admin acting on a tenant-B business: is_tenant_admin(tenant-B) is false, agency false.
-    const a = await authorize({ platformOwner: false, tenantAdmin: false, agencyManages: false }, person("admin-A", "tenant-B"));
+  it("THE IDOR: a CROSS-TENANT person who cannot read the business and is not an agency mgr is DENIED", async () => {
+    // A tenant-A staffer acting on a tenant-B business: the JWT RLS read returns nothing
+    // (tenant_id = current_user_tenant_id() fails), agency false. Denied — the hole, closed.
+    const a = await authorize({ platformOwner: false, canReadBusiness: false, agencyManages: false }, person("admin-A", "tenant-B"));
     expect(a.allowed).toBe(false);
     expect(a.basis).toBe("denied");
     expect(a.reason).toMatch(/not authorized/i);
     expect(a.tenantId).toBe("tenant-B");
   });
 
-  it("A COACH/MEMBER of the business's tenant is DENIED (the deliberate scope decision — a `high` spend act)", async () => {
-    // is_tenant_admin is owner/admin ONLY, so a coach/member of the tenant resolves false here, and does
-    // not manage it via agency. Denied — verification is admin/owner authority.
-    const a = await authorize({ tenantAdmin: false, agencyManages: false }, person("coach-A", "tenant-A"));
+  it("a non-staff person who cannot read the business is DENIED (they never saw the card)", async () => {
+    // A plain member with no staff app_role reads nothing under businesses_tenant_staff_select, so
+    // callerCanReadBusiness is false and, without agency management, they are denied.
+    const a = await authorize({ canReadBusiness: false, agencyManages: false }, person("member-A", "tenant-A"));
     expect(a.allowed).toBe(false);
     expect(a.basis).toBe("denied");
   });
 
-  it("a person whose business has NO resolvable tenant is DENIED (fail closed)", async () => {
-    const a = await authorize({ tenantAdmin: true, agencyManages: true }, person("admin-A", null));
+  it("a person whose business has NO resolvable tenant is DENIED (fail closed), even if agency-mgr", async () => {
+    const a = await authorize({ canReadBusiness: true, agencyManages: true }, person("staff-A", null));
     expect(a.allowed).toBe(false);
     expect(a.basis).toBe("denied");
     expect(a.reason).toMatch(/not attached to a workspace/i);
@@ -119,7 +129,7 @@ describe("authorizeBusinessVerify — the cross-tenant verification IDOR matrix"
     // The deps must NOT be consulted for a system caller; prove it by throwing from every dep.
     const throwingDeps: BusinessVerifyAuthzDeps = {
       isPlatformOwner: async () => { throw new Error("must not be called for system"); },
-      callerIsTenantAdmin: async () => { throw new Error("must not be called for system"); },
+      callerCanReadBusiness: async () => { throw new Error("must not be called for system"); },
       callerManagesTenantViaAgency: async () => { throw new Error("must not be called for system"); },
     };
     const a = await authorizeBusinessVerify(throwingDeps, { principal: "system", callerUserId: null, businessTenantId: null });
@@ -131,10 +141,10 @@ describe("authorizeBusinessVerify — the cross-tenant verification IDOR matrix"
 // ── the actor is the JWT, never the body ─────────────────────────────────────────────────────────
 
 describe("the ACTOR is never taken from the body", () => {
-  it("a forged `triggered_by` cannot grant authority — a non-admin person is still DENIED", async () => {
-    // The adapter takes NO `triggered_by`; authority is principal + resolved role only. The audit
+  it("a forged `triggered_by` cannot grant authority — a non-authorized person is still DENIED", async () => {
+    // The adapter takes NO `triggered_by`; authority is principal + resolved read/agency only. The audit
     // records the label as provenance, and the decision is `refuse`.
-    const authz = await authorize({ tenantAdmin: false, agencyManages: false }, person("member-A", "tenant-A"));
+    const authz = await authorize({ canReadBusiness: false, agencyManages: false }, person("member-A", "tenant-A"));
     expect(authz.allowed).toBe(false);
     const audit = buildBusinessVerifyAudit({
       principal: "person",
@@ -159,10 +169,10 @@ describe("buildBusinessVerifyAudit + businessVerifyGovernedAuditRow — the rece
   it("records the `high` risk class honestly even though the seam's autonomy gate is not run", () => {
     const audit = buildBusinessVerifyAudit({
       principal: "person",
-      userId: "admin-A",
+      userId: "staff-A",
       businessId: "biz-1",
       tenantId: "tenant-A",
-      authzBasis: "same_tenant_admin",
+      authzBasis: "tenant_authorized",
       allowed: true,
       source: "admin",
       startedAtMs: Date.now(),
@@ -177,10 +187,10 @@ describe("buildBusinessVerifyAudit + businessVerifyGovernedAuditRow — the rece
   it("an ALLOW row carries the tenant on the column, business_id in the payload, and target_id null", () => {
     const audit = buildBusinessVerifyAudit({
       principal: "person",
-      userId: "admin-A",
+      userId: "staff-A",
       businessId: "biz-1",
       tenantId: "tenant-A",
-      authzBasis: "same_tenant_admin",
+      authzBasis: "tenant_authorized",
       allowed: true,
       source: "admin",
       startedAtMs: Date.now(),
@@ -192,7 +202,7 @@ describe("buildBusinessVerifyAudit + businessVerifyGovernedAuditRow — the rece
     expect(row.target_type).toBe("business_verify");
     expect(row.target_id).toBeNull();
     expect(row.payload.business_id).toBe("biz-1");
-    expect(row.payload.authz_basis).toBe("same_tenant_admin");
+    expect(row.payload.authz_basis).toBe("tenant_authorized");
     expect(row.payload.source).toBe("admin"); // provenance only
     expect(row.payload.risk).toBe("high");
     // Honest scope of enforcement (§13): AUTHORITY is enforced here; the autonomy/budget clamp for
