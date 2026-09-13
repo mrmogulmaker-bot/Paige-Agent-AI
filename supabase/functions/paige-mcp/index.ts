@@ -3555,6 +3555,17 @@ mcp.tool("verify_business", {
     "Run business verification for a `business_id` — scrapes Secretary of State portals (10 states), OpenCorporates, and SEC EDGAR via the `business-verifier` agent and writes a `business_verifications` record with a composite_score 0–100 + per-source mismatch flags. Paid adapters (D&B, LexisNexis, TransUnion, Array) auto-activate when their secrets land. Convenience wrapper around the verification sub-agent.",
   inputSchema: z.object({ business_id: z.string() }),
   handler: async ({ business_id }) => {
+    // §9 — the business MUST belong to the caller's resolved tenant before we dispatch. business-verifier
+    // treats a service-role bearer as a trusted `system` caller (tenant-scoping deferred to the dispatcher,
+    // exactly as skill-runner does at skill-runner/index.ts:787-791), so an unscoped body `business_id`
+    // here would be the cross-tenant verification IDOR reopened through this door — verifying any tenant's
+    // business and burning paid-adapter budget (D&B/LexisNexis/TransUnion/Array) against it. Scope it.
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const { data: ownedBiz, error: ownErr } = await admin
+      .from("businesses").select("id").eq("id", business_id).eq("tenant_id", tenantId).maybeSingle();
+    if (ownErr) return err(ownErr.message);
+    if (!ownedBiz) return err("business_not_found_in_your_workspace");
     const r = await fetch(`${SUPABASE_URL}/functions/v1/business-verifier`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE_KEY}`, apikey: SERVICE_ROLE_KEY },
