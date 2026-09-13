@@ -75,6 +75,8 @@ begin
      or length(_idempotency_key) > 200 then
     raise exception 'CRM_COMMAND_INVALID' using errcode = '22023';
   end if;
+  perform 1 from public.tenants tenant_row where tenant_row.id=v_tenant and tenant_row.status in ('trial','active','past_due') for update;
+  if not found then raise exception 'CRM_TENANT_SUSPENDED' using errcode='42501'; end if;
 
   select exists(
     select 1 from public.tenant_members tm
@@ -533,6 +535,7 @@ begin
         updated_at = clock_timestamp()
       where b.id = v_business.id returning * into v_business;
     elsif v_action = 'company.archive' then
+      if not v_is_admin then raise exception 'CRM_FORBIDDEN' using errcode = '42501'; end if;
       update public.businesses b set is_active = false, is_primary = false, updated_at = clock_timestamp()
        where b.id = v_business.id returning * into v_business;
       update public.clients c set primary_business_id = null, updated_at = clock_timestamp()
@@ -864,6 +867,8 @@ begin
   if coalesce(auth.jwt()->>'role','') <> 'service_role' or auth.uid() is not null then raise exception 'CRM_INTERNAL_EXECUTOR_REQUIRED' using errcode='42501'; end if;
   if _tenant_id is null or _actor_id is null or coalesce(pg_catalog.btrim(_preview_key),'')='' or pg_catalog.length(_preview_key)>200
     or pg_catalog.jsonb_typeof(_command)<>'object' then raise exception 'CRM_PREVIEW_INVALID' using errcode='22023'; end if;
+  perform 1 from public.tenants tenant_row where tenant_row.id=_tenant_id and tenant_row.status in ('trial','active','past_due') for update;
+  if not found then raise exception 'CRM_TENANT_SUSPENDED' using errcode='42501'; end if;
   select profile_row.active_tenant_id into active_tenant from public.profiles profile_row where profile_row.user_id=_actor_id for update;
   if not found or active_tenant is distinct from _tenant_id then raise exception 'CRM_ACTIVE_ACCOUNT_CHANGED' using errcode='42501'; end if;
   select tm.role into actor_role from public.tenant_members tm
@@ -905,6 +910,9 @@ begin
       if not found then raise exception 'CRM_CONTACT_NOT_FOUND' using errcode='P0002'; end if;
       if coalesce(_command->>'expected_loser_updated_at','')='' or c2.updated_at is distinct from (_command->>'expected_loser_updated_at')::timestamptz
         then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
+      if c1.linked_user_id is null and c2.linked_user_id is not null and not (coalesce(_command->'resolutions','{}'::jsonb) ? 'linked_user_id') then
+        raise exception 'CRM_MERGE_IDENTITY_RESOLUTION_REQUIRED' using errcode='22023';
+      end if;
       select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('field',x.field,'survivor',x.sv,'loser',x.lv,'resolution',coalesce(_command->'resolutions'->>x.field,case when x.sv is null and x.lv is not null then 'loser' else 'survivor' end)) order by x.field),'[]'::jsonb)
         into conflict_rows
         from (values
@@ -977,6 +985,8 @@ declare
 begin
   if coalesce(auth.jwt()->>'role','') <> 'service_role' or auth.uid() is not null then raise exception 'CRM_INTERNAL_EXECUTOR_REQUIRED' using errcode='42501'; end if;
   if _tenant_id is null or _actor_id is null or a is null or coalesce(pg_catalog.btrim(_idempotency_key),'')='' or pg_catalog.length(_idempotency_key)>200 or pg_catalog.jsonb_typeof(_command)<>'object' then raise exception 'CRM_COMMAND_INVALID' using errcode='22023'; end if;
+  perform 1 from public.tenants tenant_row where tenant_row.id=_tenant_id and tenant_row.status in ('trial','active','past_due') for update;
+  if not found then raise exception 'CRM_TENANT_SUSPENDED' using errcode='42501'; end if;
   select profile_row.active_tenant_id into v_active_tenant from public.profiles profile_row where profile_row.user_id=_actor_id for update;
   if not found or v_active_tenant is distinct from _tenant_id then raise exception 'CRM_ACTIVE_ACCOUNT_CHANGED' using errcode='42501'; end if;
   select tm.role into v_actor_role from public.tenant_members tm

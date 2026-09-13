@@ -40,6 +40,8 @@ describe("canonical CRM contact/company command", () => {
     expect(sql).toContain("tenant_tool_autonomy_serialize_writes");
     expect(sql).toContain("'tool-autonomy:'||_tenant_id::text||':'||v_capability");
     expect(sql).toContain("CRM_ACTIVE_ACCOUNT_CHANGED");
+    expect(sql).toContain("CRM_TENANT_SUSPENDED");
+    expect(sql).toContain("tenant_row.status in ('trial','active','past_due') for update");
     expect(sql).toContain("CRM_AUTHORITY_REQUIRED");
     expect(sql).toContain("CRM_AUTONOMY_REFUSED");
     expect(sql).toContain("CRM_APPROVAL_REQUIRED");
@@ -94,6 +96,8 @@ describe("canonical CRM contact/company command", () => {
     expect(sql).toContain("CRM_PREVIEW_INVALID_OR_EXPIRED");
     expect(sql).toContain("cached.consumed_at is not null and cached.result is not null");
     expect(sql).toContain("v_contact.merged_into_contact_id is not null");
+    expect(sql).toContain("CRM_MERGE_IDENTITY_RESOLUTION_REQUIRED");
+    expect(sql).toContain("if not v_is_admin then raise exception 'CRM_FORBIDDEN'");
     expect(sql).toMatch(/b\.is_active is true\s+for update/i);
     expect(sql).toContain("CRM_ABSENCE_READBACK_FAILED");
     expect(sql).toContain("left join public.clients target_client");
