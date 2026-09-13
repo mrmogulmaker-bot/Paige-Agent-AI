@@ -907,7 +907,6 @@ begin
     join pg_catalog.pg_attribute att on att.attrelid=con.conrelid and att.attnum=con.conkey[1]
     where con.contype='f' and con.confrelid='public.clients'::pg_catalog.regclass
       and pg_catalog.array_length(con.conkey,1)=1 and ns.nspname='public'
-      and not (rel.relname='clients' and att.attname='merged_into_contact_id')
     order by rel.relname,att.attname
   loop
     execute pg_catalog.format('select count(*) from %I.%I where %I=$1',d.schema_name,d.table_name,d.column_name)

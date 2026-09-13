@@ -1,6 +1,6 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(57);
+SELECT plan(59);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
@@ -163,6 +163,9 @@ SELECT is((SELECT result->>'outcome' FROM merge_result),'succeeded','preview-bou
 SELECT is((SELECT status FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c103'),'archived','merge archives the losing contact instead of erasing it');
 SELECT is((SELECT merged_into_contact_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c103'),'c7100000-0000-4000-8000-00000000c101'::uuid,'merge records the explicit survivor');
 SELECT is((SELECT count(*)::integer FROM public.paige_workspace_events WHERE capability_key='crm_merge_contacts' AND outcome='capability_succeeded'),1,'merge writes the exact Rail capability receipt');
+CREATE TEMP TABLE merged_survivor_delete_preview AS SELECT public.preview_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.hard_delete','contact_id','c7100000-0000-4000-8000-00000000c101','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c101'))::text,'merged-survivor-delete-preview-1') result;
+SELECT is((SELECT (result->>'eligible')::boolean FROM merged_survivor_delete_preview),false,'hard-delete preview refuses a merge survivor with incoming lineage');
+SELECT is((SELECT (result->'dependency_counts'->'by_reference'->>'clients.merged_into_contact_id')::integer FROM merged_survivor_delete_preview),1,'hard-delete preview reports the exact incoming merge-lineage count');
 SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.restore','contact_id','c7100000-0000-4000-8000-00000000c103','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c103'))::text,'restore-merged-1'),'42501','CRM_CONTACT_MERGED','merged-away contacts cannot be restored without an atomic unmerge');
 SELECT throws_ok($$SELECT public.execute_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"action":"contact.create","patch":{"first_name":"Denied","last_name":"NoAuthority"}}','missing-authority-1')$$,'42501','CRM_AUTHORITY_REQUIRED','executor refuses commands without server-issued authority');
 
