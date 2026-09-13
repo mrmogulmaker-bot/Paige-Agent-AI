@@ -57,6 +57,35 @@ freeze its invariants. The program's job is **adoption + packaging + external ex
 
 ---
 
+## 0.6 Owner rulings — LOCKED (2026-09-13)
+
+The owner reviewed this package and **approved the framing**: *package and adopt the existing governed
+seams; do NOT rebuild a second authority, approval, tenant, receipt, or execution model.* The ten first
+decisions (§9) are now **LOCKED** as follows; where the ruling refines a recommendation, the ruling wins.
+
+| # | Ruling (LOCKED 2026-09-13) |
+|---|---|
+| **D-1** | **Approved.** Package and adopt existing governed seams; forks nothing (§18/§30). |
+| **D-2** | `crm.contact.create` is the **first reference adopter** — but **implementation waits until CRM PR #1234 is merged AND a fresh-main collision pass is complete.** Not before. |
+| **D-3** | **Defer MCP mutations and their approval channel to P6**; keep the MCP door **read-effective** until then. |
+| **D-4** | **Rate limiting is a mandatory pre-exposure gate** — no external API/SDK ships without it. |
+| **D-5** | **Approved** an externally scoped sandbox / test-tenant posture; **never shared or production customer data.** |
+| **D-6** | **Approved** a least-privilege Solo test tenant + `LIVE_DRIVE_*` CI secrets — **no production credentials or client PII** (`docs/delivery/solo-test-tenant-spec.md`). |
+| **D-7** | **Approved** HMAC-signed, tenant-scoped outbound webhooks **before** relying on webhooks externally. |
+| **D-8** | Chat's inline-governance migration is **not first** — prove adoption **at the edges** first. |
+| **D-9** | **Partner/Marketplace SDK waits** until the internal kit AND the API have **real reference adoption.** |
+| **D-10** | Program names **confirmed, each prefixed "Paige"**: **Paige Capability Kit · Paige Agent Runtime Kit · Paige Test & Evidence Kit · Paige Platform API Contract · Paige Event & Webhook Contract · Paige Design & Client Contract.** |
+
+**Standing constraint (owner, 2026-09-13):** this package advances through its docs-only review/merge, but
+**P1 implementation does not begin yet.** The first build action (the D-2 reference adopter) is gated on
+#1234 merging and a fresh-main collision pass, and on the owner's go for P1.
+
+**Effect on the phased plan (§5):** P1's start moves behind the #1234 merge + collision pass (D-2); the
+sequence and all other phases are unchanged. The recommendations in §9 below are retained as the rationale
+of record; this section is the authoritative ruling.
+
+---
+
 ## 1. Executive brief (plain English)
 
 **What we have.** Paige already has the hard part of a platform SDK: a *governed way to do things
@@ -366,6 +395,9 @@ in P5/P6/P8 before any public exposure.
 ---
 
 ## 9. First specific owner decisions required (before any implementation)
+
+> **These decisions were RULED by the owner on 2026-09-13 — see "0.6 Owner rulings — LOCKED" above for
+> the authoritative outcomes.** The text below is retained as the tradeoff and rationale of record.
 
 These are the decisions that unblock P1 and shape everything after. Each names the tradeoff and a
 recommended default (§15), but the owner chooses.
