@@ -113,3 +113,9 @@ with the pack's own Platform health surface. The component stays on disk (like
 | Phase 3 | owed | reason-bound, receipted tenant support triage |
 | Phase 4 | owed | governed operational controls via the one approval gate + Layer C as landed |
 | Phase 5 | owed | Paige as the operator's evidence-based command interface |
+
+## Recorded follow-up — Solo acquisition and billing operations (2026-09-13)
+
+UNAVAILABLE / FUTURE: the existing Platform Operator console does not yet expose a signup and billing reconciliation capability. A later owner-approved slice must reuse the canonical Solo enrollment, Stripe-event, fulfillment, welcome-delivery, audit, and usage-receipt records to provide: a reconciliation queue; reason-bound manual approve/retry/revoke commands with fresh readback and receipts; welcome status plus a controlled, idempotent resend; trial-ending, first-payment-failure, cancellation, renewal, and webhook/provisioning exceptions; and versioned plan/Price management with affected-customer counts and explicit grandfathering or migration policy.
+
+Pricing rule: never mutate an existing Stripe Price. A future commercial change creates a new versioned Price and canonical plan/offer version, then requires an explicit affected-customer and grandfathering decision before any customer mapping changes. This record grants no current operator action, provider write, customer migration, refund, discount, plan change, or billing authority.

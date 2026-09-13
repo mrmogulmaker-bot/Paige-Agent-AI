@@ -77,6 +77,7 @@ Deno.serve(async (req) => {
   let tenantId: string | null = null
   let fromOverride: string | null = null
   let replyToOverride: string | null = null
+  let soloFulfillmentEventId: string | null = null
   try {
     const body = await req.json()
     templateName = body.templateName || body.template_name
@@ -90,6 +91,7 @@ Deno.serve(async (req) => {
     tenantId = body.tenantId || body.tenant_id || null
     fromOverride = body.fromOverride || body.from_override || null
     replyToOverride = body.replyToOverride || body.reply_to_override || null
+    soloFulfillmentEventId = body.fulfillmentEventId || body.fulfillment_event_id || null
   } catch {
     return new Response(
       JSON.stringify({ error: 'Invalid JSON in request body' }),
@@ -100,6 +102,206 @@ Deno.serve(async (req) => {
     )
   }
 
+  // Solo Beta welcome is an internal mode of the existing transactional sender.
+  // The caller supplies only the immutable event id; all authority is re-derived.
+  if (templateName === 'solo-beta-welcome') {
+    const authorization = req.headers.get('Authorization') ?? ''
+    if (authorization !== 'Bearer ' + supabaseServiceKey || !soloFulfillmentEventId) {
+      return new Response(JSON.stringify({ error: 'service_role_required' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const admin = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false },
+    })
+    const { data: claimRows, error: claimError } = await admin.rpc('solo_beta_claim_welcome_delivery', {
+      _event_id: soloFulfillmentEventId,
+    })
+    if (claimError) {
+      console.error('Solo welcome claim failed', {
+        code: 'welcome_claim_failed',
+      })
+      return new Response(JSON.stringify({ error: 'welcome_claim_failed' }), {
+        status: 503,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const claim = Array.isArray(claimRows) ? claimRows[0] : claimRows
+    if (!claim?.claimed) {
+      const ok = claim?.lifecycle_state === 'sent'
+      return new Response(
+        JSON.stringify({
+          success: ok,
+          sent: ok,
+          duplicate: ok,
+          state: claim?.lifecycle_state ?? 'unavailable',
+        }),
+        {
+          status: ok ? 200 : 409,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      )
+    }
+    const failClaim = async (code: string, ambiguous = false) => {
+      await admin.rpc('solo_beta_fail_welcome_delivery', {
+        _delivery_id: claim.delivery_id,
+        _claim_token: claim.claim_token,
+        _error_code: /^[a-z0-9_]{1,80}$/i.test(code) ? code : 'welcome_delivery_failed',
+        _ambiguous: ambiguous,
+      })
+    }
+    const template = TEMPLATES['solo-beta-welcome']
+    const publicSite = (Deno.env.get('PUBLIC_SITE_URL') ?? 'https://paigeagent.ai').replace(/\/$/, '')
+    const destination = publicSite + '/solo/' + claim.account_number + '/command-center'
+    const renderData = {
+      name: claim.recipient_name,
+      destination,
+      referenceId: claim.reference_id,
+      subscriptionStatus: claim.subscription_status,
+      trialEndsAt: claim.trial_ends_at,
+    }
+    const html = await renderAsync(React.createElement(template.component, renderData))
+    const plainText = await renderAsync(React.createElement(template.component, renderData), { plainText: true })
+    const messageId = claim.message_id as string
+
+    const { data: priorSent } = await admin.from('email_send_log').select('message_id,metadata').eq('message_id', messageId).eq('status', 'sent').maybeSingle()
+    if (priorSent) {
+      const providerId = (priorSent.metadata as Record<string, unknown> | null)?.vendor_message_id
+      const { error: completeError } = await admin.rpc('solo_beta_complete_welcome_delivery', {
+        _delivery_id: claim.delivery_id,
+        _claim_token: claim.claim_token,
+        _provider_message_id: typeof providerId === 'string' ? providerId : 'provider-accepted',
+      })
+      if (completeError)
+        return new Response(JSON.stringify({ error: 'welcome_receipt_failed' }), {
+          status: 503,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      return new Response(JSON.stringify({ success: true, sent: true, duplicate: true }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const { data: suppressed, error: suppressionError } = await admin.from('suppressed_emails').select('id').eq('email', String(claim.recipient_email).toLowerCase()).or('reason.neq.unsubscribe,reason.is.null').maybeSingle()
+    if (suppressionError || suppressed) {
+      await failClaim(suppressionError ? 'suppression_check_failed' : 'recipient_suppressed')
+      return new Response(JSON.stringify({ error: 'welcome_delivery_blocked' }), {
+        status: suppressionError ? 503 : 409,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const resendKey = Deno.env.get('RESEND_API_KEY')
+    if (!resendKey) {
+      await failClaim('email_provider_unconfigured')
+      return new Response(JSON.stringify({ error: 'email_provider_unconfigured' }), {
+        status: 503,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const { error: pendingLogError } = await admin.from('email_send_log').upsert({
+      message_id: messageId,
+      template_name: 'solo-beta-welcome',
+      recipient_email: claim.recipient_email,
+      status: 'pending',
+      tenant_id: claim.tenant_id,
+      error_message: null,
+      metadata: {
+        reference_id: claim.reference_id,
+        fulfillment_event_id: soloFulfillmentEventId,
+      },
+    }, { onConflict: 'message_id' })
+    if (pendingLogError) {
+      await failClaim('send_log_prepare_failed')
+      return new Response(JSON.stringify({ error: 'welcome_receipt_failed' }), {
+        status: 503,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    let response: Response
+    try {
+      response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + resendKey,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': messageId,
+        },
+        body: JSON.stringify({
+          from: SITE_NAME + ' <notifications@' + FROM_DOMAIN + '>',
+          to: [claim.recipient_email],
+          subject: typeof template.subject === 'function' ? template.subject(renderData) : template.subject,
+          html,
+          text: plainText,
+        }),
+      })
+    } catch {
+      await failClaim('provider_outcome_ambiguous', true)
+      return new Response(JSON.stringify({ error: 'welcome_delivery_uncertain' }), {
+        status: 503,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const providerBody = (await response.json().catch(() => ({}))) as {
+      id?: string
+    }
+    if (!response.ok || !providerBody.id) {
+      await admin
+        .from('email_send_log')
+        .update({
+          status: 'failed',
+          error_message: 'resend_' + response.status,
+        })
+        .eq('message_id', messageId)
+        .eq('status', 'pending')
+      await failClaim('provider_rejected')
+      return new Response(JSON.stringify({ error: 'send_failed' }), {
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const { error: logError } = await admin
+      .from('email_send_log')
+      .update({
+        status: 'sent',
+        metadata: {
+          reference_id: claim.reference_id,
+          fulfillment_event_id: soloFulfillmentEventId,
+          vendor_message_id: providerBody.id,
+        },
+      })
+      .eq('message_id', messageId)
+      .eq('status', 'pending')
+    if (logError) {
+      await failClaim('send_log_commit_failed', true)
+      return new Response(JSON.stringify({ error: 'welcome_receipt_failed' }), {
+        status: 503,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const { error: completeError } = await admin.rpc('solo_beta_complete_welcome_delivery', {
+      _delivery_id: claim.delivery_id,
+      _claim_token: claim.claim_token,
+      _provider_message_id: providerBody.id,
+    })
+    if (completeError) {
+      return new Response(JSON.stringify({ error: 'welcome_receipt_failed' }), {
+        status: 503,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    return new Response(JSON.stringify({ success: true, sent: true }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
   if (!templateName) {
     return new Response(
       JSON.stringify({ error: 'templateName is required' }),
