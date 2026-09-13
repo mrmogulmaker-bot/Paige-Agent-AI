@@ -1,11 +1,14 @@
 # E7 — Governed Calendar-link sharing — evidence package
 
-**Status: RELEASE-READY DRAFT, HELD for a separate owner release decision.**
-Branch `claude/calendar-e7-link-sharing` (off `main` `ec59415d`). Not merged, not deployed.
-The owner authorized building E7 end-to-end "through review, required CI, release-ready evidence,
-**and a separate final release decision**." This package is that record; the release itself awaits
-the owner's go-ahead (the pre-launch §4/§69 merge-on-verified is overridden by the explicit hold,
-exactly as E6 was).
+**Status: SHIPPED LIVE (2026-09-13, Gate A — owner authorized the release).**
+Merged to `main` as squash [`5fbb7c1b`](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/commit/5fbb7c1baeb277b6bbeaaeb04f2ce533df389943) (PR #1252, off `main` `ec59415d`). **Deployed + persisted (§32.a):**
+`deploy-migrations` run #269 applied `20270315000000` + `20270316000000` — the pipeline's PERSISTED-verify
+step read prod `schema_migrations` and confirmed BOTH versions recorded remotely; `db-live` moved to
+`5fbb7c1b`, `db-live..main` on `supabase/migrations` empty (zero migration drift). `deploy-edge-functions`
+run #323 redeployed `paige-ai-chat` (it imports the new `_shared` modules); `edge-live` moved to
+`5fbb7c1b`, zero edge drift. The owner authorized building E7 end-to-end "through review, required CI,
+release-ready evidence, and a separate final release decision," then approved the release; this package
+is that record.
 
 ## What E7 is (owner-locked scope)
 
@@ -43,7 +46,7 @@ the owner chose copy-ready.)
 - `supabase/functions/_shared/calendar-link-tenant-brain.ts` — the adapter (prepare / send / social_copy; the pure `mapSendOutcome` + `verdictFromPreSend`).
 - `supabase/functions/_shared/paige-spine/domains/calendar_link.ts` — 2 READ spine capabilities (`calendar_link.prepare`, `calendar_link.social_copy`) + 3 model tools.
 - `supabase/tests/calendar_link_shareable.sql` — 24-assertion pgTAP suite.
-- `scripts/calendar-link-share-smoke.mts` — 39-assertion adapter adversarial smoke.
+- `scripts/calendar-link-share-smoke.mts` — 42-assertion adapter adversarial smoke.
 
 **Modified (additive / union-mergeable vs PR #1234)**
 - `_shared/paige-spine/registry.ts` — import + spread the 2 reads.
@@ -96,12 +99,15 @@ MAJOR). §39 found **two MAJORs**, both resolved:
   send-message re-derives the contact's raw address and its identity check does NOT `+tag`-fold, so it
   rejected the send as `recipient_contact_mismatch`. Fix: pass the **raw** address (send-message +
   runPreSend normalize internally). New smoke assertion T29a proves the raw `+tag` address is passed.
-- **MAJOR-2 — `list_tool_autonomy` full-overwrite merge hazard (documented RELEASE GATE).** The
-  catalogue migration is a full re-declaration rebased on `20270305000000`; if another catalogue
-  migration (e.g. #1234's) lands around it, last-version-wins silently reverts the other's rows (§58).
-  Not a code defect today (0 rows dropped vs the current baseline). **Release gate** noted in the
-  migration header: before the E7 release, re-ground the catalogue on fresh `main`'s latest
-  `list_tool_autonomy` (re-run the key diff; assert zero drops + only `calendar_link_send` added).
+- **MAJOR-2 — `list_tool_autonomy` full-overwrite merge hazard (RELEASE GATE — CLEARED + PROVEN 2026-09-13).**
+  The catalogue migration is a full re-declaration rebased on `20270305000000`; a concurrent catalogue
+  migration landing around it could silently revert its rows (§58). Release gate discharged at release:
+  fresh `main` was unchanged at `ec59415d` (no concurrent catalogue migration landed — `20270305000000`
+  is still the latest prior definer), and the key diff was re-run on **real Postgres 16** — the baseline
+  `20270305000000` returns **134 rows**, `20270316000000` returns **135**, with **0 rows dropped or
+  overwritten and exactly 1 added** (`calendar_link_send | Send a booking link to a contact | Calendar`),
+  every prior row preserved with identical label + category. The `deploy-migrations` PERSISTED-verify then
+  confirmed both versions recorded on prod (zero drift).
 
 Also applied: **§5 MINOR-2** (custom-**email** body now composed as escaped HTML with `<br>` + a
 clickable `<a>` link, not a run-on plain line — smoke T29b/T29c), the **§39 MINOR** (the `high`
@@ -117,21 +123,28 @@ surface / catalogue row. These are **pre-existing on `origin/main`** (confirmed:
 E7's diff does not touch them) and are part of the advisory `ci` baseline. E7 adds **zero** new lint
 failures. They are out of E7 scope.
 
-## PROOF OWED (§32.c / §70 — cannot be produced headless this session)
+## PROOF — discharged at release vs. still owed (§32.c / §70)
 
-- **`deno check`** on `paige-ai-chat/index.ts` — owed to CI (no local Deno). The adapter + domain
-  compile under Node strip-types and the smoke runs; the handler edits are additive + type-hardened
-  (`SendMessageFn`-typed closure).
-- **Authenticated live-drive** — a real owner, in a real workspace, in Paige chat: prepare → confirm →
+**DISCHARGED at release:**
+- **`deno check`** on `paige-ai-chat/index.ts` — the `ci`/`verify` Deno ratchet (affected edge functions),
+  typecheck ratchet, and build all passed on the merge head `647b30f6` with **zero new diagnostics** from
+  the E7 edits (this was the item owed to CI in the build commit body).
+- **Migration persisted on prod** — `deploy-migrations` run #269's PERSISTED-verify step read prod
+  `schema_migrations` and confirmed BOTH `20270315000000` and `20270316000000` recorded; `db-live` = merge
+  SHA, zero drift.
+
+**STILL OWED — needs a browser/JWT/prod-SQL-capable session (cannot be produced headless here):**
+- **Authenticated in-chat live-drive** — a real owner, in a real workspace, in Paige chat: prepare → confirm →
   send a booking link to a real contact by email; observe the true outcome; verify the contact
   receives the `/book` link; verify SMS honestly degrades where A2P isn't approved; verify a
   non-public calendar refuses; verify copy-ready social. Owed to a browser/JWT-capable session.
 - **`/book/{slug}` origin confirmation** — E7 composes the link from `PUBLIC_SITE_URL` (the same env
   `send-transactional-email` uses for recipient-facing links). Confirm on the live app that
   `/book/{slug}` renders on that origin (vs an `app.` subdomain). Config item, not a code defect.
-- **prod-SQL persisted-confirm** — after any future release: `schema_migrations` advanced to
-  `20270315000000` + `20270316000000`, and `calendar_link_shareable` + the updated `list_tool_autonomy`
-  exist on prod (MCP prod SQL is permission-denied this session).
+- **Direct prod-SQL object read** — the migration versions are confirmed persisted (above); the finer
+  object-granularity read — `calendar_link_shareable` exists in `pg_proc` and `list_tool_autonomy` returns
+  the `calendar_link_send` row on prod — is owed to a prod-SQL-capable session (MCP prod SQL is
+  permission-denied this session).
 
 ## Held OUT of E7 (separate, explicitly scoped)
 
