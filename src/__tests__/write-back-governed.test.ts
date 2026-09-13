@@ -7,12 +7,14 @@
  *   - `decideWriteBack` (the governed gate) over `decideGovernedExecution` + `classifyAction`.
  *
  * WHAT THIS PROVES (the acceptance matrix):
- *   self-write → allowed · same-tenant admin → allowed · CROSS-TENANT admin → DENIED (the IDOR, no
+ *   self-write → allowed · same-tenant admin/owner → allowed · CROSS-TENANT admin → DENIED (the IDOR, no
  *   seam execute) · platform owner (super_admin) cross-tenant → allowed · coach→assigned same-tenant client →
- *   allowed · coach→unassigned → denied · the global role is never sufficient without the tenant
- *   bond · tenant is NEVER taken from the body · on EVERY denied path the seam returns refuse (the
- *   caller performs NO write) · the governed decision is consulted (update_client_data is ordinary;
- *   auto executes; unauthenticated / unresolved-tenant fail closed).
+ *   allowed · coach→unassigned → denied · THE GLOBAL-ROLE TRAP (§53/§59): a plain member of the active
+ *   workspace is DENIED even if they hold admin/coach in another tenant — authority is the TENANT-SCOPED
+ *   role (tenant_members), never the global user_roles, which is not even an input · tenant is NEVER taken
+ *   from the body · on EVERY denied path the seam returns refuse (the caller performs NO write) · the
+ *   governed decision is consulted (update_client_data is ordinary; auto executes; unauthenticated /
+ *   unresolved-tenant fail closed).
  *
  * WHAT IT DOES NOT PROVE (§13/§32): the authenticated runtime against the deployed function, and the
  * JWT→tenant derivation inside `paige-write-back/index.ts` (Deno, not importable here) — a separate
@@ -33,7 +35,12 @@ import {
 
 type Scenario = {
   platformOwner?: boolean;
-  roles?: string[];
+  /** The caller's TENANT-SCOPED role in their active workspace (tenant_members.role), or null when
+   *  they are not an active member of it. This — not a global user_roles list — is the authority. */
+  tenantRole?: string | null;
+  /** Whether the caller manages the active workspace as an agency child (agency_can_manage_child) —
+   *  admin-equivalent delegated authority even with no direct membership row. */
+  agencyManages?: boolean;
   callerTenant?: string | null;
   targetTenant?: string | null;
   sharesTenant?: boolean;
@@ -42,8 +49,9 @@ type Scenario = {
 
 const deps = (s: Scenario): WriteBackAuthzDeps => ({
   isPlatformOwner: async () => !!s.platformOwner,
-  callerRoles: async () => s.roles ?? [],
   callerActiveTenant: async () => (s.callerTenant === undefined ? "tenant-A" : s.callerTenant),
+  callerRoleInTenant: async () => (s.tenantRole === undefined ? null : s.tenantRole),
+  callerManagesTenantViaAgency: async () => !!s.agencyManages,
   resolveTargetTenant: async () => (s.targetTenant === undefined ? "tenant-A" : s.targetTenant),
   targetSharesTenant: async () => !!s.sharesTenant,
   coachAssigned: async () => !!s.coachAssigned,
@@ -67,40 +75,90 @@ describe("authorizeWriteBackTarget — the cross-tenant write IDOR matrix", () =
   });
 
   it("a SAME-TENANT admin is allowed", async () => {
-    const a = await authorize({ roles: ["admin"], callerTenant: "tenant-A", sharesTenant: true });
+    const a = await authorize({ tenantRole: "admin", callerTenant: "tenant-A", sharesTenant: true });
     expect(a.allowed).toBe(true);
     expect(a.basis).toBe("same_tenant_admin");
     expect(a.tenantId).toBe("tenant-A");
   });
 
-  it("THE IDOR: a CROSS-TENANT admin is DENIED (global admin role is not tenant authority)", async () => {
-    // A tenant-A admin acting on a tenant-B target: targetSharesTenant is false.
-    const a = await authorize({ roles: ["admin"], callerTenant: "tenant-A", sharesTenant: false });
+  it("a SAME-TENANT owner is allowed (owner is an admin-tier tenant role)", async () => {
+    const a = await authorize({ tenantRole: "owner", callerTenant: "tenant-A", sharesTenant: true });
+    expect(a.allowed).toBe(true);
+    expect(a.basis).toBe("same_tenant_admin");
+  });
+
+  it("THE IDOR: a CROSS-TENANT admin is DENIED (the target is in another workspace)", async () => {
+    // A caller who is admin of their active workspace acting on a target that is NOT in it.
+    const a = await authorize({ tenantRole: "admin", callerTenant: "tenant-A", sharesTenant: false });
     expect(a.allowed).toBe(false);
     expect(a.basis).toBe("denied");
     expect(a.reason).toMatch(/different workspace/i);
   });
 
-  it("a caller with NO staff role is DENIED (before any tenant resolution)", async () => {
-    const a = await authorize({ roles: [], sharesTenant: true });
+  it("THE GLOBAL-ROLE TRAP (§53/§59): a caller who is only a PLAIN MEMBER of the active workspace is DENIED — even if they hold admin/coach in some OTHER tenant", async () => {
+    // The Codex P1 regression guard. The authority is the TENANT-SCOPED role: a global admin of
+    // tenant A who switched their active workspace to tenant B (where they are a plain member) resolves
+    // tenantRole "member" here, and does NOT manage B via agency. The global role is not an input.
+    const a = await authorize({ tenantRole: "member", agencyManages: false, callerTenant: "tenant-B", sharesTenant: true });
+    expect(a.allowed).toBe(false);
+    expect(a.basis).toBe("denied");
+    expect(a.reason).toMatch(/not authorized/i);
+    expect(a.tenantId).toBe("tenant-B"); // workspace resolved first; denial carries it (→ access_denied)
+  });
+
+  it("a caller who is not a member of the active workspace at all (null role, no agency) is DENIED", async () => {
+    const a = await authorize({ tenantRole: null, agencyManages: false, callerTenant: "tenant-A", sharesTenant: true });
     expect(a.allowed).toBe(false);
     expect(a.reason).toMatch(/not authorized/i);
   });
 
-  it("a staff caller whose ACTIVE workspace cannot be resolved is DENIED (fail closed)", async () => {
-    const a = await authorize({ roles: ["admin"], callerTenant: null, sharesTenant: true });
+  it("AGENCY DELEGATION (Codex P1 regression fix): an agency operator managing the child — no direct membership row — is ALLOWED", async () => {
+    // `current_user_tenant_id()` resolved the child via agency_can_manage_child, so the operator holds
+    // NO direct tenant_members row there (tenantRole null) but legitimately manages it. Must be allowed.
+    const a = await authorize({ tenantRole: null, agencyManages: true, callerTenant: "child-C", sharesTenant: true });
+    expect(a.allowed).toBe(true);
+    expect(a.basis).toBe("agency_manager");
+    expect(a.tenantId).toBe("child-C");
+  });
+
+  it("an agency operator managing the child, but whose target is in a DIFFERENT workspace, is DENIED (the bond still holds)", async () => {
+    const a = await authorize({ tenantRole: null, agencyManages: true, callerTenant: "child-C", sharesTenant: false });
+    expect(a.allowed).toBe(false);
+    expect(a.reason).toMatch(/different workspace/i);
+  });
+
+  it("a DIRECT admin never consults the agency-delegation path (it is the fallback only)", async () => {
+    let agencyChecked = false;
+    const d: WriteBackAuthzDeps = {
+      ...deps({ tenantRole: "admin", callerTenant: "tenant-A", sharesTenant: true }),
+      callerManagesTenantViaAgency: async () => { agencyChecked = true; return true; },
+    };
+    const a = await authorizeWriteBackTarget(d, { callerUserId: "admin-A", targetUserId: "client-B" });
+    expect(a.allowed).toBe(true);
+    expect(a.basis).toBe("same_tenant_admin");
+    expect(agencyChecked).toBe(false);
+  });
+
+  it("a caller whose ACTIVE workspace cannot be resolved is DENIED before the role is read (fail closed)", async () => {
+    let roleRead = false;
+    const d: WriteBackAuthzDeps = {
+      ...deps({ callerTenant: null, sharesTenant: true }),
+      callerRoleInTenant: async () => { roleRead = true; return "admin"; },
+    };
+    const a = await authorizeWriteBackTarget(d, { callerUserId: "staff-A", targetUserId: "target-B" });
     expect(a.allowed).toBe(false);
     expect(a.reason).toMatch(/workspace could not be resolved/i);
+    expect(roleRead).toBe(false); // the workspace must resolve before any role is read
   });
 
   it("a coach assigned to a SAME-TENANT client is allowed", async () => {
-    const a = await authorize({ roles: ["coach"], callerTenant: "tenant-A", sharesTenant: true, coachAssigned: true });
+    const a = await authorize({ tenantRole: "coach", callerTenant: "tenant-A", sharesTenant: true, coachAssigned: true });
     expect(a.allowed).toBe(true);
     expect(a.basis).toBe("assigned_coach");
   });
 
   it("a coach NOT assigned to the client is DENIED, even in the same tenant", async () => {
-    const a = await authorize({ roles: ["coach"], callerTenant: "tenant-A", sharesTenant: true, coachAssigned: false });
+    const a = await authorize({ tenantRole: "coach", callerTenant: "tenant-A", sharesTenant: true, coachAssigned: false });
     expect(a.allowed).toBe(false);
     expect(a.reason).toMatch(/not assigned/i);
   });
@@ -108,7 +166,7 @@ describe("authorizeWriteBackTarget — the cross-tenant write IDOR matrix", () =
   it("a coach in a DIFFERENT tenant is DENIED before the assignment is ever consulted", async () => {
     let assignmentChecked = false;
     const d: WriteBackAuthzDeps = {
-      ...deps({ roles: ["coach"], callerTenant: "tenant-A", sharesTenant: false }),
+      ...deps({ tenantRole: "coach", callerTenant: "tenant-A", sharesTenant: false }),
       coachAssigned: async () => { assignmentChecked = true; return true; },
     };
     const a = await authorizeWriteBackTarget(d, { callerUserId: "coach-A", targetUserId: "client-B" });
@@ -117,10 +175,10 @@ describe("authorizeWriteBackTarget — the cross-tenant write IDOR matrix", () =
     expect(assignmentChecked).toBe(false); // the tenant bond gates before the coach_clients bond
   });
 
-  it("an admin never consults coach_clients (admin authority is the tenant bond)", async () => {
+  it("an admin never consults coach_clients (admin authority is the tenant-scoped role + bond)", async () => {
     let assignmentChecked = false;
     const d: WriteBackAuthzDeps = {
-      ...deps({ roles: ["admin"], callerTenant: "tenant-A", sharesTenant: true }),
+      ...deps({ tenantRole: "admin", callerTenant: "tenant-A", sharesTenant: true }),
       coachAssigned: async () => { assignmentChecked = true; return false; },
     };
     const a = await authorizeWriteBackTarget(d, { callerUserId: "admin-A", targetUserId: "client-B" });
