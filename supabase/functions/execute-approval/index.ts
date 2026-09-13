@@ -14,7 +14,14 @@
 //     executed:false so callers/Paige know no outbound action ran.
 //
 // It NEVER marks a comms row approved without a successful send.
+//
+// LAYER C (C5): an approval minted by the event→act engine (metadata.source='paige_orchestration') carries a
+// held act's coordinates. This one door also delegates those to the Layer-C approval-executor — re-running the
+// governed decision as an execute and driving the adapter → ledger — so there is still ONE approve door (§18),
+// not a second. (Dormant until the engine mints those rows — the companion-minting is the next slice; this
+// branch fires only for orchestration-sourced rows and changes nothing for existing approvals, §58.)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { executeApprovedLayerCAct } from "../_shared/paige-orchestration/approve-executor.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -151,6 +158,35 @@ Deno.serve(async (req) => {
       return json(502, { ok: false, executed: false, error: sendResult?.error ?? "send_failed", detail: sendResult });
     }
     return json(200, { ok: true, executed: true, channel, approval_id: approvalId, audit_id: sendResult.audit_id });
+  }
+
+  // Layer C (C5): an orchestration-sourced approval carries the held act's coordinates. Delegate to the
+  // Layer-C approval-executor (the row is already atomically claimed above — that is the single-use guard;
+  // the executor's approve RPC is a second idempotency guard on the ledger row). NATIVE acts this slice.
+  const metaLc = (typeof (approval as any).metadata === "object" && (approval as any).metadata) || {};
+  if (metaLc && (metaLc as any).source === "paige_orchestration" && (metaLc as any).event_id && (metaLc as any).act_id) {
+    const res = await executeApprovedLayerCAct({
+      db: admin, eventId: String((metaLc as any).event_id), actId: String((metaLc as any).act_id), approverUserId: user.id,
+    });
+    if (res.outcome === "approval_pending") {
+      // The executor did NOT redeem (governed refusal / not-supported-in-slice / read error / integrity stop):
+      // nothing was consumed and nothing ran. Release the claim so the held act stays pending for a proper
+      // resolution, and report honestly (§13) — never mark it approved on a non-execution.
+      await releaseClaim();
+      return json(200, { ok: false, executed: false, act_outcome: "approval_pending", reason: res.reason, approval_id: approvalId });
+    }
+    // The executor redeemed + attempted; the ledger records the real outcome. Stamp the approval with it.
+    const { error: lcErr } = await admin
+      .from("paige_pending_approvals")
+      .update({
+        status: "approved",
+        reviewed_by_user_id: user.id,
+        reviewed_at: new Date().toISOString(),
+        metadata: { ...(metaLc as Record<string, unknown>), executed: res.executed, act_outcome: res.outcome, execute_note: res.reason ?? null },
+      })
+      .eq("id", approvalId);
+    if (lcErr) return json(500, { error: lcErr.message });
+    return json(200, { ok: res.ok, executed: res.executed, act_outcome: res.outcome, approval_id: approvalId });
   }
 
   // No automated executor for this category yet — acknowledge (mark approved)
