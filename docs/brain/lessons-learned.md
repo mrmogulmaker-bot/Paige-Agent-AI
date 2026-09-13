@@ -6,6 +6,12 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## A mint that populates the WRONG field renders "(no summary)" — assert the human-visible field the surface actually reads, and fold the discriminating value INTO it (2026-09-13)
+
+- **Symptom.** C5 slice 2 (#1225) shipped a DB trigger that minted a companion approval row for a held Layer-C act; the migration was green, its pgTAP passed, the inbox rendered — and every held-act approval read **"(no summary)"**. An external Codex review of the merged slice caught it (§70 defect), fixed-forward in #1235.
+- **Root cause (two compounding traps).** (1) The mint wrote `draft_content='{}'` with no `summary`, but `ApprovalRow.tsx`/`ApprovalsInbox.tsx` render **only** `summary` (with a "(no summary)" fallback) — they never read `preview`/`body`. Populating fields the surface ignores is invisible work. (2) Even once a description existed, putting the discriminating value (WHICH journey stage) only in `preview`/`body` left every "Advance Journey Stage" approval reading identically — the operator could approve a high-risk mutation without seeing its target. The original slice-1 pgTAP asserted the row EXISTED, not that its rendered field was READABLE, so it passed on an unusable result (the §70 render/usability gap, the twin of §32's compile≠run).
+- **Rule.** When a trigger/RPC mints a row that a UI renders, (a) find the EXACT field the surface reads (grep the renderer — here `summary`) and assert THAT field's human-readable content in the test, never just row existence; and (b) fold the value that distinguishes one row from another INTO that rendered field, because the surface may ignore every other column you populate. "The row exists" and "a green migration" are not "a human can read and safely act on it" (§70/§70.1). The fix: a pure content helper humanizes capability + snapshot args + subject into `summary` (args folded in), and section-G/H pgTAP asserts the readable string + idempotent legacy repair.
+
 ## A closeout commit's LABELS drift from truth in three predictable ways — the top-line token overstates, the recovery is git-revert, the sibling doc still says "continue" (2026-09-13)
 
 - **Symptom.** After the `match_paige_memory` slice merged (#1233) and its closeout landed (#1236), a post-merge peer review (Codex) raised three P1 accuracy defects that the build's own §32/§39/§5 passes had not caught — because they were about the *records*, not the code.
