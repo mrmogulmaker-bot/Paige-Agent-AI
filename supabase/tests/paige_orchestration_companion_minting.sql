@@ -2,10 +2,11 @@
 -- Behavioural proof against the schema `supabase db reset` replayed from zero (house pgTAP style; synthetic
 -- opaque fixtures; the enclosing transaction is ALWAYS rolled back — no production/customer records).
 --
--- Fixtures are seeded with FK + user triggers OFF (session_replication_role='replica') so exact timestamps
--- and orphan states can be constructed without a full parent graph; the TRIGGERS UNDER TEST are then exercised
--- in 'origin' mode (real INSERT/UPDATE), and the reconciler is called as the cron/service context (auth.uid()
--- NULL) exactly as pg_cron invokes it.
+-- Fixtures are seeded with the fixture tables' FK constraints dropped + their USER triggers disabled (owner-
+-- privilege, inside the rolled-back txn — CI's session does not honor session_replication_role), so exact
+-- timestamps and orphan states can be constructed without a full parent graph; the TRIGGERS UNDER TEST are
+-- then RE-ENABLED and exercised via real INSERT/UPDATE, and the reconciler is called as the cron/service
+-- context (auth.uid() NULL) exactly as pg_cron invokes it.
 begin;
 select plan(34);
 
@@ -15,12 +16,32 @@ select plan(34);
 
 -- Seed the tenant in NORMAL mode (triggers ON) so its account_number-assignment trigger fires — the exact
 -- column set + mode the passing contract tests use. `account_number` is NOT NULL and trigger-assigned;
--- replica mode would disable that trigger and the insert would violate NOT NULL. tenants is a root table
--- (no inbound FK deps here), so a normal-mode insert is safe.
+-- seeding it with triggers disabled would suppress that trigger and the insert would violate NOT NULL.
+-- tenants is a root table (no inbound FK deps here), so a triggers-on insert is safe and done up front.
 insert into public.tenants(id, slug, name, status, account_type, account_number_prefix, features) values
   ('11111111-1111-4111-8111-111111111111', 'paige-c5s2-proof-tenant', 'Paige C5S2 Proof Tenant', 'active', 'standalone', 'PC5', '{}'::jsonb);
 
-set session_replication_role = replica;   -- FK + triggers OFF for the REST of the fixture construction
+-- CI's supabase-test-db session does not honor session_replication_role (it is superuser-gated), so seed
+-- WITHOUT a full parent graph using OWNER-privilege operations instead (postgres owns these tables): drop the
+-- FK constraints on the three fixture tables and disable their USER triggers while seeding, so held/ambiguous
+-- rows can be inserted with synthetic un-parented ids + explicit timestamps and the mint does not auto-fire.
+-- Everything here is inside the enclosing BEGIN…ROLLBACK, so these schema changes revert with the transaction.
+do $$
+declare r record;
+begin
+  for r in
+    select conrelid::regclass::text as tbl, conname
+      from pg_constraint
+     where contype = 'f'
+       and conrelid in ('public.paige_act_executions'::regclass,
+                        'public.paige_native_events'::regclass,
+                        'public.paige_journey_stage_transitions'::regclass)
+  loop
+    execute format('alter table %s drop constraint %I', r.tbl, r.conname);
+  end loop;
+end $$;
+alter table public.paige_act_executions    disable trigger user;   -- mint + touch(updated_at) off while seeding
+alter table public.paige_pending_approvals disable trigger user;   -- policy/notify/sync/guard off while seeding
 
 -- Native events (processing_state='done' = the orphan case the sweeper cannot re-drive).
 insert into public.paige_native_events(id, event_key, tenant_id, subject_table, subject_id, dedup_key, processing_state) values
@@ -33,8 +54,9 @@ insert into public.paige_native_events(id, event_key, tenant_id, subject_table, 
   ('1e000007-0000-4000-8000-000000000007','contact.created','11111111-1111-4111-8111-111111111111','clients','c0000007-0000-4000-8000-000000000007','dk-7','done'),
   ('1e000008-0000-4000-8000-000000000008','contact.created','11111111-1111-4111-8111-111111111111','clients','c0000008-0000-4000-8000-000000000008','dk-8','done');
 
--- L1..L3: held acts seeded at accepted_for_execution (NO companion yet — trigger is off). They are transitioned
--- into approval_pending in origin mode below, which fires the mint. detail carries the engine's snapshot + risk.
+-- L1..L3: held acts seeded at accepted_for_execution (NO companion yet — the mint trigger is disabled during
+-- seeding). They are transitioned into approval_pending after the triggers are re-enabled below, which fires
+-- the mint. detail carries the engine's snapshot + risk.
 insert into public.paige_act_executions
   (id, event_id, automation_id, act_id, act_position, tenant_id, adapter_kind, capability_key, effective_lane, outcome, idempotency_key, correlation_ref, detail) values
   ('ad000001-0000-4000-8000-000000000001','1e000001-0000-4000-8000-000000000001','a0000001-0000-4000-8000-000000000001','ac000001-0000-4000-8000-000000000001',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','accepted_for_execution','idem-1','corr-1', jsonb_build_object('snapshot_args', jsonb_build_object('stage_slug','engaged'), 'risk','high')),
@@ -87,7 +109,11 @@ insert into public.paige_pending_approvals(id, type, draft_content, category, te
 insert into public.tenant_members(user_id, tenant_id, status) values
   ('77777777-7777-4777-8777-777777777777','11111111-1111-4111-8111-111111111111','active');
 
-set session_replication_role = origin;    -- triggers + FK back ON — now exercise the seams under test
+-- Re-enable the user triggers — now exercise the seams under test (mint on the UPDATE→approval_pending;
+-- cancellation-sync + direct-approve guard on companion status UPDATEs). The FK constraints stay dropped for
+-- the remainder of this transaction (reverted at ROLLBACK); the reconciler/guards read rows, not FKs.
+alter table public.paige_act_executions    enable trigger user;
+alter table public.paige_pending_approvals enable trigger user;
 
 -- ══ (A) MINT: transitioning a ledger row into approval_pending mints exactly one companion ══════════════
 update public.paige_act_executions set outcome='approval_pending' where id='ad000001-0000-4000-8000-000000000001';
