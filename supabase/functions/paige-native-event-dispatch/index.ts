@@ -10,7 +10,7 @@
 //   * paige_automations                         - the subscribers (§67 Process Records) by trigger_key
 //   * paige_event_dispatches                    - the fire-once ledger, UNIQUE(event_id, automation_id)
 //
-// -- SCOPE (honest, §13) — Layer C · C1 (the safe engine foundation) ---------------------------
+// -- SCOPE (honest, §13) — Layer C · C2 (one bounded native auto-execute vertical) --------------
 // This delivers the EVENT to its subscribers AND runs the governed act-execution engine
 // (_shared/paige-orchestration). Before any of that it runs an INDEPENDENT event-integrity check
 // (owner correction #2): the tenant is re-derived from the canonical SUBJECT record and asserted to
@@ -20,12 +20,16 @@
 // ceiling ∧ §68 decay), and runs the ONE governed pathway (decideGovernedExecution) per act, recording
 // the EXACT per-act outcome in paige_act_executions through the ATOMIC, MONOTONIC transition RPC
 // (paige_record_act_execution) — a final outcome is never overwritten, and every durable write is
-// CHECKED (a failed write fails the dispatch for retry, correction #3). It performs NO external send
-// yet — an authorized act stops at `accepted_for_execution`; the connector-neutral adapter DISPATCH +
-// signed readback + canonical domain update is C2+. THREE distinct levels are preserved (correction #6):
+// CHECKED (a failed write fails the dispatch for retry, correction #3). C2 adds the NATIVE synchronous
+// execute path: a governed-authorized act whose action_kind is `crm.advance_journey_stage` (the dotted
+// action-bus slug; `crm_advance_journey_stage` is its tool/capability key) is dispatched to the in-tenant
+// set_journey_stage RPC AFTER its durable accepted_for_execution record persists, OUR write is CONFIRMED
+// by a transition stamped with the act's correlation ref (§32, never a bare current-slug match), and the
+// ledger advances to `executed` (or `ambiguous` → correlation reconcile, never blind retry). An EXTERNAL-EFFECT adapter (n8n) still stops at accepted_for_execution / approval_pending
+// — its dispatch + signed readback is C3+. THREE distinct levels are preserved (correction #6):
 // event-level `no_subscriber`, subscriber-level paige_event_dispatches delivery, per-act
-// paige_act_executions outcome. `acts_executed` is legacy per-subscriber metadata only (true only on a
-// real `executed` outcome, never in C1) — never owner-visible proof by itself; the per-act ledger is.
+// paige_act_executions outcome. `acts_executed` is legacy per-subscriber metadata only (now true for a
+// confirmed native `executed`) — never owner-visible proof by itself; the per-act ledger is.
 //
 // -- SECURITY (§9/§13) ------------------------------------------------------------------------
 // NOT user-facing. Authorized ONLY by (a) the service-role bearer, or (b) a valid Vault cron token
@@ -163,10 +167,11 @@ Deno.serve(async (req) => {
     //    the event no longer even reaches an act), resolves the effective autonomy lane (grant ∧
     //    most-restrictive act floor ∧ Trust-Compass ceiling ∧ §68 decay), and runs the ONE governed
     //    pathway per act — recording the EXACT per-act outcome (condition_not_matched / held_by_lane /
-    //    approval_pending / refused_* / accepted_for_execution / failed) in paige_act_executions,
-    //    fire-once. SLICE 1 stops at accepted_for_execution; the external adapter dispatch + signed
-    //    readback + CRM update is slice 2. A high external-effect act on an `auto` process correctly
-    //    HOLDS for approval — the lane alone never authorizes a high act (§67 / RE-2 grant lift). --
+    //    approval_pending / refused_* / accepted_for_execution / executed / failed / ambiguous) in
+    //    paige_act_executions, fire-once. C2: a native, synchronous execute (action_kind
+    //    `crm.advance_journey_stage`) dispatches + confirms in-engine and advances to `executed`; an external-effect adapter (n8n)
+    //    still stops at accepted_for_execution, and a high external-effect act on an `auto` process
+    //    correctly HOLDS for approval — the lane alone never authorizes a high act (§67 / RE-2 grant lift). --
     const engine = await runEventActs(
       admin as unknown as EngineDb,
       {
@@ -186,6 +191,13 @@ Deno.serve(async (req) => {
     //    metadata (true only on a real `executed` outcome, never in C1) — never proof by itself. --
     const persistFailed = new Set(engine.persist_failures);
     const infraRetry = new Set(engine.subscriber_retry);
+    // A subscriber whose NATIVE act settled NON-terminal (accepted_for_execution / retrying / ambiguous)
+    // is not durably done — its correlation reconcile must run on a later drain (§39 F1). Keeping the
+    // event reclaimable (NOT `done`) is the reconcile TRIGGER: the sweeper re-drives (bounded by its
+    // attempts cap → a genuinely stuck row lands in `error`, never a silent `done`), and phase 5 reconciles
+    // BY CORRELATION (an `ambiguous` row is re-read, never blind re-dispatched). Reuses the existing event
+    // lifecycle + sweeper — no second cron (§18).
+    const reconcilePending = new Set(engine.reconcile_pending);
     for (const sub of subscribers) {
       if (alreadyDone.has(sub.id)) { delivered.push(sub.id); continue; }
       const actRecs = engine.records.filter((r) => r.automation_id === sub.id);
@@ -193,11 +205,19 @@ Deno.serve(async (req) => {
         act_id: r.act_id, position: r.act_position, adapter: r.adapter_kind, outcome: r.outcome,
       }));
       // NOT durably delivered when: an infra read/resolve failed (no records governed at all), OR any of
-      // this subscriber's per-act ledger writes failed. Either way → status 'error' → the event fails →
-      // the sweeper retries (never a silent 'done' whose acts were not governed/recorded, §13/§32 F2).
+      // this subscriber's per-act ledger writes failed, OR a native act settled non-terminal and still owes
+      // a correlation reconcile. Any of these → status 'error' → the event fails → the sweeper retries
+      // (never a silent 'done' whose acts were not governed/recorded or whose advance was never confirmed,
+      // §13/§32 F2, §39 F1).
       const anyPersistFailed = actRecs.some((r) => persistFailed.has(r.act_id));
-      const needsRetry = infraRetry.has(sub.id) || anyPersistFailed;
+      const awaitingReconcile = reconcilePending.has(sub.id);
+      const needsRetry = infraRetry.has(sub.id) || anyPersistFailed || awaitingReconcile;
       const anyExecuted = actRecs.some((r) => r.outcome === "executed");
+      const retryReason = infraRetry.has(sub.id)
+        ? "engine_infra_error"
+        : anyPersistFailed
+          ? "act_ledger_write_failed"
+          : "native_act_awaiting_reconcile";
       const { error: upErr } = await admin
         .from("paige_event_dispatches")
         .upsert(
@@ -212,7 +232,7 @@ Deno.serve(async (req) => {
               acts_executed: needsRetry ? false : anyExecuted,
               acts,
             },
-            error: needsRetry ? (infraRetry.has(sub.id) ? "engine_infra_error" : "act_ledger_write_failed") : null,
+            error: needsRetry ? retryReason : null,
           },
           { onConflict: "event_id,automation_id" },
         );
