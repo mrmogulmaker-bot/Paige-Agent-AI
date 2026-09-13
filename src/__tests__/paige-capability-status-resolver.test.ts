@@ -70,6 +70,35 @@ describe("resolveCapabilityStatus — one honest availability per capability (§
     expect(one({ proofOwed: true, maturity: "UNAVAILABLE" }).availability).toBe("planned");
   });
 
+  it("a capability behind an un-installed Marketplace package is NEEDS_SETUP — entitlement wins over connection/lane", () => {
+    // requiresPackage + not entitled → needs_setup, with the package-install reason (the finance/credit
+    // Funding & Coaching Tools bundle — §2 finance is opt-in, never a default). Fail-closed: anything but
+    // an explicit packageEntitled:true refuses.
+    const missing = one({ requiresPackage: true, packageEntitled: false, autonomyLane: "auto" });
+    expect(missing.availability).toBe("needs_setup");
+    expect(missing.reason).toMatch(/Funding & Coaching Tools/);
+    expect(one({ requiresPackage: true, autonomyLane: "auto" }).availability).toBe("needs_setup"); // undefined ⇒ refuse
+    // entitled ⇒ the entitlement branch is transparent; the resolved lane decides.
+    expect(one({ requiresPackage: true, packageEntitled: true, autonomyLane: "auto" }).availability).toBe("live");
+    expect(one({ requiresPackage: true, packageEntitled: true, autonomyLane: "confirm" }).availability).toBe("needs_approval");
+    // entitlement wins over a satisfied connection + auto lane (the package-install reason, not the connection one).
+    const overConn = one({ requiresPackage: true, packageEntitled: false, requiresConnection: true, connected: true, autonomyLane: "auto" });
+    expect(overConn.availability).toBe("needs_setup");
+    expect(overConn.reason).toMatch(/Funding & Coaching Tools/);
+    // …but tier / evidence / maturity still win OVER a missing entitlement (the more fundamental "no").
+    expect(one({ requiresPackage: true, packageEntitled: false, tierEligible: false }).availability).toBe("not_for_tier");
+    expect(one({ requiresPackage: true, packageEntitled: false, evidenceMissing: true }).availability).toBe("unavailable");
+    expect(one({ requiresPackage: true, packageEntitled: false, maturity: "UNAVAILABLE" }).availability).toBe("planned");
+  });
+
+  it("BACKWARD-COMPAT: a signal that omits requiresPackage resolves exactly as before", () => {
+    // The entitlement branch fires ONLY when requiresPackage === true, so every pre-existing signal (none
+    // of which set it) is unchanged. An ordinary auto-lane create with no package field is still live.
+    expect(one({ autonomyLane: "auto" }).availability).toBe("live");
+    expect(one({ requiresPackage: false, packageEntitled: false, autonomyLane: "auto" }).availability).toBe("live");
+    expect(one({ actionKind: "read", autonomyLane: null }).availability).toBe("live");
+  });
+
   it("a read with a shipped seam is LIVE now", () => {
     expect(one({ key: "crm.list", label: "See your contacts", actionKind: "read", autonomyLane: null }).availability).toBe("live");
     // a PARTIAL read is still reachable now

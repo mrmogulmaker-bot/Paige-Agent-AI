@@ -40,6 +40,14 @@ export interface CapabilitySignal {
   requiresConnection?: boolean;
   /** Is that provider connected for this tenant? Only meaningful when requiresConnection. */
   connected?: boolean;
+  /** Does the capability require an optional Marketplace package to be installed first (e.g. the
+   *  Funding & Coaching Tools finance/credit bundle)? Backward-compatible: capabilities that omit this
+   *  are unaffected — the entitlement branch only fires when requiresPackage is explicitly true. */
+  requiresPackage?: boolean;
+  /** Is that package entitled (installed/in-scope) for this tenant? Only meaningful when requiresPackage;
+   *  resolved server-side from the is_finance entitlement predicate. Anything but an explicit `true` (false,
+   *  undefined, an unresolved read) refuses — never a silent allow (§13). */
+  packageEntitled?: boolean;
   /** The resolved autonomy lane for a mutating act (null/undefined for reads/drafts). */
   autonomyLane?: "auto" | "confirm" | "off" | null;
   /** True when a required evidence/contract is provably absent — an honest UNAVAILABLE. */
@@ -85,6 +93,14 @@ export function resolveCapabilityStatus(signals: CapabilitySignal[]): Capability
       // management). "Not something you can do here yet" is true either way — it never falsely
       // asserts non-existence, and it never implies Paige can take the action (§13/§70).
       return mk(s, "planned", "Not something Paige can do here yet — there's no governed path for it.");
+    }
+    // A capability behind an optional Marketplace package (the Funding & Coaching Tools finance/credit
+    // bundle) is gated on entitlement. Placed AFTER tier/evidence/maturity (a capability not for this
+    // tier, or with no seam, is the more fundamental "no") but BEFORE connection/lane — a package the
+    // tenant hasn't installed wins over a connection or approval state, so Paige never implies she can
+    // run a provider the workspace has not enabled (§2 finance-is-opt-in / §13 fail-closed).
+    if (s.requiresPackage && s.packageEntitled !== true) {
+      return mk(s, "needs_setup", "Install the Funding & Coaching Tools package to enable this.");
     }
     if (s.requiresConnection && s.connected !== true) {
       return mk(s, "needs_setup", "Needs a connection before Paige can use it.");
