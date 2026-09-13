@@ -53,7 +53,10 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const profileSecret = Deno.env.get("SOCIAL_PROFILE_SIGNING_SECRET");
+  const configuredProfileSecret = Deno.env.get("SOCIAL_PROFILE_SIGNING_SECRET")?.trim();
+  // Domain-separate the already server-only service secret so Social does not
+  // require a second privileged secret-management step merely to mint opaque profile ids.
+  const profileSecret = configuredProfileSecret || `paige-social-profile-v1:${serviceKey}`;
   const authHeader = req.headers.get("Authorization") ?? "";
   if (!supabaseUrl || !anonKey || !serviceKey) {
     return jsonResponse({ ok: false, code: "SOCIAL_UNAVAILABLE" }, 503);
@@ -162,7 +165,7 @@ Deno.serve(async (req: Request) => {
         || !platform || !SOCIAL_OAUTH_PLATFORMS.includes(platform as typeof SOCIAL_OAUTH_PLATFORMS[number])) {
       return jsonResponse({ ok: false, code: "SOCIAL_REQUEST_INVALID" }, 400);
     }
-    const configured = adapter.isConfigured() && Boolean(profileSecret) && Boolean(safePublicBase());
+    const configured = adapter.isConfigured() && Boolean(safePublicBase());
     const args: Json = { return_path: returnPath, platform, label, ...(reconnectId ? { connection_id: reconnectId } : {}) };
     const result = await govern(
       "social_connection_start",
@@ -181,8 +184,7 @@ Deno.serve(async (req: Request) => {
     const approvedReconnectId = text(approved.connection_id, 36);
     const approvedPlatform = text(approved.platform, 32);
     if (!approvedReturnPath || !RETURN_PATH.test(approvedReturnPath) || (approvedReconnectId && !UUID.test(approvedReconnectId))
-        || !approvedPlatform || !SOCIAL_OAUTH_PLATFORMS.includes(approvedPlatform as typeof SOCIAL_OAUTH_PLATFORMS[number])
-        || !profileSecret) {
+        || !approvedPlatform || !SOCIAL_OAUTH_PLATFORMS.includes(approvedPlatform as typeof SOCIAL_OAUTH_PLATFORMS[number])) {
       return jsonResponse({ ok: false, code: "SOCIAL_APPROVAL_INVALID" }, 409);
     }
 
