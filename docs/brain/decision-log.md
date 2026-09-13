@@ -5607,7 +5607,6 @@ PR #1226 (`03bf91ea`, merged as `0ba624b7599eca61eae83b21c0d1aea3270069c4`) pres
 A Solo welcome is now a receipt-derived fulfillment outcome, not an agreement-time side effect. The completed atomic fulfillment receipt queues exactly one service-only delivery; each attempt freshly proves the fulfilled enrollment, exact offer, active owner membership, standalone tenant, verified `trialing` or `active` subscription, recipient, and current Solo destination. A stable provider idempotency key, recoverable claims, retry leases, audit/Rail outcomes, and the five-minute Vault-backed drainer prevent duplicate sends and preserve a safe operator-visible exception state. Ambiguous provider outcomes stop in `needs_attention` rather than risking a second message. Trialing and active-paid copy are distinct.
 
 Production proof is structural and readback-based: migration and Edge deployments succeeded; `db-live` and `edge-live` equal the merge; Vercel deployment `dpl_4AD5mg9o9ZkvNaZpeChaUbgaqdnq` is `READY` on `paigeagent.ai`; unauthenticated Checkout/drainer calls and forged webhook signatures fail closed. No Stripe settings or billing objects were mutated for verification. The first authorized live Checkout, customer-specific payment-method presentation, signed fulfillment, exactly-one access outcome, actual welcome receipt, and current-shell entry remain `PROOF OWED`; the capability remains `PARTIAL`.
-<<<<<<< HEAD
 
 ### 2026-09-13 — Paige SDK / Platform Foundations program: framing approved, D-1…D-10 locked
 
@@ -5635,5 +5634,4 @@ regression task for the deterministic mainline `verify` failures found during th
 tenant-switch document turn making an unexpected provider call; a §9 evidence/comms assertion) — owned
 by the chat/knowledge lane, NOT the SDK lane; the exact failing tests are to be preserved, never
 weakened or skipped.
-=======
 - **One canonical governed CRM command path (2026-09-13, owner-authorized release candidate).** Paige CRM operations enter through the shared catalogue and authenticated `crm-command` door, resolve tenant/actor/membership server-side, use the existing action-risk/autonomy and single-use confirmation seams, execute through one service-only `execute_crm_command` transaction, and require canonical readback plus `record_capability_run` before a success result. Merge, destructive, bulk, ownership/assignment and outcome actions are preview/confirmation-bound. No second registry, resolver, approval store, task system or receipt ledger is permitted. Activity logging is internal-only and is never an external send/call/schedule. Source status is NOT SHIPPED; database, authenticated and deployment proof remain owed.
