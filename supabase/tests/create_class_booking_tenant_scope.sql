@@ -16,6 +16,12 @@ END $$;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- Supabase role the migration GRANTs to (self-contained: the migration's
+-- `GRANT EXECUTE … TO service_role` requires it to exist even on a standalone run).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role NOLOGIN BYPASSRLS; END IF;
+END $$;
+
 -- ── inline count-enforcing pgTAP shim ───────────────────────────────────────
 CREATE TABLE _pgtap_state(planned integer NOT NULL, executed integer NOT NULL);
 CREATE FUNCTION plan(integer) RETURNS text LANGUAGE plpgsql AS $$
