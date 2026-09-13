@@ -93,6 +93,8 @@ describe("canonical CRM contact/company command", () => {
     expect(sql).toContain("public.preview_crm_command");
     expect(sql).toContain("CRM_PREVIEW_INVALID_OR_EXPIRED");
     expect(sql).toContain("CRM_ABSENCE_READBACK_FAILED");
+    expect(sql).toContain("left join public.clients target_client");
+    expect(sql).toContain("tags=coalesce((select pg_catalog.array_agg");
     for (const dependency of ["paige_invoices", "stage_automation_events", "pipeline_move_approvals", "pipeline_deal_outcomes", "deal_activities"]) expect(sql).toContain(dependency);
     expect(sql).toContain("CRM_ACTION_UNAVAILABLE");
     expect(sql).toContain("public.execute_pipeline_deal_move_as_paige(");

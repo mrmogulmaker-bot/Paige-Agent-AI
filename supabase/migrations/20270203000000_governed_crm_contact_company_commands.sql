@@ -1079,7 +1079,7 @@ begin
         primary_business_id=case when resolutions->>'primary_business_id'='loser' or c.primary_business_id is null then loser.primary_business_id else c.primary_business_id end,
         assigned_coach_user_id=case when resolutions->>'assigned_coach_user_id'='loser' or c.assigned_coach_user_id is null then loser.assigned_coach_user_id else c.assigned_coach_user_id end,
         lead_owner_user_id=case when resolutions->>'lead_owner_user_id'='loser' or c.lead_owner_user_id is null then loser.lead_owner_user_id else c.lead_owner_user_id end,
-        tags=(select pg_catalog.array_agg(distinct x order by x) from pg_catalog.unnest(coalesce(c.tags,array[]::text[])||coalesce(loser.tags,array[]::text[])) x),
+        tags=coalesce((select pg_catalog.array_agg(distinct x order by x) from pg_catalog.unnest(coalesce(c.tags,array[]::text[])||coalesce(loser.tags,array[]::text[])) x),array[]::text[]),
         updated_at=pg_catalog.clock_timestamp() where id=c.id returning * into c;
       update public.deals set contact_client_id=c.id,updated_at=pg_catalog.clock_timestamp() where contact_client_id=loser.id;
       update public.client_notes set contact_id=c.id,updated_at=pg_catalog.clock_timestamp() where contact_id=loser.id;
@@ -1088,19 +1088,19 @@ begin
     elsif a='contact.bulk_update' then
       select count(*) into target_count from pg_catalog.jsonb_array_elements(p.target_snapshot->'targets');
       select count(*) into changed from pg_catalog.jsonb_array_elements(p.target_snapshot->'targets') x
-       left join public.clients c on c.id=(x->>'id')::uuid and c.tenant_id=_tenant_id
-       where c.id is null or c.updated_at is distinct from (x->>'updated_at')::timestamptz;
+       left join public.clients target_client on target_client.id=(x->>'id')::uuid and target_client.tenant_id=_tenant_id
+       where target_client.id is null or target_client.updated_at is distinct from (x->>'updated_at')::timestamptz;
       if changed>0 then raise exception 'CRM_BULK_TARGET_VERSION_CONFLICT:%',changed using errcode='40001'; end if;
-      update public.clients c set
-        lifecycle_stage=case when p.target_snapshot->'patch' ? 'lifecycle_stage' then p.target_snapshot->'patch'->>'lifecycle_stage' else c.lifecycle_stage end,
-        tags=case when p.target_snapshot->'patch' ? 'tags' then array(select pg_catalog.jsonb_array_elements_text(p.target_snapshot->'patch'->'tags')) else c.tags end,
-        do_not_contact=case when p.target_snapshot->'patch' ? 'do_not_contact' then (p.target_snapshot->'patch'->>'do_not_contact')::boolean else c.do_not_contact end,
-        assigned_coach_user_id=case when p.target_snapshot->'patch' ? 'assigned_coach_user_id' then nullif(p.target_snapshot->'patch'->>'assigned_coach_user_id','')::uuid else c.assigned_coach_user_id end,
+      update public.clients target_client set
+        lifecycle_stage=case when p.target_snapshot->'patch' ? 'lifecycle_stage' then p.target_snapshot->'patch'->>'lifecycle_stage' else target_client.lifecycle_stage end,
+        tags=case when p.target_snapshot->'patch' ? 'tags' then array(select pg_catalog.jsonb_array_elements_text(p.target_snapshot->'patch'->'tags')) else target_client.tags end,
+        do_not_contact=case when p.target_snapshot->'patch' ? 'do_not_contact' then (p.target_snapshot->'patch'->>'do_not_contact')::boolean else target_client.do_not_contact end,
+        assigned_coach_user_id=case when p.target_snapshot->'patch' ? 'assigned_coach_user_id' then nullif(p.target_snapshot->'patch'->>'assigned_coach_user_id','')::uuid else target_client.assigned_coach_user_id end,
         updated_at=pg_catalog.clock_timestamp()
-      where c.tenant_id=_tenant_id and c.id in (select (x->>'id')::uuid from pg_catalog.jsonb_array_elements(p.target_snapshot->'targets') x);
+      where target_client.tenant_id=_tenant_id and target_client.id in (select (x->>'id')::uuid from pg_catalog.jsonb_array_elements(p.target_snapshot->'targets') x);
       get diagnostics changed=row_count;
-      select pg_catalog.jsonb_build_object('updated_count',changed,'changed_since_preview_count',0,'refused_count',(p.preview->>'refused_count')::int,'records',coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'lifecycle_stage',c.lifecycle_stage,'tags',c.tags,'do_not_contact',c.do_not_contact,'assigned_coach_user_id',c.assigned_coach_user_id,'updated_at',c.updated_at) order by c.id),'[]'::jsonb)) into readback
-       from public.clients c where c.tenant_id=_tenant_id and c.id in (select (x->>'id')::uuid from pg_catalog.jsonb_array_elements(p.target_snapshot->'targets') x);
+      select pg_catalog.jsonb_build_object('updated_count',changed,'changed_since_preview_count',0,'refused_count',(p.preview->>'refused_count')::int,'records',coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('id',target_client.id,'client_ref',target_client.account_number,'lifecycle_stage',target_client.lifecycle_stage,'tags',target_client.tags,'do_not_contact',target_client.do_not_contact,'assigned_coach_user_id',target_client.assigned_coach_user_id,'updated_at',target_client.updated_at) order by target_client.id),'[]'::jsonb)) into readback
+       from public.clients target_client where target_client.tenant_id=_tenant_id and target_client.id in (select (x->>'id')::uuid from pg_catalog.jsonb_array_elements(p.target_snapshot->'targets') x);
     else raise exception 'CRM_ACTION_UNAVAILABLE' using errcode='0A000'; end if;
   end if;
   run_id:=(pg_catalog.substr(pg_catalog.md5(_tenant_id::text||':'||_actor_id::text||':'||_idempotency_key),1,8)||'-'||pg_catalog.substr(pg_catalog.md5(_tenant_id::text||':'||_actor_id::text||':'||_idempotency_key),9,4)||'-'||pg_catalog.substr(pg_catalog.md5(_tenant_id::text||':'||_actor_id::text||':'||_idempotency_key),13,4)||'-'||pg_catalog.substr(pg_catalog.md5(_tenant_id::text||':'||_actor_id::text||':'||_idempotency_key),17,4)||'-'||pg_catalog.substr(pg_catalog.md5(_tenant_id::text||':'||_actor_id::text||':'||_idempotency_key),21,12))::uuid;
