@@ -1,4 +1,4 @@
--- Layer C · C5 slice 2 (+ fix-forward 20270305000000) — companion-minting, readable description, ledger-proven
+-- Layer C · C5 slice 2 (+ fix-forward 20270306000000) — companion-minting, readable description, ledger-proven
 -- direct-approve guard, cancellation-sync, durable reconciler (RPC-return-truthful), and the idempotent backfill.
 -- Behavioural proof against the schema `supabase db reset` replayed from zero (house pgTAP style; synthetic
 -- opaque fixtures; the enclosing transaction is ALWAYS rolled back — no production/customer records).
