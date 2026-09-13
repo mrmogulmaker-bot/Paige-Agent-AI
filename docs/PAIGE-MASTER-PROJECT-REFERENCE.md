@@ -727,6 +727,27 @@ Reference or any domain ledger; it governs how their facts become release and cu
 
 ### 4.0 Shipped Delivery Log
 
+**2026-09-13 skill-runner routed through the canonical governed seam — §9 cross-tenant leak + spoofable authority closed (PR [#1179](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1179), squash-merged to `main` as `a52b194` from head `26bd6d2`, internal channel, Gate A; edge deployed via `deploy-edge-functions` run 292):**
+The direct `skill-runner` Edge route now enforces the governed truth ITSELF instead of trusting an upstream caller
+(Chat/MCP). `resolveSkillCaller` derives actor + tenant + approving authority SERVER-SIDE from the verified JWT (a
+service-role caller is `principal:"service"`, which the seam refuses for this `high` mutation — a machine credential
+is nobody's yes), never from `body.tenant_id`/`body.contact_id`/`body.invoker_kind`; `decideSkillRun` routes through
+the shared `decideGovernedExecution` (§18 — the `skill` door mirrors the `mcp` door; a refusal writes no run row and
+no side effect, audited only). Every subject lookup (`draft_and_email_document`, `build_game_plan`,
+`verify_business_sos`, interpreter path) is scoped `.eq("tenant_id", callerTenantId)`, so a cross-tenant id resolves
+to nothing rather than leaking tenant B under tenant B's identity. The one external send (`draft_and_email_document`)
+is bound to a durable, single-use, fingerprint-bound approval in the EXISTING `paige_pending_confirmations` table
+(fingerprint over action+tenant+contact+recipient+sender+doc_type+content SHA-256; atomic compare-and-set claim
+excluding the minting request), and a failed send is reported honestly (`send_failed` → 502, never "succeeded"). No
+migration, no new deps. Two INDEPENDENT reviewers (§39 adversarial + §5 compliance) read the real pushed diff; their
+one converged §13 finding (failed-send-reported-as-success) was folded before merge. Proof: matrix 19/19 + reused-seam
+142/142 + four governance lints, run locally; edge-deploy pipeline green on `a52b194`. **KNOWN LIMITATION (§32/§70):**
+the authenticated runtime live-drive of the deployed function (the JWT→tenant derivation lives in Deno, not
+unit-testable headless) is the owed proof class — owner/live-drive confirmation pending. LOW residuals (non-email-skill
+governed-`propose` is honored via the pre-existing first-run confirm gate — the per-skill claim store is named
+follow-up; `active_tenant_id` integrity is the platform pattern; any authenticated tenant member may run skills — a
+§51 access decision) are pre-existing/disclosed, not regressions.
+
 **2026-09-13 Platform Operator Command Center — Phase 0 map + Phase 2 first view: Platform health (PR [#1181](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1181), squash-merged to `main` as `000a6012` from head `f925b99d`, development channel, owner-mandated Gate A):**
 The owner's 2026-09-12 Command Center mandate releases the parked `operator.platform` seam. Ships the Phase 0 map
 (`docs/delivery/platform-operator-command-center.md`: where the Command Center lives — the owner-locked v3 console,
