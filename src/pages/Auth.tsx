@@ -21,7 +21,7 @@ import {
   normalizeBilling, onboardingPathWithPlan, authRedirectWithPlan,
 } from "@/lib/auth/signupPlanIntent";
 import { readableTextOn, isColorDark } from "@/lib/brand/contrast";
-import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
+import { shouldPauseForWorkspaceChoiceAtLogin } from "@/lib/auth/accountSelection";
 import { operatorChooserTarget } from "@/lib/auth/operatorTarget";
 import { isSoloBetaPlan, soloAuthRecoveryState, soloBetaDisplayIntent, soloBetaSignupPath } from "@/lib/auth/soloBetaAcquisition";
 import { signUpWithReferral } from "@/lib/signUpWithReferral";
@@ -194,7 +194,23 @@ const Auth = () => {
       return;
     }
     if (!initialStaff.error && Boolean(initialStaff.data)) {
+      signupPlanIntentRef.current = null;
+      clearPlanIntent();
       navigate(operatorChooserTarget(window.location.search), { replace: true });
+      return;
+    }
+    // An established account always pauses for a deliberate workspace choice on
+    // a fresh login. This check precedes stale signup intent and safe `next`
+    // continuations so an old checkout-return URL cannot restart enrollment or
+    // replace account choice. Invite acceptance remains a deliberate exception:
+    // its signed token must reach the join flow before the new membership exists.
+    if (!isClientInvite && shouldPauseForWorkspaceChoiceAtLogin({
+      activeMembershipCount: initialMemberships.count ?? 0,
+      isPlatformStaff: false,
+    })) {
+      signupPlanIntentRef.current = null;
+      clearPlanIntent();
+      navigate("/choose-account", { replace: true });
       return;
     }
 
@@ -263,17 +279,6 @@ const Auth = () => {
       /* non-blocking */
     }
 
-    const [{ count: activeMembershipCount }, staff] = await accountChoiceContext;
-    const isPlatformStaff = Boolean(staff.data);
-    if (
-      shouldOfferAccountPicker({
-        activeMembershipCount: activeMembershipCount ?? 0,
-        isPlatformStaff,
-      })
-    ) {
-      navigate("/choose-account", { replace: true });
-      return;
-    }
 
     const target = await Promise.race<string>([
       resolveLandingRoute(userId),

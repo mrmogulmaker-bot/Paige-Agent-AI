@@ -23,7 +23,12 @@ incoherent routes to intuitive ones **without breaking anything** (§58). Modele
 > workspaces. Platform continues to `/operator/fleet`; workspace selection enters that workspace's
 > canonical tier route through the guarded tenant switch. `/admin` is never a fallback or special
 > Platform destination. This supersedes older direct-routing language.
-§51 tier matrix (`docs/doctrine/tier-matrix.md`).
+> **Account-choice correction — 2026-09-13:** every established signed-in user with at least one
+> active direct membership pauses at `/choose-account` on each fresh login, including a
+> one-workspace user. A stale Solo checkout-return or signup continuation cannot override that
+> choice. Membership-less acquisition and signed invite acceptance keep their governed paths; the
+> in-workspace switch control remains conditional on another available context.
+>§51 tier matrix (`docs/doctrine/tier-matrix.md`).
 
 This is **PR 1: the taxonomy + matrix + migration plan.** It contains **zero code renames.**
 The actual renames are follow-up slices sequenced by the plan below, each owner-gated.

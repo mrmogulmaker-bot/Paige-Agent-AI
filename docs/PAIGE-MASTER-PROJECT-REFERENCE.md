@@ -30,7 +30,7 @@
 > caller's own active `tenant_members` rows and enter through the guarded `switchTenant` seam.
 > Platform selection exits tenant scope through the same audited context seam before navigating to
 > `/operator/fleet`. The retired `/admin` route is never a fallback, compatibility destination, or
-> special case. Non-platform users with exactly one valid membership retain direct entry. When the
+> special case. Every established user with at least one valid membership pauses for deliberate workspace choice on each fresh login, including a one-workspace user. When the
 > chooser cannot resolve a valid selection, it stays fail-closed with honest recovery; established
 > non-membership signup/pricing routing is outside this repair. This supersedes the 2026-09-01 account-picker statement
 > that Platform operators retained direct routing.
@@ -3648,7 +3648,7 @@ implementation begins from it.
 
 ### Multi-membership login account picker (historical Gate 1 record; Platform rule SUPERSEDED 2026-09-07)
 
-- Google OAuth remains the identity authority. On an explicit login Google is asked to show its own identity chooser. **SUPERSEDED for Platform staff:** after identity is established, Platform staff always pause at `/choose-account`; non-platform users see the chooser when they have more than one active `tenant_members` row.
+- Google OAuth remains the identity authority. On an explicit login Google is asked to show its own identity chooser. **SUPERSEDED 2026-09-13:** after identity is established, Platform staff and every established user with at least one active `tenant_members` row pause at `/choose-account`; even one-workspace users explicitly confirm scope before entering. Genuine membership-less Solo acquisition and signed invite acceptance retain their governed continuations.
 - The chooser displays only the caller's RLS-filtered tenant records intersected with their own active membership rows. It never treats an account number, URL, email text or client-supplied tenant id as authorization. **The former Platform-operator direct-routing clause is superseded:** Platform staff explicitly choose Platform or a direct Paige membership. Client/invite continuations and non-platform single-membership users retain their established routing.
 - Choosing a workspace persists `profiles.active_tenant_id` through the existing guarded `switchTenant` seam before the browser scope changes. A failed write leaves the current workspace unchanged. The Solo header exposes the same independent-membership switcher; the existing server-gated agency parent/sub-account switcher remains separate and unchanged.
 - Truth status: 7 focused policy/OAuth/render tests pass, the TypeScript ratchet adds no errors, focused lint is green and the production build succeeds. Live authenticated Google return, both-account selection, retry, session expiry, account-switch persistence and preview runtime remain UNVERIFIED. Do not merge or deploy without the separate final go-live approval.
