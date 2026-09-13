@@ -5,7 +5,7 @@ import type { SoloBooking, SoloCalendarMeta } from "./useSoloCalendar";
 import { findConflicts } from "./useSoloCalendar";
 
 const setStatus = vi.fn(async () => ({ ok: true }) as { ok: boolean; message?: string });
-const createBooking = vi.fn(async () => ({ ok: true }) as { ok: boolean; message?: string });
+const createBooking = vi.fn(async () => ({ ok: true }) as { ok: boolean; message?: string; category?: string });
 type EditArg = { id: string; title: string; guestName: string | null; notes: string | null; calendarId: string };
 // Typed so .mock.calls carries the real argument tuple (id, startAt, minutes) /
 // (EditArg) rather than an empty tuple the assertions would have to cast blindly.
@@ -373,6 +373,35 @@ describe("Solo Calendar — the detail drawer", () => {
   it("says 'Not recorded' rather than inventing a placeholder for absent detail", () => {
     openDetail({ guest_name: null, guest_email: null, host_full_name: null });
     expect(dialog()?.textContent).toContain("Not recorded");
+  });
+
+  it("shows a refused New appointment as an honest category and keeps the form open — never a booked-looking success", async () => {
+    // The seam classifies a live refusal (e.g. the RPC not resolving) as an
+    // honest, actionable sentence. The drawer must surface it and STAY OPEN — a
+    // refusal that closed the form would read exactly like a saved appointment.
+    createBooking.mockResolvedValueOnce({
+      ok: false, category: "unavailable",
+      message: "Scheduling isn’t available right now — nothing was booked. Please try again in a moment.",
+    });
+    mount();
+    click(buttonByText(/New appointment/i, document.body));
+    setValue(byId<HTMLInputElement>("#sc-title")!, "Intro call");
+    click(buttonByText(/Save appointment/i, document.body));
+    await act(async () => { await Promise.resolve(); });
+    expect(createBooking).toHaveBeenCalledTimes(1);
+    expect(dialog()?.textContent).toContain("nothing was booked");
+    expect(dialog()?.textContent).toContain("New appointment"); // still open
+  });
+
+  it("closes the New appointment form only on a real success", async () => {
+    createBooking.mockResolvedValueOnce({ ok: true });
+    mount();
+    click(buttonByText(/New appointment/i, document.body));
+    setValue(byId<HTMLInputElement>("#sc-title")!, "Intro call");
+    click(buttonByText(/Save appointment/i, document.body));
+    await act(async () => { await Promise.resolve(); });
+    expect(createBooking).toHaveBeenCalledTimes(1);
+    expect(dialog()).toBeNull();
   });
 
   it("names the overlap inside the drawer when this appointment is one", () => {

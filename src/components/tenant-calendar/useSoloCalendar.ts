@@ -396,7 +396,7 @@ export interface UseSoloCalendarResult {
   retry: () => Promise<void>;
   refresh: () => void;
   setStatus: (id: string, status: string) => Promise<{ ok: boolean; message?: string }>;
-  createBooking: (input: CreateBookingInput) => Promise<{ ok: boolean; message?: string }>;
+  createBooking: (input: CreateBookingInput) => Promise<{ ok: boolean; message?: string; category?: BookingWriteCategory }>;
   /** Move a booking to a new time through the tenant-gated
    *  `reschedule_internal_booking` RPC — never a raw table UPDATE (RLS would scope
    *  it to the caller's own rows and a refusal would silently no-op, §13). The
@@ -440,28 +440,77 @@ export interface EditBookingInput {
  * Anything else surfaces verbatim rather than being flattened to a generic line —
  * a swallowed real cause is exactly what §13/§32 forbid.
  */
-export function bookingWriteMessage(err: { code?: string; message: string }): string {
-  const message = err.message ?? "";
-  switch (err.code) {
+/** A stable, machine-readable class for a booking write refusal, so a caller (and
+ *  future telemetry) can act on the KIND of failure, not parse a sentence. Every
+ *  category is honest about whether a write happened: `conflict`/`invalid`/
+ *  `forbidden`/`not_found` are server refusals with no row written; `unavailable`
+ *  means the request never resolved to the RPC (not deployed / ambiguous overload)
+ *  so nothing was booked; `network` never reached the server; `unknown` surfaces
+ *  the real cause verbatim rather than flattening it (§13). */
+export type BookingWriteCategory =
+  | "conflict" | "forbidden" | "not_found" | "invalid" | "unavailable" | "network" | "unknown";
+
+export interface BookingWriteFailure { category: BookingWriteCategory; message: string; }
+
+/**
+ * Classify a booking write error into an honest, actionable category + sentence.
+ *
+ * `verb` tailors only the phrasing where add and change genuinely differ (a 42501
+ * on create is "this account can't add here", on edit "you can't change that").
+ * The category is operation-independent. A refusal must NEVER read as a success
+ * and a real cause must NEVER be swallowed — an unrecognised failure surfaces
+ * verbatim (§13/§32).
+ */
+export function classifyBookingWriteError(
+  err: { code?: string; message?: string } | null | undefined,
+  verb: "add" | "change" = "change",
+): BookingWriteFailure {
+  const message = err?.message ?? "";
+  const code = err?.code;
+  // PostgREST could not resolve the RPC — the function is not deployed, or two
+  // overloads are ambiguous. The request never ran, so NOTHING was booked; say
+  // that plainly and keep it retryable rather than dumping a schema-cache string.
+  if (code === "PGRST202" || code === "PGRST203"
+      || /could not find the function|no function matches|schema cache|choose the best candidate/i.test(message)) {
+    return { category: "unavailable", message: "Scheduling isn’t available right now — nothing was booked. Please try again in a moment." };
+  }
+  switch (code) {
     case "23505":
     case "23P01":
-      return "Something is already on your schedule at that time.";
+      return { category: "conflict", message: "Something is already on your schedule at that time." };
     case "42501":
-      return "You can't change that booking.";
+      return {
+        category: "forbidden",
+        message: verb === "add"
+          ? "This account can’t add an appointment here — check you’re signed in to the workspace you mean to book on."
+          : "You can't change that booking.",
+      };
     case "P0002":
-      return "That appointment no longer exists.";
+      return { category: "not_found", message: "That appointment no longer exists." };
     case "22023":
       // 22023 is shared across the booking seams: reschedule raises it for a bad
-      // time, but the edit seam also raises it for a missing title or a calendar
-      // that no longer belongs to the tenant. Reporting "that time could not be
-      // used" for a details edit that never touched the time is a lie (§13), so
-      // the guard's own prefix decides the sentence.
-      if (message.includes("BOOKING_TITLE_REQUIRED")) return "An appointment needs a title.";
-      if (message.includes("BOOKING_BAD_CALENDAR")) return "That calendar is no longer available.";
-      return "That time could not be used.";
+      // time, the edit/create seams also raise it for a missing title, a calendar
+      // that no longer belongs to the tenant, or a host who is not on it. Reporting
+      // "that time could not be used" for any of those would be a lie (§13), so the
+      // guard's own message prefix decides the sentence.
+      if (message.includes("BOOKING_TITLE_REQUIRED")) return { category: "invalid", message: "An appointment needs a title." };
+      if (message.includes("BOOKING_BAD_CALENDAR")) return { category: "invalid", message: "That calendar is no longer available." };
+      if (message.includes("BOOKING_BAD_HOST")) return { category: "invalid", message: "That host isn’t on this workspace." };
+      return { category: "invalid", message: "That time could not be used." };
     default:
-      return message || err.message;
+      // No SQLSTATE usually means the request never reached Postgres — a transport
+      // failure. Name it; otherwise surface the real cause verbatim (never swallow).
+      if (!code && (message === "" || /network|failed to fetch|timeout|connection|fetch/i.test(message))) {
+        return { category: "network", message: "Couldn’t reach the scheduling service — check your connection and try again." };
+      }
+      return { category: "unknown", message: message || "That appointment could not be saved." };
   }
+}
+
+/** The honest sentence for a change (edit/reschedule) write error. Thin wrapper
+ *  over {@link classifyBookingWriteError} so those seams keep one shared mapper. */
+export function bookingWriteMessage(err: { code?: string; message: string }): string {
+  return classifyBookingWriteError(err, "change").message;
 }
 
 /** One read per burst. A cancel-and-rebook writes several rows in quick
@@ -811,15 +860,14 @@ export function useSoloCalendar(
       _source: "manual",
     } as never);
     if (err) {
-      // 23505 = identical start; 23P01 = the GiST exclusion constraint (an
-      // overlapping range). Both mean the same thing to the person booking.
-      const code = (err as { code?: string }).code;
-      return {
-        ok: false,
-        message: code === "23505" || code === "23P01"
-          ? "Something is already on your schedule at that time."
-          : err.message,
-      };
+      // Every refusal is classified into an honest, actionable category and
+      // sentence (never a raw PostgREST/SQLSTATE dump, never a false success): an
+      // overlap reads as a clash, a 42501 as an authority/workspace problem, a
+      // PGRST202/203 (the RPC not resolving) as "nothing was booked, try again",
+      // and an unrecognised cause is surfaced verbatim (§13/§32). The caller shows
+      // the sentence; `category` is returned for observability.
+      const { category, message } = classifyBookingWriteError(err as { code?: string; message?: string }, "add");
+      return { ok: false, category, message };
     }
     setNonce((n) => n + 1);
     return { ok: true };

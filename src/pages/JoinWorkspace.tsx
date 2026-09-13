@@ -32,7 +32,6 @@ import { toast } from "sonner";
 import { ContextualConsentDialog } from "@/components/legal/ContextualConsentDialog";
 import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
 import { readableTextOn } from "@/lib/brand/contrast";
-import { signUpTenant } from "@/lib/auth/signUpTenant";
 
 interface PeekRow {
   tenant_id: string;
@@ -60,7 +59,6 @@ export default function JoinWorkspace() {
 
   // Inline customer-registration state (consumer invite, not signed in).
   const [step, setStep] = useState<"accept" | "register">("accept");
-  const [regMode, setRegMode] = useState<"signup" | "signin">("signup");
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -190,27 +188,17 @@ export default function JoinWorkspace() {
     if (!regConsent) return toast.error("Please agree to the terms to continue");
     setAccepting(true);
     try {
-      if (regMode === "signup") {
-        // Suppress the platform welcome — they arrived on the tenant/agency-branded
-        // invite, not the platform. accept_tenant_invite then grants the right
-        // access: a consumer gets the 'client' role + a clients row; a
-        // sub-account owner gets ADMIN membership on the child tenant.
-        await signUpTenant({ email, password: regPassword, suppressWelcome: true });
-      } else {
-        const { error: e } = await supabase.auth.signInWithPassword({ email, password: regPassword });
-        if (e) throw e;
-      }
+      // Solo Beta is the only open account-creation lane. Token-gated legacy,
+      // portal, agency, sub-account, and team invites may still be accepted by an
+      // existing authorized identity, but this public surface cannot create one.
+      const { error: e } = await supabase.auth.signInWithPassword({ email, password: regPassword });
+      if (e) throw e;
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) throw new Error("Could not establish your session — please try again.");
       await doAccept(auth.user.id);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Could not create your login";
-      if (regMode === "signup" && /already exists|already registered/i.test(msg)) {
-        setRegMode("signin");
-        toast.info("You already have a login — enter your password to sign in.");
-      } else {
-        toast.error(msg);
-      }
+      const msg = err instanceof Error ? err.message : "Could not sign in";
+      toast.error(msg);
       setAccepting(false);
     }
   };
@@ -247,10 +235,10 @@ export default function JoinWorkspace() {
               ? error
               : step === "register"
                 ? isSubaccountOwnerInvite
-                  ? `${regMode === "signup" ? "Set up your account" : "Sign in"} to run ${info?.tenant_name ?? "your workspace"}.`
+                  ? `Sign in with an existing authorized account to run ${info?.tenant_name ?? "your workspace"}.`
                   : isStaffInvite
-                    ? `${regMode === "signup" ? "Create your login" : "Sign in"} to join the ${info?.tenant_name ?? "workspace"} team.`
-                    : `${regMode === "signup" ? "Create your login" : "Sign in"} to open your portal with ${info?.tenant_name ?? "your workspace"}.`
+                    ? `Sign in with an existing authorized account to join the ${info?.tenant_name ?? "workspace"} team.`
+                    : `Sign in with an existing authorized account to open your portal with ${info?.tenant_name ?? "your workspace"}.`
                 : info
                   ? isConsumerInvite
                     ? `Accept to open your private client portal with ${info.tenant_name}.`
@@ -286,7 +274,7 @@ export default function JoinWorkspace() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="reg-pw">{regMode === "signup" ? "Create a password" : "Password"}</Label>
+                <Label htmlFor="reg-pw">Password</Label>
                 <div className="relative">
                   <Input
                     id="reg-pw"
@@ -324,19 +312,15 @@ export default function JoinWorkspace() {
               <Button onClick={submitRegister} disabled={accepting} className="w-full" style={btnStyle}>
                 {accepting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                 {isSubaccountOwnerInvite
-                  ? regMode === "signup" ? "Set up account & open workspace" : "Sign in & open workspace"
+                  ? "Sign in & open workspace"
                   : isStaffInvite
-                    ? regMode === "signup" ? "Create login & join team" : "Sign in & join team"
-                    : regMode === "signup" ? "Create login & open portal" : "Sign in & open portal"}
+                    ? "Sign in & join team"
+                    : "Sign in & open portal"}
               </Button>
-              <button
-                type="button"
-                disabled={accepting}
-                onClick={() => setRegMode((m) => (m === "signup" ? "signin" : "signup"))}
-                className="w-full text-center text-xs text-muted-foreground hover:text-foreground"
-              >
-                {regMode === "signup" ? "Already have a login? Sign in" : "Need an account? Create one"}
-              </button>
+              <p className="text-center text-xs text-muted-foreground">
+                New Client Portal, Agency, sub-account, and team enrollment is not open during the Solo Beta.
+                If you already have authorized access, sign in above; otherwise contact the person who invited you.
+              </p>
             </>
           ) : (
             <>
