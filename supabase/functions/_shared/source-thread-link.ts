@@ -57,7 +57,18 @@ export async function resolveSourceThreadLink(
   lookup: OwnedThreadLookup,
 ): Promise<string | null> {
   if (!claimedThreadId) return null;
-  const validated = await lookup(claimedThreadId);
+  let validated: string | null;
+  try {
+    validated = await lookup(claimedThreadId);
+  } catch {
+    // A THROWN lookup failure is the SAME hazard as a returned error (the #1185/#1195 confirm-gate
+    // lesson, applied here): a TRACEABILITY read must never fail — or poison — the real task write it
+    // rides on. Safe-degrade to null: no link, and never a foreign one. The injected `lookup` is
+    // expected to LOG its own failure (§13/§32 — so a systematic break is visible); this module
+    // guarantees the safe-degrade for EVERY caller, so the rule holds even if a future caller's
+    // lookup forgets its own catch (§18, one home for the decision).
+    return null;
+  }
   // Defensive identity check: the validation must return the SAME id it was asked to validate. A
   // lookup that returned any other id (it never should, being filtered by `id`) is not a match.
   return validated && validated === claimedThreadId ? validated : null;

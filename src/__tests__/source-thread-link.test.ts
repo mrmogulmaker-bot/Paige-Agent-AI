@@ -85,4 +85,13 @@ describe("resolveSourceThreadLink — the trusted link decision (§9/§13)", () 
     const mischievous = async (_id: string) => OWN;
     expect(await resolveSourceThreadLink(OTHER_TENANT, mischievous)).toBeNull();
   });
+
+  it("a lookup that THROWS safe-degrades to null — a traceability read never fails the task write (§13/§32)", async () => {
+    // The #1185/#1195 confirm-gate lesson applied here: a THROWN lookup failure (a transient read
+    // error, an RLS/column drift) must resolve to NO link — never propagate out of the decision and
+    // fail the real task insert it rides on, and never produce a foreign link. The helper guarantees
+    // this for EVERY caller (§18), independent of whether a given caller's lookup catches its own throw.
+    const throwing = async (_id: string): Promise<string | null> => { throw new Error("db unreachable"); };
+    await expect(resolveSourceThreadLink(OWN, throwing)).resolves.toBeNull();
+  });
 });

@@ -10118,21 +10118,28 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // state — a link is never evidence a task is complete (§13). The decision rule lives in
               // one home: _shared/source-thread-link.ts.
               const linkThreadId = await resolveSourceThreadLink(payloadThreadId, async (tid) => {
-                const { data: owned, error: threadErr } = await supabaseClient
-                  .from("paige_chat_threads")
-                  .select("id")
-                  .eq("id", tid)
-                  .eq("tenant_id", crmTenantId)
-                  .eq("caller_user_id", user.id)
-                  .maybeSingle();
-                // Safe-degrade: a transient read error yields NO link rather than failing the real
-                // task insert over a traceability read — but LOG it, so a SYSTEMATIC break (an RLS
-                // or column drift that nulls EVERY link) is visible instead of silently swallowed
-                // (§13/§32). An errored read never produces a foreign link (data is null → null).
-                if (threadErr) {
-                  console.warn("[paige] crm_create_task: source-thread validation read failed, linking NULL —", threadErr.message);
+                // Safe-degrade: a transient read error — RETURNED or THROWN — yields NO link rather
+                // than failing the real task insert over a traceability read, but LOG it either way so
+                // a SYSTEMATIC break (an RLS or column drift that nulls EVERY link) is visible instead
+                // of silently swallowed (§13/§32). An errored read never produces a foreign link (data
+                // is null → null); the helper also catches a throw as one-home defense (§18).
+                try {
+                  const { data: owned, error: threadErr } = await supabaseClient
+                    .from("paige_chat_threads")
+                    .select("id")
+                    .eq("id", tid)
+                    .eq("tenant_id", crmTenantId)
+                    .eq("caller_user_id", user.id)
+                    .maybeSingle();
+                  if (threadErr) {
+                    console.warn("[paige] crm_create_task: source-thread validation read failed, linking NULL —", threadErr.message);
+                    return null;
+                  }
+                  return owned?.id ?? null;
+                } catch (thrown) {
+                  console.warn("[paige] crm_create_task: source-thread validation threw, linking NULL —", thrown instanceof Error ? thrown.message : String(thrown));
+                  return null;
                 }
-                return owned?.id ?? null;
               });
               const { data: row, error } = await admin
                 .from("tasks")

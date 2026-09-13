@@ -34,16 +34,20 @@ INSERT INTO public.tenants (id, slug, name, status, account_type, account_number
   ('57a00000-0000-0000-0000-00000000bbbb','stl-tenant-b','STL Tenant B','active','standalone','STB','{}'::jsonb);
 
 -- User A owns tenant A (active there); User B owns tenant B (active there).
--- `INSERT INTO auth.users` above already created each `profiles` shell via the `handle_new_user`
--- trigger, so setting active_tenant_id is an UPSERT, never a bare INSERT — a plain insert collides
--- on profiles_user_id_key. (Same pattern as business_context_readiness.sql.)
+-- MEMBERSHIP MUST BE SEEDED FIRST. `guard_active_tenant_membership()` fires on the profiles UPDATE
+-- below and RAISES unless the user is ALREADY an active member of the tenant being set active. And
+-- `INSERT INTO auth.users` above already created each `profiles` shell (active_tenant_id NULL) via
+-- the `handle_new_user` trigger, so setting active_tenant_id is an `ON CONFLICT DO UPDATE`
+-- (TG_OP='UPDATE'), never a bare INSERT — a plain insert collides on profiles_user_id_key. So the
+-- tenant_members rows MUST exist before the pointer write, or the guard blocks it (same membership-
+-- first ordering the account-switch step below already uses). (Pattern: business_context_readiness.sql.)
+INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at) VALUES
+  ('57a00000-0000-0000-0000-00000000aaaa','57a00000-0000-0000-0000-0000000000a1','owner','active',true, now()),
+  ('57a00000-0000-0000-0000-00000000bbbb','57a00000-0000-0000-0000-0000000000b1','owner','active',true, now());
 INSERT INTO public.profiles (user_id, active_tenant_id) VALUES
   ('57a00000-0000-0000-0000-0000000000a1','57a00000-0000-0000-0000-00000000aaaa'),
   ('57a00000-0000-0000-0000-0000000000b1','57a00000-0000-0000-0000-00000000bbbb')
 ON CONFLICT (user_id) DO UPDATE SET active_tenant_id = EXCLUDED.active_tenant_id;
-INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at) VALUES
-  ('57a00000-0000-0000-0000-00000000aaaa','57a00000-0000-0000-0000-0000000000a1','owner','active',true, now()),
-  ('57a00000-0000-0000-0000-00000000bbbb','57a00000-0000-0000-0000-0000000000b1','owner','active',true, now());
 
 -- User A's private thread in tenant A.
 INSERT INTO public.paige_chat_threads
