@@ -9,7 +9,7 @@
 -- then RE-ENABLED and exercised via real INSERT/UPDATE, and the reconciler is called as the cron/service
 -- context (auth.uid() NULL) exactly as pg_cron invokes it.
 begin;
-select plan(59);
+select plan(60);
 
 -- Seed the tenant in NORMAL mode (triggers ON) so its account_number-assignment trigger fires.
 insert into public.tenants(id, slug, name, status, account_type, account_number_prefix, features) values
@@ -453,6 +453,21 @@ select lives_ok(
   $$ insert into public.paige_pending_approvals(type, draft_content, category, tenant_id, source, status, metadata)
        values('cs_draft','{}'::jsonb,'followup','11111111-1111-4111-8111-111111111111','paige_action_bus','approved','{}'::jsonb) $$,
   'insert guard NARROW: a NON-orchestration approved create is NOT blocked (the DB does not globally block every direct approval write — that broader RLS is the next slice)');
+-- (I6) Codex P1 (LAUNDER-IN): the exact cross-branch bypass — insert an allowed non-orchestration approved
+-- row (I5 above), then UPDATE only its source to paige_orchestration. 9a000001 is non-orchestration and was
+-- set approved in (D4); a JWT caller attempts to relabel it into orchestration. The launder-IN pin refuses it,
+-- so it can never dodge the executor-only approve gate by acquiring the orchestration source after the fact.
+set request.jwt.claim.sub = '88888888-8888-4888-8888-888888888888';
+select throws_ok(
+  $$ update public.paige_pending_approvals set source='paige_orchestration' where id='9a000001-0000-4000-8000-000000000001' $$,
+  '42501', NULL,
+  'insert guard (Codex P1): a non-orchestration approved row cannot be reclassified INTO paige_orchestration (launder-in bypass closed)');
+reset request.jwt.claim.sub;
+-- BOUNDARY NOTE (§39 observation, folded into the §59 next slice / task #18, NOT #15): this guard — exactly
+-- like the pre-existing owner-approved UPDATE gate — keys on the literal status='approved'. The status CHECK
+-- also permits 'approved_pending_send'/'sent' (the comms/send lifecycle, never the orchestration act flow);
+-- a companion set to one of those does not run the held act (the ledger drives execution, not the row status),
+-- so it is a display-only boundary, not an execution bypass — mapped in the non-orchestration approvals-RLS slice.
 
 select * from finish();
 rollback;

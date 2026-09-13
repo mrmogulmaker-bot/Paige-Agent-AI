@@ -28,13 +28,16 @@
 -- inserts an orchestration row at status='approved' — this branch cannot 4xx a real caller.
 --
 -- APPROACH (§18/§12 — extend in place, do not fork). CREATE OR REPLACE the SAME guard function
--- (paige_guard_orchestration_direct_approve), made tg_op-aware: a new INSERT branch is added, and the
--- existing 20270306000000 UPDATE logic is preserved BYTE-FOR-BYTE under `if tg_op = 'UPDATE'` (it
--- references OLD, which is NULL on INSERT, so it must be UPDATE-guarded). The guard TRIGGER is re-created
--- from BEFORE UPDATE to BEFORE INSERT OR UPDATE. Additive: alters no table, creates no new table/column/
--- index/function. Forward-cleanup (recovery) is: CREATE OR REPLACE the function back to its 20270306000000
--- body (drop the tg_op branch) and restore the trigger to BEFORE UPDATE — a git revert does not reverse
--- applied SQL.
+-- (paige_guard_orchestration_direct_approve), made tg_op-aware: a new INSERT branch runs and `return new`s
+-- first, so the OLD-referencing UPDATE logic below it falls through ONLY for tg_op='UPDATE' (OLD is NULL on
+-- INSERT, so it must never run there — the early return is what guarantees that). That UPDATE logic keeps
+-- every 20270306000000 gate (source-immutability pin, non-orchestration fast-return, coordinate-immutability
+-- pin, JWT block, ledger cross-check) and ADDS one launder-IN pin (Codex P1, 2026-09-13) refusing a
+-- reclassification of a non-orchestration row into paige_orchestration. The guard TRIGGER is re-created from
+-- BEFORE UPDATE to BEFORE INSERT OR UPDATE. Additive: alters no table, creates no new table/column/index/
+-- function. Forward-cleanup (recovery) is: CREATE OR REPLACE the function back to its 20270306000000 body
+-- (drop the tg_op INSERT branch and the launder-IN pin) and restore the trigger to BEFORE UPDATE — a git
+-- revert does not reverse applied SQL.
 
 create or replace function public.paige_guard_orchestration_direct_approve()
 returns trigger
@@ -89,8 +92,23 @@ begin
       'would launder the row past the executor-only approve gate'
       using errcode = '42501';
   end if;
+  -- LAUNDER-IN pin (Codex P1, 2026-09-13): also refuse reclassifying a NON-orchestration row INTO
+  -- paige_orchestration. Orchestration approvals are minted ONLY by the Layer-C seam (an INSERT); no legitimate
+  -- writer relabels an existing row into orchestration. Without this, an authenticated admin could INSERT an
+  -- allowed non-orchestration row at status='approved' (out of this guard's scope), then UPDATE only source to
+  -- 'paige_orchestration' — the approve-gate below keys on old.source and early-returns for a non-orchestration
+  -- old.source, so status never transitions and neither the JWT block nor the ledger check ever fires, leaving an
+  -- approved orchestration row execute-approval never drove. Refusing the launder-IN closes that bypass; it
+  -- cannot block a legitimate producer because none changes source into orchestration.
+  if coalesce(new.source, '') = 'paige_orchestration' and coalesce(old.source, '') <> 'paige_orchestration' then
+    raise exception
+      'ORCH_APPROVAL_SOURCE_IMMUTABLE: a non-orchestration approval cannot be reclassified into paige_orchestration '
+      '— orchestration approvals are minted only by the Layer-C seam, never by relabeling an existing row'
+      using errcode = '42501';
+  end if;
   -- Gate on the STORED source (old.source), NEVER the mutable new.source: a combined UPDATE cannot flip source
-  -- in the same statement to dodge the check, and (with the pin above) a source-only update cannot pre-launder it.
+  -- in the same statement to dodge the check, and (with the two pins above) a source-only update can neither
+  -- launder an orchestration row out nor a non-orchestration row in.
   if coalesce(old.source, '') <> 'paige_orchestration' then return new; end if;
   -- Pin the ledger COORDINATES (Codex re-review P1): metadata.event_id/act_id (+act_execution_id) bind this
   -- companion to its held act and are the keys BOTH this cross-check AND execute-approval resolve
