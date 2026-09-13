@@ -108,8 +108,12 @@
   grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
 }
 
+/* A card is a way IN now, not an inline tab — it carries a go chevron and opens
+   the focused editor, so the two text rows sit in one column and the chevron
+   spans both on the right. */
 .cc-preset-card {
-  display: grid; gap: 6px; width: 100%; padding: 11px 12px; text-align: left; min-width: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+  row-gap: 6px; column-gap: 10px; width: 100%; padding: 11px 12px; text-align: left; min-width: 0;
   border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-chip);
   background: var(--pg-lift); color: inherit; font: inherit; cursor: pointer;
   transition: background .16s var(--cc-ease), border-color .16s var(--cc-ease),
@@ -117,19 +121,33 @@
 }
 .cc-preset-card:hover { background: var(--pg-surface); border-color: var(--pg-line); transform: translateY(-1px); }
 .cc-preset-card:active { transform: translateY(0) scale(.995); }
-.cc-preset-card[aria-selected="true"] {
-  background: var(--pg-surface); border-color: var(--pg-line-strong); box-shadow: var(--pg-lift-2);
-}
-.cc-preset-t { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cc-preset-t { grid-column: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .cc-swatch { width: 7px; height: 7px; flex: none; border-radius: 2px; box-shadow: var(--pg-e1); }
 .cc-preset-n {
   flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font: 600 12.5px/1.3 var(--pg-font-display);
 }
-.cc-preset-m { display: flex; align-items: center; gap: 9px; min-width: 0; color: var(--pg-faint); font-size: 10.5px; }
+.cc-preset-m { grid-column: 1; display: flex; align-items: center; gap: 9px; min-width: 0; color: var(--pg-faint); font-size: 10.5px; }
 .cc-preset-m > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-preset-m em { flex: none; font-style: normal; font-family: var(--pg-font-data); }
+.cc-preset-hosts { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.cc-preset-hosts svg { width: 11px; height: 11px; }
 .cc-preset-state { flex: none; margin-left: auto; }
+.cc-preset-go {
+  grid-column: 2; grid-row: 1 / span 2; align-self: center; width: 16px; height: 16px;
+  color: var(--pg-faint); transition: transform .16s var(--cc-ease), color .16s var(--cc-ease);
+}
+.cc-preset-card:hover .cc-preset-go { transform: translateX(2px); color: var(--pg-muted); }
+
+/* Archived group — put-away presets, held below the active ones. A hairline rule
+   and muted heading separate it without competing for attention; the cards read
+   slightly recessed so the active list stays the focus. */
+.cc-archived { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--pg-line-soft); }
+.cc-archived-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.cc-archived-head small { color: var(--pg-muted); font-size: 11.5px; line-height: 1.5; }
+.cc-archived .cc-preset-card { background: transparent; }
+.cc-archived .cc-preset-card:hover { background: var(--pg-lift); }
+.cc-preset-card[data-life="archived"] .cc-preset-n { color: var(--pg-muted); }
 
 /* -------------------------------------------------------- selected preset */
 
@@ -511,3 +529,119 @@ textarea.cc-in { height: auto; min-height: 62px; padding: 8px 10px; line-height:
    toolbar, so the actions are quiet until you reach them. */
 .cc-host-act { display: flex; gap: 2px; margin-left: auto; }
 .cc-host-act button { padding-inline: 6px; }
+
+/* ------------------------------------------------------- master/detail bits */
+
+/* The way back out of the focused editor. */
+.cc-editor-back { min-width: 0; }
+
+/* Editor lifecycle: the Publish/Pause act sits beside the status pill. Gold is
+   spent only on Publish (the real act, §11); Live/Paused/Draft read in tone. */
+.cc-selected[data-life] .cc-selected-live { flex-wrap: wrap; }
+
+/* The link block, made honest per lifecycle. A tag names what the URL IS, and a
+   Draft/Paused address reads as reserved/held (dashed, muted) rather than live. */
+.cc-link-tag {
+  flex: 1 0 100%; color: var(--pg-faint); font-size: 9px; font-weight: 750;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+.cc-link[data-public="false"] code { color: var(--pg-muted); border-style: dashed; }
+
+/* The publish blockers, listed inside the Draft/Paused notice. */
+.cc-blockers { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; }
+.cc-blockers li { font-size: 11.5px; line-height: 1.5; }
+
+/* --------------------------------------------------- new-preset chooser (modal) */
+
+/* One home for creating a preset: a centered dialog on the shipped --pg overlay,
+   matching the other Settings modals (the same env scrim + surface plate), so it
+   is one continuous system. Nothing here is live — the result is always a draft. */
+.cc-chooser-backdrop {
+  position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 20px;
+  background: color-mix(in srgb, var(--pg-env) 64%, transparent); backdrop-filter: blur(3px);
+  animation: cc-fade .16s var(--cc-ease);
+}
+.cc-chooser {
+  width: min(680px, 100%); max-height: min(86vh, calc(100dvh - 40px)); overflow-y: auto;
+  display: grid; gap: 14px; padding: 18px;
+  border: 1px solid var(--pg-line-strong); border-radius: var(--cc-plate);
+  background: var(--pg-surface); box-shadow: var(--pg-e3, var(--pg-lift-2));
+  animation: pg-materialize .18s ease-out;
+}
+.cc-chooser-head { display: flex; align-items: flex-start; gap: 12px; }
+.cc-chooser-head > div { flex: 1 1 auto; min-width: 0; }
+.cc-chooser-head > div > span {
+  display: block; color: var(--pg-gold-core); font-size: 9.5px; font-weight: 750;
+  letter-spacing: .16em; text-transform: uppercase;
+}
+.cc-chooser-head h2 { margin: 3px 0 0; font: 650 20px/1.1 var(--pg-font-display); letter-spacing: -.03em; }
+.cc-chooser-x {
+  display: grid; place-items: center; width: 30px; height: 30px; flex: none;
+  border: 1px solid var(--pg-line-soft); border-radius: 9px; background: var(--pg-lift);
+  color: var(--pg-muted); cursor: pointer; transition: border-color .15s var(--cc-ease), color .15s var(--cc-ease);
+}
+.cc-chooser-x:hover:not(:disabled) { border-color: var(--pg-line-strong); color: var(--pg-ink); }
+.cc-chooser-x:disabled { opacity: .5; cursor: not-allowed; }
+.cc-chooser-x svg { width: 15px; height: 15px; }
+.cc-chooser-err { min-width: 0; }
+.cc-chooser-body { display: grid; gap: 12px; min-width: 0; }
+.cc-chooser-lead { margin: 0; max-width: 64ch; color: var(--pg-muted); font-size: 12px; line-height: 1.55; }
+.cc-chooser-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); }
+.cc-chooser-cat {
+  display: grid; gap: 4px; align-content: start; padding: 12px; text-align: left; min-width: 0;
+  border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-chip);
+  background: var(--pg-lift); color: inherit; font: inherit; cursor: pointer;
+  transition: background .15s var(--cc-ease), border-color .15s var(--cc-ease),
+              transform .15s var(--cc-ease), box-shadow .15s var(--cc-ease);
+}
+.cc-chooser-cat:hover:not(:disabled) {
+  background: var(--pg-surface); border-color: var(--pg-line-strong);
+  transform: translateY(-1px); box-shadow: var(--pg-lift-1);
+}
+.cc-chooser-cat:disabled { opacity: .6; cursor: progress; }
+.cc-chooser-cat b { font: 620 13px/1.25 var(--pg-font-display); }
+.cc-chooser-sum { color: var(--pg-ink-2); font-size: 11.5px; }
+.cc-chooser-det { color: var(--pg-faint); font-size: 11px; line-height: 1.5; }
+.cc-chooser-req { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; color: var(--pg-warning); font-size: 10.5px; }
+.cc-chooser-req svg { width: 11px; height: 11px; }
+.cc-chooser-field { display: grid; gap: 5px; }
+.cc-chooser-field > span { color: var(--pg-ink-2); font-size: 11.5px; font-weight: 600; }
+.cc-chooser-field em { color: var(--pg-faint); font-weight: 400; font-style: normal; }
+.cc-chooser-models { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; min-width: 0; }
+.cc-chooser-models legend { padding: 0; color: var(--pg-ink-2); font-size: 11.5px; font-weight: 600; }
+.cc-chooser-models > div { display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); }
+.cc-chooser-model {
+  display: grid; gap: 2px; padding: 9px 11px; text-align: left; min-width: 0;
+  border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-chip);
+  background: var(--pg-lift); color: inherit; font: inherit; cursor: pointer;
+  transition: border-color .15s var(--cc-ease), background .15s var(--cc-ease);
+}
+.cc-chooser-model:hover:not(:disabled) { border-color: var(--pg-line-strong); }
+.cc-chooser-model[data-on="true"] { border-color: var(--pg-violet); background: color-mix(in srgb, var(--pg-violet) 9%, var(--pg-lift)); }
+.cc-chooser-model b { font: 600 12px/1.25 var(--pg-font-display); }
+.cc-chooser-model span { color: var(--pg-faint); font-size: 10.5px; }
+.cc-chooser-list { display: grid; gap: 6px; min-width: 0; }
+.cc-chooser-tpl {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; text-align: left; min-width: 0;
+  border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-chip);
+  background: var(--pg-lift); color: inherit; font: inherit; cursor: pointer;
+  transition: background .15s var(--cc-ease), border-color .15s var(--cc-ease);
+}
+.cc-chooser-tpl:hover:not(:disabled) { background: var(--pg-surface); border-color: var(--pg-line-strong); }
+.cc-chooser-tpl:disabled { opacity: .6; cursor: progress; }
+.cc-chooser-tpl > span { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.cc-chooser-tpl > span b { font: 600 12.5px/1.25 var(--pg-font-display); }
+.cc-chooser-tpl > span span { color: var(--pg-faint); font-size: 11px; }
+.cc-chooser-tpl > svg { width: 15px; height: 15px; flex: none; color: var(--pg-faint); }
+.cc-chooser-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
+
+@keyframes cc-fade { from { opacity: 0; } to { opacity: 1; } }
+
+@container (max-width: 560px) {
+  .cc-chooser-grid, .cc-chooser-models > div { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-chooser-backdrop, .cc-chooser, .cc-chooser-cat { animation: none; transition-duration: .01ms !important; }
+  .cc-chooser-cat:hover:not(:disabled) { transform: none; }
+}

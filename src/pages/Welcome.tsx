@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 30000;
 
-type EnrollmentState = "needs_identity" | "needs_intake" | "needs_checkout" | "pending" | "verified" | "payment_recovery" | "canceled_trial" | "canceled_paid" | "failed";
+type EnrollmentState = "needs_identity" | "needs_intake" | "needs_checkout" | "pending" | "verified" | "choose_account" | "payment_recovery" | "canceled_trial" | "canceled_paid" | "failed";
 type ViewState = EnrollmentState | "cancelled" | "expired" | "invalid" | "delayed";
 type EnrollmentStatus = { state: EnrollmentState; reference_id: string; message: string; retryable: boolean; destination?: string; can_manage_billing?: boolean };
 
@@ -48,6 +48,15 @@ export default function Welcome() {
         const next = data as EnrollmentStatus;
         setStatus(next);
         setView(next.state);
+        if (next.state === "choose_account") {
+          if (next.destination !== "/choose-account") {
+            setView("failed");
+            return;
+          }
+          settled.current = true;
+          navigate("/choose-account", { replace: true });
+          return;
+        }
         if (next.state === "verified") {
           if (!next.destination || !/^\/solo\/[0-9]+\/command-center$/.test(next.destination)) {
             setView("failed");
@@ -94,6 +103,7 @@ export default function Welcome() {
     needs_intake: { title: "Finish your Solo setup", body: "Your identity is ready, but your Solo business setup still needs to be completed." },
     needs_checkout: { title: "Checkout is still needed", body: "Your setup is saved, but no verified trial subscription is attached. Continue from the approved Solo offer." },
     verified: { title: "Solo access verified", body: "Opening your authorized workspace…" },
+    choose_account: { title: "Opening your Paige accounts…", body: "Your existing access is verified. Choose the workspace where you want to work." },
     payment_recovery: { title: "Payment recovery is required", body: "Paige verified that this subscription needs billing attention. Review billing to update payment details; no access is being inferred from the browser." },
     canceled_trial: { title: "Your Solo Beta trial is canceled", body: "No first paid renewal is scheduled, and trial access has ended. Billing history and support remain available." },
     canceled_paid: { title: "Your paid Solo subscription has ended", body: "The verified paid service period is over. Billing history and support remain available." },

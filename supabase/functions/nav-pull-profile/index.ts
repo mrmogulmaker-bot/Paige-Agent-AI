@@ -25,6 +25,11 @@ import {
   type NavPullGovernedAudit,
   type NavPullPrincipal,
 } from "../_shared/nav-pull-profile/governed-adapter.ts";
+import {
+  resolveFundingCoachingGate,
+  fundingGateAuditRow,
+  recordFundingGateDecision,
+} from "../_shared/funding-coaching-gate.ts";
 
 const NAV_API = "https://api.nav.com/v1";
 
@@ -131,20 +136,45 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "not_authorized", message: authz.reason }, 403);
   }
 
-  // Authorized. Nav configuration is platform-global, not tenant data — an unconfigured provider is an
-  // honest no-op (no pull, so no execute audit), exactly as before.
-  const apiKey = Deno.env.get("NAV_API_KEY");
-  const partnerId = Deno.env.get("NAV_PARTNER_ID");
-  if (!apiKey || !partnerId) {
-    return jsonResponse({ activated: false, message: "Nav not yet configured" }, 200);
-  }
-
+  // Authorized. Resolve the CONTACT's workspace (server-side, never the body) — both the Funding &
+  // Coaching Tools gate scope and the provider call need it.
   const { data: contact } = await admin
     .from("clients")
     .select("id, business_name, ein, email, tenant_id")
     .eq("id", contact_id)
     .maybeSingle();
   if (!contact) return jsonResponse({ error: "contact not found" }, 404);
+  const contactTenantId = (contact.tenant_id ?? null) as string | null;
+
+  // ── FUNDING & COACHING TOOLS GATE (owner ruling 2026-09-13) — FAIL CLOSED before any provider contact ──
+  // Nav business-credit is one of ten finance/credit providers in the optional Funding & Coaching Tools
+  // package (§2: finance is never a platform default). It runs ONLY when the CONTACT's workspace holds the
+  // package AND has the required Financial connection/consent. Absent either → setup_required / unavailable,
+  // NO Nav contact, NO profile write. Today the package is unseeded, so this refuses for every tenant —
+  // including the nav-refresh-scores cron (a `system` caller), which correctly no-ops per contact.
+  const fundingGate = await resolveFundingCoachingGate(admin, { tenantId: contactTenantId, providerKey: "nav" });
+  if (!fundingGate.allowed) {
+    await recordFundingGateDecision(admin, {
+      actorUserId: callerUserId,
+      actorRole: `nav_pull:${principal}`,
+      row: fundingGateAuditRow({
+        actionPrefix: "nav_pull", capability: "nav_pull_business_credit", targetType: "business_credit_profile",
+        providerKey: "nav", tenantId: contactTenantId, subjectKind: "contact", subjectId: contact_id,
+        verdict: fundingGate, startedAtMs, nowIso: new Date().toISOString(),
+      }),
+    });
+    // `activated:false` + `message` keep the existing BusinessCreditAdmin consumer honest (§37): it keys
+    // on `activated === false` to warn, so without these it would falsely toast "Profile refreshed".
+    return jsonResponse({ available: false, activated: false, result: fundingGate.result, state: fundingGate.state, reason: fundingGate.reason, message: fundingGate.reason }, 200);
+  }
+
+  // Nav configuration is platform-global, not tenant data — an unconfigured provider is an honest no-op
+  // (no pull, so no execute audit), exactly as before.
+  const apiKey = Deno.env.get("NAV_API_KEY");
+  const partnerId = Deno.env.get("NAV_PARTNER_ID");
+  if (!apiKey || !partnerId) {
+    return jsonResponse({ activated: false, message: "Nav not yet configured" }, 200);
+  }
 
   // The governed execute receipt, scoped to the CONTACT's own tenant (server-resolved, never the body).
   await writeGovernedNavAudit(

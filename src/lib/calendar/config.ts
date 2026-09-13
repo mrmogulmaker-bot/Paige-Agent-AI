@@ -121,6 +121,18 @@ export interface CalendarRow {
   timezone: string;
   availability_json: DayWindow[] | null;
   enabled: boolean;
+  // When this preset was first published. NULL = never published (Draft). Set on
+  // publish, kept across pause — so a paused preset (enabled=false, published_at
+  // set) is distinguishable from a never-published draft. `enabled` stays the
+  // authoritative bookability gate; this only labels the lifecycle. See
+  // 20270301000000_calendar_booking_preset_lifecycle.sql.
+  published_at: string | null;
+  // When this preset was archived (put away). NULL = active. Archive also sets
+  // enabled=false (so the public resolver's enabled gate keeps it off the air);
+  // restore clears this column and returns the preset to Draft or Paused per
+  // published_at. Never gates a booking directly. See
+  // 20270302000000_calendar_preset_duplicate_archive_restore.sql.
+  archived_at: string | null;
   group_id: string | null;
   created_by: string | null;
   theme: string;
@@ -145,7 +157,7 @@ export interface CalendarGroup {
 /* -------------------------------------------------------------- constants */
 
 export const SELECT_COLS =
-  "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, capacity, redirect_url, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, intake_questions, appointment_types, date_overrides, notify_config, assignment_strategy";
+  "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, capacity, redirect_url, timezone, availability_json, enabled, published_at, archived_at, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, intake_questions, appointment_types, date_overrides, notify_config, assignment_strategy";
 
 export const ASSIGNMENT_MODES: { value: AssignmentStrategy["mode"]; label: string; desc: string }[] = [
   { value: "balanced", label: "Balanced", desc: "Spread evenly — the next booking goes to the free host with the fewest upcoming." },
@@ -478,10 +490,11 @@ export interface CalendarDraft {
 /**
  * A brand-new calendar, before anyone has configured anything.
  *
- * These are working defaults, not placeholders: a preset created from this is
- * immediately bookable — a weekday week, a half-hour slot, a confirmation and a
- * day-ahead reminder. That matters because a new calendar goes live on creation,
- * so anything left unset here would be a public page that cannot take a booking.
+ * These are working defaults, not placeholders — a weekday week, a half-hour
+ * slot, a confirmation and a day-ahead reminder. A preset is created as a private
+ * DRAFT (never live on creation) and only its owner's explicit Publish makes the
+ * `/book/:slug` page public; these defaults exist so that when they do publish,
+ * the page can take a booking without a scavenger hunt through every setting.
  */
 export function blankDraft(title: string): CalendarDraft {
   return {
@@ -671,4 +684,271 @@ export function draftFromRow(c: CalendarRow): CalendarDraft {
 export function bookingUrl(slug: string): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   return `${origin}/book/${slug}`;
+}
+
+/* ---------------------------------------------------------------- lifecycle
+ *
+ * Archived → Draft → Live / Paused, derived from the facts the server persists —
+ * `archived_at` (put away), `enabled` (the authoritative bookability gate the
+ * /book/:slug resolver reads) and `published_at` (whether it has ever been
+ * published). Never a third stored status, so no two columns can disagree (§57).
+ * Precedence matches the SQL: archived wins over everything (archive forces
+ * enabled=false, so an archived preset can never also read as Live). Mirrors
+ * 20270301000000_calendar_booking_preset_lifecycle.sql +
+ * 20270302000000_calendar_preset_duplicate_archive_restore.sql.
+ */
+export type PresetLifecycle = "draft" | "live" | "paused" | "archived";
+
+export function presetLifecycle(row: {
+  enabled: boolean;
+  published_at: string | null;
+  archived_at?: string | null;
+}): PresetLifecycle {
+  if (row.archived_at) return "archived";
+  if (row.enabled) return "live";
+  return row.published_at ? "paused" : "draft";
+}
+
+export const LIFECYCLE_LABEL: Record<PresetLifecycle, string> = {
+  draft: "Draft",
+  live: "Live",
+  paused: "Paused",
+  archived: "Archived",
+};
+
+/**
+ * Can this preset be published right now, and if not, exactly why — the SAME
+ * three checks `publish_calendar_preset` enforces server-side, mirrored here so
+ * the editor can show a truthful "Ready to publish" / "what's missing" state
+ * BEFORE the owner clicks Publish. The server stays authoritative; this never
+ * decides bookability, only what the owner sees (§13 — the copy matches the
+ * server's real refusal reasons rather than guessing).
+ */
+export interface PublishCheck {
+  ready: boolean;
+  blockers: string[];
+}
+
+export function publishReadiness(input: {
+  type: string;
+  availability_json: DayWindow[] | null;
+  date_overrides: DateOverride[];
+  location_options: LocationOption[];
+  location_type?: string | null;
+  hostCount: number;
+}): PublishCheck {
+  const blockers: string[] = [];
+
+  // Host floor — the honesty gate the pack draws ("Needs 3 host calendars"):
+  // round-robin/collective only behave as a team model with more than one host,
+  // so publishing one with a single host would present a team page that silently
+  // runs as one-on-one.
+  const minHosts = input.type === "round_robin" || input.type === "collective" ? 2 : 1;
+  if (input.hostCount < minHosts) {
+    blockers.push(
+      minHosts > 1
+        ? `Add at least ${minHosts} hosts — this scheduling model rotates or coordinates across a team.`
+        : "Add at least one host so there is someone to book with.",
+    );
+  }
+
+  // At least one open window (weekly or a date-specific override that opens one).
+  // Both go through `willSaveWindow`, which validates the HH:MM shape AND start <
+  // end — the SAME test `_calendar_preset_block_reason` applies server-side. A
+  // looser weekly check here (plain start < end) would call a malformed window
+  // ("9:00") bookable when the server refuses it, a false "ready to publish" (§13).
+  const weekly = (input.availability_json ?? []).some((w) => w && willSaveWindow(w));
+  const overrideOpens = (input.date_overrides ?? []).some(
+    (o) => !o.blocked && o.windows.some((w) => willSaveWindow(w)),
+  );
+  if (!weekly && !overrideOpens) {
+    blockers.push("Add at least one open window so there is a time to offer.");
+  }
+
+  // A usable meeting method — the concrete, deliverable set only. `ask_invitee` is
+  // NOT a method by itself here (matching the server helper): "let the guest pick"
+  // with no concrete option to pick from asks a visitor to choose from nothing, so
+  // it never counts toward readiness — a concrete option in `location_options` does.
+  const known = ["google_meet", "zoom", "phone", "in_person", "custom"];
+  const hasMethod =
+    (input.location_options ?? []).some((m) => known.includes(m.type)) ||
+    known.includes(input.location_type ?? "");
+  if (!hasMethod) {
+    blockers.push("Choose how the meeting happens before publishing.");
+  }
+
+  return { ready: blockers.length === 0, blockers };
+}
+
+/* --------------------------------------------------------- preset templates
+ *
+ * The guided starting points a "New preset" opens with, so an owner picks a
+ * recognizable booking model instead of naming a blank calendar before they
+ * understand the options (§36 — no learning the concept from an empty field).
+ *
+ * A template is nothing more than `blankDraft` with a few fields set — it carries
+ * NO hardcoded tenant, brand, service or provider identity (§2/§63); it is an
+ * editable default the owner shapes in the ten-area editor.
+ *
+ * COPY PROVENANCE (§00 — CC has zero authority over in-surface copy, so it is
+ * declared honestly, not claimed as a design decision). Three strings are PORTED
+ * VERBATIM from the approved pack: the one-on-one `detail` (paige-ia.js L1326),
+ * the round-robin `detail` (L2547) and the collective `detail` (L2551). The rest
+ * of the labels and descriptive microcopy here is CC-COMPOSED from the owner's
+ * 2026-09-13 chooser direction (which named the six models and the starter
+ * templates and asked to "show what each option means before selection") and is
+ * PROVISIONAL — pending Claude Design's / the owner's final wording. The webinar
+ * "no separate streaming substrate" line is a §13 honesty statement (CC's duty).
+ * Do not treat the provisional wording as frozen design.
+ */
+export type SchedulingModel = "personal" | "round_robin" | "collective" | "event";
+
+export interface PresetTemplate {
+  id: string;
+  label: string;
+  blurb: string;
+  /** Suggested draft title — editable; the owner never has to accept it. */
+  title: string;
+  defaults: Partial<
+    Pick<CalendarDraft, "duration_min" | "capacity" | "min_notice_min" | "buffer_after_min" | "assignment_strategy">
+  >;
+}
+
+export interface PresetCategory {
+  id: string;
+  label: string;
+  /** Maps to `calendars.type`. */
+  model: SchedulingModel;
+  /** One line shown on the category tile. */
+  summary: string;
+  /** What it means / its honest requirement, shown BEFORE the owner selects it. */
+  detail: string;
+  /** The host floor `publish_calendar_preset` enforces for this model. */
+  minHosts: number;
+  /** Custom: ask for a name + model rather than offering starter templates. */
+  custom?: boolean;
+  templates: PresetTemplate[];
+}
+
+/** The four duration starters most models share. */
+const DURATION_STARTERS: PresetTemplate[] = [
+  { id: "intro", label: "Short intro", blurb: "A quick first hello — 15 minutes.", title: "Intro call", defaults: { duration_min: 15 } },
+  { id: "m30", label: "30-minute meeting", blurb: "The default working session.", title: "30-minute meeting", defaults: { duration_min: 30 } },
+  { id: "consult45", label: "45-minute consultation", blurb: "A longer, focused conversation.", title: "45-minute consultation", defaults: { duration_min: 45 } },
+  { id: "m60", label: "60-minute meeting", blurb: "A full hour.", title: "60-minute meeting", defaults: { duration_min: 60 } },
+];
+
+export const PRESET_CATALOG: PresetCategory[] = [
+  {
+    id: "one_on_one",
+    label: "One-on-one meeting",
+    model: "personal",
+    summary: "One host meets one guest at a time.",
+    // Ported: paige-ia.js L1326.
+    detail: "Direct bookings with you. One host, so there is nothing to assign.",
+    minHosts: 1,
+    templates: DURATION_STARTERS,
+  },
+  {
+    id: "round_robin",
+    label: "Round Robin team meeting",
+    model: "round_robin",
+    summary: "Rotate bookings across a team.",
+    // Ported: paige-ia.js L2547, plus the honest host requirement the pack draws
+    // ("Needs host calendars" / rotation "not yet real" until the hosts exist).
+    detail:
+      "Rotates through the pool, evenly by count — the fairness counter is what makes it round robin rather than random. Add two or more hosts, each with their own availability, before it can rotate.",
+    minHosts: 2,
+    templates: [
+      { id: "m30", label: "30-minute meeting", blurb: "Rotated across the team.", title: "Team meeting", defaults: { duration_min: 30 } },
+      { id: "consult45", label: "45-minute consultation", blurb: "Rotated across the team.", title: "Team consultation", defaults: { duration_min: 45 } },
+      { id: "m60", label: "60-minute meeting", blurb: "Rotated across the team.", title: "Team session", defaults: { duration_min: 60 } },
+    ],
+  },
+  {
+    id: "collective",
+    label: "Collective availability meeting",
+    model: "collective",
+    summary: "Several hosts must all attend.",
+    // Ported: paige-ia.js L2551.
+    detail:
+      "Every host must be free — the slot is the intersection of all their calendars, so it books rarely and matters when it does. Add two or more hosts before it can find a shared time.",
+    minHosts: 2,
+    templates: [
+      { id: "m30", label: "30-minute meeting", blurb: "When everyone must attend.", title: "Collective meeting", defaults: { duration_min: 30 } },
+      { id: "m60", label: "60-minute meeting", blurb: "When everyone must attend.", title: "Collective session", defaults: { duration_min: 60 } },
+    ],
+  },
+  {
+    id: "group_class",
+    label: "Group session / class",
+    model: "event",
+    summary: "One session, many attendees.",
+    detail:
+      "One session that many people book into. Capacity is enforced on the booking page — a full session stops taking registrations.",
+    minHosts: 1,
+    templates: [
+      { id: "class_small", label: "Small group (8)", blurb: "An eight-seat session.", title: "Group session", defaults: { duration_min: 60, capacity: 8 } },
+      { id: "class_large", label: "Large class (25)", blurb: "A twenty-five-seat class.", title: "Class", defaults: { duration_min: 60, capacity: 25 } },
+    ],
+  },
+  {
+    id: "webinar",
+    label: "Webinar / event",
+    model: "event",
+    // §13 honest: the resolver has no separate webinar/streaming model — "event" is
+    // the same capacity+registration engine as a class. We say so rather than imply
+    // a broadcast substrate that does not exist. A real meeting method (or an honest
+    // setup-required state) is still required to publish.
+    summary: "A scheduled session with registration.",
+    detail:
+      "A scheduled session people register for, with a capacity. It runs on the same registration engine as a group class — there is no separate streaming or broadcast link, so set a real meeting method (or it stays setup-required until you do).",
+    minHosts: 1,
+    templates: [
+      { id: "webinar_100", label: "Webinar (100)", blurb: "A hundred registrations.", title: "Webinar", defaults: { duration_min: 60, capacity: 100 } },
+    ],
+  },
+  {
+    id: "custom",
+    label: "Custom booking",
+    model: "personal",
+    summary: "Name it and choose how it schedules.",
+    detail:
+      "Start from a blank booking type. You choose the name and the scheduling behavior — nothing public is set that you did not pick.",
+    minHosts: 1,
+    custom: true,
+    templates: [],
+  },
+];
+
+/**
+ * Build the DRAFT a chosen category+template (or a Custom name+model) opens with.
+ * It is `blankDraft` shaped by the model and the template's defaults — a starting
+ * point, fully editable, and created as a Draft (never live) by the server seam.
+ */
+export function draftForTemplate(
+  category: PresetCategory,
+  template: PresetTemplate | null,
+  name?: string,
+): CalendarDraft {
+  const title = (name ?? "").trim() || template?.title || category.label;
+  const base = blankDraft(title);
+  base.type = category.model;
+  if (category.model === "round_robin" || category.model === "collective") {
+    // A team model with the balanced default; the owner adds hosts in Team & hosts.
+    base.assignment_strategy = { mode: "balanced" };
+  }
+  if (category.model === "event") {
+    // A group/webinar defaults to a real capacity (not the 1:1 default).
+    base.capacity = template?.defaults.capacity ?? 8;
+  }
+  if (template) {
+    const d = template.defaults;
+    if (d.duration_min != null) base.duration_min = d.duration_min;
+    if (d.capacity != null) base.capacity = d.capacity;
+    if (d.min_notice_min != null) base.min_notice_min = d.min_notice_min;
+    if (d.buffer_after_min != null) base.buffer_after_min = d.buffer_after_min;
+    if (d.assignment_strategy) base.assignment_strategy = d.assignment_strategy;
+  }
+  return base;
 }

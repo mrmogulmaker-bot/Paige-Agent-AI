@@ -70,6 +70,12 @@ describe("Social authorization callback", () => {
     expect(callback).not.toContain('?? "https://paigeagent.ai"');
   });
 
+  it("does not require a separately managed profile secret when the server already has its service secret", () => {
+    expect(endpoint).toContain('const configuredProfileSecret = Deno.env.get("SOCIAL_PROFILE_SIGNING_SECRET")?.trim()');
+    expect(endpoint).toContain('`paige-social-profile-v1:${serviceKey}`');
+    expect(endpoint).not.toContain("Boolean(profileSecret)");
+  });
+
   it("derives tenant, actor, connection, and return path only from the single-use stored attempt", () => {
     expect(callback).toContain('admin.rpc("social_claim_connection_callback"');
     expect(callback).not.toMatch(/searchParams\.get\("(tenant|actor|connection|return)/);

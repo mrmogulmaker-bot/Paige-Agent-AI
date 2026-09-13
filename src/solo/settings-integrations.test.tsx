@@ -799,6 +799,26 @@ describe("Social tenant-owned connection flow", () => {
   });
 
 
+  it("keeps loaded platform status truthful when a connection action returns a structured HTTP error", async () => {
+    context.tenantId = tenantId;
+    world({});
+    const fallback = invoke.getMockImplementation();
+    invoke.mockImplementation((name: string, options: { body: Record<string, unknown> }) => {
+      if (name === "paige-social") return Promise.resolve({
+        data: null,
+        error: { context: new Response(JSON.stringify({ ok: false, code: "capability_unavailable" }), { status: 503 }) },
+      });
+      return fallback?.(name, options);
+    });
+    const { host } = await render("/solo/workspace/settings/integrations");
+    await openCard(host, "social-instagram");
+    await click(byText(host, "Connect Instagram"));
+    expect(host.textContent).toContain("Social connection setup is not configured for this environment.");
+    expect(host.querySelector('.ig-card[data-provider="social-facebook"]')?.textContent).toContain("Setup required");
+    expect(host.querySelector('.ig-card[data-provider="social-facebook"]')?.textContent).not.toContain("Status unavailable");
+  });
+
+
   it("keeps multiple identities on the same platform separate and tenant-owned", async () => {
     context.tenantId = tenantId;
     const secondConnectionId = "77777777-8888-4888-8888-999999999999";

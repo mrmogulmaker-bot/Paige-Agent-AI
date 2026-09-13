@@ -31,8 +31,10 @@ describe("the gateway's per-entry decision is the resolver's truth, never cheere
     needs_approval: { disposition: "approval_card", emitTool: true },
     needs_setup: { disposition: "setup_explanation", emitTool: false },
     planned: { disposition: "planned_explanation", emitTool: false },
+    proof_owed: { disposition: "unavailable", emitTool: false },
     not_for_tier: { disposition: "tier_explanation", emitTool: false },
     unavailable: { disposition: "unavailable", emitTool: false },
+    no_applicable_capability: { disposition: "unavailable", emitTool: false },
   };
 
   it.each(Object.keys(EXPECTED) as CapabilityAvailability[])(
@@ -52,7 +54,14 @@ describe("the gateway's per-entry decision is the resolver's truth, never cheere
         ? emitting : withholding).push(a);
     }
     expect(emitting.sort()).toEqual(["live", "needs_approval"]);
-    expect(withholding.sort()).toEqual(["needs_setup", "not_for_tier", "planned", "unavailable"]);
+    expect(withholding.sort()).toEqual([
+      "needs_setup",
+      "no_applicable_capability",
+      "not_for_tier",
+      "planned",
+      "proof_owed",
+      "unavailable",
+    ]);
   });
 
   it("a capability with no chat verb is `none`, whatever its availability — there is nothing to emit", () => {
