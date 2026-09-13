@@ -1,9 +1,32 @@
 # Booking-preset Chat capability — adoption contract (hand-off to the Chat owner)
 
-**Status: shared SERVER seam LIVE; Chat adoption OWED.** Authored 2026-09-13 alongside the
-booking-preset Draft→Publish lifecycle. This is the precise, self-contained contract for wiring the
-booking-preset capabilities into the Chat handler — so the Calendar-preset work does NOT duplicate
-Chat infrastructure (owner ruling 2026-09-13; §10, §18).
+**Status: ADOPTED (E5, 2026-09-13). Shared SERVER seam LIVE; Chat wiring landed on branch
+`claude/calendar-paige-e5` / PR #1220 (DRAFT — held for the owner's separate release decision).**
+Authored 2026-09-13 alongside the booking-preset Draft→Publish lifecycle. This was the precise,
+self-contained contract for wiring the booking-preset capabilities into the Chat handler — so the
+Calendar-preset work did NOT duplicate Chat infrastructure (owner ruling 2026-09-13; §10, §18).
+
+**What E5 actually wired (and two refinements to the plan below, made after grounding the REAL
+`campaign_brief_*` pattern rather than this doc's first guess):**
+- Registered `CALENDAR_PRESET_CAPABILITIES` in `paige-spine/registry.ts`; added the 7 mutating
+  `booking_preset_*` rows to `action-risk.ts` (publish/revise/archive = `high`, create/pause/
+  duplicate/restore = `ordinary`); spread `CALENDAR_PRESET_TOOLS` into the handler; dispatched each
+  tool to its canonical RPC through a new `_shared/calendar-preset-tenant-brain.ts`; added the 7
+  keys to `list_tool_autonomy` (migration `20270303000000`); added the `WRITE_TARGET` + `TOOL_LABELS`
+  + `toolCallLabel` entries; taught `action-risk-lint.mjs` the new imported catalog.
+- **Refinement 1 — Rail:** the doc said add the tools to `RAIL_ACTION_TOOLS`. The real
+  `campaign_brief_*` pattern does NOT; it records the Rail run via a `recordRun` callback
+  (`recordCapabilityRun`) injected into the tenant-brain, AFTER a verified readback. E5 mirrors that
+  (cleaner, more governed, less handler surface). `RAIL_ACTION_TOOLS` is untouched.
+- **Refinement 2 — idempotency:** the calendar RPCs take no command-ledger key, so there is no
+  `idempotency_key` injection (the doc's step 6 note). Execute-once for the confirm lane is the
+  generic confirmation-fingerprint claim (`paige_pending_confirmations`); the Rail `runId` is a
+  per-tool-call `stableRunId` so a confirmed-call retry folds to one row. Create/duplicate are not
+  slug-idempotent by design (a private draft is reversible), as this doc already stated.
+- **Honest verification bound (§13/§32):** `get_calendar_presets` is a COARSE projector, so readback
+  verification is strict on the fields it exposes (title/type/duration/capacity/lifecycle/archived)
+  and, for finer revise fields it does not project, bounded to "persisted + RPC accepted" — the
+  result note says so rather than claiming a field changed that could not be confirmed.
 
 ## What is already shipped (the shared server seam — the thing both UI and Paige call)
 
