@@ -193,6 +193,11 @@ Deno.serve(async (req) => {
         if (r.refusal === "not_webhook_triggered") return json({ ok: false, error: "not_webhook_triggered", detail: r.detail });
         if (r.refusal === "workflow_inactive") return json({ ok: false, error: "workflow_inactive", detail: r.detail });
         if (r.refusal === "workflow_or_path_required") return json({ ok: false, error: "workflow_or_path_required", detail: r.detail });
+        // Catch-all for any OTHER refusal (the seam re-resolves creds internally, so a mid-request
+        // secret-deletion/config race could surface not_connected / unsafe_instance_url /
+        // secret_lookup_failed here even though the top-level guard already passed). Never fall through to
+        // a false ok:true — mirror the execution_get catch-all (§13/§32; §39 peer-gate parity).
+        if (r.refusal) return json({ ok: false, error: r.refusal, detail: r.detail });
         // Rail (owner_ops) — the automation fired for the run's client (LAYER 1: the webhook accepted it).
         // Delivery/completion stays a separate concern (verified via execution_get). Best-effort +
         // non-blocking; skips unless a real client resolves from the payload.
