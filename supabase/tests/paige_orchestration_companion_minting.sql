@@ -7,16 +7,20 @@
 -- in 'origin' mode (real INSERT/UPDATE), and the reconciler is called as the cron/service context (auth.uid()
 -- NULL) exactly as pg_cron invokes it.
 begin;
-select plan(36);
+select plan(34);
 
 -- ── Fixture ids ───────────────────────────────────────────────────────────────────────────────────────
 -- tenant, events (E1..E8), acts (AC1..AC8), ledger rows (AD1..AD8), clients (C1,C5..C8).
 -- E4/AD4 is an already-EXECUTED act (the cancellation no-clobber control). E5..E8 are reconciler orphans.
 
-set session_replication_role = replica;   -- FK + triggers OFF for fixture construction
-
+-- Seed the tenant in NORMAL mode (triggers ON) so its account_number-assignment trigger fires — the exact
+-- column set + mode the passing contract tests use. `account_number` is NOT NULL and trigger-assigned;
+-- replica mode would disable that trigger and the insert would violate NOT NULL. tenants is a root table
+-- (no inbound FK deps here), so a normal-mode insert is safe.
 insert into public.tenants(id, slug, name, status, account_type, account_number_prefix, features) values
   ('11111111-1111-4111-8111-111111111111', 'paige-c5s2-proof-tenant', 'Paige C5S2 Proof Tenant', 'active', 'standalone', 'PC5', '{}'::jsonb);
+
+set session_replication_role = replica;   -- FK + triggers OFF for the REST of the fixture construction
 
 -- Native events (processing_state='done' = the orphan case the sweeper cannot re-drive).
 insert into public.paige_native_events(id, event_key, tenant_id, subject_table, subject_id, dedup_key, processing_state) values
