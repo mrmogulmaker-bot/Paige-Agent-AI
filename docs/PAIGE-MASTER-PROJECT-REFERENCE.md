@@ -2366,6 +2366,19 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
     enterprise recorded honestly. Provider API fees are separate from customer money movement; Paige is
     never merchant of record (§38). The correction is go-forward only — historical closeouts are NOT
     rewritten (§58).
+  - **v1.2 — code_anchors accountability (2026-09-13, docs + CI-guard only):** a new `field_schema.code_anchors`
+    contract makes every runtime-claiming provider (LIVE/PARTIAL/PROOF_OWED) cite the REAL adapter/entry-point
+    code that backs it ({path, role, note?}); unbuilt providers (UNAVAILABLE/DEFERRED/PROPOSED) stay unanchored.
+    Backfilled on all 16 runtime-claiming providers (52 anchors, each verified to exist on disk), with two §13
+    escalations preserved in-anchor — **meta** is contained to HTTP 503 (all four anchors `fail_closed_containment`,
+    NOT LIVE) and **google-workspace** has only Calendar OAuth, no Drive/Docs adapter. `role` is a controlled,
+    lint-enforced vocabulary (`provider_adapter`/`callback_readback`/`fail_closed_containment`/`proven_runtime`);
+    a code anchor proves a code PATH EXISTS, never that a provider works/connected/LIVE, and it raised NO status.
+    The guard `scripts/ci/integration-registry-lint.mjs` gained a pure `findDeadCodeAnchors` dead-anchor resolve
+    (fails CI on a cited path missing from disk) reusing the binding-ledger's `findDeadAnchors` pattern (§18 — no
+    new lint/npm-script/CI-step). Closes the mechanism gap the registry's `registry_steward_role` named (Upload-Post
+    / fal.ai merged owing entries); a reverse coupling check (a provider DIFF must update its entry) remains a
+    tracked follow-up. Schema bumped 1.1.0 -> 1.2.0.
   - **§13 grounding note:** the brief named a *"Marketplace Brain decision"* that has **no artifact
     under that phrase repo-wide** — the Marketplace rule is grounded on `MARKETPLACE-DATA-MODEL.md`
     instead; recorded as unresolved, not invented.

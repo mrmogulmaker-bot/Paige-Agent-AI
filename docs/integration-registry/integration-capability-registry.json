@@ -1,7 +1,7 @@
 {
   "doc": "Integration Capability Registry",
-  "schema_version": "1.1.0",
-  "grounded_against": "origin/main fead7dfd03cd0ec1ee5c0c9f7854f067de484239 + Public Presence provider-MVP production closeout (2026-09-06)",
+  "schema_version": "1.2.0",
+  "grounded_against": "origin/main fead7dfd03cd0ec1ee5c0c9f7854f067de484239 + Public Presence provider-MVP production closeout (2026-09-06); v1.2 adds the code_anchors accountability field + dead-anchor resolve check, grounded against origin/main 91c815f (2026-09-13) — every runtime-claiming provider's anchors verified to exist on disk at that commit.",
   "purpose": "One authoritative, living catalogue and taxonomy of every third-party provider, API, connector, Marketplace service, and external-execution platform Paige may use. This is a product-governance and delivery record. It does NOT install providers, hold credentials, call external APIs, create OAuth clients, create billing commitments, or ship provider functionality. v1.1 adds the API Expense & Operations Layer (per-provider operating cost + ownership visibility) — see expense_and_operations_schema and cost_tracks.",
   "cardinal_rule": "Listing a provider here NEVER means it is connected, available, or autonomous. A registry entry is a governance declaration, not a live capability. Connection is a per-tenant authorization fact; availability is a getTierFeatureSet()/RLS fact; autonomy is a resolve_tool_autonomy()/Trust-Compass fact. This document decides none of them (see rules R1 and R8).",
   "how_it_relates_to_siblings": {
@@ -94,6 +94,7 @@
     "tier_eligibility": "{platform, solo, agency_future, enterprise_future} governance declaration",
     "marketplace_metadata_only": "true only for Platform Marketplace catalogue entries (rule R4 applies)",
     "expense_and_operations": "the API Expense & Operations block — see expense_and_operations_schema",
+    "code_anchors": "array of {path, role, note?} objects citing the ACTUAL adapter/entry-point code that backs this provider — file, directory, or glob. REQUIRED and non-empty for runtime-claiming statuses (LIVE/PARTIAL/PROOF_OWED); ABSENT or [] for unbuilt statuses (UNAVAILABLE/DEFERRED/PROPOSED). 'role' is a CONTROLLED, lint-enforced kind (CODE_ANCHOR_ROLES): provider_adapter (the provider's own integration code — API client, send seam, OAuth plumbing, core adapter) | callback_readback (webhook receiver / status callback that reads back the provider's outcome) | fail_closed_containment (a path that deliberately refuses/contains, e.g. a 503) | proven_runtime (ONLY where genuine authenticated end-to-end §32.c runtime proof exists — default DO NOT use; none today). THE HARD RULE (§13): a code anchor proves only that a relevant code PATH EXISTS — NEVER that the provider works, is connected, available, or customer-ready; it NEVER raises status. Every runtime-claiming provider cites at least one PROVIDER-SPECIFIC path; a generic dispatcher/router (model-router, generic send-message, generic mcp-client) is never the sole anchor. Distinct from 'sources' (doc citations). Dead/moved anchors fail CI (lint:integration-registry).",
     "sources": "grounding citations (file paths / master-ref sections)"
   },
   "expense_and_operations_schema": {
@@ -165,6 +166,11 @@
         "next_owner": "Integrations workstream",
         "next_slice": "Confirm quota headroom + backoff before an authenticated native-create drive."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/google-calendar-oauth-start/", "role": "provider_adapter", "note": "Google OAuth consent start — the only Google Workspace provider code that exists in the repo today." },
+        { "path": "supabase/functions/google-calendar-oauth-callback/", "role": "provider_adapter", "note": "OAuth handshake callback (provider plumbing, not an action-outcome readback)." },
+        { "path": "supabase/functions/_shared/calendarCrypto.ts", "role": "provider_adapter", "note": "OAuth token crypto. PARTIAL gap (§13): NO Drive/Docs (productivity_documents) adapter edge function is built — only Google Calendar OAuth exists; the native Drive/Docs create/read path is not yet wired, which is why this entry is PARTIAL, not LIVE." }
+      ],
       "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (Google Calendar OAuth + Drive wired)", "docs/brain/config-registry.md"]
     },
     {
@@ -249,6 +255,12 @@
         "next_owner": "Money Spine workstream",
         "next_slice": "Verify Connect direct-charge posture (§38) + wire M1 real-money reserve/confirm before any autonomous charge."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/handle-stripe-webhook/", "role": "callback_readback", "note": "platform billing webhook receiver." },
+        { "path": "supabase/functions/stripe-webhook/", "role": "callback_readback" },
+        { "path": "supabase/functions/tenant-stripe-connect/", "role": "provider_adapter", "note": "per-tenant Stripe Connect facilitator seam (§38)." },
+        { "path": "supabase/functions/_shared/stripe-webhook-signature.ts", "role": "provider_adapter", "note": "Stripe-specific webhook signature verification." }
+      ],
       "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (Stripe)", "docs/doctrine/money-spine-architecture.md", "docs/handoff/platform-billing-spine-source-contract.md"]
     },
     {
@@ -291,6 +303,12 @@
         "next_owner": "Integrations workstream",
         "next_slice": "Ground the wired capability + scopes; a governed READ proof before any write."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/quickbooks-oauth-callback/", "role": "provider_adapter", "note": "OAuth handshake callback (provider plumbing)." },
+        { "path": "supabase/functions/quickbooks-sync-financials/", "role": "provider_adapter", "note": "read seam / Intuit API client." },
+        { "path": "supabase/functions/quickbooks-webhook/", "role": "callback_readback" },
+        { "path": "supabase/functions/_shared/quickbooks-utils.ts", "role": "provider_adapter" }
+      ],
       "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (QuickBooks wired)", "docs/brain/config-registry.md"]
     },
     {
@@ -333,6 +351,12 @@
         "next_owner": "Integrations workstream (finance lane)",
         "next_slice": "Owner decision on cost_responsibility (platform_paid vs pass_through) for the opt-in finance lane."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/paige-plaid-link-token-create/", "role": "provider_adapter", "note": "Plaid Link token creation." },
+        { "path": "supabase/functions/paige-plaid-sync-transactions/", "role": "provider_adapter", "note": "read seam / Plaid API client." },
+        { "path": "supabase/functions/handle-paige-plaid-webhook/", "role": "callback_readback" },
+        { "path": "supabase/functions/plaid-webhook/", "role": "callback_readback", "note": "legacy Plaid webhook variant." }
+      ],
       "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (Plaid + Paige-Plaid variants)", "docs/security/DOCTRINE_194_MONITORING_ONLY.md"]
     },
     {
@@ -375,6 +399,12 @@
         "next_owner": "Comms workstream",
         "next_slice": "Decide + wire L3 metered pass-through billing to the tenant (currently platform_paid)."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/_shared/twilio.ts", "role": "provider_adapter", "note": "Twilio-specific API adapter." },
+        { "path": "supabase/functions/provision-tenant-twilio/", "role": "provider_adapter", "note": "per-tenant subaccount provisioning." },
+        { "path": "supabase/functions/send-sms/", "role": "provider_adapter", "note": "Twilio SMS send seam." },
+        { "path": "supabase/functions/twilio-inbound-webhook/", "role": "callback_readback" }
+      ],
       "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (Twilio ISV/reseller LIVE; operator comms LIVE)", "docs/brain/comms-capability-map.md", "docs/product/provider-result-contract.md §4.1"]
     },
     {
@@ -417,6 +447,11 @@
         "next_owner": "Integrations + Client-Experience workstreams",
         "next_slice": "FU-3 Rail contract + attribution fix (#786) before a governed booking drive."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/google-calendar-oauth-start/", "role": "provider_adapter", "note": "Google Calendar OAuth consent start." },
+        { "path": "supabase/functions/google-calendar-oauth-callback/", "role": "provider_adapter", "note": "OAuth handshake callback (provider plumbing)." },
+        { "path": "supabase/functions/_shared/calendarCrypto.ts", "role": "provider_adapter", "note": "OAuth token crypto." }
+      ],
       "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (Google Calendar OAuth)", "docs/binding-ledger/README.md (Clients -> Calendar)", "docs/doctrine/calendar-capability-contract.md"]
     },
     {
@@ -459,6 +494,11 @@
         "next_owner": "Comms workstream",
         "next_slice": "Per-tenant sending-identity wiring + send receipt on the Rail."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/_shared/email/", "role": "provider_adapter", "note": "provider-specific: providers.ts carries the Resend send branch." },
+        { "path": "supabase/functions/handle-resend-webhook/", "role": "callback_readback", "note": "Resend delivery-event webhook receiver." },
+        { "path": "supabase/functions/send-message/", "role": "provider_adapter", "note": "the GENERIC multi-provider send dispatcher that routes to Resend — not Resend-specific on its own; the provider-specific anchors above carry the provider binding." }
+      ],
       "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (Resend)", "docs/comms/SEND-MESSAGE-CONTRACT.md", "docs/product/provider-result-contract.md §4.3"]
     },
     {
@@ -543,6 +583,11 @@
         "next_owner": "Authorized platform operator",
         "next_slice": "Complete the independent account/privacy/cost proof without exposing secrets, then approve a bounded transport enablement change."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/_shared/elevenlabs.ts", "role": "provider_adapter", "note": "provider-specific: the low-level ElevenLabs TTS transport; fail-closed on a missing key." },
+        { "path": "supabase/functions/paige-tts/", "role": "provider_adapter", "note": "TTS seam routing to ElevenLabs among providers." },
+        { "path": "supabase/functions/paige-stt/", "role": "provider_adapter", "note": "STT seam. PROOF_OWED: realtime audio transport stays disabled until the voice-readiness gate proves key scope, voice authorization, retention, and a hard cost ceiling — NOT LIVE." }
+      ],
       "sources": ["https://elevenlabs.io/docs/overview/administration/workspaces/api-keys", "https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime", "https://elevenlabs.io/docs/eleven-api/resources/zero-retention-mode", "https://elevenlabs.io/pricing/api", "docs/doctrine/paige-modality-neutrality.md", "supabase/migrations/20260907155052_paige_live_conversation_control_plane.sql", "supabase/functions/paige-live-session/index.ts", "supabase/functions/paige-tts/index.ts", "scripts/sql/paige-voice-cost-proof.sql", "docs/delivery/paige-live-conversation-mvp.md"]
     },
     {
@@ -627,6 +672,12 @@
         "next_owner": "Growth/Social workstream",
         "next_slice": "Owner selection and authorization of the Beta provider path, platform scope, OAuth application, redirect domains, test account, credentials, and first controlled publication boundary."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/paige-social/", "role": "fail_closed_containment", "note": "returns 503 attempted:false via _shared/socialUnavailable.ts — contained, no provider call." },
+        { "path": "supabase/functions/meta-schedule-post/", "role": "fail_closed_containment", "note": "also contained to 503 via socialUnavailable — no Meta publish call is made today." },
+        { "path": "supabase/functions/handle-meta-webhook/", "role": "fail_closed_containment", "note": "inbound webhook also contained to 503 via socialUnavailable — reads back nothing today." },
+        { "path": "supabase/functions/_shared/socialUnavailable.ts", "role": "fail_closed_containment", "note": "the fail-closed 503 guard every Meta/social adapter imports. This anchor must NEVER imply LIVE publishing or analytics — it is anchored ONLY so drift is detectable; status stays PARTIAL." }
+      ],
       "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (Social Foundation PR #1162) + Campaigns->Social section", "docs/binding-ledger/README.md (Campaigns -> Social)", "supabase/migrations/20270122000000_social_foundation_tenant_recovery.sql", "docs/evidence/ui-delivery/social-operations-phase-0-truth-containment.md"]
     },
     {
@@ -669,6 +720,9 @@
         "next_owner": "Platform/observability",
         "next_slice": "Keep operator-scoped; no tenant-facing analytics provider planned here."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/_shared/posthog.ts", "role": "provider_adapter", "note": "provider-specific PostHog telemetry capture; failures swallowed, never blocks the parent request." }
+      ],
       "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (PostHog) + Env vars", "docs/brain/config-registry.md"]
     },
     {
@@ -711,6 +765,11 @@
         "next_owner": "Sales/Legal workstream",
         "next_slice": "Ground the wired capability + scopes; a governed send with a receipt (Sales Release 2)."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/docusign-send-envelope/", "role": "provider_adapter", "note": "DocuSign envelope send seam." },
+        { "path": "supabase/functions/handle-docusign-webhook/", "role": "callback_readback" },
+        { "path": "supabase/functions/_shared/docusignJwt.ts", "role": "provider_adapter", "note": "DocuSign JWT auth plumbing." }
+      ],
       "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (DocuSign wired)", "docs/delivery/solo-sales-usability-r1.md"]
     },
     {
@@ -796,6 +855,11 @@
         "next_owner": "Marketplace workstream",
         "next_slice": "Bind safe install-state to Paige (binding-ledger Phase 8)."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/marketplace-checkout-session/", "role": "provider_adapter", "note": "paid-install Stripe checkout seam (Paige-held rail)." },
+        { "path": "supabase/functions/marketplace-install/", "role": "provider_adapter", "note": "install seam." },
+        { "path": "supabase/functions/_shared/marketplace-authority-containment.ts", "role": "provider_adapter", "note": "install-authority containment helper. Status LIVE reflects shipped install mechanics — NOT proven_runtime; no §32.c authenticated drive is attached here." }
+      ],
       "sources": ["docs/architecture/MARKETPLACE-DATA-MODEL.md", "docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (Marketplace shipped, PR #213)", "docs/binding-ledger/README.md (Marketplace)"]
     },
     {
@@ -838,6 +902,11 @@
         "next_owner": "MCP governance workstream",
         "next_slice": "#47 approval channel (turns refusals into governed executions)."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/paige-mcp/", "role": "provider_adapter", "note": "the inbound MCP door entry point." },
+        { "path": "supabase/functions/paige-mcp-consent/", "role": "provider_adapter", "note": "MCP consent flow." },
+        { "path": "supabase/functions/_shared/paige-mcp/", "role": "fail_closed_containment", "note": "the governed tools/call chokepoint — reads proceed after tier/scope/actor checks; all 68 mutations are REFUSED (approval_required/owner_only). Status LIVE reflects the shipped refusing chokepoint, never autonomous action." }
+      ],
       "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (inbound MCP door, PR #960)", "docs/doctrine/governed-execution-seam.md"]
     },
     {
@@ -880,6 +949,12 @@
         "next_owner": "Integrations workstream",
         "next_slice": "Wire decideGovernedExecution + downstream governance before enabling workflow execution (slice 5)."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/paige-n8n/", "role": "provider_adapter", "note": "n8n worker dispatch. trigger-workflow is fail-closed disabled until decideGovernedExecution wraps it (slice 5)." },
+        { "path": "supabase/functions/tenant-n8n-oauth/", "role": "provider_adapter", "note": "per-tenant n8n OAuth." },
+        { "path": "supabase/functions/_shared/n8n-management.ts", "role": "provider_adapter" },
+        { "path": "supabase/functions/_shared/n8n-oauth.ts", "role": "provider_adapter" }
+      ],
       "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (Solo n8n OAuth, PR #909)", "docs/binding-ledger/README.md (Settings -> Integrations)", "docs/product/provider-result-contract.md §4.2"]
     },
     {
@@ -922,6 +997,10 @@
         "next_owner": "Integrations workstream",
         "next_slice": "Unify the risk gate across regimes (decideGovernedExecution on the worker path, slice 5)."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/call-zapier-action/", "role": "provider_adapter", "note": "Zapier action worker dispatch." },
+        { "path": "supabase/functions/tenant-zapier-api-connect/", "role": "provider_adapter", "note": "per-tenant Zapier MCP connection." }
+      ],
       "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (Zapier MCP)", "docs/product/provider-result-contract.md §4.2", "outputs/paige-at-cowork/09-paige-capability-system.md (slice 5)"]
     },
     {
@@ -1006,6 +1085,12 @@
         "next_owner": "Research workstream",
         "next_slice": "Harden + reach (capability-system slice 4): reconcile SSRF guards and complete the §32.c authenticated drive."
       },
+      "code_anchors": [
+        { "path": "supabase/functions/browser-use/", "role": "provider_adapter", "note": "browser-worker entry point." },
+        { "path": "supabase/functions/paige-deep-research/", "role": "provider_adapter", "note": "deep-research seam (Firecrawl/web)." },
+        { "path": "services/paige-browser/", "role": "provider_adapter", "note": "SSRF-hardened Playwright browser Fly service." },
+        { "path": "supabase/functions/_shared/secure-browser-authority.ts", "role": "fail_closed_containment", "note": "authority fence — Paige-driven writes (login/submit/click/download) are allowlist-REJECTED; read-only egress (#1042)." }
+      ],
       "sources": ["outputs/paige-at-cowork/08-sandboxed-research-external-execution.md", "docs/PAIGE-MASTER-PROJECT-REFERENCE.md §5 (Sandboxed Research)", "supabase/migrations/20260907023754_secure_browser_session_tenant_scope.sql (production-persisted tenant-attribution repair; #1042 / run 34084460116)", "services/paige-browser/smoke-readonly-egress.mjs (hostile-page runtime proof)"]
     },
     {
@@ -1403,7 +1488,7 @@
   },
   "known_owed_entries": {
     "note": "Found at the registry-build closeout sweep (2026-09-06): pre-existing slices declared an 'Integration Capability Registry dependency' + a 'Registry Steward' role BEFORE this registry existed. The entries below preserve the specific provider obligations those slices recorded. NOTE on the Solo Tenant Brain Business Mission slice (docs/delivery/solo-tenant-brain-business-mission-mvp.md:64): its dependency was on delivery INFRASTRUCTURE (the Supabase deploy path), which is already covered by excluded_delivery_infrastructure + config-registry.md, and the slice explicitly said 'do not invent an entry' — so NO owed provider entry is recorded for it here (cross-link the shipped registry as its home; do not create a duplicate infrastructure entry). Google Search Console and Google Business Profile now have full controlling entries; the later Public Presence providers have an authoritative sequenced Steward handoff but remain deliberately unavailable. The Registry Steward role is still unnamed, and provider-action blockers remain in force until tenant authorization and authenticated provider proof exist.",
-    "registry_steward_role": "ASSIGNED to the Harness workstream (owner ruling 2026-09-12). A governance and consistency role — NOT a feature-development bottleneck and NOT an approval queue. Harness owns the canonical registry contract, the allowed truth states, cross-domain reconciliation, and escalation of unowned or unsafe entries. Domain workstreams remain responsible for their own provider adapters and propose their own capability/connection entries; nobody waits on the Steward to build, and the per-entry `owner` field still names the domain owner. No new registry, approval queue, or dependency chain is created. The RE-2 M1-a, Solo Tenant Brain Business Mission, and Public Presence slices that reference a Registry Steward now have an executable escalation path. Note (§13): the remaining gap is MECHANISM, not ownership — no CI check couples a provider-touching diff to its registry entry, which is why Upload-Post (6e35c60e) and fal.ai (d5387376/#1153) merged owing entries; a `code_anchors` schema field + resolve check is the sequenced fix.",
+    "registry_steward_role": "ASSIGNED to the Harness workstream (owner ruling 2026-09-12). A governance and consistency role — NOT a feature-development bottleneck and NOT an approval queue. Harness owns the canonical registry contract, the allowed truth states, cross-domain reconciliation, and escalation of unowned or unsafe entries. Domain workstreams remain responsible for their own provider adapters and propose their own capability/connection entries; nobody waits on the Steward to build, and the per-entry `owner` field still names the domain owner. No new registry, approval queue, or dependency chain is created. The RE-2 M1-a, Solo Tenant Brain Business Mission, and Public Presence slices that reference a Registry Steward now have an executable escalation path. Note (§13): the remaining gap is MECHANISM, not ownership — no CI check couples a provider-touching diff to its registry entry, which is why Upload-Post (6e35c60e) and fal.ai (d5387376/#1153) merged owing entries; a `code_anchors` schema field + resolve check was the sequenced fix, DELIVERED 2026-09-13: `field_schema.code_anchors` now REQUIRES every runtime-claiming provider (LIVE/PARTIAL/PROOF_OWED) to cite the real adapter/entry-point code that backs it, and the lint's `findDeadCodeAnchors` resolve check (scripts/ci/integration-registry-lint.mjs, run by lint:integration-registry) fails CI on any cited code_anchor path that does not exist on disk — so a provider can no longer CLAIM a built runtime without citing live code. HONEST SCOPE (§13): this closes the anchor-accountability half; a reverse coupling check that forces a provider-touching DIFF to update its entry remains a tracked follow-up.",
     "entries": [
       {
         "owed_by": "RE-2 M1-a money backbone (docs/brain/decision-log.md ~L63-77, PR #1014)",

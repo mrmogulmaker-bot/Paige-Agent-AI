@@ -2367,3 +2367,25 @@ effect, the test double must exercise the effect's FAILURE, and "a fire is not a
 response contract, not only the durable record. Fixed with a distinct `send_failed` outcome → a
 502/`status:"failed"` response (consume-then-execute means the one-time approval is already spent, so the
 caller re-drafts) + a failed-send test.
+
+### A code anchor proves a path EXISTS — never that the provider WORKS; couple the claim to code via a CI-resolved, controlled-kind anchor (2026-09-13)
+
+**What happened (the gap this closed).** The Integration Capability Registry catalogued 23 providers with
+a DELIVERY status (LIVE/PARTIAL/PROOF_OWED/…) but nothing coupled a "this is built" claim to the real code
+that backs it — exactly why Upload-Post and fal.ai merged owing entries (its own `registry_steward_role`
+note named the mechanism gap). The fix: a `code_anchors` field citing the real adapter/entry-point code,
+plus a `findDeadCodeAnchors` CI resolve that fails on a cited path missing from disk (reusing the binding
+-ledger's `findDeadAnchors` pattern, §18 — no new lint).
+
+**The lesson (two durable halves).** (1) A doc field that ASSERTS something is built must be mechanically
+coupled to the artifact it claims, or it drifts and lies with authority (§BRAIN) — the binding-ledger
+already proved this for surfaces; the same dead-anchor resolve is the right tool for any registry that
+cites code. (2) **A code anchor proves only that a relevant code PATH EXISTS — never that the provider
+works, is connected, available, or customer-ready, and it must NEVER raise status** (§13/§32 — the
+existence≠function distinction, the sibling of "a green build is not a working render"). Enforce the
+distinction in the data with a controlled, lint-enforced `role` vocabulary where the only "it genuinely
+runs end-to-end" kind (`proven_runtime`) requires real §32.c authenticated proof and is used by default on
+NOTHING; a contained/refusing path (e.g. a 503) is anchored as `fail_closed_containment` precisely so it
+can be traced WITHOUT ever reading as LIVE (Meta's social 503 is the anchor case). And every provider must
+cite ≥1 PROVIDER-SPECIFIC path — a generic dispatcher/router (model-router, generic send-message, generic
+mcp-client) is traceability padding, never sole evidence a specific provider is wired.
