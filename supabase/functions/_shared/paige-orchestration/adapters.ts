@@ -8,14 +8,21 @@
 // the engine, the ledger, and the governed pathway never change (owner directive: connector-neutral, "do
 // not build an n8n-specific engine or a second action/receipt system").
 //
-// This file is PURE contract + registry + kind/capability resolution — unit-provable. The actual external
-// dispatch/readback (the `dispatch`/`readback` methods) is declared here so the contract is stable, and
-// implemented per adapter in slice 2 (the n8n adapter reuses paige-n8n's run/execution_get via a shared
-// seam — never a forked n8n client).
+// This file is the PURE contract + registry + kind/capability resolution — unit-provable. The actual
+// dispatch/readback is implemented PER ADAPTER (a native adapter's I/O is dependency-injected via
+// DispatchInput.db, so this module imports no client and stays testable). C2 implements the NATIVE adapter
+// (native-adapter.ts — the synchronous in-tenant executor). n8n's dispatch/readback land in C3 (reusing
+// paige-n8n's run/execution_get via a shared seam — never a forked n8n client), still contract-stable here.
+
+import { isNativeActionKind, nativeAdapter } from "./native-adapter.ts";
+import { n8nExecuteAdapter } from "./n8n-adapter.ts";
 
 export type AdapterKind = "n8n" | "native" | "unsupported" | (string & {});
 
-/** The governed capability an act is decided as (fed to decideGovernedExecution's `capability`). */
+/** The governed capability an act is decided as (fed to decideGovernedExecution's `capability`). NOTE: an
+ *  adapter NEVER declares availability here (owner correction, 2026-09-13). Availability is resolved by the
+ *  engine THROUGH the canonical Gateway seam (paige-capability-status) and passed to buildGovernedInputs —
+ *  a Layer-C availability literal is the forbidden fallback rule. */
 export type AdapterCapability = {
   /** canonical action-risk key (the act's action_kind slug is that key). */
   id: string;
@@ -24,7 +31,15 @@ export type AdapterCapability = {
   outcomeChannel?: string;
 };
 
-/** Context the engine hands an adapter to dispatch a governed act (slice 2). */
+/** The minimal supabase-js surface a native adapter's dispatch/readback needs (RPC + a read chain). Kept
+ *  structural so the engine's service-role client assigns without importing the SDK type, and a fake db
+ *  makes the native path unit-provable without a live database. */
+export type AdapterDb = {
+  from: (t: string) => any;
+  rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: any; error: any }>;
+};
+
+/** Context the engine hands an adapter to dispatch a governed act (C2). */
 export type DispatchInput = {
   tenantId: string;
   actionKind: string;
@@ -32,6 +47,11 @@ export type DispatchInput = {
   args: unknown;
   /** the durable correlation id Paige minted BEFORE dispatch (== the ledger idempotency_key). */
   correlationRef: string;
+  /** service-role client for a native in-tenant write/readback (C2). Absent for a pure-contract call. */
+  db: AdapterDb;
+  /** the event's canonical subject coordinates — the subject IS the target (a contact id is never an arg). */
+  subjectTable: string;
+  subjectId: string;
 };
 
 /** The connector-neutral result of a dispatch or a readback. `outcome` is the exact per-act outcome the
@@ -48,10 +68,12 @@ export interface ActionAdapter {
   /** Map an act's action_kind to the governed capability. Pure. Returns null if this adapter does not
    *  own the action_kind (the engine then fails closed as unsupported). */
   resolveCapability(actionKind: string): AdapterCapability | null;
-  /** slice 2: perform the external action. Declared now so the contract is stable across adapters. */
+  /** perform the action. Declared here so the contract is stable across adapters (native: C2; n8n: C3+). */
   dispatch?(input: DispatchInput): Promise<DispatchResult>;
-  /** slice 2: confirm a prior dispatch (async providers). */
-  readback?(providerRef: string, input: DispatchInput): Promise<DispatchResult>;
+  /** confirm a prior dispatch WITHOUT re-performing it — the canonical readback/reconcile. `providerRef` is
+   *  null for a synchronous native reconcile (it re-reads by the act's own correlation), a provider id for
+   *  an async provider (C3+). */
+  readback?(providerRef: string | null, input: DispatchInput): Promise<DispatchResult>;
 }
 
 // ── Kind resolution: action_kind → adapter kind. Prefix-based for the first roster; a DB-backed mapping
@@ -64,6 +86,9 @@ const KIND_PREFIXES: ReadonlyArray<readonly [string, AdapterKind]> = [
 
 export function resolveAdapterKind(actionKind: string | null | undefined): AdapterKind {
   if (!actionKind) return "unsupported";
+  // A registered native executor wins first (e.g. `crm_advance_journey_stage`, which carries no native
+  // prefix). Then the prefix roster; unknown → "unsupported" (fail closed — never a silent success).
+  if (isNativeActionKind(actionKind)) return "native";
   for (const [prefix, kind] of KIND_PREFIXES) {
     if (actionKind === prefix || actionKind.startsWith(prefix)) return kind;
   }
@@ -82,11 +107,20 @@ const n8nAdapter: ActionAdapter = {
     if (resolveAdapterKind(actionKind) !== "n8n") return null;
     return { id: actionKind, effect: "mutate", outcomeChannel: "paige_act_executions" };
   },
-  // dispatch/readback: slice 2 (shared paige-n8n run/execution_get seam).
+  // C3: dispatch/readback drive the SHARED paige-n8n run/execution_get seam (never a forked client, §18).
+  // ASYNC by construction — dispatch fires + returns accepted_for_execution + the execution id; readback
+  // POLLS the execution (n8n has no completion callback). HIGH-risk governance is UNCHANGED: in the auto
+  // drainer an n8n act clamps to approval_pending and this dispatch is never reached; it fires only for an
+  // approved `execute` decision.
+  dispatch: n8nExecuteAdapter.dispatch,
+  readback: n8nExecuteAdapter.readback,
 };
 
 const REGISTRY: ReadonlyMap<AdapterKind, ActionAdapter> = new Map<AdapterKind, ActionAdapter>([
   ["n8n", n8nAdapter],
+  // C2: the native synchronous executor (crm_advance_journey_stage → set_journey_stage). Its dispatch is
+  // an in-tenant governed write that RETURNS the terminal outcome (executed|failed|ambiguous) directly.
+  ["native", nativeAdapter],
 ]);
 
 /** Resolve the adapter for an adapter kind, or null when no governed adapter is registered for it. */

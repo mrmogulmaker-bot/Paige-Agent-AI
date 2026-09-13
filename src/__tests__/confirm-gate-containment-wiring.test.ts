@@ -46,6 +46,19 @@ describe("FIX A — a batch is disambiguated by the stable subject id, WITHIN th
     expect(gate).toMatch(/lookup = personaCtx\?\.tenant_id \? lookup\.eq\("tenant_id"/);
     expect(gate).toMatch(/lookup = scopedClientId \? lookup\.eq\("scoped_client_id"/);
   });
+
+  it("a lookup FAILURE during an approval ends in the honest terminal, never a fresh proposal (Codex P1, 2026-09-13)", () => {
+    // The approved-set lookup runs ONLY when approvedConfirmations.size > 0 (an approval turn), so a
+    // PostgREST error — or the jsonb `args->>…` path filter being rejected — is always mid-approval.
+    // Before this fix, an errored/thrown lookup left approvedSetAmbiguous false and (the model-assert
+    // claim path also being disabled on a non-empty set) execution fell through to recordConfirmation,
+    // minting a drifted proposal and recreating the very re-ask loop the P0 contains. Both the
+    // returned-error and the thrown path now set the ambiguous terminal. (Behavioral e2e on the
+    // deployed Deno handler is §32.c PROOF OWED; this pins the wiring — the proof class of this file.)
+    expect(gate).toMatch(/else if \(lookupError\) \{[\s\S]*?approvedSetAmbiguous = true;/);
+    expect(gate).toContain("confirm approved-set lookup failed"); // §68 loud-log on a returned error
+    expect(gate).toContain("A THROWN failure is the same hazard"); // the thrown-path catch also sets the terminal
+  });
 });
 
 describe("FIX B — an ambiguous approval ends in ONE truthful terminal, never a re-ask loop", () => {

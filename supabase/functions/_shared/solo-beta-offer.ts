@@ -21,7 +21,7 @@ export type SoloBetaValidationPurpose =
 
 export type SoloBetaOfferErrorCode =
   | "offer_code_mismatch"
-  | "provider_mode_not_test"
+  | "provider_mode_not_live"
   | "product_identity_missing"
   | "product_identity_mismatch"
   | "price_identity_missing"
@@ -60,7 +60,7 @@ export interface SoloBetaOfferValidationInput {
 
 export interface ValidatedSoloBetaOffer {
   code: typeof SOLO_BETA_OFFER_CODE;
-  providerMode: "test";
+  providerMode: "live";
   productId: string;
   priceId: string;
   unitAmountCents: typeof SOLO_BETA_UNIT_AMOUNT_CENTS;
@@ -82,7 +82,7 @@ function missingIdentifier(value: string | null): boolean {
 }
 
 /**
- * Verifies that fresh provider evidence is exactly the owner-approved test offer.
+ * Verifies that fresh provider evidence is exactly the owner-approved live offer.
  * It is intentionally fail-closed and returns stable, non-sensitive error codes.
  */
 export function validateSoloBetaOffer(
@@ -91,8 +91,8 @@ export function validateSoloBetaOffer(
   if (input.offerCode !== SOLO_BETA_OFFER_CODE) {
     return { ok: false, code: "offer_code_mismatch" };
   }
-  if (input.livemode !== false) {
-    return { ok: false, code: "provider_mode_not_test" };
+  if (input.livemode !== true) {
+    return { ok: false, code: "provider_mode_not_live" };
   }
   if (
     missingIdentifier(input.configuredProductId) ||
@@ -157,7 +157,7 @@ export function validateSoloBetaOffer(
     ok: true,
     offer: {
       code: SOLO_BETA_OFFER_CODE,
-      providerMode: "test",
+      providerMode: "live",
       productId: input.configuredProductId as string,
       priceId: input.configuredPriceId as string,
       unitAmountCents: SOLO_BETA_UNIT_AMOUNT_CENTS,

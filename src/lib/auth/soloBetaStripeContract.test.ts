@@ -13,7 +13,7 @@ import {
 const exact = (overrides: Partial<SoloBetaOfferValidationInput> = {}): SoloBetaOfferValidationInput => ({
   offerCode: SOLO_BETA_OFFER_CODE,
   purpose: "checkout_fulfillment",
-  livemode: false,
+  livemode: true,
   configuredProductId: "prod_beta",
   configuredPriceId: "price_beta_monthly",
   observedProductId: "prod_beta",
@@ -36,7 +36,7 @@ describe("Solo Beta Stripe contract", () => {
   });
 
   it.each([
-    ["live mode", { livemode: true }],
+    ["test mode", { livemode: false }],
     ["wrong product", { observedProductId: "prod_other" }],
     ["wrong price", { observedPriceId: "price_other" }],
     ["wrong amount", { unitAmountCents: 14_900 }],

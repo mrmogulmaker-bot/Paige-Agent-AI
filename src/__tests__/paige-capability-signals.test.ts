@@ -39,6 +39,7 @@ const { clampLaneByRisk } = port("supabase/functions/_shared/action-risk.ts");
 const freshSolo = (over: Record<string, unknown> = {}) => ({
   callerTier: "tenant",
   contactCreateLane: "confirm",
+  journeyAdvanceLane: "confirm",    // crm_advance_journey_stage — the native journey write (Layer C · C2)
   campaignCreateLane: "confirm",
   workflowsLane: "confirm",
   documentCreateLane: "confirm",
@@ -72,6 +73,7 @@ const ALL_KEYS = [
   "campaign.list",
   "comms.messages_read",
   "comms.send",
+  "crm.advance_journey_stage",
   "crm.create_contact",
   "crm.search_contacts",
   "documents.create",
@@ -106,7 +108,9 @@ describe("buildCapabilitySignals — the manifest shape (§13/§947)", () => {
     for (const k of ["crm.create_contact", "campaign.create", "documents.create", "knowledge.save", "planning.create"]) {
       expect(m[k].actionKind, k).toBe("create");
     }
-    expect(m["team.manage"].actionKind).toBe("update");
+    for (const k of ["team.manage", "crm.advance_journey_stage"]) {
+      expect(m[k].actionKind, k).toBe("update");
+    }
     for (const k of ["comms.send", "social.publish", "integrations.n8n_run_workflow", "agentteam.delegate", "skills.run", "browser.secure_session"]) {
       expect(m[k].actionKind, k).toBe("external_effect");
     }
@@ -124,7 +128,7 @@ describe("buildCapabilitySignals — the manifest shape (§13/§947)", () => {
     })));
     const live = Object.values(allNull).filter((r: any) => r.maturity === "LIVE").map((r: any) => r.key).sort();
     expect(live).toEqual([
-      "agentteam.delegate", "crm.create_contact", "crm.search_contacts",
+      "agentteam.delegate", "crm.advance_journey_stage", "crm.create_contact", "crm.search_contacts",
       "documents.create", "knowledge.save", "planning.create", "research.web",
     ]);
     // the registry-backed families degrade null → UNAVAILABLE (never undefined, never faked)
@@ -139,11 +143,13 @@ describe("buildCapabilitySignals — the manifest shape (§13/§947)", () => {
   it("threads the ceiling-clamped lane onto each mutating write verbatim", () => {
     const m = byKey(buildCapabilitySignals(freshSolo({
       contactCreateLane: "auto", campaignCreateLane: "off", documentCreateLane: "auto", delegateLane: "off",
+      journeyAdvanceLane: "auto",
     })));
     expect(m["crm.create_contact"].autonomyLane).toBe("auto");
     expect(m["campaign.create"].autonomyLane).toBe("off");
     expect(m["documents.create"].autonomyLane).toBe("auto");
     expect(m["agentteam.delegate"].autonomyLane).toBe("off");
+    expect(m["crm.advance_journey_stage"].autonomyLane).toBe("auto");
   });
 
   it("marks n8n as the real TENANT-connection-gated family; research gates on the PLATFORM provider as evidence, never a tenant connection", () => {
@@ -179,6 +185,18 @@ describe("the honest answer a FRESH SOLO owner is told", () => {
       expect(a[k].reason, k).not.toMatch(/not built/i);
       expect(a[k].reason, k).toMatch(/governed/i);
     }
+  });
+
+  it("the native journey advance (Layer C · C2) is a live in-tenant capability — needs_approval on a confirm lane, live on auto, no connection", () => {
+    // confirm lane (the fresh-Solo safe default) → drafted for approval; the native engine holds it.
+    expect(answer()["crm.advance_journey_stage"].availability).toBe("needs_approval");
+    // an auto lane → live (no external connection to negotiate — it is an in-tenant governed write).
+    const auto = answer({ journeyAdvanceLane: "auto" });
+    expect(auto["crm.advance_journey_stage"].availability).toBe("live");
+    expect(auto["crm.advance_journey_stage"].reason).toBeNull();
+    expect(byKey(buildCapabilitySignals(freshSolo()))["crm.advance_journey_stage"].requiresConnection).toBe(false);
+    // a sealed client seat can never advance a journey (tier-ineligible → not_for_tier).
+    expect(answer({ callerTier: "client" })["crm.advance_journey_stage"].availability).toBe("not_for_tier");
   });
 
   it("n8n is NEEDS_SETUP until the tenant connects it; research is UNAVAILABLE until the PLATFORM provider is configured — neither is ever a false claim Paige can do it", () => {

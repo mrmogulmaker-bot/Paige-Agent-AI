@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY_V2") ?? "";
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
   if (!supabaseUrl || !serviceKey || !stripeKey) return json(503, { available: false });
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
@@ -42,8 +42,8 @@ Deno.serve(async (req) => {
   if (error) return json(503, { available: false });
   const configured = Boolean(
     offer
-    && offer.status === "test_ready"
-    && offer.provider_mode === "test"
+    && offer.status === "live_ready"
+    && offer.provider_mode === "live"
     && offer.stripe_product_id
     && offer.stripe_price_id
     && offer.unit_amount_cents === SOLO_BETA_UNIT_AMOUNT_CENTS
