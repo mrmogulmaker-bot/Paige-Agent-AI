@@ -1,6 +1,6 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(34);
+SELECT plan(36);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
@@ -18,7 +18,8 @@ INSERT INTO public.tenants(id,slug,name,status,account_type,account_number_prefi
 INSERT INTO public.tenant_members(tenant_id,user_id,role,status,is_owner,joined_at) VALUES
  ('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','owner','active',true,now()),
  ('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000002','member','active',false,now()),
- ('c7200000-0000-4000-8000-000000002222','c7200000-0000-4000-8000-000000000001','owner','active',true,now());
+ ('c7200000-0000-4000-8000-000000002222','c7200000-0000-4000-8000-000000000001','owner','active',true,now()),
+ ('c7200000-0000-4000-8000-000000002222','c7100000-0000-4000-8000-000000000001','admin','active',false,now());
 INSERT INTO public.profiles(user_id,active_tenant_id) VALUES
  ('c7100000-0000-4000-8000-000000000001','c7100000-0000-4000-8000-000000001111'),
  ('c7100000-0000-4000-8000-000000000002','c7100000-0000-4000-8000-000000001111'),
@@ -42,6 +43,11 @@ CREATE TEMP TABLE crm_result AS SELECT public.execute_crm_command(
 SELECT is((SELECT email FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c101'),'after@tests.invalid','same-tenant mutation commits');
 SELECT is((SELECT result->>'outcome' FROM crm_result),'succeeded','executor returns truthful success');
 SELECT is((SELECT result->'readback'->>'email' FROM crm_result),'after@tests.invalid','success contains durable readback');
+CREATE TEMP TABLE crm_create_result AS SELECT public.execute_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ '{"approval_channel":"operator_card","action":"contact.create","patch":{"first_name":"Created","last_name":"Contact","email":"created@tests.invalid"}}','same-tenant-create-1') result;
+SELECT is((SELECT result->'readback'->>'email' FROM crm_create_result),'created@tests.invalid','same-tenant contact create returns durable readback');
+SELECT is((SELECT created_by_channel_type FROM public.clients WHERE id=((SELECT result->'readback'->>'id' FROM crm_create_result))::uuid),'api','Paige contact create uses canonical programmatic provenance');
 SELECT is((SELECT count(*)::integer FROM public.paige_workspace_events WHERE tenant_id='c7100000-0000-4000-8000-000000001111' AND capability_key='crm_update_contact' AND outcome='capability_succeeded'),1,'canonical Rail receipt persists once');
 SELECT is((public.execute_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"approval_channel":"operator_card","action":"contact.update","contact_id":"c7100000-0000-4000-8000-00000000c101","expected_updated_at":"2026-09-13T00:00:00+00:00","patch":{"email":"after@tests.invalid"}}','same-tenant-update-1')->>'replayed')::boolean,true,'same-payload retry is idempotent');
 SELECT throws_ok($$SELECT public.execute_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"approval_channel":"operator_card","action":"contact.update","contact_id":"c7100000-0000-4000-8000-00000000c101","expected_updated_at":"2026-09-13T00:00:00+00:00","patch":{"email":"changed@tests.invalid"}}','same-tenant-update-1')$$,'22023','CRM_IDEMPOTENCY_REUSE','changed-payload replay is refused');
@@ -54,7 +60,7 @@ CREATE TEMP TABLE bulk_preview AS SELECT public.preview_crm_command(
 SELECT is((SELECT (result->>'eligible_count')::integer FROM bulk_preview),1,'bulk preview binds only same-tenant eligible targets');
 SELECT is((SELECT (result->>'refused_count')::integer FROM bulk_preview),1,'bulk preview reports forged or ineligible targets');
 SELECT is((SELECT jsonb_array_length(result->'eligible_targets') FROM bulk_preview),1,'bulk preview exposes the exact eligible set for approval');
-UPDATE public.clients SET current_notes='changed after preview' WHERE id='c7100000-0000-4000-8000-00000000c101';
+UPDATE public.clients SET current_notes='changed after preview',updated_at=clock_timestamp() WHERE id='c7100000-0000-4000-8000-00000000c101';
 SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.bulk_update','preview_id',(SELECT result->>'preview_id' FROM bulk_preview))::text,'bulk-execute-1'),'40001','CRM_BULK_TARGET_VERSION_CONFLICT:1','bulk execution refuses a target changed after preview');
 SELECT isnt((SELECT lifecycle_stage FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c101'),'qualified','failed bulk execution changes no eligible target');
 

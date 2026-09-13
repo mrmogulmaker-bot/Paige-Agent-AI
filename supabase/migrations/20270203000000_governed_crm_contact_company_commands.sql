@@ -220,7 +220,7 @@ begin
       p_assigned_coach_user_id := case when v_is_coach and not v_is_admin then v_actor else null end,
       p_tenant_id := v_tenant,
       p_created_by := v_actor,
-      p_channel := 'paige'
+      p_channel := 'api'
     );
     if not coalesce(v_created.was_created, false) then
       raise exception 'CRM_CONTACT_ALREADY_EXISTS:%', v_created.contact_id using errcode = 'P0001';
@@ -1006,7 +1006,7 @@ begin
     when 'deal.move' then 'deal_move_stage' when 'deal.close' then 'crm_close_deal'
     when 'deal.reopen' then 'crm_reopen_deal' when 'deal.delete' then 'crm_delete_deal' else null end;
   if v_capability is null then raise exception 'CRM_ACTION_UNAVAILABLE' using errcode='0A000'; end if;
-  if v_approval_channel not in ('operator_card','standing_autonomy_setting') then raise exception 'CRM_AUTHORITY_REQUIRED' using errcode='42501'; end if;
+  if v_approval_channel is null or v_approval_channel not in ('operator_card','standing_autonomy_setting') then raise exception 'CRM_AUTHORITY_REQUIRED' using errcode='42501'; end if;
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('tool-autonomy:'||_tenant_id::text||':'||v_capability,0));
   select ta.mode into v_autonomy_mode from public.tenant_tool_autonomy ta where ta.tenant_id=_tenant_id and ta.tool_key=v_capability;
   v_autonomy_mode:=coalesce(v_autonomy_mode,'confirm');

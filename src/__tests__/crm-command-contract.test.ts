@@ -99,6 +99,8 @@ describe("canonical CRM contact/company command", () => {
     expect(sql).toContain("CRM_ACTION_UNAVAILABLE");
     expect(sql).toContain("public.execute_pipeline_deal_move_as_paige(");
     expect(sql).toContain("CRM_CONTACT_ALREADY_EXISTS");
+    expect(sql).toContain("p_channel := 'api'");
+    expect(sql).toContain("v_approval_channel is null or v_approval_channel not in");
     expect(sql).toContain("insert into public.client_notes");
     expect(sql).not.toContain("insert into public.communication_log");
   });
