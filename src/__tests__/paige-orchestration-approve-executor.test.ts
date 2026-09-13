@@ -1,11 +1,17 @@
 /**
  * Layer C · C5 — the approval-executor (`_shared/paige-orchestration/approve-executor.ts`).
- * Proves the seam that drives a HELD (approval_pending) native act to execution on a human's approval:
+ * Proves the seam that drives a HELD (approval_pending) native act to execution on a human's approval, plus
+ * the RESUME/RECOVERY paths the Codex peer-gate required:
  *   • happy path: approval_pending → redeem via the dedicated approve RPC → native dispatch → ledger executed;
- *   • idempotent/honest: a non-approval_pending row dispatches NOTHING and reports the persisted truth;
+ *   • IMMUTABLE ARGS (§P1): the args + action_kind come from the ledger's own snapshot, NEVER a mutated act config;
+ *   • idempotent/honest: a non-resumable (terminal) row dispatches NOTHING and reports the persisted truth;
  *   • fail-closed: an n8n-sourced held act is not-supported-in-slice (never fired); a governed refusal and a
- *     tenant-integrity mismatch STOP before redeeming (nothing consumed, nothing dispatched);
- *   • already-redeemed: a concurrent redemption is detected (the approve RPC no-ops) and not re-dispatched.
+ *     tenant-integrity / tenant-authorization mismatch STOP before redeeming (nothing consumed, nothing dispatched);
+ *   • LEDGER-WRITE HONESTY (§P3): a durable-advance write failure reports the PRIOR persisted state, never the
+ *     adapter outcome, so the caller cannot consume an outcome the ledger never recorded;
+ *   • RESUME (§P3/§P4): an accepted_for_execution row (redeemed, unadvanced) reconciles by correlation or
+ *     re-dispatches; an ambiguous row reconciles by correlation ONLY (never blind re-dispatch) and, still
+ *     unconfirmed, consumes nothing.
  * The Gateway availability resolver is injected (test-only; production always uses the canonical Gateway).
  */
 import { describe, it, expect } from "vitest";
@@ -47,13 +53,15 @@ function mockDb(cfg: Cfg): ApproveExecutorDb {
 
 const liveAvailability = () => Promise.resolve({ ok: true as const, status: { availability: "live" as const } });
 
-// A native held act (crm.advance_journey_stage) at approval_pending, tenant-consistent.
+// A native held act (crm.advance_journey_stage) at approval_pending, tenant-consistent, with the IMMUTABLE
+// governed-args snapshot the engine writes into the ledger detail at approval_pending time (§P1).
 const baseCfg = (over: Partial<Cfg["rows"]> = {}, rpcOver: Partial<Cfg["rpc"]> = {}): Cfg => ({
   calls: { rpc: [] },
   rows: {
     paige_act_executions: [{
       outcome: "approval_pending", capability_key: "crm.advance_journey_stage",
       correlation_ref: "corr-1", idempotency_key: "corr-1", tenant_id: "t1", automation_id: "a1", act_position: 1,
+      detail: { snapshot_args: { stage_slug: "engaged" } },
     }],
     paige_automation_acts: [{ action_kind: "crm.advance_journey_stage", config: { stage_slug: "engaged" } }],
     paige_native_events: [{ subject_table: "clients", subject_id: "c1", tenant_id: "t1" }],
@@ -87,6 +95,30 @@ describe("approve-executor — happy path: a held native act is redeemed, dispat
     expect(finalWrite.args._settled_at).toBeTruthy();
   });
 
+  it("dispatches the IMMUTABLE ledger snapshot args, NOT a mutated live act config (§P1)", async () => {
+    // the reviewer approved stage_slug "engaged" (snapshot); a tenant admin then mutated the act config.
+    const cfg = baseCfg({ paige_automation_acts: [{ action_kind: "crm.advance_journey_stage", config: { stage_slug: "MUTATED" } }] });
+    const res = await run(cfg);
+    expect(res.outcome).toBe("executed");
+    const dispatch = cfg.calls.rpc.find((c) => c.fn === "set_journey_stage")!;
+    expect(dispatch.args._stage_slug).toBe("engaged");    // the SNAPSHOT, never the mutated live config
+  });
+
+  it("falls back to the live act config only when the ledger snapshot is absent (backward-compat)", async () => {
+    const cfg = baseCfg({
+      paige_act_executions: [{
+        outcome: "approval_pending", capability_key: "crm.advance_journey_stage",
+        correlation_ref: "corr-1", idempotency_key: "corr-1", tenant_id: "t1", automation_id: "a1", act_position: 1,
+        detail: {}, // no snapshot_args
+      }],
+      paige_automation_acts: [{ action_kind: "crm.advance_journey_stage", config: { stage_slug: "fallback" } }],
+    });
+    const res = await run(cfg);
+    expect(res.outcome).toBe("executed");
+    const dispatch = cfg.calls.rpc.find((c) => c.fn === "set_journey_stage")!;
+    expect(dispatch.args._stage_slug).toBe("fallback");
+  });
+
   it("a no-op advance (already on target stage) still executes, and suppresses the 'advanced' Rail", async () => {
     const cfg = baseCfg({}, { set_journey_stage: () => ({ data: { unchanged: true }, error: null }) });
     const res = await run(cfg);
@@ -98,8 +130,8 @@ describe("approve-executor — happy path: a held native act is redeemed, dispat
 });
 
 describe("approve-executor — fail-closed + honest (nothing consumed, nothing dispatched)", () => {
-  it("a non-approval_pending row dispatches nothing and reports the persisted outcome", async () => {
-    const cfg = baseCfg({ paige_act_executions: [{ outcome: "executed", capability_key: "crm.advance_journey_stage", correlation_ref: "c", idempotency_key: "c", tenant_id: "t1", automation_id: "a1", act_position: 1 }] });
+  it("a terminal (executed) row dispatches nothing and reports the persisted outcome", async () => {
+    const cfg = baseCfg({ paige_act_executions: [{ outcome: "executed", capability_key: "crm.advance_journey_stage", correlation_ref: "c", idempotency_key: "c", tenant_id: "t1", automation_id: "a1", act_position: 1, detail: {} }] });
     const res = await run(cfg);
     expect(res.outcome).toBe("executed");
     expect(res.reason).toBe("not_pending_approval");
@@ -108,7 +140,7 @@ describe("approve-executor — fail-closed + honest (nothing consumed, nothing d
   });
 
   it("an n8n-sourced held act is NOT supported in this slice and is never fired", async () => {
-    const cfg = baseCfg({ paige_act_executions: [{ outcome: "approval_pending", capability_key: "n8n_run_workflow", correlation_ref: "c", idempotency_key: "c", tenant_id: "t1", automation_id: "a1", act_position: 1 }] });
+    const cfg = baseCfg({ paige_act_executions: [{ outcome: "approval_pending", capability_key: "n8n_run_workflow", correlation_ref: "c", idempotency_key: "c", tenant_id: "t1", automation_id: "a1", act_position: 1, detail: {} }] });
     const res = await run(cfg);
     expect(res.outcome).toBe("approval_pending");
     expect(res.reason).toBe("not_supported_in_slice");
@@ -156,15 +188,83 @@ describe("approve-executor — fail-closed + honest (nothing consumed, nothing d
     expect(res.reason).toBe("availability_infra_error");
     expect(cfg.calls.rpc.map((c) => c.fn)).not.toContain("paige_approve_act_execution");
   });
+
+  it("a durable ledger-write FAILURE after dispatch reports the PRIOR persisted state, never the adapter outcome (§P3)", async () => {
+    // the act dispatched (executed) but the terminal ledger advance write fails — the row is still accepted.
+    const cfg = baseCfg({}, { paige_record_act_execution: () => ({ data: null, error: { message: "db_down" } }) });
+    const res = await run(cfg);
+    expect(res.outcome).toBe("accepted_for_execution"); // the TRUE persisted state, not "executed"
+    expect(res.executed).toBe(false);
+    expect(res.reason).toBe("ledger_write_failed");
+    expect((res.detail as any).attempted_outcome).toBe("executed"); // traceable, but not consumed by the caller
+  });
 });
 
-describe("approve-executor — already-redeemed (concurrency): the approve RPC no-op is detected, not re-dispatched", () => {
-  it("when the approve RPC returns a non-accepted outcome, the executor stops and reports it (no dispatch)", async () => {
+describe("approve-executor — already-redeemed (concurrency): the approve RPC terminal is detected, not re-dispatched", () => {
+  it("when the approve RPC returns a terminal outcome, the executor stops and reports it (no dispatch)", async () => {
     const cfg = baseCfg({}, { paige_approve_act_execution: () => ({ data: { outcome: "executed" }, error: null }) });
     const res = await run(cfg);
     expect(res.outcome).toBe("executed");
     expect(res.executed).toBe(true);
     expect(res.reason).toBe("already_redeemed");
     expect(cfg.calls.rpc.map((c) => c.fn)).not.toContain("set_journey_stage"); // never re-dispatched
+  });
+});
+
+describe("approve-executor — RESUME (recovery): a redeemed-but-unadvanced / unconfirmed row reconciles, never re-redeems", () => {
+  const accepted = (over: Partial<Cfg["rows"]> = {}, rpcOver: Partial<Cfg["rpc"]> = {}) => baseCfg({
+    paige_act_executions: [{
+      outcome: "accepted_for_execution", capability_key: "crm.advance_journey_stage",
+      correlation_ref: "corr-1", idempotency_key: "corr-1", tenant_id: "t1", automation_id: "a1", act_position: 1,
+      detail: { snapshot_args: { stage_slug: "engaged" } },
+    }],
+    ...over,
+  }, rpcOver);
+  const ambiguous = (over: Partial<Cfg["rows"]> = {}, rpcOver: Partial<Cfg["rpc"]> = {}) => baseCfg({
+    paige_act_executions: [{
+      outcome: "ambiguous", capability_key: "crm.advance_journey_stage",
+      correlation_ref: "corr-1", idempotency_key: "corr-1", tenant_id: "t1", automation_id: "a1", act_position: 1,
+      detail: { snapshot_args: { stage_slug: "engaged" } },
+    }],
+    ...over,
+  }, rpcOver);
+
+  it("accepted_for_execution + a landed transition → reconciled to executed WITHOUT re-redeeming or re-dispatching", async () => {
+    const cfg = accepted(); // transitions present → readback confirms
+    const res = await run(cfg);
+    expect(res.outcome).toBe("executed");
+    const fns = cfg.calls.rpc.map((c) => c.fn);
+    expect(fns).not.toContain("paige_approve_act_execution"); // NOT re-redeemed (authorisation already happened)
+    expect(fns).not.toContain("set_journey_stage");           // readback confirmed — no re-dispatch
+    expect(cfg.calls.rpc.filter((c) => c.fn === "paige_record_act_execution").at(-1)!.args._outcome).toBe("executed");
+  });
+
+  it("accepted_for_execution + NO landed transition → RE-DISPATCHES (idempotent), never re-redeems", async () => {
+    const cfg = accepted({ paige_journey_stage_transitions: [] }, { set_journey_stage: () => ({ data: { unchanged: true }, error: null }) });
+    const res = await run(cfg);
+    expect(res.outcome).toBe("executed"); // re-dispatch → idempotent no-op → executed
+    const fns = cfg.calls.rpc.map((c) => c.fn);
+    expect(fns).not.toContain("paige_approve_act_execution"); // NOT re-redeemed
+    expect(fns).toContain("set_journey_stage");               // re-dispatched
+  });
+
+  it("ambiguous + a landed transition → reconciled to executed by correlation, never re-dispatched", async () => {
+    const cfg = ambiguous(); // transitions present → readback confirms
+    const res = await run(cfg);
+    expect(res.outcome).toBe("executed");
+    const fns = cfg.calls.rpc.map((c) => c.fn);
+    expect(fns).not.toContain("paige_approve_act_execution");
+    expect(fns).not.toContain("set_journey_stage"); // ambiguous is NEVER blind re-dispatched (owner rule)
+  });
+
+  it("ambiguous + still unconfirmed → reports reconcile_unconfirmed, consumes NOTHING, never dispatches", async () => {
+    const cfg = ambiguous({ paige_journey_stage_transitions: [] }); // readback still finds nothing
+    const res = await run(cfg);
+    expect(res.outcome).toBe("ambiguous");
+    expect(res.executed).toBe(false);
+    expect(res.reason).toBe("reconcile_unconfirmed");
+    const fns = cfg.calls.rpc.map((c) => c.fn);
+    expect(fns).not.toContain("paige_approve_act_execution");
+    expect(fns).not.toContain("set_journey_stage");
   });
 });

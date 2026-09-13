@@ -171,13 +171,19 @@ Deno.serve(async (req) => {
       // the held act's ledger tenant is the SAME (a crafted approval in tenant A must not drive tenant B's act).
       expectedTenantId: approval.tenant_id ?? null,
     });
-    // Stamp `approved` ONLY on a real ATTEMPT (the act was redeemed + dispatched, and the ledger now records
-    // executed/failed/ambiguous). EVERY other outcome — approval_pending (governed refusal / not-supported /
-    // tenant-auth stop), `unknown` (a transient ledger_read_error), `absent` (act_execution_not_found), or an
-    // already-redeemed `accepted_for_execution` — consumed NOTHING here: release the claim so the held act stays
-    // recoverable and report honestly (§13). Stamping `approved` on a transient read blip would burn the human's
-    // approval with nothing executed and then the status='approved' idempotency guard blocks any retry (§39 fix).
-    const attempted = res.outcome === "executed" || res.outcome === "failed" || res.outcome === "ambiguous";
+    // Consume the approval (stamp `approved`) ONLY for a TERMINAL, durably-recorded outcome — executed or
+    // failed. EVERY non-terminal outcome consumes NOTHING here: release the claim so the held act stays
+    // recoverable and report honestly (§13). This includes:
+    //   • approval_pending (governed refusal / not-supported / tenant-auth stop) — nothing was redeemed;
+    //   • `ambiguous` (§P4, Codex peer-gate) — the dispatch could NOT be confirmed; consuming it would burn the
+    //     approval with the act stuck unreconciled. Left pending, a re-approval re-enters the executor, which
+    //     RESUMES from the ambiguous ledger row and reconciles by correlation (never blind re-fires);
+    //   • `accepted_for_execution` (§P3) — a ledger-write blip left the row redeemed-but-unadvanced; a re-approval
+    //     RESUMES and reconciles/re-dispatches idempotently;
+    //   • `unknown` (a transient ledger_read_error) / `absent` (act_execution_not_found) — nothing ran.
+    // Stamping `approved` on any of these would burn the human's approval and the status='approved' idempotency
+    // guard would then block the very retry that recovers it.
+    const attempted = res.outcome === "executed" || res.outcome === "failed";
     if (!attempted) {
       await releaseClaim();
       return json(200, { ok: false, executed: false, act_outcome: res.outcome, reason: res.reason, approval_id: approvalId });
