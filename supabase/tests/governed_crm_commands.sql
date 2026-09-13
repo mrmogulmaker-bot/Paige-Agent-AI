@@ -40,6 +40,7 @@ INSERT INTO public.businesses(id,tenant_id,owner_user_id,legal_name,is_active,up
 -- Test-only privileges for direct durable-state assertions; the transaction rollback removes them.
 -- The executor itself remains SECURITY DEFINER and is the only production mutation surface.
 GRANT SELECT,UPDATE ON public.clients,public.paige_workspace_events TO service_role;
+GRANT SELECT ON public.businesses TO service_role;
 
 SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
