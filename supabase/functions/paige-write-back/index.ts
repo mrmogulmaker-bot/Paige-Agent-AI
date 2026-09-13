@@ -203,7 +203,10 @@ serve(async (req) => {
         },
         // The workspace a target belongs to (for the platform-owner path's audit scope). Service-role, so
         // get_user_primary_tenant bypasses its self-or-owner guard; falls back to the CRM clients row
-        // for a target that is a clients.id / linked_user_id rather than a tenant member.
+        // for a target that is a clients.id / linked_user_id rather than a tenant member. `t` is a
+        // zod-validated uuid (writeBackSchema.target_user_id), so the `.or()` interpolation carries no
+        // PostgREST filter-injection surface; a deterministic `.order("id")` picks a stable row when a
+        // linked_user_id maps to clients in more than one tenant (the #588 LIMIT-1-without-ORDER-BY lesson).
         resolveTargetTenant: async (t) => {
           const primary = await resolveTenantForUser(supabase, t);
           if (primary.tenantId) return primary.tenantId;
@@ -212,6 +215,7 @@ serve(async (req) => {
             .select("tenant_id")
             .or(`id.eq.${t},linked_user_id.eq.${t}`)
             .not("tenant_id", "is", null)
+            .order("id", { ascending: true })
             .limit(1)
             .maybeSingle();
           // deno-lint-ignore no-explicit-any -- single-column select row
@@ -219,6 +223,9 @@ serve(async (req) => {
         },
         // The §9 boundary: is the target a MEMBER (auth user) or a CRM CLIENT of the caller's active
         // workspace? Either establishes the same-workspace bond; neither means a different workspace.
+        // `t` is a zod-validated uuid, and the clients `.or()` is AND-scoped by the caller's tenant_id,
+        // so there is no filter-injection surface and no cross-tenant match is possible. Result is a
+        // boolean existence check, so row order is irrelevant here.
         targetSharesTenant: async (callerTenantId, t) => {
           const { data: member } = await supabase
             .from("tenant_members")

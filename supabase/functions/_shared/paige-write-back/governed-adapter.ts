@@ -101,7 +101,11 @@ export type WriteBackAuthzBasis =
 
 export type WriteBackAuthz = {
   allowed: boolean;
-  /** A caller-facing reason, surfaced through the seam's `access_denied` message on a refusal. */
+  /** A caller-facing reason. It surfaces as the seam's `access_denied` message ONLY for refusals that
+   *  carry a resolved `tenantId` — the security-critical cross-tenant ("different workspace") and
+   *  coach-unassigned denials. The role-less and unresolved-workspace denials return `tenantId: null`,
+   *  so the seam's tenancy gate (which runs before the access gate) reports them as `tenant_unresolved`
+   *  instead; the refusal is still a 403 with `authz_basis: "denied"` recorded, so forensics are intact. */
   reason: string;
   /** The workspace the write is scoped to (the caller's active tenant for staff; the target's for a
    *  platform owner). Null when no workspace resolved, which is itself a refusal. Feeds the seam. */
