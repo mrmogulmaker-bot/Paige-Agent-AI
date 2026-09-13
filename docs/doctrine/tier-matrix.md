@@ -4105,11 +4105,11 @@ narrower safe-field projection contract — status + provenance only, never a ra
 
 No new entitlement, tier feature flag, `/admin` route, sub-account inheritance, or Agency/operator surface is implied by the Solo child route.
 
-### Solo Beta public-enrollment boundary — Gate A candidate (2026-09-12)
+### Solo Beta public-enrollment boundary — production application/database release (2026-09-12)
 
 | Capability | Solo | Agency / Enterprise | Platform Operator | Sub-account / Client Portal | Anonymous |
 |---|---|---|---|---|---|
 | New public enrollment | Fixed paid Solo Beta only: one 30-day trial, then $74.50/month; standalone top-level workspace after verified fulfillment | Unavailable for new public enrollment; existing authorization preserved | Never a public tier; existing operator authorization preserved | Unavailable for new public enrollment/invite creation by this flow; existing client invites/access preserved | May enter only the Solo offer and ordinary identity flow |
 | Post-checkout access | Trialing or active signed provider state + fulfillment receipt + active owner membership → server destination | Existing resolver only | Existing resolver only | Existing resolver/invite only | None |
 
-This is an acquisition constraint, not a deletion or migration of existing tenants. Caller-selected or repeated trials and free/annual/planless public fallbacks are prohibited; the one server-fixed 30-day trial is part of the paid Solo subscription. Candidate status only: authenticated and deployed proof remain owed.
+This is an acquisition constraint, not a deletion or migration of existing tenants. Caller-selected or repeated trials and free/annual/planless public fallbacks are prohibited; the one server-fixed 30-day trial is part of the paid Solo subscription. The application and database contract are production-deployed at `42ad0d36`, with zero migration drift and 178/178 live public browser checks. Stripe remains test mode; authenticated provider fulfillment and live financial activation remain `PROOF OWED`.

@@ -225,8 +225,8 @@
       "rail_mind_memory": "Rail: billing outcome events (no sender/secret). Mind: safe billing-status only (platform-billing-spine-source-contract). Memory: none of card/PII.",
       "status": "PARTIAL",
       "owner": "Money Spine workstream",
-      "dependency": "B-iv Connect direct-charge posture verification (§38); M1 real-money spend-control wiring for any autonomous charge.",
-      "next_slice": "Bind safe billing status into Paige (Phase 8); verify Connect direct-charge posture.",
+      "dependency": "Solo Beta application/database release is live with a test-mode-only offer; live Product/Price financial activation and authenticated provider lifecycle proof remain owner/provider actions. B-iv Connect direct-charge posture verification (§38) and M1 real-money spend control remain separate.",
+      "next_slice": "With separate financial-activation authority, configure and verify the exact live Solo Product/Price and signed lifecycle without changing existing customers; then bind safe billing status into Paige and verify Connect direct-charge posture.",
       "tier_eligibility": { "platform": "eligible", "solo": "eligible", "agency_future": "eligible", "enterprise_future": "eligible" },
       "expense_and_operations": {
         "cost_responsibility": "shared",
