@@ -33,9 +33,15 @@ on:
       - "supabase/functions/handle-resend-webhook/**"
       - "supabase/tests/resend_receipt_reliability.sql"
       - "supabase/tests/promotional_solo_grant.sql"
+      # Layer C · C5 slice 2 — companion-minting + cancellation-sync + direct-approve guard + reconciler.
+      # Re-run when the proof or the orchestration seams it covers change, not only when a migration touches it.
+      - "supabase/tests/paige_orchestration_companion_minting.sql"
+      - "supabase/functions/_shared/paige-orchestration/**"
+      - "supabase/functions/execute-approval/**"
       - "scripts/proof/resend-receipt-concurrency.mjs"
       - "scripts/proof/business-mission-concurrency.mjs"
       - "src/__tests__/paige-spine-*.test.ts"
+      - "src/__tests__/paige-orchestration-approve-executor.test.ts"
       - "src/solo/paigeClientScope.ts"
       - "src/solo/paigeClientScope.test.ts"
       - "scripts/ci/paige-spine-registry-lint.mjs"
@@ -68,9 +74,14 @@ on:
       - "supabase/functions/handle-resend-webhook/**"
       - "supabase/tests/resend_receipt_reliability.sql"
       - "supabase/tests/promotional_solo_grant.sql"
+      # Layer C · C5 slice 2 — companion-minting + cancellation-sync + direct-approve guard + reconciler.
+      - "supabase/tests/paige_orchestration_companion_minting.sql"
+      - "supabase/functions/_shared/paige-orchestration/**"
+      - "supabase/functions/execute-approval/**"
       - "scripts/proof/resend-receipt-concurrency.mjs"
       - "scripts/proof/business-mission-concurrency.mjs"
       - "src/__tests__/paige-spine-*.test.ts"
+      - "src/__tests__/paige-orchestration-approve-executor.test.ts"
       - "src/solo/paigeClientScope.ts"
       - "src/solo/paigeClientScope.test.ts"
       - "scripts/ci/paige-spine-registry-lint.mjs"
@@ -131,6 +142,12 @@ jobs:
       # Platform-issued promotional Solo access is a separate service-only lane:
       # no Stripe binding, one explicit grant, one workspace, and retry-safe receipts.
       - run: supabase test db supabase/tests/promotional_solo_grant.sql
+      # Layer C · C5 slice 2 — the companion-mint trigger's column contract + idempotency, the
+      # cancellation-sync (reject/skip → cancelled, never clobbering an executed act), the direct-approve
+      # guard (an orchestration approval reaches approved only via the executor's act_outcome stamp), and the
+      # durable reconciler (landed correlation → executed; >24h unconfirmed → failed; fresh/recent left as-is;
+      # §59 in-body JWT-caller refusal). Rides this replayed DB for the same §24 reason as the proofs above.
+      - run: supabase test db supabase/tests/paige_orchestration_companion_minting.sql
       - run: supabase test db supabase/tests/resend_receipt_reliability.sql
       - run: node scripts/proof/resend-receipt-concurrency.mjs
         env:
