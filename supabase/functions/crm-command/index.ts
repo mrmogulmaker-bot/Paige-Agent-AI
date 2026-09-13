@@ -287,6 +287,19 @@ serve(async (req) => {
   if (!laneError && typeof resolvedLane === "string" && ["auto", "confirm", "off"].includes(resolvedLane)) {
     lane = resolvedLane;
   }
+  // The canonical Pipeline stage can require an operator card even when the ordinary move tool's
+  // stored lane is auto. Resolve that server-owned policy before the Gateway decision so a protected
+  // move proposes confirmation instead of reaching the executor with a standing-autonomy stamp.
+  if (body.command.action === "deal.move" && lane === "auto") {
+    const { data: targetStage, error: targetStageError } = await admin.from("pipeline_stages")
+      .select("move_policy")
+      .eq("id", body.command.target_stage_id!)
+      .eq("tenant_id", tenantId)
+      .eq("pipeline_id", body.command.pipeline_id!)
+      .maybeSingle();
+    if (targetStageError || !targetStage) lane = "unresolved";
+    else if (targetStage.move_policy === "approval") lane = "confirm";
+  }
 
   const requestNonce = crypto.randomUUID();
   let claimedArgs: JsonObject | null | undefined;
@@ -405,6 +418,23 @@ serve(async (req) => {
     }
     const fingerprint = await confirmFingerprint(capability, proposalArgs);
     const summary = summaryFor(body.command, preview);
+    // The canonical live-row uniqueness predicate includes expired-but-unconsumed confirmations.
+    // Retire an exact expired server-issued row before insertion so abandonment can be retried; a
+    // concurrent request either inserts the replacement or reads that same active replacement below.
+    const proposalNow = new Date().toISOString();
+    const { error: expiredProposalError } = await admin.from("paige_pending_confirmations")
+      .update({ consumed_at: proposalNow })
+      .eq("user_id", user.id)
+      .eq("tenant_id", tenantId)
+      .eq("tool_name", capability)
+      .eq("fingerprint", fingerprint)
+      .is("thread_id", null)
+      .is("scoped_client_id", null)
+      .is("consumed_at", null)
+      .not("server_issued_at", "is", null)
+      .not("issued_in_request", "is", null)
+      .lte("expires_at", proposalNow);
+    if (expiredProposalError) return response(503, { ok: false, outcome: "refused", code: "CRM_APPROVAL_STORE_UNAVAILABLE" });
     let { data: proposal, error: proposalError } = await admin.from("paige_pending_confirmations").insert({
       user_id: user.id,
       tenant_id: tenantId,

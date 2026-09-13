@@ -34,6 +34,8 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain('.eq("status", "active")');
     expect(edge).toContain('caller.rpc("resolve_tool_autonomy"');
     expect(edge).toContain('let lane = "unresolved"');
+    expect(edge).toContain('targetStage.move_policy === "approval"');
+    expect(edge).toContain('.lte("expires_at", proposalNow)');
   });
 
   it("reuses the canonical single-use confirmation store", () => {

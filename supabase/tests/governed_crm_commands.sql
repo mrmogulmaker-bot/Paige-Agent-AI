@@ -1,6 +1,6 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(60);
+SELECT plan(62);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
@@ -35,9 +35,10 @@ INSERT INTO public.clients(id,tenant_id,account_number,created_by,first_name,las
  ('c7100000-0000-4000-8000-00000000c104','c7100000-0000-4000-8000-000000001111','CLT-CGA-4','c7100000-0000-4000-8000-000000000001','Bulk','Fixture','bulk@tests.invalid','2026-09-13 00:00:00+00'),
  ('c7100000-0000-4000-8000-00000000c105','c7100000-0000-4000-8000-000000001111','CLT-CGA-5','c7100000-0000-4000-8000-000000000001','Coach','Fixture','coach@tests.invalid','2026-09-13 00:00:00+00');
 UPDATE public.clients SET linked_user_id='c7100000-0000-4000-8000-000000000002' WHERE id='c7100000-0000-4000-8000-00000000c103';
-INSERT INTO public.businesses(id,tenant_id,owner_user_id,legal_name,is_active,updated_at) VALUES
- ('c7100000-0000-4000-8000-00000000b101','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Archived Fixture',false,'2026-09-13 00:00:00+00'),
- ('c7100000-0000-4000-8000-00000000b102','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Coach Scope Fixture',true,'2026-09-13 00:00:00+00');
+INSERT INTO public.businesses(id,tenant_id,owner_user_id,legal_name,is_active,is_primary,updated_at) VALUES
+ ('c7100000-0000-4000-8000-00000000b101','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Archived Fixture',false,false,'2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000b102','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Coach Scope Fixture',true,false,'2026-09-13 00:00:00+00'),
+ ('c7200000-0000-4000-8000-00000000b201','c7200000-0000-4000-8000-000000002222','c7200000-0000-4000-8000-000000000001','Archived Primary',false,true,'2026-09-13 00:00:00+00');
 SELECT set_config('app.pipeline_created_through','paige',true);
 SELECT set_config('app.pipeline_requested_by','c7100000-0000-4000-8000-000000000001',true);
 INSERT INTO public.pipelines(tenant_id,name,is_default) VALUES
@@ -72,6 +73,15 @@ SELECT is(
   32,
   'the latest autonomy catalogue exposes all 32 governed CRM command controls'
 );
+CREATE TEMP TABLE archived_primary_company_create AS SELECT public.execute_crm_command(
+ 'c7200000-0000-4000-8000-000000002222','c7200000-0000-4000-8000-000000000001',
+ '{"approval_channel":"operator_card","action":"company.create","contact_id":"c7200000-0000-4000-8000-00000000c201","patch":{"legal_name":"Active Secondary"}}','archived-primary-create-1') result;
+SELECT is((SELECT (result->'readback'->>'is_primary')::boolean FROM archived_primary_company_create),false,'company create does not duplicate an archived primary owner company');
+CREATE TEMP TABLE archived_primary_company_restore AS SELECT public.execute_crm_command(
+ 'c7200000-0000-4000-8000-000000002222','c7200000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','company.restore','company_id','c7200000-0000-4000-8000-00000000b201','expected_updated_at',(SELECT updated_at FROM public.businesses WHERE id='c7200000-0000-4000-8000-00000000b201')),
+ 'archived-primary-restore-1') result;
+SELECT is((SELECT count(*)::integer FROM public.businesses WHERE tenant_id='c7200000-0000-4000-8000-000000002222' AND owner_user_id='c7200000-0000-4000-8000-000000000001' AND is_active AND is_primary),1,'restoring the archived primary leaves exactly one active primary for the owner');
 CREATE TEMP TABLE crm_result AS SELECT public.execute_crm_command(
  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
  '{"approval_channel":"operator_card","action":"contact.update","contact_id":"c7100000-0000-4000-8000-00000000c101","expected_updated_at":"2026-09-13T00:00:00+00:00","patch":{"email":"after@tests.invalid"}}','same-tenant-update-1') result;

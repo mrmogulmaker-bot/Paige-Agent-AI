@@ -555,7 +555,7 @@ begin
       nullif(btrim(v_patch->>'website'),''), nullif(btrim(v_patch->>'business_email'),''),
       nullif(btrim(v_patch->>'business_phone'),''), nullif(btrim(v_patch->>'naics'),''),
       nullif(btrim(v_patch->>'revenue_band'),''), nullif(btrim(v_patch->>'state_of_formation'),''),
-      true, not exists(select 1 from public.businesses b where b.tenant_id = v_tenant and b.owner_user_id = v_company_owner and b.is_active), clock_timestamp()
+      true, not exists(select 1 from public.businesses b where b.tenant_id = v_tenant and b.owner_user_id = v_company_owner and b.is_primary), clock_timestamp()
     ) returning * into v_business;
     if v_contact.primary_business_id is null then
       update public.clients set primary_business_id = v_business.id, updated_at = clock_timestamp()
