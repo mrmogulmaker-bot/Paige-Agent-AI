@@ -156,7 +156,12 @@ export const falAdapter: MediaProviderAdapter = {
     // image_edit: reference images travel as provider-fetchable urls.
     if (input.referenceUrls?.length) body.image_urls = input.referenceUrls;
     if (input.mode === "video") {
-      body.duration = Math.max(1, Math.min(12, Math.round(input.videoSeconds ?? 5)));
+      // Veo 3.1's schema: DurationEnum "4s" | "6s" | "8s" (a bare number 422s —
+      // found live by the controlled proof). Snap to the nearest allowed value.
+      const allowed = [4, 6, 8];
+      const want = Math.max(1, Math.min(12, Math.round(input.videoSeconds ?? 5)));
+      const snapped = allowed.reduce((best, v) => Math.abs(v - want) < Math.abs(best - want) ? v : best, allowed[0]);
+      body.duration = `${snapped}s`;
     }
 
     const resp = await fetch(url.toString(), {
@@ -187,6 +192,12 @@ export const falAdapter: MediaProviderAdapter = {
     const resp = await fetch(`${QUEUE_BASE}/${ref.model}/requests/${encodeURIComponent(ref.providerRequestId)}/status`, {
       headers: { authorization: `Key ${key}` },
     });
+    if (resp.status === 404 || resp.status === 405) {
+      // Observed live (2026-09-13): the status route can vanish once a request
+      // completes. Report COMPLETED so the caller proceeds to fetchResult —
+      // the result fetch is the authority on whether the artifact survives.
+      return { status: "COMPLETED" };
+    }
     if (!resp.ok) {
       const detail = await resp.text().catch(() => "");
       throw new Error(`fal status ${resp.status}: ${detail.slice(0, 300)}`);

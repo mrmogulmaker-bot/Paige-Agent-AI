@@ -147,7 +147,24 @@ export const VIEW_SOURCES: Readonly<Record<string, ViewSource>> = {
     bespoke: "TrustCompass",
     carries: ["analytics/autonomy", "trust-compass/autonomy", "trust-compass/escalations", "trust-compass/dependencies"],
   },
-  "analytics/platform-health": { bespoke: "FleetTeamPulseSurface", carries: ["fleet/team-pulse"] },
+  /**
+   * The Platform Operator Command Center's first view (mandate 2026-09-12, Phase 2; map:
+   * `docs/delivery/platform-operator-command-center.md`). The pack draws THIS view's content
+   * at `paige-ia.js` L268–L294 (ledgerByView + slot ledger) and L496–L508 (four charts) —
+   * ported as `PlatformHealthSurface` with real reads behind every figure.
+   *
+   * §58 — this view previously rendered `FleetTeamPulseSurface`, a RETIRED-pack port
+   * (`Super Admin Shell.dc.html` L6593) that the v3 pack draws nowhere, mounted here as a
+   * stopgap. It is displaced, not dropped: the component stays on disk (unmounted, like
+   * `OperatorLegacyApp`), and its real capability — the platform roster read
+   * (`list_platform_staff()`) — is owed to the v3 Settings → Team port (Layer 6 wiring),
+   * which is where the pack places platform staff. `carries` keeps `fleet/team-pulse` as the
+   * drop-nothing record of where that content lived.
+   */
+  "analytics/platform-health": {
+    bespoke: "PlatformHealthSurface",
+    carries: ["fleet/team-pulse"],
+  },
 
   // ── Settings ───────────────────────────────────────────────────────────────────────────────
   /**

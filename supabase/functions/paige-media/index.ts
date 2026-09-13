@@ -419,7 +419,7 @@ serve(async (req: Request) => {
         tier: (job.params?.quality_tier === "premium" ? "premium" : "standard"),
         estimatedCostUsd: job.estimated_cost_usd ?? 0,
       });
-      if (!budget.ok) return json({ error: budget.explanation, budget_denied: true, gate: budget.gate }, 429);
+      if (budget.verdict === "deny") return json({ error: budget.explanation, budget_denied: true, gate: budget.gate }, 429);
 
       const { data: updated, error: upErr } = await admin
         .from("paige_media_jobs")

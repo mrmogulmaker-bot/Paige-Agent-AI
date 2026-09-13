@@ -6,6 +6,15 @@ import { findConflicts } from "./useSoloCalendar";
 
 const setStatus = vi.fn(async () => ({ ok: true }) as { ok: boolean; message?: string });
 const createBooking = vi.fn(async () => ({ ok: true }) as { ok: boolean; message?: string });
+type EditArg = { id: string; title: string; guestName: string | null; notes: string | null; calendarId: string };
+// Typed so .mock.calls carries the real argument tuple (id, startAt, minutes) /
+// (EditArg) rather than an empty tuple the assertions would have to cast blindly.
+const reschedule = vi.fn<(id: string, startAt: Date, durationMinutes: number) => Promise<{ ok: boolean; message?: string }>>(
+  async () => ({ ok: true }),
+);
+const edit = vi.fn<(input: EditArg) => Promise<{ ok: boolean; message?: string }>>(
+  async () => ({ ok: true }),
+);
 const refresh = vi.fn();
 const retry = vi.fn(async () => {});
 
@@ -44,6 +53,8 @@ vi.mock("./useSoloCalendar", async () => {
       refresh,
       setStatus,
       createBooking,
+      reschedule,
+      edit,
       colorForBooking: (b: SoloBooking) => {
         const c = state.calendars.find((x) => x.id === b.calendar_id);
         return c?.color || c?.accent || actual.DEFAULT_CALENDAR_COLOR;
@@ -115,6 +126,23 @@ function click(el: Element | null) {
   act(() => { (el as HTMLElement).dispatchEvent(new MouseEvent("click", { bubbles: true })); });
 }
 
+/** Set a controlled form control's value the way React sees it: the framework
+ *  overrides the native value setter, so a plain `el.value = …` does not trigger
+ *  onChange. Go through the prototype setter and dispatch both input and change. */
+function setValue(el: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, value: string) {
+  const proto =
+    el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype
+    : el instanceof HTMLSelectElement ? HTMLSelectElement.prototype
+    : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, "value")!.set!;
+  act(() => {
+    setter.call(el, value);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+const byId = <T extends Element>(id: string) => document.querySelector<T>(id);
+
 beforeEach(() => {
   state.bookings = [];
   state.calendars = [];
@@ -126,6 +154,10 @@ beforeEach(() => {
   setStatus.mockClear();
   setStatus.mockResolvedValue({ ok: true });
   createBooking.mockClear();
+  reschedule.mockClear();
+  reschedule.mockResolvedValue({ ok: true });
+  edit.mockClear();
+  edit.mockResolvedValue({ ok: true });
 });
 afterEach(() => {
   act(() => root.unmount());
@@ -255,6 +287,85 @@ describe("Solo Calendar — the detail drawer", () => {
     setStatus.mockResolvedValueOnce({ ok: false, message: "You can't change that booking." });
     openDetail();
     click(buttonByText(/No-show/i, document.body));
+    await act(async () => { await Promise.resolve(); });
+    expect(dialog()?.textContent).toContain("You can't change that booking.");
+  });
+
+  it("moves a booking through the reschedule seam with the new time and its length preserved", async () => {
+    openDetail(); // b1 = 10:00–11:00 today → 60 minutes
+    click(buttonByText(/Reschedule/i, document.body));
+    const d = dialog();
+    expect(d?.textContent).toContain("Reschedule");
+    // Length prefills to the booking's real 60 minutes; the start can be moved.
+    expect(byId<HTMLSelectElement>("#sc-rs-dur")!.value).toBe("60");
+    setValue(byId<HTMLInputElement>("#sc-rs-time")!, "14:30");
+    click(buttonByText(/Move appointment/i, document.body));
+    await act(async () => { await Promise.resolve(); });
+    expect(reschedule).toHaveBeenCalledTimes(1);
+    const [id, startAt, minutes] = reschedule.mock.calls[0];
+    expect(id).toBe("b1");
+    expect(minutes).toBe(60);
+    expect(startAt.getHours()).toBe(14);
+    expect(startAt.getMinutes()).toBe(30);
+    expect(dialog()).toBeNull(); // a successful move closes the form
+  });
+
+  it("keeps the reschedule form open and shows the refusal when a move is rejected", async () => {
+    reschedule.mockResolvedValueOnce({ ok: false, message: "Something is already on your schedule at that time." });
+    openDetail();
+    click(buttonByText(/Reschedule/i, document.body));
+    click(buttonByText(/Move appointment/i, document.body));
+    await act(async () => { await Promise.resolve(); });
+    expect(dialog()?.textContent).toContain("Something is already on your schedule at that time.");
+  });
+
+  it("does not offer Reschedule or Edit on a booking that is off the schedule", () => {
+    openDetail({ status: "cancelled" });
+    expect((buttonByText(/Reschedule/i, document.body) as HTMLButtonElement).disabled).toBe(true);
+    expect((buttonByText(/Edit details/i, document.body) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("withholds Reschedule on a class session — a single-row move would orphan its seats", () => {
+    // reschedule_internal_booking moves ONE row; a class marker and its seats share
+    // a start/end, so moving just the marker separates the class from its attendees.
+    // Until an atomic group-move seam exists the action is disabled — but the class's
+    // details can still be edited, which never touches time.
+    openDetail({ booking_kind: "class_session", capacity: 8 });
+    expect((buttonByText(/Reschedule/i, document.body) as HTMLButtonElement).disabled).toBe(true);
+    expect((buttonByText(/Edit details/i, document.body) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("edits details through the update seam, carrying the current values", async () => {
+    openDetail(); // title "Discovery call", guest "A. Guest"
+    click(buttonByText(/Edit details/i, document.body));
+    const d = dialog();
+    expect(d?.textContent).toContain("Edit details");
+    expect(byId<HTMLInputElement>("#sc-ed-title")!.value).toBe("Discovery call");
+    expect(byId<HTMLInputElement>("#sc-ed-guest")!.value).toBe("A. Guest");
+    setValue(byId<HTMLInputElement>("#sc-ed-title")!, "Discovery call — intake");
+    click(buttonByText(/Save changes/i, document.body));
+    await act(async () => { await Promise.resolve(); });
+    expect(edit).toHaveBeenCalledTimes(1);
+    expect(edit.mock.calls[0][0]).toMatchObject({
+      id: "b1", title: "Discovery call — intake", guestName: "A. Guest",
+    });
+    expect(dialog()).toBeNull();
+  });
+
+  it("refuses to save an edit with an empty title, without calling the seam", () => {
+    openDetail();
+    click(buttonByText(/Edit details/i, document.body));
+    setValue(byId<HTMLInputElement>("#sc-ed-title")!, "   ");
+    click(buttonByText(/Save changes/i, document.body));
+    expect(edit).not.toHaveBeenCalled();
+    expect(dialog()?.textContent).toContain("An appointment needs a title.");
+  });
+
+  it("surfaces an edit refusal rather than reporting a change that did not happen", async () => {
+    edit.mockResolvedValueOnce({ ok: false, message: "You can't change that booking." });
+    openDetail();
+    click(buttonByText(/Edit details/i, document.body));
+    click(buttonByText(/Save changes/i, document.body));
     await act(async () => { await Promise.resolve(); });
     expect(dialog()?.textContent).toContain("You can't change that booking.");
   });

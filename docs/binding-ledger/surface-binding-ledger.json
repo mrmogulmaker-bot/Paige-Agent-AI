@@ -989,7 +989,7 @@
     },
     {
       "id": "operator.platform",
-      "out_of_scope": true,
+      "out_of_scope": false,
       "intended_capability": {
         "read": "Operator tier only: fleet/platform posture — tenant-less, operator-gated.",
         "draft": "Operator-tier recommendations.",
@@ -1002,9 +1002,9 @@
       "group": "operator",
       "tier_scope": ["operator"],
       "owner_component": "src/operator/OperatorEntry.tsx -> OperatorApp.tsx; surfaces under src/operator/surfaces/**",
-      "canonical_source": "OPERATOR_BRANCHES (tenant-less); route substrate only, most of 78 tabs not built",
+      "canonical_source": "six-slot v3 console at /operator (operatorIA.ts mirrors the pack); Platform health view reads the systems-check/alerting seams directly",
       "chain": {
-        "canonical_source": {"status": "partial", "note": "route substrate only"},
+        "canonical_source": {"status": "partial", "note": "six-slot v3 console; Platform health view reads systems_check_snapshot + paige_systems_check_run + paige_alert_firing"},
         "tenant_scope": {"status": "server_resolved", "note": "tenant-less operator lens; PaigePlatformDesk mounts with clientId=null"},
         "safe_context": {"status": "none", "note": "the operator lens is tenant-less; Spine evidence unreachable (C4)"},
         "authority": {"status": "governed", "note": "operator surfaces gate on is_platform_owner()/is_platform_operator()"},
@@ -1015,12 +1015,12 @@
         "memory_retention": {"status": "seam_available", "note": "operator (God) memory is tenant-less paige_owner_memory rows"}
       },
       "prohibited_context": ["cross-tenant data unless is_platform_owner", "tenant secrets"],
-      "state": "UNAVAILABLE",
-      "state_reason": "Intentionally separate operator tree (own shell, own registry, tenant-less). Not in this Solo binding program's scope beyond recording the seam; do not bind Solo work to it.",
-      "evidence_class": ["source_read"],
+      "state": "PARTIAL",
+      "state_reason": "Owner mandate 2026-09-12 (Platform Operator Command Center) released operator work. First Phase 2 slice: Analytics > Platform health renders the v3 pack's health view from real seams with honest absences; authenticated-runtime drive still PROOF OWED. Phase 0 map: docs/delivery/platform-operator-command-center.md.",
+      "evidence_class": ["source_read", "rendered_structural"],
       "linked": [],
-      "next_slice": "Out of scope for this Solo program. No broad operator/subaccount work until the owner releases it.",
-      "sources": ["docs/design-references/OPERATOR-COMMAND-CENTER-IA.md"]
+      "next_slice": "Phase 2 remainder per the mandate: deployment/release + migration proof state, provider/connection health, tenant lifecycle aggregate, incident/recovery state - each only when its real source is named. Then Phase 3 triage.",
+      "sources": ["docs/design-references/OPERATOR-COMMAND-CENTER-IA.md", "docs/delivery/platform-operator-command-center.md", "docs/evidence/ui-delivery/operator-platform-health-view.md"]
     }
   ]
 }

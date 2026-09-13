@@ -153,7 +153,7 @@ settings.billing = PARTIAL
 settings.security-data = INTENTIONALLY_ISOLATED
 analytics = UNAVAILABLE
 marketplace = UNAVAILABLE
-operator.platform = UNAVAILABLE
+operator.platform = PARTIAL
 ```
 <!-- LEDGER-SNAPSHOT:END -->
 
