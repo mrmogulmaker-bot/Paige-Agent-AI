@@ -3,8 +3,10 @@
  * Proves: (1) buildGovernedInputs shapes the ONE-pathway inputs correctly and the PERSON attribution
  * unblocks an `auto` mutation while a SERVICE principal is refused (governedExecution.ts:188-193);
  * (2) outcomeFromDecision maps execute/propose/refuse to the exact per-act outcome; (3) runEventActs
- * records the exact per-act outcome for every branch (condition/lane/auth/adapter) via a mock DB, with a
- * durable idempotency/correlation record — never a blanket flag.
+ * records the exact per-act outcome for every branch (condition/lane/auth/adapter) via a mock DB, writing
+ * through the atomic/monotonic RPC with a durable idempotency/correlation record — never a blanket flag;
+ * (4) FAIL-CLOSED persistence — a failed ledger write surfaces in `persist_failures` (owner correction #3);
+ * (5) the engine reports the outcome the RPC ACTUALLY persisted, not its recomputed guess (monotonic, §13).
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -57,7 +59,7 @@ describe("buildGovernedInputs — the one-pathway inputs, and person-attribution
 
 describe("outcomeFromDecision — exact per-act outcome, never a success on a non-execute", () => {
   const audit = { risk: "high" } as never;
-  it("execute → accepted_for_execution (slice 1); propose → approval_pending; refuse → refused_*", () => {
+  it("execute → accepted_for_execution (C1); propose → approval_pending; refuse → refused_*", () => {
     expect(outcomeFromDecision({ kind: "execute", args: { x: 1 }, risk: "high", audit }).outcome)
       .toBe("accepted_for_execution");
     expect(outcomeFromDecision({ kind: "propose", revalidate: false, risk: "high", audit }).outcome)
@@ -73,9 +75,11 @@ describe("outcomeFromDecision — exact per-act outcome, never a success on a no
 // ── A minimal chainable, thenable mock of the supabase-js surface the engine uses. ─────────────────────
 type MockConfig = {
   acts: Record<string, Array<{ id: string; position: number; action_kind: string | null; tool_key: string | null; config: unknown }>>;
-  activeMembers: Set<string>;              // `${tenantId}:${userId}`
+  activeMembers: Set<string>;                       // `${tenantId}:${userId}`
   lanes: Record<string, { effective: string }>;
-  upserts: Array<Record<string, unknown>>;
+  recorded: Array<Record<string, unknown>>;         // every paige_record_act_execution call the engine made
+  persistFail?: Set<string>;                        // act_ids whose durable ledger write should fail
+  persistOutcomeOverride?: Record<string, string>;  // act_id → the outcome the RPC actually persisted (monotonic)
 };
 function mockDb(cfg: MockConfig): EngineDb {
   const makeQuery = (table: string) => {
@@ -86,7 +90,6 @@ function mockDb(cfg: MockConfig): EngineDb {
       order() { return q; },
       eq(k: string, v: unknown) { state[k] = v; return q; },
       limit() { return q; },
-      upsert(row: Record<string, unknown>) { cfg.upserts.push(row); return { then: (r: any) => Promise.resolve({ data: null, error: null }).then(r) }; },
       then(onF: any, onR: any) {
         let data: unknown = [];
         if (table === "paige_automation_acts") data = cfg.acts[state.automation_id as string] ?? [];
@@ -100,8 +103,20 @@ function mockDb(cfg: MockConfig): EngineDb {
   };
   return {
     from: (t: string) => makeQuery(t),
-    rpc: async (_fn: string, args: Record<string, unknown>) =>
-      ({ data: cfg.lanes[args._automation_id as string] ?? { effective: "off" }, error: null }),
+    rpc: async (fn: string, args: Record<string, unknown>) => {
+      if (fn === "resolve_automation_autonomy") {
+        return { data: cfg.lanes[args._automation_id as string] ?? { effective: "off" }, error: null };
+      }
+      if (fn === "paige_record_act_execution") {
+        cfg.recorded.push(args);
+        const actId = args._act_id as string;
+        if (cfg.persistFail?.has(actId)) return { data: null, error: { message: "ledger_write_failed" } };
+        // echo the row that PERSISTED — the monotonic RPC may hand back a different outcome than requested
+        const outcome = cfg.persistOutcomeOverride?.[actId] ?? (args._outcome as string);
+        return { data: { id: `row-${actId}`, outcome, ...args }, error: null };
+      }
+      return { data: null, error: null };
+    },
   };
 }
 
@@ -117,18 +132,20 @@ describe("runEventActs — the exact per-act outcome for every branch", () => {
   it("condition_not_matched when the automation's conditions exclude the event", async () => {
     const cfg: MockConfig = {
       acts: { a1: [{ id: "act1", position: 1, action_kind: "n8n_run_workflow", tool_key: null, config: {} }] },
-      activeMembers: new Set(["t1:owner1"]), lanes: { a1: { effective: "auto" } }, upserts: [],
+      activeMembers: new Set(["t1:owner1"]), lanes: { a1: { effective: "auto" } }, recorded: [],
     };
     const res = await runEventActs(mockDb(cfg), event,
       [auto({ conditions: [{ field: "source", op: "eq", value: "referral" }] })]);
     expect(res.records[0].outcome).toBe("condition_not_matched");
-    expect(cfg.upserts).toHaveLength(1);
+    expect(cfg.recorded).toHaveLength(1);
+    expect(cfg.recorded[0]._outcome).toBe("condition_not_matched");
+    expect(res.persist_failures).toEqual([]);
   });
 
   it("held_by_lane when the effective lane is off", async () => {
     const cfg: MockConfig = {
       acts: { a1: [{ id: "act1", position: 1, action_kind: "n8n_run_workflow", tool_key: null, config: {} }] },
-      activeMembers: new Set(["t1:owner1"]), lanes: { a1: { effective: "off" } }, upserts: [],
+      activeMembers: new Set(["t1:owner1"]), lanes: { a1: { effective: "off" } }, recorded: [],
     };
     const res = await runEventActs(mockDb(cfg), event, [auto({})]);
     expect(res.records[0].outcome).toBe("held_by_lane");
@@ -137,7 +154,7 @@ describe("runEventActs — the exact per-act outcome for every branch", () => {
   it("approval_pending when the effective lane is confirm", async () => {
     const cfg: MockConfig = {
       acts: { a1: [{ id: "act1", position: 1, action_kind: "n8n_run_workflow", tool_key: null, config: {} }] },
-      activeMembers: new Set(["t1:owner1"]), lanes: { a1: { effective: "confirm" } }, upserts: [],
+      activeMembers: new Set(["t1:owner1"]), lanes: { a1: { effective: "confirm" } }, recorded: [],
     };
     const res = await runEventActs(mockDb(cfg), event, [auto({})]);
     expect(res.records[0].outcome).toBe("approval_pending");
@@ -150,7 +167,7 @@ describe("runEventActs — the exact per-act outcome for every branch", () => {
     // approval here rather than firing unattended — exactly the owner's "autonomy is bounded / fail closed".
     const cfg: MockConfig = {
       acts: { a1: [{ id: "act1", position: 1, action_kind: "n8n_run_workflow", tool_key: null, config: { webhook_path: "x" } }] },
-      activeMembers: new Set(["t1:owner1"]), lanes: { a1: { effective: "auto" } }, upserts: [],
+      activeMembers: new Set(["t1:owner1"]), lanes: { a1: { effective: "auto" } }, recorded: [],
     };
     const res = await runEventActs(mockDb(cfg), event, [auto({})]);
     const rec = res.records[0];
@@ -158,13 +175,14 @@ describe("runEventActs — the exact per-act outcome for every branch", () => {
     expect(rec.outcome).toBe("approval_pending");   // high act on auto → held for approval, not executed
     expect(rec.idempotency_key.length).toBeGreaterThan(0);
     expect(rec.correlation_ref).toBe(rec.idempotency_key);  // durable correlation record
-    expect(cfg.upserts[0].outcome).toBe("approval_pending"); // the exact outcome is persisted, not a blanket flag
+    expect(cfg.recorded[0]._outcome).toBe("approval_pending"); // the exact outcome is persisted, not a blanket flag
+    expect(cfg.recorded[0]._idempotency_key).toBe(rec.idempotency_key);
   });
 
   it("auto + NO active authorizing person → refused_authority (fail closed), never executed", async () => {
     const cfg: MockConfig = {
       acts: { a1: [{ id: "act1", position: 1, action_kind: "n8n_run_workflow", tool_key: null, config: {} }] },
-      activeMembers: new Set(), lanes: { a1: { effective: "auto" } }, upserts: [], // owner1 not active
+      activeMembers: new Set(), lanes: { a1: { effective: "auto" } }, recorded: [], // owner1 not active
     };
     const res = await runEventActs(mockDb(cfg), event, [auto({})]);
     expect(res.records[0].outcome).toBe("refused_authority");
@@ -174,11 +192,38 @@ describe("runEventActs — the exact per-act outcome for every branch", () => {
   it("auto + unsupported adapter → failed (unsupported_adapter), fail closed", async () => {
     const cfg: MockConfig = {
       acts: { a1: [{ id: "act1", position: 1, action_kind: "frobnicate_thing", tool_key: null, config: {} }] },
-      activeMembers: new Set(["t1:owner1"]), lanes: { a1: { effective: "auto" } }, upserts: [],
+      activeMembers: new Set(["t1:owner1"]), lanes: { a1: { effective: "auto" } }, recorded: [],
     };
     const res = await runEventActs(mockDb(cfg), event, [auto({})]);
     expect(res.records[0].adapter_kind).toBe("unsupported");
     expect(res.records[0].outcome).toBe("failed");
     expect(res.records[0].error).toBe("unsupported_adapter");
+  });
+});
+
+describe("runEventActs — fail-closed persistence + monotonic outcome surfacing (owner corrections #3/#4)", () => {
+  it("a FAILED ledger write surfaces the act_id in persist_failures (never silently 'done')", async () => {
+    const cfg: MockConfig = {
+      acts: { a1: [{ id: "act1", position: 1, action_kind: "n8n_run_workflow", tool_key: null, config: {} }] },
+      activeMembers: new Set(["t1:owner1"]), lanes: { a1: { effective: "confirm" } }, recorded: [],
+      persistFail: new Set(["act1"]),
+    };
+    const res = await runEventActs(mockDb(cfg), event, [auto({})]);
+    expect(cfg.recorded).toHaveLength(1);                 // the write was ATTEMPTED
+    expect(res.persist_failures).toEqual(["act1"]);       // and its failure is surfaced, not swallowed
+  });
+
+  it("reports the outcome the RPC ACTUALLY persisted, not the recomputed guess (monotonic: a re-drain hitting a final row)", async () => {
+    // The engine re-derives `approval_pending`, but the monotonic RPC returns an already-persisted terminal
+    // `executed` (a prior run settled it). The engine must report the PERSISTED truth (§13), not its guess.
+    const cfg: MockConfig = {
+      acts: { a1: [{ id: "act1", position: 1, action_kind: "n8n_run_workflow", tool_key: null, config: {} }] },
+      activeMembers: new Set(["t1:owner1"]), lanes: { a1: { effective: "confirm" } }, recorded: [],
+      persistOutcomeOverride: { act1: "executed" },
+    };
+    const res = await runEventActs(mockDb(cfg), event, [auto({})]);
+    expect(cfg.recorded[0]._outcome).toBe("approval_pending"); // what it TRIED to write
+    expect(res.records[0].outcome).toBe("executed");           // what actually persisted, and what it reports
+    expect(res.by_outcome.executed).toBe(1);
   });
 });

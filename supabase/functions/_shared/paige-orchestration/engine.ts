@@ -131,6 +131,7 @@ export type ActExecutionRecord = {
   refusal_code: string | null;
   idempotency_key: string;
   correlation_ref: string;
+  provider_ref: string | null;   // the provider's own execution/correlation id, once known (slice 2)
   detail: Record<string, unknown>;
   error: string | null;
 };
@@ -187,6 +188,7 @@ async function decideActRecord(params: {
     refusal_code: null as string | null,
     idempotency_key,
     correlation_ref: idempotency_key,
+    provider_ref: null as string | null,
     detail: {} as Record<string, unknown>,
     error: null as string | null,
   };
@@ -224,6 +226,9 @@ async function decideActRecord(params: {
 export type EngineResult = {
   records: ActExecutionRecord[];
   by_outcome: Record<string, number>;
+  /** act_ids whose durable ledger write FAILED. A non-empty list fails the dispatch for retry (owner
+   *  correction #3): the drainer must NOT complete an event whose per-act outcome was not durably recorded. */
+  persist_failures: string[];
 };
 
 /** Orchestrate all acts for a claimed event across its live subscribers, writing the exact per-act
@@ -277,15 +282,31 @@ export async function runEventActs(
     }
   }
 
-  // 4 — persist each record, fire-once per (event_id, act_id). Service-role client bypasses RLS.
+  // 4 — persist each record through the ATOMIC, MONOTONIC transition RPC (never a bare upsert). Every
+  //     write is CHECKED (owner correction #3): a failed durable write puts the act_id in
+  //     `persist_failures`, and the drainer fails the dispatch for retry rather than claiming completion.
+  //     The RPC RETURNS the row that ACTUALLY persisted, so we report the persisted outcome (§13) — a
+  //     re-drain that lands on an already-final row reports THAT final outcome, never our recomputed guess.
+  const persist_failures: string[] = [];
   for (const rec of records) {
-    await db.from("paige_act_executions").upsert(
-      { ...rec, decided_at: new Date().toISOString() },
-      { onConflict: "event_id,act_id" },
-    );
+    const { data, error } = await db.rpc("paige_record_act_execution", {
+      _event_id: rec.event_id, _automation_id: rec.automation_id, _act_id: rec.act_id,
+      _act_position: rec.act_position, _tenant_id: rec.tenant_id,
+      _adapter_kind: rec.adapter_kind, _capability_key: rec.capability_key,
+      _effective_lane: rec.effective_lane, _outcome: rec.outcome, _refusal_code: rec.refusal_code,
+      _idempotency_key: rec.idempotency_key, _correlation_ref: rec.correlation_ref,
+      _provider_ref: rec.provider_ref, _detail: rec.detail, _error: rec.error,
+      _dispatched_at: null, _settled_at: null,
+    });
+    if (error || data == null) {
+      persist_failures.push(rec.act_id);
+      continue;
+    }
+    const persisted = (data as { outcome?: unknown }).outcome;
+    if (typeof persisted === "string") rec.outcome = persisted as ActOutcome;
   }
 
   const by_outcome: Record<string, number> = {};
   for (const rec of records) by_outcome[rec.outcome] = (by_outcome[rec.outcome] ?? 0) + 1;
-  return { records, by_outcome };
+  return { records, by_outcome, persist_failures };
 }

@@ -10,6 +10,7 @@ import {
   evaluateConditions,
   laneNonExecuteOutcome,
   refusalToOutcome,
+  type ConditionVerdict,
   type EventFacts,
   type ActOutcome,
 } from "../../supabase/functions/_shared/paige-orchestration/decide.ts";
@@ -20,6 +21,17 @@ const facts: EventFacts = {
   subject_id: "11111111-1111-1111-1111-111111111111",
   payload: { source: "web_form", tags: ["vip", "inbound"], score: 42, nested: { stage: "new" } },
 };
+
+/** Assert a verdict did NOT match and its reason contains `substr`. Uses an explicit literal-equality
+ *  discriminant check (`=== false`): this repo compiles with `strictNullChecks:false`, under which TS
+ *  narrows a discriminated union on `x.k === literal` but NOT on `!x.k` / a truthy-`throw`. */
+function expectReason(v: ConditionVerdict, substr: string): void {
+  if (v.matched === false) {
+    expect(v.reason).toContain(substr);
+    return;
+  }
+  throw new Error(`expected a non-match verdict, got matched:true`);
+}
 
 describe("evaluateConditions — closes TODO F3 (unconditional matches, else all-must-hold)", () => {
   it("matches when conditions are empty / null / undefined (an unconditional automation)", () => {
@@ -53,16 +65,16 @@ describe("evaluateConditions — closes TODO F3 (unconditional matches, else all
       facts,
     );
     expect(v.matched).toBe(false);
-    if (!v.matched) expect(v.reason).toContain("score");
+    expectReason(v, "score");
   });
 
   it("FAILS SAFE (not matched) on a non-array or a malformed condition element", () => {
     const nonArray = evaluateConditions({ field: "x", op: "eq" } as unknown, facts);
     expect(nonArray.matched).toBe(false);
-    if (!nonArray.matched) expect(nonArray.reason).toContain("not an array");
+    expectReason(nonArray, "not an array");
     const malformed = evaluateConditions([{ nope: true }] as unknown, facts);
     expect(malformed.matched).toBe(false);
-    if (!malformed.matched) expect(malformed.reason).toContain("malformed");
+    expectReason(malformed, "malformed");
   });
 });
 
@@ -98,7 +110,7 @@ describe("outcome vocabulary parity — TS type ↔ SQL domain paige_act_outcome
       "accepted_for_execution", "retrying", "executed", "failed", "ambiguous", "cancelled",
     ];
     const migration = readFileSync(
-      resolve(process.cwd(), "supabase/migrations/20270123000000_paige_act_execution_ledger.sql"),
+      resolve(process.cwd(), "supabase/migrations/20270125000000_paige_act_execution_ledger.sql"),
       "utf8",
     );
     // the domain block lists each value as a quoted literal; every producible outcome must appear there

@@ -143,3 +143,103 @@ create policy pae_no_direct_delete on public.paige_act_executions
 
 grant select on public.paige_act_executions to authenticated;
 grant all    on public.paige_act_executions to service_role;
+
+-- ── The ATOMIC, MONOTONIC per-act transition (owner corrections #3/#4, 2026-09-13) ─────────────────────
+-- The drainer NEVER writes this ledger with a bare upsert. It writes every per-act outcome through this
+-- function, which guarantees two properties a client-side upsert cannot:
+--   • MONOTONIC — a FINAL outcome is never overwritten or resurrected. A re-drain (the sweeper re-claims a
+--     crashed event) or a retry re-derives the SAME (event_id, act_id) and the SAME idempotency_key/
+--     correlation_ref, so it folds onto the same row; if that row already settled, the UPDATE is suppressed
+--     and the caller is handed the persisted truth, not its freshly-recomputed guess. Only the in-flight
+--     states (accepted_for_execution · retrying · ambiguous) may advance — ambiguous advances ONLY after a
+--     caller has reconciled by correlation (never a blind resend), which this function does not itself do.
+--   • ATOMIC — the INSERT..ON CONFLICT is one statement, so two concurrent drainers cannot both write.
+-- It RETURNS the resulting row so the caller records the outcome that ACTUALLY persisted (§13). Service-role
+-- only (§59: the caller scope is re-enforced in-body via auth.uid() IS NULL; the drainer passes the
+-- authoritative tenant from the claimed event row, never a request body).
+create or replace function public.paige_record_act_execution(
+  _event_id       uuid,
+  _automation_id  uuid,
+  _act_id         uuid,
+  _act_position   int,
+  _tenant_id      uuid,
+  _adapter_kind   text,
+  _capability_key text,
+  _effective_lane text,
+  _outcome        public.paige_act_outcome,
+  _refusal_code   text,
+  _idempotency_key text,
+  _correlation_ref text,
+  _provider_ref   text,
+  _detail         jsonb,
+  _error          text,
+  _dispatched_at  timestamptz default null,
+  _settled_at     timestamptz default null
+) returns public.paige_act_executions
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+declare
+  _row public.paige_act_executions;
+  -- Outcomes that are FINAL for the drainer: once written they are never overwritten by a re-drain or a
+  -- retry. executed/failed/cancelled are terminal; the decision outcomes (condition_not_matched, held_by_lane,
+  -- approval_pending, refused_*) are settled decisions a re-drain must re-derive identically and must not flip.
+  -- accepted_for_execution, retrying and ambiguous are the ONLY advanceable states (dispatch/reconcile paths).
+  _final constant text[] := array[
+    'condition_not_matched','held_by_lane','approval_pending',
+    'refused_authority','refused_budget','refused_trust_compass','refused_consent',
+    'executed','failed','cancelled'
+  ];
+begin
+  if auth.uid() is not null then
+    raise exception 'ACT_EXECUTION_FORBIDDEN: service role only' using errcode = '42501';
+  end if;
+
+  insert into public.paige_act_executions (
+    event_id, automation_id, act_id, act_position, tenant_id,
+    adapter_kind, capability_key, effective_lane, outcome, refusal_code,
+    idempotency_key, correlation_ref, provider_ref, detail, error,
+    dispatched_at, settled_at, decided_at
+  ) values (
+    _event_id, _automation_id, _act_id, _act_position, _tenant_id,
+    _adapter_kind, _capability_key, _effective_lane, _outcome, _refusal_code,
+    _idempotency_key, coalesce(_correlation_ref, _idempotency_key), _provider_ref,
+    coalesce(_detail, '{}'::jsonb), _error,
+    _dispatched_at, _settled_at, now()
+  )
+  on conflict (event_id, act_id) do update
+     set outcome        = excluded.outcome,
+         refusal_code   = excluded.refusal_code,
+         adapter_kind   = excluded.adapter_kind,
+         capability_key = excluded.capability_key,
+         effective_lane = excluded.effective_lane,
+         -- never lose a provider correlation id once it is known
+         provider_ref   = coalesce(excluded.provider_ref, public.paige_act_executions.provider_ref),
+         detail         = excluded.detail,
+         error          = excluded.error,
+         dispatched_at  = coalesce(excluded.dispatched_at, public.paige_act_executions.dispatched_at),
+         settled_at     = coalesce(excluded.settled_at, public.paige_act_executions.settled_at)
+     -- MONOTONIC GUARD: advance only from a non-final state. A final row is left untouched.
+     -- (cast the domain column to text so the <> ALL(text[]) comparison resolves unambiguously.)
+     where public.paige_act_executions.outcome::text <> all (_final)
+  returning * into _row;
+
+  -- If the conflict hit a FINAL row the UPDATE was suppressed (RETURNING yields nothing) → return the
+  -- existing row unchanged, so the caller sees the persisted terminal truth rather than its own attempt.
+  if _row.id is null then
+    select * into _row from public.paige_act_executions
+     where event_id = _event_id and act_id = _act_id;
+  end if;
+
+  return _row;
+end $$;
+
+revoke all on function public.paige_record_act_execution(
+  uuid, uuid, uuid, int, uuid, text, text, text, public.paige_act_outcome, text,
+  text, text, text, jsonb, text, timestamptz, timestamptz
+) from public, anon, authenticated;
+grant execute on function public.paige_record_act_execution(
+  uuid, uuid, uuid, int, uuid, text, text, text, public.paige_act_outcome, text,
+  text, text, text, jsonb, text, timestamptz, timestamptz
+) to service_role;

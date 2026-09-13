@@ -10,7 +10,7 @@
 //   2. LANE → non-execute outcome — an effective lane of `off` holds the act; `confirm` sends it to approval.
 //   3. REFUSAL → outcome — maps a GovernedRefusalCode to the exact refused_* outcome the owner requires.
 //
-// The outcome vocabulary mirrors the SQL domain `paige_act_outcome` (20270123000000). One definition per
+// The outcome vocabulary mirrors the SQL domain `paige_act_outcome` (20270125000000). One definition per
 // side; widening is one edit each. Nothing here is n8n- or Telegram-specific.
 
 /** The exact per-act outcome vocabulary — mirrors the SQL domain `public.paige_act_outcome`. */
