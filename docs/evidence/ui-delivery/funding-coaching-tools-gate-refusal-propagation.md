@@ -25,13 +25,13 @@ MUST_PRESERVE: the fail-closed gate behavior of #1222, the frontend body-reading
 ACCEPTANCE_CRITERIA: on the real platform a nav/business/smartcredit action for a non-entitled or unconnected workspace shows an honest "not available yet" and never a false success; a skill-runner verify_business_sos refusal records a non-success run; a paige-mcp verify_business refusal returns err; and success_count does not increment on a refusal
 MOTION_PURPOSE: NONE: no motion change
 PROTECTED_SEAMS: the is_finance/funding_enabled entitlement predicate (one home, not forked), the contact-authz and business-verifier RLS authority doors, the paige_audit_log governed-receipt channel, and the capability-status resolver — all reused, none duplicated
-INTERNAL_BUILD_IDENTITY: e4bbcce6d3783c24186a49415a3ea30d65087692; deployment=PR-1228-branch (complete code + registry delivery; this evidence doc ships in the same PR, final internal build identity is the squash-merge SHA stamped in the post-merge closeout); environment=preview; migrations=NOT_APPLICABLE; edge=PROOF_OWED(smartcredit-pull-snapshot + nav-pull-profile + business-verifier + skill-runner + paige-mcp production deploy via deploy-edge-functions on merge); evidence=vitest-45-of-45-and-ci-tsc-clean-of-this-diff
+INTERNAL_BUILD_IDENTITY: ae086b4451ef648daa5acb0a721bfdef54b37b20; deployment=PR-1228-branch (complete code + registry delivery; this evidence doc ships in the same PR, final internal build identity is the squash-merge SHA stamped in the post-merge closeout); environment=preview; migrations=NOT_APPLICABLE; edge=PROOF_OWED(smartcredit-pull-snapshot + nav-pull-profile + business-verifier + skill-runner + paige-mcp production deploy via deploy-edge-functions on merge); evidence=vitest-45-of-45-and-ci-tsc-clean-of-this-diff
 RELEASE_CHANNEL: preview: built and unit-verified on branch claude/paige-os-integration-82ywpq; production follows green CI and merge under Gate A via deploy-edge-functions
 RELEASE_CLASSIFICATION: internal-only: server-side honesty and enforcement fix on an UNAVAILABLE, unactivated capability, with no new customer-facing capability and no widened external effect
 CUSTOMER_RELEASE_IDENTITY: none: nothing customer-facing was activated — the Funding & Coaching Tools package remains UNAVAILABLE (unseeded); this corrects internal refusal honesty on an unactivated capability
 RELEASE_NOTE_REQUIRED: NO: internal correctness and honesty fix on an unactivated, UNAVAILABLE capability with no customer-visible capability change
-RELEASE_TRUTH_BOUNDARY: UNAVAILABLE: the Funding & Coaching Tools package is unseeded and every provider resolves unavailable today; the gate refusal and server-caller honesty are on-branch at the code level (the gate merged as 8c7fb131, this fix-forward at e4bbcce6, unit-proven), while the authenticated live-drive on the deployed surfaces is owed
-RELEASE_RECOVERY: position=revert the #1228 fix-forward commits (through e4bbcce6), which leaves the #1222 gate in place and returns behavior to the merged gate's setup_required messaging and the prior caller status-keying; reference=commit e4bbcce6d3783c24186a49415a3ea30d65087692
+RELEASE_TRUTH_BOUNDARY: UNAVAILABLE: the Funding & Coaching Tools package is unseeded and every provider resolves unavailable today; the gate refusal and server-caller honesty are on-branch at the code level (the gate merged as 8c7fb131, this fix-forward at ae086b44, unit-proven), while the authenticated live-drive on the deployed surfaces is owed
+RELEASE_RECOVERY: position=revert the #1228 fix-forward commits (through ae086b44), which leaves the #1222 gate in place and returns behavior to the merged gate's setup_required messaging and the prior caller status-keying; reference=commit ae086b4451ef648daa5acb0a721bfdef54b37b20
 
 ## Scope and collisions
 
@@ -47,7 +47,7 @@ An admin (or Paige's agent) triggers a finance/credit provider action for a work
 
 ## Evidence index
 
-- Commit: e4bbcce6d3783c24186a49415a3ea30d65087692 (Codex #1228 pass-2 fix); prior fix-forward commits d620b1b7 + 0e61e322 + 2bd4492b; gate merged as 8c7fb131 (deploy run #315).
+- Commit: ae086b4451ef648daa5acb0a721bfdef54b37b20 (Codex #1228 pass-2 fix); prior fix-forward commits d620b1b7 + 0e61e322 + 2bd4492b; gate merged as 8c7fb131 (deploy run #315).
 - Automated proof: `npx vitest run src/__tests__/business-verify-outcome.test.ts src/__tests__/funding-coaching-gate.test.ts src/__tests__/paige-capability-status-resolver.test.ts` → 45/45; `npm run ci:tsc` → only the pre-existing #1186 signupMobile.ts error; `npm run lint:integration-registry` → 27 providers, 70 anchors resolve.
 - Source: supabase/functions/_shared/funding-coaching-gate.ts (FUNDING_TOOLS_REMEDIATION_LIVE + decideFundingCoachingGate), supabase/functions/_shared/business-verify-outcome.ts (classifyBusinessVerifyResponse), supabase/functions/skill-runner/index.ts (verify_business_sos), supabase/functions/paige-mcp/index.ts (verify_business).
 - Deno edge type-check for the three edge modules is supplied by the CI `verify` job (no local Deno binary this session).
