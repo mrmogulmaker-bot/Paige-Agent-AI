@@ -382,13 +382,16 @@ function NewPresetChooser({
     // Only stand down on success — a failure keeps the chooser (and the typed
     // name) and shows the reason inline so it can be read and the attempt retried.
     if (res.ok) close();
-    else setError(res.message ?? "Could not create the preset — please try again.");
+    else setError(res.message ?? "Could not create the calendar — please try again.");
   }, [saving, disabled, name, customModel, onCreate, close]);
 
   if (!open) {
+    // The clear PRIMARY create action for this section (owner direction 2026-09-13):
+    // full-size gold `act` treatment, not the low-emphasis size="s". It is the one
+    // act moment on the list screen, so gold does not compete here (§11).
     return (
-      <Btn size="s" onClick={() => setOpen(true)} disabled={disabled}>
-        <CalendarPlus aria-hidden /> New preset
+      <Btn kind="act" onClick={() => setOpen(true)} disabled={disabled}>
+        <CalendarPlus aria-hidden /> New calendar
       </Btn>
     );
   }
@@ -399,7 +402,7 @@ function NewPresetChooser({
       <div className="cc-chooser" role="dialog" aria-modal="true" aria-labelledby="cc-chooser-title">
         <header className="cc-chooser-head">
           <div>
-            <span>New booking preset</span>
+            <span>New booking calendar</span>
             <h2 id="cc-chooser-title">{cat ? cat.label : "What can people book?"}</h2>
           </div>
           <button type="button" className="cc-chooser-x" aria-label="Close" onClick={close} disabled={saving}>
@@ -437,7 +440,7 @@ function NewPresetChooser({
             <label className="cc-chooser-field">
               <span>Name</span>
               <input ref={nameRef} className="cc-in" value={name} placeholder="e.g. Strategy session"
-                aria-label="Name for the new booking preset" disabled={saving}
+                aria-label="Name for the new booking calendar" disabled={saving}
                 onChange={(e) => setName(e.target.value)} />
             </label>
             <fieldset className="cc-chooser-models">
@@ -466,7 +469,7 @@ function NewPresetChooser({
               <span>Name <em>(optional — rename it any time)</em></span>
               <input ref={nameRef} className="cc-in" value={name}
                 placeholder={cat.templates[0]?.title ?? cat.label}
-                aria-label="Name for the new booking preset" disabled={saving}
+                aria-label="Name for the new booking calendar" disabled={saving}
                 onChange={(e) => setName(e.target.value)} />
             </label>
             <div className="cc-chooser-list" role="list">
@@ -780,14 +783,14 @@ export function CalendarsView() {
     // Checked BEFORE anything is created: the new calendar becomes the selection,
     // and the hydration effect would replace the current draft with it.
     if (dirtyRef.current) {
-      return { ok: false, message: "Save or discard your changes before creating another preset — they would be lost otherwise." };
+      return { ok: false, message: "Save or discard your changes before creating another calendar — they would be lost otherwise." };
     }
     // Refused BEFORE anything is written, because the check after the await
     // structurally cannot cover the window where the route has moved to the new
     // account but the tenant has not. A write that has happened cannot be guarded
     // after the fact; the only working guard is the one that declines to make it.
     if (identity.isStale()) {
-      return { ok: false, message: "This account just changed — reopen Calendars and create the preset there." };
+      return { ok: false, message: "This account just changed — reopen Calendars and create the calendar there." };
     }
     const token = identity.capture();
     const r = await conn.createCalendar(newDraft, newAvail);
@@ -820,7 +823,7 @@ export function CalendarsView() {
   const selectPreset = useCallback((id: string) => {
     if (id === selected?.id) return;
     if (dirtyRef.current) {
-      note("warn", "Save or discard your changes before switching to another preset — they would be lost otherwise.");
+      note("warn", "Save or discard your changes before switching to another calendar — they would be lost otherwise.");
       return;
     }
     setSelectedId(id);
@@ -847,7 +850,7 @@ export function CalendarsView() {
     // its URL is a future/held one, not a live booking link (§13).
     note("info", selected?.enabled
       ? "Booking link copied."
-      : "Copied the future booking URL — it becomes public when you publish this preset.");
+      : "Copied the future booking URL — it becomes public when you publish this calendar.");
   }, [identity, note, selected]);
 
   /**
@@ -913,7 +916,7 @@ export function CalendarsView() {
   const archivePreset = useCallback(async () => {
     if (!selected || identity.isStale()) return;
     if (dirtyRef.current) {
-      note("warn", "Save or discard your changes before archiving this preset — they would be lost otherwise.");
+      note("warn", "Save or discard your changes before archiving this calendar — they would be lost otherwise.");
       return;
     }
     const token = identity.capture();
@@ -947,7 +950,7 @@ export function CalendarsView() {
    */
   const backToPresets = useCallback(() => {
     if (dirtyRef.current) {
-      note("warn", "Save or discard your changes before leaving this preset — they would be lost otherwise.");
+      note("warn", "Save or discard your changes before leaving this calendar — they would be lost otherwise.");
       return;
     }
     setSelectedId(null);
@@ -1038,7 +1041,7 @@ export function CalendarsView() {
            back, guarded against losing unsaved edits. */
         <>
           <div className="cc-editor-back">
-            <Btn kind="ghost" size="s" onClick={backToPresets}><ArrowLeft aria-hidden /> All presets</Btn>
+            <Btn kind="ghost" size="s" onClick={backToPresets}><ArrowLeft aria-hidden /> All calendars</Btn>
           </div>
 
           <SelectedPreset
@@ -1058,7 +1061,7 @@ export function CalendarsView() {
           {!conn.canWrite && (
             <Notice tone="info" icon={<Info aria-hidden />}>
               You can read this configuration but not change it. Every control below is disabled
-              rather than hidden, so you can still see exactly how the preset is set up.
+              rather than hidden, so you can still see exactly how the calendar is set up.
             </Notice>
           )}
 
@@ -1066,7 +1069,7 @@ export function CalendarsView() {
             <div className="cc-builder-head">
               <div className="cc-head-t">
                 <span className="cc-eyebrow">Configuration</span>
-                <h2>How this preset behaves</h2>
+                <h2>How this calendar behaves</h2>
               </div>
               <Btn size="s" kind="ghost"
                 onClick={() => setOpen(allOpen ? {} : { ...ALL_OPEN })}>
@@ -1113,7 +1116,7 @@ export function CalendarsView() {
 
           {dirty && (
             <div className="cc-bar" role="status">
-              <span>Unsaved changes on <b>{draft.title || "this preset"}</b>.</span>
+              <span>Unsaved changes on <b>{draft.title || "this calendar"}</b>.</span>
               <Btn kind="ghost" size="s" onClick={revert} disabled={saving}><Undo2 aria-hidden /> Discard</Btn>
               <Btn kind="act" onClick={save} disabled={saving || !conn.canWrite}>
                 {saving ? <Loader2 className="cc-spin" aria-hidden /> : <CalendarCheck aria-hidden />} Save changes
@@ -1129,16 +1132,18 @@ export function CalendarsView() {
           <section className="cc-sec">
             <div className="cc-head">
               <div className="cc-head-t">
-                <span className="cc-eyebrow">Booking presets</span>
+                <span className="cc-eyebrow">Booking calendars</span>
                 <h2>What people can book</h2>
                 <p>
-                  Each preset is one bookable thing with its own public page — its length, its hours,
-                  who hosts it, and what happens after. New presets start as private drafts; publish
+                  Each calendar is one bookable thing with its own public page — its length, its hours,
+                  who hosts it, and what happens after. New calendars start as private drafts; publish
                   one when you’re ready to take bookings.
                 </p>
               </div>
-              {/* `identityStale` is in the disabled set because creating a preset
-                  WRITES, under a tenant that still names the account being left. */}
+              {/* `identityStale` is in the disabled set because creating a calendar
+                  WRITES, under a tenant that still names the account being left. The
+                  chooser's own trigger is the clear primary CTA for this section
+                  (owner direction 2026-09-13). */}
               {!conn.loading && !conn.error && (
                 <NewPresetChooser onCreate={create} disabled={!conn.canWrite || identityStale || conn.busy === "new"} />
               )}
@@ -1168,13 +1173,13 @@ export function CalendarsView() {
                       ))}
                     </div>
                     {activeCals.length === 0 && (
-                      <Hint>No active presets — your archived ones are below. Open one to restore or duplicate it, or start a new preset above.</Hint>
+                      <Hint>No active calendars — your archived ones are below. Open one to restore or duplicate it, or start a new calendar above.</Hint>
                     )}
                     {archivedCals.length > 0 && (
                       <div className="cc-archived">
                         <div className="cc-archived-head">
                           <span className="cc-eyebrow">Archived</span>
-                          <small>Put away and off the air. Open one to restore it, or duplicate it into a new preset.</small>
+                          <small>Put away and off the air. Open one to restore it, or duplicate it into a new calendar.</small>
                         </div>
                         <div className="cc-presets" aria-label="Archived booking presets">
                           {archivedCals.map((c) => (
@@ -1220,13 +1225,13 @@ function PresetCard({
     : hosts.length === 0 ? "No host" : hosts.length === 1 ? "1 host" : `${hosts.length} hosts`;
   return (
     <button type="button" className="cc-preset-card" data-life={life}
-      aria-label={`Open ${c.title || "Untitled preset"} — ${LIFECYCLE_LABEL[life]}`}
+      aria-label={`Open ${c.title || "Untitled calendar"} — ${LIFECYCLE_LABEL[life]}`}
       onClick={onOpen}>
       {/* The NAME gets the whole first line — it is the one thing on the card you
           pick by, and sharing the line truncated real titles at four cards across. */}
       <span className="cc-preset-t">
         <span className="cc-swatch" style={{ background: c.color ?? "var(--pg-violet)" }} />
-        <span className="cc-preset-n">{c.title || "Untitled preset"}</span>
+        <span className="cc-preset-n">{c.title || "Untitled calendar"}</span>
       </span>
       <span className="cc-preset-m">
         <span>{TYPE_LABEL[c.type] ?? c.type}</span>
@@ -1257,9 +1262,9 @@ function EmptyBody({
   return (
     <div className="cc-empty">
       <CalendarDays aria-hidden />
-      <strong>No booking presets yet</strong>
+      <strong>No booking calendars yet</strong>
       <p>
-        A preset is one bookable thing — how long it runs, when you are open, who hosts it, and what
+        A calendar is one bookable thing — how long it runs, when you are open, who hosts it, and what
         happens after. Pick a booking model to start a private draft; you publish it when it’s ready,
         and nothing is public until you do. Connecting a calendar account above is separate; you can
         do either first.
@@ -1451,7 +1456,7 @@ function SelectedPreset({
     <section className="cc-selected" data-life={life}>
       <div className="cc-selected-top">
         <div className="cc-selected-id">
-          <h3>{draft.title || "Untitled preset"}</h3>
+          <h3>{draft.title || "Untitled calendar"}</h3>
           <p>{TYPE_LABEL[draft.type] ?? draft.type} · {draft.duration_min} minutes · {draft.timezone}</p>
         </div>
         {/* Lifecycle actions. The primary act depends on state: Restore for an
@@ -1464,7 +1469,7 @@ function SelectedPreset({
           <Pill tone={lifeTone}>{LIFECYCLE_LABEL[life]}</Pill>
           {archived ? (
             <Btn size="s" kind="act" onClick={onRestore} disabled={busy || !canWrite}
-              title="Bring this preset back as a draft">
+              title="Bring this calendar back as a draft">
               {busy ? <Loader2 className="cc-spin" aria-hidden /> : <Undo2 aria-hidden />} Restore
             </Btn>
           ) : isPublic ? (
@@ -1480,12 +1485,12 @@ function SelectedPreset({
             </Btn>
           )}
           <Btn size="s" kind="ghost" onClick={onDuplicate} disabled={busy || !canWrite}
-            title="Start a new preset from these settings">
+            title="Start a new calendar from these settings">
             <Copy aria-hidden /> Duplicate
           </Btn>
           {!archived && (
             <Btn size="s" kind="ghost" onClick={onArchive} disabled={busy || !canWrite}
-              title="Put this preset away — it goes off the air and can be restored later">
+              title="Put this calendar away — it goes off the air and can be restored later">
               <CalendarX2 aria-hidden /> Archive
             </Btn>
           )}
@@ -1531,14 +1536,14 @@ function SelectedPreset({
 
       {archived && (
         <Notice tone="info" icon={<Info aria-hidden />}>
-          This preset is <strong>Archived</strong> — put away and off the air. Every field below is
+          This calendar is <strong>Archived</strong> — put away and off the air. Every field below is
           read-only while it’s archived. <strong>Restore</strong> it to edit or publish again, or
-          <strong> Duplicate</strong> it to start a new preset from these settings.
+          <strong> Duplicate</strong> it to start a new calendar from these settings.
         </Notice>
       )}
       {!archived && life === "draft" && (
         <Notice tone="warn" icon={<TriangleAlert aria-hidden />}>
-          This preset is a <strong>Draft</strong>. Its booking page is private — no visitor can see or
+          This calendar is a <strong>Draft</strong>. Its booking page is private — no visitor can see or
           book it{publishCheck.ready
             ? ", and it’s ready whenever you Publish."
             : ", and it isn’t ready to publish yet:"}
@@ -1549,7 +1554,7 @@ function SelectedPreset({
       )}
       {!archived && life === "paused" && (
         <Notice tone="warn" icon={<TriangleAlert aria-hidden />}>
-          This preset is <strong>Paused</strong>. Its link is kept, but visitors cannot book it right
+          This calendar is <strong>Paused</strong>. Its link is kept, but visitors cannot book it right
           now — Publish again to put it back on the air.
           {!publishCheck.ready && (
             <ul className="cc-blockers">{publishCheck.blockers.map((b, i) => <li key={i}>{b}</li>)}</ul>
