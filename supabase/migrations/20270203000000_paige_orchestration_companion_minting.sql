@@ -154,6 +154,24 @@ begin
   if _event_id is null or _act_id is null then return new; end if;
   if new.status = old.status then return new; end if;
 
+  -- §59 (peer-gate): this DEFINER trigger MUTATES the ledger (cancels the held act), so it enforces caller
+  -- scope IN-BODY — it never trusts the approvals table's RLS, which gates writes on the TENANT-AGNOSTIC
+  -- has_any_role('admin','super_admin') (the §59 global-role trap: a tenant-A admin passes it for tenant B).
+  -- A service/cron writer (auth.uid() NULL) is trusted; a JWT caller must be a platform owner OR an active
+  -- member of the act's own tenant — the SAME authorization execute-approval makes before it acts. A
+  -- cross-tenant admin can still flip the approval status via the weak RLS, but the real effect — cancelling
+  -- another tenant's held act — is refused here (safe degrade: the ledger act is left untouched). The
+  -- table-wide RLS weakness (the read exposure + the identically-unguarded pre-existing trg_ppa_sync_action)
+  -- is a pre-existing §9/§59 item surfaced for an owner-decided approvals-RLS tenant-scoping, not widened here.
+  if auth.uid() is not null
+     and not public.is_platform_owner(auth.uid())
+     and not exists (
+       select 1 from public.tenant_members tm
+        where tm.user_id = auth.uid() and tm.tenant_id = new.tenant_id and tm.status = 'active')
+  then
+    return new;
+  end if;
+
   if new.status in ('rejected', 'skipped') then
     update public.paige_act_executions
        set outcome    = 'cancelled',
@@ -293,7 +311,15 @@ begin
     if _landed_id is not null then
       _new := 'executed';                                    -- the effect landed → record the truth
     elsif _rec.created_at < now() - interval '24 hours' then
-      _new := 'failed';                                      -- >24h with no stamped transition → never committed
+      -- >24h with no stamped transition → advance to failed. §13/§39 honesty note: this is the honest
+      -- "could-not-confirm" verdict, NOT a claim the effect definitely never happened. A clean no-op
+      -- success (already at target) returns executed on dispatch and never reaches here; only a no-op whose
+      -- transport THREW lands ambiguous with no transition — the correlation reconcile (like the native
+      -- adapter's own) cannot distinguish that from a never-ran act, because neither leaves a durable trace.
+      -- The 10-min staleness bar already excludes a row an executor resume is actively working (its UPDATE
+      -- bumps updated_at), so this is not a race with a live resume. failed is terminal + visible, which is
+      -- the point (never a silent forever-ambiguous orphan); a re-approval can still re-drive it if needed.
+      _new := 'failed';
     else
       continue;                                              -- unconfirmed, not yet past the deadline → wait
     end if;

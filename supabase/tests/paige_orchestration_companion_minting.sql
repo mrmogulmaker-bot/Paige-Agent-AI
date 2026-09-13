@@ -7,7 +7,7 @@
 -- in 'origin' mode (real INSERT/UPDATE), and the reconciler is called as the cron/service context (auth.uid()
 -- NULL) exactly as pg_cron invokes it.
 begin;
-select plan(34);
+select plan(36);
 
 -- ── Fixture ids ───────────────────────────────────────────────────────────────────────────────────────
 -- tenant, events (E1..E8), acts (AC1..AC8), ledger rows (AD1..AD8), clients (C1,C5..C8).
@@ -68,6 +68,20 @@ insert into public.paige_journey_stage_transitions(contact_id, to_stage_id, sour
 insert into public.paige_pending_approvals(id, type, draft_content, category, tenant_id, source, status, metadata) values
   ('9a000001-0000-4000-8000-000000000001','cs_draft','{}'::jsonb,'followup','11111111-1111-4111-8111-111111111111','paige_action_bus','pending','{}'::jsonb);
 
+-- §59 cancellation-sync guard fixtures: two held acts + companions in tenant …1111, and an ACTIVE membership
+-- for the legit approver (…7777) but NONE for the foreign caller (…8888). (event_id FKs bypassed in replica.)
+insert into public.paige_act_executions
+  (id, event_id, automation_id, act_id, act_position, tenant_id, adapter_kind, capability_key, effective_lane, outcome, idempotency_key, correlation_ref, detail) values
+  ('ad000009-0000-4000-8000-000000000009','1e000009-0000-4000-8000-000000000009','a0000009-0000-4000-8000-000000000009','ac000009-0000-4000-8000-000000000009',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','approval_pending','idem-9','corr-9', '{}'::jsonb),
+  ('ad00000a-0000-4000-8000-00000000000a','1e00000a-0000-4000-8000-00000000000a','a000000a-0000-4000-8000-00000000000a','ac00000a-0000-4000-8000-00000000000a',1,'11111111-1111-4111-8111-111111111111','native','crm.advance_journey_stage','confirm','approval_pending','idem-a','corr-a', '{}'::jsonb);
+insert into public.paige_pending_approvals(id, type, draft_content, category, tenant_id, source, status, metadata) values
+  ('9a000009-0000-4000-8000-000000000009','other','{}'::jsonb,'crm.advance_journey_stage','11111111-1111-4111-8111-111111111111','paige_orchestration','pending',
+   jsonb_build_object('source','paige_orchestration','event_id','1e000009-0000-4000-8000-000000000009','act_id','ac000009-0000-4000-8000-000000000009')),
+  ('9a00000a-0000-4000-8000-00000000000a','other','{}'::jsonb,'crm.advance_journey_stage','11111111-1111-4111-8111-111111111111','paige_orchestration','pending',
+   jsonb_build_object('source','paige_orchestration','event_id','1e00000a-0000-4000-8000-00000000000a','act_id','ac00000a-0000-4000-8000-00000000000a'));
+insert into public.tenant_members(user_id, tenant_id, status) values
+  ('77777777-7777-4777-8777-777777777777','11111111-1111-4111-8111-111111111111','active');
+
 set session_replication_role = origin;    -- triggers + FK back ON — now exercise the seams under test
 
 -- ══ (A) MINT: transitioning a ledger row into approval_pending mints exactly one companion ══════════════
@@ -127,6 +141,19 @@ select is((select outcome::text from public.paige_act_executions where id='ad000
 update public.paige_pending_approvals set status='rejected' where source='paige_orchestration' and metadata->>'act_id'='ac000004-0000-4000-8000-000000000004';
 select is((select outcome::text from public.paige_act_executions where id='ad000004-0000-4000-8000-000000000004'),
           'executed', 'cancellation-sync: reject does NOT clobber an already-executed act (guarded on approval_pending)');
+
+-- §59 in-body caller-scope guard: a JWT caller NOT in the act's tenant cannot cancel it (the weak table RLS
+-- may let them flip the status, but the ledger effect is refused); an active member of the tenant can.
+set request.jwt.claim.sub = '88888888-8888-4888-8888-888888888888';   -- foreign admin, not a member of …1111
+update public.paige_pending_approvals set status='rejected' where id='9a000009-0000-4000-8000-000000000009';
+reset request.jwt.claim.sub;
+select is((select outcome::text from public.paige_act_executions where id='ad000009-0000-4000-8000-000000000009'),
+          'approval_pending', 'cancellation-sync §59: a cross-tenant JWT caller does NOT cancel the held act (safe degrade)');
+set request.jwt.claim.sub = '77777777-7777-4777-8777-777777777777';   -- active member of …1111
+update public.paige_pending_approvals set status='rejected' where id='9a00000a-0000-4000-8000-00000000000a';
+reset request.jwt.claim.sub;
+select is((select outcome::text from public.paige_act_executions where id='ad00000a-0000-4000-8000-00000000000a'),
+          'cancelled', 'cancellation-sync §59: an active member of the act''s tenant DOES cancel the held act');
 
 -- ══ (D) DIRECT-APPROVE GUARD: an orchestration approval reaches approved ONLY with an act_outcome stamp ═
 select throws_ok(

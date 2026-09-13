@@ -332,7 +332,9 @@ export async function executeApprovedLayerCAct(input: ApproveExecInput): Promise
       // availability + re-run the governed gate BEFORE re-dispatch. Not executable now → STOP; the row stays
       // accepted_for_execution (the caller consumes nothing → recoverable), never a blind re-fire.
       const gate = await governedGate(db, { approverUserId, tenantId, actionKind, capability, governedArgs, resolveAvail });
-      if (!gate.ok) return { ok: false, outcome: "accepted_for_execution", executed: false, reason: gate.reason };
+      // `gate.ok === false` (not `!gate.ok`): src tsc runs strictNullChecks:false and does NOT narrow a
+      // discriminated union on the truthiness form, so `gate.reason` would not resolve (tsc-ratchet catches it).
+      if (gate.ok === false) return { ok: false, outcome: "accepted_for_execution", executed: false, reason: gate.reason };
       let dr: DispatchResult;
       try { dr = await adapter.dispatch({ ...dispatchInput, args: gate.args }); } catch (e) { dr = ambiguousFromThrow(e, "adapter_threw"); }
       return advanceLedger(db, base, dr, "accepted_for_execution");
@@ -348,7 +350,7 @@ export async function executeApprovedLayerCAct(input: ApproveExecInput): Promise
   //       `execute`. An infra error or a governed refusal (availability/authority/effect/claim) surfaces
   //       honestly and the row stays approval_pending (nothing redeemed, nothing dispatched).
   const gate = await governedGate(db, { approverUserId, tenantId, actionKind, capability, governedArgs, resolveAvail });
-  if (!gate.ok) return { ok: false, outcome: "approval_pending", executed: false, reason: gate.reason };
+  if (gate.ok === false) return { ok: false, outcome: "approval_pending", executed: false, reason: gate.reason };
 
   // 6 — REDEEM the approval atomically: approval_pending → accepted_for_execution (the sole sanctioned
   //     transition). The RPC returns the row's outcome AFTER the transition. It cannot distinguish "I redeemed

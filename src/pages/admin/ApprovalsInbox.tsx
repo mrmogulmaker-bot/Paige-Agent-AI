@@ -98,17 +98,45 @@ export default function ApprovalsInbox() {
     if (selected.size === 0) return;
     setBusy(true);
     const ids = Array.from(selected);
+
+    if (decision === "approve") {
+      // A Layer-C orchestration approval (source='paige_orchestration') must RUN the held act via the ONE
+      // execute-approval door (§18/§70) — a direct status='approved' write is refused by the DB guard
+      // paige_guard_orchestration_direct_approve, and an atomic .in() batch would abort for EVERY co-selected
+      // row (§37). So partition: orchestration rows go through execute-approval per-id (as ApprovalRow does);
+      // every other row keeps the existing batch update, so non-orchestration bulk-approve is unchanged (§58).
+      const isOrch = (id: string) => items.find((i) => i.id === id)?.source === "paige_orchestration";
+      const orchIds = ids.filter(isOrch);
+      const rest = ids.filter((id) => !isOrch(id));
+      let failures = 0;
+      for (const id of orchIds) {
+        const { data, error } = await supabase.functions.invoke("execute-approval", { body: { approval_id: id } });
+        if (error || (data && data.ok === false)) failures++;
+      }
+      if (rest.length) {
+        const { error } = await supabase
+          .from("paige_pending_approvals")
+          .update({ status: "approved", reviewed_at: new Date().toISOString() })
+          .in("id", rest);
+        if (error) failures += rest.length;
+      }
+      setBusy(false);
+      clear();
+      if (failures) { toast.error(`${failures} of ${ids.length} could not be approved`); return; }
+      toast.success(`Approved ${ids.length}`);
+      return;
+    }
+
+    // Reject: a direct status write is correct for every source — for an orchestration row it fires the
+    // cancellation-sync trigger (the held act settles to cancelled); for the rest it is the existing behavior.
     const { error } = await supabase
       .from("paige_pending_approvals")
-      .update({
-        status: decision === "approve" ? "approved" : "rejected",
-        reviewed_at: new Date().toISOString(),
-      })
+      .update({ status: "rejected", reviewed_at: new Date().toISOString() })
       .in("id", ids);
     setBusy(false);
     clear();
     if (error) { toast.error(error.message); return; }
-    toast.success(`${decision === "approve" ? "Approved" : "Rejected"} ${ids.length}`);
+    toast.success(`Rejected ${ids.length}`);
   };
 
   return (
