@@ -28,12 +28,12 @@ MOTION_PURPOSE: NONE: no motion change beyond the shared skeleton pulse.
 PROTECTED_SEAMS: AFFECTED+TESTED — analytics/platform-health dispatch (viewSources.test.ts walks the ledger; PlatformHealthSurface.test.tsx pins the rendered content); UNAFFECTED+NAMED — RequireOperator guard contract (RequireOperator.test.tsx green), OperatorShell geometry (OperatorShell.test.tsx 9/9 green, dev-loop rail/spine match), IA parity with the pack (operatorIA.test.ts green), Fleet surfaces (FleetConsole/SystemsCheck/History/AlertRules tests green), TrustCompass/Knowledge dispatch (green).
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
-INTERNAL_BUILD_IDENTITY: to-be-filled-at-merge (exact PR head SHA + merge commit recorded in the shipped-log row per §4.0); deployment=not deployed by this PR (client-only slice, ships with the next platform deploy); environment=internal; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=this record + dev-loop frames.
-RELEASE_CHANNEL: internal: operator-console workstream under Gate A per the owner mandate; no staged rollout.
-RELEASE_CLASSIFICATION: internal capability slice — a read-only operator view; not a customer-facing outcome.
+INTERNAL_BUILD_IDENTITY: 8754978b1f9e543adf19326550a206c64af52a0f (PR head, post-rebase onto main 4fdf4715); deployment=none-by-this-pr (client-only slice; ships with the next platform deploy; Vercel preview exists for the PR branch); environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/operator-platform-health-view.md + scripts/live-drive/artifacts/OURS-{dark,light}-1600.png (this record's Evidence index reproduces the commands)
+RELEASE_CHANNEL: development: verified in the development environment (harness mount drive + full local suites); not deployed by this PR; no staged rollout.
+RELEASE_CLASSIFICATION: internal-only: internal Platform Operator console slice; no customer-visible surface changes.
 CUSTOMER_RELEASE_IDENTITY: none: internal Platform Operator surface; no tenant-visible change.
 RELEASE_NOTE_REQUIRED: no: internal operator tooling; no customer-visible behavior change.
-RELEASE_TRUTH_BOUNDARY: the view's figures are LIVE only where their substrate is real and read (sweep run record, findings, firings); LLM error rate is UNAVAILABLE (no series substrate — said so on the surface); authenticated-runtime presentation is PROOF OWED (no operator session drove the guarded route yet); the Command Center as a whole is PARTIAL (Phase 2 first view; Phases 2-remainder–5 owed per the slice ledger).
+RELEASE_TRUTH_BOUNDARY: PARTIAL: the view's figures are real reads where the substrate exists (sweep run record, findings, firings, acknowledgements); LLM error rate UNAVAILABLE (no series substrate — stated on the surface); authenticated-runtime presentation PROOF OWED (no operator session drove the guarded route); the Command Center whole is PARTIAL (Phase 2 first view; remainder owed per the slice ledger).
 RELEASE_RECOVERY: position=client-only revert of this PR restores the prior stopgap mount (FleetTeamPulseSurface at the address — one-line viewSources change); reference=this record + the §58 displacement note in viewSources.ts.
 
 ## Scope and collisions
