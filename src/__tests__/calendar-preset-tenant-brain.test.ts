@@ -207,6 +207,7 @@ describe("Solo Tenant Brain — verified booking-preset mutation", () => {
     ["missing name", "booking_preset_create", { model: "personal" }],
     ["non-uuid presetId", "booking_preset_publish", { presetId: "not-a-uuid" }],
     ["out-of-range duration", "booking_preset_revise", { presetId: CAL, duration_min: 5000 }],
+    ["revise with no changed field (would fabricate a no-op update)", "booking_preset_revise", { presetId: CAL }],
   ] as const)("rejects malformed args (%s) before reading or writing", async (_l, tool, args) => {
     const caller = port({});
     const recordRun = vi.fn(async () => true);

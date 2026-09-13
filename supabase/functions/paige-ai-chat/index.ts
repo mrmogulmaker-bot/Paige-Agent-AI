@@ -7542,6 +7542,24 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     };
 
     const describeConfirm = async (name: string, a: any): Promise<string> => {
+      // Resolve a booking preset's human title + current lifecycle for the consent card, so the
+      // operator approves a NAMED calendar and its exact consequence — never an unnamed one, and so
+      // two pending calendars are distinguishable at the approval boundary. Reuses the tenant-scoped
+      // get_calendar_presets seam; falls through to unnamed wording on any failure (§13 — a card that
+      // cannot name a thing is better than one that names it wrongly).
+      const bookingPreset = async (id: unknown): Promise<{ label: string; lifecycle: string | null }> => {
+        const pid = typeof id === "string" ? id.trim() : "";
+        const tenantForCard = personaCtx?.tenant_id ?? null;
+        if (!UUIDISH.test(pid) || !tenantForCard) return { label: "that booking calendar", lifecycle: null };
+        try {
+          const { data } = await supabaseClient.rpc("get_calendar_presets", { _tenant: tenantForCard });
+          const row = Array.isArray(data) ? data.find((r: any) => r?.id === pid) : null;
+          const title = typeof row?.title === "string" && row.title.trim() ? row.title.trim().slice(0, 80) : null;
+          return { label: title ? `"${title}"` : "that booking calendar", lifecycle: typeof row?.lifecycle === "string" ? row.lifecycle : null };
+        } catch {
+          return { label: "that booking calendar", lifecycle: null };
+        }
+      };
       switch (name) {
         // The money one. The number and the fact that it charges have to be IN the
         // sentence — "buy a number?" is not a proposal anyone can actually approve.
@@ -7595,6 +7613,32 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `Save a campaign brief "${String(a?.name || "Untitled").slice(0, 120)}" for this workspace — a planning record of the campaign's intent. This launches, sends, and publishes nothing.`;
         case "campaign_brief_revise":
           return `Revise the campaign brief you just read${a?.expectedVersion ? ` (version ${a.expectedVersion})` : ""} — a change to the planning record only. It launches, sends, and publishes nothing.`;
+        case "booking_preset_create":
+          return `Create a booking calendar "${String(a?.name || "Untitled").slice(0, 80)}"${a?.model ? ` (${String(a.model).replaceAll("_", " ")})` : ""} as a PRIVATE DRAFT. Its public /book page is NOT live — publishing is a separate, explicit step.`;
+        case "booking_preset_duplicate": {
+          const src = await bookingPreset(a?.presetId);
+          return `Duplicate the booking calendar ${src.label} into a NEW PRIVATE DRAFT copy. The copy is not public; publishing it is a separate step.`;
+        }
+        case "booking_preset_revise": {
+          const p = await bookingPreset(a?.presetId);
+          return `Change the configuration of the booking calendar ${p.label}.${p.lifecycle === "live" ? " It is currently LIVE, so this edits the public booking page clients see." : ""} It does not publish or unpublish it, and never changes its public link.`;
+        }
+        case "booking_preset_publish": {
+          const p = await bookingPreset(a?.presetId);
+          return `Publish the booking calendar ${p.label} — this makes its public /book page LIVE and bookable by anyone with the link.${p.lifecycle === "live" ? " (It already reads as live.)" : ""} The server refuses it unless it can honestly take a booking.`;
+        }
+        case "booking_preset_pause": {
+          const p = await bookingPreset(a?.presetId);
+          return `Pause the booking calendar ${p.label} — take its public /book page OFF THE AIR so it stops accepting bookings. Reversible: publish it again.`;
+        }
+        case "booking_preset_archive": {
+          const p = await bookingPreset(a?.presetId);
+          return `Archive the booking calendar ${p.label} — take its /book page OFF THE AIR and file it away. Reversible: restore it later.`;
+        }
+        case "booking_preset_restore": {
+          const p = await bookingPreset(a?.presetId);
+          return `Restore the archived booking calendar ${p.label} — bring it back to Draft or Paused. It does NOT go back on the air; publishing is a separate step.`;
+        }
         case "deal_create":
           return `Add a deal "${a?.title || "Untitled"}"${typeof a?.value_cents === "number" ? ` worth ${(a.value_cents / 100).toLocaleString(undefined, { style: "currency", currency: a?.currency || "USD" })}` : ""} to the pipeline.`;
         case "deal_move_stage":

@@ -240,6 +240,11 @@ function validMutationArgs(tool: CalendarPresetMutationTool, args: Record<string
   const presetId = stringValue(args.presetId);
   if (!presetId || !UUID_RE.test(presetId)) return false;
   if (tool === "booking_preset_revise") {
+    // A revise with only the schema-required presetId changes nothing: an empty patch would produce a
+    // no-op update whose readback trivially "matches", fabricating an updated Rail record for work that
+    // did not happen (§13). Require at least one supported revision field before we ever call the RPC.
+    const REVISE_FIELDS = ["name", "description", "duration_min", "capacity", "min_notice_min", "buffer_before_min", "buffer_after_min"] as const;
+    if (!REVISE_FIELDS.some((k) => args[k] !== undefined)) return false;
     if (args.name !== undefined && !stringValue(args.name)) return false;
     if (args.description !== undefined && typeof args.description !== "string") return false;
     for (const [key, min, max] of [
