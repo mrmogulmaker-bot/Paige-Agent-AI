@@ -33,6 +33,7 @@
 import { chromium } from "playwright";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const ARG = (flag, dflt) => {
   const i = process.argv.indexOf(flag);
@@ -44,8 +45,11 @@ const W = Number(ARG("--w", "1600"));
 const H = Number(ARG("--h", "1000"));
 const BASE = process.env.DEV_LOOP_BASE || "http://127.0.0.1:5199";
 const OUT = "scripts/live-drive/artifacts";
-const REF = "file://" + encodeURI(path.resolve(
-  "docs/design-references/cd-packs/super-admin-shell-v3/PAIGE Platform Operator - standalone.html"));
+// pathToFileURL, not string concatenation: on Windows `path.resolve` yields backslashes and a
+// drive letter, which `encodeURI` turns into `file://C:%5C…` — an invalid URL the browser
+// refuses (ERR_INVALID_URL). The node:url helper is the platform-correct form everywhere.
+const REF = pathToFileURL(path.resolve(
+  "docs/design-references/cd-packs/super-admin-shell-v3/PAIGE Platform Operator - standalone.html")).href;
 const FONTS = ["fonts.googleapis.com", "fonts.gstatic.com", "api.fontshare.com"];
 
 /** Resolve Chromium the way live-drive.mjs does — env, then the sandbox scan, then bundled. */

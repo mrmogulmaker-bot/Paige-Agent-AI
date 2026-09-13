@@ -54,7 +54,10 @@ const FleetConsole = lazy(() => import("@/operator/surfaces/FleetConsole"));
 const SystemsCheckSurface = lazy(() => import("@/operator/surfaces/SystemsCheckSurface"));
 const FleetHistorySurface = lazy(() => import("@/operator/surfaces/FleetHistorySurface"));
 const FleetAlertRulesSurface = lazy(() => import("@/operator/surfaces/FleetAlertRulesSurface"));
-const FleetTeamPulseSurface = lazy(() => import("@/operator/surfaces/FleetTeamPulseSurface"));
+// FleetTeamPulseSurface is deliberately NOT dispatched anymore: the v3 pack draws Team Pulse
+// nowhere, and analytics/platform-health now renders the pack's own Platform health surface
+// (§58 record in viewSources.ts — the component stays on disk, owed to the Settings → Team port).
+const PlatformHealthSurface = lazy(() => import("@/operator/surfaces/PlatformHealthSurface"));
 const TrustCompass = lazy(() => import("@/operator/surfaces/TrustCompass"));
 const KnowledgeSurface = lazy(() => import("@/operator/surfaces/KnowledgeSurface"));
 const CampaignsActive = lazy(() => import("@/operator/surfaces/campaigns/CampaignsActive"));
@@ -163,7 +166,7 @@ export default function SlotSurfaceBody({ slot, view }: { slot: OperatorSlot; vi
         {bespoke === "SystemsCheckSurface" && <SystemsCheckSurface />}
         {bespoke === "FleetHistorySurface" && <FleetHistorySurface />}
         {bespoke === "FleetAlertRulesSurface" && <FleetAlertRulesSurface />}
-        {bespoke === "FleetTeamPulseSurface" && <FleetTeamPulseSurface />}
+        {bespoke === "PlatformHealthSurface" && <PlatformHealthSurface />}
         {/* Read-only until the lane WRITE path lands: no `onCommit`, and the surface says so
             itself rather than offering a control that silently discards the movement. */}
         {bespoke === "TrustCompass" && (
