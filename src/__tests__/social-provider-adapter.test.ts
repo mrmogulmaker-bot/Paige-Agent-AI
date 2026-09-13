@@ -94,33 +94,44 @@ describe("Social adapter secret boundary", () => {
     })).resolves.toEqual({ created: false });
   });
 
-  it("limits hosted authorization to the documented OAuth catalogue", async () => {
+  it("reports the provider profile quota without inventing a Paige account limit", async () => {
+    stubEnv({ UPLOAD_POST_API_KEY: "opaque-server-key" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ error_code: "PROFILE_LIMIT_REACHED" }), { status: 403 },
+    )));
+    await expect(uploadPostSocialAdapter.createProfile({
+      providerProfileKey: "ps_0123456789abcdef0123456789abcdef01234567",
+    })).rejects.toMatchObject({ code: "provider_profile_limit" });
+  });
+
+  it("starts one exact platform OAuth flow with an opaque tenant profile", async () => {
     stubEnv({ UPLOAD_POST_API_KEY: "opaque-server-key" });
     const fetchSpy = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      access_url: "https://app.upload-post.com/connect?token=opaque",
+      authorize_url: "https://accounts.google.com/o/oauth2/auth?state=opaque",
+      expires_in: 900,
     }), { status: 200, headers: { "Content-Type": "application/json" } }));
     vi.stubGlobal("fetch", fetchSpy);
     await uploadPostSocialAdapter.createConnectUrl({
       providerProfileKey: "ps_0123456789abcdef0123456789abcdef01234567",
       redirectUrl: "https://functions.example/social-callback",
+      platform: "youtube",
     });
     const request = fetchSpy.mock.calls[0]?.[1] as RequestInit;
-    const body = JSON.parse(String(request.body)) as { platforms: string[]; show_calendar: boolean };
-    expect(body.platforms).toEqual([
-      "tiktok", "instagram", "linkedin", "youtube", "facebook", "x", "threads", "google_business",
-    ]);
-    expect(body.platforms).not.toContain("discord");
-    expect(body.show_calendar).toBe(false);
+    const body = JSON.parse(String(request.body)) as { profile: string; redirect_url: string };
+    expect(fetchSpy.mock.calls[0]?.[0]).toContain("/oauth/youtube/start");
+    expect(body.profile).toBe("ps_0123456789abcdef0123456789abcdef01234567");
+    expect(body.redirect_url).toBe("https://functions.example/social-callback");
   });
 
   it("rejects an authorization URL outside the provider-hosted origin", async () => {
     stubEnv({ UPLOAD_POST_API_KEY: "opaque-server-key" });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      access_url: "https://untrusted.example/connect?token=opaque",
+      authorize_url: "https://untrusted.example/connect?token=opaque",
     }), { status: 200, headers: { "Content-Type": "application/json" } })));
     await expect(uploadPostSocialAdapter.createConnectUrl({
       providerProfileKey: "ps_0123456789abcdef0123456789abcdef01234567",
       redirectUrl: "https://functions.example/social-callback",
+      platform: "instagram",
     })).rejects.toThrow(/secure authorization URL/i);
   });
 });

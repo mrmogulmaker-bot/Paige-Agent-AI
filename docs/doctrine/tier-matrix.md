@@ -4128,4 +4128,15 @@ No new entitlement, tier feature flag, `/admin` route, sub-account inheritance, 
 | New public enrollment | Fixed paid Solo Beta only: one 30-day trial, then $74.50/month; standalone top-level workspace after verified fulfillment | Unavailable for new public enrollment; existing authorization preserved | Never a public tier; existing operator authorization preserved | Unavailable for new public enrollment/invite creation by this flow; existing client invites/access preserved | May enter only the Solo offer and ordinary identity flow |
 | Post-checkout access | Trialing or active signed provider state + fulfillment receipt + active owner membership → server destination | Existing resolver only | Existing resolver only | Existing resolver/invite only | None |
 
-This is an acquisition constraint, not a deletion or migration of existing tenants. Caller-selected or repeated trials and free/annual/planless public fallbacks are prohibited; the one server-fixed 30-day trial is part of the paid Solo subscription. Candidate status only: authenticated and deployed proof remain owed.
+This is an acquisition constraint, not a deletion or migration of existing tenants. Caller-selected or repeated trials and free/annual/planless public fallbacks are prohibited; the one server-fixed 30-day trial is part of the paid Solo subscription. Live offer binding and deployment are verified at `4ccb8a9a`; first authorized customer fulfillment/current-shell and lifecycle proof plus Billing Portal activation remain `PROOF OWED`.
+
+### Promotional Solo grandfathering — production boundary (2026-09-13)
+
+| Capability | Promotional Solo identity | Existing non-Solo membership | Anonymous/browser caller |
+|---|---|---|---|
+| Grant access | Platform-owner-authorized `service_role` operation only; never public enrollment | Preserved unchanged | Prohibited; function EXECUTE revoked |
+| Entitlement | Explicit active Solo subscription envelope, `revenue_class=promotional`, no expiry, metering enabled | Existing server-derived authorization remains authoritative | None |
+| Provider/billing | No Stripe customer, subscription, Product, Price, offer, mode, verification, trial, invoice, or charge | Never cleared, migrated, or inferred | Cannot select or forge provider state |
+| Workspace | Exactly one top-level `standalone` owner workspace; idempotent retry | Existing memberships remain selectable | No tenant authority |
+
+Production proof: migrations #1202/#1210 culminated in persisted version `20270201000000` (run `34743013452`). The Antonio Cook owner-authorized grant created one personal workspace and one owner membership; retry returned `already_granted` with workspace, platform-subscription, usage-receipt, and audit-receipt counts each still one. Antonio Daniel LLC membership was preserved; Antonio Daniel LLC and Mogul Maker Academy remained active promotional tenants. Authenticated browser sign-in, rendered Billing status, and account switching remain `PROOF OWED`.

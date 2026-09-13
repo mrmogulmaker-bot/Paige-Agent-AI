@@ -777,20 +777,60 @@ describe("Social tenant-owned connection flow", () => {
     context.tenantId = tenantId;
     world({ socialConnections: [], socialAccounts: [] });
     const { host } = await render("/solo/workspace/settings/integrations");
-    const card = host.querySelector('.ig-card[data-provider="social"]');
+    const card = host.querySelector('.ig-card[data-provider="social-instagram"]');
     expect(card?.textContent).toContain("Setup required");
-    await openCard(host, "social");
-    expect(host.textContent).toContain("No Social identities are connected");
-    expect(host.textContent).toContain("Add Social identity");
+    expect(host.querySelector('.ig-card[data-provider="social-facebook"]')).not.toBeNull();
+    expect(host.querySelector('.ig-card[data-provider="social-youtube"]')).not.toBeNull();
+    expect(host.querySelector('.ig-card[data-provider="social-reddit"]')?.textContent).toContain("OAuth unavailable");
+    await openCard(host, "social-instagram");
+    expect(host.textContent).toContain("No Instagram accounts are connected");
+    expect(host.textContent).toContain("Connect Instagram");
     expect(host.textContent).not.toContain("Upload-Post");
+    await click(byText(host, "Connect Instagram"));
+    expect(invoke).toHaveBeenCalledWith("paige-social", {
+      body: {
+        action: "start",
+        return_path: "/solo/workspace/settings/integrations",
+        platform: "instagram",
+        label: null,
+        expected_tenant_id: tenantId,
+      },
+    });
   });
 
+
+  it("keeps multiple identities on the same platform separate and tenant-owned", async () => {
+    context.tenantId = tenantId;
+    const secondConnectionId = "77777777-8888-4888-8888-999999999999";
+    world({
+      socialConnections: [
+        { id: connectionId, requested_platform: "youtube", status: "connected", account_count: 1 },
+        { id: secondConnectionId, requested_platform: "youtube", status: "connected", account_count: 1 },
+      ],
+      socialAccounts: [
+        {
+          id: accountId, connection_id: connectionId, platform: "youtube",
+          display_name: "Test channel 21", status: "connected", selected: false, capabilities: ["video"],
+        },
+        {
+          id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", connection_id: secondConnectionId, platform: "youtube",
+          display_name: "Test channel 34", status: "connected", selected: false, capabilities: ["video"],
+        },
+      ],
+    });
+    const { host } = await render("/solo/workspace/settings/integrations");
+    await openCard(host, "social-youtube");
+    expect(host.textContent).toContain("Test channel 21");
+    expect(host.textContent).toContain("Test channel 34");
+    expect(host.textContent).toContain("Add another YouTube account");
+  });
   it("renders only provider-read accounts for the active tenant and never chooses a target implicitly", async () => {
     context.tenantId = tenantId;
     world({
       socialConnections: [{
         id: connectionId, label: null, status: "connected",
         last_verified_at: "2026-09-12T20:00:00Z", account_count: 1,
+        requested_platform: "instagram",
       }],
       socialAccounts: [{
         id: accountId, connection_id: connectionId, platform: "instagram",
@@ -800,7 +840,7 @@ describe("Social tenant-owned connection flow", () => {
       }],
     });
     const { host } = await render("/solo/workspace/settings/integrations");
-    await openCard(host, "social");
+    await openCard(host, "social-instagram");
     expect(host.textContent).toContain("Test identity 7");
     expect(host.textContent).toContain("@test_identity_7");
     expect(host.textContent).toContain("Select this account");
@@ -810,7 +850,7 @@ describe("Social tenant-owned connection flow", () => {
   it("requires an exact one-time approval before selecting a discovered account", async () => {
     context.tenantId = tenantId;
     world({
-      socialConnections: [{ id: connectionId, status: "connected", account_count: 1 }],
+      socialConnections: [{ id: connectionId, requested_platform: "linkedin", status: "connected", account_count: 1 }],
       socialAccounts: [{
         id: accountId, connection_id: connectionId, platform: "linkedin",
         display_name: "Test identity 9", status: "connected", selected: false, capabilities: [],
@@ -833,7 +873,7 @@ describe("Social tenant-owned connection flow", () => {
       return fallback?.(name, options);
     });
     const { host } = await render("/solo/workspace/settings/integrations");
-    await openCard(host, "social");
+    await openCard(host, "social-linkedin");
     await click(byText(host, "Select this account"));
     expect(invoke).toHaveBeenCalledWith("paige-social", {
       body: {
@@ -850,9 +890,9 @@ describe("Social tenant-owned connection flow", () => {
   it("uses only the canonical approval for disconnect", async () => {
     context.tenantId = tenantId;
     world({
-      socialConnections: [{ id: connectionId, status: "connected", account_count: 1 }],
+      socialConnections: [{ id: connectionId, requested_platform: "x", status: "connected", account_count: 1 }],
       socialAccounts: [{
-        id: accountId, connection_id: connectionId, platform: "proofnet",
+        id: accountId, connection_id: connectionId, platform: "x",
         display_name: "Test identity 11", status: "connected", selected: true, capabilities: [],
       }],
     });
@@ -873,7 +913,7 @@ describe("Social tenant-owned connection flow", () => {
       return fallback?.(name, options);
     });
     const { host } = await render("/solo/workspace/settings/integrations");
-    await openCard(host, "social");
+    await openCard(host, "social-x");
     await click(byText(host, "Disconnect"));
     expect(host.textContent).toContain("Confirm this Social change");
     expect(host.textContent).toContain("Disconnect this Social identity");
@@ -886,14 +926,14 @@ describe("Social tenant-owned connection flow", () => {
   it("does not expose callback secrets and treats a verified return as readback, not selection", async () => {
     context.tenantId = tenantId;
     world({
-      socialConnections: [{ id: connectionId, status: "connected", account_count: 1 }],
+      socialConnections: [{ id: connectionId, requested_platform: "facebook", status: "connected", account_count: 1 }],
       socialAccounts: [{
         id: accountId, connection_id: connectionId, platform: "facebook",
         display_name: "Test identity 12", status: "connected", selected: false, capabilities: [],
       }],
     });
     const { host } = await render("/solo/workspace/settings/integrations?social_result=verified&social_receipt=recorded");
-    await openCard(host, "social");
+    await openCard(host, "social-facebook");
     expect(host.textContent).toContain("Social accounts were verified");
     expect(host.textContent).toContain("Choose the account");
     expect(host.textContent).not.toContain("Selected");

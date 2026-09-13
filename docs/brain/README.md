@@ -386,10 +386,10 @@ The authenticated-proof framework: **`scripts/live-drive/PROOF-LANE.md`** (the f
 
 `docs/assessments/CONSOLIDATED_PLATFORM_AUDIT.md` is the one current-health record. Its pinned snapshot is merged `main` `9cac02d66ab068a7cff6a032bca267c9a928a3c6`, audited at `2026-09-12T20:23:44.2006964-04:00`. It incorporates merged #1175's Capability Portfolio routing and the later fal result-readback fix while separating verified source health from production/authenticated proof debt and non-shipped remediation. The high-risk rules are: public identity changes require signed purpose-bound authority; service-role code resolves scope server-side; URL ingestion uses canonical `safeFetch`; views preserve tenant RLS deliberately; consequential automation resolves live authority; unknown spend authority follows explicit fail-closed policy; and capability-live claims require execution, readback, receipt/Rail and authenticated proof.
 
-### 2026-09-12 — Solo Beta acquisition Gate A candidate
+### 2026-09-13 — Solo Beta acquisition and live billing binding
 
 | Record | Owns | Read before |
 |---|---|---|
-| `docs/evidence/ui-delivery/solo-beta-acquisition.md` | The candidate-only public Solo entry, ordinary Auth verification/recovery, fixed 30-day-trial test-mode checkout, atomic standalone provisioning, receipt-backed trialing/paid entitlement, current Solo handoff, collision map, and separated proof classes | Any public CTA/pricing/signup/auth callback/onboarding/checkout/webhook/enrollment-status or new-Solo destination change |
+| `docs/evidence/ui-delivery/solo-beta-acquisition.md` | The shipped Solo-only public journey plus live server-owned Stripe offer binding, verified/fenced fulfillment, current Solo handoff, production readback, and separated proof boundaries | Any public CTA/pricing/signup/auth callback/onboarding/checkout/webhook/enrollment-status or new-Solo destination change |
 
-Candidate only: not merged, deployed, provider-accepted, or owner-accepted. PR #899 payment-setup ordering and PR #724 canonical destination remain carried forward; existing authorized non-Solo access is not re-enrolled.
+Production binding shipped in PR #1200 (`4ccb8a9a`): live Product/Price, migration, Edge, webhook, Vercel, fail-closed probes, and signed-out public rendering are verified. First authorized customer Checkout/fulfillment/current-shell and lifecycle proof plus live Billing Portal configuration remain `PROOF OWED`; capability stays `PARTIAL`. PR #899 ordering and PR #724 destination remain carried forward; existing authorized non-Solo access is not re-enrolled.

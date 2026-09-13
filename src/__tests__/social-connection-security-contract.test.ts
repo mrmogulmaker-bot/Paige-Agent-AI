@@ -6,7 +6,8 @@ import { describe, expect, it } from "vitest";
 const read = (rel: string) => readFileSync(join(process.cwd(), rel), "utf8");
 const endpoint = read("supabase/functions/paige-social/index.ts");
 const callback = read("supabase/functions/paige-social-callback/index.ts");
-const migration = read("supabase/migrations/20270127000000_social_connection_lifecycle.sql");
+const migration = read("supabase/migrations/20270127000000_social_connection_lifecycle.sql")
+  + read("supabase/migrations/20270130000000_social_connection_platform_scope.sql");
 const hook = read("src/solo/data/useSocialConnections.ts");
 const drawer = read("src/solo/settings-integrations-social.tsx");
 const catalogue = read("src/solo/settings-integrations.tsx");
@@ -39,11 +40,14 @@ describe("Social connection authority and tenant isolation", () => {
   it("binds accounts to a tenant-matched connection and exposes no service-only correlation through status RPCs", () => {
     expect(migration).toContain("foreign key (tenant_id,connection_id)");
     expect(migration).toContain("SOCIAL_ACCOUNT_CONNECTION_MISMATCH");
+    expect(migration).toContain("update of tenant_id,provider_key,connection_id,platform on public.paige_social_accounts");
     expect(migration).toContain("constraint paige_social_connections_provider_profile_key unique (provider_key,provider_profile_key)");
     expect(migration).toContain("alter table public.paige_social_connections force row level security");
     expect(migration).toContain("alter table public.paige_social_connection_attempts force row level security");
     expect(migration).toMatch(/revoke all on public\.paige_social_connections,public\.paige_social_connection_attempts\s+from public,anon,authenticated/);
-    const statusProjection = migration.slice(migration.indexOf("create function public.social_account_status()"));
+    const accountStatusAt = migration.indexOf("create function public.social_account_status()");
+    const connectionStatusAt = migration.indexOf("create function public.social_connection_status()", accountStatusAt);
+    const statusProjection = migration.slice(accountStatusAt, connectionStatusAt);
     expect(statusProjection).not.toContain("provider_profile_key");
     expect(statusProjection).not.toContain("token_hash");
   });
@@ -111,9 +115,12 @@ describe("customer-facing identity truth", () => {
 
   it("starts without a default identity or target and selects only an explicit discovered account", () => {
     expect(hook).toContain("connections: [], accounts: []");
-    expect(drawer).toContain("No Social identities are connected");
+    expect(drawer).toContain("No {platform.name} accounts are connected");
     expect(drawer).toContain("Select this account");
     expect(endpoint).toContain('.eq("tenant_id", tenantId).eq("connection_id", connectionId).eq("id", accountId)');
+    expect(drawer).toContain("connection.requestedPlatform === platform.key");
+    expect(endpoint).toContain("SOCIAL_OAUTH_PLATFORMS.includes");
+    expect(callback).toContain("returnedPlatform !== claim.requested_platform");
     expect(migration).toContain("not selected or status='connected'");
     expect(migration).toContain("provider_account_id text;");
     expect(migration).not.toMatch(/\n\s+account_id text;/);
