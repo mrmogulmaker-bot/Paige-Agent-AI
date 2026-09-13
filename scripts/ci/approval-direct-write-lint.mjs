@@ -8,9 +8,13 @@
  * and then EXECUTES the consequence — sends the comms draft, runs the held Layer-C act, or
  * acknowledges — before writing readback + Rail + receipt. A browser that writes
  * `status: 'approved'` DIRECTLY bypasses all of that: no execution, no claim, no receipt, and for
- * a message row it marks the row approved WITHOUT SENDING (the silent-drop). For an orchestration
- * row the DB direct-approve guard throws 42501 on exactly this write — but ONLY on an UPDATE, so an
- * approved-row INSERT would slip past it; this lint covers the insert path too (§37 producer walk).
+ * a message row it marks the row approved WITHOUT SENDING (the silent-drop). For an ORCHESTRATION
+ * row the DB direct-approve guard throws 42501 on exactly this write on BOTH the INSERT (create-
+ * already-approved) and the UPDATE (transition-to-approved) path (migration 20270317000000). This
+ * lint is the FRONTEND regression tripwire on top of that: it covers the insert path too and, unlike
+ * the DB guard, it fires for EVERY approval write (not only source='paige_orchestration' rows) —
+ * because a NON-orchestration approved write is not blocked by the DB today (that broader
+ * approvals-RLS redesign is the next, separate slice), so the frontend must not author it (§37 walk).
  *
  * The mounted approve surfaces (ApprovalRow, DraftsAwaitingPanel, the Solo/Agency Command Center
  * hooks) already route approve through the seam. This guard LOCKS that in so it cannot silently
@@ -255,9 +259,14 @@ export function scan(files) {
     while ((m = FROM_WRITE.exec(stripped)) !== null) {
       const openParen = m.index + m[0].length - 1; // the "(" of the write call
       const argList = extractCallArg(stripped, openParen);
-      if (argList === null) continue; // unbalanced — leave it to tsc/eslint
-      const payload = topLevelEntries(argList)[0] ?? ""; // FIRST arg only — PostgREST options is the 2nd
-      if (isProvablyApproveFree(payload)) continue;
+      // FAIL-CLOSED (owner ruling 2026-09-13): if the guard cannot confidently CLASSIFY the payload — the
+      // arg walker could not balance it (e.g. a regex literal inside the args throws off the paren count) —
+      // it must FLAG the write, not skip it. A null payload is therefore unprovable, so it falls through to
+      // the ESCAPE check + problems.push below rather than being silently allowed. This keeps the mini-lexer's
+      // documented structural limits as a defense-in-depth boundary (an explained `approval-write-exempt:`
+      // marker still lets a human clear a genuinely-safe unparseable line), never a silent bypass.
+      const payload = argList === null ? null : (topLevelEntries(argList)[0] ?? ""); // FIRST arg only — PostgREST options is the 2nd
+      if (payload !== null && isProvablyApproveFree(payload)) continue;
       const ln = lineAt(stripped, openParen);
       if ((rawLines[ln - 1] ?? "").includes(ESCAPE)) continue; // a deliberate, explained exception
       problems.push(
@@ -360,6 +369,14 @@ if (process.argv.includes("--self-test")) {
       [["f.ts", 'const separator = /[/*]/;\nsupabase.from("paige_pending_approvals").update({ status: "approved" }).eq("id", id);']], 1],
     ["a regex with an escaped slash does not swallow a later approved write",
       [["f.ts", 'const re = /a\\/\\*b/;\nsupabase.from("paige_pending_approvals").update({ status: "approved" });']], 1],
+    // Owner ruling 2026-09-13 — FAIL-CLOSED on an unparseable payload: a regex literal INSIDE the write
+    // args ( /[(]/ ) leaves the arg walker's paren count unbalanced, so extractCallArg returns null. This
+    // ternary genuinely produces "approved", so skipping it would be a real bypass — it must be FLAGGED.
+    ["FAIL-CLOSED: an unparseable payload (regex literal confuses the arg walker) is flagged, not skipped",
+      [["f.ts", 'supabase.from("paige_pending_approvals").update({ status: /[(]/.test(x) ? "approved" : "rejected" }).eq("id", id);']], 1],
+    // And a genuinely-safe-but-unparseable line can still be cleared with an explained exemption.
+    ["allows an unparseable-payload write that carries an explained exemption",
+      [["f.ts", 'supabase.from("paige_pending_approvals").update({ note: /[(]/.source }).eq("id", id); // approval-write-exempt: no status field, regex is data']], 0],
     // TS `as const` / `as T` assertions on the status literal must be tolerated (idiomatic here).
     ["allows a decline literal with an `as const` assertion",
       [["f.ts", 'supabase.from("paige_pending_approvals").insert({ status: "pending" as const, tenant_id: t });']], 0],
