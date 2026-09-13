@@ -62,10 +62,13 @@ export type FundingEntitlement = "entitled" | "not_entitled" | "read_error";
 
 /** (2) The canonical per-provider connection/consent fact. `satisfied:true` carries HOW (a connected data
  *  source, or recorded consent/setup state); `satisfied:false` carries WHICH requirement is missing, so the
- *  verdict can distinguish `connection_missing` from `consent_missing`. */
+ *  verdict can distinguish `connection_missing` from `consent_missing`. Each member also declares the
+ *  OTHER field as optional so `conn.missing` / `conn.via` are accessible on the union WITHOUT relying on
+ *  discriminant narrowing (the repo's tsc config does not narrow discriminated unions); construction still
+ *  requires the correct field for each `satisfied` value. */
 export type FundingConnectionFact =
-  | { satisfied: true; via: "connection" | "consent" }
-  | { satisfied: false; missing: "connection" | "consent" };
+  | { satisfied: true; via: "connection" | "consent"; missing?: "connection" | "consent" }
+  | { satisfied: false; missing: "connection" | "consent"; via?: "connection" | "consent" };
 
 /** The server-resolved facts the pure decision composes. Injected for unit-testability. */
 export type FundingGateFacts = {
@@ -133,8 +136,11 @@ export function decideFundingCoachingGate(facts: FundingGateFacts): FundingGateV
   }
 
   // (2) CONNECTION / CONSENT — the required Financial connection or recorded consent/setup state.
-  if (!facts.connection.satisfied) {
-    if (facts.connection.missing === "consent") {
+  // Narrow on a const local so the discriminated-union narrowing is robust across TS versions (the repo's
+  // tsc does not persist the `satisfied` discriminant across the `facts.connection.*` property path).
+  const conn = facts.connection;
+  if (!conn.satisfied) {
+    if (conn.missing === "consent") {
       return {
         allowed: false,
         result: "setup_required",
