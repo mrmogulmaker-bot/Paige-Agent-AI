@@ -8189,15 +8189,21 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           try { crmArgs = JSON.parse(tc.function.arguments || "{}"); } catch { crmArgs = {}; }
           const action = CRM_TOOL_TO_ACTION[tc.function.name as keyof typeof CRM_TOOL_TO_ACTION];
           const suppliedKey = typeof crmArgs.idempotency_key === "string" ? crmArgs.idempotency_key.trim() : "";
+          // A transport retry may contain extra assistant/tool transcript entries, so hashing the
+          // entire message list would mint a new key for the same user command and could duplicate
+          // a create. Anchor the fallback to the stable user turn and normalized command.
+          // A later, deliberate repeat is a new user-turn ordinal and gets a new key.
+          const userTurns = messages.filter((message: any) => message?.role === "user");
+          const currentUserTurn = userTurns[userTurns.length - 1] ?? null;
+          delete crmArgs.idempotency_key;
+          delete crmArgs.confirm;
           const idempotencyKey = suppliedKey || await confirmFingerprint("crm_command_idempotency", {
             thread_id: payloadThreadId ?? null,
-            messages,
-            tool_index: toolIndex,
+            user_turn_ordinal: userTurns.length,
+            user_turn: currentUserTurn?.content ?? null,
             tool_name: tc.function.name,
             arguments: crmArgs,
           });
-          delete crmArgs.idempotency_key;
-          delete crmArgs.confirm;
           let approvedFingerprint: string | undefined;
           let approvalResolutionFailed = false;
           if (approvedConfirmations.size > 0 && personaCtx?.tenant_id) {
@@ -12770,7 +12776,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // a person tracing "what did Paige change" reaches a real row. Four entries named tables that
       // have NEVER existed — `activities`, `calendar_events`, `content`, `event_kinds` — so every
       // audit row for seven tools pointed at nothing. Grounded against production and against the
-      // handlers' own dispatch: `crm_log_activity` writes `communication_log`,
+      // handlers' own dispatch: the canonical `crm_log_activity` command writes `client_notes`,
       // `calendar_book_meeting` writes `internal_bookings` via `create_internal_booking`, the
       // content family writes `marketing_content` (the `document_generate` handler says so in its
       // own comment) except `content_save`, which writes `studio_artifact_versions` via
@@ -12797,7 +12803,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         crm_complete_task: "tasks", crm_reopen_task: "tasks", crm_cancel_task: "tasks", crm_delete_task: "tasks",
         crm_assign_contact: "clients", crm_assign_coach: "clients", crm_update_pipeline_stage: "clients",
         program_enroll: "clients", update_client_data: "clients",
-        crm_log_activity: "communication_log", crm_add_note: "client_notes", crm_file_document: "client_files", crm_create_task: "tasks", plan_assign_task: "tasks",
+        crm_log_activity: "client_notes", crm_add_note: "client_notes", crm_file_document: "client_files", crm_create_task: "tasks", plan_assign_task: "tasks",
         update_business_profile: "tenants",
         pipeline_create: "pipelines", pipeline_add_stage: "pipelines",
         deal_create: "deals", deal_move_stage: "deals",
@@ -12938,7 +12944,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       const resolveWriteTargetId = (args: any, out: any): string | null => {
         for (const k of TARGET_ID_KEYS) {
-          for (const src of [out, args]) {
+          for (const src of [out?.readback, out, args]) {
             const v = src?.[k];
             // `target_id` is a uuid column, so a slug or a provider's own string id must NOT be
             // forced into it — that would fail the insert and lose the whole audit row over a

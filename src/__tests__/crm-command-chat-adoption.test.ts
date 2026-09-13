@@ -52,7 +52,12 @@ describe("Paige Chat canonical CRM adoption", () => {
     expect(chat).toContain("crmResultTrace");
     expect(chat).toContain("receipt_recorded: parsed.receipt_recorded === true");
     expect(chat).toContain('confirmFingerprint("crm_command_idempotency"');
-    expect(chat).toContain("tool_index: toolIndex");
+    expect(chat).toContain("user_turn_ordinal: userTurns.length");
+    expect(chat).toContain("user_turn: currentUserTurn?.content ?? null");
+    expect(chat).not.toContain("tool_index: toolIndex");
+    expect(chat).not.toContain("thread_id: payloadThreadId ?? null,\n            messages,");
+    expect(chat).toContain("for (const src of [out?.readback, out, args])");
+    expect(chat).toContain('crm_log_activity: "client_notes"');
     expect(chat).toContain('.filter("args->>approval_subject", "eq", approvalSubject)');
     expect(chat).toContain("approvedRows?.length === 1");
     expect(chat).not.toContain("const idempotencyKey = suppliedKey || crypto.randomUUID()");

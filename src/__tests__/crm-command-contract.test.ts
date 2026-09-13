@@ -104,7 +104,7 @@ describe("canonical CRM contact/company command", () => {
     expect(sql).toContain("CRM_PREVIEW_INVALID_OR_EXPIRED");
     expect(sql).toContain("cached.consumed_at is not null and cached.result is not null");
     expect(sql).toContain("delete from public.crm_command_previews where id=cached.id");
-    expect(sql).toContain("cached.expires_at<=pg_catalog.now()+interval '2 minutes'");
+    expect(sql).toContain("cached.expires_at<=pg_catalog.now()+interval '1 minute'");
     expect(sql).toContain("sibling.id<>b.id and sibling.is_active and sibling.is_primary");
     expect(sql.match(/business-primary:/g)?.length).toBeGreaterThanOrEqual(2);
     expect(sql).toContain("create or replace function public.auto_stub_business_from_contact()");
