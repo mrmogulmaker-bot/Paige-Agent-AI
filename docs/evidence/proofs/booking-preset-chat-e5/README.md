@@ -15,7 +15,7 @@ Calendars UI drives — never a direct table write, never a parallel Calendar mo
 | `_shared/action-risk.ts` | 7 `booking_preset_*` rows — publish/revise/archive `high`, create/pause/duplicate/restore `ordinary`. |
 | `paige-ai-chat/index.ts` | `...CALENDAR_PRESET_TOOLS` spread + dispatch branch (list read + verified mutation, server-resolved tenant/actor, friendly error mapping) + `TOOL_LABELS` + `toolCallLabel` + `WRITE_TARGET`. |
 | `_shared/paige-spine/domains/calendar_preset.ts` | §13 header-comment correction (real migrations `20270301000000`+`20270302000000`, 8 RPCs). |
-| `migrations/20270303000000_…autonomy_catalogue.sql` (NEW) | `list_tool_autonomy` re-declared + the 7 mutating keys under `Calendar`. |
+| `migrations/20270304000000_…autonomy_catalogue.sql` (NEW) | `list_tool_autonomy` re-declared + the 7 mutating keys under `Calendar`. |
 | `scripts/ci/action-risk-lint.mjs` | Resolver block for the new `CALENDAR_PRESET_TOOLS` catalog (as every prior domain has). |
 
 ## Governed path (per call)

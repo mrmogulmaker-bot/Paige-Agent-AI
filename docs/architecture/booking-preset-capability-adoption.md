@@ -12,7 +12,7 @@ Calendar-preset work did NOT duplicate Chat infrastructure (owner ruling 2026-09
   `booking_preset_*` rows to `action-risk.ts` (publish/revise/archive = `high`, create/pause/
   duplicate/restore = `ordinary`); spread `CALENDAR_PRESET_TOOLS` into the handler; dispatched each
   tool to its canonical RPC through a new `_shared/calendar-preset-tenant-brain.ts`; added the 7
-  keys to `list_tool_autonomy` (migration `20270303000000`); added the `WRITE_TARGET` + `TOOL_LABELS`
+  keys to `list_tool_autonomy` (migration `20270304000000`); added the `WRITE_TARGET` + `TOOL_LABELS`
   + `toolCallLabel` entries; taught `action-risk-lint.mjs` the new imported catalog.
 - **Refinement 1 — Rail:** the doc said add the tools to `RAIL_ACTION_TOOLS`. The real
   `campaign_brief_*` pattern does NOT; it records the Rail run via a `recordRun` callback
