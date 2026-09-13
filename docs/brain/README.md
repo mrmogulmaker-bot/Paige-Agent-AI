@@ -262,7 +262,7 @@ is distinct from any later Paige Enterprise Success Portal for Paige's own enter
 | `docs/audits/people-model-strategy-2026-07-21.md` | People-model strategy draft | Team/People-department model |
 | `docs/audits/platform-ia-slice-1c-handoff.md` | Slice 1c IA restructure handoff (revised final) | IA-restructure context |
 | `docs/audits/pr-304-tenant-domain-doctrine-verification-2026-07-30.md` | PR #304 tenant-domain doctrine verification | Tenant-domain doctrine history |
-| `docs/assessments/CONSOLIDATED_PLATFORM_AUDIT.md` | Consolidated platform audit | Broad platform state audit |
+| `docs/assessments/CONSOLIDATED_PLATFORM_AUDIT.md` | **Canonical current-main Platform Health & Security reconciliation** — exact-SHA health matrix and finding register first; proposed/local remediation and historical audits kept explicitly separate | Before asserting platform health, reopening an old security finding, or planning shared-platform remediation |
 | `docs/assessments/DRIFT_AUDIT_2026-07-14.md` | Live-vs-repo drift audit (2026-07-14) | Drift history |
 | `docs/assessments/IA-SLICE-1C-BLUEPRINT.md` | Locked target-IA blueprint (Slice 1c) | IA target state |
 | `docs/portfolio/PORTFOLIO_SCOPE_BRIEFING.md` | Portfolio scope briefing (authoritative) | Portfolio-context scoping (§35) |
@@ -380,3 +380,7 @@ PR #1047 released that backend lane as referenced production merge `ae0a16a0`: p
 ### 2026-09-12 Harness Layer G — proof-lane framework
 
 The authenticated-proof framework: **`scripts/live-drive/PROOF-LANE.md`** (the framework + proof-status vocabulary + the one owner action) and **`docs/evidence/proof-lane/README.md`** (the committed verified-vs-`PROOF_OWED` evidence record). It extends `scripts/live-drive/live-drive.mjs` (no fork) and turns an authenticated governed flow into data + a runner that reports `VERIFIED` only when a real drive asserts, `PROOF_OWED` otherwise. PR #1163. All 7 governed flows (contact-create, tenant isolation, capability truth, approval, readback, retry, account-switch) are `PROOF_OWED` until a capable session has the least-privilege Solo test tenant + `LIVE_DRIVE_*` CI secrets. Proof-lane's runtime verdict vocabulary maps to the binding-ledger release-accounting states (a proof-lane `VERIFIED` = the `authenticated_runtime` evidence that moves a ledger row `PROOF_OWED → LIVE`; see `PROOF-LANE.md`).
+
+### 2026-09-12 current-main Platform Health & Security reconciliation
+
+`docs/assessments/CONSOLIDATED_PLATFORM_AUDIT.md` is the one current-health record. Its pinned snapshot is merged `main` `9cac02d66ab068a7cff6a032bca267c9a928a3c6`, audited at `2026-09-12T20:23:44.2006964-04:00`. It incorporates merged #1175's Capability Portfolio routing and the later fal result-readback fix while separating verified source health from production/authenticated proof debt and non-shipped remediation. The high-risk rules are: public identity changes require signed purpose-bound authority; service-role code resolves scope server-side; URL ingestion uses canonical `safeFetch`; views preserve tenant RLS deliberately; consequential automation resolves live authority; unknown spend authority follows explicit fail-closed policy; and capability-live claims require execution, readback, receipt/Rail and authenticated proof.
