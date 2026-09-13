@@ -38,12 +38,14 @@ UPDATE public.clients SET linked_user_id='c7100000-0000-4000-8000-000000000002' 
 INSERT INTO public.businesses(id,tenant_id,owner_user_id,legal_name,is_active,updated_at) VALUES
  ('c7100000-0000-4000-8000-00000000b101','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Archived Fixture',false,'2026-09-13 00:00:00+00'),
  ('c7100000-0000-4000-8000-00000000b102','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Coach Scope Fixture',true,'2026-09-13 00:00:00+00');
-INSERT INTO public.pipelines(id,tenant_id,name,is_default,created_by) VALUES
- ('c7100000-0000-4000-8000-00000000a101','c7100000-0000-4000-8000-000000001111','CRM Review Pipeline',true,'c7100000-0000-4000-8000-000000000001');
+SELECT set_config('app.pipeline_created_through','paige',true);
+SELECT set_config('app.pipeline_requested_by','c7100000-0000-4000-8000-000000000001',true);
+INSERT INTO public.pipelines(tenant_id,name,is_default) VALUES
+ ('c7100000-0000-4000-8000-000000001111','CRM Review Pipeline',true);
 INSERT INTO public.pipeline_stages(id,pipeline_id,tenant_id,label,order_index,probability,stage_type) VALUES
- ('c7100000-0000-4000-8000-00000000a201','c7100000-0000-4000-8000-00000000a101','c7100000-0000-4000-8000-000000001111','Review Stage',1,10,'open');
+ ('c7100000-0000-4000-8000-00000000a201',(SELECT id FROM public.pipelines WHERE tenant_id='c7100000-0000-4000-8000-000000001111' AND name='CRM Review Pipeline'),'c7100000-0000-4000-8000-000000001111','Review Stage',1,10,'open');
 INSERT INTO public.deals(id,tenant_id,title,pipeline_id,stage_id,version,created_by) VALUES
- ('c7100000-0000-4000-8000-00000000d101','c7100000-0000-4000-8000-000000001111','Tenant-bound Deal','c7100000-0000-4000-8000-00000000a101','c7100000-0000-4000-8000-00000000a201',1,'c7100000-0000-4000-8000-000000000001');
+ ('c7100000-0000-4000-8000-00000000d101','c7100000-0000-4000-8000-000000001111','Tenant-bound Deal',(SELECT id FROM public.pipelines WHERE tenant_id='c7100000-0000-4000-8000-000000001111' AND name='CRM Review Pipeline'),'c7100000-0000-4000-8000-00000000a201',1,'c7100000-0000-4000-8000-000000000001');
 SELECT throws_ok($$INSERT INTO public.paige_invoices(tenant_id,contact_id,deal_id,invoice_number,amount_total_cents,created_by)
  VALUES ('c7200000-0000-4000-8000-000000002222','c7200000-0000-4000-8000-00000000c201','c7100000-0000-4000-8000-00000000d101','INV-CRM-CROSS-TENANT',100,'c7200000-0000-4000-8000-000000000001')$$,
  '23503','insert or update on table "paige_invoices" violates foreign key constraint "paige_invoices_tenant_deal_crm_fk"','a tenant cannot attach its invoice to another tenant deal');
