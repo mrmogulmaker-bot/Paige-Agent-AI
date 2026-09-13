@@ -52,10 +52,17 @@
  *
  * DEFENSE IN DEPTH, not the sole enforcement (§13 honesty about a text lint's limits). This is a
  * regression tripwire on the realistic frontend shape (`supabase.from(...).write(...)`). It cannot
- * see through an aliased client, a table name held in a variable (`from(tbl)`), or a chain split
- * across statements (`const q = supabase.from(...); q.update(...)`). The REAL enforcement is the
- * server execute-approval seam + the DB direct-approve guard (which throws 42501 on an orchestration
- * row); this guard keeps the frontend honest so a regression surfaces in CI, not in production.
+ * see through an aliased client, a table name held in a variable (`from(tbl)`), a chain split
+ * across statements (`const q = supabase.from(...); q.update(...)`), or a table name spelled with a
+ * JS string escape that decodes to the real name (`from("paige_pending_\x61pprovals")` / `a`) —
+ * a deliberate obfuscation no honest column/table reference uses, the same documented structural
+ * class as the variable/aliased-table limits above (owner ruling 2026: the mini-lexer's scope is
+ * sufficient and these limits are the accepted defense-in-depth boundary — it is NOT to grow into a
+ * partial TS parser). The REAL enforcement is the server execute-approval seam + the DB direct-approve
+ * guard (which throws 42501 on an orchestration row, INSERT and UPDATE, regardless of how the frontend
+ * spelled the table); this guard keeps the frontend honest so an ACCIDENTAL regression surfaces in CI,
+ * not in production. Closing the escaped-literal + non-orchestration write at the DB layer is the §59
+ * next slice (task #18), where the enforcement belongs.
  *
  *   node scripts/ci/approval-direct-write-lint.mjs
  *   node scripts/ci/approval-direct-write-lint.mjs --self-test
