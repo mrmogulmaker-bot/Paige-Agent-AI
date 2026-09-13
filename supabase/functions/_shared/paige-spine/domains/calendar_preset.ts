@@ -72,7 +72,39 @@ export const CALENDAR_PRESET_LIST = {
   chatBinding:"LIVE",mindBinding:"UNAVAILABLE",sharedPrimitiveChange:"NONE",maturity:"PARTIAL",
 } as const satisfies SpineCapability;
 
-export const CALENDAR_PRESET_CAPABILITIES=[CALENDAR_PRESET_CREATE,CALENDAR_PRESET_REVISE,CALENDAR_PRESET_PUBLISH,CALENDAR_PRESET_PAUSE,CALENDAR_PRESET_LIST] as const;
+// The S1 object-lifecycle verbs onto migration 20270302000000
+// (duplicate_/archive_/restore_calendar_preset). Same authored-unregistered posture as the five
+// above: LIVE chatBinding, PARTIAL maturity, entering Chat via the adapter spread once the E5 wiring
+// lands. Authority classes (mirroring the runtime clamp + the action-risk table):
+//   • duplicate = `ordinary`: it produces a PRIVATE draft copy — reversible, in-tenant, nothing public
+//     — the class a tenant owner MAY grant standing authority over. Confirmation is the default.
+//   • archive   = `high`: archiving a LIVE, client-facing booking page takes it OUT OF SERVICE (its
+//     /book page stops taking bookings) — externally-consequential, so a per-tool risk class assumes
+//     that highest-impact use and it carries the rendered approval card. Reversible via restore.
+//   • restore   = `ordinary`: brings a preset back to Draft/Paused — exposes nothing public (restore
+//     never re-publishes; publish is its own explicit step), so it is the reversible, in-tenant class.
+export const CALENDAR_PRESET_DUPLICATE = {
+  key:"calendar_preset.duplicate",domain:"calendar_preset",owner:"booking-preset-system",humanSurface:"/solo/:account/settings/connections/calendars",
+  action:{classification:"mutate",executor:"public.duplicate_calendar_preset",chatTool:"booking_preset_duplicate",riskPolicyKey:"ordinary",approvalAuthority:"chat-canonical",idempotency:"Not slug-idempotent — a blind retry mints a second copy; the Chat confirmation fingerprint (paige_pending_confirmations) is the execute-once guard. Produces a private draft copy only (enabled=false)."},
+  outcome:{kinds:["created","refused","failed"],projector:"public.get_calendar_presets",railVisibility:"LIVE only after a fresh canonical readback shows the copy exists as a Draft (enabled=false); capability key booking_preset_duplicate records a private-draft-copy outcome and never a publish, a public link, a provider connection, a sent invitation, or a booking."},
+  chatBinding:"LIVE",mindBinding:"UNAVAILABLE",sharedPrimitiveChange:"NONE",maturity:"PARTIAL",
+} as const satisfies SpineCapability;
+
+export const CALENDAR_PRESET_ARCHIVE = {
+  key:"calendar_preset.archive",domain:"calendar_preset",owner:"booking-preset-system",humanSurface:"/solo/:account/settings/connections/calendars",
+  action:{classification:"mutate",executor:"public.archive_calendar_preset",chatTool:"booking_preset_archive",riskPolicyKey:"high",approvalAuthority:"chat-canonical",idempotency:"Converges — archiving an already-archived preset preserves the original archived_at and keeps it off the air. Reversible via restore."},
+  outcome:{kinds:["archived","refused","failed"],projector:"public.get_calendar_presets",railVisibility:"LIVE only after a fresh canonical readback shows the preset is archived (archived_at set, enabled=false); capability key booking_preset_archive records that the page was put away and taken off the air, and nothing else."},
+  chatBinding:"LIVE",mindBinding:"UNAVAILABLE",sharedPrimitiveChange:"NONE",maturity:"PARTIAL",
+} as const satisfies SpineCapability;
+
+export const CALENDAR_PRESET_RESTORE = {
+  key:"calendar_preset.restore",domain:"calendar_preset",owner:"booking-preset-system",humanSurface:"/solo/:account/settings/connections/calendars",
+  action:{classification:"mutate",executor:"public.restore_calendar_preset",chatTool:"booking_preset_restore",riskPolicyKey:"ordinary",approvalAuthority:"chat-canonical",idempotency:"Converges — restoring a non-archived preset is a no-op. Returns it to Draft or Paused (never Live); re-publishing is a separate explicit step."},
+  outcome:{kinds:["restored","refused","failed"],projector:"public.get_calendar_presets",railVisibility:"LIVE only after a fresh canonical readback shows archived_at cleared; capability key booking_preset_restore records that the preset returned to Draft/Paused — never that it went public or that a booking occurred."},
+  chatBinding:"LIVE",mindBinding:"UNAVAILABLE",sharedPrimitiveChange:"NONE",maturity:"PARTIAL",
+} as const satisfies SpineCapability;
+
+export const CALENDAR_PRESET_CAPABILITIES=[CALENDAR_PRESET_CREATE,CALENDAR_PRESET_REVISE,CALENDAR_PRESET_PUBLISH,CALENDAR_PRESET_PAUSE,CALENDAR_PRESET_LIST,CALENDAR_PRESET_DUPLICATE,CALENDAR_PRESET_ARCHIVE,CALENDAR_PRESET_RESTORE] as const;
 
 // Model-facing tool JSON. Authored COMPACT (single-line objects, `name:"…"` never alone on its own line)
 // so the chat-tool-registry lint does not count these as inline hand-wired tools — they register via the
@@ -84,5 +116,8 @@ export const CALENDAR_PRESET_TOOLS = [
   {type:"function",function:{name:"booking_preset_revise",description:"Revise an EXISTING booking preset's configuration, from a verified booking_preset_list read (pass presetId). Only include the fields you are changing. This edits configuration only — it does NOT publish, pause, connect a provider, or send anything. NOTE: revising a preset that is currently Live changes its public, client-facing booking page, so confirm the exact change first. It never changes the public link (slug) or the lifecycle.",parameters:{type:"object",properties:{presetId:{type:"string",format:"uuid"},name:{type:"string",minLength:1,maxLength:200},description:{type:"string",maxLength:4000},duration_min:{type:"integer",minimum:5,maximum:1440},capacity:{type:"integer",minimum:1,maximum:100000},min_notice_min:{type:"integer",minimum:0,maximum:100000},buffer_before_min:{type:"integer",minimum:0,maximum:1440},buffer_after_min:{type:"integer",minimum:0,maximum:1440}},required:["presetId"]}}},
   {type:"function",function:{name:"booking_preset_publish",description:"PUBLISH a booking preset — make its /book page PUBLIC and bookable by anyone with the link. Do this ONLY after the owner explicitly confirms it, and never silently or on assumption. The server revalidates first and refuses unless the page can honestly take a booking: enough hosts for its scheduling model (2+ for Round Robin / Collective), at least one open window, and a usable meeting method. If it refuses, report the exact reason it returns — do not claim the page went live. This publishes a booking page only; it does not send invitations, create calendar events, or connect a provider.",parameters:{type:"object",properties:{presetId:{type:"string",format:"uuid"}},required:["presetId"]}}},
   {type:"function",function:{name:"booking_preset_pause",description:"PAUSE a Live booking preset — take its public /book page off the air so it stops accepting bookings. Reversible: publish it again to put it back. Confirm before pausing a page that may have real bookings arriving. The link is kept (it is not deleted); it simply stops accepting bookings until republished.",parameters:{type:"object",properties:{presetId:{type:"string",format:"uuid"}},required:["presetId"]}}},
-  {type:"function",function:{name:"booking_preset_list",description:"List this workspace's booking presets (newest first) with each one's scheduling model, duration, capacity, host count, and lifecycle (Draft / Live / Paused). Read this before revising, publishing, or pausing so you have the exact presetId and its current state. A Draft or Paused preset is NOT public — only a Live one accepts bookings.",parameters:{type:"object",properties:{}}}},
+  {type:"function",function:{name:"booking_preset_list",description:"List this workspace's booking presets (newest first) with each one's scheduling model, duration, capacity, host count, and lifecycle (Draft / Live / Paused / Archived). Read this before revising, publishing, pausing, duplicating, archiving, or restoring so you have the exact presetId and its current state. A Draft, Paused, or Archived preset is NOT public — only a Live one accepts bookings.",parameters:{type:"object",properties:{}}}},
+  {type:"function",function:{name:"booking_preset_duplicate",description:"Duplicate an EXISTING booking preset (pass presetId, from a verified booking_preset_list read) into a NEW PRIVATE DRAFT that copies its configuration and host pool. The copy is a draft: nothing is public, no provider is connected, no invitation is sent, and no meeting link is made. Publishing the copy is a separate, explicit step (booking_preset_publish). Use this to start a new booking type from one that already works.",parameters:{type:"object",properties:{presetId:{type:"string",format:"uuid"},name:{type:"string",minLength:1,maxLength:200,description:"Optional name for the copy; defaults to the source name with \" (copy)\"."}},required:["presetId"]}}},
+  {type:"function",function:{name:"booking_preset_archive",description:"ARCHIVE a booking preset (pass presetId) — put it away and take its /book page OFF THE AIR so it stops accepting bookings. NOTE: archiving a preset that is currently Live removes a public, client-facing booking page from service, so confirm the exact preset first and never archive on assumption. Reversible: restore it later (booking_preset_restore). This does not delete the preset or its history; it files it away.",parameters:{type:"object",properties:{presetId:{type:"string",format:"uuid"}},required:["presetId"]}}},
+  {type:"function",function:{name:"booking_preset_restore",description:"RESTORE an archived booking preset (pass presetId) — bring it back to Draft (or Paused, if it had been published before). It does NOT go straight back on the air: re-publishing is a separate, explicit, server-validated step (booking_preset_publish). Use this to reopen a preset that was archived.",parameters:{type:"object",properties:{presetId:{type:"string",format:"uuid"}},required:["presetId"]}}},
 ] as const;
