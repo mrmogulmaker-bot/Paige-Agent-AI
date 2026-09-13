@@ -67,7 +67,7 @@ const commandSchema = z.object({
   if (["contact.assign_coach", "contact.assign_owner"].includes(command.action)) requireField("owner_user_id");
   if (command.action === "contact.link_company") requireField("company_id");
   if (command.action === "contact.create" || command.action === "contact.update" || command.action === "company.create" || command.action === "company.update") requireField("patch");
-  if (["contact.create", "contact.update"].includes(command.action) && command.patch && Object.prototype.hasOwnProperty.call(command.patch, "tags")) {
+  if (["contact.create", "contact.update", "contact.bulk_update"].includes(command.action) && command.patch && Object.prototype.hasOwnProperty.call(command.patch, "tags")) {
     const tags = command.patch.tags;
     if (!Array.isArray(tags) || tags.length > 50 || tags.some((tag) => typeof tag !== "string" || tag.trim().length === 0 || tag.length > 80)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["patch", "tags"], message: "Contact tags must be an array of 1-80 character strings." });

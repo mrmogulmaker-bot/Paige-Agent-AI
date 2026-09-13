@@ -59,6 +59,8 @@ describe("canonical CRM contact/company command", () => {
     expect(sql).toContain("public.crm_actor_can_access_record(_tenant_id,_actor_id,v_record_kind,v_record_id)");
     expect(sql).toContain("return public.read_crm_command_result(_tenant_id,_actor_id,_command,_idempotency_key)");
     expect(sql).toContain("CRM_TAGS_INVALID");
+    expect(sql).toContain("public.crm_tags_are_valid(patch->'tags')");
+    expect(sql).toContain("Relationship and primary-state changes remain");
   });
 
   it("covers reversible and preview-bound high-risk CRM operations without external sends", () => {

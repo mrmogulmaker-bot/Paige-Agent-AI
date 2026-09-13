@@ -1,6 +1,6 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(54);
+SELECT plan(57);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
@@ -111,8 +111,26 @@ RESET ROLE;
 UPDATE public.clients SET assigned_coach_user_id='c7100000-0000-4000-8000-000000000002' WHERE id='c7100000-0000-4000-8000-00000000c105';
 SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
-SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000002',jsonb_build_object('approval_channel','operator_card','action','company.archive','company_id','c7100000-0000-4000-8000-00000000b102','expected_updated_at',(SELECT updated_at FROM public.businesses WHERE id='c7100000-0000-4000-8000-00000000b102'))::text,'coach-company-archive-1'),'42501','CRM_FORBIDDEN','coach cannot archive a company and unlink contacts outside coach scope');
-SELECT is((SELECT count(*)::integer FROM public.clients WHERE primary_business_id='c7100000-0000-4000-8000-00000000b102'),2,'refused coach company archive has no collateral unlink effect');
+SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000002',jsonb_build_object('approval_channel','operator_card','action','company.archive','company_id','c7100000-0000-4000-8000-00000000b102','expected_updated_at',(SELECT updated_at FROM public.businesses WHERE id='c7100000-0000-4000-8000-00000000b102'))::text,'coach-company-archive-1'),'42501','CRM_FORBIDDEN','coach cannot archive a tenant-wide company outside assigned scope');
+SELECT is((SELECT count(*)::integer FROM public.clients WHERE primary_business_id='c7100000-0000-4000-8000-00000000b102'),2,'refused coach company archive has no collateral effect');
+RESET ROLE;
+UPDATE public.businesses SET is_primary=true WHERE id='c7100000-0000-4000-8000-00000000b102';
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+CREATE TEMP TABLE company_archive_result AS SELECT public.execute_crm_command(
+  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+  jsonb_build_object('approval_channel','operator_card','action','company.archive','company_id','c7100000-0000-4000-8000-00000000b102','expected_updated_at',(SELECT updated_at FROM public.businesses WHERE id='c7100000-0000-4000-8000-00000000b102')),
+  'owner-company-archive-1') result;
+SELECT is((SELECT jsonb_build_object('is_active',is_active,'is_primary',is_primary,'linked_contacts',(SELECT count(*) FROM public.clients WHERE primary_business_id='c7100000-0000-4000-8000-00000000b102')) FROM public.businesses WHERE id='c7100000-0000-4000-8000-00000000b102'),'{"is_active":false,"is_primary":true,"linked_contacts":2}'::jsonb,'company archive preserves primary state and contact relationships');
+CREATE TEMP TABLE company_restore_result AS SELECT public.execute_crm_command(
+  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+  jsonb_build_object('approval_channel','operator_card','action','company.restore','company_id','c7100000-0000-4000-8000-00000000b102','expected_updated_at',(SELECT updated_at FROM public.businesses WHERE id='c7100000-0000-4000-8000-00000000b102')),
+  'owner-company-restore-1') result;
+SELECT is((SELECT jsonb_build_object('is_active',is_active,'is_primary',is_primary,'linked_contacts',(SELECT count(*) FROM public.clients WHERE primary_business_id='c7100000-0000-4000-8000-00000000b102')) FROM public.businesses WHERE id='c7100000-0000-4000-8000-00000000b102'),'{"is_active":true,"is_primary":true,"linked_contacts":2}'::jsonb,'company restore returns availability without reconstructing lost relationships');
+SELECT throws_ok($$SELECT public.preview_crm_command(
+  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+  '{"approval_channel":"operator_card","action":"contact.bulk_update","target_ids":["c7100000-0000-4000-8000-00000000c104"],"patch":{"tags":["",7]}}','bulk-invalid-tags-1'
+)$$,'22023','CRM_TAGS_INVALID','bulk preview refuses empty or non-string contact tags before approval');
 CREATE TEMP TABLE bulk_preview AS SELECT public.preview_crm_command(
  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
  '{"approval_channel":"operator_card","action":"contact.bulk_update","target_ids":["c7100000-0000-4000-8000-00000000c104","c7200000-0000-4000-8000-00000000c201"],"patch":{"lifecycle_stage":"qualified"}}','bulk-preview-1') result;

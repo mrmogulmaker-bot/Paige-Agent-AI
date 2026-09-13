@@ -74,6 +74,7 @@ describe("canonical CRM action door", () => {
     expect(edge).not.toContain('action.startsWith("contact.") || action.startsWith("company.")');
     expect(edge).toContain('At least one reversible deal field is required for deal.update.');
     expect(edge).toContain('Contact tags must be an array of 1-80 character strings.');
+    expect(edge).toContain('["contact.create", "contact.update", "contact.bulk_update"].includes(command.action)');
     expect(edge).toContain('Object.prototype.hasOwnProperty.call(command.patch, "tags")');
   });
 

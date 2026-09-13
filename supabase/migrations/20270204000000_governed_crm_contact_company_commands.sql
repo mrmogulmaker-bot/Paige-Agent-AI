@@ -35,6 +35,21 @@ begin
 end$$;
 alter table public.paige_invoices validate constraint paige_invoices_tenant_deal_crm_fk;
 
+-- One tag invariant for single-record and preview-bound bulk contact commands.
+create or replace function public.crm_tags_are_valid(_tags jsonb)
+returns boolean language plpgsql immutable set search_path='' as $$
+begin
+  if pg_catalog.jsonb_typeof(_tags) is distinct from 'array' then return false; end if;
+  if pg_catalog.jsonb_array_length(_tags)>50 then return false; end if;
+  return not exists(
+    select 1 from pg_catalog.jsonb_array_elements(_tags) tag
+     where pg_catalog.jsonb_typeof(tag) is distinct from 'string'
+        or pg_catalog.length(tag #>> '{}')>80
+        or pg_catalog.btrim(tag #>> '{}')=''
+  );
+end$$;
+revoke all on function public.crm_tags_are_valid(jsonb) from public,anon,authenticated,service_role;
+
 -- One current-record authorization rule for both mutation and durable replay. Owners/admins
 -- retain tenant-wide CRM access; coaches are limited to their assigned contacts, related
 -- companies, and tasks they or their assigned contacts own. Deals remain admin-only because the
@@ -161,16 +176,9 @@ begin
   ) then
     raise exception 'CRM_ACTION_UNAVAILABLE' using errcode = '0A000';
   end if;
-  if v_action in ('contact.create','contact.update') and v_patch ? 'tags' then
-    if pg_catalog.jsonb_typeof(v_patch->'tags') is distinct from 'array' then
-      raise exception 'CRM_TAGS_INVALID' using errcode='22023';
-    end if;
-    if exists(
-      select 1 from pg_catalog.jsonb_array_elements(v_patch->'tags') tag
-       where pg_catalog.jsonb_typeof(tag) is distinct from 'string'
-          or pg_catalog.length(tag #>> '{}') > 80
-          or pg_catalog.btrim(tag #>> '{}') = ''
-    ) then raise exception 'CRM_TAGS_INVALID' using errcode='22023'; end if;
+  if v_action in ('contact.create','contact.update') and v_patch ? 'tags'
+    and not public.crm_tags_are_valid(v_patch->'tags') then
+    raise exception 'CRM_TAGS_INVALID' using errcode='22023';
   end if;
 
   if v_action like 'deal.%' then
@@ -595,11 +603,12 @@ begin
       where b.id = v_business.id returning * into v_business;
     elsif v_action = 'company.archive' then
       if not v_is_admin then raise exception 'CRM_FORBIDDEN' using errcode = '42501'; end if;
-      update public.businesses b set is_active = false, is_primary = false, updated_at = clock_timestamp()
+      -- Archiving changes company availability only. Relationship and primary-state changes remain
+      -- explicit link/unlink operations so restore can be genuinely reversible.
+      update public.businesses b set is_active = false, updated_at = clock_timestamp()
        where b.id = v_business.id returning * into v_business;
-      update public.clients c set primary_business_id = null, updated_at = clock_timestamp()
-       where c.tenant_id = v_tenant and c.primary_business_id = v_business.id;
     elsif v_action = 'company.restore' then
+      if not v_is_admin then raise exception 'CRM_FORBIDDEN' using errcode = '42501'; end if;
       update public.businesses b set is_active = true, updated_at = clock_timestamp()
        where b.id = v_business.id returning * into v_business;
     end if;
@@ -1018,7 +1027,7 @@ begin
     select pg_catalog.array_agg(k order by k) into unknown from pg_catalog.jsonb_object_keys(patch) k where k not in ('lifecycle_stage','tags','do_not_contact','assigned_coach_user_id');
     if coalesce(pg_catalog.array_length(unknown,1),0)>0 then raise exception 'CRM_PATCH_FIELDS_INVALID:%',pg_catalog.array_to_string(unknown,',') using errcode='22023'; end if;
     if patch ? 'lifecycle_stage' and coalesce(patch->>'lifecycle_stage','') not in ('new_lead','qualified','nurturing','hot_lead','negotiating','won','client_active','client_paused','client_churned','client_funded','client_alumni') then raise exception 'CRM_LIFECYCLE_INVALID' using errcode='22023'; end if;
-    if patch ? 'tags' and pg_catalog.jsonb_typeof(patch->'tags')<>'array' then raise exception 'CRM_TAGS_INVALID' using errcode='22023'; end if;
+    if patch ? 'tags' and not public.crm_tags_are_valid(patch->'tags') then raise exception 'CRM_TAGS_INVALID' using errcode='22023'; end if;
     if patch ? 'do_not_contact' and pg_catalog.jsonb_typeof(patch->'do_not_contact')<>'boolean' then raise exception 'CRM_DO_NOT_CONTACT_INVALID' using errcode='22023'; end if;
     if patch ? 'assigned_coach_user_id' and nullif(patch->>'assigned_coach_user_id','') is not null and (patch->>'assigned_coach_user_id' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' or not exists(select 1 from public.tenant_members tm where tm.tenant_id=_tenant_id and tm.user_id=(patch->>'assigned_coach_user_id')::uuid and tm.status='active' and tm.role in ('owner','admin','coach'))) then raise exception 'CRM_ASSIGNEE_FORBIDDEN' using errcode='42501'; end if;
     select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('id',c.id,'updated_at',c.updated_at) order by c.id),'[]'::jsonb) into snap from public.clients c where c.tenant_id=_tenant_id and c.id=any(coalesce(ids,array[]::uuid[]));
@@ -1228,6 +1237,9 @@ begin
       update public.clients set status='archived',merged_into_contact_id=c.id,merged_at=pg_catalog.clock_timestamp(),updated_at=pg_catalog.clock_timestamp() where id=loser.id returning * into loser;
       readback:=pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'merged_contact_id',loser.id,'loser_archived',loser.status='archived','dependency_counts',deps,'updated_at',c.updated_at);
     elsif a='contact.bulk_update' then
+      if p.target_snapshot->'patch' ? 'tags' and not public.crm_tags_are_valid(p.target_snapshot->'patch'->'tags') then
+        raise exception 'CRM_TAGS_INVALID' using errcode='22023';
+      end if;
       select count(*) into target_count from pg_catalog.jsonb_array_elements(p.target_snapshot->'targets');
       select count(*) into changed from pg_catalog.jsonb_array_elements(p.target_snapshot->'targets') x
        left join public.clients target_client on target_client.id=(x->>'id')::uuid and target_client.tenant_id=_tenant_id
