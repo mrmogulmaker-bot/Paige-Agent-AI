@@ -163,22 +163,6 @@ export default function ApprovalDetail() {
       return toast.error("Please add a rationale.");
     }
     setBusy(true);
-    // A Layer-C orchestration approval (source='paige_orchestration') APPROVES AND ACTS via the ONE
-    // execute-approval door (§18/§70): a direct status='approved' write is refused by the DB guard
-    // paige_guard_orchestration_direct_approve (it never ran the held act). Every other status
-    // (reject/skip/escalate/changes) keeps the direct write — reject/skip fire the cancellation-sync trigger
-    // that settles the held act to cancelled; non-orchestration rows are unchanged (§58).
-    const isOrch = approval?.source === "paige_orchestration" || approval?.metadata?.source === "paige_orchestration";
-    if (status === "approved" && isOrch) {
-      const { data, error } = await supabase.functions.invoke("execute-approval", { body: { approval_id: approval.id } });
-      setBusy(false);
-      if (error || (data && data.ok === false)) {
-        return toast.error(error?.message ?? data?.error ?? "Couldn't complete that action.");
-      }
-      toast.success("Approved");
-      navigate("/choose-account");
-      return;
-    }
     const { error } = await supabase
       .from("paige_pending_approvals")
       .update({
