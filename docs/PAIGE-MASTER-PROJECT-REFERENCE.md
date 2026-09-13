@@ -4045,6 +4045,31 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 
 ## 10. §13 corrections log
 
+ - **2026-09-13 — P0: Paige's consequential-action confirm gate looped instead of executing, and a
+   "bug report" could be claimed filed when it was not. FIX BUILT on a fresh-main emergency branch;
+   NOT merged, NOT shipped.** Owner-reported: an owner-confirmed `action_advance` dismissal re-issued a
+   fresh confirmation each turn then "failed flat"; a bug-report proposal failed to create; nothing
+   dismissed/filed/sent. **Correction to the first framing (§13):** the loop MECHANISM is established by
+   reading the DEPLOYED SOURCE — NOT a runtime trace of the incident. It is NOT the `#711`
+   `paige_tool_confirmations` token path (unwired in `paige-ai-chat`); the live gate is
+   `paige_pending_confirmations` + `confirmFingerprint` + a request nonce, and a BATCH of same-tool
+   proposals is disambiguated ONLY by the exact fingerprint, which a drifted hashed arg on the approval
+   turn defeats → both fallbacks refuse on ≥2 → the drifted fp records a NEW proposal → a silent re-ask
+   loop (#1166 closed only `decision_rationale` drift). The actual failing confirmation/action rows and
+   the server error category need prod access this session lacks and remain **PROOF OWED.** Fix (on
+   branch `claude/p0-confirm-loop-repair`, separate emergency PR — deliberately OFF PR #1177, which
+   stays the task↔thread slice only): **A** disambiguate a batch by the stable model-reproduced subject
+   id within the operator's approved set; **B** an un-pinnable approval → one honest `execution_unavailable`
+   terminal (nothing changed/sent) instead of a loop; **C** `improvement_propose` returns an explicit
+   "nothing was filed" for a tenant-less/role-refused caller. §39 cleared all seven gate invariants + two
+   guards; §5 NO BLOCKER. **STATUS (honest):** containment is LOCALLY PROVEN (fail-closed logic + tests);
+   whether the batch REPAIR actually fires (the `args->>action_id` match on the deployed chat; failure-safe
+   → the terminal) and the full owner battery (benign dismissal, batch resolve, expired/replayed/forged/
+   cross-tenant, receipt/Rail, no-outbound) are PROOF OWED on the deployed surface. This is a correctness
+   fix to an existing gate — **§4 shipped-capability claims unchanged; no Shipped Log entry until the real
+   merge SHA + deployment identity + persisted proof exist; §66 tier-matrix unchanged.** Detail:
+   `docs/brain/decision-log.md` (2026-09-13) + the lesson in `docs/brain/lessons-learned.md`.
+
  - **2026-09-12 — The "Solo Calendar is a fixture with no write scope" premise was OUTDATED; the
    mounted Solo Calendar was already a real, tenant-safe, governed surface.** A build brief described
    the Solo Calendar as a fixture (citing `src/solo/calendar-data.tsx`/`calendar.tsx`, whose own

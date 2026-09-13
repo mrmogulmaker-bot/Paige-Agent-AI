@@ -2367,3 +2367,49 @@ effect, the test double must exercise the effect's FAILURE, and "a fire is not a
 response contract, not only the durable record. Fixed with a distinct `send_failed` outcome → a
 502/`status:"failed"` response (consume-then-execute means the one-time approval is already spent, so the
 caller re-drafts) + a failed-send test.
+
+## A same-tool approval BATCH collapses to the exact fingerprint, and drift turns the gate into a silent re-ask loop (2026-09-13, the P0 confirm loop — emergency fix, live proof owed)
+
+**Symptom (owner-reported, production).** An owner-confirmed `action_advance` dismissal repeatedly
+re-issued a fresh confirmation/fingerprint and then "failed flat"; a separately requested bug report
+also failed to create. Nothing was dismissed, filed, or sent.
+
+**What is GROUNDED vs what is OWED (say which, §13/§32.c).** The loop MECHANISM is established by
+reading the DEPLOYED SOURCE, not by tracing the live incident: the `#711` `paige_tool_confirmations`
+token path is unwired in `paige-ai-chat`, so the live gate is `paige_pending_confirmations` +
+`confirmFingerprint` + a request nonce; within a BATCH of same-tool proposals the ONLY disambiguator
+is the exact fingerprint, which a drifted hashed arg on the approval turn defeats, both fallbacks then
+refuse on ≥2, and the drifted fp records a NEW `"created"` proposal — a self-reinforcing re-ask loop.
+(#1166 had closed only `decision_rationale` drift.) What is NOT established from here: the actual
+failing request's confirmation/action rows and the server error category — that needs prod log/DB
+access this session does not have. So the diagnosis is a grounded SOURCE reading, not a runtime trace
+of the incident, and the fix is not "fixed" until the authenticated battery passes after deployment.
+
+**The fix, and the distinction that matters.**
+- **Repair (containment of the loop into a resolvable map):** disambiguate a batch by the ONE field
+  the model reproduces verbatim — a required, stable subject id (`action_advance.action_id`), matched
+  WITHIN the operator's already-approved fingerprint set (never widening what is claimable; stored args
+  still execute).
+- **Containment (the owner's explicit ask):** an un-pinnable approval yields ONE truthful terminal
+  ("Action execution is temporarily unavailable; nothing changed or sent." + the action ref + a
+  correlation id) and records NOTHING — never a silent re-ask. **A silent livelock is worse than an
+  error**; the cure is an honest terminal, not a better retry.
+- **Honesty (§13/§70):** "file a bug report" routes to `improvement_propose`, which refused a
+  tenant-less God/operator caller by THROWING — a generic error the prose could paper over as "filed."
+  It now returns an explicit "nothing was filed."
+
+**Proof boundary (keep the label honest).** The CONTAINMENT is LOCALLY PROVEN — fail-closed logic +
+unit/wiring tests show an un-pinnable approval cannot loop and cannot execute. The REPAIR firing rests
+on one unproven runtime assumption — that the `args->>action_id` jsonb filter matches the approved row
+on the deployed chat — whose failure mode is safe (0 matches → the honest terminal). So the loop is
+CONTAINED; whether the batch REPAIR actually fires, and the full owner battery (benign dismissal, batch
+resolve, expired/replayed/forged/cross-tenant, receipt/Rail, no-outbound), are PROOF OWED on the
+deployed surface. Do not report "contained" as "fixed" until that battery passes post-deploy.
+
+**How to catch this class.** For any confirm-gated tool proposable in a BATCH: ask what maps each
+re-emitted call to its approved proposal, and whether that key survives the model re-authoring its
+arguments next turn. If the only key is the full-arg fingerprint, a batch loops the moment one arg
+drifts. Bind the mapping to a required, stable, model-reproduced id — and make the un-pinnable case an
+honest terminal, not a re-ask. **Accepted edge (noted so it is not rediscovered as a new loop):** if
+the model drifts the SUBJECT id itself, the narrow finds 0 matches and a fresh card is recorded — the
+premise is that `action_id` is reproduced verbatim; subject-id drift is a separate, accepted edge.
