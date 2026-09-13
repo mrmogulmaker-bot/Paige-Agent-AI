@@ -358,7 +358,11 @@ function anchorExists(p) {
   // (/etc/passwd) or a `..` escape must not satisfy the dead-anchor check with a CI-host file. The pure
   // validateRegistry already rejects such shapes structurally; this is defense-in-depth at the fs layer.
   if (p.startsWith("/") || p.split("/").includes("..")) return false;
-  const isFile = (f) => { try { return fs.statSync(f).isFile(); } catch { return false; } };
+  // lstatSync (NOT statSync) so a SYMLINK does not satisfy the check: statSync follows a link, so a
+  // committed anchor `adapter.ts -> /etc/passwd` would resolve to a CI-host file (Codex P2). lstat does
+  // not follow — a symlink is isSymbolicLink()=true / isFile()=false, so it is rejected; a real regular
+  // file is isFile()=true either way.
+  const isFile = (f) => { try { return fs.lstatSync(f).isFile(); } catch { return false; } };
   if (!p.includes("*")) return isFile(p);
   const slash = p.lastIndexOf("/");
   const dir = slash === -1 ? "." : p.slice(0, slash);
