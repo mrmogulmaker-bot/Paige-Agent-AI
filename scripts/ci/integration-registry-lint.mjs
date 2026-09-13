@@ -346,12 +346,15 @@ export function findDeadCodeAnchors(reg, exists) {
   return findings;
 }
 
-// Resolve a code_anchor path: a concrete file OR directory (fs.existsSync), or a glob with a single
-// `*` in its LAST path segment (scan the non-glob parent dir; true iff ≥1 entry matches pre/suf).
-// Dependency-free; only a last-segment `*` is supported — a dir-level glob is deliberately out of scope.
+// Resolve a code_anchor path to a concrete adapter FILE. A bare DIRECTORY is rejected: directory
+// existence does not detect file-level drift — a provider's adapter file can be deleted or moved
+// while sibling files keep the directory alive, so a dir anchor would report green after the seam
+// disappeared (Codex P2). A concrete path must therefore resolve to a FILE, and a glob (a single `*`
+// in its LAST path segment) must match ≥1 FILE. Dependency-free; only a last-segment `*` is supported.
 function anchorExists(p) {
   if (typeof p !== "string" || !p) return false;
-  if (!p.includes("*")) return fs.existsSync(p);
+  const isFile = (f) => { try { return fs.statSync(f).isFile(); } catch { return false; } };
+  if (!p.includes("*")) return isFile(p);
   const slash = p.lastIndexOf("/");
   const dir = slash === -1 ? "." : p.slice(0, slash);
   const pattern = p.slice(slash + 1);
@@ -360,7 +363,7 @@ function anchorExists(p) {
   const suf = pattern.slice(star + 1);
   let entries;
   try { entries = fs.readdirSync(dir); } catch { return false; }
-  return entries.some((e) => e.length >= pre.length + suf.length && e.startsWith(pre) && e.endsWith(suf));
+  return entries.some((e) => e.length >= pre.length + suf.length && e.startsWith(pre) && e.endsWith(suf) && isFile(`${dir}/${e}`));
 }
 
 // ---- self-test: prove the guard catches what it claims ----------------------------------------
@@ -493,6 +496,13 @@ function selfTest() {
   }
   if (anchorExists("supabase/functions/_shared/zzz-no-such-file*.ts")) {
     fails.push("anchorExists glob matcher wrongly resolved a non-existent glob");
+  }
+  // Prove a bare DIRECTORY is REJECTED (Codex P2 — dir existence must not satisfy a file-level anchor).
+  if (anchorExists("supabase/functions/")) {
+    fails.push("anchorExists accepted a bare directory — a dir anchor cannot detect file-level drift (Codex P2)");
+  }
+  if (!anchorExists("supabase/functions/_shared/twilio.ts")) {
+    fails.push("anchorExists rejected a real file 'supabase/functions/_shared/twilio.ts' — the file resolver is broken");
   }
 
   if (fails.length) {
