@@ -73,12 +73,13 @@ const SAFE_STATUS = new Set(["rejected", "skipped", "escalated", "changes_reques
 // `.update (…)` — JS allows it and no lint forbids it), and an explicit TS generic type argument on
 // either call (`from<T>(…)`, `.update<any>(…)` — the PostgREST client exposes generic update/insert/
 // upsert; `<[^(]*>` spans the type arg, backtracking so nested generics like `<Foo<Bar>>` still
-// match) — immediately chained to `.update(`/`.upsert(`/`.insert(` (whitespace/newlines only between
+// match) and optional chaining on the write (`.from(…)?.update(…)`) — immediately chained to
+// `.update(`/`.upsert(`/`.insert(` (whitespace/newlines only between
 // the `)` and the write — a `.select()`/`.eq()` in between is a read, not this write, and the tight
 // adjacency also means a read here + an approved-write to a DIFFERENT table nearby is NOT conflated).
 // The capture ends at the `(` of the write; the argument list is then extracted with a
 // brace/paren/string-aware walker. Backtick table names are covered too.
-const FROM_WRITE = /from(?:\s*<[^(]*>)?\s*\(\s*["'`]paige_pending_approvals["'`][^)]*\)\s*\.(?:update|upsert|insert)(?:\s*<[^(]*>)?\s*\(/g;
+const FROM_WRITE = /from(?:\s*<[^(]*>)?\s*\(\s*["'`]paige_pending_approvals["'`][^)]*\)\s*\??\.\s*(?:update|upsert|insert)(?:\s*<[^(]*>)?\s*\(/g;
 
 // Comments are BLANKED, not deleted, so reported line numbers still match the real file.
 const strip = (t) =>
@@ -280,6 +281,9 @@ if (process.argv.includes("--self-test")) {
       [["f.ts", 'supabase.from("paige_pending_approvals").update<any>({ status: "approved" }).eq("id", id);']], 1],
     ["ignores a decline with a generic type arg (.update<Row>(…))",
       [["f.ts", 'supabase.from("paige_pending_approvals").update<Row>({ status: "rejected" }).eq("id", id);']], 0],
+    // Preemptive (round-7 hardening): optional chaining on the write must not evade the match.
+    ["catches an approved write via optional chaining (.from(…)?.update(…))",
+      [["f.ts", 'supabase.from("paige_pending_approvals")?.update({ status: "approved" }).eq("id", id);']], 1],
     // TS `as const` / `as T` assertions on the status literal must be tolerated (idiomatic here).
     ["allows a decline literal with an `as const` assertion",
       [["f.ts", 'supabase.from("paige_pending_approvals").insert({ status: "pending" as const, tenant_id: t });']], 0],
