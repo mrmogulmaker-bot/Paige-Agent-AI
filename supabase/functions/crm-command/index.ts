@@ -136,7 +136,29 @@ function summaryFor(command: z.infer<typeof commandSchema>, preview?: JsonObject
     if (command.action === "deal.delete") return `Permanently delete exactly 1 deal and affect ${Math.max(0, affected - 1)} linked record(s). The preview identifies which history rows are deleted and which tasks or invoices are detached.`;
   }
   const target = command.contact_id ?? command.company_id ?? command.task_id ?? command.deal_id ?? "a new record";
-  return `${command.action.replaceAll("_", " ")} for ${target}`;
+  const commandPatch = object(command.patch);
+  switch (command.action) {
+    case "contact.assign_coach":
+      return `Change contact ${target}'s coach to ${command.owner_user_id ?? "unassigned"}.`;
+    case "contact.assign_owner":
+      return `Change contact ${target}'s owner to ${command.owner_user_id ?? "unassigned"}.`;
+    case "deal.assign_owner":
+      return `Change deal ${target}'s owner to ${command.owner_user_id ?? "unassigned"}.`;
+    case "deal.assign_contact":
+      return `Change deal ${target}'s contact to ${command.contact_id ?? "unassigned"}.`;
+    case "deal.move":
+      return `Move deal ${target} to stage ${command.target_stage_id} in pipeline ${command.pipeline_id}.`;
+    case "deal.close":
+      return `Close deal ${target} as ${command.outcome_type}${command.outcome_date ? ` on ${command.outcome_date}` : ""}${command.reason ? `; reason: ${command.reason}` : ""}.`;
+    case "deal.reopen":
+      return `Reopen deal ${target} in stage ${command.target_stage_id}.`;
+    case "task.assign":
+      return `Assign task ${target} to ${String(commandPatch?.assignee_user_id ?? "unassigned")}.`;
+    case "task.cancel":
+      return `Cancel task ${target}${command.reason ? `; reason: ${command.reason}` : ""}.`;
+    default:
+      return `${command.action.replaceAll("_", " ")} for ${target}`;
+  }
 }
 
 serve(async (req) => {
@@ -393,7 +415,7 @@ serve(async (req) => {
   // focus (`?deal=`). CRM tasks still have no human record router, so task actions return only
   // the truthful Command Center surface URL and explicitly label it surface_only.
   const recordId = typeof readback?.id === "string" && readback.absent !== true ? readback.id : null;
-  const deepLink = surfaceUrl && tier === "solo" && recordId && (action.startsWith("contact.") || action.startsWith("company."))
+  const deepLink = surfaceUrl && tier === "solo" && recordId && action.startsWith("contact.")
     ? `${surfaceUrl}?person=${encodeURIComponent(recordId)}`
     : surfaceUrl && tier === "solo" && recordId && action.startsWith("deal.")
       ? `${surfaceUrl}?deal=${encodeURIComponent(recordId)}` : null;

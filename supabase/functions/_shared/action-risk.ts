@@ -371,7 +371,9 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // verify_business
   ["business_verify", "high", "sends a company's details to outside registries and scrapers"],
   // nav_pull_business_credit (nav-pull-profile)
+  ["nav_pull_business_credit", "high", "contacts a paid business-credit provider and persists sensitive credit data"],
   // smartcredit_pull_snapshot (smartcredit-pull-snapshot)
+  ["smartcredit_pull_snapshot", "high", "contacts a paid consumer-credit provider and persists sensitive credit data"],
   // propose_subagent
   ["subagent_create", "high", "can put a new specialist live without a separate approval"],
   // approve_subagent_proposal
@@ -517,7 +519,7 @@ const NON_MUTATING_EXEMPT: ReadonlyMap<string, string> = new Map([
 // (`unclassifiedWriteReason`) and the CI lint would ALSO catch a future unclassified `*_decide`
 // write, rather than relying on the classification alone. The lint keeps a byte-identical copy and
 // `checkVerbParity` fails the build if the two ever diverge.
-export const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|install|uninstall|grant|revoke|run|assign|enroll|book|set|draft|generate|file|advance|forge|archive|activate|deactivate|move|add|build|log|author|enable|disable|invite|upload|apply|approve|reject|decide|import|export|sync|write|post|schedule|cancel|start|stop|trigger|fire|configure|buy|purchase|name|rename|propose|provision|claim|release)(_|$)/;
+export const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|install|uninstall|grant|revoke|run|assign|enroll|book|set|draft|generate|file|advance|forge|archive|activate|deactivate|move|add|build|log|author|enable|disable|invite|upload|apply|approve|reject|decide|import|export|sync|write|post|schedule|cancel|start|stop|trigger|fire|configure|buy|purchase|pull|name|rename|propose|provision|claim|release)(_|$)/;
 
 /** Every classified action. This is what the handler gates on — there is no second list. */
 export function mutatingTools(): ReadonlySet<string> {

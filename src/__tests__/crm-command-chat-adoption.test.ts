@@ -38,5 +38,8 @@ describe("Paige Chat canonical CRM adoption", () => {
     expect(chat).toContain("paige_crm_result");
     expect(chat).toContain("crmResultTrace");
     expect(chat).toContain("receipt_recorded: parsed.receipt_recorded === true");
+    expect(chat).toContain('confirmFingerprint("crm_command_idempotency"');
+    expect(chat).toContain("tool_index: toolIndex");
+    expect(chat).not.toContain("const idempotencyKey = suppliedKey || crypto.randomUUID()");
   });
 });

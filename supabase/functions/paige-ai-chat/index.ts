@@ -8147,7 +8147,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       const executeToolCalls = async (toolCalls: any[], queuedApprovals: Array<{ id: string; summary: string; category: string; contact_id: string | null }>) => {
       const toolResults: any[] = [];
       const executed: any[] = [];
-      for (const tc of toolCalls) {
+      for (const [toolIndex, tc] of toolCalls.entries()) {
         if (!tc || !tc.function?.name) continue;
         // Actual dispatch boundary: the account may change after the model round was
         // consumed but before its proposed tools execute. This is asserted PER TOOL, not
@@ -8190,7 +8190,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           try { crmArgs = JSON.parse(tc.function.arguments || "{}"); } catch { crmArgs = {}; }
           const action = CRM_TOOL_TO_ACTION[tc.function.name as keyof typeof CRM_TOOL_TO_ACTION];
           const suppliedKey = typeof crmArgs.idempotency_key === "string" ? crmArgs.idempotency_key.trim() : "";
-          const idempotencyKey = suppliedKey || crypto.randomUUID();
+          const idempotencyKey = suppliedKey || await confirmFingerprint("crm_command_idempotency", {
+            thread_id: payloadThreadId ?? null,
+            messages,
+            tool_index: toolIndex,
+            tool_name: tc.function.name,
+            arguments: crmArgs,
+          });
           delete crmArgs.idempotency_key;
           delete crmArgs.confirm;
           let approvedFingerprint: string | undefined;

@@ -57,6 +57,14 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain('outcome: "setup_required"');
   });
 
+  it("renders exact consequential approval summaries and only labels owned record routes exact", () => {
+    for (const action of ["contact.assign_coach", "contact.assign_owner", "deal.assign_owner", "deal.assign_contact", "deal.move", "deal.close", "deal.reopen", "task.assign", "task.cancel"]) {
+      expect(edge).toContain(`case "${action}"`);
+    }
+    expect(edge).toContain('recordId && action.startsWith("contact.")');
+    expect(edge).not.toContain('action.startsWith("contact.") || action.startsWith("company.")');
+  });
+
   it("records the governed decision without CRM field values", () => {
     expect(edge).toContain('.from("paige_audit_log").insert({');
     expect(edge).toContain('action: "crm.governed_decision"');
