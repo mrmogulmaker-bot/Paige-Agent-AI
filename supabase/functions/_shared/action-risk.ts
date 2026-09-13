@@ -327,6 +327,8 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   ["skill_run", "high", "runs a recipe that can email, scrape and write on its own"],
   // verify_business
   ["business_verify", "high", "sends a company's details to outside registries and scrapers"],
+  // nav_pull_business_credit (nav-pull-profile)
+  ["nav_pull_business_credit", "high", "pulls a business credit profile from a paid external provider and records the scores"],
   // propose_subagent
   ["subagent_create", "high", "can put a new specialist live without a separate approval"],
   // approve_subagent_proposal
