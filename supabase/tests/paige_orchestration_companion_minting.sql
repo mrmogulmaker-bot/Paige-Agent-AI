@@ -9,7 +9,7 @@
 -- then RE-ENABLED and exercised via real INSERT/UPDATE, and the reconciler is called as the cron/service
 -- context (auth.uid() NULL) exactly as pg_cron invokes it.
 begin;
-select plan(49);
+select plan(52);
 
 -- Seed the tenant in NORMAL mode (triggers ON) so its account_number-assignment trigger fires.
 insert into public.tenants(id, slug, name, status, account_type, account_number_prefix, features) values
@@ -379,6 +379,25 @@ update public.paige_pending_approvals ppa
    and coalesce(ppa.summary, '') = '';
 select is((select summary from public.paige_pending_approvals where id='9a00000d-0000-4000-8000-00000000000d'),
           'Advance Journey Stage (stage slug: won)', 'repair: idempotent — a second run leaves the readable summary unchanged');
+
+-- ══ (H) GUARD HARDENING — the orchestration classification is immutable; the gate reads the STORED source, ═══
+-- so a caller cannot launder `source` to skip the executor-only approve gate (Codex re-review P1). 9a00000d is
+-- an orchestration companion still pending here; a same-tenant admin (JWT) attempts both launder shapes.
+set request.jwt.claim.sub = '77777777-7777-4777-8777-777777777777';
+select throws_ok(
+  $$ update public.paige_pending_approvals set status='approved', source='paige_action_bus'
+       where id='9a00000d-0000-4000-8000-00000000000d' $$,
+  '42501', NULL,
+  'guard: a combined status=approved + source-rewrite UPDATE is refused (source-immutability pin — closes the same-statement launder)');
+select throws_ok(
+  $$ update public.paige_pending_approvals set source='paige_action_bus'
+       where id='9a00000d-0000-4000-8000-00000000000d' $$,
+  '42501', NULL,
+  'guard: a source-ONLY rewrite of an orchestration approval is refused (broadened BEFORE UPDATE trigger — closes the two-step launder)');
+reset request.jwt.claim.sub;
+select ok((select source='paige_orchestration' and status='pending'
+             from public.paige_pending_approvals where id='9a00000d-0000-4000-8000-00000000000d'),
+          'guard: after the refused launder attempts the row is unchanged (still orchestration + pending)');
 
 select * from finish();
 rollback;

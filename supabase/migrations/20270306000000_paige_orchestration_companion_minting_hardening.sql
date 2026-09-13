@@ -174,7 +174,20 @@ as $$
 declare
   _resolved boolean;
 begin
-  if coalesce(new.source, '') <> 'paige_orchestration' then return new; end if;
+  -- Pin the classification (Codex re-review P1): a STORED paige_orchestration approval can never be reclassified
+  -- by an UPDATE. Without this, a caller could launder the row to another source — either in the SAME statement
+  -- as status='approved' (so a new.source-based gate would skip the check) or in a source-only UPDATE first —
+  -- and then flip it approved while the held act is still approval_pending. Refuse any source rewrite of an
+  -- orchestration row, for ANY caller (the executor/reconciler never change source, so this never blocks them).
+  if coalesce(old.source, '') = 'paige_orchestration' and new.source is distinct from old.source then
+    raise exception
+      'ORCH_APPROVAL_SOURCE_IMMUTABLE: a paige_orchestration approval''s source cannot be rewritten — doing so '
+      'would launder the row past the executor-only approve gate'
+      using errcode = '42501';
+  end if;
+  -- Gate on the STORED source (old.source), NEVER the mutable new.source: a combined UPDATE cannot flip source
+  -- in the same statement to dodge the check, and (with the pin above) a source-only update cannot pre-launder it.
+  if coalesce(old.source, '') <> 'paige_orchestration' then return new; end if;
   if new.status = 'approved' and old.status <> 'approved' then
     -- (a) The ONLY sanctioned approver is the SERVICE-ROLE Layer-C executor/reconciler (auth.uid() IS NULL):
     --     execute-approval stamps the approval with the service-role client (verified). A JWT/browser caller may
@@ -209,8 +222,20 @@ end $$;
 comment on function public.paige_guard_orchestration_direct_approve() is
   'C5 s2 (fix-forward): a source=paige_orchestration approval may reach status=approved ONLY when written by '
   'the service-role Layer-C executor/reconciler (auth.uid() NULL) AND the canonical paige_act_executions '
-  'ledger row for (event_id, act_id) is terminal (executed|failed). Refuses any JWT caller and never trusts the '
-  'browser-editable metadata.act_outcome (§13/§70). No-op for non-orchestration rows.';
+  'ledger row for (event_id, act_id) is terminal (executed|failed). Gates on the STORED source (old.source) and '
+  'refuses any source rewrite, so the classification cannot be laundered to dodge the gate. Refuses any JWT '
+  'caller and never trusts the browser-editable metadata.act_outcome (§13/§70). No-op for non-orchestration rows.';
+
+-- Broaden the guard trigger from BEFORE UPDATE OF status to BEFORE UPDATE (all columns) so the source-immutability
+-- pin above also fires on a source-ONLY rewrite (Codex re-review P1 — a `BEFORE UPDATE OF status` trigger never
+-- sees a source-only UPDATE, which is the first leg of a two-step launder). The approve-gate itself still
+-- self-scopes to the status->approved transition, so this only ADDS coverage; it removes no behavior (§58). The
+-- function fast-returns for non-orchestration rows, so the wider event scope is cheap.
+drop trigger if exists trg_paige_guard_orchestration_direct_approve on public.paige_pending_approvals;
+create trigger trg_paige_guard_orchestration_direct_approve
+  before update on public.paige_pending_approvals
+  for each row
+  execute function public.paige_guard_orchestration_direct_approve();
 
 -- ── (3) reconciler: stamp the companion from the RPC's ACTUAL returned outcome (finding #3). ──────────────
 create or replace function public.paige_reconcile_orchestration_acts()
