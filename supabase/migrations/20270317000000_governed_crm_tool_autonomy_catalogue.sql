@@ -1,8 +1,8 @@
--- Reconcile the COMPLETE latest autonomy catalogue after the Calendar E5 re-declaration.
--- The later 20270305000000 body predated the governed CRM candidate and otherwise hid 23
--- source-backed CRM controls plus the two already-classified paid credit-pull controls.
--- This changes visibility only: it does not add an executable action or grant autonomy.
--- Every restored mutation remains governed by its existing action-risk classification and
+-- Reconcile the COMPLETE latest autonomy catalogue after Calendar-link E7.
+-- The 20270316000000 body preserves the Calendar-link send action but predates the governed
+-- CRM candidate and otherwise hides 23 source-backed CRM controls plus two already-classified
+-- paid credit-pull controls. This changes visibility only: it does not add an executable action
+-- or grant autonomy. Every restored mutation keeps its existing action-risk classification and
 -- defaults to 'confirm'.
 CREATE OR REPLACE FUNCTION public.list_tool_autonomy(_tenant_id uuid DEFAULT NULL)
 RETURNS TABLE (
@@ -61,6 +61,10 @@ BEGIN
       ('booking_preset_duplicate',      'Duplicate a booking calendar', 'Calendar'),
       ('booking_preset_archive',        'Archive a booking calendar', 'Calendar'),
       ('booking_preset_restore',        'Restore a booking calendar', 'Calendar'),
+      -- ── added 2026-09-13 (E7): the governed calendar-link SHARE. Sends a published calendar's
+      -- public /book link to a contact by email/SMS; HIGH in action-risk.ts (never bypassable by a
+      -- stored mode). The prepare/social-copy reads are not catalogued.
+      ('calendar_link_send',            'Send a booking link to a contact', 'Calendar'),
       ('program_enroll',                'Enroll a client in a program', 'Programs'),
       ('draft_marketing_content',       'Draft marketing content', 'Content'),
       ('generate_image',                'Generate an image', 'Content'),
