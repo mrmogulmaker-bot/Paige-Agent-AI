@@ -33,6 +33,7 @@ const POLICY = "supabase/functions/_shared/action-risk.ts";
 const CHAT = "supabase/functions/paige-ai-chat/index.ts";
 const MCP_POLICY = "supabase/functions/_shared/paige-mcp/capability-policy.ts";
 const SOCIAL_HANDLER = "supabase/functions/paige-social/index.ts";
+const CRM_CATALOG = "supabase/functions/_shared/crm-command/catalog.ts";
 
 /** Every classified action, as `[tool, class, reason]`, read from the policy's own table. */
 export function parsePolicy(src) {
@@ -266,6 +267,15 @@ if (chatSrc.includes('...CALENDAR_LINK_TOOLS')) {
   const linkTools = [...source.matchAll(/\bname:\s*"(calendar_link_[a-z_]+)"/g)].map(m => m[1]);
   if (!linkTools.length) throw new Error('Calendar Link catalog could not be parsed');
   importedTools.push(...linkTools);
+}
+if (chatSrc.includes('...CRM_COMMAND_TOOLS')) {
+  if (!/import\s*\{[^}]*CRM_COMMAND_TOOLS[^}]*\}\s*from\s*['"]\.\.\/_shared\/crm-command\/catalog\.ts['"]/.test(chatSrc)) throw new Error('Unresolved CRM command catalog import');
+  const source = fs.readFileSync(CRM_CATALOG, 'utf8');
+  const mapStart = source.indexOf("export const CRM_ACTION_CAPABILITY");
+  const mapEnd = source.indexOf("} as const;", mapStart);
+  const crmTools = [...source.slice(mapStart, mapEnd).matchAll(/"[a-z._]+":\s*"([a-z0-9_]+)"/g)].map(m => m[1]);
+  if (!crmTools.length) throw new Error('CRM command catalog could not be parsed');
+  importedTools.push(...crmTools);
 }
 const mcpCanonicals = parseMcpCanonicals(fs.readFileSync(MCP_POLICY, "utf8"));
 const governedEdgeActions = parseGovernedEdgeActions(fs.readFileSync(SOCIAL_HANDLER, "utf8"));

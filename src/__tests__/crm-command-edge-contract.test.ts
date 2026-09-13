@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const edge = readFileSync("supabase/functions/crm-command/index.ts", "utf8");
+const catalog = readFileSync("supabase/functions/_shared/crm-command/catalog.ts", "utf8");
 
 describe("canonical CRM action door", () => {
   it("accepts no tenant, actor, role, or account identity from the request", () => {
@@ -10,15 +11,18 @@ describe("canonical CRM action door", () => {
     expect(edge).not.toMatch(/tenant_id:\s*z\./);
     expect(edge).not.toMatch(/actor_id:\s*z\./);
     expect(edge).not.toMatch(/actor_role:\s*z\./);
-    expect(edge).toContain("owner_user_id: z.string().uuid().optional()");
+    expect(edge).toContain("owner_user_id: z.string().uuid().nullable().optional()");
     expect(edge).toContain("caller.auth.getUser()");
     expect(edge).toContain('caller.rpc("current_user_tenant_id")');
+    expect(edge.match(/caller\.rpc\("current_user_tenant_id"\)/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(edge).toContain("CRM_ACTIVE_ACCOUNT_CHANGED");
   });
 
   it("binds each command to an existing classified capability", () => {
-    for (const capability of ["crm_create_contact", "crm_update_contact", "business_create", "business_update", "crm_create_task", "crm_update_task", "plan_assign_task", "crm_log_activity", "deal_move_stage"]) {
-      expect(edge).toContain(`"${capability}"`);
+    for (const capability of ["crm_create_contact", "crm_update_contact", "crm_archive_contact", "crm_restore_contact", "crm_link_contact_company", "crm_unlink_contact_company", "crm_assign_coach", "crm_assign_contact_owner", "crm_merge_contacts", "crm_hard_delete_contact", "crm_bulk_update_contacts", "crm_create_company", "crm_update_company", "crm_archive_company", "crm_restore_company", "crm_create_task", "crm_update_task", "crm_assign_task", "crm_reschedule_task", "crm_complete_task", "crm_reopen_task", "crm_cancel_task", "crm_delete_task", "crm_log_activity", "deal_create", "crm_update_deal", "crm_assign_deal_owner", "crm_assign_deal_contact", "deal_move_stage", "crm_close_deal", "crm_reopen_deal", "crm_delete_deal"]) {
+      expect(catalog).toContain(`"${capability}"`);
     }
+    expect(edge).toContain("CRM_ACTION_CAPABILITY as ACTION_CAPABILITY");
     expect(edge).toContain("decideGovernedExecution({");
     expect(edge).toContain('outcomeChannel: "record_capability_run"');
   });
@@ -37,7 +41,9 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain("consumed_at");
     expect(edge).toContain("server_issued_at");
     expect(edge).toContain("issued_in_request");
-    expect(edge).toContain("confirmFingerprint(capability, requestArgs)");
+    expect(edge).toContain("confirmFingerprint(capability, proposalArgs)");
+    expect(edge).toContain('admin.rpc("preview_crm_command"');
+    expect(edge).toContain("command: { action: body.command.action, preview_id: preview.preview_id }");
     expect(edge).not.toMatch(/confirm:\s*z\.boolean/);
   });
 
@@ -48,6 +54,7 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain("record_locator");
     expect(edge).toContain('approval_channel: decision.audit.laneEffective');
     expect(edge).toContain("readback");
+    expect(edge).toContain('outcome: "setup_required"');
   });
 
   it("records the governed decision without CRM field values", () => {

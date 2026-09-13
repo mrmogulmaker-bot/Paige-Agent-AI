@@ -3,6 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
 import { confirmFingerprint } from "../_shared/confirm-fingerprint.ts";
 import { decideGovernedExecution } from "../_shared/paige-spine/governedExecution.ts";
+import { CRM_ACTION_CAPABILITY as ACTION_CAPABILITY, type CrmAction } from "../_shared/crm-command/catalog.ts";
+import { canonicalAppUrl, type CanonicalTier } from "../_shared/canonical-app-url.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -10,41 +12,26 @@ const cors = {
   "Content-Type": "application/json",
 };
 
-const ACTION_CAPABILITY = {
-  "contact.create": "crm_create_contact",
-  "contact.update": "crm_update_contact",
-  "contact.archive": "crm_update_contact",
-  "contact.restore": "crm_update_contact",
-  "contact.link_company": "crm_update_contact",
-  "contact.unlink_company": "crm_update_contact",
-  "company.create": "business_create",
-  "company.update": "business_update",
-  "company.archive": "business_update",
-  "company.restore": "business_update",
-  "task.create": "crm_create_task",
-  "task.update": "crm_update_task",
-  "task.assign": "plan_assign_task",
-  "task.reschedule": "crm_update_task",
-  "task.complete": "crm_update_task",
-  "task.reopen": "crm_update_task",
-  "activity.log": "crm_log_activity",
-  "deal.create": "deal_create",
-  "deal.move": "deal_move_stage",
-  "deal.close": "deal_move_stage",
-  "deal.reopen": "deal_move_stage",
-} as const;
 
-type CrmAction = keyof typeof ACTION_CAPABILITY;
 type JsonObject = Record<string, unknown>;
+
+const PREVIEW_REQUIRED_ACTIONS = new Set<CrmAction>([
+  "contact.merge", "contact.hard_delete", "contact.bulk_update", "task.delete", "deal.delete",
+]);
 
 const commandSchema = z.object({
   action: z.enum(Object.keys(ACTION_CAPABILITY) as [CrmAction, ...CrmAction[]]),
-  contact_id: z.string().uuid().optional(),
+  contact_id: z.string().uuid().nullable().optional(),
+  loser_contact_id: z.string().uuid().nullable().optional(),
+  expected_loser_updated_at: z.string().datetime({ offset: true }).optional(),
+  target_ids: z.array(z.string().uuid()).min(1).max(200).optional(),
+  resolutions: z.record(z.enum(["survivor", "loser"])).optional(),
+  preview_id: z.string().uuid().optional(),
   company_id: z.string().uuid().optional(),
   task_id: z.string().uuid().optional(),
   deal_id: z.string().uuid().optional(),
   stage_id: z.string().uuid().optional(),
-  owner_user_id: z.string().uuid().optional(),
+  owner_user_id: z.string().uuid().nullable().optional(),
   title: z.string().trim().min(1).max(300).optional(),
   value_cents: z.number().int().nonnegative().optional(),
   currency: z.string().regex(/^[A-Z]{3}$/).optional(),
@@ -65,9 +52,12 @@ const commandSchema = z.object({
   const requireField = (field: keyof typeof command) => {
     if (command[field] === undefined) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: `${String(field)} is required for ${command.action}` });
   };
-  if (command.action.startsWith("contact.") && command.action !== "contact.create") {
+  if (command.action.startsWith("contact.") && !["contact.create", "contact.bulk_update"].includes(command.action)) {
     requireField("contact_id"); requireField("expected_updated_at");
   }
+  if (command.action === "contact.merge") { requireField("loser_contact_id"); requireField("expected_loser_updated_at"); }
+  if (command.action === "contact.bulk_update") { requireField("target_ids"); requireField("patch"); }
+  if (["contact.assign_coach", "contact.assign_owner"].includes(command.action)) requireField("owner_user_id");
   if (command.action === "contact.link_company") requireField("company_id");
   if (command.action === "contact.create" || command.action === "contact.update" || command.action === "company.create" || command.action === "company.update") requireField("patch");
   if (command.action === "company.create") requireField("contact_id");
@@ -81,11 +71,23 @@ const commandSchema = z.object({
   if (["task.update", "task.assign", "task.reschedule"].includes(command.action)) requireField("patch");
   if (command.action === "activity.log") { requireField("contact_id"); requireField("patch"); }
   if (command.action === "deal.create") { requireField("title"); requireField("pipeline_id"); requireField("stage_id"); }
+  if (command.action === "deal.update") {
+    requireField("deal_id"); requireField("expected_version");
+    if (command.owner_user_id !== undefined || command.contact_id !== undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["action"], message: "Use the separately governed deal assignment action." });
+    }
+  }
+  if (command.action === "deal.create" && command.owner_user_id !== undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["owner_user_id"], message: "Assign the deal owner through the separately governed action." });
+  }
+  if (command.action === "deal.assign_owner") { requireField("deal_id"); requireField("expected_version"); requireField("owner_user_id"); }
+  if (command.action === "deal.assign_contact") { requireField("deal_id"); requireField("expected_version"); requireField("contact_id"); }
   if (command.action === "deal.move") {
     requireField("deal_id"); requireField("pipeline_id"); requireField("target_stage_id"); requireField("expected_version"); requireField("expected_target_version");
   }
   if (command.action === "deal.close") { requireField("deal_id"); requireField("expected_version"); requireField("outcome_type"); }
   if (command.action === "deal.reopen") { requireField("deal_id"); requireField("expected_version"); requireField("target_stage_id"); }
+  if (command.action === "deal.delete") { requireField("deal_id"); requireField("expected_version"); }
 });
 
 const bodySchema = z.object({
@@ -102,7 +104,30 @@ function response(status: number, body: JsonObject): Response {
   return new Response(JSON.stringify(body), { status, headers: cors });
 }
 
-function summaryFor(command: z.infer<typeof commandSchema>): string {
+function summaryFor(command: z.infer<typeof commandSchema>, preview?: JsonObject | null): string {
+  if (preview) {
+    const affected = typeof preview.affected_count === "number" ? preview.affected_count
+      : typeof preview.eligible_count === "number" ? preview.eligible_count : 1;
+    const refused = typeof preview.refused_count === "number" ? preview.refused_count : 0;
+    if (command.action === "contact.merge") {
+      const survivor = object(preview.survivor); const loser = object(preview.loser);
+      const dependencies = object(preview.dependency_counts);
+      const conflicts = Array.isArray(preview.conflicts) ? preview.conflicts : [];
+      const conflictSummary = conflicts.map((item) => {
+        const conflict = object(item);
+        return `${String(conflict?.field ?? "field")}: ${String(conflict?.survivor ?? "empty")} / ${String(conflict?.loser ?? "empty")} → keep ${String(conflict?.resolution ?? "survivor")}`;
+      }).join("; ");
+      return `Merge contact ${String(loser?.client_ref ?? loser?.id ?? "(unknown)")} into ${String(survivor?.client_ref ?? survivor?.id ?? "(unknown)")}; reassign ${String(dependencies?.supported ?? 0)} supported dependent record(s), then archive the losing contact.${conflictSummary ? ` Conflict preview: ${conflictSummary}.` : " No conflicting populated fields were found."}`;
+    }
+    if (command.action === "contact.bulk_update") {
+      const targets = Array.isArray(preview.eligible_targets) ? preview.eligible_targets.map((item) => object(item)?.client_ref ?? object(item)?.id).filter(Boolean) : [];
+      const shown = targets.slice(0, 10).join(", ");
+      return `Update exactly ${affected} eligible contact(s)${shown ? ` (${shown}${targets.length > 10 ? `, plus ${targets.length - 10} more` : ""})` : ""}; ${refused} requested target(s) were refused or ineligible. Any version change before execution stops the whole write.`;
+    }
+    if (command.action === "contact.hard_delete") return `Permanently delete this one unlinked, dependency-free contact. The server verified 0 dependencies; this cannot be undone.`;
+    if (command.action === "task.delete") return `Permanently delete exactly 1 task. This cannot be undone.`;
+    if (command.action === "deal.delete") return `Permanently delete exactly 1 deal and affect ${Math.max(0, affected - 1)} linked record(s). The preview identifies which history rows are deleted and which tasks or invoices are detached.`;
+  }
   const target = command.contact_id ?? command.company_id ?? command.task_id ?? command.deal_id ?? "a new record";
   return `${command.action.replaceAll("_", " ")} for ${target}`;
 }
@@ -139,6 +164,13 @@ serve(async (req) => {
   if (tenantError || typeof tenantId !== "string") {
     return response(403, { ok: false, code: "CRM_TENANT_REQUIRED" });
   }
+  // Active account is mutable session state. Re-read it at the last responsible moment so
+  // an account switch between request authentication, approval, and execution cannot write the
+  // tenant that was active earlier in the request.
+  const activeTenantStillMatches = async (): Promise<boolean> => {
+    const { data, error } = await caller.rpc("current_user_tenant_id");
+    return !error && data === tenantId;
+  };
 
   const { data: member, error: memberError } = await admin.from("tenant_members")
     .select("role,status")
@@ -148,6 +180,9 @@ serve(async (req) => {
     .maybeSingle();
   const role = typeof member?.role === "string" ? member.role : null;
   const accessAllowed = !memberError && ["owner", "admin", "coach"].includes(role ?? "");
+  const { data: tenantRoute } = await admin.from("tenants")
+    .select("account_number,account_type,parent_tenant_id")
+    .eq("id", tenantId).maybeSingle();
   const capability = ACTION_CAPABILITY[body.command.action];
   const requestArgs = { command: body.command, idempotency_key: body.idempotency_key };
 
@@ -159,11 +194,6 @@ serve(async (req) => {
   if (!laneError && typeof resolvedLane === "string" && ["auto", "confirm", "off"].includes(resolvedLane)) {
     lane = resolvedLane;
   }
-  // Assignment changes whose queue owns the work. It always uses the existing
-  // confirmation store even when the workspace ordinary-action lane is auto.
-  if (body.command.action === "task.assign" && lane === "auto") lane = "confirm";
-  if (["deal.close", "deal.reopen"].includes(body.command.action) && lane === "auto") lane = "confirm";
-  if (body.command.action === "deal.create" && body.command.owner_user_id && body.command.owner_user_id !== user.id && lane === "auto") lane = "confirm";
 
   const requestNonce = crypto.randomUUID();
   let claimedArgs: JsonObject | null | undefined;
@@ -249,8 +279,36 @@ serve(async (req) => {
   }
 
   if (decision.kind === "propose") {
-    const fingerprint = await confirmFingerprint(capability, requestArgs);
-    const summary = summaryFor(body.command);
+    if (!(await activeTenantStillMatches())) {
+      return response(409, { ok: false, outcome: "refused", code: "CRM_ACTIVE_ACCOUNT_CHANGED", message: "The active workspace changed. Reopen the record there before trying again." });
+    }
+    let proposalArgs: JsonObject = requestArgs;
+    let preview: JsonObject | null = null;
+    if (PREVIEW_REQUIRED_ACTIONS.has(body.command.action)) {
+      const { data: previewData, error: previewError } = await admin.rpc("preview_crm_command", {
+        _tenant_id: tenantId,
+        _actor_id: user.id,
+        _command: body.command,
+        _preview_key: `${body.idempotency_key}:preview`,
+      });
+      preview = object(previewData);
+      if (previewError || !preview) {
+        const code = /^(CRM|PIPELINE)_[A-Z0-9_:,-]+$/.test(previewError?.message ?? "") ? previewError!.message : "CRM_PREVIEW_FAILED";
+        return response(code.includes("VERSION_CONFLICT") ? 409 : 422, { ok: false, outcome: "failed", code });
+      }
+      if (preview.eligible !== true) {
+        return response(422, { ok: false, outcome: "refused", code: "CRM_PREVIEW_INELIGIBLE", preview });
+      }
+      if (typeof preview.preview_id !== "string") {
+        return response(503, { ok: false, outcome: "refused", code: "CRM_PREVIEW_BINDING_FAILED" });
+      }
+      proposalArgs = {
+        command: { action: body.command.action, preview_id: preview.preview_id },
+        idempotency_key: body.idempotency_key,
+      };
+    }
+    const fingerprint = await confirmFingerprint(capability, proposalArgs);
+    const summary = summaryFor(body.command, preview);
     let { data: proposal, error: proposalError } = await admin.from("paige_pending_confirmations").insert({
       user_id: user.id,
       tenant_id: tenantId,
@@ -260,7 +318,7 @@ serve(async (req) => {
       fingerprint,
       issued_in_request: requestNonce,
       server_issued_at: new Date().toISOString(),
-      args: requestArgs,
+      args: proposalArgs,
       summary,
     }).select("summary,expires_at").maybeSingle();
     if (proposalError?.code === "23505") {
@@ -287,6 +345,7 @@ serve(async (req) => {
       summary: proposal.summary ?? summary,
       expires_at: proposal.expires_at ?? null,
       revalidate: decision.revalidate,
+      ...(preview ? { preview } : {}),
     });
   }
 
@@ -297,6 +356,9 @@ serve(async (req) => {
     return response(403, { ok: false, outcome: "refused", code: "CRM_APPROVAL_CLAIM_INVALID" });
   }
 
+  if (!(await activeTenantStillMatches())) {
+    return response(409, { ok: false, outcome: "refused", code: "CRM_ACTIVE_ACCOUNT_CHANGED", message: "The active workspace changed. Nothing was executed; reopen the record in the current workspace." });
+  }
   const executionCommand = typeof decidedCommand.action === "string" && decidedCommand.action.startsWith("deal.")
     ? { ...decidedCommand, approval_channel: decision.audit.laneEffective === "confirm" ? "operator_card" : "standing_autonomy_setting" }
     : decidedCommand;
@@ -308,16 +370,36 @@ serve(async (req) => {
   });
   if (commandError) {
     const code = /^(CRM|PIPELINE)_[A-Z0-9_:,-]+$/.test(commandError.message ?? "") ? commandError.message : "CRM_COMMAND_FAILED";
+    if (code === "CRM_COMPANY_OWNER_SETUP_REQUIRED") return response(409, { ok: false, outcome: "setup_required", code, message: "This CRM-only contact needs an active tenant owner before a company can be created. Restore or assign the workspace owner, then retry." });
     return response(code.includes("VERSION_CONFLICT") ? 409 : 422, { ok: false, outcome: "failed", code });
   }
 
+  const resultObject = object(result) ?? { ok: false, outcome: "failed" };
+  const readback = object(resultObject.readback);
+  const action = typeof decidedCommand.action === "string" ? decidedCommand.action : body.command.action;
+  const destination = action.startsWith("deal.") ? "pipeline" : action.startsWith("task.") ? "tasks" : "contacts";
+  const accountType = typeof tenantRoute?.account_type === "string" ? tenantRoute.account_type : "standalone";
+  const tier: CanonicalTier = tenantRoute?.parent_tenant_id ? "sub_account"
+    : accountType === "agency" ? "agency" : accountType === "enterprise" ? "enterprise" : "solo";
+  const surfaceUrl = canonicalAppUrl({ actor: "account", tier, account: tenantRoute?.account_number ?? null, destination });
+  // The current Solo routers own unified People/business focus (`?person=`) and Pipeline deal
+  // focus (`?deal=`). CRM tasks still have no human record router, so task actions return only
+  // the truthful Command Center surface URL and explicitly label it surface_only.
+  const recordId = typeof readback?.id === "string" && readback.absent !== true ? readback.id : null;
+  const deepLink = surfaceUrl && tier === "solo" && recordId && (action.startsWith("contact.") || action.startsWith("company."))
+    ? `${surfaceUrl}?person=${encodeURIComponent(recordId)}`
+    : surfaceUrl && tier === "solo" && recordId && action.startsWith("deal.")
+      ? `${surfaceUrl}?deal=${encodeURIComponent(recordId)}` : null;
   return response(200, {
-    ...(object(result) ?? { ok: false, outcome: "failed" }),
+    ...resultObject,
     capability,
     record_locator: {
-      surface: body.command.action.startsWith("deal.") ? "campaigns" : body.command.action.startsWith("task.") ? "command-center" : "clients",
-      tab: body.command.action.startsWith("deal.") ? "pipeline" : body.command.action.startsWith("company.") ? "companies" : body.command.action.startsWith("task.") ? "tasks" : "people",
-      record_id: object(result)?.readback && object(object(result)?.readback)?.id ?? null,
+      surface: action.startsWith("deal.") ? "campaigns" : action.startsWith("task.") ? "command-center" : "clients",
+      tab: action.startsWith("deal.") ? "pipeline" : action.startsWith("task.") ? "tasks" : "people",
+      record_id: readback?.id ?? null,
+      surface_url: surfaceUrl,
+      deep_link: deepLink,
+      deep_link_status: deepLink ? "exact" : surfaceUrl ? "surface_only" : "unavailable",
     },
   });
 });

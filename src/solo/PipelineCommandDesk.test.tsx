@@ -95,7 +95,7 @@ describe("Pipeline Command Desk MVP", () => {
     act(() => root.unmount());
     host.remove();
   });
-  const render = (data = makeData()) =>
+  const render = (data = makeData(), extra: Record<string, unknown> = {}) =>
     act(() =>
       root.render(
         <PipelineCommandDesk
@@ -107,10 +107,24 @@ describe("Pipeline Command Desk MVP", () => {
           onCreatePipeline={vi.fn()}
           onManage={vi.fn()}
           onFolders={vi.fn()}
+          {...extra}
         />,
       ),
     );
 
+  it("opens the exact deal owned by a result deep link and clears it on close", () => {
+    const clear = vi.fn();
+    render(makeData(), { focusDealId: "d1", onClearFocus: clear });
+    expect(host.querySelector('[role="dialog"]')?.textContent).toContain("Jordan Lee");
+    act(() => host.querySelector<HTMLButtonElement>('[role="dialog"] button[aria-label="Close"]')?.click());
+    expect(clear).toHaveBeenCalledOnce();
+  });
+
+  it("refuses a missing or cross-workspace deal deep link without showing another record", () => {
+    render(makeData(), { focusDealId: "forged-deal" });
+    expect(host.textContent).toContain("Deal record unavailable in this workspace. Nothing was changed.");
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+  });
   it("creates a deal through the tenant-owned deal contract", async () => {
     const data = makeData();
     render(data);

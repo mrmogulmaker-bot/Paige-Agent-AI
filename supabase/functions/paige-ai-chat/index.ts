@@ -1,6 +1,7 @@
 import { BUSINESS_MISSION_TOOLS } from '../_shared/paige-spine/domains/business_mission.ts';
 import { executeVerifiedMissionMutation, resolveBusinessMissionThreadContext, resolveSelectedBusinessMissionContext } from '../_shared/business-mission-tenant-brain.ts';
 import { CAMPAIGN_BRIEF_TOOLS } from '../_shared/paige-spine/domains/campaigns.ts';
+import { CRM_COMMAND_TOOLS, CRM_COMMAND_TOOL_NAMES, CRM_TOOL_TO_ACTION } from '../_shared/crm-command/catalog.ts';
 import { executeVerifiedCampaignBriefMutation, resolveCampaignBriefListContext } from '../_shared/campaign-brief-tenant-brain.ts';
 import { CALENDAR_PRESET_TOOLS } from '../_shared/paige-spine/domains/calendar_preset.ts';
 import { executeVerifiedCalendarPresetMutation, resolveCalendarPresetListContext, type CalendarPresetMutationTool } from '../_shared/calendar-preset-tenant-brain.ts';
@@ -5063,10 +5064,14 @@ The current user is an ADMIN or COACH operating the Paige CRM. You have full rea
 - "Set up a pipeline for my program" / "Help me organize this workflow" → read the tenant's current pipeline context with pipeline_catalogue, propose an editable name, purpose, and stage list in the operator's own vocabulary, refine it with them, then use pipeline_configure (confirm-gated) to save the draft. Do not impose preset stages, a generic sales taxonomy, won/lost meanings, or activation. Activate only after the operator reviews the saved draft and explicitly asks.
 - "Archive that pipeline" → require one exact PPL reference. Call pipeline_archive_preview, state the returned exact name, reference, deal count, and consequence, wait for the owner's confirmation, then call pipeline_configure with the same token and confirmed reference. Archive never inherits auto mode and hard delete is unavailable.
 - "Organize my pipelines" → pipeline_catalogue returns tenant folders (including empty folders), virtual Unfiled, and each exact pipeline/folder binding even with zero deals. Use pipeline_configure to create, rename, restore, or move exact pipelines by id + PPL reference. Folder archive is owner-only and always confirm-gated: call pipeline_folder_archive_preview for the exact folder id, state its returned name, pipeline count, and consequence, wait for the owner confirmation card, then pass the same token/id/name to pipeline_configure. Folders are one level only and never alter stages, deals, or pipeline identity.
-- "Add a deal for Jane, $3k, in Proposal" → resolve the pipeline/stage (crm_pipeline_summary or crm_list_deals) and the contact (crm_search_contacts), then deal_create (value in CENTS, confirm-gated).
-- "Move the Acme deal to Won" → crm_list_deals to get the deal id + target stage id, then deal_move_stage (confirm-gated).
+- "Add a deal for Jane, $3k, in Proposal" → resolve the exact pipeline, stage, and contact from current CRM reads, then call deal_create with value in cents.
+- "Move the Acme deal to Won" → read the exact deal and target stage, including their current version fields, then call deal_move_stage.
+- For any CRM mutation, use only the governed crm_* or deal_* command tool currently exposed in this turn. Never reuse remembered IDs or versions, invent an approval, or retry an unknown outcome with changed arguments.
+- Ownership, close/reopen, merge, hard-delete, bulk, and permanent task/deal deletion are approval-card operations. Explain the exact preview and wait; the operator's prose alone is not an approval token.
+- crm_cancel_task retains task history. crm_delete_task is permanent. Prefer archive/cancel over permanent deletion when that satisfies the request.
+- crm_log_activity records an INTERNAL historical note, call, meeting, email, or SMS activity only. It never sends a message and never places a call; say that explicitly in the result.
 
-Always resolve names/emails to client_ref via crm_search_contacts before calling crm_get_contact_summary, crm_update_pipeline_stage, or crm_log_activity. Present results as concise operator briefings — counts, names, dollar amounts, last-touch dates — never raw JSON. When the operator asks about a specific customer, lead with: lifecycle stage, assigned coach, open deal value, last activity, and the next recommended action. You are their CRM co-pilot, not just a chat assistant.
+Always resolve names or emails with current CRM search/read tools before acting, and use the exact IDs plus updated_at/version fields those reads return. Present durable readback and receipt state as a concise operator briefing—changed record, exact outcome, and the returned route locator—never raw JSON and never a fabricated success or link. If a route locator says surface_only or unavailable, do not describe it as a record deep link. When the operator asks about a specific customer, lead with lifecycle stage, assigned coach, open deal value, last activity, and the next recommended action. You are their governed CRM operator, not merely a chat assistant.
 
 BUSINESS BRIEF — YOU HELP THE OWNER COMPLETE IT, BUT YOU NEVER SILENTLY CHANGE BUSINESS TRUTH. When the operator asks to "set up my business", "add our company details", or tells you about their identity, offers, customers, direction, goals, constraints, voice, operating preferences, or business representatives, use the business brief already present in your context and ask ONE tight grouped set of questions only for what is missing. The Paige workspace URL is not automatically the real business website; never substitute it. A business representative is an existing active Team member selected in Setup; it is not a Team membership or role change. Resolve a named representative with crm_list_team, then propose their returned user id in representativeUserIds. Never invent an id or add a person to Team. Read back the proposed change, get their yes, then call propose_business_brief_update with confirm:true. That stages a visible suggestion in Settings → Setup; it does NOT save the brief. Tell the owner to review and save it there. Setup owns business truth. Team owns people, invitations, access and roles. Connections owns email/provider/payment configuration. Never put an email-provider change or a new team member into the business brief. If they are updating a CLIENT instead, use crm_update_contact.
 
@@ -7011,6 +7016,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           },
     ];
 
+    // CRM/Pipeline mutations are declared by the single shared command catalogue. Remove the
+    // legacy Chat-local writers from the model surface; their old dispatch branches remain only
+    // as tombstoned code until a separate cleanup, and are unreachable from this manifest.
+    const legacyCrmMutationTools = new Set([
+      "crm_create_contact", "crm_update_contact", "crm_delete_contact", "crm_update_pipeline_stage",
+      "crm_assign_coach", "crm_assign_contact", "crm_create_task", "crm_log_activity",
+      "deal_create", "deal_move_stage",
+    ]);
+    for (let i = toolDefs.length - 1; i >= 0; i -= 1) {
+      if (legacyCrmMutationTools.has((toolDefs[i] as any)?.function?.name)) toolDefs.splice(i, 1);
+    }
+    toolDefs.push(...CRM_COMMAND_TOOLS as any);
+
     // ── AUTONOMY GATE WIRING ─────────────────────────────────────────────────
     // Every tool that writes, creates, or changes state is governed by the
     // tenant's autonomy policy (tenant_tool_autonomy). Default mode is 'confirm':
@@ -7162,6 +7180,23 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         if (error) {
           console.error("[paige] confirm decline not recorded", JSON.stringify({ code: error.code ?? null }));
           return false;
+        }
+        // CRM command proposals are intentionally action-door scoped (tenant + actor + exact
+        // capability) and carry NULL thread/client scope because the Edge Function cannot trust
+        // model/request-provided scope. Record an inline-card decline against that exact, server-
+        // issued proposal too. The tool-name restriction prevents this fallback from consuming a
+        // proposal owned by any other confirmation flow.
+        if (personaCtx?.tenant_id) {
+          const { error: crmCancellationError } = await supabase.from("paige_pending_confirmations")
+            .update({ consumed_at: new Date().toISOString() })
+            .eq("user_id", user.id).eq("tenant_id", personaCtx.tenant_id)
+            .in("fingerprint", fps).in("tool_name", [...CRM_COMMAND_TOOL_NAMES])
+            .is("thread_id", null).is("scoped_client_id", null).is("consumed_at", null)
+            .not("server_issued_at", "is", null);
+          if (crmCancellationError) {
+            console.error("[paige] CRM confirm decline not recorded", JSON.stringify({ code: crmCancellationError.code ?? null }));
+            return false;
+          }
         }
         return true;
       } catch (e) {
@@ -7318,7 +7353,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // come after this point.
     for (const t of toolDefs as Array<{ function?: { name?: string; parameters?: { properties?: Record<string, unknown> } } }>) {
       const name = t?.function?.name;
-      if (!name || !MUTATING_TOOLS.has(name)) continue;
+      if (!name || !MUTATING_TOOLS.has(name) || CRM_COMMAND_TOOL_NAMES.has(name as any)) continue;
       const props = t.function?.parameters?.properties;
       if (!props) continue;
       props.confirm = {
@@ -7959,7 +7994,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // second (confirm:true) step exists. Read-only tools are untouched.
     for (const def of toolDefs) {
       const fn = (def as any)?.function;
-      if (fn && MUTATING_TOOLS.has(fn.name)) {
+      if (fn && MUTATING_TOOLS.has(fn.name) && !CRM_COMMAND_TOOL_NAMES.has(fn.name as any)) {
         fn.parameters = fn.parameters || { type: "object", properties: {}, required: [] };
         fn.parameters.properties = fn.parameters.properties || {};
         if (!fn.parameters.properties.confirm) {
@@ -8146,6 +8181,56 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           continue;
         }
 
+        // ── CANONICAL GOVERNED CRM/Pipeline DOOR ─────────────────────────────
+        // These tools skip Chat's legacy inline mutation gate. The authenticated crm-command door
+        // performs the shared Gateway decision, owns the one stored approval, creates any bound
+        // destructive preview, executes atomically, requires readback/receipt, and returns a route.
+        if (CRM_COMMAND_TOOL_NAMES.has(tc.function.name as any)) {
+          let crmArgs: Record<string, unknown> = {};
+          try { crmArgs = JSON.parse(tc.function.arguments || "{}"); } catch { crmArgs = {}; }
+          const action = CRM_TOOL_TO_ACTION[tc.function.name as keyof typeof CRM_TOOL_TO_ACTION];
+          const suppliedKey = typeof crmArgs.idempotency_key === "string" ? crmArgs.idempotency_key.trim() : "";
+          const idempotencyKey = suppliedKey || crypto.randomUUID();
+          delete crmArgs.idempotency_key;
+          delete crmArgs.confirm;
+          let approvedFingerprint: string | undefined;
+          if (approvedConfirmations.size > 0 && personaCtx?.tenant_id) {
+            const gateAdmin = createClient(supabaseUrl, supabaseServiceKey);
+            const { data: approvedRows } = await gateAdmin.from("paige_pending_confirmations")
+              .select("fingerprint").eq("tenant_id", personaCtx.tenant_id).eq("user_id", user.id)
+              .eq("tool_name", tc.function.name).in("fingerprint", [...approvedConfirmations])
+              .is("thread_id", null).is("scoped_client_id", null).is("consumed_at", null)
+              .gt("expires_at", new Date().toISOString()).limit(2);
+            if (approvedRows?.length === 1 && typeof approvedRows[0]?.fingerprint === "string") approvedFingerprint = approvedRows[0].fingerprint;
+          }
+          const { data: crmData, error: crmError } = await supabaseClient.functions.invoke("crm-command", {
+            headers: { Authorization: authHeader },
+            body: { command: { action, ...crmArgs }, idempotency_key: idempotencyKey,
+              ...(approvedFingerprint ? { approved_fingerprint: approvedFingerprint } : {}) },
+          });
+          let crmBody: Record<string, unknown> = crmData && typeof crmData === "object" && !Array.isArray(crmData) ? crmData as Record<string, unknown> : {};
+          if (crmError) {
+            const ctx = (crmError as any)?.context;
+            if (ctx && typeof ctx.json === "function") { try { crmBody = await ctx.json(); } catch { /* generic failure below */ } }
+          }
+          if (crmBody.outcome === "approval_required" && typeof crmBody.fingerprint === "string") {
+            const summary = typeof crmBody.summary === "string" ? crmBody.summary : "Review this CRM change.";
+            // This is a single-use confirmation, not a paige_pending_approvals work item. The
+            // existing confirmTrace bridge below renders the actionable Needs your OK card from
+            // these exact fingerprint fields; do not fabricate a passive approval-queue row/id.
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, needs_confirm: true,
+              requires_operator_approval: true, confirm_fingerprint: crmBody.fingerprint, confirm_summary: summary,
+              preview: crmBody.preview ?? null, note: "Show the Needs your OK card. Nothing changed yet. Do not call this tool again in this reply." }) });
+          } else if (crmError || crmBody.ok === false) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, ...crmBody,
+              error: crmBody.message ?? crmBody.code ?? "The CRM action could not be completed. Nothing should be claimed as changed." }) });
+          } else {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: true, ...crmBody,
+              ...(action === "activity.log" ? { external_effect: false, note: "Logged internally only. No email or SMS was sent and no call was placed." } : {}) }) });
+          }
+          continue;
+        }
+
         // ── A PURCHASE WITHOUT A QUOTE IS REFUSED, BEFORE THE GATE ───────────
         // The tool schema marks `monthly_cents` required, and that is NOT enforcement: tool
         // calling here is automatic and non-strict, so the model can omit it or send "120" as
@@ -8200,7 +8285,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           continue;
         }
 
-        if (MUTATING_TOOLS.has(tc.function.name)) {
+        if (MUTATING_TOOLS.has(tc.function.name) && !CRM_COMMAND_TOOL_NAMES.has(tc.function.name as any)) {
           if (!cancellationsRecorded || !(await revalidateProposalScope())) {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
               success: false, error: "confirmation_context_unavailable",
@@ -12987,6 +13072,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // Carries the FINGERPRINT alongside the summary, because the surface that shows the card has
       // to echo it back for the approval to bind to this exact call rather than to a boolean.
       const confirmTrace: Array<{ tool: string; summary: string; fingerprint?: string }> = [];
+      const crmResultTrace: Array<Record<string, unknown>> = [];
       const convo: any[] = [...aiMessages];
       let currentResponse = response;
       let totalToolCalls = 0;
@@ -13153,6 +13239,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   // Capture a pending confirmation so the client renders an approve card.
                   if (parsed?.needs_confirm && parsed?.confirm_summary) {
                     confirmTrace.push({ tool: parsed.tool || tc.function?.name || "action", summary: String(parsed.confirm_summary), ...(parsed.confirm_fingerprint ? { fingerprint: String(parsed.confirm_fingerprint) } : {}) });
+                  }
+                  if (CRM_COMMAND_TOOL_NAMES.has(tc.function?.name) && parsed?.success === true) {
+                    crmResultTrace.push({
+                      action: String(parsed.action || CRM_TOOL_TO_ACTION[tc.function.name as keyof typeof CRM_TOOL_TO_ACTION]),
+                      outcome: String(parsed.outcome || "succeeded"),
+                      readback: parsed.readback && typeof parsed.readback === "object" ? parsed.readback : null,
+                      receipt_recorded: parsed.receipt_recorded === true,
+                      record_locator: parsed.record_locator && typeof parsed.record_locator === "object" ? parsed.record_locator : null,
+                      ...(typeof parsed.external_effect === "boolean" ? { external_effect: parsed.external_effect } : {}),
+                    });
                   }
                 } catch { /* keep ok */ }
                 // BEFORE the cosmetic-trace drop below. `describeStep` returning null means the
@@ -13323,6 +13419,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // without ever quoting the evidence.
           if (queuedApprovals.length) emitContent(controller, enc.encode(`data: ${JSON.stringify({ approval_queued: queuedApprovals })}\n\n`));
           for (const c of confirmTrace) emitContent(controller, enc.encode(`data: ${JSON.stringify({ paige_confirm: c })}\n\n`));
+          for (const result of crmResultTrace) emitContent(controller, enc.encode(`data: ${JSON.stringify({ paige_crm_result: result })}\n\n`));
           // #292 — tell the Studio canvas the exact artifact this turn produced (server-authoritative;
           // the client opens THIS, never a guessed manifest index). Last visual wins if several built.
           if (studioLinked.length) emitContent(controller, enc.encode(`data: ${JSON.stringify({ paige_artifact: studioLinked[studioLinked.length - 1] })}\n\n`));
@@ -13468,8 +13565,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               const p = persistAssistantTurn(finalAssistantText, {
                 // Surfaces reflect executed WORK — thoughts (narration) don't count.
                 surfaces: stepTrace.filter((s) => s.kind !== "thought").map((s) => s.group).filter((v, i, a) => v && a.indexOf(v) === i),
-                bundleRef: (queuedApprovals.length || confirmTrace.length)
-                  ? { approval_queued: queuedApprovals, paige_confirm: confirmTrace }
+                bundleRef: (queuedApprovals.length || confirmTrace.length || crmResultTrace.length)
+                  ? { approval_queued: queuedApprovals, paige_confirm: confirmTrace, paige_crm_result: crmResultTrace }
                   : null,
               });
               // @ts-ignore — EdgeRuntime is available in Supabase Edge Functions runtime

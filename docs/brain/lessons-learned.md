@@ -2555,3 +2555,7 @@ never the unvalidated claim. Put the decision in one home so every writer of tha
 request and is a reference to another row; each one is a potential cross-tenant stamp unless validated
 on the RLS client first. "The row's tenant_id is server-resolved" answers only the row's own scope,
 never the scope of what it points at.
+
+### CRM mutation reach must be counted from the real command door, not tool names
+
+A Chat tool name, human CRUD screen, direct service-role branch or draft PR can all make an operation look present while bypassing tenant authority, risk, idempotency, readback or Rail. The recurrence guard is a shared action-to-tool catalogue plus contract tests proving every exposed CRM tool dispatches to the single authenticated `crm-command` door. Consequential operations need a server preview that binds exact targets, versions and dependency counts; a model `confirm` argument is never approval. Result UI must render server readback and router-owned links, not reconstructed model prose. Source-complete still is not LIVE until database/RLS, authenticated account-switch and deployment proof pass.

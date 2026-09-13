@@ -571,3 +571,8 @@ verify_jwt = true
 # claims one trusted-server-issued connection attempt and resolves tenant/actor
 # only from that stored row. No request tenant or identity is accepted.
 verify_jwt = false
+
+[functions.crm-command]
+# Authenticated Paige CRM/Pipeline action door. The gateway verifies the caller JWT;
+# the function verifies it again and resolves tenant, membership, role and autonomy server-side.
+verify_jwt = true
