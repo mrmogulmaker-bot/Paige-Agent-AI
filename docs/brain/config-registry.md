@@ -150,6 +150,8 @@ wiring an Enterprise checkout.
 
 **Solo Beta live binding (2026-09-13):** the row above is the sole public acquisition offer. Server Checkout enforces a non-reusable 30-day trial; trial length is not a Price attribute. Production database/Stripe/Edge/Vercel readback is verified at merge `4ccb8a9a`. First authorized customer fulfillment is PROOF OWED. Stripe has no active Billing Portal configuration; the portal seam remains fail-closed until the conservative configuration is created.
 
+**Promotional Solo production grant (2026-09-13):** `platform_grant_promotional_solo` is deployed through forward migration `20270201000000` and executable only by `service_role` with a separately proven platform-owner actor. The Antonio Cook personal Solo grant is verified as one active standalone owner workspace, explicit promotional classification, metering enabled, no expiry, one audit/usage receipt, and no Stripe/provider binding; retry is idempotent. Authenticated browser sign-in and account switching remain `PROOF OWED`.
+
 **Webhook endpoints** (✅ Stripe MCP `GetWebhookEndpoints`, both → `.../functions/v1/stripe-webhook`):
 
 | Endpoint ID | Status | Notes |
@@ -218,7 +220,7 @@ relying on either. (Secret **values** intentionally not recorded.)
 
 - **Why revenue-class is a SEPARATE table, not a `tenants` column** (§9/§18/§51): a column on `tenants` would (a) be read by every tenant member via `Members read own tenant` RLS (operator-internal leak) and (b) collide with the §51-locked `account_type`. So it lives in `tenant_revenue_classification`, RLS `is_platform_owner()`-only + FORCE. Read seams: `get_tenant_revenue_breakdown()` (operator RPC), `operator_dashboard_metrics` (reconciled to `revenue_class='paid'` only, #412).
 - **§51 ABSOLUTE INVARIANT (DB-locked, migration `20260807230000`):** a child (`parent_tenant_id` not null) can NEVER be `agency`/`enterprise` — enforced 3 layers deep (`tenants` CHECK `tenants_subaccount_not_agency` · `agency_team_members` trigger · `agency_current_id()` both branches). Do not weaken without an owner ruling.
-- **Current prod distribution** (✅ MCP, 2026-08-09, post-#412): **9 tenants** — `promotional 8`, `internal_test 1`, **`paid 0`**. (Was 11 before #412 deleted 2 retired tenants — supersedes the "Tenants 11" row in the Supabase section above.) **Real ARR = $0** — every tenant is comped/internal; the 3 live `platform_subscriptions.status='active'` rows are comped (NULL `stripe_subscription_id`).
+- **Current prod distribution** (✅ direct production readback, 2026-09-13, post-promotional Solo grant): **16 tenants** — `promotional 12`, `internal_test 4`, **`paid 0`**. The 5 active `platform_subscriptions` rows have NULL `stripe_subscription_id`; real subscription revenue remains $0 until verified live fulfillment occurs. This supersedes the 2026-08-09 9-tenant snapshot.
 - **"Real revenue" / paid definition (one canonical form across surfaces):** `revenue_class='paid'` AND a live Stripe subscription (`status='active'` + non-null `stripe_subscription_id`). Used by `get_tenant_revenue_breakdown().paying_count` (#412) and the #31 gate below.
 
 **⚠ Revenue integrity chain — IN-FLIGHT (PR #415, task #31, owner §32.c-gated — NOT yet on main):**

@@ -166,6 +166,20 @@ describe("runEventActs — the exact per-act outcome for every branch", () => {
     expect(res.records[0].outcome).toBe("approval_pending");
   });
 
+  it("a HELD (confirm-lane) act SNAPSHOTS its governed args into the IMMUTABLE ledger detail (§P1, Codex peer-gate)", async () => {
+    // The approval-executor must dispatch what the reviewer approved — never the live, mutable act config. The
+    // engine captures the args into detail.snapshot_args at approval_pending time so the executor reads the snapshot.
+    const cfg: MockConfig = {
+      acts: { a1: [{ id: "act1", position: 1, action_kind: "n8n_run_workflow", tool_key: null, config: { webhook_path: "hook", foo: "bar" } }] },
+      activeMembers: new Set(["t1:owner1"]), lanes: { a1: { effective: "confirm" } }, recorded: [],
+    };
+    const res = await runEventActs(mockDb(cfg), event, [auto({})]);
+    expect(res.records[0].outcome).toBe("approval_pending");
+    expect((res.records[0].detail as Record<string, unknown>).snapshot_args).toEqual({ webhook_path: "hook", foo: "bar" });
+    // and it is DURABLY PERSISTED (an n8n record persists in phase 4), so the executor can read it back later.
+    expect((cfg.recorded[0]._detail as Record<string, unknown>).snapshot_args).toEqual({ webhook_path: "hook", foo: "bar" });
+  });
+
   it("auto + person + n8n (a HIGH external-effect act) → approval_pending: high requires approval, not auto-run, with a durable correlation record", async () => {
     // n8n_run_workflow is classified `high` (action-risk.ts). The governed seam requires a human yes for a
     // high act even on an `auto` lane — true auto-execution of a high act needs the RE-2 standing-grant lift

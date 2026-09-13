@@ -128,6 +128,13 @@ export function getAdapter(kind: AdapterKind): ActionAdapter | null {
   return REGISTRY.get(kind) ?? null;
 }
 
+/** The kinds that actually have a registered adapter. Exposed so the C4 contract-conformance suite can assert
+ *  its coverage table names EVERY registered adapter — a newly-registered kind then fails the suite until it
+ *  is covered, mechanizing the connector-neutral promise (no adapter escapes the contract by omission). */
+export function registeredAdapterKinds(): AdapterKind[] {
+  return [...REGISTRY.keys()];
+}
+
 /** Resolve the adapter for an act's action_kind directly (kind resolution + registry lookup). */
 export function adapterForAction(actionKind: string | null | undefined): ActionAdapter | null {
   return getAdapter(resolveAdapterKind(actionKind));

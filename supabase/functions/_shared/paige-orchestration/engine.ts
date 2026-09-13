@@ -42,6 +42,7 @@ import {
   type ActOutcome,
   type EventFacts,
 } from "./decide.ts";
+import { FINAL_OUTCOME_SET } from "./outcomes.ts";
 import { recordCapabilityRun, stableRunId } from "../capability-record.ts";
 import { emitAutomationRail } from "../railAutomation.ts";
 import { resolveNativeCapabilityStatus } from "../paige-capability-status/gatherer.ts";
@@ -194,13 +195,11 @@ async function loadActs(db: EngineDb, automationId: string): Promise<LoadActsRes
   return { ok: true, acts: data as ActRow[] };
 }
 
-/** Outcomes that are FINAL for the drainer — mirrors `_final` in the monotonic RPC (20270126000000). Once a
- *  row holds one of these, phase 5 adopts it and NEVER re-dispatches (idempotency across re-drains). */
-const FINAL_OR_SETTLED: ReadonlySet<string> = new Set([
-  "condition_not_matched", "held_by_lane", "approval_pending",
-  "refused_authority", "refused_budget", "refused_trust_compass", "refused_consent",
-  "executed", "failed", "cancelled",
-]);
+/** Outcomes that are FINAL for the drainer. DERIVED from the one canonical home (outcomes.ts `FINAL_OUTCOMES`,
+ *  C4/§18), which is pinned set-for-set to `_final` in the monotonic RPC (20270126000000) by the drift guard —
+ *  so the engine's "never re-dispatch a final row" set can no longer drift from the RPC's. Once a row holds one
+ *  of these, phase 5 adopts it and NEVER re-dispatches (idempotency across re-drains). */
+const FINAL_OR_SETTLED: ReadonlySet<string> = FINAL_OUTCOME_SET;
 
 /** Read the CURRENT ledger outcome for one (event, act). `outcome:null` = the row does not exist yet.
  *  An infra read error returns `{ ok:false }` so phase 5 retries rather than acting blind (§13/§32). */
@@ -264,7 +263,13 @@ async function decideActRecord(params: {
 
   // Lane already decided a non-execute outcome (off → held, confirm → approval_pending).
   if (laneOutcome) {
-    return { record: { ...base, outcome: laneOutcome, detail: { effective_lane: effectiveLane } } };
+    const detail: Record<string, unknown> = { effective_lane: effectiveLane };
+    // C5/§P1 (Codex peer-gate): a HELD (approval_pending) act SNAPSHOTS its governed args into the IMMUTABLE
+    // ledger row, so the approval-executor dispatches EXACTLY what the reviewer approved — never the live
+    // paige_automation_acts.config, which a tenant admin can mutate between the hold and the approval (a
+    // confused-deputy / TOCTOU: approval could execute a stage slug different from the one the reviewer saw, §70.2).
+    if (laneOutcome === "approval_pending") detail.snapshot_args = act.config ?? {};
+    return { record: { ...base, outcome: laneOutcome, detail } };
   }
 
   // auto lane — resolve the adapter + governed capability, then the one pathway.
@@ -296,6 +301,9 @@ async function decideActRecord(params: {
     error: dec.error ?? null,
     detail: { capability: capability.id, decision: decision.kind, risk: decision.audit.risk },
   };
+  // C5/§P1 (Codex peer-gate): a HIGH act clamped auto→propose also lands approval_pending — snapshot its
+  // governed args into the immutable ledger row (same reason as the confirm-lane branch above).
+  if (dec.outcome === "approval_pending") record.detail.snapshot_args = act.config ?? {};
 
   // C2: a governed-AUTHORIZED native, synchronous execute becomes a dispatch plan. It runs ONLY after the
   // durable accepted_for_execution record persists (phase 5), so a crash before dispatch leaves a
