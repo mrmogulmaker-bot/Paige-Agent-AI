@@ -232,8 +232,8 @@
       "rail_mind_memory": "Rail: billing outcome events (no sender/secret). Mind: safe billing-status only (platform-billing-spine-source-contract). Memory: none of card/PII.",
       "status": "PARTIAL",
       "owner": "Money Spine workstream",
-      "dependency": "Live Solo acquisition binding is deployed; first authorized live Checkout/fulfillment and Billing Portal activation remain proof owed. Connect direct-charge posture and M1 controls remain separate.",
-      "next_slice": "Prove one authorized live Solo enrollment and conservative Billing Portal behavior; separately bind safe billing status into Paige and verify Connect direct-charge posture.",
+      "dependency": "Live Solo acquisition binding, Stripe-eligible Checkout contract, and receipt-derived welcome lifecycle are deployed; first authorized live Checkout/fulfillment, actual payment-method presentation/welcome delivery, and Billing Portal activation remain proof owed. Connect direct-charge posture and M1 controls remain separate.",
+      "next_slice": "Prove one authorized live Solo enrollment, Stripe-selected method presentation, signed fulfillment and welcome receipt plus conservative Billing Portal behavior; separately bind safe billing status into Paige and verify Connect direct-charge posture.",
       "tier_eligibility": { "platform": "eligible", "solo": "eligible", "agency_future": "eligible", "enterprise_future": "eligible" },
       "expense_and_operations": {
         "cost_responsibility": "shared",
