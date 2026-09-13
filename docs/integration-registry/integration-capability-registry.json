@@ -720,7 +720,7 @@
         "next_slice": "Keep operator-scoped; no tenant-facing analytics provider planned here."
       },
       "code_anchors": [
-        { "path": "supabase/functions/_shared/posthog.ts", "role": "provider_adapter", "note": "provider-specific PostHog telemetry capture; failures swallowed, never blocks the parent request." }
+        { "path": "src/lib/observability.ts", "role": "provider_adapter", "note": "the REACHABLE PostHog client adapter (posthog-js), initialized at startup from src/main.tsx via initObservability(). The edge-side _shared/posthog.ts capture helper is currently orphaned (0 importers), so it is NOT the backing adapter and would give a false drift signal." }
       ],
       "sources": ["docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (PostHog) + Env vars", "docs/brain/config-registry.md"]
     },
@@ -857,7 +857,7 @@
       "code_anchors": [
         { "path": "supabase/functions/marketplace-checkout-session/index.ts", "role": "provider_adapter", "note": "paid-install Stripe checkout seam (Paige-held rail)." },
         { "path": "supabase/functions/marketplace-install/index.ts", "role": "provider_adapter", "note": "install seam." },
-        { "path": "supabase/functions/_shared/marketplace-authority-containment.ts", "role": "provider_adapter", "note": "install-authority containment helper. Status LIVE reflects shipped install mechanics — NOT proven_runtime; no §32.c authenticated drive is attached here." }
+        { "path": "supabase/functions/_shared/marketplace-authority-containment.ts", "role": "fail_closed_containment", "note": "install-authority containment helper: resolves/retains the active marketplace tenant (fails closed on ambiguity) and blocks marketplace mutations from generic dispatch — no provider API/send seam, so fail_closed_containment (matching its siblings governed-adapter.ts + secure-browser-authority.ts). Status LIVE reflects shipped install mechanics — NOT proven_runtime; no §32.c authenticated drive is attached here." }
       ],
       "sources": ["docs/architecture/MARKETPLACE-DATA-MODEL.md", "docs/PAIGE-MASTER-PROJECT-REFERENCE.md §4 (Marketplace shipped, PR #213)", "docs/binding-ledger/README.md (Marketplace)"]
     },
