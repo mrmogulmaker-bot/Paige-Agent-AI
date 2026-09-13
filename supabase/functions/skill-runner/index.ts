@@ -31,6 +31,7 @@ import {
   type EmailProposalArgs,
 } from "../_shared/paige-skill/email-approval.ts";
 import { confirmFingerprint } from "../_shared/confirm-fingerprint.ts";
+import { classifyBusinessVerifyResponse } from "../_shared/business-verify-outcome.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -795,7 +796,22 @@ Deno.serve(async (req) => {
             body: JSON.stringify({ business_id, triggered_by: "skill" }),
           });
           outputs = await res.json();
-          stepsLog.push({ step: "business-verifier", ok: res.ok });
+          // A refused/errored verification is NOT a skill success. Read the OUTCOME through the shared
+          // classifier (§18/§37), never the HTTP status alone: a run that happened (`ok:true`, incl. a
+          // `status:"failed"` no-match) is the only success; the Funding & Coaching Tools gate's HTTP-200
+          // policy refusal is `cancelled` (stopped before a deliverable, like the interpreter's
+          // needs_config/denied); an operational failure (authz 403, 4xx/5xx, or a 200 `ok:false` service
+          // error like BUSINESS_LOOKUP_FAILED) is `failed` so status-based monitoring/retry sees it
+          // (§13 "a fire is not a delivery"; Codex #1228 P2 — never bury a real failure as a policy cancel).
+          const bvOutcome = classifyBusinessVerifyResponse(res.ok, outputs as { ok?: unknown; result?: unknown });
+          stepsLog.push({ step: "business-verifier", ok: bvOutcome === "ran" });
+          if (bvOutcome !== "ran") {
+            runStatus = bvOutcome === "policy_refusal" ? "cancelled" : "failed";
+            runError = (outputs as { reason?: string; message?: string; error?: string })?.reason
+              ?? (outputs as { message?: string })?.message
+              ?? (outputs as { error?: string })?.error
+              ?? "business verification did not run";
+          }
           break;
         }
         case "research_to_concept_brief": {

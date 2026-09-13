@@ -78,7 +78,28 @@ export type FundingGateFacts = {
    *  the gate, so they OMIT this (undefined ⇒ authority resolved upstream). A caller that routes authority
    *  through the gate passes `false` to get a `not_authorized` refusal. */
   authorized?: boolean;
+  /** OPTIONAL: whether the remediation SURFACES a refusal would point to actually exist yet (the Marketplace
+   *  bundle to install / the Financial connection surface to connect). When this is not `true` a refusal may
+   *  NOT emit a `setup_required` "install/connect" instruction — that would be a dead remediation path — so
+   *  every refusal resolves the honest `unavailable` instead (see FUNDING_TOOLS_REMEDIATION_LIVE). Defaults
+   *  to false (fail-honest): a caller that does not assert the surfaces are live gets `unavailable`. */
+  remediationLive?: boolean;
 };
+
+/**
+ * (Codex #1222 review · owner ruling 2026-09-13) WHETHER THE REMEDIATION SURFACES EXIST YET. A refusal may
+ * only tell the tenant to "install the package" / "connect your data source" when that surface actually
+ * exists to act on. Today the Marketplace "Funding & Coaching Tools" bundle is UNSEEDED and no
+ * Settings → Integrations → Financial connection surface ships, so a `setup_required` remediation would be a
+ * DEAD instruction — the owner directed the package stay honestly UNAVAILABLE until BOTH surfaces are merged
+ * AND deployed. This constant makes every refusal from this gate resolve `unavailable` until then.
+ *
+ * IT IS NOT A GRANT FLAG. It never enables a provider — the gate fails MORE closed with it false (it only
+ * downgrades a refusal's message from "install/connect" to "not available yet"). Flipping it `true` is a
+ * one-line, DELIBERATE change once Marketplace #670 seeds the bundle and Financial Integrations #6 ships the
+ * connection surface — never a runtime access decision, never a mutable global that gates provider contact.
+ */
+export const FUNDING_TOOLS_REMEDIATION_LIVE = false;
 
 /** Why the gate decided as it did. */
 export type FundingGateState =
@@ -104,8 +125,24 @@ export type FundingGateVerdict = {
  * THE PURE DECISION. Most-restrictive-wins, fail-closed. Order: entitlement read-error (can't confirm →
  * refuse) → entitlement absent (install the package) → authority (when routed through here) → connection/
  * consent requirement. A provider runs only when every fact clears.
+ *
+ * REMEDIATION HONESTY (Codex #1222 · owner ruling 2026-09-13). A `setup_required` verdict tells the tenant
+ * to install/connect something — an HONEST instruction ONLY when that surface exists. Until the remediation
+ * surfaces are live (`facts.remediationLive === true`), every would-be `setup_required` refusal resolves the
+ * honest `unavailable` instead, while KEEPING the precise `state` (entitlement/connection/consent_missing)
+ * for the audit trail. The read-error and not_authorized refusals are already `unavailable` and unaffected.
+ * This only ever fails MORE closed; it never widens access.
  */
 export function decideFundingCoachingGate(facts: FundingGateFacts): FundingGateVerdict {
+  const remediationLive = facts.remediationLive === true;
+  // The honest refusal when no remediation surface exists to act on yet. Keeps the diagnostic `state`.
+  const notAvailableYet = (state: FundingGateState): FundingGateVerdict => ({
+    allowed: false,
+    result: "unavailable",
+    state,
+    reason: "Funding & Coaching Tools isn't available on this workspace yet.",
+  });
+
   // (1) ENTITLEMENT — the package gate, first and fail-closed.
   if (facts.entitlement === "read_error") {
     return {
@@ -116,16 +153,18 @@ export function decideFundingCoachingGate(facts: FundingGateFacts): FundingGateV
     };
   }
   if (facts.entitlement !== "entitled") {
-    return {
-      allowed: false,
-      result: "setup_required",
-      state: "entitlement_missing",
-      reason: "Install the Funding & Coaching Tools package to enable this.",
-    };
+    return remediationLive
+      ? {
+          allowed: false,
+          result: "setup_required",
+          state: "entitlement_missing",
+          reason: "Install the Funding & Coaching Tools package to enable this.",
+        }
+      : notAvailableYet("entitlement_missing");
   }
 
   // (3) AUTHORITY — only when the caller routed it through the gate (the wired providers enforce it
-  //     upstream and omit this). A false fact is a belt-and-suspenders refusal.
+  //     upstream and omit this). A false fact is a belt-and-suspenders refusal (already `unavailable`).
   if (facts.authorized === false) {
     return {
       allowed: false,
@@ -140,20 +179,21 @@ export function decideFundingCoachingGate(facts: FundingGateFacts): FundingGateV
   // tsc does not persist the `satisfied` discriminant across the `facts.connection.*` property path).
   const conn = facts.connection;
   if (!conn.satisfied) {
-    if (conn.missing === "consent") {
-      return {
-        allowed: false,
-        result: "setup_required",
-        state: "consent_missing",
-        reason: "Record the required consent before Paige can use this.",
-      };
-    }
-    return {
-      allowed: false,
-      result: "setup_required",
-      state: "connection_missing",
-      reason: "Connect your Financial data source before Paige can use this.",
-    };
+    const state: FundingGateState = conn.missing === "consent" ? "consent_missing" : "connection_missing";
+    if (!remediationLive) return notAvailableYet(state);
+    return conn.missing === "consent"
+      ? {
+          allowed: false,
+          result: "setup_required",
+          state: "consent_missing",
+          reason: "Record the required consent before Paige can use this.",
+        }
+      : {
+          allowed: false,
+          result: "setup_required",
+          state: "connection_missing",
+          reason: "Connect your Financial data source before Paige can use this.",
+        };
   }
 
   return { allowed: true, result: "ok", state: "allowed", reason: "" };
@@ -262,7 +302,15 @@ export async function resolveFundingCoachingGate(
     entitlement = "read_error";
   }
   const connection = resolveFundingProviderConnectionState(opts.tenantId, opts.providerKey);
-  return decideFundingCoachingGate({ entitlement, connection, authorized: opts.authorized });
+  // `remediationLive` is the module constant (false today): while the Marketplace bundle and the Financial
+  // connection surface do not exist, a refusal resolves the honest `unavailable`, never a dead
+  // "install/connect" instruction (Codex #1222 · owner ruling 2026-09-13).
+  return decideFundingCoachingGate({
+    entitlement,
+    connection,
+    authorized: opts.authorized,
+    remediationLive: FUNDING_TOOLS_REMEDIATION_LIVE,
+  });
 }
 
 /** The governed-decision row for `paige_audit_log`, shaped EXACTLY like the sibling door row-builders

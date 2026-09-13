@@ -167,6 +167,7 @@ import { decideMcpToolCall, mcpGovernedAuditRow } from "../_shared/paige-mcp/gov
 // Tier Rail Spine (Phase D): one shared tier resolver, off the same declared rail
 // (public.get_actor_access) a human resolves through — so Paige's tier == a human's.
 import { getActorTier, isClientSeatByScopes } from "../_shared/actorTier.ts";
+import { classifyBusinessVerifyResponse } from "../_shared/business-verify-outcome.ts";
 // Master Twilio Basic-auth from the ONE home (twilio.ts) — API Key trio
 // (TWILIO_API_KEY_SID:TWILIO_API_KEY_SECRET); master TWILIO_AUTH_TOKEN absent in prod.
 
@@ -3590,7 +3591,15 @@ mcp.tool("verify_business", {
     });
     const body = await r.json().catch(() => ({}));
     await audit("verify_business", "business", business_id, { status: r.status, composite_score: (body as { composite_score?: number })?.composite_score ?? null });
-    if (r.status >= 300) return err(typeof body === "object" ? JSON.stringify(body) : String(body));
+    // Read the OUTCOME through the shared classifier (§18/§37), not the HTTP status alone: a policy refusal
+    // (the Funding & Coaching Tools gate's HTTP-200 `ok:false`) and every operational failure both mean the
+    // verification did NOT run — `ok(body)` on either would tell the calling agent the tool completed
+    // (§13 "a fire is not a delivery"). business-verifier returns `ok:true` for any run that happened
+    // (even a `status:"failed"` no-match), so a real run is never mislabeled.
+    const bv = body as { ok?: unknown; result?: unknown; error?: string; message?: string; reason?: string };
+    if (classifyBusinessVerifyResponse(r.status < 300, bv) !== "ran") {
+      return err(bv?.reason ?? bv?.message ?? bv?.error ?? (typeof body === "object" ? JSON.stringify(body) : String(body)));
+    }
     return ok(body);
   },
 });
