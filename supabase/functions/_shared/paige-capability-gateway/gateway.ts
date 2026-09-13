@@ -85,6 +85,13 @@ export function decideGatewayEntry(input: GatewayEntryInput): GatewayEntry {
       return { disposition: "tier_explanation", emitTool: false };
     case "unavailable":
       return { disposition: "unavailable", emitTool: false };
+    case "proof_owed":
+    case "no_applicable_capability":
+      // Neither state authorizes a callable tool. proof_owed is restricted to its bounded proof
+      // lane; no_applicable_capability is request-level truth and must never manufacture an entry.
+      // Until the gateway has a dedicated non-executable presentation for either, fail closed with
+      // the existing truthful unavailable disposition.
+      return { disposition: "unavailable", emitTool: false };
     case "planned":
       return { disposition: "planned_explanation", emitTool: false };
     case "needs_setup":
