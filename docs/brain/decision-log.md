@@ -5606,3 +5606,30 @@ PR #1226 (`03bf91ea`, merged as `0ba624b7599eca61eae83b21c0d1aea3270069c4`) pres
 A Solo welcome is now a receipt-derived fulfillment outcome, not an agreement-time side effect. The completed atomic fulfillment receipt queues exactly one service-only delivery; each attempt freshly proves the fulfilled enrollment, exact offer, active owner membership, standalone tenant, verified `trialing` or `active` subscription, recipient, and current Solo destination. A stable provider idempotency key, recoverable claims, retry leases, audit/Rail outcomes, and the five-minute Vault-backed drainer prevent duplicate sends and preserve a safe operator-visible exception state. Ambiguous provider outcomes stop in `needs_attention` rather than risking a second message. Trialing and active-paid copy are distinct.
 
 Production proof is structural and readback-based: migration and Edge deployments succeeded; `db-live` and `edge-live` equal the merge; Vercel deployment `dpl_4AD5mg9o9ZkvNaZpeChaUbgaqdnq` is `READY` on `paigeagent.ai`; unauthenticated Checkout/drainer calls and forged webhook signatures fail closed. No Stripe settings or billing objects were mutated for verification. The first authorized live Checkout, customer-specific payment-method presentation, signed fulfillment, exactly-one access outcome, actual welcome receipt, and current-shell entry remain `PROOF OWED`; the capability remains `PARTIAL`.
+
+### 2026-09-13 — Paige SDK / Platform Foundations program: framing approved, D-1…D-10 locked
+
+The owner reviewed the read-only Paige SDK / Platform Foundations owner-review package
+(`docs/architecture/paige-sdk-platform-foundations-program.md`, PR #1254) and APPROVED the framing:
+package and adopt the EXISTING governed seams — do NOT rebuild a second authority, approval, tenant,
+receipt, or execution model (§18/§30). This is a planning ruling; no capability shipped and no code
+was migrated.
+
+Ten decisions locked: D-1 approved (kit wraps existing seams, forks nothing). D-2 `crm.contact.create`
+is the first reference adopter BUT implementation waits until CRM PR #1234 is merged AND a fresh-main
+collision pass is complete. D-3 defer MCP mutations + their approval channel to P6; MCP door stays
+read-effective until then. D-4 rate limiting is a mandatory pre-exposure gate. D-5 externally scoped
+sandbox/test-tenant posture approved — never shared or production customer data. D-6 least-privilege
+Solo test tenant + `LIVE_DRIVE_*` CI secrets approved — no production credentials or client PII. D-7
+HMAC-signed, tenant-scoped outbound webhooks approved before external webhook reliance. D-8 Chat's
+inline-governance migration is NOT first — prove adoption at the edges first. D-9 Partner/Marketplace
+SDK waits until the internal kit AND the API have real reference adoption. D-10 program names
+confirmed, each prefixed "Paige": Paige Capability Kit, Paige Agent Runtime Kit, Paige Test & Evidence
+Kit, Paige Platform API Contract, Paige Event & Webhook Contract, Paige Design & Client Contract.
+
+Standing constraint: the docs-only package proceeds through review/merge; P1 implementation does NOT
+begin yet (gated on #1234 + collision pass + owner go). Also filed separately: a Chat/Knowledge
+regression task for the deterministic mainline `verify` failures found during this work (the
+tenant-switch document turn making an unexpected provider call; a §9 evidence/comms assertion) — owned
+by the chat/knowledge lane, NOT the SDK lane; the exact failing tests are to be preserved, never
+weakened or skipped.
