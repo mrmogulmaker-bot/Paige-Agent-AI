@@ -1,13 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { shouldOfferAccountPicker } from "./accountSelection";
+import { shouldOfferAccountPicker, shouldPauseForWorkspaceChoiceAtLogin } from "./accountSelection";
 
 describe("shouldOfferAccountPicker", () => {
   it("offers the picker to an ordinary user with multiple active memberships", () => {
     expect(shouldOfferAccountPicker({ activeMembershipCount: 2, isPlatformStaff: false })).toBe(true);
   });
 
-  it("sends a user with one membership directly to their workspace", () => {
+  it("keeps the in-workspace switch control hidden for one membership", () => {
     expect(shouldOfferAccountPicker({ activeMembershipCount: 1, isPlatformStaff: false })).toBe(false);
+  });
+
+  it("pauses an established user at login with one active membership", () => {
+    expect(shouldPauseForWorkspaceChoiceAtLogin({ activeMembershipCount: 1, isPlatformStaff: false })).toBe(true);
+  });
+
+  it("does not invent a login choice without membership or Platform authority", () => {
+    expect(shouldPauseForWorkspaceChoiceAtLogin({ activeMembershipCount: 0, isPlatformStaff: false })).toBe(false);
   });
 
   it("pauses platform staff at the chooser even with no direct tenant membership", () => {
