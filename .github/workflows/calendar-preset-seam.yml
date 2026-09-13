@@ -5,8 +5,13 @@ on:
       - 'supabase/migrations/20270301000000_calendar_booking_preset_lifecycle.sql'
       - 'supabase/migrations/20270302000000_calendar_preset_duplicate_archive_restore.sql'
       - 'supabase/migrations/20270312000000_create_class_booking_tenant_scope_guard.sql'
+      - 'supabase/migrations/20270315000000_calendar_link_shareable.sql'
+      - 'supabase/migrations/20270316000000_calendar_link_tool_autonomy_catalogue.sql'
       - 'supabase/tests/calendar_booking_preset_seam.sql'
       - 'supabase/tests/create_class_booking_tenant_scope.sql'
+      - 'supabase/tests/calendar_link_shareable.sql'
+      - 'supabase/functions/_shared/calendar-link-tenant-brain.ts'
+      - 'scripts/calendar-link-share-smoke.mts'
       - '.github/workflows/calendar-preset-seam.yml'
   push:
     branches: [main]
@@ -14,8 +19,13 @@ on:
       - 'supabase/migrations/20270301000000_calendar_booking_preset_lifecycle.sql'
       - 'supabase/migrations/20270302000000_calendar_preset_duplicate_archive_restore.sql'
       - 'supabase/migrations/20270312000000_create_class_booking_tenant_scope_guard.sql'
+      - 'supabase/migrations/20270315000000_calendar_link_shareable.sql'
+      - 'supabase/migrations/20270316000000_calendar_link_tool_autonomy_catalogue.sql'
       - 'supabase/tests/calendar_booking_preset_seam.sql'
       - 'supabase/tests/create_class_booking_tenant_scope.sql'
+      - 'supabase/tests/calendar_link_shareable.sql'
+      - 'supabase/functions/_shared/calendar-link-tenant-brain.ts'
+      - 'scripts/calendar-link-share-smoke.mts'
       - '.github/workflows/calendar-preset-seam.yml'
   workflow_dispatch:
 permissions:
@@ -26,8 +36,8 @@ jobs:
     services:
       postgres:
         # Stock image: the seam needs only pgcrypto (standard-contrib). Fixtures are
-        # synthetic; the suite's isolated-DB guard refuses to run anywhere but the
-        # disposable calendar_preset_seam_contract database.
+        # synthetic; each suite's isolated-DB guard refuses to run anywhere but its
+        # disposable *_contract database.
         image: postgres:16
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -51,3 +61,20 @@ jobs:
         run: |
           psql -X -v ON_ERROR_STOP=1 -c 'CREATE DATABASE calendar_class_booking_scope;'
           PGDATABASE=calendar_class_booking_scope psql -X -v ON_ERROR_STOP=1 -f supabase/tests/create_class_booking_tenant_scope.sql
+      - name: calendar_link_shareable gate proof (E7) - isolated DB
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -c 'CREATE DATABASE calendar_link_shareable_contract;'
+          PGDATABASE=calendar_link_shareable_contract psql -X -v ON_ERROR_STOP=1 -f supabase/tests/calendar_link_shareable.sql
+  calendar-link-adapter-smoke:
+    # E7 — the calendar-link sharing adapter's adversarial smoke: the readback-truth map
+    # (a queued/blocked/failed send is NEVER reported as sent), per-channel eligibility, the
+    # shareability + forged-id + account-switch refusals, and social copy-ready (never posts).
+    # No DB or network — injected fakes only; runs under Node 22 strip-types.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: calendar-link sharing adapter smoke (§32/§39)
+        run: node --experimental-strip-types scripts/calendar-link-share-smoke.mts
