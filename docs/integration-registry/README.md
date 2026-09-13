@@ -193,7 +193,7 @@ on disk** (the dead-anchor resolve `findDeadCodeAnchors`, run in `main`, mirrors
 anchor check — §18). Each anchor's `role` is a **controlled, lint-enforced vocabulary** — `provider_adapter` ·
 `callback_readback` · `fail_closed_containment` · `proven_runtime` (the last reserved for genuine §32.c
 runtime proof; none today) — so a code anchor proves only that a code PATH EXISTS, never that the provider
-works or is LIVE. It is regex/JSON-only and dependency-free, with a `--self-test` (38 mutations + a
+works or is LIVE. It is regex/JSON-only and dependency-free, with a `--self-test` (40 mutations + a
 dead-anchor resolver + glob-matcher proof). It is a **tripwire** for the
 honesty invariants, not a semantic parser — whether a lane mapping or a cost figure is materially
 correct stays a human §5/§39 responsibility.

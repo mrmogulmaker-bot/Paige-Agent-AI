@@ -139,9 +139,13 @@ export function validateRegistry(reg) {
   for (const k of TOP_LEVEL) if (!(k in reg)) E(`missing top-level key: ${k}`);
   if (!nonEmptyStr(reg.cardinal_rule)) E("cardinal_rule must be a non-empty string");
 
-  // field_schema must declare the code_anchors contract (the accountability field, v1.2). Light
-  // check: the legend describes it, so a provider's code_anchors is a documented field, not a stray.
-  if (reg.field_schema && typeof reg.field_schema === "object" && !nonEmptyStr(reg.field_schema.code_anchors)) {
+  // field_schema must be a non-null object AND declare the code_anchors contract (the accountability
+  // field, v1.2). A non-object field_schema (null/string/number/array) would otherwise skip this
+  // check and silently drop the entire code_anchors requirement — a hole in the honesty guard itself
+  // (Codex P2). Require the object first, then that it describes code_anchors.
+  if (reg.field_schema == null || typeof reg.field_schema !== "object" || Array.isArray(reg.field_schema)) {
+    E("field_schema must be a non-null object (its legend declares the code_anchors contract)");
+  } else if (!nonEmptyStr(reg.field_schema.code_anchors)) {
     E('field_schema is missing the "code_anchors" field description');
   }
 
@@ -467,6 +471,14 @@ function selfTest() {
   mustFail("code_anchor role outside the controlled vocabulary", (r) => {
     const p = r.providers.find((x) => ["LIVE", "PARTIAL", "PROOF_OWED"].includes(x.status));
     p.code_anchors = [{ path: "supabase/functions/_shared/twilio.ts", role: "send seam" }];
+  });
+  // A non-object field_schema must fail — otherwise the code_anchors contract check is silently
+  // skipped and CI accepts a registry with the whole accountability field removed (Codex P2).
+  mustFail("non-object field_schema (string) skips the code_anchors contract", (r) => {
+    r.field_schema = "not an object";
+  });
+  mustFail("null field_schema skips the code_anchors contract", (r) => {
+    r.field_schema = null;
   });
 
   // Prove the DEAD-ANCHOR RESOLVER actually catches a missing path — not just the structural rules.
