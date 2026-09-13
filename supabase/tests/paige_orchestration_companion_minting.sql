@@ -169,8 +169,10 @@ select is((select risk_level from public.paige_pending_approvals where metadata-
 update public.paige_act_executions set detail = detail || '{"redrain":true}'::jsonb where id='ad000001-0000-4000-8000-000000000001';
 select is((select count(*)::int from public.paige_pending_approvals where source='paige_orchestration' and metadata->>'act_id'='ac000001-0000-4000-8000-000000000001'),
           1, 'idempotency: a re-derive (outcome stays approval_pending) never double-mints');
-select ok((select (tgtype & 4) > 0 and (tgtype & 16) > 0 from pg_trigger where tgname='trg_paige_mint_orchestration_approval'),
-          'mint trigger is wired AFTER INSERT OR UPDATE (fires on the real INSERT prod path too)');
+-- AFTER-ness is proven, not just implied: tgtype bit 2 (value 2) is the BEFORE flag, so (& 2)=0 means AFTER;
+-- bits 4 (INSERT) and 16 (UPDATE) prove the events. Together: AFTER INSERT OR UPDATE (fires on the real prod INSERT).
+select ok((select (tgtype & 2) = 0 and (tgtype & 4) > 0 and (tgtype & 16) > 0 from pg_trigger where tgname='trg_paige_mint_orchestration_approval'),
+          'mint trigger is wired AFTER (tgtype BEFORE-bit clear) INSERT OR UPDATE (fires on the real INSERT prod path too)');
 
 -- ══ (C) CANCELLATION-SYNC ═══════════════════════════════════════════════════════════════════════════════
 update public.paige_pending_approvals set status='rejected' where source='paige_orchestration' and metadata->>'act_id'='ac000001-0000-4000-8000-000000000001';

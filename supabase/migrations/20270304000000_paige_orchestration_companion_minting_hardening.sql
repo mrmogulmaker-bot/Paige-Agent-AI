@@ -26,7 +26,9 @@
 --       INSERT..SELECT backfill for those orphans, with the same readable content + metadata.
 --
 -- (Findings 5 (recovery-doc correction) and 6 (Visible-Flow-Impact + UI-delivery evidence) are docs — see the
---  PR + docs/evidence/ui-delivery/ and the master §4.0 / decision-log corrections in this same slice.)
+--  PR + docs/evidence/ui-delivery/. Finding 5 is the master §4.0 recovery-note correction, made in THIS diff.
+--  The §4.0 Shipped-Delivery-Log row and the decision-log/brain entries are NOT in this diff — they land in the
+--  closeout once the merge SHA and the persisted-apply proof exist (§0/§13: no pre-merge entry with a guessed SHA).)
 --
 -- APPROACH (§18/§12 — extend, do not fork). The four objects already exist (20270303000000); this migration
 -- CREATE OR REPLACEs the three functions in place (the triggers call them by name — unchanged trigger defs),
@@ -60,7 +62,9 @@ declare
   _last    text;
   _label   text;
   _args_txt text;
-  _args_obj jsonb := case when jsonb_typeof(coalesce(_args, '{}'::jsonb)) = 'object' then _args else '{}'::jsonb end;
+  -- coalesce in the true branch too: a SQL-NULL _args has jsonb_typeof(coalesce(_args,'{}'))='object' but
+  -- would otherwise return the raw NULL, storing draft_content.args=null instead of '{}' (§39 P3 nit).
+  _args_obj jsonb := case when jsonb_typeof(coalesce(_args, '{}'::jsonb)) = 'object' then coalesce(_args, '{}'::jsonb) else '{}'::jsonb end;
 begin
   -- last dotted segment of the capability key, humanized ('crm.advance_journey_stage' -> 'Advance Journey Stage')
   _last := reverse(split_part(reverse(coalesce(_capability, '')), '.', 1));
