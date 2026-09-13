@@ -512,8 +512,10 @@ async function runDraftAndEmailDocument(
         // caller is told the send is unrecorded), never a clean success with a null run id.
         receiptPersisted = !runErr && sentRunId !== null;
         if (!receiptPersisted) {
+          // Honest about whether the send actually happened — this runs for BOTH a successful send
+          // (sent-but-unrecorded) and a failed send (failed-and-unrecorded); never claim "sent".
           console.error(
-            "skill-runner draft_and_email receipt NOT persisted (email was sent)",
+            `skill-runner draft_and_email receipt NOT persisted (send ok=${r.ok})`,
             String(runErr?.code ?? runErr ?? "no row returned"),
           );
         }
@@ -577,15 +579,19 @@ async function runDraftAndEmailDocument(
 
   if (outcome.kind === "send_failed") {
     // §13 — the approval was consumed but the email did NOT go out. Never a 200/"succeeded": the
-    // durable paige_skill_runs row was already written `failed` and no communication_log outbound
-    // record was created, and the caller must hear the same truth. 502 (the upstream send / sender
-    // identity failed, not a client error) so a caller checking HTTP status also sees the failure —
-    // matching the old inline handler, which threw on a failed send. The one-time approval is spent.
+    // durable paige_skill_runs row was written `failed` and no communication_log outbound record was
+    // created, and the caller must hear the same truth. 502 (the upstream send / sender identity
+    // failed, not a client error) so a caller checking HTTP status also sees the failure — matching
+    // the old inline handler, which threw on a failed send. The one-time approval is spent.
+    // If the FAILURE receipt ALSO could not persist (§13/§32/AGENTS.md), say so in the same breath —
+    // the caller must know the audit row is missing whichever way the send went (Codex P2).
     return json(502, {
       run_id: sentRunId,
       status: "failed",
-      code: "send_failed",
-      error: "The document was drafted and approved, but the email send failed. The one-time approval has been used — re-draft to send again.",
+      code: receiptPersisted ? "send_failed" : "send_failed_unrecorded",
+      error: receiptPersisted
+        ? "The document was drafted and approved, but the email send failed. The one-time approval has been used — re-draft to send again."
+        : "The email send failed AND its failure receipt could not be recorded (the audit row is missing). The one-time approval has been used — re-draft to send again.",
       outputs: { resend_id: outcome.resend_id, recipient: outcome.recipient },
     });
   }
