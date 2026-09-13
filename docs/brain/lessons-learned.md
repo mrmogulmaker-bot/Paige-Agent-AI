@@ -6,6 +6,18 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## A client write-gate must be evaluated against the VIEWED tenant, not `current_user_tenant_id()` (2026-09-13)
+
+- **Symptom.** On Settings › Connections › Calendars, "New preset" (and edit/enable/hosts) was disabled/hidden for an owner who could actually write — the surface read but could not be operated. The reported "empty state with no way to create" was really a write-gate that resolved false.
+- **Root cause.** `canWrite` was read from `is_current_user_tenant_admin()`, which is `is_tenant_admin_as(auth.uid(), current_user_tenant_id())` — admin of the caller's OWN active tenant (`profiles.active_tenant_id`), not the account being VIEWED (`activeTenantId`). Those diverge on a stale profile pointer, a tenant switch before the profile persists, and when an operator/agency acts as another account — the same read-scope divergence the surface already handled for readiness but not for authority. A single boolean gate was also sourced from a different tenant AND a different predicate than the RLS write it guards.
+- **Rule.** Evaluate a client write-gate against the tenant the surface is showing, using the SAME predicate the write's RLS enforces (`is_platform_admin() OR is_tenant_admin(viewed)` mirrors the `calendars` manage policy). Never gate a write on `current_user_tenant_id()` when the surface can view another account. Prove parity two ways: a hook test that the gate calls the tenant-scoped check with the viewed id (plus stale-profile, platform-admin, tenant-switch), and a local-Postgres RLS-parity harness that the gate predicate matches the actual INSERT outcome. Prefer existing deployed+granted helpers so the fix is live on frontend deploy with no migration.
+
+## A booking write refusal must classify into an honest, actionable category — never a raw dump, never a false success (2026-09-13)
+
+- **Symptom.** A real "New appointment" refusal could surface a raw PostgREST/SQLSTATE string (or, for an RPC that failed to resolve, a cryptic schema-cache message); the concern was that a failure could read like a booked appointment.
+- **Root cause.** `createBooking` mapped only the overlap codes (23505/23P01) and passed every other `err.message` through verbatim. A `PGRST202`/`PGRST203` (function not deployed / ambiguous overload) or a transport failure had no honest category.
+- **Rule.** Route every booking write error through one shared classifier (`classifyBookingWriteError` → `{category,message}`) covering conflict/forbidden/not_found/invalid/unavailable/network/unknown; an RPC that never resolved reads as "nothing was booked — try again", a transport failure as a connection problem, and an unrecognised cause is surfaced verbatim (§13, never swallowed). The submit UI closes only on `ok` so a refusal can never present as a save. Server seams are proven sound by a faithful local-Postgres replay before concluding a live failure is client-side.
+
 ## Security reconciliation must promote prevention controls, not preserve stale warnings (2026-09-12)
 
 - **Symptom.** Historical audits, open issues, green workflow definitions and merged migrations were read as if they described today's deployed platform, while older direct Edge paths sat beside newer canonical Harness controls without inheriting them.
