@@ -52,6 +52,7 @@
 name: deploy-migrations
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -147,6 +148,22 @@ jobs:
           echo "Linking prod project $ref"
           # `link` reads SUPABASE_ACCESS_TOKEN + SUPABASE_DB_PASSWORD from the env.
           supabase link --project-ref "$ref"
+          # PR #1148 exposed one production catalog/history mismatch: the first
+          # Solo table exists while migration 20270118010000 is not recorded.
+          # Preserve immutable repository SQL. Only when that exact version is
+          # missing, dump schema read-only, validate any pre-existing Solo table,
+          # and transform CREATE statements in this ephemeral runner checkout.
+          # The digest-pinned transformer fails closed on source or schema drift.
+          migration_status="$RUNNER_TEMP/solo-beta-migration-status.txt"
+          supabase migration list --linked | tee "$migration_status"
+          if awk -F'|' '$1 ~ /20270118010000/ && $2 !~ /20270118010000/ { missing=1 } END { exit(missing ? 0 : 1) }' "$migration_status"; then
+            schema_dump="$RUNNER_TEMP/solo-beta-production-schema.sql"
+            supabase db dump --linked --schema public -f "$schema_dump"
+            node scripts/ci/solo-beta-migration-recovery.mjs \
+              "$schema_dump" \
+              supabase/migrations/20270118010000_solo_beta_atomic_fulfillment.sql
+            rm -f "$schema_dump"
+          fi
           echo "::group::supabase db push (idempotent — already-recorded migrations are skipped)"
           # `db push` queries supabase_migrations.schema_migrations and applies ONLY
           # versions not yet recorded, in order. Re-running with nothing new is a no-op.

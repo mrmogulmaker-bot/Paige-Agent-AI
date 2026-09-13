@@ -25,6 +25,12 @@ import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
 import { operatorChooserTarget } from "@/lib/auth/operatorTarget";
 import { isSoloBetaPlan, soloAuthRecoveryState, soloBetaDisplayIntent, soloBetaSignupPath } from "@/lib/auth/soloBetaAcquisition";
 import { signUpWithReferral } from "@/lib/signUpWithReferral";
+import {
+  DEFAULT_SIGNUP_PHONE_COUNTRY,
+  normalizeSignupMobile,
+  signupPhoneCountryOptions,
+  type SignupPhoneCountry,
+} from "@/lib/auth/signupMobile";
 
 const authSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }),
@@ -64,6 +70,8 @@ const Auth = () => {
   const [consentDataUsage, setConsentDataUsage] = useState(false);
   const [consentMarketing, setConsentMarketing] = useState(false);
   const [mobileNumber, setMobileNumber] = useState("");
+  const [mobileCountry, setMobileCountry] = useState<SignupPhoneCountry>(DEFAULT_SIGNUP_PHONE_COUNTRY);
+  const mobileCountryOptions = useMemo(() => signupPhoneCountryOptions(), []);
   const [consentSms, setConsentSms] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -339,11 +347,11 @@ const Auth = () => {
           return;
         }
 
-        const normalizedMobile = mobileNumber.replace(/[\s().-]/g, "");
-        if (consentSms && !/^\+[1-9]\d{7,14}$/.test(normalizedMobile)) {
+        const normalizedMobile = normalizeSignupMobile(mobileNumber, mobileCountry);
+        if (consentSms && !normalizedMobile) {
           toast({
             title: "Mobile number required",
-            description: "Enter your mobile number with country code, for example +12125551212.",
+            description: "Enter a valid mobile number for the selected country. You do not need to type the country prefix.",
             variant: "destructive",
           });
           return;
@@ -829,18 +837,42 @@ const Auth = () => {
                   <Label htmlFor="mobile" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     Mobile Number <span className="normal-case tracking-normal">(optional; required for texts)</span>
                   </Label>
-                  <Input
-                    id="mobile"
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    placeholder="+12125551212"
-                    value={mobileNumber}
-                    onChange={(e) => setMobileNumber(e.target.value)}
-                    disabled={isLoading}
-                    className="h-10 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40"
-                  />
-                  <p className="sr-only">Include the country code.</p>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(11rem,0.7fr)_minmax(0,1fr)]">
+                    <div className="space-y-1">
+                      <Label htmlFor="mobile-country" className="text-[11px] font-medium text-muted-foreground">Country</Label>
+                      <select
+                        id="mobile-country"
+                        value={mobileCountry}
+                        onChange={(event) => setMobileCountry(event.target.value as SignupPhoneCountry)}
+                        disabled={isLoading}
+                        className="h-10 w-full rounded-md border border-border/60 bg-muted/50 px-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {mobileCountryOptions.map((country) => (
+                          <option key={country.code} value={country.code}>
+                            {country.label} ({country.callingCode})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="mobile" className="text-[11px] font-medium text-muted-foreground">Number</Label>
+                      <Input
+                        id="mobile"
+                        type="tel"
+                        inputMode="tel"
+                        autoComplete="tel-national"
+                        placeholder="(212) 555-1212"
+                        value={mobileNumber}
+                        onChange={(e) => setMobileNumber(e.target.value)}
+                        aria-describedby="mobile-help"
+                        disabled={isLoading}
+                        className="h-10 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40"
+                      />
+                    </div>
+                  </div>
+                  <p id="mobile-help" className="text-xs text-muted-foreground">
+                    Choose your country and enter the number normally—no country prefix required. An explicit + country code also works.
+                  </p>
                 </div>
               )}
 
