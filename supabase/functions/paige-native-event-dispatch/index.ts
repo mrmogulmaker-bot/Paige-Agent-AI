@@ -191,6 +191,13 @@ Deno.serve(async (req) => {
     //    metadata (true only on a real `executed` outcome, never in C1) — never proof by itself. --
     const persistFailed = new Set(engine.persist_failures);
     const infraRetry = new Set(engine.subscriber_retry);
+    // A subscriber whose NATIVE act settled NON-terminal (accepted_for_execution / retrying / ambiguous)
+    // is not durably done — its correlation reconcile must run on a later drain (§39 F1). Keeping the
+    // event reclaimable (NOT `done`) is the reconcile TRIGGER: the sweeper re-drives (bounded by its
+    // attempts cap → a genuinely stuck row lands in `error`, never a silent `done`), and phase 5 reconciles
+    // BY CORRELATION (an `ambiguous` row is re-read, never blind re-dispatched). Reuses the existing event
+    // lifecycle + sweeper — no second cron (§18).
+    const reconcilePending = new Set(engine.reconcile_pending);
     for (const sub of subscribers) {
       if (alreadyDone.has(sub.id)) { delivered.push(sub.id); continue; }
       const actRecs = engine.records.filter((r) => r.automation_id === sub.id);
@@ -198,11 +205,19 @@ Deno.serve(async (req) => {
         act_id: r.act_id, position: r.act_position, adapter: r.adapter_kind, outcome: r.outcome,
       }));
       // NOT durably delivered when: an infra read/resolve failed (no records governed at all), OR any of
-      // this subscriber's per-act ledger writes failed. Either way → status 'error' → the event fails →
-      // the sweeper retries (never a silent 'done' whose acts were not governed/recorded, §13/§32 F2).
+      // this subscriber's per-act ledger writes failed, OR a native act settled non-terminal and still owes
+      // a correlation reconcile. Any of these → status 'error' → the event fails → the sweeper retries
+      // (never a silent 'done' whose acts were not governed/recorded or whose advance was never confirmed,
+      // §13/§32 F2, §39 F1).
       const anyPersistFailed = actRecs.some((r) => persistFailed.has(r.act_id));
-      const needsRetry = infraRetry.has(sub.id) || anyPersistFailed;
+      const awaitingReconcile = reconcilePending.has(sub.id);
+      const needsRetry = infraRetry.has(sub.id) || anyPersistFailed || awaitingReconcile;
       const anyExecuted = actRecs.some((r) => r.outcome === "executed");
+      const retryReason = infraRetry.has(sub.id)
+        ? "engine_infra_error"
+        : anyPersistFailed
+          ? "act_ledger_write_failed"
+          : "native_act_awaiting_reconcile";
       const { error: upErr } = await admin
         .from("paige_event_dispatches")
         .upsert(
@@ -217,7 +232,7 @@ Deno.serve(async (req) => {
               acts_executed: needsRetry ? false : anyExecuted,
               acts,
             },
-            error: needsRetry ? (infraRetry.has(sub.id) ? "engine_infra_error" : "act_ledger_write_failed") : null,
+            error: needsRetry ? retryReason : null,
           },
           { onConflict: "event_id,automation_id" },
         );

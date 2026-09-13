@@ -320,6 +320,15 @@ export type EngineResult = {
    *  authorizing-person read). The engine recorded NOTHING for them — no false condition_not_matched /
    *  held_by_lane / refused_authority — and the drainer fails their delivery for retry (§13/§32, F2). */
   subscriber_retry: string[];
+  /** automation_ids with a NATIVE act left in a NON-terminal, still-reconcilable state
+   *  (accepted_for_execution / retrying / ambiguous) after this drain. The drainer must NOT complete such
+   *  an event `done`: it fails the delivery so the sweeper re-drives, and phase 5 reconciles the row BY
+   *  CORRELATION on the next drain (an `ambiguous` row is re-read, never blind re-dispatched; an
+   *  `accepted`-never-landed row is idempotently re-dispatched). The EXISTING event lifecycle + sweeper is
+   *  the reconcile trigger — no second cron (§18) — and its attempts cap means a genuinely stuck row lands
+   *  in `error` (visible), never a silent `done`. This is what makes the ambiguous-before-retry reconcile
+   *  REACHABLE in production rather than only in a re-drain that happened to be caused by a crash (§39 F1). */
+  reconcile_pending: string[];
 };
 
 /** Orchestrate all acts for a claimed event across its live subscribers, writing the exact per-act
@@ -552,6 +561,15 @@ export async function runEventActs(
   }
 
   const by_outcome: Record<string, number> = {};
-  for (const rec of records) by_outcome[rec.outcome] = (by_outcome[rec.outcome] ?? 0) + 1;
-  return { records, by_outcome, persist_failures, subscriber_retry };
+  // A NATIVE record whose FINAL outcome is NOT terminal/settled is still reconcilable — the drainer must
+  // keep the event reclaimable so phase 5 reconciles it on a later drain (§39 F1). Settled non-execute
+  // outcomes (condition_not_matched / held_by_lane / approval_pending / refused_*) and terminals
+  // (executed / failed / cancelled) are ALL in FINAL_OR_SETTLED, so only accepted_for_execution /
+  // retrying / ambiguous qualify — exactly the states a correlation reconcile can still advance.
+  const reconcileSet = new Set<string>();
+  for (const rec of records) {
+    by_outcome[rec.outcome] = (by_outcome[rec.outcome] ?? 0) + 1;
+    if (rec.adapter_kind === "native" && !FINAL_OR_SETTLED.has(rec.outcome)) reconcileSet.add(rec.automation_id);
+  }
+  return { records, by_outcome, persist_failures, subscriber_retry, reconcile_pending: [...reconcileSet] };
 }

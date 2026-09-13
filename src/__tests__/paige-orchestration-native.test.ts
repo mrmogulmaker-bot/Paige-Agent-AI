@@ -323,6 +323,7 @@ describe("runEventActs — native auto-execute: Gateway availability gate + phas
     expect(rec.outcome).toBe("executed");
     expect(res.by_outcome.executed).toBe(1);
     expect(res.persist_failures).toEqual([]);
+    expect(res.reconcile_pending).toEqual([]); // a confirmed executed owes NO reconcile
 
     // the Gateway was consulted (get_actor_access + resolve_tool_autonomy on the UNDERSCORE tool key) BEFORE dispatch
     expect(cfg.rpcCalls.some((c) => c.fn === "get_actor_access")).toBe(true);
@@ -390,15 +391,16 @@ describe("runEventActs — native auto-execute: Gateway availability gate + phas
     expect(advance?.args._outcome).toBe("executed");
   });
 
-  it("RECONCILE inconclusive: `ambiguous` row still unconfirmed → stays ambiguous, no dispatch, no receipt (§39 F2 no overwrite)", async () => {
+  it("RECONCILE inconclusive: `ambiguous` row still unconfirmed → stays ambiguous, no dispatch, no receipt (§39 F2 no overwrite), still owes reconcile (§39 F1)", async () => {
     const cfg = happy({ currentActOutcome: "ambiguous", transitionExists: false });
     const res = await runEventActs(mockDb(cfg), event, [journeyAuto()]);
     expect(res.records[0].outcome).toBe("ambiguous");
     expect(cfg.rpcCalls.some((c) => c.fn === "set_journey_stage")).toBe(false);
     expect(cfg.rpcCalls.some((c) => c.fn === "record_capability_run")).toBe(false);
+    expect(res.reconcile_pending).toEqual(["a1"]); // still non-terminal → the event stays reclaimable
   });
 
-  it("an UNCONFIRMED first-drain change → ambiguous: advanced NOT settled, and NO receipt/Rail", async () => {
+  it("an UNCONFIRMED first-drain change → ambiguous: advanced NOT settled, NO receipt/Rail, and OWES a reconcile (§39 F1)", async () => {
     const cfg = happy({ transitionExists: false });
     const res = await runEventActs(mockDb(cfg), event, [journeyAuto()]);
     expect(res.records[0].outcome).toBe("ambiguous");
@@ -406,6 +408,9 @@ describe("runEventActs — native auto-execute: Gateway availability gate + phas
     expect(advance?.args._outcome).toBe("ambiguous");
     expect(advance?.args._settled_at).toBeNull(); // ambiguous stays advanceable
     expect(cfg.rpcCalls.some((c) => c.fn === "record_capability_run")).toBe(false);
+    // §39 F1: the drainer must be told this subscriber still owes a correlation reconcile, so the event
+    // is re-driven (not silently completed `done`) and phase 5 reconciles on a later drain.
+    expect(res.reconcile_pending).toEqual(["a1"]);
   });
 
   it("a definitive dispatch FAILURE → failed (settled), no receipt/Rail", async () => {
@@ -448,6 +453,16 @@ describe("runEventActs — native auto-execute: Gateway availability gate + phas
     expect(res.records[0].outcome).toBe("approval_pending");
     expect(cfg.rpcCalls.some((c) => c.fn === "set_journey_stage")).toBe(false);
     expect(cfg.rpcCalls.some((c) => c.fn === "get_actor_access")).toBe(false); // no Gateway resolve on a held lane
+    expect(res.reconcile_pending).toEqual([]); // approval_pending is SETTLED (awaiting a human), NOT a reconcile case
+  });
+
+  it("a settled non-execute native outcome (tier-refused) owes NO reconcile — only accepted/retrying/ambiguous do", async () => {
+    const refused = await runEventActs(mockDb(happy({ actorTier: "client" })), event, [journeyAuto()]);
+    expect(refused.records[0].outcome).toBe("refused_authority");
+    expect(refused.reconcile_pending).toEqual([]); // a terminal refusal is not reconcilable
+    const executed = await runEventActs(mockDb(happy()), event, [journeyAuto()]);
+    expect(executed.records[0].outcome).toBe("executed");
+    expect(executed.reconcile_pending).toEqual([]); // a confirmed executed is not reconcilable
   });
 });
 
