@@ -81,10 +81,40 @@ const SAFE_STATUS = new Set(["rejected", "skipped", "escalated", "changes_reques
 // brace/paren/string-aware walker. Backtick table names are covered too.
 const FROM_WRITE = /from(?:\s*<[^(]*>)?\s*\(\s*["'`]paige_pending_approvals["'`][^)]*\)\s*\??\.\s*(?:update|upsert|insert)(?:\s*<[^(]*>)?\s*\(/g;
 
-// Comments are BLANKED, not deleted, so reported line numbers still match the real file.
-const strip = (t) =>
-  t.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
-   .replace(/^(\s*)\/\/.*$/gm, (_m, indent) => indent);
+// Comments are BLANKED to spaces (newlines kept), not deleted, so reported line numbers still match
+// the real file. String/template-literal aware — a `//` or `/*` INSIDE a string is left intact, and a
+// TRAILING line comment (not just a line-start one) is blanked, so a comment placed between a
+// `from(...)` and its chained `.update(...)` can never split the match (Codex round 8). A regex/
+// division `/` that is not `//` or `/*` is copied verbatim; a `${…}` interpolation is treated as part
+// of its template literal (no from()->write chain is ever authored inside one — irrelevant to scope).
+function strip(t) {
+  let out = "";
+  let str = null; // active string delimiter: ' " or `
+  for (let i = 0; i < t.length; ) {
+    const c = t[i];
+    if (str) {
+      out += c;
+      if (c === "\\") { if (i + 1 < t.length) out += t[i + 1]; i += 2; continue; } // escape: copy next verbatim
+      if (c === str) str = null;
+      i += 1;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") { str = c; out += c; i += 1; continue; }
+    if (c === "/" && t[i + 1] === "/") { // line comment → blank to EOL, keep the newline
+      while (i < t.length && t[i] !== "\n") { out += " "; i += 1; }
+      continue;
+    }
+    if (c === "/" && t[i + 1] === "*") { // block comment → blank to */, keep newlines
+      out += "  "; i += 2;
+      while (i < t.length && !(t[i] === "*" && t[i + 1] === "/")) { out += t[i] === "\n" ? "\n" : " "; i += 1; }
+      if (i < t.length) { out += "  "; i += 2; }
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
 
 const lineAt = (text, index) => text.slice(0, index).split("\n").length;
 
@@ -284,6 +314,11 @@ if (process.argv.includes("--self-test")) {
     // Preemptive (round-7 hardening): optional chaining on the write must not evade the match.
     ["catches an approved write via optional chaining (.from(…)?.update(…))",
       [["f.ts", 'supabase.from("paige_pending_approvals")?.update({ status: "approved" }).eq("id", id);']], 1],
+    // Codex 2026-09-13 round 8 P2 — a TRAILING line comment between from() and the write must be blanked.
+    ["catches an approved write with a trailing comment between from() and .update()",
+      [["f.ts", 'supabase.from("paige_pending_approvals") // target queue\n  .update({ status: "approved" }).eq("id", id);']], 1],
+    ["does NOT blank a // that lives inside the table string literal",
+      [["f.ts", 'supabase.from("paige_pending_approvals").update({ status: "approved", note: "see http://x" }).eq("id", id);']], 1],
     // TS `as const` / `as T` assertions on the status literal must be tolerated (idiomatic here).
     ["allows a decline literal with an `as const` assertion",
       [["f.ts", 'supabase.from("paige_pending_approvals").insert({ status: "pending" as const, tenant_id: t });']], 0],
