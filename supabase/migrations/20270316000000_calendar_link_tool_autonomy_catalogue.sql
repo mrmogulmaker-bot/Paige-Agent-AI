@@ -1,3 +1,10 @@
+-- ⚠ MERGE GATE (§58, §39 MAJOR-2) — this function is a FULL OVERWRITE, not an additive upsert.
+-- It re-declares list_tool_autonomy rebased on the prior latest (20270305000000). If ANOTHER
+-- catalogue migration lands between this file's authoring and the E7 release (e.g. PR #1234's
+-- CRM-command tools), last-migration-version wins and silently reverts the other's rows. BEFORE
+-- the E7 release, re-ground THIS file on fresh `main`'s latest list_tool_autonomy: re-run the
+-- prev-vs-new key diff (comm -23) and assert zero drops + only calendar_link_send added.
+--
 -- E7 — keep the calendar-link SHARE mutation visible in the autonomy catalogue.
 -- Re-declares the COMPLETE latest catalogue (from 20270305000000) and adds only the ONE new
 -- governed mutation `calendar_link_send` (sharing a published calendar's public /book link to a

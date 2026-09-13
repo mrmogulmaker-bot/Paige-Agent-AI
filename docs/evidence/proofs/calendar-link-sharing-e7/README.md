@@ -70,7 +70,7 @@ approved A2P), unknown — is reported as itself and **never** as a success. The
   (`CALENDAR_NOT_PUBLIC`); enabled-but-zero-hosts (`CALENDAR_NO_HOST`); cross-tenant service-role
   `42501`; forged/missing `P0002`; non-manager JWT `42501`; platform-admin resolves; anon EXECUTE
   revoked (live `SET ROLE anon` refused); SECURITY DEFINER + pinned search_path.
-- **Adapter smoke — 39/39 PASS** (`node --experimental-strip-types scripts/calendar-link-share-smoke.mts`):
+- **Adapter smoke — 42/42 PASS** (`node --experimental-strip-types scripts/calendar-link-share-smoke.mts`):
   the readback trap (queued/scheduled/blocked/failed/`needs_config`/missing-outcome never reported as
   sent; success only on `outcome==="sent"` + provider id); per-channel eligibility (email default-allow
   vs SMS consent-deny; no-address ineligible; quiet-hours → `will_queue` not ineligible; read-error →
@@ -83,6 +83,31 @@ approved A2P), unknown — is reported as itself and **never** as a success. The
   `action-risk-lint --self-test`, `action-risk-lint` (calendar_link resolved), `tool-catalogue-lint`
   (calendar_link_send catalogued), `chat-tool-registry-lint` (0 new inline tools), `one-approval-gate`,
   `governed-execution`.
+
+## Independent review (§39 adversarial + §5 compliance/security)
+
+Both ran on the real diff as distinct seats (§5/§39). Core verdict: **the security + honesty core is
+SOUND** — no false success, no cross-tenant send, in-body §59 scope, correct confirm-gating, no second
+system, honest social, §37 clean, §58 catalogue preserved (0 dropped, +1). **§5 = SHIP** (no BLOCKER/
+MAJOR). §39 found **two MAJORs**, both resolved:
+
+- **MAJOR-1 — plus-addressed email silently rejected (FIXED + tested).** The adapter passed
+  `to: normalizeAddress(...)`, which folds an email `+tag` (`user+tag@x.com` → `user@x.com`);
+  send-message re-derives the contact's raw address and its identity check does NOT `+tag`-fold, so it
+  rejected the send as `recipient_contact_mismatch`. Fix: pass the **raw** address (send-message +
+  runPreSend normalize internally). New smoke assertion T29a proves the raw `+tag` address is passed.
+- **MAJOR-2 — `list_tool_autonomy` full-overwrite merge hazard (documented RELEASE GATE).** The
+  catalogue migration is a full re-declaration rebased on `20270305000000`; if another catalogue
+  migration (e.g. #1234's) lands around it, last-version-wins silently reverts the other's rows (§58).
+  Not a code defect today (0 rows dropped vs the current baseline). **Release gate** noted in the
+  migration header: before the E7 release, re-ground the catalogue on fresh `main`'s latest
+  `list_tool_autonomy` (re-run the key diff; assert zero drops + only `calendar_link_send` added).
+
+Also applied: **§5 MINOR-2** (custom-**email** body now composed as escaped HTML with `<br>` + a
+clickable `<a>` link, not a run-on plain line — smoke T29b/T29c), the **§39 MINOR** (the `high`
+confirm card now NAMES the recipient's channel address, resolved in-tenant under the caller JWT,
+fail-safe to "this contact"), and the **§39 TRIVIAL** (`prepare` now guards `!share.slug` like its
+siblings). Adapter smoke went 39 → **42** assertions.
 
 ## Honest pre-existing baseline (§13 — NOT introduced by E7)
 

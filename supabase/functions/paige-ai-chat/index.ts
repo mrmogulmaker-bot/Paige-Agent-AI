@@ -7660,7 +7660,22 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         case "calendar_link_send": {
           const p = await bookingPreset(a?.calendarId);
           const ch = a?.channel === "sms" ? "text message (SMS)" : "email";
-          return `Send the public booking link for ${p.label} to this contact by ${ch}. A real person receives a link to your /book page. The server refuses a calendar that isn't public and a recipient who can't be messaged; it does not post to social or book a meeting.`;
+          // Name the RECIPIENT on the outward-facing high-risk card (§70 consent clarity — the operator
+          // approves a NAMED recipient, not "this contact"). Reads the channel address in-tenant under
+          // the caller JWT (RLS-scoped; a cross-tenant/forged id returns no row → "this contact"), §13-safe.
+          let who = "this contact";
+          const cidForCard = typeof a?.contactId === "string" ? a.contactId.trim() : "";
+          const tenantForCard = personaCtx?.tenant_id ?? null;
+          if (UUIDISH.test(cidForCard) && tenantForCard) {
+            try {
+              const { data } = await supabaseClient.from("clients").select("email, phone").eq("id", cidForCard).eq("tenant_id", tenantForCard).maybeSingle();
+              const addr = a?.channel === "sms"
+                ? (typeof data?.phone === "string" ? data.phone.trim() : "")
+                : (typeof data?.email === "string" ? data.email.trim() : "");
+              if (addr) who = addr;
+            } catch { /* fall through to "this contact" (§13 — better unnamed than wrongly named) */ }
+          }
+          return `Send the public booking link for ${p.label} to ${who} by ${ch}. A real person receives a link to your /book page. The server refuses a calendar that isn't public and a recipient who can't be messaged; it does not post to social or book a meeting.`;
         }
         case "deal_create":
           return `Add a deal "${a?.title || "Untitled"}"${typeof a?.value_cents === "number" ? ` worth ${(a.value_cents / 100).toLocaleString(undefined, { style: "currency", currency: a?.currency || "USD" })}` : ""} to the pipeline.`;

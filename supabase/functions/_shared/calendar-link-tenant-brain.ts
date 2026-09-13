@@ -34,7 +34,7 @@
 
 import type { SupabaseAdminLike } from "./twilio.ts";
 import type { ChannelType } from "./channel-adapters.ts";
-import { normalizeAddress, runPreSend } from "./pre-send-pipeline.ts";
+import { runPreSend } from "./pre-send-pipeline.ts";
 
 type RpcError = { message?: string } | null;
 
@@ -123,12 +123,35 @@ function bookUrl(publicSiteUrl: string, slug: string): string {
   return `${base}/book/${slug}`;
 }
 
+/** Escape text for safe embedding in an HTML email body (title + custom message are tenant text). */
+function htmlEscape(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 /** The default, brand-neutral share copy (§2 coaching-generic, §3 direct voice). */
 function defaultBody(channel: ShareChannel, title: string | null, url: string): string {
-  const name = title ? `“${title}”` : "my booking page";
+  const name = title ? `“${htmlEscape(title)}”` : "my booking page";
   if (channel === "sms") return `Book time with me here: ${url}`;
   return `<p>You can book time with me directly here:</p><p><a href="${url}">${name}</a><br>${url}</p>`;
 }
+
+/**
+ * Compose the send body. send-message renders an EMAIL `body` as HTML (`body_html`) and an SMS
+ * `body` as plain text (`body_text`), so the two channels compose differently (§70 — a recipient
+ * must get a clickable, well-formed link, not a run-on line with a bare URL):
+ *  - email + custom message: escape the tenant text, convert newlines to <br>, and ALWAYS append the
+ *    booking link as a clickable <a> (the tool tells the model the link is auto-included, so it need
+ *    not embed the raw URL). email + no message: the well-formed default HTML body.
+ *  - sms: plain text; append the URL on its own line if the custom message did not already include it.
+ */
+function composeBody(channel: ShareChannel, title: string | null, url: string, custom: string | null): string {
+  if (!custom) return defaultBody(channel, title, url);
+  if (channel === "email") {
+    return `<p>${htmlEscape(custom).replace(/\n/g, "<br>")}</p><p><a href="${url}">${url}</a></p>`;
+  }
+  return custom.includes(url) ? custom : `${custom}\n\n${url}`;
+}
+
 function defaultSubject(title: string | null): string {
   return title ? `Book time — ${title}` : "Book time with me";
 }
@@ -244,7 +267,7 @@ export async function prepareCalendarLinkShare(input: PrepareCalendarLinkInput):
   const share = await readShareability(input.caller, input.calendarId);
   if (!share.ok) return { ok: false, code: share.code };
 
-  if (!share.shareable) {
+  if (!share.shareable || !share.slug) {
     // No public link exists to share — refuse truthfully, emit no url/copy.
     return {
       ok: true,
@@ -370,13 +393,15 @@ export async function sendCalendarLink(input: SendCalendarLinkInput): Promise<Re
 
   const url = bookUrl(input.publicSiteUrl, share.slug);
   const subject = input.channel === "email" ? (stringValue(input.subject) ?? defaultSubject(share.title)) : undefined;
-  // Always include the real book_url; if a custom message omits it, append it (§13 the link must be present).
-  const custom = stringValue(input.message);
-  const body = custom ? (custom.includes(url) ? custom : `${custom}\n\n${url}`) : defaultBody(input.channel, share.title, url);
+  // Always include the real book_url (§13 — the link must be present); composeBody is channel-aware.
+  const body = composeBody(input.channel, share.title, url, stringValue(input.message));
 
   let res: SendMessageResult;
   try {
-    res = await input.sendMessage({ channel: input.channel, to: normalizeAddress(input.channel, address), subject, body, contact_id: input.contactId });
+    // Pass the RAW contact address as `to`: send-message re-derives the contact's canonical address
+    // and its identity check does NOT +tag-fold, so pre-folding here would make a plus-addressed email
+    // fail recipient_contact_mismatch. send-message + runPreSend normalize internally.
+    res = await input.sendMessage({ channel: input.channel, to: address, subject, body, contact_id: input.contactId });
   } catch (e) {
     return { success: false, outcome: "outcome_unknown", reason: e instanceof Error ? e.message : "The send could not be completed.", code: "SEND_INVOKE_FAILED" };
   }

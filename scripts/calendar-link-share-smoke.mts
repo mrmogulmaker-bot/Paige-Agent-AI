@@ -165,6 +165,36 @@ async function main() {
     ok(calledWith && calledWith.channel === "email" && calledWith.contact_id === CONTACT && String(calledWith.body).includes("/book/cal-live"), "T29 send: calls send-message with contact_id + the real link");
   }
 
+  // ── 7b. send — the RAW address is passed as `to` (plus-addressed email must NOT be folded).
+  //     Folding `owner+booking@x.com` → `owner@x.com` would make send-message's identity check
+  //     (which does not +tag-fold) reject it as recipient_contact_mismatch. §39 MAJOR-1.
+  {
+    let calledWith: any = null;
+    await sendCalendarLink({
+      caller: makeCaller({ shareable: { shareable: true, reason: null, slug: "cal-live", title: "Live Cal" } }),
+      admin: cleanAdmin({ email: "owner+booking@example.com" }),
+      sendMessage: async (i) => { calledWith = i; return { httpOk: true, status: "sent", outcome: "sent", vendor_message_id: "vm_p" }; },
+      expectedTenantId: TENANT, actorId: CONTACT, calendarId: CAL, contactId: CONTACT, channel: "email", publicSiteUrl: SITE,
+    } as any);
+    eq(calledWith?.to, "owner+booking@example.com", "T29a send: passes the RAW +tag address as `to` (no fold → no recipient_contact_mismatch)");
+  }
+
+  // ── 7c. send — a custom EMAIL message renders as well-formed HTML (escaped + <br> + clickable link),
+  //     not a run-on plain line with a bare URL. §5 MINOR-2.
+  {
+    let calledWith: any = null;
+    await sendCalendarLink({
+      caller: makeCaller({ shareable: { shareable: true, reason: null, slug: "cal-live", title: "Live Cal" } }),
+      admin: cleanAdmin({ email: "guest@example.com" }),
+      sendMessage: async (i) => { calledWith = i; return { httpOk: true, status: "sent", outcome: "sent", vendor_message_id: "vm_c" }; },
+      expectedTenantId: TENANT, actorId: CONTACT, calendarId: CAL, contactId: CONTACT, channel: "email",
+      subject: "Let's meet", message: "Hi <there>\nGrab a time:", publicSiteUrl: SITE,
+    } as any);
+    const body = String(calledWith?.body ?? "");
+    ok(body.includes("<br>") && body.includes(`<a href="${SITE}/book/cal-live">`), "T29b send email custom: HTML body with <br> + clickable link");
+    ok(body.includes("Hi &lt;there&gt;") && !body.includes("Hi <there>"), "T29c send email custom: tenant text HTML-escaped (no raw <there>)");
+  }
+
   // ── 8. send — queued send is NOT reported as sent. ─────────────────────────
   {
     const r = await sendCalendarLink({
