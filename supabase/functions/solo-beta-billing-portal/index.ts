@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY_V2") ?? "";
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
   if (!supabaseUrl || !anonKey || !serviceKey || !stripeKey) {
     return json(503, { error: "needs_config" });
   }
@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
   }
   if (!mapping || mapping.stripe_account !== "v2"
     || mapping.stripe_customer_id !== persisted.stripe_customer_id
-    || persisted.provider_mode !== "test" || !persisted.stripe_subscription_id
+    || persisted.provider_mode !== "live" || !persisted.stripe_subscription_id
     || enrollment.stripe_subscription_id !== persisted.stripe_subscription_id) {
     return json(409, { error: "billing_account_unresolvable" });
   }
@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
       action: "solo_beta_billing_portal_requested",
       target_type: "platform_billing_account",
       target_id: tenantId,
-      payload: { offer_code: SOLO_BETA_OFFER_CODE, provider_mode: "test" },
+      payload: { offer_code: SOLO_BETA_OFFER_CODE, provider_mode: "live" },
     });
     if (requestedError) return json(500, { error: "audit_failed" });
 
@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
       action: "solo_beta_billing_portal_opened",
       target_type: "platform_billing_account",
       target_id: tenantId,
-      payload: { offer_code: SOLO_BETA_OFFER_CODE, provider_mode: "test" },
+      payload: { offer_code: SOLO_BETA_OFFER_CODE, provider_mode: "live" },
     });
     return json(200, { url: portal.url, tenant_id: tenantId });
   } catch {

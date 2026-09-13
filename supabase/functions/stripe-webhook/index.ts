@@ -5,6 +5,8 @@ import { upsertBillingAccount } from "../_shared/platform-billing.ts";
 
 import { reconcilePaymentSetup } from "../_shared/payment-setup-reconciliation.ts";
 import { verifyStripeWebhook } from "../_shared/stripe-webhook-signature.ts";
+import { SOLO_BETA_OFFER_CODE } from "../_shared/solo-beta-offer.ts";
+import { readInvoiceSubscriptionId } from "../_shared/solo-beta-stripe-shapes.ts";
 
 // Legacy Stripe account (original PaigeAgent account)
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
@@ -442,6 +444,41 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
+    // The account's single Stripe endpoint stays the ingress. Route only signed,
+    // live Solo events into the dedicated recoverable/atomic lifecycle before the
+    // legacy insert-first gate can consume them. Browser fields never participate.
+    const verifiedStripe = verifiedAccount === "v2" ? stripeV2 : stripe;
+    let isSoloBetaEvent = false;
+    if (event.livemode && verifiedAccount === "legacy") {
+      if (event.type === "checkout.session.completed" || event.type === "checkout.session.expired") {
+        isSoloBetaEvent = (event.data.object as Stripe.Checkout.Session).metadata?.offer_code === SOLO_BETA_OFFER_CODE;
+      } else if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
+        isSoloBetaEvent = (event.data.object as Stripe.Subscription).metadata?.offer_code === SOLO_BETA_OFFER_CODE;
+      } else if (event.type === "invoice.payment_failed") {
+        const subscriptionId = readInvoiceSubscriptionId(event.data.object as Stripe.Invoice);
+        if (subscriptionId) {
+          try {
+            const subscription = await verifiedStripe.subscriptions.retrieve(subscriptionId);
+            isSoloBetaEvent = subscription.metadata?.offer_code === SOLO_BETA_OFFER_CODE;
+          } catch {
+            return new Response(JSON.stringify({ error: "solo_beta_subscription_readback_unavailable" }), {
+              status: 503,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        }
+      }
+    }
+    if (isSoloBetaEvent) {
+      const soloResponse = await fetch(
+        `${Deno.env.get("SUPABASE_URL")}/functions/v1/solo-beta-stripe-webhook`,
+        { method: "POST", headers: { "Content-Type": "application/json", "stripe-signature": signature }, body },
+      );
+      return new Response(await soloResponse.text(), {
+        status: soloResponse.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     // Billing setup has its own transactional completion gate. It MUST precede the
     // legacy insert-first log and every other product route. A failed commit returns
     // non-2xx without permanently consuming the event. Provider details stay confined.

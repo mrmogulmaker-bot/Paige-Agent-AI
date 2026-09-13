@@ -6,12 +6,12 @@ SELECT is((SELECT currency FROM public.platform_subscription_offers WHERE offer_
 SELECT is((SELECT billing_interval FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1'),'month','offer is monthly');
 SELECT is((SELECT interval_count FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1'),1,'offer interval count is one');
 SELECT is((SELECT trial_days FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1'),30,'offer has exactly one 30-day trial');
-SELECT is((SELECT provider_mode FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1'),'test','offer is test mode only');
+SELECT is((SELECT provider_mode FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1'),'live','offer is live mode only');
 SELECT is((SELECT account_type FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1'),'standalone','offer provisions only the Solo standalone account type');
-SELECT is((SELECT stripe_account FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1'),'v2','offer is pinned to the approved Stripe account contract');
+SELECT is((SELECT stripe_account FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1'),'legacy','offer is pinned to the approved Stripe account contract');
 SELECT is((SELECT p.slug FROM public.platform_subscription_offers o JOIN public.platform_subscription_plans p ON p.id=o.plan_id WHERE o.offer_code='paige-solo-beta-monthly-v1'),'solo','offer is bound only to the canonical Solo plan');
-SELECT is((SELECT status FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1'),'configuration_required','offer fails closed until test provider identifiers are configured');
-SELECT ok((SELECT stripe_product_id IS NULL AND stripe_price_id IS NULL FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1'),'repository migrations do not bake provider objects into the offer');
+SELECT is((SELECT status FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1'),'live_ready','offer is ready only after live provider identifiers are configured');
+SELECT ok((SELECT stripe_product_id IS NOT NULL AND stripe_price_id IS NOT NULL FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1'),'canonical server configuration binds the verified live provider objects');
 SELECT is((SELECT count(*)::integer FROM public.platform_subscription_offers WHERE status<>'retired'),1,'Solo Beta is the only non-retired public enrollment offer');
 SELECT ok(NOT has_table_privilege('authenticated','public.platform_subscription_offers','SELECT'),'browser cannot read provider offer identifiers');
 SELECT ok(NOT has_table_privilege('authenticated','public.solo_beta_enrollments','SELECT'),'browser cannot read enrollment authority rows');
@@ -21,8 +21,8 @@ SELECT ok(NOT has_function_privilege('authenticated','public.solo_beta_claim_str
 SELECT ok(NOT has_function_privilege('authenticated','public.solo_beta_fulfill_checkout(text,uuid,integer,uuid,text,text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,timestamptz,timestamptz,boolean)','EXECUTE'),'browser cannot fulfill an entitlement');
 SELECT ok(has_function_privilege('service_role','public.solo_beta_fulfill_checkout(text,uuid,integer,uuid,text,text,text,text,text,boolean,integer,text,text,integer,text,timestamptz,timestamptz,timestamptz,timestamptz,boolean)','EXECUTE'),'service role retains atomic fulfillment');
 SELECT throws_ok(
-  $$SELECT * FROM public.solo_beta_claim_stripe_event('evt_live_rejected','checkout.session.completed',true,'digest','00000000-0000-0000-0000-000000000001','cs_test','sub_test','cus_test',now())$$,
-  'P0001','solo_beta_event_not_eligible','live events fail closed before processing'
+  $$SELECT * FROM public.solo_beta_claim_stripe_event('evt_test_rejected','checkout.session.completed',false,'digest','00000000-0000-0000-0000-000000000001','cs_test','sub_test','cus_test',now())$$,
+  'P0001','solo_beta_event_not_eligible','test events fail closed before processing'
 );
 SELECT ok(NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='stripe_event_log' AND policyname='admins read stripe_event_log'),'tenant-admin cross-account event policy is removed');
 SELECT ok(EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='stripe_event_log' AND policyname='stripe_event_log_platform_owner_read'),'platform-owner-only event read policy exists');
@@ -44,7 +44,7 @@ INSERT INTO public.platform_subscriptions (
 ) SELECT
   'b1910000-0000-0000-0000-00000000aaaa',plan_id,'active','monthly',
   '2026-08-31 00:00:00+00','2026-09-30 00:00:00+00','sub_solo_lifecycle_proof',
-  'cus_solo_lifecycle_proof','paige-solo-beta-monthly-v1','test',
+  'cus_solo_lifecycle_proof','paige-solo-beta-monthly-v1','live',
   'prod_solo_lifecycle_proof','price_solo_lifecycle_proof',
   '2026-08-01 00:00:00+00','2026-08-31 00:00:00+00',now()
 FROM public.platform_subscription_offers WHERE offer_code='paige-solo-beta-monthly-v1';
@@ -64,7 +64,7 @@ INSERT INTO public.stripe_event_log (
   event_id,type,livemode,payload_digest,lifecycle_state,offer_code,owner_user_id,
   stripe_subscription_id,stripe_customer_id,provider_created_at,validated_at,processing_at,attempt_count
 ) VALUES (
-  'evt_solo_lifecycle_failed','invoice.payment_failed',false,'digest-failed','processing',
+  'evt_solo_lifecycle_failed','invoice.payment_failed',true,'digest-failed','processing',
   'paige-solo-beta-monthly-v1','b1910000-0000-0000-0000-000000000001',
   'sub_solo_lifecycle_proof','cus_solo_lifecycle_proof','2026-09-01 00:00:00+00',now(),now(),1
 );
@@ -74,7 +74,7 @@ SELECT lives_ok(
   $$SELECT public.solo_beta_sync_subscription(
     'evt_solo_lifecycle_failed','invoice.payment_failed','2026-09-01 00:00:00+00',
     'sub_solo_lifecycle_proof','cus_solo_lifecycle_proof','b1910000-0000-0000-0000-000000000001',
-    'prod_solo_lifecycle_proof','price_solo_lifecycle_proof',false,7450,'usd','month',1,'past_due',
+    'prod_solo_lifecycle_proof','price_solo_lifecycle_proof',true,7450,'usd','month',1,'past_due',
     '2026-08-31 00:00:00+00','2026-09-30 00:00:00+00',
     '2026-08-01 00:00:00+00','2026-08-31 00:00:00+00',false
   )$$,
@@ -91,7 +91,7 @@ INSERT INTO public.stripe_event_log (
   event_id,type,livemode,payload_digest,lifecycle_state,offer_code,owner_user_id,
   stripe_subscription_id,stripe_customer_id,provider_created_at,validated_at,processing_at,attempt_count
 ) VALUES (
-  'evt_solo_lifecycle_recovered','customer.subscription.updated',false,'digest-recovered','processing',
+  'evt_solo_lifecycle_recovered','customer.subscription.updated',true,'digest-recovered','processing',
   'paige-solo-beta-monthly-v1','b1910000-0000-0000-0000-000000000001',
   'sub_solo_lifecycle_proof','cus_solo_lifecycle_proof','2026-09-02 00:00:00+00',now(),now(),1
 );
@@ -100,7 +100,7 @@ SELECT lives_ok(
   $$SELECT public.solo_beta_sync_subscription(
     'evt_solo_lifecycle_recovered','customer.subscription.updated','2026-09-02 00:00:00+00',
     'sub_solo_lifecycle_proof','cus_solo_lifecycle_proof','b1910000-0000-0000-0000-000000000001',
-    'prod_solo_lifecycle_proof','price_solo_lifecycle_proof',false,7450,'usd','month',1,'active',
+    'prod_solo_lifecycle_proof','price_solo_lifecycle_proof',true,7450,'usd','month',1,'active',
     '2026-08-31 00:00:00+00','2026-09-30 00:00:00+00',
     '2026-08-01 00:00:00+00','2026-08-31 00:00:00+00',false
   )$$,
