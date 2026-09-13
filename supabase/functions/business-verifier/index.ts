@@ -1,6 +1,14 @@
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { ALL_ADAPTERS, type BusinessVerifyInput } from "../_shared/businessVerifyAdapters/index.ts";
+import {
+  authorizeBusinessVerify,
+  buildBusinessVerifyAudit,
+  businessVerifyGovernedAuditRow,
+  type BusinessVerifyAuthzDeps,
+  type BusinessVerifyGovernedAudit,
+  type BusinessVerifyPrincipal,
+} from "../_shared/business-verifier/governed-adapter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,6 +17,7 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
 const jsonResponse = (payload: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify(payload), {
@@ -16,13 +25,72 @@ const jsonResponse = (payload: Record<string, unknown>, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+/**
+ * Write ONE governed-decision row to `paige_audit_log` (service-role). For a REFUSED verification this
+ * is the ONLY trace, since a refusal creates no run and contacts no provider. Non-fatal: a logging
+ * failure never changes the decision (mirrors `paige-write-back`'s `writeGovernedWriteBackAudit`).
+ */
+async function writeGovernedVerifyAudit(
+  admin: any,
+  actorUserId: string | null,
+  audit: BusinessVerifyGovernedAudit,
+): Promise<void> {
+  try {
+    const row = businessVerifyGovernedAuditRow(audit);
+    // supabase-js resolves a DB rejection as `{ error }` rather than THROWING, so the catch below never
+    // sees it. For a REFUSED verification this row is the only trace — a silently-dropped insert would
+    // erase a security-relevant attempt. Inspect and log the returned error loudly.
+    const { error } = await admin.from("paige_audit_log").insert({
+      actor_user_id: actorUserId,
+      actor_role: `business_verify:${audit.principal}`,
+      ...row,
+    });
+    if (error) {
+      console.error("business-verifier governed audit not recorded", error.message ?? String(error));
+    }
+  } catch (e) {
+    console.error("business-verifier governed audit not recorded (threw)", String(e));
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    // ── AUTHENTICATE — person (verified user JWT) or system (trusted service-role caller) ───────────
+    // The function is invocation-gated (`verify_jwt = true`), but the prior code NEVER used the caller
+    // identity — the §9 IDOR. Resolve WHO is calling before touching any business:
+    //   - a verified user JWT (`getUser` returns a user) → `person`, actor = `auth.uid()`.
+    //   - else, the bearer IS the service-role key → `system` (skill-runner / paige-mcp / internal job).
+    //   - else (anon key, or any other token with no user) → 401. This closes the "any caller" hole:
+    //     an anon-key JWT passes `verify_jwt` but is neither a user nor the service key, so it is refused.
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return jsonResponse({ ok: false, error: "UNAUTHORIZED", message: "Authorization is required." }, 401);
+    }
+    const bearer = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+    const authClient = createClient(SUPABASE_URL, ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user } } = await authClient.auth.getUser();
+
+    let principal: BusinessVerifyPrincipal;
+    let callerUserId: string | null;
+    if (user) {
+      principal = "person";
+      callerUserId = user.id;
+    } else if (bearer && bearer === SERVICE_KEY) {
+      principal = "system";
+      callerUserId = null;
+    } else {
+      return jsonResponse({ ok: false, error: "UNAUTHORIZED", message: "Invalid or unauthorized token." }, 401);
+    }
+
     const body = await req.json().catch(() => ({}));
     const business_id: string | undefined = body.business_id;
-    const triggered_by: string = body.triggered_by ?? "system";
+    // A provenance LABEL only — recorded, NEVER trusted as the actor or as authority (§13).
+    const source: string = typeof body.triggered_by === "string" ? body.triggered_by : "system";
     if (!business_id) {
       return jsonResponse({ ok: false, error: "BUSINESS_ID_REQUIRED", message: "A business ID is required." }, 400);
     }
@@ -31,7 +99,7 @@ Deno.serve(async (req) => {
 
     const { data: biz, error: bizErr } = await admin
       .from("businesses")
-      .select("id, owner_user_id, legal_name, dba, ein, state_of_formation, business_state, business_city, business_street_address, business_zip, business_phone, website, entity_type")
+      .select("id, tenant_id, owner_user_id, legal_name, dba, ein, state_of_formation, business_state, business_city, business_street_address, business_zip, business_phone, website, entity_type")
       .eq("id", business_id)
       .maybeSingle();
     if (bizErr) {
@@ -54,6 +122,98 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ── AUTHORIZE — the §9/§53/§59 authority decision, BEFORE any run insert or provider contact ────
+    // The authority is resolved against the BUSINESS'S own tenant (`biz.tenant_id`): a person must be a
+    // platform owner (super_admin), able to READ the business under RLS via their own JWT (the surface's
+    // OWN `businesses_tenant_staff_select` authority — owner_user_id or same-active-tenant staff of any
+    // staff app_role), or an agency operator managing it; a trusted service-role caller (`system`) is
+    // allowed. A denied person NEVER creates a run row and NEVER contacts a provider (no budget burned).
+    // See the adapter header for why authority mirrors the RLS read (so no same-tenant staffer who can
+    // reach the card is silently 403'd — §58/§70) while the autonomy/budget clamp for this `high` paid
+    // act is deliberately deferred UPSTREAM (§67 — the caller-initiated vs Paige-autonomous distinction),
+    // and why this door records the `high` risk class but does not run the seam's autonomy/propose gate.
+    const startedAtMs = Date.now();
+    const businessTenantId = (biz.tenant_id ?? null) as string | null;
+
+    const authzDeps: BusinessVerifyAuthzDeps = {
+      // super_admin ONLY (§53), keyed on the VERIFIED caller uid — never the body. The one sanctioned
+      // cross-tenant caller. Uses the EXPLICIT is_platform_owner(_user_id) overload (body is
+      // `SELECT is_super_admin(_user_id)`, SECURITY DEFINER, keyed on the PASSED uid): a no-arg
+      // .rpc("is_platform_owner") is AMBIGUOUS under PostgREST (both () and (uuid) overloads exist →
+      // PGRST203), which would swallow to `false` and silently deny a legitimate operator (the
+      // paige-operator-sms-send D.1 live-500 lesson). Called through the SERVICE-ROLE `admin` client, not
+      // the caller's JWT client: the answer depends only on the explicit `_user_id` we pass (the verified
+      // auth.uid(), never a body value), so the result is identical, and it does NOT depend on the
+      // authenticated PUBLIC EXECUTE grant on the (uuid) overload remaining in place — a future REVOKE to
+      // service_role-only (which a sibling migration's comment already asserts) would otherwise make this
+      // fast-path fail closed and silently deny a super_admin. Errors are logged and fail closed
+      // (§32/§13). Inert for a `system` caller (not consulted).
+      isPlatformOwner: async () => {
+        if (!callerUserId) return false;
+        const { data, error } = await admin.rpc("is_platform_owner", { _user_id: callerUserId });
+        if (error) {
+          console.error("business-verifier is_platform_owner check failed", error.message ?? String(error));
+          return false;
+        }
+        return data === true;
+      },
+      // SAME-TENANT authority == the surface's OWN read gate: can the caller SELECT this business under
+      // RLS, read through the caller's JWT client (`authClient`, anon key + the caller's bearer)? True ⟺
+      // the `businesses_tenant_staff_select` policy admits them (platform owner, the business's
+      // owner_user_id, or same-active-tenant staff of ANY staff app_role: admin/coach/sales_rep/cs_rep/
+      // finance/viewer). Mirroring the policy — rather than re-deriving a narrower tenant_members.role
+      // gate that would 403 a same-tenant sales_rep/cs_rep/finance/viewer (§58/§70) — makes "can reach
+      // the card" ⟺ "can verify," and closes the IDOR (a cross-tenant caller reads nothing). MUST be the
+      // JWT client, NEVER the service-role `admin` (which bypasses RLS and would re-open the hole). A
+      // read error fails closed (null → not authorized), never a silent allow (§13/§32).
+      callerCanReadBusiness: async () => {
+        if (!callerUserId) return false;
+        const { data, error } = await authClient
+          .from("businesses")
+          .select("id")
+          .eq("id", business_id)
+          .maybeSingle();
+        if (error) {
+          console.error("business-verifier RLS read-authority check failed", error.message ?? String(error));
+          return false;
+        }
+        return Boolean(data);
+      },
+      // agency DELEGATION over the business's tenant. agency_can_manage_child is SECURITY DEFINER,
+      // granted to service_role; called with the explicit (child, actor) overload since the service
+      // client carries no auth.uid().
+      callerManagesTenantViaAgency: async (tenantId) => {
+        if (!callerUserId) return false;
+        const { data } = await admin.rpc("agency_can_manage_child", { _child: tenantId, _actor: callerUserId });
+        return data === true;
+      },
+    };
+
+    const authz = await authorizeBusinessVerify(authzDeps, {
+      principal,
+      callerUserId,
+      businessTenantId,
+    });
+
+    const audit = buildBusinessVerifyAudit({
+      principal,
+      userId: callerUserId,
+      businessId: business_id,
+      tenantId: authz.tenantId,
+      authzBasis: authz.basis,
+      allowed: authz.allowed,
+      source,
+      startedAtMs,
+      nowIso: new Date().toISOString(),
+    });
+
+    // The governed receipt — written for every decision; the ONLY trace of a refused verification.
+    await writeGovernedVerifyAudit(admin, callerUserId, audit);
+
+    if (!authz.allowed) {
+      return jsonResponse({ ok: false, error: "NOT_AUTHORIZED", message: authz.reason }, 403);
+    }
+
     // Resolve contact_id (best-effort) via owner
     let contact_id: string | null = null;
     if (biz.owner_user_id) {
@@ -71,7 +231,7 @@ Deno.serve(async (req) => {
       .insert({
         business_id,
         contact_id,
-        triggered_by,
+        triggered_by: source,
         status: "running",
       })
       .select()
