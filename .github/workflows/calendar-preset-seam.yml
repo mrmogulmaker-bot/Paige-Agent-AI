@@ -4,14 +4,18 @@ on:
     paths:
       - 'supabase/migrations/20270301000000_calendar_booking_preset_lifecycle.sql'
       - 'supabase/migrations/20270302000000_calendar_preset_duplicate_archive_restore.sql'
+      - 'supabase/migrations/20270312000000_create_class_booking_tenant_scope_guard.sql'
       - 'supabase/tests/calendar_booking_preset_seam.sql'
+      - 'supabase/tests/create_class_booking_tenant_scope.sql'
       - '.github/workflows/calendar-preset-seam.yml'
   push:
     branches: [main]
     paths:
       - 'supabase/migrations/20270301000000_calendar_booking_preset_lifecycle.sql'
       - 'supabase/migrations/20270302000000_calendar_preset_duplicate_archive_restore.sql'
+      - 'supabase/migrations/20270312000000_create_class_booking_tenant_scope_guard.sql'
       - 'supabase/tests/calendar_booking_preset_seam.sql'
+      - 'supabase/tests/create_class_booking_tenant_scope.sql'
       - '.github/workflows/calendar-preset-seam.yml'
   workflow_dispatch:
 permissions:
@@ -43,3 +47,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Synthetic role/authz seam proof only - never production
         run: psql -X -v ON_ERROR_STOP=1 -f supabase/tests/calendar_booking_preset_seam.sql
+      - name: create_class_booking tenant-scope guard proof (E6 LOW-1) - isolated DB
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -c 'CREATE DATABASE calendar_class_booking_scope;'
+          PGDATABASE=calendar_class_booking_scope psql -X -v ON_ERROR_STOP=1 -f supabase/tests/create_class_booking_tenant_scope.sql

@@ -23,6 +23,7 @@ is backend security/proof/correctness, squarely CC's lane.
 |---|---|---|
 | B | **Repeatable pgTAP CI gate for the E3 server seam** — `supabase/tests/calendar_booking_preset_seam.sql` (112 assertions) + `.github/workflows/calendar-preset-seam.yml`. Converts the one-off `docs/evidence/proofs/booking-preset-lifecycle/` transcript into a permanent gate (§32/§24). | **112/112 green, exit 0** — re-run independently by the integrator against a disposable Postgres 16 (not just the builder's claim). Covers draft-by-default, the §59 in-body 42501 on every cross-tenant/non-member verb, the three tagged publish refusals, archived-FROZEN, anon-REVOKED + a live `SET ROLE anon` refusal, service-role tenant-scoping, duplicate/archive/restore, and the migration replay (each migration applied twice, in order). |
 | MED-2 | **Anon host-email PII leak — FIXED.** `resolveHostNames` (`supabase/functions/public-booking/index.ts`) no longer falls back to the host's auth email; it uses `full_name` only and OMITS a nameless host. The per-host `auth.admin.getUserById` loop is removed entirely (leak becomes structurally impossible + drops N auth calls). The guest-confirmation "With:" line (which reused the same helper) is fixed by the same change; the legitimate server-side host-notification path (host emails as email recipients, staff-facing) is untouched. | Structural removal (no email is fetched anywhere in the host-name path) + build/inspection. `grep` confirms zero `email` reference remains in `resolveHostNames`/`withHosts`. **OWED:** a dedicated resolver Deno invariant test (item C below) + authenticated runtime (§32.c). |
+| LOW-1 | **`create_class_booking` §59 tenant-consistency guard — IMPLEMENTED.** New migration `20270312000000` adds an in-body assert that `_tenant_id` matches the calendar's own tenant (RAISE 42501), closing the latent cross-tenant mis-write hazard. Only the SAFE half of the finding: the host-membership assert is deliberately NOT added (it could break a legit class booking if the resolver's chosen host isn't always a `calendar_hosts` row — unverifiable headless; deferred, §3.3). | **5/5 green** — `supabase/tests/create_class_booking_tenant_scope.sql` (re-run on a fresh DB): consistent tenant succeeds + writes a seat; mismatched tenant refused 42501 with the guard message + writes NO row; null-tenant calendar + null passed tenant succeeds. CI-gated by the extended `calendar-preset-seam.yml`. |
 | A/B1 | **§124 SECURITY_DEFINER catalog registration** of the calendar seam — `docs/security/SECURITY_DEFINER_CATALOG.md` gains a Calendar section (8 preset RPCs + `_assert_can_manage_preset` + `_calendar_preset_block_reason` internal-only + the RLS predicates + the guest-booking write RPCs + `update_internal_booking`), each with its §59 in-body auth-check location and grants. The stale-since-2026-07-02 gap is closed for this seam (the global review date is deliberately NOT bumped — §13, no full re-review was done). | Every entry classified against its live body; grants proven by the pgTAP G1–G12 assertions. |
 | B3 | **Doctrine currency** — `docs/doctrine/calendar-capability-contract.md` FU-2/FU-3 reconciled from "DRAFT/pre-merge/not-deployed/descriptor carries five" to shipped reality (E5 live, descriptor registers all eight). | Diff. |
 | N4 | **Spine descriptor comment** `calendar_preset.ts` "these five RPCs" → "these eight RPCs". | Diff. |
@@ -54,7 +55,7 @@ never launders authority and verifies every mutation against a fresh projection.
 | MED-2 | MED | Anon availability response leaked host auth emails (`resolveHostNames` fallback). Pre-launch blast radius ≈ 0 (no external users; hosts = owner's own team). | **FIXED in this draft** (§1). |
 | MED-1 | MED | Lifecycle gates bypassable by a direct `UPDATE public.calendars SET enabled=true` — `authenticated` holds full UPDATE (`20260708215724:29` + `20260708230000:17`) and the `manage calendars` RLS policy is `FOR ALL` with NO column restriction (`20260708210000:79-90`). A tenant admin can publish/un-archive skipping the RPC bar. **INTRA-TENANT only** (WITH CHECK binds tenant_id + manage authority) — not a cross-tenant/anon breach. The `20270301000000` header's claim *"cannot be bypassed by a direct table write"* is FALSE. | **OWNER DECISION** (§3.1) — changes the write contract + entangled with born-live minters + needs authenticated verify this session lacks. |
 | MED-3 | MED | round_robin/collective host-floor + team honesty not re-enforced when a host is removed via the `calendar_hosts` RLS path (not through `update_calendar_preset`) → a live 2-host round-robin silently books 1:1; removing the last host 404s a "live" page. | **OWNER DECISION** (§3.2) — behavior change (auto-pause trigger); bundle with MED-1 governance. |
-| LOW-1 | LOW | `create_class_booking` is DEFINER keyed entirely on params with no in-body assert (host∈calendar / tenant match). Safe today (service-role only; resolver passes server-derived values); latent cross-tenant-write hazard for a future caller. | **OWNER DECISION / recommended additive guard** (§3.3) — exact patch below. |
+| LOW-1 | LOW | `create_class_booking` is DEFINER keyed entirely on params with no in-body assert (host∈calendar / tenant match). Safe today (service-role only; resolver passes server-derived values); latent cross-tenant-write hazard for a future caller. | **IMPLEMENTED** (§3.3) — the safe tenant-consistency half shipped as migration `20270312000000` + proven (5/5). The host-membership half is DEFERRED (could break a legit call; unverifiable headless). |
 | LOW-2 | LOW | Per-IP create throttle fails OPEN on limiter error (`rateLimit.ts:52,54`). Residual per-host/per-class count caps still bound per-target volume. | **OWNER DECISION** (§3.4) — small; propose `failClosed` for the create-IP bucket. |
 | LOW-3/B2 | — | Two born-live minters (`components/admin/calendar/CalendarsPanel.tsx` INSERT `enabled:true`; `provision_tenant_default_calendar`) mint bookable calendars bypassing draft-by-default. NOT a security boundary (own-tenant; hostless-until-host-insert; `loadCalendar` refuses hostless). §37 anchor: "a lock that gates 4 of 5 minters is not a lock." | **OWNER DECISION** (§3.5) — reconcile to draft-by-default vs. accept-with-signed-exception; changes agency/provisioning behavior. |
 
@@ -95,12 +96,17 @@ CREATE TRIGGER trg_guard_calendar_lifecycle BEFORE UPDATE ON public.calendars
   FOR EACH ROW EXECUTE FUNCTION public._guard_calendar_lifecycle_cols();
 ```
 Alternative: `REVOKE UPDATE (enabled, published_at, archived_at) ON public.calendars FROM authenticated`
-(column-level) — simpler, but requires a §37 sweep confirming NO legitimate authenticated producer writes
-those columns directly (the E4 Settings UI uses the RPCs; verify no other client path). **Also correct the
-false "direct-write-proof" claim in the `20270301000000` header** — done in DOCS here (the applied
-migration file is immutable; the corrected statement lives in this package + the catalog entry). **§37
-producer inventory + an authenticated verify (a tenant admin's Settings save still works) are prerequisites
-before this ships.**
+(column-level) — simpler, but breaks any legitimate direct-UPDATE producer.
+**§37 grep result (2026-09-13, ran for this package):** there IS a legitimate authenticated direct-writer —
+`src/components/admin/calendar/CalendarsPanel.tsx:472` does `supabase.from("calendars").update({ enabled: v })`
+(the agency enable/disable toggle) and `:1222` INSERTs `enabled:true` (born-live). So EITHER fix (trigger or
+column-REVOKE) would break the agency `CalendarsPanel` toggle **unless that panel is migrated onto the
+publish/pause RPCs first** — which changes agency behavior on the just-approved Calendar area and cannot be
+authenticated-verified from this headless session. That migration is the real prerequisite, and it is a
+product decision, not a pure security fix — which is exactly why MED-1 is routed here rather than
+implemented. **Also correct the false "direct-write-proof" claim in the `20270301000000` header** — done in
+DOCS here (the applied migration file is immutable; the corrected statement lives in this package + the
+catalog entry). This is the same entanglement as LOW-3/B2 (§3.5).
 
 ### 3.2 MED-3 — auto-pause a live team calendar when a host removal drops it below the bar
 ```sql
@@ -130,8 +136,12 @@ IF NOT EXISTS (SELECT 1 FROM public.calendar_hosts h WHERE h.calendar_id=_calend
 END IF;
 ```
 Zero regression (the sole caller — the resolver — already passes consistent server-derived values); pure
-defense-in-depth for any future service-role caller. Recommended to include on owner approval; would ride
-its own pgTAP assertion once the harness gains a `class_sessions`/`internal_bookings` fixture.
+defense-in-depth for any future service-role caller. **IMPLEMENTED in this draft** as migration
+`20270312000000_create_class_booking_tenant_scope_guard.sql` (only the tenant-consistency half — the
+host-membership assert is DEFERRED: it could break a legitimate class booking if the resolver's chosen
+host is not always a `calendar_hosts` row, which cannot be authenticated-verified from this headless
+session). Proven by `supabase/tests/create_class_booking_tenant_scope.sql` (5/5, re-run on a fresh DB),
+CI-gated by `calendar-preset-seam.yml`.
 
 ### 3.4 LOW-2 — fail-closed (or degraded static cap) on the create-IP throttle
 Pass `failClosed=true` to the per-IP create bucket at `public-booking/index.ts:879`, or apply a degraded
@@ -193,8 +203,10 @@ FU-1 per-capability Trust-Compass autonomy clamp (depends on §67/§68; interim:
 ---
 
 ## 8. Release governance (per `docs/doctrine/release-governance-and-customer-update-policy.md`)
-- **Internal build identity:** branch `claude/calendar-paige-e6` (draft; head SHA stamped at PR time). Ships (on owner release) the pgTAP gate + workflow + the MED-2 resolver fix + the §124/contract/spine/tier-matrix doc reconciliations. The owner-decision migrations (§3) are NOT in the draft — they apply only on owner approval.
-- **Release channel:** production, via CI on the owner-authorized merge (the MED-2 resolver change deploys via `deploy-edge-functions`; no migration in the base draft unless §3 items are approved).
+- **Owner mandate (2026-09-13):** *"implement only confirmed Calendar/RPC/public-booking security fixes, independently prove them … prepare a separate release-ready draft. Surface the exact final scope, deployment effect, and proof owed before merging."* So the CONFIRMED, cleanly-implementable-without-breaking-an-approved-surface fixes are IMPLEMENTED here (MED-2, LOW-1); the fixes that would change the just-approved/agency surface behavior or the write contract (MED-1, MED-3, LOW-3/B2, LOW-2) stay routed to the owner (§3) — because their safe implementation requires a product/behavior decision + authenticated verification, not because they are unconfirmed.
+- **Internal build identity:** branch `claude/calendar-paige-e6` (draft; head SHA stamped at PR time). Ships (on owner release): the pgTAP gate + workflow, the **MED-2** resolver fix, the **LOW-1** migration `20270312000000` (tenant-consistency guard) + its proof, and the §124/contract/spine/tier-matrix doc reconciliations. The remaining owner-decision migrations/patches (§3.1/§3.2/§3.4/§3.5) are NOT in the draft — they apply only on owner approval.
+- **Release channel:** production, via CI on the owner-authorized merge — the MED-2 resolver change deploys via `deploy-edge-functions`; the LOW-1 migration `20270312000000` deploys via `deploy-migrations` (§32.a: re-confirm its version is unique against fresh `main` immediately before merge — the E5 merge-window lesson).
+- **Deployment effect (surfaced per the owner's ask):** (1) `public-booking` edge redeploys with the MED-2 fix — a collective booking page's host list shows names only (a nameless host is omitted, never shown by email); no other behavior changes. (2) `create_class_booking` is replaced with the same body + a tenant-consistency guard that no legitimate caller trips. (3) a new CI check (`calendar-preset-seam.yml`) runs on PRs touching the seam. No RPC contract, rendered surface, tier availability, or agency/provisioning behavior changes.
 - **Classification:** internal-only (pre-launch; no live customers).
 - **Truth boundary:** PARTIAL — the pgTAP gate is proven (112 green, re-run); the MED-2 fix is proven structurally + by build/inspection with the resolver Deno test + authenticated runtime OWED; the owner-decision items are proposed, not applied.
 - **Release note required:** no (internal pre-launch).
