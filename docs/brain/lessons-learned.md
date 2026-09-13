@@ -2389,3 +2389,14 @@ NOTHING; a contained/refusing path (e.g. a 503) is anchored as `fail_closed_cont
 can be traced WITHOUT ever reading as LIVE (Meta's social 503 is the anchor case). And every provider must
 cite ≥1 PROVIDER-SPECIFIC path — a generic dispatcher/router (model-router, generic send-message, generic
 mcp-client) is traceability padding, never sole evidence a specific provider is wired.
+
+**The Codex-hardening half (a guard you can evade by malforming its own anchor field is not a guard).**
+The first pass gated the `code_anchors`-contract check behind `field_schema && typeof === "object"`, so a
+`null`/string/number/**array** `field_schema` short-circuited it — CI would have accepted a registry with
+the entire newly-required accountability contract silently removed. An independent Codex pass caught it
+(P2), not my §39/§5 crew: the honesty guard had a hole in exactly the field it exists to enforce. The
+durable rule: **a check on a container's CONTENTS must first prove the container's SHAPE** (non-null,
+non-array object), THEN read its contents — and the self-test must replace the container with each wrong
+type (`null`/string/number/array), not only mutate a value inside it. This is why three independent review
+layers (§39 adversarial + §5 compliance + an external reviewer) and CI are LAYERED, never substitutes: the
+pass my own crew missed is exactly the pass the third reviewer caught (§39's own "none alone is sufficient").
