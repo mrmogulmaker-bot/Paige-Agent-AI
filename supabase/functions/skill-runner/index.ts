@@ -375,6 +375,9 @@ async function runDraftAndEmailDocument(
   const prompt = (body.inputs?.prompt as string) ?? "";
 
   let sentRunId: string | null = null;
+  // Whether the durable run receipt actually persisted. A successful SEND whose receipt write fails
+  // must not be reported as a clean success (§13/§32/AGENTS.md — no completed action without its receipt).
+  let receiptPersisted = false;
 
   const outcome = await governedDraftAndEmail(
     {
@@ -488,31 +491,49 @@ async function runDraftAndEmailDocument(
         // successful single-use claim). communication_log is the client-facing send record; the
         // paige_skill_runs row is the run receipt.
         const status = r.ok ? "succeeded" : "failed";
-        const { data: runRow } = await admin.from("paige_skill_runs").insert({
+        const { data: runRow, error: runErr } = await admin.from("paige_skill_runs").insert({
           skill_id: skill.id,
           skill_slug: "draft_and_email_document",
           contact_id: r.contact_id,
           invoker_kind: body.invoker_kind ?? "admin",
           invoker_user_id: skillCaller.userId,
-          inputs: body.inputs ?? {},
+          // §13 — record the APPROVED inputs from the claimed proposal, NOT `body.inputs` (the redemption
+          // request). A phase-2 caller can redeem a valid token with altered/empty doc_type/prompt; the
+          // email is sent from the stored claim, so the receipt must describe the claim, not the redemption.
+          inputs: { doc_type: r.doc_type, contact_id: r.contact_id, content_sha256: r.content_sha256 },
           status,
           steps_log: [{ step: "draft", ok: true }, { step: "send", ok: r.ok, id: r.resendId }],
           outputs: { resend_id: r.resendId, recipient: r.recipient },
           completed_at: new Date().toISOString(),
         }).select("id").maybeSingle();
         sentRunId = (runRow as { id?: string } | null)?.id ?? null;
+        // §13/§32/AGENTS.md — the receipt write is CHECKED, not swallowed. The email already went out
+        // (consume-then-execute), so we cannot un-send; but a failed receipt write must surface (the
+        // caller is told the send is unrecorded), never a clean success with a null run id.
+        receiptPersisted = !runErr && sentRunId !== null;
+        if (!receiptPersisted) {
+          // Honest about whether the send actually happened — this runs for BOTH a successful send
+          // (sent-but-unrecorded) and a failed send (failed-and-unrecorded); never claim "sent".
+          console.error(
+            `skill-runner draft_and_email receipt NOT persisted (send ok=${r.ok})`,
+            String(runErr?.code ?? runErr ?? "no row returned"),
+          );
+        }
         // §13 — only record a client-facing OUTBOUND communication when the send actually succeeded.
         // A failed/never-sent email (e.g. no RESEND_API_KEY) must NOT appear in the client's comm
         // history as though it went out; the failed run is still recorded on paige_skill_runs above.
         if (r.ok) {
-          await admin.from("communication_log").insert({
+          const { error: commErr } = await admin.from("communication_log").insert({
             client_id: r.contact_id,
             channel: "email",
             direction: "outbound",
             subject: r.subject,
             body: r.html,
             metadata: { source: "skill:draft_and_email_document", resend_id: r.resendId, run_id: sentRunId },
-          }).then(() => {}).catch(() => {});
+          });
+          // Secondary record; a failure is logged, never swallowed (Codex P1) — the primary receipt is
+          // paige_skill_runs above.
+          if (commErr) console.error("skill-runner draft_and_email communication_log not recorded", String(commErr.code ?? commErr));
         }
         await admin.from("paige_skills")
           .update({ run_count: skill.run_count + 1, success_count: skill.success_count + (r.ok ? 1 : 0) })
@@ -558,15 +579,32 @@ async function runDraftAndEmailDocument(
 
   if (outcome.kind === "send_failed") {
     // §13 — the approval was consumed but the email did NOT go out. Never a 200/"succeeded": the
-    // durable paige_skill_runs row was already written `failed` and no communication_log outbound
-    // record was created, and the caller must hear the same truth. 502 (the upstream send / sender
-    // identity failed, not a client error) so a caller checking HTTP status also sees the failure —
-    // matching the old inline handler, which threw on a failed send. The one-time approval is spent.
+    // durable paige_skill_runs row was written `failed` and no communication_log outbound record was
+    // created, and the caller must hear the same truth. 502 (the upstream send / sender identity
+    // failed, not a client error) so a caller checking HTTP status also sees the failure — matching
+    // the old inline handler, which threw on a failed send. The one-time approval is spent.
+    // If the FAILURE receipt ALSO could not persist (§13/§32/AGENTS.md), say so in the same breath —
+    // the caller must know the audit row is missing whichever way the send went (Codex P2).
     return json(502, {
       run_id: sentRunId,
       status: "failed",
-      code: "send_failed",
-      error: "The document was drafted and approved, but the email send failed. The one-time approval has been used — re-draft to send again.",
+      code: receiptPersisted ? "send_failed" : "send_failed_unrecorded",
+      error: receiptPersisted
+        ? "The document was drafted and approved, but the email send failed. The one-time approval has been used — re-draft to send again."
+        : "The email send failed AND its failure receipt could not be recorded (the audit row is missing). The one-time approval has been used — re-draft to send again.",
+      outputs: { resend_id: outcome.resend_id, recipient: outcome.recipient },
+    });
+  }
+
+  // sent — but if the durable receipt did not persist (§13/§32/AGENTS.md), say so rather than report a
+  // clean success. The email is already out (consume-then-execute), so this is not a send failure; it is
+  // an honest "sent, receipt unrecorded" so the operator knows the audit row is missing and can follow up.
+  if (!receiptPersisted) {
+    return json(200, {
+      run_id: null,
+      status: "succeeded_unrecorded",
+      code: "receipt_not_persisted",
+      warning: "The email was sent, but its durable run receipt could not be recorded. The send is not reversible; the audit row is missing.",
       outputs: { resend_id: outcome.resend_id, recipient: outcome.recipient },
     });
   }

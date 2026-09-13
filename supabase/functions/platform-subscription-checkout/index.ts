@@ -213,6 +213,12 @@ Deno.serve(async (req) => {
     typeof body.invite_token === "string" && body.invite_token
       ? (body.invite_token as string)
       : null;
+  if (inviteToken) {
+    return json(410, {
+      error: "prospect_invite_enrollment_paused",
+      detail: "Prospect invite enrollment is paused while Paige Solo Beta is the only public offer.",
+    });
+  }
   let inviteTrialDays: number | null = null;
   if (inviteToken) {
     const { data: inv, error: invErr } = await admin.rpc("get_platform_invite", {
@@ -344,6 +350,16 @@ Deno.serve(async (req) => {
     } else {
       onboarding = true;
     }
+  }
+
+  // The legacy plan checkout remains available to authorized existing tenants,
+  // but it may no longer create a tenant for a new browser identity. Public
+  // acquisition is exclusively the fixed Solo Beta checkout/fulfillment path.
+  if (onboarding) {
+    return json(410, {
+      error: "legacy_public_enrollment_closed",
+      detail: "New enrollment is available only through Paige Solo Beta.",
+    });
   }
 
   // ── PRICE (task #66 fix) ───────────────────────────────────────────────────────

@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 
 export type LegalDoc = {
   id: string;
@@ -114,8 +115,11 @@ export async function recordAcceptances(
     document_slug: it.slug,
     document_version: it.version,
     user_agent: userAgent,
-    context: (it.context ?? {}) as any,
+    context: (it.context ?? {}) as Json,
   }));
-  const { error } = await supabase.from("legal_acceptances").insert(rows);
+  const { error } = await supabase.from("legal_acceptances").upsert(rows, {
+    onConflict: "user_id,document_slug,document_version",
+    ignoreDuplicates: true,
+  });
   return { error };
 }

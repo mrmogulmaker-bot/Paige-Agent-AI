@@ -32,54 +32,17 @@ type BusinessTier = {
 const businessTiers: BusinessTier[] = [
   {
     slug: "solo",
-    name: "Solo",
-    layer: "For the operator running the whole show",
-    price: "$149",
-    period: "/mo",
-    seats: "3 seats included",
+    name: "Paige Solo",
+    layer: "For the founder running a client-service business",
+    price: "$74.50",
+    period: "/month",
+    seats: "One Solo workspace",
     features: [
-      "Full CRM + pipeline",
-      "Paige AI (unlimited chat)",
-      "Client portal + intake",
-      "Stripe Connect payouts",
-      "Basic automations",
+      "One governed Paige workspace",
+      "Server-verified membership and access",
+      "A focused first-run setup path",
     ],
-    cta: "Get started",
-    popular: false,
-  },
-  {
-    slug: "agency",
-    name: "Agency",
-    layer: "For academies and teams running a full book",
-    price: "$397",
-    period: "/mo",
-    seats: "10 seats included",
-    features: [
-      "Everything in Solo, plus:",
-      "White-label domain + branding",
-      "Sub-agent factory (Paige Skills)",
-      "Automation & workflow fabric",
-      "Client analytics + reporting",
-      "Priority support",
-    ],
-    cta: "Get started",
-    popular: true,
-  },
-  {
-    slug: "enterprise",
-    name: "Enterprise",
-    layer: "For multi-brand portfolios",
-    price: "Custom",
-    period: "",
-    seats: "Unlimited seats",
-    features: [
-      "Everything in Agency, plus:",
-      "Multi-tenant orchestration",
-      "Dedicated infrastructure",
-      "SOC 2 / custom DPA",
-      "White-glove migration",
-    ],
-    cta: "Talk to Sales",
+    cta: "Start your 30-day trial",
     popular: false,
   },
 ];
@@ -133,11 +96,11 @@ export function PricingSection() {
         <div className="text-center max-w-3xl mx-auto">
           <Badge className="mb-4 bg-gold/10 text-gold-dark border-gold/20">
             <Sparkles className="w-3 h-3 mr-1.5" />
-            Three ways to run on Paige
+            Paige Solo beta
           </Badge>
           <h2 className="text-4xl lg:text-5xl font-bold mb-4">
-            One platform.{" "}
-            <span className="text-accent font-extrabold">Three audiences.</span>
+            One focused beta.{" "}
+            <span className="text-accent font-extrabold">One available enrollment.</span>
           </h2>
           <p className="text-lg text-muted-foreground">
             Paige is the workspace for coaching businesses, the client experience for the people they
@@ -182,6 +145,7 @@ export function PricingSection() {
                     <span className="text-muted-foreground text-sm">{tier.period}</span>
                   </div>
                   <p className="text-xs text-gold-dark font-semibold">{tier.seats}</p>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">Start your 30-day trial. Then $74.50/month unless you cancel before your first paid renewal.</p>
                 </div>
                 <ul className="space-y-2.5 mb-7 flex-grow">
                   {tier.features.map((f, i) => (
@@ -206,7 +170,7 @@ export function PricingSection() {
                     tier.price === "Custom"
                       ? (window.location.href =
                           "mailto:sales@paigeagent.ai?subject=Enterprise%20Inquiry")
-                      : navigate(`/auth?mode=signup&plan=${tier.slug}&billing=monthly`)
+                      : navigate("/auth?mode=signup&plan=solo&billing=monthly")
                   }
                 >
                   {tier.cta}

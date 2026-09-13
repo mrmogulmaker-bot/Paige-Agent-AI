@@ -66,11 +66,40 @@ serve(async (req: Request): Promise<Response> => {
       }, 409);
     }
 
+    // A bare identity may be removed only before billing work begins. Once a
+    // Solo Beta enrollment has left intake_ready (or carries any provider ID),
+    // deletion could orphan a Checkout Session or trialing subscription and
+    // allow Stripe to bill an identity Paige can no longer fulfill. Treat even
+    // a stale checkout_creating/retryable_failure state as outcome-unknown and
+    // fail closed; billing recovery owns that lifecycle from this point on.
+    const { data: enrollment, error: enrollmentError } = await supabase
+      .from("solo_beta_enrollments")
+      .select("state,stripe_customer_id,checkout_session_id,stripe_subscription_id")
+      .eq("user_id", uid)
+      .maybeSingle();
+    if (enrollmentError) {
+      console.error("signup-cancel solo enrollment read error:", enrollmentError);
+      return json({ error: "Could not verify billing state" }, 500);
+    }
+    const billingMayExist = Boolean(
+      enrollment && (
+        enrollment.state !== "intake_ready"
+        || enrollment.stripe_customer_id
+        || enrollment.checkout_session_id
+        || enrollment.stripe_subscription_id
+      ),
+    );
+    if (billingMayExist) {
+      return json({
+        error: "Checkout has started, so this sign-up can't be removed here. Review your Solo status or contact support before changing the account.",
+      }, 409);
+    }
+
     // Write the audit record BEFORE the irreversible delete, while the user
     // still exists (so user_id FKs hold and the cancellation is never a silent
     // destructive op — §13, systems report what actually happened). An audit
-    // failure is logged, not swallowed, but does not block the user's explicit
-    // cancel request.
+    // failure blocks deletion: this destructive action must never become an
+    // unrecorded outcome.
     const { error: auditError } = await supabase.from("audit_logs").insert({
       user_id: uid,
       entity: "auth_user",
@@ -79,13 +108,13 @@ serve(async (req: Request): Promise<Response> => {
       data: { email: user.email ?? null, reason: "self-serve pre-provisioning cancel" },
     });
     if (auditError) {
-      console.error("signup-cancel audit insert failed (proceeding with delete):", auditError);
+      console.error("signup-cancel audit insert failed:", auditError);
+      return json({ error: "Could not record the cancellation safely. Please try again." }, 500);
     }
 
-    // Cleanup of the pre-signup profile shell, then the auth user.
-    // Deleting auth.users cascades to identities/sessions/refresh_tokens.
-    await supabase.from("profiles").delete().eq("user_id", uid);
-
+    // Delete the auth user once; database foreign keys own dependent cleanup.
+    // Avoid a separate profile delete that could partially succeed if the
+    // subsequent auth deletion fails.
     const { error: delError } = await supabase.auth.admin.deleteUser(uid);
     if (delError) {
       console.error("signup-cancel deleteUser error:", delError);

@@ -1,23 +1,4 @@
-/**
- * WorkspaceProvisioner — the one place a signed-in user turns their business context
- * into a workspace. Task #66 reorder: the account TYPE is NO LONGER picked here (§18 —
- * no upfront type picker). It is FIXED from the plan the prospect already chose on
- * /pricing and shown as read-only context. There are two paths, branched on whether a
- * plan is present:
- *
- *  • PAID (a plan is present, the dominant new-customer path): collect the business
- *    context + an explicit unchecked terms clickwrap, then — the compliance fix —
- *    STAGE it in signup_intake AND write the subscriber-agreement legal_acceptances
- *    row NOW (in OUR db, before the Stripe hop), then launch platform-subscription-
- *    checkout as the LAST step. The tenant is NOT provisioned here; the stripe-webhook
- *    provisions it on payment from the staged row (real name / industry / account_type).
- *
- *  • FREE / no-plan (the legacy front door, e.g. resolveLandingRoute sending a
- *    tenant-less user here): provision a standalone workspace directly via
- *    provision_tenant, exactly as before — no checkout. (See the §-note below: without
- *    the tier picker, the free path is standalone-only; agency/enterprise come through
- *    /pricing. Flagged for owner review.)
- */
+/** Solo beta onboarding: stage server-consumed intake, record terms, then open the fixed approved checkout. */
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,8 +12,9 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useLegalDoc, recordAcceptances } from "@/lib/legal/useLegalDocuments";
-import { normalizeBilling } from "@/lib/auth/signupPlanIntent";
-import { User, Network, Building2, Loader2, FileText, ShieldCheck } from "lucide-react";
+import { soloBetaCheckoutBody } from "@/lib/auth/soloBetaAcquisition";
+import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
+import { User, Loader2, FileText, ShieldCheck } from "lucide-react";
 
 const TEAM_SIZES = ["Just me", "2–5", "6–20", "21+"] as const;
 
@@ -49,56 +31,26 @@ const INDUSTRIES = [
   "Other",
 ] as const;
 
-type AccountType = "standalone" | "agency" | "enterprise";
+type AccountType = "standalone";
 
-// The owner-ruled plan→account_type map (task #66). The tier is derived from the plan
-// chosen on /pricing, never picked here.
-const PLAN_TO_ACCOUNT_TYPE: Record<string, AccountType> = {
-  solo: "standalone",
-  agency: "agency",
-  enterprise: "enterprise",
-};
-
-// Each lane's subscriber agreement (§9 platform terms). Derived from the account type
-// (which is derived from the plan) — no longer from a picker.
-const LANE_TO_AGREEMENT: Record<AccountType, string> = {
-  standalone: "saas-standalone",
-  agency: "saas-agency",
-  enterprise: "saas-enterprise",
-};
-
-const ACCOUNT_TYPE_META: Record<AccountType, { title: string; blurb: string; Icon: typeof User }> = {
-  standalone: { title: "Solo", blurb: "Your own business — one workspace, full control.", Icon: User },
-  agency: { title: "Agency", blurb: "Run many businesses — sub-accounts under your roof.", Icon: Network },
-  enterprise: { title: "Enterprise", blurb: "Agency at scale — higher limits and white-label headroom.", Icon: Building2 },
+const ACCOUNT_TYPE_META = {
+  title: "Solo",
+  blurb: "Your own business — one workspace, full control.",
+  Icon: User,
 };
 
 interface Props {
-  /** Called after a successful FREE provision. Defaults to a hard nav into /admin. */
-  onProvisioned?: () => void;
-  /** The plan chosen on /pricing (e.g. "solo" | "agency"). Present ⇒ the PAID path. */
+  /** Display intent only; checkout authority is the fixed server offer code. */
   planSlug?: string | null;
-  /** "monthly" | "annual" — carried from /pricing for the checkout. */
-  billingPeriod?: string | null;
-  /** Optional super-admin trial invite token, threaded through to checkout (§9). */
-  inviteToken?: string | null;
 }
 
-export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, inviteToken }: Props) {
+export function WorkspaceProvisioner({ planSlug }: Props) {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // A plan present + recognized ⇒ PAID path. An unrecognized plan slug is ignored
-  // (defensive) and falls back to the free standalone path rather than 404 at checkout.
-  const paidAccountType: AccountType | null =
-    planSlug && planSlug in PLAN_TO_ACCOUNT_TYPE ? PLAN_TO_ACCOUNT_TYPE[planSlug] : null;
-  const isPaid = paidAccountType !== null;
-  const accountType: AccountType = paidAccountType ?? "standalone";
-  // Enterprise is NOT self-serve — platform-subscription-checkout 400s it
-  // (plan_not_self_serve). Route it to the existing contact-sales affordance instead of
-  // a failing checkout that would also leave an orphaned intake row (Fix N3, §18 reuse).
-  const isEnterprise = accountType === "enterprise";
-  const billing = normalizeBilling(billingPeriod);
+  const isPaid = planSlug === "solo";
+  const accountType: AccountType = "standalone";
+  const billing = "monthly";
 
   const [businessName, setBusinessName] = useState("");
   const [industry, setIndustry] = useState("");
@@ -109,9 +61,9 @@ export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, i
   const [agreed, setAgreed] = useState(false);
 
   // The agreement for this account type (derived, not picked).
-  const agreementSlug = LANE_TO_AGREEMENT[accountType];
+  const agreementSlug = "saas-standalone";
   const { doc: agreement, loading: agreementLoading } = useLegalDoc(agreementSlug);
-  const meta = ACCOUNT_TYPE_META[accountType];
+  const meta = ACCOUNT_TYPE_META;
   const TierIcon = meta.Icon;
 
   // Reset the explicit terms consent if the derived account type ever changes.
@@ -146,7 +98,7 @@ export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, i
       },
       { onConflict: "user_id" },
     );
-    if (stageErr) throw new Error(stageErr.message);
+    if (stageErr) throw new Error("setup_save_failed");
 
     // (2) COMPLIANCE FIX — log the subscriber-agreement acceptance in OUR db NOW,
     //     before the Stripe hop. The webhook re-writes it idempotently (ON CONFLICT
@@ -159,19 +111,13 @@ export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, i
           context: { source: "onboarding_paid", lane: accountType, plan: planSlug },
         },
       ]);
-      // A logging hiccup must not block checkout — the webhook backstop still records
-      // it — but surface it (§13) rather than swallow silently.
-      if (legalErr) console.warn("[onboarding] terms acceptance log failed:", legalErr.message);
+      // Terms acceptance is load-bearing; fail closed before provider handoff.
+      if (legalErr) throw new Error("agreement_record_failed");
     }
 
     // (3) LAST step — launch Stripe Checkout. On failure, fall back to /pricing.
-    const { data, error } = await supabase.functions.invoke("platform-subscription-checkout", {
-      body: {
-        plan_slug: planSlug,
-        billing_period: billing,
-        success_path: "/welcome?checkout=success",
-        ...(inviteToken ? { invite_token: inviteToken } : {}),
-      },
+    const { data, error } = await supabase.functions.invoke("solo-beta-subscription-checkout", {
+      body: soloBetaCheckoutBody(),
     });
     if (error) {
       let code: string | undefined;
@@ -182,43 +128,25 @@ export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, i
         /* not JSON */
       }
       if (code === "already_subscribed" || code === "already_provisioned") {
-        window.location.assign("/choose-account");
+        window.location.assign(await resolveLandingRoute(userId));
         return;
       }
-      throw new Error(code || error.message || "checkout_failed");
+      if (code === "checkout_verification_pending") {
+        window.location.assign("/welcome?checkout=success");
+        return;
+      }
+      throw new Error("checkout_failed");
     }
     const url = (data as { url?: string } | null)?.url;
     if (!url) throw new Error("no_checkout_url");
     window.location.href = url;
   };
 
-  // ── FREE path: provision a standalone workspace directly (no checkout) ─────────────
-  const provisionFree = async () => {
-    const { data: provisioned, error } = await supabase.rpc("provision_tenant", {
-      _name: businessName.trim(),
-      _industry: resolvedIndustry(),
-      _team_size: teamSize || null,
-      _description: about.trim() || null,
-      _account_type: accountType,
-      _agreement_slug: agreementSlug,
-      _agreement_version: agreement!.version,
-    });
-    if (error) throw error;
-
-    // Owner directive (2026-08-16): NEVER default a tenant into a guessed business.
-    // We no longer stamp a playbook here — a freshly provisioned tenant leaves
-    // features.playbook UNSET and is routed through Setup (the marketplace chooser,
-    // enforced by RequireSetupComplete) to CHOOSE their playbook/pipeline/calendar.
-    toast({ title: "Workspace ready", description: "Welcome to Paige — this is yours to run." });
-    if (onProvisioned) onProvisioned();
-    else window.location.assign("/choose-account");
-  };
 
   const submit = async () => {
-    // Enterprise: not self-serve — open the same contact-sales mailto used on
-    // /pricing and the homepage (§18), no form/terms gating for a sales inquiry.
-    if (isEnterprise) {
-      window.location.href = "mailto:sales@paigeagent.ai?subject=Enterprise%20Inquiry";
+    if (!isPaid) {
+      toast({ title: "Paige Solo only", description: "Return to the approved Solo offer to continue.", variant: "destructive" });
+      navigate("/pricing", { replace: true });
       return;
     }
     if (businessName.trim().length < 2) {
@@ -241,23 +169,15 @@ export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, i
         toast({ title: "Session expired", description: "Sign back in to finish.", variant: "destructive" });
         return;
       }
-      if (isPaid) {
-        await stageAndCheckout(userId);
-        // On success the browser is navigating to Stripe; leave `creating` on.
-      } else {
-        await provisionFree();
-      }
+      await stageAndCheckout(userId);
+      // On success the browser is navigating to Stripe; leave `creating` on.
     } catch (e) {
-      if (isPaid) {
-        toast({
-          title: "Couldn't open checkout",
-          description: "Your business is saved — pick your plan to finish subscribing.",
-          variant: "destructive",
-        });
-        navigate("/pricing", { replace: true });
-      } else {
-        toast({ title: "Couldn't create your workspace", description: (e as Error).message, variant: "destructive" });
-      }
+      toast({
+        title: "Couldn't open checkout",
+        description: "Your setup is saved, but checkout could not be opened. Return to the Solo offer and retry. Contact support if it happens again.",
+        variant: "destructive",
+      });
+      navigate("/pricing", { replace: true });
     } finally {
       setCreating(false);
     }
@@ -276,16 +196,10 @@ export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, i
             Setting up your {meta.title} workspace
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">{meta.blurb}</p>
-          {isPaid && !isEnterprise && (
+          {isPaid && (
             <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-foreground/80">
               <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-              14-day free trial · card on file · cancel anytime
-            </p>
-          )}
-          {isEnterprise && (
-            <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-foreground/80">
-              <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-              Enterprise is set up with our team — no self-serve checkout.
+              30-day trial · then $74.50/month · access begins after server verification
             </p>
           )}
         </div>
@@ -362,19 +276,19 @@ export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, i
           </div>
           <p className="text-xs text-muted-foreground pl-7">
             {isPaid
-              ? "Interim terms while our full legal review is completed. You won't be charged today — your 14-day free trial starts at checkout."
+              ? "Start your 30-day trial. Then $74.50/month unless you cancel before your first paid renewal. Workspace access begins only after Paige verifies the subscription and membership server-side."
               : "Interim terms while our full legal review is completed. Your workspace isn't created until you accept."}
           </p>
         </div>
         <Button
           onClick={submit}
-          disabled={creating || (!isEnterprise && (businessName.trim().length < 2 || !agreed || !agreement))}
+          disabled={creating || businessName.trim().length < 2 || !agreed || !agreement}
           className="w-full h-11"
         >
           {creating ? (
-            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {isPaid ? "Taking you to checkout…" : "Creating your workspace…"}</>
+            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Taking you to checkout…</>
           ) : (
-            isEnterprise ? "Contact Sales" : isPaid ? "Continue to checkout" : "Create my workspace"
+            "Start 30-day trial in Checkout"
           )}
         </Button>
       </div>

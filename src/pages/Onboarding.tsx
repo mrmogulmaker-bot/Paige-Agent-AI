@@ -25,6 +25,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Loader2 } from "lucide-react";
+import { isSoloBetaPlan } from "@/lib/auth/soloBetaAcquisition";
+import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -33,14 +35,10 @@ export default function Onboarding() {
   const [status, setStatus] = useState<"checking" | "ready">("checking");
   const [cancelling, setCancelling] = useState(false);
 
-  // Task #66: a plan chosen on /pricing rides in as ?plan=&billing=(&invite=). Its
-  // presence makes this the PAID path — WorkspaceProvisioner fixes the tier from it,
-  // stages the intake + logs terms, then launches checkout as the last step. Absent ⇒
-  // the free/legacy standalone path (direct provision, no checkout).
+  // A plan chosen on /pricing rides in as ?plan=solo&billing=monthly. The page
+  // fails closed to pricing without that fixed paid offer; there is no public
+  // planless, free-provisioning, or alternate-account path.
   const planSlug = searchParams.get("plan");
-  const billingPeriod = searchParams.get("billing");
-  const inviteToken = searchParams.get("invite");
-  const isPaid = !!planSlug;
 
   useEffect(() => {
     let mounted = true;
@@ -49,6 +47,22 @@ export default function Onboarding() {
       const uid = sess.session?.user?.id;
       if (!uid) {
         navigate("/signup", { replace: true });
+        return;
+      }
+
+      // A resumed tab must not expose identity deletion once Checkout may have
+      // begun. The server is the authority; all post-checkout and uncertain
+      // states recover through Welcome instead of the pre-checkout shell.
+      const { data: enrollmentData, error: enrollmentError } = await supabase.functions.invoke(
+        "solo-beta-enrollment-status",
+      );
+      const enrollmentState = (enrollmentData as { state?: string } | null)?.state;
+      if (enrollmentError || !enrollmentState) {
+        navigate("/welcome?checkout=success", { replace: true });
+        return;
+      }
+      if (!["needs_intake", "needs_checkout"].includes(enrollmentState)) {
+        navigate("/welcome?checkout=success", { replace: true });
         return;
       }
 
@@ -77,23 +91,27 @@ export default function Onboarding() {
       ]);
       if (!mounted) return;
       if (staff || owned?.id || member?.tenant_id) {
-        window.location.assign("/choose-account");
+        window.location.assign(await resolveLandingRoute(uid));
         return;
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((agencyRes as any)?.data?.agency_tenant_id) {
-        window.location.assign("/agency");
+        window.location.assign(await resolveLandingRoute(uid));
         return;
       }
       const realClient = (clientRows ?? []).find((c) => (c.source ?? "") !== "signup");
       if (realClient) {
-        window.location.assign("/app");
+        window.location.assign(await resolveLandingRoute(uid));
+        return;
+      }
+      if (!isSoloBetaPlan(planSlug)) {
+        navigate("/pricing", { replace: true });
         return;
       }
       setStatus("ready");
     })();
     return () => { mounted = false; };
-  }, [navigate]);
+  }, [navigate, planSlug]);
 
   const cancelSignup = async () => {
     setCancelling(true);
@@ -137,20 +155,16 @@ export default function Onboarding() {
                 Let's set up your workspace.
               </h1>
               <p className="mt-3 text-muted-foreground">
-                {isPaid
-                  ? "Tell us about your business — then a quick checkout starts your free trial. You can invite your team and change any of this later as you grow."
-                  : "Name your business and tell us what you do. You can invite your team once you're in — and change any of this later as you grow."}
+                Tell us about your business, review the Solo agreement, then start your 30-day trial. After the trial, Paige Solo renews at $74.50/month unless you cancel before your first paid renewal.
               </p>
             </header>
             <WorkspaceProvisioner
               planSlug={planSlug}
-              billingPeriod={billingPeriod}
-              inviteToken={inviteToken}
             />
 
             <div className="mt-8 pt-6 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <p className="text-xs text-muted-foreground">
-                Not ready yet? You can remove this sign-up — no account is created until you finish above.
+                Not ready yet? Before Checkout starts, you can remove this identity and saved setup.
               </p>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -166,8 +180,8 @@ export default function Onboarding() {
                   <AlertDialogHeader>
                     <AlertDialogTitle>Remove your sign-up?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This deletes the account you just started and signs you out. Nothing has been
-                      created yet, so there's nothing to lose — you can sign up again anytime.
+                      This deletes the identity and setup you just started, then signs you out. This
+                      option is available only before Checkout begins; you can sign up again anytime.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
