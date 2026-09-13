@@ -35,7 +35,7 @@ describe("canonical CRM contact/company command", () => {
   });
 
   it("revalidates active account, membership, autonomy, and approval authority inside the write transaction", () => {
-    expect(sql).toMatch(/from public.profiles p where p.user_id=_actor_id for update/i);
+    expect(sql).toMatch(/from public.profiles profile_row where profile_row.user_id=_actor_id for update/i);
     expect(sql).toContain("where tm.tenant_id=_tenant_id and tm.user_id=_actor_id and tm.status='active' and tm.role in ('owner','admin','coach') for update");
     expect(sql).toContain("tenant_tool_autonomy_serialize_writes");
     expect(sql).toContain("'tool-autonomy:'||_tenant_id::text||':'||v_capability");

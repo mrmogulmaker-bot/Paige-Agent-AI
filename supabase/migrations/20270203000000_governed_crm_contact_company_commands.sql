@@ -860,7 +860,7 @@ begin
   if coalesce(auth.jwt()->>'role','') <> 'service_role' or auth.uid() is not null then raise exception 'CRM_INTERNAL_EXECUTOR_REQUIRED' using errcode='42501'; end if;
   if _tenant_id is null or _actor_id is null or coalesce(pg_catalog.btrim(_preview_key),'')='' or pg_catalog.length(_preview_key)>200
     or pg_catalog.jsonb_typeof(_command)<>'object' then raise exception 'CRM_PREVIEW_INVALID' using errcode='22023'; end if;
-  select p.active_tenant_id into active_tenant from public.profiles p where p.user_id=_actor_id for update;
+  select profile_row.active_tenant_id into active_tenant from public.profiles profile_row where profile_row.user_id=_actor_id for update;
   if not found or active_tenant is distinct from _tenant_id then raise exception 'CRM_ACTIVE_ACCOUNT_CHANGED' using errcode='42501'; end if;
   select tm.role into actor_role from public.tenant_members tm
     where tm.tenant_id=_tenant_id and tm.user_id=_actor_id and tm.status='active' and tm.role in ('owner','admin') for update;
@@ -970,7 +970,7 @@ declare
 begin
   if coalesce(auth.jwt()->>'role','') <> 'service_role' or auth.uid() is not null then raise exception 'CRM_INTERNAL_EXECUTOR_REQUIRED' using errcode='42501'; end if;
   if _tenant_id is null or _actor_id is null or a is null or coalesce(pg_catalog.btrim(_idempotency_key),'')='' or pg_catalog.length(_idempotency_key)>200 or pg_catalog.jsonb_typeof(_command)<>'object' then raise exception 'CRM_COMMAND_INVALID' using errcode='22023'; end if;
-  select p.active_tenant_id into v_active_tenant from public.profiles p where p.user_id=_actor_id for update;
+  select profile_row.active_tenant_id into v_active_tenant from public.profiles profile_row where profile_row.user_id=_actor_id for update;
   if not found or v_active_tenant is distinct from _tenant_id then raise exception 'CRM_ACTIVE_ACCOUNT_CHANGED' using errcode='42501'; end if;
   select tm.role into v_actor_role from public.tenant_members tm
     where tm.tenant_id=_tenant_id and tm.user_id=_actor_id and tm.status='active' and tm.role in ('owner','admin','coach') for update;
