@@ -48,6 +48,8 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain("confirmFingerprint(capability, proposalArgs)");
     expect(edge).toContain('admin.rpc("preview_crm_command"');
     expect(edge).toContain("command: { action: body.command.action, preview_id: preview.preview_id }");
+    expect(edge).toContain("previewExpiresAt - 60_000");
+    expect(edge).toContain("expires_at: proposalExpiresAt");
     expect(edge).toContain('preview.ok === true && preview.outcome === "succeeded"');
     expect(edge).toContain("return successfulResultResponse(preview, body.command.action)");
     expect(edge).toContain('admin.rpc("read_crm_command_result"');

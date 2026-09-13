@@ -397,6 +397,7 @@ serve(async (req) => {
     const approvalSubject = await crmApprovalSubject(body.command.action, body.command as Record<string, unknown>);
     let proposalArgs: JsonObject = { ...requestArgs, approval_subject: approvalSubject };
     let preview: JsonObject | null = null;
+    let proposalExpiresAt: string | undefined;
     if (PREVIEW_REQUIRED_ACTIONS.has(body.command.action)) {
       const { data: previewData, error: previewError } = await admin.rpc("preview_crm_command", {
         _tenant_id: tenantId,
@@ -415,9 +416,15 @@ serve(async (req) => {
       if (preview.eligible !== true) {
         return response(422, { ok: false, outcome: "refused", code: "CRM_PREVIEW_INELIGIBLE", preview });
       }
-      if (typeof preview.preview_id !== "string") {
+      if (typeof preview.preview_id !== "string" || typeof preview.expires_at !== "string") {
         return response(503, { ok: false, outcome: "refused", code: "CRM_PREVIEW_BINDING_FAILED" });
       }
+      const previewExpiresAt = Date.parse(preview.expires_at);
+      if (!Number.isFinite(previewExpiresAt) || previewExpiresAt <= Date.now() + 60_000) {
+        return response(503, { ok: false, outcome: "refused", code: "CRM_PREVIEW_BINDING_FAILED" });
+      }
+      // The approval expires first, leaving the transaction a one-minute execution cushion.
+      proposalExpiresAt = new Date(previewExpiresAt - 60_000).toISOString();
       proposalArgs = {
         command: { action: body.command.action, preview_id: preview.preview_id },
         idempotency_key: body.idempotency_key,
@@ -454,6 +461,7 @@ serve(async (req) => {
       server_issued_at: new Date().toISOString(),
       args: proposalArgs,
       summary,
+      ...(proposalExpiresAt ? { expires_at: proposalExpiresAt } : {}),
     }).select("summary,expires_at").maybeSingle();
     if (proposalError?.code === "23505") {
       const existing = await admin.from("paige_pending_confirmations")

@@ -87,6 +87,9 @@ returns trigger language plpgsql security definer set search_path='' as $$
 declare
   existing_business_id uuid; new_business_id uuid; trimmed_name text; v_owner_user_id uuid;
 begin
+  -- An explicit unlink must remain unlinked. The legacy auto-stub exists for first-time contact
+  -- creation/enrichment, not for undoing a deliberate relationship removal (or FK clear).
+  if tg_op='UPDATE' and old.primary_business_id is not null and new.primary_business_id is null then return new; end if;
   trimmed_name:=nullif(pg_catalog.btrim(coalesce(new.entity_name,'')),'');
   if trimmed_name is null or new.primary_business_id is not null then return new; end if;
   if new.linked_user_id is not null and exists(select 1 from auth.users u where u.id=new.linked_user_id) then
@@ -1017,7 +1020,7 @@ begin
     if cached.consumed_at is not null and cached.result is not null then
       return cached.result||pg_catalog.jsonb_build_object('replayed',true);
     end if;
-    if cached.expires_at<=pg_catalog.now() then
+    if cached.expires_at<=pg_catalog.now()+interval '2 minutes' then
       -- The advisory lock makes replacement single-writer. An expired, unexecuted preview is not an
       -- approval and may be replaced under the same stable retry key after every target/version check
       -- below runs again. A cached result above remains immutable and replayable.

@@ -1,6 +1,6 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(66);
+SELECT plan(68);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
@@ -41,6 +41,7 @@ INSERT INTO public.businesses(id,tenant_id,owner_user_id,legal_name,is_active,is
  ('c7100000-0000-4000-8000-00000000b102','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Coach Scope Fixture',true,false,'2026-09-13 00:00:00+00'),
  ('c7200000-0000-4000-8000-00000000b201','c7200000-0000-4000-8000-000000002222','c7200000-0000-4000-8000-000000000001','Archived Primary',false,true,'2026-09-13 00:00:00+00'),
  ('c7200000-0000-4000-8000-00000000b202','c7200000-0000-4000-8000-000000002222','c7200000-0000-4000-8000-000000000001','Active Primary',true,true,'2026-09-13 00:00:00+00');
+UPDATE public.clients SET entity_name='Unlink Fixture LLC',primary_business_id='c7100000-0000-4000-8000-00000000b102' WHERE id='c7100000-0000-4000-8000-00000000c104';
 SELECT set_config('app.pipeline_created_through','paige',true);
 SELECT set_config('app.pipeline_requested_by','c7100000-0000-4000-8000-000000000001',true);
 INSERT INTO public.pipelines(tenant_id,name,is_default) VALUES
@@ -79,6 +80,12 @@ CREATE TEMP TABLE auto_stub_primary_guard AS SELECT public.execute_crm_command(
  'c7200000-0000-4000-8000-000000002222','c7200000-0000-4000-8000-000000000001',
  '{"approval_channel":"operator_card","action":"contact.create","patch":{"first_name":"Auto","last_name":"Stub","entity_name":"Secondary Auto Stub"}}','auto-stub-primary-guard-1') result;
 SELECT is((SELECT count(*)::integer FROM public.businesses WHERE tenant_id='c7200000-0000-4000-8000-000000002222' AND owner_user_id='c7200000-0000-4000-8000-000000000001' AND is_active AND is_primary),1,'contact auto-stub preserves exactly one active primary company for the owner');
+CREATE TEMP TABLE unlink_result AS SELECT public.execute_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.unlink_company','contact_id','c7100000-0000-4000-8000-00000000c104','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c104')),
+ 'unlink-auto-stub-guard-1') result;
+SELECT is((SELECT primary_business_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c104'),NULL::uuid,'explicit company unlink remains unlinked despite a populated entity name');
+SELECT is((SELECT count(*)::integer FROM public.businesses WHERE tenant_id='c7100000-0000-4000-8000-000000001111'),2,'explicit company unlink creates no replacement auto-stub company');
 SELECT is((SELECT count(*)::integer FROM public.businesses WHERE tenant_id='c7200000-0000-4000-8000-000000002222' AND owner_user_id='c7200000-0000-4000-8000-000000000001' AND legal_name='Secondary Auto Stub' AND is_active AND NOT is_primary),1,'contact auto-stub creates the requested linked company without promoting a second primary');
 CREATE TEMP TABLE task_metadata_fixture AS SELECT public.execute_crm_command(
  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
@@ -182,9 +189,9 @@ SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)',
 SELECT isnt((SELECT lifecycle_stage FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c104'),'qualified','failed bulk execution changes no eligible target');
 
 CREATE TEMP TABLE expired_preview_first AS SELECT public.preview_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"approval_channel":"operator_card","action":"contact.hard_delete","contact_id":"c7100000-0000-4000-8000-00000000c102","expected_updated_at":"2026-09-13T00:00:00+00:00"}','expired-delete-preview-1') result;
-UPDATE public.crm_command_previews SET expires_at=now()-interval '1 second' WHERE id=(SELECT (result->>'preview_id')::uuid FROM expired_preview_first);
+UPDATE public.crm_command_previews SET expires_at=now()+interval '30 seconds' WHERE id=(SELECT (result->>'preview_id')::uuid FROM expired_preview_first);
 CREATE TEMP TABLE expired_preview_replacement AS SELECT public.preview_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"approval_channel":"operator_card","action":"contact.hard_delete","contact_id":"c7100000-0000-4000-8000-00000000c102","expected_updated_at":"2026-09-13T00:00:00+00:00"}','expired-delete-preview-1') result;
-SELECT ok((SELECT result->>'preview_id' FROM expired_preview_first)<>(SELECT result->>'preview_id' FROM expired_preview_replacement) AND NOT (SELECT (result->>'replayed')::boolean FROM expired_preview_replacement),'an expired unexecuted destructive preview is revalidated and replaced under the stable retry key');
+SELECT ok((SELECT result->>'preview_id' FROM expired_preview_first)<>(SELECT result->>'preview_id' FROM expired_preview_replacement) AND NOT (SELECT (result->>'replayed')::boolean FROM expired_preview_replacement),'a nearly expired destructive preview is revalidated and replaced before issuing an approval that could outlive it');
 CREATE TEMP TABLE delete_preview AS SELECT public.preview_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"approval_channel":"operator_card","action":"contact.hard_delete","contact_id":"c7100000-0000-4000-8000-00000000c102","expected_updated_at":"2026-09-13T00:00:00+00:00"}','delete-preview-1') result;
 SELECT is((SELECT (result->>'eligible')::boolean FROM delete_preview),true,'hard-delete preview proves the synthetic contact is unlinked and dependency-free');
 CREATE TEMP TABLE delete_result AS SELECT public.execute_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.hard_delete','preview_id',(SELECT result->>'preview_id' FROM delete_preview)),'delete-execute-1') result;
