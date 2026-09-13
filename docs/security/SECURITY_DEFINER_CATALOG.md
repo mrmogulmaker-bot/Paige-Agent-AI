@@ -294,3 +294,38 @@ Queued entries (land with their respective ships):
 ### Current entries
 
 - `public.pme_set_subject_id()` — BEFORE INSERT/UPDATE trigger on `public.platform_metered_events`. Auto-populates `subject_id` from `tenant_id` or `consumer_user_id` based on `layer`. `SECURITY INVOKER`, `search_path = ''`. Landed in Migration A (Sprint P.0.1 Gate 1, §206).
+
+---
+
+## Calendar booking-preset + booking server seam (E6 registration, 2026-09-13)
+
+Registered by the E6 Calendar security/proof/reviews pass. Reviewer: Claude Code (E6, 2026-09-13) — calendar seam only; the global "Last reviewed" date above is NOT bumped (no full-catalog re-review was performed — §13). Every function below was §59-classified against its live body; the class here is the **§124 catalog** taxonomy (A/B/C above), and each entry notes the §59 in-body caller-scope proof. **Boundary proof:** `supabase/tests/calendar_booking_preset_seam.sql` (112 pgTAP assertions, incl. G1–G12 grant + `SET ROLE anon` refusal, and every cross-tenant/non-member 42501), CI-gated by `.github/workflows/calendar-preset-seam.yml`.
+
+Migrations: `20270301000000_calendar_booking_preset_lifecycle.sql`, `20270302000000_calendar_preset_duplicate_archive_restore.sql`; RLS + helpers `20260708210000_calendars_first_class.sql`; guest-booking write RPCs `20260712130000_booking_rpc_isolation_hardening.sql` + `20260709181825_create_class_booking_contact_id.sql`; booking edit `20270125000000_calendar_update_internal_booking.sql`.
+
+### Preset lifecycle RPCs — Category A (authenticated + service_role; anon REVOKED)
+All eight are `SECURITY DEFINER … SET search_path` and route authority through `_assert_can_manage_preset` (or an explicit membership RAISE), so the EXECUTE grant is never the guard.
+
+- `public.create_calendar_preset(uuid,text,jsonb,uuid)` — creates a PRIVATE DRAFT (`enabled=false, published_at=NULL`), registers the creator as host 0. Auth-check: Body — authenticated caller must be `is_platform_admin() OR is_tenant_admin(_tenant) OR is_tenant_member(_tenant)` (RAISE 42501); `_created_by` honored only when `auth.uid()` is NULL (service-role). `_patch` column allowlist forbids setting `enabled`/`published_at`/`slug`/`tenant_id`/`created_by`. Re-review triggers: allowlist relaxed · draft-by-default changed · grant widened to anon.
+- `public.update_calendar_preset(uuid,jsonb,uuid)` — config edit; CASE-per-key allowlist; auto-pauses a Live preset an edit pushes below the publish bar; refuses an archived preset with `PRESET_ARCHIVED`. Auth-check: Body — `_assert_can_manage_preset` (RAISE 42501). Re-review: allowlist relaxed · archived-frozen guard removed.
+- `public.publish_calendar_preset(uuid,uuid)` — sets `enabled=true` only after `_calendar_preset_block_reason` passes (hosts / open window / usable method); refuses archived with `PRESET_ARCHIVED`. Auth-check: Body — `_assert_can_manage_preset` (RAISE 42501); service-role `_tenant` must equal the row tenant. Re-review: block-reason relaxed.
+- `public.pause_calendar_preset(uuid,uuid)` — `enabled=false`, KEEPS `published_at` (Paused ≠ Draft). Auth-check: Body — `_assert_can_manage_preset`.
+- `public.duplicate_calendar_preset(uuid,text,text,uuid,uuid)` — copies config + host pool into a NEW private draft. Auth-check: Body — `_assert_can_manage_preset` on the SOURCE (RAISE 42501); `23505` on slug collision; service-role requires `_created_by`.
+- `public.archive_calendar_preset(uuid,uuid)` — sets `archived_at`, `enabled=false`, keeps `published_at`; idempotent. Auth-check: Body — `_assert_can_manage_preset`.
+- `public.restore_calendar_preset(uuid,uuid)` — clears `archived_at`, keeps `enabled=false` (returns to Draft/Paused, never straight to Live). Auth-check: Body — `_assert_can_manage_preset`.
+- `public.get_calendar_presets(uuid)` — tenant-scoped coarse projection + derived lifecycle. Auth-check: Body — authenticated caller membership on `_tenant` (RAISE 42501); service-role scoped by `WHERE tenant_id = _tenant`. Re-review: adds a column that leaks another tenant's data.
+
+### Preset helpers
+- `public._assert_can_manage_preset(uuid,uuid)` — Category A (authenticated + service_role). The shared in-body guard: authenticated → `can_manage_calendar(_cal)` RAISE 42501; service-role → `_tenant` must equal row tenant, RAISE 42501; RAISE `PRESET_NOT_FOUND` (P0002) if absent.
+- `public._calendar_preset_block_reason(uuid)` — **Category C (internal-only)**. `SECURITY DEFINER STABLE`, EXECUTE `REVOKE`d from PUBLIC + anon + authenticated + service_role (proven G10); reachable ONLY by its DEFINER callers, so it cannot be used to probe another tenant's config. Re-review: any GRANT added.
+
+### RLS helper predicates — Category A (authenticated)
+- `public.can_manage_calendar(uuid)` / `public.is_calendar_host(uuid)` — `SECURITY DEFINER STABLE` boolean predicates keyed on `auth.uid()`; RLS-cycle breakers for the `calendars`/`calendar_hosts` policies. Return TRUE/FALSE against the caller's own uid; no data leak.
+
+### Guest-booking write RPCs
+- `public.create_internal_booking(...)` — Category A (authenticated + service_role). `SECURITY DEFINER`; in-body: `_host := COALESCE(_host_user_id, auth.uid())`, caller must be creator / `is_tenant_admin(_tenant)` / scoped `is_tenant_member`; contact-isolation hardened (`20260712130000`).
+- `public.create_class_booking(...)` — **Category B (service_role only; anon + authenticated REVOKED)**. `SECURITY DEFINER`; sole caller is the `public-booking` edge resolver, which passes SERVER-derived `_tenant_id`/`_host_user_id`/`_calendar_id` (never client input). **§59 latent note (E6 §39 LOW-1):** the body does not yet assert `_host_user_id ∈ calendar_hosts(_calendar_id)` or `_tenant_id = calendars.tenant_id`; safe today (service-role only, consistent inputs) but a recommended additive in-body guard — see the E6 package. Re-review: any new caller; grant widened.
+- `public.update_internal_booking(uuid,text,text,text,uuid,uuid)` — Category A (authenticated + service_role; anon REVOKED). `SECURITY DEFINER`, `_caller := auth.uid()`, in-body scope on the booking's tenant/host. **Not yet persisted on prod** (PR #1176 pending — tier-matrix keeps it "pending persisted-apply", §32.a). Re-review: on persisted-apply, confirm the grant + body match this entry.
+
+### Adjacent seam — NAMED FOLLOW-UP, not classified here (§13)
+`public.cancel_internal_booking(...)` / `public.reschedule_internal_booking(...)` (`20260711340000_paige_planning.sql`, a pre-E3 seam) are `SECURITY DEFINER` and use `has_any_role(auth.uid(), ARRAY['admin','super_admin','coach'])` — a **tenant-agnostic global-role check (§53 trap surface)** — alongside `owner/created_by = auth.uid()`. Whether that admits a cross-tenant path needs its own §53/§59 body review before a catalog classification is asserted; E6 does NOT rubber-stamp it. Tracked as an E6 named follow-up (see the E6 package).
