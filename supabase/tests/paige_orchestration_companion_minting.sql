@@ -1,5 +1,8 @@
--- Layer C · C5 slice 2 (+ fix-forward 20270306000000) — companion-minting, readable description, ledger-proven
--- direct-approve guard, cancellation-sync, durable reconciler (RPC-return-truthful), and the idempotent backfill.
+-- Layer C · C5 slice 2 (+ fix-forward 20270306000000, + guard-INSERT #15 20270317000000) — companion-minting,
+-- readable description, ledger-proven direct-approve guard, cancellation-sync, durable reconciler
+-- (RPC-return-truthful), the idempotent backfill, AND (section I) the INSERT-path guard: a JWT caller cannot
+-- create a source='paige_orchestration' row already at status='approved' nor launder a non-orchestration row
+-- INTO orchestration; the service-role create path is ledger-gated. plan(60).
 -- Behavioural proof against the schema `supabase db reset` replayed from zero (house pgTAP style; synthetic
 -- opaque fixtures; the enclosing transaction is ALWAYS rolled back — no production/customer records).
 --
