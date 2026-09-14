@@ -40,7 +40,7 @@ MOTION_PURPOSE: NONE.
 PROTECTED_SEAMS: `crm-command` is the only Chat mutation door; `execute_crm_command` is service-only; tenant and actor come from verified server context; approval claims are single-use and argument-bound; activity logging is internal-only; contact and deal record routes are owned, while company/task remain surface-only.
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
-INTERNAL_BUILD_IDENTITY: code-candidate=PR-1234-current-head; final-doc-head=PR-1234-current-head; deployment=none-pre-merge; environment=development; migrations=PROOF_OWED(apply-on-merge-via-deploy-migrations-and-db-live); edge=PROOF_OWED(deploy-on-merge-crm-command-and-paige-ai-chat); evidence=docs/evidence/ui-delivery/governed-crm-pipeline-chat.md-and-PR-1234
+INTERNAL_BUILD_IDENTITY: code-candidate=fc6b77cb1cf2dfbfda72dfb84906b3b05aca7175; final-doc-head=PR-1234-current-head; deployment=none-pre-merge; environment=development; migrations=PROOF_OWED(apply-on-merge-via-deploy-migrations-and-db-live); edge=PROOF_OWED(deploy-on-merge-crm-command-and-paige-ai-chat); evidence=docs/evidence/ui-delivery/governed-crm-pipeline-chat.md-and-PR-1234
 RELEASE_CHANNEL: development: draft PR #1234 exact-head CI and reviews; no merge, production deployment, migration application, or customer-data mutation is authorized
 RELEASE_CLASSIFICATION: internal-only: governed Paige CRM/Pipeline operator capability candidate with no owner-approved customer release identity
 CUSTOMER_RELEASE_IDENTITY: none: no merged or deployed customer release is authorized
