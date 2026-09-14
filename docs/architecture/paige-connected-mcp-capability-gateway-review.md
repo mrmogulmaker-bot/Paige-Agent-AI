@@ -3,9 +3,12 @@
 **Status: READ-ONLY GROUNDING + ARCHITECTURE PLAN. Nothing was built, refactored, migrated, configured,
 connected, called, published, merged, or deployed to produce it.** No provider was configured or
 contacted during this phase. This document ends at the review package (per the assignment). The first
-build action is gated on **CRM PR #1234 merging**, the **Chat/Knowledge regression #1255 being resolved or
-safely collision-cleared**, a **fresh-`main` grounding pass**, and the owner's **explicit implementation
-go-ahead** — none of which is satisfied today (#1234 open/draft; #1255 open).
+build action is gated on four conditions: **CRM PR #1234 merging** (✅ merged `c81e33b`, 2026-09-14), a
+**fresh-`main` grounding + collision pass** (✅ done — §14), the **Chat/Knowledge regression #1255 being
+resolved or safely collision-cleared** (still OPEN — per §14.2 it gates only the Chat-facing phase; the
+server/schema-first phase is collision-cleared), and the owner's **explicit implementation go-ahead**
+(pending). **Phase S (server/schema) is ready to build on the owner's go; Phase C (Chat-facing) additionally
+waits on #1255.**
 
 **Scope.** This is the internal capability that lets Paige, as an **MCP _client_**, discover, understand,
 and (under her own rules) act on tools from an authenticated MCP connection. It is **NOT** Paige's outward
@@ -792,6 +795,111 @@ MVP; SSE/stdio only if a target MCP requires it — recommended HTTP-only first)
   migrations `20260804130000`, `20261005000000`, `20261006-20261017`, `20261202000000`, `20261224000000`,
   and the n8n set (`20260711*`, `2026120100000*`, `20261200000400`).
 - CLAUDE.md §00 · §9 · §10 · §13 · §18 · §30 · §32 · §34 · §37 · §38 · §51 · §59 · §67 · §68 · §70.
+
+## 14. Fresh-`main` collision pass + #1255 decision + implementation sequence (2026-09-14)
+
+**Authorization & posture.** CRM #1234 merged to `main` at `c81e33bb6cd34acc16d220e62ad397fe637ee06f`;
+the CRM dependency is cleared. The owner authorized this fresh-`main` grounding + collision pass. **#1255
+remains OPEN** and is treated as the active collision; its tests are preserved and never weakened. **This
+section is a read-only report — no shared Chat path (or anything) is edited, and no build begins without the
+owner's explicit go-ahead.**
+
+### 14.1 What fresh `main` changed vs the review's base (`6dc26157` → `c81e33b`)
+
+| Area | Change | Collision? |
+|---|---|---|
+| `supabase/migrations/**` | **No** new migration touches MCP/n8n/Zapier/capability/connection tables; newest is `20270318000000`. | **None** — G1's registry migration is schema-collision-free; it must be dated **> `20270318000000`**. |
+| `_shared/action-risk.ts` (+32) | **Additive** — 25 new `crm_*` keys; `nav_pull_business_credit`/`smartcredit_pull_snapshot` descriptions reworded; `MUTATION_VERB` regex gained `pull`. Tuple/regex contract intact. | None — the gateway extends it additively; **re-verify the exact current key list** at build time. |
+| `_shared/paige-spine/registry.ts` (+6), `domains/contact.ts` (+34), `domains/pipeline.ts` (+33) | **Additive** — `PIPELINE_CRM_ACTIONS` + `CONTACT_CRM_ACTIONS` appended to `PAIGE_SPINE_CAPABILITIES`. | None — gateway appends its own capabilities. |
+| `paige-ai-chat/index.ts` (+179) | CRM command proposals + inline-card decline scoping. **Did NOT touch** the n8n-readiness inject, the knowledge-scope seam, or the mcp/zapier tool wiring. | **File is hot.** No direct #1255-seam change, but the file grew, so **every chat line-citation in this doc (§3.5 / §8 fix sites) is STALE** and must be re-grounded at the Chat-facing phase. |
+| `scripts/knowledge-scope/**` | #1255's tests are **present** on fresh main. | **Preserve — do not weaken** (owner ruling + #1255 constraint). |
+
+### 14.2 #1255 collision decision
+
+#1255 is a defect in `paige-ai-chat/index.ts` — a **scope-switched document turn issues a provider call
+before the switch is re-checked** (`test:knowledge-scope` 15.9 + one §9 governance assertion). It is OPEN;
+`ci/verify` is red because of it (advisory, not a required merge gate — which is itself part of the problem
+#1255 names).
+
+**Overlap analysis:**
+- **Server/schema work (G1 + the server-only parts of G2/G3)** touches **zero** lines of
+  `paige-ai-chat/index.ts` and **zero** knowledge-scope test surface → **NO overlap with #1255.**
+- **Chat-facing work (G4 truth-boundary + any chat tool-wiring / turn change)** edits the **same file and the
+  same per-turn governance seam** #1255 fixes → **OVERLAPS.** Doing it first risks (a) a merge conflict with
+  the #1255 source fix, (b) masking or reopening the failing knowledge-scope assertions, (c) building on chat
+  code that is about to change.
+
+**Decision.** A **safe server/schema-first phase can proceed independently of #1255.** The **Chat-facing
+portion must wait** for #1255's source fix (or an explicit owner collision-clearance); even then it must
+re-ground chat line numbers first and must not weaken #1255's tests.
+
+### 14.3 Implementation sequence (proposed; each phase gated on the owner's explicit build go-ahead)
+
+**Phase S — server / schema-first (independent of #1255):**
+- **S1 — G1 registry migration.** New `mcp_providers` (+ seeded `generic-remote` no-op row), `mcp_connections`
+  (`connection_id` PK), and per-connection child tables (tools / approvals / oauth / receipts / evidence).
+  **Additive**; backfill one `connection_id` per existing `(tenant, provider)` row **and** per
+  `tenant_n8n_connections` row; **recreate every trigger** (endpoint-change approval-revoke,
+  `n8n_oauth_registry_guard`, n8n + zapier rail-revision/rail-event, `n8n_api_credential_evidence_guard`) on
+  the new shape; migrate approvals/pins/leases/generations **1:1** (§58 — no silent re-approve/revoke). §208
+  shape discipline; §32.a persisted-apply proof on prod; dated **> `20270318000000`**.
+- **S2 — connection-keyed RPCs** alongside the existing singleton RPCs (dual-read during cutover); §37
+  producer inventory (baseline in §15 — re-verify against fresh main first).
+- **S3 — generic connection-parameterized runner + safe read-only intake + server-side
+  capability-understanding summary**, reusing `mcp-client.ts` + `decideGovernedExecution` +
+  `recordCapabilityRun`. **No `paige-ai-chat` edits.**
+- **Proof:** headless smoke + §32.a migration proof + multiplicity tests **T6–T9** on a scoped test tenant;
+  **no provider configured or called.**
+
+**Phase C — Chat-facing (gated on #1255 resolved or safely collision-cleared):**
+- Re-ground chat line numbers; point chat's connection/tool wiring at the connection-keyed runner; land the
+  truth-boundary fix (**G4**: readiness relabel + name the ID-free discovery tool + structural projection +
+  CI ratchet + **T1–T5**), coordinated with the #1255 fix so neither weakens the knowledge-scope tests.
+  **Report before editing any shared Chat path** (per owner).
+
+### 14.4 What this pass did NOT do
+No code/schema/runtime edit; no PR; no provider configured or called; **#1255 untouched and its tests
+intact.** Phase S is *proposed, not started* — it awaits the owner's explicit build go-ahead.
+
+---
+
+## 15. Migration prerequisites — producer/consumer + state-store inventory (BASELINE)
+
+*Baseline taken at branch `claude/laughing-carson-iw91ey`; **re-verify against fresh `main` at the start of
+Phase S** before any cutover (some files are prod-ledger reconstructions and can diverge).*
+
+### 15.1 Stores the non-destructive migration must preserve (and what `connection_id` attaches them to)
+
+| Store | Key today | Must preserve → attach to |
+|---|---|---|
+| `tenant_mcp_connections` | `(tenant_id, provider)` | Credentials + `approved_capabilities`/`capability_pins` (Zapier) + `n8n_approved_workflow_ids`/`_marks`/`n8n_discovery_pin` (n8n) + leases/generations/rail counters → one `connection_id` each. **6 triggers to recreate.** Losing approvals silently revokes **or silently re-grants** (§58). |
+| `tenant_n8n_connections` | `tenant_id` (singleton) | API-key creds + `api_health` evidence block → its **own** `connection_id` (n8n has an API-key facet **and** an MCP-OAuth facet). Recreate `n8n_api_credential_evidence_guard`. |
+| `tenant_mcp_oauth_state` · `tenant_n8n_oauth_attempts` · `tenant_n8n_discoveries` | transient (5–10 min TTL) | **Safe to drop at cutover** except live **non-terminal** OAuth attempts (avoid orphaning a consent in flight). |
+| `tenant_mcp_call_evidence` | `id` + `(tenant, provider, capability)` | 30-day encrypted evidence → re-key `provider` to `connection_id`; keep the service-role-only read boundary. |
+| `paige_workspace_events` (the Rail/**receipt** store; `record_capability_run` writes here) | `id` + 5-col UNIQUE | Append-only — preserve **all** rows and the enum vocab exactly. **Capability-run receipts carry `capability_key` but NO `connection_id`/`provider` column** → add a connection reference (derive from the `n8n_*`/`zapier_run_action` key prefix, or a new nullable col); **never rewrite historical `source_id`/`source_revision`/dedupe key.** |
+| `tenant_workflows` (n8n workflow registry) | `(tenant_id, n8n_workflow_id)` | No singleton risk (keyed by workflow id) → attach to the n8n `connection_id`. **`forget_paige_workflow` is CALLED (`paige-n8n/index.ts:323`) but has NO SQL definition** — define it or drop the dead call at cutover; do not assume it works. |
+| `tenant_zapier_api_connections` / `_oauth_attempts` / `_intake_routes` / `_intake_events` | `tenant_id` | MCP-adjacent Zapier facets — flag for the same `connection_id` treatment; **re-verify inclusion at fresh main.** |
+
+### 15.2 Highest cutover risk (most callers / deepest singleton assumption)
+1. **`n8n_oauth_service`** — the entire n8n OAuth lifecycle (~15 ops) behind one multiplexer, driven from
+   `tenant-n8n-oauth` and (via `n8n-management.ts`) `paige-ai-chat`, plus the external n8n callback; it
+   **hard-locks a single `WHERE tenant_id=t AND provider='n8n' FOR UPDATE` row** and writes n8n tokens into
+   `tenant_mcp_connections` — re-modeling that table touches this RPC's internals.
+2. **`get_tenant_mcp_secret`** — sole decrypt gate for every MCP capability run (4 edge call sites).
+3. **`get_tenant_n8n_secret`** — on the hot path of every workflow fire/poll (`n8n-run.ts:81`,
+   `resolveN8nConnection` resolves "the tenant's ONE n8n connection" — **the core singleton assumption**).
+4. **Readiness reads** (`get_n8n_connection_readiness`, `get_tenant_n8n_api_readiness`,
+   `get_tenant_mcp_connections`) drive the whole Solo/admin connections UI — break them and it goes dark.
+- **ALL `tenant_n8n_connections` RPCs assume one row per tenant (no `connection_id`)** — the deepest
+  singleton to unwind. `get_tenant_mcp_evidence` has **no runtime caller** (tests only) — confirm before
+  migrating.
+
+### 15.3 §37 caller classes touched (baseline)
+Frontend (Solo `settings-integrations`/`useMcp*`/`useN8n*`; admin legacy `N8nIntegrationConfig`/`IntegrationsHub`) ·
+sibling edge fns (`tenant-mcp-connect`, `tenant-n8n-oauth`, `tenant-n8n-api-connect`, `call-zapier-action`,
+`paige-n8n`, `paige-ai-chat`) · DB triggers (listed in 15.1) · external OAuth callbacks (MCP/Zapier/n8n) ·
+tests + SQL proofs. **No `pg_cron`/`pg_net` and no GitHub Action hits these RPCs against prod.** Every new
+connection-keyed RPC must keep the singleton RPCs working until all callers cut over.
 
 ---
 
