@@ -1,6 +1,6 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(106);
+SELECT plan(108);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
@@ -39,8 +39,11 @@ INSERT INTO public.clients(id,tenant_id,account_number,created_by,first_name,las
  ('c7100000-0000-4000-8000-00000000c108','c7100000-0000-4000-8000-000000001111','CLT-CGA-8','c7100000-0000-4000-8000-000000000001','Identity','Loser','loser@tests.invalid','2026-09-13 00:00:00+00'),
  ('c7100000-0000-4000-8000-00000000c109','c7100000-0000-4000-8000-000000001111','CLT-CGA-9','c7100000-0000-4000-8000-000000000001','Recovery','Delete','recovery-delete@tests.invalid','2026-09-13 00:00:00+00'),
  ('c7100000-0000-4000-8000-00000000c110','c7100000-0000-4000-8000-000000001111','CLT-CGA-10','c7100000-0000-4000-8000-000000000001','Coach Merge','Survivor','coach-merge-survivor@tests.invalid','2026-09-13 00:00:00+00'),
- ('c7100000-0000-4000-8000-00000000c111','c7100000-0000-4000-8000-000000001111','CLT-CGA-11','c7100000-0000-4000-8000-000000000001','Coach Merge','Loser','coach-merge-loser@tests.invalid','2026-09-13 00:00:00+00');
+ ('c7100000-0000-4000-8000-00000000c111','c7100000-0000-4000-8000-000000001111','CLT-CGA-11','c7100000-0000-4000-8000-000000000001','Coach Merge','Loser','coach-merge-loser@tests.invalid','2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c112','c7100000-0000-4000-8000-000000001111','CLT-CGA-12','c7100000-0000-4000-8000-000000000001','Null Identity','Survivor','null-survivor@tests.invalid','2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c113','c7100000-0000-4000-8000-000000001111','CLT-CGA-13','c7100000-0000-4000-8000-000000000001','Portal Identity','Loser','portal-loser@tests.invalid','2026-09-13 00:00:00+00');
 UPDATE public.clients SET linked_user_id='c7100000-0000-4000-8000-000000000002' WHERE id='c7100000-0000-4000-8000-00000000c103';
+UPDATE public.clients SET linked_user_id='c7100000-0000-4000-8000-000000000001' WHERE id='c7100000-0000-4000-8000-00000000c113';
 UPDATE public.clients SET linked_user_id='c7200000-0000-4000-8000-000000000001' WHERE id='c7200000-0000-4000-8000-00000000c201';
 INSERT INTO public.businesses(id,tenant_id,owner_user_id,legal_name,is_active,is_primary,updated_at) VALUES
  ('c7100000-0000-4000-8000-00000000b101','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Archived Fixture',false,false,'2026-09-13 00:00:00+00'),
@@ -360,6 +363,16 @@ SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.merge','preview_id',(SELECT result->>'preview_id' FROM merge_identity_preview))::text,'merge-identity-swap-1'),'40001','CRM_DEPENDENCY_CONFLICT','merge refuses a same-count dependency identity swap after preview');
 SELECT is((SELECT status FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c108'),'active','refused identity-changed merge preserves the losing contact');
+CREATE TEMP TABLE merge_keep_survivor_preview AS SELECT public.preview_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c112','loser_contact_id','c7100000-0000-4000-8000-00000000c113','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c112'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c113'),'resolutions',jsonb_build_object('linked_user_id','survivor')),
+ 'merge-keep-survivor-identity-1:preview') result;
+CREATE TEMP TABLE merge_keep_survivor_result AS SELECT public.execute_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.merge','preview_id',(SELECT result->>'preview_id' FROM merge_keep_survivor_preview)),
+ 'merge-keep-survivor-identity-1') result;
+SELECT is((SELECT result->>'outcome' FROM merge_keep_survivor_result),'succeeded','merge honors an explicit survivor portal-identity resolution');
+SELECT is((SELECT linked_user_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c112'),NULL::uuid,'explicit survivor resolution preserves a null survivor portal identity');
 CREATE TEMP TABLE merge_coach_preview AS SELECT public.preview_crm_command(
  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
  jsonb_build_object('approval_channel','operator_card','action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c110','loser_contact_id','c7100000-0000-4000-8000-00000000c111','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c110'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c111')),
