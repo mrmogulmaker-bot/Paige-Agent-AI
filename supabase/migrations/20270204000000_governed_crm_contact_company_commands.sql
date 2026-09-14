@@ -87,6 +87,8 @@ returns trigger language plpgsql security definer set search_path='' as $$
 declare
   existing_business_id uuid; new_business_id uuid; trimmed_name text; v_owner_user_id uuid;
 begin
+  if coalesce(auth.jwt()->>'role','')='service_role' and auth.uid() is null
+     and coalesce(pg_catalog.current_setting('app.suppress_contact_auto_stub',true),'')='on' then return new; end if;
   -- An explicit unlink must remain unlinked. The legacy auto-stub exists for first-time contact
   -- creation/enrichment, not for undoing a deliberate relationship removal (or FK clear).
   if tg_op='UPDATE' and old.primary_business_id is not null and new.primary_business_id is null then return new; end if;
@@ -1458,6 +1460,7 @@ begin
       -- variable retains the exact preview-bound value used below; the whole transaction rolls back on failure.
       update public.clients set linked_user_id=null where id=loser.id;
       perform pg_catalog.set_config('app.suppress_contact_assignment_notification','on',true);
+      perform pg_catalog.set_config('app.suppress_contact_auto_stub','on',true);
       update public.clients set
         email=case when resolutions->>'email'='loser' or (not (resolutions ? 'email') and c.email is null) then loser.email else c.email end,
         phone=case when resolutions->>'phone'='loser' or (not (resolutions ? 'phone') and c.phone is null) then loser.phone else c.phone end,
