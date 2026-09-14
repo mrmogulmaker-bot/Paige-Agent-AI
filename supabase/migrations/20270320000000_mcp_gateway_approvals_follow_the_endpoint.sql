@@ -35,16 +35,24 @@
 --
 -- WHY SECURITY DEFINER (a deliberate divergence from the legacy trigger, which is not DEFINER)
 --
--- The legacy reset columns on the very row being updated — no cross-table write, so the
--- firing UPDATE's own privileges sufficed. Here the revocation is a DELETE on a SEPARATE
--- table, `mcp_connection_approvals`, which has RLS ENABLED (owner-all). A non-DEFINER
--- trigger's DELETE would be RLS-filtered and could silently affect ZERO rows — a revocation
--- that silently does nothing is the exact failure this safeguard exists to prevent. Running
--- the function as its owner makes the revocation reliable. It is §59-safe: it is a TRIGGER,
--- not a callable API (EXECUTE is revoked from PUBLIC/anon/authenticated); it fires ONLY as a
--- side effect of an UPDATE to `mcp_connections`, whose own RLS (owner-only) already gates who
--- may update a connection; and it deletes ONLY rows for the SAME `connection_id` being
--- updated (`NEW.connection_id`) — it never reaches another connection or another tenant.
+-- The legacy reset columns on the very row being updated — no cross-table write and no
+-- decrypt, so the firing UPDATE's own privileges sufficed. This one needs owner privilege for
+-- two concrete reasons:
+--   (a) The revocation is a DELETE on a SEPARATE, RLS-enabled table (`mcp_connection_approvals`,
+--       owner-all). Today every writer of `mcp_connections` is the platform owner (or a
+--       service-role / DEFINER path), who also satisfies that child policy, so a non-DEFINER
+--       delete would in fact succeed right now. But the moment a future reconnect path updates
+--       a connection under any authority that is NOT the child table's RLS principal — or the
+--       child's policy ever drifts from the connection's — a non-DEFINER delete is silently
+--       RLS-filtered to ZERO rows, and a revocation that silently does nothing is the exact
+--       failure this safeguard exists to prevent.
+--   (b) The in-body `platform_decrypt` is EXECUTE-granted only to service_role, so a
+--       non-DEFINER trigger firing under `authenticated` would raise permission-denied.
+-- Running as the owner makes both reliable. It is §59-safe: it is a TRIGGER, not a callable API
+-- (EXECUTE is revoked from PUBLIC/anon/authenticated); it fires ONLY as a side effect of an
+-- UPDATE to `mcp_connections`, whose own RLS (owner-only) already gates who may update a
+-- connection; and it deletes ONLY rows for the SAME `connection_id` being updated
+-- (`NEW.connection_id`) — it never reaches another connection or another tenant.
 
 CREATE OR REPLACE FUNCTION public._mcp_gw_revoke_approvals_on_endpoint_change()
 RETURNS trigger

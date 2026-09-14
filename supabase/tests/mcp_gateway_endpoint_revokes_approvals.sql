@@ -59,10 +59,14 @@ UPDATE public.mcp_connections
 DO $$
 DECLARE n int; same boolean;
 BEGIN
-  -- Guard the guard: confirm the ciphertext genuinely changed, so this really exercises the
-  -- decrypt path and is not a vacuous pass on identical bytes.
+  -- Guard the guard: prove the re-encryption genuinely changed the stored ciphertext, so this
+  -- case really exercises the DECRYPT comparison and is not a vacuous pass on identical bytes.
+  -- platform_encrypt is non-deterministic, so the stored ct must NOT equal a fresh encryption
+  -- of the same address; if it does, the encryption is deterministic and this case proves
+  -- nothing — fail loudly rather than pass silently.
   SELECT (server_url_ct = public.platform_encrypt('https://mcp-a.example/rpc')) INTO same
     FROM public.mcp_connections WHERE connection_id = 'e9c00000-0000-0000-0000-0000000000c1';
+  IF same THEN RAISE EXCEPTION '(3) re-encrypt produced identical ciphertext — decrypt path not exercised, test is vacuous'; END IF;
   SELECT count(*) INTO n FROM public.mcp_connection_approvals
    WHERE connection_id = 'e9c00000-0000-0000-0000-0000000000c1';
   IF n <> 2 THEN RAISE EXCEPTION '(3) re-encrypt of same address revoked approvals: expected 2, got %', n; END IF;
