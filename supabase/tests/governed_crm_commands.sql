@@ -1,6 +1,6 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(81);
+SELECT plan(90);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
@@ -34,7 +34,10 @@ INSERT INTO public.clients(id,tenant_id,account_number,created_by,first_name,las
  ('c7100000-0000-4000-8000-00000000c103','c7100000-0000-4000-8000-000000001111','CLT-CGA-3','c7100000-0000-4000-8000-000000000001','Merge','Fixture','merge@tests.invalid','2026-09-13 00:00:00+00'),
  ('c7100000-0000-4000-8000-00000000c104','c7100000-0000-4000-8000-000000001111','CLT-CGA-4','c7100000-0000-4000-8000-000000000001','Bulk','Fixture','bulk@tests.invalid','2026-09-13 00:00:00+00'),
  ('c7100000-0000-4000-8000-00000000c105','c7100000-0000-4000-8000-000000001111','CLT-CGA-5','c7100000-0000-4000-8000-000000000001','Coach','Fixture','coach@tests.invalid','2026-09-13 00:00:00+00'),
- ('c7100000-0000-4000-8000-00000000c106','c7100000-0000-4000-8000-000000001111','CLT-CGA-6','c7100000-0000-4000-8000-000000000001','Unlink','Fixture','unlink@tests.invalid','2026-09-13 00:00:00+00');
+ ('c7100000-0000-4000-8000-00000000c106','c7100000-0000-4000-8000-000000001111','CLT-CGA-6','c7100000-0000-4000-8000-000000000001','Unlink','Fixture','unlink@tests.invalid','2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c107','c7100000-0000-4000-8000-000000001111','CLT-CGA-7','c7100000-0000-4000-8000-000000000001','Identity','Survivor','survivor@tests.invalid','2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c108','c7100000-0000-4000-8000-000000001111','CLT-CGA-8','c7100000-0000-4000-8000-000000000001','Identity','Loser','loser@tests.invalid','2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c109','c7100000-0000-4000-8000-000000001111','CLT-CGA-9','c7100000-0000-4000-8000-000000000001','Recovery','Delete','recovery-delete@tests.invalid','2026-09-13 00:00:00+00');
 UPDATE public.clients SET linked_user_id='c7100000-0000-4000-8000-000000000002' WHERE id='c7100000-0000-4000-8000-00000000c103';
 UPDATE public.clients SET linked_user_id='c7200000-0000-4000-8000-000000000001' WHERE id='c7200000-0000-4000-8000-00000000c201';
 INSERT INTO public.businesses(id,tenant_id,owner_user_id,legal_name,is_active,is_primary,updated_at) VALUES
@@ -101,14 +104,24 @@ CREATE TEMP TABLE post_unlink_update AS SELECT public.execute_crm_command(
  'post-unlink-update-1') result;
 SELECT is((SELECT primary_business_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c106'),NULL::uuid,'a later ordinary contact edit preserves the explicit company unlink');
 SELECT is((SELECT count(*)::integer FROM public.businesses WHERE tenant_id='c7100000-0000-4000-8000-000000001111'),2,'a later ordinary contact edit creates no replacement company after unlink');
+CREATE TEMP TABLE contact_assignment_no_send AS SELECT public.execute_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.assign_coach','contact_id','c7100000-0000-4000-8000-00000000c106','owner_user_id','c7100000-0000-4000-8000-000000000001','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c106')),
+ 'contact-assignment-no-send-1') result;
+SELECT is((SELECT (result->'readback'->>'notification_sent')::boolean FROM contact_assignment_no_send),false,'canonical coach assignment truthfully reports no outbound notification');
+SELECT is((SELECT count(*)::integer FROM task_notification_spy),0,'canonical coach assignment invokes no legacy outbound team event');
 SELECT is((SELECT count(*)::integer FROM public.businesses WHERE tenant_id='c7200000-0000-4000-8000-000000002222' AND owner_user_id='c7200000-0000-4000-8000-000000000001' AND legal_name='Secondary Auto Stub' AND is_active AND NOT is_primary),1,'contact auto-stub creates the requested linked company without promoting a second primary');
 CREATE TEMP TABLE task_metadata_fixture AS SELECT public.execute_crm_command(
  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
  '{"approval_channel":"operator_card","action":"task.create","patch":{"title":"Metadata Fixture"}}','task-metadata-create-1') result;
 SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','task.update','task_id',(SELECT result->'readback'->>'id' FROM task_metadata_fixture),'expected_updated_at',(SELECT result->'readback'->>'updated_at' FROM task_metadata_fixture),'patch',jsonb_build_object('metadata','urgent'))::text,'task-metadata-invalid-1'),'22023','CRM_TASK_METADATA_INVALID','task update refuses malformed metadata instead of recording a no-op success');
+SELECT throws_ok($$SELECT public.execute_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ '{"approval_channel":"operator_card","action":"task.create","patch":{"title":"Unsupported contact follow-up","contact_id":"c7100000-0000-4000-8000-00000000c103"}}','contact-task-link-unavailable-1')$$,
+ '0A000','CRM_TASK_CONTACT_LINK_UNAVAILABLE','task create refuses rather than discarding an unsupported contact relationship');
 CREATE TEMP TABLE linked_contact_task AS SELECT public.execute_crm_command(
  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
- '{"approval_channel":"operator_card","action":"task.create","patch":{"title":"Operator follow-up","contact_id":"c7100000-0000-4000-8000-00000000c103"}}','linked-contact-task-1') result;
+ '{"approval_channel":"operator_card","action":"task.create","patch":{"title":"Operator follow-up"}}','linked-contact-task-1') result;
 SELECT is((SELECT result->'readback'->>'assignee_user_id' FROM linked_contact_task),'c7100000-0000-4000-8000-000000000001','task create defaults to the requesting operator, never the contact portal identity');
 SELECT is((SELECT jsonb_build_object('external_effect',(result->'readback'->>'external_effect')::boolean,'notification_sent',(result->'readback'->>'notification_sent')::boolean) FROM linked_contact_task),'{"external_effect":false,"notification_sent":false}'::jsonb,'task readback truthfully reports no assignment notification');
 SELECT is((SELECT count(*)::integer FROM task_notification_spy),0,'canonical task creation invokes no outbound assignment notification');
@@ -169,6 +182,10 @@ SELECT throws_ok($$SELECT public.execute_crm_command(
   'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000002',
   '{"approval_channel":"operator_card","action":"task.create","patch":{"title":"Foreign deal task","deal_id":"c7100000-0000-4000-8000-00000000d101"}}','coach-foreign-deal-task-1'
 )$$,'42501','CRM_FORBIDDEN','coach cannot attach a task to an unrelated same-tenant deal');
+SELECT throws_ok($$SELECT public.execute_crm_command(
+  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000002',
+  '{"approval_channel":"operator_card","action":"task.create","patch":{"title":"Foreign company task","company_id":"c7100000-0000-4000-8000-00000000b101"}}','coach-foreign-company-task-1'
+)$$,'42501','CRM_FORBIDDEN','coach cannot attach a task to an unrelated same-tenant company');
 RESET ROLE;
 UPDATE public.clients SET assigned_coach_user_id=NULL WHERE id='c7100000-0000-4000-8000-00000000c105';
 SET LOCAL ROLE service_role;
@@ -262,8 +279,46 @@ SELECT is((SELECT result->>'outcome' FROM delete_result),'succeeded','preview-bo
 SELECT is((SELECT count(*)::integer FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c102'),0,'hard-delete readback is exact absence');
 SELECT is((SELECT count(*)::integer FROM public.paige_workspace_events WHERE capability_key='crm_hard_delete_contact' AND outcome='capability_succeeded'),1,'hard delete writes the exact Rail capability receipt');
 SELECT is((public.preview_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"approval_channel":"operator_card","action":"contact.hard_delete","contact_id":"c7100000-0000-4000-8000-00000000c102","expected_updated_at":"2026-09-13T00:00:00+00:00"}','delete-preview-1')->>'replayed')::boolean,true,'consumed preview retry returns the durable cached result');
+CREATE TEMP TABLE lost_delete_preview AS SELECT public.preview_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ '{"action":"contact.hard_delete","contact_id":"c7100000-0000-4000-8000-00000000c109","expected_updated_at":"2026-09-13T00:00:00+00:00"}','lost-delete-recovery-1:preview') result;
+CREATE TEMP TABLE lost_delete_result AS SELECT public.execute_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.hard_delete','preview_id',(SELECT result->>'preview_id' FROM lost_delete_preview)),'lost-delete-recovery-1') result;
+RESET ROLE;
+INSERT INTO public.tenant_tool_autonomy(tenant_id,tool_key,mode,updated_by) VALUES
+ ('c7100000-0000-4000-8000-000000001111','crm_hard_delete_contact','off','c7100000-0000-4000-8000-000000000001')
+ON CONFLICT (tenant_id,tool_key) DO UPDATE SET mode=excluded.mode,updated_by=excluded.updated_by,updated_at=now();
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT is((public.read_crm_command_result(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ '{"action":"contact.hard_delete","contact_id":"c7100000-0000-4000-8000-00000000c109","expected_updated_at":"2026-09-13T00:00:00+00:00"}','lost-delete-recovery-1')->>'replayed')::boolean,true,'lost destructive response remains recoverable after its autonomy lane is switched off');
+SELECT throws_ok($$SELECT public.read_crm_command_result(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ '{"action":"contact.hard_delete","contact_id":"c7100000-0000-4000-8000-00000000c108","expected_updated_at":"2026-09-13T00:00:00+00:00"}','lost-delete-recovery-1')$$,
+ '22023','CRM_IDEMPOTENCY_REUSE','destructive lost-response recovery refuses a changed original payload');
+RESET ROLE;
+UPDATE public.tenant_tool_autonomy SET mode='confirm',updated_at=now()
+ WHERE tenant_id='c7100000-0000-4000-8000-000000001111' AND tool_key='crm_hard_delete_contact';
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.link_company','contact_id','c7100000-0000-4000-8000-00000000c101','company_id','c7100000-0000-4000-8000-00000000b101','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c101'))::text,'archived-company-link-1'),'P0002','CRM_BUSINESS_NOT_FOUND','linking an archived company is refused');
 
+INSERT INTO public.client_notes(id,contact_id,tenant_id,author_user_id,body) VALUES
+ ('c7100000-0000-4000-8000-00000000f101','c7100000-0000-4000-8000-00000000c108','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Preview-bound dependency A');
+CREATE TEMP TABLE merge_identity_preview AS SELECT public.preview_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c107','loser_contact_id','c7100000-0000-4000-8000-00000000c108','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c107'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c108')),
+ 'merge-identity-swap-1:preview') result;
+RESET ROLE;
+DELETE FROM public.client_notes WHERE id='c7100000-0000-4000-8000-00000000f101';
+INSERT INTO public.client_notes(id,contact_id,tenant_id,author_user_id,body) VALUES
+ ('c7100000-0000-4000-8000-00000000f102','c7100000-0000-4000-8000-00000000c108','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Replacement dependency B');
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.merge','preview_id',(SELECT result->>'preview_id' FROM merge_identity_preview))::text,'merge-identity-swap-1'),'40001','CRM_DEPENDENCY_CONFLICT','merge refuses a same-count dependency identity swap after preview');
+SELECT is((SELECT status FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c108'),'active','refused identity-changed merge preserves the losing contact');
 SELECT throws_ok(format('SELECT public.preview_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c101','loser_contact_id','c7100000-0000-4000-8000-00000000c103','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c101'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c103'))::text,'merge-missing-identity-resolution-1'),'22023','CRM_MERGE_IDENTITY_RESOLUTION_REQUIRED','portal identity transfer requires an explicit merge resolution');
 CREATE TEMP TABLE merge_preview AS SELECT public.preview_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c101','loser_contact_id','c7100000-0000-4000-8000-00000000c103','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c101'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c103'),'resolutions',jsonb_build_object('linked_user_id','loser')),'merge-preview-1') result;
 SELECT is((SELECT (result->>'eligible')::boolean FROM merge_preview),true,'merge preview binds an eligible survivor and loser');
@@ -273,6 +328,7 @@ SELECT is((SELECT result->>'outcome' FROM merge_result),'succeeded','preview-bou
 SELECT is((SELECT status FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c103'),'archived','merge archives the losing contact instead of erasing it');
 SELECT is((SELECT merged_into_contact_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c103'),'c7100000-0000-4000-8000-00000000c101'::uuid,'merge records the explicit survivor');
 SELECT is((SELECT count(*)::integer FROM public.paige_workspace_events WHERE capability_key='crm_merge_contacts' AND outcome='capability_succeeded'),1,'merge writes the exact Rail capability receipt');
+SELECT throws_ok(format('SELECT public.preview_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c101','loser_contact_id','c7100000-0000-4000-8000-00000000c103','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c101'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c103'))::text,'inactive-merge-preview-1'),'42501','CRM_MERGE_TARGET_INACTIVE','an archived or already-merged contact cannot enter a new merge preview');
 CREATE TEMP TABLE merged_survivor_delete_preview AS SELECT public.preview_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.hard_delete','contact_id','c7100000-0000-4000-8000-00000000c101','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c101')),'merged-survivor-delete-preview-1') result;
 SELECT is((SELECT (result->>'eligible')::boolean FROM merged_survivor_delete_preview),false,'hard-delete preview refuses a merge survivor with incoming lineage');
 SELECT is((SELECT (result->'dependency_counts'->'by_reference'->>'clients.merged_into_contact_id')::integer FROM merged_survivor_delete_preview),1,'hard-delete preview reports the exact incoming merge-lineage count');

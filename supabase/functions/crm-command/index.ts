@@ -263,7 +263,7 @@ serve(async (req) => {
   // Recover it before the approval decision so an identical retry never asks the operator to
   // approve the already-completed action again. The service-only RPC revalidates the tenant,
   // active account, membership, actor, and exact command hash before returning anything.
-  if (accessAllowed && !PREVIEW_REQUIRED_ACTIONS.has(body.command.action) && await activeTenantStillMatches()) {
+  if (accessAllowed && await activeTenantStillMatches()) {
     const { data: cachedData, error: cachedError } = await admin.rpc("read_crm_command_result", {
       _tenant_id: tenantId,
       _actor_id: user.id,
@@ -514,6 +514,7 @@ serve(async (req) => {
   if (commandError) {
     const code = /^(CRM|PIPELINE)_[A-Z0-9_:,-]+$/.test(commandError.message ?? "") ? commandError.message : "CRM_COMMAND_FAILED";
     if (code === "CRM_COMPANY_OWNER_SETUP_REQUIRED") return response(409, { ok: false, outcome: "setup_required", code, message: "This CRM-only contact needs an active tenant owner before a company can be created. Restore or assign the workspace owner, then retry." });
+    if (code === "CRM_TASK_CONTACT_LINK_UNAVAILABLE") return response(409, { ok: false, outcome: "setup_required", code, message: "The canonical task model does not yet own a contact relationship. Create the task without a contact link, or use a supported company/deal link." });
     return response(code.includes("VERSION_CONFLICT") ? 409 : 422, { ok: false, outcome: "failed", code });
   }
 

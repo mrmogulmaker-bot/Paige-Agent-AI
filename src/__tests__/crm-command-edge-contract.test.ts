@@ -53,6 +53,8 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain('preview.ok === true && preview.outcome === "succeeded"');
     expect(edge).toContain("return successfulResultResponse(preview, body.command.action)");
     expect(edge).toContain('admin.rpc("read_crm_command_result"');
+    expect(edge).toContain("if (accessAllowed && await activeTenantStillMatches())");
+    expect(edge).not.toContain("!PREVIEW_REQUIRED_ACTIONS.has(body.command.action)");
     expect(edge.indexOf('admin.rpc("read_crm_command_result"')).toBeLessThan(edge.indexOf('caller.rpc("resolve_tool_autonomy"'));
     expect(edge).toContain("if (cachedError) {");
     expect(edge).toContain('code === "CRM_FORBIDDEN"');
@@ -70,6 +72,8 @@ describe("canonical CRM action door", () => {
     expect(edge).not.toContain('decidedCommand.action.startsWith("deal.")');
     expect(edge).toContain("readback");
     expect(edge).toContain('outcome: "setup_required"');
+    expect(edge).toContain("CRM_TASK_CONTACT_LINK_UNAVAILABLE");
+    expect(edge).toContain("canonical task model does not yet own a contact relationship");
   });
 
   it("renders exact consequential approval summaries and only labels owned record routes exact", () => {

@@ -110,7 +110,7 @@ const labels: Record<CrmAction, string> = {
   "contact.assign_owner":"change a contact's owner", "contact.merge":"merge two contacts after reviewing conflicts and dependencies",
   "contact.hard_delete":"permanently delete an eligible contact", "contact.bulk_update":"update an exact set of contacts",
   "company.create":"create a company", "company.update":"edit a company", "company.archive":"archive a company", "company.restore":"restore a company",
-  "task.create":"create a task", "task.update":"edit a task", "task.assign":"assign a task", "task.reschedule":"reschedule a task",
+  "task.create":"create a task; company and deal links are supported, while contact linking remains unavailable until the canonical task model owns that relationship", "task.update":"edit a task", "task.assign":"assign a task", "task.reschedule":"reschedule a task",
   "task.complete":"complete a task", "task.reopen":"reopen a task", "task.cancel":"cancel a task while retaining its history", "task.delete":"permanently delete a task",
   "activity.log":"log an internal CRM activity; this never sends email or SMS and never places a call",
   "deal.create":"create a deal", "deal.update":"edit reversible deal fields", "deal.assign_owner":"change a deal's owner",

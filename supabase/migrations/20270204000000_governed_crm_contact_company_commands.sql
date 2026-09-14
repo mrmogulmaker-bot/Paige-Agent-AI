@@ -158,6 +158,22 @@ begin
   return new;
 end$$;
 revoke all on function public.trg_notify_task_reassigned() from public,anon,authenticated;
+
+-- The canonical Paige command is a database-only ownership change. Suppress the legacy team-event
+-- side effect only for the trusted service-role executor and disclose that no notification was sent.
+create or replace function public.trg_notify_contact_assigned()
+returns trigger language plpgsql security definer set search_path='' as $$
+begin
+  if coalesce(auth.jwt()->>'role','')='service_role' and auth.uid() is null
+     and coalesce(pg_catalog.current_setting('app.suppress_contact_assignment_notification',true),'')='on' then return new; end if;
+  if new.assigned_coach_user_id is not null
+     and (tg_op='INSERT' or new.assigned_coach_user_id is distinct from old.assigned_coach_user_id) then
+    perform public.fire_team_event(pg_catalog.jsonb_build_object('event','contact_assigned','contact_id',new.id,'coach_user_id',new.assigned_coach_user_id,'tenant_id',new.tenant_id));
+  end if;
+  return new;
+end$$;
+revoke all on function public.trg_notify_contact_assigned() from public,anon,authenticated;
+
 create or replace function public.execute_crm_command_reversible(
   _tenant_id uuid,
   _actor_id uuid,
@@ -216,16 +232,14 @@ begin
   perform 1 from public.tenants tenant_row where tenant_row.id=v_tenant and tenant_row.status in ('trial','active','past_due') for update;
   if not found then raise exception 'CRM_TENANT_SUSPENDED' using errcode='42501'; end if;
 
-  select exists(
-    select 1 from public.tenant_members tm
-    where tm.tenant_id = v_tenant and tm.user_id = v_actor and tm.status = 'active'
-      and tm.role in ('owner','admin')
-  ) into v_is_admin;
-  select exists(
-    select 1 from public.tenant_members tm
-    where tm.tenant_id = v_tenant and tm.user_id = v_actor and tm.status = 'active'
-      and tm.role = 'coach'
-  ) into v_is_coach;
+  perform 1 from public.tenant_members tm
+   where tm.tenant_id = v_tenant and tm.user_id = v_actor and tm.status = 'active' and tm.role in ('owner','admin') for update;
+  v_is_admin:=found;
+  if not v_is_admin then
+    perform 1 from public.tenant_members tm
+     where tm.tenant_id = v_tenant and tm.user_id = v_actor and tm.status = 'active' and tm.role = 'coach' for update;
+    v_is_coach:=found;
+  end if;
   if not (v_is_admin or v_is_coach) then
     raise exception 'CRM_FORBIDDEN' using errcode = '42501';
   end if;
@@ -494,25 +508,26 @@ begin
       raise exception 'CRM_PATCH_FIELDS_INVALID:%', array_to_string(v_unknown, ',') using errcode = '22023';
     end if;
     if v_patch ? 'contact_id' then
-      select * into v_contact from public.clients c
-       where c.id = (v_patch->>'contact_id')::uuid and c.tenant_id = v_tenant;
-      if not found then raise exception 'CRM_CONTACT_NOT_FOUND' using errcode = 'P0002'; end if;
-      if not public.crm_actor_can_access_record(v_tenant,v_actor,'contact',v_contact.id) then
-        raise exception 'CRM_FORBIDDEN' using errcode = '42501';
-      end if;
+      -- The canonical tasks table has no contact relationship. Never accept and silently discard
+      -- one; callers may use the supported company/deal links until that domain seam exists.
+      raise exception 'CRM_TASK_CONTACT_LINK_UNAVAILABLE' using errcode = '0A000';
     end if;
     -- A contact link is not task-assignment consent. Default to the requesting operator, never
     -- silently to a portal identity; an explicit assignee is still tenant-authorized below.
     if coalesce(v_patch->>'assignee_user_id','') = '' then
       v_patch := v_patch || jsonb_build_object('assignee_user_id',v_actor);
     end if;
-    if not (
-      exists(select 1 from public.tenant_members tm where tm.tenant_id=v_tenant and tm.user_id=(v_patch->>'assignee_user_id')::uuid and tm.status='active')
-      or exists(select 1 from public.clients c where c.tenant_id=v_tenant and c.linked_user_id=(v_patch->>'assignee_user_id')::uuid
-        and (v_is_admin or c.assigned_coach_user_id=v_actor))
-    ) then raise exception 'CRM_ASSIGNEE_FORBIDDEN' using errcode = '42501'; end if;
-    if v_patch ? 'company_id' and not exists(select 1 from public.businesses b where b.id=(v_patch->>'company_id')::uuid and b.tenant_id=v_tenant) then
-      raise exception 'CRM_BUSINESS_NOT_FOUND' using errcode = 'P0002';
+    perform 1 from public.tenant_members tm
+     where tm.tenant_id=v_tenant and tm.user_id=(v_patch->>'assignee_user_id')::uuid and tm.status='active' for update;
+    if not found then
+      perform 1 from public.clients c where c.tenant_id=v_tenant and c.linked_user_id=(v_patch->>'assignee_user_id')::uuid
+        and (v_is_admin or c.assigned_coach_user_id=v_actor) for update;
+      if not found then raise exception 'CRM_ASSIGNEE_FORBIDDEN' using errcode = '42501'; end if;
+    end if;
+    if v_patch ? 'company_id' then
+      select * into v_business from public.businesses b where b.id=(v_patch->>'company_id')::uuid and b.tenant_id=v_tenant for update;
+      if not found then raise exception 'CRM_BUSINESS_NOT_FOUND' using errcode = 'P0002'; end if;
+      if not public.crm_actor_can_access_record(v_tenant,v_actor,'company',v_business.id) then raise exception 'CRM_FORBIDDEN' using errcode='42501'; end if;
     end if;
     if v_patch ? 'deal_id' then
       select * into v_deal from public.deals d where d.id=(v_patch->>'deal_id')::uuid and d.tenant_id=v_tenant for update;
@@ -573,10 +588,12 @@ begin
       if coalesce(v_patch->>'assignee_user_id','') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
         raise exception 'CRM_ASSIGNEE_FORBIDDEN' using errcode='42501';
       end if;
-      if not (
-        exists(select 1 from public.tenant_members tm where tm.tenant_id=v_tenant and tm.user_id=(v_patch->>'assignee_user_id')::uuid and tm.status='active')
-        or exists(select 1 from public.clients c where c.tenant_id=v_tenant and c.linked_user_id=(v_patch->>'assignee_user_id')::uuid)
-      ) then raise exception 'CRM_ASSIGNEE_FORBIDDEN' using errcode='42501'; end if;
+      perform 1 from public.tenant_members tm
+       where tm.tenant_id=v_tenant and tm.user_id=(v_patch->>'assignee_user_id')::uuid and tm.status='active' for update;
+      if not found then
+        perform 1 from public.clients c where c.tenant_id=v_tenant and c.linked_user_id=(v_patch->>'assignee_user_id')::uuid for update;
+        if not found then raise exception 'CRM_ASSIGNEE_FORBIDDEN' using errcode='42501'; end if;
+      end if;
       perform pg_catalog.set_config('app.suppress_task_assignment_notification','on',true);
       update public.tasks t set user_id=(v_patch->>'assignee_user_id')::uuid,updated_at=clock_timestamp()
        where t.id=v_task.id returning * into v_task;
@@ -1014,7 +1031,13 @@ begin
     total:=total+n;
     if k in ('deals.contact_client_id','client_notes.contact_id') then supported:=supported+n; end if;
   end loop;
-  return pg_catalog.jsonb_build_object('total',total,'supported',supported,'unsupported',total-supported,'by_reference',items);
+  return pg_catalog.jsonb_build_object(
+    'total',total,'supported',supported,'unsupported',total-supported,'by_reference',items,
+    'supported_set',pg_catalog.jsonb_build_object(
+      'deals',coalesce((select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('id',deal_row.id,'version',deal_row.version,'updated_at',deal_row.updated_at) order by deal_row.id) from public.deals deal_row where deal_row.contact_client_id=_contact_id),'[]'::jsonb),
+      'client_notes',coalesce((select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('id',note_row.id,'updated_at',note_row.updated_at) order by note_row.id) from public.client_notes note_row where note_row.contact_id=_contact_id),'[]'::jsonb)
+    )
+  );
 end$$;
 revoke all on function public.crm_contact_dependency_snapshot(uuid) from public,anon,authenticated;
 grant execute on function public.crm_contact_dependency_snapshot(uuid) to service_role;
@@ -1102,6 +1125,9 @@ begin
       if not found then raise exception 'CRM_CONTACT_NOT_FOUND' using errcode='P0002'; end if;
       if coalesce(_command->>'expected_loser_updated_at','')='' or c2.updated_at is distinct from (_command->>'expected_loser_updated_at')::timestamptz
         then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
+      if c1.status is distinct from 'active' or c2.status is distinct from 'active' or c1.merged_into_contact_id is not null or c2.merged_into_contact_id is not null then
+        raise exception 'CRM_MERGE_TARGET_INACTIVE' using errcode='42501';
+      end if;
       if c1.linked_user_id is null and c2.linked_user_id is not null and not (coalesce(_command->'resolutions','{}'::jsonb) ? 'linked_user_id') then
         raise exception 'CRM_MERGE_IDENTITY_RESOLUTION_REQUIRED' using errcode='22023';
       end if;
@@ -1193,8 +1219,8 @@ create or replace function public.read_crm_command_result(
   _tenant_id uuid,_actor_id uuid,_command jsonb,_idempotency_key text
 ) returns jsonb language plpgsql security definer set search_path='' as $$
 declare
-  v_active_tenant uuid; v_cached public.crm_command_results%rowtype; v_effective jsonb;
-  v_operator_hash text; v_standing_hash text;
+  v_active_tenant uuid; v_cached public.crm_command_results%rowtype; v_preview public.crm_command_previews%rowtype; v_effective jsonb;
+  v_operator_hash text; v_standing_hash text; v_preview_hash text;
   v_actor_role text; v_record_kind text; v_record_id uuid;
 begin
   if coalesce(auth.jwt()->>'role','')<>'service_role' or auth.uid() is not null then raise exception 'CRM_INTERNAL_EXECUTOR_REQUIRED' using errcode='42501'; end if;
@@ -1205,6 +1231,18 @@ begin
   if not found or v_active_tenant is distinct from _tenant_id then raise exception 'CRM_ACTIVE_ACCOUNT_CHANGED' using errcode='42501'; end if;
   select tm.role into v_actor_role from public.tenant_members tm where tm.tenant_id=_tenant_id and tm.user_id=_actor_id and tm.status='active' and tm.role in ('owner','admin','coach') for share;
   if not found then raise exception 'CRM_FORBIDDEN' using errcode='42501'; end if;
+  -- Preview-bound destructive commands store the original request hash on the preview row and
+  -- the executed preview command in the ordinary result table. Recover the former first so a
+  -- lost response remains readable even if the autonomy lane was switched off afterward.
+  v_preview_hash:=pg_catalog.encode(extensions.digest(pg_catalog.convert_to(_command::text,'UTF8'),'sha256'),'hex');
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('crm-preview:'||_tenant_id::text||':'||_actor_id::text||':'||_idempotency_key||':preview',0));
+  select * into v_preview from public.crm_command_previews p where p.tenant_id=_tenant_id and p.actor_user_id=_actor_id and p.preview_key=_idempotency_key||':preview' for share;
+  if found then
+    if v_preview.command_hash is distinct from v_preview_hash then raise exception 'CRM_IDEMPOTENCY_REUSE' using errcode='22023'; end if;
+    if v_preview.result is null then return null; end if;
+    if v_actor_role not in ('owner','admin') then raise exception 'CRM_FORBIDDEN' using errcode='42501'; end if;
+    return v_preview.result||pg_catalog.jsonb_build_object('replayed',true);
+  end if;
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('crm-command:'||_tenant_id::text||':'||_actor_id::text||':'||_idempotency_key,0));
   select * into v_cached from public.crm_command_results r where r.tenant_id=_tenant_id and r.actor_user_id=_actor_id and r.idempotency_key=_idempotency_key for share;
   if not found then return null; end if;
@@ -1304,10 +1342,15 @@ begin
     if not found then raise exception 'CRM_CONTACT_NOT_FOUND' using errcode='P0002'; end if;
     if c.updated_at is distinct from (_command->>'expected_updated_at')::timestamptz then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
     owner_id:=nullif(_command->>'owner_user_id','')::uuid;
-    if owner_id is not null and not exists(select 1 from public.tenant_members tm where tm.tenant_id=_tenant_id and tm.user_id=owner_id and tm.status='active' and (a='contact.assign_owner' or tm.role in ('owner','admin','coach'))) then raise exception 'CRM_ASSIGNEE_FORBIDDEN' using errcode='42501'; end if;
-    if a='contact.assign_coach' then update public.clients set assigned_coach_user_id=owner_id,updated_at=pg_catalog.clock_timestamp() where id=c.id returning * into c;
+    if owner_id is not null then
+      perform 1 from public.tenant_members tm where tm.tenant_id=_tenant_id and tm.user_id=owner_id and tm.status='active' and (a='contact.assign_owner' or tm.role in ('owner','admin','coach')) for update;
+      if not found then raise exception 'CRM_ASSIGNEE_FORBIDDEN' using errcode='42501'; end if;
+    end if;
+    if a='contact.assign_coach' then
+      perform pg_catalog.set_config('app.suppress_contact_assignment_notification','on',true);
+      update public.clients set assigned_coach_user_id=owner_id,updated_at=pg_catalog.clock_timestamp() where id=c.id returning * into c;
     else update public.clients set lead_owner_user_id=owner_id,updated_at=pg_catalog.clock_timestamp() where id=c.id returning * into c; end if;
-    readback:=pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'assigned_coach_user_id',c.assigned_coach_user_id,'lead_owner_user_id',c.lead_owner_user_id,'updated_at',c.updated_at);
+    readback:=pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'assigned_coach_user_id',c.assigned_coach_user_id,'lead_owner_user_id',c.lead_owner_user_id,'updated_at',c.updated_at,'external_effect',false,'notification_sent',false);
   elsif a in ('deal.assign_owner','deal.assign_contact') then
     return public.execute_crm_command_reversible(_tenant_id,_actor_id,effective_command,_idempotency_key);
   else
@@ -1351,6 +1394,9 @@ begin
       select * into c from public.clients where id=(p.target_snapshot->>'survivor_contact_id')::uuid and tenant_id=_tenant_id for update;
       select * into loser from public.clients where id=(p.target_snapshot->>'loser_contact_id')::uuid and tenant_id=_tenant_id for update;
       if c.id is null or loser.id is null or c.updated_at is distinct from (p.target_snapshot->>'survivor_updated_at')::timestamptz or loser.updated_at is distinct from (p.target_snapshot->>'loser_updated_at')::timestamptz then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
+      if c.status is distinct from 'active' or loser.status is distinct from 'active' or c.merged_into_contact_id is not null or loser.merged_into_contact_id is not null then raise exception 'CRM_MERGE_TARGET_INACTIVE' using errcode='42501'; end if;
+      perform 1 from public.deals d where d.contact_client_id=loser.id for update;
+      perform 1 from public.client_notes n where n.contact_id=loser.id for update;
       deps:=public.crm_contact_dependency_snapshot(loser.id);
       if deps is distinct from p.target_snapshot->'dependency_snapshot' then raise exception 'CRM_DEPENDENCY_CONFLICT' using errcode='40001'; end if;
       if (deps->>'unsupported')::bigint<>0 then raise exception 'CRM_MERGE_DEPENDENCIES_UNSUPPORTED' using errcode='42501'; end if;

@@ -13598,8 +13598,21 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               const p = persistAssistantTurn(finalAssistantText, {
                 // Surfaces reflect executed WORK — thoughts (narration) don't count.
                 surfaces: stepTrace.filter((s) => s.kind !== "thought").map((s) => s.group).filter((v, i, a) => v && a.indexOf(v) === i),
+                // A live result may contain contact PII. Durable thread history is coach-owned and
+                // can outlive a later reassignment, so persist only the authorization-neutral
+                // receipt projection. The live card keeps its readback and locator for the
+                // currently-authorized request; a reload never becomes a stale access path.
                 bundleRef: (queuedApprovals.length || confirmTrace.length || crmResultTrace.length)
-                  ? { approval_queued: queuedApprovals, paige_confirm: confirmTrace, paige_crm_result: crmResultTrace }
+                  ? {
+                      approval_queued: queuedApprovals,
+                      paige_confirm: confirmTrace,
+                      paige_crm_result: crmResultTrace.map((result) => ({
+                        action: result.action,
+                        outcome: result.outcome,
+                        receipt_recorded: result.receipt_recorded,
+                        ...(typeof result.external_effect === "boolean" ? { external_effect: result.external_effect } : {}),
+                      })),
+                    }
                   : null,
               });
               // @ts-ignore — EdgeRuntime is available in Supabase Edge Functions runtime
