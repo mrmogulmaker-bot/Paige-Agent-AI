@@ -489,6 +489,7 @@ begin
          where b.id = (_command->>'company_id')::uuid and b.tenant_id = v_tenant and b.is_active is true
          for update;
         if not found then raise exception 'CRM_BUSINESS_NOT_FOUND' using errcode = 'P0002'; end if;
+        if not public.crm_actor_can_access_record(v_tenant,v_actor,'company',v_business.id) then raise exception 'CRM_FORBIDDEN' using errcode='42501'; end if;
       end if;
       update public.clients c
          set primary_business_id = case when v_action = 'contact.link_company' then v_business.id else null end,
@@ -838,9 +839,10 @@ begin
     select * into _stage from public.pipeline_stages where id=(_command->>'stageId')::uuid and tenant_id=_tenant and pipeline_id=_pipeline.id and archived_at is null for update;
     if not found or _stage.stage_type<>'open' then raise exception 'PIPELINE_OPEN_STAGE_REQUIRED' using errcode='22023'; end if;
     if nullif(_command->>'clientId','') is not null and not exists(select 1 from public.clients c where c.id=(_command->>'clientId')::uuid and c.tenant_id=_tenant) then raise exception 'PIPELINE_CLIENT_INVALID' using errcode='42501'; end if;
-    if nullif(_command->>'ownerUserId','') is not null and not exists(
-      select 1 from public.tenant_members tm where tm.tenant_id=_tenant and tm.user_id=(_command->>'ownerUserId')::uuid and tm.status='active'
-    ) then raise exception 'PIPELINE_OWNER_INVALID' using errcode='42501'; end if;
+    if nullif(_command->>'ownerUserId','') is not null then
+      perform 1 from public.tenant_members tm where tm.tenant_id=_tenant and tm.user_id=(_command->>'ownerUserId')::uuid and tm.status='active' for update;
+      if not found then raise exception 'PIPELINE_OWNER_INVALID' using errcode='42501'; end if;
+    end if;
     if _command ? 'valueCents' and (jsonb_typeof(_command->'valueCents') is distinct from 'number'
       or (_command->>'valueCents')::numeric<0 or (_command->>'valueCents')::numeric<>trunc((_command->>'valueCents')::numeric))
     then raise exception 'PIPELINE_VALUE_INVALID' using errcode='22023'; end if;
@@ -866,9 +868,10 @@ begin
     if _action='update_deal' then
       if _command ? 'title' and coalesce(btrim(_command->>'title'),'')='' then raise exception 'PIPELINE_DEAL_TITLE_REQUIRED' using errcode='22023'; end if;
       if nullif(_command->>'clientId','') is not null and not exists(select 1 from public.clients c where c.id=(_command->>'clientId')::uuid and c.tenant_id=_tenant) then raise exception 'PIPELINE_CLIENT_INVALID' using errcode='42501'; end if;
-      if nullif(_command->>'ownerUserId','') is not null and not exists(
-        select 1 from public.tenant_members tm where tm.tenant_id=_tenant and tm.user_id=(_command->>'ownerUserId')::uuid and tm.status='active'
-      ) then raise exception 'PIPELINE_OWNER_INVALID' using errcode='42501'; end if;
+      if nullif(_command->>'ownerUserId','') is not null then
+        perform 1 from public.tenant_members tm where tm.tenant_id=_tenant and tm.user_id=(_command->>'ownerUserId')::uuid and tm.status='active' for update;
+        if not found then raise exception 'PIPELINE_OWNER_INVALID' using errcode='42501'; end if;
+      end if;
       if _command ? 'valueCents' and (jsonb_typeof(_command->'valueCents') is distinct from 'number'
         or (_command->>'valueCents')::numeric<0 or (_command->>'valueCents')::numeric<>trunc((_command->>'valueCents')::numeric))
       then raise exception 'PIPELINE_VALUE_INVALID' using errcode='22023'; end if;
@@ -1431,10 +1434,16 @@ begin
         raise exception 'CRM_TAGS_INVALID' using errcode='22023';
       end if;
       select count(*) into target_count from pg_catalog.jsonb_array_elements(p.target_snapshot->'targets');
+      perform 1 from public.clients target_client
+       join pg_catalog.jsonb_array_elements(p.target_snapshot->'targets') x on target_client.id=(x->>'id')::uuid
+       where target_client.tenant_id=_tenant_id order by target_client.id for update of target_client;
       select count(*) into changed from pg_catalog.jsonb_array_elements(p.target_snapshot->'targets') x
        left join public.clients target_client on target_client.id=(x->>'id')::uuid and target_client.tenant_id=_tenant_id
        where target_client.id is null or target_client.updated_at is distinct from (x->>'updated_at')::timestamptz;
       if changed>0 then raise exception 'CRM_BULK_TARGET_VERSION_CONFLICT:%',changed using errcode='40001'; end if;
+      if p.target_snapshot->'patch' ? 'assigned_coach_user_id' then
+        perform pg_catalog.set_config('app.suppress_contact_assignment_notification','on',true);
+      end if;
       update public.clients target_client set
         lifecycle_stage=case when p.target_snapshot->'patch' ? 'lifecycle_stage' then p.target_snapshot->'patch'->>'lifecycle_stage' else target_client.lifecycle_stage end,
         tags=case when p.target_snapshot->'patch' ? 'tags' then array(select pg_catalog.jsonb_array_elements_text(p.target_snapshot->'patch'->'tags')) else target_client.tags end,
@@ -1443,7 +1452,7 @@ begin
         updated_at=pg_catalog.clock_timestamp()
       where target_client.tenant_id=_tenant_id and target_client.id in (select (x->>'id')::uuid from pg_catalog.jsonb_array_elements(p.target_snapshot->'targets') x);
       get diagnostics changed=row_count;
-      select pg_catalog.jsonb_build_object('updated_count',changed,'changed_since_preview_count',0,'refused_count',(p.preview->>'refused_count')::int,'records',coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('id',target_client.id,'client_ref',target_client.account_number,'lifecycle_stage',target_client.lifecycle_stage,'tags',target_client.tags,'do_not_contact',target_client.do_not_contact,'assigned_coach_user_id',target_client.assigned_coach_user_id,'updated_at',target_client.updated_at) order by target_client.id),'[]'::jsonb)) into readback
+      select pg_catalog.jsonb_build_object('updated_count',changed,'changed_since_preview_count',0,'refused_count',(p.preview->>'refused_count')::int,'external_effect',false,'notification_sent',false,'records',coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('id',target_client.id,'client_ref',target_client.account_number,'lifecycle_stage',target_client.lifecycle_stage,'tags',target_client.tags,'do_not_contact',target_client.do_not_contact,'assigned_coach_user_id',target_client.assigned_coach_user_id,'updated_at',target_client.updated_at) order by target_client.id),'[]'::jsonb)) into readback
        from public.clients target_client where target_client.tenant_id=_tenant_id and target_client.id in (select (x->>'id')::uuid from pg_catalog.jsonb_array_elements(p.target_snapshot->'targets') x);
     else raise exception 'CRM_ACTION_UNAVAILABLE' using errcode='0A000'; end if;
   end if;

@@ -1,6 +1,6 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(90);
+SELECT plan(96);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
@@ -187,6 +187,14 @@ SELECT throws_ok($$SELECT public.execute_crm_command(
   '{"approval_channel":"operator_card","action":"task.create","patch":{"title":"Foreign company task","company_id":"c7100000-0000-4000-8000-00000000b101"}}','coach-foreign-company-task-1'
 )$$,'42501','CRM_FORBIDDEN','coach cannot attach a task to an unrelated same-tenant company');
 RESET ROLE;
+INSERT INTO public.businesses(id,tenant_id,owner_user_id,legal_name,is_active,is_primary,updated_at) VALUES
+ ('c7100000-0000-4000-8000-00000000b103','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Unrelated Coach Company',true,false,'2026-09-13 00:00:00+00');
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000002',jsonb_build_object('approval_channel','operator_card','action','contact.link_company','contact_id','c7100000-0000-4000-8000-00000000c105','company_id','c7100000-0000-4000-8000-00000000b103','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c105'))::text,'coach-foreign-contact-company-1'),'42501','CRM_FORBIDDEN','coach cannot link an assigned contact to an unrelated same-tenant company');
+SELECT is((SELECT primary_business_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c105'),'c7100000-0000-4000-8000-00000000b102'::uuid,'refused coach company link preserves the existing relationship');
+RESET ROLE;
+DELETE FROM public.businesses WHERE id='c7100000-0000-4000-8000-00000000b103';
 UPDATE public.clients SET assigned_coach_user_id=NULL WHERE id='c7100000-0000-4000-8000-00000000c105';
 SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
@@ -243,10 +251,23 @@ SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.bulk_update','preview_id',(SELECT result->>'preview_id' FROM bulk_assignee_preview))::text,'bulk-assignee-execute-1'),'42501','CRM_ASSIGNEE_FORBIDDEN','bulk execution revalidates the assignee active role after preview');
 SELECT is((SELECT assigned_coach_user_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c104'),NULL::uuid,'refused stale-assignee bulk execution changes no contact');
+SELECT throws_ok($$SELECT public.execute_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ '{"approval_channel":"operator_card","action":"deal.assign_owner","deal_id":"c7100000-0000-4000-8000-00000000d101","expected_version":1,"owner_user_id":"c7100000-0000-4000-8000-000000000002"}','deal-stale-owner-1')$$,
+ '42501','PIPELINE_OWNER_INVALID','deal owner assignment refuses an inactive tenant member');
 RESET ROLE;
 UPDATE public.tenant_members SET status='active' WHERE tenant_id='c7100000-0000-4000-8000-000000001111' AND user_id='c7100000-0000-4000-8000-000000000002';
 SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+CREATE TEMP TABLE bulk_assignment_success_preview AS SELECT public.preview_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ '{"approval_channel":"operator_card","action":"contact.bulk_update","target_ids":["c7100000-0000-4000-8000-00000000c104"],"patch":{"assigned_coach_user_id":"c7100000-0000-4000-8000-000000000002"}}','bulk-assignment-success-preview-1') result;
+CREATE TEMP TABLE bulk_assignment_success AS SELECT public.execute_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.bulk_update','preview_id',(SELECT result->>'preview_id' FROM bulk_assignment_success_preview)),'bulk-assignment-success-1') result;
+SELECT ok((SELECT result->>'outcome'='succeeded' AND (result->'readback'->>'notification_sent')::boolean=false FROM bulk_assignment_success),'bulk coach assignment succeeds and truthfully reports no outbound notification');
+SELECT is((SELECT count(*)::integer FROM task_notification_spy),0,'bulk coach assignment invokes no legacy outbound team event');
+SELECT is((SELECT assigned_coach_user_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c104'),'c7100000-0000-4000-8000-000000000002'::uuid,'bulk coach assignment durably updates the exact preview-bound contact');
 
 CREATE TEMP TABLE expired_preview_first AS SELECT public.preview_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"approval_channel":"operator_card","action":"contact.hard_delete","contact_id":"c7100000-0000-4000-8000-00000000c102","expected_updated_at":"2026-09-13T00:00:00+00:00"}','expired-delete-preview-1') result;
 UPDATE public.crm_command_previews SET expires_at=now()+interval '90 seconds' WHERE id=(SELECT (result->>'preview_id')::uuid FROM expired_preview_first);

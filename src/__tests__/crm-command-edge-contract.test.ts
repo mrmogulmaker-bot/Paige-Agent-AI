@@ -86,6 +86,10 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain('Contact tags must be an array of 1-80 character strings.');
     expect(edge).toContain('["contact.create", "contact.update", "contact.bulk_update"].includes(command.action)');
     expect(edge).toContain('Object.prototype.hasOwnProperty.call(command.patch, "tags")');
+    expect(edge).toContain('const patchSummary = Object.entries(patch)');
+    expect(edge).toContain('preview.client_ref ?? preview.record_id');
+    expect(edge).toContain('preview.title ?? preview.record_id');
+    expect(edge).toContain('dependencies.tasks ?? 0');
   });
 
   it("records the governed decision without CRM field values", () => {

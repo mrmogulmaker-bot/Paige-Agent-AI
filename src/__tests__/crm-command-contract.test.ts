@@ -127,6 +127,10 @@ describe("canonical CRM contact/company command", () => {
     expect(sql).toContain("CRM_DEAL_PATCH_REQUIRED");
     expect(sql).toMatch(/update public\.paige_invoices set deal_id=null[^;]+tenant_id=_tenant_id/i);
     expect(sql).toContain("left join public.clients target_client");
+    expect(sql).toContain("for update of target_client");
+    expect(sql.match(/app\.suppress_contact_assignment_notification/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(sql).toContain("crm_actor_can_access_record(v_tenant,v_actor,'company',v_business.id)");
+    expect(sql.match(/tm\.user_id=\(_command->>'ownerUserId'\)::uuid and tm\.status='active' for update/g)?.length).toBeGreaterThanOrEqual(2);
     expect(sql).toContain("tags=coalesce((select pg_catalog.array_agg");
     for (const dependency of ["paige_invoices", "stage_automation_events", "pipeline_move_approvals", "pipeline_deal_outcomes", "deal_activities"]) expect(sql).toContain(dependency);
     expect(sql).toContain("CRM_ACTION_UNAVAILABLE");

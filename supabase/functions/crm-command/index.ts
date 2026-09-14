@@ -145,11 +145,16 @@ function summaryFor(command: z.infer<typeof commandSchema>, preview?: JsonObject
     if (command.action === "contact.bulk_update") {
       const targets = Array.isArray(preview.eligible_targets) ? preview.eligible_targets.map((item) => object(item)?.client_ref ?? object(item)?.id).filter(Boolean) : [];
       const shown = targets.slice(0, 10).join(", ");
-      return `Update exactly ${affected} eligible contact(s)${shown ? ` (${shown}${targets.length > 10 ? `, plus ${targets.length - 10} more` : ""})` : ""}; ${refused} requested target(s) were refused or ineligible. Any version change before execution stops the whole write.`;
+      const patch = object(preview.patch) ?? {};
+      const patchSummary = Object.entries(patch).map(([field, value]) => `${field}=${JSON.stringify(value)}`).join(", ");
+      return `Update exactly ${affected} eligible contact(s)${shown ? ` (${shown}${targets.length > 10 ? `, plus ${targets.length - 10} more` : ""})` : ""} with ${patchSummary || "no fields"}; ${refused} requested target(s) were refused or ineligible. Any version change before execution stops the whole write.`;
     }
-    if (command.action === "contact.hard_delete") return `Permanently delete this one unlinked, dependency-free contact. The server verified 0 dependencies; this cannot be undone.`;
-    if (command.action === "task.delete") return `Permanently delete exactly 1 task. This cannot be undone.`;
-    if (command.action === "deal.delete") return `Permanently delete exactly 1 deal and affect ${Math.max(0, affected - 1)} linked record(s). The preview identifies which history rows are deleted and which tasks or invoices are detached.`;
+    if (command.action === "contact.hard_delete") return `Permanently delete contact ${String(preview.client_ref ?? preview.record_id ?? "(unknown)")}. The server verified it is unlinked and has 0 dependencies; this cannot be undone.`;
+    if (command.action === "task.delete") return `Permanently delete task ${String(preview.title ?? preview.record_id ?? "(unknown)")} (${String(preview.record_id ?? "unknown id")}). This cannot be undone.`;
+    if (command.action === "deal.delete") {
+      const dependencies = object(preview.dependency_counts) ?? {};
+      return `Permanently delete deal ${String(preview.title ?? preview.record_id ?? "(unknown)")} (${String(preview.record_id ?? "unknown id")}); delete ${String(dependencies.activities ?? 0)} activity row(s), ${String(dependencies.automation_events ?? 0)} automation event(s), ${String(dependencies.move_approvals ?? 0)} move approval(s), and ${String(dependencies.outcomes ?? 0)} outcome row(s); detach ${String(dependencies.tasks ?? 0)} task(s) and ${String(dependencies.invoices ?? 0)} invoice(s). This cannot be undone.`;
+    }
   }
   const target = command.contact_id ?? command.company_id ?? command.task_id ?? command.deal_id ?? "a new record";
   const commandPatch = object(command.patch);
