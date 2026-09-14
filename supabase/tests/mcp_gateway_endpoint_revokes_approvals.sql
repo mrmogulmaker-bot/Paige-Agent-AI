@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Connected MCP Gateway — endpoint-change revokes connection approvals (§9/§13/§58 proof).
 --
--- Proves the safeguard added by migration 20270320000000
+-- Proves the safeguard added by migration 20270322000000
 -- (`_mcp_gw_revoke_approvals_on_endpoint_change`), the connection-keyed twin of the legacy
 -- `_mcp_revoke_approvals_on_endpoint_change` (20261012000000):
 --

@@ -182,7 +182,7 @@ jobs:
       # job for the same §24 reason as the proofs above — the cost is `supabase start` + `db reset`.
       - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/source_thread_link_scope.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       # Connected MCP Gateway — changing a connection's stored endpoint revokes its approvals, the
-      # connection-keyed twin of _mcp_revoke_approvals_on_endpoint_change (migration 20270320000000).
+      # connection-keyed twin of _mcp_revoke_approvals_on_endpoint_change (migration 20270322000000).
       # Proves a non-endpoint edit and a same-address re-encryption do NOT revoke; a re-point and a
       # disconnect DO; and the DELETE is scoped to the one connection_id (a sibling is untouched).
       # Rides this replayed DB for the same §24 reason as the proofs above.
