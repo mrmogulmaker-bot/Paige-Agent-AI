@@ -1335,7 +1335,7 @@ declare
   a text:=nullif(pg_catalog.btrim(_command->>'action'),''); p public.crm_command_previews%rowtype;
   c public.clients%rowtype; loser public.clients%rowtype; t public.tasks%rowtype; d public.deals%rowtype;
   deps jsonb; now_snap jsonb; v_result jsonb; readback jsonb; run_id uuid; changed int; target_count int;
-  resolutions jsonb; owner_id uuid; field text; choice text; v_capability text; v_prior_auto_stub text;
+  resolutions jsonb; owner_id uuid; field text; choice text; v_capability text; v_prior_auto_stub text; v_transfer_email boolean;
   v_hash text; v_cached public.crm_command_results%rowtype; effective_command jsonb;
   v_active_tenant uuid; v_actor_role text; v_autonomy_mode text; v_approval_channel text:=nullif(_command->>'approval_channel','');
 begin
@@ -1453,6 +1453,7 @@ begin
       if (deps->>'unsupported')::bigint<>0 then raise exception 'CRM_MERGE_DEPENDENCIES_UNSUPPORTED' using errcode='42501'; end if;
       if c.linked_user_id is not null and loser.linked_user_id is not null and c.linked_user_id<>loser.linked_user_id then raise exception 'CRM_MERGE_IDENTITY_CONFLICT' using errcode='42501'; end if;
       resolutions:=p.target_snapshot->'resolutions';
+      v_transfer_email:=resolutions->>'email'='loser' or (not (resolutions ? 'email') and c.email is null);
       owner_id:=case when resolutions->>'assigned_coach_user_id'='loser' or (not (resolutions ? 'assigned_coach_user_id') and c.assigned_coach_user_id is null) then loser.assigned_coach_user_id else c.assigned_coach_user_id end;
       if owner_id is not null then
         perform 1 from public.tenant_members tm
@@ -1464,13 +1465,13 @@ begin
       -- variable retains the exact preview-bound value used below; the whole transaction rolls back on failure.
       update public.clients set
         linked_user_id=null,
-        email=case when resolutions->>'email'='loser' or (not (resolutions ? 'email') and c.email is null) then null else email end
+        email=case when v_transfer_email then null else email end
        where id=loser.id;
       perform pg_catalog.set_config('app.suppress_contact_assignment_notification','on',true);
       v_prior_auto_stub:=pg_catalog.current_setting('app.suppress_contact_auto_stub',true);
       perform pg_catalog.set_config('app.suppress_contact_auto_stub','on',true);
       update public.clients set
-        email=case when resolutions->>'email'='loser' or (not (resolutions ? 'email') and c.email is null) then loser.email else c.email end,
+        email=case when v_transfer_email then loser.email else c.email end,
         phone=case when resolutions->>'phone'='loser' or (not (resolutions ? 'phone') and c.phone is null) then loser.phone else c.phone end,
         entity_name=case when resolutions->>'entity_name'='loser' or (not (resolutions ? 'entity_name') and c.entity_name is null) then loser.entity_name else c.entity_name end,
         title=case when resolutions->>'title'='loser' or (not (resolutions ? 'title') and c.title is null) then loser.title else c.title end,
@@ -1485,7 +1486,7 @@ begin
       update public.client_notes set contact_id=c.id,updated_at=pg_catalog.clock_timestamp() where contact_id=loser.id;
       perform pg_catalog.set_config('app.crm_merge_lineage_write','on',true);
       update public.clients set status='archived',merged_into_contact_id=c.id,merged_at=pg_catalog.clock_timestamp(),updated_at=pg_catalog.clock_timestamp() where id=loser.id returning * into loser;
-      readback:=pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'merged_contact_id',loser.id,'loser_archived',loser.status='archived','loser_email_cleared',resolutions->>'email'='loser' or (not (resolutions ? 'email') and c.email=loser.email),'dependency_counts',deps,'updated_at',c.updated_at,'external_effect',false,'notification_sent',false);
+      readback:=pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'merged_contact_id',loser.id,'loser_archived',loser.status='archived','loser_email_cleared',v_transfer_email,'dependency_counts',deps,'updated_at',c.updated_at,'external_effect',false,'notification_sent',false);
     elsif a='contact.bulk_update' then
       if p.target_snapshot->'patch' ? 'assigned_coach_user_id' and nullif(p.target_snapshot->'patch'->>'assigned_coach_user_id','') is not null then
         perform 1 from public.tenant_members tm
