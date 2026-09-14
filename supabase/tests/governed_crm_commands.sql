@@ -1,6 +1,6 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(110);
+SELECT plan(111);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
@@ -391,6 +391,11 @@ CREATE TEMP TABLE merge_no_auto_stub_result AS SELECT public.execute_crm_command
  'merge-no-auto-stub-1') result;
 SELECT is((SELECT primary_business_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c114'),NULL::uuid,'merge preserves the preview-bound null survivor company relationship');
 SELECT is((SELECT count(*)::integer FROM public.businesses WHERE tenant_id='c7100000-0000-4000-8000-000000001111'),(SELECT n FROM merge_auto_stub_business_count),'merge creates no undisclosed auto-stub company');
+CREATE TEMP TABLE post_merge_auto_stub_result AS SELECT public.execute_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.update','contact_id','c7100000-0000-4000-8000-00000000c108','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c108'),'patch',jsonb_build_object('entity_name','Ordinary Trigger LLC')),
+ 'post-merge-auto-stub-normal-1') result;
+SELECT is((SELECT count(*)::integer FROM public.businesses WHERE tenant_id='c7100000-0000-4000-8000-000000001111'),(SELECT n+1 FROM merge_auto_stub_business_count),'merge suppression does not leak into the next ordinary contact enrichment');
 CREATE TEMP TABLE merge_coach_preview AS SELECT public.preview_crm_command(
  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
  jsonb_build_object('approval_channel','operator_card','action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c110','loser_contact_id','c7100000-0000-4000-8000-00000000c111','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c110'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c111')),
