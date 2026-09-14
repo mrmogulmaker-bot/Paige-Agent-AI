@@ -1447,7 +1447,7 @@ begin
       if (deps->>'unsupported')::bigint<>0 then raise exception 'CRM_MERGE_DEPENDENCIES_UNSUPPORTED' using errcode='42501'; end if;
       if c.linked_user_id is not null and loser.linked_user_id is not null and c.linked_user_id<>loser.linked_user_id then raise exception 'CRM_MERGE_IDENTITY_CONFLICT' using errcode='42501'; end if;
       resolutions:=p.target_snapshot->'resolutions';
-      owner_id:=case when resolutions->>'assigned_coach_user_id'='loser' or c.assigned_coach_user_id is null then loser.assigned_coach_user_id else c.assigned_coach_user_id end;
+      owner_id:=case when resolutions->>'assigned_coach_user_id'='loser' or (not (resolutions ? 'assigned_coach_user_id') and c.assigned_coach_user_id is null) then loser.assigned_coach_user_id else c.assigned_coach_user_id end;
       if owner_id is not null then
         perform 1 from public.tenant_members tm
          where tm.tenant_id=_tenant_id and tm.user_id=owner_id and tm.status='active'
@@ -1459,14 +1459,14 @@ begin
       update public.clients set linked_user_id=null where id=loser.id;
       perform pg_catalog.set_config('app.suppress_contact_assignment_notification','on',true);
       update public.clients set
-        email=case when resolutions->>'email'='loser' or c.email is null then loser.email else c.email end,
-        phone=case when resolutions->>'phone'='loser' or c.phone is null then loser.phone else c.phone end,
-        entity_name=case when resolutions->>'entity_name'='loser' or c.entity_name is null then loser.entity_name else c.entity_name end,
-        title=case when resolutions->>'title'='loser' or c.title is null then loser.title else c.title end,
-        linked_user_id=case when resolutions->>'linked_user_id'='loser' or c.linked_user_id is null then loser.linked_user_id else c.linked_user_id end,
-        primary_business_id=case when resolutions->>'primary_business_id'='loser' or c.primary_business_id is null then loser.primary_business_id else c.primary_business_id end,
+        email=case when resolutions->>'email'='loser' or (not (resolutions ? 'email') and c.email is null) then loser.email else c.email end,
+        phone=case when resolutions->>'phone'='loser' or (not (resolutions ? 'phone') and c.phone is null) then loser.phone else c.phone end,
+        entity_name=case when resolutions->>'entity_name'='loser' or (not (resolutions ? 'entity_name') and c.entity_name is null) then loser.entity_name else c.entity_name end,
+        title=case when resolutions->>'title'='loser' or (not (resolutions ? 'title') and c.title is null) then loser.title else c.title end,
+        linked_user_id=case when resolutions->>'linked_user_id'='loser' or (not (resolutions ? 'linked_user_id') and c.linked_user_id is null) then loser.linked_user_id else c.linked_user_id end,
+        primary_business_id=case when resolutions->>'primary_business_id'='loser' or (not (resolutions ? 'primary_business_id') and c.primary_business_id is null) then loser.primary_business_id else c.primary_business_id end,
         assigned_coach_user_id=owner_id,
-        lead_owner_user_id=case when resolutions->>'lead_owner_user_id'='loser' or c.lead_owner_user_id is null then loser.lead_owner_user_id else c.lead_owner_user_id end,
+        lead_owner_user_id=case when resolutions->>'lead_owner_user_id'='loser' or (not (resolutions ? 'lead_owner_user_id') and c.lead_owner_user_id is null) then loser.lead_owner_user_id else c.lead_owner_user_id end,
         tags=coalesce((select pg_catalog.array_agg(distinct x order by x) from pg_catalog.unnest(coalesce(c.tags,array[]::text[])||coalesce(loser.tags,array[]::text[])) x),array[]::text[]),
         updated_at=pg_catalog.clock_timestamp() where id=c.id returning * into c;
       update public.deals set contact_client_id=c.id,updated_at=pg_catalog.clock_timestamp() where contact_client_id=loser.id;
