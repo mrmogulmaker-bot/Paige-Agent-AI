@@ -4,7 +4,12 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
-import { z } from "npm:zod@3.23.8";
+// Deno-resolvable pinned form (esm.sh), same 3.23.8 as before. The `npm:` specifier
+// does not resolve under `deno check` without a node_modules dir, and that resolution
+// failure aborts the check for the WHOLE file — masking any real type error in it.
+// `complete-signup` already imports this exact version this way; every other zod
+// consumer in supabase/functions uses the esm.sh form too.
+import { z } from "https://esm.sh/zod@3.23.8";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -241,32 +246,54 @@ Deno.serve(async (req) => {
 
       // -----------------------------------------------------------------
       case "create_pending_approval": {
-        const p = CreatePendingApprovalSchema.parse(payload);
-        let contactId = p.contact_id ?? null;
-        if (!contactId && p.contact_email) {
-          const { data: c } = await supabase
-            .from("clients")
-            .select("id")
-            .ilike("email", p.contact_email)
-            .limit(1)
-            .maybeSingle();
-          contactId = c?.id ?? null;
-        }
-        const { data, error } = await supabase
-          .from("paige_pending_approvals")
-          .insert({
-            type: p.type,
-            draft_content: p.draft_content,
-            contact_id: contactId,
-            conversation_id: p.conversation_id ?? null,
-            created_by_n8n_workflow_key: p.created_by_n8n_workflow_key ?? null,
-            metadata: p.metadata ?? {},
-            status: "pending",
-          })
-          .select("id, created_at, status")
-          .single();
-        if (error) throw error;
-        return ok(verb, data);
+        // STAGE 1 — REFUSED. This bridge cannot attribute an approval to a tenant.
+        //
+        // Its only credential is one static platform-wide bearer (PAIGE_BRIDGE_API_KEY,
+        // referenced by NAME only) with no credential->tenant map anywhere: no tenant_id
+        // on `platform_api_keys`, an outbound-only `tenant_n8n_connections`, and every
+        // `paige_workflow_registry` row currently NULL-tenant. Nothing here identifies a
+        // business.
+        //
+        // What it used to do: insert with no `tenant_id`. Under the service-role client
+        // `auth.uid()` is NULL, so the BEFORE INSERT `stamp_tenant_id()` trigger resolved
+        // `current_user_tenant_id()` to NULL and left the column NULL without raising.
+        // The RESTRICTIVE `tenant_isolation` policy admits `tenant_id IS NULL`
+        // unconditionally, so every such row was readable, updatable and dismissable by
+        // every tenant admin on the platform, and `execute-approval` skipped its
+        // membership check on it and would SEND. NULL never meant "platform scope" — it
+        // only ever meant attribution failed.
+        //
+        // Deriving the tenant from `contact_id`/`contact_email` is not the fix: both are
+        // caller-supplied, and the old `contact_email` lookup was itself unscoped
+        // (`.ilike(...).limit(1)` across every tenant's contacts).
+        //
+        // So: refuse, loudly, and write nothing. Restoring this verb needs a real
+        // tenant-scoped inbound connection — a separate, authorized contract.
+        //
+        // Logged to console rather than `paige_bridge_auth_failures`: the caller
+        // authenticated correctly. This is an attribution refusal, not an auth failure,
+        // and conflating them would corrupt that table's meaning (§13/§18).
+        console.error(
+          "[paige-bridge] create_pending_approval REFUSED — tenant_attribution_unavailable",
+          JSON.stringify({
+            workflow_key:
+              typeof payload?.created_by_n8n_workflow_key === "string"
+                ? payload.created_by_n8n_workflow_key
+                : null,
+            type: typeof payload?.type === "string" ? payload.type : null,
+          }),
+        );
+        return fail(
+          verb,
+          422,
+          "tenant_attribution_unavailable",
+          {
+            reason:
+              "This bridge has no tenant-scoped connection, so an approval cannot be attributed to a business. No approval was created.",
+            remedy:
+              "Create the approval through a tenant-authenticated path, or wait for a tenant-scoped bridge connection.",
+          },
+        );
       }
 
       // -----------------------------------------------------------------
