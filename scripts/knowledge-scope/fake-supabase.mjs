@@ -18,7 +18,7 @@
 
 /** One recorded call, in order. */
 function mkRecorder() {
-  return { rpc: [], from: [], inserts: [] };
+  return { rpc: [], from: [], inserts: [], functions: [] };
 }
 
 class QueryBuilder {
@@ -103,7 +103,12 @@ class FakeClient {
       getClaims: async () => ({ data: { claims: { sub: this._live.scenario.authUser?.id ?? null } }, error: null }),
     };
     this.storage = { from: () => ({ upload: async () => ({ data: null, error: null }), createSignedUrl: async () => ({ data: null, error: null }), download: async () => ({ data: null, error: null }) }) };
-    this.functions = { invoke: async () => ({ data: null, error: null }) };
+    this.functions = { invoke: async (name, options) => {
+      this._live.recorder.functions.push({ client: this._kind, name, options });
+      const configured = this._live.scenario.functions?.[name];
+      const result = typeof configured === "function" ? configured(options) : configured;
+      return result ?? { data: null, error: null };
+    } };
     this.channel = () => ({ send: async () => {}, subscribe: () => ({}), on: function () { return this; } });
     this.removeChannel = () => {};
   }

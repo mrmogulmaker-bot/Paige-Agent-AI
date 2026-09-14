@@ -161,13 +161,15 @@ describe("PAIGE Mind — Pipeline deal-stage evidence", () => {
       .resolves.toMatchObject({ status: "unavailable" });
   });
 
-  it("registers no Pipeline mutation and keeps Chat as one caller of one projection", () => {
+  it("keeps the Mind projection read-only while registering Pipeline mutations from the governed CRM catalogue", () => {
     const pipeline = readFileSync("supabase/functions/_shared/paige-spine/domains/pipeline.ts", "utf8");
     expect(pipeline).toContain('mindBinding: "PARTIAL"');
     expect(pipeline).toContain('classification: "read"');
     expect(pipeline).toContain('riskPolicyKey: "read_only"');
     expect(pipeline).toContain('approvalAuthority: "none"');
-    expect(pipeline).not.toContain("chatTool");
+    expect(pipeline).toContain('CRM_ACTION_CAPABILITY');
+    expect(pipeline).toContain('executor: "public.execute_crm_command"');
+    expect(pipeline).toContain('approvalAuthority: "chat-canonical"');
 
     // Chat renders the Mind projection rather than the raw signals, so the two cannot
     // give a person two accounts of the same record.

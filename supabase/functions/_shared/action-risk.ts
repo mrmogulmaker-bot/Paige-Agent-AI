@@ -67,6 +67,14 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   ["mission_revise", "high", "changes the governed mission brief the owner will operate from"],
   ["mission_transition", "high", "changes a governed mission lifecycle or records its outcome"],
   ["crm_delete_contact", "high", "destroys a client record and its related rows"],
+  ["crm_hard_delete_contact", "high", "permanently removes an unlinked dependency-free contact after a bound server preview"],
+  ["crm_merge_contacts", "high", "reassigns supported dependencies and archives the losing contact after conflict review"],
+  ["crm_bulk_update_contacts", "high", "changes an exact preview-bound set of contact records"],
+  ["crm_delete_deal", "high", "permanently removes a deal and its dependent pipeline history after preview"],
+  ["crm_close_deal", "high", "records a consequential won or lost pipeline outcome"],
+  ["crm_reopen_deal", "high", "reverses a recorded pipeline outcome and resumes active work"],
+  ["crm_cancel_task", "high", "cancels committed work and requires an explicit operator decision"],
+  ["crm_delete_task", "high", "destroys a task with nothing left to restore it from"],
   ["comms_buy_number", "high", "commits the tenant to a recurring charge on a provider account"],
   ["comms_set_primary_number", "high", "changes the number every client sees when the tenant contacts them"],
   ["n8n_delete_workflow", "high", "permanently deletes an automation"],
@@ -77,6 +85,10 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   ["member_revoke_role", "high", "removes a staff role"],
   ["crm_assign_coach", "high", "changes who can see a client"],
   ["crm_assign_contact", "high", "changes who owns and can see a client"],
+  ["crm_assign_contact_owner", "high", "changes the accountable owner of a contact"],
+  ["crm_assign_deal_owner", "high", "changes the accountable owner of an opportunity"],
+  ["crm_assign_deal_contact", "high", "changes which customer record an opportunity belongs to"],
+  ["crm_assign_task", "high", "moves work onto another workspace member's queue"],
   // Solo Team, added 2026-09-02. A permission change is the definition of this section: it is the
   // one act in the Team seam that moves authority rather than describing work. The database is
   // stricter than this file — `set_solo_team_member_permission` admits only the tenant OWNER, will
@@ -153,6 +165,19 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // can undo it afterwards; nothing leaves the workspace and nobody's permissions change.
   ["crm_create_contact", "ordinary", "adds a record the operator can edit or delete"],
   ["crm_update_contact", "ordinary", "edits fields on a record"],
+  ["crm_archive_contact", "ordinary", "removes a contact from active work while preserving it for restoration"],
+  ["crm_restore_contact", "ordinary", "returns an archived contact to active work"],
+  ["crm_link_contact_company", "ordinary", "links a contact to an existing in-workspace company"],
+  ["crm_unlink_contact_company", "ordinary", "removes a reversible in-workspace company association"],
+  ["crm_create_company", "ordinary", "adds a tenant-owned company record"],
+  ["crm_update_company", "ordinary", "edits a tenant-owned company record"],
+  ["crm_archive_company", "ordinary", "archives a company while preserving it for restoration"],
+  ["crm_restore_company", "ordinary", "restores an archived company"],
+  ["crm_update_deal", "ordinary", "edits reversible opportunity fields"],
+  ["crm_update_task", "ordinary", "edits reversible task fields"],
+  ["crm_reschedule_task", "ordinary", "changes when a task is due"],
+  ["crm_complete_task", "ordinary", "marks a task complete while retaining its history"],
+  ["crm_reopen_task", "ordinary", "returns a completed task to active work"],
   ["crm_update_pipeline_stage", "ordinary", "moves a client between stages"],
   // AMENDED 2026-09-05. The reason used to read "files work on the operator's own queue", which is
   // true of Chat — it defaults the assignee to the caller — and false of the MCP tool, which
@@ -310,7 +335,6 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // agreement.
   ["crm_append_contact_notes", "high", "writes into a notes field the client can read on their own record"],
   // delete_task
-  ["crm_delete_task", "high", "destroys a task with nothing left to restore it from"],
   // run_workflow
   ["workflow_run", "high", "fires a registered automation with real effects outside the platform"],
   // decide_pending_approval
@@ -347,9 +371,9 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // verify_business
   ["business_verify", "high", "sends a company's details to outside registries and scrapers"],
   // nav_pull_business_credit (nav-pull-profile)
-  ["nav_pull_business_credit", "high", "pulls a business credit profile from a paid external provider and records the scores"],
+  ["nav_pull_business_credit", "high", "contacts a paid business-credit provider and persists sensitive credit data"],
   // smartcredit_pull_snapshot (smartcredit-pull-snapshot)
-  ["smartcredit_pull_snapshot", "high", "pulls a consumer 3-bureau credit snapshot from a paid external provider and records the scores"],
+  ["smartcredit_pull_snapshot", "high", "contacts a paid consumer-credit provider and persists sensitive credit data"],
   // propose_subagent
   ["subagent_create", "high", "can put a new specialist live without a separate approval"],
   // approve_subagent_proposal
@@ -495,7 +519,7 @@ const NON_MUTATING_EXEMPT: ReadonlyMap<string, string> = new Map([
 // (`unclassifiedWriteReason`) and the CI lint would ALSO catch a future unclassified `*_decide`
 // write, rather than relying on the classification alone. The lint keeps a byte-identical copy and
 // `checkVerbParity` fails the build if the two ever diverge.
-export const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|install|uninstall|grant|revoke|run|assign|enroll|book|set|draft|generate|file|advance|forge|archive|activate|deactivate|move|add|build|log|author|enable|disable|invite|upload|apply|approve|reject|decide|import|export|sync|write|post|schedule|cancel|start|stop|trigger|fire|configure|buy|purchase|name|rename|propose|provision|claim|release)(_|$)/;
+export const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|install|uninstall|grant|revoke|run|assign|enroll|book|set|draft|generate|file|advance|forge|archive|activate|deactivate|move|add|build|log|author|enable|disable|invite|upload|apply|approve|reject|decide|import|export|sync|write|post|schedule|cancel|start|stop|trigger|fire|configure|buy|purchase|pull|name|rename|propose|provision|claim|release)(_|$)/;
 
 /** Every classified action. This is what the handler gates on — there is no second list. */
 export function mutatingTools(): ReadonlySet<string> {

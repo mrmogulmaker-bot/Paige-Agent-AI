@@ -1,4 +1,6 @@
 import type { SpineCapability } from "../contracts.ts";
+import { classifyAction } from "../../action-risk.ts";
+import { CRM_ACTION_CAPABILITY, type CrmAction } from "../../crm-command/catalog.ts";
 
 /** Existing Pipeline-owned successful deal-stage Rail outcomes; no new mutation. */
 export const PIPELINE_DEAL_STAGE_EVIDENCE = {
@@ -45,3 +47,34 @@ export const PIPELINE_DEAL_STAGE_EVIDENCE = {
   sharedPrimitiveChange: "NONE",
   maturity: "PARTIAL",
 } as const satisfies SpineCapability;
+
+const PIPELINE_ACTIONS = (Object.keys(CRM_ACTION_CAPABILITY) as CrmAction[]).filter((action) => action.startsWith("deal."));
+const pipelineRisk = (tool: string): "ordinary" | "high" => {
+  const risk = classifyAction(tool);
+  if (risk !== "ordinary" && risk !== "high") throw new Error(`Pipeline CRM Spine action ${tool} is not classified`);
+  return risk;
+};
+
+/** Deal lifecycle commands reuse the canonical Pipeline transaction and its existing Rails. */
+export const PIPELINE_CRM_ACTIONS = PIPELINE_ACTIONS.map((action) => {
+  const tool = CRM_ACTION_CAPABILITY[action];
+  return {
+    key: `pipeline.${tool}`,
+    domain: "pipeline",
+    owner: "solo-pipeline",
+    humanSurface: "/solo/:account/growth/pipeline",
+    action: {
+      classification: "mutate",
+      executor: "public.execute_crm_command",
+      idempotency: "tenant + actor + caller-settled request key layered over the canonical Pipeline command ledger",
+      riskPolicyKey: pipelineRisk(tool),
+      approvalAuthority: "chat-canonical",
+      chatTool: tool,
+    },
+    outcome: { kinds: ["observed"], projector: "public.record_capability_run", railVisibility: "owner_internal" },
+    chatBinding: "LIVE",
+    mindBinding: "UNAVAILABLE",
+    sharedPrimitiveChange: "NONE",
+    maturity: "PARTIAL",
+  } as const satisfies SpineCapability;
+});
