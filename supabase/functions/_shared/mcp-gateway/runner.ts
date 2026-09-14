@@ -99,6 +99,14 @@ export async function runConnectionCapability(
         const tool = tools.find((t) => t.name === req.toolName);
         if (!tool) return await emit("refused", "no_longer_offered");
 
+        // PHASE C WIRING OBLIGATION (§39 adversarial note, tracked in #1262): `verifyApproval`
+        // authorizes against the endpoint stored on the connection row, while this session
+        // dispatches to `req.connection.serverUrl` supplied by the caller. Inert today (this runner
+        // is imported by no deployed function), but when Phase C wires it live the dispatch URL and
+        // the verified connection MUST be single-sourced from the SAME connection-row read (e.g. via
+        // get_mcp_connection_secret) so a caller cannot verify against endpoint A and dispatch to B —
+        // the exact endpoint-binding bypass the endpoint_hash binding exists to prevent.
+
         // (1) SERVER-AUTHORITATIVE effect decision — provider metadata may only RAISE the gate.
         const decision = resolveEffectApproval(tool.name, tool.effects);
         if (decision.requiresApproval) {

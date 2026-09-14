@@ -10,6 +10,13 @@
 // stale approval — exactly the interleaving this serialization prevents.
 //
 // Two concurrent psql processes (no pg dependency), mirroring scripts/proof/business-mission-concurrency.mjs.
+//
+// HONESTY (§13, §39 adversarial): with the FOR UPDATE lock present this passes deterministically.
+// As a REGRESSION guard it is probabilistic — if the lock were removed, the stale-approval
+// interleaving becomes reachable but is not guaranteed on every run (a plain SELECT does not wait
+// on the row lock), so a single green run is a positive proof of correctness, not a hard tripwire
+// against a future lock removal. The deterministic guarantee is the endpoint_hash binding, proven
+// in mcp_gateway_durable_endpoint_bound_consent.sql.
 import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";

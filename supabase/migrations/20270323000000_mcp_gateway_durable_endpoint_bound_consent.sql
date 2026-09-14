@@ -79,11 +79,13 @@ $$;
 
 -- ─────────────────────────────────────────────────────────────────────────────────
 -- 3. Harden the approval WRITER — serialize against endpoint change + record the endpoint binding.
---    §37 PRODUCER INVENTORY (verified 2026-09-14): the ONLY reference to set_mcp_connection_approval
---    anywhere in the repo is its own definition in 20270319000000 — no frontend, sibling edge
---    function, trigger, pg_cron, GitHub Action, external webhook, n8n/Zapier/MCP caller, or test
---    calls it. Adding the two trailing OPTIONAL params (defaulted) therefore breaks no caller: a
---    3- or 4-positional call still resolves to this function with the new params defaulted. The
+--    §37 PRODUCER INVENTORY (verified 2026-09-14): the only PRE-EXISTING reference to
+--    set_mcp_connection_approval anywhere in the repo is its own definition in 20270319000000 —
+--    no frontend, sibling edge function, trigger, pg_cron, GitHub Action, external webhook, or
+--    n8n/Zapier/MCP caller. (The only NEW callers are this PR's own proofs — the durable-consent
+--    psql proof and the endpoint-consent race proof — which exercise the new signature on purpose.)
+--    Adding the two trailing OPTIONAL params (defaulted) therefore breaks no caller: a 3- or
+--    4-positional call still resolves to this function with the new params defaulted. The
 --    signature change requires DROP + re-CREATE and a re-issue of the REVOKE/GRANT (§7 below).
 -- ─────────────────────────────────────────────────────────────────────────────────
 DROP FUNCTION IF EXISTS public.set_mcp_connection_approval(uuid, text, text, uuid);

@@ -20,6 +20,11 @@
 -- is NULL → _mcp_resolve_tenant's trusted path), so RLS is bypassed for seeding and the DEFINER
 -- RPCs are exercised directly. Any RAISE = fail (ON_ERROR_STOP); reaching the terminal notice = pass.
 --
+-- SCOPE NOTE (§13, §39 adversarial): case (7) proves the NEW code — the writer's in-body
+-- `_conn.tenant_id <> _tenant` refusal. Because this runs on the trusted (auth.uid() NULL) path, it
+-- does NOT exercise `_mcp_resolve_tenant`'s JWT `authenticated`-path admin/cross-tenant rejection —
+-- that gate is pre-existing and unchanged (20261005000000), not this migration's code.
+--
 -- Run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_durable_endpoint_bound_consent.sql "$DB_URL"
 -- ============================================================================
 BEGIN;
