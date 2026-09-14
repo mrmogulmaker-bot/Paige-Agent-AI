@@ -67,6 +67,7 @@
     "smoke:mcp-transport": "node scripts/mcp-transport-smoke.mjs",
     "smoke:mcp-egress": "node scripts/mcp-egress-smoke.mjs",
     "smoke:mcp-oauth": "node scripts/mcp-oauth-smoke.mjs",
+    "smoke:mcp-gateway": "node scripts/mcp-gateway-smoke.mjs",
     "smoke:n8n-ssrf": "node scripts/paige-n8n-ssrf-smoke.mjs",
     "smoke:n8n-egress": "node scripts/n8n-egress-smoke.mjs",
     "smoke:web-fetch-hardening": "node --experimental-transform-types scripts/web-fetch-hardening-smoke.mjs",
