@@ -1070,6 +1070,12 @@ begin
     total:=total+n;
     if k in ('deals.contact_client_id','client_notes.contact_id') then supported:=supported+n; end if;
   end loop;
+  -- The tenant-bound merge lineage FK is deliberately composite, while the generic loop above
+  -- enumerates single-column contact references. Count this governed unsupported dependency
+  -- explicitly so destructive previews retain an exact affected-record count.
+  select count(*) into n from public.clients c where c.merged_into_contact_id=_contact_id;
+  items:=items||pg_catalog.jsonb_build_object('clients.merged_into_contact_id',n);
+  total:=total+n;
   return pg_catalog.jsonb_build_object(
     'total',total,'supported',supported,'unsupported',total-supported,'by_reference',items,
     'supported_set',pg_catalog.jsonb_build_object(
