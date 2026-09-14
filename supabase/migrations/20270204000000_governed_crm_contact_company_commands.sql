@@ -963,8 +963,44 @@ revoke all on function public.configure_tenant_pipeline_core_identity(uuid,jsonb
 -- and bulk contact updates. This is a domain precondition store, NOT an approval store.
 -- Approval remains exclusively paige_pending_confirmations.
 alter table public.clients
-  add column if not exists merged_into_contact_id uuid references public.clients(id) on delete set null,
+  add column if not exists merged_into_contact_id uuid,
   add column if not exists merged_at timestamptz;
+
+create unique index if not exists clients_tenant_id_id_crm_uidx
+  on public.clients(tenant_id,id);
+
+do $$begin
+  if not exists(select 1 from pg_catalog.pg_constraint where conname='clients_tenant_merged_into_contact_fkey' and conrelid='public.clients'::regclass) then
+    alter table public.clients add constraint clients_tenant_merged_into_contact_fkey
+      foreign key(tenant_id,merged_into_contact_id) references public.clients(tenant_id,id) on delete restrict;
+  end if;
+  if not exists(select 1 from pg_catalog.pg_constraint where conname='clients_merge_lineage_complete_check' and conrelid='public.clients'::regclass) then
+    alter table public.clients add constraint clients_merge_lineage_complete_check
+      check ((merged_into_contact_id is null)=(merged_at is null) and merged_into_contact_id is distinct from id);
+  end if;
+end$$;
+
+-- Merge lineage is execution evidence, not a browser-editable CRM field. Even a row that an
+-- authenticated coach may otherwise edit can acquire lineage only inside the trusted executor.
+create or replace function public.guard_crm_merge_lineage_write()
+returns trigger language plpgsql set search_path='' as $$
+begin
+  if (tg_op='INSERT' and new.merged_into_contact_id is null and new.merged_at is null)
+     or (tg_op='UPDATE' and new.merged_into_contact_id is not distinct from old.merged_into_contact_id
+                         and new.merged_at is not distinct from old.merged_at) then
+    return new;
+  end if;
+  if coalesce(auth.jwt()->>'role','')<>'service_role' or auth.uid() is not null
+     or coalesce(pg_catalog.current_setting('app.crm_merge_lineage_write',true),'')<>'on' then
+    raise exception 'CRM_MERGE_LINEAGE_GOVERNED_ONLY' using errcode='42501';
+  end if;
+  return new;
+end$$;
+revoke all on function public.guard_crm_merge_lineage_write() from public,anon,authenticated;
+drop trigger if exists clients_guard_crm_merge_lineage_write on public.clients;
+create trigger clients_guard_crm_merge_lineage_write
+before insert or update of merged_into_contact_id,merged_at on public.clients
+for each row execute function public.guard_crm_merge_lineage_write();
 
 create table if not exists public.crm_command_previews (
   id uuid primary key default gen_random_uuid(),
@@ -1405,9 +1441,17 @@ begin
       if (deps->>'unsupported')::bigint<>0 then raise exception 'CRM_MERGE_DEPENDENCIES_UNSUPPORTED' using errcode='42501'; end if;
       if c.linked_user_id is not null and loser.linked_user_id is not null and c.linked_user_id<>loser.linked_user_id then raise exception 'CRM_MERGE_IDENTITY_CONFLICT' using errcode='42501'; end if;
       resolutions:=p.target_snapshot->'resolutions';
+      owner_id:=case when resolutions->>'assigned_coach_user_id'='loser' or c.assigned_coach_user_id is null then loser.assigned_coach_user_id else c.assigned_coach_user_id end;
+      if owner_id is not null then
+        perform 1 from public.tenant_members tm
+         where tm.tenant_id=_tenant_id and tm.user_id=owner_id and tm.status='active'
+           and tm.role in ('owner','admin','coach') for update;
+        if not found then raise exception 'CRM_ASSIGNEE_FORBIDDEN' using errcode='42501'; end if;
+      end if;
       -- Release the losing row's unique portal identity before transferring it. The loaded row
       -- variable retains the exact preview-bound value used below; the whole transaction rolls back on failure.
       update public.clients set linked_user_id=null where id=loser.id;
+      perform pg_catalog.set_config('app.suppress_contact_assignment_notification','on',true);
       update public.clients set
         email=case when resolutions->>'email'='loser' or c.email is null then loser.email else c.email end,
         phone=case when resolutions->>'phone'='loser' or c.phone is null then loser.phone else c.phone end,
@@ -1415,14 +1459,15 @@ begin
         title=case when resolutions->>'title'='loser' or c.title is null then loser.title else c.title end,
         linked_user_id=case when resolutions->>'linked_user_id'='loser' or c.linked_user_id is null then loser.linked_user_id else c.linked_user_id end,
         primary_business_id=case when resolutions->>'primary_business_id'='loser' or c.primary_business_id is null then loser.primary_business_id else c.primary_business_id end,
-        assigned_coach_user_id=case when resolutions->>'assigned_coach_user_id'='loser' or c.assigned_coach_user_id is null then loser.assigned_coach_user_id else c.assigned_coach_user_id end,
+        assigned_coach_user_id=owner_id,
         lead_owner_user_id=case when resolutions->>'lead_owner_user_id'='loser' or c.lead_owner_user_id is null then loser.lead_owner_user_id else c.lead_owner_user_id end,
         tags=coalesce((select pg_catalog.array_agg(distinct x order by x) from pg_catalog.unnest(coalesce(c.tags,array[]::text[])||coalesce(loser.tags,array[]::text[])) x),array[]::text[]),
         updated_at=pg_catalog.clock_timestamp() where id=c.id returning * into c;
       update public.deals set contact_client_id=c.id,updated_at=pg_catalog.clock_timestamp() where contact_client_id=loser.id;
       update public.client_notes set contact_id=c.id,updated_at=pg_catalog.clock_timestamp() where contact_id=loser.id;
+      perform pg_catalog.set_config('app.crm_merge_lineage_write','on',true);
       update public.clients set status='archived',merged_into_contact_id=c.id,merged_at=pg_catalog.clock_timestamp(),updated_at=pg_catalog.clock_timestamp() where id=loser.id returning * into loser;
-      readback:=pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'merged_contact_id',loser.id,'loser_archived',loser.status='archived','dependency_counts',deps,'updated_at',c.updated_at);
+      readback:=pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'merged_contact_id',loser.id,'loser_archived',loser.status='archived','dependency_counts',deps,'updated_at',c.updated_at,'external_effect',false,'notification_sent',false);
     elsif a='contact.bulk_update' then
       if p.target_snapshot->'patch' ? 'assigned_coach_user_id' and nullif(p.target_snapshot->'patch'->>'assigned_coach_user_id','') is not null then
         perform 1 from public.tenant_members tm

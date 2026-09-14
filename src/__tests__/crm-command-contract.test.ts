@@ -129,6 +129,11 @@ describe("canonical CRM contact/company command", () => {
     expect(sql).toContain("left join public.clients target_client");
     expect(sql).toContain("for update of target_client");
     expect(sql.match(/app\.suppress_contact_assignment_notification/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(sql).toContain("clients_tenant_merged_into_contact_fkey");
+    expect(sql).toContain("guard_crm_merge_lineage_write");
+    expect(sql).toContain("app.crm_merge_lineage_write");
+    expect(sql).toContain("CRM_MERGE_LINEAGE_GOVERNED_ONLY");
+    expect(sql).toContain("'external_effect',false,'notification_sent',false");
     expect(sql).toContain("crm_actor_can_access_record(v_tenant,v_actor,'company',v_business.id)");
     expect(sql.match(/tm\.user_id=\(_command->>'ownerUserId'\)::uuid and tm\.status='active' for update/g)?.length).toBeGreaterThanOrEqual(2);
     expect(sql).toContain("tags=coalesce((select pg_catalog.array_agg");

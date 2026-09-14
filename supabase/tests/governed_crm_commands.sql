@@ -1,6 +1,6 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(96);
+SELECT plan(106);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
@@ -37,7 +37,9 @@ INSERT INTO public.clients(id,tenant_id,account_number,created_by,first_name,las
  ('c7100000-0000-4000-8000-00000000c106','c7100000-0000-4000-8000-000000001111','CLT-CGA-6','c7100000-0000-4000-8000-000000000001','Unlink','Fixture','unlink@tests.invalid','2026-09-13 00:00:00+00'),
  ('c7100000-0000-4000-8000-00000000c107','c7100000-0000-4000-8000-000000001111','CLT-CGA-7','c7100000-0000-4000-8000-000000000001','Identity','Survivor','survivor@tests.invalid','2026-09-13 00:00:00+00'),
  ('c7100000-0000-4000-8000-00000000c108','c7100000-0000-4000-8000-000000001111','CLT-CGA-8','c7100000-0000-4000-8000-000000000001','Identity','Loser','loser@tests.invalid','2026-09-13 00:00:00+00'),
- ('c7100000-0000-4000-8000-00000000c109','c7100000-0000-4000-8000-000000001111','CLT-CGA-9','c7100000-0000-4000-8000-000000000001','Recovery','Delete','recovery-delete@tests.invalid','2026-09-13 00:00:00+00');
+ ('c7100000-0000-4000-8000-00000000c109','c7100000-0000-4000-8000-000000001111','CLT-CGA-9','c7100000-0000-4000-8000-000000000001','Recovery','Delete','recovery-delete@tests.invalid','2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c110','c7100000-0000-4000-8000-000000001111','CLT-CGA-10','c7100000-0000-4000-8000-000000000001','Coach Merge','Survivor','coach-merge-survivor@tests.invalid','2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c111','c7100000-0000-4000-8000-000000001111','CLT-CGA-11','c7100000-0000-4000-8000-000000000001','Coach Merge','Loser','coach-merge-loser@tests.invalid','2026-09-13 00:00:00+00');
 UPDATE public.clients SET linked_user_id='c7100000-0000-4000-8000-000000000002' WHERE id='c7100000-0000-4000-8000-00000000c103';
 UPDATE public.clients SET linked_user_id='c7200000-0000-4000-8000-000000000001' WHERE id='c7200000-0000-4000-8000-00000000c201';
 INSERT INTO public.businesses(id,tenant_id,owner_user_id,legal_name,is_active,is_primary,updated_at) VALUES
@@ -163,7 +165,21 @@ SELECT throws_ok($$SELECT public.execute_crm_command('c7100000-0000-4000-8000-00
 RESET ROLE;
 UPDATE public.tenant_members SET role='coach' WHERE tenant_id='c7100000-0000-4000-8000-000000001111' AND user_id='c7100000-0000-4000-8000-000000000002';
 UPDATE public.clients SET assigned_coach_user_id='c7100000-0000-4000-8000-000000000002',primary_business_id='c7100000-0000-4000-8000-00000000b102' WHERE id='c7100000-0000-4000-8000-00000000c105';
+UPDATE public.clients SET assigned_coach_user_id='c7100000-0000-4000-8000-000000000002' WHERE id='c7100000-0000-4000-8000-00000000c111';
 UPDATE public.clients SET primary_business_id='c7100000-0000-4000-8000-00000000b102' WHERE id='c7100000-0000-4000-8000-00000000c101';
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims','{"role":"authenticated","sub":"c7100000-0000-4000-8000-000000000002"}',true);
+SELECT throws_ok($$UPDATE public.clients SET merged_into_contact_id='c7200000-0000-4000-8000-00000000c201',merged_at=now() WHERE id='c7100000-0000-4000-8000-00000000c105'$$,
+ '42501','CRM_MERGE_LINEAGE_GOVERNED_ONLY','an authenticated coach cannot directly forge merge lineage on an otherwise editable contact');
+SELECT is((SELECT merged_into_contact_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c105'),NULL::uuid,'refused direct lineage edit changes no contact');
+RESET ROLE;
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT set_config('app.crm_merge_lineage_write','on',true);
+SELECT throws_ok($$UPDATE public.clients SET merged_into_contact_id='c7200000-0000-4000-8000-00000000c201',merged_at=now() WHERE id='c7100000-0000-4000-8000-00000000c105'$$,
+ '23503','insert or update on table "clients" violates foreign key constraint "clients_tenant_merged_into_contact_fkey"','merge lineage cannot reference a contact in another tenant even through the trusted database role');
+SELECT set_config('app.crm_merge_lineage_write','off',true);
+SELECT is((SELECT merged_into_contact_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c105'),NULL::uuid,'refused cross-tenant lineage edit changes no contact');
 SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 CREATE TEMP TABLE coach_command_input AS SELECT jsonb_build_object(
@@ -340,6 +356,25 @@ SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.merge','preview_id',(SELECT result->>'preview_id' FROM merge_identity_preview))::text,'merge-identity-swap-1'),'40001','CRM_DEPENDENCY_CONFLICT','merge refuses a same-count dependency identity swap after preview');
 SELECT is((SELECT status FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c108'),'active','refused identity-changed merge preserves the losing contact');
+CREATE TEMP TABLE merge_coach_preview AS SELECT public.preview_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c110','loser_contact_id','c7100000-0000-4000-8000-00000000c111','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c110'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c111')),
+ 'merge-coach-race-1:preview') result;
+RESET ROLE;
+UPDATE public.tenant_members SET status='suspended' WHERE tenant_id='c7100000-0000-4000-8000-000000001111' AND user_id='c7100000-0000-4000-8000-000000000002';
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.merge','preview_id',(SELECT result->>'preview_id' FROM merge_coach_preview))::text,'merge-coach-race-refused-1'),'42501','CRM_ASSIGNEE_FORBIDDEN','merge revalidates the inherited coach after preview and refuses a suspended assignee');
+SELECT is((SELECT status FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c111'),'active','refused stale-coach merge preserves the losing contact');
+SELECT is((SELECT count(*)::integer FROM task_notification_spy),0,'refused stale-coach merge invokes no assignment notification');
+RESET ROLE;
+UPDATE public.tenant_members SET status='active' WHERE tenant_id='c7100000-0000-4000-8000-000000001111' AND user_id='c7100000-0000-4000-8000-000000000002';
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+CREATE TEMP TABLE merge_coach_result AS SELECT public.execute_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.merge','preview_id',(SELECT result->>'preview_id' FROM merge_coach_preview)),'merge-coach-race-success-1') result;
+SELECT is((SELECT assigned_coach_user_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c110'),'c7100000-0000-4000-8000-000000000002'::uuid,'successful merge transfers only the revalidated active coach');
+SELECT is((SELECT jsonb_build_object('external_effect',(result->'readback'->>'external_effect')::boolean,'notification_sent',(result->'readback'->>'notification_sent')::boolean) FROM merge_coach_result),'{"external_effect":false,"notification_sent":false}'::jsonb,'merge readback truthfully reports no assignment notification');
+SELECT is((SELECT count(*)::integer FROM task_notification_spy),0,'successful coach-transfer merge invokes no assignment notification');
 SELECT throws_ok(format('SELECT public.preview_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c101','loser_contact_id','c7100000-0000-4000-8000-00000000c103','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c101'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c103'))::text,'merge-missing-identity-resolution-1'),'22023','CRM_MERGE_IDENTITY_RESOLUTION_REQUIRED','portal identity transfer requires an explicit merge resolution');
 CREATE TEMP TABLE merge_preview AS SELECT public.preview_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c101','loser_contact_id','c7100000-0000-4000-8000-00000000c103','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c101'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c103'),'resolutions',jsonb_build_object('linked_user_id','loser')),'merge-preview-1') result;
 SELECT is((SELECT (result->>'eligible')::boolean FROM merge_preview),true,'merge preview binds an eligible survivor and loser');
