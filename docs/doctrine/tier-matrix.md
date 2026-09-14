@@ -4079,15 +4079,31 @@ bundle. Each node is a REAL governed record; a domain with no live hook renders 
 an `UNAVAILABLE` domain shows its hub with **no** satellites (a "pending"-coloured ghost around an
 "unavailable" hub would read as work awaiting the owner when nothing is on file — §13/§70).
 
+> **⚠ §13/§57/§66 CORRECTION (2026-09-13) — the "✓" in the Sub-account AND Enterprise columns below
+> is STALE; on current `main` the Mind orb is SOLO-EXCLUSIVE.** Code-verified two ways: only
+> `src/solo/CommandCenter.tsx` mounts `SoloMindWorkspace`, and `src/lib/routing/tierBranches.ts` gives
+> `mind` a subtab ONLY on `SOLO_BRANCHES` (`:131`); `sub_account` renders via `AgencyApp` on
+> `SUB_ACCOUNT_BRANCHES` (`:401,648`) and Enterprise via `AGENCY_BRANCHES` (`:622`) — **neither has a
+> `mind` subtab.** The dated tierBranches comment (`:624-637`, 2026-08-18) states this explicitly and
+> names the §11c/§60 "Solo ≡ Sub-account" Mind as the **TARGET once `/business` mounts SoloApp**, not
+> current. So per tier today: **Solo = ✓ (read-only); Sub-account = UNAVAILABLE (sequenced §60 target);
+> Enterprise = UNAVAILABLE (§61 target — inherits Solo); Agency = — (an agency manages sub-accounts,
+> not its own client Mind — not a Mind target unless the owner rules otherwise); God = —;
+> Client/Anon = —/403.** The row's own internal tell (Agency "—" but Enterprise "✓", though both
+> render through AgencyApp) confirms the ✓s were aspirational. This matches the capability map's
+> Domain-6 grid (all three UNAVAILABLE today). Full
+> grounding: `docs/architecture/mind-memory-knowledge-brain-capability-map.md` (Domain 6). The dated
+> entry is preserved per §58; only the false current-visibility cells are corrected here.
+
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
 |---|---|---|---|---|---|---|---|
-| See the Mind subtab (the orb + record list) | — (no Solo book) | — | ✓ | ✓ | ✓ | — | 403 |
-| Knowledge resources nodes ← `tenant_knowledge_docs` (LIVE, owner-indexed) | — | — | ✓ | ✓ | ✓ | — | 403 |
-| Connected sources nodes ← n8n readiness (LIVE, status only) | — | — | ✓ | ✓ | ✓ | — | 403 |
-| Operating decisions nodes ← pending approvals (LIVE) | — | — | ✓ | ✓ | ✓ | — | 403 |
+| See the Mind subtab (the orb + record list) | — (no Solo book) | — | ✗ (target) | ✓ | ✗ (target) | — | 403 |
+| Knowledge resources nodes ← `tenant_knowledge_docs` (LIVE, owner-indexed) | — | — | ✗ (target) | ✓ | ✗ (target) | — | 403 |
+| Connected sources nodes ← n8n readiness (LIVE, status only) | — | — | ✗ (target) | ✓ | ✗ (target) | — | 403 |
+| Operating decisions nodes ← pending approvals (LIVE) | — | — | ✗ (target) | ✓ | ✗ (target) | — | 403 |
 | Business context / Client relationships domains | honest ABSENCE — no frontend hook yet | | | | | | |
 | Offers & services domain | honest UNAVAILABLE — catalog lives in Campaigns, not a governed fact | | | | | | |
-| Open a record's evidence drawer (provenance + honesty boundary) | — | — | ✓ | ✓ | ✓ | — | 403 |
+| Open a record's evidence drawer (provenance + honesty boundary) | — | — | ✗ (target) | ✓ | ✗ (target) | — | 403 |
 | Any create/update/delete from Mind | ✗ read-only surface | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 
 **Honest source truth per domain (the orb never invents to fill a hub):** three of the six domains
@@ -4124,7 +4140,11 @@ decision is preserved; the orb is the Gate-1-approved data-viz, a different obje
 "Open PAIGE" uses the ONE existing workspace (no floating authenticated chat); Mind is READ-ONLY (it
 displays governed records, never writes Mind/Memory eligibility); tier visibility UNCHANGED — Solo +
 Sub-account already received Mind pre-PR (row above, PR #933), so this is a REDESIGN, not new
-sub-account delivery (no "explicit release" rule triggered). **Next owning workstream:** the
+sub-account delivery (no "explicit release" rule triggered). _(§13 correction 2026-09-13: this
+"Sub-account already received Mind" claim is STALE — see the correction banner above the table. On
+current `main` only Solo mounts `SoloMindWorkspace`; sub-account renders via `AgencyApp`
+(`tierBranches.ts:401,648`) with no `mind` subtab, so the redesign shipped for Solo only. Sub-account
+Mind remains the sequenced §60 target.)_ **Next owning workstream:** the
 Business-context + Client-relationships frontend read-hooks (to light those two `UNAVAILABLE/DEFERRED`
 domains); **first-read dependency:** `docs/handoff/solo-setup-business-context-spine-handoff.md` (the
 narrower safe-field projection contract — status + provenance only, never a raw value).
