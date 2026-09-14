@@ -1453,7 +1453,7 @@ begin
       if (deps->>'unsupported')::bigint<>0 then raise exception 'CRM_MERGE_DEPENDENCIES_UNSUPPORTED' using errcode='42501'; end if;
       if c.linked_user_id is not null and loser.linked_user_id is not null and c.linked_user_id<>loser.linked_user_id then raise exception 'CRM_MERGE_IDENTITY_CONFLICT' using errcode='42501'; end if;
       resolutions:=p.target_snapshot->'resolutions';
-      v_transfer_email:=resolutions->>'email'='loser' or (not (resolutions ? 'email') and c.email is null);
+      v_transfer_email:=coalesce(resolutions->>'email'='loser',false) or (not (resolutions ? 'email') and c.email is null);
       owner_id:=case when resolutions->>'assigned_coach_user_id'='loser' or (not (resolutions ? 'assigned_coach_user_id') and c.assigned_coach_user_id is null) then loser.assigned_coach_user_id else c.assigned_coach_user_id end;
       if owner_id is not null then
         perform 1 from public.tenant_members tm
