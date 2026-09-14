@@ -62,11 +62,15 @@ export type IntakeResult = {
 };
 
 /** Runner outcomes. `read_observed`/`prepared` never touch an external effect; `executed` is a
- *  real tools/call (Phase S proves it only against an in-process fake — never a live provider). */
+ *  real tools/call (Phase S proves it only against an in-process fake — never a live provider).
+ *  `tool_error` is a call that DISPATCHED and the provider reported failure (`isError`) or answered
+ *  in a shape we do not accept — distinct from `refused` (never dispatched), `provider_unavailable`
+ *  (never reached), and `outcome_unknown` (threw after dispatch, landing unknown). #1262 finding 4. */
 export type RunnerOutcome =
   | "read_observed"
   | "prepared"
   | "executed"
+  | "tool_error"
   | "refused"
   | "provider_unavailable"
   | "outcome_unknown";
