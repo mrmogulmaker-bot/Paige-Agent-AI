@@ -64,7 +64,9 @@ COMMENT ON COLUMN public.mcp_connection_approvals.expires_at IS
 --    endpoint string (the same basis the 20270322000000 trigger compares on, since
 --    platform_encrypt is non-deterministic). Domain-tagged so a hash produced here can never be
 --    confused with any other SHA-256 in the schema. Not SECURITY DEFINER (no table access, no RLS
---    bypass); the DEFINER functions below call it as owner. digest()/pgcrypto is already enabled.
+--    bypass); the DEFINER functions below call it as owner. Uses the CORE `sha256(bytea)`
+--    (pg_catalog) — not pgcrypto's `digest`, which lives in the `extensions` schema and is not on a
+--    `search_path TO 'public'` — matching the repo's established SQL-hash idiom (e.g. 20260904052832).
 -- ─────────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public._mcp_endpoint_hash(_server_url text)
 RETURNS text
@@ -72,7 +74,7 @@ LANGUAGE sql
 IMMUTABLE
 SET search_path TO 'public'
 AS $$
-  SELECT encode(digest('mcp-endpoint/v1|' || COALESCE(_server_url, ''), 'sha256'), 'hex')
+  SELECT encode(sha256(convert_to('mcp-endpoint/v1|' || COALESCE(_server_url, ''), 'UTF8')), 'hex')
 $$;
 
 -- ─────────────────────────────────────────────────────────────────────────────────
