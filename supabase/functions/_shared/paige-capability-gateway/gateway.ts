@@ -96,6 +96,7 @@ export function decideGatewayEntry(input: GatewayEntryInput): GatewayEntry {
       return { disposition: "planned_explanation", emitTool: false };
     case "needs_setup":
       return { disposition: "setup_explanation", emitTool: false };
+
     case "needs_approval":
       // Admissible, but consequential: exposed so the owner can approve it. The model may invoke it;
       // the shared seam returns `propose` (the lane is confirm/off) and Chat renders the approval.

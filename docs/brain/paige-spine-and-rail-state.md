@@ -891,3 +891,9 @@ Their owner-visible copy says only that a Campaign Brief planning record was ver
 Mind and durable Memory remain `UNAVAILABLE`; authenticated owner/card/Rail production proof remains `PROOF OWED`.
 
 Production closeout: PR #1047 referenced production merge `ae0a16a0`; migration run 34150733491 persisted the owner-safe Rail projection, Edge run 34150733561 deployed the affected graph, both live tags equal the merge, and merge-time CI/Spine/Security/UI gates passed. The post-readback Campaign Brief Rail producer is `LIVE`; authenticated owner/card/Rail browser proof remains `PROOF OWED`, so the owner-visible lane remains `PARTIAL` and Mind/Memory remain `UNAVAILABLE`.
+
+## UPDATE 2026-09-13 — governed CRM/Pipeline release candidate (not shipped)
+
+The contact and pipeline Spine domains now source 32 CRM action bindings from one shared catalogue. Chat adopts those definitions and dispatches only through the authenticated `crm-command` door. The server re-resolves active tenant membership, applies the shared risk/autonomy decision and existing single-use confirmation, then calls one service-only canonical executor. Success requires canonical record/absence readback and `record_capability_run`; the same result is persisted as a Chat card with only server-owned route locators.
+
+This is source state, not a shipped or production-LIVE claim. Database/RLS pgTAP, authenticated same-/cross-tenant and account-switch drives, deployed Edge/migration identity, and owner-visible Rail proof remain PROOF OWED. Task record deep-links remain unavailable because no dedicated router owns one; activity logging remains internal-only with no external effect.

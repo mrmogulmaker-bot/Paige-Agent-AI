@@ -1,7 +1,7 @@
 import { N8N_MANAGEMENT_CAPABILITIES } from './domains/n8n_management.ts';
 import { BUSINESS_MISSION_CAPABILITIES } from "./domains/business_mission.ts";
 import { SPINE_ACTION_CLASSIFICATIONS, type SpineCapability } from "./contracts.ts";
-import { PIPELINE_DEAL_STAGE_EVIDENCE } from "./domains/pipeline.ts";
+import { PIPELINE_CRM_ACTIONS, PIPELINE_DEAL_STAGE_EVIDENCE } from "./domains/pipeline.ts";
 import { BUSINESS_CONTEXT_READINESS } from "./domains/business_context.ts";
 import { TEAM_AUTHORITY } from "./domains/team.ts";
 import { N8N_CONNECTION_READINESS } from "./domains/n8n.ts";
@@ -9,7 +9,7 @@ import { SOCIAL_PRESENCE } from "./domains/social.ts";
 import { CAMPAIGN_BRIEF_CAPABILITIES } from "./domains/campaigns.ts";
 import { COMMS_MESSAGES_READ } from "./domains/comms.ts";
 import { INTEGRATIONS_LIST, INTEGRATIONS_HEALTH } from "./domains/integrations_surface.ts";
-import { CONTACT_EVENT_STATUS } from "./domains/contact.ts";
+import { CONTACT_CRM_ACTIONS, CONTACT_EVENT_STATUS } from "./domains/contact.ts";
 // Booking-preset lifecycle capabilities (create/revise/publish/pause/list + the S1
 // duplicate/archive/restore). ADOPTED with the Chat wiring in the same change (E5): the
 // handler declares CALENDAR_PRESET_TOOLS through the adapter spread and dispatches them to
@@ -22,7 +22,7 @@ import { CALENDAR_PRESET_CAPABILITIES } from "./domains/calendar_preset.ts";
 // _shared/action-risk.ts + the inline confirm gate, NOT this manifest (see calendar_link.ts).
 import { CALENDAR_LINK_CAPABILITIES } from "./domains/calendar_link.ts";
 
-export const PAIGE_SPINE_CAPABILITIES = [PIPELINE_DEAL_STAGE_EVIDENCE, BUSINESS_CONTEXT_READINESS, TEAM_AUTHORITY, SOCIAL_PRESENCE, N8N_CONNECTION_READINESS, ...N8N_MANAGEMENT_CAPABILITIES, ...BUSINESS_MISSION_CAPABILITIES, ...CAMPAIGN_BRIEF_CAPABILITIES, ...CALENDAR_PRESET_CAPABILITIES, ...CALENDAR_LINK_CAPABILITIES, COMMS_MESSAGES_READ, INTEGRATIONS_LIST, INTEGRATIONS_HEALTH, CONTACT_EVENT_STATUS] as const;
+export const PAIGE_SPINE_CAPABILITIES = [PIPELINE_DEAL_STAGE_EVIDENCE, BUSINESS_CONTEXT_READINESS, TEAM_AUTHORITY, SOCIAL_PRESENCE, N8N_CONNECTION_READINESS, ...N8N_MANAGEMENT_CAPABILITIES, ...BUSINESS_MISSION_CAPABILITIES, ...CAMPAIGN_BRIEF_CAPABILITIES, ...CALENDAR_PRESET_CAPABILITIES, ...CALENDAR_LINK_CAPABILITIES, COMMS_MESSAGES_READ, INTEGRATIONS_LIST, INTEGRATIONS_HEALTH, CONTACT_EVENT_STATUS, ...PIPELINE_CRM_ACTIONS, ...CONTACT_CRM_ACTIONS] as const;
 
 const KEY_PATTERN = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/;
 const SERVER_SYMBOL_PATTERN = /^public\.[a-z][a-z0-9_]*$/;

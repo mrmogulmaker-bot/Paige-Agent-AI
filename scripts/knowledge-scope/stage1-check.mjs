@@ -117,12 +117,12 @@ function anthropicStream(kind = "text") {
     // ARGUMENTS, which the loop turns into a `paige_confirm` card. `crm_create_contact` is used
     // deliberately: `document_generate`'s summary is a fixed sentence, so a card built from it
     // would carry no model text and the assertion below would pass for the wrong reason.
-    // `crm_create_contact` on its DEDUPLICATION branch. It is a receipt on the success path and
-    // is in the receipt set for that reason — but when a near-match is found it returns
+    // `crm_create_contact` on its DEDUPLICATION branch. Its canonical result is durable tenant
+    // readback — and when a near-match is found it returns
     // `matches: [...]`, real contact names, emails, phones and lifecycle stages read out of the
     // tenant's book. A name cannot express "this tool sometimes reads", which is why the receipt
     // test is now a shape test as well.
-    // `deal_move_stage` — a receipt-named tool whose result is SMALL, FLAT and not a list, and
+    // `deal_move_stage` — a canonical CRM tool whose result is SMALL, FLAT and not a list, and
     // still carries `stage: stage.label` read out of `pipeline_stages`. It slipped past both the
     // size bound and the record-list test, which is what showed a SHAPE heuristic could never
     // answer "is this result free of evidence?".
@@ -325,7 +325,7 @@ const handler = capturedHandler();
  * ordered so its FIRST row is NOT the active tenant. That is the whole trap: a correct
  * handler must ignore this ordering entirely.
  */
-async function drive({ personaTenant, personaSequence = null, memberships, kbRejects = false, ragHits = false, bodyExtras = {}, noAuth = false, unauthenticated = false, chunkTitle = "PRIVATE-CHUNKTITLE-MARKER", chunkContent = "x", provider = ["text"], rpcExtras = {}, tableExtras = {}, fundingEnabled = false, throwOnSync = false, activeTenantId = "__USE_PERSONA__", userMessage = "what does my onboarding process look like?" }) {
+async function drive({ personaTenant, personaSequence = null, memberships, kbRejects = false, ragHits = false, bodyExtras = {}, noAuth = false, unauthenticated = false, chunkTitle = "PRIVATE-CHUNKTITLE-MARKER", chunkContent = "x", provider = ["text"], rpcExtras = {}, tableExtras = {}, functionExtras = {}, fundingEnabled = false, throwOnSync = false, activeTenantId = "__USE_PERSONA__", userMessage = "what does my onboarding process look like?" }) {
   // `profiles.active_tenant_id` is an INDEPENDENT axis from the persona-resolved tenant. It
   // defaults to `personaTenant` so every existing scenario is byte-identical (persona and active
   // agree). A check overrides it to model the case current_user_tenant_id() hides: a null or
@@ -385,6 +385,7 @@ async function drive({ personaTenant, personaSequence = null, memberships, kbRej
       // call persists through). Last, so a scenario can also override a default above.
       ...rpcExtras,
     },
+    functions: functionExtras,
     tables: {
       tenant_members: () => memberships.map((t) => ({ tenant_id: t })),
       profiles: () => [{ active_tenant_id: declaredActiveTenant }],
@@ -2085,6 +2086,7 @@ group("safety-first streaming: the sources the first enumeration missed");
     // The DEFAULT lane. `auto` would run the tool and produce an artifact instead of a card.
     rpcExtras: { get_actor_access: { data: { tier: "tenant" }, error: null } },
     tableExtras: { user_roles: () => [{ role: "admin" }] },
+    functionExtras: { "crm-command": { data: { outcome: "approval_required", fingerprint: "abcd1234abcd1234", summary: "Create CHILD-PRIVATE-MARKER contact" }, error: null } },
   };
   const confirmClean = await drive({
     personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...confirmOpts,
@@ -2949,18 +2951,19 @@ group("safety-first streaming: the sources the first enumeration missed");
       find_duplicate_contacts: { data: [{ id: "aaaa1111-2222-4333-8444-555566667777", first_name: "Ada", last_name: "Lovelace", email: "ada@example.test", phone: "+15550001111", lifecycle_stage: "client", source: "referral", created_at: "2026-01-01T00:00:00Z", email_exact: true }], error: null },
     },
     tableExtras: { user_roles: () => [{ role: "admin" }] },
+    functionExtras: { "crm-command": { data: { ok: true, outcome: "succeeded", readback: { id: "aaaa1111-2222-4333-8444-555566667777", display_name: "PRIVATE-CONTACT-READBACK-MARKER" }, receipt_recorded: true }, error: null } },
   };
   const dedupClean = await drive({
     personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...dedupOpts,
   });
   assert(
-    "21.y CONTROL — the dedup branch really did hand records back to the model",
-    dedupClean.providerCalls.some((c) => JSON.stringify(c).includes("needs_dedup_confirmation")),
+    "21.y CONTROL — canonical contact creation handed durable readback to the model",
+    dedupClean.providerCalls.some((c) => JSON.stringify(c).includes("PRIVATE-CONTACT-READBACK-MARKER")),
     JSON.stringify(dedupClean.providerCalls).slice(-300),
   );
   const dedupTotal = personaCallsOf(dedupClean);
   assert(
-    "21.y a receipt-named tool that returns RECORDS still protects the turn",
+    "21.y a canonical CRM tool that returns durable readback protects the turn",
     dedupTotal > 1,
     `persona calls: ${dedupTotal} — 1 means the name alone decided it`,
   );
@@ -3229,7 +3232,7 @@ group("safety-first streaming: the sources the first enumeration missed");
   // 21.ae — A SMALL, FLAT TENANT READ-BACK. `deal_move_stage` returns `stage: stage.label`, read
   // out of `pipeline_stages` — not a list, well under the size bound, and therefore invisible to
   // both shape criteria. Third miss in a row on the same question, which is what established
-  // that a heuristic about SHAPE was never going to answer it: a receipt ECHOES, and a value in
+  // that a heuristic about SHAPE was never going to answer it: a true receipt ECHOES, and a value in
   // the result that is not in the arguments came from storage.
   const dealOpts = {
     kbRejects: true,
@@ -3240,6 +3243,7 @@ group("safety-first streaming: the sources the first enumeration missed");
       current_user_tenant_id: { data: CHILD, error: null },
       is_platform_owner: { data: false, error: null },
     },
+    functionExtras: { "crm-command": { data: { ok: true, outcome: "succeeded", readback: { id: "dddd2222-3333-4444-8555-666677778888", stage: "PRIVATE-STAGELABEL-MARKER" }, receipt_recorded: true }, error: null } },
     tableExtras: {
       user_roles: () => [{ role: "admin" }],
       // The label the model never supplied — the whole point of the case.
@@ -3252,7 +3256,7 @@ group("safety-first streaming: the sources the first enumeration missed");
   });
   const dealTotal = personaCallsOf(dealClean);
   assert(
-    "21.ae a receipt-named tool returning an UNECHOED value protects the turn",
+    "21.ae a canonical CRM tool returning an UNECHOED value protects the turn",
     dealTotal > 1,
     `persona calls: ${dealTotal} — 1 means a small flat read-back passed as a receipt`,
   );
@@ -3288,7 +3292,7 @@ group("the tool-result receipt set");
     HANDLER_SRC.indexOf("const markProtectedLate"),
   );
   assert("21z.1 CONTROL — the receipt set literal was located in the handler",
-    block.length > 100 && block.includes("crm_create_contact"), `block length ${block.length}`);
+    block.length > 100 && block.includes("new Set<string>(["), `block length ${block.length}`);
   // Tools whose result carries evidence — read back from tenant storage, generated from tenant
   // branding, or an unbounded spread of whatever an external system returned. None may be a
   // receipt. `draft_marketing_content` is here because it already shipped as a receipt once.
@@ -3298,6 +3302,8 @@ group("the tool-result receipt set");
     "crm_search_contacts", "crm_get_contact_summary", "crm_list_deals", "crm_list_tasks",
     "crm_pipeline_summary", "growth_list", "plan_list", "action_list", "action_get",
     "get_client_rail", "delegate_to_subagent", "deep_research", "web_fetch", "list_event_kinds",
+    "crm_create_contact", "crm_update_contact", "deal_create", "deal_move_stage",
+    "crm_create_task", "crm_log_activity",
   ]) {
     assert(`21z ${tool} is NOT classified as a write receipt`,
       !new RegExp(`"${tool}"`).test(block), `found "${tool}" inside the receipt set`);

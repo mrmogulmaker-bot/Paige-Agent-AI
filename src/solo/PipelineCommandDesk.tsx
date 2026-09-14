@@ -178,6 +178,8 @@ export function PipelineCommandDesk({
   onCreatePipeline,
   onManage,
   onFolders,
+  focusDealId = null,
+  onClearFocus = () => {},
 }) {
   const workspace = data.pipelineWorkspace;
   const activePipelines = workspace.pipelines.filter(
@@ -295,6 +297,7 @@ export function PipelineCommandDesk({
   const focusId = activeStages.some((stage) => stage.id === focusedStageId)
     ? focusedStageId
     : activeStages[0]?.id;
+
   React.useEffect(() => {
     operationRef.current.epoch += 1;
     operationRef.current.activeToken += 1;
@@ -308,6 +311,22 @@ export function PipelineCommandDesk({
     setFocusedStageId("");
     setKeyboardMove(null);
   }, [data.tenantId, selected?.id]);
+  React.useEffect(() => {
+    if (!focusDealId) return;
+    const requested = workspace.deals.find((item) => item.id === focusDealId);
+    if (!requested) {
+      setDetail(null);
+      setNotice("Deal record unavailable in this workspace. Nothing was changed.");
+      return;
+    }
+    if (requested.pipelineId !== selected?.id) {
+      setFolderFilter("all");
+      setSelectedId(requested.pipelineId);
+      return;
+    }
+    setMode("board");
+    setDetail(requested);
+  }, [focusDealId, workspace.deals, selected?.id, setFolderFilter, setSelectedId]);
   const run = async (action) => {
     const epoch = operationRef.current.epoch;
     const signature = JSON.stringify(action);
@@ -819,7 +838,7 @@ export function PipelineCommandDesk({
             setMove({ deal: detail, targetStageId: detail.stageId })
           }
           onOutcome={(outcomeType) => setOutcome({ deal: detail, outcomeType })}
-          onClose={() => setDetail(null)}
+          onClose={() => { setDetail(null); onClearFocus(); }}
         />
       )}
       {move && (

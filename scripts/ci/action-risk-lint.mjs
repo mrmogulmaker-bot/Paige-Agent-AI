@@ -33,6 +33,11 @@ const POLICY = "supabase/functions/_shared/action-risk.ts";
 const CHAT = "supabase/functions/paige-ai-chat/index.ts";
 const MCP_POLICY = "supabase/functions/_shared/paige-mcp/capability-policy.ts";
 const SOCIAL_HANDLER = "supabase/functions/paige-social/index.ts";
+const CONTACT_SCOPED_EDGE_HANDLERS = [
+  "supabase/functions/_shared/nav-pull-profile/governed-adapter.ts",
+  "supabase/functions/smartcredit-pull-snapshot/index.ts",
+];
+const CRM_CATALOG = "supabase/functions/_shared/crm-command/catalog.ts";
 
 /** Every classified action, as `[tool, class, reason]`, read from the policy's own table. */
 export function parsePolicy(src) {
@@ -73,6 +78,11 @@ export function parseGovernedEdgeActions(src) {
   return [...new Set([...src.matchAll(/await govern\(\s*"([a-z0-9_]+)"/g)].map((m) => m[1]))];
 }
 
+/** Canonical capability constants used by governed, contact-scoped Edge adapters. */
+export function parseCapabilityConstants(src) {
+  return [...src.matchAll(/const (?:[A-Z0-9_]*CAPABILITY) = "([a-z0-9_]+)"/g)].map((m) => m[1]);
+}
+
 export function parseExemptions(src) {
   const at = src.indexOf("const NON_MUTATING_EXEMPT: ReadonlyMap<string, string> = new Map([");
   if (at < 0) return null;
@@ -83,7 +93,7 @@ export function parseExemptions(src) {
 }
 
 /** Kept in step with `MUTATION_VERB` in the policy by `checkVerbParity` below. */
-const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|install|uninstall|grant|revoke|run|assign|enroll|book|set|draft|generate|file|advance|forge|archive|activate|deactivate|move|add|build|log|author|enable|disable|invite|upload|apply|approve|reject|decide|import|export|sync|write|post|schedule|cancel|start|stop|trigger|fire|configure|buy|purchase|name|rename|propose|provision|claim|release)(_|$)/;
+const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|install|uninstall|grant|revoke|run|assign|enroll|book|set|draft|generate|file|advance|forge|archive|activate|deactivate|move|add|build|log|author|enable|disable|invite|upload|apply|approve|reject|decide|import|export|sync|write|post|schedule|cancel|start|stop|trigger|fire|configure|buy|purchase|pull|name|rename|propose|provision|claim|release)(_|$)/;
 
 /** The rule: destroys, changes permissions, or goes public ⇒ never `ordinary`. */
 const IRREVERSIBLE_OR_OUTWARD = /(^|_)(delete|remove|revoke|publish|uninstall|install)(_|$)|(^|_)grant(_|$)/;
@@ -102,7 +112,7 @@ export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanon
   if (!chat.gatesOnPolicy) out.push(`${CHAT} no longer derives MUTATING_TOOLS from mutatingTools() — the handler must gate on the policy`);
 
   // 1. Every declared tool that reads as a write is classified, or exempted with a reason.
-  for (const tool of chat.declared) {
+  for (const tool of new Set([...chat.declared, ...mcpCanonicals, ...governedEdgeActions])) {
     if (classified.has(tool) || exempt.has(tool)) continue;
     if (!MUTATION_VERB.test(tool)) continue;
     out.push(`${tool} reads as a write but has no entry in ${POLICY}. Classify it (ordinary | high | owner_only), or add it to NON_MUTATING_EXEMPT with the reason it persists nothing.`);
@@ -196,6 +206,8 @@ function selfTest() {
       .join() === "x_create_y");
   bad += ok("the MCP canonical parser does not invent keys from an absent table",
     parseMcpCanonicals("no table here").length === 0);
+  bad += ok("contact-scoped Edge capability constants are discovered",
+    parseCapabilityConstants('export const NAV_PULL_CAPABILITY = "nav_pull_business_credit";').join() === "nav_pull_business_credit");
   bad += ok("a governed edge action is a real declaring surface",
     parseGovernedEdgeActions('const result = await govern(\n  "widget_create_thing",\n  args,\n);').join() === "widget_create_thing");
   bad += ok("a re-introduced hand-list is caught",
@@ -211,6 +223,8 @@ function selfTest() {
   // query. Guards the lint's own copy of MUTATION_VERB; `checkVerbParity` guards it against the policy.
   bad += ok("`decide` reads as a mutation verb (the improvement_decide bypass stays closed)",
     MUTATION_VERB.test("improvement_decide") && MUTATION_VERB.test("x_decide") && !MUTATION_VERB.test("decided_list"));
+  bad += ok("`pull` reads as a mutation verb for paid provider actions",
+    MUTATION_VERB.test("nav_pull_business_credit") && MUTATION_VERB.test("smartcredit_pull_snapshot"));
   console.log(bad === 0 ? "\n✓ action-risk-lint self-test passed." : `\n✗ ${bad} self-test(s) failed.`);
   process.exit(bad === 0 ? 0 : 1);
 }
@@ -267,8 +281,20 @@ if (chatSrc.includes('...CALENDAR_LINK_TOOLS')) {
   if (!linkTools.length) throw new Error('Calendar Link catalog could not be parsed');
   importedTools.push(...linkTools);
 }
+if (chatSrc.includes('...CRM_COMMAND_TOOLS')) {
+  if (!/import\s*\{[^}]*CRM_COMMAND_TOOLS[^}]*\}\s*from\s*['"]\.\.\/_shared\/crm-command\/catalog\.ts['"]/.test(chatSrc)) throw new Error('Unresolved CRM command catalog import');
+  const source = fs.readFileSync(CRM_CATALOG, 'utf8');
+  const mapStart = source.indexOf("export const CRM_ACTION_CAPABILITY");
+  const mapEnd = source.indexOf("} as const;", mapStart);
+  const crmTools = [...source.slice(mapStart, mapEnd).matchAll(/"[a-z._]+":\s*"([a-z0-9_]+)"/g)].map(m => m[1]);
+  if (!crmTools.length) throw new Error('CRM command catalog could not be parsed');
+  importedTools.push(...crmTools);
+}
 const mcpCanonicals = parseMcpCanonicals(fs.readFileSync(MCP_POLICY, "utf8"));
-const governedEdgeActions = parseGovernedEdgeActions(fs.readFileSync(SOCIAL_HANDLER, "utf8"));
+const governedEdgeActions = [
+  ...parseGovernedEdgeActions(fs.readFileSync(SOCIAL_HANDLER, "utf8")),
+  ...CONTACT_SCOPED_EDGE_HANDLERS.flatMap((path) => parseCapabilityConstants(fs.readFileSync(path, "utf8"))),
+];
 if (!mcpCanonicals.length) {
   console.error(`✗ action-risk-lint: read no canonical keys out of ${MCP_POLICY}. That file is the MCP door's second declaring surface, so an empty read would silently condemn every MCP-only classification as a ghost. Fix this guard rather than letting it pass.`);
   process.exit(1);
