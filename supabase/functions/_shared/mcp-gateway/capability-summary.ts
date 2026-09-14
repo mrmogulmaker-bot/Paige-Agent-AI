@@ -20,6 +20,15 @@ function safeEffects(raw: readonly string[] | undefined): CapabilityEffect[] {
   return [...new Set(out)].sort();
 }
 
+// `app` and `actionType` come from provider `_meta` and DO reach the model, so they are a
+// residual injection channel. Keep only a conservative, printable label charset (letters,
+// digits, and a few separators) and bound the length; anything else is dropped. This is
+// stricter than a raw slice: a provider cannot smuggle prose/newlines/control bytes through.
+function sanitizeLabel(raw: unknown, max: number): string {
+  if (typeof raw !== "string") return "";
+  return raw.replace(/[^A-Za-z0-9 ._:/@+-]/g, "").trim().slice(0, max);
+}
+
 /**
  * Reduce discovered tool fingerprints to the model-safe capability shape. Any tool whose name
  * is not a clean identifier is DROPPED rather than sanitized-in-place — a name that is not an
@@ -36,8 +45,8 @@ export function toSafeCapabilities(
     out.push({
       name: t.name,
       effects: safeEffects(t.effects),
-      app: typeof t.app === "string" ? t.app.slice(0, 100) : "",
-      actionType: typeof t.actionType === "string" ? t.actionType.slice(0, 80) : "",
+      app: sanitizeLabel(t.app, 100),
+      actionType: sanitizeLabel(t.actionType, 80),
       approved: approvedNames.has(t.name),
     });
   }

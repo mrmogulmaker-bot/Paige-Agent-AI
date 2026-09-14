@@ -84,10 +84,16 @@ export async function runConnectionCapability(
         const tool = tools.find((t) => t.name === req.toolName);
         if (!tool) return await emit("refused", "no_longer_offered");
 
-        const mutating = tool.effects.some((e) => MUTATING.has(e));
-        if (mutating) {
+        // FAIL CLOSED on undeclared effects. A tool the provider did not positively declare
+        // read-only (empty effect set — e.g. a generic remote MCP that omits `_meta.effects`)
+        // is treated as consequential and requires approval; it is NEVER auto-run as a read.
+        // The effect set is only as trustworthy as the provider's self-declaration, so the
+        // absence of a declaration is resolved in the safe direction, not the permissive one.
+        const effectsKnown = tool.effects.length > 0;
+        const requiresApproval = !effectsKnown || tool.effects.some((e) => MUTATING.has(e));
+        if (requiresApproval) {
           // Approval is the execution gate — not a reason to hide the tool.
-          if (!req.approval) return await emit("refused", "approval_required");
+          if (!req.approval) return await emit("refused", effectsKnown ? "approval_required" : "effects_undeclared");
           // The approval was for a specific contract; if the tool's pin moved, it is a
           // different contract and must be re-approved.
           if (req.approval.pin !== tool.pin) return await emit("refused", "contract_changed");
@@ -95,7 +101,7 @@ export async function runConnectionCapability(
 
         dispatched = true;
         await call(req.toolName, req.args);
-        return await emit(mutating ? "executed" : "read_observed", null);
+        return await emit(requiresApproval ? "executed" : "read_observed", null);
       },
     );
   } catch (e) {

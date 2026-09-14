@@ -28,7 +28,7 @@
 --   EXECUTE is never granted to anon (satisfies lint:definer-fns without an exempt escape).
 --
 -- forget_paige_workflow is DELIBERATELY NOT defined or touched here — it is a separately
--- proven compatibility decision (see docs/architecture/phase-s-forget-paige-workflow-decision.md
+-- proven compatibility decision (see docs/delivery/phase-s-forget-paige-workflow-decision.md
 -- and review doc §15). This migration does not hide that undefined dependency.
 
 -- ─────────────────────────────────────────────────────────────────────────────────
@@ -56,10 +56,11 @@ CREATE TABLE IF NOT EXISTS public.mcp_providers (
 ALTER TABLE public.mcp_providers ENABLE ROW LEVEL SECURITY;
 
 -- Descriptor catalogue carries NO tenant data and NO secrets — it is coaching-generic
--- platform metadata. Authenticated callers may read it; only the platform owner may write.
+-- platform metadata. Signed-in callers may read it; only the platform owner may write. Scoped
+-- to `authenticated` (not anon): with RLS enabled and no anon policy, anon reads return nothing.
 DROP POLICY IF EXISTS mcp_providers_read ON public.mcp_providers;
 CREATE POLICY mcp_providers_read ON public.mcp_providers
-  FOR SELECT USING (true);
+  FOR SELECT TO authenticated USING (true);
 DROP POLICY IF EXISTS mcp_providers_owner_write ON public.mcp_providers;
 CREATE POLICY mcp_providers_owner_write ON public.mcp_providers
   FOR ALL USING (public.is_platform_owner()) WITH CHECK (public.is_platform_owner());
@@ -219,9 +220,12 @@ STABLE
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
-DECLARE _tenant uuid; _out jsonb;
+DECLARE _tenant uuid; _out jsonb; _full boolean;
 BEGIN
   _tenant := public._mcp_resolve_tenant(_tenant_id, false);
+  -- owner_only connections are visible only to a tenant admin / platform owner (or a trusted
+  -- service-role caller, where auth.uid() is NULL); an ordinary member does not see them.
+  _full := auth.uid() IS NULL OR public.is_tenant_admin(_tenant) OR public.is_platform_owner();
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
            'connection_id', c.connection_id,
            'provider_key', c.provider_key,
@@ -245,7 +249,8 @@ BEGIN
          ) ORDER BY c.created_at), '[]'::jsonb)
     INTO _out
     FROM public.mcp_connections c
-   WHERE c.tenant_id = _tenant;
+   WHERE c.tenant_id = _tenant
+     AND (_full OR c.visibility <> 'owner_only');
   RETURN _out;
 END;
 $$;
@@ -438,6 +443,29 @@ $$;
 -- 6. One-to-one, idempotent, NON-DESTRUCTIVE backfill from BOTH legacy stores.
 --    Legacy rows are only READ; nothing there is modified or deleted.
 -- ─────────────────────────────────────────────────────────────────────────────────
+-- Deterministic collision-free label picker for the backfill. `label` is human addressing, NOT
+-- identity, and UNIQUE(tenant_id, provider_key, label) must hold — a tenant with BOTH an n8n
+-- MCP-OAuth row (from tenant_mcp_connections) AND an n8n API-key row (from tenant_n8n_connections)
+-- maps both to provider_key='n8n', and their operator-set labels could coincide. This returns the
+-- base label, or base + ' (2)', ' (3)', … for the first free slot — never raising a unique
+-- violation and never dropping a legacy connection (§58: the 1:1 projection is preserved).
+CREATE OR REPLACE FUNCTION public._mcp_gw_free_label(_tenant uuid, _provider text, _base text)
+RETURNS text
+LANGUAGE plpgsql
+AS $$
+DECLARE _label text := _base; _n int := 1;
+BEGIN
+  WHILE EXISTS (
+    SELECT 1 FROM public.mcp_connections
+     WHERE tenant_id = _tenant AND provider_key = _provider AND label = _label
+  ) LOOP
+    _n := _n + 1;
+    _label := left(_base, 90) || ' (' || _n || ')';
+  END LOOP;
+  RETURN _label;
+END;
+$$;
+
 DO $backfill$
 DECLARE r record;
 BEGIN
@@ -458,7 +486,7 @@ BEGIN
         enabled, provider_state, legacy_source, legacy_provider, created_by, updated_by, created_at, updated_at
       ) VALUES (
         r.tenant_id, r.provider,
-        COALESCE(NULLIF(btrim(COALESCE(r.label, '')), ''), r.provider || ' (MCP)'),
+        public._mcp_gw_free_label(r.tenant_id, r.provider, COALESCE(NULLIF(btrim(COALESCE(r.label, '')), ''), r.provider || ' (MCP)')),
         r.server_url_ct, r.transport, r.auth_kind, r.auth_header_name,
         r.auth_token_ct, r.auth_token_last4, r.refresh_token_ct, r.access_token_expires_at,
         r.oauth_issuer, r.oauth_client_id, r.oauth_client_secret_ct, r.oauth_scopes,
@@ -520,7 +548,7 @@ BEGIN
         legacy_source, legacy_provider, created_by, updated_by, created_at, updated_at
       ) VALUES (
         r.tenant_id, 'n8n',
-        COALESCE(NULLIF(btrim(COALESCE(r.label, '')), ''), 'n8n (API)'),
+        public._mcp_gw_free_label(r.tenant_id, 'n8n', COALESCE(NULLIF(btrim(COALESCE(r.label, '')), ''), 'n8n (API)')),
         r.base_url_ct, 'http', 'api_key',
         r.api_key_ct, r.api_key_last4,
         CASE r.status WHEN 'connected' THEN 'connected' WHEN 'error' THEN 'error' ELSE 'unconfigured' END,
@@ -543,6 +571,9 @@ BEGIN
   END LOOP;
 END;
 $backfill$;
+
+-- The backfill helper is single-use; remove it so it leaves no ungoverned surface behind.
+DROP FUNCTION IF EXISTS public._mcp_gw_free_label(uuid, text, text);
 
 -- ─────────────────────────────────────────────────────────────────────────────────
 -- 7. Grants — anon reaches NONE of these (satisfies lint:definer-fns without an exempt escape).
