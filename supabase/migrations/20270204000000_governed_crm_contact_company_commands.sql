@@ -134,6 +134,30 @@ exception when others then
   return new;
 end$$;
 revoke all on function public.auto_stub_business_from_contact() from public,anon,authenticated;
+
+-- Paige CRM task commands are database-only operations. Reuse the canonical assignment triggers,
+-- but let this transaction explicitly suppress their legacy outbound email side effect.
+create or replace function public.trg_notify_task_assigned()
+returns trigger language plpgsql security definer set search_path='' as $$
+begin
+  if coalesce(auth.jwt()->>'role','')='service_role' and auth.uid() is null and coalesce(pg_catalog.current_setting('app.suppress_task_assignment_notification',true),'')='on' then return new; end if;
+  if new.user_id is not null then
+    perform public.fire_team_event(pg_catalog.jsonb_build_object('event','task_assigned','task_id',new.id,'assignee_user_id',new.user_id));
+  end if;
+  return new;
+end$$;
+revoke all on function public.trg_notify_task_assigned() from public,anon,authenticated;
+
+create or replace function public.trg_notify_task_reassigned()
+returns trigger language plpgsql security definer set search_path='' as $$
+begin
+  if coalesce(auth.jwt()->>'role','')='service_role' and auth.uid() is null and coalesce(pg_catalog.current_setting('app.suppress_task_assignment_notification',true),'')='on' then return new; end if;
+  if new.user_id is distinct from old.user_id and new.user_id is not null then
+    perform public.fire_team_event(pg_catalog.jsonb_build_object('event','task_assigned','task_id',new.id,'assignee_user_id',new.user_id));
+  end if;
+  return new;
+end$$;
+revoke all on function public.trg_notify_task_reassigned() from public,anon,authenticated;
 create or replace function public.execute_crm_command_reversible(
   _tenant_id uuid,
   _actor_id uuid,
@@ -477,9 +501,8 @@ begin
         raise exception 'CRM_FORBIDDEN' using errcode = '42501';
       end if;
     end if;
-    if coalesce(v_patch->>'assignee_user_id','') = '' and v_contact.linked_user_id is not null then
-      v_patch := v_patch || jsonb_build_object('assignee_user_id',v_contact.linked_user_id);
-    end if;
+    -- A contact link is not task-assignment consent. Default to the requesting operator, never
+    -- silently to a portal identity; an explicit assignee is still tenant-authorized below.
     if coalesce(v_patch->>'assignee_user_id','') = '' then
       v_patch := v_patch || jsonb_build_object('assignee_user_id',v_actor);
     end if;
@@ -491,9 +514,14 @@ begin
     if v_patch ? 'company_id' and not exists(select 1 from public.businesses b where b.id=(v_patch->>'company_id')::uuid and b.tenant_id=v_tenant) then
       raise exception 'CRM_BUSINESS_NOT_FOUND' using errcode = 'P0002';
     end if;
-    if v_patch ? 'deal_id' and not exists(select 1 from public.deals d where d.id=(v_patch->>'deal_id')::uuid and d.tenant_id=v_tenant) then
-      raise exception 'CRM_DEAL_NOT_FOUND' using errcode = 'P0002';
+    if v_patch ? 'deal_id' then
+      select * into v_deal from public.deals d where d.id=(v_patch->>'deal_id')::uuid and d.tenant_id=v_tenant for update;
+      if not found then raise exception 'CRM_DEAL_NOT_FOUND' using errcode = 'P0002'; end if;
+      -- The canonical Pipeline core is tenant-admin only; task linkage must not create a
+      -- side door into a deal merely because a caller knows its same-tenant identifier.
+      if not v_is_admin then raise exception 'CRM_FORBIDDEN' using errcode='42501'; end if;
     end if;
+    perform pg_catalog.set_config('app.suppress_task_assignment_notification','on',true);
     insert into public.tasks(tenant_id,user_id,title,description,biz_id,deal_id,due_date,track,status,metadata,updated_at)
     values(v_tenant,(v_patch->>'assignee_user_id')::uuid,btrim(v_patch->>'title'),nullif(btrim(v_patch->>'description'),''),
       nullif(v_patch->>'company_id','')::uuid,nullif(v_patch->>'deal_id','')::uuid,nullif(v_patch->>'due_date','')::timestamptz,
@@ -549,6 +577,7 @@ begin
         exists(select 1 from public.tenant_members tm where tm.tenant_id=v_tenant and tm.user_id=(v_patch->>'assignee_user_id')::uuid and tm.status='active')
         or exists(select 1 from public.clients c where c.tenant_id=v_tenant and c.linked_user_id=(v_patch->>'assignee_user_id')::uuid)
       ) then raise exception 'CRM_ASSIGNEE_FORBIDDEN' using errcode='42501'; end if;
+      perform pg_catalog.set_config('app.suppress_task_assignment_notification','on',true);
       update public.tasks t set user_id=(v_patch->>'assignee_user_id')::uuid,updated_at=clock_timestamp()
        where t.id=v_task.id returning * into v_task;
       v_capability := 'crm_assign_task';
@@ -706,7 +735,7 @@ begin
     select jsonb_build_object(
       'id',t.id,'title',t.title,'description',t.description,'status',t.status,'assignee_user_id',t.user_id,
       'company_id',t.biz_id,'deal_id',t.deal_id,'due_date',t.due_date,'track',t.track,
-      'metadata',t.metadata,'updated_at',t.updated_at
+      'metadata',t.metadata,'external_effect',false,'notification_sent',false,'updated_at',t.updated_at
     ) into v_readback from public.tasks t where t.id=v_task.id and t.tenant_id=v_tenant;
   end if;
   if v_readback is null then
@@ -990,13 +1019,32 @@ end$$;
 revoke all on function public.crm_contact_dependency_snapshot(uuid) from public,anon,authenticated;
 grant execute on function public.crm_contact_dependency_snapshot(uuid) to service_role;
 
+-- Stable identity/version set for every row a deal delete will detach or cascade-delete.
+create or replace function public.crm_deal_dependency_snapshot(_tenant_id uuid,_deal_id uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+begin
+  if coalesce(auth.jwt()->>'role','') <> 'service_role' or auth.uid() is not null then
+    raise exception 'CRM_INTERNAL_EXECUTOR_REQUIRED' using errcode='42501';
+  end if;
+  return pg_catalog.jsonb_build_object(
+    'tasks',(select coalesce(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(t) order by t.id),'[]'::jsonb) from public.tasks t where t.deal_id=_deal_id and t.tenant_id=_tenant_id),
+    'invoices',(select coalesce(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(i) order by i.id),'[]'::jsonb) from public.paige_invoices i where i.deal_id=_deal_id and i.tenant_id=_tenant_id),
+    'activities',(select coalesce(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(a) order by a.id),'[]'::jsonb) from public.deal_activities a where a.deal_id=_deal_id),
+    'automation_events',(select coalesce(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(e) order by e.id),'[]'::jsonb) from public.stage_automation_events e where e.deal_id=_deal_id and e.tenant_id=_tenant_id),
+    'move_approvals',(select coalesce(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(m) order by m.id),'[]'::jsonb) from public.pipeline_move_approvals m where m.deal_id=_deal_id and m.tenant_id=_tenant_id),
+    'outcomes',(select coalesce(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(o) order by o.id),'[]'::jsonb) from public.pipeline_deal_outcomes o where o.deal_id=_deal_id and o.tenant_id=_tenant_id)
+  );
+end$$;
+revoke all on function public.crm_deal_dependency_snapshot(uuid,uuid) from public,anon,authenticated;
+grant execute on function public.crm_deal_dependency_snapshot(uuid,uuid) to service_role;
+
 create or replace function public.preview_crm_command(
   _tenant_id uuid,_actor_id uuid,_command jsonb,_preview_key text
 ) returns jsonb language plpgsql security definer set search_path='' as $$
 declare
   a text:=nullif(pg_catalog.btrim(_command->>'action'),''); h text;
   cached public.crm_command_previews%rowtype; c1 public.clients%rowtype; c2 public.clients%rowtype;
-  t public.tasks%rowtype; d public.deals%rowtype; snap jsonb; outp jsonb; deps jsonb;
+  t public.tasks%rowtype; d public.deals%rowtype; snap jsonb; outp jsonb; deps jsonb; dependency_set jsonb;
   ids uuid[]; requested int; eligible int; refused int; patch jsonb:=coalesce(_command->'patch','{}'::jsonb);
   unknown text[]; conflict_rows jsonb; unresolved int; active_tenant uuid; actor_role text; capability text; autonomy_mode text;
 begin
@@ -1090,8 +1138,15 @@ begin
     if not found then raise exception 'CRM_DEAL_NOT_FOUND' using errcode='P0002'; end if;
     if d.version<>coalesce((_command->>'expected_version')::bigint,0) then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
     if exists(select 1 from public.paige_invoices where deal_id=d.id and tenant_id is distinct from _tenant_id) then raise exception 'CRM_CROSS_TENANT_DEPENDENCY' using errcode='42501'; end if;
+    perform 1 from public.tasks where deal_id=d.id and tenant_id=_tenant_id for update;
+    perform 1 from public.paige_invoices where deal_id=d.id and tenant_id=_tenant_id for update;
+    perform 1 from public.deal_activities where deal_id=d.id for update;
+    perform 1 from public.stage_automation_events where deal_id=d.id and tenant_id=_tenant_id for update;
+    perform 1 from public.pipeline_move_approvals where deal_id=d.id and tenant_id=_tenant_id for update;
+    perform 1 from public.pipeline_deal_outcomes where deal_id=d.id and tenant_id=_tenant_id for update;
     deps:=pg_catalog.jsonb_build_object('tasks',(select count(*) from public.tasks where deal_id=d.id and tenant_id=_tenant_id),'invoices',(select count(*) from public.paige_invoices where deal_id=d.id and tenant_id=_tenant_id),'activities',(select count(*) from public.deal_activities where deal_id=d.id),'automation_events',(select count(*) from public.stage_automation_events where deal_id=d.id and tenant_id=_tenant_id),'move_approvals',(select count(*) from public.pipeline_move_approvals where deal_id=d.id and tenant_id=_tenant_id),'outcomes',(select count(*) from public.pipeline_deal_outcomes where deal_id=d.id and tenant_id=_tenant_id));
-    snap:=pg_catalog.jsonb_build_object('deal_id',d.id,'version',d.version,'dependency_counts',deps);
+    dependency_set:=public.crm_deal_dependency_snapshot(_tenant_id,d.id);
+    snap:=pg_catalog.jsonb_build_object('deal_id',d.id,'version',d.version,'dependency_counts',deps,'dependency_set',dependency_set);
     outp:=pg_catalog.jsonb_build_object('action',a,'record_kind','deal','record_id',d.id,'title',d.title,'dependency_counts',deps,'affected_count',1+(deps->>'tasks')::int+(deps->>'invoices')::int+(deps->>'activities')::int+(deps->>'automation_events')::int+(deps->>'move_approvals')::int+(deps->>'outcomes')::int,'deleted_dependency_count',(deps->>'activities')::int+(deps->>'automation_events')::int+(deps->>'move_approvals')::int+(deps->>'outcomes')::int,'detached_task_count',(deps->>'tasks')::int,'detached_invoice_count',(deps->>'invoices')::int,'eligible',true);
   else
     if pg_catalog.jsonb_typeof(_command->'target_ids')<>'array' or pg_catalog.jsonb_array_length(_command->'target_ids')=0 or pg_catalog.jsonb_array_length(_command->'target_ids')>200 then raise exception 'CRM_BULK_TARGETS_INVALID' using errcode='22023'; end if;
@@ -1270,8 +1325,15 @@ begin
       select * into d from public.deals where id=(p.target_snapshot->>'deal_id')::uuid and tenant_id=_tenant_id for update;
       if not found or d.version<>(p.target_snapshot->>'version')::bigint then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
       if exists(select 1 from public.paige_invoices where deal_id=d.id and tenant_id is distinct from _tenant_id) then raise exception 'CRM_CROSS_TENANT_DEPENDENCY' using errcode='42501'; end if;
+      perform 1 from public.tasks where deal_id=d.id and tenant_id=_tenant_id for update;
+      perform 1 from public.paige_invoices where deal_id=d.id and tenant_id=_tenant_id for update;
+      perform 1 from public.deal_activities where deal_id=d.id for update;
+      perform 1 from public.stage_automation_events where deal_id=d.id and tenant_id=_tenant_id for update;
+      perform 1 from public.pipeline_move_approvals where deal_id=d.id and tenant_id=_tenant_id for update;
+      perform 1 from public.pipeline_deal_outcomes where deal_id=d.id and tenant_id=_tenant_id for update;
       deps:=pg_catalog.jsonb_build_object('tasks',(select count(*) from public.tasks where deal_id=d.id and tenant_id=_tenant_id),'invoices',(select count(*) from public.paige_invoices where deal_id=d.id and tenant_id=_tenant_id),'activities',(select count(*) from public.deal_activities where deal_id=d.id),'automation_events',(select count(*) from public.stage_automation_events where deal_id=d.id and tenant_id=_tenant_id),'move_approvals',(select count(*) from public.pipeline_move_approvals where deal_id=d.id and tenant_id=_tenant_id),'outcomes',(select count(*) from public.pipeline_deal_outcomes where deal_id=d.id and tenant_id=_tenant_id));
-      if deps is distinct from p.target_snapshot->'dependency_counts' then raise exception 'CRM_DEPENDENCY_CONFLICT' using errcode='40001'; end if;
+      now_snap:=public.crm_deal_dependency_snapshot(_tenant_id,d.id);
+      if deps is distinct from p.target_snapshot->'dependency_counts' or now_snap is distinct from p.target_snapshot->'dependency_set' then raise exception 'CRM_DEPENDENCY_CONFLICT' using errcode='40001'; end if;
       update public.tasks set deal_id=null,updated_at=pg_catalog.clock_timestamp() where deal_id=d.id and tenant_id=_tenant_id;
       update public.paige_invoices set deal_id=null,updated_at=pg_catalog.clock_timestamp() where deal_id=d.id and tenant_id=_tenant_id;
       delete from public.deals where id=d.id and tenant_id=_tenant_id;
@@ -1313,6 +1375,12 @@ begin
       update public.clients set status='archived',merged_into_contact_id=c.id,merged_at=pg_catalog.clock_timestamp(),updated_at=pg_catalog.clock_timestamp() where id=loser.id returning * into loser;
       readback:=pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'merged_contact_id',loser.id,'loser_archived',loser.status='archived','dependency_counts',deps,'updated_at',c.updated_at);
     elsif a='contact.bulk_update' then
+      if p.target_snapshot->'patch' ? 'assigned_coach_user_id' and nullif(p.target_snapshot->'patch'->>'assigned_coach_user_id','') is not null then
+        perform 1 from public.tenant_members tm
+         where tm.tenant_id=_tenant_id and tm.user_id=(p.target_snapshot->'patch'->>'assigned_coach_user_id')::uuid
+           and tm.status='active' and tm.role in ('owner','admin','coach') for update;
+        if not found then raise exception 'CRM_ASSIGNEE_FORBIDDEN' using errcode='42501'; end if;
+      end if;
       if p.target_snapshot->'patch' ? 'tags' and not public.crm_tags_are_valid(p.target_snapshot->'patch'->'tags') then
         raise exception 'CRM_TAGS_INVALID' using errcode='22023';
       end if;

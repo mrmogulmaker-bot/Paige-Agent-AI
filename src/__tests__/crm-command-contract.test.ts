@@ -110,6 +110,13 @@ describe("canonical CRM contact/company command", () => {
     expect(sql).toContain("create or replace function public.auto_stub_business_from_contact()");
     expect(sql).toContain("old.primary_business_id is not null and new.primary_business_id is null");
     expect(sql).toContain("CRM_TASK_METADATA_INVALID");
+    expect(sql).toContain("app.suppress_task_assignment_notification");
+    expect(sql).toContain("coalesce(auth.jwt()->>'role','')='service_role' and auth.uid() is null");
+    expect(sql).toContain("'notification_sent',false");
+    expect(sql).toContain("'external_effect',false");
+    expect(sql).toContain("create or replace function public.crm_deal_dependency_snapshot");
+    expect(sql).toContain("now_snap is distinct from p.target_snapshot->'dependency_set'");
+    expect(sql).toMatch(/tm\.status='active' and tm\.role in \('owner','admin','coach'\) for update/i);
     expect(sql).toContain("v_contact.merged_into_contact_id is not null");
     expect(sql).toContain("CRM_MERGE_IDENTITY_RESOLUTION_REQUIRED");
     expect(sql).toContain("if not v_is_admin then raise exception 'CRM_FORBIDDEN'");

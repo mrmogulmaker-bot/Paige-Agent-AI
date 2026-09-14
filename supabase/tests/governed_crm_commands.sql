@@ -1,6 +1,6 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(71);
+SELECT plan(81);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
@@ -60,6 +60,13 @@ SELECT throws_ok($$INSERT INTO public.paige_invoices(tenant_id,contact_id,deal_i
 GRANT SELECT,UPDATE ON public.clients,public.paige_workspace_events TO service_role;
 GRANT SELECT ON public.businesses TO service_role;
 
+-- Test-local no-network spy: any unsuppressed task assignment trigger records here instead of
+-- invoking an Edge Function. The outer transaction rollback restores the production function.
+CREATE TEMP TABLE task_notification_spy(payload jsonb);
+CREATE OR REPLACE FUNCTION public.fire_team_event(payload jsonb)
+RETURNS void LANGUAGE plpgsql SET search_path='' AS $$
+BEGIN INSERT INTO pg_temp.task_notification_spy VALUES (payload); END $$;
+
 SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 SELECT is(
@@ -98,6 +105,17 @@ CREATE TEMP TABLE task_metadata_fixture AS SELECT public.execute_crm_command(
  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
  '{"approval_channel":"operator_card","action":"task.create","patch":{"title":"Metadata Fixture"}}','task-metadata-create-1') result;
 SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','task.update','task_id',(SELECT result->'readback'->>'id' FROM task_metadata_fixture),'expected_updated_at',(SELECT result->'readback'->>'updated_at' FROM task_metadata_fixture),'patch',jsonb_build_object('metadata','urgent'))::text,'task-metadata-invalid-1'),'22023','CRM_TASK_METADATA_INVALID','task update refuses malformed metadata instead of recording a no-op success');
+CREATE TEMP TABLE linked_contact_task AS SELECT public.execute_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ '{"approval_channel":"operator_card","action":"task.create","patch":{"title":"Operator follow-up","contact_id":"c7100000-0000-4000-8000-00000000c103"}}','linked-contact-task-1') result;
+SELECT is((SELECT result->'readback'->>'assignee_user_id' FROM linked_contact_task),'c7100000-0000-4000-8000-000000000001','task create defaults to the requesting operator, never the contact portal identity');
+SELECT is((SELECT jsonb_build_object('external_effect',(result->'readback'->>'external_effect')::boolean,'notification_sent',(result->'readback'->>'notification_sent')::boolean) FROM linked_contact_task),'{"external_effect":false,"notification_sent":false}'::jsonb,'task readback truthfully reports no assignment notification');
+SELECT is((SELECT count(*)::integer FROM task_notification_spy),0,'canonical task creation invokes no outbound assignment notification');
+CREATE TEMP TABLE linked_contact_task_assignment AS SELECT public.execute_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','task.assign','task_id',(SELECT (result->'readback'->>'id')::uuid FROM linked_contact_task),'expected_updated_at',(SELECT (result->'readback'->>'updated_at')::timestamptz FROM linked_contact_task),'patch',jsonb_build_object('assignee_user_id','c7100000-0000-4000-8000-000000000002')),'linked-contact-task-assign-1') result;
+SELECT is((SELECT (result->'readback'->>'notification_sent')::boolean FROM linked_contact_task_assignment),false,'canonical task reassignment truthfully reports no outbound notification');
+SELECT is((SELECT count(*)::integer FROM task_notification_spy),0,'canonical task reassignment invokes no outbound assignment notification');
 CREATE TEMP TABLE archived_primary_company_create AS SELECT public.execute_crm_command(
  'c7200000-0000-4000-8000-000000002222','c7200000-0000-4000-8000-000000000001',
  '{"approval_channel":"operator_card","action":"company.create","contact_id":"c7200000-0000-4000-8000-00000000c201","patch":{"legal_name":"Active Secondary"}}','archived-primary-create-1') result;
@@ -146,6 +164,10 @@ CREATE TEMP TABLE coach_command_result AS SELECT public.execute_crm_command(
 SELECT is((SELECT public.read_crm_command_result(
   'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000002',command,'coach-recovery-1'
 )->>'replayed' FROM coach_command_input)::boolean,true,'coach can recover an exact result while current record assignment remains authorized');
+SELECT throws_ok($$SELECT public.execute_crm_command(
+  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000002',
+  '{"approval_channel":"operator_card","action":"task.create","patch":{"title":"Foreign deal task","deal_id":"c7100000-0000-4000-8000-00000000d101"}}','coach-foreign-deal-task-1'
+)$$,'42501','CRM_FORBIDDEN','coach cannot attach a task to an unrelated same-tenant deal');
 RESET ROLE;
 UPDATE public.clients SET assigned_coach_user_id=NULL WHERE id='c7100000-0000-4000-8000-00000000c105';
 SET LOCAL ROLE service_role;
@@ -194,6 +216,19 @@ CREATE TEMP TABLE bulk_intervening_update AS SELECT public.execute_crm_command(
    'patch',jsonb_build_object('current_notes','changed after preview')),'bulk-intervening-update-1') result;
 SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.bulk_update','preview_id',(SELECT result->>'preview_id' FROM bulk_preview))::text,'bulk-execute-1'),'40001','CRM_BULK_TARGET_VERSION_CONFLICT:1','bulk execution refuses a target changed after preview');
 SELECT isnt((SELECT lifecycle_stage FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c104'),'qualified','failed bulk execution changes no eligible target');
+CREATE TEMP TABLE bulk_assignee_preview AS SELECT public.preview_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ '{"approval_channel":"operator_card","action":"contact.bulk_update","target_ids":["c7100000-0000-4000-8000-00000000c104"],"patch":{"assigned_coach_user_id":"c7100000-0000-4000-8000-000000000002"}}','bulk-assignee-preview-1') result;
+RESET ROLE;
+UPDATE public.tenant_members SET status='suspended' WHERE tenant_id='c7100000-0000-4000-8000-000000001111' AND user_id='c7100000-0000-4000-8000-000000000002';
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.bulk_update','preview_id',(SELECT result->>'preview_id' FROM bulk_assignee_preview))::text,'bulk-assignee-execute-1'),'42501','CRM_ASSIGNEE_FORBIDDEN','bulk execution revalidates the assignee active role after preview');
+SELECT is((SELECT assigned_coach_user_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c104'),NULL::uuid,'refused stale-assignee bulk execution changes no contact');
+RESET ROLE;
+UPDATE public.tenant_members SET status='active' WHERE tenant_id='c7100000-0000-4000-8000-000000001111' AND user_id='c7100000-0000-4000-8000-000000000002';
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 
 CREATE TEMP TABLE expired_preview_first AS SELECT public.preview_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"approval_channel":"operator_card","action":"contact.hard_delete","contact_id":"c7100000-0000-4000-8000-00000000c102","expected_updated_at":"2026-09-13T00:00:00+00:00"}','expired-delete-preview-1') result;
 UPDATE public.crm_command_previews SET expires_at=now()+interval '90 seconds' WHERE id=(SELECT (result->>'preview_id')::uuid FROM expired_preview_first);
@@ -202,6 +237,23 @@ SELECT ok((SELECT result->>'preview_id' FROM expired_preview_first)=(SELECT resu
 UPDATE public.crm_command_previews SET expires_at=now()+interval '30 seconds' WHERE id=(SELECT (result->>'preview_id')::uuid FROM expired_preview_first);
 CREATE TEMP TABLE expired_preview_replacement AS SELECT public.preview_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"approval_channel":"operator_card","action":"contact.hard_delete","contact_id":"c7100000-0000-4000-8000-00000000c102","expected_updated_at":"2026-09-13T00:00:00+00:00"}','expired-delete-preview-1') result;
 SELECT ok((SELECT result->>'preview_id' FROM expired_preview_first)<>(SELECT result->>'preview_id' FROM expired_preview_replacement) AND NOT (SELECT (result->>'replayed')::boolean FROM expired_preview_replacement),'a nearly expired destructive preview is revalidated and replaced before issuing an approval that could outlive it');
+RESET ROLE;
+INSERT INTO public.tasks(id,tenant_id,user_id,title,deal_id) VALUES
+ ('c7100000-0000-4000-8000-00000000e101','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Delete dependency A','c7100000-0000-4000-8000-00000000d101'),
+ ('c7100000-0000-4000-8000-00000000e102','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Delete dependency B','c7100000-0000-4000-8000-00000000d101');
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+CREATE TEMP TABLE deal_delete_identity_preview AS SELECT public.preview_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ '{"approval_channel":"operator_card","action":"deal.delete","deal_id":"c7100000-0000-4000-8000-00000000d101","expected_version":1}','deal-delete-identity-preview-1') result;
+RESET ROLE;
+DELETE FROM public.tasks WHERE id='c7100000-0000-4000-8000-00000000e101';
+INSERT INTO public.tasks(id,tenant_id,user_id,title,deal_id) VALUES
+ ('c7100000-0000-4000-8000-00000000e103','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Replacement dependency','c7100000-0000-4000-8000-00000000d101');
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','deal.delete','preview_id',(SELECT result->>'preview_id' FROM deal_delete_identity_preview))::text,'deal-delete-identity-execute-1'),'40001','CRM_DEPENDENCY_CONFLICT','deal delete refuses a same-count dependency identity swap after preview');
+SELECT is((SELECT count(*)::integer FROM public.deals WHERE id='c7100000-0000-4000-8000-00000000d101'),1,'refused identity-changed deal delete preserves the deal');
 CREATE TEMP TABLE delete_preview AS SELECT public.preview_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"approval_channel":"operator_card","action":"contact.hard_delete","contact_id":"c7100000-0000-4000-8000-00000000c102","expected_updated_at":"2026-09-13T00:00:00+00:00"}','delete-preview-1') result;
 SELECT is((SELECT (result->>'eligible')::boolean FROM delete_preview),true,'hard-delete preview proves the synthetic contact is unlinked and dependency-free');
 CREATE TEMP TABLE delete_result AS SELECT public.execute_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.hard_delete','preview_id',(SELECT result->>'preview_id' FROM delete_preview)),'delete-execute-1') result;
