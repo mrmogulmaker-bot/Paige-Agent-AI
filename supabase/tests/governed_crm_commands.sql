@@ -48,7 +48,6 @@ INSERT INTO public.clients(id,tenant_id,account_number,created_by,first_name,las
 UPDATE public.clients SET linked_user_id='c7100000-0000-4000-8000-000000000002' WHERE id='c7100000-0000-4000-8000-00000000c103';
 UPDATE public.clients SET linked_user_id='c7100000-0000-4000-8000-000000000001' WHERE id='c7100000-0000-4000-8000-00000000c113';
 UPDATE public.clients SET linked_user_id='c7100000-0000-4000-8000-000000000003' WHERE id='c7100000-0000-4000-8000-00000000c115';
-UPDATE public.clients SET entity_name='Preview Bound LLC' WHERE id='c7100000-0000-4000-8000-00000000c114';
 UPDATE public.clients SET linked_user_id='c7200000-0000-4000-8000-000000000001' WHERE id='c7200000-0000-4000-8000-00000000c201';
 INSERT INTO public.businesses(id,tenant_id,owner_user_id,legal_name,is_active,is_primary,updated_at) VALUES
  ('c7100000-0000-4000-8000-00000000b101','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Archived Fixture',false,false,'2026-09-13 00:00:00+00'),
@@ -378,6 +377,9 @@ CREATE TEMP TABLE merge_keep_survivor_result AS SELECT public.execute_crm_comman
  'merge-keep-survivor-identity-1') result;
 SELECT is((SELECT result->>'outcome' FROM merge_keep_survivor_result),'succeeded','merge honors an explicit survivor portal-identity resolution');
 SELECT is((SELECT linked_user_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c112'),NULL::uuid,'explicit survivor resolution preserves a null survivor portal identity');
+SELECT pg_catalog.set_config('app.suppress_contact_auto_stub','on',true);
+UPDATE public.clients SET entity_name='Preview Bound LLC' WHERE id='c7100000-0000-4000-8000-00000000c114';
+SELECT pg_catalog.set_config('app.suppress_contact_auto_stub','off',true);
 CREATE TEMP TABLE merge_auto_stub_business_count AS SELECT count(*)::integer n FROM public.businesses WHERE tenant_id='c7100000-0000-4000-8000-000000001111';
 CREATE TEMP TABLE merge_no_auto_stub_preview AS SELECT public.preview_crm_command(
  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
