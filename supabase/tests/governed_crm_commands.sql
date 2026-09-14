@@ -1,6 +1,6 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(114);
+SELECT plan(115);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
@@ -400,7 +400,7 @@ CREATE TEMP TABLE post_merge_auto_stub_result AS SELECT public.execute_crm_comma
 SELECT is((SELECT count(*)::integer FROM public.businesses WHERE tenant_id='c7100000-0000-4000-8000-000000001111'),(SELECT n+1 FROM merge_auto_stub_business_count),'merge suppression does not leak into the next ordinary contact enrichment');
 CREATE TEMP TABLE merge_email_transfer_preview AS SELECT public.preview_crm_command(
  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
- jsonb_build_object('approval_channel','operator_card','action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c116','loser_contact_id','c7100000-0000-4000-8000-00000000c117','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c116'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c117'),'resolutions',jsonb_build_object('email','loser')),
+ jsonb_build_object('approval_channel','operator_card','action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c116','loser_contact_id','c7100000-0000-4000-8000-00000000c117','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c116'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c117')),
  'merge-email-transfer-1:preview') result;
 SELECT is((SELECT (result->'transfer_effects'->>'loser_email_cleared')::boolean FROM merge_email_transfer_preview),true,'merge preview discloses that the transferred loser email will be cleared');
 CREATE TEMP TABLE merge_email_transfer_result AS SELECT public.execute_crm_command(
@@ -409,6 +409,7 @@ CREATE TEMP TABLE merge_email_transfer_result AS SELECT public.execute_crm_comma
  'merge-email-transfer-1') result;
 SELECT is((SELECT email FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c116'),'merge-transfer@tests.invalid','atomic merge transfers the selected loser email to the survivor');
 SELECT is((SELECT email FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c117'),NULL::text,'atomic merge releases the losing email before the survivor update');
+SELECT is((SELECT (result->'readback'->>'loser_email_cleared')::boolean FROM merge_email_transfer_result),true,'default email transfer is preserved in durable merge readback');
 CREATE TEMP TABLE merge_coach_preview AS SELECT public.preview_crm_command(
  'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
  jsonb_build_object('approval_channel','operator_card','action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c110','loser_contact_id','c7100000-0000-4000-8000-00000000c111','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c110'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c111')),
