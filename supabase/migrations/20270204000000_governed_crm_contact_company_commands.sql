@@ -1331,7 +1331,7 @@ declare
   a text:=nullif(pg_catalog.btrim(_command->>'action'),''); p public.crm_command_previews%rowtype;
   c public.clients%rowtype; loser public.clients%rowtype; t public.tasks%rowtype; d public.deals%rowtype;
   deps jsonb; now_snap jsonb; v_result jsonb; readback jsonb; run_id uuid; changed int; target_count int;
-  resolutions jsonb; owner_id uuid; field text; choice text; v_capability text;
+  resolutions jsonb; owner_id uuid; field text; choice text; v_capability text; v_prior_auto_stub text;
   v_hash text; v_cached public.crm_command_results%rowtype; effective_command jsonb;
   v_active_tenant uuid; v_actor_role text; v_autonomy_mode text; v_approval_channel text:=nullif(_command->>'approval_channel','');
 begin
@@ -1460,6 +1460,7 @@ begin
       -- variable retains the exact preview-bound value used below; the whole transaction rolls back on failure.
       update public.clients set linked_user_id=null where id=loser.id;
       perform pg_catalog.set_config('app.suppress_contact_assignment_notification','on',true);
+      v_prior_auto_stub:=pg_catalog.current_setting('app.suppress_contact_auto_stub',true);
       perform pg_catalog.set_config('app.suppress_contact_auto_stub','on',true);
       update public.clients set
         email=case when resolutions->>'email'='loser' or (not (resolutions ? 'email') and c.email is null) then loser.email else c.email end,
@@ -1472,6 +1473,7 @@ begin
         lead_owner_user_id=case when resolutions->>'lead_owner_user_id'='loser' or (not (resolutions ? 'lead_owner_user_id') and c.lead_owner_user_id is null) then loser.lead_owner_user_id else c.lead_owner_user_id end,
         tags=coalesce((select pg_catalog.array_agg(distinct x order by x) from pg_catalog.unnest(coalesce(c.tags,array[]::text[])||coalesce(loser.tags,array[]::text[])) x),array[]::text[]),
         updated_at=pg_catalog.clock_timestamp() where id=c.id returning * into c;
+      perform pg_catalog.set_config('app.suppress_contact_auto_stub',coalesce(v_prior_auto_stub,''),true);
       update public.deals set contact_client_id=c.id,updated_at=pg_catalog.clock_timestamp() where contact_client_id=loser.id;
       update public.client_notes set contact_id=c.id,updated_at=pg_catalog.clock_timestamp() where contact_id=loser.id;
       perform pg_catalog.set_config('app.crm_merge_lineage_write','on',true);
