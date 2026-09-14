@@ -328,7 +328,8 @@ check("outcome_unknown → capability_outcome_unknown", railMod.railOutcomeFor("
 console.log("\n— effect floor name normalization —");
 {
   const re = effectMod.resolveEffectApproval;
-  for (const name of ["Send_message", "send-message", "tools.send", "DELETE_records", "create.thing", "run:job"]) {
+  for (const name of ["Send_message", "send-message", "tools.send", "DELETE_records", "create.thing", "run:job",
+                      "sendMessage", "deleteRecords", "runJob", "createInvoice"]) {
     const d = re(name, ["read"]);
     check(`a mutating verb as '${name}' labeled ['read'] still requires approval (normalized floor)`,
       d.requiresApproval === true && d.basis === "server_name_floor", JSON.stringify(d));

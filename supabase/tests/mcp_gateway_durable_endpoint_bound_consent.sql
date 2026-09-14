@@ -41,9 +41,11 @@ INSERT INTO public.mcp_connections (connection_id, tenant_id, provider_key, labe
      public.platform_encrypt('https://mcp-b.example/rpc'));
 
 -- ── (W) The writer records the endpoint the consent is bound to ───────────────
+-- The reviewed endpoint hash is REQUIRED and must match the connection's current endpoint (#1).
 SELECT public.set_mcp_connection_approval(
   'e9c00000-0000-0000-0000-0000000000d2', 'send_message', repeat('a',64),
-  'e9c00000-0000-0000-0000-0000000000d1');
+  'e9c00000-0000-0000-0000-0000000000d1', NULL, NULL,
+  public._mcp_endpoint_hash('https://mcp-a.example/rpc'));
 DO $$
 DECLARE _bound text; _expected text;
 BEGIN
@@ -163,7 +165,8 @@ BEGIN
 END $$;
 SELECT public.set_mcp_connection_approval(
   'e9c00000-0000-0000-0000-0000000000e2','send_message', repeat('b',64),
-  'e9c00000-0000-0000-0000-0000000000e1');   -- tenant B resolving its own connection
+  'e9c00000-0000-0000-0000-0000000000e1', NULL, NULL,
+  public._mcp_endpoint_hash('https://mcp-b.example/rpc'));   -- tenant B resolving its own connection
 DO $$
 DECLARE n int;
 BEGIN
@@ -178,9 +181,11 @@ DO $$
 DECLARE _refused boolean := false;
 BEGIN
   BEGIN
+    -- A dummy (well-formed) reviewed hash so the call reaches the no-endpoint check rather than the
+    -- required-hash check; a NULL-endpoint connection has nothing to bind to and is refused.
     PERFORM public.set_mcp_connection_approval(
       'e9c00000-0000-0000-0000-0000000000d3','send_message', repeat('a',64),
-      'e9c00000-0000-0000-0000-0000000000d1');
+      'e9c00000-0000-0000-0000-0000000000d1', NULL, NULL, repeat('0',64));
   EXCEPTION WHEN OTHERS THEN _refused := true;
   END;
   IF NOT _refused THEN RAISE EXCEPTION '(8) approving a tool on an endpoint-less connection was NOT refused'; END IF;

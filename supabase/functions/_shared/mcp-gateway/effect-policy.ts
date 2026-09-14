@@ -37,10 +37,16 @@ import { MUTATION_VERB } from "../action-risk.ts";
 /** The mutating members of the gateway's closed effect vocabulary (`CapabilityEffect`). */
 const MUTATING_EFFECTS: ReadonlySet<string> = new Set(["create", "update", "send", "delete"]);
 
-/** Fold a provider identifier onto the mutation-verb vocabulary's boundaries (lowercase; `.`/`:`/`-`
- *  → `_`) so the floor test cannot be evaded by case or separator choice. */
+/** Fold a provider identifier onto the mutation-verb vocabulary's boundaries so the floor test
+ *  cannot be evaded by case, camelCase, or separator choice. camelCase boundaries are inserted
+ *  BEFORE lowercasing (Codex P1) — otherwise `sendMessage` → `sendmessage` and the underscore-only
+ *  regex misses the verb — then `.`/`:`/`-` are folded to `_` and the whole thing is lowercased. */
 function normalizeForFloor(toolName: string): string {
-  return toolName.toLowerCase().replace(/[.:-]/g, "_");
+  return toolName
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2") // sendMessage → send_Message
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2") // HTTPSend → HTTP_Send
+    .toLowerCase()
+    .replace(/[.:-]/g, "_");
 }
 
 /** Why a tool needs approval — for the refusal code and the receipt. `null` = a pure read. */

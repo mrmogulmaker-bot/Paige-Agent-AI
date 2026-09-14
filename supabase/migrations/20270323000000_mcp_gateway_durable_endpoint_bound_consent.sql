@@ -91,10 +91,13 @@ $$;
 --    REVIEWED-ENDPOINT GUARD (Codex P1, 2026-09-14): `_expected_endpoint_hash` is the endpoint the
 --    OWNER actually reviewed when they approved. Because the FOR UPDATE below reads the connection's
 --    endpoint AS IT IS NOW, a concurrent re-point that wins the lock would otherwise silently rebind
---    the owner's consent to the NEW endpoint. When the caller passes the reviewed hash, this refuses
---    the write if it no longer matches — consent is never rebound to an endpoint the owner did not
---    see. It is OPTIONAL only so the pre-existing signature stays call-compatible; the Phase C
---    approval UI MUST pass it (recorded as a Phase C entry-gate obligation in #1262).
+--    the owner's consent to the NEW endpoint. This RPC therefore REQUIRES the reviewed hash (an
+--    optional guard is not a guard — Codex): the parameter carries a DEFAULT only because Postgres
+--    forbids a non-defaulted parameter after defaulted ones, but the body REFUSES a NULL, so no
+--    caller can approve without asserting the endpoint it showed the owner, and any drift between
+--    review and commit is refused (MCP_ENDPOINT_CHANGED) rather than rebound. §37: zero producers,
+--    so requiring it breaks no existing caller; the caller resolves the hash from a service-role
+--    endpoint read (the Phase C approval UI / headless agent), the correct consent protocol.
 -- ─────────────────────────────────────────────────────────────────────────────────
 DROP FUNCTION IF EXISTS public.set_mcp_connection_approval(uuid, text, text, uuid);
 CREATE OR REPLACE FUNCTION public.set_mcp_connection_approval(
@@ -136,7 +139,11 @@ BEGIN
   IF _args_shape_hash IS NOT NULL AND _args_shape_hash !~ '^[0-9a-f]{64}$' THEN
     RAISE EXCEPTION 'MCP_BAD_ARGS_SHAPE' USING ERRCODE = '22023';
   END IF;
-  IF _expected_endpoint_hash IS NOT NULL AND _expected_endpoint_hash !~ '^[0-9a-f]{64}$' THEN
+  -- The reviewed endpoint hash is REQUIRED (see header): a NULL would make the guard below skippable.
+  IF _expected_endpoint_hash IS NULL THEN
+    RAISE EXCEPTION 'MCP_EXPECTED_ENDPOINT_REQUIRED: supply the reviewed endpoint hash so consent cannot be bound to an unreviewed endpoint' USING ERRCODE = '22023';
+  END IF;
+  IF _expected_endpoint_hash !~ '^[0-9a-f]{64}$' THEN
     RAISE EXCEPTION 'MCP_BAD_EXPECTED_ENDPOINT' USING ERRCODE = '22023';
   END IF;
   -- A connection with no endpoint has nothing to bind consent to, and nothing to run on. Refuse
@@ -147,11 +154,11 @@ BEGIN
 
   _endpoint_hash := public._mcp_endpoint_hash(public.platform_decrypt(_conn.server_url_ct));
 
-  -- REVIEWED-ENDPOINT GUARD: never rebind consent to an endpoint the owner did not review. If the
-  -- caller asserts the endpoint it showed the owner and the connection has since changed (a re-point
-  -- that won the row lock, or any drift between review and submit), refuse rather than bind to the
-  -- winner (Codex P1).
-  IF _expected_endpoint_hash IS NOT NULL AND _expected_endpoint_hash IS DISTINCT FROM _endpoint_hash THEN
+  -- REVIEWED-ENDPOINT GUARD: never bind consent to an endpoint the owner did not review. The reviewed
+  -- hash is required (checked above), so this always runs: if the connection's current endpoint no
+  -- longer matches what the owner reviewed (a re-point that won the row lock, or any drift between
+  -- review and submit), refuse rather than bind to the winner (Codex P1).
+  IF _expected_endpoint_hash IS DISTINCT FROM _endpoint_hash THEN
     RAISE EXCEPTION 'MCP_ENDPOINT_CHANGED: connection endpoint changed since the approval was reviewed' USING ERRCODE = '42501';
   END IF;
 

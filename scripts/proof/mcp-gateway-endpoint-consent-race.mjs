@@ -59,10 +59,17 @@ try {
       VALUES('${conn}','${tenant}','generic-remote','race-target', public.platform_encrypt('${E1}'));
   `);
 
-  // T1: approve (takes FOR UPDATE on the connection, then holds the txn open). T2: change the
-  // endpoint (fires the revoke trigger). Forced to overlap; they serialize on the row lock.
+  // T1: approve, asserting the endpoint the owner reviewed (E1). It takes FOR UPDATE on the
+  // connection, then holds the txn open. T2: change the endpoint to E2 (fires the revoke trigger).
+  // Forced to overlap; they serialize on the row lock. With the reviewed-endpoint guard now
+  // required, an endpoint-change-first ordering makes the approve REFUSE (current E2 ≠ reviewed E1)
+  // rather than rebind — so a racing change yields NO surviving approval in either ordering
+  // (writer-first: bound to E1, then the trigger deletes it; change-first: refused).
   const approveSql = `BEGIN;
-    SELECT public.set_mcp_connection_approval('${conn}','send_message','${pin}','${tenant}');
+    DO $$ BEGIN
+      PERFORM public.set_mcp_connection_approval('${conn}','send_message','${pin}','${tenant}', NULL, NULL, public._mcp_endpoint_hash('${E1}'));
+    EXCEPTION WHEN OTHERS THEN NULL;  -- change-first ordering refuses (MCP_ENDPOINT_CHANGED); that is the correct outcome, not a proof failure
+    END $$;
     SELECT pg_sleep(1); COMMIT;`;
   const repointSql = `BEGIN;
     UPDATE public.mcp_connections SET server_url_ct = public.platform_encrypt('${E2}') WHERE connection_id='${conn}';
