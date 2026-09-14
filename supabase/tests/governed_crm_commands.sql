@@ -1,6 +1,6 @@
 -- Canonical governed CRM command: synthetic tenant fixtures only; always rolled back.
 BEGIN;
-SELECT plan(130);
+SELECT plan(143);
 
 SELECT ok(NOT has_function_privilege('anon','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'anon cannot execute the CRM domain writer');
 SELECT ok(NOT has_function_privilege('authenticated','public.execute_crm_command(uuid,uuid,jsonb,text)','EXECUTE'),'authenticated callers cannot bypass the CRM action door');
@@ -57,6 +57,27 @@ UPDATE public.clients SET linked_user_id='c7100000-0000-4000-8000-000000000002' 
 UPDATE public.clients SET linked_user_id='c7100000-0000-4000-8000-000000000001' WHERE id='c7100000-0000-4000-8000-00000000c113';
 UPDATE public.clients SET linked_user_id='c7100000-0000-4000-8000-000000000003' WHERE id='c7100000-0000-4000-8000-00000000c115';
 UPDATE public.clients SET linked_user_id='c7200000-0000-4000-8000-000000000001' WHERE id='c7200000-0000-4000-8000-00000000c201';
+-- Lead-owner revalidation fixtures (Codex -qwJ / task_5e2f8f2f): a merge must never assign a
+-- TRANSFERRED lead_owner_user_id that is not an active member of the contact's tenant.
+-- ...004 is an ACTIVE plain member (role 'member', NOT a coach — proves the check is role-agnostic);
+-- ...005 is a REMOVED/inactive member (status 'suspended'); c72..001 is a cross-tenant user (Tenant B only).
+INSERT INTO auth.users(id,aud,role,email) VALUES
+ ('c7100000-0000-4000-8000-000000000004','authenticated','authenticated','crm-leadowner-active@tests.invalid'),
+ ('c7100000-0000-4000-8000-000000000005','authenticated','authenticated','crm-leadowner-removed@tests.invalid');
+INSERT INTO public.tenant_members(tenant_id,user_id,role,status,is_owner,joined_at) VALUES
+ ('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000004','member','active',false,now()),
+ ('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000005','member','suspended',false,now());
+INSERT INTO public.clients(id,tenant_id,account_number,created_by,first_name,last_name,email,lead_owner_user_id,updated_at) VALUES
+ ('c7100000-0000-4000-8000-00000000c124','c7100000-0000-4000-8000-000000001111','CLT-CGA-24','c7100000-0000-4000-8000-000000000001','Lead Owner Valid','Survivor','lo-valid-surv@tests.invalid',NULL,'2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c125','c7100000-0000-4000-8000-000000001111','CLT-CGA-25','c7100000-0000-4000-8000-000000000001','Lead Owner Valid','Loser','lo-valid-lose@tests.invalid','c7100000-0000-4000-8000-000000000004','2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c126','c7100000-0000-4000-8000-000000001111','CLT-CGA-26','c7100000-0000-4000-8000-000000000001','Lead Owner Removed','Survivor','lo-removed-surv@tests.invalid',NULL,'2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c127','c7100000-0000-4000-8000-000000001111','CLT-CGA-27','c7100000-0000-4000-8000-000000000001','Lead Owner Removed','Loser','lo-removed-lose@tests.invalid','c7100000-0000-4000-8000-000000000005','2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c128','c7100000-0000-4000-8000-000000001111','CLT-CGA-28','c7100000-0000-4000-8000-000000000001','Lead Owner Cross','Survivor','lo-cross-surv@tests.invalid',NULL,'2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c129','c7100000-0000-4000-8000-000000001111','CLT-CGA-29','c7100000-0000-4000-8000-000000000001','Lead Owner Cross','Loser','lo-cross-lose@tests.invalid','c7200000-0000-4000-8000-000000000001','2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c130','c7100000-0000-4000-8000-000000001111','CLT-CGA-30','c7100000-0000-4000-8000-000000000001','Lead Owner Null','Survivor','lo-null-surv@tests.invalid',NULL,'2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c131','c7100000-0000-4000-8000-000000001111','CLT-CGA-31','c7100000-0000-4000-8000-000000000001','Lead Owner Null','Loser','lo-null-lose@tests.invalid',NULL,'2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c132','c7100000-0000-4000-8000-000000001111','CLT-CGA-32','c7100000-0000-4000-8000-000000000001','Lead Owner Keep','Survivor','lo-keep-surv@tests.invalid','c7100000-0000-4000-8000-000000000004','2026-09-13 00:00:00+00'),
+ ('c7100000-0000-4000-8000-00000000c133','c7100000-0000-4000-8000-000000001111','CLT-CGA-33','c7100000-0000-4000-8000-000000000001','Lead Owner Keep','Loser','lo-keep-lose@tests.invalid','c7100000-0000-4000-8000-000000000005','2026-09-13 00:00:00+00');
 INSERT INTO public.businesses(id,tenant_id,owner_user_id,legal_name,is_active,is_primary,updated_at) VALUES
  ('c7100000-0000-4000-8000-00000000b101','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Archived Fixture',false,false,'2026-09-13 00:00:00+00'),
  ('c7100000-0000-4000-8000-00000000b102','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','Coach Scope Fixture',true,false,'2026-09-13 00:00:00+00'),
@@ -492,6 +513,61 @@ SELECT is((SELECT (result->>'eligible')::boolean FROM merged_survivor_delete_pre
 SELECT is((SELECT (result->'dependency_counts'->'by_reference'->>'clients.merged_into_contact_id')::integer FROM merged_survivor_delete_preview),1,'hard-delete preview reports the exact incoming merge-lineage count');
 SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.restore','contact_id','c7100000-0000-4000-8000-00000000c103','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c103'))::text,'restore-merged-1'),'42501','CRM_CONTACT_MERGED','merged-away contacts cannot be restored without an atomic unmerge');
 SELECT throws_ok($$SELECT public.execute_crm_command('c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001','{"action":"contact.create","patch":{"first_name":"Denied","last_name":"NoAuthority"}}','missing-authority-1')$$,'42501','CRM_AUTHORITY_REQUIRED','executor refuses commands without server-issued authority');
+
+-- === Lead-owner revalidation on merge (Codex -qwJ / task_5e2f8f2f) ===
+-- A merge must never assign a TRANSFERRED lead_owner_user_id that is not an active member of the
+-- contact's tenant, because public.can_access_contact gates financial RLS on it. Execution-time
+-- revalidation under lock, mirroring the coach revalidation; a refusal is atomic (no partial write).
+-- Case 1: a valid same-tenant ACTIVE lead owner (a plain member, not a coach) transfers successfully.
+CREATE TEMP TABLE lo_valid_preview AS SELECT public.preview_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c124','loser_contact_id','c7100000-0000-4000-8000-00000000c125','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c124'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c125')),
+ 'lo-valid-1:preview') result;
+CREATE TEMP TABLE lo_valid_result AS SELECT public.execute_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.merge','preview_id',(SELECT result->>'preview_id' FROM lo_valid_preview)),
+ 'lo-valid-1') result;
+SELECT is((SELECT lead_owner_user_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c124'),'c7100000-0000-4000-8000-000000000004'::uuid,'merge transfers a valid same-tenant active lead owner to the survivor');
+SELECT is((SELECT status FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c125'),'archived','valid lead-owner transfer completes the merge and archives the loser');
+SELECT ok(public.can_access_contact('c7100000-0000-4000-8000-000000000004','c7100000-0000-4000-8000-00000000c124'),'the transferred active lead owner can access the survivor (legitimate, revalidated)');
+-- Case 2: an inactive/removed same-tenant user, explicitly selected, is refused before any write.
+CREATE TEMP TABLE lo_removed_preview AS SELECT public.preview_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c126','loser_contact_id','c7100000-0000-4000-8000-00000000c127','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c126'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c127'),'resolutions',jsonb_build_object('lead_owner_user_id','loser')),
+ 'lo-removed-1:preview') result;
+SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.merge','preview_id',(SELECT result->>'preview_id' FROM lo_removed_preview))::text,'lo-removed-1'),'42501','CRM_LEAD_OWNER_FORBIDDEN','merge refuses a transferred lead owner who is a removed/inactive tenant member');
+SELECT is((SELECT lead_owner_user_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c126'),NULL::uuid,'refused lead-owner merge leaves the survivor lead owner unchanged (atomic)');
+SELECT is((SELECT status FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c127'),'active','refused lead-owner merge leaves the loser active and unmerged (atomic)');
+SELECT ok(NOT public.can_access_contact('c7100000-0000-4000-8000-000000000005','c7100000-0000-4000-8000-00000000c126'),'the removed member gains no financial-RLS access to the survivor through the refused merge');
+-- Case 3: a cross-tenant user (member of another tenant only) is refused on the default transfer.
+CREATE TEMP TABLE lo_cross_preview AS SELECT public.preview_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c128','loser_contact_id','c7100000-0000-4000-8000-00000000c129','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c128'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c129')),
+ 'lo-cross-1:preview') result;
+SELECT throws_ok(format('SELECT public.execute_crm_command(%L,%L,%L::jsonb,%L)','c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',jsonb_build_object('approval_channel','operator_card','action','contact.merge','preview_id',(SELECT result->>'preview_id' FROM lo_cross_preview))::text,'lo-cross-1'),'42501','CRM_LEAD_OWNER_FORBIDDEN','merge refuses a transferred lead owner who belongs only to another tenant');
+SELECT is((SELECT status FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c129'),'active','refused cross-tenant lead-owner merge leaves the loser active (atomic)');
+-- Case 4: null/no lead owner on either side remains correct (no spurious refusal).
+CREATE TEMP TABLE lo_null_preview AS SELECT public.preview_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c130','loser_contact_id','c7100000-0000-4000-8000-00000000c131','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c130'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c131')),
+ 'lo-null-1:preview') result;
+CREATE TEMP TABLE lo_null_result AS SELECT public.execute_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.merge','preview_id',(SELECT result->>'preview_id' FROM lo_null_preview)),
+ 'lo-null-1') result;
+SELECT is((SELECT status FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c131'),'archived','a merge with no lead owner on either side completes without a spurious refusal');
+SELECT is((SELECT lead_owner_user_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c130'),NULL::uuid,'a merge with no lead owner leaves the survivor lead owner null');
+-- Case 5: an explicit survivor choice cannot bypass — the stale loser owner is never applied or checked.
+CREATE TEMP TABLE lo_keep_preview AS SELECT public.preview_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.merge','contact_id','c7100000-0000-4000-8000-00000000c132','loser_contact_id','c7100000-0000-4000-8000-00000000c133','expected_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c132'),'expected_loser_updated_at',(SELECT updated_at FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c133'),'resolutions',jsonb_build_object('lead_owner_user_id','survivor')),
+ 'lo-keep-1:preview') result;
+CREATE TEMP TABLE lo_keep_result AS SELECT public.execute_crm_command(
+ 'c7100000-0000-4000-8000-000000001111','c7100000-0000-4000-8000-000000000001',
+ jsonb_build_object('approval_channel','operator_card','action','contact.merge','preview_id',(SELECT result->>'preview_id' FROM lo_keep_preview)),
+ 'lo-keep-1') result;
+SELECT is((SELECT lead_owner_user_id FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c132'),'c7100000-0000-4000-8000-000000000004'::uuid,'an explicit survivor lead-owner choice keeps the active survivor owner and never applies the stale loser owner');
+SELECT is((SELECT status FROM public.clients WHERE id='c7100000-0000-4000-8000-00000000c133'),'archived','explicit-survivor lead-owner merge still completes and archives the loser');
 
 RESET ROLE;
 UPDATE public.profiles SET active_tenant_id='c7200000-0000-4000-8000-000000002222' WHERE user_id='c7100000-0000-4000-8000-000000000001';
