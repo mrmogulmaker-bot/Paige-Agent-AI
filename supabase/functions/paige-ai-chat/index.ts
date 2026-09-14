@@ -1281,6 +1281,21 @@ JSON:`;
     // inside the inline POST. Best-effort: a storage hiccup never blocks the turn.
     let paigeChatGeneralDocPath: string | null = null;
     let extractionProposal: any = null;
+    // #1255 — the general-document structured-field extraction is a PROVIDER CALL, and it used
+    // to run right here, BEFORE the active account is resolved (`personaCtx`, far below) and
+    // before `revalidateTenantKnowledgeScope` exists. On a turn whose account switches after
+    // upload, that one call still egressed — the streamed reply was correctly withheld, but the
+    // extraction had already reached the provider (test:knowledge-scope 15.9: observed 1,
+    // expected 0). The fix DEFERS this call to immediately AFTER the pre-egress active-account
+    // revalidation that already guards the chat dispatch: that guard early-returns 409 on a
+    // switched/stale/unresolved scope, so a switched turn returns before the extraction can run
+    // (0 provider calls, fail closed). It is deliberately gated by POSITION rather than by a
+    // second `revalidateTenantKnowledgeScope()` call here — adding a resolver call would advance
+    // the persona sequence and make the pre-egress guard, not the close-boundary guard, catch a
+    // LATE switch, breaking the 15.10a/15.11 timing. Order is preserved: extraction stays the
+    // first provider call, the streamed chat reply the second. This flag only carries the intent
+    // from the general-document branch to that gate.
+    let deferGeneralDocExtraction = false;
     let isCreditReportPdf = false;
     if (attachedDocument) {
       const docKind = attachedDocument.kind || (attachedDocument.mimeType === "application/pdf" ? "pdf" : attachedDocument.mimeType?.startsWith("image/") ? "image" : "docx");
@@ -1354,22 +1369,12 @@ JSON:`;
           console.error("[Paige] Error storing PDF:", storeErr);
         }
       } else {
-        // General document path — run a lightweight structured-field extraction
-        // and emit an extraction_proposal SSE event after the chat stream.
-        try {
-          extractionProposal = await runGeneralDocumentExtraction(
-            attachedDocument,
-          );
-        } catch (e) {
-          // §13/§32: extraction is an enhancement — a failure must never break the
-          // turn — but it must never disappear either. The helper itself returns an
-          // honest null for every expected absence (no readable content, a failed
-          // model call, nothing found), so reaching this catch means something
-          // genuinely unexpected threw. Log it at error level, named, so it shows up
-          // in the function logs instead of blending into routine warnings.
-          extractionProposal = null;
-          console.error("[Paige] general extraction threw unexpectedly:", e);
-        }
+        // General document path — request the lightweight structured-field extraction, but
+        // DEFER the actual provider call to the guarded pre-dispatch region (#1255). The
+        // extraction_proposal SSE event is still emitted after the chat stream from the value
+        // computed there. Running it here would egress before the active account is validated;
+        // a switched-document turn would still make one provider call (15.9).
+        deferGeneralDocExtraction = true;
 
         // #322 — durably store a general PDF in the SAME private bucket the credit path uses
         // (§9 reuse — no new bucket; the bucket + RLS are (re)created in migration
@@ -8043,6 +8048,23 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         JSON.stringify({ error: "Active workspace changed. Start this request again in the current workspace.", code: "ACTIVE_ACCOUNT_CHANGED" }),
         { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
+    }
+
+    // #1255 — DEFERRED general-document extraction, gated by POSITION. This line is reached only
+    // after the pre-egress `revalidateTenantKnowledgeScope()` above returned true, so a switched,
+    // stale, or unresolved scope has already 409'd and returned — the extraction never egresses on
+    // a bad scope (test:knowledge-scope 15.9). On a valid turn it stays the FIRST provider call,
+    // before the streamed chat dispatch below, so provider-call order is unchanged. §13/§32:
+    // extraction is a best-effort enhancement — the helper returns an honest null for every
+    // expected absence, and an unexpected throw is logged and swallowed so it can never break the
+    // turn.
+    if (deferGeneralDocExtraction) {
+      try {
+        extractionProposal = await runGeneralDocumentExtraction(attachedDocument);
+      } catch (e) {
+        extractionProposal = null;
+        console.error("[Paige] general extraction threw unexpectedly:", e);
+      }
     }
 
     const response = await gatewayCompat("anthropic", {

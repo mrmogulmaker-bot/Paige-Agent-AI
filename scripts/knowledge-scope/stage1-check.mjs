@@ -1018,6 +1018,16 @@ group("attached-document turns DO carry tenant Knowledge, and its guard actually
   );
   assert("15.4 telemetry is written for a scope that held", !!valid.telemetry, JSON.stringify(valid.telemetry?.row ?? null));
   assert("15.5 the existing document response path remains usable", valid.responseText.includes("CHILD-PRIVATE-MARKER"), valid.responseText);
+  // #1255 — the general-document extraction was DEFERRED past the pre-egress active-account guard
+  // so a switched turn (15.9) makes zero provider calls. This pins the other half of that change:
+  // on a valid, unswitched turn the deferral must still run the extraction exactly ONCE and leave
+  // the streamed reply intact — two provider calls, no more (a re-added eager call would make it
+  // three), no fewer (a dropped deferral would make it one and silently lose the extraction).
+  assert(
+    "15.5b a valid document turn still makes exactly two provider calls — the deferred extraction and the reply, neither dropped nor duplicated",
+    valid.providerCalls.length === 2,
+    `provider calls: ${valid.providerCalls.length}`,
+  );
 
   // THE LOAD-BEARING HALF. The account changes after retrieval. The document path must refuse
   // before its reply crosses the boundary, must write no telemetry, and must say so. If the
@@ -1051,6 +1061,27 @@ group("attached-document turns DO carry tenant Knowledge, and its guard actually
     "15.9 a switched document turn makes no provider call at all",
     switched.providerCalls.length === 0,
     `provider calls: ${switched.providerCalls.length}`,
+  );
+
+  // #1255 — the KB-MISS escape route, pinned to the exact path the fix depends on. 15.9 uses a KB
+  // HIT; the historical regression the comment above warns about is a document turn whose Knowledge
+  // lookup MISSED — which once had "nothing to compare against" and slipped the guard. A document
+  // turn is protected by `!!attachedDocument` regardless of whether the KB matched, so a switched
+  // KB-miss document turn must ALSO make zero provider calls. This nails the fix to that path: a
+  // future narrowing of the protected-turn set (dropping the unconditional attachedDocument source)
+  // fails HERE instead of silently reopening #1255 on the KB-miss path while 15.9 stays green.
+  const switchedKbMiss = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD, AGENCY],
+    memberships: [CHILD, AGENCY],
+    bodyExtras: { document },
+    provider: ["private-text", "private-text"],
+    rpcExtras: { match_tenant_knowledge: () => ({ data: [], error: null }) },
+  });
+  assert(
+    "15.9c a switched document turn whose Knowledge lookup MISSED still makes no provider call",
+    switchedKbMiss.providerCalls.length === 0,
+    `provider calls: ${switchedKbMiss.providerCalls.length}`,
   );
 
   // A switch that lands AFTER the pre-egress refusal has already passed. This exercises the
