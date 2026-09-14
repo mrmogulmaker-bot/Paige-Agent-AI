@@ -14,20 +14,34 @@
 // it, we do not fork it). A tool whose name reads as a mutation requires approval whatever the
 // provider's `_meta` claims.
 //
-// HONEST RESIDUAL (§13). The name floor catches a verb-named mutation (`send_*`, `delete_*`,
-// `create_*`, …) — which is the exact attack the finding cites — and the undeclared case fails
-// closed. It does NOT catch a mutating tool the provider gives a NON-verb name AND mislabels as
-// read (e.g. a `submit_order` declared `["read"]`): the server floor genuinely reads that name as
-// non-mutating, so the provider has not LOWERED a floor, it has stated the only classification the
-// name supports. Closing that residual needs a stronger server signal (an owner-set per-connection
-// "treat effects as mutating unless allowlisted" policy, or schema heuristics) and is future
-// hardening — recorded here rather than implied away. The invariant this module guarantees is the
-// finding's: `_meta.effects` can never turn a server-classified mutation into a no-approval read.
+// NAME NORMALIZATION (Codex P1, 2026-09-14). `MUTATION_VERB` is snake_case + lowercase and only
+// recognizes `_`/string boundaries, but the MCP client preserves the provider's identifier verbatim
+// and `mcp_connection_approvals.tool_name` accepts uppercase, `.`, `:` and `-`. So `Send_message`,
+// `send-message`, and `tools.send` are all reachable MUTATING names the raw regex would miss — a
+// provider could label one `["read"]` and slip the floor. We therefore lowercase the name and fold
+// `.`/`:`/`-` to `_` BEFORE the floor test, so a mislabeled mutation cannot escape on casing or a
+// separator the provider happened to choose.
+//
+// HONEST RESIDUAL (§13). After normalization the floor catches every verb-named mutation regardless
+// of case or separator, and the undeclared case fails closed. It still does NOT catch a mutating
+// tool the provider gives a GENUINELY non-verb name AND mislabels as read (e.g. `submit_order`
+// declared `["read"]`): the server floor reads that name as non-mutating, so the provider has not
+// LOWERED a floor, it has stated the only classification the name supports. Closing that residual
+// needs a stronger server signal (an owner-set per-connection "treat effects as mutating unless
+// allowlisted" policy, or schema heuristics) and is future hardening — recorded, not implied away.
+// The invariant this module guarantees is the finding's: `_meta.effects` can never turn a
+// server-classified mutation into a no-approval read.
 
 import { MUTATION_VERB } from "../action-risk.ts";
 
 /** The mutating members of the gateway's closed effect vocabulary (`CapabilityEffect`). */
 const MUTATING_EFFECTS: ReadonlySet<string> = new Set(["create", "update", "send", "delete"]);
+
+/** Fold a provider identifier onto the mutation-verb vocabulary's boundaries (lowercase; `.`/`:`/`-`
+ *  → `_`) so the floor test cannot be evaded by case or separator choice. */
+function normalizeForFloor(toolName: string): string {
+  return toolName.toLowerCase().replace(/[.:-]/g, "_");
+}
 
 /** Why a tool needs approval — for the refusal code and the receipt. `null` = a pure read. */
 export type ApprovalBasis =
@@ -51,7 +65,7 @@ export function resolveEffectApproval(
   toolName: string,
   providerEffects: readonly string[],
 ): EffectDecision {
-  if (MUTATION_VERB.test(toolName)) return { requiresApproval: true, basis: "server_name_floor" };
+  if (MUTATION_VERB.test(normalizeForFloor(toolName))) return { requiresApproval: true, basis: "server_name_floor" };
   if (providerEffects.some((e) => MUTATING_EFFECTS.has(e))) {
     return { requiresApproval: true, basis: "provider_declared_effect" };
   }

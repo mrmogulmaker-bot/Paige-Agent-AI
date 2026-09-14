@@ -84,18 +84,27 @@ $$;
 --    no frontend, sibling edge function, trigger, pg_cron, GitHub Action, external webhook, or
 --    n8n/Zapier/MCP caller. (The only NEW callers are this PR's own proofs — the durable-consent
 --    psql proof and the endpoint-consent race proof — which exercise the new signature on purpose.)
---    Adding the two trailing OPTIONAL params (defaulted) therefore breaks no caller: a 3- or
+--    Adding the three trailing OPTIONAL params (defaulted) therefore breaks no caller: a 3- or
 --    4-positional call still resolves to this function with the new params defaulted. The
 --    signature change requires DROP + re-CREATE and a re-issue of the REVOKE/GRANT (§7 below).
+--
+--    REVIEWED-ENDPOINT GUARD (Codex P1, 2026-09-14): `_expected_endpoint_hash` is the endpoint the
+--    OWNER actually reviewed when they approved. Because the FOR UPDATE below reads the connection's
+--    endpoint AS IT IS NOW, a concurrent re-point that wins the lock would otherwise silently rebind
+--    the owner's consent to the NEW endpoint. When the caller passes the reviewed hash, this refuses
+--    the write if it no longer matches — consent is never rebound to an endpoint the owner did not
+--    see. It is OPTIONAL only so the pre-existing signature stays call-compatible; the Phase C
+--    approval UI MUST pass it (recorded as a Phase C entry-gate obligation in #1262).
 -- ─────────────────────────────────────────────────────────────────────────────────
 DROP FUNCTION IF EXISTS public.set_mcp_connection_approval(uuid, text, text, uuid);
 CREATE OR REPLACE FUNCTION public.set_mcp_connection_approval(
-  _connection_id   uuid,
-  _tool_name       text,
-  _pin             text,
-  _tenant_id       uuid DEFAULT NULL,
-  _args_shape_hash text DEFAULT NULL,
-  _expires_at      timestamptz DEFAULT NULL
+  _connection_id        uuid,
+  _tool_name            text,
+  _pin                  text,
+  _tenant_id            uuid DEFAULT NULL,
+  _args_shape_hash      text DEFAULT NULL,
+  _expires_at           timestamptz DEFAULT NULL,
+  _expected_endpoint_hash text DEFAULT NULL
 )
 RETURNS void
 LANGUAGE plpgsql
@@ -127,6 +136,9 @@ BEGIN
   IF _args_shape_hash IS NOT NULL AND _args_shape_hash !~ '^[0-9a-f]{64}$' THEN
     RAISE EXCEPTION 'MCP_BAD_ARGS_SHAPE' USING ERRCODE = '22023';
   END IF;
+  IF _expected_endpoint_hash IS NOT NULL AND _expected_endpoint_hash !~ '^[0-9a-f]{64}$' THEN
+    RAISE EXCEPTION 'MCP_BAD_EXPECTED_ENDPOINT' USING ERRCODE = '22023';
+  END IF;
   -- A connection with no endpoint has nothing to bind consent to, and nothing to run on. Refuse
   -- rather than record an unbindable approval.
   IF _conn.server_url_ct IS NULL THEN
@@ -134,6 +146,14 @@ BEGIN
   END IF;
 
   _endpoint_hash := public._mcp_endpoint_hash(public.platform_decrypt(_conn.server_url_ct));
+
+  -- REVIEWED-ENDPOINT GUARD: never rebind consent to an endpoint the owner did not review. If the
+  -- caller asserts the endpoint it showed the owner and the connection has since changed (a re-point
+  -- that won the row lock, or any drift between review and submit), refuse rather than bind to the
+  -- winner (Codex P1).
+  IF _expected_endpoint_hash IS NOT NULL AND _expected_endpoint_hash IS DISTINCT FROM _endpoint_hash THEN
+    RAISE EXCEPTION 'MCP_ENDPOINT_CHANGED: connection endpoint changed since the approval was reviewed' USING ERRCODE = '42501';
+  END IF;
 
   INSERT INTO public.mcp_connection_approvals
     (connection_id, tool_name, pin, approved_by, endpoint_hash, args_shape_hash, expires_at)
@@ -253,16 +273,16 @@ $$;
 -- ─────────────────────────────────────────────────────────────────────────────────
 COMMENT ON FUNCTION public.verify_mcp_connection_approval(uuid, text, text, text) IS
   'Phase C durable consent SPEND for the Connected MCP Gateway. Authorizes a tool run ONLY when a stored mcp_connection_approvals row still matches the tool''s live fingerprint (pin), the connection''s current DECRYPTED endpoint identity, the optional approved action shape, and is unexpired. The runner calls this instead of trusting a request-supplied pin (#1262 finding 2). service_role-only; returns a closed-vocabulary reason, never provider text.';
-COMMENT ON FUNCTION public.set_mcp_connection_approval(uuid, text, text, uuid, text, timestamptz) IS
-  'Admin-gated approval writer, hardened for Phase C: takes a FOR UPDATE row lock on the connection so it serializes against any concurrent endpoint change (#1262 finding 3), and records the endpoint identity (+ optional action shape / expiry) the consent is bound to. §37: no producer other than this definition existed when the trailing optional params were added.';
+COMMENT ON FUNCTION public.set_mcp_connection_approval(uuid, text, text, uuid, text, timestamptz, text) IS
+  'Admin-gated approval writer, hardened for Phase C: takes a FOR UPDATE row lock on the connection so it serializes against any concurrent endpoint change (#1262 finding 3), records the endpoint identity (+ optional action shape / expiry) the consent is bound to, and — when the caller passes the reviewed endpoint hash — refuses to rebind consent to an endpoint the owner did not review (Codex P1). §37: no producer other than this definition existed when the trailing optional params were added.';
 
 -- ─────────────────────────────────────────────────────────────────────────────────
 -- 7. Grants — re-issued for the changed set_mcp_connection_approval signature + the new functions.
 --    anon reaches NONE (satisfies lint:definer-fns without an exempt escape). platform_decrypt +
 --    the endpoint hash stay off the tenant surface.
 -- ─────────────────────────────────────────────────────────────────────────────────
-REVOKE ALL ON FUNCTION public.set_mcp_connection_approval(uuid, text, text, uuid, text, timestamptz) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.set_mcp_connection_approval(uuid, text, text, uuid, text, timestamptz) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.set_mcp_connection_approval(uuid, text, text, uuid, text, timestamptz, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.set_mcp_connection_approval(uuid, text, text, uuid, text, timestamptz, text) TO authenticated, service_role;
 
 REVOKE ALL ON FUNCTION public.verify_mcp_connection_approval(uuid, text, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.verify_mcp_connection_approval(uuid, text, text, text) TO service_role;

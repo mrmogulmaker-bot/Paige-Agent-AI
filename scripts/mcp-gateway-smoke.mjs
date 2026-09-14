@@ -63,6 +63,7 @@ const intakeMod = await bundle("supabase/functions/_shared/mcp-gateway/intake.ts
 const summaryMod = await bundle("supabase/functions/_shared/mcp-gateway/capability-summary.ts", "summary.mjs");
 const runnerMod = await bundle("supabase/functions/_shared/mcp-gateway/runner.ts", "runner.mjs");
 const railMod = await bundle("supabase/functions/_shared/mcp-gateway/rail-receipt.ts", "rail.mjs");
+const effectMod = await bundle("supabase/functions/_shared/mcp-gateway/effect-policy.ts", "effect.mjs");
 
 let passed = 0;
 const failures = [];
@@ -320,6 +321,25 @@ check("outcome_unknown → capability_outcome_unknown", railMod.railOutcomeFor("
     outcomes.includes("capability_succeeded") && outcomes.includes("capability_failed") && outcomes.includes("capability_refused"));
   check("a prepared run files NO canonical rail row", railCalls.length === 3, JSON.stringify(outcomes));
   check("the rail capability_key is a valid a-z_ key", railCalls.every((c) => /^[a-z][a-z0-9_]{1,63}$/.test(c.params._capability_key)));
+}
+
+// ── 5. Server floor NAME NORMALIZATION (Codex P1) — a mutating verb the provider dresses in a
+// different case or separator, and labels ["read"], still trips the floor and requires approval.
+console.log("\n— effect floor name normalization —");
+{
+  const re = effectMod.resolveEffectApproval;
+  for (const name of ["Send_message", "send-message", "tools.send", "DELETE_records", "create.thing", "run:job"]) {
+    const d = re(name, ["read"]);
+    check(`a mutating verb as '${name}' labeled ['read'] still requires approval (normalized floor)`,
+      d.requiresApproval === true && d.basis === "server_name_floor", JSON.stringify(d));
+  }
+  // A GENUINELY non-verb name mislabeled read is the documented honest residual — still a read.
+  const resid = re("submit_order", ["read"]);
+  check("a genuinely non-verb name mislabeled ['read'] remains the documented residual (read)",
+    resid.requiresApproval === false && resid.basis === null, JSON.stringify(resid));
+  // A plain read tool is unaffected.
+  const plain = re("list_records", ["read"]);
+  check("a real read tool is still a no-approval read", plain.requiresApproval === false);
 }
 
 server.close();

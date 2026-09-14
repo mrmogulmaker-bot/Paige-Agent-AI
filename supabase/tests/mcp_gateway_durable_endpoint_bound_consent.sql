@@ -186,6 +186,33 @@ BEGIN
   IF NOT _refused THEN RAISE EXCEPTION '(8) approving a tool on an endpoint-less connection was NOT refused'; END IF;
 END $$;
 
+-- ── (9) REVIEWED-ENDPOINT GUARD (Codex P1) — consent is never rebound to an endpoint the owner
+-- did not review. The target connection is at address #1; approving with the reviewed hash of a
+-- DIFFERENT address is refused, while the CURRENT address's hash is accepted (positive control).
+DO $$
+DECLARE _refused boolean := false;
+BEGIN
+  BEGIN
+    PERFORM public.set_mcp_connection_approval(
+      'e9c00000-0000-0000-0000-0000000000d2','reviewed_stale', repeat('a',64),
+      'e9c00000-0000-0000-0000-0000000000d1', NULL, NULL,
+      public._mcp_endpoint_hash('https://mcp-STALE.example/rpc'));   -- reviewed a different endpoint
+  EXCEPTION WHEN OTHERS THEN _refused := true;
+  END;
+  IF NOT _refused THEN RAISE EXCEPTION '(9) approval against a since-changed reviewed endpoint was NOT refused'; END IF;
+END $$;
+SELECT public.set_mcp_connection_approval(
+  'e9c00000-0000-0000-0000-0000000000d2','reviewed_ok', repeat('a',64),
+  'e9c00000-0000-0000-0000-0000000000d1', NULL, NULL,
+  public._mcp_endpoint_hash('https://mcp-a.example/rpc'));           -- reviewed the current endpoint
+DO $$
+DECLARE n int;
+BEGIN
+  SELECT count(*) INTO n FROM public.mcp_connection_approvals
+   WHERE connection_id = 'e9c00000-0000-0000-0000-0000000000d2' AND tool_name = 'reviewed_ok';
+  IF n <> 1 THEN RAISE EXCEPTION '(9) approval with the correct reviewed endpoint should have succeeded: %', n; END IF;
+END $$;
+
 DO $$ BEGIN RAISE NOTICE 'MCP_GW_DURABLE_CONSENT_PROVEN'; END $$;
 
 ROLLBACK;
