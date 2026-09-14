@@ -75,9 +75,23 @@ export type RunnerOutcome =
   | "provider_unavailable"
   | "outcome_unknown";
 
+/** Whether the run's outcome actually landed on the canonical Rail (#1262 finding 5, Codex R3).
+ *  `filed` is true only when the receipt writer confirmed the row persisted. When it is false the
+ *  `reason` says whether that was DELIBERATE (`not_applicable` — a prepared run or an actor with no
+ *  Rail row to write) or a genuine FAILURE (`record_failed`/`record_threw` — the write was owed and
+ *  did not persist). The runner NEVER downgrades a completed action's `outcome` because of a receipt
+ *  failure (§13/§32: a landed effect stays `executed`), but it must not report a fully-recorded
+ *  success when the Rail truth never persisted either — this is that honest, separable signal. */
+export type ReceiptFiling = { filed: boolean; reason: "not_applicable" | "record_failed" | "record_threw" | null };
+
 export type RunnerResult = {
   outcome: RunnerOutcome;
   runId: string;
   /** Refusal/why code — closed vocabulary, never provider prose. */
   code: string | null;
+  /** Whether the receipt for this run persisted on the canonical Rail. `null` when the caller wired
+   *  no receipt writer (or one that reports nothing) — the runner then makes no filing claim. A
+   *  wired writer that reports `{ filed: false, reason: "record_failed" }` means the action's
+   *  outcome is truthful but its Rail row is owed, not recorded. */
+  receipt: ReceiptFiling | null;
 };

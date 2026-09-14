@@ -90,15 +90,16 @@ try {
        AND a.endpoint_hash IS DISTINCT FROM public._mcp_endpoint_hash(public.platform_decrypt(c.server_url_ct))`);
   assert.equal(stale, "0", "a stale approval survived the endpoint change — the race is NOT closed");
 
-  // And any surviving approval verifies as authorized against the CURRENT endpoint (never a
-  // ghost bound to the old one).
+  // THE HARD INVARIANT (Codex R3): a racing endpoint change leaves ZERO approvals, in BOTH serial
+  // orderings — writer-first (the endpoint change's revoke trigger deletes the just-written row) and
+  // change-first (the reviewed-endpoint guard now REQUIRED makes the writer REFUSE against the new
+  // endpoint). A soft "verifies against current if any survived" branch would silently accept the
+  // exact stale-consent rebinding this proof exists to forbid, so it is a hard equality: no approval
+  // may survive at all.
   const surviving = run(`SELECT count(*) FROM public.mcp_connection_approvals WHERE connection_id='${conn}'`);
-  if (surviving !== "0") {
-    const verdict = run(`SELECT (public.verify_mcp_connection_approval('${conn}','send_message','${pin}',NULL))->>'authorized'`);
-    assert.equal(verdict, "true", "a surviving approval did not authorize against the current endpoint");
-  }
+  assert.equal(surviving, "0", "an approval survived the endpoint race — a stale/rebound consent is exactly the regression this proof forbids");
 
-  console.log(`PASS: approval-write vs endpoint-change serialized on the connection row lock; no stale approval survived (surviving rows: ${surviving}).`);
+  console.log(`PASS: approval-write vs endpoint-change serialized on the connection row lock; zero approvals survived the race (both orderings leave none).`);
 } finally {
   cleanup();
 }

@@ -24,14 +24,16 @@
 //      a pin carried in its own request — there is no `approval` field any more.
 //   4. A dispatched call whose result carries `isError` (or an unrecognized shape) is `tool_error`,
 //      never dressed as `executed`/`read_observed` (`validateToolResult`).
-//   5. Its `recordReceipt` dep routes the final outcome to the CANONICAL Rail (see rail-receipt.ts).
+//   5. Its `recordReceipt` dep routes the final outcome to the CANONICAL Rail (see rail-receipt.ts),
+//      and the runner carries back whether that row actually persisted (`RunnerResult.receipt`) so a
+//      completed-but-unrecorded run is reported truthfully, never as a fully-recorded success.
 //
 // PHASE S/C BOUNDARY: this module is wired into no deployed provider-calling endpoint. `execute`
 // is proven only against an in-process fake MCP server in the smoke; a live invocation is Phase C,
 // gated behind #1255 + owner go. The safeguards above are the gate it must pass first.
 
 import { withApprovedCapabilitySession, type McpAuth } from "../mcp-client.ts";
-import type { GatewayConnection, RunnerOutcome, RunnerResult } from "./types.ts";
+import type { GatewayConnection, ReceiptFiling, RunnerOutcome, RunnerResult } from "./types.ts";
 import { resolveEffectApproval } from "./effect-policy.ts";
 import { validateToolResult } from "./result.ts";
 import { argsShapeHash, type ApprovalVerifier } from "./consent.ts";
@@ -46,14 +48,17 @@ function errorCodeOf(e: unknown): string {
 export type RunnerDeps = {
   /** Records the run's outcome. In production this is the CANONICAL-Rail receipt
    *  (`makeCanonicalRailReceipt`); the smoke injects a collector. Best-effort — a recording
-   *  failure never turns a completed action into a reported failure. */
+   *  failure never turns a completed action into a reported failure. It MAY return a
+   *  `ReceiptFiling` saying whether the row actually persisted; the runner carries that on
+   *  `RunnerResult.receipt` so a completed-but-unrecorded run is never reported as fully
+   *  recorded (Codex R3). A writer that returns nothing makes no filing claim. */
   recordReceipt?: (r: {
     connectionId: string;
     toolName: string;
     outcome: RunnerOutcome;
     runId: string;
     detail: Record<string, unknown>;
-  }) => Promise<void> | void;
+  }) => Promise<ReceiptFiling | void> | ReceiptFiling | void;
   /** Durable, server-side consent check (#1262 finding 2). In production backed by
    *  `verify_mcp_connection_approval`; the smoke injects a fixture-bound fake. When a tool requires
    *  approval and no verifier is wired, the run fails CLOSED. */
@@ -74,16 +79,23 @@ export async function runConnectionCapability(
 ): Promise<RunnerResult> {
   const runId = crypto.randomUUID();
   const emit = async (outcome: RunnerOutcome, code: string | null): Promise<RunnerResult> => {
+    // The receipt is best-effort for the OUTCOME (a landed effect is never downgraded to a failure
+    // because its Rail row did not persist — §13/§32) but TRUTHFUL for the RECORD: whatever the
+    // writer reports about whether the row persisted is carried through, so a completed-but-
+    // unrecorded run is never dressed as fully recorded (Codex R3). No writer, or one that returns
+    // nothing → no filing claim (`null`); a writer that throws is itself a filing failure.
+    let receipt: ReceiptFiling | null = null;
     try {
-      await deps.recordReceipt?.({
+      const filing = await deps.recordReceipt?.({
         connectionId: req.connection.connectionId,
         toolName: req.toolName,
         outcome,
         runId,
         detail: code ? { code } : {},
       });
-    } catch { /* recording never turns a completed action into a reported failure */ }
-    return { outcome, runId, code };
+      if (filing) receipt = filing;
+    } catch { receipt = { filed: false, reason: "record_threw" }; }
+    return { outcome, runId, code, receipt };
   };
 
   // prepare never opens a session or contacts the provider — it stages intent only.

@@ -8,7 +8,7 @@
 // owner-visible receipt story. (`mcp_connection_receipts` remains a platform-owner OPERATIONAL log,
 // not the owner-visible truth.)
 
-import type { RunnerOutcome } from "./types.ts";
+import type { ReceiptFiling, RunnerOutcome } from "./types.ts";
 
 // deno-lint-ignore no-explicit-any
 type Admin = any;
@@ -44,13 +44,20 @@ export type ReceiptInput = {
 /**
  * The runner's production `recordReceipt`. Files the mapped outcome to the canonical workspace
  * Rail. Never throws — a recording failure must not turn a completed action into a reported
- * failure (§13). Idempotent per `runId` (the RPC keys on it).
+ * FAILURE (§13). But it does not lie the other way either: it RETURNS whether the row persisted
+ * (Codex R3), so the runner can carry a truthful "completed-but-unrecorded" signal instead of
+ * reporting a fully-recorded success the Rail never actually stored. Idempotent per `runId`
+ * (the RPC keys on it).
+ *
+ * `not_applicable` — a prepared run (no Rail outcome) or an actor with no active-member row to
+ * file under — is a DELIBERATE non-file, never an error. `record_failed`/(a thrown) is a genuine
+ * failure the caller is owed the truth about; both are still logged (§32).
  */
 export function makeCanonicalRailReceipt(admin: Admin, ctx: CanonicalRailContext) {
-  return async (r: ReceiptInput): Promise<void> => {
+  return async (r: ReceiptInput): Promise<ReceiptFiling> => {
     const outcome = RUNNER_TO_RAIL[r.outcome];
-    if (!outcome) return; // prepared: intent only, no Rail row
-    if (!ctx.actorId) return; // no active-member actor → record_capability_run cannot file
+    if (!outcome) return { filed: false, reason: "not_applicable" }; // prepared: intent only, no Rail row
+    if (!ctx.actorId) return { filed: false, reason: "not_applicable" }; // no active-member actor → cannot file
     try {
       const { error } = await admin.rpc("record_capability_run", {
         _tenant_id: ctx.tenantId,
@@ -59,9 +66,14 @@ export function makeCanonicalRailReceipt(admin: Admin, ctx: CanonicalRailContext
         _outcome: outcome,
         _run_id: r.runId,
       });
-      if (error) console.error("[mcp-gateway] capability run not recorded:", error.message);
+      if (error) {
+        console.error("[mcp-gateway] capability run not recorded:", error.message);
+        return { filed: false, reason: "record_failed" };
+      }
+      return { filed: true, reason: null };
     } catch (e) {
       console.error("[mcp-gateway] capability run not recorded:", e instanceof Error ? e.message : "unknown");
+      return { filed: false, reason: "record_failed" };
     }
   };
 }

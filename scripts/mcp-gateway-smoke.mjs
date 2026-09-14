@@ -310,17 +310,39 @@ check("outcome_unknown → capability_outcome_unknown", railMod.railOutcomeFor("
   const fakeAdmin = { rpc: (fn, params) => { railCalls.push({ fn, params }); return { error: null }; } };
   const railReceipt = railMod.makeCanonicalRailReceipt(fakeAdmin, { tenantId: "ten-1", actorId: "act-1" });
   approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
-  await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: { to: "a" }, mode: "execute" }, { verifyApproval, recordReceipt: railReceipt });
+  const execRes = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: { to: "a" }, mode: "execute" }, { verifyApproval, recordReceipt: railReceipt });
   await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-toolerr" }, toolName: "send_message", args: {}, mode: "execute" }, { verifyApproval, recordReceipt: railReceipt });
   approvals = {};
   await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: {}, mode: "execute" }, { verifyApproval, recordReceipt: railReceipt });
-  await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: {}, mode: "prepare" }, { verifyApproval, recordReceipt: railReceipt });
+  const prepRes = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: {}, mode: "prepare" }, { verifyApproval, recordReceipt: railReceipt });
   const outcomes = railCalls.map((c) => c.params._outcome);
   check("the runner routes outcome truth through record_capability_run (canonical Rail)", railCalls.every((c) => c.fn === "record_capability_run"));
   check("executed→succeeded, tool_error→failed, refused→refused are filed truthfully",
     outcomes.includes("capability_succeeded") && outcomes.includes("capability_failed") && outcomes.includes("capability_refused"));
   check("a prepared run files NO canonical rail row", railCalls.length === 3, JSON.stringify(outcomes));
   check("the rail capability_key is a valid a-z_ key", railCalls.every((c) => /^[a-z][a-z0-9_]{1,63}$/.test(c.params._capability_key)));
+
+  // #1262 finding 5 / Codex R3 — the runner carries a TRUTHFUL filing signal, never a silent
+  // "recorded" when the Rail write did not persist.
+  check("a run whose Rail row persisted reports receipt.filed === true", execRes.receipt && execRes.receipt.filed === true, JSON.stringify(execRes.receipt));
+  check("a prepared run reports a DELIBERATE non-file (not_applicable), never a failure",
+    prepRes.receipt && prepRes.receipt.filed === false && prepRes.receipt.reason === "not_applicable", JSON.stringify(prepRes.receipt));
+
+  // THE GAP CLOSED: record_capability_run FAILS after a completed effect. The action's outcome
+  // stays truthful (`executed` — the effect landed, never downgraded), but the run is reported as
+  // completed-but-UNRECORDED, so no caller can claim a fully-recorded success the Rail never stored.
+  const failAdmin = { rpc: () => ({ error: { message: "rail write rejected" } }) };
+  const failReceipt = railMod.makeCanonicalRailReceipt(failAdmin, { tenantId: "ten-1", actorId: "act-1" });
+  approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
+  const unrec = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: { to: "a" }, mode: "execute" }, { verifyApproval, recordReceipt: failReceipt });
+  check("a completed effect whose Rail write FAILED keeps its truthful outcome (executed, never downgraded)", unrec.outcome === "executed");
+  check("...and is reported completed-but-UNRECORDED (receipt.filed === false, reason record_failed), never a silent recorded-success",
+    unrec.receipt && unrec.receipt.filed === false && unrec.receipt.reason === "record_failed", JSON.stringify(unrec.receipt));
+
+  // A run with NO receipt writer wired makes NO filing claim (null), rather than pretending recorded.
+  approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
+  const noWriter = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: { to: "a" }, mode: "execute" }, { verifyApproval });
+  check("a run with no receipt writer makes no filing claim (receipt === null)", noWriter.receipt === null, JSON.stringify(noWriter.receipt));
 }
 
 // ── 5. Server floor NAME NORMALIZATION (Codex P1) — a mutating verb the provider dresses in a
