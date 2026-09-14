@@ -74,6 +74,12 @@ rule** — not a rebuild of the client.
 5. **`record_capability_run` SQL was not read this pass** (Agent A) — its receipt semantics are described
    from the call site + comments (`n8n-management.ts:145`). Confirm the RPC's columns in
    `20261212000000` / `20261220000000` / `20270107000000` before relying on exact receipt shape.
+6. **The OUTBOUND gateway already executes approved mutations — there is NO outbound blanket ban.**
+   `n8n_run_workflow` (high risk) executes after a live confirm (`n8n-management.ts`), and
+   `call-zapier-action` executes an approved Zapier action. The "refuses all 68 mutations" ban is the
+   **inbound `paige-mcp` server door** — a *different* surface. An earlier draft of this package wrongly
+   imported that inbound ban onto the outbound gateway; the owner ruling (§2.2) confirms the outbound gateway
+   **prepares and, after owner approval, executes** provider-authorized effects.
 
 ---
 
@@ -123,7 +129,7 @@ become *instances* under this one model; nothing forks a second authority, appro
 | **I-3** | **No provider enum in the schema.** Provider is **data** (a descriptor), so a new MCP is a row, not a migration. | Drop `CHECK (provider IN ('zapier','n8n'))`; introduce a `mcp_providers` descriptor table + per-connection capability facts. |
 | **I-4** | **No singleton OAuth/auth state.** Tokens, scopes, refresh leases live **per connection**. | OAuth state keyed by `connection_id`, not `(tenant, provider)`. |
 | **I-5** | **The runtime tool catalog is namespaced by connection.** | A tool is addressed as `⟨connection_id⟩::⟨tool_name⟩`; two connections offering the same tool name never collide. |
-| **I-6** | **Provider scope = the ceiling; Paige policy = the governor.** | A connection's granted scopes are the *maximum*; `decideGovernedExecution` + autonomy lane + one-approval-gate decide the *effective* action (read/prepare/execute) within it. |
+| **I-6** | **The provider's LIVE catalog + granted scopes ARE Paige's capability surface.** No separate Paige capability allowlist and no static read-only ceiling above the connection (§2.2). | Paige may inspect/reason/prepare/call every provider-authorized tool. Her side narrows **only** via neutral safeguards + the **one owner-approval gate** for consequential effects — never by declaring a provider-authorized tool unavailable. |
 | **I-7** | **A connection fact is never asserted to a human/model without a live receipt or an explicit freshness label.** | The chat truth-boundary rule (§8). Cached readiness may be shown only as `observed_at`-stamped, never as "verified now." |
 | **I-8** | **Read-only intake first.** A newly connected MCP is safe-probed (discovery only) before any consequential action. | Intake = `initialize` + `tools/list` + fingerprint + health, **no `tools/call` of any mutating tool** (§6.9). |
 
@@ -162,6 +168,30 @@ These eight are **binding requirements of the design, not preferences.** Each na
    is "**Add MCP connection**," named connections, per-connection tool discovery, health, policies, and
    receipts — **not hardcoded provider cards.** (The behavioral model is CC's to specify; the visual is
    Claude Design's, §00.) → §5.1 verbs, §9 states, §3.3.
+
+## 2.2 Owner ruling — the provider's authorized capability IS Paige's surface (LOCKED)
+
+**Owner ruling (this session).** Paige must **not** impose a separate provider-specific capability allowlist
+or a static read-only ceiling above an authenticated MCP connection. **The connected provider's LIVE tool
+catalog and granted scopes define Paige's available capability surface.** Through the general gateway Paige
+may safely **inspect, reason over, prepare, and call every provider-authorized tool.** For consequential
+external effects, **owner approval is the execution gate — never a reason to pretend the tool is
+unavailable.** The only permitted narrowings are **neutral safeguards**: tenant/account binding, Vault-backed
+auth, server-side schema validation, injection-safe projections, bounded retries, receipts, and explicit
+`provider_denied` / `provider_unavailable` errors.
+
+Concretely: if a connection authorizes **Meta campaign changes, GoHighLevel record management, or n8n
+workflow management**, Paige must be able to **prepare and — after the owner's required approval — execute**
+those actions. **No hardcoded n8n/Zapier-only model, no blanket mutation ban, and no hidden platform
+restriction may override granted provider capabilities.**
+
+**What this corrects in this package.** The earlier framing that imported the *inbound* `paige-mcp` door's
+mutation ban (SDK/Foundations **D-3**) onto the *outbound* connected-provider gateway is **overruled for the
+outbound gateway.** D-3 governs the inbound server door (external clients calling Paige's *own* tools); it
+does **not** gate Paige calling a *provider's* authorized tools. §6.5, §7, §9, §11, and §12 are written to
+this ruling. **Money note:** a real-money action is still execute-after-approval; any spend-bounding is a
+*neutral, owner-set bound* (like bounded retries), **never** a capability ban that marks a provider-authorized
+tool `UNAVAILABLE`.
 
 ---
 
@@ -461,14 +491,18 @@ identity, availability, classification/effect, autonomy floor, approval-by-shape
 opens **one session**, re-lists + re-verifies the pin (drift → refuse), then `tools/call` the stored args,
 then records the receipt. The pin re-check and the call are the same session (no substitution window).
 
-### 6.5 External-effect actions
-A tool with `effects` containing `send|create|update|delete` is `high` risk → autonomy clamps `auto→confirm`
-→ requires a live confirmation from `paige_pending_confirmations` (the ONE gate). MCP **mutations remain
-deferred** per SDK/Foundations **D-3** (MCP door read-effective until P6) — the gateway must treat an
-external-effect capability as **prepare-only / needs-approval** until the owner opens the mutation channel.
-Real-money-capable providers (n8n, Zapier, Meta, GHL can all trigger downstream spend) additionally bind
-**M1 real-money spend control**, which is **unbuilt** — so those are `UNAVAILABLE` for autonomous execution
-until M1 lands (§17/integration registry).
+### 6.5 External-effect actions (owner ruling §2.2)
+A tool whose `effects` include `send|create|update|delete` is `high` risk → autonomy clamps `auto→confirm`
+→ it requires a **live owner confirmation** from `paige_pending_confirmations` (the ONE gate) before it runs.
+That approval **is** the gate: a provider-authorized external-effect tool is **prepared and, once approved,
+executed** — it is **never** reported `UNAVAILABLE` merely for being a mutation, and **no blanket mutation
+ban** applies to the outbound gateway. This is already today's outbound behavior — `n8n_run_workflow`
+(high risk, executes after confirm) and `call-zapier-action` (executes the approved action) — and the model
+**generalizes it to any provider-authorized tool**: Meta campaign changes, GoHighLevel record management,
+n8n workflow management. Real-money-capable actions (n8n/Zapier/Meta/GHL can trigger downstream spend) go
+through the **same owner-approval gate**; an optional owner-set **spend bound** is a neutral safeguard, not a
+capability ban. (M1 real-money spend control, §17, remains a *future neutral bound* — its absence never marks
+a provider-authorized tool unavailable; the owner approval is the control today.)
 
 ### 6.6 Errors
 Closed error vocabulary per layer (already exists): connection errors (`not_connected`, `provider_unavailable`,
@@ -500,22 +534,27 @@ This is the concrete "connect many once → safe intake → reason and act" flow
 
 ## 7. Provider-permission vs Paige-policy model (satisfies I-6)
 
-Two independent layers; the effective action is the **intersection**, and Paige's side can only ever *narrow*.
+Two layers. Paige's *available surface* is the provider's grant; her side narrows **only** via neutral
+safeguards and the **one owner-approval gate** for consequential effects — **never** via a separate Paige
+capability allowlist or a static read-only ceiling (§2.2).
 
-- **Layer 1 — Provider permission = the ceiling.** What the connection *technically* can do: the
-  `granted_scopes` on that connection (e.g. n8n `workflow:read`+`workflow:write`; a Meta connection's
-  granted Graph scopes). This is the **maximum possible authority** and it is a fact about the provider grant,
-  stored per connection. *A grant is not action approval* — the n8n code already says this
-  (`n8n-oauth.ts:1-4`).
-- **Layer 2 — Paige policy = the governor.** Whether Paige may **read / prepare / execute** a given
-  capability *right now*: `decideGovernedExecution` (identity, tenant, capability, classification, autonomy
-  lane via §67/§68 Trust Compass + decay, one-approval-gate), plus the per-connection `owner_policy`
-  (an allow-list / autonomy ceiling the owner sets for *that* connection), plus platform gates (MCP
-  mutations deferred D-3; M1 for money).
-- **The rule:** `effective_action = min(provider_ceiling, action_risk_class, autonomy_lane, owner_policy,
-  platform_gate)`. A connection can never grant Paige more than her policy allows, and her policy can never
-  reach past what the provider granted. Door-blindness (R7) means reaching a capability from Chat vs. an
-  automation vs. a skill never changes the answer.
+- **Layer 1 — Provider authorization = the surface.** The connection's **live tool catalog + `granted_scopes`**
+  define what Paige can inspect, reason over, prepare, and call (e.g. n8n `workflow:read`+`workflow:write`; a
+  Meta connection's granted Graph scopes). This is the maximum authority and a fact about the provider grant,
+  stored per connection. *A grant is not, by itself, execution approval for a consequential effect*
+  (`n8n-oauth.ts:1-4`) — but that is Layer 2 timing, **not** a reason to hide the tool.
+- **Layer 2 — Governance = the execution gate, not a capability filter.** For a consequential external
+  effect, `decideGovernedExecution` + the autonomy lane (§67/§68 Trust Compass + decay) + the one
+  `paige_pending_confirmations` approval decide **whether it runs now** — not whether the tool *exists* for
+  Paige. `owner_policy` is an **optional owner-set autonomy preference** per connection (which tools may run
+  `auto` vs `confirm`), never a capability allowlist or a read-only ceiling. The only hard narrowings are the
+  **neutral safeguards** (tenant binding, Vault auth, schema validation, injection-safe projection, bounded
+  retries, receipts, explicit provider errors).
+- **The rule:** *available surface* = provider live catalog ∩ granted scopes. *Right to execute a
+  consequential effect now* = owner approval (+ the neutral safeguards). **Read/inspect/prepare are always
+  allowed** on a provider-authorized tool; execution of an external effect waits for approval — it is
+  **never hidden as "unavailable."** Door-blindness (R7) means the entry door (Chat/automation/skill) never
+  changes the answer.
 
 ---
 
@@ -570,7 +609,7 @@ and what Paige may say/do in it. (What they *look like* is CD's.)
 | **Checking** | A live probe is in flight (`health='checking'` / `status='pending_verification'`). | "Checking ⟨label⟩ now…" — no capability/inventory claim. | → Available / Provider unavailable / Permission denied on probe result. |
 | **Available** | Live `tools/list` this session succeeded; catalog fingerprinted; `status='connected'`, `health='healthy'`, fresh `observed_at`. | State inventory/capabilities (live receipt); propose approved actions. | → Needs approval (for an unapproved external-effect tool); → Provider unavailable on later failure. |
 | **Permission denied** | Provider returned an auth/scope refusal (`provider_scope_refused` / `token_expired` / `invalid_grant`). | "⟨label⟩ refused the scope / needs reconnect" — never "not connected." | → Checking after reconnect/refresh. |
-| **Needs approval** | Capability is external-effect and unpinned/unapproved, or MCP-mutation channel deferred (D-3), or M1 required. | Prepare a proposal; ask the owner to approve; do **not** execute. | → Available-to-execute once approved (and channel/M1 open). |
+| **Needs approval** | The capability is a **consequential external effect awaiting the owner's approval** — it is *prepared*, not unavailable (§2.2). | Prepare the proposal and ask the owner; **execute on approval.** Never report it unavailable for being a mutation. | → Executed once the owner approves. |
 | **Provider unavailable** | Live probe failed for a non-auth reason (network/5xx/timeout/SSRF-refused). | "Couldn't reach ⟨label⟩ just now (⟨reason⟩)"; last-observed only with `observed_at`. | → Checking on retry. |
 | **Unsupported** | The connection needs a transport/auth the client doesn't implement (e.g. stdio/SSE-session), or the provider isn't in `mcp_providers`. | "That connection type isn't supported yet." | Terminal until the client/descriptor gains support. |
 
@@ -627,7 +666,7 @@ egress-to-model smoke suites (`scripts/mcp-*-smoke.mjs`, `scripts/n8n-egress-smo
 |---|---|---|---|
 | **CRM #1234** (`feat(crm): complete governed Paige operational access`) | **OPEN / draft, NOT merged** (`html_url` PR 1234; base `main@6dc26157`). Reuses the **existing Capability Gateway, action-risk/autonomy, single-use confirmation, capability receipt, Rail** seams; adds 32 CRM Chat actions. | **Prerequisite + shared seams.** The MCP gateway reuses the *same* Capability Kit / `decideGovernedExecution` / approval / receipt seams #1234 exercises. Building on those before #1234 lands risks editing the exact files it touches. | **BLOCKED until #1234 merges + fresh-`main` collision pass** (matches SDK/Foundations **D-2**). No gateway build starts before then. |
 | **Chat/Knowledge regression #1255** (`ci/verify` red on `main` — a scope-switched document turn makes an unexpected provider call) | **OPEN.** Deterministic `test:knowledge-scope` 15.9 failure + one §9 governance assertion; owner ruling: fix **source behavior** in `paige-ai-chat`, never weaken the test. | **Same file, adjacent concern.** Both the fix and this program touch `paige-ai-chat/index.ts` governance/turn logic. #1255 is *provider-call-before-re-check*; our §8 is *fact-claim-before-receipt* — sibling truth/governance defects. | **Sequence #1255 first / coordinate.** Do not touch the Chat turn seam until #1255 is green; our §8 changes ride the same file and must not mask or reopen it. |
-| **Approved Paige SDK/Foundations program** (`docs/architecture/paige-sdk-platform-foundations-program.md`, LOCKED 2026-09-13) | Establishes the door-blind `governedExecution` seam, the Capability Kit (`define→authorize→execute→receipt`), decisions **D-1..D-10**. **D-3: defer MCP mutations + approval channel to P6, keep the MCP door read-effective.** D-2 gates first adoption on #1234. | **Parent program — this is a caller of it.** The Connected-MCP Gateway is a **Category-2/3 consumer** of the Capability Kit; it must not fork a second gate. **This program is the *outbound client*; the SDK doc's §8 MCP readiness is the *inbound server* — do not conflate.** | **Subordinate to it.** Adopt the kit; honor D-3 (external-effect MCP = prepare/needs-approval until P6); honor R7 (n8n/Zapier/GHL/Meta are governed workers, never a bypass). |
+| **Approved Paige SDK/Foundations program** (`docs/architecture/paige-sdk-platform-foundations-program.md`, LOCKED 2026-09-13) | Establishes the door-blind `governedExecution` seam, the Capability Kit (`define→authorize→execute→receipt`), decisions **D-1..D-10**. **D-3: defer MCP mutations + approval channel to P6, keep the MCP door read-effective.** D-2 gates first adoption on #1234. | **Parent program — this is a caller of it.** The Connected-MCP Gateway is a **Category-2/3 consumer** of the Capability Kit; it must not fork a second gate. **This program is the *outbound client*; the SDK doc's §8 MCP readiness is the *inbound server* — do not conflate.** | **Subordinate on the kit; D-3 is scoped to the inbound door.** Adopt the Capability Kit + R7 (n8n/Zapier/GHL/Meta are governed workers). Per the owner ruling (§2.2), **D-3 governs the INBOUND `paige-mcp` server door only** and does **not** gate the OUTBOUND connected-provider gateway, which prepares and (after owner approval) executes provider-authorized mutations. |
 
 > **Carve-out (owner non-negotiable #7) — filed SEPARATELY, NOT part of gateway scope.** The GoHighLevel
 > cross-tenant contact-ID collision — `clients_ghl_contact_id_uniq UNIQUE (ghl_contact_id)` is **global, not
@@ -659,7 +698,7 @@ PR, live before the next), run by a crew with an adversarial verifier (§39) + c
 | **G3** | **Safe read-only intake + capability-understanding layer.** `intake(connection_id)`; sanitized capability summary the model may see; per-connection health. | G1/G2. |
 | **G4** | **Truth-boundary fix (§8).** Generalize `renderConnectionReadinessForChat` with `observed_at` labeling; name the ID-free discovery tool in the operating core; structural projection + CI ratchet. | **#1255 must be green first** (same file). |
 | **G5** | **Reference providers as data.** Add GoHighLevel + Meta descriptors; fold n8n's REST lane under the model (retire the special case); prove multiplicity (T6–T9) on scoped test tenants (D-5/D-6), **no production provider called**. | Provider OAuth apps (owner-side); M1 for money. |
-| **G6** | **External-effect enablement (only if owner opens D-3).** Approval channel for MCP mutations; M1 real-money control for spend-capable providers. | **D-3 owner decision + M1 (unbuilt).** |
+| **G6** | **External-effect execution over the gateway (owner ruling §2.2).** The in-context owner-approval path so provider-authorized mutations (Meta/GHL/n8n) prepare→approve→execute; optional owner-set spend bound. | One-approval-gate + autonomy lanes; **no blanket ban** (§2.2). Not a P6 dependency for the *outbound* gateway. |
 
 ### 12.1 Migration & compatibility plan — non-destructive, both n8n paths preserved (owner non-negotiable #6)
 
@@ -690,8 +729,9 @@ tables are **deprecated with a cutover, never dropped in the same step** (§198)
 > providers) builds on it. Nothing is built until #1234 merges, a fresh-`main` collision pass is complete,
 > and you give the go.
 
-Secondary decisions to confirm when G1-D is approved: **honor D-3** (defer MCP external-effect execution
-until the approval channel exists — recommended yes); **n8n REST-lane disposition** (fold under the model in
+Secondary decisions to confirm when G1-D is approved: **scope D-3 to the inbound door** (per §2.2 the
+outbound gateway executes provider-authorized effects after owner approval — it is *not* deferred to a P6
+channel); **n8n REST-lane disposition** (fold under the model in
 G5 vs. keep as a descriptor-flagged mode — recommended fold); **transport scope** (Streamable-HTTP only for
 MVP; SSE/stdio only if a target MCP requires it — recommended HTTP-only first).
 
