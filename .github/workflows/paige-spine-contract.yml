@@ -13,6 +13,9 @@ on:
       - "supabase/functions/_shared/paige-spine/**"
       - "supabase/migrations/**"
       - "supabase/tests/mcp_gateway_endpoint_revokes_approvals.sql"
+      - "supabase/tests/mcp_gateway_durable_endpoint_bound_consent.sql"
+      - "scripts/proof/mcp-gateway-endpoint-consent-race.mjs"
+      - "supabase/functions/_shared/mcp-gateway/**"
       - "supabase/tests/paige_spine_foundation.sql"
       - "supabase/tests/governed_crm_commands.sql"
       - "supabase/tests/media_credit_ledger.sql"
@@ -56,6 +59,9 @@ on:
       - "supabase/functions/_shared/paige-spine/**"
       - "supabase/migrations/**"
       - "supabase/tests/mcp_gateway_endpoint_revokes_approvals.sql"
+      - "supabase/tests/mcp_gateway_durable_endpoint_bound_consent.sql"
+      - "scripts/proof/mcp-gateway-endpoint-consent-race.mjs"
+      - "supabase/functions/_shared/mcp-gateway/**"
       - "supabase/tests/paige_spine_foundation.sql"
       - "supabase/tests/governed_crm_commands.sql"
       - "supabase/tests/media_credit_ledger.sql"
@@ -187,6 +193,19 @@ jobs:
       # disconnect DO; and the DELETE is scoped to the one connection_id (a sibling is untouched).
       # Rides this replayed DB for the same §24 reason as the proofs above.
       - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_endpoint_revokes_approvals.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      # Connected MCP Gateway — Phase C durable, endpoint-bound consent (migration 20270323000000,
+      # #1262 findings 2/3). Proves the writer binds the current endpoint and refuses an endpoint-less
+      # connection; verify_mcp_connection_approval authorizes only a stored approval whose pin +
+      # endpoint identity (+ optional action shape, unexpired) still hold — endpoint_changed,
+      # contract_changed, approval_not_endpoint_bound, approval_expired, action_shape_changed; and the
+      # writer's §9 tenant guard refuses a cross-tenant connection while allowing the same-tenant one.
+      - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_durable_endpoint_bound_consent.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      # And the two-session concurrency proof that the approval-write vs endpoint-change RACE is closed:
+      # set_mcp_connection_approval's FOR UPDATE row lock serializes it against a concurrent endpoint
+      # change, so no approval is ever left bound to an endpoint the connection no longer has (#1262 finding 3).
+      - run: node scripts/proof/mcp-gateway-endpoint-consent-race.mjs
+        env:
+          MCP_GATEWAY_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
       - run: node scripts/proof/business-mission-concurrency.mjs
         env:
           BUSINESS_MISSION_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
