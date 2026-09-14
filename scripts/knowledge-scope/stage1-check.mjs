@@ -1018,6 +1018,16 @@ group("attached-document turns DO carry tenant Knowledge, and its guard actually
   );
   assert("15.4 telemetry is written for a scope that held", !!valid.telemetry, JSON.stringify(valid.telemetry?.row ?? null));
   assert("15.5 the existing document response path remains usable", valid.responseText.includes("CHILD-PRIVATE-MARKER"), valid.responseText);
+  // #1255 — the general-document extraction was DEFERRED past the pre-egress active-account guard
+  // so a switched turn (15.9) makes zero provider calls. This pins the other half of that change:
+  // on a valid, unswitched turn the deferral must still run the extraction exactly ONCE and leave
+  // the streamed reply intact — two provider calls, no more (a re-added eager call would make it
+  // three), no fewer (a dropped deferral would make it one and silently lose the extraction).
+  assert(
+    "15.5b a valid document turn still makes exactly two provider calls — the deferred extraction and the reply, neither dropped nor duplicated",
+    valid.providerCalls.length === 2,
+    `provider calls: ${valid.providerCalls.length}`,
+  );
 
   // THE LOAD-BEARING HALF. The account changes after retrieval. The document path must refuse
   // before its reply crosses the boundary, must write no telemetry, and must say so. If the
