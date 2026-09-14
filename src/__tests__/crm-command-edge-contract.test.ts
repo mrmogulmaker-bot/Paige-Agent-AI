@@ -90,6 +90,7 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain('preview.client_ref ?? preview.record_id');
     expect(edge).toContain('preview.title ?? preview.record_id');
     expect(edge).toContain('dependencies.tasks ?? 0');
+    expect(edge).toContain("transferEffects?.loser_email_cleared === true");
     expect(edge).toContain("The losing contact's email will be cleared after it is transferred.");
   });
 
