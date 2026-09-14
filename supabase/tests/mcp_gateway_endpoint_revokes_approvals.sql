@@ -53,20 +53,24 @@ END $$;
 
 -- ── (3) RE-ENCRYPT the SAME address must NOT revoke (decrypted-comparison correctness) ──
 -- New ciphertext bytes (pgp_sym_encrypt is non-deterministic) but the SAME decrypted value.
-UPDATE public.mcp_connections
-   SET server_url_ct = public.platform_encrypt('https://mcp-a.example/rpc')
- WHERE connection_id = 'e9c00000-0000-0000-0000-0000000000c1';
+-- One DO block so the PRE-update ciphertext can be captured and compared against the persisted
+-- value: this proves the re-encryption genuinely CHANGED the stored bytes (so the trigger's
+-- byte-identical fast path did NOT fire and the DECRYPT comparison was actually exercised).
+-- Comparing against a third fresh encryption would pass even on a no-op update, which is why we
+-- capture the exact pre-update value here.
 DO $$
-DECLARE n int; same boolean;
+DECLARE orig_ct bytea; new_ct bytea; n int;
 BEGIN
-  -- Guard the guard: prove the re-encryption genuinely changed the stored ciphertext, so this
-  -- case really exercises the DECRYPT comparison and is not a vacuous pass on identical bytes.
-  -- platform_encrypt is non-deterministic, so the stored ct must NOT equal a fresh encryption
-  -- of the same address; if it does, the encryption is deterministic and this case proves
-  -- nothing — fail loudly rather than pass silently.
-  SELECT (server_url_ct = public.platform_encrypt('https://mcp-a.example/rpc')) INTO same
-    FROM public.mcp_connections WHERE connection_id = 'e9c00000-0000-0000-0000-0000000000c1';
-  IF same THEN RAISE EXCEPTION '(3) re-encrypt produced identical ciphertext — decrypt path not exercised, test is vacuous'; END IF;
+  SELECT server_url_ct INTO orig_ct FROM public.mcp_connections
+   WHERE connection_id = 'e9c00000-0000-0000-0000-0000000000c1';
+  UPDATE public.mcp_connections
+     SET server_url_ct = public.platform_encrypt('https://mcp-a.example/rpc')
+   WHERE connection_id = 'e9c00000-0000-0000-0000-0000000000c1';
+  SELECT server_url_ct INTO new_ct FROM public.mcp_connections
+   WHERE connection_id = 'e9c00000-0000-0000-0000-0000000000c1';
+  IF new_ct IS NOT DISTINCT FROM orig_ct THEN
+    RAISE EXCEPTION '(3) re-encrypt did not change the stored ciphertext — decrypt path not exercised, test is vacuous';
+  END IF;
   SELECT count(*) INTO n FROM public.mcp_connection_approvals
    WHERE connection_id = 'e9c00000-0000-0000-0000-0000000000c1';
   IF n <> 2 THEN RAISE EXCEPTION '(3) re-encrypt of same address revoked approvals: expected 2, got %', n; END IF;
