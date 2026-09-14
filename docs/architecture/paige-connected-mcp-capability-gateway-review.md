@@ -3,8 +3,9 @@
 **Status: READ-ONLY GROUNDING + ARCHITECTURE PLAN. Nothing was built, refactored, migrated, configured,
 connected, called, published, merged, or deployed to produce it.** No provider was configured or
 contacted during this phase. This document ends at the review package (per the assignment). The first
-build action is gated on **CRM PR #1234 merging**, a **fresh-`main` collision pass**, and the owner's
-explicit go — none of which is satisfied today (#1234 is open/draft).
+build action is gated on **CRM PR #1234 merging**, the **Chat/Knowledge regression #1255 being resolved or
+safely collision-cleared**, a **fresh-`main` grounding pass**, and the owner's **explicit implementation
+go-ahead** — none of which is satisfied today (#1234 open/draft; #1255 open).
 
 **Scope.** This is the internal capability that lets Paige, as an **MCP _client_**, discover, understand,
 and (under her own rules) act on tools from an authenticated MCP connection. It is **NOT** Paige's outward
@@ -132,6 +133,7 @@ become *instances* under this one model; nothing forks a second authority, appro
 | **I-6** | **The provider's LIVE catalog + granted scopes ARE Paige's capability surface.** No separate Paige capability allowlist and no static read-only ceiling above the connection (§2.2). | Paige may inspect/reason/prepare/call every provider-authorized tool. Her side narrows **only** via neutral safeguards + the **one owner-approval gate** for consequential effects — never by declaring a provider-authorized tool unavailable. |
 | **I-7** | **A connection fact is never asserted to a human/model without a live receipt or an explicit freshness label.** | The chat truth-boundary rule (§8). Cached readiness may be shown only as `observed_at`-stamped, never as "verified now." |
 | **I-8** | **Read-only intake first.** A newly connected MCP is safe-probed (discovery only) before any consequential action. | Intake = `initialize` + `tools/list` + fingerprint + health, **no `tools/call` of any mutating tool** (§6.9). |
+| **I-9** | **A general remote-MCP connection shape is always available; a curated provider descriptor is OPTIONAL (UX only), never required to connect** (owner ruling §2.3). | A connection can be created against any compatible MCP with just endpoint + transport + auth mode + label, and it **retains its own endpoint / transport / auth-mode / discovery state**. `mcp_providers` enriches UX and pre-fills quirks; it never gates connect. |
 
 These are testable and belong in CI ratchets (§10), the way `lint:views` / `lint:definer-fns` /
 `lint:action-risk` already freeze other invariants.
@@ -192,6 +194,22 @@ does **not** gate Paige calling a *provider's* authorized tools. §6.5, §7, §9
 this ruling. **Money note:** a real-money action is still execute-after-approval; any spend-bounding is a
 *neutral, owner-set bound* (like bounded retries), **never** a capability ban that marks a provider-authorized
 tool `UNAVAILABLE`.
+
+## 2.3 Owner ruling — a general remote-MCP connection is first-class; descriptors are optional (LOCKED)
+
+**Owner ruling (this session).** The model must support a **general remote-MCP connection shape** *as well as*
+named provider descriptors. A curated descriptor (`mcp_providers` row) may **improve the UI**, but it
+**cannot be required** for Paige to connect to a compatible future MCP. **The actual connection retains its
+own endpoint, transport, authentication mode, and safe discovery state** — independent of whether any
+descriptor exists.
+
+**Design consequence.** `connect(...)` accepts a raw connection (endpoint + transport + auth mode + label)
+and works with **no curated descriptor** (`provider_key='generic-remote'`, a seeded no-op row that satisfies
+referential integrity without describing anything). Discovery, health, approvals, receipts, and namespacing
+all operate off `connection_id` regardless. A descriptor, when present, only enriches presentation and
+pre-fills known quirks (e.g. n8n's resource-URL shape, Zapier's DCR issuer) — it is **never** a gate. This
+is why a hardcoded provider enum is fatal and a descriptor *table* is not: the enum forbids the unknown MCP;
+the optional descriptor merely fails to know it yet, and Paige connects anyway. (See §4.1, §4.2, §5.1, I-9.)
 
 ---
 
@@ -351,17 +369,24 @@ notes               text
 - The n8n **API-key REST lane** is modeled as `provider_key='n8n'` with `auth_kind` including a REST mode —
   or, cleaner, folded so that n8n's MCP endpoint is the one path (see §12 D-3). Either way it stops being a
   parallel special case.
+- **The descriptor is OPTIONAL (owner ruling §2.3, I-9).** A connection can be created with **no** curated
+  `mcp_providers` row — `provider_key='generic-remote'` (a seeded no-op descriptor) — so Paige connects to
+  any compatible future MCP without one. The connection itself carries endpoint, transport, auth mode, and
+  discovery state; `oauth_discovery`/`resource_url_shape`/`default_scopes` have safe generic fallbacks (pure
+  DCR discovery, no URL-shape assertion, scopes learned from the grant) when no descriptor describes them. A
+  descriptor only enriches UI and pre-fills quirks; it never gates connect.
 
 ### 4.2 `mcp_connections` — the connection (replaces the singleton, satisfies I-1/I-2/I-4)
 
 ```
 connection_id       uuid PRIMARY KEY DEFAULT gen_random_uuid()
 tenant_id           uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE
-provider_key        text NOT NULL REFERENCES mcp_providers(provider_key)
+provider_key        text NOT NULL REFERENCES mcp_providers(provider_key)  -- 'generic-remote' is a seeded no-op descriptor; a CURATED descriptor is NEVER required to connect (§2.3)
 label               text NOT NULL                       -- MUTABLE human name ("GHL — Northeast"); rename ≠ re-identify
 UNIQUE (tenant_id, provider_key, label)                 -- addressing convenience only; identity is always connection_id
 server_url_ct       bytea                               -- encrypted (platform_encrypt), never row-read
-auth_kind           text NOT NULL                       -- constrained to the provider's allowed set
+auth_kind           text NOT NULL                       -- self-contained on the connection, not inherited from a descriptor (§2.3)
+transport           text NOT NULL                       -- 'http' today; lives on the connection, not from a descriptor (§2.3)
 auth_ref            -- Vault-backed reference: auth_token_ct / refresh_token_ct / oauth_* — PER CONNECTION
 granted_scopes      text[]                              -- the ceiling for THIS connection (I-6)
 status              text  -- 'unconfigured'|'pending_verification'|'connected'|'error'  (probe writes 'connected')
@@ -421,7 +446,8 @@ layer**.
 ### 5.1 Connection lifecycle verbs (all generic; no provider special-casing)
 
 ```
-connect(provider_key, label, auth_input)   → create connection row (status unconfigured→pending_verification)
+connect({endpoint, transport, auth_mode, label, provider_key?}) → create connection row (unconfigured→pending_verification);
+                                              provider_key OPTIONAL (defaults to 'generic-remote') — a curated descriptor is NEVER required (§2.3)
 intake(connection_id)                       → SAFE READ-ONLY probe: initialize + tools/list + fingerprint + health
                                               (writes status=connected ONLY on a live probe; NO mutating tools/call)
 list_capabilities(connection_id)            → the namespaced, sanitized catalog for reasoning (§5.4)
@@ -676,6 +702,7 @@ egress-to-model smoke suites (`scripts/mcp-*-smoke.mjs`, `scripts/n8n-egress-smo
 > owner** (recommended owner: the Clients/People + platform-security lane; fix: re-key the index to
 > `(tenant_id, ghl_contact_id)` under §208 shape discipline + §37 producer inventory). It is recorded here
 > only so the gateway does not silently inherit or mask it. **Do not fix it inside the gateway PRs.**
+> **FILED 2026-09-14 as issue #1257** (tenant-isolation; severity intact — do not downgrade).
 
 **Fresh-`main` note (§13):** the SDK/Foundations doc was grounded at `origin/main 1d1eabd`; this review is
 against the working tree with #1234 open at head `5849f5a2`. A **fresh-`main` collision pass is mandatory
@@ -720,14 +747,26 @@ tables are **deprecated with a cutover, never dropped in the same step** (§198)
 
 ### The first owner decision required
 
+> **✅ APPROVED — G1-D LOCKED (owner ruling, this session).** The owner approved the registry re-model as the
+> foundation for the future connected-MCP gateway, confirming: **immutable `connection_id`** is the durable
+> identity; connections are **tenant-scoped and may be many per provider**; labels are **human-facing and
+> mutable — never the authority, approval, receipt, or join identity**; providers are **registry-driven, not
+> a hardcoded n8n/Zapier enum**; and **every** discovered tool, scope, health check, approval, execution,
+> receipt, error, and audit record is **namespaced by `connection_id`**. Plus §2.3: a **general remote-MCP
+> connection shape** is first-class and a curated descriptor is never required to connect. GoHighLevel
+> cross-tenant collision **filed separately as #1257**. **Still gated — NO implementation** until #1234
+> merges, #1255 is resolved or safely collision-cleared, a fresh-`main` grounding pass completes, and the
+> owner gives an explicit implementation go-ahead.
+
 > **G1-D — Approve the registry re-model shape: a first-class `connection_id` with `mcp_providers` as a data
 > descriptor and `(tenant_id, provider_key, label)` multiplicity — replacing the `(tenant, provider)`
 > singleton and the two-value provider enum — as the single foundation all connections (n8n, Zapier, GHL,
 > Meta, future) sit on.**
 > *Recommended: yes.* It is the minimum change that satisfies I-1..I-5 and it is additive/cutover, not a
 > rebuild of the (good) client core. Everything else (generic runner, intake, truth-boundary, reference
-> providers) builds on it. Nothing is built until #1234 merges, a fresh-`main` collision pass is complete,
-> and you give the go.
+> providers) builds on it. **Still gated — no implementation** until #1234 merges, #1255 is resolved or
+> safely collision-cleared, a fresh-`main` grounding pass completes, and the owner gives an explicit
+> implementation go-ahead.
 
 Secondary decisions to confirm when G1-D is approved: **scope D-3 to the inbound door** (per §2.2 the
 outbound gateway executes provider-authorized effects after owner approval — it is *not* deferred to a P6
@@ -761,5 +800,6 @@ read-only crew + integrator, each citing `file:line`. The failing n8n conversati
 observed; the failure is mapped to code paths, not quoted. Nothing was built, configured, connected, called,
 migrated, merged, or deployed. Evidence classes: static source + migration reads + GitHub PR/issue state;
 no authenticated-runtime or production evidence — none was in scope for a planning package. Stop point: this
-package. No build begins until CRM #1234 is merged, a fresh-`main` collision pass is complete, and the owner
-authorizes it.*
+package. No build begins until CRM #1234 is merged, the Chat/Knowledge regression #1255 is resolved or
+safely collision-cleared, a fresh-`main` grounding pass is complete, and the owner gives an explicit
+implementation go-ahead.*
