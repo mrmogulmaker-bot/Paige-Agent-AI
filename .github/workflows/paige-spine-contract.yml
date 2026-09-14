@@ -12,6 +12,7 @@ on:
     paths:
       - "supabase/functions/_shared/paige-spine/**"
       - "supabase/migrations/**"
+      - "supabase/tests/mcp_gateway_endpoint_revokes_approvals.sql"
       - "supabase/tests/paige_spine_foundation.sql"
       - "supabase/tests/governed_crm_commands.sql"
       - "supabase/tests/media_credit_ledger.sql"
@@ -54,6 +55,7 @@ on:
     paths:
       - "supabase/functions/_shared/paige-spine/**"
       - "supabase/migrations/**"
+      - "supabase/tests/mcp_gateway_endpoint_revokes_approvals.sql"
       - "supabase/tests/paige_spine_foundation.sql"
       - "supabase/tests/governed_crm_commands.sql"
       - "supabase/tests/media_credit_ledger.sql"
@@ -179,6 +181,12 @@ jobs:
       # a foreign source_thread_id grants no discovery of the linked conversation (§9/§13). Rides this
       # job for the same §24 reason as the proofs above — the cost is `supabase start` + `db reset`.
       - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/source_thread_link_scope.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      # Connected MCP Gateway — changing a connection's stored endpoint revokes its approvals, the
+      # connection-keyed twin of _mcp_revoke_approvals_on_endpoint_change (migration 20270322000000).
+      # Proves a non-endpoint edit and a same-address re-encryption do NOT revoke; a re-point and a
+      # disconnect DO; and the DELETE is scoped to the one connection_id (a sibling is untouched).
+      # Rides this replayed DB for the same §24 reason as the proofs above.
+      - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_endpoint_revokes_approvals.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       - run: node scripts/proof/business-mission-concurrency.mjs
         env:
           BUSINESS_MISSION_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
