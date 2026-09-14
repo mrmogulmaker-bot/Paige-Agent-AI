@@ -1063,6 +1063,27 @@ group("attached-document turns DO carry tenant Knowledge, and its guard actually
     `provider calls: ${switched.providerCalls.length}`,
   );
 
+  // #1255 — the KB-MISS escape route, pinned to the exact path the fix depends on. 15.9 uses a KB
+  // HIT; the historical regression the comment above warns about is a document turn whose Knowledge
+  // lookup MISSED — which once had "nothing to compare against" and slipped the guard. A document
+  // turn is protected by `!!attachedDocument` regardless of whether the KB matched, so a switched
+  // KB-miss document turn must ALSO make zero provider calls. This nails the fix to that path: a
+  // future narrowing of the protected-turn set (dropping the unconditional attachedDocument source)
+  // fails HERE instead of silently reopening #1255 on the KB-miss path while 15.9 stays green.
+  const switchedKbMiss = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD, AGENCY],
+    memberships: [CHILD, AGENCY],
+    bodyExtras: { document },
+    provider: ["private-text", "private-text"],
+    rpcExtras: { match_tenant_knowledge: () => ({ data: [], error: null }) },
+  });
+  assert(
+    "15.9c a switched document turn whose Knowledge lookup MISSED still makes no provider call",
+    switchedKbMiss.providerCalls.length === 0,
+    `provider calls: ${switchedKbMiss.providerCalls.length}`,
+  );
+
   // A switch that lands AFTER the pre-egress refusal has already passed. This exercises the
   // document stream's OWN close-boundary check rather than the 409 above — the point at which
   // the provider reply exists and `holdDirectFramesForKnowledgeScope` is holding it back.
