@@ -2,7 +2,7 @@
 
 > **⚠ GROUNDING DELTA (2026-09-13) — this doc's Spine-registry count is STALE; do not answer "how many
 > capabilities?" from it.** When grounded (2026-09-03) the registry held **1** capability; on `main`
-> today it holds **35** (code-verified). This doc also predates the 12 `SCR-N8N-MANAGEMENT`
+> today it holds **37** (code-verified; 35 at the af249ef grounding, +2 `calendar_link` merged 2026-09-14). This doc also predates the 12 `SCR-N8N-MANAGEMENT`
 > capabilities, the first mutating Spine capabilities, and the 7 added chat context blocks. Its
 > **constraint definitions (C2/C3/C4), the safety posture, and "nothing is `maturity: LIVE`" remain
 > accurate.** For the current, whole-vertical status (Mind · Memory · Tenant Knowledge · Second Brain)
@@ -116,7 +116,7 @@ design question is reached.
 Every other surface below needs a **new registry capability** at minimum.
 
 > **CORRECTION (2026-09-13, §13/§58):** the sentence above was true when grounded (2026-09-03). On
-> `main` today the registry holds **35** capabilities, assembled from 12 domain modules
+> `main` today the registry holds **37** capabilities, assembled from 13 domain modules
 > (`registry.ts:21`), **still all `maturity: PARTIAL`** — none is `LIVE`. The C2/C3/C4 envelope
 > contract below still binds **only** `pipeline.deal_stage_evidence`; the other 34 (incl. the first
 > mutating capabilities and 12 `SCR-N8N-MANAGEMENT` reads) are served by parallel per-domain

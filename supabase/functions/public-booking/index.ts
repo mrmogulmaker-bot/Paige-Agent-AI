@@ -571,16 +571,19 @@ async function loadBranding(admin: ReturnType<typeof createClient>, host: HostSe
   };
 }
 
-/** Comma-joined display names for a host roster (full_name, falling back to
- *  their auth email) — used so a Collective guest sees who's on the panel
- *  before booking, not just after (in the confirmation email). */
+/** Comma-joined display names for a host roster — used so a Collective guest sees
+ *  who's on the panel before booking, not just after (in the confirmation email).
+ *  Uses the host's profile `full_name` ONLY. A host with no display name is OMITTED,
+ *  never identified by their auth email: this string is returned to UNAUTHENTICATED
+ *  `/book` callers, so leaking a staff email here is an anon PII disclosure
+ *  (E6 §39 MED-2, 2026-09-13). Dropping the per-host auth lookup also removes an
+ *  unnecessary N calls to `auth.admin.getUserById`. */
 async function resolveHostNames(admin: ReturnType<typeof createClient>, hostIds: string[]): Promise<string | null> {
   const { data: profs } = await admin.from("profiles").select("user_id, full_name").in("user_id", hostIds);
   const nameByUid = new Map((profs ?? []).map((p) => [p.user_id as string, p.full_name as string | null]));
-  const names = (await Promise.all(hostIds.map(async (uid) => {
-    const { data: u } = await admin.auth.admin.getUserById(uid);
-    return nameByUid.get(uid) || (u as { user?: { email?: string } } | null)?.user?.email || null;
-  }))).filter((n): n is string => !!n);
+  const names = hostIds
+    .map((uid) => nameByUid.get(uid) || null)
+    .filter((n): n is string => !!n);
   return names.length ? names.join(", ") : null;
 }
 

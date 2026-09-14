@@ -103,7 +103,7 @@ repo's own guards on 2026-09-02, with the capability count re-measured 2026-09-0
 
 | Measure | Value | How |
 |---|---|---|
-| Registered Spine capabilities | ~~**2**~~ → ~~**17** (2026-09-05)~~ → **35** (2026-09-13, code-verified) | `node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs`. The count moved with the n8n management family, `social.presence` (2026-09-05), then business_mission/campaign/comms/integrations/contact/calendar_preset through 2026-09-13. All `maturity: PARTIAL`; only `pipeline.deal_stage_evidence` is in the Mind envelope contract. See `docs/architecture/mind-memory-knowledge-brain-capability-map.md`. |
+| Registered Spine capabilities | ~~**2**~~ → ~~**17** (2026-09-05)~~ → ~~**35** (2026-09-13, code-verified)~~ → **37** (2026-09-14, code-verified — E7 `calendar_link` merged: +2) | `node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs`. The count moved with the n8n management family, `social.presence` (2026-09-05), then business_mission/campaign/comms/integrations/contact/calendar_preset through 2026-09-13, then `calendar_link` (2026-09-14, +2). All `maturity: PARTIAL`; only `pipeline.deal_stage_evidence` is in the Mind envelope contract. See `docs/architecture/mind-memory-knowledge-brain-capability-map.md`. |
 | Inline Chat tools | **105** | `node scripts/ci/chat-tool-registry-lint.mjs` → `105 tool(s) inline, none added (baseline 105)` |
 | Classified actions | **62** — 32 `ordinary`, 28 `high`, 2 `owner_only`, 5 exempt, 0 unclassified writes | `npm run lint:action-risk` |
 

@@ -260,6 +260,13 @@ if (chatSrc.includes('...CALENDAR_PRESET_TOOLS')) {
   if (!calendarTools.length) throw new Error('Calendar Preset catalog could not be parsed');
   importedTools.push(...calendarTools);
 }
+if (chatSrc.includes('...CALENDAR_LINK_TOOLS')) {
+  if (!/import\s*\{[^}]*CALENDAR_LINK_TOOLS[^}]*\}\s*from\s*['"]\.\.\/_shared\/paige-spine\/domains\/calendar_link\.ts['"]/.test(chatSrc)) throw new Error('Unresolved Calendar Link catalog import');
+  const source = fs.readFileSync('supabase/functions/_shared/paige-spine/domains/calendar_link.ts', 'utf8');
+  const linkTools = [...source.matchAll(/\bname:\s*"(calendar_link_[a-z_]+)"/g)].map(m => m[1]);
+  if (!linkTools.length) throw new Error('Calendar Link catalog could not be parsed');
+  importedTools.push(...linkTools);
+}
 const mcpCanonicals = parseMcpCanonicals(fs.readFileSync(MCP_POLICY, "utf8"));
 const governedEdgeActions = parseGovernedEdgeActions(fs.readFileSync(SOCIAL_HANDLER, "utf8"));
 if (!mcpCanonicals.length) {

@@ -81,8 +81,8 @@ safe-by-construction seam layer** with a **thin usable edge**:
 
 | Capability | State | Real seam (file:line) | Notes |
 |---|---|---|---|
-| Registered Spine capabilities | **SOURCE-BUILT** (all `maturity: PARTIAL`) | `_shared/paige-spine/registry.ts:21` assembles from 12 domain modules — **35 capabilities**, code-verified | Distribution: mindBinding 17 PARTIAL / 18 UNAVAILABLE / 0 LIVE. **Zero are `maturity: LIVE`.** |
-| The C2/C3/C4 signal-envelope contract | **PARTIAL / PROOF OWED** | `_shared/paige-spine/resolveEvidence.ts` (19-key envelope) → `mindEvidence.ts:90` | **Binds exactly ONE of the 35**: `pipeline.deal_stage_evidence`. It is the only capability that flows the hardened envelope into a chat turn. |
+| Registered Spine capabilities | **SOURCE-BUILT** (all `maturity: PARTIAL`) | `_shared/paige-spine/registry.ts:21` assembles from 13 domain modules — **37 capabilities**, code-verified (2026-09-14, post-E7-merge; 35 across 12 modules at the af249ef grounding, +2 `calendar_link`) | Distribution: mindBinding 17 PARTIAL / 20 UNAVAILABLE / 0 LIVE. **Zero are `maturity: LIVE`.** |
+| The C2/C3/C4 signal-envelope contract | **PARTIAL / PROOF OWED** | `_shared/paige-spine/resolveEvidence.ts` (19-key envelope) → `mindEvidence.ts:90` | **Binds exactly ONE of the 37**: `pipeline.deal_stage_evidence`. It is the only capability that flows the hardened envelope into a chat turn. |
 | Mind evidence into a chat turn (cited) | **PARTIAL / PROOF OWED** | `paige-ai-chat/index.ts:1249,4625` `loadSpineEvidenceForChat` | Loads only when a client is scoped (C4); otherwise a byte-identical UNAVAILABLE block. |
 | The other read capabilities (business_context, team, social, n8n_readiness) | **SOURCE-BUILT** | parallel `domains/*ChatEvidence.ts` per-domain projections | Each header states it is *"Deliberately NOT routed through resolveEvidence.ts"* — the **SCR-2 workaround** realized as hand-written per-domain bounded projections, not the one contract. |
 
@@ -176,7 +176,7 @@ projection, and emits no citations. Self-labels the orbit "visual only. Tenant a
 
 ### 4b. Current facts — the Spine
 
-Covered in Domain 1a. 35 registered, all `maturity: PARTIAL`, axis-B = NO for every surface. "What is
+Covered in Domain 1a. 37 registered, all `maturity: PARTIAL`, axis-B = NO for every surface. "What is
 true now" reaches the **model** in a client-scoped turn; it is not an authenticated owner-facing capability.
 
 ### 4c. Decisions / outcomes / lessons — governed owner memory
@@ -330,13 +330,13 @@ work" item) to raise at the review gate.
 ## Deltas vs the cited docs (what is stale and must not be answered from)
 
 - **`docs/architecture/paige-mind-integration-matrix.md`** (grounded 2026-09-03) is **materially stale on
-  its central claim** (`:103` "the registry holds exactly one capability"). **Reality on `main` today: 35.**
+  its central claim** (`:103` "the registry holds exactly one capability"). **Reality on `main` today: 37** (35 at the af249ef grounding; +2 from E7 `calendar_link` merged 2026-09-14).
   It also predates: the 12 SCR-N8N-MANAGEMENT capabilities, the first mutating Spine capabilities
   (business_mission/campaign/calendar_preset), and the 7 new context blocks. A dated correction banner +
   inline note is added to that file in this same change (§13/§58/§66 — the dated grounding is preserved, the
   false answer is stopped).
 - **`docs/brain/paige-spine-and-rail-state.md`** cites "~17" capabilities (2026-09-05). Superseded by the
-  code-verified **35** here.
+  code-verified **37** here (35 at the af249ef grounding; +2 from E7 `calendar_link` merged 2026-09-14).
 - **#746 tracker divergence** (GitHub-closed vs master-ref OPEN) is unreconciled and is the owner's call;
   functional position (safe resolver deployed, consumers moved onto it) is not in dispute.
 - **`docs/brain/paige-memory-contract.md`** "self-serve forget ships now" is true at the **seam** but

@@ -17,8 +17,12 @@ import { CONTACT_EVENT_STATUS } from "./domains/contact.ts";
 // RPCs via calendar-preset-tenant-brain.ts, so the LIVE chatBinding the validator requires is
 // now true (§10/§13). No second preset model — the UI and Paige drive the same RPCs.
 import { CALENDAR_PRESET_CAPABILITIES } from "./domains/calendar_preset.ts";
+// E7 — governed calendar-link sharing: the TWO READS (prepare, social_copy) register here
+// (clean public.<symbol> executors). The SEND (calendar_link_send) is governed via
+// _shared/action-risk.ts + the inline confirm gate, NOT this manifest (see calendar_link.ts).
+import { CALENDAR_LINK_CAPABILITIES } from "./domains/calendar_link.ts";
 
-export const PAIGE_SPINE_CAPABILITIES = [PIPELINE_DEAL_STAGE_EVIDENCE, BUSINESS_CONTEXT_READINESS, TEAM_AUTHORITY, SOCIAL_PRESENCE, N8N_CONNECTION_READINESS, ...N8N_MANAGEMENT_CAPABILITIES, ...BUSINESS_MISSION_CAPABILITIES, ...CAMPAIGN_BRIEF_CAPABILITIES, ...CALENDAR_PRESET_CAPABILITIES, COMMS_MESSAGES_READ, INTEGRATIONS_LIST, INTEGRATIONS_HEALTH, CONTACT_EVENT_STATUS] as const;
+export const PAIGE_SPINE_CAPABILITIES = [PIPELINE_DEAL_STAGE_EVIDENCE, BUSINESS_CONTEXT_READINESS, TEAM_AUTHORITY, SOCIAL_PRESENCE, N8N_CONNECTION_READINESS, ...N8N_MANAGEMENT_CAPABILITIES, ...BUSINESS_MISSION_CAPABILITIES, ...CAMPAIGN_BRIEF_CAPABILITIES, ...CALENDAR_PRESET_CAPABILITIES, ...CALENDAR_LINK_CAPABILITIES, COMMS_MESSAGES_READ, INTEGRATIONS_LIST, INTEGRATIONS_HEALTH, CONTACT_EVENT_STATUS] as const;
 
 const KEY_PATTERN = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/;
 const SERVER_SYMBOL_PATTERN = /^public\.[a-z][a-z0-9_]*$/;
