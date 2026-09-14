@@ -1395,8 +1395,8 @@ begin
       select * into loser from public.clients where id=(p.target_snapshot->>'loser_contact_id')::uuid and tenant_id=_tenant_id for update;
       if c.id is null or loser.id is null or c.updated_at is distinct from (p.target_snapshot->>'survivor_updated_at')::timestamptz or loser.updated_at is distinct from (p.target_snapshot->>'loser_updated_at')::timestamptz then raise exception 'CRM_VERSION_CONFLICT' using errcode='40001'; end if;
       if c.status is distinct from 'active' or loser.status is distinct from 'active' or c.merged_into_contact_id is not null or loser.merged_into_contact_id is not null then raise exception 'CRM_MERGE_TARGET_INACTIVE' using errcode='42501'; end if;
-      perform 1 from public.deals d where d.contact_client_id=loser.id for update;
-      perform 1 from public.client_notes n where n.contact_id=loser.id for update;
+      perform 1 from public.deals dependency_deal where dependency_deal.contact_client_id=loser.id for update;
+      perform 1 from public.client_notes dependency_note where dependency_note.contact_id=loser.id for update;
       deps:=public.crm_contact_dependency_snapshot(loser.id);
       if deps is distinct from p.target_snapshot->'dependency_snapshot' then raise exception 'CRM_DEPENDENCY_CONFLICT' using errcode='40001'; end if;
       if (deps->>'unsupported')::bigint<>0 then raise exception 'CRM_MERGE_DEPENDENCIES_UNSUPPORTED' using errcode='42501'; end if;
