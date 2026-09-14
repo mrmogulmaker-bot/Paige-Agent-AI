@@ -1193,7 +1193,11 @@ begin
       snap:=pg_catalog.jsonb_build_object('survivor_contact_id',c1.id,'survivor_updated_at',c1.updated_at,'loser_contact_id',c2.id,'loser_updated_at',c2.updated_at,
         'dependency_snapshot',deps,'resolutions',coalesce(_command->'resolutions','{}'::jsonb));
       outp:=pg_catalog.jsonb_build_object('action',a,'record_kind','contact_merge','survivor',pg_catalog.jsonb_build_object('id',c1.id,'client_ref',c1.account_number),
-        'loser',pg_catalog.jsonb_build_object('id',c2.id,'client_ref',c2.account_number),'conflicts',conflict_rows,'dependency_counts',deps,
+        'loser',pg_catalog.jsonb_build_object('id',c2.id,'client_ref',c2.account_number),'conflicts',conflict_rows,
+        'transfer_effects',pg_catalog.jsonb_build_object(
+          'loser_email_cleared',c2.email is not null and coalesce(_command->'resolutions'->>'email',case when c1.email is null then 'loser' else 'survivor' end)='loser',
+          'loser_portal_identity_released',c2.linked_user_id is not null
+        ),'dependency_counts',deps,
         'eligible',(deps->>'unsupported')::bigint=0 and not (c1.linked_user_id is not null and c2.linked_user_id is not null and c1.linked_user_id<>c2.linked_user_id),
         'safe_refusal',case
           when (deps->>'unsupported')::bigint>0 then 'one or more dependencies belong to another domain and cannot be silently reassigned'
@@ -1458,7 +1462,10 @@ begin
       end if;
       -- Release the losing row's unique portal identity before transferring it. The loaded row
       -- variable retains the exact preview-bound value used below; the whole transaction rolls back on failure.
-      update public.clients set linked_user_id=null where id=loser.id;
+      update public.clients set
+        linked_user_id=null,
+        email=case when resolutions->>'email'='loser' or (not (resolutions ? 'email') and c.email is null) then null else email end
+       where id=loser.id;
       perform pg_catalog.set_config('app.suppress_contact_assignment_notification','on',true);
       v_prior_auto_stub:=pg_catalog.current_setting('app.suppress_contact_auto_stub',true);
       perform pg_catalog.set_config('app.suppress_contact_auto_stub','on',true);
@@ -1478,7 +1485,7 @@ begin
       update public.client_notes set contact_id=c.id,updated_at=pg_catalog.clock_timestamp() where contact_id=loser.id;
       perform pg_catalog.set_config('app.crm_merge_lineage_write','on',true);
       update public.clients set status='archived',merged_into_contact_id=c.id,merged_at=pg_catalog.clock_timestamp(),updated_at=pg_catalog.clock_timestamp() where id=loser.id returning * into loser;
-      readback:=pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'merged_contact_id',loser.id,'loser_archived',loser.status='archived','dependency_counts',deps,'updated_at',c.updated_at,'external_effect',false,'notification_sent',false);
+      readback:=pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'merged_contact_id',loser.id,'loser_archived',loser.status='archived','loser_email_cleared',resolutions->>'email'='loser' or (not (resolutions ? 'email') and c.email=loser.email),'dependency_counts',deps,'updated_at',c.updated_at,'external_effect',false,'notification_sent',false);
     elsif a='contact.bulk_update' then
       if p.target_snapshot->'patch' ? 'assigned_coach_user_id' and nullif(p.target_snapshot->'patch'->>'assigned_coach_user_id','') is not null then
         perform 1 from public.tenant_members tm
