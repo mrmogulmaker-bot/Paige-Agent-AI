@@ -857,9 +857,13 @@ re-ground chat line numbers first and must not weaken #1255's tests.
   CI ratchet + **T1–T5**), coordinated with the #1255 fix so neither weakens the knowledge-scope tests.
   **Report before editing any shared Chat path** (per owner).
 
-### 14.4 What this pass did NOT do
-No code/schema/runtime edit; no PR; no provider configured or called; **#1255 untouched and its tests
-intact.** Phase S is *proposed, not started* — it awaits the owner's explicit build go-ahead.
+### 14.4 Phase S status
+Phase S was **authorized and built** on 2026-09-14 (owner go-ahead). It is additive/non-destructive,
+headless-proven, and awaiting the owner's merge/deploy decision on a draft PR — no provider called, no
+merge/deploy, `paige-ai-chat` and `#1255`'s tests untouched, legacy stores untouched. The release-ready
+record is `docs/delivery/connected-mcp-gateway-phase-s.md`; the `forget_paige_workflow` compatibility
+decision is `docs/delivery/phase-s-forget-paige-workflow-decision.md`. **Phase C (chat-facing) remains
+parked** pending #1255 resolution or an explicit collision decision.
 
 ---
 
