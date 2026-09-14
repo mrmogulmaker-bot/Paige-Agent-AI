@@ -1335,7 +1335,7 @@ declare
   a text:=nullif(pg_catalog.btrim(_command->>'action'),''); p public.crm_command_previews%rowtype;
   c public.clients%rowtype; loser public.clients%rowtype; t public.tasks%rowtype; d public.deals%rowtype;
   deps jsonb; now_snap jsonb; v_result jsonb; readback jsonb; run_id uuid; changed int; target_count int;
-  resolutions jsonb; owner_id uuid; field text; choice text; v_capability text; v_prior_auto_stub text; v_transfer_email boolean;
+  resolutions jsonb; owner_id uuid; field text; choice text; v_capability text; v_prior_auto_stub text; v_transfer_email boolean; v_loser_email_cleared boolean;
   v_hash text; v_cached public.crm_command_results%rowtype; effective_command jsonb;
   v_active_tenant uuid; v_actor_role text; v_autonomy_mode text; v_approval_channel text:=nullif(_command->>'approval_channel','');
 begin
@@ -1454,6 +1454,11 @@ begin
       if c.linked_user_id is not null and loser.linked_user_id is not null and c.linked_user_id<>loser.linked_user_id then raise exception 'CRM_MERGE_IDENTITY_CONFLICT' using errcode='42501'; end if;
       resolutions:=p.target_snapshot->'resolutions';
       v_transfer_email:=coalesce(resolutions->>'email'='loser',false) or (not (resolutions ? 'email') and c.email is null);
+      -- Selection (v_transfer_email) applies the chosen email even when it is null; the durable clearing
+      -- receipt is a distinct fact -- an existing loser email was actually erased. Capture it from the
+      -- pre-mutation loser row before the release update below nulls loser.email, so the readback matches
+      -- the preview (loser selected AND the loser actually had an email), never conflating the two.
+      v_loser_email_cleared:=v_transfer_email and loser.email is not null;
       owner_id:=case when resolutions->>'assigned_coach_user_id'='loser' or (not (resolutions ? 'assigned_coach_user_id') and c.assigned_coach_user_id is null) then loser.assigned_coach_user_id else c.assigned_coach_user_id end;
       if owner_id is not null then
         perform 1 from public.tenant_members tm
@@ -1486,7 +1491,7 @@ begin
       update public.client_notes set contact_id=c.id,updated_at=pg_catalog.clock_timestamp() where contact_id=loser.id;
       perform pg_catalog.set_config('app.crm_merge_lineage_write','on',true);
       update public.clients set status='archived',merged_into_contact_id=c.id,merged_at=pg_catalog.clock_timestamp(),updated_at=pg_catalog.clock_timestamp() where id=loser.id returning * into loser;
-      readback:=pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'merged_contact_id',loser.id,'loser_archived',loser.status='archived','loser_email_cleared',v_transfer_email,'dependency_counts',deps,'updated_at',c.updated_at,'external_effect',false,'notification_sent',false);
+      readback:=pg_catalog.jsonb_build_object('id',c.id,'client_ref',c.account_number,'merged_contact_id',loser.id,'loser_archived',loser.status='archived','loser_email_cleared',v_loser_email_cleared,'dependency_counts',deps,'updated_at',c.updated_at,'external_effect',false,'notification_sent',false);
     elsif a='contact.bulk_update' then
       if p.target_snapshot->'patch' ? 'assigned_coach_user_id' and nullif(p.target_snapshot->'patch'->>'assigned_coach_user_id','') is not null then
         perform 1 from public.tenant_members tm
