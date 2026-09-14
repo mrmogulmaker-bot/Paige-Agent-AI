@@ -135,12 +135,16 @@ function summaryFor(command: z.infer<typeof commandSchema>, preview?: JsonObject
     if (command.action === "contact.merge") {
       const survivor = object(preview.survivor); const loser = object(preview.loser);
       const dependencies = object(preview.dependency_counts);
+      const transferEffects = object(preview.transfer_effects);
+      const emailTransferSummary = transferEffects?.loser_email_cleared === true
+        ? " The losing contact's email will be cleared after it is transferred."
+        : "";
       const conflicts = Array.isArray(preview.conflicts) ? preview.conflicts : [];
       const conflictSummary = conflicts.map((item) => {
         const conflict = object(item);
         return `${String(conflict?.field ?? "field")}: ${String(conflict?.survivor ?? "empty")} / ${String(conflict?.loser ?? "empty")} → keep ${String(conflict?.resolution ?? "survivor")}`;
       }).join("; ");
-      return `Merge contact ${String(loser?.client_ref ?? loser?.id ?? "(unknown)")} into ${String(survivor?.client_ref ?? survivor?.id ?? "(unknown)")}; reassign ${String(dependencies?.supported ?? 0)} supported dependent record(s), then archive the losing contact.${conflictSummary ? ` Conflict preview: ${conflictSummary}.` : " No conflicting populated fields were found."}`;
+      return `Merge contact ${String(loser?.client_ref ?? loser?.id ?? "(unknown)")} into ${String(survivor?.client_ref ?? survivor?.id ?? "(unknown)")}; reassign ${String(dependencies?.supported ?? 0)} supported dependent record(s), then archive the losing contact.${conflictSummary ? ` Conflict preview: ${conflictSummary}.` : " No conflicting populated fields were found."}${emailTransferSummary}`;
     }
     if (command.action === "contact.bulk_update") {
       const targets = Array.isArray(preview.eligible_targets) ? preview.eligible_targets.map((item) => object(item)?.client_ref ?? object(item)?.id).filter(Boolean) : [];
