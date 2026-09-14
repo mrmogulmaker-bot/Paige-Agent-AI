@@ -41,9 +41,9 @@ PROTECTED_SEAMS: `crm-command` is the only Chat mutation door; `execute_crm_comm
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
 INTERNAL_BUILD_IDENTITY: code-candidate=fc6b77cb1cf2dfbfda72dfb84906b3b05aca7175; final-doc-head=PR-1234-current-head; deployment=none-pre-merge; environment=development; migrations=PROOF_OWED(apply-on-merge-via-deploy-migrations-and-db-live); edge=PROOF_OWED(deploy-on-merge-crm-command-and-paige-ai-chat); evidence=docs/evidence/ui-delivery/governed-crm-pipeline-chat.md-and-PR-1234
-RELEASE_CHANNEL: development candidate: PR #1234 exact-head CI and reviews; owner authorized merge through the normal live release path only after the exact repaired head clears the diff-owned security and release gates; no customer-data mutation or provider action is authorized
+RELEASE_CHANNEL: development: PR #1234 exact-head CI and reviews; owner authorized merge through the normal live release path only after the exact repaired head clears the diff-owned security and release gates; no customer-data mutation or provider action is authorized
 RELEASE_CLASSIFICATION: internal-only: governed Paige CRM/Pipeline operator capability candidate with no owner-approved customer release identity
-CUSTOMER_RELEASE_IDENTITY: none pre-merge: the conditional live release is authorized but no merged/deployed identity exists yet
+CUSTOMER_RELEASE_IDENTITY: none: the conditional live release is authorized but no merged/deployed identity exists yet
 RELEASE_NOTE_REQUIRED: NO: nothing is merged or deployed.
 RELEASE_TRUTH_BOUNDARY: PARTIAL: source, automated contracts, and fresh-migration database/RLS proof exist; authenticated production behavior, deployment identity, preview-branch/database parity, and viewport evidence remain PROOF OWED.
 RELEASE_RECOVERY: position=keep PR #1234 draft and use a focused forward-fix or revert before merge; reference=PR #1234 and docs/delivery/governed-crm-pipeline-operational-access.md
