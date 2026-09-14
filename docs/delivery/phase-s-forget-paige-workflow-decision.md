@@ -50,3 +50,18 @@ a small, separate slice owned by the n8n/registry lane (not the gateway), with i
 Either way, the dependency is now **surfaced, not hidden** — which is what the ruling required.
 
 **Owner decision requested:** A (define, separate slice) · B (remove call) · C (leave as-is, documented).
+
+## Owner decision — 2026-09-14: **C** (leave as-is in Phase S; Option A tracked as a separate follow-up)
+
+The owner ruled: *"For forget_paige_workflow, choose C: leave the existing graceful resync fallback unchanged
+in Phase S and record the define/remove decision as a small separate compatibility follow-up."*
+
+- **Phase S outcome:** the Connected MCP Gateway migration (`20270319000000`, merged as `6c745007`) left this
+  RPC and its call site **untouched** — no define, no replace, no remove. The dependency is **surfaced here,
+  not hidden in the migration** (which is what the 2026-09-14 ruling required). The resync fallback continues
+  to clean any ghost row on the next `sync_tenant_workflows` run, exactly as today.
+- **The define/remove decision is now its own tracked follow-up: issue
+  [#1260](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/1260)** — Option A (define the tiny
+  `service_role` `SECURITY DEFINER` cleanup fn), owned by the **n8n / workflow-registry lane**, not the MCP
+  gateway workstream, with its own §37 producer check. It is a compatibility nicety (immediate cleanup vs
+  next-resync cleanup), **not** a blocker for anything shipped in Phase S.
