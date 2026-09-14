@@ -11,12 +11,15 @@
 //
 // Two concurrent psql processes (no pg dependency), mirroring scripts/proof/business-mission-concurrency.mjs.
 //
-// HONESTY (§13, §39 adversarial): with the FOR UPDATE lock present this passes deterministically.
-// As a REGRESSION guard it is probabilistic — if the lock were removed, the stale-approval
-// interleaving becomes reachable but is not guaranteed on every run (a plain SELECT does not wait
-// on the row lock), so a single green run is a positive proof of correctness, not a hard tripwire
-// against a future lock removal. The deterministic guarantee is the endpoint_hash binding, proven
-// in mcp_gateway_durable_endpoint_bound_consent.sql.
+// HONESTY (§13, §39 adversarial): the RACY part below is probabilistic as a regression guard — if
+// the FOR UPDATE lock were removed, the stale-approval interleaving becomes reachable but not
+// guaranteed on every run, so a single green racy run is positive proof of correctness, not a hard
+// tripwire against lock removal. The DETERMINISTIC guarantees, which DO fail loudly on regression,
+// are: (a) the endpoint_hash binding + reviewed-endpoint guard, proven in
+// mcp_gateway_durable_endpoint_bound_consent.sql; and (b) the writer-first trigger tripwire added
+// just below, which non-racingly asserts the 20270322000000 revoke trigger deletes on endpoint
+// change. The racy exception handler swallows ONLY the expected MCP_ENDPOINT_CHANGED refusal — any
+// other writer error re-raises and fails the proof, so it can never pass vacuously.
 import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
@@ -59,6 +62,19 @@ try {
       VALUES('${conn}','${tenant}','generic-remote','race-target', public.platform_encrypt('${E1}'));
   `);
 
+  // DETERMINISTIC trigger tripwire (adversarial MINOR) — BEFORE the race, prove writer-first with no
+  // concurrency that the 20270322000000 revoke trigger DELETES the approval when the endpoint changes.
+  // The racy part below can pass green in the change-first ordering even with the trigger absent (the
+  // writer just refuses), so this deterministic check is what makes "no stale approval survives" fail
+  // LOUDLY if the revoke trigger is ever removed — independent of the Promise.all timing.
+  run(`SELECT public.set_mcp_connection_approval('${conn}','send_message','${pin}','${tenant}', NULL, NULL, public._mcp_endpoint_hash('${E1}'))`);
+  assert.equal(run(`SELECT count(*) FROM public.mcp_connection_approvals WHERE connection_id='${conn}'`), "1",
+    "writer-first: the reviewed-endpoint approval was not written");
+  run(`UPDATE public.mcp_connections SET server_url_ct = public.platform_encrypt('${E2}') WHERE connection_id='${conn}'`);
+  assert.equal(run(`SELECT count(*) FROM public.mcp_connection_approvals WHERE connection_id='${conn}'`), "0",
+    "the 20270322000000 revoke trigger did not delete the approval when the endpoint changed");
+  run(`UPDATE public.mcp_connections SET server_url_ct = public.platform_encrypt('${E1}') WHERE connection_id='${conn}'`); // reset to E1 for the race
+
   // T1: approve, asserting the endpoint the owner reviewed (E1). It takes FOR UPDATE on the
   // connection, then holds the txn open. T2: change the endpoint to E2 (fires the revoke trigger).
   // Forced to overlap; they serialize on the row lock. With the reviewed-endpoint guard now
@@ -68,7 +84,10 @@ try {
   const approveSql = `BEGIN;
     DO $$ BEGIN
       PERFORM public.set_mcp_connection_approval('${conn}','send_message','${pin}','${tenant}', NULL, NULL, public._mcp_endpoint_hash('${E1}'));
-    EXCEPTION WHEN OTHERS THEN NULL;  -- change-first ordering refuses (MCP_ENDPOINT_CHANGED); that is the correct outcome, not a proof failure
+    EXCEPTION WHEN OTHERS THEN
+      -- ONLY the reviewed-endpoint refusal (change-first ordering) is an expected, correct outcome.
+      -- Any OTHER error is a genuinely broken writer and MUST fail the proof, not pass vacuously.
+      IF SQLERRM NOT LIKE 'MCP_ENDPOINT_CHANGED%' THEN RAISE; END IF;
     END $$;
     SELECT pg_sleep(1); COMMIT;`;
   const repointSql = `BEGIN;

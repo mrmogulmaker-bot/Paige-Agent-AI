@@ -49,15 +49,19 @@ export type ReceiptInput = {
  * reporting a fully-recorded success the Rail never actually stored. Idempotent per `runId`
  * (the RPC keys on it).
  *
- * `not_applicable` — a prepared run (no Rail outcome) or an actor with no active-member row to
- * file under — is a DELIBERATE non-file, never an error. `record_failed`/(a thrown) is a genuine
- * failure the caller is owed the truth about; both are still logged (§32).
+ * `not_applicable` — a prepared run, which maps to NO Rail outcome, so no row is owed — is a
+ * DELIBERATE non-file, never an error. `record_failed` (an RPC error, a throw, OR a real outcome
+ * with no active-member actor to file under) is a row that WAS owed and did not persist — the
+ * caller is owed that truth, especially for a landed `executed` effect. Both are logged (§32).
  */
 export function makeCanonicalRailReceipt(admin: Admin, ctx: CanonicalRailContext) {
   return async (r: ReceiptInput): Promise<ReceiptFiling> => {
     const outcome = RUNNER_TO_RAIL[r.outcome];
-    if (!outcome) return { filed: false, reason: "not_applicable" }; // prepared: intent only, no Rail row
-    if (!ctx.actorId) return { filed: false, reason: "not_applicable" }; // no active-member actor → cannot file
+    if (!outcome) return { filed: false, reason: "not_applicable" }; // prepared: no Rail row is owed
+    // A real outcome (incl. a landed `executed`) with no actor is a row that was OWED but could not
+    // be written — `record_failed`, never the benign `not_applicable` a prepared run gets (a Phase-C
+    // monitor watching for unrecorded consequential effects must not read it as nothing-owed).
+    if (!ctx.actorId) return { filed: false, reason: "record_failed" };
     try {
       const { error } = await admin.rpc("record_capability_run", {
         _tenant_id: ctx.tenantId,

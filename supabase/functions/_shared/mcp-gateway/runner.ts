@@ -22,8 +22,10 @@
 //      `verify_mcp_connection_approval`): a stored approval bound to the connection, endpoint
 //      identity, live fingerprint, action shape and expiry. The runner NEVER infers consent from
 //      a pin carried in its own request — there is no `approval` field any more.
-//   4. A dispatched call whose result carries `isError` (or an unrecognized shape) is `tool_error`,
-//      never dressed as `executed`/`read_observed` (`validateToolResult`).
+//   4. A dispatched call whose result carries `isError` (incl. a malformed non-boolean isError) or
+//      an unrecognized shape is never dressed as `executed`/`read_observed` (`validateToolResult`).
+//      For a READ it is `tool_error`; for a MUTATION it is `outcome_unknown` — the effect may have
+//      landed, so it must never read as "nothing half-done" nor be auto-retried (Codex P2).
 //   5. Its `recordReceipt` dep routes the final outcome to the CANONICAL Rail (see rail-receipt.ts),
 //      and the runner carries back whether that row actually persisted (`RunnerResult.receipt`) so a
 //      completed-but-unrecorded run is reported truthfully, never as a fully-recorded success.
@@ -145,11 +147,21 @@ export async function runConnectionCapability(
 
         dispatched = true;
         const result = await call(req.toolName, req.args);
-        // (4) The provider RAN it — but a reported error or an unaccepted shape is not a success.
+        // (4) The provider RAN it. A clean, recognized result with no error is the ONLY success.
         const validated = validateToolResult(result);
-        if (!validated.recognized) return await emit("tool_error", "unrecognized_result");
-        if (validated.isError) return await emit("tool_error", "provider_reported_error");
-        return await emit(decision.requiresApproval ? "executed" : "read_observed", null);
+        if (validated.recognized && !validated.isError) {
+          return await emit(decision.requiresApproval ? "executed" : "read_observed", null);
+        }
+        // Not a clean success. A CONSEQUENTIAL (approval-gated) call has already DISPATCHED, so its
+        // effect may have landed fully or partially — a provider error / malformed / unaccepted
+        // result does NOT prove rollback. Reporting `tool_error` (→ `capability_failed`, which the
+        // Rail renders to the owner as "nothing was left half-done") would be catastrophically wrong
+        // for a landed mutation and could prompt a DUPLICATING retry, so a mutation's post-dispatch
+        // non-success is `outcome_unknown` (→ "may or may not have taken effect; check before running
+        // again") and is NEVER auto-retried (Codex P2). A READ has no side effect, so a failed/errored
+        // read is honestly `tool_error`.
+        const code = validated.recognized ? "provider_reported_error" : "unrecognized_result";
+        return await emit(decision.requiresApproval ? "outcome_unknown" : "tool_error", code);
       },
     );
   } catch (e) {

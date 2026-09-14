@@ -18,7 +18,9 @@ export type ToolResultCheck = {
   /** Whether the result is the documented MCP `{ content: [...] }` shape at all. An unrecognized
    *  shape is NOT a success — the runner reports it as a tool error, never as executed. */
   recognized: boolean;
-  /** The provider's own `isError` flag, honoured only when the shape is recognized. */
+  /** Whether this result is an error, honoured only when the shape is recognized. `true` when the
+   *  provider set `isError: true` OR when `isError` is PRESENT but not a boolean — a malformed flag
+   *  from untrusted provider output fails CLOSED to an error, never a silent success (Codex P2). */
   isError: boolean;
 };
 
@@ -36,5 +38,9 @@ export function validateToolResult(raw: unknown): ToolResultCheck {
       return { recognized: false, isError: false };
     }
   }
-  return { recognized: true, isError: r.isError === true };
+  // `isError` must be a boolean per the MCP spec. A PRESENT non-boolean isError (e.g. the string
+  // "true", `1`, `null`) is a malformed shape from untrusted provider output — treat it as an error
+  // (fail closed), never let it fall through the strict `=== true` check as a silent success.
+  const isError = r.isError === true || (r.isError !== undefined && typeof r.isError !== "boolean");
+  return { recognized: true, isError };
 }

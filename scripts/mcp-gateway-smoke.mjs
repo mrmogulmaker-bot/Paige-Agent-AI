@@ -270,19 +270,37 @@ approvals = { mystery_action: { pin: pinOf("mystery_action"), endpoint: "current
 const undeclaredApp = await runnerMod.runConnectionCapability({ connection: conn, toolName: "mystery_action", args: {}, mode: "execute" }, deps);
 check("...and executes only once the owner explicitly approves it", undeclaredApp.outcome === "executed");
 
-// #1262 finding 4 — a dispatched call that reports isError is tool_error, never executed
+// #1262 finding 4 / Codex P2 — a dispatched call whose result is an error or an unaccepted shape is
+// NEVER a success. The outcome depends on whether the call was CONSEQUENTIAL:
+//   • a MUTATION (approval-gated) may have LANDED → outcome_unknown (never "nothing half-done", never auto-retried)
+//   • a READ has no side effect → tool_error (→ capability_failed)
 approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
 const errSrv = { callResponse: { content: [{ type: "text", text: "no" }], isError: true } };
 routes.set("/mcp-toolerr", mcpServer(errSrv));
-const toolErr = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-toolerr" }, toolName: "send_message", args: { to: "a" }, mode: "execute" }, deps);
-check("a provider that RAN the tool and reported isError is tool_error, never executed", toolErr.outcome === "tool_error" && toolErr.code === "provider_reported_error");
-check("...and the tool_error dispatched (it is not a refusal or an unreachable)", (errSrv.calls ?? []).at(-1) === "send_message");
+const mutErr = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-toolerr" }, toolName: "send_message", args: { to: "a" }, mode: "execute" }, deps);
+check("a MUTATION that dispatched then reported isError is outcome_unknown (may have landed), never executed", mutErr.outcome === "outcome_unknown" && mutErr.code === "provider_reported_error");
+check("...and it is NEVER tool_error/capability_failed (which would tell the owner 'nothing was left half-done')", mutErr.outcome !== "tool_error");
+check("...and it actually dispatched (not a refusal or an unreachable)", (errSrv.calls ?? []).at(-1) === "send_message");
 
-// an UNRECOGNIZED result shape is also tool_error (not a success)
+// a READ that reports isError has NO side effect → tool_error (honestly capability_failed)
+const readErrSrv = { callResponse: { content: [{ type: "text", text: "no" }], isError: true } };
+routes.set("/mcp-readerr", mcpServer(readErrSrv));
+const readErr = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-readerr" }, toolName: "list_records", args: {}, mode: "execute" }, deps);
+check("a READ that reported isError is tool_error (no side effect to be unknown about)", readErr.outcome === "tool_error" && readErr.code === "provider_reported_error");
+
+// Codex P2 — a MALFORMED (non-boolean) isError must NOT slip through the strict `=== true` check as a success
+const malSrv = { callResponse: { content: [], isError: "true" } }; // the STRING "true", not a boolean
+routes.set("/mcp-malformed", mcpServer(malSrv));
+const malMut = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-malformed" }, toolName: "send_message", args: { to: "a" }, mode: "execute" }, deps);
+check("a MUTATION with a malformed non-boolean isError fails closed to outcome_unknown, never executed", malMut.outcome === "outcome_unknown");
+const malRead = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-malformed" }, toolName: "list_records", args: {}, mode: "execute" }, deps);
+check("a READ with a malformed non-boolean isError fails closed to tool_error, never read_observed", malRead.outcome === "tool_error");
+
+// an UNRECOGNIZED result shape on a mutation is outcome_unknown (dispatched, landing unknown), never a success
 const weirdSrv = { callResponse: { not_content: "whatever" } };
 routes.set("/mcp-weird", mcpServer(weirdSrv));
 const weird = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-weird" }, toolName: "send_message", args: {}, mode: "execute" }, deps);
-check("an unrecognized tools/call result shape is tool_error, not executed", weird.outcome === "tool_error" && weird.code === "unrecognized_result");
+check("an unrecognized tools/call result shape on a mutation is outcome_unknown, never executed", weird.outcome === "outcome_unknown" && weird.code === "unrecognized_result");
 
 // provider unavailable before dispatch → provider_unavailable
 routes.set("/mcp-down", (req, res) => {
@@ -311,15 +329,20 @@ check("outcome_unknown → capability_outcome_unknown", railMod.railOutcomeFor("
   const railReceipt = railMod.makeCanonicalRailReceipt(fakeAdmin, { tenantId: "ten-1", actorId: "act-1" });
   approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
   const execRes = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: { to: "a" }, mode: "execute" }, { verifyApproval, recordReceipt: railReceipt });
+  // a MUTATION post-dispatch error → outcome_unknown → capability_outcome_unknown (NEVER capability_failed)
   await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-toolerr" }, toolName: "send_message", args: {}, mode: "execute" }, { verifyApproval, recordReceipt: railReceipt });
+  // a READ post-dispatch error → tool_error → capability_failed
+  await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-readerr" }, toolName: "list_records", args: {}, mode: "execute" }, { verifyApproval, recordReceipt: railReceipt });
   approvals = {};
   await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: {}, mode: "execute" }, { verifyApproval, recordReceipt: railReceipt });
   const prepRes = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: {}, mode: "prepare" }, { verifyApproval, recordReceipt: railReceipt });
   const outcomes = railCalls.map((c) => c.params._outcome);
   check("the runner routes outcome truth through record_capability_run (canonical Rail)", railCalls.every((c) => c.fn === "record_capability_run"));
-  check("executed→succeeded, tool_error→failed, refused→refused are filed truthfully",
-    outcomes.includes("capability_succeeded") && outcomes.includes("capability_failed") && outcomes.includes("capability_refused"));
-  check("a prepared run files NO canonical rail row", railCalls.length === 3, JSON.stringify(outcomes));
+  check("executed→succeeded, mutation-error→outcome_unknown, read-error→failed, refused→refused are all filed truthfully",
+    outcomes.includes("capability_succeeded") && outcomes.includes("capability_outcome_unknown") && outcomes.includes("capability_failed") && outcomes.includes("capability_refused"));
+  check("a mutation post-dispatch error files capability_outcome_unknown, NEVER capability_failed ('nothing half-done')",
+    outcomes.includes("capability_outcome_unknown"));
+  check("a prepared run files NO canonical rail row", railCalls.length === 4, JSON.stringify(outcomes));
   check("the rail capability_key is a valid a-z_ key", railCalls.every((c) => /^[a-z][a-z0-9_]{1,63}$/.test(c.params._capability_key)));
 
   // #1262 finding 5 / Codex R3 — the runner carries a TRUTHFUL filing signal, never a silent
@@ -343,6 +366,23 @@ check("outcome_unknown → capability_outcome_unknown", railMod.railOutcomeFor("
   approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
   const noWriter = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: { to: "a" }, mode: "execute" }, { verifyApproval });
   check("a run with no receipt writer makes no filing claim (receipt === null)", noWriter.receipt === null, JSON.stringify(noWriter.receipt));
+
+  // A receipt writer that THROWS is itself a filing failure (record_threw) — the action outcome survives.
+  const throwWriter = () => { throw new Error("writer boom"); };
+  approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
+  const threw = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: { to: "a" }, mode: "execute" }, { verifyApproval, recordReceipt: throwWriter });
+  check("a receipt writer that THROWS yields receipt record_threw, outcome still executed",
+    threw.outcome === "executed" && threw.receipt && threw.receipt.filed === false && threw.receipt.reason === "record_threw", JSON.stringify(threw.receipt));
+
+  // A landed `executed` effect with NO actor to file under is record_failed (owed, unrecorded), never benign.
+  const noActorReceipt = railMod.makeCanonicalRailReceipt(fakeAdmin, { tenantId: "ten-1", actorId: null });
+  const noActor = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: { to: "a" }, mode: "execute" }, { verifyApproval, recordReceipt: noActorReceipt });
+  check("a landed executed effect with no actor is record_failed (owed, unrecorded), never benign not_applicable",
+    noActor.outcome === "executed" && noActor.receipt && noActor.receipt.filed === false && noActor.receipt.reason === "record_failed", JSON.stringify(noActor.receipt));
+  // ...but a PREPARED run with no actor is genuinely not_applicable (no Rail row is owed).
+  const prepNoActor = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: {}, mode: "prepare" }, { verifyApproval, recordReceipt: noActorReceipt });
+  check("a prepared run with no actor is still not_applicable (no row owed)",
+    prepNoActor.receipt && prepNoActor.receipt.reason === "not_applicable", JSON.stringify(prepNoActor.receipt));
 }
 
 // ── 5. Server floor NAME NORMALIZATION (Codex P1) — a mutating verb the provider dresses in a
