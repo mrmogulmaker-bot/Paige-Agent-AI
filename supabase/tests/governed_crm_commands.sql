@@ -63,6 +63,7 @@ GRANT SELECT ON public.businesses TO service_role;
 -- Test-local no-network spy: any unsuppressed task assignment trigger records here instead of
 -- invoking an Edge Function. The outer transaction rollback restores the production function.
 CREATE TEMP TABLE task_notification_spy(payload jsonb);
+GRANT SELECT,INSERT ON task_notification_spy TO service_role;
 CREATE OR REPLACE FUNCTION public.fire_team_event(payload jsonb)
 RETURNS void LANGUAGE plpgsql SET search_path='' AS $$
 BEGIN INSERT INTO pg_temp.task_notification_spy VALUES (payload); END $$;
