@@ -67,11 +67,15 @@ no longer consults the canary: those 3 tenants would be held on Setup on their n
 the same pattern the gate's header already documents for the retired marketplace path
 ("Completing X writes features.Y synchronously, so the gate opens the moment they choose"):
 
-1. **Migration (`20270323000000`, renumbered off a second collision — main took 20270126):**
-   an AFTER INSERT/UPDATE trigger on `tenant_setup_business_context_meta` (the row every
-   successful setup save bumps, inside the save RPC's transaction) records
-   `features.solo_setup_complete = true` on the tenant in the same commit. The save RPC itself
-   is untouched; no schema change, no new surface, no provisioning change.
+1. **Migration (`20270324000000`, renumbered twice off collisions — main took 20270122 and
+   20270126 mid-build; open PR #1268 owns 20270323):** a trigger scoped to
+   `AFTER UPDATE OF revision WHEN (new.revision > old.revision)` on
+   `tenant_setup_business_context_meta` (the save RPC's final write is always
+   `revision = revision + 1`) records `features.solo_setup_complete = true` on the tenant in
+   the same commit. The scope is the adversarial review's MAJOR-1 repair: the meta table's
+   second writer, `register_solo_setup_managed_email`, never touches `revision`, so email
+   registration alone cannot open the gate. The save RPC itself is untouched; no schema
+   change, no new surface, no provisioning change.
 2. **Gate:** setup-complete = playbook markers OR `features.solo_setup_complete === true`.
    Destination logic, tier scoping, staff/agency no-ops, and fail-open loading posture are all
    untouched. Sub-account behavior is byte-identical (nothing writes the marker for them; the
