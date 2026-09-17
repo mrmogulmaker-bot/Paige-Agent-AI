@@ -28,6 +28,7 @@ on:
       # The Solo Team invitation proof must re-run when the seam it proves changes,
       # not only when a migration happens to touch it.
       - "supabase/tests/solo_team_invite_workspace_authority.sql"
+      - "supabase/tests/solo_setup_completion_marker.sql"
       - "supabase/tests/solo_team_invite_recipient_binding.sql"
       # Same reason for the removal proof: it must re-run when the seam changes.
       - "supabase/tests/solo_team_removal_authority.sql"
@@ -71,6 +72,7 @@ on:
       # The Solo Team invitation proof must re-run when the seam it proves changes,
       # not only when a migration happens to touch it.
       - "supabase/tests/solo_team_invite_workspace_authority.sql"
+      - "supabase/tests/solo_setup_completion_marker.sql"
       - "supabase/tests/solo_team_invite_recipient_binding.sql"
       # Same reason for the removal proof: it must re-run when the seam changes.
       - "supabase/tests/solo_team_removal_authority.sql"
@@ -135,6 +137,9 @@ jobs:
       # replayed from zero. It rides this job deliberately rather than standing up a second
       # Postgres: the expensive part is `supabase start` + `db reset`, and duplicating it to run
       # one more file would double a 20-minute job for nothing (§24).
+      # #826: the setup-completion marker trigger — save fires, registration
+      # alone does not (the MAJOR-1 scope), failed saves roll back.
+      - run: supabase test db supabase/tests/solo_setup_completion_marker.sql
       - run: supabase test db supabase/tests/solo_team_invite_workspace_authority.sql
       - run: supabase test db supabase/tests/solo_team_invite_recipient_binding.sql
       - run: supabase test db supabase/tests/solo_team_removal_authority.sql

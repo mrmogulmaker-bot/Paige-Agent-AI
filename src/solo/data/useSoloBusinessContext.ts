@@ -143,7 +143,7 @@ export type BusinessContextSaveResult =
   | { ok: false; kind: "failed" | "conflict" | "stale"; error: string };
 
 export function useSoloBusinessContext() {
-  const { activeTenantId } = useTenantContext();
+  const { activeTenantId, refresh: refreshTenant } = useTenantContext();
   const people = useSoloPeople();
   const gate = useRef(createSettingsRequestGate());
   const saveEpoch = useRef(0);
@@ -339,6 +339,15 @@ export function useSoloBusinessContext() {
             "The save completed without a readable workspace record.",
           );
         accept(row, tenantAtStart);
+        // #826: a successful save is the canonical setup journey's completion —
+        // the trigger wrote features.solo_setup_complete in the same commit.
+        // Refresh the tenant context (best-effort) so the setup gate opens
+        // in-session, the marketplace precedent applied to the surface that
+        // now owns completion. A refresh failure never fails the save; neither
+        // does a context that offers no refresh (older doubles, tests).
+        if (typeof refreshTenant === "function") {
+          void Promise.resolve(refreshTenant()).catch(() => {});
+        }
         return { ok: true, kind: "saved" };
       } catch (caught) {
         if (

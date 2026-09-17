@@ -8,9 +8,12 @@
 //
 // SETUP-COMPLETE SIGNAL (safe, grandfathers every existing tenant): the active tenant
 // is setup-complete when `features.playbook` (non-empty) OR `features.playbook_config`
-// is present. Completing a marketplace blueprint install writes `features.playbook_config`
-// synchronously (_marketplace_apply_playbook_config), so the gate opens the moment they
-// choose. Any tenant that ALREADY has a playbook is grandfathered → never gated.
+// is present, OR `features.solo_setup_complete` is true. The first two were written by
+// the admin marketplace (retired with /admin, #995); the third is written by the CANONICAL
+// V3 setup journey itself — a successful save of the in-shell business-context Setup fires
+// the solo_setup_completion_marker trigger in the same commit (#826), so the gate opens
+// the moment the tenant completes the Setup the shell actually holds them on. Any tenant
+// that ALREADY has a playbook is grandfathered → never gated.
 //
 // NO-OP (never redirects) for, by construction:
 //   • platform operators / God / super_admin / platform_admin (isPlatformStaff) —
@@ -49,12 +52,16 @@ export function RequireSetupComplete({ children }: { children: React.ReactNode }
   const location = useLocation();
   const { loading, isPlatformStaff, activeTenant } = useTenantContext();
 
-  // Setup-complete = a chosen playbook slug OR a playbook_config object on the tenant.
+  // Setup-complete = a chosen playbook slug, a playbook_config object, or the
+  // canonical V3 setup journey's own completion marker (#826: without the
+  // marker, the shell's Setup can never open the gate — the dead-end the issue
+  // describes, since the marketplace that wrote the legacy markers is retired).
   const features = activeTenant?.features ?? null;
   const playbookSlug = features?.playbook;
   const hasPlaybook =
     (typeof playbookSlug === "string" && playbookSlug.trim().length > 0) ||
-    (features != null && Object.prototype.hasOwnProperty.call(features, "playbook_config"));
+    (features != null && Object.prototype.hasOwnProperty.call(features, "playbook_config")) ||
+    features?.solo_setup_complete === true;
 
   // §51/§61: ONLY the business-operating tiers (Solo + Sub-account) ever pick a business
   // playbook, so ONLY they are gated. An agency/enterprise MANAGER manages sub-accounts —
