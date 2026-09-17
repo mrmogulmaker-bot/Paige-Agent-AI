@@ -11,7 +11,7 @@
 --
 -- THE FIX'S SERVER HALF: every successful save of the in-shell business-context
 -- Setup bumps tenant_setup_business_context_meta.revision inside the save RPC's
--- transaction — so a row-level trigger there records
+-- transaction — so a row-level trigger scoped to THAT bump records
 -- features.solo_setup_complete = true on the tenant in the SAME commit. This
 -- is the exact pattern the gate's header documented for the retired marketplace
 -- path ("completing X writes features.Y synchronously, so the gate opens the
@@ -41,7 +41,18 @@ $$;
 revoke all on function public.solo_setup_completion_marker() from public, anon, authenticated;
 -- No grant at all: trigger-executed only (the house §59 posture for triggers).
 
+-- SCOPED TO THE SAVE PATH'S BUMP (adversarial review MAJOR 1): the meta table
+-- has a SECOND writer — register_solo_setup_managed_email (20261104000000)
+-- inserts/updates the managed-email columns and is reachable from the Setup
+-- screen BEFORE any save. A bare AFTER INSERT/UPDATE trigger would open the
+-- gate on email registration alone. The save RPC always ends with
+-- revision = revision + 1 (the register RPC never touches revision), and the
+-- first save INSERTs at revision 0 then bumps 0→1 in the same transaction —
+-- so AFTER UPDATE OF revision ... WHEN (new.revision > old.revision) fires
+-- on every real save and on nothing else.
 drop trigger if exists trg_solo_setup_completion on public.tenant_setup_business_context_meta;
 create trigger trg_solo_setup_completion
-  after insert or update on public.tenant_setup_business_context_meta
-  for each row execute function public.solo_setup_completion_marker();
+  after update of revision on public.tenant_setup_business_context_meta
+  for each row
+  when (new.revision > old.revision)
+  execute function public.solo_setup_completion_marker();

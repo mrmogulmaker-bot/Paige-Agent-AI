@@ -63,6 +63,12 @@ const { decideWorkspaceEntry } = await import("@/lib/auth/workspaceEntry");
 const { resolveTierKey } = await import("@/lib/tier/tierFeatures");
 
 /** A minimal SoloEntry FAITHFUL to the real one's decision order (no shell mount). */
+/** Renders the current pathname so a gate redirect on ANY leg is observable. */
+function JourneyLocationMirror({ marker }: { marker: string }) {
+  const location = useLocation();
+  return <div data-journey={marker} data-path={location.pathname} />;
+}
+
 function JourneySoloShell() {
   const location = useLocation();
   const t = harness.tenant as Record<string, unknown> | null;
@@ -110,7 +116,7 @@ function walk(path: string): { path: string; journey: string; to?: string; text:
             path="/business/*"
             element={
               <RequireSetupComplete>
-                <div data-journey="business-shell" />
+                <JourneyLocationMirror marker="business-shell" />
               </RequireSetupComplete>
             }
           />
@@ -122,7 +128,9 @@ function walk(path: string): { path: string; journey: string; to?: string; text:
   act(() => {});
   const shell = host.querySelector("[data-journey]");
   // Navigate captures where the gate SENT us (its <Navigate> commits a location change).
-  const locationNow = host.querySelector("[data-journey='shell']")?.getAttribute("data-path");
+  const locationNow =
+    host.querySelector("[data-journey='shell']")?.getAttribute("data-path")
+    ?? host.querySelector("[data-journey='business-shell']")?.getAttribute("data-path");
   const marker = shell?.getAttribute("data-journey") ?? "";
   terminal = {
     path: locationNow ?? path,
@@ -242,10 +250,16 @@ describe("#826 journey — agency / sub-account unchanged", () => {
     const r = walk("/solo/84/command-center");
     // Wrong shell for the tier: the entry decision redirects to its own root
     // (/business), the gate sends /business to its own Setup, and that route
-    // RENDERS — the same hold as solo, on the sub-account's own shell.
+    // RENDERS there — the same hold as solo, on the sub-account's own shell.
+    // (The pathname is asserted so a gate that stopped redirecting sub-accounts
+    // would FAIL here rather than pass vacuously.)
     expect(r.journey).toBe("business-shell");
-    // And the signal: a sub-account with only the completion marker (which
-    // nothing writes for them) is NOT opened by it — legacy semantics.
+    expect(r.path).toBe("/business/84/setup");
+    // Signal semantics note (adversarial review MINOR 2): the marker check is
+    // tier-AGNOSTIC in the gate — a sub-account carrying solo_setup_complete
+    // WOULD open it. It is dormant for them only because nothing can write it:
+    // every solo-setup RPC funnels through solo_setup_assert_canonical_tenant
+    // (standalone + no parent), pinned by the pgTAP probe's tier shape.
     const tier = resolveTierKey({ isPlatformStaff: false, account_type: null, parent_tenant_id: "p-1" });
     expect(tier).toBe("sub_account");
   });

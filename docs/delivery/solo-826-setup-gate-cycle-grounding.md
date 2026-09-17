@@ -109,6 +109,6 @@ SoloEntry/BusinessEntry, the setup contract family, and the auth gate tests.
 
 ## PROOF OWED
 
-- The RPC marker write is proven by contract tests + CI's database replay; an authenticated
+- The marker write has a dedicated pgTAP probe (supabase/tests/solo_setup_completion_marker.sql) asserting save-fires / register-does-not / fail-does-not; CI's database replay proves the migration applies; an authenticated
   live journey (a real playbook-less tenant completing Setup in the shell) is owed to a
   credentialed session — the same boundary as every prior routing PR.
