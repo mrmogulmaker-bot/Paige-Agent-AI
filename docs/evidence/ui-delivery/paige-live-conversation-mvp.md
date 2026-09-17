@@ -13,6 +13,43 @@ Shared scroll acceptance is newly FAIL per the separately owned P0 notice; coord
 re-ground on the accepted correction before final Live integration. Historical release evidence
 below remains unchanged. Full MVP is incomplete; no new Rail/Mind/Memory mutation is claimed.
 
+## PRs #1073 and #1077 production closeout — 2026-09-08
+
+- #1073 exact reviewed head `9d49f165221a568e5cc645eb125a0ff5aa43a767` merged as
+  `3bdd26c2bc80a3d40298faad30e041a35734e5db`. Production deployment
+  `dpl_62eN6Qsr5o4wvNDiHpjaubVwxb21` was READY; both production aliases returned build
+  `3bdd26c2bc80a3d40298faad30e041a35734e5db-mtt3u7g2`. Exact-merge CI `34273284671`,
+  Security `34273284670`, UI evidence `34273284679`, and Edge deploy `34273284667` passed.
+  `paige-voice-profile-admin` version 5 is ACTIVE with JWT verification enabled. No migration.
+  This deployed owner-only, audited, sanitized account-inspection capability; it did not perform
+  provider inspection, activate audio, or prove account/scopes/retention/voice/cost readiness.
+- #1077 exact independently reviewed head `e893a72a8c19649e92969d93a2fda734c542a876` merged as
+  `f3dbb1acefddcc8bbc36c24b43945c48945a9c68`. Production deployment
+  `dpl_Dtr9wtw8iMtQRqm2vntusgTYx2Y7`, URL `paige-agent-bdclf0n3j-paige-agent-ai.vercel.app`,
+  is READY. Both `paigeagent.ai/version.json` and `app.paigeagent.ai/version.json` returned
+  `f3dbb1acefddcc8bbc36c24b43945c48945a9c68-mtt4nna9` with `customerUpdate: null`.
+  Exact-head CI `34274768112`, Security `34274768122`, and UI evidence `34274768200` passed.
+  Local full regression: 292 files / 4050 tests; type ratchet baseline13/current13; scoped ESLint,
+  production build, 32 motion/control checks and eight required theme/viewport pairs PASS.
+  Independent exact-head review reported no findings. No migration or Edge change in #1077.
+- Production public-asset smoke PASS on both aliases: actual routed JavaScript
+  `/assets/PaigeAIChat-Dq3Y0kZg.js` returns JavaScript HTTP200 with Presence and truthful unavailable
+  state; `/assets/PaigeAIChat-Z0WN1IUX.css` returns the 60/40 desktop stage and enlarged 48vh sculpture.
+  A local-build JavaScript filename initially returned HTML fallback and was rejected as evidence;
+  the actual production bootstrap/application references were followed to obtain the asset above.
+- The owner-requested larger, perceptibly moving Presence is released. The local
+  [motion recording](assets/paige-live-conversation/presence-focus/presence-motion-local-audio.webm)
+  contains **local test audio only**, not provider speech. Rendered/motion proof is local,
+  not authenticated production behavior. Provider-backed live audio remains **UNAVAILABLE**;
+  authenticated owner voice proof remains **PROOF OWED / unverified**. Remaining gates: account/scopes,
+  voice authorization, actual retention, quota and cost evidence, connected transport and authenticated
+  audio/control proof. No new Rail, Mind or Memory mutation path. Full MVP remains incomplete.
+- Owner confirmed Live Conversation and shared chat-scroll work are independent; the latter is not
+  a blocker and is not owned by this workstream. No shared chat/controller changes were made.
+  Recovery: revert the focused presentation change without changing provider gates or other work.
+  No named customer release or publication. These exact releases route to the sole Master Section4.0
+  shipped log; this mechanical closeout does not create a recursive delivery row.
+
 ## PR #1068 production closeout — 2026-09-08
 
 Owner approved exact head `14a199927c6e70fc33a5690217afc1d512cd41d3`. PR #1068 merged as
