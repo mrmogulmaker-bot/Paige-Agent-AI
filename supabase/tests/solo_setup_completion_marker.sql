@@ -34,7 +34,7 @@ END $$;
 DO $$
 DECLARE _t uuid; _before text;
 BEGIN
-  SELECT tenant_id INTO _t FROM public.tenants WHERE slug = 'marker-probe';
+  SELECT id INTO _t FROM public.tenants WHERE slug = 'marker-probe';
   -- The save RPC's first-save shape: INSERT (revision 0) then the bump.
   INSERT INTO public.tenant_setup_business_context_meta (tenant_id)
   VALUES (_t);
@@ -52,7 +52,7 @@ SELECT ok(true, 'a successful save (insert + revision bump) records solo_setup_c
 DO $$
 DECLARE _t uuid; _other uuid; _v text;
 BEGIN
-  SELECT tenant_id INTO _t FROM public.tenants WHERE slug = 'marker-probe';
+  SELECT id INTO _t FROM public.tenants WHERE slug = 'marker-probe';
   -- The register RPC's insert (no revision change) must not fire (insert arm
   -- removed). Then its column-only update must not either (no revision bump).
   INSERT INTO public.tenant_setup_business_context_meta (tenant_id)
@@ -81,7 +81,7 @@ SELECT ok(true, 'registration alone (managed-email writes, no revision bump) doe
 DO $$
 DECLARE _t uuid; _v text;
 BEGIN
-  SELECT tenant_id INTO _t FROM public.tenants WHERE slug = 'marker-probe';
+  SELECT id INTO _t FROM public.tenants WHERE slug = 'marker-probe';
   BEGIN
     UPDATE public.tenant_setup_business_context_meta
     SET revision = revision + 1 WHERE tenant_id = _t;
