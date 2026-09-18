@@ -386,6 +386,7 @@ declare
   _base_slug text;
   _slug_final text;
   _suffix int := 0;
+  _original_claims text := public.current_setting('request.jwt.claims', true);
 begin
   if not public.is_platform_owner() then
     raise exception 'platform owner only' using errcode = '42501';
@@ -395,6 +396,19 @@ begin
   end if;
   if _status not in ('trial', 'active', 'past_due', 'suspended', 'canceled') then
     raise exception 'invalid tenant status: %', _status using errcode = '22000';
+  end if;
+
+  -- ARCHITECTURE CORRECTION (coordinator, 2026-09-18): the ownerless
+  -- standalone exception is REMOVED. Same structural account type = same
+  -- canonical account model — a producer identity may not bypass the Solo
+  -- provisioning contract. An operator standalone provision REQUIRES a named
+  -- owner and fails closed BEFORE any durable write. (Callers: the operator
+  -- console's provisionTenant() does not yet pass an owner — it will now
+  -- receive this truthful error; collecting the owner is the operator
+  -- workstream's follow-up, outside this PR's boundary.)
+  if _owner_user_id is null then
+    raise exception 'OPERATOR_PROVISION_OWNER_REQUIRED: a standalone tenant is provisioned for a named owner — supply _owner_user_id'
+      using errcode = '22004';
   end if;
 
   _base_slug := trim(both '-' from regexp_replace(
@@ -430,18 +444,17 @@ begin
   --     user other than the caller when a JWT is live — and the operator
   --     carries a JWT, so the row never landed at all. Both defects produced
   --     zero rows on prod (the flow was never exercised).
-  -- The operator RPC is the platform's trusted provisioner — the same
-  -- no-JWT provisioning context provision_tenant_as enjoys when the webhook
-  -- drives it (the consent trigger's own documented exemption). The write
-  -- runs with the transaction-local claim cleared, then the claim is
-  -- restored so everything after (audit, the assert's callers) is unchanged.
-  if _owner_user_id is not null then
-    perform set_config('request.jwt.claims', '', true);
-    insert into public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at)
-    values (_tenant.id, _owner_user_id, 'owner', 'active', true, now())
-    on conflict do nothing;
-    perform set_config('request.jwt.claims', json_build_object('sub', _actor, 'role', 'authenticated')::text, true);
-  end if;
+  -- The bounded trusted context (coordinator correction, 2026-09-18): the
+  -- EXACT original claim string is captured before the function body runs and
+  -- restored verbatim after the write — the caller's authority context is
+  -- never synthesized, narrowed, or dropped. The is_platform_owner() gate
+  -- above already ran under the ORIGINAL claims. An unset original (NULL) is
+  -- restored as '' (cleared), the identical no-claim state.
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at)
+  values (_tenant.id, _owner_user_id, 'owner', 'active', true, now())
+  on conflict do nothing;
+  perform set_config('request.jwt.claims', coalesce(_original_claims, ''), true);
 
   insert into public.audit_logs (user_id, action, entity, entity_id, data)
   values (
@@ -452,14 +465,11 @@ begin
     ))
   );
 
-  -- PR3: the operator path creates standalone tenants only, and a provision
-  -- WITHOUT a named owner has no is_owner membership to assert — that shape
-  -- is the platform's shell-less operator inventory row, deliberately outside
-  -- this contract (nothing routable was promised). With an owner named, the
-  -- full canonical contract applies.
-  if _owner_user_id is not null then
-    perform public.assert_canonical_solo_tenant(_tenant);
-  end if;
+  -- The canonical contract applies UNCONDITIONALLY on this path: the
+  -- ownerless bypass was removed above (fail-closed before any write), so
+  -- every operator standalone provision that reaches here is owner-named
+  -- and must satisfy the same invariant as every other producer.
+  perform public.assert_canonical_solo_tenant(_tenant);
 
   return _tenant;
 end;

@@ -7,7 +7,7 @@
 -- FAILS the provision rather than returning success.
 BEGIN;
 
-SELECT plan(10);
+SELECT plan(12);
 
 -- Fixture: a user to own provisions + a current legal doc for the public path.
 DO $$
@@ -161,7 +161,51 @@ BEGIN
 END $$;
 SELECT ok(true, 'fail-closed: a missing tenant_features support row is rejected');
 
--- 8. IDEMPOTENCY: the paid primitive returns the SAME tenant on retry (no duplicate).
+-- 8. ARCHITECTURE CORRECTION: an ownerless operator standalone provision is
+--    REFUSED with the specific error, BEFORE any durable tenant creation.
+DO $$
+DECLARE
+  _actor uuid := '9c900000-0000-0000-0000-000000000002';
+  _before int; _after int;
+BEGIN
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', _actor, 'role', 'authenticated')::text, true);
+  SELECT count(*) INTO _before FROM public.tenants WHERE slug LIKE 'pr3-noowner-op%';
+  BEGIN
+    PERFORM public.operator_provision_tenant('PR3 NoOwner Op Co', 'pr3-noowner-op', NULL);
+    RAISE EXCEPTION 'pr3: ownerless operator provision was NOT refused';
+  EXCEPTION WHEN others THEN
+    IF sqlerrm NOT LIKE 'OPERATOR_PROVISION_OWNER_REQUIRED%' THEN RAISE; END IF;
+  END;
+  SELECT count(*) INTO _after FROM public.tenants WHERE slug LIKE 'pr3-noowner-op%';
+  IF _after <> _before THEN
+    RAISE EXCEPTION 'pr3: the refused provision still created a tenant row';
+  END IF;
+END $$;
+SELECT ok(true, 'ownerless operator standalone provisioning is refused before tenant creation');
+
+-- 9. ARCHITECTURE CORRECTION: the caller's EXACT original JWT — including an
+--    extra sentinel claim — is restored verbatim after the trusted write.
+DO $$
+DECLARE
+  _actor uuid := '9c900000-0000-0000-0000-000000000002';
+  _owner uuid := '9c900000-0000-0000-0000-000000000007';
+  _claims_before text; _claims_after text; _t public.tenants;
+BEGIN
+  INSERT INTO auth.users (id, email) VALUES (_owner, 'pr3-sentinel@example.test');
+  _claims_before := json_build_object('sub', _actor, 'role', 'authenticated', 'sentinel', 'pr3-exact-restore')::text;
+  PERFORM set_config('request.jwt.claims', _claims_before, true);
+  SELECT * INTO _t FROM public.operator_provision_tenant('PR3 Sentinel Co', NULL, _owner);
+  _claims_after := public.current_setting('request.jwt.claims', true);
+  IF _claims_after IS DISTINCT FROM _claims_before THEN
+    RAISE EXCEPTION 'pr3: claims not restored exactly (before=%, after=%)', _claims_before, _claims_after;
+  END IF;
+  IF position('pr3-exact-restore' in coalesce(_claims_after,'')) = 0 THEN
+    RAISE EXCEPTION 'pr3: the sentinel claim was dropped';
+  END IF;
+END $$;
+SELECT ok(true, 'an original JWT with an extra sentinel claim is restored EXACTLY after the membership write');
+
+-- 10. IDEMPOTENCY: the paid primitive returns the SAME tenant on retry (no duplicate).
 DO $$
 DECLARE
   _u uuid := '9c900000-0000-0000-0000-000000000001';

@@ -37,17 +37,41 @@ describe("every Solo producer calls the canonical contract on its CREATE path", 
     expect(body).toContain("perform public.assert_canonical_solo_tenant(_tenant);");
   });
 
-  it("operator_provision_tenant asserts when an owner is named AND stamps is_owner=true", () => {
+  it("operator_provision_tenant requires an owner, stamps is_owner=true, and asserts UNCONDITIONALLY", () => {
     const src = sql(MIGRATION);
     const start = src.indexOf("create or replace function public.operator_provision_tenant(");
     const body = src.slice(start);
+    // The ownerless bypass is REMOVED: the requirement fails closed BEFORE the
+    // tenants INSERT (the raise must appear earlier in the body than the INSERT).
+    const requireAt = body.indexOf("OPERATOR_PROVISION_OWNER_REQUIRED");
+    const insertAt = body.indexOf("insert into public.tenants (");
+    expect(requireAt).toBeGreaterThan(-1);
+    expect(insertAt).toBeGreaterThan(requireAt);
     // The historical defect fix: explicit is_owner on the membership INSERT.
     expect(body).toMatch(/is_owner, joined_at\)\s+values \(_tenant\.id, _owner_user_id, 'owner', 'active', true/);
-    // The contract call, gated on a named owner (ownerless inventory rows are
-    // outside the canonical promise by design).
-    expect(body).toMatch(/if _owner_user_id is not null then\s+perform public\.assert_canonical_solo_tenant/);
+    // The contract call is UNCONDITIONAL — no producer-identity bypass.
+    expect(body).not.toMatch(/if _owner_user_id is not null then\s+perform public\.assert_canonical_solo_tenant/);
+    expect(body).toMatch(/perform public\.assert_canonical_solo_tenant\(_tenant\);\s+return _tenant;/);
     // account_type is now explicit on the INSERT, not inherited from the default.
     expect(body).toMatch(/_status::public\.tenant_status, 'standalone',/);
+  });
+
+  it("the trusted membership write captures and restores the EXACT original claims (never synthesized)", () => {
+    const src = sql(MIGRATION);
+    const body = src.slice(src.indexOf("create or replace function public.operator_provision_tenant("));
+    // Captured at function entry, before any logic runs.
+    expect(body).toMatch(/_original_claims text := public\.current_setting\('request\.jwt\.claims', true\);/);
+    // Cleared ONLY around the bounded write, then restored verbatim.
+    const clearAt = body.indexOf("perform set_config('request.jwt.claims', '', true);");
+    const writeAt = body.indexOf("insert into public.tenant_members");
+    const restoreAt = body.indexOf("perform set_config('request.jwt.claims', coalesce(_original_claims, ''), true);");
+    expect(clearAt).toBeGreaterThan(-1);
+    expect(writeAt).toBeGreaterThan(clearAt);
+    expect(restoreAt).toBeGreaterThan(writeAt);
+    // The synthesized-claim reconstruction is GONE.
+    expect(body).not.toMatch(/set_config\('request\.jwt\.claims', json_build_object/);
+    // The is_platform_owner() gate precedes the trusted write.
+    expect(body.indexOf("is_platform_owner()")).toBeLessThan(clearAt);
   });
 
   it("the assert itself checks all five structural conditions and writes nothing", () => {
