@@ -195,7 +195,7 @@ BEGIN
   _claims_before := json_build_object('sub', _actor, 'role', 'authenticated', 'sentinel', 'pr3-exact-restore')::text;
   PERFORM set_config('request.jwt.claims', _claims_before, true);
   SELECT * INTO _t FROM public.operator_provision_tenant('PR3 Sentinel Co', NULL, _owner);
-  _claims_after := public.current_setting('request.jwt.claims', true);
+  _claims_after := current_setting('request.jwt.claims', true);
   IF _claims_after IS DISTINCT FROM _claims_before THEN
     RAISE EXCEPTION 'pr3: claims not restored exactly (before=%, after=%)', _claims_before, _claims_after;
   END IF;

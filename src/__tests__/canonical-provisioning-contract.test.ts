@@ -60,7 +60,7 @@ describe("every Solo producer calls the canonical contract on its CREATE path", 
     const src = sql(MIGRATION);
     const body = src.slice(src.indexOf("create or replace function public.operator_provision_tenant("));
     // Captured at function entry, before any logic runs.
-    expect(body).toMatch(/_original_claims text := public\.current_setting\('request\.jwt\.claims', true\);/);
+    expect(body).toMatch(/_original_claims text := current_setting\('request\.jwt\.claims', true\);/);
     // Cleared ONLY around the bounded write, then restored verbatim.
     const clearAt = body.indexOf("perform set_config('request.jwt.claims', '', true);");
     const writeAt = body.indexOf("insert into public.tenant_members");

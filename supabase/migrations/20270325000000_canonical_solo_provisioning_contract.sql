@@ -386,7 +386,7 @@ declare
   _base_slug text;
   _slug_final text;
   _suffix int := 0;
-  _original_claims text := public.current_setting('request.jwt.claims', true);
+  _original_claims text := current_setting('request.jwt.claims', true);
 begin
   if not public.is_platform_owner() then
     raise exception 'platform owner only' using errcode = '42501';
