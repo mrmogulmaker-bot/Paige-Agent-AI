@@ -7,7 +7,7 @@
 -- FAILS the provision rather than returning success.
 BEGIN;
 
-SELECT plan(9);
+SELECT plan(10);
 
 -- Fixture: a user to own provisions + a current legal doc for the public path.
 DO $$
