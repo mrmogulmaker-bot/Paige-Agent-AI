@@ -465,14 +465,16 @@ begin
 end;
 $function$;
 
--- Grants restated EXACTLY as each original migration left them (verified
--- against main: 20260809120000 / 20260810000000 / 20260804150000:156-157 —
--- the operator RPC ships to AUTHENTICATED, not service_role; the operator
--- console calls it from the browser client, gated in-body by
--- is_platform_owner()). This block changes no caller's reach.
-revoke all on function public.provision_tenant(text, text, text, text, text, text, integer) from public, anon;
-grant execute on function public.provision_tenant(text, text, text, text, text, text, integer) to authenticated, service_role;
-revoke all on function public.provision_tenant_as(uuid, text, text, text, text, text, text, integer) from public, anon;
-grant execute on function public.provision_tenant_as(uuid, text, text, text, text, text, text, integer) to authenticated, service_role;
+-- Grants restated to the CURRENT LIVE posture (verified against prod proacl
+-- read-only, 2026-09-18) — this block changes no caller's reach:
+--   provision_tenant / provision_tenant_as → service_role ONLY (the solo-beta
+--     authz hardening deliberately locked the browser out of generic
+--     provisioning; solo_beta_authz_hardening.sql asserts it)
+--   operator_provision_tenant → authenticated (the operator console calls it
+--     from the browser client, gated in-body by is_platform_owner())
+revoke all on function public.provision_tenant(text, text, text, text, text, text, integer) from public, anon, authenticated;
+grant execute on function public.provision_tenant(text, text, text, text, text, text, integer) to service_role;
+revoke all on function public.provision_tenant_as(uuid, text, text, text, text, text, text, integer) from public, anon, authenticated;
+grant execute on function public.provision_tenant_as(uuid, text, text, text, text, text, text, integer) to service_role;
 revoke all on function public.operator_provision_tenant(text, text, uuid, text, integer, integer, text) from public, anon;
 grant execute on function public.operator_provision_tenant(text, text, uuid, text, integer, integer, text) to authenticated, service_role;
