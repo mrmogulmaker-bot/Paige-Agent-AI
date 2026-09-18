@@ -68,6 +68,13 @@ DECLARE
   _is_owner boolean;
 BEGIN
   INSERT INTO auth.users (id, email) VALUES (_actor, 'pr3-op@example.test'), (_owner, 'pr3-owner@example.test');
+  -- Clear any transaction-local JWT first (test 2's claim would make this a
+  -- plain authenticated context and trip the §53 guard).
+  PERFORM set_config('request.jwt.claims', '', true);
+  -- Grant the protected role from a no-JWT context: the §53 guard permits
+  -- super_admin grants from a trusted server context (auth.role() NULL), and
+  -- refuses them from a plain authenticated JWT — the same seeding every
+  -- platform bootstrap uses. The claim is set only AFTER the grant.
   INSERT INTO public.user_roles (user_id, role) VALUES (_actor, 'super_admin');
   PERFORM set_config('request.jwt.claims', json_build_object('sub', _actor, 'role', 'authenticated')::text, true);
   SELECT * INTO _t FROM public.operator_provision_tenant('PR3 Op Co', NULL, _owner);
