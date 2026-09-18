@@ -30,7 +30,7 @@ UNVERIFIED: the authenticated Trust Compass drive on a real tenant is owed with 
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
 
-INTERNAL_BUILD_IDENTITY: 2c40e24767aa74b40af725fcafc91a172210e3e3; deployment=none-pre-merge; environment=development; migrations=NOT_APPLICABLE; edge=APPLIED(delete-contact retired at the provider by deploy-edge-functions.yml's new retired-function delete on merge); evidence=this-PR-and-src/__tests__/legacy-contact-delete-retirement.test.ts
+INTERNAL_BUILD_IDENTITY: 2c40e24767aa74b40af725fcafc91a172210e3e3; deployment=none-pre-merge; environment=development; migrations=NOT_APPLICABLE; edge=PROOF_OWED(delete-contact retired at the provider by deploy-edge-functions.yml's retired-function delete when this merge deploys; its retired-set computation is proven against the real diff to yield exactly delete-contact, and the deploy run's log is the post-merge confirmation); evidence=this-PR-and-src/__tests__/legacy-contact-delete-retirement.test.ts
 RELEASE_CHANNEL: development: branch build (environment=development); the map/test change deploys via Vercel on merge; the deleted edge function is removed at the provider by deploy-edge-functions.yml on merge (retired-set computation proven to yield exactly delete-contact), moving edge-live
 RELEASE_CLASSIFICATION: internal-only: a P0 tenant-isolation remediation slice (legacy cross-tenant delete retirement) with its knock-on knob-map identity swap; no owner-decided customer release
 CUSTOMER_RELEASE_IDENTITY: none: internal security-integrity remediation from the PR4 Solo completion matrix; no customer-decided release
