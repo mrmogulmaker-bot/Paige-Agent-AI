@@ -423,14 +423,24 @@ begin
   )
   returning * into _tenant;
 
-  -- PR3 FIX: is_owner=true is now stamped explicitly. The historical INSERT
-  -- omitted it and the column defaults to FALSE, so an operator-created
-  -- tenant's named owner silently failed is_tenant_owner() — the exact
-  -- structural defect the canonical contract exists to make impossible.
+  -- PR3 FIX (two-layer defect, found by the contract itself):
+  -- (1) the historical INSERT omitted is_owner (column default FALSE) — the
+  --     named owner silently failed is_tenant_owner();
+  -- (2) the consent trigger silently DROPS an active-membership INSERT for a
+  --     user other than the caller when a JWT is live — and the operator
+  --     carries a JWT, so the row never landed at all. Both defects produced
+  --     zero rows on prod (the flow was never exercised).
+  -- The operator RPC is the platform's trusted provisioner — the same
+  -- no-JWT provisioning context provision_tenant_as enjoys when the webhook
+  -- drives it (the consent trigger's own documented exemption). The write
+  -- runs with the transaction-local claim cleared, then the claim is
+  -- restored so everything after (audit, the assert's callers) is unchanged.
   if _owner_user_id is not null then
+    perform set_config('request.jwt.claims', '', true);
     insert into public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at)
     values (_tenant.id, _owner_user_id, 'owner', 'active', true, now())
     on conflict do nothing;
+    perform set_config('request.jwt.claims', json_build_object('sub', _actor, 'role', 'authenticated')::text, true);
   end if;
 
   insert into public.audit_logs (user_id, action, entity, entity_id, data)
