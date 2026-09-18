@@ -263,7 +263,6 @@ function describeStep(
     case "crm_get_contact_summary": return { label: "Pulling up the contact", group: "client" };
     case "crm_create_contact": return { label: out?.already_existed === true ? "Found an existing contact" : "Adding a contact", group: "client" };
     case "crm_update_contact": return { label: "Updating the contact", group: "client" };
-    case "crm_delete_contact": return { label: "Removing that contact", group: "client" };
     case "crm_log_activity": return { label: "Jotting down a note", group: "client" };
     case "crm_list_team": return { label: "Checking your team", group: "owner" };
     case "presence_who_online": return { label: "Checking who's online", group: "owner" };
@@ -2257,7 +2256,7 @@ JSON:`;
     const TOOL_RESULT_IS_RECEIPT = new Set<string>([
       // Canonical CRM command results are deliberately absent: they contain durable tenant readback
       // and therefore protect the turn. Legacy non-command receipts remain ids/argument echoes only.
-      "crm_delete_contact", "update_business_profile", "crm_update_pipeline_stage", "crm_assign_contact",
+      "update_business_profile", "crm_update_pipeline_stage", "crm_assign_contact",
       "pipeline_create", "pipeline_add_stage",
       "member_grant_role", "member_revoke_role", "calendar_book_meeting", "program_enroll",
       // Action bus, plans, marketplace, authoring — ids and acknowledgements.
@@ -5772,21 +5771,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
-              name: "crm_delete_contact",
-              description: "Admin only. Permanently delete a contact and its related records. This is destructive and cannot be undone, so it is a TWO-STEP action: first call WITHOUT confirm to get a confirmation summary, tell the operator exactly what will be deleted, and only call again with confirm:true after they explicitly say yes.",
-              parameters: {
-                type: "object",
-                properties: {
-                  client_ref: { type: "string", description: "Tenant-scoped client reference from crm_search_contacts." },
-                  confirm: { type: "boolean", description: "Set true only after the operator has actually approved. The gate's own description of this parameter replaces this one at request time." }
-                },
-                required: ["client_ref"]
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
               name: "calendar_book_meeting",
               description: "Admin/coach only. Book a one-on-one meeting on the operator's calendar. Because a booking is a real event, this is a TWO-STEP action: first call WITHOUT confirm to echo the details back, then call again with confirm:true only after the operator says yes. Provide start_at and end_at as ISO 8601 timestamps. If booking for a known contact, pass contact_id (guest name/email are filled from it).",
               parameters: {
@@ -7019,7 +7003,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // legacy Chat-local writers from the model surface; their old dispatch branches remain only
     // as tombstoned code until a separate cleanup, and are unreachable from this manifest.
     const legacyCrmMutationTools = new Set([
-      "crm_create_contact", "crm_update_contact", "crm_delete_contact", "crm_update_pipeline_stage",
+      "crm_create_contact", "crm_update_contact", "crm_update_pipeline_stage",
       "crm_assign_coach", "crm_assign_contact", "crm_create_task", "crm_log_activity",
       "deal_create", "deal_move_stage",
     ]);
@@ -7392,7 +7376,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       comms_draft_registration: "drafting your carrier registration",
       crm_update_contact: "updating a contact",
       crm_create_contact: "adding a contact",
-      crm_delete_contact: "deleting a contact",
       propose_business_brief_update: "staging a business brief suggestion",
       update_business_profile: "updating your business profile",
       crm_update_pipeline_stage: "moving a client's stage",
@@ -7733,8 +7716,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           });
           return `Update contact ${a?.client_ref || "(missing client reference)"}: ${shown.join("; ") || "no changes"}.`;
         }
-        case "crm_delete_contact":
-          return `Permanently delete the contact and its deals, activities, documents, and coach links. This cannot be undone.`;
         case "update_business_profile": {
           const labels: Record<string, string> = { name: "business name", website: "website", address: "address", phone: "phone", legal_entity_name: "legal entity", logo_url: "logo", primary_color: "primary color", accent_color: "accent color", from_name: "sending name", support_email: "support email" };
           const fields = Object.keys(labels).filter((k) => typeof a?.[k] === "string" && a[k].trim());
@@ -9730,7 +9711,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "crm_create_task" ||
           tc.function.name === "crm_create_contact" ||
           tc.function.name === "crm_update_contact" ||
-          tc.function.name === "crm_delete_contact" ||
           tc.function.name === "propose_business_brief_update" ||
           tc.function.name === "update_business_profile" ||
           tc.function.name === "pipeline_create" ||
@@ -11176,17 +11156,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               result = (rv && (rv as any).ok === false)
                 ? { success: false, ...(rv as any) }
                 : { success: true, user_id: args.user_id, role: args.role };
-            } else if (tc.function.name === "crm_delete_contact") {
-              // Confirm is enforced by the central autonomy gate above (destructive
-              // → defaults to 'confirm'); by here we're cleared to execute.
-              const contactId = await resolveClientReference(admin, crmTenantId, args.client_ref);
-              if (!contactId) throw new Error("contact_not_found");
-              const { data: del, error } = await supabaseClient.functions.invoke("delete-contact", {
-                body: { contact_id: contactId },
-              });
-              if (error) throw error;
-              if ((del as any)?.error) throw new Error((del as any).error);
-              result = { success: true, deleted: args.client_ref };
             } else if (tc.function.name === "draft_marketing_content") {
               const { data: cd, error } = await supabaseClient.functions.invoke("content-draft", {
                 body: { channel: args.channel, brief: args.brief, tone: args.tone ?? null, variations: args.variations ?? 1, tenant_id: personaCtx?.tenant_id ?? null },
@@ -12754,7 +12723,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // general/non-client actions are skipped). Labels reuse describeStep's
       // jargon-free wording so the rail reads like the live trace.
       const RAIL_CRM_TOOLS = new Set([
-        "crm_update_contact", "crm_create_contact", "crm_delete_contact", "crm_log_activity",
+        "crm_update_contact", "crm_create_contact", "crm_log_activity",
         "crm_assign_contact", "crm_assign_coach", "crm_update_pipeline_stage", "program_enroll",
       ]);
       const RAIL_ACTION_TOOLS = new Set(["calendar_book_meeting", "crm_create_task", "crm_add_note", "crm_file_document"]);
@@ -12790,7 +12759,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // Values that are deliberately NOT tables are declared as such in that guard, not left to be
       // guessed from context.
       const WRITE_TARGET: Record<string, string> = {
-        crm_create_contact: "clients", crm_update_contact: "clients", crm_delete_contact: "clients",
+        crm_create_contact: "clients", crm_update_contact: "clients",
         crm_archive_contact: "clients", crm_restore_contact: "clients",
         crm_link_contact_company: "clients", crm_unlink_contact_company: "clients",
         crm_assign_contact_owner: "clients", crm_merge_contacts: "clients",

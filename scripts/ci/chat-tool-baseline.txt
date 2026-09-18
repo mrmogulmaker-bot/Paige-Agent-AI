@@ -40,7 +40,6 @@ crm_assign_coach
 crm_assign_contact
 crm_create_contact
 crm_create_task
-crm_delete_contact
 crm_file_document
 crm_get_contact_summary
 crm_list_deals
