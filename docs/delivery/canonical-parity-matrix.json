@@ -1,0 +1,353 @@
+{
+  "artifact": "canonical-parity-matrix",
+  "version": 1,
+  "generated": "2026-09-17",
+  "base_commit": "3da53ec8",
+  "program": "PAIGE Canonical Parity — PR 2 read-only inventory",
+  "privacy": "De-identified: rows carry local aliases (T01…) valid only inside this artifact; no uuids, account numbers, names, emails, slugs, or any customer-identifying value. No reversible mapping exists in the repository.",
+  "taxonomy": {
+    "account_type_constraint": [
+      "standalone",
+      "agency",
+      "enterprise",
+      "sub_account"
+    ],
+    "account_type_default": "standalone",
+    "runtime_tiers": [
+      "solo",
+      "sub_account",
+      "agency",
+      "enterprise",
+      "god"
+    ],
+    "tier_rule": "parent-first: parent_tenant_id => sub_account; agency => agency; enterprise => enterprise; sub_account => sub_account; standalone|null|unknown => solo",
+    "route_tiers": {
+      "solo": [
+        "solo"
+      ],
+      "business": [
+        "sub_account"
+      ],
+      "agency": [
+        "agency",
+        "enterprise"
+      ]
+    },
+    "structural_categories_on_production": {
+      "solo_standalone": 10,
+      "agency": 2,
+      "child_sub_account": 4,
+      "enterprise": 0,
+      "platform_operator": "role-based control plane (super_admin|platform_admin via /operator); no tenant rows",
+      "invalid_unclassified": 0
+    }
+  },
+  "shell_resolution": {
+    "solo": "structural only: resolveTierKey -> ROUTE_TIERS.solo -> /solo/{n}; solo_shell_enabled NOT consulted",
+    "sub_account": "structural only: /business/{n} (AgencyApp sub-account mode)",
+    "agency": "two legs: bare /agency -> legacy AgencyLayout; numeric /agency/{n} gated at login by agency_switch_context().agency_shell_enabled (the one live canary)",
+    "operator": "/operator -> RequireOperator(is_platform_admin); both roles land on /choose-account",
+    "setup_gate": "RequireSetupComplete: playbook | playbook_config | solo_setup_complete (PR1 #1269)"
+  },
+  "accounts": [
+    {
+      "alias": "T01",
+      "type": "agency",
+      "tier": "agency",
+      "status": "active",
+      "flags": {
+        "agency_shell_enabled": true
+      },
+      "setup_complete": false,
+      "expected_shell": "/agency/{n} AgencyApp",
+      "resolved_shell": "/agency/{n} (flag on)",
+      "parity": "CANONICAL",
+      "reason": "the live canary is on; gate no-ops for agency tier",
+      "divergence_class": "none"
+    },
+    {
+      "alias": "T02",
+      "type": "agency",
+      "tier": "agency",
+      "status": "active",
+      "flags": {
+        "agency_shell_enabled": true
+      },
+      "setup_complete": true,
+      "expected_shell": "/agency/{n} AgencyApp",
+      "resolved_shell": "/agency/{n} (flag on)",
+      "parity": "CANONICAL",
+      "reason": "flag on",
+      "divergence_class": "none"
+    },
+    {
+      "alias": "T03",
+      "type": "standalone",
+      "tier": "solo",
+      "status": "active",
+      "flags": {
+        "solo_shell_enabled": true
+      },
+      "setup_complete": true,
+      "expected_shell": "/solo/{n}",
+      "resolved_shell": "/solo/{n}",
+      "parity": "CANONICAL",
+      "reason": "flag inert post-/admin-retirement; routing is structural",
+      "divergence_class": "none"
+    },
+    {
+      "alias": "T04",
+      "type": "standalone",
+      "tier": "solo",
+      "status": "canceled",
+      "flags": {},
+      "setup_complete": true,
+      "expected_shell": "/solo/{n}",
+      "resolved_shell": "non-enterable (canceled)",
+      "parity": "NOT APPLICABLE",
+      "reason": "status deny-listed by workspaceEntry",
+      "divergence_class": "none"
+    },
+    {
+      "alias": "T05",
+      "type": "standalone",
+      "tier": "solo",
+      "status": "active",
+      "flags": {},
+      "setup_complete": false,
+      "expected_shell": "/solo/{n}/settings/setup (gated)",
+      "resolved_shell": "/solo/{n}/settings/setup",
+      "parity": "CANONICAL",
+      "reason": "test fixture (controlled-proof tenant); playbook-less by design",
+      "divergence_class": "none"
+    },
+    {
+      "alias": "T06",
+      "type": "standalone",
+      "tier": "solo",
+      "status": "active",
+      "flags": {},
+      "setup_complete": false,
+      "expected_shell": "/solo/{n}/settings/setup (gated)",
+      "resolved_shell": "/solo/{n}/settings/setup",
+      "parity": "CANONICAL",
+      "reason": "playbook-less; gate + marker path",
+      "divergence_class": "none"
+    },
+    {
+      "alias": "T07",
+      "type": "standalone",
+      "tier": "solo",
+      "status": "active",
+      "flags": {
+        "solo_shell_enabled": true
+      },
+      "setup_complete": true,
+      "expected_shell": "/solo/{n}",
+      "resolved_shell": "/solo/{n}",
+      "parity": "CANONICAL",
+      "reason": "flag inert",
+      "divergence_class": "none"
+    },
+    {
+      "alias": "T08",
+      "type": "standalone",
+      "tier": "solo",
+      "status": "trial",
+      "flags": {},
+      "setup_complete": true,
+      "expected_shell": "/solo/{n}",
+      "resolved_shell": "/solo/{n}",
+      "parity": "CANONICAL",
+      "reason": "trial is enterable; structural routing",
+      "divergence_class": "none"
+    },
+    {
+      "alias": "T09",
+      "type": "standalone",
+      "tier": "solo",
+      "status": "trial",
+      "flags": {},
+      "setup_complete": false,
+      "expected_shell": "/solo/{n}/settings/setup (gated)",
+      "resolved_shell": "/solo/{n}/settings/setup",
+      "parity": "CANONICAL",
+      "reason": "playbook-less: #826 gate holds on Setup; completes via solo_setup_complete on first save",
+      "divergence_class": "none"
+    },
+    {
+      "alias": "T10",
+      "type": "standalone",
+      "tier": "solo",
+      "status": "trial",
+      "flags": {},
+      "setup_complete": true,
+      "expected_shell": "/solo/{n}",
+      "resolved_shell": "/solo/{n}",
+      "parity": "CANONICAL",
+      "reason": "structural routing",
+      "divergence_class": "none"
+    },
+    {
+      "alias": "T11",
+      "type": "standalone",
+      "tier": "solo",
+      "status": "active",
+      "flags": {
+        "solo_shell_enabled": true
+      },
+      "setup_complete": true,
+      "expected_shell": "/solo/{n}",
+      "resolved_shell": "/solo/{n}",
+      "parity": "CANONICAL",
+      "reason": "flag inert",
+      "divergence_class": "none"
+    },
+    {
+      "alias": "T12",
+      "type": "standalone",
+      "tier": "solo",
+      "status": "active",
+      "flags": {
+        "solo_shell_enabled": true
+      },
+      "setup_complete": true,
+      "expected_shell": "/solo/{n}",
+      "resolved_shell": "/solo/{n}",
+      "parity": "CANONICAL",
+      "reason": "flag inert",
+      "divergence_class": "none"
+    },
+    {
+      "alias": "T13",
+      "type": "sub_account",
+      "tier": "sub_account",
+      "status": "active",
+      "flags": {
+        "agency_shell_enabled": true
+      },
+      "setup_complete": true,
+      "expected_shell": "/business/{n}",
+      "resolved_shell": "/business/{n}",
+      "parity": "CANONICAL",
+      "reason": "parented => sub_account regardless of account_type; flag irrelevant on children",
+      "divergence_class": "none"
+    },
+    {
+      "alias": "T14",
+      "type": "sub_account",
+      "tier": "sub_account",
+      "status": "canceled",
+      "flags": {
+        "agency_shell_enabled": true
+      },
+      "setup_complete": true,
+      "expected_shell": "/business/{n}",
+      "resolved_shell": "non-enterable (canceled)",
+      "parity": "NOT APPLICABLE",
+      "reason": "status deny-listed",
+      "divergence_class": "none"
+    },
+    {
+      "alias": "T15",
+      "type": "sub_account",
+      "tier": "sub_account",
+      "status": "active",
+      "flags": {
+        "agency_shell_enabled": true
+      },
+      "setup_complete": true,
+      "expected_shell": "/business/{n}",
+      "resolved_shell": "/business/{n}",
+      "parity": "CANONICAL",
+      "reason": "structural",
+      "divergence_class": "none"
+    },
+    {
+      "alias": "T16",
+      "type": "sub_account",
+      "tier": "sub_account",
+      "status": "canceled",
+      "flags": {
+        "agency_shell_enabled": true
+      },
+      "setup_complete": true,
+      "expected_shell": "/business/{n}",
+      "resolved_shell": "non-enterable (canceled)",
+      "parity": "NOT APPLICABLE",
+      "reason": "status deny-listed",
+      "divergence_class": "none"
+    }
+  ],
+  "summary": {
+    "total_tenants": 16,
+    "structural_state_valid": 16,
+    "canonical": 13,
+    "not_applicable": 3,
+    "not_applicable_canceled": 3,
+    "configuration_drift": 0,
+    "provisioning_drift": 0,
+    "legacy_routing_debt": 0,
+    "invalid_structural_state": 0,
+    "proof_owed": "authenticated per-account rendered-experience confirmation (no credentialed browser session in the build environment)",
+    "supported_verdicts": [
+      "CANONICAL",
+      "CONFIGURATION DRIFT",
+      "PROVISIONING DRIFT",
+      "LEGACY ROUTING DEBT",
+      "INVALID STRUCTURAL STATE",
+      "PROOF OWED",
+      "NOT APPLICABLE"
+    ],
+    "self_check": "CI validates totals-vs-rows, verdict-class sums, alias presence, and forbidden-field absence in canonical-parity-contract.test.ts"
+  },
+  "active_flags": {
+    "solo_shell_enabled": {
+      "carried_by": 4,
+      "live_consumers": 0,
+      "verdict": "dead configuration debt (Cursor cleanup)"
+    },
+    "agency_shell_enabled": {
+      "carried_by": "2 agency + 2 active sub-accounts (inert on children)",
+      "live_consumers": 1,
+      "consumer": "resolveLandingRoute.ts:98 via agency_switch_context()",
+      "verdict": "live temporary rollout control (permitted)"
+    },
+    "solo_beta_offer_code": {
+      "carried_by": 0,
+      "live_consumers": 1,
+      "consumer": "RequireSoloBetaEntitlement",
+      "verdict": "entitlement marker (legitimate)"
+    },
+    "solo_setup_complete": {
+      "carried_by": 0,
+      "live_consumers": 1,
+      "consumer": "RequireSetupComplete (#1269 trigger)",
+      "verdict": "new canonical completion marker; first organic set pending"
+    }
+  },
+  "provisioning": {
+    "paths": [
+      "tenant-signup -> onboarding -> provision_tenant (public)",
+      "solo-beta checkout -> solo_beta_fulfill_checkout (paid)",
+      "operator_provision_tenant (operator dialog)"
+    ],
+    "provision_tenant_writes_features": false,
+    "guarantees": "account_number (trigger), features row (trigger), entitlements, email identity, default calendar — shell routability is emergent from structural typing, not asserted",
+    "pr3_delta": [
+      "assert the canonical baseline explicitly at provision time (structurally-routable standalone contract)",
+      "retire the dead solo_shell_enabled derivation + 4 stale values",
+      "owner ruling on agency_shell_enabled end-state (default-on + retire the legacy gate, or keep as the named temporary control)",
+      "no backfill required — zero accounts need repair"
+    ]
+  },
+  "drift_debt_for_cursor": [
+    "D1 soloShellEnabled dead derivation (useTenantContext.tsx:512,528) + 4 stale prod values",
+    "D2 stale flag comment (WorkspaceExitControl.tsx:35)",
+    "D4 legacy AgencyLayout board dual-leg (final retirement = last migration step)",
+    "D5 agency rail-only members land on the legacy board (bounded exception)",
+    "D6 duplicated social stacks (social-command* dead vs social-studio live)",
+    "D7 three Vibe Studio lineages (classified; retained per §58)",
+    "D8 orphaned admin Marketplace page (playbook installer with no route)"
+  ]
+}
