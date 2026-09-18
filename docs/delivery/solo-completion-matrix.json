@@ -944,7 +944,7 @@
       "entitlement_dependency": "none",
       "known_blocker": "",
       "proof_owed": "",
-      "remaining_delta": "legacy endpoint retired by PR-A; the unrouted pages/admin UI lane is pure dead code handed to the Cursor lane",
+      "remaining_delta": "legacy endpoint retired by PR-A (source, config, chat tombstone, baseline entry) and the deploy workflow now deletes retired functions at the provider, so the merge itself undeploys the endpoint; the unrouted pages/admin UI lane is pure dead code handed to the Cursor lane",
       "recommended_next_pr": "NONE",
       "priority": "NONE"
     },

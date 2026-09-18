@@ -56,6 +56,20 @@ describe("the legacy delete-contact edge is retired (Option A)", () => {
     expect(read("supabase/config.toml")).not.toContain("[functions.delete-contact]");
   });
 
+  it("the deploy workflow deletes retired functions at the provider (source deletion alone does not undeploy)", () => {
+    // `supabase functions deploy` only creates/updates. Without an explicit
+    // provider-side delete, the retired function would stay callable in
+    // production forever no matter what the source tree says. PR-A taught the
+    // deploy workflow the missing half of retirement; pin both halves so the
+    // mechanism cannot be quietly dropped.
+    const wf = read(".github/workflows/deploy-edge-functions.yml");
+    expect(wf).toContain("Compute retired functions");
+    expect(wf).toContain("Delete retired functions at the provider");
+    expect(wf).toContain("supabase functions delete");
+    // The recorded-live tag must also move on a retirement-only run.
+    expect(wf).toContain("steps.retired.outputs.count != '0'");
+  });
+
   it("the tombstoned crm_delete_contact Chat tool is fully removed from the handler", () => {
     // The legacy tool was already stripped from the model manifest; its
     // definition/dispatch/narrative branches remained as tombstones. All of
