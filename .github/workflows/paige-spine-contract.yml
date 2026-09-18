@@ -29,6 +29,7 @@ on:
       # not only when a migration happens to touch it.
       - "supabase/tests/solo_team_invite_workspace_authority.sql"
       - "supabase/tests/solo_setup_completion_marker.sql"
+      - "supabase/tests/canonical_solo_provisioning.sql"
       - "supabase/tests/solo_team_invite_recipient_binding.sql"
       # Same reason for the removal proof: it must re-run when the seam changes.
       - "supabase/tests/solo_team_removal_authority.sql"
@@ -73,6 +74,7 @@ on:
       # not only when a migration happens to touch it.
       - "supabase/tests/solo_team_invite_workspace_authority.sql"
       - "supabase/tests/solo_setup_completion_marker.sql"
+      - "supabase/tests/canonical_solo_provisioning.sql"
       - "supabase/tests/solo_team_invite_recipient_binding.sql"
       # Same reason for the removal proof: it must re-run when the seam changes.
       - "supabase/tests/solo_team_removal_authority.sql"
@@ -140,6 +142,9 @@ jobs:
       # #826: the setup-completion marker trigger — save fires, registration
       # alone does not (the MAJOR-1 scope), failed saves roll back.
       - run: supabase test db supabase/tests/solo_setup_completion_marker.sql
+      # PR3 Canonical Parity: every Solo producer creates a canonically
+      # routable tenant by construction; broken shapes fail closed.
+      - run: supabase test db supabase/tests/canonical_solo_provisioning.sql
       - run: supabase test db supabase/tests/solo_team_invite_workspace_authority.sql
       - run: supabase test db supabase/tests/solo_team_invite_recipient_binding.sql
       - run: supabase test db supabase/tests/solo_team_removal_authority.sql
