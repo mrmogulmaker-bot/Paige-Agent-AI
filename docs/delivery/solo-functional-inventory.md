@@ -41,7 +41,7 @@ Reading of the distribution:
 ## 3. Authority & tenant-isolation audit (cross-cutting)
 
 - **Server-derived authority is the norm.** Every consequential seam re-derives tenant from the caller JWT (`current_user_tenant_id()`, persona context, membership proofs); client-supplied `expected_tenant_id` values are cross-check/refusal-only; responses are tenant-echo-checked; scope-epoch/request fences drop late answers after a workspace switch (chat, team, vault, billing, pipeline, setup all verified).
-- **One P0 exception:** `crm.contact-delete-legacy` — the deployed `delete-contact` edge gates on a *global* role check with **no tenant predicate** on a cascading service-role delete. Its only UI consumers are unrouted since the admin retirement, but the deployed endpoint remains reachable to any authenticated caller holding a global admin/owner row. → PR-A.
+- **The one P0 exception found was resolved by PR-A:** `crm.contact-delete-legacy` — the deployed `delete-contact` edge gated on a *global* role check with **no tenant predicate** on a cascading service-role delete. **Retired:** edge, config block, chat tombstone, and baseline entry deleted; the deploy workflow now deletes retired functions at the provider so the merge itself undeploys the endpoint. The governed `contact.hard_delete` executor is the one tenant-safe delete path.
 - **Capability auto-adapt audit:** no capability keys on tenant ID, account number, customer name, creation date, or a historical per-customer flag. `isLegacyRelationshipOwner` keys on the route tab slug (legacy-address compat), not identity; `solo_beta_offer_code` is a server-verified entitlement; vault access, setup scopes, and billing exclusions are server-side entitlement/scope decisions. **No architecture defects found.**
 - One flagged follow-up (P3, recorded in the matrix row): the legacy inbox's realtime subscription is unfiltered on `messages`; initial reads are RLS-scoped, but realtime-authorization config should be verified during the certification drive.
 
@@ -99,7 +99,7 @@ Full registry in the matrix (`orphans` array). Highlights: the unmounted second 
 
 | Order | PR | Priority | Scope (narrow) |
 |---|---|---|---|
-| 1 | **PR-A** | P0 | Bound or delete the `delete-contact` edge to caller-tenant membership with a tenant predicate; cross-tenant refusal pgTAP proof; then Cursor may remove the orphaned UI lane. |
+| 1 | **PR-A** — **EXECUTED (#1273)** | P0 | ~~Bound or delete the `delete-contact` edge…~~ Retired outright (Option A): edge + config block + chat tombstone + baseline entry deleted, deploy workflow deletes retired functions at the provider, governed `contact.hard_delete` proven canonical; Cursor may now remove the orphaned UI lane. |
 | 2 | **PR-B** | P0 | Mission outcome-unknown truthfulness: distinct owner copy for `MISSION_WRITE_OUTCOME_UNKNOWN`; retry reuses the original `request_key` so idempotency catches the replay. |
 | 3 | **PR-C** | P1 | Security & data: mount `AccountSecurityPanel` + surface the data-deletion request path (or retitle the tab honestly). |
 | 4 | **PR-D** | P1 | Vibe video artifact-readback proof — one owner-authorized paid run proving artifact copy + ledger consume + receipt; flag stays OFF until it passes. |

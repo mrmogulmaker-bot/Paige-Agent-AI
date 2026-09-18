@@ -64,8 +64,14 @@ jobs:
         run: |
           before="${{ steps.changed.outputs.before }}"
           after="${{ steps.changed.outputs.after }}"
-          git ls-tree -d --name-only "$before" supabase/functions/ | sed 's#supabase/functions/##' | grep -v '^_' || true | sort > before_fns.txt
-          ls -d supabase/functions/*/ 2>/dev/null | sed 's#supabase/functions/##;s#/$##' | grep -v '^_' || true | sort > now_fns.txt
+          # NOTE the braces: `{ A | grep || true; } | sort > f`. Written without
+          # them, `|` binds tighter than `||` and the redirect lands in the
+          # never-taken right branch — the file is silently never created,
+          # comm reads nothing, and the retirement delete skips while the
+          # workflow stays green. The -s guards keep that failure loud.
+          { git ls-tree -d --name-only "$before" supabase/functions/ | sed 's#supabase/functions/##' | grep -v '^_' || true; } | sort > before_fns.txt
+          { ls -d supabase/functions/*/ 2>/dev/null | sed 's#supabase/functions/##;s#/$##' | grep -v '^_' || true; } | sort > now_fns.txt
+          [ -s before_fns.txt ] || { echo "::error::before_fns.txt is empty — the retired-set computation is broken and a retirement could be silently skipped."; exit 1; }
           comm -23 before_fns.txt now_fns.txt | tee retired.txt
           echo "count=$(grep -c . retired.txt || true)" >> "$GITHUB_OUTPUT"
 
