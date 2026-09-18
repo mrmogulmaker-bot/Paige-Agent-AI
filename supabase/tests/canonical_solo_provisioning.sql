@@ -15,8 +15,8 @@ DECLARE
   _u uuid := '9c900000-0000-0000-0000-000000000001';
 BEGIN
   INSERT INTO auth.users (id, email) VALUES (_u, 'pr3-probe@example.test');
-  INSERT INTO public.legal_documents (slug, version, title, is_current)
-  VALUES ('saas-standalone', 1, 'PR3 probe agreement', true)
+  INSERT INTO public.legal_documents (slug, version, title, body_md, is_current)
+  VALUES ('saas-standalone', 1, 'PR3 probe agreement', '# Probe agreement body', true)
   ON CONFLICT DO NOTHING;
 END $$;
 
