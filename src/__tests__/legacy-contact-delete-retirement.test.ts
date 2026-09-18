@@ -133,9 +133,15 @@ describe("the canonical governed delete remains the one tenant-safe path", () =>
     expect(catalog).toContain('"contact.hard_delete": ["contact_id","expected_updated_at"]');
   });
 
-  it("the governed tool stays classified high (and the retired name stays classified too — reintroduction stays confirm-gated)", () => {
+  it("the governed tool stays classified high; the retired name carries NO stale classification (fail-closed on reintroduction)", () => {
     expect(actionRisk).toContain('["crm_hard_delete_contact", "high"');
-    expect(actionRisk).toContain('["crm_delete_contact", "high"');
+    // action-risk-lint forbids policy lines for tools the handler no longer
+    // declares. Removing the classification is also the stronger protection:
+    // an unclassified action cannot run on purpose, so any reintroduction of
+    // the name is refused by default until it is deliberately re-classified.
+    // (The file's comments may name the retired tool to explain its absence;
+    // the classification tuple itself may not return.)
+    expect(actionRisk).not.toContain('["crm_delete_contact"');
   });
 
   it("the executor keeps the tenant predicate, unsafe-refusal and absence readback on the delete", () => {

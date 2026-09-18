@@ -47,7 +47,7 @@ describe("deriveChipView — the label reflects real state, never an unbacked cl
       loading: false,
       configured: true,
       error: null,
-      byTool: { crm_create_contact: tool("confirm"), crm_delete_contact: tool("off") },
+      byTool: { crm_create_contact: tool("confirm"), crm_hard_delete_contact: tool("off") },
     });
     expect(v.label).toBe("Ask first");
     expect(v.isAskFirst).toBe(true);
@@ -59,7 +59,7 @@ describe("deriveChipView — the label reflects real state, never an unbacked cl
       loading: false,
       configured: true,
       error: null,
-      byTool: { crm_create_contact: tool("auto"), crm_delete_contact: tool("confirm") },
+      byTool: { crm_create_contact: tool("auto"), crm_hard_delete_contact: tool("confirm") },
     });
     expect(v.label).toBe("Within policy");
     expect(v.hasStandingGrant).toBe(true);
@@ -88,9 +88,9 @@ describe("deriveChipView over deriveGovernance — reachable from real rows, hon
   });
 
   it("a HIGH-risk tool stored 'auto' is clamped to 'confirm' → still 'Ask first' (no false autonomy claim)", () => {
-    const { byTool } = deriveGovernance([row("crm_delete_contact", "auto")], {}, true);
+    const { byTool } = deriveGovernance([row("crm_hard_delete_contact", "auto")], {}, true);
     // The risk cap holds: a high tool can never actually run auto, so it is NOT a standing grant.
-    expect(byTool.crm_delete_contact.effective).toBe("confirm");
+    expect(byTool.crm_hard_delete_contact.effective).toBe("confirm");
     const v = deriveChipView({ loading: false, configured: true, error: null, byTool });
     expect(v.label).toBe("Ask first");
     expect(v.hasStandingGrant).toBe(false);

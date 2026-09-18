@@ -23,8 +23,8 @@ describe("deriveGovernance — effective = min(stored, ceiling, risk)", () => {
   });
 
   it("a HIGH tool at auto is held to confirm by risk, with an honest reason (§70.1 no false affordance)", () => {
-    const { byTool } = deriveGovernance([row("crm_delete_contact", "auto")], {});
-    const t = byTool["crm_delete_contact"];
+    const { byTool } = deriveGovernance([row("crm_hard_delete_contact", "auto")], {});
+    const t = byTool["crm_hard_delete_contact"];
     expect(t.stored).toBe("auto");
     expect(t.effective).toBe("confirm");
     expect(t.maxSettable).toBe("confirm");
@@ -50,8 +50,8 @@ describe("deriveGovernance — effective = min(stored, ceiling, risk)", () => {
     // Both the risk cap (confirm) and the ceiling (auto→confirm) would bring a stored 'auto' to
     // confirm. Lifting the ceiling would NOT change the outcome — risk still caps it — so the honest,
     // permanent reason is risk, and the platform is not the binding constraint (ceilingLimiting false).
-    const { byTool, ceilingLimiting } = deriveGovernance([row("crm_delete_contact", "auto")], { auto: "confirm" });
-    const t = byTool["crm_delete_contact"];
+    const { byTool, ceilingLimiting } = deriveGovernance([row("crm_hard_delete_contact", "auto")], { auto: "confirm" });
+    const t = byTool["crm_hard_delete_contact"];
     expect(t.effective).toBe("confirm");
     expect(t.heldBack).toEqual({ by: "risk", reason: "This action is consequential, so it still asks first." });
     expect(ceilingLimiting).toBe(false);
@@ -60,8 +60,8 @@ describe("deriveGovernance — effective = min(stored, ceiling, risk)", () => {
   it("a HIGH tool whose ceiling is STRICTLY below the risk cap is attributed to policy", () => {
     // Ceiling forces off, which is more restrictive than the risk cap (confirm), so the ceiling is the
     // binding reason and the hold is honestly policy — and the platform IS limiting here.
-    const { byTool, ceilingLimiting } = deriveGovernance([row("crm_delete_contact", "auto")], { auto: "off" });
-    const t = byTool["crm_delete_contact"];
+    const { byTool, ceilingLimiting } = deriveGovernance([row("crm_hard_delete_contact", "auto")], { auto: "off" });
+    const t = byTool["crm_hard_delete_contact"];
     expect(t.effective).toBe("off");
     expect(t.heldBack?.by).toBe("policy");
     expect(ceilingLimiting).toBe(true);
@@ -132,7 +132,7 @@ describe("deriveGovernance — domain aggregation", () => {
   });
 
   it("surfaces a held-back note when a consequential tool is capped", () => {
-    const { domains } = deriveGovernance([row("crm_create_contact", "auto"), row("crm_delete_contact", "auto")], {});
+    const { domains } = deriveGovernance([row("crm_create_contact", "auto"), row("crm_hard_delete_contact", "auto")], {});
     const crm = domains.find((d) => d.key === "crm")!;
     expect(crm.heldBackNote).toBe("Some consequential actions here still ask first.");
   });
@@ -146,7 +146,7 @@ describe("deriveGovernance — domain aggregation", () => {
   it("clamps the domain read-back level to the domain cap (never a level above domainMax, §70.1)", () => {
     // A domain whose only settable tool is HIGH (cap confirm) but happens to be stored 'auto' must not
     // read 'auto' on the domain knob — that would be aria-valuenow above aria-valuemax on the control.
-    const { domains } = deriveGovernance([row("crm_delete_contact", "auto")], {});
+    const { domains } = deriveGovernance([row("crm_hard_delete_contact", "auto")], {});
     const crm = domains.find((d) => d.key === "crm")!;
     expect(crm.domainMax).toBe("confirm");
     expect(crm.level).toBe("confirm");
