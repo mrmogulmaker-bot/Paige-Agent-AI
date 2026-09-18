@@ -455,13 +455,14 @@ begin
 end;
 $function$;
 
--- Grants stay exactly as the originals' migrations left them (all three are
--- revoked from public/anon; provision_tenant(+_as) execute to authenticated,
--- operator_provision_tenant to service_role) — this migration only replaces
--- bodies. Restated defensively in case of drift:
+-- Grants restated EXACTLY as each original migration left them (verified
+-- against main: 20260809120000 / 20260810000000 / 20260804150000:156-157 —
+-- the operator RPC ships to AUTHENTICATED, not service_role; the operator
+-- console calls it from the browser client, gated in-body by
+-- is_platform_owner()). This block changes no caller's reach.
 revoke all on function public.provision_tenant(text, text, text, text, text, text, integer) from public, anon;
 grant execute on function public.provision_tenant(text, text, text, text, text, text, integer) to authenticated, service_role;
 revoke all on function public.provision_tenant_as(uuid, text, text, text, text, text, text, integer) from public, anon;
 grant execute on function public.provision_tenant_as(uuid, text, text, text, text, text, text, integer) to authenticated, service_role;
-revoke all on function public.operator_provision_tenant(text, text, uuid, text, integer, integer, text) from public, anon, authenticated;
-grant execute on function public.operator_provision_tenant(text, text, uuid, text, integer, integer, text) to service_role;
+revoke all on function public.operator_provision_tenant(text, text, uuid, text, integer, integer, text) from public, anon;
+grant execute on function public.operator_provision_tenant(text, text, uuid, text, integer, integer, text) to authenticated, service_role;

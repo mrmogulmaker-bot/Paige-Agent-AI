@@ -37,20 +37,27 @@ END $$;
 SELECT ok(true, 'provision_tenant_as (paid-path primitive) produces a canonically valid standalone tenant');
 
 -- 2. The PUBLIC path (provision_tenant) with a real JWT + accepted agreement.
+--    FRESH user: the user from test 1 already owns a top-level tenant, so
+--    reusing them would only exercise the found-branch — the create path
+--    (agreement gate, slug/membership/profile writes, the assert) must run.
 DO $$
 DECLARE
-  _u uuid := '9c900000-0000-0000-0000-000000000001';
+  _u uuid := '9c900000-0000-0000-0000-000000000006';
   _t public.tenants;
 BEGIN
+  INSERT INTO auth.users (id, email) VALUES (_u, 'pr3-public@example.test');
   PERFORM set_config('request.jwt.claims', json_build_object('sub', _u, 'role', 'authenticated')::text, true);
   -- Accept the agreement first (the RPC validates a current doc).
   INSERT INTO public.legal_acceptances (user_id, document_slug, document_version, context)
   VALUES (_u, 'saas-standalone', 1, jsonb_build_object('via', 'pr3-probe'))
   ON CONFLICT DO NOTHING;
   SELECT * INTO _t FROM public.provision_tenant('PR3 Public Co', NULL, NULL, NULL, 'standalone', 'saas-standalone', 1);
+  IF _t.name <> 'PR3 Public Co' THEN
+    RAISE EXCEPTION 'pr3: provision_tenant hit the found-branch (test 2 must create)';
+  END IF;
   PERFORM public.assert_canonical_solo_tenant(_t);
 END $$;
-SELECT ok(true, 'provision_tenant (public signup) produces a canonically valid standalone tenant');
+SELECT ok(true, 'provision_tenant (public signup, fresh user) exercises the CREATE path and produces a canonical tenant');
 
 -- 3. The OPERATOR path (with an owner named) — including the is_owner fix.
 DO $$
@@ -72,13 +79,18 @@ BEGIN
 END $$;
 SELECT ok(true, 'operator_provision_tenant (owner named) produces a canonically valid tenant with is_owner=true');
 
--- 4. FAIL-CLOSED: parented "standalone" is rejected.
+-- 4. FAIL-CLOSED: parented "standalone" is rejected. A REAL parent row:
+--    parent_tenant_id carries an FK (ON DELETE RESTRICT), so a synthetic id
+--    would abort the transaction before the rejection is ever exercised.
 DO $$
 DECLARE
   _t public.tenants;
+  _parent public.tenants;
 BEGIN
+  INSERT INTO public.tenants (slug, name, account_type)
+  VALUES ('pr3-parent-agency', 'Parent Agency Probe', 'agency') RETURNING * INTO _parent;
   INSERT INTO public.tenants (slug, name, account_type, parent_tenant_id)
-  VALUES ('pr3-parented', 'Parented Probe', 'standalone', '00000000-0000-0000-0000-0000000000ff')
+  VALUES ('pr3-parented', 'Parented Probe', 'standalone', _parent.id)
   RETURNING * INTO _t;
   BEGIN
     PERFORM public.assert_canonical_solo_tenant(_t);

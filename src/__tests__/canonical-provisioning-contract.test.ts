@@ -62,8 +62,13 @@ describe("every Solo producer calls the canonical contract on its CREATE path", 
     ]) {
       expect(body).toContain(condition);
     }
-    // Read-only contract: the assert contains no INSERT/UPDATE/DELETE.
-    expect(body).not.toMatch(/\b(insert|update|delete)\b/i);
+    // Read-only contract: the assert contains no INSERT/UPDATE/DELETE in
+    // EXECUTABLE SQL (comment prose may legitimately describe writes).
+    const bodyExecutable = body
+      .split(/\r?\n/)
+      .filter((l) => !/^\s*--/.test(l))
+      .join("\n");
+    expect(bodyExecutable).not.toMatch(/\b(insert|update|delete)\b/i);
     // §59: revoked from every direct caller.
     expect(src).toMatch(/revoke all on function public\.assert_canonical_solo_tenant\(public\.tenants\) from public, anon, authenticated/);
   });
