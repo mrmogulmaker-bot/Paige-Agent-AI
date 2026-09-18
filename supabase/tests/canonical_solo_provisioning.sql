@@ -162,7 +162,10 @@ END $$;
 SELECT ok(true, 'fail-closed: a missing tenant_features support row is rejected');
 
 -- 8. ARCHITECTURE CORRECTION: an ownerless operator standalone provision is
---    REFUSED with the specific error, BEFORE any durable tenant creation.
+--    REFUSED with the specific error. (The source-level ORDERING proof —
+--    require-before-INSERT — lives in the vitest contract; the exception's
+--    subtransaction abort makes the row-count check below an
+--    autonomous-side-effect check, not an ordering proof.)
 DO $$
 DECLARE
   _actor uuid := '9c900000-0000-0000-0000-000000000002';
