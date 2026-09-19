@@ -26,14 +26,14 @@ The words "done" and "mostly done" do not appear as verdicts anywhere in this pr
 
 ## 2. Headline counts
 
-<!-- solo-inventory:totals total=85 LIVE=47 PARTIAL=20 UNAVAILABLE=8 NOT_CONNECTED=2 PROOF_OWED=2 BLOCKED=3 NOT_APPLICABLE=3 P0=1 P1=3 P2=10 P3=12 orphans=23 -->
+<!-- solo-inventory:totals total=85 LIVE=48 PARTIAL=19 UNAVAILABLE=8 NOT_CONNECTED=2 PROOF_OWED=2 BLOCKED=3 NOT_APPLICABLE=3 P0=0 P1=3 P2=10 P3=12 orphans=23 -->
 
 **85 capabilities inventoried** across shell, Command Center, PAIGE workspace, Settings (setup/team/billing/security/vault/connections/integrations), comms/phone, CRM/sales, calendar, work/actions/approvals, Mind/memory, growth/campaigns/social/vibe/marketplace, analytics, artifacts/files, and research — plus one row for the certification capability itself.
 
 Reading of the distribution:
 
-- **47 LIVE** — the load-bearing product (conversation + confirm gate, governed CRM executor, action bus + approvals, business missions, calendar engine, billing reads, team, vault, comms stack, media/image lane, knowledge, evidence analytics) is built on canonical seams with receipts. These are the **DO-NOT-REBUILD** surfaces (§5).
-- **20 PARTIAL** — mostly *adoption gaps on shipped seams* (improvements loop unreachable outside chat, owner-memory auto-write unwired, export control unmounted) plus a small number of real defects (§4).
+- **48 LIVE** — the load-bearing product (conversation + confirm gate, governed CRM executor, action bus + approvals, business missions, calendar engine, billing reads, team, vault, comms stack, media/image lane, knowledge, evidence analytics) is built on canonical seams with receipts. These are the **DO-NOT-REBUILD** surfaces (§5).
+- **19 PARTIAL** — mostly *adoption gaps on shipped seams* (improvements loop unreachable outside chat, owner-memory auto-write unwired, export control unmounted) plus a small number of real defects (§4).
 - **8 UNAVAILABLE** — of which only **security-data** and **contacts-export** are adoption gaps; the rest are honest placeholders or by-design boundaries (music, performance analytics, other lenses, public-presence provenance, live-conversation audio, Google two-way sync). The legacy contact-delete endpoint that formerly sat in this state was **retired by PR-A** (the governed `contact.hard_delete` is the one delete path) and now counts as NOT_APPLICABLE.
 - **2 NOT_CONNECTED** (Zapier, social) are owner-side authorization acts, not build gaps; **3 BLOCKED** are parked behind open PRs (#917 import, #1046 secure browser) or the recorded MCP Phase C gate (#1255/#1262); **2 NOT APPLICABLE** by owner ruling.
 - **2 PROOF OWED** where the code truth cannot be certified without a runtime act: Vibe video artifact readback, and the certification harness itself.
@@ -47,9 +47,9 @@ Reading of the distribution:
 
 ## 4. Top gaps by priority
 
-### P0 — broken correctness / tenant isolation (1)
+### P0 — broken correctness / tenant isolation (0)
 
-1. **`command-center.business-game-plan`** — `MISSION_WRITE_OUTCOME_UNKNOWN` is indistinguishable from a generic error in owner copy, and a retry mints a **fresh `request_key`**, so an owner retrying an outcome-unknown mission write can double-apply a consequential business write. → **PR-B**.
+> All PR4 P0 findings are resolved. The former second P0 — `command-center.business-game-plan` (`MISSION_WRITE_OUTCOME_UNKNOWN` rendered as a generic failure + retry minting a fresh `request_key`, allowing a possibly-succeeded consequential write to be applied twice) — was **closed by PR-B**: distinct owner-visible reconcile state, stable request-key identity per logical intent (retry = replay of the original operation), truthful transport-vs-business failure separation.
 
 > Resolved by PR-A: `crm.contact-delete-legacy` (the former second P0 — deployed `delete-contact` edge with a global role gate, no tenant predicate, cascading hard delete) was **retired**: edge, config block, chat tombstone, and baseline entry deleted; the governed `contact.hard_delete` executor is the one tenant-safe delete path.
 
