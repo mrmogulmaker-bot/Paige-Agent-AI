@@ -8046,6 +8046,21 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         extractionProposal = null;
         console.error("[Paige] general extraction threw unexpectedly:", e);
       }
+      // #1255 P1 (Codex, head a84bfcd6) — the extraction above is an AWAITED provider round-trip,
+      // so deferring it here WIDENS the window between the pre-egress guard and the chat dispatch
+      // below. Re-validate the active-account scope ONCE MORE, immediately before dispatch, so a
+      // switch that lands DURING the extraction fails closed with NO chat provider call — rather
+      // than dispatching the prior workspace's aiMessages + Knowledge and only withholding the
+      // streamed reply at the close boundary, which is too late (the cross-context egress already
+      // happened). Only deferred (general-document) turns pay this second check, because only they
+      // insert the awaited round-trip; every other turn keeps the pre-egress guard adjacent to the
+      // dispatch, so its single pre-egress check still suffices.
+      if (!(await revalidateTenantKnowledgeScope())) {
+        return new Response(
+          JSON.stringify({ error: "Active workspace changed. Start this request again in the current workspace.", code: "ACTIVE_ACCOUNT_CHANGED" }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     const response = await gatewayCompat("anthropic", {

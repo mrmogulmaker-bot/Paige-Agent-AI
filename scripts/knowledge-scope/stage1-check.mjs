@@ -1084,12 +1084,49 @@ group("attached-document turns DO carry tenant Knowledge, and its guard actually
     `provider calls: ${switchedKbMiss.providerCalls.length}`,
   );
 
-  // A switch that lands AFTER the pre-egress refusal has already passed. This exercises the
-  // document stream's OWN close-boundary check rather than the 409 above — the point at which
-  // the provider reply exists and `holdDirectFramesForKnowledgeScope` is holding it back.
-  const lateSwitch = await drive({
+  // #1255 P1 (Codex, head a84bfcd6) — the DEFERRED general-document extraction is an AWAITED
+  // provider round-trip inserted between the pre-egress active-account guard and the chat dispatch.
+  // A switch that lands DURING that await must still fail closed BEFORE the chat provider call —
+  // not merely have its streamed reply withheld at the close boundary, by which point the prior
+  // workspace's aiMessages + Knowledge have already egressed to the model. This models exactly that
+  // timing: the pre-egress guard passes on CHILD (call 2), the extraction runs (one benign provider
+  // call carrying only the caller's OWN document, no Knowledge), THEN the account switches and the
+  // post-extraction re-check (call 3) catches it — so the Knowledge-carrying chat dispatch never
+  // fires. Before that re-check existed this made TWO provider calls (extraction + the stale chat
+  // dispatch) and leaked the KB chunk into the second one; this pins it to a single benign call.
+  const switchDuringExtraction = await drive({
     personaTenant: CHILD,
     personaSequence: [CHILD, CHILD, AGENCY],
+    memberships: [CHILD, AGENCY],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    bodyExtras: { document },
+    provider: ["private-text", "private-text"],
+  });
+  assert(
+    "15.9d a switch DURING the deferred extraction fails closed before the chat dispatch — only the benign extraction ran, the Knowledge-carrying reply call never fired",
+    switchDuringExtraction.providerCalls.length === 1,
+    `provider calls: ${switchDuringExtraction.providerCalls.length}`,
+  );
+  assert(
+    "15.9d-i and NO tenant Knowledge egressed on that switched turn — the KB chunk reached no provider payload",
+    !switchDuringExtraction.providerCalls.some((body) => JSON.stringify(body).includes("PRIVATE-KB-SOURCE-MARKER")),
+    JSON.stringify(switchDuringExtraction.providerCalls).slice(0, 400),
+  );
+  assert(
+    "15.9d-ii the switch-during-extraction turn fails closed with the active-account cancellation",
+    switchDuringExtraction.responseText.includes("ACTIVE_ACCOUNT_CHANGED"),
+    switchDuringExtraction.responseText.slice(0, 400),
+  );
+
+  // A switch that lands AFTER the pre-egress refusal AND the post-extraction re-check (#1255 P1)
+  // have both already passed — i.e. during the chat-dispatch round-trip itself, the irreducible
+  // race that cannot be un-sent. This exercises the document stream's OWN close-boundary check
+  // rather than either 409 above — the point at which the provider reply exists and
+  // `holdDirectFramesForKnowledgeScope` is holding it back. The sequence carries one extra CHILD
+  // vs. 15.9d so the AGENCY switch lands at the close boundary (call 4), not the re-check (call 3).
+  const lateSwitch = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD, CHILD, CHILD, AGENCY],
     memberships: [CHILD, AGENCY],
     chunkContent: "PRIVATE-KB-SOURCE-MARKER",
     bodyExtras: { document },
