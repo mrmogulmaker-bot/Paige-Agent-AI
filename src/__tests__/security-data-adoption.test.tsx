@@ -204,6 +204,21 @@ describe("Solo Security & Data component behavior", () => {
     expect(document.body.textContent).toContain("req-1");
   });
 
+  it("deletion request: a 2xx response without a verified requestId is a failure, never a confirmation", { timeout: 30000 }, async () => {
+    await render();
+    h.getSession.mockReset();
+    h.getSession.mockResolvedValue({ data: { session: { access_token: "t", user: { id: "u1" } } } });
+    h.invoke.mockReset();
+    h.invoke.mockResolvedValueOnce({ data: { success: true }, error: null });
+    const button = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Request deletion"))!;
+    await act(async () => { button.click(); await Promise.resolve(); });
+    const confirm = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Submit deletion request"))!;
+    await act(async () => { confirm.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
+    expect(document.body.textContent).not.toContain("Request submitted");
+    expect(document.body.textContent).not.toContain("Reference:");
+    expect(document.body.textContent).not.toContain("undefined");
+  });
+
   it("deletion request: backend failure never renders success", { timeout: 30000 }, async () => {
     await render();
     h.getSession.mockReset();

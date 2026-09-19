@@ -583,10 +583,10 @@
       "authority_model": "all controls are user-scoped on the caller's own login (supabase.auth session; user_id-keyed reads); no tenant-addressed write exists in the view, so workspace switching cannot redirect any act",
       "provider_dependency": "none",
       "readback": "password/2FA/session states from the auth provider; deletion request returns its requestId (rendered; control replaced); export produces the downloaded file",
-      "receipt_evidence": "data_deletion_requests compliance-ledger row (the requestId); deletion processing runs on the daily compliance cron",
+      "receipt_evidence": "data_deletion_requests compliance-ledger row (the requestId); processing is owned by the process-data-deletion compliance function whose header documents a daily schedule (no in-repo pg_cron migration exists — cadence owned outside the repo)",
       "entitlement_dependency": "none",
       "known_blocker": "",
-      "proof_owed": "authenticated runtime drive on a real Solo tenant: password change, 2FA enrollment, global sign-out, the export download, and the deletion-request round-trip up to its reference (owed with the certification lane's acceptance matrix)",
+      "proof_owed": "authenticated runtime drive on a real Solo tenant: password change, 2FA enrollment, global sign-out, the export download, and the deletion-request round-trip up to its reference (owed with the certification lane's acceptance matrix); provider-side confirmation that the request-data-deletion edge is deployed and its processor is actually scheduled",
       "remaining_delta": "closed by PR-C: canonical AccountSecurityPanel mounted (not forked); user-scoped personal-data export with exact-scope labeling; deletion-request control riding the existing compliance edge with requestId readback and layered double-submit guards; workspace deletion honestly labeled unavailable (no capability exists on main); credential-storage honesty note retained",
       "recommended_next_pr": "NONE",
       "priority": "NONE"
