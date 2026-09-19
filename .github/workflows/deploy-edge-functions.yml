@@ -41,15 +41,38 @@ jobs:
         with:
           fetch-depth: 0 # need history to diff before..after
 
+      # The deployment baseline. Push: the event's before-SHA. Manual dispatch:
+      # the edge-live tag — the repository's declared last-known-deployed edge
+      # state. HEAD^ would be VACUOUS for recovery: a dispatch on a main whose
+      # prior merge already carried the retirement resolves zero changed
+      # function files, skips the retired-set computation entirely, and strands
+      # the retirement again (the exact 2026-09-19 closeout class of failure).
+      - name: Resolve deployment baseline
+        id: baseline
+        run: |
+          after="${{ github.sha }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            git fetch -q --force origin "refs/tags/edge-live:refs/tags/edge-live" 2>/dev/null || true
+            if ! before="$(git rev-parse refs/tags/edge-live 2>/dev/null)" || [ -z "$before" ]; then
+              echo "::error::workflow_dispatch resolves its baseline from the edge-live tag, which is missing — a manual recovery cannot know what production last received."
+              exit 1
+            fi
+            echo "manual dispatch: reconciling edge-live ($before) → HEAD ($after)"
+          else
+            before="${{ github.event.before }}"
+            # First push / force-push / unknown parent → fall back to this commit's parent.
+            if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+              before="$(git rev-parse "${after}^" 2>/dev/null || echo "$after")"
+            fi
+          fi
+          echo "before=$before" >> "$GITHUB_OUTPUT"
+          echo "after=$after" >> "$GITHUB_OUTPUT"
+
       - name: Compute changed function files
         id: changed
         run: |
-          before="${{ github.event.before }}"
-          after="${{ github.sha }}"
-          # First push / force-push / unknown parent → fall back to this commit's parent.
-          if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
-            before="$(git rev-parse "${after}^" 2>/dev/null || echo "$after")"
-          fi
+          before="${{ steps.baseline.outputs.before }}"
+          after="${{ steps.baseline.outputs.after }}"
           echo "before=$before" >> "$GITHUB_OUTPUT"
           echo "after=$after" >> "$GITHUB_OUTPUT"
           git diff --name-only "$before" "$after" -- 'supabase/functions/**' | tee changed.txt
