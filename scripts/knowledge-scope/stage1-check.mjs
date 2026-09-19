@@ -3456,6 +3456,26 @@ group("every provider call files its trace row under the tenant whose evidence i
     JSON.stringify(traceRows(docTurn)) === JSON.stringify(["chat:tenant", "credit-report-extraction:tenant", "document-read-check:PLATFORM"]),
     JSON.stringify(traceRows(docTurn)),
   );
+
+  // #1255 Option A (Codex P2) — a GENERAL-document (docx) turn. Unlike the credit-report PDF above
+  // it has NO pre-resolution read-check, so BOTH of its provider calls run post-resolution and BOTH
+  // must be tenant-attributed by their OWN job_kind: the deferred structured-field extraction as
+  // `general-document-extraction`, the streamed reply as `chat`. Before Option A the extraction ran
+  // through gatewayCompat with no trace arg, so it booked as an unattributed `chat:PLATFORM` row and
+  // its model spend was missing from tenant trace/budget accounting. This pins the split by job_kind
+  // (not "some row has a tenant"): it fails if the extraction reverts to a platform/unattributed row
+  // OR is given the wrong job_kind. (traceRows() sorts, so the order is alphabetical.)
+  const generalDocTurn = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    bodyExtras: { document: { fileName: "operating-notes.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", kind: "docx", textContent: "PRIVATE-DOCTEXT-MARKER internal operating notes" } },
+    provider: ["private-text", "private-text"],
+  });
+  assert(
+    "23.4 a general-document turn attributes BOTH provider calls to the tenant by distinct job_kind — the deferred extraction is general-document-extraction:tenant, never an unattributed platform row",
+    JSON.stringify(traceRows(generalDocTurn)) === JSON.stringify(["chat:tenant", "general-document-extraction:tenant"]),
+    JSON.stringify(traceRows(generalDocTurn)),
+  );
 }
 
 group("the neutral-frame classifier itself");

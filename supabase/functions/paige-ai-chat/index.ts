@@ -8047,7 +8047,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // turn.
     if (deferGeneralDocExtraction) {
       try {
-        extractionProposal = await runGeneralDocumentExtraction(attachedDocument);
+        // #1255 Option A (Codex P2) — this deferred extraction runs AFTER active-account
+        // resolution, so it egresses through the SAME tenant-attributed trace/budget seam as the
+        // chat dispatch below (`traceFor("chat")`): its provider call is attributed to the resolved
+        // tenant and honors the gateway's tenant budget gate, instead of booking as an unattributed
+        // platform row. Mirrors the already-attributed credit-report extraction. `gatewayCompat` is
+        // passed explicitly (its own default) only so the third trace argument can be threaded.
+        extractionProposal = await runGeneralDocumentExtraction(
+          attachedDocument,
+          gatewayCompat,
+          traceFor("general-document-extraction"),
+        );
       } catch (e) {
         extractionProposal = null;
         console.error("[Paige] general extraction threw unexpectedly:", e);
@@ -14227,6 +14237,12 @@ function generalDocFieldValue(key: string, raw: unknown): string | null {
 export async function runGeneralDocumentExtraction(
   doc: { base64?: string; mimeType?: string; kind?: string; fileName?: string; textContent?: string } | null | undefined,
   complete: typeof gatewayCompat = gatewayCompat,
+  // #1255 Option A (Codex P2) — the resolved-tenant trace/budget context for this provider call.
+  // The extraction now runs AFTER active-account resolution, so its egress must use the same
+  // tenant-attributed trace/budget seam as every other post-resolution call (traceFor("...")),
+  // instead of booking as an unattributed platform row. Optional and defaulting to undefined so
+  // the injected-completion callers (the __checks__ structural tests) are byte-for-byte unchanged.
+  trace?: Parameters<typeof gatewayCompat>[2],
 ): Promise<{ id: string; source: "document"; documentType?: string; intro?: string; fields: Array<{ key: string; label: string; value: string; displayValue?: string }> } | null> {
   if (!doc) return null;
   const docKind = doc.kind
@@ -14294,7 +14310,7 @@ Rules:
           { role: "user", content },
         ],
       }),
-    });
+    }, trace);
   } catch (err) {
     console.error("[Paige] general extraction call failed:", err);
     return null;
