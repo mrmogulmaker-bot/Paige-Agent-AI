@@ -26,15 +26,15 @@ The words "done" and "mostly done" do not appear as verdicts anywhere in this pr
 
 ## 2. Headline counts
 
-<!-- solo-inventory:totals total=85 LIVE=48 PARTIAL=19 UNAVAILABLE=8 NOT_CONNECTED=2 PROOF_OWED=2 BLOCKED=3 NOT_APPLICABLE=3 P0=0 P1=3 P2=10 P3=12 orphans=23 -->
+<!-- solo-inventory:totals total=85 LIVE=48 PARTIAL=20 UNAVAILABLE=7 NOT_CONNECTED=2 PROOF_OWED=2 BLOCKED=3 NOT_APPLICABLE=3 P0=0 P1=2 P2=10 P3=12 orphans=23 -->
 
 **85 capabilities inventoried** across shell, Command Center, PAIGE workspace, Settings (setup/team/billing/security/vault/connections/integrations), comms/phone, CRM/sales, calendar, work/actions/approvals, Mind/memory, growth/campaigns/social/vibe/marketplace, analytics, artifacts/files, and research — plus one row for the certification capability itself.
 
 Reading of the distribution:
 
 - **48 LIVE** — the load-bearing product (conversation + confirm gate, governed CRM executor, action bus + approvals, business missions, calendar engine, billing reads, team, vault, comms stack, media/image lane, knowledge, evidence analytics) is built on canonical seams with receipts. These are the **DO-NOT-REBUILD** surfaces (§5).
-- **19 PARTIAL** — mostly *adoption gaps on shipped seams* (improvements loop unreachable outside chat, owner-memory auto-write unwired, export control unmounted) plus a small number of real defects (§4).
-- **8 UNAVAILABLE** — of which only **security-data** and **contacts-export** are adoption gaps; the rest are honest placeholders or by-design boundaries (music, performance analytics, other lenses, public-presence provenance, live-conversation audio, Google two-way sync). The legacy contact-delete endpoint that formerly sat in this state was **retired by PR-A** (the governed `contact.hard_delete` is the one delete path) and now counts as NOT_APPLICABLE.
+- **20 PARTIAL** — mostly *adoption gaps on shipped seams* (improvements loop unreachable outside chat, owner-memory auto-write unwired, export control unmounted) plus a small number of real defects (§4).
+- **7 UNAVAILABLE** — of which only **contacts-export** remains an adoption gap (**security-data** moved to PARTIAL by PR-C: the canonical AccountSecurityPanel is mounted, the personal-data export rides the shared seam with exact-scope labeling, and both personal-data deletion (processor not deployed — INT-070 debt) and workspace deletion are honestly labeled unavailable); the rest are honest placeholders or by-design boundaries (music, performance analytics, other lenses, public-presence provenance, live-conversation audio, Google two-way sync). The legacy contact-delete endpoint that formerly sat in this state was **retired by PR-A** (the governed `contact.hard_delete` is the one delete path) and now counts as NOT_APPLICABLE.
 - **2 NOT_CONNECTED** (Zapier, social) are owner-side authorization acts, not build gaps; **3 BLOCKED** are parked behind open PRs (#917 import, #1046 secure browser) or the recorded MCP Phase C gate (#1255/#1262); **2 NOT APPLICABLE** by owner ruling.
 - **2 PROOF OWED** where the code truth cannot be certified without a runtime act: Vibe video artifact readback, and the certification harness itself.
 
@@ -55,7 +55,7 @@ Reading of the distribution:
 
 ### P1 — core paid-product capability incomplete/misleading (3)
 
-3. **`settings.security-data`** — copy-only placeholder tab while the real `AccountSecurityPanel` (password, 2FA, sign-out-everywhere) and the data-deletion edges exist unmounted. Adoption gap: mount the panel or retitle the tab. → **PR-C**.
+> Resolved by PR-C to **PARTIAL**: `settings.security-data` (the former P1 — copy-only placeholder tab while the real panel existed unmounted) now mounts the canonical `AccountSecurityPanel` unmodified and offers the exact-scope personal-data export. Personal-data deletion is **fail-closed OFF the surface** (provider truth: the request intake is deployed but its processor is not, and nothing schedules it — offering intake as if end-to-end deletion were operational would be false); the deletion lifecycle returns only after INT-070 (secure the processor with an internal-caller gate → deploy → schedule → provider-verify → controlled end-to-end proof). Workspace deletion remains honestly unavailable (no capability exists on main).
 4. **`vibe.video-generation`** — money correctness: the authorized proof consumed 90 credits for a video whose artifact copy lapsed pre-patch (truthfully reconciled to failed); the post-fix live artifact readback is owed before the flag may open. Requires owner authorization for any paid proof. → **PR-D**.
 5. **`certification.authenticated-acceptance`** — the repo's own universal proof gate: no least-privilege Solo test tenant and no live-drive secret set exist. Every LIVE verdict above is source-trace truth, not an authenticated runtime proof. → **certification lane**.
 
