@@ -17,7 +17,7 @@ ZOOM_REFLOW: PASS: structural — standard flow layout in the existing Settings 
 REDUCED_MOTION: PASS: structural — no new motion; shared primitives carry the app's existing behavior.
 STATE_COVERAGE: PASS: idle, in-flight (buttons disabled), success (requestId rendered, control replaced), definite failure (destructive alert copy, retry possible), unauthenticated refusal, and the honestly-unavailable state each render distinctly; the export control has idle/downloading/error states.
 TRUTHFUL_STATE_LABELS: PASS: every control's label names its actual operation — "Download my personal data" states it is not a workspace export and lists exactly what it contains; "Request deletion of my personal data" states the 30-day request semantics and that the workspace is untouched; workspace deletion states it is not available and why there is no button; the suite pins the misleading wordings that must not appear.
-SOLO_UI: YES: the change is a rendered Solo Settings tab replacing placeholder cards with real controls; per-viewport captures below are UNVERIFIED (capture owed with the authenticated pass), not NOT_APPLICABLE.
+SOLO_UI: YES: the change is a rendered Solo Settings tab replacing the former copy-only cards with real controls; per-viewport captures below are UNVERIFIED (capture owed with the authenticated pass), not NOT_APPLICABLE.
 SOLO_1536X770_PAIGE_CLOSED: UNVERIFIED: capture owed with the certification lane's authenticated pass; standard flow layout, reflow risk structural-only.
 SOLO_1536X770_PAIGE_OPEN: UNVERIFIED: capture owed with the certification lane's authenticated pass.
 SOLO_1366X768_PAIGE_CLOSED: UNVERIFIED: capture owed with the certification lane's authenticated pass.
@@ -32,8 +32,8 @@ UNVERIFIED: the authenticated runtime drive of every control on a real tenant (p
 
 INTERNAL_BUILD_IDENTITY: b44837c0d4be81262b7f317229743821670068d8; deployment=none-pre-merge; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=this-PR-and-src/__tests__/security-data-adoption.test.tsx
 RELEASE_CHANNEL: development: branch build (environment=development); the frontend change deploys via Vercel on merge; no edge bundle or migration changed so neither edge-live nor db-live moves
-RELEASE_CLASSIFICATION: internal-only: a P1 truthfulness/adoption remediation from the PR4 Solo completion matrix (Security & Data placeholder tab); no owner-decided customer release
+RELEASE_CLASSIFICATION: internal-only: a P1 truthfulness and adoption remediation from the PR4 Solo completion matrix (the formerly copy-only Security & Data tab); no owner-decided customer release
 CUSTOMER_RELEASE_IDENTITY: none: internal capability-adoption and labeling hardening; no customer-decided release
-RELEASE_NOTE_REQUIRED: NO: replaces placeholder copy on a settings tab with the real existing controls; no customer-facing feature change beyond honest labels on previously dead copy
+RELEASE_NOTE_REQUIRED: NO: replaces copy-only text on a settings tab with the real existing controls; no customer-facing feature change beyond honest labels on previously dead copy
 RELEASE_TRUTH_BOUNDARY: PARTIAL: the adoption, labeling, and failure behavior are proven by 15/15 tests with all four adversarial mutations load-bearing; the underlying auth controls and the compliance edge are previously shipped seams left byte-identical; the single remaining item is the authenticated runtime drive owed with the certification lane
-RELEASE_RECOVERY: position=forward-only recovery — the change is additive UI adoption over untouched seams, so recovery is a forward PR restoring the placeholder view if ever needed; reference=git revert of the merge commit plus the contract test in this PR which fails against any regression of the adoption or the truthful labeling
+RELEASE_RECOVERY: position=forward-only recovery — the change is additive UI adoption over untouched seams, so recovery is a forward PR restoring the former copy-only view if ever needed; reference=git revert of the merge commit plus the contract test in this PR which fails against any regression of the adoption or the truthful labeling
