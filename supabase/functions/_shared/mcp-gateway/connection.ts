@@ -33,6 +33,23 @@ export type ResolvedConnection =
  *  takes a URL from its own request. */
 export type ConnectionLoader = (connectionId: string) => Promise<ResolvedConnection> | ResolvedConnection;
 
+// The registry (`mcp_connections`, migration 20270319000000) holds rows this MCP client CANNOT drive,
+// so a listed connection is not by itself an executable one. Two facets in particular:
+//   • transports `sse`/`stdio` — the client speaks JSON-RPC over ONE HTTP POST (MCP Streamable HTTP;
+//     an SSE-framed *reply* to that POST is read, but the legacy two-endpoint `sse` transport and the
+//     local-process `stdio` transport are not implemented). The migration is explicit: "client
+//     implements http today."
+//   • `auth_kind='api_key'` — the n8n REST facet, backfilled 1:1 from `tenant_n8n_connections` with a
+//     REST base URL (migration §6b). It is a REST API, NOT an MCP JSON-RPC server. `authFromSecret`
+//     maps it through its bearer fallthrough, so WITHOUT this gate the loader would resolve `ok:true`
+//     and the runner would POST MCP JSON-RPC to a REST endpoint with the wrong header.
+// Both are allow-listed to the facets the client can actually execute, checked BEFORE `ok:true` — so
+// `prepare` cannot affirm and `execute` cannot contact a listed-but-non-MCP connection; a non-executable
+// facet resolves `connection_unusable`, never a dispatch. Widening the client (real `sse`/`stdio`, an
+// `api_key` header scheme) is what widens these sets; until then, refuse.
+const MCP_EXECUTABLE_TRANSPORTS = new Set(["http"]);
+const MCP_EXECUTABLE_AUTH_KINDS = new Set(["oauth", "bearer", "header", "url"]);
+
 /**
  * Production loader: the service-role `get_mcp_connection_secret` RPC is the single decrypted read of
  * the row. It returns the endpoint, auth and tenant from THAT read, so dispatch and consent cannot
@@ -54,6 +71,7 @@ export function makeRpcConnectionLoader(admin: Admin): ConnectionLoader {
         auth_token?: unknown;
         auth_kind?: unknown;
         auth_header_name?: unknown;
+        transport?: unknown;
       };
       if (row.configured !== true) return { ok: false, reason: "no_connection" };
       if (row.enabled !== true) return { ok: false, reason: "connection_disabled" };
@@ -63,7 +81,11 @@ export function makeRpcConnectionLoader(admin: Admin): ConnectionLoader {
         auth === null ||
         typeof row.server_url !== "string" || !row.server_url ||
         typeof row.connection_id !== "string" ||
-        typeof row.tenant_id !== "string"
+        typeof row.tenant_id !== "string" ||
+        // Refuse a facet the MCP client cannot execute — a non-http transport, or an auth kind that is
+        // not an MCP credential scheme (the n8n REST `api_key` facet). See the allow-list note above.
+        typeof row.transport !== "string" || !MCP_EXECUTABLE_TRANSPORTS.has(row.transport) ||
+        typeof row.auth_kind !== "string" || !MCP_EXECUTABLE_AUTH_KINDS.has(row.auth_kind)
       ) {
         return { ok: false, reason: "connection_unusable" };
       }

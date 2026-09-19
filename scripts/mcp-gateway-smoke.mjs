@@ -64,6 +64,7 @@ const summaryMod = await bundle("supabase/functions/_shared/mcp-gateway/capabili
 const runnerMod = await bundle("supabase/functions/_shared/mcp-gateway/runner.ts", "runner.mjs");
 const railMod = await bundle("supabase/functions/_shared/mcp-gateway/rail-receipt.ts", "rail.mjs");
 const effectMod = await bundle("supabase/functions/_shared/mcp-gateway/effect-policy.ts", "effect.mjs");
+const connMod = await bundle("supabase/functions/_shared/mcp-gateway/connection.ts", "connection.mjs");
 
 let passed = 0;
 const failures = [];
@@ -534,6 +535,62 @@ console.log("\n— single source: consent + dispatch from one canonical connecti
   approvals = { send_message: { pin: pinOf("send_message"), endpoint: "stale" } };
   const staleC = await call({ toolName: "send_message", args: {} });
   check("a since-changed endpoint invalidates the bound consent → refused endpoint_changed (never dispatched)", staleC.outcome === "refused" && staleC.code === "endpoint_changed", JSON.stringify(staleC));
+}
+
+// ── 7. EXECUTABLE-FACET GATE (Codex R3 P2) — the canonical loader refuses a LISTED connection the MCP
+// client cannot drive: a non-http transport (sse/stdio), or the n8n REST `api_key` facet. This
+// exercises the REAL makeRpcConnectionLoader (the production RPC path), so prepare cannot AFFIRM and
+// execute cannot CONTACT a listed-but-non-MCP connection. The row shape mirrors get_mcp_connection_secret
+// (migration 20270319000000 §5c). ──
+console.log("\n— executable-facet gate: the loader refuses non-MCP-drivable rows —");
+{
+  // A fake service-role admin whose get_mcp_connection_secret returns a chosen row ({ data, error }).
+  const adminReturning = (row) => ({ rpc: async (fn) => (fn === "get_mcp_connection_secret" ? { data: row, error: null } : { data: null, error: null }) });
+  const OK_URL = "https://public.example/mcp-gate-ok";
+  const REFUSE_URL = "https://public.example/mcp-gate-refuse";
+  const okSrv = {}, refuseSrv = {};
+  routes.set("/mcp-gate-ok", mcpServer(okSrv));
+  routes.set("/mcp-gate-refuse", mcpServer(refuseSrv));
+  const baseRow = { configured: true, enabled: true, connection_id: "conn-canon", tenant_id: TENANT, server_url: OK_URL, auth_token: "secret-token", auth_kind: "bearer", transport: "http" };
+  const loaderFor = (row) => connMod.makeRpcConnectionLoader(adminReturning(row));
+
+  // Loader-level: a healthy http + bearer row resolves; each non-executable facet is connection_unusable.
+  const okRes = await loaderFor(baseRow)("conn-canon");
+  check("loader: a healthy http + bearer row resolves ok:true (from the loaded row)", okRes.ok === true && okRes.serverUrl === OK_URL, JSON.stringify(okRes));
+  const apiKeyRow = { ...baseRow, server_url: REFUSE_URL, auth_kind: "api_key" }; // the n8n REST facet
+  const apiKeyRes = await loaderFor(apiKeyRow)("conn-canon");
+  check("loader: an auth_kind='api_key' (n8n REST) facet → connection_unusable", apiKeyRes.ok === false && apiKeyRes.reason === "connection_unusable", JSON.stringify(apiKeyRes));
+  const stdioRow = { ...baseRow, server_url: REFUSE_URL, transport: "stdio" };
+  const stdioRes = await loaderFor(stdioRow)("conn-canon");
+  check("loader: a transport='stdio' row → connection_unusable", stdioRes.ok === false && stdioRes.reason === "connection_unusable", JSON.stringify(stdioRes));
+  const sseRes = await loaderFor({ ...baseRow, server_url: REFUSE_URL, transport: "sse" })("conn-canon");
+  check("loader: a transport='sse' (legacy two-endpoint) row → connection_unusable", sseRes.ok === false && sseRes.reason === "connection_unusable", JSON.stringify(sseRes));
+  // Regression: the pre-existing refusals still hold on the real loader.
+  const cfgRes = await loaderFor({ configured: false })("conn-canon");
+  check("loader: configured:false → no_connection", cfgRes.ok === false && cfgRes.reason === "no_connection", JSON.stringify(cfgRes));
+  const disRes = await loaderFor({ configured: true, enabled: false })("conn-canon");
+  check("loader: enabled:false → connection_disabled", disRes.ok === false && disRes.reason === "connection_disabled", JSON.stringify(disRes));
+
+  // Runner-level (the finding's exact words): with the REAL loader wired, a valid row dispatches, and an
+  // api_key/stdio facet is refused so prepare cannot AFFIRM and execute cannot CONTACT it.
+  approvals = {};
+  const runReal = (row, mode) => runnerMod.runConnectionCapability(
+    { connectionId: "conn-canon", tenantId: TENANT, toolName: "list_records", args: {}, mode },
+    { ...deps, loadConnection: loaderFor(row) });
+  const execOk = await runReal(baseRow, "execute");
+  check("runner: execute via the REAL loader on a valid http+bearer row runs (read_observed)", execOk.outcome === "read_observed", JSON.stringify(execOk));
+  check("...and it dispatched to the loaded row's endpoint", (okSrv.calls ?? []).includes("list_records"), JSON.stringify(okSrv.calls ?? []));
+  const execApiKey = await runReal(apiKeyRow, "execute");
+  check("runner: execute on an api_key REST facet → refused connection_unusable (execute cannot contact)", execApiKey.outcome === "refused" && execApiKey.code === "connection_unusable", JSON.stringify(execApiKey));
+  const prepApiKey = await runReal(apiKeyRow, "prepare");
+  check("runner: prepare on an api_key REST facet → refused, never a false 'prepared' (prepare cannot affirm)", prepApiKey.outcome === "refused" && prepApiKey.code === "connection_unusable", JSON.stringify(prepApiKey));
+  const execStdio = await runReal(stdioRow, "execute");
+  check("runner: execute on a stdio facet → refused connection_unusable", execStdio.outcome === "refused" && execStdio.code === "connection_unusable", JSON.stringify(execStdio));
+  check("runner: the refused non-MCP facets NEVER contacted their endpoint (zero dispatch)", !(refuseSrv.calls ?? []).length, JSON.stringify(refuseSrv.calls ?? []));
+
+  // LOAD-BEARING (§39): widening MCP_EXECUTABLE_AUTH_KINDS/_TRANSPORTS to admit api_key or stdio flips
+  // every refusal above to ok/executed and this section FAILS — the gate is proven real, not decorative.
+  check("LOAD-BEARING: relaxing the allow-list to admit api_key/stdio would break these refusals", apiKeyRes.ok === false && stdioRes.ok === false && sseRes.ok === false && execApiKey.outcome === "refused" && execStdio.outcome === "refused" && !(refuseSrv.calls ?? []).length);
 }
 
 server.close();
