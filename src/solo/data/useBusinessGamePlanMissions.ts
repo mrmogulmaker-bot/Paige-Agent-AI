@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { BusinessMissionDetail, BusinessMissionSummary } from "@/types/businessMission";
+import { classifyInvokeFailure } from "@/solo/mission-retry";
 
 export type StrategicPlayStage = "Draft" | "Awaiting owner approval" | "Active" | "Blocked" | "Paused" | "Complete" | "Archived";
 export type StrategicPlay = BusinessMissionSummary & {
@@ -16,6 +17,12 @@ export type MissionActionResult = {
   railRecorded: boolean;
   code?: string;
   missionId?: string;
+  /** True when the backend could not prove whether the mutation landed
+   *  (MISSION_WRITE_OUTCOME_UNKNOWN and its readback-loss siblings, or a
+   *  lost invoke response). NEVER treat this as a definite failure: the
+   *  caller must offer reconciliation of the SAME request key, not a fresh
+   *  retry with a new identity. */
+  outcomeUnknown: boolean;
 };
 
 type MissionRpcResponse = { data: unknown; error: { message?: string } | null };
@@ -133,13 +140,28 @@ export function useBusinessGamePlanMissions(workspaceId?: string | null) {
     args: Record<string, unknown>,
   ): Promise<MissionActionResult> => {
     const expectedWorkspace = workspaceRef.current;
-    if (!expectedWorkspace) return { ok: false, verified: false, railRecorded: false, code: "ACTIVE_ACCOUNT_CHANGED" };
+    if (!expectedWorkspace) return { ok: false, verified: false, railRecorded: false, code: "ACTIVE_ACCOUNT_CHANGED", outcomeUnknown: false };
     const { data, error } = await supabase.functions.invoke("business-mission-action", { body: { tool, args } });
-    if (workspaceRef.current !== expectedWorkspace) return { ok: false, verified: false, railRecorded: false, code: "ACTIVE_ACCOUNT_CHANGED" };
-    if (error) return { ok: false, verified: false, railRecorded: false, code: codeFrom(error, "MISSION_ACTION_FAILED") };
+    if (workspaceRef.current !== expectedWorkspace) return { ok: false, verified: false, railRecorded: false, code: "ACTIVE_ACCOUNT_CHANGED", outcomeUnknown: false };
+    if (error) {
+      // A transport failure does NOT prove the mutation failed — the edge may
+      // have committed and only the response was lost. Decode the edge's own
+      // body when there is one (its code is its definite classification);
+      // anything unreadable classifies as outcome unknown, never definite
+      // failure, so the caller reconciles the same request key instead of
+      // minting a fresh one (PR-B double-write fix).
+      let body: Record<string, unknown> | null = null;
+      const context = (error as { context?: { json?: () => Promise<unknown> } }).context;
+      if (context && typeof context.json === "function") {
+        try { body = await context.json() as Record<string, unknown>; } catch { body = null; }
+      }
+      const outcome = classifyInvokeFailure(error, body);
+      return { ok: false, verified: false, railRecorded: false, code: outcome.code, outcomeUnknown: outcome.outcomeUnknown };
+    }
     const result = data && typeof data === "object" ? data as Record<string, unknown> : {};
     const ok = result.success === true && result.verified === true;
     const mission = result.mission && typeof result.mission === "object" ? result.mission as Record<string, unknown> : null;
+    const outcomeUnknown = !ok && result.mutationMayHavePersisted === true;
     await refresh();
     return {
       ok,
@@ -147,6 +169,7 @@ export function useBusinessGamePlanMissions(workspaceId?: string | null) {
       railRecorded: result.railRecorded === true,
       code: text(result.code) ?? undefined,
       missionId: text(mission?.sourceRef) ?? undefined,
+      outcomeUnknown,
     };
   }, [refresh]);
 
