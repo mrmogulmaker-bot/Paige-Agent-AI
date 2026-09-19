@@ -26,7 +26,7 @@ The words "done" and "mostly done" do not appear as verdicts anywhere in this pr
 
 ## 2. Headline counts
 
-<!-- solo-inventory:totals total=85 LIVE=47 PARTIAL=20 UNAVAILABLE=9 NOT_CONNECTED=2 PROOF_OWED=2 BLOCKED=3 NOT_APPLICABLE=2 P0=2 P1=3 P2=10 P3=12 orphans=23 -->
+<!-- solo-inventory:totals total=85 LIVE=47 PARTIAL=20 UNAVAILABLE=8 NOT_CONNECTED=2 PROOF_OWED=2 BLOCKED=3 NOT_APPLICABLE=3 P0=1 P1=3 P2=10 P3=12 orphans=23 -->
 
 **85 capabilities inventoried** across shell, Command Center, PAIGE workspace, Settings (setup/team/billing/security/vault/connections/integrations), comms/phone, CRM/sales, calendar, work/actions/approvals, Mind/memory, growth/campaigns/social/vibe/marketplace, analytics, artifacts/files, and research — plus one row for the certification capability itself.
 
@@ -34,23 +34,24 @@ Reading of the distribution:
 
 - **47 LIVE** — the load-bearing product (conversation + confirm gate, governed CRM executor, action bus + approvals, business missions, calendar engine, billing reads, team, vault, comms stack, media/image lane, knowledge, evidence analytics) is built on canonical seams with receipts. These are the **DO-NOT-REBUILD** surfaces (§5).
 - **20 PARTIAL** — mostly *adoption gaps on shipped seams* (improvements loop unreachable outside chat, owner-memory auto-write unwired, export control unmounted) plus a small number of real defects (§4).
-- **9 UNAVAILABLE** — of which only **security-data** and **contacts-export** are adoption gaps; the rest are honest placeholders or by-design boundaries (music, performance analytics, other lenses, public-presence provenance, live-conversation audio, Google two-way sync).
+- **8 UNAVAILABLE** — of which only **security-data** and **contacts-export** are adoption gaps; the rest are honest placeholders or by-design boundaries (music, performance analytics, other lenses, public-presence provenance, live-conversation audio, Google two-way sync). The legacy contact-delete endpoint that formerly sat in this state was **retired by PR-A** (the governed `contact.hard_delete` is the one delete path) and now counts as NOT_APPLICABLE.
 - **2 NOT_CONNECTED** (Zapier, social) are owner-side authorization acts, not build gaps; **3 BLOCKED** are parked behind open PRs (#917 import, #1046 secure browser) or the recorded MCP Phase C gate (#1255/#1262); **2 NOT APPLICABLE** by owner ruling.
 - **2 PROOF OWED** where the code truth cannot be certified without a runtime act: Vibe video artifact readback, and the certification harness itself.
 
 ## 3. Authority & tenant-isolation audit (cross-cutting)
 
 - **Server-derived authority is the norm.** Every consequential seam re-derives tenant from the caller JWT (`current_user_tenant_id()`, persona context, membership proofs); client-supplied `expected_tenant_id` values are cross-check/refusal-only; responses are tenant-echo-checked; scope-epoch/request fences drop late answers after a workspace switch (chat, team, vault, billing, pipeline, setup all verified).
-- **One P0 exception:** `crm.contact-delete-legacy` — the deployed `delete-contact` edge gates on a *global* role check with **no tenant predicate** on a cascading service-role delete. Its only UI consumers are unrouted since the admin retirement, but the deployed endpoint remains reachable to any authenticated caller holding a global admin/owner row. → PR-A.
+- **The one P0 exception found was resolved by PR-A:** `crm.contact-delete-legacy` — the deployed `delete-contact` edge gated on a *global* role check with **no tenant predicate** on a cascading service-role delete. **Retired:** edge, config block, chat tombstone, and baseline entry deleted; the deploy workflow now deletes retired functions at the provider so the merge itself undeploys the endpoint. The governed `contact.hard_delete` executor is the one tenant-safe delete path.
 - **Capability auto-adapt audit:** no capability keys on tenant ID, account number, customer name, creation date, or a historical per-customer flag. `isLegacyRelationshipOwner` keys on the route tab slug (legacy-address compat), not identity; `solo_beta_offer_code` is a server-verified entitlement; vault access, setup scopes, and billing exclusions are server-side entitlement/scope decisions. **No architecture defects found.**
 - One flagged follow-up (P3, recorded in the matrix row): the legacy inbox's realtime subscription is unfiltered on `messages`; initial reads are RLS-scoped, but realtime-authorization config should be verified during the certification drive.
 
 ## 4. Top gaps by priority
 
-### P0 — broken correctness / tenant isolation (2)
+### P0 — broken correctness / tenant isolation (1)
 
-1. **`crm.contact-delete-legacy`** — deployed `delete-contact` edge: global role gate, no tenant predicate, cascading hard delete (deals, memory, documents, coach rows), best-effort audit only. The governed CRM executor already owns a tenant-safe, preview-required delete; this edge must be tenant-bounded or deleted. → **PR-A**.
-2. **`command-center.business-game-plan`** — `MISSION_WRITE_OUTCOME_UNKNOWN` is indistinguishable from a generic error in owner copy, and a retry mints a **fresh `request_key`**, so an owner retrying an outcome-unknown mission write can double-apply a consequential business write. → **PR-B**.
+1. **`command-center.business-game-plan`** — `MISSION_WRITE_OUTCOME_UNKNOWN` is indistinguishable from a generic error in owner copy, and a retry mints a **fresh `request_key`**, so an owner retrying an outcome-unknown mission write can double-apply a consequential business write. → **PR-B**.
+
+> Resolved by PR-A: `crm.contact-delete-legacy` (the former second P0 — deployed `delete-contact` edge with a global role gate, no tenant predicate, cascading hard delete) was **retired**: edge, config block, chat tombstone, and baseline entry deleted; the governed `contact.hard_delete` executor is the one tenant-safe delete path.
 
 ### P1 — core paid-product capability incomplete/misleading (3)
 
@@ -84,7 +85,7 @@ The following are canonical, receipt-bearing, and verified in source; any remain
 
 ## 6. Orphaned / dead surfaces → Cursor lane (23 registry entries)
 
-Full registry in the matrix (`orphans` array). Highlights: the unmounted second chat consumer (`src/solo/agent.tsx` + `useSoloChat.ts` — drops confirm frames; drift hazard), `social-studio.tsx` (only reader of a table nothing writes), the unrouted `src/pages/admin/*` page shells (VibeStudio, StudioHome, CampaignsHub/GrowthHub, Marketplace, AnalyticsDashboard, MarketplaceOperatorAdmin, PracticeOverview/AgencyBoard, ContactsAdmin lane, BookingsAdmin + Cal.com edges), Solo fixture screens (`market.tsx`, `setup.tsx`, `team*.tsx`, `calendar*.tsx`, `healthmap.tsx`, `knowledge.tsx`, `settings-setup.tsx`), the documented-unwired `toolConfirmation.ts` predecessor, dead Twilio brand/campaign stubs, and root prototype artifacts. **Caution:** `src/components/admin/studio/` is *not* wholesale-dead — live chat code imports `loadDocument`/`DocumentPreview` (PaigeArtifactCard) and `draftPage`/`STUDIO_ERROR_COPY` (useGeneratePage) from it; only the unrouted page shells and unconsumed studio modules are deletion candidates. Entries marked `cursor-lane-pending-verification` must be checked for dynamic imports and their containment-test source-grep references updated in lockstep. The ContactsAdmin lane is `cursor-lane-after-pr-a` only. The `solo_shell_enabled` dead flag remains a Cursor-lane item per the PR2 ruling.
+Full registry in the matrix (`orphans` array). Highlights: the unmounted second chat consumer (`src/solo/agent.tsx` + `useSoloChat.ts` — drops confirm frames; drift hazard), `social-studio.tsx` (only reader of a table nothing writes), the unrouted `src/pages/admin/*` page shells (VibeStudio, StudioHome, CampaignsHub/GrowthHub, Marketplace, AnalyticsDashboard, MarketplaceOperatorAdmin, PracticeOverview/AgencyBoard, ContactsAdmin lane, BookingsAdmin + Cal.com edges), Solo fixture screens (`market.tsx`, `setup.tsx`, `team*.tsx`, `calendar*.tsx`, `healthmap.tsx`, `knowledge.tsx`, `settings-setup.tsx`), the documented-unwired `toolConfirmation.ts` predecessor, dead Twilio brand/campaign stubs, and root prototype artifacts. **Caution:** `src/components/admin/studio/` is *not* wholesale-dead — live chat code imports `loadDocument`/`DocumentPreview` (PaigeArtifactCard) and `draftPage`/`STUDIO_ERROR_COPY` (useGeneratePage) from it; only the unrouted page shells and unconsumed studio modules are deletion candidates. Entries marked `cursor-lane-pending-verification` must be checked for dynamic imports and their containment-test source-grep references updated in lockstep. The ContactsAdmin lane is plain `cursor-lane` now that PR-A retired the edge it called. The `solo_shell_enabled` dead flag remains a Cursor-lane item per the PR2 ruling.
 
 ## 7. Collisions and dependencies
 
@@ -98,7 +99,7 @@ Full registry in the matrix (`orphans` array). Highlights: the unmounted second 
 
 | Order | PR | Priority | Scope (narrow) |
 |---|---|---|---|
-| 1 | **PR-A** | P0 | Bound or delete the `delete-contact` edge to caller-tenant membership with a tenant predicate; cross-tenant refusal pgTAP proof; then Cursor may remove the orphaned UI lane. |
+| 1 | **PR-A** — **EXECUTED (#1273)** | P0 | ~~Bound or delete the `delete-contact` edge…~~ Retired outright (Option A): edge + config block + chat tombstone + baseline entry deleted, deploy workflow deletes retired functions at the provider, governed `contact.hard_delete` proven canonical; Cursor may now remove the orphaned UI lane. |
 | 2 | **PR-B** | P0 | Mission outcome-unknown truthfulness: distinct owner copy for `MISSION_WRITE_OUTCOME_UNKNOWN`; retry reuses the original `request_key` so idempotency catches the replay. |
 | 3 | **PR-C** | P1 | Security & data: mount `AccountSecurityPanel` + surface the data-deletion request path (or retitle the tab honestly). |
 | 4 | **PR-D** | P1 | Vibe video artifact-readback proof — one owner-authorized paid run proving artifact copy + ledger consume + receipt; flag stays OFF until it passes. |

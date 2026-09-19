@@ -14,8 +14,9 @@
  *
  * THE ANCHORING CASE (#784). `bulk_delete_contacts` hard-deleted up to 100 `clients` rows with the
  * SERVICE-ROLE client, gated only by `confirm: z.boolean()`. No action-risk class, no autonomy
- * lane, no approval proof. The same act in Chat is `crm_delete_contact`, classified `high`, where
- * model-asserted approval is refused outright.
+ * lane, no approval proof. The same act in Chat was `crm_delete_contact`, then classified `high`
+ * (the legacy tool was retired by PR-A; its governed twin `crm_hard_delete_contact` carries the
+ * classification), where model-asserted approval is refused outright.
  *
  * WHY THIS USES THE TYPESCRIPT AST AND NOT A REGEX SCANNER.
  * -------------------------------------------------------

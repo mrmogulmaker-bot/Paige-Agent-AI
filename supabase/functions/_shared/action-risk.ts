@@ -66,7 +66,10 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   ["mission_create", "high", "commits an owner outcome and authority brief from a conversation"],
   ["mission_revise", "high", "changes the governed mission brief the owner will operate from"],
   ["mission_transition", "high", "changes a governed mission lifecycle or records its outcome"],
-  ["crm_delete_contact", "high", "destroys a client record and its related rows"],
+  // `crm_delete_contact` (the retired legacy edge tool) is deliberately absent:
+  // the policy may not carry lines for tools the handler no longer declares
+  // (action-risk-lint), and an unclassified action cannot run on purpose — so
+  // any reintroduction fails closed until it is deliberately re-classified.
   ["crm_hard_delete_contact", "high", "permanently removes an unlinked dependency-free contact after a bound server preview"],
   ["crm_merge_contacts", "high", "reassigns supported dependencies and archives the losing contact after conflict review"],
   ["crm_bulk_update_contacts", "high", "changes an exact preview-bound set of contact records"],
@@ -290,8 +293,9 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // THE INBOUND MCP DOOR'S ACTS, added 2026-09-05 when `paige-mcp` was first wired to this file.
   //
   // ONE NAMESPACE, NOT A SECOND ONE. `paige-mcp` registers 119 tools under its own names —
-  // `create_contact` where Chat says `crm_create_contact`, `bulk_delete_contacts` where Chat says
-  // `crm_delete_contact`. The intersection with the keys above was exactly ONE
+  // `create_contact` where Chat says `crm_create_contact`, `bulk_delete_contacts` where Chat said
+  // `crm_delete_contact` before that legacy tool was retired (PR-A). The intersection with the
+  // keys above was exactly ONE
   // (`delegate_to_subagent`), so running that surface through `classifyAction` unchanged answered
   // `unclassified` for 118 of 119 tools: refuse-by-design, correct as a default, and
   // indistinguishable from never having looked.
