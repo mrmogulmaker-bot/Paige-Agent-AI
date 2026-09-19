@@ -15,6 +15,11 @@
 //   * An uncertain result after dispatch is `outcome_unknown` and is NEVER auto-retried.
 //
 // THE PHASE C HARD-ENTRY SAFEGUARDS wired here (each proven against the in-process fake only):
+//   0. SINGLE SOURCE (MCP PR-1): the dispatch endpoint/auth AND the consent identity BOTH derive from
+//      the ONE canonical connection row, loaded server-side by `connectionId`
+//      (`deps.loadConnection` → `get_mcp_connection_secret`). The request carries NO url, so a caller
+//      can never verify consent against endpoint A and dispatch to endpoint B; a row whose tenant is
+//      not the caller's server-derived tenant is refused `foreign_tenant` (§9).
 //   1. Whether a tool needs approval is decided SERVER-AUTHORITATIVELY (`resolveEffectApproval`):
 //      provider `_meta.effects` may raise the gate, never lower it below the mutation-verb name
 //      floor. A mislabeled `["read"]` on a `send_*`/`delete_*` tool still requires approval.
@@ -34,11 +39,12 @@
 // is proven only against an in-process fake MCP server in the smoke; a live invocation is Phase C,
 // gated behind #1255 + owner go. The safeguards above are the gate it must pass first.
 
-import { withApprovedCapabilitySession, type McpAuth } from "../mcp-client.ts";
-import type { GatewayConnection, ReceiptFiling, RunnerOutcome, RunnerResult } from "./types.ts";
+import { withApprovedCapabilitySession } from "../mcp-client.ts";
+import type { ReceiptFiling, RunnerOutcome, RunnerResult } from "./types.ts";
 import { resolveEffectApproval } from "./effect-policy.ts";
 import { validateToolResult } from "./result.ts";
 import { argsShapeHash, type ApprovalVerifier } from "./consent.ts";
+import type { ConnectionLoader } from "./connection.ts";
 
 function errorCodeOf(e: unknown): string {
   if (e && typeof e === "object" && typeof (e as { code?: unknown }).code === "string") {
@@ -65,10 +71,23 @@ export type RunnerDeps = {
    *  `verify_mcp_connection_approval`; the smoke injects a fixture-bound fake. When a tool requires
    *  approval and no verifier is wired, the run fails CLOSED. */
   verifyApproval?: ApprovalVerifier;
+  /** Resolves a `connection_id` to its CANONICAL endpoint + auth + tenant from the one server-side
+   *  connection row (production: `makeRpcConnectionLoader` over `get_mcp_connection_secret`). The
+   *  runner dispatches ONLY to what this returns — a caller never supplies a URL (MCP PR-1). When a
+   *  run would dispatch and no loader is wired, the run fails CLOSED. */
+  loadConnection?: ConnectionLoader;
 };
 
 export type RunnerRequest = {
-  connection: Pick<GatewayConnection, "connectionId" | "serverUrl" | "auth"> & { auth: McpAuth };
+  /** The immutable connection identity. It ALONE selects the row that supplies BOTH the dispatch
+   *  endpoint (via `deps.loadConnection`) and the consent identity (via `deps.verifyApproval`) — the
+   *  request carries no URL, so consent and dispatch can never derive from two different sources
+   *  (MCP PR-1). */
+  connectionId: string;
+  /** The caller's SERVER-DERIVED tenant. The loaded connection row's tenant must match it or the run
+   *  is refused `foreign_tenant` (§9); `get_mcp_connection_secret` is tenant-agnostic, so this is
+   *  where cross-tenant use is caught. */
+  tenantId: string;
   toolName: string;
   args: Record<string, unknown>;
   mode: "prepare" | "execute";
@@ -89,7 +108,7 @@ export async function runConnectionCapability(
     let receipt: ReceiptFiling | null = null;
     try {
       const filing = await deps.recordReceipt?.({
-        connectionId: req.connection.connectionId,
+        connectionId: req.connectionId,
         toolName: req.toolName,
         outcome,
         runId,
@@ -103,26 +122,30 @@ export async function runConnectionCapability(
   // prepare never opens a session or contacts the provider — it stages intent only.
   if (req.mode === "prepare") return await emit("prepared", null);
 
+  // SINGLE SOURCE (MCP PR-1): the dispatch endpoint and auth derive from the ONE canonical connection
+  // row, loaded server-side by `connectionId` — the same id that backs consent below. The request
+  // carries no URL, so a caller can never verify consent against endpoint A and dispatch to endpoint B.
+  // No loader wired ⇒ fail closed.
+  const canon = deps.loadConnection
+    ? await deps.loadConnection(req.connectionId)
+    : { ok: false as const, reason: "no_connection" as const };
+  if (!canon.ok) return await emit("refused", canon.reason);
+  // §9 isolation: `get_mcp_connection_secret` is tenant-agnostic, so the runner enforces that the
+  // row's tenant is the caller's server-derived tenant. A foreign-tenant connection never dispatches.
+  if (canon.tenantId !== req.tenantId) return await emit("refused", "foreign_tenant");
+
   let dispatched = false;
   // The server-resolved effect decision, hoisted so the post-dispatch catch can classify a THROWN
   // transport failure by read-vs-mutation without re-deriving it from provider metadata (Codex P2).
   let consequential = false;
   try {
     return await withApprovedCapabilitySession<RunnerResult>(
-      { serverUrl: req.connection.serverUrl, auth: req.connection.auth, timeoutMs: req.timeoutMs },
+      { serverUrl: canon.serverUrl, auth: canon.auth, timeoutMs: req.timeoutMs },
       async ({ tools, call }) => {
         // The provider's live catalog IS the surface. A tool the connection does not currently
         // offer is not runnable — that is the provider's authority speaking, not a Paige gate.
         const tool = tools.find((t) => t.name === req.toolName);
         if (!tool) return await emit("refused", "no_longer_offered");
-
-        // PHASE C WIRING OBLIGATION (§39 adversarial note, tracked in #1262): `verifyApproval`
-        // authorizes against the endpoint stored on the connection row, while this session
-        // dispatches to `req.connection.serverUrl` supplied by the caller. Inert today (this runner
-        // is imported by no deployed function), but when Phase C wires it live the dispatch URL and
-        // the verified connection MUST be single-sourced from the SAME connection-row read (e.g. via
-        // get_mcp_connection_secret) so a caller cannot verify against endpoint A and dispatch to B —
-        // the exact endpoint-binding bypass the endpoint_hash binding exists to prevent.
 
         // (1) SERVER-AUTHORITATIVE effect decision — provider metadata may only RAISE the gate.
         const decision = resolveEffectApproval(tool.name, tool.effects);
@@ -133,7 +156,7 @@ export async function runConnectionCapability(
           const shapeHash = await argsShapeHash(req.args);
           const check = deps.verifyApproval
             ? await deps.verifyApproval({
-              connectionId: req.connection.connectionId,
+              connectionId: req.connectionId,
               toolName: tool.name,
               livePin: tool.pin,
               argsShapeHash: shapeHash,

@@ -1,0 +1,75 @@
+// Connected MCP Gateway — CANONICAL CONNECTION resolution (MCP PR-1, single-source).
+//
+// THE INVARIANT. Consent verification and the eventual dispatch destination must derive from the
+// EXACT SAME server-loaded connection record. Phase S/the #1262 runner verified consent against the
+// endpoint stored on the connection row (keyed by `connection_id`, via `verify_mcp_connection_approval`)
+// but dispatched to a `serverUrl` the CALLER supplied on the request — two independent inputs. A
+// caller could then verify consent for connection A's endpoint and dispatch to endpoint B.
+//
+// This module closes that: the runner never accepts a caller URL. It resolves the endpoint (and auth)
+// SERVER-SIDE from the one `mcp_connections` row, keyed by the same `connection_id` that backs
+// consent. Both sides then read the same row — a caller cannot influence where a run dispatches.
+//
+// The production loader is `get_mcp_connection_secret` (migration 20270319000000, service_role only):
+// the ONE decrypted read of the row. It is tenant-AGNOSTIC (it loads any connection by id and returns
+// the row's `tenant_id`), so the CALLER — here, the runner — must enforce that the row's tenant is the
+// caller's server-derived tenant (§9). The auth mapping reuses `authFromSecret` from `../mcp-client.ts`
+// (§18: one home; the guard and the mapping already live together there).
+
+import { authFromSecret, type McpAuth, type StoredMcpSecret } from "../mcp-client.ts";
+
+// deno-lint-ignore no-explicit-any
+type Admin = any;
+
+/** The canonical connection, resolved server-side from the one `mcp_connections` row keyed by
+ *  `connection_id`. Both the dispatch endpoint AND the consent identity derive from THIS. `ok:false`
+ *  carries a closed refusal reason — never provider prose. */
+export type ResolvedConnection =
+  | { ok: true; connectionId: string; tenantId: string; serverUrl: string; auth: McpAuth }
+  | { ok: false; reason: "no_connection" | "connection_disabled" | "connection_unusable" };
+
+/** What the runner calls to resolve a connection to its canonical endpoint + auth + tenant. In
+ *  production this is the RPC-backed loader; the smoke injects a fixture-bound fake. The runner never
+ *  takes a URL from its own request. */
+export type ConnectionLoader = (connectionId: string) => Promise<ResolvedConnection> | ResolvedConnection;
+
+/**
+ * Production loader: the service-role `get_mcp_connection_secret` RPC is the single decrypted read of
+ * the row. It returns the endpoint, auth and tenant from THAT read, so dispatch and consent cannot
+ * diverge. Fails CLOSED (`no_connection`) on any RPC/transport error — an unresolvable connection is
+ * never a usable one. `configured:false` → `no_connection`; `enabled:false` → `connection_disabled`;
+ * a row with no usable endpoint/credential → `connection_unusable`.
+ */
+export function makeRpcConnectionLoader(admin: Admin): ConnectionLoader {
+  return async (connectionId: string): Promise<ResolvedConnection> => {
+    try {
+      const { data, error } = await admin.rpc("get_mcp_connection_secret", { _connection_id: connectionId });
+      if (error) return { ok: false, reason: "no_connection" };
+      const row = (data ?? {}) as {
+        configured?: unknown;
+        enabled?: unknown;
+        connection_id?: unknown;
+        tenant_id?: unknown;
+        server_url?: unknown;
+        auth_token?: unknown;
+        auth_kind?: unknown;
+        auth_header_name?: unknown;
+      };
+      if (row.configured !== true) return { ok: false, reason: "no_connection" };
+      if (row.enabled !== true) return { ok: false, reason: "connection_disabled" };
+      // §18: the guard ("usable?") and the mapping ("which auth?") answered in one place.
+      const auth = authFromSecret(row as StoredMcpSecret);
+      if (
+        auth === null ||
+        typeof row.server_url !== "string" || !row.server_url ||
+        typeof row.connection_id !== "string" ||
+        typeof row.tenant_id !== "string"
+      ) {
+        return { ok: false, reason: "connection_unusable" };
+      }
+      return { ok: true, connectionId: row.connection_id, tenantId: row.tenant_id, serverUrl: row.server_url, auth };
+    } catch {
+      return { ok: false, reason: "no_connection" };
+    }
+  };
+}

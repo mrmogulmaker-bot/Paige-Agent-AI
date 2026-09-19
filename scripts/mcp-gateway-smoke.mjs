@@ -204,32 +204,53 @@ const verifyApproval = (q) => {
   if (a.endpoint === "stale") return { authorized: false, reason: "endpoint_changed" };
   return { authorized: true, reason: "authorized" };
 };
-const deps = { recordReceipt: (r) => { receipts.push(r); }, verifyApproval };
-const conn = { connectionId: "conn-1", serverUrl: "https://public.example/mcp-run", auth: bearer };
+// SINGLE SOURCE (MCP PR-1): the caller passes only a connection_id + its server-derived tenant; the
+// dispatch endpoint + auth come from the LOADED canonical row, never the request. `connections` is the
+// fixture standing in for the one canonical mcp_connections row per id; `loadConnection` is the
+// injected canonical loader the runner dispatches through.
+const TENANT = "ten-1";
+const connections = {
+  "conn-1": { tenantId: TENANT, serverUrl: "https://public.example/mcp-run", auth: bearer, enabled: true },
+};
+const loadConnection = (connectionId) => {
+  const c = connections[connectionId];
+  if (!c) return { ok: false, reason: "no_connection" };
+  if (c.enabled === false) return { ok: false, reason: "connection_disabled" };
+  if (!c.serverUrl || !c.auth) return { ok: false, reason: "connection_unusable" };
+  return { ok: true, connectionId, tenantId: c.tenantId, serverUrl: c.serverUrl, auth: c.auth };
+};
+const deps = { recordReceipt: (r) => { receipts.push(r); }, verifyApproval, loadConnection };
+// Points conn-1's CANONICAL stored endpoint at `serverUrl` (as if the row held it), then runs BY ID —
+// there is no request URL. extraDeps overrides fields of `deps` (which already carries loadConnection
+// + verifyApproval + the receipt collector).
+const runOn = (serverUrl, req, extraDeps = {}) => {
+  connections["conn-1"].serverUrl = serverUrl;
+  return runnerMod.runConnectionCapability({ connectionId: "conn-1", tenantId: TENANT, ...req }, { ...deps, ...extraDeps });
+};
 const runSrv = {};
 routes.set("/mcp-run", mcpServer(runSrv));
 
 // prepare — no session, no provider contact
 const prepSrv = {}; routes.set("/mcp-prepare", mcpServer(prepSrv));
-const prep = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-prepare" }, toolName: "send_message", args: {}, mode: "prepare" }, deps);
+const prep = await runOn("https://public.example/mcp-prepare", { toolName: "send_message", args: {}, mode: "prepare" });
 check("prepare returns 'prepared'", prep.outcome === "prepared");
 check("prepare contacts NO provider (no requests at all)", !(prepSrv.methods?.length), JSON.stringify(prepSrv.methods ?? []));
 
 // read-only tool in execute mode → read_observed, no approval needed, no consent check
 const verifyCallsBeforeRead = verifyCalls.length;
-const readRun = await runnerMod.runConnectionCapability({ connection: conn, toolName: "list_records", args: { q: "x" }, mode: "execute" }, deps);
+const readRun = await runOn("https://public.example/mcp-run", { toolName: "list_records", args: { q: "x" }, mode: "execute" });
 check("a read tool executes without approval → read_observed", readRun.outcome === "read_observed");
 check("a read tool never even consults the consent verifier", verifyCalls.length === verifyCallsBeforeRead);
 
 // mutation WITHOUT a durable approval → refused: approval_required (NOT unavailable)
-const noApp = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: {}, mode: "execute" }, deps);
+const noApp = await runOn("https://public.example/mcp-run", { toolName: "send_message", args: {}, mode: "execute" });
 check("a mutation without durable consent is refused as approval_required", noApp.outcome === "refused" && noApp.code === "approval_required");
 check("...and it is NEVER reported as unavailable for being a mutation", noApp.code !== "provider_unavailable" && noApp.code !== "unsupported");
 
 // mutation WITH a durable, endpoint-current approval → executed
 approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
 const callsBefore = (runSrv.calls ?? []).length;
-const okApp = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: { to: "a" }, mode: "execute" }, deps);
+const okApp = await runOn("https://public.example/mcp-run", { toolName: "send_message", args: { to: "a" }, mode: "execute" });
 check("a mutation with durable, endpoint-bound consent EXECUTES", okApp.outcome === "executed");
 check("...and it actually dispatched tools/call to the provider", (runSrv.calls ?? []).length === callsBefore + 1 && runSrv.calls.at(-1) === "send_message");
 {
@@ -242,37 +263,37 @@ check("...and it actually dispatched tools/call to the provider", (runSrv.calls 
 // #1262 finding 1 — SERVER FLOOR: a mutating-verb-named tool the provider MISLABELS ["read"]
 // still requires approval. The provider cannot lower the gate.
 approvals = {};
-const mislabel = await runnerMod.runConnectionCapability({ connection: conn, toolName: "delete_records", args: { id: "1" }, mode: "execute" }, deps);
+const mislabel = await runOn("https://public.example/mcp-run", { toolName: "delete_records", args: { id: "1" }, mode: "execute" });
 check("a mutating-verb tool the provider labels ['read'] STILL requires approval (server floor)", mislabel.outcome === "refused" && mislabel.code === "approval_required");
 approvals = { delete_records: { pin: pinOf("delete_records"), endpoint: "current" } };
-const mislabelOk = await runnerMod.runConnectionCapability({ connection: conn, toolName: "delete_records", args: { id: "1" }, mode: "execute" }, deps);
+const mislabelOk = await runOn("https://public.example/mcp-run", { toolName: "delete_records", args: { id: "1" }, mode: "execute" });
 check("...and executes only with a durable approval (provider could not lower it to a free read)", mislabelOk.outcome === "executed");
 
 // provider RAISE: a non-verb-named tool the provider declares mutating needs approval too
 approvals = {};
-const raise = await runnerMod.runConnectionCapability({ connection: conn, toolName: "submit_form", args: { field: "x" }, mode: "execute" }, deps);
+const raise = await runOn("https://public.example/mcp-run", { toolName: "submit_form", args: { field: "x" }, mode: "execute" });
 check("a provider-declared mutating effect RAISES a non-verb-named tool to needing approval", raise.outcome === "refused" && raise.code === "approval_required");
 
 // DRIFTED live pin (stored approval no longer matches the live contract) → contract_changed
 approvals = { send_message: { pin: "f".repeat(64), endpoint: "current" } };
-const drift = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: {}, mode: "execute" }, deps);
+const drift = await runOn("https://public.example/mcp-run", { toolName: "send_message", args: {}, mode: "execute" });
 check("a drifted contract (stored pin ≠ live pin) is refused as contract_changed", drift.outcome === "refused" && drift.code === "contract_changed");
 
 // STALE endpoint (approval bound to a different endpoint) → endpoint_changed
 approvals = { send_message: { pin: pinOf("send_message"), endpoint: "stale" } };
-const stale = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: {}, mode: "execute" }, deps);
+const stale = await runOn("https://public.example/mcp-run", { toolName: "send_message", args: {}, mode: "execute" });
 check("an approval bound to a since-changed endpoint is refused as endpoint_changed", stale.outcome === "refused" && stale.code === "endpoint_changed");
 
 // tool not offered → refused: no_longer_offered
-const gone = await runnerMod.runConnectionCapability({ connection: conn, toolName: "does_not_exist", args: {}, mode: "execute" }, deps);
+const gone = await runOn("https://public.example/mcp-run", { toolName: "does_not_exist", args: {}, mode: "execute" });
 check("a tool the provider no longer offers is refused as no_longer_offered", gone.outcome === "refused" && gone.code === "no_longer_offered");
 
 // undeclared effects → FAIL CLOSED (must not auto-run as a read)
 approvals = {};
-const undeclaredNoApp = await runnerMod.runConnectionCapability({ connection: conn, toolName: "mystery_action", args: {}, mode: "execute" }, deps);
+const undeclaredNoApp = await runOn("https://public.example/mcp-run", { toolName: "mystery_action", args: {}, mode: "execute" });
 check("a tool with UNDECLARED effects is refused (fail-closed), not auto-run", undeclaredNoApp.outcome === "refused" && undeclaredNoApp.code === "effects_undeclared");
 approvals = { mystery_action: { pin: pinOf("mystery_action"), endpoint: "current" } };
-const undeclaredApp = await runnerMod.runConnectionCapability({ connection: conn, toolName: "mystery_action", args: {}, mode: "execute" }, deps);
+const undeclaredApp = await runOn("https://public.example/mcp-run", { toolName: "mystery_action", args: {}, mode: "execute" });
 check("...and executes only once the owner explicitly approves it", undeclaredApp.outcome === "executed");
 
 // #1262 finding 4 / Codex P2 — a dispatched call whose result is an error or an unaccepted shape is
@@ -282,7 +303,7 @@ check("...and executes only once the owner explicitly approves it", undeclaredAp
 approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
 const errSrv = { callResponse: { content: [{ type: "text", text: "no" }], isError: true } };
 routes.set("/mcp-toolerr", mcpServer(errSrv));
-const mutErr = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-toolerr" }, toolName: "send_message", args: { to: "a" }, mode: "execute" }, deps);
+const mutErr = await runOn("https://public.example/mcp-toolerr", { toolName: "send_message", args: { to: "a" }, mode: "execute" });
 check("a MUTATION that dispatched then reported isError is outcome_unknown (may have landed), never executed", mutErr.outcome === "outcome_unknown" && mutErr.code === "provider_reported_error");
 check("...and it is NEVER tool_error/capability_failed (which would tell the owner 'nothing was left half-done')", mutErr.outcome !== "tool_error");
 check("...and it actually dispatched (not a refusal or an unreachable)", (errSrv.calls ?? []).at(-1) === "send_message");
@@ -290,21 +311,21 @@ check("...and it actually dispatched (not a refusal or an unreachable)", (errSrv
 // a READ that reports isError has NO side effect → tool_error (honestly capability_failed)
 const readErrSrv = { callResponse: { content: [{ type: "text", text: "no" }], isError: true } };
 routes.set("/mcp-readerr", mcpServer(readErrSrv));
-const readErr = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-readerr" }, toolName: "list_records", args: {}, mode: "execute" }, deps);
+const readErr = await runOn("https://public.example/mcp-readerr", { toolName: "list_records", args: {}, mode: "execute" });
 check("a READ that reported isError is tool_error (no side effect to be unknown about)", readErr.outcome === "tool_error" && readErr.code === "provider_reported_error");
 
 // Codex P2 — a MALFORMED (non-boolean) isError must NOT slip through the strict `=== true` check as a success
 const malSrv = { callResponse: { content: [], isError: "true" } }; // the STRING "true", not a boolean
 routes.set("/mcp-malformed", mcpServer(malSrv));
-const malMut = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-malformed" }, toolName: "send_message", args: { to: "a" }, mode: "execute" }, deps);
+const malMut = await runOn("https://public.example/mcp-malformed", { toolName: "send_message", args: { to: "a" }, mode: "execute" });
 check("a MUTATION with a malformed non-boolean isError fails closed to outcome_unknown, never executed", malMut.outcome === "outcome_unknown");
-const malRead = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-malformed" }, toolName: "list_records", args: {}, mode: "execute" }, deps);
+const malRead = await runOn("https://public.example/mcp-malformed", { toolName: "list_records", args: {}, mode: "execute" });
 check("a READ with a malformed non-boolean isError fails closed to tool_error, never read_observed", malRead.outcome === "tool_error");
 
 // an UNRECOGNIZED result shape on a mutation is outcome_unknown (dispatched, landing unknown), never a success
 const weirdSrv = { callResponse: { not_content: "whatever" } };
 routes.set("/mcp-weird", mcpServer(weirdSrv));
-const weird = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-weird" }, toolName: "send_message", args: {}, mode: "execute" }, deps);
+const weird = await runOn("https://public.example/mcp-weird", { toolName: "send_message", args: {}, mode: "execute" });
 check("an unrecognized tools/call result shape on a mutation is outcome_unknown, never executed", weird.outcome === "outcome_unknown" && weird.code === "unrecognized_result");
 
 // Codex P2 (post-dispatch TRANSPORT exception) — a tools/call that THROWS after dispatch (HTTP error,
@@ -314,7 +335,7 @@ check("an unrecognized tools/call result shape on a mutation is outcome_unknown,
 //   • a MUTATION may have landed → outcome_unknown, never auto-retried
 const throwSrv = { callThrows: true };
 routes.set("/mcp-callthrows", mcpServer(throwSrv));
-const readThrew = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-callthrows" }, toolName: "list_records", args: {}, mode: "execute" }, deps);
+const readThrew = await runOn("https://public.example/mcp-callthrows", { toolName: "list_records", args: {}, mode: "execute" });
 check("a READ whose tools/call THROWS post-dispatch is tool_error (no side effect to leave ambiguous)", readThrew.outcome === "tool_error", JSON.stringify(readThrew));
 check("...and it NEVER becomes outcome_unknown (the false 'may have taken effect' warning)", readThrew.outcome !== "outcome_unknown");
 check("...and it files canonical capability_failed, never capability_outcome_unknown", railMod.railOutcomeFor(readThrew.outcome) === "capability_failed");
@@ -323,7 +344,7 @@ check("...and it dispatched exactly once (a failed read is never auto-retried)",
 const throwSrvMut = { callThrows: true };
 routes.set("/mcp-callthrows-mut", mcpServer(throwSrvMut));
 approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
-const mutThrew = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-callthrows-mut" }, toolName: "send_message", args: { to: "a" }, mode: "execute" }, deps);
+const mutThrew = await runOn("https://public.example/mcp-callthrows-mut", { toolName: "send_message", args: { to: "a" }, mode: "execute" });
 check("a MUTATION whose tools/call THROWS post-dispatch stays outcome_unknown (effect may have landed)", mutThrew.outcome === "outcome_unknown", JSON.stringify(mutThrew));
 check("...and it files canonical capability_outcome_unknown (never capability_failed)", railMod.railOutcomeFor(mutThrew.outcome) === "capability_outcome_unknown");
 check("...and the mutation dispatched exactly once (an ambiguous throw is never auto-retried)", (throwSrvMut.calls ?? []).length === 1, JSON.stringify(throwSrvMut.calls));
@@ -333,7 +354,7 @@ routes.set("/mcp-down", (req, res) => {
   if (req.method === "DELETE") { res.writeHead(204).end(); return; }
   res.writeHead(503, { "Content-Type": "text/plain" }).end("unavailable");
 });
-const down = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-down" }, toolName: "list_records", args: {}, mode: "execute" }, deps);
+const down = await runOn("https://public.example/mcp-down", { toolName: "list_records", args: {}, mode: "execute" });
 check("an unreachable provider before dispatch is provider_unavailable", down.outcome === "provider_unavailable");
 
 // receipts were recorded for the runs
@@ -354,14 +375,14 @@ check("outcome_unknown → capability_outcome_unknown", railMod.railOutcomeFor("
   const fakeAdmin = { rpc: (fn, params) => { railCalls.push({ fn, params }); return { error: null }; } };
   const railReceipt = railMod.makeCanonicalRailReceipt(fakeAdmin, { tenantId: "ten-1", actorId: "act-1" });
   approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
-  const execRes = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: { to: "a" }, mode: "execute" }, { verifyApproval, recordReceipt: railReceipt });
+  const execRes = await runOn("https://public.example/mcp-run", { toolName: "send_message", args: { to: "a" }, mode: "execute" }, { recordReceipt: railReceipt });
   // a MUTATION post-dispatch error → outcome_unknown → capability_outcome_unknown (NEVER capability_failed)
-  await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-toolerr" }, toolName: "send_message", args: {}, mode: "execute" }, { verifyApproval, recordReceipt: railReceipt });
+  await runOn("https://public.example/mcp-toolerr", { toolName: "send_message", args: {}, mode: "execute" }, { recordReceipt: railReceipt });
   // a READ post-dispatch error → tool_error → capability_failed
-  await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-readerr" }, toolName: "list_records", args: {}, mode: "execute" }, { verifyApproval, recordReceipt: railReceipt });
+  await runOn("https://public.example/mcp-readerr", { toolName: "list_records", args: {}, mode: "execute" }, { recordReceipt: railReceipt });
   approvals = {};
-  await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: {}, mode: "execute" }, { verifyApproval, recordReceipt: railReceipt });
-  const prepRes = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: {}, mode: "prepare" }, { verifyApproval, recordReceipt: railReceipt });
+  await runOn("https://public.example/mcp-run", { toolName: "send_message", args: {}, mode: "execute" }, { recordReceipt: railReceipt });
+  const prepRes = await runOn("https://public.example/mcp-run", { toolName: "send_message", args: {}, mode: "prepare" }, { recordReceipt: railReceipt });
   const outcomes = railCalls.map((c) => c.params._outcome);
   check("the runner routes outcome truth through record_capability_run (canonical Rail)", railCalls.every((c) => c.fn === "record_capability_run"));
   check("executed→succeeded, mutation-error→outcome_unknown, read-error→failed, refused→refused are all filed truthfully",
@@ -383,30 +404,30 @@ check("outcome_unknown → capability_outcome_unknown", railMod.railOutcomeFor("
   const failAdmin = { rpc: () => ({ error: { message: "rail write rejected" } }) };
   const failReceipt = railMod.makeCanonicalRailReceipt(failAdmin, { tenantId: "ten-1", actorId: "act-1" });
   approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
-  const unrec = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: { to: "a" }, mode: "execute" }, { verifyApproval, recordReceipt: failReceipt });
+  const unrec = await runOn("https://public.example/mcp-run", { toolName: "send_message", args: { to: "a" }, mode: "execute" }, { recordReceipt: failReceipt });
   check("a completed effect whose Rail write FAILED keeps its truthful outcome (executed, never downgraded)", unrec.outcome === "executed");
   check("...and is reported completed-but-UNRECORDED (receipt.filed === false, reason record_failed), never a silent recorded-success",
     unrec.receipt && unrec.receipt.filed === false && unrec.receipt.reason === "record_failed", JSON.stringify(unrec.receipt));
 
   // A run with NO receipt writer wired makes NO filing claim (null), rather than pretending recorded.
   approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
-  const noWriter = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: { to: "a" }, mode: "execute" }, { verifyApproval });
+  const noWriter = await runOn("https://public.example/mcp-run", { toolName: "send_message", args: { to: "a" }, mode: "execute" }, { recordReceipt: undefined });
   check("a run with no receipt writer makes no filing claim (receipt === null)", noWriter.receipt === null, JSON.stringify(noWriter.receipt));
 
   // A receipt writer that THROWS is itself a filing failure (record_threw) — the action outcome survives.
   const throwWriter = () => { throw new Error("writer boom"); };
   approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
-  const threw = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: { to: "a" }, mode: "execute" }, { verifyApproval, recordReceipt: throwWriter });
+  const threw = await runOn("https://public.example/mcp-run", { toolName: "send_message", args: { to: "a" }, mode: "execute" }, { recordReceipt: throwWriter });
   check("a receipt writer that THROWS yields receipt record_threw, outcome still executed",
     threw.outcome === "executed" && threw.receipt && threw.receipt.filed === false && threw.receipt.reason === "record_threw", JSON.stringify(threw.receipt));
 
   // A landed `executed` effect with NO actor to file under is record_failed (owed, unrecorded), never benign.
   const noActorReceipt = railMod.makeCanonicalRailReceipt(fakeAdmin, { tenantId: "ten-1", actorId: null });
-  const noActor = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: { to: "a" }, mode: "execute" }, { verifyApproval, recordReceipt: noActorReceipt });
+  const noActor = await runOn("https://public.example/mcp-run", { toolName: "send_message", args: { to: "a" }, mode: "execute" }, { recordReceipt: noActorReceipt });
   check("a landed executed effect with no actor is record_failed (owed, unrecorded), never benign not_applicable",
     noActor.outcome === "executed" && noActor.receipt && noActor.receipt.filed === false && noActor.receipt.reason === "record_failed", JSON.stringify(noActor.receipt));
   // ...but a PREPARED run with no actor is genuinely not_applicable (no Rail row is owed).
-  const prepNoActor = await runnerMod.runConnectionCapability({ connection: conn, toolName: "send_message", args: {}, mode: "prepare" }, { verifyApproval, recordReceipt: noActorReceipt });
+  const prepNoActor = await runOn("https://public.example/mcp-run", { toolName: "send_message", args: {}, mode: "prepare" }, { recordReceipt: noActorReceipt });
   check("a prepared run with no actor is still not_applicable (no row owed)",
     prepNoActor.receipt && prepNoActor.receipt.reason === "not_applicable", JSON.stringify(prepNoActor.receipt));
 }
@@ -429,6 +450,63 @@ console.log("\n— effect floor name normalization —");
   // A plain read tool is unaffected.
   const plain = re("list_records", ["read"]);
   check("a real read tool is still a no-approval read", plain.requiresApproval === false);
+}
+
+// ── 6. SINGLE SOURCE (MCP PR-1) — consent verification AND the dispatch destination BOTH derive from
+// the one canonical connection row, loaded server-side by connection_id. The caller supplies no URL. ──
+console.log("\n— single source: consent + dispatch from one canonical connection row —");
+{
+  const canonSrv = {};
+  routes.set("/mcp-canon", mcpServer(canonSrv));
+  const CANON_URL = "https://public.example/mcp-canon";
+  const rogueSrv = {};
+  routes.set("/mcp-rogue", mcpServer(rogueSrv));
+  connections["conn-canon"]    = { tenantId: TENANT,      serverUrl: CANON_URL, auth: bearer, enabled: true };
+  connections["conn-foreign"]  = { tenantId: "ten-evil",  serverUrl: CANON_URL, auth: bearer, enabled: true };
+  connections["conn-disabled"] = { tenantId: TENANT,      serverUrl: CANON_URL, auth: bearer, enabled: false };
+  const call = (req, extra = {}) => runnerMod.runConnectionCapability(
+    { connectionId: "conn-canon", tenantId: TENANT, mode: "execute", ...req }, { ...deps, ...extra });
+
+  // (1) valid connection resolves and runs; (7) dispatch hit the CANONICAL endpoint's server.
+  approvals = {};
+  const okRead = await call({ toolName: "list_records", args: {} });
+  check("a valid connection resolves and runs (read → read_observed)", okRead.outcome === "read_observed", JSON.stringify(okRead));
+  check("...and dispatch hit the canonical endpoint's server (from the loaded row)", (canonSrv.calls ?? []).includes("list_records"));
+
+  // (5) a caller-supplied URL on the request CANNOT override the stored endpoint — there is no such
+  // field; even smuggling `serverUrl`/`connection` props, dispatch still goes to the canonical row.
+  const rogue = await call({ toolName: "list_records", args: {}, serverUrl: "https://public.example/mcp-rogue", connection: { serverUrl: "https://public.example/mcp-rogue", connectionId: "conn-canon" } });
+  check("a caller-smuggled serverUrl is IGNORED — dispatch still resolved from the canonical row", rogue.outcome === "read_observed");
+  check("...and the rogue endpoint was NEVER contacted", !(rogueSrv.calls ?? []).length, JSON.stringify(rogueSrv.calls ?? []));
+
+  // (2) foreign-tenant refuses (§9) — the row's tenant is not the caller's server-derived tenant.
+  const foreign = await runnerMod.runConnectionCapability({ connectionId: "conn-foreign", tenantId: TENANT, toolName: "list_records", args: {}, mode: "execute" }, { ...deps });
+  check("a connection whose row tenant != caller tenant is refused foreign_tenant (§9)", foreign.outcome === "refused" && foreign.code === "foreign_tenant", JSON.stringify(foreign));
+
+  // (3) missing connection refuses; (4) disabled refuses; and no-loader fails CLOSED.
+  const missing = await runnerMod.runConnectionCapability({ connectionId: "conn-nope", tenantId: TENANT, toolName: "list_records", args: {}, mode: "execute" }, { ...deps });
+  check("a connection_id with no row is refused no_connection", missing.outcome === "refused" && missing.code === "no_connection", JSON.stringify(missing));
+  const disabled = await runnerMod.runConnectionCapability({ connectionId: "conn-disabled", tenantId: TENANT, toolName: "list_records", args: {}, mode: "execute" }, { ...deps });
+  check("a disabled connection is refused connection_disabled", disabled.outcome === "refused" && disabled.code === "connection_disabled", JSON.stringify(disabled));
+  const noLoader = await runnerMod.runConnectionCapability({ connectionId: "conn-canon", tenantId: TENANT, toolName: "list_records", args: {}, mode: "execute" }, { verifyApproval });
+  check("no loader wired ⇒ fail closed (refused no_connection), never a blind dispatch", noLoader.outcome === "refused" && noLoader.code === "no_connection", JSON.stringify(noLoader));
+
+  // (6) the consent verifier is asked to authorize the SAME canonical connection_id that backs
+  // dispatch, and (7) the mutation dispatches to that same row's endpoint — single source, proven together.
+  approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
+  const seenV = [];
+  const spyVerify = (q) => { seenV.push(q); return verifyApproval(q); };
+  const callsBefore = (canonSrv.calls ?? []).length;
+  const mut = await call({ toolName: "send_message", args: { to: "a" } }, { verifyApproval: spyVerify });
+  check("a mutation on the canonical connection executes with consent", mut.outcome === "executed", JSON.stringify(mut));
+  check("consent was verified with the SAME canonical connection_id that backs dispatch (single source)", seenV.length === 1 && seenV[0].connectionId === "conn-canon", JSON.stringify(seenV));
+  check("...and dispatch hit that same canonical endpoint's server (one row → consent + dispatch)", (canonSrv.calls ?? []).length === callsBefore + 1 && (canonSrv.calls ?? []).at(-1) === "send_message");
+
+  // (8) a since-changed endpoint invalidates the old bound consent (the #1268 mechanism, on the
+  // single-source path): refused endpoint_changed, never dispatched.
+  approvals = { send_message: { pin: pinOf("send_message"), endpoint: "stale" } };
+  const staleC = await call({ toolName: "send_message", args: {} });
+  check("a since-changed endpoint invalidates the bound consent → refused endpoint_changed (never dispatched)", staleC.outcome === "refused" && staleC.code === "endpoint_changed", JSON.stringify(staleC));
 }
 
 server.close();
