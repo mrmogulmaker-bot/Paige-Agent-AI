@@ -130,6 +130,12 @@ export async function runConnectionCapability(
     ? await deps.loadConnection(req.connectionId)
     : { ok: false as const, reason: "no_connection" as const };
   if (!canon.ok) return await emit("refused", canon.reason);
+  // Defense-in-depth (§39): the loaded row MUST be the exact connection the caller named, so the id
+  // that backs consent below is provably the id that backs this dispatch. This keeps the single-source
+  // invariant LOADER-INDEPENDENT — a future/alternate loader that resolved an alias or redirect to a
+  // different row could otherwise reintroduce a two-source divergence (consent for id A, dispatch to
+  // row B) without this guard.
+  if (canon.connectionId !== req.connectionId) return await emit("refused", "connection_mismatch");
   // §9 isolation: `get_mcp_connection_secret` is tenant-agnostic, so the runner enforces that the
   // row's tenant is the caller's server-derived tenant. A foreign-tenant connection never dispatches.
   if (canon.tenantId !== req.tenantId) return await emit("refused", "foreign_tenant");

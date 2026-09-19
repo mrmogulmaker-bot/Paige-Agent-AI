@@ -491,6 +491,13 @@ console.log("\n— single source: consent + dispatch from one canonical connecti
   const noLoader = await runnerMod.runConnectionCapability({ connectionId: "conn-canon", tenantId: TENANT, toolName: "list_records", args: {}, mode: "execute" }, { verifyApproval });
   check("no loader wired ⇒ fail closed (refused no_connection), never a blind dispatch", noLoader.outcome === "refused" && noLoader.code === "no_connection", JSON.stringify(noLoader));
 
+  // Defense-in-depth (§39): a loader that resolves to a row for a DIFFERENT connection_id than the
+  // caller named is refused — the single-source guarantee does not depend on the loader being honest
+  // about identity (consent keys off req.connectionId; dispatch off the loaded row — they must match).
+  const aliasLoad = () => ({ ok: true, connectionId: "conn-OTHER", tenantId: TENANT, serverUrl: CANON_URL, auth: bearer });
+  const mismatched = await runnerMod.runConnectionCapability({ connectionId: "conn-canon", tenantId: TENANT, toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: aliasLoad });
+  check("a loader returning a row for a DIFFERENT connection_id is refused connection_mismatch (single source is loader-independent)", mismatched.outcome === "refused" && mismatched.code === "connection_mismatch", JSON.stringify(mismatched));
+
   // (6) the consent verifier is asked to authorize the SAME canonical connection_id that backs
   // dispatch, and (7) the mutation dispatches to that same row's endpoint — single source, proven together.
   approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
