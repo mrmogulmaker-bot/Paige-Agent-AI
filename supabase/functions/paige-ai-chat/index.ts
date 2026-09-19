@@ -1288,12 +1288,18 @@ JSON:`;
     // expected 0). The fix DEFERS this call to immediately AFTER the pre-egress active-account
     // revalidation that already guards the chat dispatch: that guard early-returns 409 on a
     // switched/stale/unresolved scope, so a switched turn returns before the extraction can run
-    // (0 provider calls, fail closed). It is deliberately gated by POSITION rather than by a
-    // second `revalidateTenantKnowledgeScope()` call here — adding a resolver call would advance
-    // the persona sequence and make the pre-egress guard, not the close-boundary guard, catch a
-    // LATE switch, breaking the 15.10a/15.11 timing. Order is preserved: extraction stays the
-    // first provider call, the streamed chat reply the second. This flag only carries the intent
-    // from the general-document branch to that gate.
+    // (0 provider calls, fail closed — 15.9). TWO pre-dispatch validations then bracket the
+    // deferred call: (1) the pre-egress guard BEFORE it catches a switch already present at turn
+    // start; (2) a SECOND `revalidateTenantKnowledgeScope()` immediately AFTER the extraction and
+    // before the chat dispatch (added for the Codex P1 on head a84bfcd6) catches a switch that
+    // lands DURING the awaited extraction round-trip — without it the chat dispatch would egress
+    // the prior workspace's aiMessages + Knowledge and only the reply, not the egress, would be
+    // withheld at the close boundary (15.9d). A switch during the chat-dispatch round-trip itself
+    // is the irreducible race the close-boundary guard still catches (15.10a/15.10/15.11). The
+    // second check runs only on this deferred (general-document) path, because only it inserts the
+    // awaited round-trip that widens the window. Provider-call order is preserved: extraction stays
+    // the first provider call, the streamed chat reply the second. This flag only carries the
+    // intent from the general-document branch to that gate.
     let deferGeneralDocExtraction = false;
     let isCreditReportPdf = false;
     if (attachedDocument) {
