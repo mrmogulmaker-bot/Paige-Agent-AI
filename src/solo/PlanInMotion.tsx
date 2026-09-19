@@ -54,6 +54,9 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
   // PR-B: outcome-unknown is its own state, never an ordinary failure. The
   // banner offers reconciliation of the SAME request, not a fresh write.
   const [unknown, setUnknown] = useState<string | null>(null);
+  // The transition target of the most recent attempt, for reconcile() when
+  // Approve/Resume skipped the pending-confirm step.
+  const [lastToState, setLastToState] = useState<MissionState | null>(null);
   const saveKeeper = useRef(createRequestKeyKeeper());
   const transitionKeeper = useRef(createRequestKeyKeeper());
   const opener = useRef<HTMLElement | null>(null);
@@ -72,7 +75,7 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
     closeButton.current?.focus();
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setDrawer(null); setSelected(null); setPending(null); setError(null);
+        setDrawer(null); setSelected(null); setPending(null); setError(null); setUnknown(null);
         return;
       }
       if (event.key !== "Tab") return;
@@ -137,6 +140,7 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
       return false;
     }
     setUnknown(null);
+    setLastToState(null);
     onNotice?.(result.railRecorded ? success : success + " The saved change is verified, but its Rail receipt is not yet confirmed.");
     if (result.missionId) {
       try { setSelected(await brain.getDetail(result.missionId)); } catch { setSelected(null); }
@@ -179,7 +183,9 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
     // after an outcome-unknown reuses the ORIGINAL key, so the backend
     // replays the existing operation; changed content is a new intent and
     // gets a new key. Success settles the identity.
-    const args = { ...payload, request_key: saveKeeper.current.keyFor(JSON.stringify(payload)).key };
+    const keyDecision = saveKeeper.current.keyFor(JSON.stringify(payload));
+    if (!keyDecision.reused) setUnknown(null);
+    const args = { ...payload, request_key: keyDecision.key };
     const result = await brain.mutate(drawer === "edit" ? "mission_revise" : "mission_create", args);
     const ok = await finish(result, drawer === "edit" ? "Strategic play revised and verified." : "Draft strategic play created and verified.");
     if (ok) { saveKeeper.current.settle(); setDrawer("view"); }
@@ -188,6 +194,7 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
 
   const transition = async (toState: MissionState) => {
     if (!selected || busy) return;
+    setLastToState(toState);
     const isClosing = toState === "completed" || toState === "stopped";
     if (isClosing && !text(reason) && !(selected.mission.state === "completed" && toState === "stopped")) {
       setError(toState === "completed" ? "Record the truthful outcome before completing this play." : "Add a reason so the history remains useful.");
@@ -205,7 +212,9 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
     };
     // Same stable-identity contract as save(): an outcome-unknown retry
     // reconciles the original transition under its original key.
-    const args = { ...payload, request_key: transitionKeeper.current.keyFor(JSON.stringify(payload)).key };
+    const keyDecision = transitionKeeper.current.keyFor(JSON.stringify(payload));
+    if (!keyDecision.reused) setUnknown(null);
+    const args = { ...payload, request_key: keyDecision.key };
     setBusy(true); setError(null);
     const result = await brain.mutate("mission_transition", args);
     const ok = await finish(result, toState === "active" ? "Strategic play is active and verified."
@@ -228,14 +237,19 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
 
   // Reconcile = re-attempt the SAME operation under its ORIGINAL request key
   // (the keepers retain it while the payload is unchanged), so the backend
-  // replays the existing receipt instead of writing a second time.
+  // replays the existing receipt instead of writing a second time. Approve and
+  // Resume call transition("active") directly without a pending confirm step,
+  // so the last attempted transition target is remembered for this mapping —
+  // otherwise Check again would be a dead button after an ambiguous
+  // Approve/Resume (adversarial review finding).
   const reconcile = () => {
     if (drawer === "create" || drawer === "edit") return void save();
     const toState: MissionState | null = pending === "pause" ? "paused"
       : pending === "block" ? "blocked"
       : pending === "complete" ? "completed"
       : pending === "decline" || pending === "archive" ? "stopped"
-      : null;
+      : pending ? null
+      : lastToState;
     if (toState) void transition(toState);
   };
 

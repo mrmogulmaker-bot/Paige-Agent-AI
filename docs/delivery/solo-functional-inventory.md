@@ -33,7 +33,7 @@ The words "done" and "mostly done" do not appear as verdicts anywhere in this pr
 Reading of the distribution:
 
 - **48 LIVE** — the load-bearing product (conversation + confirm gate, governed CRM executor, action bus + approvals, business missions, calendar engine, billing reads, team, vault, comms stack, media/image lane, knowledge, evidence analytics) is built on canonical seams with receipts. These are the **DO-NOT-REBUILD** surfaces (§5).
-- **20 PARTIAL** — mostly *adoption gaps on shipped seams* (improvements loop unreachable outside chat, owner-memory auto-write unwired, export control unmounted) plus a small number of real defects (§4).
+- **19 PARTIAL** — mostly *adoption gaps on shipped seams* (improvements loop unreachable outside chat, owner-memory auto-write unwired, export control unmounted) plus a small number of real defects (§4).
 - **8 UNAVAILABLE** — of which only **security-data** and **contacts-export** are adoption gaps; the rest are honest placeholders or by-design boundaries (music, performance analytics, other lenses, public-presence provenance, live-conversation audio, Google two-way sync). The legacy contact-delete endpoint that formerly sat in this state was **retired by PR-A** (the governed `contact.hard_delete` is the one delete path) and now counts as NOT_APPLICABLE.
 - **2 NOT_CONNECTED** (Zapier, social) are owner-side authorization acts, not build gaps; **3 BLOCKED** are parked behind open PRs (#917 import, #1046 secure browser) or the recorded MCP Phase C gate (#1255/#1262); **2 NOT APPLICABLE** by owner ruling.
 - **2 PROOF OWED** where the code truth cannot be certified without a runtime act: Vibe video artifact readback, and the certification harness itself.

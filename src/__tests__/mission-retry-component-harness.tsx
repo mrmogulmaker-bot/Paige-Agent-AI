@@ -22,6 +22,68 @@ const harness = vi.hoisted(() => ({
   },
 }));
 
+/** A proposed play's canonical detail, for the view-drawer (transition) flow. */
+export const proposedPlayDetail = () => ({
+  mission: {
+    id: "22222222-2222-4222-8222-222222222222",
+    title: "Referral engine",
+    state: "proposed",
+    revision: 3,
+    request_source: "paige_chat",
+    next_action: "Call two referrals",
+    state_reason: null,
+    closure_outcome: null,
+    outcome_summary: null,
+    outcome_unknowns: null,
+  },
+  brief: {
+    desired_outcome: "Three retained clients",
+    deadline_on: null,
+    baseline: "Two warm referrals",
+    strategy: "Weekly outreach",
+    constraints: [],
+    success_definition: "Signed engagements",
+    owner_authority: "Draft, then ask",
+    assumptions: [],
+    missing_information: [],
+  },
+});
+
+/** Seed one proposed play so the card list renders and openPlay works. */
+export function seedProposedPlay() {
+  harness.mission.items = [{
+    id: "22222222-2222-4222-8222-222222222222",
+    title: "Referral engine",
+    state: "proposed",
+    request_source: "paige_chat",
+    revision: 3,
+    deadline_on: null,
+    next_action: "Call two referrals",
+    state_reason: null,
+    stageLabel: "Awaiting owner approval",
+    horizonLabel: "Open horizon",
+    nextOwner: "Owner",
+    blocker: null,
+  }];
+  harness.mission.getDetail.mockResolvedValue(proposedPlayDetail());
+}
+
+export async function openFirstPlay() {
+  const card = document.querySelector<HTMLButtonElement>(".pim-card");
+  if (!card) throw new Error("no play card rendered");
+  await act(async () => { card.click(); });
+}
+
+export async function approve() {
+  const button = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Approve"));
+  if (!button) throw new Error("Approve button not found");
+  await act(async () => {
+    button.click();
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 vi.mock("../solo/data/useBusinessGamePlanMissions", async () => {
   const actual = await vi.importActual<typeof import("../solo/data/useBusinessGamePlanMissions")>("../solo/data/useBusinessGamePlanMissions");
   return { ...actual, useBusinessGamePlanMissions: () => harness.mission };
@@ -36,6 +98,9 @@ afterEach(() => {
   host?.remove(); host = null;
   harness.mission.mutate.mockReset();
   harness.mission.refresh.mockClear();
+  harness.mission.getDetail.mockReset();
+  harness.mission.getDetail.mockImplementation(async () => { throw new Error("not used"); });
+  harness.mission.items = [];
 });
 
 const setNativeValue = (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
@@ -138,6 +203,9 @@ export const harnessApi = {
   reconcileBanner,
   checkAgainButton,
   errorText,
+  seedProposedPlay,
+  openFirstPlay,
+  approve,
 };
 export type HarnessApi = typeof harnessApi;
 void 0;

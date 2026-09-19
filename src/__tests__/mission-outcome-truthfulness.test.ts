@@ -192,6 +192,26 @@ describe("owner-facing truthfulness in PlanInMotion (component)", () => {
     expect(harness.lastRequestKey()).not.toBe(firstKey);
   });
 
+  it("Approve (view drawer, no pending step) after outcome-unknown reconciles under the original key", async () => {
+    // The adversarial-review case: Approve/Resume call transition("active")
+    // directly without a pending confirm, so reconcile() must remember the
+    // last attempted transition target — otherwise Check again is a dead
+    // button exactly where an ambiguous approval needs it.
+    const harness = (await import("./mission-retry-component-harness")).harnessApi;
+    await harness.renderPlan();
+    harness.seedProposedPlay();
+    // Re-render so the seeded items are picked up, then open the play drawer.
+    await harness.renderPlan();
+    await harness.openFirstPlay();
+    harness.mutate.mockResolvedValueOnce({ ok: false, verified: false, railRecorded: false, outcomeUnknown: true });
+    await harness.approve();
+    const firstKey = harness.lastRequestKey();
+    expect(firstKey).toBeTruthy();
+    expect(harness.reconcileBanner(), "reconcile banner in the view drawer").toBeTruthy();
+    await harness.checkAgain();
+    expect(harness.lastRequestKey()).toBe(firstKey);
+  });
+
   it("an account switch mid-flight fails closed and does not offer reconcile", async () => {
     const harness = (await import("./mission-retry-component-harness")).harnessApi;
     await harness.renderPlan();
