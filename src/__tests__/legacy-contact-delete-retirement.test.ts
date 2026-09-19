@@ -120,6 +120,30 @@ describe("the retirement reaches the provider, not just the source tree", () => 
     expect(wf).toContain("grep -v '^_' || true; } | sort > now_fns.txt");
     expect(wf).toContain("[ -s before_fns.txt ] ||");
   });
+
+  it("a retirement is never stranded by a deploy failure (2026-09-19 production closeout regression)", () => {
+    // The PR-A merge run (35408262875) proved the original order stranded the
+    // retirement: an expired SUPABASE_ACCESS_TOKEN 401'd every deploy, the
+    // failed deploy step SKIPPED the delete (no always() guard), and the
+    // retired function stayed ACTIVE in production. The repaired invariants:
+    // the delete runs BEFORE any deploy, is guarded only by always() plus its
+    // own inputs, a credential preflight fails with one actionable error
+    // before N deploy attempts, and an operator can dispatch the workflow
+    // directly after a secret rotation instead of waiting for the next
+    // functions-touching push.
+    const deleteIdx = wf.indexOf("Delete retired functions at the provider");
+    const deployIdx = wf.indexOf("Deploy affected functions");
+    expect(deleteIdx).toBeGreaterThan(-1);
+    expect(deployIdx).toBeGreaterThan(-1);
+    expect(deleteIdx, "retirement delete must precede the deploy loop").toBeLessThan(deployIdx);
+    expect(wf).toContain("if: always() && steps.retired.outputs.count != '0'");
+    expect(wf).toContain("Preflight — the provider accepts the credential");
+    expect(wf).toContain("The provider REJECTED SUPABASE_ACCESS_TOKEN");
+    expect(wf).toContain("workflow_dispatch");
+    // edge-live still advances only when everything succeeded — a failed
+    // deploy must never be recorded as live.
+    expect(wf).toContain("if: success() && (steps.affected.outputs.count != '0' || steps.retired.outputs.count != '0')");
+  });
 });
 
 describe("the canonical governed delete remains the one tenant-safe path", () => {
