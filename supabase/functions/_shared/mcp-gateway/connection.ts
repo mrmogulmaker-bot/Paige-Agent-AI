@@ -97,10 +97,13 @@ export function makeRpcConnectionLoader(admin: Admin): ConnectionLoader {
       // `authUsable` is the one home for that check) so `prepare` cannot affirm what `execute` throws on.
       // And an OAuth row whose access token has already EXPIRED would dispatch a dead credential —
       // this loader does not refresh/rotate (a later PR), so refuse it rather than contact the provider
-      // with a stale token. `expires_at` (access_token_expires_at) is present only for oauth rows; a
-      // null/absent value is not an expiry.
+      // with a stale token. Scoped to `auth_kind === "oauth"`: a connection switched OFF oauth (to
+      // bearer/header) keeps its old `access_token_expires_at` because the setter does not clear it, so
+      // an unconditional check would wrongly refuse a valid non-oauth credential once that stale
+      // timestamp passes. Only an oauth row's `expires_at` is a live access-token expiry.
       const expiresAt = typeof row.expires_at === "string" ? Date.parse(row.expires_at) : NaN;
-      if (!authUsable(auth) || (Number.isFinite(expiresAt) && expiresAt <= Date.now())) {
+      const oauthExpired = row.auth_kind === "oauth" && Number.isFinite(expiresAt) && expiresAt <= Date.now();
+      if (!authUsable(auth) || oauthExpired) {
         return { ok: false, reason: "connection_unusable" };
       }
       return { ok: true, connectionId: row.connection_id, tenantId: row.tenant_id, serverUrl: row.server_url, auth };

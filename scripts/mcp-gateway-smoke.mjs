@@ -608,6 +608,11 @@ console.log("\n— executable-facet gate: the loader refuses non-MCP-drivable ro
   check("loader: an OAuth row with an expired access token → connection_unusable", expiredOAuthRes.ok === false && expiredOAuthRes.reason === "connection_unusable", JSON.stringify(expiredOAuthRes));
   const liveOAuthRes = await loaderFor({ ...baseRow, auth_kind: "oauth", expires_at: future })("conn-canon");
   check("loader: an OAuth row with a future expiry resolves ok:true", liveOAuthRes.ok === true, JSON.stringify(liveOAuthRes));
+  // Codex R5 P2 — the expiry check is scoped to auth_kind='oauth'. A connection switched OFF oauth (to
+  // bearer/header) keeps a stale access_token_expires_at the setter never cleared; that past timestamp
+  // must NOT refuse the now-valid non-oauth credential.
+  const staleBearerRes = await loaderFor({ ...baseRow, auth_kind: "bearer", expires_at: past })("conn-canon");
+  check("loader: a bearer row carrying a stale (past, ex-OAuth) expires_at still resolves ok:true", staleBearerRes.ok === true, JSON.stringify(staleBearerRes));
 
   // Runner-level: prepare cannot affirm and execute cannot contact either facet.
   const execReservedHeader = await runReal(reservedHeaderRow, "execute");
