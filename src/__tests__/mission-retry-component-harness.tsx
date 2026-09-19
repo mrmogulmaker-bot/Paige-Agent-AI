@@ -17,7 +17,7 @@ const harness = vi.hoisted(() => ({
     status: "ready" as const,
     errorCode: null as string | null,
     refresh: vi.fn(async () => undefined),
-    getDetail: vi.fn(async () => { throw new Error("not used"); }),
+    getDetail: vi.fn(async (): Promise<unknown> => { throw new Error("not used"); }),
     mutate: vi.fn(),
   },
 }));
