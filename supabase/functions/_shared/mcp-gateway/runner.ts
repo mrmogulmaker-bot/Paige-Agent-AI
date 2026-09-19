@@ -119,12 +119,11 @@ export async function runConnectionCapability(
     return { outcome, runId, code, receipt };
   };
 
-  // prepare never opens a session or contacts the provider — it stages intent only.
-  if (req.mode === "prepare") return await emit("prepared", null);
-
-  // SINGLE SOURCE (MCP PR-1): the dispatch endpoint and auth derive from the ONE canonical connection
-  // row, loaded server-side by `connectionId` — the same id that backs consent below. The request
-  // carries no URL, so a caller can never verify consent against endpoint A and dispatch to endpoint B.
+  // SINGLE SOURCE (MCP PR-1): resolve the ONE canonical connection row server-side by `connectionId`
+  // FIRST — for BOTH prepare and execute — so the request never carries a URL and every mode applies
+  // the same existence/id/tenant gates. A caller can never verify consent against endpoint A and
+  // dispatch to endpoint B, and never gets a "prepared" affirmation for a connection it does not own
+  // or that does not exist (Codex P2). Loading is a server-side row read, no provider contact.
   // No loader wired ⇒ fail closed.
   const canon = deps.loadConnection
     ? await deps.loadConnection(req.connectionId)
@@ -137,8 +136,13 @@ export async function runConnectionCapability(
   // row B) without this guard.
   if (canon.connectionId !== req.connectionId) return await emit("refused", "connection_mismatch");
   // §9 isolation: `get_mcp_connection_secret` is tenant-agnostic, so the runner enforces that the
-  // row's tenant is the caller's server-derived tenant. A foreign-tenant connection never dispatches.
+  // row's tenant is the caller's server-derived tenant. A foreign-tenant connection never dispatches
+  // — nor prepares.
   if (canon.tenantId !== req.tenantId) return await emit("refused", "foreign_tenant");
+
+  // prepare stages intent only — the connection is validated above, but it opens no session and
+  // contacts no provider.
+  if (req.mode === "prepare") return await emit("prepared", null);
 
   let dispatched = false;
   // The server-resolved effect decision, hoisted so the post-dispatch catch can classify a THROWN

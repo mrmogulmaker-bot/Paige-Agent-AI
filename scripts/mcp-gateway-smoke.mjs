@@ -498,6 +498,16 @@ console.log("\n— single source: consent + dispatch from one canonical connecti
   const mismatched = await runnerMod.runConnectionCapability({ connectionId: "conn-canon", tenantId: TENANT, toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: aliasLoad });
   check("a loader returning a row for a DIFFERENT connection_id is refused connection_mismatch (single source is loader-independent)", mismatched.outcome === "refused" && mismatched.code === "connection_mismatch", JSON.stringify(mismatched));
 
+  // Codex P2: prepare validates connection existence + ownership BEFORE affirming — a foreign-tenant
+  // or missing connection in prepare mode is refused, never falsely reported as "prepared".
+  const prepForeign = await runnerMod.runConnectionCapability({ connectionId: "conn-foreign", tenantId: TENANT, toolName: "list_records", args: {}, mode: "prepare" }, { ...deps });
+  check("prepare on a foreign-tenant connection is refused, never a false 'prepared'", prepForeign.outcome === "refused" && prepForeign.code === "foreign_tenant", JSON.stringify(prepForeign));
+  const prepMissing = await runnerMod.runConnectionCapability({ connectionId: "conn-nope", tenantId: TENANT, toolName: "list_records", args: {}, mode: "prepare" }, { ...deps });
+  check("prepare on a missing connection is refused, never a false 'prepared'", prepMissing.outcome === "refused" && prepMissing.code === "no_connection", JSON.stringify(prepMissing));
+  // ...but prepare on a valid, owned connection still stages intent (prepared) without contacting the provider.
+  const prepOk = await runnerMod.runConnectionCapability({ connectionId: "conn-canon", tenantId: TENANT, toolName: "list_records", args: {}, mode: "prepare" }, { ...deps });
+  check("prepare on a valid owned connection still returns prepared (no provider contact)", prepOk.outcome === "prepared", JSON.stringify(prepOk));
+
   // (6) the consent verifier is asked to authorize the SAME canonical connection_id that backs
   // dispatch, and (7) the mutation dispatches to that same row's endpoint — single source, proven together.
   approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
