@@ -125,6 +125,11 @@ function mcpServer(opts = {}) {
       }
       if (body.method === "tools/call") {
         (opts.calls ||= []).push(body.params?.name);
+        // A server may THROW the tools/call AFTER dispatch (HTTP error / timeout / malformed
+        // envelope). initialize + tools/list already succeeded, so the session is open and the tool
+        // dispatched — an HTTP 500 here makes the client's `call` throw `mcp_http_error`, exercising
+        // the runner's post-dispatch catch path (Codex P2 read-vs-mutation classification).
+        if (opts.callThrows) { res.writeHead(500, { "Content-Type": "text/plain" }).end("boom"); return; }
         // A server may return a custom tools/call `result` (an isError shape, or an unrecognized
         // one) so the runner's result validation can be driven; default is a clean success.
         const result = opts.callResponse ?? { content: [{ type: "text", text: "ok" }] };
@@ -301,6 +306,27 @@ const weirdSrv = { callResponse: { not_content: "whatever" } };
 routes.set("/mcp-weird", mcpServer(weirdSrv));
 const weird = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-weird" }, toolName: "send_message", args: {}, mode: "execute" }, deps);
 check("an unrecognized tools/call result shape on a mutation is outcome_unknown, never executed", weird.outcome === "outcome_unknown" && weird.code === "unrecognized_result");
+
+// Codex P2 (post-dispatch TRANSPORT exception) — a tools/call that THROWS after dispatch (HTTP error,
+// timeout, malformed envelope) carries the SAME read-vs-mutation distinction, resolved BEFORE dispatch
+// and carried into the catch (never re-derived from provider metadata there):
+//   • a READ has no side effect → tool_error (→ capability_failed), never a "may have taken effect" warning
+//   • a MUTATION may have landed → outcome_unknown, never auto-retried
+const throwSrv = { callThrows: true };
+routes.set("/mcp-callthrows", mcpServer(throwSrv));
+const readThrew = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-callthrows" }, toolName: "list_records", args: {}, mode: "execute" }, deps);
+check("a READ whose tools/call THROWS post-dispatch is tool_error (no side effect to leave ambiguous)", readThrew.outcome === "tool_error", JSON.stringify(readThrew));
+check("...and it NEVER becomes outcome_unknown (the false 'may have taken effect' warning)", readThrew.outcome !== "outcome_unknown");
+check("...and it files canonical capability_failed, never capability_outcome_unknown", railMod.railOutcomeFor(readThrew.outcome) === "capability_failed");
+check("...and it dispatched exactly once (a failed read is never auto-retried)", (throwSrv.calls ?? []).length === 1, JSON.stringify(throwSrv.calls));
+
+const throwSrvMut = { callThrows: true };
+routes.set("/mcp-callthrows-mut", mcpServer(throwSrvMut));
+approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
+const mutThrew = await runnerMod.runConnectionCapability({ connection: { ...conn, serverUrl: "https://public.example/mcp-callthrows-mut" }, toolName: "send_message", args: { to: "a" }, mode: "execute" }, deps);
+check("a MUTATION whose tools/call THROWS post-dispatch stays outcome_unknown (effect may have landed)", mutThrew.outcome === "outcome_unknown", JSON.stringify(mutThrew));
+check("...and it files canonical capability_outcome_unknown (never capability_failed)", railMod.railOutcomeFor(mutThrew.outcome) === "capability_outcome_unknown");
+check("...and the mutation dispatched exactly once (an ambiguous throw is never auto-retried)", (throwSrvMut.calls ?? []).length === 1, JSON.stringify(throwSrvMut.calls));
 
 // provider unavailable before dispatch → provider_unavailable
 routes.set("/mcp-down", (req, res) => {

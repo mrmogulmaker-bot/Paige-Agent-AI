@@ -104,6 +104,9 @@ export async function runConnectionCapability(
   if (req.mode === "prepare") return await emit("prepared", null);
 
   let dispatched = false;
+  // The server-resolved effect decision, hoisted so the post-dispatch catch can classify a THROWN
+  // transport failure by read-vs-mutation without re-deriving it from provider metadata (Codex P2).
+  let consequential = false;
   try {
     return await withApprovedCapabilitySession<RunnerResult>(
       { serverUrl: req.connection.serverUrl, auth: req.connection.auth, timeoutMs: req.timeoutMs },
@@ -123,6 +126,7 @@ export async function runConnectionCapability(
 
         // (1) SERVER-AUTHORITATIVE effect decision — provider metadata may only RAISE the gate.
         const decision = resolveEffectApproval(tool.name, tool.effects);
+        consequential = decision.requiresApproval; // carried into the catch for a post-dispatch throw
         if (decision.requiresApproval) {
           // (2) DURABLE consent — verified against the stored, endpoint-bound approval, never a
           // pin in this request. No verifier wired ⇒ fail closed.
@@ -166,8 +170,13 @@ export async function runConnectionCapability(
     );
   } catch (e) {
     const code = errorCodeOf(e);
-    // Before dispatch: the provider was unreachable / refused the session. After dispatch: the
-    // effect may or may not have landed — report it honestly and NEVER auto-retry.
-    return await emit(dispatched ? "outcome_unknown" : "provider_unavailable", code);
+    // Before dispatch: the provider was unreachable / refused the session → provider_unavailable.
+    // After dispatch the tools/call itself threw (HTTP error, timeout, malformed envelope). The
+    // read-vs-mutation distinction still holds and is carried from `consequential` (resolved BEFORE
+    // dispatch — never re-derived from provider metadata here, Codex P2): a MUTATION may have landed,
+    // so it is `outcome_unknown` and is never auto-retried; a READ has no side effect, so it is
+    // `tool_error` (→ capability_failed), never a false "may have taken effect" warning.
+    if (!dispatched) return await emit("provider_unavailable", code);
+    return await emit(consequential ? "outcome_unknown" : "tool_error", code);
   }
 }
