@@ -732,15 +732,18 @@ serve(async (req) => {
     // context at the profile read) and passed BY REFERENCE to every call site, so a site that runs
     // after resolution gets the real tenant without re-deriving it (§18 one home).
     //
-    // HONEST BOUND — FIVE ATTRIBUTED, FOUR NOT. The first version of this comment said "three run
-    // before persona resolution" and then listed four of them in the same sentence: the THREE
-    // `generateSessionSummary` folds AND the credit-report read-check. Four sites, four platform
-    // rows, five attributed. That miscount was caught by an independent reviewer driving the rows
-    // rather than reading the sentence, and it is recorded here because it is the ninth counting
-    // error on this branch and pretending otherwise is how the tenth happens.
+    // HONEST BOUND — SIX ATTRIBUTED, FOUR NOT. An earlier version said "three run before persona
+    // resolution" and then listed four of them in the same sentence: the THREE `generateSessionSummary`
+    // folds AND the credit-report read-check. Four sites, four platform rows, five attributed at the
+    // time — and #1255 Option A (Codex P2) then added the general-document extraction as the SIXTH
+    // attributed site (it now runs after resolution and carries `traceFor("general-document-extraction")`).
+    // The original miscount was caught by an independent reviewer driving the rows rather than reading
+    // the sentence, and the history is kept here because it was the ninth counting error on this branch
+    // and pretending otherwise is how the tenth happens.
     //
     // Attributed (all lexically below the stamp): the entry call, the tool-loop continuation, the
-    // closing call, the rolling-summary fold, the credit-report extraction.
+    // closing call, the rolling-summary fold, the credit-report extraction, the general-document
+    // extraction.
     // Untenanted (all lexically above it): the three session-summary folds, the document
     // read-check.
     //
@@ -751,8 +754,9 @@ serve(async (req) => {
     // tell an untenanted pre-resolution row from an untenanted bug — and group 23 of the
     // knowledge-scope harness now asserts the exact split, so neither half can drift silently.
     //
-    // §37 — `job_kind` IS A CONSUMED FIELD, so widening its vocabulary is a contract change. Eight
-    // sites moved off the single value `"chat"`. Consumers walked: `paige_llm_trace.job_kind` has
+    // §37 — `job_kind` IS A CONSUMED FIELD, so widening its vocabulary is a contract change. Nine
+    // sites moved off the single value `"chat"` (the general-document extraction is the ninth, added
+    // by #1255 Option A). Consumers walked: `paige_llm_trace.job_kind` has
     // no CHECK constraint; `usePaigeContribution` only GROUPS by it, so new values appear as new
     // groups rather than breaking; `paige-eval` filters `.eq("job_kind", jobKind)`, so a saved
     // eval batch targeting `"chat"` now selects a NARROWER population — the entry call only,
