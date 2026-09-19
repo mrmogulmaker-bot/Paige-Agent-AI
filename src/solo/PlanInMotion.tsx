@@ -3,6 +3,7 @@ import { AlertTriangle, Archive, Check, CirclePause, Flag, Info, Pencil, Play, R
 import type { BusinessMissionDetail, MissionBriefInput, MissionOutcome, MissionState } from "@/types/businessMission";
 import { setPaigeBusinessPlanScope } from "./paigeClientScope";
 import { clearPaigePublicPresenceScope } from "./paigePublicPresenceScope";
+import { createRequestKeyKeeper } from "./mission-retry";
 import { useBusinessGamePlanMissions, type StrategicPlay } from "./data/useBusinessGamePlanMissions";
 
 type Props = { workspaceId?: string | null; openPaige?: () => void; onNotice?: (message: string) => void };
@@ -50,6 +51,14 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
   const [outcome, setOutcome] = useState<MissionOutcome>("achieved");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // PR-B: outcome-unknown is its own state, never an ordinary failure. The
+  // banner offers reconciliation of the SAME request, not a fresh write.
+  const [unknown, setUnknown] = useState<string | null>(null);
+  // The transition target of the most recent attempt, for reconcile() when
+  // Approve/Resume skipped the pending-confirm step.
+  const [lastToState, setLastToState] = useState<MissionState | null>(null);
+  const saveKeeper = useRef(createRequestKeyKeeper());
+  const transitionKeeper = useRef(createRequestKeyKeeper());
   const opener = useRef<HTMLElement | null>(null);
   const closeButton = useRef<HTMLButtonElement | null>(null);
 
@@ -66,7 +75,7 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
     closeButton.current?.focus();
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setDrawer(null); setSelected(null); setPending(null); setError(null);
+        setDrawer(null); setSelected(null); setPending(null); setError(null); setUnknown(null);
         return;
       }
       if (event.key !== "Tab") return;
@@ -84,11 +93,12 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
     };
   }, [drawer]);
 
-  const close = () => { setDrawer(null); setSelected(null); setPending(null); setError(null); };
+  const close = () => { setDrawer(null); setSelected(null); setPending(null); setError(null); setUnknown(null); };
   const openCreate = (event: React.MouseEvent<HTMLButtonElement>) => {
     opener.current = event.currentTarget;
     setForm(emptyForm());
     setError(null);
+    setUnknown(null);
     setDrawer("create");
   };
   const openPlay = async (play: StrategicPlay, event: React.MouseEvent<HTMLButtonElement>) => {
@@ -96,6 +106,7 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
     setDrawer("view");
     setSelected(null);
     setError(null);
+    setUnknown(null);
     try { setSelected(await brain.getDetail(play.id)); }
     catch (caught) { setError(friendlyError(caught instanceof Error ? caught.message : null)); }
   };
@@ -113,10 +124,23 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
 
   const finish = async (result: Awaited<ReturnType<typeof brain.mutate>>, success: string) => {
     if (!result.ok) {
+      if (result.outcomeUnknown) {
+        // Outcome unknown ≠ failure: the write may have landed and only its
+        // confirmation was lost. Keep the drawer open, show the reconcile
+        // state, and RETAIN the request key so the next attempt replays the
+        // original operation (the backend receipt reconciles it) instead of
+        // executing a second independent write.
+        setError(null);
+        setUnknown("We couldn't confirm whether that change completed. Nothing new will be sent — the next check reconciles the original request before anything else happens.");
+        return false;
+      }
+      setUnknown(null);
       setError(friendlyError(result.code));
       if (result.code === "MISSION_REVISION_CONFLICT") await brain.refresh();
       return false;
     }
+    setUnknown(null);
+    setLastToState(null);
     onNotice?.(result.railRecorded ? success : success + " The saved change is verified, but its Rail receipt is not yet confirmed.");
     if (result.missionId) {
       try { setSelected(await brain.getDetail(result.missionId)); } catch { setSelected(null); }
@@ -137,8 +161,7 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
       return;
     }
     setBusy(true); setError(null);
-    const args = {
-      request_key: crypto.randomUUID(),
+    const payload = {
       title: form.title,
       desired_outcome: form.desiredOutcome,
       deadline_on: form.deadlineOn,
@@ -156,37 +179,50 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
         revision_reason: form.revisionReason,
       } : {}),
     };
+    // One logical intent = one stable request key. An unchanged payload
+    // after an outcome-unknown reuses the ORIGINAL key, so the backend
+    // replays the existing operation; changed content is a new intent and
+    // gets a new key. Success settles the identity.
+    const keyDecision = saveKeeper.current.keyFor(JSON.stringify(payload));
+    if (!keyDecision.reused) setUnknown(null);
+    const args = { ...payload, request_key: keyDecision.key };
     const result = await brain.mutate(drawer === "edit" ? "mission_revise" : "mission_create", args);
     const ok = await finish(result, drawer === "edit" ? "Strategic play revised and verified." : "Draft strategic play created and verified.");
-    if (ok) setDrawer("view");
+    if (ok) { saveKeeper.current.settle(); setDrawer("view"); }
     setBusy(false);
   };
 
   const transition = async (toState: MissionState) => {
     if (!selected || busy) return;
+    setLastToState(toState);
     const isClosing = toState === "completed" || toState === "stopped";
     if (isClosing && !text(reason) && !(selected.mission.state === "completed" && toState === "stopped")) {
       setError(toState === "completed" ? "Record the truthful outcome before completing this play." : "Add a reason so the history remains useful.");
       return;
     }
     const preservingCompletion = selected.mission.state === "completed" && toState === "stopped";
-    const args = {
+    const payload = {
       mission_id: selected.mission.id,
       expected_revision: selected.mission.revision,
-      request_key: crypto.randomUUID(),
       to_state: toState,
       reason: text(reason) || null,
       closure_outcome: preservingCompletion ? selected.mission.closure_outcome : isClosing ? (toState === "stopped" ? "stopped" : outcome) : null,
       outcome_summary: preservingCompletion ? selected.mission.outcome_summary : isClosing ? reason.trim() : null,
       outcome_unknowns: preservingCompletion ? selected.mission.outcome_unknowns : null,
     };
+    // Same stable-identity contract as save(): an outcome-unknown retry
+    // reconciles the original transition under its original key.
+    const keyDecision = transitionKeeper.current.keyFor(JSON.stringify(payload));
+    if (!keyDecision.reused) setUnknown(null);
+    const args = { ...payload, request_key: keyDecision.key };
     setBusy(true); setError(null);
     const result = await brain.mutate("mission_transition", args);
-    await finish(result, toState === "active" ? "Strategic play is active and verified."
+    const ok = await finish(result, toState === "active" ? "Strategic play is active and verified."
       : toState === "paused" ? "Strategic play paused and verified."
       : toState === "blocked" ? "Blocker recorded and verified."
       : toState === "completed" ? "Outcome recorded and completion verified."
       : "Strategic play archived with its history preserved.");
+    if (ok) transitionKeeper.current.settle();
     setBusy(false);
   };
 
@@ -195,7 +231,26 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
     setForm(formFrom(selected));
     setPending(null);
     setError(null);
+    setUnknown(null);
     setDrawer("edit");
+  };
+
+  // Reconcile = re-attempt the SAME operation under its ORIGINAL request key
+  // (the keepers retain it while the payload is unchanged), so the backend
+  // replays the existing receipt instead of writing a second time. Approve and
+  // Resume call transition("active") directly without a pending confirm step,
+  // so the last attempted transition target is remembered for this mapping —
+  // otherwise Check again would be a dead button after an ambiguous
+  // Approve/Resume (adversarial review finding).
+  const reconcile = () => {
+    if (drawer === "create" || drawer === "edit") return void save();
+    const toState: MissionState | null = pending === "pause" ? "paused"
+      : pending === "block" ? "blocked"
+      : pending === "complete" ? "completed"
+      : pending === "decline" || pending === "archive" ? "stopped"
+      : pending ? null
+      : lastToState;
+    if (toState) void transition(toState);
   };
 
   return (
@@ -251,6 +306,15 @@ export function PlanInMotion({ workspaceId, openPaige, onNotice }: Props) {
               <div className="ov-body">{error ? <div className="sd-errbox"><AlertTriangle /><p>{error}</p></div> : <div className="pim-state" aria-busy="true">Loading the canonical play.</div>}</div>
             ) : (
               <PlayDetail detail={selected} pending={pending} setPending={setPending} reason={reason} setReason={setReason} outcome={outcome} setOutcome={setOutcome} error={error} busy={busy} onEdit={beginEdit} onPaige={() => planWithPaige(selected.mission)} onTransition={transition} />
+            )}
+            {unknown && (
+              <div className="ov-err pim-reconcile" data-mission-reconcile role="status" aria-live="polite">
+                <AlertTriangle />
+                <span>
+                  <b>We couldn&apos;t confirm whether that change completed.</b> {unknown}
+                </span>
+                <button className="sd-btn sd-btn-sm" disabled={busy} onClick={reconcile}><RefreshCw /> Check again</button>
+              </div>
             )}
           </section>
         </div>

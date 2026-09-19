@@ -403,7 +403,7 @@ Column notes, so the table is read correctly:
 | 9 | `crm_add_note` | 5619 | write | ordinary | table:client_notes · table:clients | audit + per-client Rail | **No** — Rail unreadable (#746) | #746 | **Migrate** | 1b |
 | 10 | `crm_create_task` | 4975 | write | ordinary | table:tasks | audit + per-client Rail | **No** — Rail unreadable (#746) | #746 | **Migrate** | 1b |
 | 11 | `update_client_data` | 4779 | write | ordinary | call:fetch | audit + per-client Rail | **No** — Rail unreadable (#746) | #746 | **Migrate** | 1b |
-| 12 | `crm_delete_contact` | 5236 | write | high | edge:delete-contact | audit + per-client Rail | **No** — Rail unreadable (#746) | #746 | **Migrate** | 1c |
+| 12 | `crm_delete_contact` | 5236 | write | high | edge:delete-contact | audit + per-client Rail | **No** — Rail unreadable (#746) | #746 | **Retired (PR-A)** — edge + tombstone deleted; governed `crm_hard_delete_contact` is the one delete path | 1c |
 | 13 | `crm_assign_coach` | 4960 | write | high | table:audit_logs · table:clients | audit + per-client Rail | **No** — Rail unreadable (#746) | #746 | **Migrate** | 1c |
 | 14 | `crm_assign_contact` | 5580 | write | high | rpc:assign_contact | audit + per-client Rail | **No** — Rail unreadable (#746) | #746 | **Migrate** | 1c |
 | 15 | `program_enroll` | 5604 | write | high | rpc:enroll_contact_in_program | audit + per-client Rail | **No** — Rail unreadable (#746) | #746 | **Migrate** | 1c |

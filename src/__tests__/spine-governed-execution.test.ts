@@ -9,7 +9,7 @@
  *
  * REAL CODE, NOT A DOUBLE. `classifyAction` and `decideToolConfirmation` are the shipped modules,
  * and the tool names below are real entries in `action-risk.ts`, so what this file asserts is what
- * production policy says. `crm_delete_contact` is `high`, `crm_create_contact` is `ordinary`,
+ * production policy says. `crm_hard_delete_contact` (the governed delete; its legacy twin `crm_delete_contact` was retired by PR-A) is `high`, `crm_create_contact` is `ordinary`,
  * `automation_set_grant` is `owner_only` — asserted directly at the end, so a reclassification
  * breaks this file loudly instead of silently turning its cases into vacuous ones.
  */
@@ -38,7 +38,7 @@ const caller = (over: Partial<GovernedCaller> = {}): GovernedCaller => ({
   ...over,
 });
 
-const HIGH = { id: "crm_delete_contact", effect: "mutate" as const, outcomeChannel: "rail" };
+const HIGH = { id: "crm_hard_delete_contact", effect: "mutate" as const, outcomeChannel: "rail" };
 const ORDINARY = { id: "crm_create_contact", effect: "mutate" as const, outcomeChannel: "rail" };
 const OWNER_ONLY = { id: "automation_set_grant", effect: "mutate" as const, outcomeChannel: "rail" };
 
@@ -77,7 +77,7 @@ describe("the seam wraps the LIVE mechanism, not the superseded one", () => {
 
 describe("the policy this file asserts against is the real one", () => {
   it("classifies the fixture tools as the cases below assume", () => {
-    expect(classifyAction("crm_delete_contact")).toBe("high");
+    expect(classifyAction("crm_hard_delete_contact")).toBe("high");
     expect(classifyAction("crm_create_contact")).toBe("ordinary");
     expect(classifyAction("automation_set_grant")).toBe("owner_only");
     // If this ever becomes classified, the "unclassified mutation" cases below go vacuous.
@@ -161,7 +161,7 @@ describe("a non-Chat caller cannot bypass high-risk approval", () => {
 
   it("REFUSES a claim that was granted for a DIFFERENT capability", () => {
     // Measured before the binding existed: stored args a human approved for an ordinary
-    // `crm_create_contact` executed a `high` `crm_delete_contact`. The seam sees only the claim's
+    // `crm_create_contact` executed a `high` `crm_hard_delete_contact`. The seam sees only the claim's
     // RESULT, and the live mechanism binds tool identity in the fingerprint the caller consumed —
     // so that binding is lost here unless the caller restates it.
     const d = decide({
@@ -288,7 +288,7 @@ describe("an unclassified mutation fails closed", () => {
   it("catches a CLASSIFIED mutation mis-declared as a read", () => {
     const d = decide({
       caller: caller({ door: "mcp" }),
-      capability: { id: "crm_delete_contact", effect: "read" },
+      capability: { id: "crm_hard_delete_contact", effect: "read" },
       approval: { autonomyLane: "auto" },
       requestArgs: {},
     });
@@ -682,12 +682,12 @@ describe("the layers that were previously inline, and therefore unreachable", ()
 const SWEEP_LANES = ["auto", "confirm", "off", "", "AUTO", "Confirm", "nonsense",
                      undefined as unknown as string];
 const SWEEP_CAPS = [
-  { id: "crm_delete_contact", effect: "mutate" as const },      // high
+  { id: "crm_hard_delete_contact", effect: "mutate" as const },      // high
   { id: "crm_create_contact", effect: "mutate" as const },      // ordinary
   { id: "automation_set_grant", effect: "mutate" as const },    // owner_only
   { id: "crm_delete_everything", effect: "mutate" as const },   // unclassified write
   { id: "crm_search_contacts", effect: "read" as const },       // genuine read
-  { id: "crm_delete_contact", effect: "read" as const },        // mis-declared
+  { id: "crm_hard_delete_contact", effect: "read" as const },        // mis-declared
 ];
 const SWEEP_OUTCOMES = [undefined, "", "   ", "rail"];
 /**

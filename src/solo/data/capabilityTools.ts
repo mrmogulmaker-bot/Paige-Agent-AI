@@ -78,9 +78,12 @@ export type CapabilityKey = (typeof CAPABILITY_DOMAINS)[number]["key"];
  */
 export const TOOL_MAP: Readonly<Record<string, { capability: CapabilityKey; risk: ToolRisk }>> = {
   // ── CRM & client records ──────────────────────────────────────────────────────────────────
+  // The delete knob fronts the GOVERNED tool (`crm_hard_delete_contact`, classified high behind
+  // the crm-command executor). Its legacy namesake `crm_delete_contact` was retired with its edge
+  // by PR-A and is deliberately absent.
   crm_create_contact: { capability: "crm", risk: "ordinary" },
   crm_update_contact: { capability: "crm", risk: "ordinary" },
-  crm_delete_contact: { capability: "crm", risk: "high" },
+  crm_hard_delete_contact: { capability: "crm", risk: "high" },
   crm_assign_coach: { capability: "crm", risk: "high" },
   crm_assign_contact: { capability: "crm", risk: "high" },
   crm_log_activity: { capability: "crm", risk: "ordinary" },
