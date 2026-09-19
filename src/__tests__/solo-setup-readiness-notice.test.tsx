@@ -117,6 +117,20 @@ describe("one viewport owner: the reminder renders inside SoloApp's height-owned
   it("the shell (not the gate) owns dismissal, so it survives route remounts", () => {
     expect(soloAppSrc).toContain("const [setupReminderDismissed, setSetupReminderDismissed] = React.useState(false);");
   });
+
+  it("Codex ea0e7a8b P2 regression: the reminder predicate carries the STAFF guard — an operator acting inside an incomplete standalone tenant gets no owner setup guidance", () => {
+    // The guard lives on the href derivation itself, so the notice (which
+    // renders on setupHref != null) is suppressed for staff act-as sessions.
+    const guardRegex = /!isPlatformStaff\s*&&\s*activeTenant\?\.account_number != null/;
+    expect(guardRegex.test(soloAppSrc)).toBe(true);
+    expect(soloAppSrc).toContain(
+      "const { activeTenant, activeTenantId, activeUserId, isPlatformStaff } = useTenantContext();",
+    );
+    // Sabotage-sensitivity: stripping the guard from the predicate makes the
+    // pin fail (proven on the mutated text, not by asserting the negation).
+    const guardless = soloAppSrc.replace(/!isPlatformStaff\s*&&\s*/, "");
+    expect(guardRegex.test(guardless)).toBe(false);
+  });
 });
 
 describe("the readiness predicate is one shared pure function", () => {

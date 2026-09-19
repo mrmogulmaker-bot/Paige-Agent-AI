@@ -165,13 +165,19 @@ const go = (k) => {
 // own account to their own, and canonicalize a bare /solo/{n} -> its default branch.
 // Acts ONLY once the caller's own account_number is known, so a mid-load null never
 // bounces.
-const { activeTenant, activeTenantId, activeUserId } = useTenantContext();
+const { activeTenant, activeTenantId, activeUserId, isPlatformStaff } = useTenantContext();
 // Setup readiness reminder (owner adjudication: Setup is NOT an access gate).
 // The SHELL holds the dismissal so it survives route remounts; the reminder
 // itself renders INSIDE the height-owned paige-solo column below — the shell
 // stays the one viewport owner, tcs-main the one scroll owner.
 const [setupReminderDismissed, setSetupReminderDismissed] = React.useState(false);
-const soloSetupHref = activeTenant?.account_number != null && !isSoloSetupComplete(activeTenant?.features)
+// Codex ea0e7a8b P2: a platform operator acting inside a standalone tenant must
+// not receive Solo-owner setup guidance — the same staff guard the gate's old
+// banner carried moves WITH the notice. (Staff here = isPlatformStaff true,
+// regardless of which tenant they are operating in.)
+const soloSetupHref = !isPlatformStaff
+  && activeTenant?.account_number != null
+  && !isSoloSetupComplete(activeTenant?.features)
   ? `/solo/${activeTenant.account_number}/settings/setup`
   : null;
 const vaultAccess = useVaultAccess();
