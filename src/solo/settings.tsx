@@ -38,6 +38,7 @@ import { rememberOAuthReturn } from "./data/oauthReturn";
 import { SoloIntegrationsView } from "./settings-integrations";
 import { SoloTeamWorkspace } from "./team-workspace";
 import { SettingsRouteBoundary, SettingsMoveNotice } from "./settings-notifications-retirement";
+import { SoloSecurityDataView } from "./settings-security-data";
 import {
   createSettingsRequestGate,
   getCustomDomainPresentation,
@@ -1654,7 +1655,11 @@ function RegistrationPanel({ a2p, provider, account, status, statusLoading }: {
   </section>;
 }
 
-function SecurityView() { return <div className="ss-grid"><Card title="Account security" icon={ShieldCheck} truth="PARTIAL"><p>Authentication and workspace access remain protected by existing account security controls.</p></Card><Card title="Privacy & data" icon={FileLock2} truth="PARTIAL"><p>Data controls must follow Trust Compass authority and proven retention/export contracts. Unsupported controls remain unavailable.</p></Card><Card title="Credential storage" icon={KeyRound} truth="UNAVAILABLE"><p>Vault is not a password manager. Raw passwords and secrets must not enter Vault records, PAIGE memory, or conversation content. Use proven OAuth/provider flows or an external password manager.</p></Card></div>; }
+function SecurityView() {
+  // PR-C: the tab now mounts the canonical AccountSecurityPanel and the
+  // truthful personal-data card instead of copy-only placeholders.
+  return <SoloSecurityDataView />;
+}
 
 export function SoloSettings(props: { openPaige?: () => void } = {}) {
   return <SettingsRouteBoundary><SoloSettingsContent {...props}/></SettingsRouteBoundary>;
