@@ -48,9 +48,19 @@ describe("the canonical panel is adopted, not rebuilt", () => {
     expect(read("src/solo/settings-security-data.tsx")).toContain("downloadMyUserData");
   });
 
-  it("the deletion request rides the existing edge — no second deletion engine", () => {
+  it("personal-data deletion is fail-closed: the view neither invokes the intake edge nor advertises a processing lifecycle", () => {
+    // Provider truth (2026-09-19): request-data-deletion is deployed, but
+    // process-data-deletion is NOT deployed and no cron schedule executes
+    // requests — so offering the intake as if end-to-end deletion were
+    // operational would be false. The Solo surface must not invoke the edge
+    // and must not promise a timeframe or automatic execution (INT-070 owns
+    // the backend chain). These pins trip on any re-enable that lacks the
+    // processor seam.
     const view = read("src/solo/settings-security-data.tsx");
-    expect(view).toContain('functions.invoke("request-data-deletion"');
+    expect(view).not.toContain("request-data-deletion");
+    expect(view).not.toContain("processed within");
+    expect(view).not.toContain("30 days");
+    expect(view).not.toContain("Request submitted");
     // Nothing in the Solo view deletes tenants/workspaces directly.
     expect(view.toLowerCase()).not.toContain("delete tenant");
     expect(view).not.toContain("functions.invoke(\"admin-delete-user\"");
@@ -85,10 +95,14 @@ describe("label truthfulness (source pins)", () => {
     expect(view.toLowerCase()).not.toContain("all data paigeagent holds about you");
   });
 
-  it("the deletion control names the real operation: a request over personal data, processed within 30 days", () => {
-    expect(view).toContain("Request deletion of my personal data");
-    expect(view).toContain("30 days");
-    // It must not claim to delete the workspace or business records.
+  it("personal-data deletion is labeled unavailable — no timeframe, no automatic-execution promise", () => {
+    expect(view).toContain("Delete my personal data");
+    expect(view).toContain("not available from this screen");
+    expect(view).toContain("processing side is not live");
+    expect(view).toContain("contact support");
+    // No queued-request or lifecycle promise may appear anywhere.
+    expect(view).not.toContain("processed within");
+    expect(view).not.toContain("30 days");
     expect(view).not.toContain("Delete all my data");
     expect(view).not.toContain("Delete your workspace");
   });
@@ -96,15 +110,15 @@ describe("label truthfulness (source pins)", () => {
 
 describe("Solo Security & Data component behavior", () => {
   const h = vi.hoisted(() => ({
-    invoke: vi.fn(),
-    getSession: vi.fn(),
     download: vi.fn(),
   }));
 
   vi.mock("@/integrations/supabase/client", () => ({
     supabase: {
-      auth: { getSession: (...a: unknown[]) => h.getSession(...a) },
-      functions: { invoke: (...a: unknown[]) => h.invoke(...a) },
+      auth: {},
+      functions: { invoke: () => {
+        throw new Error("the Solo security-data view must not invoke any function while the deletion lifecycle is fail-closed (INT-070)");
+      } },
     },
   }));
   vi.mock("@/lib/downloadMyUserData", () => ({ downloadMyUserData: (...a: unknown[]) => h.download(...a) }));
@@ -147,90 +161,16 @@ describe("Solo Security & Data component behavior", () => {
     expect(unavailable.querySelector("button")).toBeNull();
   });
 
-  it("deletion request: unauthenticated fails closed — no success state", { timeout: 30000 }, async () => {
+  it("personal-data deletion renders unavailable copy with NO request button (fail-closed until INT-070)", { timeout: 30000 }, async () => {
     await render();
-    h.getSession.mockReset();
-    h.getSession.mockResolvedValueOnce({ data: { session: null } });
-    const button = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Request deletion"))!;
-    await act(async () => { button.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
-    const confirm = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Submit deletion request"));
-    if (confirm) {
-      await act(async () => { confirm.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
-    }
+    expect(document.body.textContent).toContain("processing side is not live");
+    const block = [...document.querySelectorAll("div,section,p")].filter((n) => n.textContent?.includes("processing side is not live"));
+    expect(block.length).toBeGreaterThan(0);
+    // No request/submit/deletion button anywhere in this view.
+    const allButtons = [...document.querySelectorAll("button")].map((b) => b.textContent ?? "");
+    expect(allButtons.find((t) => /request deletion|submit deletion|delete/i.test(t))).toBeUndefined();
+    expect(document.body.textContent).not.toContain("30 days");
     expect(document.body.textContent).not.toContain("Request submitted");
-    expect(document.body.textContent).not.toContain("Reference:");
-  });
-
-  it("deletion request: success shows the request id and prevents re-submission", { timeout: 30000 }, async () => {
-    await render();
-    h.getSession.mockReset();
-    h.getSession.mockResolvedValue({ data: { session: { access_token: "t", user: { id: "u1" } } } });
-    h.invoke.mockReset();
-    h.invoke.mockResolvedValueOnce({ data: { success: true, requestId: "req-123" }, error: null });
-    const button = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Request deletion"))!;
-    await act(async () => { button.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
-    const confirm = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Submit deletion request"))!;
-    expect(confirm).toBeTruthy();
-    await act(async () => { confirm.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
-    expect(document.body.textContent).toContain("req-123");
-    // Submitted state: no request button remains to double-click.
-    expect([...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Request deletion"))).toBeUndefined();
-    expect(h.invoke).toHaveBeenCalledTimes(1);
-  });
-
-  it("deletion request: while in flight the control is disabled, and the submitted state removes it (one invoke only)", { timeout: 30000 }, async () => {
-    await render();
-    h.getSession.mockReset();
-    h.getSession.mockResolvedValue({ data: { session: { access_token: "t", user: { id: "u1" } } } });
-    let resolveInvoke: (value: { data: { success: boolean; requestId: string }; error: null }) => void = () => {};
-    h.invoke.mockReset();
-    h.invoke.mockReturnValueOnce(new Promise((resolve) => { resolveInvoke = resolve; }));
-    const trigger = () => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Request deletion"));
-    expect(trigger()!.hasAttribute("disabled")).toBe(false);
-    await act(async () => { trigger()!.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
-    const confirm = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Submit deletion request"))!;
-    await act(async () => { confirm.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
-    // While the request is in flight, the trigger is disabled and the dialog
-    // action behind it carries the same guard — a rapid reopen-and-resubmit
-    // cannot start a second request through the UI.
-    const inFlightTrigger = trigger();
-    expect(inFlightTrigger).toBeTruthy();
-    expect(inFlightTrigger!.hasAttribute("disabled")).toBe(true);
-    await act(async () => { resolveInvoke({ data: { success: true, requestId: "req-1" }, error: null }); await new Promise((r) => setTimeout(r, 0)); });
-    // The submitted state replaces the control entirely (with the request
-    // reference on screen), so nothing remains to re-fire.
-    expect(h.invoke).toHaveBeenCalledTimes(1);
-    expect(trigger()).toBeUndefined();
-    expect(document.body.textContent).toContain("req-1");
-  });
-
-  it("deletion request: a 2xx response without a verified requestId is a failure, never a confirmation", { timeout: 30000 }, async () => {
-    await render();
-    h.getSession.mockReset();
-    h.getSession.mockResolvedValue({ data: { session: { access_token: "t", user: { id: "u1" } } } });
-    h.invoke.mockReset();
-    h.invoke.mockResolvedValueOnce({ data: { success: true }, error: null });
-    const button = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Request deletion"))!;
-    await act(async () => { button.click(); await Promise.resolve(); });
-    const confirm = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Submit deletion request"))!;
-    await act(async () => { confirm.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
-    expect(document.body.textContent).not.toContain("Request submitted");
-    expect(document.body.textContent).not.toContain("Reference:");
-    expect(document.body.textContent).not.toContain("undefined");
-  });
-
-  it("deletion request: backend failure never renders success", { timeout: 30000 }, async () => {
-    await render();
-    h.getSession.mockReset();
-    h.getSession.mockResolvedValue({ data: { session: { access_token: "t", user: { id: "u1" } } } });
-    h.invoke.mockReset();
-    h.invoke.mockResolvedValueOnce({ data: null, error: new Error("edge down") });
-    const button = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Request deletion"))!;
-    await act(async () => { button.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
-    const confirm = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Submit deletion request"))!;
-    await act(async () => { confirm.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
-    expect(document.body.textContent).not.toContain("Request submitted");
-    expect(document.body.textContent).not.toContain("Reference:");
   });
 
   it("export: the control rides the canonical helper; its failure never claims success", { timeout: 30000 }, async () => {

@@ -2,19 +2,7 @@ import React, { useState } from "react";
 import { FileDown, FileLock2, KeyRound, Loader2, ShieldCheck, Trash2 } from "lucide-react";
 import { AccountSecurityPanel } from "@/components/settings/AccountSecurityPanel";
 import { downloadMyUserData } from "@/lib/downloadMyUserData";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -26,10 +14,13 @@ import { Button } from "@/components/ui/button";
  *   client dashboard and the admin settings hub mount.
  * - "Download my personal data" rides the ONE user-scoped export helper the
  *   client portal uses, labeled with its exact scope.
- * - "Request deletion of my personal data" rides the existing
- *   request-data-deletion edge: an authenticated, user-scoped pending request
- *   processed within 30 days by the compliance cron. It is a REQUEST over
- *   personal data — it is not workspace deletion, and it never claims to be.
+ * - Personal-data deletion is honestly UNAVAILABLE: the request-intake edge
+ *   exists, but its processor (process-data-deletion) is NOT deployed and no
+ *   schedule executes requests (provider-verified 2026-09-19), so no request
+ *   control is offered and no processing timeframe is promised. Enabling a
+ *   deletion lifecycle here requires INT-070: secure the processor with an
+ *   internal-caller gate → deploy it → schedule it → provider-verify → a
+ *   controlled end-to-end proof. Until then this screen states the gap.
  * - Workspace deletion is honestly UNAVAILABLE: no tenant/workspace deletion
  *   capability exists on main, so this screen shows copy, not a dead or
  *   mislabeled destructive button.
@@ -64,9 +55,6 @@ export function SoloSecurityDataView() {
 
 function SoloPersonalDataCard() {
   const [downloading, setDownloading] = useState(false);
-  const [requesting, setRequesting] = useState(false);
-  const [submittedRequestId, setSubmittedRequestId] = useState<string | null>(null);
-  const [requestError, setRequestError] = useState<string | null>(null);
 
   const handleDownload = async () => {
     if (downloading) return;
@@ -81,28 +69,6 @@ function SoloPersonalDataCard() {
     }
   };
 
-  const handleDeletionRequest = async () => {
-    if (requesting || submittedRequestId) return;
-    setRequesting(true);
-    setRequestError(null);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Please sign in to request data deletion.");
-      const { data, error } = await supabase.functions.invoke("request-data-deletion");
-      if (error) throw error;
-      if (!data?.success || !data?.requestId) throw new Error("The deletion request did not complete.");
-      // Success is the request id read back from the compliance ledger — never
-      // claimed merely because the button was pressed. The id is kept on
-      // screen and the request control is replaced, so a double click cannot
-      // file a second request.
-      setSubmittedRequestId(String(data.requestId));
-    } catch (e) {
-      setRequestError(e instanceof Error ? e.message : "Failed to submit deletion request. Please try again.");
-    } finally {
-      setRequesting(false);
-    }
-  };
-
   return (
     <section className="ss-card ss-secdata-privacy">
       <div className="sd-card-hd">
@@ -113,7 +79,7 @@ function SoloPersonalDataCard() {
         <div className="ss-secdata-row">
           <div>
             <b><FileDown /> Download my personal data</b>
-            <p>Exports the personal data tied to your login — your profile, scores, owned business records, recent chat messages, and financial profile — as a JSON file. This is not a workspace export: your business records (clients, deals, strategic plays) are workspace data and are not included.</p>
+            <p>Exports the personal data tied to your login — your profile, scores, owned business records, recent chat messages, and financial profile — as a JSON file. This is not a workspace export: your workspace records (clients, deals, strategic plays) are workspace data and are not included.</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => void handleDownload()} disabled={downloading}>
             {downloading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <FileDown className="w-4 h-4 mr-1" />}
@@ -123,38 +89,9 @@ function SoloPersonalDataCard() {
 
         <div className="ss-secdata-row ss-secdata-danger">
           <div>
-            <b><Trash2 /> Request deletion of my personal data</b>
-            <p>Files a formal deletion request for the personal data tied to your login. The request is processed within 30 days by our compliance process. Your workspace and its business records are not deleted by this request.</p>
+            <b><Trash2 /> Delete my personal data</b>
+            <p>Personal-data deletion is not available from this screen yet. We are not accepting deletion requests here because the processing side is not live, and we will not queue a request we cannot honestly execute. To have personal data removed in the meantime, contact support. There is no button here for that reason.</p>
           </div>
-          {submittedRequestId ? (
-            <p className="ss-secdata-submitted" role="status">
-              Request submitted. Reference: <code>{submittedRequestId}</code>. You'll receive a confirmation; no further request is needed.
-            </p>
-          ) : (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="sm" disabled={requesting}>
-                  {requesting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />}
-                  Request deletion
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Request deletion of your personal data?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This files a formal deletion request for the personal data tied to your login, processed within 30 days. Your workspace and its business records are not deleted. This does not cancel billing or close your account.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel disabled={requesting}>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => void handleDeletionRequest()} disabled={requesting}>
-                    {requesting ? "Submitting…" : "Submit deletion request"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
-          {requestError && <p className="ss-secdata-err" role="alert">{requestError}</p>}
         </div>
 
         <div className="ss-secdata-row">
