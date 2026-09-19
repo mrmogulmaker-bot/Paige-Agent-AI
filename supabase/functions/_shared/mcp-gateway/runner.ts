@@ -134,11 +134,14 @@ export async function runConnectionCapability(
   // invariant LOADER-INDEPENDENT — a future/alternate loader that resolved an alias or redirect to a
   // different row could otherwise reintroduce a two-source divergence (consent for id A, dispatch to
   // row B) without this guard.
-  if (canon.connectionId !== req.connectionId) return await emit("refused", "connection_mismatch");
+  // UUIDs are case-insensitive and Postgres serializes them canonical-lowercase, while a caller may
+  // pass uppercase hex — so both identity comparisons are case-insensitive (Codex P2), or a valid
+  // uppercase `connection_id`/`tenant_id` would be falsely refused as a mismatch.
+  if (canon.connectionId.toLowerCase() !== req.connectionId.toLowerCase()) return await emit("refused", "connection_mismatch");
   // §9 isolation: `get_mcp_connection_secret` is tenant-agnostic, so the runner enforces that the
   // row's tenant is the caller's server-derived tenant. A foreign-tenant connection never dispatches
   // — nor prepares.
-  if (canon.tenantId !== req.tenantId) return await emit("refused", "foreign_tenant");
+  if (canon.tenantId.toLowerCase() !== req.tenantId.toLowerCase()) return await emit("refused", "foreign_tenant");
 
   // prepare stages intent only — the connection is validated above, but it opens no session and
   // contacts no provider.

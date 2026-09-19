@@ -508,6 +508,16 @@ console.log("\n— single source: consent + dispatch from one canonical connecti
   const prepOk = await runnerMod.runConnectionCapability({ connectionId: "conn-canon", tenantId: TENANT, toolName: "list_records", args: {}, mode: "prepare" }, { ...deps });
   check("prepare on a valid owned connection still returns prepared (no provider contact)", prepOk.outcome === "prepared", JSON.stringify(prepOk));
 
+  // Codex R2 P2: UUIDs are case-insensitive and Postgres serializes canonical lowercase, so an
+  // uppercase-hex connection_id that resolves to the lowercase canonical row must NOT be a false
+  // connection_mismatch (nor foreign_tenant on an uppercase tenant).
+  const UP_ID = "ABCDEF01-2345-6789-ABCD-EF0123456789";
+  const UP_TEN = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE";
+  const caseLoad = () => ({ ok: true, connectionId: UP_ID.toLowerCase(), tenantId: UP_TEN.toLowerCase(), serverUrl: CANON_URL, auth: bearer });
+  approvals = {};
+  const caseRun = await runnerMod.runConnectionCapability({ connectionId: UP_ID, tenantId: UP_TEN, toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: caseLoad });
+  check("an uppercase-hex connection_id/tenant matching the canonical lowercase row is NOT a false mismatch/foreign_tenant", caseRun.outcome === "read_observed", JSON.stringify(caseRun));
+
   // (6) the consent verifier is asked to authorize the SAME canonical connection_id that backs
   // dispatch, and (7) the mutation dispatches to that same row's endpoint — single source, proven together.
   approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
