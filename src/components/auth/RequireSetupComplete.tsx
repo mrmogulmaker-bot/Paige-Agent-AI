@@ -45,8 +45,7 @@
 // acts after the tenant context has resolved (loading === false) AND a real
 // active tenant exists. While loading, no active tenant, or staff → children
 // render untouched, so a false negative can never strand a real user.
-import React, { useState } from "react";
-import { Link, Navigate, useLocation } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { resolveTierKey } from "@/lib/tier/tierFeatures";
 
@@ -63,25 +62,30 @@ export function canonicalSetupPath(
   return null;
 }
 
+/** The setup-completion READINESS signal, as one pure predicate. This is
+ *  context/readiness state, NEVER Solo access authority (owner adjudication
+ *  2026-09-19): the sub-account redirect below and the Solo shell's
+ *  non-blocking reminder (SoloApp) both consume it as data. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function isSoloSetupComplete(features: Record<string, unknown> | null | undefined): boolean {
+  const playbookSlug = features?.playbook;
+  return (
+    (typeof playbookSlug === "string" && playbookSlug.trim().length > 0) ||
+    (features != null && Object.prototype.hasOwnProperty.call(features, "playbook_config")) ||
+    features?.solo_setup_complete === true
+  );
+}
+
 export function RequireSetupComplete({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { loading, isPlatformStaff, activeTenant } = useTenantContext();
-  // Dismissed per component lifetime (= per shell session): the banner is a
-  // readiness reminder, not a persistent obstacle; Setup completion retires
-  // it for good via the readiness signal below.
-  const [dismissed, setDismissed] = useState(false);
 
   // Setup-complete = a chosen playbook slug, a playbook_config object, or the
   // canonical V3 setup journey's own completion marker (#826/#1269). This is
   // READINESS state only — under the 2026-09-19 owner rule it never decides
   // Solo product access (it still steers the sub-account redirect, which this
   // adjudication leaves intact).
-  const features = activeTenant?.features ?? null;
-  const playbookSlug = features?.playbook;
-  const hasPlaybook =
-    (typeof playbookSlug === "string" && playbookSlug.trim().length > 0) ||
-    (features != null && Object.prototype.hasOwnProperty.call(features, "playbook_config")) ||
-    features?.solo_setup_complete === true;
+  const hasPlaybook = isSoloSetupComplete(activeTenant?.features);
 
   // §51/§61/§60: resolveTierKey is the one home for tier resolution — no
   // hardcoded account_type compare lives here.
@@ -92,38 +96,18 @@ export function RequireSetupComplete({ children }: { children: React.ReactNode }
   });
 
   // ── THE SOLO CONTRACT (owner adjudication 2026-09-19): never redirect. ──
-  // An incomplete Solo owner gets the destination they asked for plus a
-  // non-blocking readiness banner; a complete one gets the identical shell.
+  // The gate renders the children and NOTHING ELSE — no sibling element of
+  // any kind. The canonical Solo shell owns the viewport (100dvh,
+  // overflow:hidden) and its main region owns scrolling, so a sibling here
+  // would expand the document past the shell (the layout defect this branch
+  // once carried). The non-blocking readiness reminder lives INSIDE the
+  // shell (SoloApp renders SoloSetupReadinessNotice within its height-owned
+  // subtree), fed by the same isSoloSetupComplete readiness predicate.
   // Entitlement/signup gates live OUTSIDE this component (App.tsx wraps
   // /solo in RequireCompleteSignup → RequireSoloBetaEntitlement → this) and
   // are untouched by this rule.
   if (tierKey === "solo") {
-    const soloSetupPath = canonicalSetupPath(tierKey, activeTenant?.account_number);
-    const showBanner =
-      !loading && !isPlatformStaff && !dismissed && !!activeTenant && !hasPlaybook && soloSetupPath != null;
-    return (
-      <>
-        {showBanner && (
-          <div
-            className="setup-readiness-banner"
-            data-setup-readiness="incomplete"
-            role="status"
-            aria-live="polite"
-          >
-            <span>
-              Setup isn&apos;t finished yet — business context makes PAIGE far more useful, and
-              PAIGE can help you fill it in.{" "}
-              <Link to={soloSetupPath}>Finish setup when you&apos;re ready</Link> — everything
-              else works in the meantime.
-            </span>
-            <button type="button" onClick={() => setDismissed(true)} aria-label="Dismiss setup reminder">
-              Dismiss
-            </button>
-          </div>
-        )}
-        {children}
-      </>
-    );
+    return <>{children}</>;
   }
 
   // ── SUB-ACCOUNT: the original redirect contract, unchanged (the chooser

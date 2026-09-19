@@ -7,6 +7,8 @@ import { useTheme } from "next-themes";
 import { performSignOut } from "@/lib/auth/signOut";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { SoloSetupReadinessNotice } from "./SoloSetupReadinessNotice";
+import { isSoloSetupComplete } from "@/components/auth/RequireSetupComplete";
 import { branchBySlug, branchByKey, branchPath, defaultBranchSlug } from "@/lib/routing/tierBranches";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import "./solo-tokens.css";
@@ -164,6 +166,14 @@ const go = (k) => {
 // Acts ONLY once the caller's own account_number is known, so a mid-load null never
 // bounces.
 const { activeTenant, activeTenantId, activeUserId } = useTenantContext();
+// Setup readiness reminder (owner adjudication: Setup is NOT an access gate).
+// The SHELL holds the dismissal so it survives route remounts; the reminder
+// itself renders INSIDE the height-owned paige-solo column below — the shell
+// stays the one viewport owner, tcs-main the one scroll owner.
+const [setupReminderDismissed, setSetupReminderDismissed] = React.useState(false);
+const soloSetupHref = activeTenant?.account_number != null && !isSoloSetupComplete(activeTenant?.features)
+  ? `/solo/${activeTenant.account_number}/settings/setup`
+  : null;
 const vaultAccess = useVaultAccess();
 const paigeTabEpochRef=React.useRef(activeTenantId);
 React.useLayoutEffect(()=>{if(paigeTabEpochRef.current===activeTenantId)return;paigeTabEpochRef.current=activeTenantId;setPaigeDockedTab('chat')},[activeTenantId]);
@@ -288,8 +298,9 @@ paigeFullHref={urlDriven?`${branchPath('solo',urlAccount,'paige')}/${paigeDocked
 paigeReturnHref={urlDriven?branchPath('solo',urlAccount,'command-center'):undefined}
 brandHomeHref={activeTenant?.account_number!=null?branchPath('solo',String(activeTenant.account_number),'command-center'):undefined}
 onSignOut={()=>void performSignOut({redirectTo:'/'})}>
-<div className="paige-solo" data-theme={theme} style={{width:'100%',maxWidth:'none',height:'100%',minWidth:0,minHeight:0,alignSelf:'stretch'}}>
-<div style={{display:'flex',height:'100%',overflow:'hidden'}}>
+<div className="paige-solo" data-theme={theme} style={{width:'100%',maxWidth:'none',height:'100%',minWidth:0,minHeight:0,alignSelf:'stretch',display:'flex',flexDirection:'column'}}>
+<SoloSetupReadinessNotice setupHref={soloSetupHref} dismissed={setupReminderDismissed} onDismiss={()=>setSetupReminderDismissed(true)}/>
+<div style={{display:'flex',flex:1,minHeight:0,overflow:'hidden'}}>
 <main key={route} data-solo-screen-host style={{flex:1,overflow:full?'hidden':'auto',minHeight:0,minWidth:0}}>{route==='paige'?null:screens[route]}</main>
 {studio&&<VibeStudio onBack={closeStudio}/>}</div></div>
 </TenantCommandCenterShell>};

@@ -162,10 +162,9 @@ describe("adjudicated journey — Solo setup-incomplete: application access", ()
     const r = walk("/solo/42/command-center");
     expect(r.path).toBe("/solo/42/command-center");
     expect(r.journey).toBe("shell");
-    // The non-blocking readiness banner is VISIBLE (truthful incomplete state)
-    // and carries the Setup link — a reminder, not an obstacle.
-    expect(r.text).toContain("Setup isn't finished");
-    expect(host.querySelector("[data-setup-readiness='incomplete']")).toBeTruthy();
+    // The non-blocking readiness reminder lives INSIDE the shell now (the
+    // gate renders children only — the layout correction); its behavior is
+    // proven in solo-setup-readiness-notice.test.tsx.
   });
 
   it("proof 1b: PAIGE Chat is reachable immediately — the route renders, never redirected", () => {
@@ -197,13 +196,11 @@ describe("adjudicated journey — Solo setup-incomplete: application access", ()
     ]);
   });
 
-  it("proof 1e: the readiness banner is dismissible and stays dismissed; children keep rendering", () => {
+  it("proof 1e: the gate renders NO reminder sibling — the document never grows past the shell (Finding 1 regression)", () => {
     harness.tenant = baseTenant();
     walk("/solo/42/command-center");
-    const dismiss = host.querySelector("[data-setup-readiness='incomplete'] button");
-    expect(dismiss).toBeTruthy();
-    act(() => { (dismiss as HTMLButtonElement).click(); });
-    expect(host.querySelector("[data-setup-readiness='incomplete']")).toBeNull();
+    // The gate output is exactly the children: no banner element, no wrapper.
+    expect(host.querySelector("[data-setup-readiness]")).toBeNull();
     expect(host.querySelector("[data-journey='shell']")).toBeTruthy();
   });
 
@@ -236,7 +233,6 @@ describe("adjudicated journey — historical markers grant NO broader Solo acces
     const complete = walk("/solo/42/command-center");
     expect(complete.path).toBe("/solo/42/command-center");
     expect(complete.journey).toBe("shell");
-    expect(host.querySelector("[data-setup-readiness='incomplete']")).toBeNull();
   });
 
   it("proof 2b: playbook presence grants NOTHING beyond the identical shell — the same destinations render for both states", () => {
@@ -250,12 +246,11 @@ describe("adjudicated journey — historical markers grant NO broader Solo acces
     }
   });
 
-  it("proof 2d: solo_setup_complete=true retires the banner (the marker is readiness state, not access)", () => {
+  it("proof 2d: solo_setup_complete=true resolves through the same routing (the marker is readiness state, not access)", () => {
     harness.tenant = { ...baseTenant(), features: { solo_setup_complete: true } };
     const r = walk("/solo/42/command-center");
     expect(r.path).toBe("/solo/42/command-center");
     expect(r.journey).toBe("shell");
-    expect(host.querySelector("[data-setup-readiness='incomplete']")).toBeNull();
   });
 
   it("proof 2c (source): the solo path carries NO access predicate on setup state — the redirect exists only for sub_account", async () => {
