@@ -282,10 +282,13 @@ describe("adjudicated journey — no widening", () => {
 
   it("proof 3b: loading fails OPEN (no redirect, no banner before the context resolves)", () => {
     harness.loading = true;
-    const r = walk("/solo/42/command-center");
-    expect(r.journey).toBe("loading");
-    expect(host.querySelector("[data-setup-readiness='incomplete']")).toBeNull();
-    harness.loading = false;
+    try {
+      const r = walk("/solo/42/command-center");
+      expect(r.journey).toBe("loading");
+      expect(host.querySelector("[data-setup-readiness]")).toBeNull();
+    } finally {
+      harness.loading = false;
+    }
   });
 
   it("proof 3c: no tenant-specific exception — the gate carries no account literal", async () => {
