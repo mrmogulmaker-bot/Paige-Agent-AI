@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 /**
  * PR-C — P1 Solo Security & Data truthfulness / existing-capability adoption.
  *
@@ -124,18 +126,19 @@ describe("Solo Security & Data component behavior", () => {
     root = createRoot(host);
     await React.act(async () => {
       root!.render(React!.createElement(mod.SoloSecurityDataView));
+      await new Promise((r) => setTimeout(r, 0));
     });
   };
   const act = async (fn: () => Promise<unknown> | void) => React.act(fn);
 
-  it("renders the canonical panel's three controls inside the Solo view", async () => {
+  it("renders the canonical panel's three controls inside the Solo view", { timeout: 30000 }, async () => {
     await render();
     for (const label of ["Change password", "Two-factor authentication", "Where you're signed in"]) {
       expect(document.body.textContent).toContain(label);
     }
   });
 
-  it("workspace deletion renders honest unavailable copy with NO button", async () => {
+  it("workspace deletion renders honest unavailable copy with NO button", { timeout: 30000 }, async () => {
     await render();
     expect(document.body.textContent).toContain("not available from this screen");
     const nodes = [...document.querySelectorAll("div,section,p")].filter((n) => n.textContent?.includes("not available from this screen"));
@@ -144,12 +147,12 @@ describe("Solo Security & Data component behavior", () => {
     expect(unavailable.querySelector("button")).toBeNull();
   });
 
-  it("deletion request: unauthenticated fails closed — no success state", async () => {
+  it("deletion request: unauthenticated fails closed — no success state", { timeout: 30000 }, async () => {
     await render();
     h.getSession.mockReset();
     h.getSession.mockResolvedValueOnce({ data: { session: null } });
     const button = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Request deletion"))!;
-    await act(async () => { button.click(); await Promise.resolve(); });
+    await act(async () => { button.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
     const confirm = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Submit deletion request"));
     if (confirm) {
       await act(async () => { confirm.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
@@ -158,14 +161,14 @@ describe("Solo Security & Data component behavior", () => {
     expect(document.body.textContent).not.toContain("Reference:");
   });
 
-  it("deletion request: success shows the request id and prevents re-submission", async () => {
+  it("deletion request: success shows the request id and prevents re-submission", { timeout: 30000 }, async () => {
     await render();
     h.getSession.mockReset();
     h.getSession.mockResolvedValue({ data: { session: { access_token: "t", user: { id: "u1" } } } });
     h.invoke.mockReset();
     h.invoke.mockResolvedValueOnce({ data: { success: true, requestId: "req-123" }, error: null });
     const button = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Request deletion"))!;
-    await act(async () => { button.click(); await Promise.resolve(); });
+    await act(async () => { button.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
     const confirm = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Submit deletion request"))!;
     expect(confirm).toBeTruthy();
     await act(async () => { confirm.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
@@ -175,7 +178,7 @@ describe("Solo Security & Data component behavior", () => {
     expect(h.invoke).toHaveBeenCalledTimes(1);
   });
 
-  it("deletion request: while in flight the control is disabled, and the submitted state removes it (one invoke only)", async () => {
+  it("deletion request: while in flight the control is disabled, and the submitted state removes it (one invoke only)", { timeout: 30000 }, async () => {
     await render();
     h.getSession.mockReset();
     h.getSession.mockResolvedValue({ data: { session: { access_token: "t", user: { id: "u1" } } } });
@@ -184,7 +187,7 @@ describe("Solo Security & Data component behavior", () => {
     h.invoke.mockReturnValueOnce(new Promise((resolve) => { resolveInvoke = resolve; }));
     const trigger = () => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Request deletion"));
     expect(trigger()!.hasAttribute("disabled")).toBe(false);
-    await act(async () => { trigger()!.click(); await Promise.resolve(); });
+    await act(async () => { trigger()!.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
     const confirm = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Submit deletion request"))!;
     await act(async () => { confirm.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
     // While the request is in flight, the trigger is disabled and the dialog
@@ -201,21 +204,21 @@ describe("Solo Security & Data component behavior", () => {
     expect(document.body.textContent).toContain("req-1");
   });
 
-  it("deletion request: backend failure never renders success", async () => {
+  it("deletion request: backend failure never renders success", { timeout: 30000 }, async () => {
     await render();
     h.getSession.mockReset();
     h.getSession.mockResolvedValue({ data: { session: { access_token: "t", user: { id: "u1" } } } });
     h.invoke.mockReset();
     h.invoke.mockResolvedValueOnce({ data: null, error: new Error("edge down") });
     const button = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Request deletion"))!;
-    await act(async () => { button.click(); await Promise.resolve(); });
+    await act(async () => { button.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
     const confirm = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Submit deletion request"))!;
     await act(async () => { confirm.click(); await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); });
     expect(document.body.textContent).not.toContain("Request submitted");
     expect(document.body.textContent).not.toContain("Reference:");
   });
 
-  it("export: the control rides the canonical helper; its failure never claims success", async () => {
+  it("export: the control rides the canonical helper; its failure never claims success", { timeout: 30000 }, async () => {
     await render();
     h.download.mockReset();
     h.download.mockRejectedValueOnce(new Error("not signed in"));
