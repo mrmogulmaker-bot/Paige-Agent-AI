@@ -16,7 +16,7 @@
 // caller's server-derived tenant (§9). The auth mapping reuses `authFromSecret` from `../mcp-client.ts`
 // (§18: one home; the guard and the mapping already live together there).
 
-import { authFromSecret, type McpAuth, type StoredMcpSecret } from "../mcp-client.ts";
+import { authFromSecret, authUsable, type McpAuth, type StoredMcpSecret } from "../mcp-client.ts";
 
 // deno-lint-ignore no-explicit-any
 type Admin = any;
@@ -72,6 +72,7 @@ export function makeRpcConnectionLoader(admin: Admin): ConnectionLoader {
         auth_kind?: unknown;
         auth_header_name?: unknown;
         transport?: unknown;
+        expires_at?: unknown;
       };
       if (row.configured !== true) return { ok: false, reason: "no_connection" };
       if (row.enabled !== true) return { ok: false, reason: "connection_disabled" };
@@ -87,6 +88,19 @@ export function makeRpcConnectionLoader(admin: Admin): ConnectionLoader {
         typeof row.transport !== "string" || !MCP_EXECUTABLE_TRANSPORTS.has(row.transport) ||
         typeof row.auth_kind !== "string" || !MCP_EXECUTABLE_AUTH_KINDS.has(row.auth_kind)
       ) {
+        return { ok: false, reason: "connection_unusable" };
+      }
+      // `auth` is now non-null (narrowed by the guard above).
+      // A `header` facet whose name the client cannot present — an invalid RFC 9110 token, or a
+      // reserved header (`Authorization`/`Accept`/…) — is accepted by `authFromSecret` (which only
+      // requires a non-empty name) but REJECTED by `authHeaders` at dispatch. Refuse it here (§18:
+      // `authUsable` is the one home for that check) so `prepare` cannot affirm what `execute` throws on.
+      // And an OAuth row whose access token has already EXPIRED would dispatch a dead credential —
+      // this loader does not refresh/rotate (a later PR), so refuse it rather than contact the provider
+      // with a stale token. `expires_at` (access_token_expires_at) is present only for oauth rows; a
+      // null/absent value is not an expiry.
+      const expiresAt = typeof row.expires_at === "string" ? Date.parse(row.expires_at) : NaN;
+      if (!authUsable(auth) || (Number.isFinite(expiresAt) && expiresAt <= Date.now())) {
         return { ok: false, reason: "connection_unusable" };
       }
       return { ok: true, connectionId: row.connection_id, tenantId: row.tenant_id, serverUrl: row.server_url, auth };

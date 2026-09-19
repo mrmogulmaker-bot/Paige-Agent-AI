@@ -586,11 +586,44 @@ console.log("\n— executable-facet gate: the loader refuses non-MCP-drivable ro
   check("runner: prepare on an api_key REST facet → refused, never a false 'prepared' (prepare cannot affirm)", prepApiKey.outcome === "refused" && prepApiKey.code === "connection_unusable", JSON.stringify(prepApiKey));
   const execStdio = await runReal(stdioRow, "execute");
   check("runner: execute on a stdio facet → refused connection_unusable", execStdio.outcome === "refused" && execStdio.code === "connection_unusable", JSON.stringify(execStdio));
+
+  // Codex R4 P2-B — a custom-header facet whose name the client cannot present (a reserved header, or
+  // an invalid RFC 9110 token) is accepted by authFromSecret but rejected by authHeaders at dispatch;
+  // the loader refuses it up front so prepare cannot affirm what execute would throw on. A valid custom
+  // header name still resolves.
+  const validHeaderRes = await loaderFor({ ...baseRow, auth_kind: "header", auth_header_name: "X-Api-Key" })("conn-canon");
+  check("loader: a header facet with a valid custom name (X-Api-Key) resolves ok:true", validHeaderRes.ok === true, JSON.stringify(validHeaderRes));
+  const reservedHeaderRow = { ...baseRow, server_url: REFUSE_URL, auth_kind: "header", auth_header_name: "Authorization" };
+  const reservedHeaderRes = await loaderFor(reservedHeaderRow)("conn-canon");
+  check("loader: a header facet named 'Authorization' (reserved) → connection_unusable", reservedHeaderRes.ok === false && reservedHeaderRes.reason === "connection_unusable", JSON.stringify(reservedHeaderRes));
+  const invalidHeaderRes = await loaderFor({ ...baseRow, server_url: REFUSE_URL, auth_kind: "header", auth_header_name: "bad name" })("conn-canon");
+  check("loader: a header facet with an invalid RFC-token name ('bad name') → connection_unusable", invalidHeaderRes.ok === false && invalidHeaderRes.reason === "connection_unusable", JSON.stringify(invalidHeaderRes));
+
+  // Codex R4 P2-A — an OAuth row whose access token has already EXPIRED would dispatch a dead
+  // credential (this loader does not refresh/rotate); refuse it. A future expiry still resolves.
+  const past = new Date(Date.now() - 60_000).toISOString();
+  const future = new Date(Date.now() + 3_600_000).toISOString();
+  const expiredOAuthRow = { ...baseRow, server_url: REFUSE_URL, auth_kind: "oauth", expires_at: past };
+  const expiredOAuthRes = await loaderFor(expiredOAuthRow)("conn-canon");
+  check("loader: an OAuth row with an expired access token → connection_unusable", expiredOAuthRes.ok === false && expiredOAuthRes.reason === "connection_unusable", JSON.stringify(expiredOAuthRes));
+  const liveOAuthRes = await loaderFor({ ...baseRow, auth_kind: "oauth", expires_at: future })("conn-canon");
+  check("loader: an OAuth row with a future expiry resolves ok:true", liveOAuthRes.ok === true, JSON.stringify(liveOAuthRes));
+
+  // Runner-level: prepare cannot affirm and execute cannot contact either facet.
+  const execReservedHeader = await runReal(reservedHeaderRow, "execute");
+  check("runner: execute on a reserved-header facet → refused connection_unusable (execute cannot contact)", execReservedHeader.outcome === "refused" && execReservedHeader.code === "connection_unusable", JSON.stringify(execReservedHeader));
+  const prepExpiredOAuth = await runReal(expiredOAuthRow, "prepare");
+  check("runner: prepare on an expired-OAuth facet → refused, never a false 'prepared'", prepExpiredOAuth.outcome === "refused" && prepExpiredOAuth.code === "connection_unusable", JSON.stringify(prepExpiredOAuth));
+  const execExpiredOAuth = await runReal(expiredOAuthRow, "execute");
+  check("runner: execute on an expired-OAuth facet → refused connection_unusable", execExpiredOAuth.outcome === "refused" && execExpiredOAuth.code === "connection_unusable", JSON.stringify(execExpiredOAuth));
+
   check("runner: the refused non-MCP facets NEVER contacted their endpoint (zero dispatch)", !(refuseSrv.calls ?? []).length, JSON.stringify(refuseSrv.calls ?? []));
 
-  // LOAD-BEARING (§39): widening MCP_EXECUTABLE_AUTH_KINDS/_TRANSPORTS to admit api_key or stdio flips
-  // every refusal above to ok/executed and this section FAILS — the gate is proven real, not decorative.
-  check("LOAD-BEARING: relaxing the allow-list to admit api_key/stdio would break these refusals", apiKeyRes.ok === false && stdioRes.ok === false && sseRes.ok === false && execApiKey.outcome === "refused" && execStdio.outcome === "refused" && !(refuseSrv.calls ?? []).length);
+  // LOAD-BEARING (§39): removing any of the three guards flips its refusals to ok/executed and this
+  // section FAILS — the gate is proven real, not decorative. (a) widening MCP_EXECUTABLE_AUTH_KINDS/
+  // _TRANSPORTS admits api_key/stdio/sse; (b) dropping `!authUsable(auth)` admits reserved/invalid
+  // header names; (c) dropping the expiry check admits a dead OAuth token.
+  check("LOAD-BEARING: removing any executable-facet guard would break these refusals", apiKeyRes.ok === false && stdioRes.ok === false && sseRes.ok === false && reservedHeaderRes.ok === false && invalidHeaderRes.ok === false && expiredOAuthRes.ok === false && execApiKey.outcome === "refused" && execStdio.outcome === "refused" && execReservedHeader.outcome === "refused" && execExpiredOAuth.outcome === "refused" && !(refuseSrv.calls ?? []).length);
 }
 
 server.close();

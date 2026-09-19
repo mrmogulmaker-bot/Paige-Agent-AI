@@ -67,6 +67,26 @@ const RESERVED_HEADERS = new Set([
   "host", "content-length", "connection", "transfer-encoding",
 ]);
 
+/** A custom auth header name is tenant-supplied, so it must be a valid RFC 9110 token. ONE home for
+ *  the grammar so `authHeaders` (which throws at dispatch) and `authUsable`/`isUsableHeaderName`
+ *  (which a caller uses to refuse a facet BEFORE dispatch) can never drift apart. */
+const HEADER_NAME_RE = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/;
+
+/** Whether a custom header name is one the client can actually set: a valid RFC 9110 token AND not a
+ *  header this transport reserves for itself. */
+export function isUsableHeaderName(name: string): boolean {
+  return HEADER_NAME_RE.test(name) && !RESERVED_HEADERS.has(name.toLowerCase());
+}
+
+/** Whether this resolved auth can actually be PRESENTED by the client. A `header` auth whose name is
+ *  invalid or reserved cannot (authHeaders throws on it at dispatch), so a caller that resolves a
+ *  connection should refuse it up front rather than let `prepare` affirm what `execute` will reject.
+ *  bearer/none are always presentable. */
+export function authUsable(auth: McpAuth): boolean {
+  if (auth.kind === "header") return isUsableHeaderName(auth.name);
+  return true;
+}
+
 /** The stored connection's shape, as `get_tenant_mcp_secret` returns it. */
 export type StoredMcpSecret = {
   server_url?: unknown;
@@ -104,7 +124,7 @@ function authHeaders(auth: McpAuth): Record<string, string> {
   // A custom header name is tenant-supplied, so it is constrained to the RFC 9110 token
   // grammar. Without this a newline in the name would let a tenant inject headers.
   if (auth.kind === "header") {
-    if (!/^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/.test(auth.name)) {
+    if (!HEADER_NAME_RE.test(auth.name)) {
       throw new McpError("mcp_protocol_error", "invalid header name");
     }
     if (RESERVED_HEADERS.has(auth.name.toLowerCase())) {
