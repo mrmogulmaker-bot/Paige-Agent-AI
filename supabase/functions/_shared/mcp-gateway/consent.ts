@@ -18,6 +18,12 @@ export type ApprovalQuery = {
   toolName: string;
   /** The tool's LIVE fingerprint from the current session — compared to the stored approval pin. */
   livePin: string;
+  /** INT-078: the domain-tagged hash of the endpoint the runner actually LOADED (and will dispatch to),
+   *  from `get_mcp_connection_secret`. REQUIRED — consent must be bound to the endpoint that will be
+   *  contacted, not merely the one the row holds at verify time; a NULL/empty value is refused
+   *  (`loaded_endpoint_hash_required`), a value that differs from the approved endpoint is
+   *  `endpoint_load_mismatch`. This closes the load↔verify TOCTOU. */
+  loadedEndpointHash: string;
   /** The action shape of THIS call (see {@link argsShapeHash}); enforced only if the approval binds one. */
   argsShapeHash: string;
 };
@@ -52,6 +58,7 @@ export function makeRpcApprovalVerifier(admin: Admin): ApprovalVerifier {
         _connection_id: q.connectionId,
         _tool_name: q.toolName,
         _live_pin: q.livePin,
+        _loaded_endpoint_hash: q.loadedEndpointHash,
         _args_shape_hash: q.argsShapeHash,
       });
       if (error) return { authorized: false, reason: "verify_unavailable" };

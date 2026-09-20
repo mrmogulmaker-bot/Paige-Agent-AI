@@ -61,7 +61,9 @@ END $$;
 DO $$
 DECLARE _r jsonb;
 BEGIN
-  _r := public.verify_mcp_connection_approval('e9c00000-0000-0000-0000-0000000000d2','send_message', repeat('a',64), NULL);
+  -- INT-078: verify now takes the LOADED endpoint hash (4th arg, required). The runner loaded the
+  -- current endpoint (#1), so pass its hash; args_shape is the 5th (defaulted) arg.
+  _r := public.verify_mcp_connection_approval('e9c00000-0000-0000-0000-0000000000d2','send_message', repeat('a',64), public._mcp_endpoint_hash('https://mcp-a.example/rpc'), NULL);
   IF (_r->>'authorized') <> 'true' THEN RAISE EXCEPTION '(1) matching approval was not authorized: %', _r; END IF;
 END $$;
 
@@ -69,7 +71,7 @@ END $$;
 DO $$
 DECLARE _r jsonb;
 BEGIN
-  _r := public.verify_mcp_connection_approval('e9c00000-0000-0000-0000-0000000000d2','send_message', repeat('c',64), NULL);
+  _r := public.verify_mcp_connection_approval('e9c00000-0000-0000-0000-0000000000d2','send_message', repeat('c',64), public._mcp_endpoint_hash('https://mcp-a.example/rpc'), NULL);
   IF (_r->>'authorized') <> 'false' OR (_r->>'reason') <> 'contract_changed' THEN
     RAISE EXCEPTION '(2) wrong pin should be contract_changed: %', _r;
   END IF;
@@ -84,7 +86,10 @@ UPDATE public.mcp_connection_approvals
 DO $$
 DECLARE _r jsonb;
 BEGIN
-  _r := public.verify_mcp_connection_approval('e9c00000-0000-0000-0000-0000000000d2','send_message', repeat('a',64), NULL);
+  -- The approval is bound to endpoint #OTHER and the runner LOADED #OTHER too (loaded == approved, so
+  -- the load-binding check passes), but the connection's CURRENT endpoint is #1 — so the defense-in-depth
+  -- current-endpoint check must fire endpoint_changed (proving it independently of endpoint_load_mismatch).
+  _r := public.verify_mcp_connection_approval('e9c00000-0000-0000-0000-0000000000d2','send_message', repeat('a',64), public._mcp_endpoint_hash('https://mcp-OTHER.example/rpc'), NULL);
   IF (_r->>'authorized') <> 'false' OR (_r->>'reason') <> 'endpoint_changed' THEN
     RAISE EXCEPTION '(3) stale endpoint should be endpoint_changed: %', _r;
   END IF;
@@ -97,7 +102,9 @@ UPDATE public.mcp_connection_approvals
 DO $$
 DECLARE _r jsonb;
 BEGIN
-  _r := public.verify_mcp_connection_approval('e9c00000-0000-0000-0000-0000000000d2','send_message', repeat('a',64), NULL);
+  -- endpoint_hash is NULL, so approval_not_endpoint_bound fires BEFORE the load-binding compare (a NULL
+  -- binding reports its own reason, never endpoint_load_mismatch). A valid loaded hash is still supplied.
+  _r := public.verify_mcp_connection_approval('e9c00000-0000-0000-0000-0000000000d2','send_message', repeat('a',64), public._mcp_endpoint_hash('https://mcp-a.example/rpc'), NULL);
   IF (_r->>'authorized') <> 'false' OR (_r->>'reason') <> 'approval_not_endpoint_bound' THEN
     RAISE EXCEPTION '(4) NULL endpoint binding should be approval_not_endpoint_bound: %', _r;
   END IF;
@@ -111,7 +118,7 @@ UPDATE public.mcp_connection_approvals
 DO $$
 DECLARE _r jsonb;
 BEGIN
-  _r := public.verify_mcp_connection_approval('e9c00000-0000-0000-0000-0000000000d2','send_message', repeat('a',64), NULL);
+  _r := public.verify_mcp_connection_approval('e9c00000-0000-0000-0000-0000000000d2','send_message', repeat('a',64), public._mcp_endpoint_hash('https://mcp-a.example/rpc'), NULL);
   IF (_r->>'authorized') <> 'false' OR (_r->>'reason') <> 'approval_expired' THEN
     RAISE EXCEPTION '(5) expired approval should be approval_expired: %', _r;
   END IF;
@@ -125,9 +132,9 @@ UPDATE public.mcp_connection_approvals
 DO $$
 DECLARE _match jsonb; _diff jsonb;
 BEGIN
-  _match := public.verify_mcp_connection_approval('e9c00000-0000-0000-0000-0000000000d2','send_message', repeat('a',64), repeat('1',64));
+  _match := public.verify_mcp_connection_approval('e9c00000-0000-0000-0000-0000000000d2','send_message', repeat('a',64), public._mcp_endpoint_hash('https://mcp-a.example/rpc'), repeat('1',64));
   IF (_match->>'authorized') <> 'true' THEN RAISE EXCEPTION '(6a) matching action shape should authorize: %', _match; END IF;
-  _diff := public.verify_mcp_connection_approval('e9c00000-0000-0000-0000-0000000000d2','send_message', repeat('a',64), repeat('2',64));
+  _diff := public.verify_mcp_connection_approval('e9c00000-0000-0000-0000-0000000000d2','send_message', repeat('a',64), public._mcp_endpoint_hash('https://mcp-a.example/rpc'), repeat('2',64));
   IF (_diff->>'authorized') <> 'false' OR (_diff->>'reason') <> 'action_shape_changed' THEN
     RAISE EXCEPTION '(6b) differing action shape should be action_shape_changed: %', _diff;
   END IF;
@@ -138,7 +145,7 @@ UPDATE public.mcp_connection_approvals SET args_shape_hash = NULL
 DO $$
 DECLARE _r jsonb;
 BEGIN
-  _r := public.verify_mcp_connection_approval('e9c00000-0000-0000-0000-0000000000d2','send_message', repeat('a',64), repeat('9',64));
+  _r := public.verify_mcp_connection_approval('e9c00000-0000-0000-0000-0000000000d2','send_message', repeat('a',64), public._mcp_endpoint_hash('https://mcp-a.example/rpc'), repeat('9',64));
   IF (_r->>'authorized') <> 'true' THEN RAISE EXCEPTION '(6c) unbound action shape must not be enforced: %', _r; END IF;
 END $$;
 

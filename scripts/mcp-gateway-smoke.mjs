@@ -23,7 +23,14 @@
 import http from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { createHash } from "node:crypto";
 import { build } from "esbuild";
+
+// INT-078: the domain-tagged endpoint hash, mirroring the DB `_mcp_endpoint_hash`
+// (sha256('mcp-endpoint/v1|' || server_url)). The fake loader derives it from the endpoint it
+// resolves; consent binds to it — so the smoke exercises the exact load↔verify binding the runner
+// threads in production.
+const endpointHashOf = (url) => createHash("sha256").update("mcp-endpoint/v1|" + (url ?? "")).digest("hex");
 
 // ── Deno shim ───────────────────────────────────────────────────────────────────
 const DNS = { "public.example": { A: ["93.184.216.34"] } };
@@ -195,13 +202,21 @@ const pinOf = (name) => intake.tools.find((t) => t.name === name)?.pin;
 // Consent lives here in a fixture — the runner NEVER infers it from a pin in its own request.
 // A fixture entry authorizes ONLY when the tool's LIVE pin matches the stored pin (a drifted live
 // pin → contract_changed) and the fixture's endpoint is current (a stale endpoint → endpoint_changed).
-let approvals = {};            // toolName → { pin, endpoint: "current" | "stale" }
+let approvals = {};            // toolName → { pin, endpoint: "current" | "stale", boundEndpointHash? }
 const verifyCalls = [];
 const verifyApproval = (q) => {
   verifyCalls.push(q);
   const a = approvals[q.toolName];
   if (!a) return { authorized: false, reason: "approval_required" };
   if (a.pin !== q.livePin) return { authorized: false, reason: "contract_changed" };
+  // INT-078: the loaded endpoint hash is REQUIRED (mirrors the DB's non-null param + up-front refusal).
+  if (!q.loadedEndpointHash) return { authorized: false, reason: "loaded_endpoint_hash_required" };
+  // The approval is bound to an endpoint; the endpoint the runner LOADED must equal it. `boundEndpointHash`
+  // pins the approved endpoint explicitly (used to model the TOCTOU repoint window: approval bound to A,
+  // loader resolves B). When unset, the fixture is bound to whatever endpoint is currently loaded.
+  if (a.boundEndpointHash !== undefined && a.boundEndpointHash !== q.loadedEndpointHash) {
+    return { authorized: false, reason: "endpoint_load_mismatch" };
+  }
   if (a.endpoint === "stale") return { authorized: false, reason: "endpoint_changed" };
   return { authorized: true, reason: "authorized" };
 };
@@ -218,7 +233,9 @@ const loadConnection = (connectionId) => {
   if (!c) return { ok: false, reason: "no_connection" };
   if (c.enabled === false) return { ok: false, reason: "connection_disabled" };
   if (!c.serverUrl || !c.auth) return { ok: false, reason: "connection_unusable" };
-  return { ok: true, connectionId, tenantId: c.tenantId, serverUrl: c.serverUrl, auth: c.auth };
+  // INT-078: the loaded endpoint hash is derived from the endpoint being resolved — so a re-point
+  // (a new serverUrl) yields a new hash, exactly as `get_mcp_connection_secret` does in production.
+  return { ok: true, connectionId, tenantId: c.tenantId, serverUrl: c.serverUrl, auth: c.auth, endpointHash: endpointHashOf(c.serverUrl) };
 };
 const deps = { recordReceipt: (r) => { receipts.push(r); }, verifyApproval, loadConnection };
 // Points conn-1's CANONICAL stored endpoint at `serverUrl` (as if the row held it), then runs BY ID —
@@ -259,6 +276,39 @@ check("...and it actually dispatched tools/call to the provider", (runSrv.calls 
   check("consent is verified with the LIVE pin, the connection, and an action-shape hash — never a request pin",
     q && q.livePin === pinOf("send_message") && q.connectionId === "conn-1" && /^[0-9a-f]{64}$/.test(q.argsShapeHash),
     JSON.stringify(q));
+}
+
+// INT-078 — consent is bound to the LOADED endpoint (close the load↔verify TOCTOU). The runner passes
+// the endpoint hash the loader resolved (`canon.endpointHash`); verify refuses when the approved
+// endpoint is not the one that will be dispatched to. A_URL is the endpoint the approval is bound to;
+// a re-point moves the row to B_URL (also a live, reachable MCP server that offers the same tool), so
+// the loader now resolves B — consent for A must NOT authorize a dispatch to B.
+{
+  const A_URL = "https://public.example/mcp-run";                 // the approved endpoint (has a route)
+  const B_URL = "https://public.example/mcp-run-repointed";       // the re-pointed endpoint
+  const repointSrv = {}; routes.set("/mcp-run-repointed", mcpServer(repointSrv));
+
+  // positive: approval bound to A, loader resolves A → the loaded endpoint IS the approved one → executes,
+  // and the runner passes the loaded endpoint hash into consent.
+  approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current", boundEndpointHash: endpointHashOf(A_URL) } };
+  const boundOk = await runOn(A_URL, { toolName: "send_message", args: { to: "a" }, mode: "execute" });
+  check("INT-078: a mutation whose LOADED endpoint equals the approved endpoint EXECUTES", boundOk.outcome === "executed", JSON.stringify(boundOk));
+  {
+    const q = verifyCalls.at(-1);
+    check("INT-078: consent is verified with the LOADED endpoint hash (bound to the dispatch target, not just the id)",
+      q && q.loadedEndpointHash === endpointHashOf(A_URL), JSON.stringify(q));
+  }
+
+  // negative (LOAD-BEARING): approval bound to A, but the row was re-pointed to B, so the loader now
+  // resolves B (reachable, offering the tool). Consent for A must be refused endpoint_load_mismatch, and
+  // NOTHING may dispatch to B. Removing the runner's `loadedEndpointHash: canon.endpointHash` thread
+  // makes the fake receive `undefined` → loaded_endpoint_hash_required, flipping BOTH this and the
+  // positive assertion above — so the endpoint-load binding is proven load-bearing.
+  const repointCallsBefore = (repointSrv.calls ?? []).length;
+  const repoint = await runOn(B_URL, { toolName: "send_message", args: { to: "a" }, mode: "execute" });
+  check("INT-078: a mutation whose LOADED endpoint differs from the approved endpoint is refused endpoint_load_mismatch (repoint window)",
+    repoint.outcome === "refused" && repoint.code === "endpoint_load_mismatch", JSON.stringify(repoint));
+  check("...and the re-pointed endpoint is NEVER dispatched to", (repointSrv.calls ?? []).length === repointCallsBefore, JSON.stringify(repointSrv.calls ?? []));
 }
 
 // #1262 finding 1 — SERVER FLOOR: a mutating-verb-named tool the provider MISLABELS ["read"]
@@ -611,12 +661,19 @@ console.log("\n— executable-facet gate: the loader refuses non-MCP-drivable ro
   const okSrv = {}, refuseSrv = {};
   routes.set("/mcp-gate-ok", mcpServer(okSrv));
   routes.set("/mcp-gate-refuse", mcpServer(refuseSrv));
-  const baseRow = { configured: true, enabled: true, connection_id: "conn-canon", tenant_id: TENANT, server_url: OK_URL, auth_token: "secret-token", auth_kind: "bearer", transport: "http" };
+  const baseRow = { configured: true, enabled: true, connection_id: "conn-canon", tenant_id: TENANT, server_url: OK_URL, endpoint_hash: endpointHashOf(OK_URL), auth_token: "secret-token", auth_kind: "bearer", transport: "http" };
   const loaderFor = (row) => connMod.makeRpcConnectionLoader(adminReturning(row));
 
   // Loader-level: a healthy http + bearer row resolves; each non-executable facet is connection_unusable.
   const okRes = await loaderFor(baseRow)("conn-canon");
   check("loader: a healthy http + bearer row resolves ok:true (from the loaded row)", okRes.ok === true && okRes.serverUrl === OK_URL, JSON.stringify(okRes));
+  // INT-078: the RPC returns endpoint_hash of the loaded endpoint; the loader SURFACES it (so the runner
+  // can bind consent to it) and REFUSES a configured+enabled row that lacks a well-formed one (fail closed).
+  check("loader: a healthy row surfaces endpointHash (64-hex) from the loaded endpoint", okRes.ok === true && /^[0-9a-f]{64}$/.test(okRes.endpointHash ?? ""), JSON.stringify(okRes));
+  const noHashRes = await loaderFor({ ...baseRow, endpoint_hash: undefined })("conn-canon");
+  check("loader: a configured+enabled row with NO endpoint_hash → connection_unusable (fail-closed)", noHashRes.ok === false && noHashRes.reason === "connection_unusable", JSON.stringify(noHashRes));
+  const badHashRes = await loaderFor({ ...baseRow, endpoint_hash: "not-a-64-hex-hash" })("conn-canon");
+  check("loader: a row with a malformed endpoint_hash → connection_unusable", badHashRes.ok === false && badHashRes.reason === "connection_unusable", JSON.stringify(badHashRes));
   // A public, tokenless MCP server (schema-supported auth_kind='none' with null tokens, returned
   // CONFIGURED by the RPC) is a fully executable facet — it must RESOLVE, never connection_unusable
   // (Codex P2). LOAD-BEARING: dropping 'none' from MCP_EXECUTABLE_AUTH_KINDS, or authFromSecret's
