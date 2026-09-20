@@ -635,7 +635,7 @@ test("Codex 8f76b0b6 P2: labeled PR and issue references (no hash) are recogniza
   for (const reference of ["PR 1280 owner ruling", "issue 1280 owner ruling"]) {
     const result = withField(
       "FLOW_BY_FLOW",
-      `WAIVED: owner-decision=${reference}; reason=the owner granted this waiver explicitly during the reconciliation session`,
+      `WAIVED: owner-decision=${reference}; reason=the Flow-by-Flow skill is not installed in this environment and the owner accepted the grounded flow trace`,
     );
     assert.equal(result.ok, true, `${reference}: ${result.errors.join("\n")}`);
   }
@@ -653,8 +653,28 @@ test("Codex 8f76b0b6 P2: repeated filler is not substantive prose — reason=ok 
 test("Codex c52d3725 P2: a dated owner ruling is a recognizable reference and passes", () => {
   const result = withField(
     "FLOW_BY_FLOW",
-    "WAIVED: owner-decision=2026-09-20 session ruling for PR 1280; reason=the owner granted the waiver explicitly during the reconciliation session",
+    "WAIVED: owner-decision=2026-09-20 session ruling for PR 1280; reason=the Flow-by-Flow skill is absent from this environment and the owner accepted the grounded flow trace in its place",
   );
+  assert.equal(result.ok, true, result.errors.join("\n"));
+});
+
+test("Codex a5163ade P2: a FLOW_BY_FLOW waiver whose reason does NOT establish unavailability fails (inconvenience is not eligibility)", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the installed skill was available but inconvenient",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex a5163ade P2: the FLOW_PROTOTYPE waiver carries NO unavailability requirement (its eligibility is the owner's flow ruling)", () => {
+  const record = coreEvidence
+    .replace(/^MATERIAL_FLOW_CHANGE:.*$/m, "MATERIAL_FLOW_CHANGE: YES: landing flow changed")
+    .replace(
+      /^FLOW_PROTOTYPE:.*$/m,
+      "FLOW_PROTOTYPE: WAIVED: owner-decision=PR 1280 owner ruling; reason=the owner adjudicated the changed landing flow and waived the prototype gate",
+    );
+  const result = validateEvidenceText(record, { required: true, solo: false });
   assert.equal(result.ok, true, result.errors.join("\n"));
 });
 

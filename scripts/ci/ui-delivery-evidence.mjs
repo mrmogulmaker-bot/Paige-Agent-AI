@@ -283,8 +283,13 @@ const OWNER_DECISION_REFERENCE = /(?:(?:PR|issue|discussion)\s*#?\s*[0-9]+|#[0-9
 // A substantive reason is prose, not an interjection: at least four DISTINCT
 // words — "ok ok ok ok" is filler, not prose.
 const MIN_REASON_WORDS = 4;
+// FLOW_BY_FLOW eligibility (Codex a5163ade P2): the doctrine permits this
+// waiver ONLY when the skill is genuinely unavailable in the delivery
+// environment — never because it was inconvenient. The reason must therefore
+// establish unavailability in its own words.
+const FLOW_BY_FLOW_WAIVER_ELIGIBILITY = /(?:unavailable|not installed|not present|absent)/i;
 
-function isWaivedWithOwnerDecision(value) {
+function isWaivedWithOwnerDecision(value, eligibility) {
   const match = /^WAIVED:\s*owner-decision=([^;]+);\s*reason=(\S.+)$/i.exec(String(value ?? "").trim());
   if (!match) return false;
   const [, ownerDecision, reason] = match;
@@ -298,7 +303,11 @@ function isWaivedWithOwnerDecision(value) {
   if (!OWNER_DECISION_REFERENCE.test(ownerDecision)) return false;
   const words = reason.trim().split(/\s+/).filter((word) => word.length > 0);
   const distinct = new Set(words.map((word) => word.toLowerCase().replace(/[^a-z0-9]/g, "")));
-  return distinct.size >= MIN_REASON_WORDS;
+  if (distinct.size < MIN_REASON_WORDS) return false;
+  // Gate-specific eligibility, when the doctrine ties the waiver to a
+  // condition the reason itself must establish.
+  if (eligibility && !eligibility.test(reason)) return false;
+  return true;
 }
 
 export function validateEvidenceText(text, classification) {
@@ -374,9 +383,10 @@ export function validateEvidenceText(text, classification) {
   if (!truthBoundary || isUnresolvedValue(truthBoundary[1])) errors.push("RELEASE_TRUTH_BOUNDARY must name at least one governed status and its claim boundary.");
   // FLOW_BY_FLOW: PASS with evidence, or an explicit owner waiver on record
   // (the honest path when the skill is unavailable and the owner accepts the
-  // grounded flow trace in its place). No other value passes.
-  if (!isPassWithEvidence(fields.get("FLOW_BY_FLOW")) && !isWaivedWithOwnerDecision(fields.get("FLOW_BY_FLOW"))) {
-    errors.push("FLOW_BY_FLOW must be PASS: with a non-placeholder evidence reference, or WAIVED: owner-decision=<reference>; reason=<reason>.");
+  // grounded flow trace in its place). No other value passes — and the
+  // waiver's reason must establish the skill's genuine unavailability.
+  if (!isPassWithEvidence(fields.get("FLOW_BY_FLOW")) && !isWaivedWithOwnerDecision(fields.get("FLOW_BY_FLOW"), FLOW_BY_FLOW_WAIVER_ELIGIBILITY)) {
+    errors.push("FLOW_BY_FLOW must be PASS: with a non-placeholder evidence reference, or WAIVED: owner-decision=<reference>; reason=<reason establishing the skill's genuine unavailability>.");
   }
   if (!isPassWithEvidence(fields.get("PAIGE_UI_DESIGN"))) errors.push("PAIGE_UI_DESIGN must be PASS: with a non-placeholder evidence reference.");
 
