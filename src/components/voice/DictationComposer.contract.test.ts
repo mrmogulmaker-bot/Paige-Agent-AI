@@ -68,8 +68,9 @@ describe("dictation composer scope and send contract", () => {
     expect(paigeAiChat).toContain("disabled={isLoading || dictationActive || !activeTenantId}");
   });
 
-  it("binds the conversations epoch to both tenant and selected thread", () => {
+  it("binds the conversations epoch to tenant, selected thread, and edited-draft identity", () => {
     const page = read("src/pages/admin/ClientsConversations.tsx");
-    expect(page).toContain('dictationScopeEpoch: `${activeTenantId ?? "resolving"}|${selected.key}`');
+    expect(page).toContain('dictationScopeEpoch: `${activeTenantId ?? "resolving"}|${selected.key}|${editingDraftId ?? "new-reply"}`');
+    expect(page).toContain("setScheduledFor(null); setEditingDraftId(null);");
   });
 });
