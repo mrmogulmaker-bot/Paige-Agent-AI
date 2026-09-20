@@ -30,7 +30,7 @@ UNVERIFIED: the authenticated browser acceptance pass on the named comparison ac
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
 
-INTERNAL_BUILD_IDENTITY: 27488aa8c28852c7958211bacdf03b98624f40b7; deployment=none-pre-merge; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=this-PR-and-src/__tests__/setup-gate-journey.test.tsx
+INTERNAL_BUILD_IDENTITY: 3079bdae719757d746aec6199f31686c596196e7; deployment=none-pre-merge; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=this-PR-and-src/__tests__/setup-gate-journey.test.tsx
 RELEASE_CHANNEL: development: branch build (environment=development); the frontend change deploys via Vercel on merge; no edge bundle or migration changed so neither edge-live nor db-live moves
 RELEASE_CLASSIFICATION: internal-only: an owner-adjudicated canonical access repair (Setup stops gating Solo application access); no owner-decided customer release beyond the contract correction itself
 CUSTOMER_RELEASE_IDENTITY: none: internal canonical-parity and access-correctness repair
