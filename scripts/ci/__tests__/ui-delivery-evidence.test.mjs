@@ -697,6 +697,21 @@ test("Codex 5081b595 P2: non-adjacent negations of unavailability also fail (fai
   }
 });
 
+test("Codex 0dd07dc3 P2: a canonical phrase RIDING WITH a contradictory negation fails", () => {
+  for (const reason of [
+    "the skill is not installed, but it is not currently unavailable",
+    "not available, but does not appear to be unavailable",
+    "the skill is no longer available and was never unavailable here",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, false, `${reason}: ${result.errors.join("\n")}`);
+    assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+  }
+});
+
 test("Codex 5081b595 P2: an affirmative unavailability claim in negation-free prose passes", () => {
   for (const reason of [
     "the Flow-by-Flow skill is unavailable in this delivery environment",

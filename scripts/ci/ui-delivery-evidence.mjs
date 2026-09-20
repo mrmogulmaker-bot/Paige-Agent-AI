@@ -296,15 +296,16 @@ const AFFIRMATIVE_UNAVAILABILITY = /\b(?:unavailable|absent)\b/i;
 function establishesUnavailability(reason) {
   // Canonical form 1 — a negator immediately before an AVAILABILITY word:
   // "not installed", "not present", "not available", "never installed",
-  // "no longer available".
-  if (NEGATED_AVAILABILITY.test(reason)) return true;
-  // Any other negation anywhere ("not unavailable", "not currently
-  // unavailable", "does not appear to be unavailable", …) makes the claim
-  // ambiguous or inverted — reject conservatively.
-  if (ANY_NEGATION.test(reason)) return false;
+  // "no longer available". Strip every occurrence, then sweep the REMAINDER:
+  // a contradictory negation riding alongside a canonical phrase ("not
+  // installed, but it is not currently unavailable") must still reject.
+  const canonical = new RegExp(NEGATED_AVAILABILITY.source, "gi");
+  const canonicalMatches = reason.match(canonical) ?? [];
+  const remainder = canonicalMatches.length ? reason.replace(canonical, " ") : reason;
+  if (ANY_NEGATION.test(remainder)) return false;
   // Canonical form 2 — an affirmative unavailability word in otherwise
   // negation-free prose: "the skill is unavailable…", "absent from…".
-  return AFFIRMATIVE_UNAVAILABILITY.test(reason);
+  return canonicalMatches.length > 0 || AFFIRMATIVE_UNAVAILABILITY.test(reason);
 }
 
 function isWaivedWithOwnerDecision(value, eligibility) {
