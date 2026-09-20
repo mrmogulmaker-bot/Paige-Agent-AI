@@ -92,7 +92,8 @@ function hasMindUnion(content) {
 export function isMindProjectionCandidate(content) {
   return (
     hasMindUnion(content) ||
-    /export\s+(?:function|const)\s+(?:project|render)\w*MindEvidence\b/.test(content)
+    /export\s+(?:async\s+)?function\s+(?:project|render)\w*MindEvidence\b/.test(content) ||
+    /export\s+const\s+(?:project|render)\w*MindEvidence\b/.test(content)
   );
 }
 
@@ -155,16 +156,19 @@ export function exportedCallableBodies(content) {
   const fnRe = /export\s+(?:async\s+)?function\s+(\w+)\s*\([^)]*\)\s*(?::[^{]+?)?\{/g;
   for (let m; (m = fnRe.exec(content)); ) {
     const openIdx = m.index + m[0].length - 1; // the `{`
-    out.push({ name: m[1], body: sliceBalancedBlock(content, openIdx) });
+    out.push({ name: m[1], body: sliceBalancedBlock(content, openIdx), isExpr: false });
   }
   const constRe = /export\s+const\s+(\w+)\s*=\s*(?:async\s+)?\([^)]*\)\s*(?::[^=]+?)?=>\s*/g;
   for (let m; (m = constRe.exec(content)); ) {
     const rest = content.slice(m.index + m[0].length);
     if (rest[0] === "{") {
-      out.push({ name: m[1], body: sliceBalancedBlock(content, m.index + m[0].length) });
+      out.push({ name: m[1], body: sliceBalancedBlock(content, m.index + m[0].length), isExpr: false });
     } else {
+      // Expression-bodied arrow: the body IS the returned expression (`=> render*(…)`). The `=>`
+      // was consumed by the match, so the extracted text has no `return`/`=>` prefix — MC5 must
+      // treat it as a direct return, not require a token that extraction removed (Codex PR-A2 P2).
       const end = rest.search(/;\s*(?:\n|$)/);
-      out.push({ name: m[1], body: end >= 0 ? rest.slice(0, end) : rest });
+      out.push({ name: m[1], body: end >= 0 ? rest.slice(0, end) : rest, isExpr: true });
     }
   }
   return out;
@@ -275,7 +279,12 @@ export function analyzeMindContract(inputs) {
       });
     }
     for (const fn of bodies) {
-      const rendersViaProjection = /(?:return|=>)\s*(?:await\s+)?render\w*MindEvidence\s*\(/.test(fn.body);
+      // A block body must RETURN via the projection; an expression-bodied arrow (`=> render*(…)`)
+      // IS the returned expression, so a bare render call suffices (Codex PR-A2 P2 — no `return`/`=>`
+      // prefix, since extraction consumed the `=>`).
+      const rendersViaProjection = fn.isExpr
+        ? /(?:await\s+)?render\w*MindEvidence\s*\(/.test(fn.body)
+        : /(?:return|=>)\s*(?:await\s+)?render\w*MindEvidence\s*\(/.test(fn.body);
       const rederivesStates = /["']no_evidence["']/.test(fn.body); // the one Mind state literal unique enough to be a re-derivation tell
       if (!rendersViaProjection || rederivesStates) {
         const why = !rendersViaProjection
