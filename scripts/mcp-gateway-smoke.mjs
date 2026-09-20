@@ -598,6 +598,14 @@ console.log("\n— executable-facet gate: the loader refuses non-MCP-drivable ro
   check("loader: a header facet named 'Authorization' (reserved) → connection_unusable", reservedHeaderRes.ok === false && reservedHeaderRes.reason === "connection_unusable", JSON.stringify(reservedHeaderRes));
   const invalidHeaderRes = await loaderFor({ ...baseRow, server_url: REFUSE_URL, auth_kind: "header", auth_header_name: "bad name" })("conn-canon");
   check("loader: a header facet with an invalid RFC-token name ('bad name') → connection_unusable", invalidHeaderRes.ok === false && invalidHeaderRes.reason === "connection_unusable", JSON.stringify(invalidHeaderRes));
+  // Mcp-Session-Id is the transport's negotiated session header (applied AFTER the auth headers in
+  // post()), so a credential named it would override the real session id; it is reserved, so any
+  // casing is refused at the loader before prepare can affirm and before execute can corrupt dispatch.
+  const sessionHeaderRow = { ...baseRow, server_url: REFUSE_URL, auth_kind: "header", auth_header_name: "Mcp-Session-Id" };
+  const sessionHeaderRes = await loaderFor(sessionHeaderRow)("conn-canon");
+  check("loader: a header facet named 'Mcp-Session-Id' (transport-reserved) → connection_unusable", sessionHeaderRes.ok === false && sessionHeaderRes.reason === "connection_unusable", JSON.stringify(sessionHeaderRes));
+  const prepSessionHeader = await runReal({ ...baseRow, server_url: REFUSE_URL, auth_kind: "header", auth_header_name: "mcp-session-id" }, "prepare");
+  check("runner: prepare on an 'mcp-session-id' header facet (any casing) → refused, never a false 'prepared'", prepSessionHeader.outcome === "refused" && prepSessionHeader.code === "connection_unusable", JSON.stringify(prepSessionHeader));
 
   // Codex R4 P2-A — an OAuth row whose access token has already EXPIRED would dispatch a dead
   // credential (this loader does not refresh/rotate); refuse it. A future expiry still resolves.

@@ -61,7 +61,11 @@ const DEFAULT_MAX_BYTES = 1_048_576;
  * bearer token for a server that reads both.
  */
 const RESERVED_HEADERS = new Set([
-  "authorization", "content-type", "accept", "mcp-protocol-version",
+  // `mcp-session-id` is the negotiated session header this transport sets on every post AFTER the
+  // auth headers' insertion point, so a credential named it would override the real session id and
+  // the acknowledgement + tool calls would be rejected — reserve it so a header facet named it fails
+  // closed at the loader (authUsable) and at dispatch (authHeaders), never a false `prepared`.
+  "authorization", "content-type", "accept", "mcp-protocol-version", "mcp-session-id",
   // Not set here, but set by the runtime, and a value that changes which virtual host
   // answers is not a thing a credential field gets to decide.
   "host", "content-length", "connection", "transfer-encoding",
