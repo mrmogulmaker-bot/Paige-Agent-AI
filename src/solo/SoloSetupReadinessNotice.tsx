@@ -23,15 +23,23 @@ import { Link } from "react-router-dom";
  * remounts) and completing Setup retires it for good via the predicate.
  */
 export function SoloSetupReadinessNotice({
+  visible,
   setupHref,
   dismissed,
   onDismiss,
 }: {
+  /** Truthful readiness state — the notice itself is shown to every non-staff
+   *  operator of an incomplete workspace (readiness debt is everyone's news). */
+  visible: boolean;
+  /** The deep link, present ONLY for callers who can actually edit Setup
+   *  (the server-derived tenant owner). Read-only members/coaches see the
+   *  notice without a CTA — Codex `1c401d1b` P2: a persistent "Finish setup"
+   *  link leading to a surface the user cannot change is a dead-end CTA. */
   setupHref: string | null;
   dismissed: boolean;
   onDismiss: () => void;
 }) {
-  if (dismissed || setupHref == null) return null;
+  if (dismissed || !visible) return null;
   return (
     <div
       className="solo-setup-readiness"
@@ -54,9 +62,13 @@ export function SoloSetupReadinessNotice({
       <span style={{ minWidth: 0 }}>
         Setup isn&apos;t finished yet — business context makes PAIGE far more useful, and PAIGE can
         help you fill it in.{" "}
-        <Link to={setupHref} style={{ color: "var(--gold-bright)", textDecoration: "none" }}>
-          Finish setup when you&apos;re ready
-        </Link>{" "}
+        {setupHref != null ? (
+          <Link to={setupHref} style={{ color: "var(--gold-bright)", textDecoration: "none" }}>
+            Finish setup when you&apos;re ready
+          </Link>
+        ) : (
+          "Finish setup when you're ready (an owner completes it from Settings)."
+        )}{" "}
         — everything else works in the meantime.
       </span>
       <button

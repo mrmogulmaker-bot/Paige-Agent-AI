@@ -36,7 +36,7 @@ const { isSoloSetupComplete } = await import("@/components/auth/RequireSetupComp
 
 let host: HTMLDivElement;
 let root: Root | null = null;
-const mount = async (props: { setupHref: string | null; dismissed?: boolean; onDismiss?: () => void }) => {
+const mount = async (props: { visible?: boolean; setupHref: string | null; dismissed?: boolean; onDismiss?: () => void }) => {
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -46,6 +46,7 @@ const mount = async (props: { setupHref: string | null; dismissed?: boolean; onD
         MemoryRouter,
         null,
         React.createElement(SoloSetupReadinessNotice, {
+          visible: props.visible ?? true,
           setupHref: props.setupHref,
           dismissed: props.dismissed ?? false,
           onDismiss: props.onDismiss ?? (() => {}),
@@ -119,8 +120,8 @@ describe("one viewport owner: the reminder renders inside SoloApp's height-owned
   });
 
   it("Codex ea0e7a8b P2 regression: the reminder predicate carries the STAFF guard — an operator acting inside an incomplete standalone tenant gets no owner setup guidance", () => {
-    // The guard lives on the href derivation itself, so the notice (which
-    // renders on setupHref != null) is suppressed for staff act-as sessions.
+    // The guard lives on the visibility derivation, so the notice is
+    // suppressed entirely for staff act-as sessions.
     const guardRegex = /!isPlatformStaff\s*&&\s*activeTenant\?\.account_number != null/;
     expect(guardRegex.test(soloAppSrc)).toBe(true);
     expect(soloAppSrc).toContain(
@@ -130,6 +131,23 @@ describe("one viewport owner: the reminder renders inside SoloApp's height-owned
     // pin fail (proven on the mutated text, not by asserting the negation).
     const guardless = soloAppSrc.replace(/!isPlatformStaff\s*&&\s*/, "");
     expect(guardRegex.test(guardless)).toBe(false);
+  });
+
+  it("Codex 1c401d1b P2 regression: the deep link exists ONLY for callers who can edit Setup (the server-derived tenant owner) — read-only members get the notice with NO CTA", () => {
+    // Visibility and link are SEPARATE: the notice is everyone's truthful
+    // readiness news; the CTA must never lead to a surface the user cannot
+    // change (solo_setup_access_scope maps non-owners/admins to read_only).
+    expect(soloAppSrc).toContain("const showSetupReminder =");
+    expect(soloAppSrc).toMatch(/canFinishSetup\s*=[\s\S]*?owner_user_id === activeUserId/);
+    expect(soloAppSrc).toMatch(/soloSetupHref = showSetupReminder && canFinishSetup/);
+    // The notice component renders the link ONLY on a non-null href, and
+    // role-appropriate copy otherwise (no dead-end CTA).
+    const noticeSrc = read("src/solo/SoloSetupReadinessNotice.tsx");
+    expect(noticeSrc).toMatch(/setupHref != null \? \(\s*<Link/);
+    expect(noticeSrc).toContain("an owner completes it from Settings");
+    // Sabotage-sensitivity: unlinking the gate (link for everyone) fails the pin.
+    const ungated = soloAppSrc.replace("showSetupReminder && canFinishSetup", "showSetupReminder");
+    expect(/soloSetupHref = showSetupReminder && canFinishSetup/.test(ungated)).toBe(false);
   });
 });
 
@@ -169,10 +187,20 @@ describe("the reminder's behavior (component)", () => {
     expect(dismissed).toBe(true);
   });
 
-  it("renders nothing when dismissed or when setup is complete (null href)", async () => {
-    await mount({ setupHref: "/solo/42/settings/setup", dismissed: true });
+  it("renders nothing when dismissed or when not visible (complete / staff)", async () => {
+    await mount({ visible: true, setupHref: "/solo/42/settings/setup", dismissed: true });
     expect(host.querySelector("[data-setup-readiness]")).toBeNull();
-    await mount({ setupHref: null });
+    await mount({ visible: false, setupHref: "/solo/42/settings/setup" });
     expect(host.querySelector("[data-setup-readiness]")).toBeNull();
+  });
+
+  it("Codex 1c401d1b P2: a read-only caller sees the truthful notice with NO link — role-appropriate copy, no dead-end CTA", async () => {
+    await mount({ visible: true, setupHref: null });
+    expect(host.querySelector("[data-setup-readiness]")).toBeTruthy();
+    expect(host.textContent).toContain("Setup isn't finished");
+    expect(host.querySelector("a")).toBeNull();
+    expect(host.textContent).toContain("an owner completes it from Settings");
+    const dismiss = [...host.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Dismiss setup reminder");
+    expect(dismiss).toBeTruthy();
   });
 });

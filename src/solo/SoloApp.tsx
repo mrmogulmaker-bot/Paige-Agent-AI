@@ -172,13 +172,21 @@ const { activeTenant, activeTenantId, activeUserId, isPlatformStaff } = useTenan
 // stays the one viewport owner, tcs-main the one scroll owner.
 const [setupReminderDismissed, setSetupReminderDismissed] = React.useState(false);
 // Codex ea0e7a8b P2: a platform operator acting inside a standalone tenant must
-// not receive Solo-owner setup guidance — the same staff guard the gate's old
-// banner carried moves WITH the notice. (Staff here = isPlatformStaff true,
-// regardless of which tenant they are operating in.)
-const soloSetupHref = !isPlatformStaff
+// not receive Solo-owner setup guidance — the staff guard moves WITH the
+// notice. Codex 1c401d1b P2: the deep link exists ONLY for callers who can
+// actually edit Setup — the server's solo_setup_access_scope() maps everyone
+// but owners/admins to read_only, and the tenant-owner fact is the one the
+// shell already holds server-derived (activeTenant.owner_user_id vs the
+// authenticated subject). Read-only members still see the truthful readiness
+// notice, without a CTA into a surface they cannot change.
+const showSetupReminder =
+  !isPlatformStaff
   && activeTenant?.account_number != null
-  && !isSoloSetupComplete(activeTenant?.features)
-  ? `/solo/${activeTenant.account_number}/settings/setup`
+  && !isSoloSetupComplete(activeTenant?.features);
+const canFinishSetup =
+  activeTenant?.owner_user_id != null && activeTenant.owner_user_id === activeUserId;
+const soloSetupHref = showSetupReminder && canFinishSetup
+  ? `/solo/${activeTenant!.account_number}/settings/setup`
   : null;
 const vaultAccess = useVaultAccess();
 const paigeTabEpochRef=React.useRef(activeTenantId);
@@ -305,7 +313,7 @@ paigeReturnHref={urlDriven?branchPath('solo',urlAccount,'command-center'):undefi
 brandHomeHref={activeTenant?.account_number!=null?branchPath('solo',String(activeTenant.account_number),'command-center'):undefined}
 onSignOut={()=>void performSignOut({redirectTo:'/'})}>
 <div className="paige-solo" data-theme={theme} style={{width:'100%',maxWidth:'none',height:'100%',minWidth:0,minHeight:0,alignSelf:'stretch',display:'flex',flexDirection:'column'}}>
-<SoloSetupReadinessNotice setupHref={soloSetupHref} dismissed={setupReminderDismissed} onDismiss={()=>setSetupReminderDismissed(true)}/>
+<SoloSetupReadinessNotice visible={showSetupReminder} setupHref={soloSetupHref} dismissed={setupReminderDismissed} onDismiss={()=>setSetupReminderDismissed(true)}/>
 <div style={{display:'flex',flex:1,minHeight:0,overflow:'hidden'}}>
 <main key={route} data-solo-screen-host style={{flex:1,overflow:full?'hidden':'auto',minHeight:0,minWidth:0}}>{route==='paige'?null:screens[route]}</main>
 {studio&&<VibeStudio onBack={closeStudio}/>}</div></div>
