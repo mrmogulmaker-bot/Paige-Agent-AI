@@ -307,9 +307,19 @@ const BOUND_UNAVAILABILITY = /\bflow[- ]by[- ]flow(?:\s+skill)?(?:\s+(?:is|was|a
 // the present delivery environment" (adjectival) assert unavailability, not
 // availability. "installed"/"available" keep the bare-token veto because
 // their bare occurrence in a waiver reason is an availability claim;
-// "present" needs a predicative anchor because of its other senses.
+// "present" needs a predicative test because of its other senses.
 const BARE_AVAILABILITY_CLAIM = /\b(?:installed|available)\b/i;
-const PRESENT_PREDICATE = /\b(?:is|was|are|were|remains?|seems?|appears?|been|becomes?)\s+(?:and\s+|or\s+|also\s+|still\s+|now\s+)*present\b/i;
+// A "present" occurrence is NON-predicative only in the temporal/adjectival
+// forms ("at present", "the present environment", "present-day tooling").
+// Every other occurrence is an affirmation — whatever ordinary adverbs or
+// verb phrases sit between the verb and the word ("is currently present",
+// "continues to be present", Codex c508fc91 P2).
+const NON_PREDICATIVE_PRESENT = /\b(?:at|the|this|that|these|those|a|an|our|their|its|his|her)\s+present\b|\bpresent[-–—]/gi;
+function affirmsPresent(clause) {
+  const occurrences = clause.match(/\bpresent\b/gi) ?? [];
+  const exempt = clause.match(NON_PREDICATIVE_PRESENT) ?? [];
+  return occurrences.length > exempt.length;
+}
 function establishesUnavailability(reason) {
   // Canonical form 1 — a negator immediately before an AVAILABILITY word:
   // "not installed", "not present", "not available", "never installed",
@@ -339,7 +349,7 @@ function establishesSkillUnavailability(reason) {
     if (BOUND_UNAVAILABILITY.test(clause)) qualifying = true;
     const canonical = new RegExp(NEGATED_AVAILABILITY.source, "gi");
     const stripped = clause.replace(canonical, " ");
-    if (BARE_AVAILABILITY_CLAIM.test(stripped) || PRESENT_PREDICATE.test(stripped)) return false;
+    if (BARE_AVAILABILITY_CLAIM.test(stripped) || affirmsPresent(stripped)) return false;
   }
   return qualifying;
 }

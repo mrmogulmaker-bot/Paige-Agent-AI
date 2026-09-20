@@ -821,12 +821,18 @@ test("Codex 1ed64059 P2: temporal 'at present' and adjectival 'the present …' 
 });
 
 test("Codex 1ed64059 P2 guard: a predicative 'is present' still vetoes the waiver", () => {
-  const result = withField(
-    "FLOW_BY_FLOW",
-    "WAIVED: owner-decision=PR 1280 owner ruling; reason=Flow-by-Flow is unavailable in this environment; it is present here",
-  );
-  assert.equal(result.ok, false, result.errors.join("\n"));
-  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+  for (const reason of [
+    "Flow-by-Flow is unavailable in this environment; it is present here",
+    "Flow-by-Flow is unavailable in this delivery environment; it is currently present here",
+    "Flow-by-Flow is unavailable in this delivery environment; it continues to be present here",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, false, `${reason}: ${result.errors.join("\n")}`);
+    assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+  }
 });
 
 test("Codex 5081b595 P2: an affirmative unavailability claim in negation-free prose passes", () => {
