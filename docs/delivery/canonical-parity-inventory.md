@@ -1,6 +1,6 @@
 # PAIGE Canonical Parity Inventory — PR 2 (read-only grounding)
 
-**Date:** 2026-09-17 (corrected same day per coordinator reconciliation) · **Base:** `3da53ec8` (#1269 merged) · **Program:** Canonical Parity, PR 2 of the train
+**Date:** 2026-09-17 (corrected same day per coordinator reconciliation; setup-gate claims re-corrected 2026-09-20 after #1277/#1285 — Setup is not an access gate) · **Base:** `3da53ec8` (#1269 merged) · **Program:** Canonical Parity, PR 2 of the train
 **Method:** Flow-by-Flow discipline applied at the authentication/routing-boundary depth. The synced third-party Flow-by-Flow skill is absent from this environment (established in prior PRs); the doctrine-hierarchy equivalent ran: every claim below was traced in code or queried read-only from production — none inferred from naming alone.
 
 ## 1. The resolution chain, as traced in current code
@@ -24,7 +24,7 @@ authenticated identity (supabase session)
    /business/* → RequireCompleteSignup → RequireSetupComplete → BusinessEntry → AgencyApp(sub-account mode)
    /agency/* → AgencyEntry (bare ⇒ legacy AgencyLayout; numeric ⇒ AgencyApp)
    /operator/* → OperatorEntry (login leg outside RequireOperator)
-→ setup gate: RequireSetupComplete (#1269: playbook | playbook_config | solo_setup_complete)
+→ setup gate: CORRECTED 2026-09-20 (#1277): Setup is NOT an access gate for solo — RequireSetupComplete's solo tier never redirects and renders children ONLY; a dismissible readiness notice (inside SoloApp's height-owned column) shows while setup is incomplete; PAIGE Chat is reachable unconditionally; the sub-account redirect contract is unchanged. The playbook/playbook_config/solo_setup_complete markers (#1269) now drive notice visibility, never access. The shell's Owner/Team label derives from membership ownership (#1285), not the tenants.owner_user_id pointer.
 → capability state: useTierFeatures() over the tier matrix (src/lib/tier/tierFeatures.ts)
 ```
 
@@ -49,7 +49,7 @@ Machine-readable artifact: `docs/delivery/canonical-parity-matrix.json` — **de
 
 Row arithmetic: 4+5+2+2 = **13 enterable CANONICAL**; 1+2 = **3 canceled NOT APPLICABLE**; 13+3 = **16 rows** — matching the CI-enforced matrix summary.
 
-**Counts, derived from the matrix rows (CI-enforced): 16 rows, all structurally valid; 13 CANONICAL (enterable parity); 3 NOT APPLICABLE (canceled — status-deny-listed, no enterable experience to compare); 0 CONFIGURATION DRIFT; 0 PROVISIONING DRIFT; 0 LEGACY ROUTING DEBT; 0 INVALID STRUCTURAL STATE.** Two nuances recorded as drift-debt rather than live divergence: (a) the 5 enterable flag-off Solo accounts are canonical only *by accident of the flag being dead* (the 6th is canceled — NOT APPLICABLE) — the flag values themselves are stale configuration (cleanup debt, not experience divergence); (b) `solo_setup_complete` reads false on every row because the #1269 trigger ships with this train — the gate opens today via the legacy playbook markers for the 9 setup-complete accounts; the 3 playbook-less accounts (2 trial + 1 test fixture) will set the marker on their first save.
+**Counts, derived from the matrix rows (CI-enforced): 16 rows, all structurally valid; 13 CANONICAL (enterable parity); 3 NOT APPLICABLE (canceled — status-deny-listed, no enterable experience to compare); 0 CONFIGURATION DRIFT; 0 PROVISIONING DRIFT; 0 LEGACY ROUTING DEBT; 0 INVALID STRUCTURAL STATE.** Two nuances recorded as drift-debt rather than live divergence: (a) the 5 enterable flag-off Solo accounts are canonical only *by accident of the flag being dead* (the 6th is canceled — NOT APPLICABLE) — the flag values themselves are stale configuration (cleanup debt, not experience divergence); (b) `solo_setup_complete` reads false on every row because the #1269 trigger ships with this train — CORRECTED 2026-09-20 (#1277): there is no longer a gate to open; the markers (legacy playbook or solo_setup_complete) drive only the dismissible readiness notice, and every Solo tenant — including the playbook-less accounts — enters at Command Center → Business Game Plan with PAIGE Chat reachable unconditionally.
 
 ## 4. Answers to the ten mandated questions
 
@@ -67,9 +67,9 @@ Row arithmetic: 4+5+2+2 = **13 enterable CANONICAL**; 1+2 = **3 canceled NOT APP
 
 **Q7 — Today's provisioning path for a new standalone Solo tenant?** Two paths: (a) **public signup** → `tenant-signup` (pre-confirmed user) → the onboarding flow calls the `provision_tenant` RPC (`standalone`, trial, slug, brand; auto account-number via `trg_assign_tenant_account_number`; `ensure_tenant_features_row` trigger creates the features row; entitlements + email identity + default calendar via triggers); (b) **paid Solo Beta** → checkout → `solo-beta-stripe-webhook` → `solo_beta_fulfill_checkout` (atomic: tenants INSERT with `account_type='standalone'` CHECK, `features.solo_beta_offer_code` marker, billing account, subscription). Operator path: `operator_provision_tenant` (the ProvisionTenantDialog seam) → same RPC family.
 
-**Q8 — Does provisioning guarantee the canonical baseline automatically?** **Yes for shell routing** (nothing to guarantee: routing is structural — a new standalone tenant lands in `/solo/{n}` by typing, no flag needed). **No explicit baseline artifact exists**: `provision_tenant` writes NO features (no `solo_shell_enabled` — correctly, since it's dead; no playbook — deliberately, the #826 gate holds them on Setup until they choose). The canonical-baseline "guarantee" is currently emergent from the routing refactor, not asserted by provisioning.
+**Q8 — Does provisioning guarantee the canonical baseline automatically?** **Yes for shell routing** (nothing to guarantee: routing is structural — a new standalone tenant lands in `/solo/{n}` by typing, no flag needed). **No explicit baseline artifact exists**: `provision_tenant` writes NO features (no `solo_shell_enabled` — correctly, since it's dead; no playbook — deliberately: post-#1277 nothing is gated on it, the readiness notice simply shows until the first save). The canonical-baseline "guarantee" is currently emergent from the routing refactor, not asserted by provisioning.
 
-**Q9 — Existing same-type accounts requiring manual repair today?** **None for shell parity** (13/13 enterable rows canonical; the 3 canceled rows are NOT APPLICABLE, not divergent). The 6 stale `solo_shell_enabled` values are cosmetic debt. The one real repair-shaped item: the 3 playbook-less Solo tenants are gated on Setup and will complete via the #1269 marker — no manual action needed.
+**Q9 — Existing same-type accounts requiring manual repair today?** **None for shell parity** (13/13 enterable rows canonical; the 3 canceled rows are NOT APPLICABLE, not divergent). The 6 stale `solo_shell_enabled` values are cosmetic debt. CORRECTED 2026-09-20 (#1277): the playbook-less Solo tenants are NOT gated — no account is held on Setup; the readiness notice (not a redirect) shows until each account's first save sets `solo_setup_complete`. No manual action needed.
 
 **Q10 — The exact PR 3 delta:** (1) make the canonical baseline EXPLICIT at provision time — a provisioning assertion/trigger that a new `standalone` tenant is structurally routable to `/solo/{n}` (account_number assigned, features row exists, tier resolvable) — turning the emergent guarantee into a contract; (2) retire the dead `solo_shell_enabled` derivation + stale values (or fold into Cursor's cleanup if the owner prefers); (3) decide the `agency_shell_enabled` end-state (flip default-on + retire the legacy-board gate, or keep as the named temporary control); (4) backfill is NOT needed — no account requires repair.
 
@@ -95,4 +95,4 @@ Open PRs touching the seams: #1268 (mcp_gateway migration — no seam overlap; o
 ## 7. PROOF OWED
 
 - Authenticated per-account render proof (signing in as each tenant type and confirming the resolved shell) — no credentialed browser session in this environment; the matrix's resolved-shell column is derived from the traced code paths + the structural flags, labeled PROOF OWED at the authenticated-runtime level.
-- The `solo_setup_complete` marker's first organic set (ships with #1269's merged trigger; zero rows carry it yet — expected).
+- The `solo_setup_complete` marker's first organic set (ships with #1269's merged trigger; zero rows carry it yet — expected). CORRECTED 2026-09-20 (#1277): the marker retires the readiness notice, never access — the authenticated proof owed is that a zero-save Solo lands on Command Center → Business Game Plan with the notice showing and PAIGE Chat reachable, and a known-good account shows no notice.

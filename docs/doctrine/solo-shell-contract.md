@@ -53,7 +53,7 @@ un-clips Clients, Campaigns and Compass too — which is precisely how it broke 
 | Surface | Policy |
 |---|---|
 | Settings → **Setup**, Connections (incl. Calendars), Integrations | Visible scrolling, with the bar drawn |
-| Settings → Team, Notifications, Security & data, Vault, Billing | Form-fitting — they genuinely fit their host |
+| Settings → Team, Security & data, Vault, Billing | Form-fitting — they genuinely fit their host |
 | Command Center, Clients, Campaigns/Growth, Compass, Mind, Analytics | Form-fitting, design-locked. Owner authorization required to change |
 
 This row used to read *"Settings, Connections, Integrations — visible scrolling where
