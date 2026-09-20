@@ -54,21 +54,22 @@ function errorCodeOf(e: unknown): string {
 }
 
 // Reduce a UUID to its 32-hex canonical key for identity comparison, or `null` when the value is NOT
-// a valid UUID. Postgres accepts several equivalent spellings — canonical hyphenated, hyphenless,
-// brace-wrapped, any case — and serializes a stored id to canonical lowercase-hyphenated, so a caller
-// may name the SAME connection/tenant in a different-but-valid spelling than the row carries; a raw
-// (even lowercased) string compare would then falsely refuse it. This VALIDATES rather than merely
-// strips: after dropping one optional pair of braces, the value must contain ONLY hex + hyphens and
-// reduce to exactly 32 hex nibbles — so a malformed identity (a garbage-prefixed alias like
-// `zzabcdef…`, or an all-non-hex string) is rejected, never silently stripped down to a key that
-// could COLLIDE with a valid UUID and slip past the loader-independent guard (Codex P2). In production
-// the typed-`uuid` RPC arg already rejects a non-UUID; this guard validates independently because it
-// is deliberately loader-independent (§39) — an alternate loader accepting aliases must not defeat it.
+// a valid UUID. A caller may name the SAME connection/tenant in a different-but-valid spelling than the
+// row carries (canonical hyphenated, hyphenless, brace-wrapped, any case), and a raw string compare
+// would then falsely refuse it. This VALIDATES A SUPPORTED LAYOUT before reducing — after dropping one
+// optional pair of braces and lowercasing, the value must be EITHER 32 hex (hyphenless) OR the exact
+// canonical 8-4-4-4-12 hyphenated shape. It deliberately does NOT accept "hex + hyphens anywhere" and
+// then strip: that let a stray-hyphen value (`-<32hex>`, `<32hex>-`, or wrong-group hyphens) reduce to
+// the same 32 nibbles as a canonical UUID and COLLIDE with it (Codex P2). A malformed identity (a
+// garbage-prefixed alias like `zzabcdef…`, an all-non-hex string, or an odd hyphen layout) is rejected,
+// never silently reduced to a colliding key that would slip past the loader-independent guard. In
+// production the typed-`uuid` RPC arg already rejects a non-UUID; this validates independently because
+// it is deliberately loader-independent (§39) — an alternate loader accepting aliases must not defeat it.
 const canonicalUuid = (v: string): string | null => {
   const s = v.trim().toLowerCase().replace(/^\{(.*)\}$/, "$1");
-  if (!/^[0-9a-f-]+$/.test(s)) return null;
-  const hex = s.replace(/-/g, "");
-  return /^[0-9a-f]{32}$/.test(hex) ? hex : null;
+  if (/^[0-9a-f]{32}$/.test(s)) return s;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)) return s.replace(/-/g, "");
+  return null;
 };
 
 // Do two identifiers name the SAME identity? Both valid UUIDs → compare canonical keys (so any accepted

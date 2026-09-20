@@ -547,6 +547,18 @@ console.log("\n— single source: consent + dispatch from one canonical connecti
   const badTen = await runnerMod.runConnectionCapability({ connectionId: CANON_HEX_ID, tenantId: "zz" + CANON_HEX_TEN, toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: spellLoad });
   check("a malformed (garbage-prefixed, non-UUID) tenant_id is refused foreign_tenant, never stripped to a colliding key", badTen.outcome === "refused" && badTen.code === "foreign_tenant", JSON.stringify(badTen));
 
+  // Codex P2 (follow-up on 6a289b48): a STRAY-HYPHEN value must also be rejected, not hyphen-stripped.
+  // `-`+32hex / 32hex+`-` (or wrong-group hyphens) reduced to the canonical key under a permissive
+  // "hex+hyphens anywhere" parser and collided with a real UUID; canonicalUuid now validates the LAYOUT
+  // (hyphenless 32, or canonical 8-4-4-4-12) BEFORE reducing. LOAD-BEARING: the permissive parser flips
+  // both of these to a false read_observed.
+  approvals = {};
+  const leadHyphen = await runnerMod.runConnectionCapability({ connectionId: "-abcdef0123456789abcdef0123456789", tenantId: CANON_HEX_TEN, toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: spellLoad });
+  check("a leading-hyphen non-UUID connection_id is refused connection_mismatch (layout validated, not hyphen-stripped)", leadHyphen.outcome === "refused" && leadHyphen.code === "connection_mismatch", JSON.stringify(leadHyphen));
+  approvals = {};
+  const trailHyphen = await runnerMod.runConnectionCapability({ connectionId: CANON_HEX_ID, tenantId: "aaaaaaaabbbbccccddddeeeeeeeeeeee-", toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: spellLoad });
+  check("a trailing-hyphen non-UUID tenant_id is refused foreign_tenant (layout validated, not hyphen-stripped)", trailHyphen.outcome === "refused" && trailHyphen.code === "foreign_tenant", JSON.stringify(trailHyphen));
+
   // (6) the consent verifier is asked to authorize the SAME canonical connection_id that backs
   // dispatch, and (7) the mutation dispatches to that same row's endpoint — single source, proven together.
   approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
