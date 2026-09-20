@@ -6,8 +6,9 @@
 -- credential lives IN the endpoint and BOTH token columns are legitimately null) as
 -- `configured:false`, because the "both tokens null" guard exempted only `auth_kind = 'none'`. The
 -- loader already allow-lists `url` (`MCP_EXECUTABLE_AUTH_KINDS`) and `authFromSecret` already maps it
--- to `{ kind: 'url' }`, so the ONLY defect is this RPC-side false-refuse: a validly-configured url
--- connection could never resolve, before the loader's own `url` handling ever ran.
+-- to `{ kind: 'none' }` (no auth header is added — the credential is already in the URL), so the ONLY
+-- defect is this RPC-side false-refuse: a validly-configured url connection could never resolve,
+-- before the loader's own `url` handling ever ran.
 --
 -- THE FIX (one predicate): exempt `url` alongside `none` from the null-token guard. A url row whose
 -- `server_url_ct` is present (the credential is inside the decrypted endpoint) is `configured:true`.
