@@ -739,6 +739,15 @@ test("Codex 84e06888 P2: a qualifying clause alongside a clause affirming the sk
   assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
 });
 
+test("Codex 7aa2236b P2: an unrelated tool's unavailability is not a Flow-by-Flow claim — the subject must be the skill", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the screenshot tool is unavailable in this delivery environment",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
 test("Codex 5081b595 P2: an affirmative unavailability claim in negation-free prose passes", () => {
   for (const reason of [
     "the Flow-by-Flow skill is unavailable in this delivery environment",
