@@ -280,12 +280,13 @@ function isWaivedWithOwnerDecision(value) {
   const match = /^WAIVED:\s*owner-decision=([^;]+);\s*reason=(\S.+)$/i.exec(String(value ?? "").trim());
   if (!match) return false;
   const [, ownerDecision, reason] = match;
+  // Token-level unresolved checks (hasUnresolvedToken): the whole-string
+  // isUnresolvedValue compares only the exact normalized value, so an
+  // embedded marker ("approval pending from owner") would slip through.
   return ownerDecision.trim().length > 0
-    && !hasPlaceholder(ownerDecision)
-    && !isUnresolvedValue(ownerDecision.trim())
+    && !hasUnresolvedToken(ownerDecision)
     && reason.trim().length > 0
-    && !hasPlaceholder(reason)
-    && !isUnresolvedValue(reason.trim());
+    && !hasUnresolvedToken(reason);
 }
 
 export function validateEvidenceText(text, classification) {

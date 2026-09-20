@@ -595,6 +595,21 @@ test("MATERIAL_FLOW_CHANGE YES + FLOW_PROTOTYPE WAIVED with an empty owner-decis
   assert.match(result.errors.join("\n"), /FLOW_PROTOTYPE/);
 });
 
+test("Codex ad58a9d4 P2: an unresolved token EMBEDDED in waiver prose fails on both halves", () => {
+  const embeddedDecision = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=approval pending from owner; reason=a substantive reason is present here",
+  );
+  assert.equal(embeddedDecision.ok, false);
+  assert.match(embeddedDecision.errors.join("\n"), /FLOW_BY_FLOW/);
+  const embeddedReason = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR #1277 coordinator adjudication; reason=proof owed until review",
+  );
+  assert.equal(embeddedReason.ok, false);
+  assert.match(embeddedReason.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
 test("MATERIAL_FLOW_CHANGE YES + FLOW_PROTOTYPE WAIVED with a pending owner-decision fails", () => {
   const record = coreEvidence
     .replace(/^MATERIAL_FLOW_CHANGE:.*$/m, "MATERIAL_FLOW_CHANGE: YES: landing flow changed")
