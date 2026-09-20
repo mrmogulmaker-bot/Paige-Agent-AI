@@ -15,6 +15,7 @@ on:
       - "supabase/tests/mcp_gateway_endpoint_revokes_approvals.sql"
       - "supabase/tests/mcp_gateway_durable_endpoint_bound_consent.sql"
       - "supabase/tests/mcp_gateway_url_auth_configured.sql"
+      - "supabase/tests/mcp_gateway_endpoint_load_binding.sql"
       - "scripts/proof/mcp-gateway-endpoint-consent-race.mjs"
       - "supabase/functions/_shared/mcp-gateway/**"
       - "supabase/tests/paige_spine_foundation.sql"
@@ -64,6 +65,7 @@ on:
       - "supabase/tests/mcp_gateway_endpoint_revokes_approvals.sql"
       - "supabase/tests/mcp_gateway_durable_endpoint_bound_consent.sql"
       - "supabase/tests/mcp_gateway_url_auth_configured.sql"
+      - "supabase/tests/mcp_gateway_endpoint_load_binding.sql"
       - "scripts/proof/mcp-gateway-endpoint-consent-race.mjs"
       - "supabase/functions/_shared/mcp-gateway/**"
       - "supabase/tests/paige_spine_foundation.sql"
@@ -218,6 +220,12 @@ jobs:
       # `<> 'none'` guard — while a bearer row with no tokens and a url row with no endpoint both stay
       # configured:false (fail-closed preserved).
       - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_url_auth_configured.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      # Connected MCP Gateway — consent is bound to the LOADED endpoint (INT-078, migration 20270327000000).
+      # Proves get_mcp_connection_secret returns endpoint_hash, and verify_mcp_connection_approval refuses
+      # endpoint_load_mismatch when the loaded endpoint differs from the approved one EVEN THOUGH the row's
+      # current endpoint still matches (the load-bearing TOCTOU catch), keeps endpoint_changed for a moved
+      # row, and refuses loaded_endpoint_hash_required when the required loaded hash is NULL/empty.
+      - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_endpoint_load_binding.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       # And the two-session concurrency proof that the approval-write vs endpoint-change RACE is closed:
       # set_mcp_connection_approval's FOR UPDATE row lock serializes it against a concurrent endpoint
       # change, so no approval is ever left bound to an endpoint the connection no longer has (#1262 finding 3).
