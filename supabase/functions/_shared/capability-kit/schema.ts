@@ -133,6 +133,11 @@ function assertNestedSchema(value: unknown, label: string): void {
       return;
     case "array":
       assertExactKeys(schema, ["type", "description", "items", "minItems", "maxItems"], label);
+      assertOptionalNonNegativeInteger(schema.minItems, `${label}.minItems`);
+      assertOptionalNonNegativeInteger(schema.maxItems, `${label}.maxItems`);
+      if (schema.minItems !== undefined && schema.maxItems !== undefined && Number(schema.maxItems) < Number(schema.minItems)) {
+        throw new TypeError(`${label}.maxItems must be greater than or equal to minItems.`);
+      }
       assertNestedSchema(schema.items, `${label}.items`);
       return;
     case "object": {

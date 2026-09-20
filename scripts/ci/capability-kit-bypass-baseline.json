@@ -432,6 +432,11 @@
   {
     "rule": "direct-risk-entry",
     "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_update_task"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
     "symbol": "deal_create"
   },
   {
@@ -791,6 +796,11 @@
   },
   {
     "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/claude.ts",
+    "symbol": "<dynamic>"
+  },
+  {
+    "rule": "direct-tool-definition",
     "path": "supabase/functions/_shared/crm-command/catalog.ts",
     "symbol": "<dynamic>"
   },
@@ -838,6 +848,11 @@
     "rule": "direct-governed-execution",
     "path": "supabase/functions/_shared/paige-orchestration/approve-executor.ts",
     "symbol": "decideGovernedExecution"
+  },
+  {
+    "rule": "direct-governed-binding",
+    "path": "supabase/functions/_shared/paige-orchestration/engine.ts",
+    "symbol": "rpc:paige_record_act_execution"
   },
   {
     "rule": "direct-governed-binding",
@@ -958,6 +973,11 @@
     "rule": "direct-governed-execution",
     "path": "supabase/functions/_shared/social-provider/governance.ts",
     "symbol": "decideGovernedExecution"
+  },
+  {
+    "rule": "direct-governed-binding",
+    "path": "supabase/functions/crm-command/index.ts",
+    "symbol": "rpc:current_user_tenant_id"
   },
   {
     "rule": "direct-governed-binding",

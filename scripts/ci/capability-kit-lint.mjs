@@ -93,7 +93,12 @@ export function scanSource(source, file = "fixture.ts", options = {}) {
   function visitFirst(node) {
     if (ts.isCallExpression(node)) {
       const member = calledMember(node, sourceFile);
-      if (member === "decideGovernedExecution") usesGovernedExecution = true;
+      if (member === "decideGovernedExecution") {
+        usesGovernedExecution = true;
+        if (!strictOnly) {
+          findings.push(violation("direct-governed-execution", normalized, "decideGovernedExecution"));
+        }
+      }
       if ((member === "rpc" || member === "invoke") && stringArgument(node)) {
         effectBindings.push({ member, symbol: stringArgument(node) });
       }
@@ -143,7 +148,6 @@ export function scanSource(source, file = "fixture.ts", options = {}) {
   visitFirst(sourceFile);
 
   if (!strictOnly && usesGovernedExecution) {
-    findings.push(violation("direct-governed-execution", normalized, "decideGovernedExecution"));
     for (const binding of effectBindings) {
       findings.push(violation("direct-governed-binding", normalized, `${binding.member}:${binding.symbol}`));
     }
@@ -164,8 +168,7 @@ export function scanSource(source, file = "fixture.ts", options = {}) {
     }
   }
 
-  const unique = new Map(findings.map((item) => [JSON.stringify(item), item]));
-  return [...unique.values()].sort(compare);
+  return findings.sort(compare);
 }
 
 function compare(a, b) {
@@ -173,8 +176,19 @@ function compare(a, b) {
 }
 
 function additionsAgainstBaseline(current, baseline) {
-  const admitted = new Set(baseline.map((item) => JSON.stringify(item)));
-  return current.filter((item) => !admitted.has(JSON.stringify(item)));
+  const admitted = new Map();
+  for (const item of baseline) {
+    const key = JSON.stringify(item);
+    admitted.set(key, (admitted.get(key) ?? 0) + 1);
+  }
+  const additions = [];
+  for (const item of current) {
+    const key = JSON.stringify(item);
+    const remaining = admitted.get(key) ?? 0;
+    if (remaining > 0) admitted.set(key, remaining - 1);
+    else additions.push(item);
+  }
+  return additions;
 }
 
 function scanRepository() {
@@ -191,11 +205,9 @@ function scanRepository() {
       }
     }
   }
-  const strict = new Map(strictFindings.map((item) => [JSON.stringify(item), item]));
-  const debt = new Map(debtFindings.map((item) => [JSON.stringify(item), item]));
   return {
-    strict: [...strict.values()].sort(compare),
-    debt: [...debt.values()].sort(compare),
+    strict: strictFindings.sort(compare),
+    debt: debtFindings.sort(compare),
   };
 }
 
@@ -256,8 +268,12 @@ function runSelfTest() {
     failed += 1;
     console.error("  FAIL shrink-only baseline admitted new debt");
   } else console.log("  ok   shrink-only baseline rejects new path+symbol debt");
+  if (additionsAgainstBaseline([oldA, oldA], [oldA]).length !== 1) {
+    failed += 1;
+    console.error("  FAIL shrink-only baseline admitted a duplicate occurrence");
+  } else console.log("  ok   shrink-only baseline preserves occurrence counts");
   if (failed) process.exit(1);
-  console.log(`\n✓ capability-kit lint self-test passed — ${cases.length + 3} cases.`);
+  console.log(`\n✓ capability-kit lint self-test passed — ${cases.length + 4} cases.`);
 }
 
 if (process.argv.includes("--self-test")) {

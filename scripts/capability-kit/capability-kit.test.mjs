@@ -102,6 +102,17 @@ test("string lengths must be finite non-negative integers", () => {
   assert.throws(() => objectInputSchema({ properties: { value: { type: "string", minLength: 2, maxLength: 1 } } }), /greater than or equal/);
 });
 
+test("array cardinalities must be finite non-negative integers", () => {
+  for (const minItems of [-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(() => objectInputSchema({
+      properties: { values: { type: "array", items: { type: "string" }, minItems } },
+    }), /non-negative integer/);
+  }
+  assert.throws(() => objectInputSchema({
+    properties: { values: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 1 } },
+  }), /greater than or equal/);
+});
+
 test("mutations must match the canonical action-risk policy", () => {
   const candidate = definitionFromFixture(mutationFixture);
   assert.throws(() => defineCapability({
