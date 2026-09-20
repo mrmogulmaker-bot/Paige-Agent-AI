@@ -95,31 +95,57 @@ test("already-frozen parents cannot hide mutable descendants", () => {
   assert.equal(Object.isFrozen(nestedProperties), true);
 });
 
-test("string lengths must be finite non-negative integers", () => {
-  for (const minLength of [-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY]) {
-    assert.throws(() => objectInputSchema({ properties: { value: { type: "string", minLength } } }), /non-negative integer/);
-  }
-  assert.throws(() => objectInputSchema({ properties: { value: { type: "string", minLength: 2, maxLength: 1 } } }), /greater than or equal/);
+test("every accepted schema keyword validates type and value before branding", () => {
+  const nested = (value) => () => objectInputSchema({ properties: { value } });
+  const cases = [
+    ["description", () => objectInputSchema({ description: 42, properties: {} })],
+    ["properties", () => objectInputSchema({ properties: [] })],
+    ["required", () => objectInputSchema({ properties: { value: { type: "string" } }, required: ["missing"] })],
+    ["required type", () => objectInputSchema({ properties: { value: { type: "string" } }, required: "value" })],
+    ["required uniqueness", nested({ type: "object", properties: { child: { type: "string" } }, required: ["child", "child"], additionalProperties: false })],
+    ["type", nested({ type: "date" })],
+    ["nested description", nested({ type: "boolean", description: 42 })],
+    ["anyOf", nested({ anyOf: [] })],
+    ["enum non-empty", nested({ type: "string", enum: [] })],
+    ["enum declared type", nested({ type: "string", enum: [1] })],
+    ["enum uniqueness", nested({ type: "string", enum: ["same", "same"] })],
+    ["minLength", nested({ type: "string", minLength: -1 })],
+    ["maxLength", nested({ type: "string", maxLength: Number.POSITIVE_INFINITY })],
+    ["length range", nested({ type: "string", minLength: 2, maxLength: 1 })],
+    ["pattern type", nested({ type: "string", pattern: 42 })],
+    ["pattern syntax", nested({ type: "string", pattern: "[" })],
+    ["format type", nested({ type: "string", format: 42 })],
+    ["format value", nested({ type: "string", format: "invented" })],
+    ["minimum", nested({ type: "number", minimum: Number.NaN })],
+    ["maximum", nested({ type: "integer", maximum: Number.POSITIVE_INFINITY })],
+    ["numeric range", nested({ type: "integer", minimum: 2, maximum: 1 })],
+    ["items", nested({ type: "array", items: null })],
+    ["minItems", nested({ type: "array", items: { type: "string" }, minItems: -1 })],
+    ["maxItems", nested({ type: "array", items: { type: "string" }, maxItems: 0.5 })],
+    ["item range", nested({ type: "array", items: { type: "string" }, minItems: 2, maxItems: 1 })],
+    ["nested properties", nested({ type: "object", properties: [], additionalProperties: false })],
+    ["additionalProperties", nested({ type: "object", properties: {}, additionalProperties: true })],
+    ["unsafe property name", nested({ type: "object", properties: { constructor: { type: "string" } }, additionalProperties: false })],
+    ["unknown keyword", nested({ type: "string", minLength: 1, unvalidatedKeyword: true })],
+  ];
+  for (const [keyword, build] of cases) assert.throws(build, undefined, keyword);
 });
 
-test("array cardinalities must be finite non-negative integers", () => {
-  for (const minItems of [-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY]) {
-    assert.throws(() => objectInputSchema({
-      properties: { values: { type: "array", items: { type: "string" }, minItems } },
-    }), /non-negative integer/);
-  }
-  assert.throws(() => objectInputSchema({
-    properties: { values: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 1 } },
-  }), /greater than or equal/);
-});
-
-test("numeric bounds must be finite numbers with a valid range", () => {
-  for (const bound of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, "1"]) {
-    assert.throws(() => objectInputSchema({ properties: { value: { type: "number", minimum: bound } } }), /finite number/);
-  }
-  assert.throws(() => objectInputSchema({
-    properties: { value: { type: "integer", minimum: 2, maximum: 1 } },
-  }), /greater than or equal/);
+test("the provider-safe subset accepts one valid instance of every keyword", () => {
+  const schema = objectInputSchema({
+    description: "All supported keywords.",
+    properties: {
+      choice: { description: "Union", anyOf: [{ type: "null" }, { type: "boolean", description: "Flag" }] },
+      code: { type: "string", description: "Code", enum: ["AA", "BB"], minLength: 2, maxLength: 2, pattern: "^[A-Z]{2}$" },
+      identifier: { type: "string", format: "uuid" },
+      count: { type: "integer", description: "Count", minimum: 0, maximum: 10 },
+      ratio: { type: "number", minimum: -1.5, maximum: 1.5 },
+      values: { type: "array", description: "Values", items: { type: "string" }, minItems: 1, maxItems: 3 },
+      nested: { type: "object", description: "Nested", properties: { name: { type: "string" } }, required: ["name"], additionalProperties: false },
+    },
+    required: ["code"],
+  });
+  assert.equal(schema.type, "object");
 });
 
 test("mutations must match the canonical action-risk policy", () => {

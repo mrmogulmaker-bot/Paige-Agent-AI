@@ -5,7 +5,7 @@ export type StringInputSchema = Readonly<{
   minLength?: number;
   maxLength?: number;
   pattern?: string;
-  format?: string;
+  format?: "email" | "uuid";
 }>;
 
 export type NumberInputSchema = Readonly<{
@@ -68,6 +68,7 @@ type ObjectInputDefinition<
 }>;
 
 const ROOT_COMBINATORS = ["anyOf", "oneOf", "allOf", "not"] as const;
+const SUPPORTED_STRING_FORMATS = new Set(["email", "uuid"]);
 
 function isPlainObject(value: unknown): value is Record<PropertyKey, unknown> {
   if (!value || typeof value !== "object") return false;
@@ -93,6 +94,69 @@ function assertOptionalFiniteNumber(value: unknown, label: string): void {
   }
 }
 
+function assertOptionalString(value: unknown, label: string): void {
+  if (value !== undefined && typeof value !== "string") {
+    throw new TypeError(`${label} must be a string.`);
+  }
+}
+
+function assertRequiredKeys(
+  value: unknown,
+  properties: Record<PropertyKey, unknown>,
+  label: string,
+): readonly string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((key) => typeof key !== "string")) {
+    throw new TypeError(`${label} must contain only strings.`);
+  }
+  if (new Set(value).size !== value.length) {
+    throw new TypeError(`${label} must contain unique property names.`);
+  }
+  for (const key of value) {
+    if (!Object.prototype.hasOwnProperty.call(properties, key)) {
+      throw new TypeError(`${label} names an undeclared property: ${key}.`);
+    }
+  }
+  return value;
+}
+
+function assertSafeProperties(value: unknown, label: string): asserts value is Record<string, unknown> {
+  if (!isPlainObject(value)) throw new TypeError(`${label} must be a plain object.`);
+  for (const key of Object.keys(value)) {
+    if (["__proto__", "prototype", "constructor"].includes(key)) {
+      throw new TypeError(`${label} contains an unsafe property name: ${key}.`);
+    }
+  }
+}
+
+function assertStringEnum(value: unknown, label: string): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value) || value.length === 0 || value.some((item) => typeof item !== "string")) {
+    throw new TypeError(`${label} must be a non-empty array containing only strings.`);
+  }
+  if (new Set(value).size !== value.length) {
+    throw new TypeError(`${label} must contain unique strings.`);
+  }
+}
+
+function assertPattern(value: unknown, label: string): void {
+  if (value === undefined) return;
+  if (typeof value !== "string") throw new TypeError(`${label} must be a string.`);
+  try {
+    // Supported dialect: JavaScript/ECMAScript RegExp pattern syntax, with no flags.
+    new RegExp(value);
+  } catch {
+    throw new TypeError(`${label} must compile as an ECMAScript RegExp without flags.`);
+  }
+}
+
+function assertFormat(value: unknown, label: string): void {
+  if (value === undefined) return;
+  if (typeof value !== "string" || !SUPPORTED_STRING_FORMATS.has(value)) {
+    throw new TypeError(`${label} must be one of: ${[...SUPPORTED_STRING_FORMATS].join(", ")}.`);
+  }
+}
+
 function assertExactKeys(value: Record<PropertyKey, unknown>, allowed: readonly string[], label: string): void {
   const allowedSet = new Set(allowed);
   for (const key of Object.keys(value)) {
@@ -108,6 +172,7 @@ function assertNestedSchema(value: unknown, label: string): void {
   }
   if ("anyOf" in schema) {
     assertExactKeys(schema, ["description", "anyOf"], label);
+    assertOptionalString(schema.description, `${label}.description`);
     if (!Array.isArray(schema.anyOf) || schema.anyOf.length === 0) {
       throw new TypeError(`${label}.anyOf must be a non-empty array.`);
     }
@@ -118,18 +183,20 @@ function assertNestedSchema(value: unknown, label: string): void {
   switch (schema.type) {
     case "string":
       assertExactKeys(schema, ["type", "description", "enum", "minLength", "maxLength", "pattern", "format"], label);
-      if (schema.enum !== undefined && (!Array.isArray(schema.enum) || schema.enum.some((item) => typeof item !== "string"))) {
-        throw new TypeError(`${label}.enum must contain only strings.`);
-      }
+      assertOptionalString(schema.description, `${label}.description`);
+      assertStringEnum(schema.enum, `${label}.enum`);
       assertOptionalNonNegativeInteger(schema.minLength, `${label}.minLength`);
       assertOptionalNonNegativeInteger(schema.maxLength, `${label}.maxLength`);
       if (schema.minLength !== undefined && schema.maxLength !== undefined && Number(schema.maxLength) < Number(schema.minLength)) {
         throw new TypeError(`${label}.maxLength must be greater than or equal to minLength.`);
       }
+      assertPattern(schema.pattern, `${label}.pattern`);
+      assertFormat(schema.format, `${label}.format`);
       return;
     case "number":
     case "integer":
       assertExactKeys(schema, ["type", "description", "minimum", "maximum"], label);
+      assertOptionalString(schema.description, `${label}.description`);
       assertOptionalFiniteNumber(schema.minimum, `${label}.minimum`);
       assertOptionalFiniteNumber(schema.maximum, `${label}.maximum`);
       if (schema.minimum !== undefined && schema.maximum !== undefined && Number(schema.maximum) < Number(schema.minimum)) {
@@ -138,12 +205,14 @@ function assertNestedSchema(value: unknown, label: string): void {
       return;
     case "boolean":
       assertExactKeys(schema, ["type", "description"], label);
+      assertOptionalString(schema.description, `${label}.description`);
       return;
     case "null":
       assertExactKeys(schema, ["type"], label);
       return;
     case "array":
       assertExactKeys(schema, ["type", "description", "items", "minItems", "maxItems"], label);
+      assertOptionalString(schema.description, `${label}.description`);
       assertOptionalNonNegativeInteger(schema.minItems, `${label}.minItems`);
       assertOptionalNonNegativeInteger(schema.maxItems, `${label}.maxItems`);
       if (schema.minItems !== undefined && schema.maxItems !== undefined && Number(schema.maxItems) < Number(schema.minItems)) {
@@ -153,22 +222,13 @@ function assertNestedSchema(value: unknown, label: string): void {
       return;
     case "object": {
       assertExactKeys(schema, ["type", "description", "properties", "required", "additionalProperties"], label);
-      if (!isPlainObject(schema.properties) || schema.additionalProperties !== false) {
-        throw new TypeError(`${label} must declare plain properties and additionalProperties: false.`);
+      assertOptionalString(schema.description, `${label}.description`);
+      assertSafeProperties(schema.properties, `${label}.properties`);
+      if (schema.additionalProperties !== false) {
+        throw new TypeError(`${label}.additionalProperties must be false.`);
       }
-      const required = schema.required ?? [];
-      if (!Array.isArray(required) || required.some((key) => typeof key !== "string")) {
-        throw new TypeError(`${label}.required must contain only strings.`);
-      }
-      for (const key of required) {
-        if (!Object.prototype.hasOwnProperty.call(schema.properties, key)) {
-          throw new TypeError(`${label}.required names an undeclared property: ${key}.`);
-        }
-      }
+      assertRequiredKeys(schema.required, schema.properties, `${label}.required`);
       for (const [key, child] of Object.entries(schema.properties)) {
-        if (["__proto__", "prototype", "constructor"].includes(key)) {
-          throw new TypeError(`${label} contains an unsafe property name.`);
-        }
         assertNestedSchema(child, `${label}.properties.${key}`);
       }
       return;
@@ -192,34 +252,23 @@ export function objectInputSchema<
     }
   }
 
-  const allowed = new Set(["description", "properties", "required"]);
-  for (const key of Object.keys(definition)) {
-    if (!allowed.has(key)) throw new TypeError(`Unsupported capability input root key: ${key}.`);
-  }
-  if (!isPlainObject(definition.properties)) {
-    throw new TypeError("Capability input schema properties must be a plain object.");
-  }
+  assertExactKeys(definition, ["description", "properties", "required"], "capability input root");
+  assertOptionalString(definition.description, "Capability input schema description");
+  assertSafeProperties(definition.properties, "Capability input schema properties");
 
   for (const [key, child] of Object.entries(definition.properties)) {
-    if (["__proto__", "prototype", "constructor"].includes(key)) {
-      throw new TypeError("Capability input schema contains an unsafe property name.");
-    }
     assertNestedSchema(child, `Capability input property ${key}`);
   }
 
-  const required = definition.required ? [...definition.required] : [];
-  if (new Set(required).size !== required.length) {
-    throw new TypeError("Capability input schema required keys must be unique.");
-  }
-  for (const key of required) {
-    if (!Object.prototype.hasOwnProperty.call(definition.properties, key)) {
-      throw new TypeError(`Required input key is not declared in properties: ${key}.`);
-    }
-  }
+  const required = [...assertRequiredKeys(
+    definition.required,
+    definition.properties,
+    "Capability input schema required",
+  )];
 
   const schema = {
     type: "object" as const,
-    ...(definition.description ? { description: definition.description } : {}),
+    ...(definition.description !== undefined ? { description: definition.description } : {}),
     properties: { ...definition.properties },
     required,
     additionalProperties: false as const,

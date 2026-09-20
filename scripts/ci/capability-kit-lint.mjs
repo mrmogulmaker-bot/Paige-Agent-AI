@@ -6,6 +6,13 @@
  * shrink-only list generated from synchronized main: an entry may disappear, but no
  * unlisted path+symbol may appear. The MCP gateway path is temporarily exempt by the
  * coordinator's PR-1 ruling and must be removed only in a separately authorized PR.
+ *
+ * HEURISTIC LIMITS
+ * Threat model: accidental bypass in our own edits, not adversarial evasion.
+ * This static AST pass does not promise to resolve computed or bracket member access,
+ * values returned from functions, dynamic import, or eval. Direct dot-member bindings,
+ * imports/re-exports, object binding patterns, assignment destructuring, and parameter
+ * destructuring are the deliberately supported boundary.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -64,6 +71,10 @@ function calledMember(call, sourceFile) {
 }
 
 function createAstResolver(files) {
+  let nextBindingId = 1;
+  const localResolutionCache = new Map();
+  const exportResolutionCache = new Map();
+  const RESOLVING = Symbol("resolving");
   const sources = new Map(files.map((file) => {
     const absolute = path.resolve(file);
     const source = fs.readFileSync(absolute, "utf8");
@@ -80,11 +91,59 @@ function createAstResolver(files) {
     return null;
   }
 
+  function addBinding(bindings, localName, source, memberPath = []) {
+    const existing = bindings.get(localName) ?? [];
+    existing.push({ id: nextBindingId++, source, memberPath });
+    bindings.set(localName, existing);
+  }
+
+  function collectBindingPattern(name, source, memberPath, bindings, sourceFile) {
+    if (ts.isIdentifier(name)) {
+      addBinding(bindings, name.text, source, memberPath);
+      return;
+    }
+    if (!ts.isObjectBindingPattern(name)) return;
+    for (const element of name.elements) {
+      if (element.dotDotDotToken) continue;
+      const key = element.propertyName
+        ? propertyName(element.propertyName, sourceFile)
+        : ts.isIdentifier(element.name) ? element.name.text : null;
+      if (key === null) continue;
+      collectBindingPattern(element.name, source, [...memberPath, key], bindings, sourceFile);
+      if (element.initializer) collectBindingPattern(element.name, element.initializer, [], bindings, sourceFile);
+    }
+  }
+
+  function collectAssignmentPattern(pattern, source, memberPath, bindings, sourceFile) {
+    if (!ts.isObjectLiteralExpression(pattern)) return;
+    for (const member of pattern.properties) {
+      if (ts.isShorthandPropertyAssignment(member)) {
+        addBinding(bindings, member.name.text, source, [...memberPath, member.name.text]);
+        continue;
+      }
+      if (!ts.isPropertyAssignment(member)) continue;
+      const key = propertyName(member.name, sourceFile);
+      if (key === null) continue;
+      const pathToMember = [...memberPath, key];
+      let target = member.initializer;
+      if (ts.isBinaryExpression(target) && target.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+        if (ts.isIdentifier(target.left)) addBinding(bindings, target.left.text, source, pathToMember);
+        if (ts.isIdentifier(target.left)) addBinding(bindings, target.left.text, target.right);
+        continue;
+      }
+      if (ts.isIdentifier(target)) addBinding(bindings, target.text, source, pathToMember);
+      else if (ts.isObjectLiteralExpression(target)) {
+        collectAssignmentPattern(target, source, pathToMember, bindings, sourceFile);
+      }
+    }
+  }
+
   const fileInfo = new Map();
   for (const [file, source] of sources) {
     const namedImports = new Map();
     const namespaceImports = new Map();
-    const variables = new Map();
+    const bindings = new Map();
+    const functions = new Map();
     for (const statement of source.statements) {
       if (!ts.isImportDeclaration(statement) || !ts.isStringLiteralLike(statement.moduleSpecifier)) continue;
       const target = moduleFile(file, statement.moduleSpecifier.text);
@@ -101,16 +160,42 @@ function createAstResolver(files) {
         namespaceImports.set(bindings.name.text, target);
       }
     }
-    function collectVariables(node) {
-      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-        const existing = variables.get(node.name.text) ?? [];
-        existing.push(node.initializer);
-        variables.set(node.name.text, existing);
+    function collectBindings(node) {
+      if (ts.isVariableDeclaration(node) && node.initializer) {
+        collectBindingPattern(node.name, node.initializer, [], bindings, source);
+        if (ts.isIdentifier(node.name) &&
+          (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))) {
+          functions.set(node.name.text, node.initializer);
+        }
       }
-      ts.forEachChild(node, collectVariables);
+      if (ts.isFunctionDeclaration(node) && node.name) functions.set(node.name.text, node);
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isObjectLiteralExpression(node.left)) {
+        collectAssignmentPattern(node.left, node.right, [], bindings, source);
+      }
+      ts.forEachChild(node, collectBindings);
     }
-    collectVariables(source);
-    fileInfo.set(file, { namedImports, namespaceImports, variables });
+    collectBindings(source);
+    fileInfo.set(file, { namedImports, namespaceImports, bindings, functions });
+  }
+
+  for (const [file, source] of sources) {
+    const info = fileInfo.get(file);
+    function collectParameterBindings(node) {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+        const callable = info.functions.get(node.expression.text);
+        if (callable) {
+          callable.parameters.forEach((parameter, index) => {
+            if (!ts.isObjectBindingPattern(parameter.name)) return;
+            const argument = node.arguments[index];
+            if (argument) collectBindingPattern(parameter.name, argument, [], info.bindings, source);
+            if (parameter.initializer) collectBindingPattern(parameter.name, parameter.initializer, [], info.bindings, source);
+          });
+        }
+      }
+      ts.forEachChild(node, collectParameterBindings);
+    }
+    collectParameterBindings(source);
   }
 
   function unwrap(expression) {
@@ -121,35 +206,71 @@ function createAstResolver(files) {
     return expression;
   }
 
-  function resolveExpression(file, expression, seen) {
+  function resolveExpressionPath(file, expression, memberPath, seen) {
     expression = unwrap(expression);
-    if (ts.isIdentifier(expression)) return resolveLocal(file, expression.text, seen);
-    const isProperty = ts.isPropertyAccessExpression(expression);
-    const isElement = ts.isElementAccessExpression(expression) && ts.isStringLiteralLike(expression.argumentExpression);
-    if (!isProperty && !isElement) return false;
-    const base = expression.expression;
-    const exported = isProperty ? expression.name.text : expression.argumentExpression.text;
-    if (!ts.isIdentifier(base)) return false;
-    const target = fileInfo.get(file)?.namespaceImports.get(base.text);
-    return target ? resolveExport(target, exported, seen) : false;
+    if (ts.isPropertyAccessExpression(expression)) {
+      return resolveExpressionPath(file, expression.expression, [expression.name.text, ...memberPath], seen);
+    }
+    if (ts.isElementAccessExpression(expression) && ts.isStringLiteralLike(expression.argumentExpression)) {
+      return resolveExpressionPath(file, expression.expression, [expression.argumentExpression.text, ...memberPath], seen);
+    }
+    if (ts.isObjectLiteralExpression(expression) && memberPath.length > 0) {
+      const [next, ...rest] = memberPath;
+      for (const member of expression.properties) {
+        if (ts.isPropertyAssignment(member) && propertyName(member.name, sources.get(file)) === next) {
+          return resolveExpressionPath(file, member.initializer, rest, seen);
+        }
+        if (ts.isShorthandPropertyAssignment(member) && member.name.text === next) {
+          return resolveExpressionPath(file, member.name, rest, seen);
+        }
+      }
+      return false;
+    }
+    if (!ts.isIdentifier(expression)) return false;
+    const target = fileInfo.get(file)?.namespaceImports.get(expression.text);
+    if (target && memberPath.length === 1) return resolveExport(target, memberPath[0], seen);
+    return resolveLocal(file, expression.text, memberPath, seen);
   }
 
-  function resolveLocal(file, localName, seen) {
-    const key = `local:${file}:${localName}`;
+  function resolveExpression(file, expression, seen) {
+    return resolveExpressionPath(file, expression, [], seen);
+  }
+
+  function resolveLocal(file, localName, memberPath, seen) {
+    const key = `local:${file}:${localName}:${memberPath.join(".")}`;
+    const cached = localResolutionCache.get(key);
+    if (cached !== undefined) return cached === true;
     if (seen.has(key)) return false;
     seen.add(key);
-    if (localName === "decideGovernedExecution") return true;
+    localResolutionCache.set(key, RESOLVING);
+    if (localName === "decideGovernedExecution" && memberPath.length === 0) {
+      localResolutionCache.set(key, true);
+      return true;
+    }
     const info = fileInfo.get(file);
     const imported = info?.namedImports.get(localName);
-    if (imported && resolveExport(imported.target, imported.imported, seen)) return true;
-    return (info?.variables.get(localName) ?? [])
-      .some((initializer) => resolveExpression(file, initializer, new Set(seen)));
+    if (imported && memberPath.length === 0 && resolveExport(imported.target, imported.imported, seen)) {
+      localResolutionCache.set(key, true);
+      return true;
+    }
+    const resolved = (info?.bindings.get(localName) ?? []).some((binding) => {
+      const bindingKey = `binding:${binding.id}`;
+      if (seen.has(bindingKey)) return false;
+      const nextSeen = new Set(seen);
+      nextSeen.add(bindingKey);
+      return resolveExpressionPath(file, binding.source, [...binding.memberPath, ...memberPath], nextSeen);
+    });
+    localResolutionCache.set(key, resolved);
+    return resolved;
   }
 
   function resolveExport(file, exportName, seen) {
     const key = `export:${file}:${exportName}`;
+    const cached = exportResolutionCache.get(key);
+    if (cached !== undefined) return cached === true;
     if (seen.has(key)) return false;
     seen.add(key);
+    exportResolutionCache.set(key, RESOLVING);
     const source = sources.get(file);
     for (const statement of source?.statements ?? []) {
       if (ts.isExportDeclaration(statement)) {
@@ -158,26 +279,39 @@ function createAstResolver(files) {
           : file;
         if (!target) continue;
         if (!statement.exportClause) {
-          if (resolveExport(target, exportName, seen)) return true;
+          if (resolveExport(target, exportName, seen)) {
+            exportResolutionCache.set(key, true);
+            return true;
+          }
           continue;
         }
         if (!ts.isNamedExports(statement.exportClause)) continue;
         for (const specifier of statement.exportClause.elements) {
           if (specifier.name.text !== exportName) continue;
           const local = specifier.propertyName?.text ?? specifier.name.text;
-          if (target === file ? resolveLocal(file, local, seen) : resolveExport(target, local, seen)) return true;
+          if (target === file ? resolveLocal(file, local, [], seen) : resolveExport(target, local, seen)) {
+            exportResolutionCache.set(key, true);
+            return true;
+          }
         }
       }
       const modifiers = ts.canHaveModifiers(statement) ? ts.getModifiers(statement) : undefined;
       if (!modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
       if ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) && statement.name?.text === exportName &&
-        resolveLocal(file, exportName, seen)) return true;
+        resolveLocal(file, exportName, [], seen)) {
+        exportResolutionCache.set(key, true);
+        return true;
+      }
       if (ts.isVariableStatement(statement)) {
         for (const declaration of statement.declarationList.declarations) {
-          if (ts.isIdentifier(declaration.name) && declaration.name.text === exportName && resolveLocal(file, exportName, seen)) return true;
+          if (ts.isIdentifier(declaration.name) && declaration.name.text === exportName && resolveLocal(file, exportName, [], seen)) {
+            exportResolutionCache.set(key, true);
+            return true;
+          }
         }
       }
     }
+    exportResolutionCache.set(key, false);
     return false;
   }
 
@@ -384,19 +518,30 @@ function runSelfTest() {
       console.error(`  FAIL ${name}: expected ${expected}, got ${actual.join(", ") || "nothing"}`);
     } else console.log(`  ok   ${name}`);
   }
-  const aliasFiles = ["alias-governance.ts", "alias-barrel.ts", "alias-consumer.ts"]
+  const aliasCases = [
+    ["import, re-export, namespace, and local aliases", "alias-consumer.ts", 3],
+    ["object binding", "alias-object-binding.ts", 1],
+    ["nested object binding", "alias-nested-binding.ts", 1],
+    ["renamed object binding", "alias-renamed-binding.ts", 1],
+    ["defaulted object binding", "alias-default-binding.ts", 1],
+    ["assignment destructuring", "alias-assignment-binding.ts", 1],
+    ["parameter destructuring", "alias-parameter-binding.ts", 1],
+  ];
+  const aliasFiles = ["alias-governance.ts", "alias-barrel.ts", ...aliasCases.map((entry) => entry[1])]
     .map((file) => path.join(ROOT, "scripts", "fixtures", "capability-kit", file));
   const aliasResolver = createAstResolver(aliasFiles);
-  const aliasConsumer = aliasFiles.at(-1);
-  const aliasSource = aliasResolver.sourceFile(aliasConsumer);
-  const aliasFindings = scanSource(aliasSource.text, relative(aliasConsumer), {
-    sourceFile: aliasSource,
-    resolver: aliasResolver,
-  }).filter((item) => item.rule === "direct-governed-execution");
-  if (aliasFindings.length !== 3) {
-    failed += 1;
-    console.error(`  FAIL AST alias resolution: expected 3 governed calls, got ${aliasFindings.length}: ${JSON.stringify(aliasFindings)}`);
-  } else console.log("  ok   AST resolves aliases, re-exports, namespace imports, and local aliases");
+  for (const [name, fixture, expected] of aliasCases) {
+    const aliasFile = path.join(ROOT, "scripts", "fixtures", "capability-kit", fixture);
+    const aliasSource = aliasResolver.sourceFile(aliasFile);
+    const aliasFindings = scanSource(aliasSource.text, relative(aliasFile), {
+      sourceFile: aliasSource,
+      resolver: aliasResolver,
+    }).filter((item) => item.rule === "direct-governed-execution");
+    if (aliasFindings.length !== expected) {
+      failed += 1;
+      console.error(`  FAIL AST ${name}: expected ${expected} governed calls, got ${aliasFindings.length}`);
+    } else console.log(`  ok   AST resolves ${name}`);
+  }
   const exempt = "supabase/functions/_shared/mcp-gateway/temporary.ts".startsWith(MCP_GATEWAY_EXEMPT);
   if (!exempt) {
     failed += 1;
@@ -418,7 +563,7 @@ function runSelfTest() {
     console.error("  FAIL shrink-only baseline admitted a duplicate occurrence");
   } else console.log("  ok   shrink-only baseline preserves occurrence counts");
   if (failed) process.exit(1);
-  console.log(`\n✓ capability-kit lint self-test passed — ${cases.length + 5} cases.`);
+  console.log(`\n✓ capability-kit lint self-test passed — ${cases.length + aliasCases.length + 4} cases.`);
 }
 
 if (process.argv.includes("--self-test")) {
