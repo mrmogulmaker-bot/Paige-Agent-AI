@@ -71,11 +71,15 @@ if (!soloRoute) {
     if (idx < at) { fail("SP1", `${name} appears out of order in the /solo/* route mount`); }
     at = idx;
   }
-  // Nothing else gating-shaped may sit inside the mount element.
+  // The wrapper CHAIN must be exact: every JSX component inside the mount
+  // element is one of the four guards + PageSuspense. A renamed gate
+  // (e.g. <SetupGate>) wrapping SoloEntry is caught by set membership, not by
+  // name-pattern recognition (Codex 62d370a1 P2).
   const element = soloRoute.slice(soloRoute.indexOf("element="));
-  const gateShapes = element.match(/\b(Require[A-Z]\w*|is\w*Owner|\brole\s*===?)/g) ?? [];
-  const unexpected = gateShapes.filter((g) => !order.includes(g) && g !== "PageSuspense");
-  if (unexpected.length) fail("SP1", `unexpected gating shape(s) in the /solo/* mount: ${unexpected.join(", ")}`);
+  const allowed = new Set([...order, "PageSuspense"]);
+  const components = [...element.matchAll(/<([A-Z]\w*)/g)].map((m) => m[1]);
+  const unexpected = [...new Set(components.filter((c) => !allowed.has(c)))];
+  if (unexpected.length) fail("SP1", `unexpected component(s) in the /solo/* mount chain: ${unexpected.join(", ")}`);
 }
 
 // ── SP2 ── no redirect in the Solo branch of RequireSetupComplete ───────────
@@ -88,8 +92,12 @@ if (soloStart < 0 || soloEnd < soloStart) {
   const branch = gateSrc.slice(soloStart, soloEnd);
   if (!branch.includes("return <>{children}</>;")) fail("SP2", "the solo branch does not return children ONLY");
   const code = stripComments(branch);
-  if (/\bNavigate\b|router\s*\.\s*(push|replace)|redirect/i.test(code)) {
-    fail("SP2", "the solo branch contains redirect machinery (Navigate/push/redirect)");
+  // Every redirect mechanism, not just Navigate/router.push: browser-location
+  // assignment (window.location.assign/replace/href) and hook navigation
+  // (navigate(...)) restore the lockout while looking like "children only"
+  // (Codex 62d370a1 P2).
+  if (/\bNavigate\b|router\s*\.\s*(push|replace)|\bredirect\b|\bwindow\s*\.\s*location\b|\blocation\s*\.\s*(assign|replace)\b|\blocation\.href\s*=|(?<![A-Za-z])navigate\s*\(/i.test(code)) {
+    fail("SP2", "the solo branch contains redirect machinery (Navigate/router/location/navigate)");
   }
 }
 
@@ -133,7 +141,7 @@ for (const p of sweepFiles) {
   let code;
   try { code = stripComments(readFileSync(p, "utf8")); } catch { fail("SP4", `unreadable sweep file: ${p}`); continue; }
   const rel = p.slice(root.length + 1).replace(/\\/g, "/");
-  const acct = code.match(/account_?[Nn]umber\s*===?\s*["'`]\s*\d{3,}/) ?? code.match(/["'`]\d{4,}["'`]\s*===?\s*\w*account_?[Nn]umber/);
+  const acct = code.match(/account_?[Nn]umber\s*===?\s*(?:["'`]\s*\d{3,}|\d{3,}\b)/) ?? code.match(/(?:["'`]\d{4,}["'`]|\b\d{4,}\b)\s*===?\s*\w*account_?[Nn]umber/);
   if (acct) fail("SP4", `account-number literal comparison in ${rel}`);
   const uuid = code.match(/["'`][0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}["'`]/i);
   if (uuid) fail("SP4", `tenant-UUID literal in ${rel}`);
@@ -224,9 +232,12 @@ if (process.argv.includes("--self-test")) {
   };
   const cases = [
     ["SP1", (t) => patch(t, "src/App.tsx", "<SoloEntry />", "<RequireOwnerGate><SoloEntry /></RequireOwnerGate>")],
+    ["SP1", (t) => patch(t, "src/App.tsx", "<SoloEntry />", "<SetupGate><SoloEntry /></SetupGate>")],
     ["SP2", (t) => patch(t, "src/components/auth/RequireSetupComplete.tsx", 'return <>{children}</>;\n  }', 'return <Navigate to="/x" replace />;\n  }')],
+    ["SP2", (t) => patch(t, "src/components/auth/RequireSetupComplete.tsx", 'return <>{children}</>;\n  }', 'window.location.assign("/choose-account");\n    return <>{children}</>;\n  }')],
     ["SP3", (t) => patch(t, "src/solo/SoloApp.tsx", "soloPaigeWorkspace={<SoloPaigeWorkspace", 'soloPaigeWorkspace={role === "owner" ? <SoloPaigeWorkspace')],
     ["SP4", (t) => patch(t, "src/lib/routing/tierBranches.ts", "export const ENTERPRISE_EXTRA", 'const sp4Mutation = accountNumber === "1234567";\nexport const ENTERPRISE_EXTRA')],
+    ["SP4", (t) => patch(t, "src/lib/routing/tierBranches.ts", "export const ENTERPRISE_EXTRA", 'const sp4Mutation = activeTenant?.account_number === 1234567;\nexport const ENTERPRISE_EXTRA')],
     ["SP5", (t) => patch(t, "src/solo/settings-contract.ts", '{ key: "vault", label: "Vault", truth: "PROPOSED" },', "")],
   ];
   let selfTestOk = true;
