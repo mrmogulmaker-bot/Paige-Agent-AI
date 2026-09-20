@@ -1,12 +1,13 @@
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DictationMicButton } from "./DictationMicButton";
-import { useDictation, type UseDictationApi } from "@/lib/voice/useDictation";
+import { appendDictation, useDictation, type UseDictationApi } from "@/lib/voice/useDictation";
 
 const voiceHarness = vi.hoisted(() => ({
   recorderStarts: 0,
   recorderStops: 0,
+  frameCallbacks: [] as Array<(frame: Float32Array) => void>,
   getSession: vi.fn(async () => ({ data: { session: { access_token: "test-token" } } })),
   recorderStart: vi.fn(async () => undefined),
 }));
@@ -17,7 +18,9 @@ vi.mock("@/integrations/supabase/client", () => ({
 
 vi.mock("@/utils/VoiceAudio", () => ({
   AudioRecorder: class {
-    constructor(_onFrame: (frame: Float32Array) => void, _sampleRate: number) {}
+    constructor(onFrame: (frame: Float32Array) => void, _sampleRate: number) {
+      voiceHarness.frameCallbacks.push(onFrame);
+    }
     async start() {
       voiceHarness.recorderStarts += 1;
       await voiceHarness.recorderStart();
@@ -68,6 +71,7 @@ describe("Solo dictation control", () => {
     sockets = [];
     voiceHarness.recorderStarts = 0;
     voiceHarness.recorderStops = 0;
+    voiceHarness.frameCallbacks = [];
     voiceHarness.getSession.mockClear();
     voiceHarness.recorderStart.mockReset();
     voiceHarness.recorderStart.mockResolvedValue(undefined);
@@ -89,81 +93,83 @@ describe("Solo dictation control", () => {
     });
   };
 
-  it("shows requesting, listening, release-to-transcribing, then idle after a clean final", async () => {
+  it("shows connecting, waits for ready, then tap-to-finishing and idle after a clean final", async () => {
     const onText = vi.fn();
     await renderControl("account-a", onText);
     const button = host.querySelector("button")!;
 
-    await act(async () => button.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () => { button.click(); });
     await flush();
-    expect(host.textContent).toContain("Requesting mic");
+    expect(host.textContent).toContain("Connecting");
 
     await act(async () => sockets[0].open());
+    expect(host.textContent).toContain("Connecting");
+    await act(async () => sockets[0].message({ type: "ready" }));
     expect(host.textContent).toContain("Listening");
     await act(async () => sockets[0].message({ type: "transcript", text: "Testing", is_final: false }));
     expect(host.textContent).toContain("Listening");
     expect(button.getAttribute("aria-pressed")).toBe("true");
     expect(button.disabled).toBe(false);
 
-    await act(async () => button.dispatchEvent(new Event("pointerup", { bubbles: true })));
-    expect(host.textContent).toContain("Transcribing");
+    await act(async () => { button.click(); });
+    expect(host.textContent).toContain("Finishing");
     expect(button.disabled).toBe(false);
 
     await act(async () => sockets[0].message({ type: "transcript", text: "Testing PAIGE", is_final: true }));
     expect(onText).toHaveBeenCalledWith("Testing PAIGE");
-    expect(host.textContent).toContain("Transcribing");
+    expect(host.textContent).toContain("Finishing");
 
     await act(async () => sockets[0].closed(true));
     expect(host.textContent).not.toContain("Hold to talk");
     expect(host.textContent).toContain("Added to draft");
-    expect(button.getAttribute("aria-label")).toBe("Hold to dictate");
-    expect(button.getAttribute("title")).toContain("Hold to dictate");
+    expect(button.getAttribute("aria-label")).toBe("Start voice typing");
+    expect(button.getAttribute("title")).toBe("Tap to dictate");
   });
 
-  it("stops a quick pointer or keyboard release before permission work resolves", async () => {
+  it("does not stop on pointer release or keyboard keyup", async () => {
     await renderControl();
     const button = host.querySelector("button")!;
     await act(async () => {
-      button.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+      button.click();
       button.dispatchEvent(new Event("pointerup", { bubbles: true }));
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(sockets).toHaveLength(0);
-    expect(host.textContent).not.toContain("Hold to talk");
+    expect(sockets).toHaveLength(1);
+    expect(voiceHarness.recorderStops).toBe(0);
 
     await act(async () => {
-      button.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
       button.dispatchEvent(new KeyboardEvent("keyup", { key: " ", bubbles: true }));
-      await Promise.resolve();
-      await Promise.resolve();
     });
-    expect(sockets).toHaveLength(0);
+    expect(voiceHarness.recorderStops).toBe(0);
+    await act(async () => { button.click(); });
+    expect(voiceHarness.recorderStops).toBe(1);
   });
 
   it("stops a recorder whose startup fails after microphone acquisition begins", async () => {
     voiceHarness.recorderStart.mockRejectedValueOnce(new Error("audio setup failed"));
     await renderControl();
-    await act(async () => host.querySelector("button")!.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () => { host.querySelector("button")!.click(); });
     await flush();
     expect(voiceHarness.recorderStops).toBe(1);
     expect(sockets).toHaveLength(0);
     expect(host.textContent).toContain("Voice typing unavailable");
   });
 
-  it("cleans a pending recorder exactly once when the user releases", async () => {
+  it("cleans a pending recorder exactly once when the user taps stop", async () => {
     let resolveStart!: () => void;
     voiceHarness.recorderStart.mockImplementationOnce(() => new Promise<void>((resolve) => { resolveStart = resolve; }));
     await renderControl();
     const button = host.querySelector("button")!;
-    await act(async () => button.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () => { button.click(); });
     await flush();
-    await act(async () => button.dispatchEvent(new Event("pointerup", { bubbles: true })));
+    expect(host.textContent).toContain("Requesting mic");
+    await act(async () => { button.click(); });
     expect(voiceHarness.recorderStops).toBe(1);
     await act(async () => { resolveStart(); await Promise.resolve(); });
     expect(voiceHarness.recorderStops).toBe(1);
     expect(sockets).toHaveLength(0);
-    expect(host.textContent).not.toContain("Hold to talk");
+    expect(host.textContent).not.toContain("Listening");
   });
 
   it("cleans a pending recorder and opens no socket after an account epoch change", async () => {
@@ -171,7 +177,7 @@ describe("Solo dictation control", () => {
     voiceHarness.recorderStart.mockImplementationOnce(() => new Promise<void>((resolve) => { resolveStart = resolve; }));
     const onText = vi.fn();
     await renderControl("account-a", onText);
-    await act(async () => host.querySelector("button")!.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () => { host.querySelector("button")!.click(); });
     await flush();
     await renderControl("account-b", onText);
     expect(voiceHarness.recorderStops).toBe(1);
@@ -181,24 +187,39 @@ describe("Solo dictation control", () => {
     expect(onText).not.toHaveBeenCalled();
   });
 
+  it("releases the mic and socket when the composer unmounts", async () => {
+    await renderControl();
+    await act(async () => { host.querySelector("button")!.click(); });
+    await flush();
+    const socket = sockets[0];
+    await act(async () => socket.open());
+    await act(async () => socket.message({ type: "ready" }));
+
+    await act(async () => root.render(null));
+
+    expect(voiceHarness.recorderStops).toBe(1);
+    expect(socket.closeCalls).toBe(1);
+  });
+
   it("surfaces permission, unsupported, provider-failure, and unavailable states", async () => {
     const denied = new Error("denied"); denied.name = "NotAllowedError";
     voiceHarness.recorderStart.mockRejectedValueOnce(denied);
     await renderControl();
-    await act(async () => host.querySelector("button")!.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () => { host.querySelector("button")!.click(); });
     await flush();
     expect(host.textContent).toContain("Mic permission off");
 
     await renderControl();
-    await act(async () => host.querySelector("button")!.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () => { host.querySelector("button")!.click(); });
     await flush();
     await act(async () => sockets.at(-1)!.open());
-    await act(async () => host.querySelector("button")!.dispatchEvent(new Event("pointerup", { bubbles: true })));
+    await act(async () => sockets.at(-1)!.message({ type: "ready" }));
+    await act(async () => { host.querySelector("button")!.click(); });
     await act(async () => sockets.at(-1)!.error());
     expect(host.textContent).toContain("Voice typing failed");
 
     await renderControl();
-    await act(async () => host.querySelector("button")!.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () => { host.querySelector("button")!.click(); });
     await flush();
     await act(async () => sockets.at(-1)!.open());
     await act(async () => sockets.at(-1)!.message({ type: "error", code: "not_configured", message: "unavailable" }));
@@ -211,44 +232,49 @@ describe("Solo dictation control", () => {
 
   it("treats a clean provider close before release as a surfaced failure", async () => {
     await renderControl();
-    await act(async () => host.querySelector("button")!.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () => { host.querySelector("button")!.click(); });
     await flush();
     await act(async () => sockets[0].open());
+    await act(async () => sockets[0].message({ type: "ready" }));
     await act(async () => sockets[0].closed(true));
     expect(host.textContent).toContain("Voice typing failed");
   });
 
-  it("stops capture if the parent disables the control mid-hold", async () => {
+  it("stops capture if the parent disables the control", async () => {
     const onText = vi.fn();
     await renderControl("account-a", onText);
-    await act(async () => host.querySelector("button")!.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () => { host.querySelector("button")!.click(); });
     await flush();
     await act(async () => sockets[0].open());
+    await act(async () => sockets[0].message({ type: "ready" }));
     await act(async () => root.render(<DictationMicButton onText={onText} showStatus scopeEpoch="account-a" disabled />));
     expect(voiceHarness.recorderStops).toBeGreaterThan(0);
-    expect(host.textContent).toContain("Transcribing");
+    expect(host.textContent).toContain("Finishing");
   });
 
-  it.each(["pointercancel", "lostpointercapture"])("stops capture on %s", async (eventName) => {
+  it.each(["pointercancel", "lostpointercapture"])("keeps capture active on %s", async (eventName) => {
     await renderControl();
     const button = host.querySelector("button")!;
-    await act(async () => button.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () => { button.click(); });
     await flush();
     await act(async () => sockets[0].open());
+    await act(async () => sockets[0].message({ type: "ready" }));
     await act(async () => button.dispatchEvent(new Event(eventName, { bubbles: true })));
-    expect(host.textContent).toContain("Transcribing");
-    expect(voiceHarness.recorderStops).toBeGreaterThan(0);
+    expect(host.textContent).toContain("Listening");
+    expect(voiceHarness.recorderStops).toBe(0);
+    await act(async () => { button.click(); });
   });
 
-  it("supports Enter hold/release without dropping keyboard focus", async () => {
+  it("supports the native keyboard click path without dropping focus", async () => {
     await renderControl();
     const button = host.querySelector("button")!;
     button.focus();
-    await act(async () => button.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    await act(async () => { button.click(); });
     await flush();
     await act(async () => sockets[0].open());
-    await act(async () => button.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", bubbles: true })));
-    expect(host.textContent).toContain("Transcribing");
+    await act(async () => sockets[0].message({ type: "ready" }));
+    await act(async () => { button.click(); });
+    expect(host.textContent).toContain("Finishing");
     expect(document.activeElement).toBe(button);
     await act(async () => sockets[0].closed(true));
     expect(document.activeElement).toBe(button);
@@ -258,14 +284,15 @@ describe("Solo dictation control", () => {
     const onText = vi.fn();
     await renderControl("account-a", onText);
     const button = host.querySelector("button")!;
-    await act(async () => button.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () => { button.click(); });
     await flush();
     const socketA = sockets[0];
     await act(async () => socketA.open());
-    await act(async () => button.dispatchEvent(new Event("pointerup", { bubbles: true })));
+    await act(async () => socketA.message({ type: "ready" }));
+    await act(async () => { button.click(); });
 
     await renderControl("account-b", onText);
-    await act(async () => host.querySelector("button")!.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () => { host.querySelector("button")!.click(); });
     await flush();
     const socketB = sockets[1];
     expect(socketB).toBeDefined();
@@ -302,15 +329,135 @@ describe("Solo dictation control", () => {
     try {
       await renderControl();
       const button = host.querySelector("button")!;
-      await act(async () => button.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+      await act(async () => { button.click(); });
       await flush();
       await act(async () => sockets[0].open());
-      await act(async () => button.dispatchEvent(new Event("pointerup", { bubbles: true })));
-      expect(host.textContent).toContain("Transcribing");
+      await act(async () => sockets[0].message({ type: "ready" }));
+      await act(async () => { button.click(); });
+      expect(host.textContent).toContain("Finishing");
       await act(async () => { vi.advanceTimersByTime(15_000); });
       expect(host.textContent).toContain("Voice typing failed");
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("keeps recording after release and stops only on the second tap", async () => {
+    await renderControl();
+    const button = host.querySelector("button")!;
+
+    await act(async () => { button.click(); });
+    await flush();
+    expect(host.textContent).toContain("Connecting");
+
+    await act(async () => button.dispatchEvent(new Event("pointerup", { bubbles: true })));
+    expect(voiceHarness.recorderStops).toBe(0);
+
+    await act(async () => sockets[0].open());
+    expect(host.textContent).toContain("Connecting");
+    await act(async () => sockets[0].message({ type: "ready" }));
+    expect(host.textContent).toContain("Listening");
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+
+    await act(async () => { button.click(); });
+    expect(host.textContent).toContain("Finishing");
+    expect(voiceHarness.recorderStops).toBe(1);
+  });
+
+  it("captures and buffers the first audio while auth and the socket are starting", async () => {
+    let resolveSession!: (value: { data: { session: { access_token: string } } }) => void;
+    voiceHarness.getSession.mockImplementationOnce(() => new Promise((resolve) => { resolveSession = resolve; }));
+    await renderControl();
+
+    await act(async () => { host.querySelector("button")!.click(); });
+    await flush();
+    expect(voiceHarness.recorderStarts).toBe(1);
+    expect(host.textContent).toContain("Connecting");
+
+    const firstWords = new Float32Array([0.2, -0.2, 0.1]);
+    await act(async () => voiceHarness.frameCallbacks[0](firstWords));
+    await act(async () => {
+      resolveSession({ data: { session: { access_token: "test-token" } } });
+      await Promise.resolve();
+    });
+    await flush();
+    await act(async () => sockets[0].open());
+
+    expect(sockets[0].sent[0]).toBe(JSON.stringify({ type: "start", sampleRate: 16000 }));
+    expect(sockets[0].sent[1]).toBeInstanceOf(ArrayBuffer);
+  });
+
+  it("uses a five-minute silence guard without ending a natural pause", async () => {
+    vi.useFakeTimers();
+    try {
+      await renderControl();
+      await act(async () => { host.querySelector("button")!.click(); });
+      await flush();
+      await act(async () => sockets[0].open());
+      await act(async () => sockets[0].message({ type: "ready" }));
+
+      await act(async () => { vi.advanceTimersByTime(4 * 60_000); });
+      expect(host.textContent).toContain("Listening");
+      expect(voiceHarness.recorderStops).toBe(0);
+
+      await act(async () => { vi.advanceTimersByTime(60_000); });
+      expect(host.textContent).toContain("Stopped after 5 minutes of silence");
+      expect(voiceHarness.recorderStops).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses a thirty-minute hard limit even when audio activity keeps resetting silence", async () => {
+    vi.useFakeTimers();
+    try {
+      await renderControl();
+      await act(async () => { host.querySelector("button")!.click(); });
+      await flush();
+      await act(async () => sockets[0].open());
+      await act(async () => sockets[0].message({ type: "ready" }));
+
+      for (let minute = 0; minute < 29; minute += 1) {
+        await act(async () => {
+          vi.advanceTimersByTime(60_000);
+          voiceHarness.frameCallbacks[0](new Float32Array([0.2, -0.2]));
+        });
+      }
+      expect(voiceHarness.recorderStops).toBe(0);
+      await act(async () => { vi.advanceTimersByTime(60_000); });
+      expect(host.textContent).toContain("Stopped at the 30-minute limit");
+      expect(voiceHarness.recorderStops).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("inserts finalized text at the captured cursor without overwriting typed text", async () => {
+    const Composer = () => {
+      const [value, setValue] = useState("hello world");
+      return (
+        <>
+          <textarea aria-label="Composer" value={value} onChange={(event) => setValue(event.target.value)} />
+          <DictationMicButton
+            onText={(segment, insertion) => setValue((previous) => appendDictation(previous, segment, insertion))}
+            showStatus
+            scopeEpoch="account-a"
+          />
+        </>
+      );
+    };
+    await act(async () => root.render(<Composer />));
+    const textarea = host.querySelector("textarea")!;
+    textarea.focus();
+    textarea.setSelectionRange(6, 11);
+    const button = host.querySelector("button")!;
+    await act(async () => button.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () => { button.click(); });
+    await flush();
+    await act(async () => sockets[0].open());
+    await act(async () => sockets[0].message({ type: "ready" }));
+    await act(async () => sockets[0].message({ type: "transcript", text: "PAIGE", is_final: true }));
+    await act(async () => sockets[0].message({ type: "transcript", text: "systems", is_final: true }));
+    expect(textarea.value).toBe("hello PAIGE systems world");
   });
 });
