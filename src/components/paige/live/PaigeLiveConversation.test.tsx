@@ -55,7 +55,7 @@ describe("Paige Live Conversation owner surface", () => {
     document.body.querySelectorAll(".plc-stage").forEach((node) => node.remove());
   });
 
-  const render = async (card: LiveConversationCard | null = null, epoch = "tenant-a||", working = false, threadId: string | null = null) => {
+  const render = async (card: LiveConversationCard | null = null, epoch = "tenant-a||", working = false, threadId: string | null = null, disabled = false) => {
     await act(async () => root.render(
       <PaigeLiveConversation
         contextEpoch={epoch}
@@ -64,6 +64,7 @@ describe("Paige Live Conversation owner surface", () => {
         transcript={[{ id: "m1", role: "assistant", content: "We are still in the same thread." }]}
         activeCard={card}
         working={working}
+        disabled={disabled}
         confirmationFingerprints={["fingerprint-1"]}
         onAnswer={onAnswer}
         onApprove={onApprove}
@@ -196,6 +197,19 @@ describe("Paige Live Conversation owner surface", () => {
     await render(governed);
     await act(async () => clickText("Confirm this action"));
     expect(onApprove).toHaveBeenCalledWith(["fingerprint-1"]);
+  });
+
+  it("holds an already-open card action when its parent context becomes disabled", async () => {
+    const choice: LiveConversationCard = { id: "c", kind: "choice", title: "Choose", choices: [{ id: "one", label: "First path" }, { id: "two", label: "Second path" }], source: { availability: "LIVE" } };
+    await render(choice);
+    await act(async () => clickText("Talk live with Paige"));
+    await flush();
+    await render(choice, "tenant-a||", false, null, true);
+    const action = [...document.querySelectorAll("button")].find((node) => node.textContent?.includes("Second path"));
+    expect(action).toBeInstanceOf(HTMLButtonElement);
+    expect((action as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => (action as HTMLButtonElement).click());
+    expect(onAnswer).not.toHaveBeenCalled();
   });
 
   it("shows permission denial and retry without fabricating audio state", async () => {

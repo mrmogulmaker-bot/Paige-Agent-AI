@@ -601,6 +601,7 @@ const PaigeAIChatInner = ({
   // Chip click: prefill the composer + focus so the operator can edit before
   // Paige acts (cc-spec §3). Only chips flagged autoSend dispatch immediately.
   const handleChip = (chip: QuickChip) => {
+    if (dictationActive) return;
     if (chip.autoSend) {
       void handleSend(chip.prompt);
       return;
@@ -1219,7 +1220,7 @@ const PaigeAIChatInner = ({
   // server is the single turn-writer; a retry would double-write) until the server
   // grows a regenerate flag — filed as a fast-follow.
   const handleRetry = (assistantId: string) => {
-    if (isLoading) return;
+    if (isLoading || dictationActive) return;
     const aIdx = messages.findIndex((m) => m.id === assistantId);
     if (aIdx < 0) return;
     let uIdx = -1;
@@ -1244,8 +1245,13 @@ const PaigeAIChatInner = ({
   const filteredCommands = slashMatch
     ? visibleChips.filter((c) => c.label.toLowerCase().includes(slashQuery.toLowerCase()))
     : [];
-  const slashOpen = !!slashMatch && filteredCommands.length > 0 && !isLoading;
-  const pickCommand = (c: QuickChip) => { setInput(""); setSlashActive(0); handleChip(c); };
+  const slashOpen = !!slashMatch && filteredCommands.length > 0 && !isLoading && !dictationActive;
+  const pickCommand = (c: QuickChip) => {
+    if (dictationActive) return;
+    setInput("");
+    setSlashActive(0);
+    handleChip(c);
+  };
 
   // The user turn that produced the assistant message at `index` — stored as the
   // L2 eval-case input alongside the thumbs rating.
@@ -1393,7 +1399,7 @@ const PaigeAIChatInner = ({
 
   const liveConversationButton = soloTenantSafety && enableHistory ? (
     <PaigeLiveConversation
-      disabled={composerBlocked}
+      disabled={composerBlocked || dictationActive}
       contextEpoch={scopeEpoch}
       threadId={activeThreadId}
       ensureThread={ensureLiveThread}
@@ -1609,7 +1615,7 @@ const PaigeAIChatInner = ({
                             // them "Approved — run it." is a sentence the model interprets, and the
                             // call it re-emits need not be the one the person read.
                             fingerprints={message.confirm.map((c) => c.fingerprint).filter((f): f is string => !!f)}
-                            disabled={isLoading}
+                            disabled={isLoading || dictationActive}
                             onApprove={(fps) => void handleSend("Approved — run it.", fps)}
                             // Declining CANCELS the stored proposal, rather than only saying so in
                             // prose the model interprets. Without this the row stays live for its
@@ -1682,7 +1688,7 @@ const PaigeAIChatInner = ({
                       content={message.content}
                       ts={message.ts}
                       onRetry={
-                        message.role === "assistant" && !enableHistory && index === messages.length - 1 && !isLoading
+                        message.role === "assistant" && !enableHistory && index === messages.length - 1 && !isLoading && !dictationActive
                           ? () => handleRetry(message.id)
                           : undefined
                       }
@@ -1737,7 +1743,7 @@ const PaigeAIChatInner = ({
             {soloTenantSafety && connectionIssue && (
               <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
                 <span>{connectionIssue === "offline" ? "You appear to be offline. This message has not been sent." : connectionIssue === "server" ? "Something went wrong on our side and PAIGE didn't get to answer. Your message wasn't sent — try again." : "PAIGE did not respond before the local timeout. No later chunks will be accepted; earlier server work may still complete."}</span>
-                <Button type="button" variant="outline" size="sm" disabled={!activeTenantId} onClick={() => {
+                <Button type="button" variant="outline" size="sm" disabled={isLoading || dictationActive || !activeTenantId} onClick={() => {
                   const retry = retryTurnRef.current;
                   if (retry) void streamTurn(retry.base, retry.rollback, retry.userText, retry.doc);
                 }}>Retry</Button>
@@ -1837,7 +1843,7 @@ const PaigeAIChatInner = ({
                     key={c.label}
                     type="button"
                     onClick={() => handleChip(c)}
-                    disabled={isLoading}
+                    disabled={isLoading || dictationActive}
                     className="flex-none whitespace-nowrap rounded-full border border-border bg-card px-[11px] py-1.5 text-[11px] transition-colors hover:border-border-strong hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {c.label}

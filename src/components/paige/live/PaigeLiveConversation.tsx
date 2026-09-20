@@ -362,7 +362,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
           </div>
           <div className="plc-card-layer" aria-label="Current conversation card">
             <div className="plc-section-title"><span>On screen</span><small>One current object at a time</small></div>
-            {activeCard ? <ConversationCard card={activeCard} disabled={working} canConfirm={confirmationFingerprints.length > 0} onAnswer={onAnswer} onApprove={() => onApprove(confirmationFingerprints)} onDecline={() => onDecline(confirmationFingerprints)} /> : <div className="plc-empty-card"><PaigeCommandMark plated={false} label={null} className="h-7 w-7" /><p>No card is needed right now.</p><span>Paige will put a real question, choice, plan, evidence, action, or recap here when it helps the conversation.</span></div>}
+            {activeCard ? <ConversationCard card={activeCard} disabled={working || Boolean(disabled)} canConfirm={confirmationFingerprints.length > 0} onAnswer={onAnswer} onApprove={() => onApprove(confirmationFingerprints)} onDecline={() => onDecline(confirmationFingerprints)} /> : <div className="plc-empty-card"><PaigeCommandMark plated={false} label={null} className="h-7 w-7" /><p>No card is needed right now.</p><span>Paige will put a real question, choice, plan, evidence, action, or recap here when it helps the conversation.</span></div>}
           </div>
         </section>
       </main>
