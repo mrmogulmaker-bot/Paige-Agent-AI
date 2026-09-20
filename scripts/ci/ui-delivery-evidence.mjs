@@ -292,10 +292,16 @@ const MIN_REASON_WORDS = 4;
 const NEGATED_AVAILABILITY = /\b(?:not|never|isn[’']?t|no longer)\s+(?:installed|present|available)\b/i;
 const ANY_NEGATION = /\b(?:not|never|no|neither|nor|isn[’']?t|isnt|aren[’']?t|wasn[’']?t|weren[’']?t|doesn[’']?t|doesnt|don[’']?t|dont|cannot|cant|can[’']?t|couldnt|couldn[’']?t|won[’']?t|wont|wouldnt|wouldn[’']?t|hardly|barely|scarcely|anything but)\b/i;
 const AFFIRMATIVE_UNAVAILABILITY = /\b(?:unavailable|absent)\b/i;
-// The clause must NAME Flow-by-Flow itself (hyphenated or spaced) — the bare
-// word "skill" is not identifying: "the screenshot skill is unavailable"
-// (Codex 1b48c7fb P2) is another skill's unavailability claim, not this gate's.
-const SKILL_SUBJECT = /\bflow[- ]by[- ]flow\b/i;
+// The unavailability predicate must be BOUND to Flow-by-Flow inside the
+// clause: the predicate follows the mention directly, optionally through
+// "skill" and a copula. A bare "skill" clause is not identifying ("the
+// screenshot skill is unavailable", Codex 1b48c7fb P2), and neither is a
+// mere MENTION of Flow-by-Flow whose predicate describes another subject
+// ("Flow-by-Flow documents that the screenshot skill is unavailable",
+// Codex 5fdbf940 P2) — only a direct assertion of Flow-by-Flow's own
+// unavailability qualifies.
+const GATE_MENTION = /\bflow[- ]by[- ]flow\b/i;
+const BOUND_UNAVAILABILITY = /\bflow[- ]by[- ]flow(?:\s+skill)?(?:\s+(?:is|was|are|were|remains?)\s+)?(?:unavailable|absent)\b|\bflow[- ]by[- ]flow(?:\s+skill)?(?:\s+(?:is|was|are|were|remains?)\s+)?(?:not\s+|never\s+|no\s+longer\s+)(?:installed|present|available)\b/i;
 const AFFIRMATIVE_AVAILABILITY = /\b(?:installed|present|available)\b/i;
 function establishesUnavailability(reason) {
   // Canonical form 1 — a negator immediately before an AVAILABILITY word:
@@ -311,23 +317,24 @@ function establishesUnavailability(reason) {
   // negation-free prose: "the skill is unavailable…", "absent from…".
   return canonicalMatches.length > 0 || AFFIRMATIVE_UNAVAILABILITY.test(reason);
 }
-// Subject-scoped eligibility, ANDed with the whole-reason fail-closed check:
-// at least one clause must name the skill AND establish ITS unavailability,
-// no clause may name the skill and affirm ITS availability ("the skill is
-// installed and available; the owner is unavailable" is not an
-// unavailability claim about the skill), and the reason as a whole must
-// survive the negation sweep (a contradictory negation in ANY clause — even
-// one not naming the skill — still rejects).
+// Binding-scoped eligibility, ANDed with the whole-reason fail-closed check:
+// at least one clause must assert FLOW-BY-FLOW'S OWN unavailability (the
+// predicate bound to the mention), no clause MENTIONING Flow-by-Flow may
+// affirm availability alongside it ("installed and available", or "not
+// installed and is available" — the canonical-stripped sweep), and the
+// reason as a whole must survive the negation sweep (a contradictory
+// negation in ANY clause — even one not mentioning the gate — still rejects).
 function establishesSkillUnavailability(reason) {
   if (!establishesUnavailability(reason)) return false;
   const clauses = reason.split(/[,;]|\bbut\b/i);
   let qualifying = false;
   for (const clause of clauses) {
-    if (!SKILL_SUBJECT.test(clause)) continue;
-    if (establishesUnavailability(clause)) qualifying = true;
-    const canonical = new RegExp(NEGATED_AVAILABILITY.source, "gi");
-    const stripped = clause.replace(canonical, " ");
-    if (AFFIRMATIVE_AVAILABILITY.test(stripped)) return false;
+    if (BOUND_UNAVAILABILITY.test(clause)) qualifying = true;
+    if (GATE_MENTION.test(clause)) {
+      const canonical = new RegExp(NEGATED_AVAILABILITY.source, "gi");
+      const stripped = clause.replace(canonical, " ");
+      if (AFFIRMATIVE_AVAILABILITY.test(stripped)) return false;
+    }
   }
   return qualifying;
 }

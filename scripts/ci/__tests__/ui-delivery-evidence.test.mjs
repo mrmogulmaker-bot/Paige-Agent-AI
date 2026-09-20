@@ -775,6 +775,32 @@ test("Codex 1b48c7fb P2: Flow-by-Flow named directly (hyphenated or spaced) qual
   }
 });
 
+test("Codex 5fdbf940 P2: mentioning Flow-by-Flow is not enough — the predicate must be asserted OF Flow-by-Flow", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=Flow-by-Flow documents that the screenshot skill is unavailable in this delivery environment",
+  );
+  assert.equal(result.ok, false, result.errors.join("\n"));
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex 5fdbf940 P2 guard: another subject's AVAILABILITY in a non-gate clause does not veto the bound unavailability", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the Flow-by-Flow skill is not installed; the screenshot tool is available here",
+  );
+  assert.equal(result.ok, true, result.errors.join("\n"));
+});
+
+test("Codex 5fdbf940 P2 guard: a clause that both denies and affirms Flow-by-Flow's availability fails", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the Flow-by-Flow skill is not installed and is available here",
+  );
+  assert.equal(result.ok, false, result.errors.join("\n"));
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
 test("Codex 5081b595 P2: an affirmative unavailability claim in negation-free prose passes", () => {
   for (const reason of [
     "the Flow-by-Flow skill is unavailable in this delivery environment",
