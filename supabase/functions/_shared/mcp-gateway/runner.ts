@@ -53,23 +53,20 @@ function errorCodeOf(e: unknown): string {
   return "runner_failed";
 }
 
-// Reduce a UUID to its 32-hex canonical key for identity comparison, or `null` when the value is NOT
-// a valid UUID. A caller may name the SAME connection/tenant in a different-but-valid spelling than the
-// row carries (canonical hyphenated, hyphenless, brace-wrapped, any case), and a raw string compare
-// would then falsely refuse it. This VALIDATES A SUPPORTED LAYOUT before reducing — after dropping one
-// optional pair of braces and lowercasing, the value must be EITHER 32 hex (hyphenless) OR the exact
-// canonical 8-4-4-4-12 hyphenated shape. It deliberately does NOT accept "hex + hyphens anywhere" and
-// then strip: that let a stray-hyphen value (`-<32hex>`, `<32hex>-`, or wrong-group hyphens) reduce to
-// the same 32 nibbles as a canonical UUID and COLLIDE with it (Codex P2). A malformed identity (a
-// garbage-prefixed alias like `zzabcdef…`, an all-non-hex string, or an odd hyphen layout) is rejected,
-// never silently reduced to a colliding key that would slip past the loader-independent guard. In
-// production the typed-`uuid` RPC arg already rejects a non-UUID; this validates independently because
-// it is deliberately loader-independent (§39) — an alternate loader accepting aliases must not defeat it.
+// Reduce a UUID to its 32-hex canonical key for identity comparison, or `null` when the value is NOT a
+// PostgreSQL-valid UUID. This mirrors Postgres's own `uuid` input grammar, so it accepts EXACTLY what
+// the typed-`uuid` RPC arg accepts and nothing more: after lowercasing and dropping one optional pair of
+// braces, 32 hex digits in eight 4-digit groups with an OPTIONAL single hyphen at any of the seven group
+// boundaries. That admits canonical 8-4-4-4-12, hyphenless, the fully-hyphenated 4-4-4-4-4-4-4-4 form,
+// and every other Postgres grouping (so a legitimately-loaded row is never a false `connection_mismatch`
+// / `foreign_tenant`), while rejecting a leading / trailing / mid-group / doubled hyphen, non-hex, or
+// wrong length. The key is produced ONLY for a value that matches the grammar — never by stripping an
+// arbitrary string — so two distinct identities can never reduce to the same key and collide (Codex P2),
+// while every DB-accepted spelling of the SAME id matches. In production the RPC already rejects a
+// non-UUID; this validates independently because the guard is deliberately loader-independent (§39).
 const canonicalUuid = (v: string): string | null => {
-  const s = v.trim().toLowerCase().replace(/^\{(.*)\}$/, "$1");
-  if (/^[0-9a-f]{32}$/.test(s)) return s;
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)) return s.replace(/-/g, "");
-  return null;
+  const s = v.toLowerCase().replace(/^\{(.*)\}$/, "$1");
+  return /^[0-9a-f]{4}(?:-?[0-9a-f]{4}){7}$/.test(s) ? s.replace(/-/g, "") : null;
 };
 
 // Do two identifiers name the SAME identity? Both valid UUIDs → compare canonical keys (so any accepted

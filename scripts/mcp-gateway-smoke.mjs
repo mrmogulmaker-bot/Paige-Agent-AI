@@ -559,6 +559,14 @@ console.log("\n— single source: consent + dispatch from one canonical connecti
   const trailHyphen = await runnerMod.runConnectionCapability({ connectionId: CANON_HEX_ID, tenantId: "aaaaaaaabbbbccccddddeeeeeeeeeeee-", toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: spellLoad });
   check("a trailing-hyphen non-UUID tenant_id is refused foreign_tenant (layout validated, not hyphen-stripped)", trailHyphen.outcome === "refused" && trailHyphen.code === "foreign_tenant", JSON.stringify(trailHyphen));
 
+  // Codex P2 (follow-up on b907d1b4): Postgres ALSO accepts a hyphen after EVERY 4-digit group, so
+  // canonicalUuid must accept that grouping too — the typed-uuid RPC resolves it to the canonical row,
+  // and refusing it would be a false connection_mismatch. LOAD-BEARING: a two-layout-only validator
+  // (canonical 8-4-4-4-12 or hyphenless) refuses this and flips it to connection_mismatch.
+  approvals = {};
+  const grouped = await runnerMod.runConnectionCapability({ connectionId: "abcd-ef01-2345-6789-abcd-ef01-2345-6789", tenantId: CANON_HEX_TEN, toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: spellLoad });
+  check("a PostgreSQL-valid alternative grouping (hyphen after every 4-digit group) that canonicalizes to the row is NOT falsely refused", grouped.outcome === "read_observed", JSON.stringify(grouped));
+
   // (6) the consent verifier is asked to authorize the SAME canonical connection_id that backs
   // dispatch, and (7) the mutation dispatches to that same row's endpoint — single source, proven together.
   approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
