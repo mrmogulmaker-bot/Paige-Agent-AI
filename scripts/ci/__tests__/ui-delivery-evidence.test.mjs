@@ -835,6 +835,15 @@ test("Codex 1ed64059 P2 guard: a predicative 'is present' still vetoes the waive
   }
 });
 
+test("Codex e771e911 P2: a hyphenated predicative assertion ('present-here') is not the adjectival 'present-day' exemption", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=Flow-by-Flow is unavailable in this delivery environment; it is present-here today",
+  );
+  assert.equal(result.ok, false, result.errors.join("\n"));
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
 test("Codex 5081b595 P2: an affirmative unavailability claim in negation-free prose passes", () => {
   for (const reason of [
     "the Flow-by-Flow skill is unavailable in this delivery environment",

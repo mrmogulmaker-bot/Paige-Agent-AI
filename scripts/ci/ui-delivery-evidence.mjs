@@ -311,10 +311,12 @@ const BOUND_UNAVAILABILITY = /\bflow[- ]by[- ]flow(?:\s+skill)?(?:\s+(?:is|was|a
 const BARE_AVAILABILITY_CLAIM = /\b(?:installed|available)\b/i;
 // A "present" occurrence is NON-predicative only in the temporal/adjectival
 // forms ("at present", "the present environment", "present-day tooling").
-// Every other occurrence is an affirmation — whatever ordinary adverbs or
-// verb phrases sit between the verb and the word ("is currently present",
-// "continues to be present", Codex c508fc91 P2).
-const NON_PREDICATIVE_PRESENT = /\b(?:at|the|this|that|these|those|a|an|our|their|its|his|her)\s+present\b|\bpresent[-–—]/gi;
+// The hyphen exemption is the documented "present-day" adjectival compound
+// ONLY — a predicative assertion can't hyphenate its way out ("is
+// present-here today", Codex e771e911 P2). Every other occurrence is an
+// affirmation, whatever ordinary adverbs or verb phrases sit between the
+// verb and the word ("is currently present", "continues to be present").
+const NON_PREDICATIVE_PRESENT = /\b(?:at|the|this|that|these|those|a|an|our|their|its|his|her)\s+present\b|\bpresent[-–—]day\b/gi;
 function affirmsPresent(clause) {
   const occurrences = clause.match(/\bpresent\b/gi) ?? [];
   const exempt = clause.match(NON_PREDICATIVE_PRESENT) ?? [];
