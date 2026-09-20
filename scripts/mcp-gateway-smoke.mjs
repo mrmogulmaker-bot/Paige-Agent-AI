@@ -573,6 +573,13 @@ console.log("\n— executable-facet gate: the loader refuses non-MCP-drivable ro
   // Loader-level: a healthy http + bearer row resolves; each non-executable facet is connection_unusable.
   const okRes = await loaderFor(baseRow)("conn-canon");
   check("loader: a healthy http + bearer row resolves ok:true (from the loaded row)", okRes.ok === true && okRes.serverUrl === OK_URL, JSON.stringify(okRes));
+  // A public, tokenless MCP server (schema-supported auth_kind='none' with null tokens, returned
+  // CONFIGURED by the RPC) is a fully executable facet — it must RESOLVE, never connection_unusable
+  // (Codex P2). LOAD-BEARING: dropping 'none' from MCP_EXECUTABLE_AUTH_KINDS, or authFromSecret's
+  // none-mapping, flips this to a refusal.
+  const noneRow = { ...baseRow, auth_token: null, auth_kind: "none" };
+  const noneRes = await loaderFor(noneRow)("conn-canon");
+  check("loader: a public auth_kind='none' (tokenless) row resolves ok:true with { kind: 'none' } auth", noneRes.ok === true && noneRes.auth?.kind === "none" && noneRes.serverUrl === OK_URL, JSON.stringify(noneRes));
   const apiKeyRow = { ...baseRow, server_url: REFUSE_URL, auth_kind: "api_key" }; // the n8n REST facet
   const apiKeyRes = await loaderFor(apiKeyRow)("conn-canon");
   check("loader: an auth_kind='api_key' (n8n REST) facet → connection_unusable", apiKeyRes.ok === false && apiKeyRes.reason === "connection_unusable", JSON.stringify(apiKeyRes));
@@ -596,6 +603,8 @@ console.log("\n— executable-facet gate: the loader refuses non-MCP-drivable ro
   const execOk = await runReal(baseRow, "execute");
   check("runner: execute via the REAL loader on a valid http+bearer row runs (read_observed)", execOk.outcome === "read_observed", JSON.stringify(execOk));
   check("...and it dispatched to the loaded row's endpoint", (okSrv.calls ?? []).includes("list_records"), JSON.stringify(okSrv.calls ?? []));
+  const execNone = await runReal(noneRow, "execute");
+  check("runner: execute via the REAL loader on a public auth_kind='none' row runs (read_observed) — a tokenless server is not refused", execNone.outcome === "read_observed", JSON.stringify(execNone));
   const execApiKey = await runReal(apiKeyRow, "execute");
   check("runner: execute on an api_key REST facet → refused connection_unusable (execute cannot contact)", execApiKey.outcome === "refused" && execApiKey.code === "connection_unusable", JSON.stringify(execApiKey));
   const prepApiKey = await runReal(apiKeyRow, "prepare");

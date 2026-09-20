@@ -48,7 +48,12 @@ export type ConnectionLoader = (connectionId: string) => Promise<ResolvedConnect
 // facet resolves `connection_unusable`, never a dispatch. Widening the client (real `sse`/`stdio`, an
 // `api_key` header scheme) is what widens these sets; until then, refuse.
 const MCP_EXECUTABLE_TRANSPORTS = new Set(["http"]);
-const MCP_EXECUTABLE_AUTH_KINDS = new Set(["oauth", "bearer", "header", "url"]);
+// `none` = a public, tokenless MCP server: the schema permits `auth_kind='none'`, the RPC returns it
+// as configured with null tokens, `authFromSecret` maps it to `{kind:"none"}`, and the client sends no
+// auth header — a fully executable MCP facet. Omitting it falsely refused every public server as
+// `connection_unusable` (Codex P2). (Contrast `api_key`, the n8n REST facet, which is NOT an MCP
+// JSON-RPC endpoint and stays off this list.)
+const MCP_EXECUTABLE_AUTH_KINDS = new Set(["oauth", "bearer", "header", "url", "none"]);
 
 /**
  * Production loader: the service-role `get_mcp_connection_secret` RPC is the single decrypted read of

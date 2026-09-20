@@ -117,6 +117,11 @@ export function authFromSecret(secret: StoredMcpSecret | null | undefined): McpA
   if (!secret || typeof secret.server_url !== "string" || !secret.server_url) return null;
   // The address carries the credential; there is no header to send and no token to want.
   if (secret.auth_kind === "url") return { kind: "none" };
+  // A public MCP server carries no credential at all — schema-supported `auth_kind='none'`, which
+  // `get_mcp_connection_secret` returns as configured with null tokens and the client drives with no
+  // auth header. Map it to tokenless auth BEFORE the token guard, or a valid public server would be
+  // wrongly rejected here as "no credential".
+  if (secret.auth_kind === "none") return { kind: "none" };
   if (typeof secret.auth_token !== "string" || !secret.auth_token) return null;
   if (secret.auth_kind === "header" && typeof secret.auth_header_name === "string" && secret.auth_header_name) {
     return { kind: "header", name: secret.auth_header_name, token: secret.auth_token };
