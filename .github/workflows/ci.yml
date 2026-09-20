@@ -715,6 +715,11 @@ jobs:
       - name: Mind three-state contract guard (§18/§13/§00 — one projection, fail-closed, honest absence)
         if: ${{ !cancelled() }}
         run: npm run lint:mind-contract && npm run lint:mind-contract:test
+      # Appended LAST after the Mind guard (PR-P2 parity lane; same no-ordinal-shift rule —
+      # if the SDK lane merged a step first, this PR syncs and re-appends after it).
+      - name: Solo parity guard (INT-071 census — route stack, no solo redirect, ungated PAIGE/Command Center, no identity branches, registry snapshot)
+        if: ${{ !cancelled() }}
+        run: npm run lint:solo-parity && npm run lint:solo-parity:test
 
   web-fetch-hardening-smoke:
     # Its own job, deliberately on Node 22: the smoke imports the real
