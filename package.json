@@ -31,6 +31,8 @@
     "lint:legacy-mark": "node scripts/ci/legacy-mark-lint.mjs",
     "lint:legacy-mark:test": "node scripts/ci/legacy-mark-lint.mjs --self-test",
     "lint:skeleton": "node scripts/ci/skeleton-content-lint.mjs",
+    "lint:mind-contract": "node scripts/ci/mind-contract-lint.mjs",
+    "lint:mind-contract:test": "node scripts/ci/mind-contract-lint.mjs --self-test",
     "preview": "vite preview",
     "smoke:skills-interpreter": "node --experimental-strip-types --import ./scripts/_register-forge-stub.mjs scripts/skills-interpreter-provenance-smoke.mjs",
     "smoke:fleet-directory-v3": "node scripts/fleet-directory-v3-smoke.mjs",
