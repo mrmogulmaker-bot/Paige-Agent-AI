@@ -682,6 +682,34 @@ test("Codex cb73e6df P2: a NEGATED unavailability claim establishes availability
   }
 });
 
+test("Codex 5081b595 P2: non-adjacent negations of unavailability also fail (fail-closed to any negation)", () => {
+  for (const reason of [
+    "the skill does not appear to be unavailable in this environment",
+    "the skill is not currently unavailable in this environment",
+    "the skill is anything but unavailable for this delivery run",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, false, `${reason}: ${result.errors.join("\n")}`);
+    assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+  }
+});
+
+test("Codex 5081b595 P2: an affirmative unavailability claim in negation-free prose passes", () => {
+  for (const reason of [
+    "the Flow-by-Flow skill is unavailable in this delivery environment",
+    "the skill is absent from this environment and the owner accepted the grounded trace",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, true, `${reason}: ${result.errors.join("\n")}`);
+  }
+});
+
 test("Codex cb73e6df P2: negated AVAILABILITY still passes (not installed / no longer available)", () => {
   for (const reason of [
     "the skill is not installed in this environment and the owner accepted the grounded trace",

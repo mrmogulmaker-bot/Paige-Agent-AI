@@ -283,23 +283,28 @@ const OWNER_DECISION_REFERENCE = /(?:(?:PR|issue|discussion)\s*#?\s*[0-9]+|#[0-9
 // A substantive reason is prose, not an interjection: at least four DISTINCT
 // words — "ok ok ok ok" is filler, not prose.
 const MIN_REASON_WORDS = 4;
-// FLOW_BY_FLOW eligibility (Codex a5163ade/cb73e6df P2s): the doctrine
-// permits this waiver ONLY when the skill is genuinely unavailable in the
-// delivery environment — never because it was inconvenient. The reason must
-// establish unavailability in its own words, and a NEGATED unavailability
-// claim ("the skill is not unavailable in this environment") establishes
-// availability, not unavailability.
+// FLOW_BY_FLOW eligibility (Codex a5163ade/cb73e6df/5081b595 P2s): the
+// doctrine permits this waiver ONLY when the skill is genuinely unavailable
+// in the delivery environment. English negation is adversarial ("not
+// currently unavailable", "does not appear to be unavailable"), so the
+// check is deliberately FAIL-CLOSED rather than a natural-language parse:
+// exactly two unambiguous forms establish unavailability, and ANY other
+// negation word anywhere in the reason rejects it.
+const NEGATED_AVAILABILITY = /\b(?:not|never|isn[’']?t|no longer)\s+(?:installed|present|available)\b/i;
+const ANY_NEGATION = /\b(?:not|never|no|isn[’']?t|isnt|aren[’']?t|wasn[’']?t|weren[’']?t|doesn[’']?t|doesnt|don[’']?t|dont|cannot|cant|can[’']?t|couldnt|couldn[’']?t|won[’']?t|wont|wouldnt|wouldn[’']?t|hardly|barely|scarcely|anything but)\b/i;
+const AFFIRMATIVE_UNAVAILABILITY = /\b(?:unavailable|absent)\b/i;
 function establishesUnavailability(reason) {
-  // A negator immediately before an AVAILABILITY word is unavailability:
+  // Canonical form 1 — a negator immediately before an AVAILABILITY word:
   // "not installed", "not present", "not available", "never installed",
   // "no longer available".
-  if (/\b(?:not|never|isn[’']?t|no longer)\s+(?:installed|present|available)\b/i.test(reason)) {
-    return true;
-  }
-  // An affirmative unavailability word is eligible ONLY when it is not itself
-  // negated: "unavailable"/"absent" pass, "not unavailable"/"not absent" fail.
-  if (!/\b(?:unavailable|absent)\b/i.test(reason)) return false;
-  return !/\b(?:not|never|isn[’']?t)\s+(?:unavailable|absent)\b/i.test(reason);
+  if (NEGATED_AVAILABILITY.test(reason)) return true;
+  // Any other negation anywhere ("not unavailable", "not currently
+  // unavailable", "does not appear to be unavailable", …) makes the claim
+  // ambiguous or inverted — reject conservatively.
+  if (ANY_NEGATION.test(reason)) return false;
+  // Canonical form 2 — an affirmative unavailability word in otherwise
+  // negation-free prose: "the skill is unavailable…", "absent from…".
+  return AFFIRMATIVE_UNAVAILABILITY.test(reason);
 }
 
 function isWaivedWithOwnerDecision(value, eligibility) {
