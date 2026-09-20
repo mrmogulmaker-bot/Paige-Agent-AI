@@ -7,6 +7,7 @@ import { useTheme } from "next-themes";
 import { performSignOut } from "@/lib/auth/signOut";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { supabase } from "@/integrations/supabase/client";
 import { SoloSetupReadinessNotice } from "./SoloSetupReadinessNotice";
 import { isSoloSetupComplete } from "@/components/auth/RequireSetupComplete";
 import { branchBySlug, branchByKey, branchPath, defaultBranchSlug } from "@/lib/routing/tierBranches";
@@ -183,8 +184,35 @@ const showSetupReminder =
   !isPlatformStaff
   && activeTenant?.account_number != null
   && !isSoloSetupComplete(activeTenant?.features);
-const canFinishSetup =
+// Codex 2c3a2321 P2: solo_setup_access_scope() grants owner_full to the
+// primary owner (tenants.owner_user_id) OR any active membership owner
+// (is_owner / role='owner') — the CTA must honor BOTH. The canonical
+// client-callable predicate for the membership half is has_tenant_role
+// (authenticated-granted, STABLE, the §18 one home); the primary-owner half
+// is the server-derived column already in context. Fail-closed: on RPC error
+// the primary-owner fact stands alone.
+const isPrimaryOwner =
   activeTenant?.owner_user_id != null && activeTenant.owner_user_id === activeUserId;
+const [isMembershipOwner, setIsMembershipOwner] = React.useState(false);
+const ownerProbeTenant = showSetupReminder ? activeTenantId : null;
+const ownerProbeUser = showSetupReminder ? activeUserId : null;
+React.useEffect(() => {
+  let alive = true;
+  if (!ownerProbeTenant || !ownerProbeUser) {
+    setIsMembershipOwner(false);
+    return () => { alive = false; };
+  }
+  void (async () => {
+    const { data } = await supabase.rpc("has_tenant_role", {
+      _user_id: ownerProbeUser,
+      _tenant_id: ownerProbeTenant,
+      _role: "owner",
+    });
+    if (alive) setIsMembershipOwner(data === true);
+  })().catch(() => { if (alive) setIsMembershipOwner(false); });
+  return () => { alive = false; };
+}, [ownerProbeTenant, ownerProbeUser]);
+const canFinishSetup = isPrimaryOwner || isMembershipOwner;
 const soloSetupHref = showSetupReminder && canFinishSetup
   ? `/solo/${activeTenant!.account_number}/settings/setup`
   : null;

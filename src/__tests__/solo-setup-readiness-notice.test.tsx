@@ -138,7 +138,7 @@ describe("one viewport owner: the reminder renders inside SoloApp's height-owned
     // readiness news; the CTA must never lead to a surface the user cannot
     // change (solo_setup_access_scope maps non-owners/admins to read_only).
     expect(soloAppSrc).toContain("const showSetupReminder =");
-    expect(soloAppSrc).toMatch(/canFinishSetup\s*=[\s\S]*?owner_user_id === activeUserId/);
+    expect(soloAppSrc).toMatch(/canFinishSetup = isPrimaryOwner \|\| isMembershipOwner/);
     expect(soloAppSrc).toMatch(/soloSetupHref = showSetupReminder && canFinishSetup/);
     // The notice component renders the link ONLY on a non-null href, and
     // role-appropriate copy otherwise (no dead-end CTA).
@@ -148,6 +148,21 @@ describe("one viewport owner: the reminder renders inside SoloApp's height-owned
     // Sabotage-sensitivity: unlinking the gate (link for everyone) fails the pin.
     const ungated = soloAppSrc.replace("showSetupReminder && canFinishSetup", "showSetupReminder");
     expect(/soloSetupHref = showSetupReminder && canFinishSetup/.test(ungated)).toBe(false);
+  });
+
+  it("Codex 2c3a2321 P2 regression: membership owners (is_owner / role='owner') are honored, not just the primary owner column", () => {
+    // solo_setup_access_scope() grants owner_full to tenants.owner_user_id OR
+    // active membership owners; the CTA gate must cover BOTH halves — the
+    // primary column from context, and the canonical client-callable
+    // has_tenant_role RPC (authenticated-granted, the §18 one home) for the
+    // membership half. The probe runs ONLY while the reminder is visible.
+    expect(soloAppSrc).toContain('supabase.rpc("has_tenant_role", {');
+    expect(soloAppSrc).toMatch(/_role: "owner"/);
+    expect(soloAppSrc).toMatch(/const ownerProbeTenant = showSetupReminder \? activeTenantId : null;/);
+    expect(soloAppSrc).toMatch(/canFinishSetup = isPrimaryOwner \|\| isMembershipOwner/);
+    // Sabotage-sensitivity: dropping either half breaks the classification pin.
+    const membershipDropped = soloAppSrc.replace("isPrimaryOwner || isMembershipOwner", "isPrimaryOwner");
+    expect(/isPrimaryOwner \|\| isMembershipOwner/.test(membershipDropped)).toBe(false);
   });
 });
 
