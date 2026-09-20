@@ -46,6 +46,25 @@
  * that does not execute the code can never be as strong as running it. The vitest file and
  * the projector's own unit tests exercise behaviour; this guard is the structural tripwire.
  *
+ * HEURISTIC LIMITS (§13 — enumerated, NO claim of completeness). This is a TEXT scanner, so
+ * three finding-classes from the PR-A2 Codex review are KNOWN, un-fixed evasions of it, left
+ * open deliberately (do not read their absence from the checks as coverage):
+ *   ①  a re-deriving exported entry point can be masked by delegating its `return` through a
+ *      nested helper — MC5 reads the entry body's OWN returns, not a full top-level-return
+ *      dataflow, so a hand-rolled state set hidden one call deep is not caught.
+ *   ②  a projection whose signature carries generics or nested-paren / brace-bearing
+ *      return-type annotations may not have its body extracted, so MC2/MC5 can skip it.
+ *   ⑤  string- or template-literal braces inside a body can unbalance the block slicer, so a
+ *      body after such a literal may be read short.
+ * THREAT MODEL: this guard defends against ACCIDENTAL drift introduced by our own future
+ * edits (a fourth state, a renamed/dropped state, a fail-open projector, a swapped honesty
+ * line, a second silent projection, Chat re-deriving the states) — the realistic risk on a
+ * trusted codebase. It is NOT an adversarial-evasion defense and does not claim to be one: a
+ * contributor who WANTS to slip a non-conforming projection past a text scanner can (via
+ * ①/②/⑤, or a shape not yet enumerated). The robust fix is an AST-based guard — PR-A3, using
+ * the repo's `typescript` devDependency (planned; must land before projection generalization).
+ * Until then this guard is the structural tripwire for honest regressions, not a proof.
+ *
  * Deliberately regex/text-based and dependency-free so it runs anywhere `node` runs — the
  * same shape as view-security-invoker-lint / definer-fn-lint / tier-feature-lint.
  * `--self-test` runs the compliant + one-per-code non-compliant fixtures.
