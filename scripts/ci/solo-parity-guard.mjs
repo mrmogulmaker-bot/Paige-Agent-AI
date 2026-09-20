@@ -33,6 +33,25 @@
  * "no owner_user_id in authorization predicates" rule — it does not hold today
  * and ships with the solo_setup_access_scope access PR, not here.
  *
+ * HEURISTIC LIMITS (coordinator ruling 2026-09-20, round 2 comment-only):
+ * this guard is TEXT-BASED. Its threat model is defending against ACCIDENTAL
+ * DRIFT FROM OUR OWN EDITS, not adversarial evasion; no claim of completeness.
+ * Known un-fixed evasion classes (Codex 62d370a1/03268bd6 rounds, ruled known
+ * limits — the root fix is a SHARED AST helper the coordinator will sequence
+ * for this guard, the SDK lane's #1295 import resolution, and the Mind lane's
+ * PR-A3; do not build a per-guard AST here):
+ *   SP1 — conditional/expression-wrapped mounts (e.g. `{isOwner && <Require…>}`)
+ *         pass the component-set check; the wrapper EXPRESSION is not parsed.
+ *   SP2 — aliased navigation bindings (`const goTo = useNavigate(); goTo(…)`)
+ *         pass; only a literal `navigate(` is recognized in the Solo branch.
+ *   SP4 — qualified or reversed comparisons (`1234567 === activeTenant?.account_number`)
+ *         pass; the reverse direction only matches a bare identifier.
+ * Fail-closed fragilities (a reformat trips the guard RED, never silently
+ * passes): SP1 depends on the /solo/* route mount living on ONE line in
+ * App.tsx, and SP2 depends on the `// ── SUB-ACCOUNT` marker delimiting the
+ * solo branch of RequireSetupComplete. If either file is reformatted, the
+ * guard fails loudly and the pin must be re-grounded deliberately.
+ *
  * Self-test mode (--self-test) runs the guard's checks against mutated fixture
  * trees and asserts each violation code fires (the guard is load-bearing).
  */
