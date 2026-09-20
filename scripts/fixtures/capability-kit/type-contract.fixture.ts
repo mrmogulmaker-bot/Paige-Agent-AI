@@ -5,6 +5,7 @@ import {
   type CapabilityDefinition,
   type DefinedCapability,
 } from "../../../supabase/functions/_shared/capability-kit/mod.ts";
+import type { CallerAuthority } from "../../../supabase/functions/_shared/mcp-gateway/authority.ts";
 
 const input = objectInputSchema({
   properties: { id: { type: "string" } },
@@ -34,7 +35,7 @@ const valid: CapabilityDefinition = {
     actorResolver: "authenticated_user",
     revalidateAt: ["before_execution"],
   },
-  availability: { resolver: "capability_status", states: ["live", "unavailable"] },
+  availability: { resolver: "paige-capability-status", states: ["live", "unavailable"] },
   providerBinding: { kind: "internal", operation: "documents.read", connectionResolver: null },
   idempotency: { mode: "not_applicable" },
   receipt: {
@@ -47,6 +48,21 @@ const valid: CapabilityDefinition = {
 };
 
 defineCapability(valid);
+
+// Owner-grantable permission keys fit the shipped tenant-bound MCP CallerAuthority shape.
+const mcpAuthority: CallerAuthority = {
+  kind: "capabilities",
+  tenantId: "00000000-0000-0000-0000-000000000001",
+  capabilities: [valid.governance.requiredPermission.key],
+};
+void mcpAuthority;
+
+const noncanonicalTenantResolver = {
+  ...valid,
+  tenantScope: { ...valid.tenantScope, tenantResolver: "request_body_tenant" },
+};
+// @ts-expect-error resolver identifiers are closed to canonical implementations
+defineCapability(noncanonicalTenantResolver);
 
 // Root combinators are not members of the builder's root contract.
 objectInputSchema({

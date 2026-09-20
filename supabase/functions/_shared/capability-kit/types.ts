@@ -1,5 +1,13 @@
 import type { OwnerGrantablePermissionKey } from "./permission.ts";
 import type { CapabilityInputSchema } from "./schema.ts";
+import type {
+  CapabilityActorResolverId,
+  CapabilityAvailabilityResolverId,
+  CapabilityConnectionResolverId,
+  CapabilityOutcomeProjectorId,
+  CapabilityReceiptRecorderId,
+  CapabilityTenantResolverId,
+} from "./seams.ts";
 
 export const EXECUTION_OUTCOMES = Object.freeze([
   "succeeded",
@@ -49,8 +57,8 @@ export type CapabilityGovernance = Readonly<{
 
 export type CapabilityTenantScope = Readonly<{
   source: "server";
-  tenantResolver: string;
-  actorResolver: string;
+  tenantResolver: CapabilityTenantResolverId;
+  actorResolver: CapabilityActorResolverId;
   revalidateAt: readonly (
     | "before_availability"
     | "before_execution"
@@ -59,25 +67,25 @@ export type CapabilityTenantScope = Readonly<{
 }>;
 
 export type CapabilityAvailabilityContract = Readonly<{
-  resolver: string;
+  resolver: CapabilityAvailabilityResolverId;
   states: readonly CapabilityAvailability[];
 }>;
 
 export type CapabilityProviderBinding = Readonly<{
   kind: "internal" | "mcp" | "partner";
   operation: string;
-  connectionResolver: string | null;
+  connectionResolver: CapabilityConnectionResolverId | null;
 }>;
 
 export type CapabilityReceipt = Readonly<{
   rail: true;
-  recorder: string;
+  recorder: CapabilityReceiptRecorderId;
   redaction: "tenant_safe";
   visibility: "owner_internal" | "tenant_member" | "platform_operator";
 }>;
 
 export type CapabilityOutcomeContract = Readonly<{
-  projector: string;
+  projector: CapabilityOutcomeProjectorId;
 }>;
 
 export type ReadIdempotency = Readonly<{

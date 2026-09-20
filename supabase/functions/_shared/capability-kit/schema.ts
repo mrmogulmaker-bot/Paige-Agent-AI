@@ -87,6 +87,12 @@ function assertOptionalNonNegativeInteger(value: unknown, label: string): void {
   }
 }
 
+function assertOptionalFiniteNumber(value: unknown, label: string): void {
+  if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value))) {
+    throw new TypeError(`${label} must be a finite number.`);
+  }
+}
+
 function assertExactKeys(value: Record<PropertyKey, unknown>, allowed: readonly string[], label: string): void {
   const allowedSet = new Set(allowed);
   for (const key of Object.keys(value)) {
@@ -124,6 +130,11 @@ function assertNestedSchema(value: unknown, label: string): void {
     case "number":
     case "integer":
       assertExactKeys(schema, ["type", "description", "minimum", "maximum"], label);
+      assertOptionalFiniteNumber(schema.minimum, `${label}.minimum`);
+      assertOptionalFiniteNumber(schema.maximum, `${label}.maximum`);
+      if (schema.minimum !== undefined && schema.maximum !== undefined && Number(schema.maximum) < Number(schema.minimum)) {
+        throw new TypeError(`${label}.maximum must be greater than or equal to minimum.`);
+      }
       return;
     case "boolean":
       assertExactKeys(schema, ["type", "description"], label);

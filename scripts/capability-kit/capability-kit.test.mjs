@@ -43,7 +43,7 @@ function definitionFromFixture(fixture) {
       actorResolver: "authenticated_user",
       revalidateAt: ["before_availability", "before_execution", "before_receipt"],
     },
-    availability: { resolver: "capability_status", states: ["live", "unavailable"] },
+    availability: { resolver: "paige-capability-status", states: ["live", "unavailable"] },
     providerBinding: { kind: "internal", operation: fixture.id, connectionResolver: null },
     idempotency: effect === "read"
       ? { mode: "not_applicable" }
@@ -113,6 +113,15 @@ test("array cardinalities must be finite non-negative integers", () => {
   }), /greater than or equal/);
 });
 
+test("numeric bounds must be finite numbers with a valid range", () => {
+  for (const bound of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, "1"]) {
+    assert.throws(() => objectInputSchema({ properties: { value: { type: "number", minimum: bound } } }), /finite number/);
+  }
+  assert.throws(() => objectInputSchema({
+    properties: { value: { type: "integer", minimum: 2, maximum: 1 } },
+  }), /greater than or equal/);
+});
+
 test("mutations must match the canonical action-risk policy", () => {
   const candidate = definitionFromFixture(mutationFixture);
   assert.throws(() => defineCapability({
@@ -123,6 +132,37 @@ test("mutations must match the canonical action-risk policy", () => {
     ...candidate,
     governance: { ...candidate.governance, actionRiskKey: "crm_create_unclassified_thing" },
   }), /canonical action-risk policy/);
+});
+
+test("external effects require the canonical high-risk class", () => {
+  const candidate = definitionFromFixture(mutationFixture);
+  assert.throws(() => defineCapability({ ...candidate, effect: "external_effect" }), /external_effect.*high/);
+  const elevated = {
+    ...candidate,
+    effect: "external_effect",
+    governance: { ...candidate.governance, actionRiskKey: "calendar_book_meeting", risk: "high" },
+  };
+  assert.equal(isDefinedCapability(defineCapability(elevated)), true);
+});
+
+test("governance seam identifiers are closed to canonical implementations", () => {
+  const candidate = definitionFromFixture(readFixture);
+  for (const changed of [
+    { ...candidate, tenantScope: { ...candidate.tenantScope, tenantResolver: "request_body_tenant" } },
+    { ...candidate, tenantScope: { ...candidate.tenantScope, actorResolver: "request_body_actor" } },
+    { ...candidate, availability: { ...candidate.availability, resolver: "local_status" } },
+    { ...candidate, receipt: { ...candidate.receipt, recorder: "local_audit" } },
+    { ...candidate, outcome: { projector: "local_outcome" } },
+  ]) assert.throws(() => defineCapability(changed), /canonical/);
+
+  assert.throws(() => defineCapability({
+    ...candidate,
+    providerBinding: { kind: "mcp", operation: "documents.read", connectionResolver: "request_url" },
+  }), /canonical/);
+  assert.equal(isDefinedCapability(defineCapability({
+    ...candidate,
+    providerBinding: { kind: "mcp", operation: "documents.read", connectionResolver: "mcp-gateway" },
+  })), true);
 });
 
 test("execution outcomes and evidence states remain separate exact dimensions", () => {

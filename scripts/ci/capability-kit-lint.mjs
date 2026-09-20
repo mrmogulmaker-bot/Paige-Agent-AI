@@ -22,6 +22,7 @@ const KIT_FILES = [
   "supabase/functions/_shared/capability-kit/types.ts",
   "supabase/functions/_shared/capability-kit/permission.ts",
   "supabase/functions/_shared/capability-kit/schema.ts",
+  "supabase/functions/_shared/capability-kit/seams.ts",
   "supabase/functions/_shared/capability-kit/defineCapability.ts",
   "supabase/functions/_shared/capability-kit/mod.ts",
   "scripts/fixtures/capability-kit/type-contract.fixture.ts",
@@ -62,6 +63,134 @@ function calledMember(call, sourceFile) {
   return ts.isIdentifier(expression) ? expression.text : null;
 }
 
+function createAstResolver(files) {
+  const sources = new Map(files.map((file) => {
+    const absolute = path.resolve(file);
+    const source = fs.readFileSync(absolute, "utf8");
+    return [absolute, ts.createSourceFile(absolute, source, ts.ScriptTarget.Latest, true,
+      absolute.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS)];
+  }));
+
+  function moduleFile(fromFile, specifier) {
+    if (!specifier.startsWith(".")) return null;
+    const base = path.resolve(path.dirname(fromFile), specifier);
+    for (const candidate of [base, `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts"), path.join(base, "index.tsx")]) {
+      if (sources.has(candidate)) return candidate;
+    }
+    return null;
+  }
+
+  const fileInfo = new Map();
+  for (const [file, source] of sources) {
+    const namedImports = new Map();
+    const namespaceImports = new Map();
+    const variables = new Map();
+    for (const statement of source.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteralLike(statement.moduleSpecifier)) continue;
+      const target = moduleFile(file, statement.moduleSpecifier.text);
+      if (!target) continue;
+      const bindings = statement.importClause?.namedBindings;
+      if (bindings && ts.isNamedImports(bindings)) {
+        for (const specifier of bindings.elements) {
+          namedImports.set(specifier.name.text, {
+            target,
+            imported: specifier.propertyName?.text ?? specifier.name.text,
+          });
+        }
+      } else if (bindings && ts.isNamespaceImport(bindings)) {
+        namespaceImports.set(bindings.name.text, target);
+      }
+    }
+    function collectVariables(node) {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        const existing = variables.get(node.name.text) ?? [];
+        existing.push(node.initializer);
+        variables.set(node.name.text, existing);
+      }
+      ts.forEachChild(node, collectVariables);
+    }
+    collectVariables(source);
+    fileInfo.set(file, { namedImports, namespaceImports, variables });
+  }
+
+  function unwrap(expression) {
+    while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) ||
+      ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) {
+      expression = expression.expression;
+    }
+    return expression;
+  }
+
+  function resolveExpression(file, expression, seen) {
+    expression = unwrap(expression);
+    if (ts.isIdentifier(expression)) return resolveLocal(file, expression.text, seen);
+    const isProperty = ts.isPropertyAccessExpression(expression);
+    const isElement = ts.isElementAccessExpression(expression) && ts.isStringLiteralLike(expression.argumentExpression);
+    if (!isProperty && !isElement) return false;
+    const base = expression.expression;
+    const exported = isProperty ? expression.name.text : expression.argumentExpression.text;
+    if (!ts.isIdentifier(base)) return false;
+    const target = fileInfo.get(file)?.namespaceImports.get(base.text);
+    return target ? resolveExport(target, exported, seen) : false;
+  }
+
+  function resolveLocal(file, localName, seen) {
+    const key = `local:${file}:${localName}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    if (localName === "decideGovernedExecution") return true;
+    const info = fileInfo.get(file);
+    const imported = info?.namedImports.get(localName);
+    if (imported && resolveExport(imported.target, imported.imported, seen)) return true;
+    return (info?.variables.get(localName) ?? [])
+      .some((initializer) => resolveExpression(file, initializer, new Set(seen)));
+  }
+
+  function resolveExport(file, exportName, seen) {
+    const key = `export:${file}:${exportName}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    const source = sources.get(file);
+    for (const statement of source?.statements ?? []) {
+      if (ts.isExportDeclaration(statement)) {
+        const target = statement.moduleSpecifier && ts.isStringLiteralLike(statement.moduleSpecifier)
+          ? moduleFile(file, statement.moduleSpecifier.text)
+          : file;
+        if (!target) continue;
+        if (!statement.exportClause) {
+          if (resolveExport(target, exportName, seen)) return true;
+          continue;
+        }
+        if (!ts.isNamedExports(statement.exportClause)) continue;
+        for (const specifier of statement.exportClause.elements) {
+          if (specifier.name.text !== exportName) continue;
+          const local = specifier.propertyName?.text ?? specifier.name.text;
+          if (target === file ? resolveLocal(file, local, seen) : resolveExport(target, local, seen)) return true;
+        }
+      }
+      const modifiers = ts.canHaveModifiers(statement) ? ts.getModifiers(statement) : undefined;
+      if (!modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
+      if ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) && statement.name?.text === exportName &&
+        resolveLocal(file, exportName, seen)) return true;
+      if (ts.isVariableStatement(statement)) {
+        for (const declaration of statement.declarationList.declarations) {
+          if (ts.isIdentifier(declaration.name) && declaration.name.text === exportName && resolveLocal(file, exportName, seen)) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  return {
+    sourceFile(file) {
+      return sources.get(path.resolve(file));
+    },
+    isGovernedCall(file, call) {
+      return resolveExpression(path.resolve(file), call.expression, new Set());
+    },
+  };
+}
+
 function objectProperties(object, sourceFile) {
   const properties = new Map();
   for (const member of object.properties) {
@@ -85,7 +214,8 @@ function violation(rule, file, symbol) {
 export function scanSource(source, file = "fixture.ts", options = {}) {
   const normalized = file.replaceAll("\\", "/");
   const strictOnly = options.strictOnly === true;
-  const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const sourceFile = options.sourceFile ?? ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const resolver = options.resolver;
   const findings = [];
   let usesGovernedExecution = false;
   const effectBindings = [];
@@ -93,7 +223,7 @@ export function scanSource(source, file = "fixture.ts", options = {}) {
   function visitFirst(node) {
     if (ts.isCallExpression(node)) {
       const member = calledMember(node, sourceFile);
-      if (member === "decideGovernedExecution") {
+      if (member === "decideGovernedExecution" || resolver?.isGovernedCall(sourceFile.fileName, node)) {
         usesGovernedExecution = true;
         if (!strictOnly) {
           findings.push(violation("direct-governed-execution", normalized, "decideGovernedExecution"));
@@ -194,15 +324,17 @@ function additionsAgainstBaseline(current, baseline) {
 function scanRepository() {
   const strictFindings = [];
   const debtFindings = [];
-  for (const root of SCAN_ROOTS) {
-    for (const file of walk(path.join(ROOT, root))) {
-      const rel = relative(file);
-      if (rel.startsWith(MCP_GATEWAY_EXEMPT)) continue;
-      const source = fs.readFileSync(file, "utf8");
-      if (!rel.startsWith(KIT_DIR)) {
-        strictFindings.push(...scanSource(source, rel, { strictOnly: true }));
-        debtFindings.push(...scanSource(source, rel));
-      }
+  const files = SCAN_ROOTS.flatMap((root) => walk(path.join(ROOT, root)))
+    .filter((file) => !relative(file).startsWith(MCP_GATEWAY_EXEMPT));
+  const resolver = createAstResolver(files);
+  for (const file of files) {
+    const rel = relative(file);
+    const sourceFile = resolver.sourceFile(file);
+    if (!sourceFile) throw new Error(`TypeScript did not load ${rel}.`);
+    if (!rel.startsWith(KIT_DIR)) {
+      const shared = { sourceFile, resolver };
+      strictFindings.push(...scanSource(sourceFile.text, rel, { ...shared, strictOnly: true }));
+      debtFindings.push(...scanSource(sourceFile.text, rel, shared));
     }
   }
   return {
@@ -252,6 +384,19 @@ function runSelfTest() {
       console.error(`  FAIL ${name}: expected ${expected}, got ${actual.join(", ") || "nothing"}`);
     } else console.log(`  ok   ${name}`);
   }
+  const aliasFiles = ["alias-governance.ts", "alias-barrel.ts", "alias-consumer.ts"]
+    .map((file) => path.join(ROOT, "scripts", "fixtures", "capability-kit", file));
+  const aliasResolver = createAstResolver(aliasFiles);
+  const aliasConsumer = aliasFiles.at(-1);
+  const aliasSource = aliasResolver.sourceFile(aliasConsumer);
+  const aliasFindings = scanSource(aliasSource.text, relative(aliasConsumer), {
+    sourceFile: aliasSource,
+    resolver: aliasResolver,
+  }).filter((item) => item.rule === "direct-governed-execution");
+  if (aliasFindings.length !== 3) {
+    failed += 1;
+    console.error(`  FAIL AST alias resolution: expected 3 governed calls, got ${aliasFindings.length}: ${JSON.stringify(aliasFindings)}`);
+  } else console.log("  ok   AST resolves aliases, re-exports, namespace imports, and local aliases");
   const exempt = "supabase/functions/_shared/mcp-gateway/temporary.ts".startsWith(MCP_GATEWAY_EXEMPT);
   if (!exempt) {
     failed += 1;
@@ -273,7 +418,7 @@ function runSelfTest() {
     console.error("  FAIL shrink-only baseline admitted a duplicate occurrence");
   } else console.log("  ok   shrink-only baseline preserves occurrence counts");
   if (failed) process.exit(1);
-  console.log(`\n✓ capability-kit lint self-test passed — ${cases.length + 4} cases.`);
+  console.log(`\n✓ capability-kit lint self-test passed — ${cases.length + 5} cases.`);
 }
 
 if (process.argv.includes("--self-test")) {

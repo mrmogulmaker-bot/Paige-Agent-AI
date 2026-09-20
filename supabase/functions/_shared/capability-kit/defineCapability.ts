@@ -1,5 +1,6 @@
 import { isOwnerGrantablePermissionKey } from "./permission.ts";
 import { isCapabilityInputSchema } from "./schema.ts";
+import { CAPABILITY_SEAM_IDS } from "./seams.ts";
 import { classifyAction, MUTATION_VERB } from "../action-risk.ts";
 import {
   EVIDENCE_STATES,
@@ -117,6 +118,9 @@ export function defineCapability(definition: CapabilityDefinition): DefinedCapab
     if (governance.approval !== canonicalApproval) {
       throw new TypeError("Capability approval must match the canonical action-risk policy.");
     }
+    if (root.effect === "external_effect" && governance.risk !== "high") {
+      throw new TypeError("external_effect capabilities must declare the canonical high risk class.");
+    }
   }
   if (!IDENTIFIER.test(String(identity.id))) throw new TypeError("Capability identity.id is invalid.");
   if (!Number.isInteger(identity.version) || Number(identity.version) < 1) {
@@ -126,13 +130,18 @@ export function defineCapability(definition: CapabilityDefinition): DefinedCapab
     ["identity.domain", identity.domain],
     ["identity.owner", identity.owner],
     ["identity.description", identity.description],
-    ["tenantScope.tenantResolver", tenantScope.tenantResolver],
-    ["tenantScope.actorResolver", tenantScope.actorResolver],
-    ["availability.resolver", availability.resolver],
     ["providerBinding.operation", providerBinding.operation],
-    ["receipt.recorder", receipt.recorder],
-    ["outcome.projector", outcome.projector],
   ] as const) nonEmpty(value, label);
+
+  for (const [label, actual, canonical] of [
+    ["tenantScope.tenantResolver", tenantScope.tenantResolver, CAPABILITY_SEAM_IDS.tenantResolver],
+    ["tenantScope.actorResolver", tenantScope.actorResolver, CAPABILITY_SEAM_IDS.actorResolver],
+    ["availability.resolver", availability.resolver, CAPABILITY_SEAM_IDS.availabilityResolver],
+    ["receipt.recorder", receipt.recorder, CAPABILITY_SEAM_IDS.receiptRecorder],
+    ["outcome.projector", outcome.projector, CAPABILITY_SEAM_IDS.outcomeProjector],
+  ] as const) {
+    if (actual !== canonical) throw new TypeError(`${label} must name the canonical governance seam.`);
+  }
 
   if (tenantScope.source !== "server") {
     throw new TypeError("Capability tenant authority must be server-derived.");
@@ -151,9 +160,14 @@ export function defineCapability(definition: CapabilityDefinition): DefinedCapab
   if (!["internal", "mcp", "partner"].includes(String(providerBinding.kind))) {
     throw new TypeError("Capability provider binding kind is invalid.");
   }
-  if (providerBinding.connectionResolver !== null) {
-    nonEmpty(providerBinding.connectionResolver, "providerBinding.connectionResolver");
-  } else if (providerBinding.kind !== "internal") {
+  if (providerBinding.kind === "internal" && providerBinding.connectionResolver !== null) {
+    throw new TypeError("Internal provider bindings cannot declare a connection resolver.");
+  }
+  if (providerBinding.kind !== "internal" &&
+    providerBinding.connectionResolver !== CAPABILITY_SEAM_IDS.connectionResolver) {
+    throw new TypeError("External provider bindings must name the canonical connection resolver.");
+  }
+  if (providerBinding.kind !== "internal" && providerBinding.connectionResolver === null) {
     throw new TypeError("External provider bindings require a connection resolver.");
   }
   if (receipt.rail !== true || receipt.redaction !== "tenant_safe") {

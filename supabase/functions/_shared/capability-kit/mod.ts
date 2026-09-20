@@ -11,6 +11,15 @@ export {
   type NestedInputSchema,
 } from "./schema.ts";
 export {
+  CAPABILITY_SEAM_IDS,
+  type CapabilityActorResolverId,
+  type CapabilityAvailabilityResolverId,
+  type CapabilityConnectionResolverId,
+  type CapabilityOutcomeProjectorId,
+  type CapabilityReceiptRecorderId,
+  type CapabilityTenantResolverId,
+} from "./seams.ts";
+export {
   EVIDENCE_STATES,
   EXECUTION_OUTCOMES,
   type CapabilityApproval,
