@@ -35,7 +35,7 @@ ACCEPTANCE_CRITERIA: Start dictation in each composer; verify Send is held throu
 MOTION_PURPOSE: NONE: no motion change; the incumbent pulse continues to indicate live capture and remains disabled under reduced-motion.
 PROTECTED_SEAMS: Tested: DictationMicButton, useDictation epoch teardown, AppShell PaigeChat route/user scope, PaigeAIChat tenant/client/mission/user/thread scope, Conversations tenant/thread scope, MessageComposer send gate. Unaffected: paige-dictate, stt-router, paige-tts, paige-live-session, paige-ai-chat Edge runtime, Live Conversation, storage, database, and migrations.
 
-INTERNAL_BUILD_IDENTITY: 72158f3c1d896c7cc77257cf61827a5b63a05d4c; deployment=none-pre-merge; environment=local; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=focused-tests+affected-regressions+mutation-proof+tsc-ratchet+build+impeccable; current-main-integration=3be7f36021a0fc89c3ab1c5cdcf8c0056e3cd251
+INTERNAL_BUILD_IDENTITY: 72158f3c1d896c7cc77257cf61827a5b63a05d4c; deployment=none-pre-merge; environment=local; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=focused-tests+affected-regressions+mutation-proof+tsc-ratchet+build+impeccable; current-main-integration=b09150c8b3a8fb2f5698e60bbad61e870779d203
 RELEASE_CHANNEL: development: corrective PR pending; owner standing authority INT-083 permits merge only after exact-head CI, one requested exact-head review, and the Ready-triggered exact-head review are complete and dispositioned
 RELEASE_CLASSIFICATION: patch: fixes post-merge context isolation, truthful status, and send ordering without provider, schema, entitlement, or architecture change
 CUSTOMER_RELEASE_IDENTITY: none: internal PAIGE Chat dictation corrective repair
@@ -60,7 +60,7 @@ The user starts dictation in one composer context. The recorder may request perm
 
 - Base merge: eb0bdd7b767aa48ca08082c47e6c586d0a371b13.
 - Exact code commit: 72158f3c1d896c7cc77257cf61827a5b63a05d4c.
-- Current-main integration head before this record: 3be7f36021a0fc89c3ab1c5cdcf8c0056e3cd251.
+- Current-main integration head before this record update: b09150c8b3a8fb2f5698e60bbad61e870779d203.
 - Failing-first: 6 failed and 22 passed on the merged implementation.
 - Repaired focus: 28/28; affected regression selection: 72/72.
 - Load-bearing mutation: removing teardownRun from the scope-change effect made cleans a pending recorder and opens no socket after an account epoch change fail (expected one recorder stop, received zero); restoration returned 28/28 green.
