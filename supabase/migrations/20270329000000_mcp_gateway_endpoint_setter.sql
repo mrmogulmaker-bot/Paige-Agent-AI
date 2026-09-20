@@ -6,13 +6,18 @@
 -- value, or NULL) and NEVER carried forward from the prior row. So a changed endpoint can never
 -- inherit the old endpoint's secret: to keep a secret on a new endpoint the caller must re-supply it
 -- (a deliberate re-attestation). `endpoint_hash` is DERIVED (public._mcp_endpoint_hash of the
--- DECRYPTED endpoint), so it recomputes automatically; the shipped AFTER-UPDATE trigger
--- `trg_mcp_gw_revoke_approvals_on_endpoint_change` (20270322000000) deletes the endpoint-bound
--- consent in the SAME transaction when the decrypted endpoint changes — this setter relies on it and
--- does not re-implement it. (A→B→A cannot resurrect A's approvals: A→B already deleted them.) The
--- re-point ALSO resets provider_state, the last-checked observation time, and deletes the stale
--- discovered-tool catalog: nothing operational from the old endpoint carries onto the new one, which
--- is unverified until a re-probe.
+-- DECRYPTED endpoint), so it recomputes automatically. Every successful rebind UNCONDITIONALLY
+-- revokes the endpoint-bound consent, done EXPLICITLY in this function (a DELETE on
+-- mcp_connection_approvals) BEFORE the UPDATE — NOT relying on the shipped AFTER-UPDATE trigger
+-- `trg_mcp_gw_revoke_approvals_on_endpoint_change` (20270322000000) alone, because that trigger fires
+-- ONLY on a decrypted-URL change and would miss a SAME-URL credential rotation (an approval is
+-- consent for a specific endpoint AND credential; either changing voids it). Doing the DELETE first
+-- makes the trigger a harmless no-op on a real re-point and makes the reported `approvals_revoked`
+-- count exact. (A→B→A cannot resurrect A's approvals: A→B already deleted them.) The re-point ALSO
+-- resets provider_state, the last-checked observation time, and deletes the stale discovered-tool
+-- catalog: nothing operational from the old endpoint carries onto the new one, which is unverified
+-- until a re-probe. The CREDENTIAL BUNDLE is validated against auth_kind BEFORE any of these
+-- destructive writes (see A6), so a bundle that could never authenticate never clears state.
 --
 -- WHAT THIS PR IS NOT. It does NOT wire the gateway (still library-only, zero deployed importer), does
 -- NOT probe/verify the endpoint (no outbound call — see below), does NOT register a paige_action_kind
@@ -45,9 +50,13 @@
 --
 -- A1 — Every successful change is durably recorded in the SAME transaction into the existing
 --      public.paige_audit_log (the established config-change audit home — direct in-transaction INSERT,
---      as delete_conversation / grant_tenant_member_role do; there is no writer RPC). HASHES/ENUMS
---      ONLY: old + new endpoint_hash and auth_kind before + after — NEVER the URL, a token, or
---      ciphertext. If the audit INSERT fails, the whole function transaction aborts and the UPDATE does
+--      as delete_conversation / grant_tenant_member_role do; there is no writer RPC). HASHES / ENUMS /
+--      BOOLEANS / COUNTS ONLY — NEVER the URL, a token, or ciphertext. Payload keys: old + new
+--      endpoint_hash; endpoint_changed and credential_changed (booleans — credential_changed is derived
+--      from an in-definer decrypt of the OLD token compared to the new argument; the plaintext is never
+--      logged); auth_kind before + after; auth_token_last4 before + after (last4 is already non-secret,
+--      stored on the row); approvals_revoked and tools_cleared (row counts from the pre-UPDATE deletes).
+--      If the audit INSERT fails, the whole function transaction aborts and the UPDATE + deletes do
 --      NOT commit (plain in-transaction INSERT; no autonomous-transaction anywhere in the audit path).
 --      The row sets actor_user_id = auth.uid(), which satisfies the current INSERT policy
 --      "Actors record their own actions" WITH CHECK (actor_user_id = auth.uid()) (20261027000000, which
@@ -65,13 +74,25 @@
 --      literals are parsed to `inet` and range-checked NUMERICALLY (notation-agnostic — every spelling
 --      of loopback/mapped/ULA/link-local IPv6 and every private/reserved IPv4 is caught, not just
 --      canonical strings), and encoded / shorthand IPv4 (decimal, hex, octal, 2-/3-part dotted) is
---      refused outright. HOSTNAME-TO-PRIVATE-IP RESOLUTION IS NOT COVERED AT WRITE
---      TIME (SQL cannot resolve DNS) and remains the job of _shared/mcp-client.ts's SSRF-guarded egress
---      at DISPATCH. This validation is an additional write-time layer, never a replacement for that
---      runtime guard.
+--      refused outright. A non-literal host must also be SYNTACTICALLY valid DNS (labels of [a-z0-9-],
+--      1–63 chars, no leading/trailing hyphen, ≥1 dot, total ≤253) — so whitespace, control chars, and
+--      percent-encoding in the host (all outside the label charset) are rejected before the destructive
+--      reset, matching what a runtime `new URL(...)` would refuse. HOSTNAME-TO-PRIVATE-IP RESOLUTION IS
+--      NOT COVERED AT WRITE TIME (SQL cannot resolve DNS) and remains the job of
+--      _shared/mcp-client.ts's SSRF-guarded egress at DISPATCH. This validation is an additional
+--      write-time layer, never a replacement for that runtime guard.
 --
 -- A5 — Grants: EXECUTE to `authenticated` ONLY (revoked from PUBLIC + anon). _mcp_caller_capabilities
 --      stays service_role-only and is called from inside this SECURITY DEFINER function.
+--
+-- A6 — CREDENTIAL-BUNDLE validation (round-2). The supplied credential columns must match auth_kind,
+--      checked BEFORE any destructive write so a bundle that could never authenticate never clears
+--      state or lands a half-written credential: header → auth_header_name + token; bearer / api_key →
+--      token; oauth → oauth_issuer + oauth_client_id + (token OR refresh_token) (client_secret optional
+--      for PKCE / public clients); url / none → NO credential material at all (any stray token / header
+--      name / refresh / oauth field is rejected). Text presence is btrim(COALESCE(...)) so a
+--      whitespace-only value counts as absent. Closed code MCP_BAD_CREDENTIAL_BUNDLE (22023); never
+--      echoes a value.
 --
 -- D2 — `mcp.connections.manage` scope: it authorizes CREATE, CONFIGURE and ROTATE of a connection
 --      (this setter is its first consumer — configure/rotate the endpoint + credential). It EXCLUDES
@@ -229,7 +250,14 @@ BEGIN
   -- 10.0.1) that resolvers expand to loopback/private — refuse it outright.
   IF _host ~ '^[0-9.]+$' THEN RETURN false; END IF;
 
-  -- A normal public https hostname.
+  -- A normal public https hostname must be a syntactically valid DNS name (P2b): labels of
+  -- [a-z0-9-], 1–63 chars, no leading/trailing hyphen, at least one dot, total length ≤ 253. This
+  -- rejects whitespace, control characters, and percent-encoding in the host (none are in the label
+  -- charset), so a host the runtime `new URL(...)` would reject never triggers the destructive reset.
+  IF length(_host) > 253 THEN RETURN false; END IF;
+  IF _host !~ '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?))+$' THEN
+    RETURN false;
+  END IF;
   RETURN true;
 END;
 $$;
@@ -310,11 +338,16 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 DECLARE
-  _conn      public.mcp_connections%ROWTYPE;
-  _tenant    uuid;
-  _old_hash  text;
-  _new_hash  text;
-  _new_last4 text;
+  _conn               public.mcp_connections%ROWTYPE;
+  _tenant             uuid;
+  _old_hash           text;
+  _new_hash           text;
+  _new_last4          text;
+  _old_token          text;      -- decrypted in-definer ONLY to derive _credential_changed; NEVER logged
+  _endpoint_changed   boolean;
+  _credential_changed boolean;
+  _approvals_revoked  integer := 0;
+  _tools_cleared      integer := 0;
 BEGIN
   IF _connection_id IS NULL THEN
     RAISE EXCEPTION 'MCP_NO_CONNECTION' USING ERRCODE = '22023';
@@ -352,18 +385,77 @@ BEGIN
     RAISE EXCEPTION 'MCP_BAD_ENDPOINT' USING ERRCODE = '22023';   -- closed code; never echoes the URL
   END IF;
 
+  -- Credential-bundle validation (round-2 item 2). The supplied credential columns MUST match the
+  -- auth_kind, validated BEFORE any destructive write, so a bundle that could never authenticate never
+  -- triggers the reset (tools/approvals/state cleared) and never lands a half-written credential. A
+  -- closed code (MCP_BAD_CREDENTIAL_BUNDLE) that NEVER echoes a value; text presence is btrim/COALESCE
+  -- so a whitespace-only field counts as absent.
+  --   header         → auth_header_name + a token
+  --   bearer/api_key → a token
+  --   oauth          → issuer + client_id + (a token OR a refresh_token); client_secret optional (PKCE)
+  --   url / none      → NO credential material at all (any stray token/header/oauth/refresh field rejected)
+  IF _auth_kind = 'header' THEN
+    IF btrim(COALESCE(_auth_header_name, '')) = '' OR btrim(COALESCE(_auth_token, '')) = '' THEN
+      RAISE EXCEPTION 'MCP_BAD_CREDENTIAL_BUNDLE' USING ERRCODE = '22023';
+    END IF;
+  ELSIF _auth_kind IN ('bearer', 'api_key') THEN
+    IF btrim(COALESCE(_auth_token, '')) = '' THEN
+      RAISE EXCEPTION 'MCP_BAD_CREDENTIAL_BUNDLE' USING ERRCODE = '22023';
+    END IF;
+  ELSIF _auth_kind = 'oauth' THEN
+    IF btrim(COALESCE(_oauth_issuer, '')) = ''
+       OR btrim(COALESCE(_oauth_client_id, '')) = ''
+       OR (btrim(COALESCE(_auth_token, '')) = '' AND btrim(COALESCE(_refresh_token, '')) = '') THEN
+      RAISE EXCEPTION 'MCP_BAD_CREDENTIAL_BUNDLE' USING ERRCODE = '22023';
+    END IF;
+  ELSE
+    -- url / none: no credential material may accompany a credential-less kind.
+    IF btrim(COALESCE(_auth_token, '')) <> ''
+       OR btrim(COALESCE(_auth_header_name, '')) <> ''
+       OR btrim(COALESCE(_refresh_token, '')) <> ''
+       OR btrim(COALESCE(_oauth_issuer, '')) <> ''
+       OR btrim(COALESCE(_oauth_client_id, '')) <> ''
+       OR btrim(COALESCE(_oauth_client_secret, '')) <> ''
+       OR _oauth_scopes IS NOT NULL
+       OR _access_token_expires_at IS NOT NULL THEN
+      RAISE EXCEPTION 'MCP_BAD_CREDENTIAL_BUNDLE' USING ERRCODE = '22023';
+    END IF;
+  END IF;
+
   -- Hashes (derived) for the audit + return. Old may be NULL for a never-configured native row.
   _old_hash  := CASE WHEN _conn.server_url_ct IS NULL THEN NULL
                      ELSE public._mcp_endpoint_hash(public.platform_decrypt(_conn.server_url_ct)) END;
   _new_hash  := public._mcp_endpoint_hash(_server_url);
   _new_last4 := CASE WHEN _auth_token IS NULL THEN NULL ELSE right(_auth_token, 4) END;
 
+  -- Change-detection for the audit (round-2 item 4). The old token is decrypted in-definer ONLY to
+  -- derive the boolean _credential_changed; the plaintext is NEVER logged or returned. _endpoint_changed
+  -- compares the derived hashes (NULL-safe). These are recorded as booleans, not values.
+  _old_token          := CASE WHEN _conn.auth_token_ct IS NULL THEN NULL
+                              ELSE public.platform_decrypt(_conn.auth_token_ct) END;
+  _endpoint_changed   := _old_hash  IS DISTINCT FROM _new_hash;
+  _credential_changed := _old_token IS DISTINCT FROM _auth_token;
+
+  -- Unconditional approval revocation (round-2 item 1), done EXPLICITLY here — BEFORE the UPDATE — so
+  -- it also covers a same-URL CREDENTIAL rotation (new token, same endpoint), which the shipped
+  -- AFTER-UPDATE trigger (20270322000000) does NOT catch because it only fires on a decrypted-URL
+  -- change. Doing it before the UPDATE means the trigger then finds nothing to delete (a harmless
+  -- no-op on a real re-point) and the reported count is exact. A call that failed the authority /
+  -- shape / endpoint / credential checks above never reaches this line, so a rejected rebind deletes
+  -- NOTHING. The old grant is void on every rebind: an approval is consent for a specific
+  -- (endpoint, credential) pair, and either changing invalidates it.
+  DELETE FROM public.mcp_connection_approvals WHERE connection_id = _connection_id;
+  GET DIAGNOSTICS _approvals_revoked = ROW_COUNT;
+
+  -- The old endpoint's discovered tools are stale; a re-probe rediscovers the new endpoint's set.
+  DELETE FROM public.mcp_connection_tools WHERE connection_id = _connection_id;
+  GET DIAGNOSTICS _tools_cleared = ROW_COUNT;
+
   -- THE INVARIANT: one atomic UPDATE; every credential-bearing column is set from the arguments (new
   -- value or NULL), NONE carried forward. A changed endpoint therefore cannot inherit the old secret.
-  -- provider_state is reset and (below) the discovered-tool catalog is cleared: no operational state
-  -- from the old endpoint carries onto the new one. The AFTER-UPDATE trigger (20270322000000) deletes
-  -- endpoint-bound approvals when the DECRYPTED endpoint changes. status/health reset because the new
-  -- endpoint is unverified until a probe.
+  -- provider_state is reset and (above) the approvals + discovered-tool catalog are cleared: no
+  -- operational state from the old endpoint carries onto the new one. status/health reset because the
+  -- new endpoint is unverified until a probe.
   UPDATE public.mcp_connections SET
     server_url_ct           = public.platform_encrypt(_server_url),
     auth_kind               = _auth_kind,
@@ -386,20 +478,25 @@ BEGIN
     updated_at              = now()
   WHERE connection_id = _connection_id;
 
-  -- The old endpoint's discovered tools are stale; a re-probe rediscovers the new endpoint's set.
-  DELETE FROM public.mcp_connection_tools WHERE connection_id = _connection_id;
-
-  -- A1: durable audit in the SAME transaction — HASHES/ENUMS ONLY. A failure here aborts the txn, so
-  -- the UPDATE above does not commit. actor_user_id = auth.uid() (a real tenant-admin: the capability
-  -- gate refused a NULL actor), which also satisfies paige_audit_log's INSERT RLS as belt-and-suspenders.
+  -- A1: durable audit in the SAME transaction — HASHES/ENUMS/COUNTS ONLY. A failure here aborts the txn,
+  -- so the UPDATE + deletes above do not commit. actor_user_id = auth.uid() (a real tenant-admin: the
+  -- capability gate refused a NULL actor), which also satisfies paige_audit_log's INSERT RLS as
+  -- belt-and-suspenders. credential_changed is a BOOLEAN derived from an in-definer decrypt — the token
+  -- plaintext is never logged; only last4 (already non-secret, stored on the row) and the flags appear.
   INSERT INTO public.paige_audit_log (actor_user_id, tenant_id, action, target_type, target_id, payload)
   VALUES (
     auth.uid(), _conn.tenant_id, 'mcp_connection.endpoint_changed', 'mcp_connections', _connection_id,
     jsonb_build_object(
-      'old_endpoint_hash', _old_hash,
-      'new_endpoint_hash', _new_hash,
-      'auth_kind_before',  _conn.auth_kind,
-      'auth_kind_after',   _auth_kind
+      'old_endpoint_hash',        _old_hash,
+      'new_endpoint_hash',        _new_hash,
+      'endpoint_changed',         _endpoint_changed,
+      'credential_changed',       _credential_changed,
+      'auth_kind_before',         _conn.auth_kind,
+      'auth_kind_after',          _auth_kind,
+      'auth_token_last4_before',  _conn.auth_token_last4,
+      'auth_token_last4_after',   _new_last4,
+      'approvals_revoked',        _approvals_revoked,
+      'tools_cleared',            _tools_cleared
     )
   );
 
@@ -414,7 +511,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid) IS
-  'INT-099 (MCP PR-2): the endpoint setter for the Connected MCP Gateway. Resolves authority BEFORE reading the connection (§9): the mcp.connections.manage capability for the caller''s server-resolved tenant via _mcp_caller_capabilities (owner/tenant-admin only; platform owner EXCLUDED, A2), fail closed, no service-role bypass; a missing or foreign-tenant connection is a uniform MCP_FORBIDDEN. REFUSES a legacy-projected row (D1). Writes the endpoint + FULL credential bundle in one atomic UPDATE, sourcing every credential column from the arguments (never carrying the old ciphertext forward) so a changed endpoint can never inherit the old secret; resets provider_state, deletes the stale tool catalog, and the 20270322000000 trigger revokes endpoint-bound consent on a real change. Records a hashes-only audit into paige_audit_log in the same transaction (A1). Returns only connection_id/status/endpoint_hash/auth_token_last4 (A3). Static https + value-based IP SSRF URL validation only — runtime egress SSRF stays in mcp-client.ts (A4). EXECUTE to authenticated only (A5).';
+  'INT-099 (MCP PR-2): the endpoint setter for the Connected MCP Gateway. Resolves authority BEFORE reading the connection (§9): the mcp.connections.manage capability for the caller''s server-resolved tenant via _mcp_caller_capabilities (owner/tenant-admin only; platform owner EXCLUDED, A2), fail closed, no service-role bypass; a missing or foreign-tenant connection is a uniform MCP_FORBIDDEN. REFUSES a legacy-projected row (D1). Validates the CREDENTIAL BUNDLE against auth_kind BEFORE any write (header→header-name+token; bearer/api_key→token; oauth→issuer+client_id+(token|refresh); url/none→no credential material; closed code MCP_BAD_CREDENTIAL_BUNDLE, never echoes a value). Writes the endpoint + FULL credential bundle in one atomic UPDATE, sourcing every credential column from the arguments (never carrying the old ciphertext forward) so a changed endpoint can never inherit the old secret; resets provider_state, and — EXPLICITLY, before the UPDATE — deletes the stale tool catalog AND revokes every endpoint-bound approval (unconditionally, so a same-URL credential rotation also drops consent; the 20270322000000 trigger then no-ops). Records a hashes/enums/counts-only audit into paige_audit_log in the same transaction (old/new endpoint_hash, endpoint_changed, credential_changed [boolean from an in-definer decrypt — plaintext never logged], auth_kind + auth_token_last4 before/after, approvals_revoked, tools_cleared) (A1). Returns only connection_id/status/endpoint_hash/auth_token_last4 (A3). Static https + value-based IP + DNS-syntax SSRF URL validation only — runtime egress SSRF stays in mcp-client.ts (A4). EXECUTE to authenticated only (A5).';
 
 REVOKE ALL ON FUNCTION public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid) TO authenticated;
