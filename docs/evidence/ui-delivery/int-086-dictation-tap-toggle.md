@@ -35,7 +35,7 @@ ACCEPTANCE_CRITERIA: On the authenticated production platform, tap the mic once 
 MOTION_PURPOSE: The existing pulse communicates live capture only; reduced-motion removes the pulse while the icon, status label, and pressed state preserve the same information.
 PROTECTED_SEAMS: Impacted and tested: dictation media capture, Deepgram WebSocket startup/buffering, transcript insertion, composer scope-change cleanup, and shared chat-wrapper integration. Explicitly unaffected: `paige-dictate`, `stt-router.ts`, `paige-tts`, `paige-live-session`, `paige-ai-chat/index.ts`, Live Conversation, and message-send error wording.
 
-INTERNAL_BUILD_IDENTITY: d9b681520ad8620aaa877dc26ad34cf58ece6221; deployment=none-pre-merge; environment=local; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=focused-tests+tsc-ratchet+build+render-results; current-main-integration=000c973c3064b4a549fb48858d0c5c1d314c4471
+INTERNAL_BUILD_IDENTITY: d9b681520ad8620aaa877dc26ad34cf58ece6221; deployment=none-pre-merge; environment=local; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=focused-tests+tsc-ratchet+build+render-results; current-main-integration=af2a36a56a167270f4abe2efd2f194860721552b
 RELEASE_CHANNEL: development: draft PR #1290; owner standing authority INT-083 permits guarded merge only after exact-head CI and one clean or dispositioned Codex review; production monitoring and recovery follow the Vercel deployment
 RELEASE_CLASSIFICATION: patch: restores the intended dictation interaction and reliability without provider, data-model, entitlement, or architecture change
 CUSTOMER_RELEASE_IDENTITY: none: internal PAIGE Chat UX repair; no named customer release is proposed
@@ -57,7 +57,7 @@ The Solo user opens PAIGE Chat and taps the microphone. The control first says i
 
 ## Evidence index
 
-- Code head: `d9b681520ad8620aaa877dc26ad34cf58ece6221`; current-main integration: `000c973c3064b4a549fb48858d0c5c1d314c4471`; PR: #1290.
+- Code head: `d9b681520ad8620aaa877dc26ad34cf58ece6221`; current-main integration: `af2a36a56a167270f4abe2efd2f194860721552b`; PR: #1290.
 - Failing-first: five new assertions failed before implementation; focused baseline was 14/14 and repaired suite is 20/20.
 - Load-bearing mutation: temporarily restoring pointer-release stop made `keeps recording after release` fail (`recorderStops` expected 0, received 1); restoration returns 20/20 green.
 - Commands: `npx vitest run src/components/voice/DictationMicButton.test.tsx`; `npm run ci:tsc`; `npm run build`; `git diff --check`; `impeccable detect --json`.
