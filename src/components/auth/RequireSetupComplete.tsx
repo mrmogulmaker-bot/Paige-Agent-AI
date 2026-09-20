@@ -1,36 +1,50 @@
-// RequireSetupComplete — the Setup gate (owner directive, 2026-08-16)
+// RequireSetupComplete — the Setup gate (owner directive, 2026-08-16;
+// ACCESS RULE SUPERSEDED for Solo by owner adjudication 2026-09-19).
 //
-// OWNER RULING: "NEVER MAKE ANYONE DEFAULT TO ANYTHING ... EVERYONE goes through
-// Setup and chooses (playbook/pipeline/calendar) via the marketplace/Setup." With the
-// starter auto-provisioner removed, a freshly provisioned tenant lands with NO chosen
-// playbook. This gate holds such a tenant on the marketplace/Setup chooser until they
-// pick — instead of dropping them onto an auto-built dashboard they never asked for.
+// ── THE CURRENT OWNER RULE (2026-09-19): SETUP IS NOT AN ACCESS GATE ──
+// No Solo account may be blocked from the PAIGE application or PAIGE Chat
+// because Setup has not been completed. Setup is an optional guided
+// configuration surface, a place to review/edit business context, something
+// PAIGE can help the owner complete conversationally, and a source of richer
+// context/readiness — never an application-access, PAIGE-Chat, or Command
+// Center prerequisite. Blocking PAIGE because the facts PAIGE can help
+// collect were not entered manually is contradictory by construction.
 //
-// SETUP-COMPLETE SIGNAL (safe, grandfathers every existing tenant): the active tenant
-// is setup-complete when `features.playbook` (non-empty) OR `features.playbook_config`
-// is present, OR `features.solo_setup_complete` is true. The first two were written by
-// the admin marketplace (retired with /admin, #995); the third is written by the CANONICAL
-// V3 setup journey itself — a successful save of the in-shell business-context Setup fires
-// the solo_setup_completion_marker trigger in the same commit (#826), so the gate opens
-// the moment the tenant completes the Setup the shell actually holds them on. Any tenant
-// that ALREADY has a playbook is grandfathered → never gated.
+// Consequences of that rule, implemented here:
+//   • The SOLO tier NEVER redirects. An incomplete Solo owner lands on the
+//     destination they requested; the canonical shell loads normally;
+//     Setup stays reachable from Settings; and a NON-BLOCKING readiness
+//     banner surfaces the incomplete state (dismissible, role=status —
+//     visibility of readiness debt, not an obstacle).
+//   • Historical markers are no longer access tokens. features.playbook /
+//     features.playbook_config (admin-marketplace era) and
+//     features.solo_setup_complete (canonical V3 marker, #826/#1269) remain
+//     valid business/readiness data, but for Solo they no longer select
+//     product access — a playbook-holding legacy tenant and a fresh
+//     zero-save tenant resolve through the EXACT same routing contract, so
+//     historical account state cannot grant or deny the current shell.
+//   • The gate is NOT removed for the SUB-ACCOUNT tier: /business keeps its
+//     original redirect contract (this adjudication covers Solo only), and
+//     Agency / Platform Operator were never gated (§61) and stay untouched.
 //
-// NO-OP (never redirects) for, by construction:
-//   • platform operators / God / super_admin / platform_admin (isPlatformStaff) —
-//     they operate at the platform tier, no tenant playbook to pick;
-//   • clients & anonymous — no active operator tenant in this context (auth guards own
-//     those surfaces; this gate wraps only the /admin + /agency shells, never /app);
-//   • any tenant that already has a chosen playbook (grandfathered / just chose one).
+// SETUP-COMPLETE SIGNAL (kept as READINESS state, not authority):
+// `features.playbook` (non-empty) OR `features.playbook_config` present OR
+// `features.solo_setup_complete === true`. The first two were written by the
+// retired admin marketplace (#995); the third is written by the canonical V3
+// setup journey itself (the solo_setup_completion_marker trigger fires in the
+// same commit as a successful save, #826/#1269). Completing Setup still
+// matters — it enriches PAIGE's context and retires the banner — but it no
+// longer opens or closes any door for Solo.
 //
-// FAIL OPEN by construction (§13/§32): renders children immediately and redirects ONLY
-// after the tenant context has resolved (loading === false) AND a real active tenant has
-// no playbook. While loading, no active tenant, staff, or already-configured → children
-// render untouched, so a false negative can never strand a real, set-up user.
+// NO-OP (never redirects, never bannering) for, by construction:
+//   • platform operators / God / super_admin / platform_admin (isPlatformStaff);
+//   • clients & anonymous — no active operator tenant in this context;
+//   • the agency/enterprise manager tiers (§61).
 //
-// NO REDIRECT LOOP: the chooser lives at /admin/marketplace, which is inside the wrapped
-// /admin/* subtree. The gate NO-OPs whenever the current path is already the chooser, so
-// the chooser is always reachable while gated (§36: a real first-run chooser, not a dead
-// redirect).
+// FAIL OPEN by construction (§13/§32): renders children immediately and only
+// acts after the tenant context has resolved (loading === false) AND a real
+// active tenant exists. While loading, no active tenant, or staff → children
+// render untouched, so a false negative can never strand a real user.
 import { Navigate, useLocation } from "react-router-dom";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { resolveTierKey } from "@/lib/tier/tierFeatures";
@@ -48,59 +62,62 @@ export function canonicalSetupPath(
   return null;
 }
 
+/** The setup-completion READINESS signal, as one pure predicate. This is
+ *  context/readiness state, NEVER Solo access authority (owner adjudication
+ *  2026-09-19): the sub-account redirect below and the Solo shell's
+ *  non-blocking reminder (SoloApp) both consume it as data. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function isSoloSetupComplete(features: Record<string, unknown> | null | undefined): boolean {
+  const playbookSlug = features?.playbook;
+  return (
+    (typeof playbookSlug === "string" && playbookSlug.trim().length > 0) ||
+    (features != null && Object.prototype.hasOwnProperty.call(features, "playbook_config")) ||
+    features?.solo_setup_complete === true
+  );
+}
+
 export function RequireSetupComplete({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { loading, isPlatformStaff, activeTenant } = useTenantContext();
 
   // Setup-complete = a chosen playbook slug, a playbook_config object, or the
-  // canonical V3 setup journey's own completion marker (#826: without the
-  // marker, the shell's Setup can never open the gate — the dead-end the issue
-  // describes, since the marketplace that wrote the legacy markers is retired).
-  const features = activeTenant?.features ?? null;
-  const playbookSlug = features?.playbook;
-  const hasPlaybook =
-    (typeof playbookSlug === "string" && playbookSlug.trim().length > 0) ||
-    (features != null && Object.prototype.hasOwnProperty.call(features, "playbook_config")) ||
-    features?.solo_setup_complete === true;
+  // canonical V3 setup journey's own completion marker (#826/#1269). This is
+  // READINESS state only — under the 2026-09-19 owner rule it never decides
+  // Solo product access (it still steers the sub-account redirect, which this
+  // adjudication leaves intact).
+  const hasPlaybook = isSoloSetupComplete(activeTenant?.features);
 
-  // §51/§61: ONLY the business-operating tiers (Solo + Sub-account) ever pick a business
-  // playbook, so ONLY they are gated. An agency/enterprise MANAGER manages sub-accounts —
-  // it never chooses a business playbook — and God/operator is tenant-less; the gate must
-  // NO-OP for all of them or it walls a whole tier out of its shell (the peer-gate caught
-  // an agency being bounced from /agency → /admin/marketplace with no way back). resolveTierKey
-  // is the §60 one home — no hardcoded account_type compare lives here.
+  // §51/§61/§60: resolveTierKey is the one home for tier resolution — no
+  // hardcoded account_type compare lives here.
   const tierKey = resolveTierKey({
     isPlatformStaff,
     account_type: activeTenant?.account_type ?? null,
     parent_tenant_id: activeTenant?.parent_tenant_id ?? null,
   });
-  const gatedTier = tierKey === "solo" || tierKey === "sub_account";
+
+  // ── THE SOLO CONTRACT (owner adjudication 2026-09-19): never redirect. ──
+  // The gate renders the children and NOTHING ELSE — no sibling element of
+  // any kind. The canonical Solo shell owns the viewport (100dvh,
+  // overflow:hidden) and its main region owns scrolling, so a sibling here
+  // would expand the document past the shell (the layout defect this branch
+  // once carried). The non-blocking readiness reminder lives INSIDE the
+  // shell (SoloApp renders SoloSetupReadinessNotice within its height-owned
+  // subtree), fed by the same isSoloSetupComplete readiness predicate.
+  // Entitlement/signup gates live OUTSIDE this component (App.tsx wraps
+  // /solo in RequireCompleteSignup → RequireSoloBetaEntitlement → this) and
+  // are untouched by this rule.
+  if (tierKey === "solo") {
+    return <>{children}</>;
+  }
+
+  // ── SUB-ACCOUNT: the original redirect contract, unchanged (the chooser
+  // lives at the setup path, which stays reachable while gated — §36). ──
+  const gatedTier = tierKey === "sub_account";
   const setupPath = canonicalSetupPath(tierKey, activeTenant?.account_number);
-
-  // Reachable WHILE gated: the marketplace chooser AND the whole /admin/setup subtree —
-  // the real playbook chooser is /admin/setup/playbook, so a gated tenant must be able to
-  // move freely through Setup + the marketplace to choose; only OTHER /admin routes bounce
-  // them to the chooser. (Without /admin/setup here, the gate bounced tenants away from the
-  // very chooser they were sent to find.)
   const onChooser = setupPath != null && location.pathname.startsWith(setupPath);
-  // A paid Solo Beta workspace whose provider state needs attention must always
-  // be able to reach its server-verified Billing recovery surface, even before
-  // the owner has chosen a playbook.
-  const onSoloBetaBillingRecovery =
-    tierKey === "solo" &&
-    features?.solo_beta_offer_code === "paige-solo-beta-monthly-v1" &&
-    /^\/solo\/\d+\/settings\/billing\/?$/.test(location.pathname);
 
-  // Decide at RENDER time (not in a post-paint effect): a gated tenant then never commits
-  // a frame of the dashboard before the bounce (§11/§36 — no flash), and there is no
-  // `redirecting` latch that can go stale. Every input is known at render; the marketplace
-  // install refreshes tenant context, so the gate re-opens in-session without a reload.
-  // NOT redirecting when: still loading (fail open), operator/God (staff), no active tenant
-  // (client/anonymous/unresolved), a non-business tier (agency/enterprise), already chose a
-  // playbook (grandfathered), or already on the chooser/setup subtree.
   const shouldRedirect =
-    !loading && !isPlatformStaff && !!activeTenant && gatedTier && !hasPlaybook
-    && !onChooser && !onSoloBetaBillingRecovery;
+    !loading && !isPlatformStaff && !!activeTenant && gatedTier && !hasPlaybook && !onChooser;
   if (shouldRedirect) return <Navigate to={setupPath ?? "/choose-account"} replace />;
   return <>{children}</>;
 }

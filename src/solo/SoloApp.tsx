@@ -7,6 +7,9 @@ import { useTheme } from "next-themes";
 import { performSignOut } from "@/lib/auth/signOut";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { supabase } from "@/integrations/supabase/client";
+import { SoloSetupReadinessNotice } from "./SoloSetupReadinessNotice";
+import { isSoloSetupComplete } from "@/components/auth/RequireSetupComplete";
 import { branchBySlug, branchByKey, branchPath, defaultBranchSlug } from "@/lib/routing/tierBranches";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import "./solo-tokens.css";
@@ -163,7 +166,75 @@ const go = (k) => {
 // own account to their own, and canonicalize a bare /solo/{n} -> its default branch.
 // Acts ONLY once the caller's own account_number is known, so a mid-load null never
 // bounces.
-const { activeTenant, activeTenantId, activeUserId } = useTenantContext();
+const { activeTenant, activeTenantId, activeUserId, isPlatformStaff } = useTenantContext();
+// Setup readiness reminder (owner adjudication: Setup is NOT an access gate).
+// The SHELL holds the dismissal so it survives route remounts; the reminder
+// itself renders INSIDE the height-owned paige-solo column below — the shell
+// stays the one viewport owner, tcs-main the one scroll owner. The dismissal
+// is keyed to the tenant+user that dismissed it (Codex d4c85392 P2): a
+// multi-workspace owner's dismissal in one workspace never hides another
+// workspace's readiness notice after an in-place switch.
+const [setupReminderDismissal, setSetupReminderDismissed] = React.useState<{ tenant: string; user: string } | null>(null);
+const setupReminderDismissed =
+  setupReminderDismissal !== null
+  && setupReminderDismissal.tenant === activeTenantId
+  && setupReminderDismissal.user === activeUserId;
+// Codex ea0e7a8b P2: a platform operator acting inside a standalone tenant must
+// not receive Solo-owner setup guidance — the staff guard moves WITH the
+// notice. Codex 1c401d1b P2: the deep link exists ONLY for callers who can
+// actually edit Setup — the server's solo_setup_access_scope() maps everyone
+// but owners/admins to read_only, and the tenant-owner fact is the one the
+// shell already holds server-derived (activeTenant.owner_user_id vs the
+// authenticated subject). Read-only members still see the truthful readiness
+// notice, without a CTA into a surface they cannot change.
+const showSetupReminder =
+  !isPlatformStaff
+  && activeTenant?.account_number != null
+  && !isSoloSetupComplete(activeTenant?.features);
+// Codex 2c3a2321/dda03dcd P2s: solo_setup_access_scope() grants editing to
+// owner_full (primary owner via tenants.owner_user_id, OR an active
+// membership owner: is_owner / role='owner') AND to admin_operational
+// (role='admin' — save_solo_business_context accepts it and the Setup UI
+// enables operational editing). The CTA must appear for every non-read_only
+// caller. The canonical client-callable predicate for both membership halves
+// is has_tenant_role (authenticated-granted, STABLE, the §18 one home); the
+// primary-owner half is the server-derived column already in context.
+// Fail-closed: on RPC error the primary-owner fact stands alone.
+const isPrimaryOwner =
+  activeTenant?.owner_user_id != null && activeTenant.owner_user_id === activeUserId;
+// Codex a1c5cfd0 P2: the probe result is TENANT+USER-KEYED so an account
+// switch can never surface the previous workspace's editor verdict — the
+// derived value is false the instant the identity changes, before any RPC
+// resolves (and stays false if one hangs).
+const [editorProbe, setEditorProbe] = React.useState<{ tenant: string; user: string; ok: boolean } | null>(null);
+const isMembershipEditor =
+  editorProbe !== null
+  && editorProbe.tenant === activeTenantId
+  && editorProbe.user === activeUserId
+  && editorProbe.ok;
+const editProbeTenant = showSetupReminder ? activeTenantId : null;
+const editProbeUser = showSetupReminder ? activeUserId : null;
+React.useEffect(() => {
+  let alive = true;
+  if (!editProbeTenant || !editProbeUser) {
+    setEditorProbe(null);
+    return () => { alive = false; };
+  }
+  void (async () => {
+    // One probe per role: has_tenant_role answers a single _role, and the
+    // owner arm already covers both membership-owner shapes.
+    const [owner, admin] = await Promise.all([
+      supabase.rpc("has_tenant_role", { _user_id: editProbeUser, _tenant_id: editProbeTenant, _role: "owner" }),
+      supabase.rpc("has_tenant_role", { _user_id: editProbeUser, _tenant_id: editProbeTenant, _role: "admin" }),
+    ]);
+    if (alive) setEditorProbe({ tenant: editProbeTenant, user: editProbeUser, ok: owner.data === true || admin.data === true });
+  })().catch(() => { if (alive) setEditorProbe({ tenant: editProbeTenant, user: editProbeUser, ok: false }); });
+  return () => { alive = false; };
+}, [editProbeTenant, editProbeUser]);
+const canFinishSetup = isPrimaryOwner || isMembershipEditor;
+const soloSetupHref = showSetupReminder && canFinishSetup
+  ? `/solo/${activeTenant!.account_number}/settings/setup`
+  : null;
 const vaultAccess = useVaultAccess();
 const paigeTabEpochRef=React.useRef(activeTenantId);
 React.useLayoutEffect(()=>{if(paigeTabEpochRef.current===activeTenantId)return;paigeTabEpochRef.current=activeTenantId;setPaigeDockedTab('chat')},[activeTenantId]);
@@ -288,8 +359,9 @@ paigeFullHref={urlDriven?`${branchPath('solo',urlAccount,'paige')}/${paigeDocked
 paigeReturnHref={urlDriven?branchPath('solo',urlAccount,'command-center'):undefined}
 brandHomeHref={activeTenant?.account_number!=null?branchPath('solo',String(activeTenant.account_number),'command-center'):undefined}
 onSignOut={()=>void performSignOut({redirectTo:'/'})}>
-<div className="paige-solo" data-theme={theme} style={{width:'100%',maxWidth:'none',height:'100%',minWidth:0,minHeight:0,alignSelf:'stretch'}}>
-<div style={{display:'flex',height:'100%',overflow:'hidden'}}>
+<div className="paige-solo" data-theme={theme} style={{width:'100%',maxWidth:'none',height:'100%',minWidth:0,minHeight:0,alignSelf:'stretch',display:'flex',flexDirection:'column'}}>
+<SoloSetupReadinessNotice visible={showSetupReminder} setupHref={soloSetupHref} dismissed={setupReminderDismissed} onDismiss={()=>setSetupReminderDismissed(activeTenantId && activeUserId ? { tenant: activeTenantId, user: activeUserId } : null)}/>
+<div style={{display:'flex',flex:1,minHeight:0,overflow:'hidden'}}>
 <main key={route} data-solo-screen-host style={{flex:1,overflow:full?'hidden':'auto',minHeight:0,minWidth:0}}>{route==='paige'?null:screens[route]}</main>
 {studio&&<VibeStudio onBack={closeStudio}/>}</div></div>
 </TenantCommandCenterShell>};

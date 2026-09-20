@@ -448,7 +448,7 @@
       "capability_id": "settings.setup-business-context",
       "surface": "Setup / business context",
       "route": "/solo/:account/settings/setup",
-      "user_journey": "owner completes business profile, people/email, knowledge, direction, PAIGE brief; completion marker drives the route gate in-session",
+      "user_journey": "owner completes business profile, people/email, knowledge, direction, PAIGE brief; completion marker records readiness (owner adjudication, Sep nineteenth: Setup is NOT an access gate — an incomplete Solo owner keeps full application and PAIGE Chat access, with a non-blocking readiness banner until complete)",
       "current_state": "LIVE",
       "reachability": "active_routed",
       "canonical_owner": "solo setup business context",
@@ -1836,10 +1836,10 @@
     { "path": "root prototypes (solo-drive.html, pipeline-command-desk-drive.html, analytics-drive.html, dist/)", "kind": "orphaned_dead_code", "evidence": "static prototype artifacts, not app routes", "disposition": "cursor-lane" }
   ],
   "acceptance_matrix": [
-    { "scenario": "fresh Solo account", "procedure": "sign up, complete setup, land in Command Center", "pass_criteria": "route gates resolve in order; shell renders canonical areas; no fixture surface appears" },
+    { "scenario": "fresh Solo account", "procedure": "sign up, complete setup, land in Command Center", "pass_criteria": "signup/entitlement gates resolve in order; setup NEVER blocks landing (owner adjudication); shell renders canonical areas with a non-blocking readiness banner while incomplete; no fixture surface appears" },
     { "scenario": "established account", "procedure": "sign in to an established tenant with data", "pass_criteria": "game plan, approvals, rail, clients, calendar render real rows; no empty-fabricated states" },
-    { "scenario": "setup incomplete", "procedure": "stop setup mid-way and navigate", "pass_criteria": "RequireSetupComplete redirects to setup with the in-session completion marker clearing only after a real revision bump" },
-    { "scenario": "setup complete", "procedure": "finish setup", "pass_criteria": "completion marker flips in-commit; the gate opens without a reload" },
+    { "scenario": "setup incomplete", "procedure": "stop setup mid-way and navigate", "pass_criteria": "the canonical Solo shell renders the requested destination with the non-blocking readiness notice visible (owner adjudication: setup never blocks access); completing a real save retires the notice" },
+    { "scenario": "setup complete", "procedure": "finish setup", "pass_criteria": "completion marker flips in-commit; the readiness notice retires in-session without a reload" },
     { "scenario": "connected provider", "procedure": "connect Google calendar, gmail sending, a sending domain, n8n API key", "pass_criteria": "each row shows connected only after provider readback; truthful states otherwise" },
     { "scenario": "disconnected provider", "procedure": "disconnect each provider", "pass_criteria": "rows drop to truthful disconnected; dependent capabilities degrade honestly (needs_config), never silently" },
     { "scenario": "permitted user", "procedure": "act as owner/admin on team, billing, approvals", "pass_criteria": "all governed acts succeed through server-derived authority with readback" },
