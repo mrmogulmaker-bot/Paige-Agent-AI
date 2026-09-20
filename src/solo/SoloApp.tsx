@@ -184,35 +184,38 @@ const showSetupReminder =
   !isPlatformStaff
   && activeTenant?.account_number != null
   && !isSoloSetupComplete(activeTenant?.features);
-// Codex 2c3a2321 P2: solo_setup_access_scope() grants owner_full to the
-// primary owner (tenants.owner_user_id) OR any active membership owner
-// (is_owner / role='owner') — the CTA must honor BOTH. The canonical
-// client-callable predicate for the membership half is has_tenant_role
-// (authenticated-granted, STABLE, the §18 one home); the primary-owner half
-// is the server-derived column already in context. Fail-closed: on RPC error
-// the primary-owner fact stands alone.
+// Codex 2c3a2321/dda03dcd P2s: solo_setup_access_scope() grants editing to
+// owner_full (primary owner via tenants.owner_user_id, OR an active
+// membership owner: is_owner / role='owner') AND to admin_operational
+// (role='admin' — save_solo_business_context accepts it and the Setup UI
+// enables operational editing). The CTA must appear for every non-read_only
+// caller. The canonical client-callable predicate for both membership halves
+// is has_tenant_role (authenticated-granted, STABLE, the §18 one home); the
+// primary-owner half is the server-derived column already in context.
+// Fail-closed: on RPC error the primary-owner fact stands alone.
 const isPrimaryOwner =
   activeTenant?.owner_user_id != null && activeTenant.owner_user_id === activeUserId;
-const [isMembershipOwner, setIsMembershipOwner] = React.useState(false);
-const ownerProbeTenant = showSetupReminder ? activeTenantId : null;
-const ownerProbeUser = showSetupReminder ? activeUserId : null;
+const [isMembershipEditor, setIsMembershipEditor] = React.useState(false);
+const editProbeTenant = showSetupReminder ? activeTenantId : null;
+const editProbeUser = showSetupReminder ? activeUserId : null;
 React.useEffect(() => {
   let alive = true;
-  if (!ownerProbeTenant || !ownerProbeUser) {
-    setIsMembershipOwner(false);
+  if (!editProbeTenant || !editProbeUser) {
+    setIsMembershipEditor(false);
     return () => { alive = false; };
   }
   void (async () => {
-    const { data } = await supabase.rpc("has_tenant_role", {
-      _user_id: ownerProbeUser,
-      _tenant_id: ownerProbeTenant,
-      _role: "owner",
-    });
-    if (alive) setIsMembershipOwner(data === true);
-  })().catch(() => { if (alive) setIsMembershipOwner(false); });
+    // One probe per role: has_tenant_role answers a single _role, and the
+    // owner arm already covers both membership-owner shapes.
+    const [owner, admin] = await Promise.all([
+      supabase.rpc("has_tenant_role", { _user_id: editProbeUser, _tenant_id: editProbeTenant, _role: "owner" }),
+      supabase.rpc("has_tenant_role", { _user_id: editProbeUser, _tenant_id: editProbeTenant, _role: "admin" }),
+    ]);
+    if (alive) setIsMembershipEditor(owner.data === true || admin.data === true);
+  })().catch(() => { if (alive) setIsMembershipEditor(false); });
   return () => { alive = false; };
-}, [ownerProbeTenant, ownerProbeUser]);
-const canFinishSetup = isPrimaryOwner || isMembershipOwner;
+}, [editProbeTenant, editProbeUser]);
+const canFinishSetup = isPrimaryOwner || isMembershipEditor;
 const soloSetupHref = showSetupReminder && canFinishSetup
   ? `/solo/${activeTenant!.account_number}/settings/setup`
   : null;

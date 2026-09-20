@@ -133,36 +133,42 @@ describe("one viewport owner: the reminder renders inside SoloApp's height-owned
     expect(guardRegex.test(guardless)).toBe(false);
   });
 
-  it("Codex 1c401d1b P2 regression: the deep link exists ONLY for callers who can edit Setup (the server-derived tenant owner) — read-only members get the notice with NO CTA", () => {
+  it("Codex 1c401d1b P2 regression: the deep link exists ONLY for callers who can edit Setup — read-only members get the notice with NO CTA", () => {
     // Visibility and link are SEPARATE: the notice is everyone's truthful
     // readiness news; the CTA must never lead to a surface the user cannot
-    // change (solo_setup_access_scope maps non-owners/admins to read_only).
+    // change (solo_setup_access_scope maps coaches/members to read_only).
     expect(soloAppSrc).toContain("const showSetupReminder =");
-    expect(soloAppSrc).toMatch(/canFinishSetup = isPrimaryOwner \|\| isMembershipOwner/);
+    expect(soloAppSrc).toMatch(/canFinishSetup = isPrimaryOwner \|\| isMembershipEditor/);
     expect(soloAppSrc).toMatch(/soloSetupHref = showSetupReminder && canFinishSetup/);
     // The notice component renders the link ONLY on a non-null href, and
     // role-appropriate copy otherwise (no dead-end CTA).
     const noticeSrc = read("src/solo/SoloSetupReadinessNotice.tsx");
     expect(noticeSrc).toMatch(/setupHref != null \? \(\s*<Link/);
-    expect(noticeSrc).toContain("an owner completes it from Settings");
+    expect(noticeSrc).toContain("an owner or admin completes it from Settings");
     // Sabotage-sensitivity: unlinking the gate (link for everyone) fails the pin.
     const ungated = soloAppSrc.replace("showSetupReminder && canFinishSetup", "showSetupReminder");
     expect(/soloSetupHref = showSetupReminder && canFinishSetup/.test(ungated)).toBe(false);
   });
 
-  it("Codex 2c3a2321 P2 regression: membership owners (is_owner / role='owner') are honored, not just the primary owner column", () => {
-    // solo_setup_access_scope() grants owner_full to tenants.owner_user_id OR
-    // active membership owners; the CTA gate must cover BOTH halves — the
-    // primary column from context, and the canonical client-callable
-    // has_tenant_role RPC (authenticated-granted, the §18 one home) for the
-    // membership half. The probe runs ONLY while the reminder is visible.
-    expect(soloAppSrc).toContain('supabase.rpc("has_tenant_role", {');
+  it("Codex 2c3a2321/dda03dcd P2 regression: membership OWNERS and ADMINS are both honored — the gate matches every non-read_only scope classification", () => {
+    // solo_setup_access_scope() grants editing to owner_full (primary owner
+    // via tenants.owner_user_id, OR an active membership owner: is_owner /
+    // role='owner') AND to admin_operational (role='admin' — the save RPC
+    // accepts it and the Setup UI enables operational editing). The canonical
+    // client-callable predicate for both membership halves is has_tenant_role
+    // (authenticated-granted, STABLE, the §18 one home); the probes run ONLY
+    // while the reminder is visible and fail closed.
+    expect(soloAppSrc.match(/supabase\.rpc\("has_tenant_role"/g)?.length).toBe(2);
     expect(soloAppSrc).toMatch(/_role: "owner"/);
-    expect(soloAppSrc).toMatch(/const ownerProbeTenant = showSetupReminder \? activeTenantId : null;/);
-    expect(soloAppSrc).toMatch(/canFinishSetup = isPrimaryOwner \|\| isMembershipOwner/);
+    expect(soloAppSrc).toMatch(/_role: "admin"/);
+    expect(soloAppSrc).toMatch(/const editProbeTenant = showSetupReminder \? activeTenantId : null;/);
+    expect(soloAppSrc).toMatch(/canFinishSetup = isPrimaryOwner \|\| isMembershipEditor/);
     // Sabotage-sensitivity: dropping either half breaks the classification pin.
-    const membershipDropped = soloAppSrc.replace("isPrimaryOwner || isMembershipOwner", "isPrimaryOwner");
-    expect(/isPrimaryOwner \|\| isMembershipOwner/.test(membershipDropped)).toBe(false);
+    const membershipDropped = soloAppSrc.replace("isPrimaryOwner || isMembershipEditor", "isPrimaryOwner");
+    expect(/isPrimaryOwner \|\| isMembershipEditor/.test(membershipDropped)).toBe(false);
+    const adminDropped = soloAppSrc.replace('_role: "admin"', '_role: "owner"');
+    expect(soloAppSrc.match(/_role: "admin"/g)?.length ?? 0).toBe(1);
+    expect((adminDropped.match(/_role: "admin"/g)?.length ?? 0) === 0).toBe(true);
   });
 });
 
@@ -214,7 +220,7 @@ describe("the reminder's behavior (component)", () => {
     expect(host.querySelector("[data-setup-readiness]")).toBeTruthy();
     expect(host.textContent).toContain("Setup isn't finished");
     expect(host.querySelector("a")).toBeNull();
-    expect(host.textContent).toContain("an owner completes it from Settings");
+    expect(host.textContent).toContain("an owner or admin completes it from Settings");
     const dismiss = [...host.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Dismiss setup reminder");
     expect(dismiss).toBeTruthy();
   });

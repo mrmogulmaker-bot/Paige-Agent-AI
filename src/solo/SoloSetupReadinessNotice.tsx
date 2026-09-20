@@ -67,7 +67,7 @@ export function SoloSetupReadinessNotice({
             Finish setup when you&apos;re ready
           </Link>
         ) : (
-          "Finish setup when you're ready (an owner completes it from Settings)."
+          "Finish setup when you're ready (an owner or admin completes it from Settings)."
         )}{" "}
         — everything else works in the meantime.
       </span>
