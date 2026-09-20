@@ -30,10 +30,13 @@ BEGIN;
 INSERT INTO public.tenants (id, slug, name, status, account_type, account_number_prefix, features) VALUES
   ('e9c00000-0000-0000-0000-0000000000c1','mcpgw-load-a','MCPGW Load A','active','standalone','MLA','{}'::jsonb);
 
--- A target connection at endpoint A.
-INSERT INTO public.mcp_connections (connection_id, tenant_id, provider_key, label, server_url_ct) VALUES
+-- A target connection at endpoint A. auth_kind='none' (a public tokenless MCP server) so
+-- get_mcp_connection_secret resolves it configured:true — the column DEFAULTs to 'bearer', which the
+-- null-token guard would (correctly) refuse configured:false, and case (0) needs a configured row to
+-- read endpoint_hash back. The endpoint binding under test is independent of the auth kind.
+INSERT INTO public.mcp_connections (connection_id, tenant_id, provider_key, label, server_url_ct, auth_kind) VALUES
   ('e9c00000-0000-0000-0000-0000000000c2','e9c00000-0000-0000-0000-0000000000c1','generic-remote','load-target',
-     public.platform_encrypt('https://mcp-load-a.example/rpc'));
+     public.platform_encrypt('https://mcp-load-a.example/rpc'), 'none');
 
 -- Approve tool `send_message` bound to endpoint A (the writer requires the reviewed endpoint hash = A).
 SELECT public.set_mcp_connection_approval(
