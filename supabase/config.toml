@@ -233,7 +233,9 @@ project_id = "xygzykjyynhzqytbqnzu"
   [functions.send-notification]
     verify_jwt = true
   [functions.handle-unsubscribe]
-    verify_jwt = false
+    # Authenticated self-service only. The handler re-verifies the JWT and derives
+    # the only writable user_id from that verified caller.
+    verify_jwt = true
   [functions.twilio-inbound-webhook]
     verify_jwt = false
   [functions.weekly-summary-cron]
