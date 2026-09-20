@@ -784,14 +784,6 @@ test("Codex 5fdbf940 P2: mentioning Flow-by-Flow is not enough — the predicate
   assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
 });
 
-test("Codex 5fdbf940 P2 guard: another subject's AVAILABILITY in a non-gate clause does not veto the bound unavailability", () => {
-  const result = withField(
-    "FLOW_BY_FLOW",
-    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the Flow-by-Flow skill is not installed; the screenshot tool is available here",
-  );
-  assert.equal(result.ok, true, result.errors.join("\n"));
-});
-
 test("Codex 5fdbf940 P2 guard: a clause that both denies and affirms Flow-by-Flow's availability fails", () => {
   const result = withField(
     "FLOW_BY_FLOW",
@@ -799,6 +791,20 @@ test("Codex 5fdbf940 P2 guard: a clause that both denies and affirms Flow-by-Flo
   );
   assert.equal(result.ok, false, result.errors.join("\n"));
   assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex b8d6ba27 P2: cross-clause availability contradictions fail — a pronoun clause cannot affirm what the gate denies", () => {
+  for (const reason of [
+    "Flow-by-Flow is unavailable in this environment; it is installed and available here",
+    "Flow-by-Flow is unavailable here; the review tool is available",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, false, `${reason}: ${result.errors.join("\n")}`);
+    assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+  }
 });
 
 test("Codex 5081b595 P2: an affirmative unavailability claim in negation-free prose passes", () => {

@@ -300,7 +300,6 @@ const AFFIRMATIVE_UNAVAILABILITY = /\b(?:unavailable|absent)\b/i;
 // ("Flow-by-Flow documents that the screenshot skill is unavailable",
 // Codex 5fdbf940 P2) — only a direct assertion of Flow-by-Flow's own
 // unavailability qualifies.
-const GATE_MENTION = /\bflow[- ]by[- ]flow\b/i;
 const BOUND_UNAVAILABILITY = /\bflow[- ]by[- ]flow(?:\s+skill)?(?:\s+(?:is|was|are|were|remains?)\s+)?(?:unavailable|absent)\b|\bflow[- ]by[- ]flow(?:\s+skill)?(?:\s+(?:is|was|are|were|remains?)\s+)?(?:not\s+|never\s+|no\s+longer\s+)(?:installed|present|available)\b/i;
 const AFFIRMATIVE_AVAILABILITY = /\b(?:installed|present|available)\b/i;
 function establishesUnavailability(reason) {
@@ -319,22 +318,20 @@ function establishesUnavailability(reason) {
 }
 // Binding-scoped eligibility, ANDed with the whole-reason fail-closed check:
 // at least one clause must assert FLOW-BY-FLOW'S OWN unavailability (the
-// predicate bound to the mention), no clause MENTIONING Flow-by-Flow may
-// affirm availability alongside it ("installed and available", or "not
-// installed and is available" — the canonical-stripped sweep), and the
-// reason as a whole must survive the negation sweep (a contradictory
-// negation in ANY clause — even one not mentioning the gate — still rejects).
+// predicate bound to the mention), and NO clause may affirm availability
+// after canonical stripping — whether it names the gate, another subject, or
+// only a pronoun referring back to it ("unavailable here; it is installed
+// and available", Codex b8d6ba27 P2). The reason must stay an unavailability
+// statement: editorializing that anything is available rejects the waiver.
 function establishesSkillUnavailability(reason) {
   if (!establishesUnavailability(reason)) return false;
   const clauses = reason.split(/[,;]|\bbut\b/i);
   let qualifying = false;
   for (const clause of clauses) {
     if (BOUND_UNAVAILABILITY.test(clause)) qualifying = true;
-    if (GATE_MENTION.test(clause)) {
-      const canonical = new RegExp(NEGATED_AVAILABILITY.source, "gi");
-      const stripped = clause.replace(canonical, " ");
-      if (AFFIRMATIVE_AVAILABILITY.test(stripped)) return false;
-    }
+    const canonical = new RegExp(NEGATED_AVAILABILITY.source, "gi");
+    const stripped = clause.replace(canonical, " ");
+    if (AFFIRMATIVE_AVAILABILITY.test(stripped)) return false;
   }
   return qualifying;
 }
