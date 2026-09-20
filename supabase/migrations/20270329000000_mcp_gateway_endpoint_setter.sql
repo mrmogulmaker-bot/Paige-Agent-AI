@@ -10,8 +10,9 @@
 -- `trg_mcp_gw_revoke_approvals_on_endpoint_change` (20270322000000) deletes the endpoint-bound
 -- consent in the SAME transaction when the decrypted endpoint changes — this setter relies on it and
 -- does not re-implement it. (A→B→A cannot resurrect A's approvals: A→B already deleted them.) The
--- re-point ALSO resets provider_state and deletes the stale discovered-tool catalog: nothing
--- operational from the old endpoint carries onto the new one, which is unverified until a re-probe.
+-- re-point ALSO resets provider_state, the last-checked observation time, and deletes the stale
+-- discovered-tool catalog: nothing operational from the old endpoint carries onto the new one, which
+-- is unverified until a re-probe.
 --
 -- WHAT THIS PR IS NOT. It does NOT wire the gateway (still library-only, zero deployed importer), does
 -- NOT probe/verify the endpoint (no outbound call — see below), does NOT register a paige_action_kind
@@ -59,11 +60,12 @@
 --      status, the new endpoint_hash, and auth_token_last4.
 --
 -- A4 — URL validation is STATIC (pure SQL, no network call): https only; rejects userinfo, localhost,
---      *.local / *.internal / *.localhost, trailing-dot hosts, and every IP LITERAL that is not a
---      public address. IP literals are parsed to `inet` and range-checked NUMERICALLY (notation-
---      agnostic — every spelling of loopback/mapped/ULA/link-local IPv6 and every private/reserved
---      IPv4 is caught, not just canonical strings), and encoded / shorthand IPv4 (decimal, hex, octal,
---      2-/3-part dotted) is refused outright. HOSTNAME-TO-PRIVATE-IP RESOLUTION IS NOT COVERED AT WRITE
+--      *.local / *.internal / *.localhost, trailing-dot hosts, a malformed or out-of-range port
+--      (1–65535 only — never silently dropped), and every IP LITERAL that is not a public address. IP
+--      literals are parsed to `inet` and range-checked NUMERICALLY (notation-agnostic — every spelling
+--      of loopback/mapped/ULA/link-local IPv6 and every private/reserved IPv4 is caught, not just
+--      canonical strings), and encoded / shorthand IPv4 (decimal, hex, octal, 2-/3-part dotted) is
+--      refused outright. HOSTNAME-TO-PRIVATE-IP RESOLUTION IS NOT COVERED AT WRITE
 --      TIME (SQL cannot resolve DNS) and remains the job of _shared/mcp-client.ts's SSRF-guarded egress
 --      at DISPATCH. This validation is an additional write-time layer, never a replacement for that
 --      runtime guard.
@@ -153,6 +155,8 @@ AS $$
 DECLARE
   _hostport   text;
   _host       text;
+  _after      text;
+  _port       text;
   _bracketed  boolean := false;
   _ip         inet;
 BEGIN
@@ -166,13 +170,25 @@ BEGIN
   IF _hostport IS NULL OR _hostport = '' THEN RETURN false; END IF;
 
   IF left(_hostport, 1) = '[' THEN
-    -- bracketed IPv6 literal.
+    -- bracketed IPv6 literal, optionally followed by :<port>.
     _bracketed := true;
     _host := substring(_hostport from '^\[([0-9A-Fa-f:.]+)\]');
     IF _host IS NULL OR _host = '' THEN RETURN false; END IF;
+    -- Whatever follows the closing bracket must be empty or a valid :<port> (never a malformed tail).
+    _after := substring(_hostport from '\](.*)$');
+    IF _after IS DISTINCT FROM '' THEN
+      IF _after !~ '^:[0-9]{1,5}$' OR substring(_after from 2)::int NOT BETWEEN 1 AND 65535 THEN
+        RETURN false;
+      END IF;
+    END IF;
   ELSE
     -- A raw (unbracketed) IPv6 in a URL is malformed; more than one colon and not bracketed ⇒ reject.
     IF _hostport ~ ':.*:' THEN RETURN false; END IF;
+    -- If a port is present it must be numeric and in range (a malformed port is not silently dropped).
+    IF position(':' in _hostport) > 0 THEN
+      _port := split_part(_hostport, ':', 2);
+      IF _port !~ '^[0-9]{1,5}$' OR _port::int NOT BETWEEN 1 AND 65535 THEN RETURN false; END IF;
+    END IF;
     _host := split_part(_hostport, ':', 1);   -- strip :port
   END IF;
   _host := lower(_host);
@@ -365,6 +381,7 @@ BEGIN
     status                  = 'pending_verification',
     health                  = 'unknown',
     last_error_code         = NULL,
+    last_checked_at         = NULL,               -- the old endpoint's observation time must not carry over
     updated_by              = auth.uid(),
     updated_at              = now()
   WHERE connection_id = _connection_id;

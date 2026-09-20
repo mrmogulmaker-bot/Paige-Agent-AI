@@ -55,12 +55,12 @@ ON CONFLICT DO NOTHING;
 -- setter must re-bind / reset / revoke.
 INSERT INTO public.mcp_connections
   (connection_id, tenant_id, provider_key, label, server_url_ct, auth_kind, auth_token_ct, auth_token_last4,
-   granted_scopes, provider_state, status, health)
+   granted_scopes, provider_state, status, health, last_checked_at)
 VALUES
   ('0e900000-0000-0000-0000-0000000000c1', '0e900000-0000-0000-0000-0000000000a1', 'generic-remote', 'es-native',
      public.platform_encrypt('https://mcp-init.example.com/rpc'), 'bearer',
      public.platform_encrypt('tok-initial-1234'), '1234', '{read,write}',
-     '{"n8n_generation": 5}'::jsonb, 'connected', 'healthy');
+     '{"n8n_generation": 5}'::jsonb, 'connected', 'healthy', now());
 
 -- A LEGACY-projected connection on T — the setter must refuse it (D1).
 INSERT INTO public.mcp_connections
@@ -86,12 +86,18 @@ BEGIN
   IF NOT public._mcp_endpoint_write_safe('https://api.example.com/mcp')        THEN RAISE EXCEPTION '(A4) public https must pass'; END IF;
   IF NOT public._mcp_endpoint_write_safe('https://api.example.com:8443/mcp')   THEN RAISE EXCEPTION '(A4) public https:port must pass'; END IF;
   IF NOT public._mcp_endpoint_write_safe('https://[2606:4700:4700::1111]/rpc') THEN RAISE EXCEPTION '(A4) public bracketed IPv6 must pass'; END IF;
+  IF NOT public._mcp_endpoint_write_safe('https://[2606:4700:4700::1111]:8443/rpc') THEN RAISE EXCEPTION '(A4) public bracketed IPv6 with port must pass'; END IF;
   IF NOT public._mcp_endpoint_write_safe('https://8.8.8.8/mcp')                THEN RAISE EXCEPTION '(A4) public dotted-quad must pass'; END IF;
   IF NOT public._mcp_endpoint_write_safe('https://172.32.0.1/mcp')             THEN RAISE EXCEPTION '(A4) 172.32/16 is public and must pass'; END IF;
   IF NOT public._mcp_endpoint_write_safe('https://api2.example.com/mcp')       THEN RAISE EXCEPTION '(A4) host with a digit must pass'; END IF;
   -- REJECT: scheme / userinfo.
   IF public._mcp_endpoint_write_safe('http://api.example.com/mcp')             THEN RAISE EXCEPTION '(A4) http rejected'; END IF;
   IF public._mcp_endpoint_write_safe('https://user:pass@api.example.com/mcp')  THEN RAISE EXCEPTION '(A4) userinfo rejected'; END IF;
+  -- REJECT: malformed / out-of-range ports (must not be silently dropped before the destructive reset).
+  IF public._mcp_endpoint_write_safe('https://api.example.com:notaport/mcp')   THEN RAISE EXCEPTION '(A4) non-numeric port rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://api.example.com:99999/mcp')      THEN RAISE EXCEPTION '(A4) out-of-range port rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://api.example.com:0/mcp')          THEN RAISE EXCEPTION '(A4) port 0 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://[2606:4700:4700::1111]:bad/rpc') THEN RAISE EXCEPTION '(A4) bracketed non-numeric port rejected'; END IF;
   -- REJECT: names.
   IF public._mcp_endpoint_write_safe('https://localhost/mcp')                  THEN RAISE EXCEPTION '(A4) localhost rejected'; END IF;
   IF public._mcp_endpoint_write_safe('https://svc.local/mcp')                  THEN RAISE EXCEPTION '(A4) *.local rejected'; END IF;
@@ -162,6 +168,7 @@ BEGIN
   IF _row.oauth_client_secret_ct IS NOT NULL  THEN RAISE EXCEPTION 'invariant: old oauth_client_secret_ct survived'; END IF;
   IF _row.granted_scopes <> '{}'              THEN RAISE EXCEPTION 'invariant: granted scope ceiling not reset'; END IF;
   IF _row.provider_state <> '{}'::jsonb       THEN RAISE EXCEPTION 'invariant: provider_state not reset'; END IF;
+  IF _row.last_checked_at IS NOT NULL          THEN RAISE EXCEPTION 'invariant: last_checked_at (old observation time) not reset'; END IF;
   IF _row.auth_kind <> 'none'                 THEN RAISE EXCEPTION 'invariant: auth_kind not updated'; END IF;
   IF _row.status <> 'pending_verification' OR _row.health <> 'unknown' THEN RAISE EXCEPTION 'invariant: status/health not reset'; END IF;
   IF public.platform_decrypt(_row.server_url_ct) <> 'https://mcp-new1.example.com/rpc' THEN RAISE EXCEPTION 'invariant: endpoint not updated'; END IF;
