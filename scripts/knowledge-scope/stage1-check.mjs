@@ -287,6 +287,17 @@ globalThis.fetch = async (url, init) => {
         headers: { "Content-Type": "application/json" },
       });
     }
+    // The SAME pre-resolution PDF read-check, but for a readable PDF that is NOT a credit report:
+    // `document_kind` is not `credit_report`, so `isCreditReportPdf` is false and the turn routes to
+    // the general-document (deferred-extraction) path. This is what a general-PDF turn hits — the
+    // one accepted pre-resolution provider call 15.9e pins the contract of.
+    if (next === "read-check-general") {
+      const readCheck = JSON.stringify({ can_read_document: true, document_kind: "other" });
+      return new Response(JSON.stringify({ content: [{ type: "text", text: readCheck }], model: "test", usage: { input_tokens: 1, output_tokens: 1 } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     // A provider round that FAILS. Used to reach the loop's forced-termination path — the
     // branch that issues a tools-less CLOSING call — without needing to exhaust MAX_ROUNDS.
     if (next === "fail") {
@@ -1018,6 +1029,17 @@ group("attached-document turns DO carry tenant Knowledge, and its guard actually
   );
   assert("15.4 telemetry is written for a scope that held", !!valid.telemetry, JSON.stringify(valid.telemetry?.row ?? null));
   assert("15.5 the existing document response path remains usable", valid.responseText.includes("CHILD-PRIVATE-MARKER"), valid.responseText);
+  // #1255 — the general-document extraction was DEFERRED past the pre-egress active-account guard
+  // so a switched DOCX/image turn (15.9) makes zero provider calls (a general-PDF turn still makes
+  // its one accepted pre-resolution read-check — see 15.9e). This pins the other half of that change:
+  // on a valid, unswitched turn the deferral must still run the extraction exactly ONCE and leave
+  // the streamed reply intact — two provider calls, no more (a re-added eager call would make it
+  // three), no fewer (a dropped deferral would make it one and silently lose the extraction).
+  assert(
+    "15.5b a valid document turn still makes exactly two provider calls — the deferred extraction and the reply, neither dropped nor duplicated",
+    valid.providerCalls.length === 2,
+    `provider calls: ${valid.providerCalls.length}`,
+  );
 
   // THE LOAD-BEARING HALF. The account changes after retrieval. The document path must refuse
   // before its reply crosses the boundary, must write no telemetry, and must say so. If the
@@ -1048,17 +1070,128 @@ group("attached-document turns DO carry tenant Knowledge, and its guard actually
     JSON.stringify(switched.telemetry?.row ?? null),
   );
   assert(
-    "15.9 a switched document turn makes no provider call at all",
+    "15.9 a switched DOCX document turn makes no provider call at all (the `document` fixture is DOCX; general-PDF has its own read-check contract — 15.9e)",
     switched.providerCalls.length === 0,
     `provider calls: ${switched.providerCalls.length}`,
   );
 
-  // A switch that lands AFTER the pre-egress refusal has already passed. This exercises the
-  // document stream's OWN close-boundary check rather than the 409 above — the point at which
-  // the provider reply exists and `holdDirectFramesForKnowledgeScope` is holding it back.
-  const lateSwitch = await drive({
+  // #1255 — the KB-MISS escape route, pinned to the exact path the fix depends on. 15.9 uses a KB
+  // HIT; the historical regression the comment above warns about is a document turn whose Knowledge
+  // lookup MISSED — which once had "nothing to compare against" and slipped the guard. A document
+  // turn is protected by `!!attachedDocument` regardless of whether the KB matched, so a switched
+  // KB-miss document turn must ALSO make zero provider calls. This nails the fix to that path: a
+  // future narrowing of the protected-turn set (dropping the unconditional attachedDocument source)
+  // fails HERE instead of silently reopening #1255 on the KB-miss path while 15.9 stays green.
+  const switchedKbMiss = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD, AGENCY],
+    memberships: [CHILD, AGENCY],
+    bodyExtras: { document },
+    provider: ["private-text", "private-text"],
+    rpcExtras: { match_tenant_knowledge: () => ({ data: [], error: null }) },
+  });
+  assert(
+    "15.9c a switched document turn whose Knowledge lookup MISSED still makes no provider call",
+    switchedKbMiss.providerCalls.length === 0,
+    `provider calls: ${switchedKbMiss.providerCalls.length}`,
+  );
+
+  // #1255 (coordinator disposition of the Codex PDF P1) — the SWITCHED GENERAL-PDF contract.
+  // A general PDF (unlike DOCX/image) runs a pre-resolution `runDocumentReadCheck` BEFORE the active
+  // account is resolved. That one provider call is ACCEPTED and intentional: it carries only the
+  // caller's OWN uploaded PDF bytes + the fixed read-check prompt — never tenant Knowledge or a
+  // prior workspace's messages — and books `document-read-check:PLATFORM`. So the honest contract
+  // for a switched general-PDF turn is EXACTLY ONE provider call (that read-check), with the deferred
+  // general-document extraction AND the Knowledge-carrying chat dispatch both prevented by the
+  // pre-egress guard, and the turn failing closed. This is the precise per-document-type statement
+  // that "a switched document turn makes zero provider calls" (15.9, DOCX-only) must NOT be read to
+  // claim for PDFs. `document_kind:"other"` routes the read-check to the general path; the trailing
+  // provider entries would only answer a (buggy) extraction/chat call, so the count/trace assertions
+  // — not a missing-response crash — are what catch a regression.
+  const generalPdfBytes = Buffer.from("PRIVATE-PDFBYTES-MARKER").toString("base64");
+  const switchedGeneralPdf = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD, AGENCY],
+    memberships: [CHILD, AGENCY],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    bodyExtras: { document: { fileName: "operating-notes.pdf", mimeType: "application/pdf", kind: "pdf", base64: generalPdfBytes } },
+    provider: ["read-check-general", "private-text", "private-text"],
+  });
+  assert(
+    "15.9e a switched general-PDF turn makes EXACTLY ONE provider call — the pre-resolution read-check",
+    switchedGeneralPdf.providerCalls.length === 1,
+    `provider calls: ${switchedGeneralPdf.providerCalls.length}`,
+  );
+  assert(
+    "15.9e-i that sole call IS the PDF read-check — it carries the caller's uploaded PDF bytes + the read-check prompt only",
+    switchedGeneralPdf.providerCalls.length === 1
+      && JSON.stringify(switchedGeneralPdf.providerCalls[0]).includes(generalPdfBytes)
+      && JSON.stringify(switchedGeneralPdf.providerCalls[0]).includes("application/pdf"),
+    JSON.stringify(switchedGeneralPdf.providerCalls).slice(0, 400),
+  );
+  assert(
+    "15.9e-ii the read-check payload carries NO tenant Knowledge — no cross-context egress",
+    !switchedGeneralPdf.providerCalls.some((body) => JSON.stringify(body).includes("PRIVATE-KB-SOURCE-MARKER")),
+    JSON.stringify(switchedGeneralPdf.providerCalls).slice(0, 400),
+  );
+  const switchedGeneralPdfTraceRows = switchedGeneralPdf.rec.inserts
+    .filter((i) => i.table === "paige_llm_trace")
+    .map((i) => `${i.row?.job_kind ?? "?"}:${i.row?.tenant_id ? "tenant" : "PLATFORM"}`)
+    .sort();
+  assert(
+    "15.9e-iii the ONLY trace row is document-read-check:PLATFORM — no general-document-extraction call, no chat dispatch fired on the switched turn",
+    JSON.stringify(switchedGeneralPdfTraceRows) === JSON.stringify(["document-read-check:PLATFORM"]),
+    JSON.stringify(switchedGeneralPdfTraceRows),
+  );
+  assert(
+    "15.9e-iv the switched general-PDF turn fails closed with the active-account cancellation",
+    switchedGeneralPdf.responseText.includes("ACTIVE_ACCOUNT_CHANGED"),
+    switchedGeneralPdf.responseText.slice(0, 400),
+  );
+
+  // #1255 P1 (Codex, head a84bfcd6) — the DEFERRED general-document extraction is an AWAITED
+  // provider round-trip inserted between the pre-egress active-account guard and the chat dispatch.
+  // A switch that lands DURING that await must still fail closed BEFORE the chat provider call —
+  // not merely have its streamed reply withheld at the close boundary, by which point the prior
+  // workspace's aiMessages + Knowledge have already egressed to the model. This models exactly that
+  // timing: the pre-egress guard passes on CHILD (call 2), the extraction runs (one benign provider
+  // call carrying only the caller's OWN document, no Knowledge), THEN the account switches and the
+  // post-extraction re-check (call 3) catches it — so the Knowledge-carrying chat dispatch never
+  // fires. Before that re-check existed this made TWO provider calls (extraction + the stale chat
+  // dispatch) and leaked the KB chunk into the second one; this pins it to a single benign call.
+  const switchDuringExtraction = await drive({
     personaTenant: CHILD,
     personaSequence: [CHILD, CHILD, AGENCY],
+    memberships: [CHILD, AGENCY],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    bodyExtras: { document },
+    provider: ["private-text", "private-text"],
+  });
+  assert(
+    "15.9d a switch DURING the deferred extraction fails closed before the chat dispatch — only the benign extraction ran, the Knowledge-carrying reply call never fired",
+    switchDuringExtraction.providerCalls.length === 1,
+    `provider calls: ${switchDuringExtraction.providerCalls.length}`,
+  );
+  assert(
+    "15.9d-i and NO tenant Knowledge egressed on that switched turn — the KB chunk reached no provider payload",
+    !switchDuringExtraction.providerCalls.some((body) => JSON.stringify(body).includes("PRIVATE-KB-SOURCE-MARKER")),
+    JSON.stringify(switchDuringExtraction.providerCalls).slice(0, 400),
+  );
+  assert(
+    "15.9d-ii the switch-during-extraction turn fails closed with the active-account cancellation",
+    switchDuringExtraction.responseText.includes("ACTIVE_ACCOUNT_CHANGED"),
+    switchDuringExtraction.responseText.slice(0, 400),
+  );
+
+  // A switch that lands AFTER the pre-egress refusal AND the post-extraction re-check (#1255 P1)
+  // have both already passed — i.e. during the chat-dispatch round-trip itself, the irreducible
+  // race that cannot be un-sent. This exercises the document stream's OWN close-boundary check
+  // rather than either 409 above — the point at which the provider reply exists and
+  // `holdDirectFramesForKnowledgeScope` is holding it back. The sequence carries one extra CHILD
+  // vs. 15.9d so the AGENCY switch lands at the close boundary (call 4), not the re-check (call 3).
+  const lateSwitch = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD, CHILD, CHILD, AGENCY],
     memberships: [CHILD, AGENCY],
     chunkContent: "PRIVATE-KB-SOURCE-MARKER",
     bodyExtras: { document },
@@ -3387,6 +3520,26 @@ group("every provider call files its trace row under the tenant whose evidence i
     "23.3 a document turn attributes the post-resolution calls and leaves ONLY the pre-resolution read-check on the platform",
     JSON.stringify(traceRows(docTurn)) === JSON.stringify(["chat:tenant", "credit-report-extraction:tenant", "document-read-check:PLATFORM"]),
     JSON.stringify(traceRows(docTurn)),
+  );
+
+  // #1255 Option A (Codex P2) — a GENERAL-document (docx) turn. Unlike the credit-report PDF above
+  // it has NO pre-resolution read-check, so BOTH of its provider calls run post-resolution and BOTH
+  // must be tenant-attributed by their OWN job_kind: the deferred structured-field extraction as
+  // `general-document-extraction`, the streamed reply as `chat`. Before Option A the extraction ran
+  // through gatewayCompat with no trace arg, so it booked as an unattributed `chat:PLATFORM` row and
+  // its model spend was missing from tenant trace/budget accounting. This pins the split by job_kind
+  // (not "some row has a tenant"): it fails if the extraction reverts to a platform/unattributed row
+  // OR is given the wrong job_kind. (traceRows() sorts, so the order is alphabetical.)
+  const generalDocTurn = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    bodyExtras: { document: { fileName: "operating-notes.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", kind: "docx", textContent: "PRIVATE-DOCTEXT-MARKER internal operating notes" } },
+    provider: ["private-text", "private-text"],
+  });
+  assert(
+    "23.4 a general-document turn attributes BOTH provider calls to the tenant by distinct job_kind — the deferred extraction is general-document-extraction:tenant, never an unattributed platform row",
+    JSON.stringify(traceRows(generalDocTurn)) === JSON.stringify(["chat:tenant", "general-document-extraction:tenant"]),
+    JSON.stringify(traceRows(generalDocTurn)),
   );
 }
 
