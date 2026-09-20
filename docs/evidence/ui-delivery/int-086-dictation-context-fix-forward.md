@@ -35,7 +35,7 @@ ACCEPTANCE_CRITERIA: Start dictation in each composer; verify Send and alternate
 MOTION_PURPOSE: NONE: no motion change; the incumbent pulse continues to indicate live capture and remains disabled under reduced-motion.
 PROTECTED_SEAMS: Tested: DictationMicButton, useDictation epoch teardown, AppShell PaigeChat route/user scope, PaigeAIChat tenant/client/mission/user/thread scope, Conversations tenant/thread scope, MessageComposer send gate, and Live Conversation disabled propagation for an already-open card. Unaffected: paige-dictate, stt-router, paige-tts, paige-live-session, paige-ai-chat Edge runtime, Live audio/session transport, storage, database, and migrations.
 
-INTERNAL_BUILD_IDENTITY: 3af43e4c1898fc7a62d7e16306b51b645055e4f7; deployment=none-pre-merge; environment=local; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=focused-tests+affected-regressions+mutation-proof+tsc-ratchet+build+impeccable; current-main-integration=889eee3716bdec20252d230e2a15e94420fcf16c
+INTERNAL_BUILD_IDENTITY: 3af43e4c1898fc7a62d7e16306b51b645055e4f7; deployment=none-pre-merge; environment=local; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=focused-tests+affected-regressions+mutation-proof+tsc-ratchet+build+impeccable; current-main-integration=f2dfeaff75aa62b5a68bbb2d8341e2c661a39094
 RELEASE_CHANNEL: development: corrective PR pending; owner standing authority INT-083 permits merge only after exact-head CI, one requested exact-head review, and the Ready-triggered exact-head review are complete and dispositioned
 RELEASE_CLASSIFICATION: patch: fixes post-merge context isolation, truthful status, and send ordering without provider, schema, entitlement, or architecture change
 CUSTOMER_RELEASE_IDENTITY: none: internal PAIGE Chat dictation corrective repair
@@ -49,7 +49,7 @@ RELEASE_RECOVERY: position=revert the corrective merge if deployment introduces 
 - Mount inventory: src/components/dashboard/PaigeAIChat.tsx; src/components/app/PaigeChat.tsx; src/pages/admin/conversations/shell/ConversationsRichComposer.tsx. No fourth mount exists in src.
 - Affected flows: dictation scope transition, safety/error status, and send after trailing provider final.
 - Neighboring regressions: attachment-only send, response cancellation, quick/slash actions, confirmation cards, retry, an already-open Live Conversation card, thread selection, Conversations send validation, caret insertion, and microphone stop control.
-- Collision result: current main 6757e487849a1c356b4deed85274d708cdd96a4c merged without conflict. Its #1293 MCP files do not overlap this repair. Stale draft #1044 names PaigeAIChat but excludes Voice/Live Voice and was not modified.
+- Collision result: current main f2dfeaff75aa62b5a68bbb2d8341e2c661a39094 merged without conflict. Its parity/doctrine documentation files do not overlap this repair. Stale draft #1044 names PaigeAIChat but excludes Voice/Live Voice and was not modified.
 - Explicit exclusions: provider/Edge changes, Live audio/session mechanics, wording INT-085, migrations, data writes, and any second bug. The only Live Conversation change is propagation of its existing disabled contract to an already-open card.
 
 ## User job and state map
@@ -61,7 +61,7 @@ The user starts dictation in one composer context. The recorder may request perm
 - Base merge: eb0bdd7b767aa48ca08082c47e6c586d0a371b13.
 - Exact original corrective code commit: 72158f3c1d896c7cc77257cf61827a5b63a05d4c.
 - Exact requested-review disposition code commit: 3af43e4c1898fc7a62d7e16306b51b645055e4f7.
-- Current-main integration: 889eee3716bdec20252d230e2a15e94420fcf16c.
+- Current-main integration: f2dfeaff75aa62b5a68bbb2d8341e2c661a39094.
 - Failing-first: 6 failed and 22 passed on the merged implementation.
 - Repaired focus before review: 28/28; final affected regression selection after review disposition: 93/93.
 - Load-bearing mutations: removing teardownRun from the scope-change effect made cleans a pending recorder and opens no socket after an account epoch change fail (expected one recorder stop, received zero). Removing the inherited disabled state from an already-open Live Conversation card made its behavioral test fail (expected disabled true, received false). Both restorations returned green.
