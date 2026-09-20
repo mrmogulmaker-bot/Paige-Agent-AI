@@ -25,7 +25,7 @@ type Admin = any;
  *  `connection_id`. Both the dispatch endpoint AND the consent identity derive from THIS. `ok:false`
  *  carries a closed refusal reason — never provider prose. */
 export type ResolvedConnection =
-  | { ok: true; connectionId: string; tenantId: string; serverUrl: string; auth: McpAuth }
+  | { ok: true; connectionId: string; tenantId: string; serverUrl: string; auth: McpAuth; endpointHash: string }
   | { ok: false; reason: "no_connection" | "connection_disabled" | "connection_unusable" };
 
 /** What the runner calls to resolve a connection to its canonical endpoint + auth + tenant. In
@@ -73,6 +73,7 @@ export function makeRpcConnectionLoader(admin: Admin): ConnectionLoader {
         connection_id?: unknown;
         tenant_id?: unknown;
         server_url?: unknown;
+        endpoint_hash?: unknown;
         auth_token?: unknown;
         auth_kind?: unknown;
         auth_header_name?: unknown;
@@ -88,6 +89,10 @@ export function makeRpcConnectionLoader(admin: Admin): ConnectionLoader {
         typeof row.server_url !== "string" || !row.server_url ||
         typeof row.connection_id !== "string" ||
         typeof row.tenant_id !== "string" ||
+        // INT-078: the RPC returns the domain-tagged hash of the loaded endpoint. The runner binds
+        // consent to it, so a configured+enabled row that lacks a well-formed one is unusable (fail
+        // closed) rather than dispatched with no endpoint binding to verify against.
+        typeof row.endpoint_hash !== "string" || !/^[0-9a-f]{64}$/.test(row.endpoint_hash) ||
         // Refuse a facet the MCP client cannot execute — a non-http transport, or an auth kind that is
         // not an MCP credential scheme (the n8n REST `api_key` facet). See the allow-list note above.
         typeof row.transport !== "string" || !MCP_EXECUTABLE_TRANSPORTS.has(row.transport) ||
@@ -120,7 +125,7 @@ export function makeRpcConnectionLoader(admin: Admin): ConnectionLoader {
       if (!authUsable(auth) || oauthExpired || headerRowNotHeaderAuth) {
         return { ok: false, reason: "connection_unusable" };
       }
-      return { ok: true, connectionId: row.connection_id, tenantId: row.tenant_id, serverUrl: row.server_url, auth };
+      return { ok: true, connectionId: row.connection_id, tenantId: row.tenant_id, serverUrl: row.server_url, auth, endpointHash: row.endpoint_hash };
     } catch {
       return { ok: false, reason: "no_connection" };
     }
