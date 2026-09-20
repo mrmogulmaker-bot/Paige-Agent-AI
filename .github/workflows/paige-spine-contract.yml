@@ -14,6 +14,7 @@ on:
       - "supabase/migrations/**"
       - "supabase/tests/mcp_gateway_endpoint_revokes_approvals.sql"
       - "supabase/tests/mcp_gateway_durable_endpoint_bound_consent.sql"
+      - "supabase/tests/mcp_gateway_url_auth_configured.sql"
       - "scripts/proof/mcp-gateway-endpoint-consent-race.mjs"
       - "supabase/functions/_shared/mcp-gateway/**"
       - "supabase/tests/paige_spine_foundation.sql"
@@ -62,6 +63,7 @@ on:
       - "supabase/migrations/**"
       - "supabase/tests/mcp_gateway_endpoint_revokes_approvals.sql"
       - "supabase/tests/mcp_gateway_durable_endpoint_bound_consent.sql"
+      - "supabase/tests/mcp_gateway_url_auth_configured.sql"
       - "scripts/proof/mcp-gateway-endpoint-consent-race.mjs"
       - "supabase/functions/_shared/mcp-gateway/**"
       - "supabase/tests/paige_spine_foundation.sql"
@@ -210,6 +212,12 @@ jobs:
       # contract_changed, approval_not_endpoint_bound, approval_expired, action_shape_changed; and the
       # writer's §9 tenant guard refuses a cross-tenant connection while allowing the same-tenant one.
       - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_durable_endpoint_bound_consent.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      # Connected MCP Gateway — a url-auth (credential-in-URL) connection is CONFIGURED (INT-079,
+      # migration 20270326000000). Proves get_mcp_connection_secret resolves a url row (server_url_ct
+      # present, both tokens null, auth_kind='url') configured:true — load-bearing against the prior
+      # `<> 'none'` guard — while a bearer row with no tokens and a url row with no endpoint both stay
+      # configured:false (fail-closed preserved).
+      - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_url_auth_configured.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       # And the two-session concurrency proof that the approval-write vs endpoint-change RACE is closed:
       # set_mcp_connection_approval's FOR UPDATE row lock serializes it against a concurrent endpoint
       # change, so no approval is ever left bound to an endpoint the connection no longer has (#1262 finding 3).

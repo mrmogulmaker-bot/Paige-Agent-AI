@@ -624,6 +624,14 @@ console.log("\n— executable-facet gate: the loader refuses non-MCP-drivable ro
   const noneRow = { ...baseRow, auth_token: null, auth_kind: "none" };
   const noneRes = await loaderFor(noneRow)("conn-canon");
   check("loader: a public auth_kind='none' (tokenless) row resolves ok:true with { kind: 'none' } auth", noneRes.ok === true && noneRes.auth?.kind === "none" && noneRes.serverUrl === OK_URL, JSON.stringify(noneRes));
+  // A url-auth connection (Zapier's credential-in-URL scheme: the credential lives IN the decrypted
+  // endpoint, so both token columns are null). The RPC now returns it CONFIGURED (INT-079, migration
+  // 20270326000000); the loader allow-lists auth_kind='url', and authFromSecret maps 'url' ->
+  // { kind: 'none' } (no auth header is added — the credential is already in the URL). LOAD-BEARING:
+  // dropping 'url' from MCP_EXECUTABLE_AUTH_KINDS flips this to connection_unusable.
+  const urlRow = { ...baseRow, auth_token: null, auth_kind: "url" };
+  const urlRes = await loaderFor(urlRow)("conn-canon");
+  check("loader: a url-auth (credential-in-URL, tokenless) row resolves ok:true with { kind: 'none' } auth", urlRes.ok === true && urlRes.auth?.kind === "none" && urlRes.serverUrl === OK_URL, JSON.stringify(urlRes));
   const apiKeyRow = { ...baseRow, server_url: REFUSE_URL, auth_kind: "api_key" }; // the n8n REST facet
   const apiKeyRes = await loaderFor(apiKeyRow)("conn-canon");
   check("loader: an auth_kind='api_key' (n8n REST) facet → connection_unusable", apiKeyRes.ok === false && apiKeyRes.reason === "connection_unusable", JSON.stringify(apiKeyRes));
@@ -649,6 +657,8 @@ console.log("\n— executable-facet gate: the loader refuses non-MCP-drivable ro
   check("...and it dispatched to the loaded row's endpoint", (okSrv.calls ?? []).includes("list_records"), JSON.stringify(okSrv.calls ?? []));
   const execNone = await runReal(noneRow, "execute");
   check("runner: execute via the REAL loader on a public auth_kind='none' row runs (read_observed) — a tokenless server is not refused", execNone.outcome === "read_observed", JSON.stringify(execNone));
+  const execUrl = await runReal(urlRow, "execute");
+  check("runner: execute via the REAL loader on a url-auth (credential-in-URL) row runs (read_observed) — a configured url connection is not refused", execUrl.outcome === "read_observed", JSON.stringify(execUrl));
   const execApiKey = await runReal(apiKeyRow, "execute");
   check("runner: execute on an api_key REST facet → refused connection_unusable (execute cannot contact)", execApiKey.outcome === "refused" && execApiKey.code === "connection_unusable", JSON.stringify(execApiKey));
   const prepApiKey = await runReal(apiKeyRow, "prepare");
