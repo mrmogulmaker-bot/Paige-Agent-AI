@@ -72,6 +72,7 @@ const runnerMod = await bundle("supabase/functions/_shared/mcp-gateway/runner.ts
 const railMod = await bundle("supabase/functions/_shared/mcp-gateway/rail-receipt.ts", "rail.mjs");
 const effectMod = await bundle("supabase/functions/_shared/mcp-gateway/effect-policy.ts", "effect.mjs");
 const connMod = await bundle("supabase/functions/_shared/mcp-gateway/connection.ts", "connection.mjs");
+const authorityMod = await bundle("supabase/functions/_shared/mcp-gateway/authority.ts", "authority.mjs");
 
 let passed = 0;
 const failures = [];
@@ -235,7 +236,9 @@ const loadConnection = (connectionId) => {
   if (!c.serverUrl || !c.auth) return { ok: false, reason: "connection_unusable" };
   // INT-078: the loaded endpoint hash is derived from the endpoint being resolved — so a re-point
   // (a new serverUrl) yields a new hash, exactly as `get_mcp_connection_secret` does in production.
-  return { ok: true, connectionId, tenantId: c.tenantId, serverUrl: c.serverUrl, auth: c.auth, endpointHash: endpointHashOf(c.serverUrl) };
+  // INT-082: surface the row's visibility (default 'tenant' for the existing tenant-visible fixtures,
+  // so the runner's owner_only gate is scoped precisely; owner_only fixtures set it explicitly).
+  return { ok: true, connectionId, tenantId: c.tenantId, serverUrl: c.serverUrl, auth: c.auth, endpointHash: endpointHashOf(c.serverUrl), visibility: c.visibility ?? "tenant" };
 };
 const deps = { recordReceipt: (r) => { receipts.push(r); }, verifyApproval, loadConnection };
 // Points conn-1's CANONICAL stored endpoint at `serverUrl` (as if the row held it), then runs BY ID —
@@ -661,7 +664,10 @@ console.log("\n— executable-facet gate: the loader refuses non-MCP-drivable ro
   const okSrv = {}, refuseSrv = {};
   routes.set("/mcp-gate-ok", mcpServer(okSrv));
   routes.set("/mcp-gate-refuse", mcpServer(refuseSrv));
-  const baseRow = { configured: true, enabled: true, connection_id: "conn-canon", tenant_id: TENANT, server_url: OK_URL, endpoint_hash: endpointHashOf(OK_URL), auth_token: "secret-token", auth_kind: "bearer", transport: "http" };
+  // INT-082: visibility:'tenant' so the REAL loader surfaces 'tenant' and these facet-gate runner tests
+  // are not gated by the owner_only authority check (which is proven in its own section below). A missing
+  // visibility would normalize to owner_only (fail-closed) and refuse these runs for a different reason.
+  const baseRow = { configured: true, enabled: true, connection_id: "conn-canon", tenant_id: TENANT, server_url: OK_URL, endpoint_hash: endpointHashOf(OK_URL), auth_token: "secret-token", auth_kind: "bearer", transport: "http", visibility: "tenant" };
   const loaderFor = (row) => connMod.makeRpcConnectionLoader(adminReturning(row));
 
   // Loader-level: a healthy http + bearer row resolves; each non-executable facet is connection_unusable.
@@ -791,6 +797,136 @@ console.log("\n— executable-facet gate: the loader refuses non-MCP-drivable ro
   // _TRANSPORTS admits api_key/stdio/sse; (b) dropping `!authUsable(auth)` admits reserved/invalid
   // header names; (c) dropping the expiry check admits a dead OAuth token.
   check("LOAD-BEARING: removing any executable-facet guard would break these refusals", apiKeyRes.ok === false && stdioRes.ok === false && sseRes.ok === false && reservedHeaderRes.ok === false && invalidHeaderRes.ok === false && expiredOAuthRes.ok === false && execApiKey.outcome === "refused" && execStdio.outcome === "refused" && execReservedHeader.outcome === "refused" && execExpiredOAuth.outcome === "refused" && !(refuseSrv.calls ?? []).length);
+}
+
+// ── 8. INT-082 — owner_only visibility is CALLER-AUTHORITY enforced (modeled as a CAPABILITY) ──
+// get_mcp_connections_v2 HIDES an owner_only connection from an ordinary member's list, but the runner
+// resolves BY ID — so the runner must refuse an owner_only connection to a caller who does not hold the
+// restricted-use capability. Enforced on prepare AND execute, AFTER foreign_tenant and BEFORE any
+// approval/dispatch. The check is on the CAPABILITY (INT-089), never a role — so a delegated grant
+// holder is allowed with no code change. No silent service-role bypass: system use needs an EXPLICIT
+// authority carrying a reason.
+console.log("\n— owner_only visibility (INT-082) —");
+{
+  const RESTRICTED = authorityMod.MCP_RESTRICTED_CAPABILITY;
+  // Codex P2: the capabilities authority is BOUND to the tenant it was resolved for. TENANT is the
+  // owner_only connection's tenant below, so these are bound to it; WRONG_TENANT_CAP is bound elsewhere.
+  const CAP = { kind: "capabilities", tenantId: TENANT, capabilities: [RESTRICTED] };
+  const NO_CAP = { kind: "capabilities", tenantId: TENANT, capabilities: [] };
+  const OTHER_CAP = { kind: "capabilities", tenantId: TENANT, capabilities: ["some.other.capability"] };
+  const WRONG_TENANT_CAP = { kind: "capabilities", tenantId: "ten-other", capabilities: [RESTRICTED] };
+  const SYSTEM = { kind: "system", reason: "paige-headless: nightly digest run" };
+  const SYSTEM_NO_REASON = { kind: "system", reason: "" };
+
+  // (a) LOADER surfaces + fail-closed-normalizes visibility from the RPC (the REAL makeRpcConnectionLoader).
+  const ooUrl = "https://public.example/mcp-oo";
+  const ooSrv = {}; routes.set("/mcp-oo", mcpServer(ooSrv));
+  const adminReturning = (row) => ({ rpc: async (fn) => (fn === "get_mcp_connection_secret" ? { data: row, error: null } : { data: null, error: null }) });
+  const ooRow = { configured: true, enabled: true, connection_id: "conn-oo", tenant_id: TENANT, server_url: ooUrl, endpoint_hash: endpointHashOf(ooUrl), auth_token: "secret-token", auth_kind: "bearer", transport: "http", visibility: "owner_only" };
+  const loadOO = (row) => connMod.makeRpcConnectionLoader(adminReturning(row));
+  const ooLoaded = await loadOO(ooRow)("conn-oo");
+  check("loader: surfaces visibility='owner_only' from the RPC", ooLoaded.ok === true && ooLoaded.visibility === "owner_only", JSON.stringify(ooLoaded));
+  const tenLoaded = await loadOO({ ...ooRow, visibility: "tenant" })("conn-oo");
+  check("loader: surfaces visibility='tenant' from the RPC", tenLoaded.ok === true && tenLoaded.visibility === "tenant", JSON.stringify(tenLoaded));
+  // fail-closed: a MISSING visibility (an un-migrated RPC) normalizes to owner_only, never defaulted open.
+  const missingVisLoaded = await loadOO({ ...ooRow, visibility: undefined })("conn-oo");
+  check("loader: a MISSING visibility normalizes to owner_only (fail-closed, never defaulted open)", missingVisLoaded.ok === true && missingVisLoaded.visibility === "owner_only", JSON.stringify(missingVisLoaded));
+  const weirdVisLoaded = await loadOO({ ...ooRow, visibility: "public" })("conn-oo");
+  check("loader: an UNKNOWN visibility value normalizes to owner_only (fail-closed)", weirdVisLoaded.ok === true && weirdVisLoaded.visibility === "owner_only", JSON.stringify(weirdVisLoaded));
+
+  // (b) RUNNER enforcement. A fake loader surfacing a chosen visibility for an owned, same-tenant row.
+  const authzReceipts = [];
+  const ooLoader = (visibility, tenantId = TENANT) => (connectionId) => ({ ok: true, connectionId, tenantId, serverUrl: ooUrl, auth: bearer, endpointHash: endpointHashOf(ooUrl), visibility });
+  const runOO = (visibility, req, authority, extra = {}) => runnerMod.runConnectionCapability(
+    { connectionId: "conn-oo", tenantId: TENANT, callerAuthority: authority, ...req },
+    { recordReceipt: (r) => authzReceipts.push(r), verifyApproval, loadConnection: ooLoader(visibility), ...extra });
+
+  approvals = {}; // a read tool needs no approval — isolates the owner_only gate
+
+  // missing authority → owner_only refused on BOTH execute and prepare, even for a FREE read (the gate is
+  // before dispatch, so an ordinary member never reaches the provider).
+  const ooNoAuthExec = await runOO("owner_only", { toolName: "list_records", args: { q: "x" }, mode: "execute" }, undefined);
+  check("owner_only + NO authority → refused owner_only_forbidden (execute)", ooNoAuthExec.outcome === "refused" && ooNoAuthExec.code === "owner_only_forbidden", JSON.stringify(ooNoAuthExec));
+  check("...and the owner_only connection was NEVER contacted (gate is before dispatch)", !(ooSrv.calls ?? []).length, JSON.stringify(ooSrv.calls ?? []));
+  const ooNoAuthPrep = await runOO("owner_only", { toolName: "list_records", args: {}, mode: "prepare" }, undefined);
+  check("owner_only + NO authority → refused owner_only_forbidden (prepare), never a false 'prepared'", ooNoAuthPrep.outcome === "refused" && ooNoAuthPrep.code === "owner_only_forbidden", JSON.stringify(ooNoAuthPrep));
+
+  // a capabilities authority WITHOUT the restricted cap → refused (a member holding other/no caps).
+  const ooNoCap = await runOO("owner_only", { toolName: "list_records", args: {}, mode: "execute" }, NO_CAP);
+  check("owner_only + capabilities lacking the restricted cap → refused owner_only_forbidden", ooNoCap.outcome === "refused" && ooNoCap.code === "owner_only_forbidden", JSON.stringify(ooNoCap));
+  const ooOtherCap = await runOO("owner_only", { toolName: "list_records", args: {}, mode: "execute" }, OTHER_CAP);
+  check("owner_only + a DIFFERENT capability → refused owner_only_forbidden (the exact capability is required)", ooOtherCap.outcome === "refused" && ooOtherCap.code === "owner_only_forbidden", JSON.stringify(ooOtherCap));
+  // Codex P2: the restricted capability RESOLVED FOR ANOTHER TENANT must NOT authorize this run, even
+  // though the connection is the caller's own tenant (foreign_tenant already passed). This is the
+  // workspace-switch cache/mix the tenant-binding closes. LOAD-BEARING for the tenant-bind fix.
+  const ooWrongTenantCap = await runOO("owner_only", { toolName: "list_records", args: {}, mode: "execute" }, WRONG_TENANT_CAP);
+  check("owner_only + the restricted cap RESOLVED FOR ANOTHER TENANT → refused owner_only_forbidden (capability is tenant-bound)", ooWrongTenantCap.outcome === "refused" && ooWrongTenantCap.code === "owner_only_forbidden", JSON.stringify(ooWrongTenantCap));
+
+  // THE INT-089 CASE: a caller holding the capability — REGARDLESS of role (a "delegated non-owner grant
+  // holder") — is ALLOWED. The runner authorizes on the capability, never a role literal.
+  const ooCapExec = await runOO("owner_only", { toolName: "list_records", args: { q: "x" }, mode: "execute" }, CAP);
+  check("owner_only + the restricted capability → ALLOWED (read_observed): role-agnostic, a delegated grant holder is allowed", ooCapExec.outcome === "read_observed", JSON.stringify(ooCapExec));
+  check("...and it DID dispatch to the owner_only endpoint", (ooSrv.calls ?? []).includes("list_records"), JSON.stringify(ooSrv.calls ?? []));
+  const ooCapPrep = await runOO("owner_only", { toolName: "list_records", args: {}, mode: "prepare" }, CAP);
+  check("owner_only + the restricted capability → prepare returns 'prepared'", ooCapPrep.outcome === "prepared", JSON.stringify(ooCapPrep));
+
+  // EXPLICIT system authority WITH a reason → ALLOWED, and the reason is recorded on the receipt detail
+  // (attribution; no silent service-role bypass). NOTE: the canonical Rail writer drops `detail` today
+  // (§13), so this asserts the runner THREADS the reason onto the receipt object, not Rail persistence.
+  authzReceipts.length = 0;
+  const ooSystem = await runOO("owner_only", { toolName: "list_records", args: {}, mode: "execute" }, SYSTEM);
+  check("owner_only + EXPLICIT system authority with a reason → ALLOWED (read_observed)", ooSystem.outcome === "read_observed", JSON.stringify(ooSystem));
+  check("...and the system reason is recorded on the receipt detail (attribution)",
+    authzReceipts.some((r) => r.detail && r.detail.restricted_use === "system" && r.detail.system_authority_reason === SYSTEM.reason),
+    JSON.stringify(authzReceipts.map((r) => r.detail)));
+  // system authority WITHOUT a reason → refused (no bypass; "explicit authority WITH a reason" is the gate).
+  const ooSystemNoReason = await runOO("owner_only", { toolName: "list_records", args: {}, mode: "execute" }, SYSTEM_NO_REASON);
+  check("owner_only + system authority with an EMPTY reason → refused owner_only_forbidden (no silent bypass)", ooSystemNoReason.outcome === "refused" && ooSystemNoReason.code === "owner_only_forbidden", JSON.stringify(ooSystemNoReason));
+
+  // ORDERING: foreign_tenant is refused BEFORE the owner_only check — a cross-tenant caller holding the
+  // capability is STILL foreign_tenant, so an owner_only refusal never leaks that the row exists elsewhere.
+  const ooForeign = await runnerMod.runConnectionCapability(
+    { connectionId: "conn-oo", tenantId: "ten-evil", callerAuthority: CAP, toolName: "list_records", args: {}, mode: "execute" },
+    { recordReceipt: (r) => authzReceipts.push(r), verifyApproval, loadConnection: ooLoader("owner_only", TENANT) });
+  check("owner_only, foreign tenant, WITH the capability → refused foreign_tenant (owner_only check is AFTER §9)", ooForeign.outcome === "refused" && ooForeign.code === "foreign_tenant", JSON.stringify(ooForeign));
+
+  // SCOPE: a 'tenant'-visibility connection needs NO authority — the restriction is owner_only-only.
+  const tenNoAuth = await runOO("tenant", { toolName: "list_records", args: {}, mode: "execute" }, undefined);
+  check("a tenant-visibility connection with NO authority still runs (the gate is scoped to owner_only)", tenNoAuth.outcome === "read_observed", JSON.stringify(tenNoAuth));
+
+  // ORDERING vs approval/dispatch: an owner_only MUTATION without the cap is owner_only_forbidden (before
+  // the approval gate); WITH the cap but no approval → approval_required (owner_only passed, THEN approval).
+  approvals = {};
+  const ooMutNoCap = await runOO("owner_only", { toolName: "send_message", args: {}, mode: "execute" }, undefined);
+  check("owner_only mutation + NO authority → owner_only_forbidden (before the approval gate)", ooMutNoCap.outcome === "refused" && ooMutNoCap.code === "owner_only_forbidden", JSON.stringify(ooMutNoCap));
+  const ooMutCapNoApproval = await runOO("owner_only", { toolName: "send_message", args: {}, mode: "execute" }, CAP);
+  check("owner_only mutation + the capability but NO approval → approval_required (owner_only passed, then the approval gate)", ooMutCapNoApproval.outcome === "refused" && ooMutCapNoApproval.code === "approval_required", JSON.stringify(ooMutCapNoApproval));
+
+  // (c) makeRpcCapabilityResolver maps the _mcp_caller_capabilities RPC → a tenant-BOUND capabilities
+  // authority (Codex P2: correct-by-construction — it binds the caps to the tenant it resolved for, so
+  // the wiring cannot forget); fails closed to empty caps on error.
+  const capAdmin = (data, error = null) => ({ rpc: async (fn) => (fn === "_mcp_caller_capabilities" ? { data, error } : { data: null, error: null }) });
+  const resolver = (data, error) => authorityMod.makeRpcCapabilityResolver(capAdmin(data, error));
+  const resolvedOwner = await resolver([RESTRICTED])({ tenantId: TENANT, actorUserId: "u-1" });
+  check("resolver: returns a tenant-bound capabilities authority (kind, tenantId, and the resolved caps)",
+    resolvedOwner.kind === "capabilities" && resolvedOwner.tenantId === TENANT && resolvedOwner.capabilities.includes(RESTRICTED),
+    JSON.stringify(resolvedOwner));
+  const resolvedErr = await resolver(null, { message: "boom" })({ tenantId: TENANT, actorUserId: "u-1" });
+  check("resolver: fails closed to empty caps on an RPC error (still tenant-bound, grants nothing)",
+    resolvedErr.kind === "capabilities" && resolvedErr.tenantId === TENANT && resolvedErr.capabilities.length === 0,
+    JSON.stringify(resolvedErr));
+  const resolvedAuthority = await resolver([RESTRICTED])({ tenantId: TENANT, actorUserId: "u-1" });
+  const ooResolved = await runOO("owner_only", { toolName: "list_records", args: {}, mode: "execute" }, resolvedAuthority);
+  check("owner_only + the authority the resolver produced (tenant-bound) → ALLOWED (read_observed)", ooResolved.outcome === "read_observed", JSON.stringify(ooResolved));
+
+  // LOAD-BEARING (§39): removing the runner's `if (canon.visibility === "owner_only") …` gate flips the
+  // refusals below to runs; removing the "with a reason" requirement flips ooSystemNoReason to a run;
+  // removing the tenant-bind (Codex P2) flips ooWrongTenantCap to a run.
+  check("LOAD-BEARING: the owner_only gate + the system-reason requirement + the tenant-bind produce these refusals",
+    ooNoAuthExec.code === "owner_only_forbidden" && ooNoCap.code === "owner_only_forbidden"
+      && ooMutNoCap.code === "owner_only_forbidden" && ooSystemNoReason.code === "owner_only_forbidden"
+      && ooWrongTenantCap.code === "owner_only_forbidden"
+      && ooCapExec.outcome === "read_observed" && tenNoAuth.outcome === "read_observed");
 }
 
 server.close();

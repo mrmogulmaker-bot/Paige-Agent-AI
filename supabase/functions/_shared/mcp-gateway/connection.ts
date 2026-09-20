@@ -23,9 +23,11 @@ type Admin = any;
 
 /** The canonical connection, resolved server-side from the one `mcp_connections` row keyed by
  *  `connection_id`. Both the dispatch endpoint AND the consent identity derive from THIS. `ok:false`
- *  carries a closed refusal reason — never provider prose. */
+ *  carries a closed refusal reason — never provider prose. `visibility` carries the row's owner-set
+ *  visibility (INT-082); the runner enforces `owner_only` against the caller's authority — visibility
+ *  is an AUTHORITY facet, never a usability one, so it never gates `connection_unusable`. */
 export type ResolvedConnection =
-  | { ok: true; connectionId: string; tenantId: string; serverUrl: string; auth: McpAuth; endpointHash: string }
+  | { ok: true; connectionId: string; tenantId: string; serverUrl: string; auth: McpAuth; endpointHash: string; visibility: "tenant" | "owner_only" }
   | { ok: false; reason: "no_connection" | "connection_disabled" | "connection_unusable" };
 
 /** What the runner calls to resolve a connection to its canonical endpoint + auth + tenant. In
@@ -74,6 +76,7 @@ export function makeRpcConnectionLoader(admin: Admin): ConnectionLoader {
         tenant_id?: unknown;
         server_url?: unknown;
         endpoint_hash?: unknown;
+        visibility?: unknown;
         auth_token?: unknown;
         auth_kind?: unknown;
         auth_header_name?: unknown;
@@ -125,7 +128,15 @@ export function makeRpcConnectionLoader(admin: Admin): ConnectionLoader {
       if (!authUsable(auth) || oauthExpired || headerRowNotHeaderAuth) {
         return { ok: false, reason: "connection_unusable" };
       }
-      return { ok: true, connectionId: row.connection_id, tenantId: row.tenant_id, serverUrl: row.server_url, auth, endpointHash: row.endpoint_hash };
+      // INT-082: surface the row's owner-set visibility so the runner can enforce `owner_only` against
+      // the caller's authority. FAIL CLOSED by normalization: ONLY the exact string 'tenant' opens a
+      // connection to ordinary tenant members; 'owner_only', an unrecognized value, or a missing field
+      // (an un-migrated RPC that predates the returned key) all resolve `owner_only`, so a restricted
+      // connection is never defaulted OPEN. Visibility is an authority facet — it deliberately does NOT
+      // gate `connection_unusable` above (an owner_only connection is fully usable BY AN AUTHORIZED
+      // CALLER); the runner is where the caller-authority check lives.
+      const visibility: "tenant" | "owner_only" = row.visibility === "tenant" ? "tenant" : "owner_only";
+      return { ok: true, connectionId: row.connection_id, tenantId: row.tenant_id, serverUrl: row.server_url, auth, endpointHash: row.endpoint_hash, visibility };
     } catch {
       return { ok: false, reason: "no_connection" };
     }
