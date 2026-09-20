@@ -63,7 +63,10 @@ export function SoloSetupReadinessNotice({
         Setup isn&apos;t finished yet — business context makes PAIGE far more useful, and PAIGE can
         help you fill it in.{" "}
         {setupHref != null ? (
-          <Link to={setupHref} style={{ color: "var(--gold-bright)", textDecoration: "none" }}>
+          // No color override: .paige-solo's link token (--violet) is the
+          // contrast-safe standard (~6.7:1 light, theme-aware dark); the gold
+          // accent measured ~2.1:1 on the light surface.
+          <Link to={setupHref}>
             Finish setup when you&apos;re ready
           </Link>
         ) : (
@@ -80,7 +83,9 @@ export function SoloSetupReadinessNotice({
           marginLeft: "auto",
           border: "1px solid var(--line)",
           background: "var(--surface-2)",
-          color: "var(--ink-3)",
+          // ink-2 (not ink-3): the 12px label must clear 4.5:1 on the
+          // surface (ink-3 measured ~4:1).
+          color: "var(--ink-2)",
           borderRadius: 8,
           padding: "2px 10px",
           fontSize: 12,

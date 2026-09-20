@@ -115,6 +115,34 @@ describe("one viewport owner: the reminder renders inside SoloApp's height-owned
     expect(noticeSrc).toContain("var(--surface)");
   });
 
+  it("Codex a1c5cfd0 P2 regression: banner actions are contrast-safe — the link inherits the shell's standard link token (no gold override), the dismiss label uses ink-2", () => {
+    const noticeSrc = read("src/solo/SoloSetupReadinessNotice.tsx");
+    // Gold-bright measures ~2.1:1 on the light surface at 12.5px — below the
+    // 4.5:1 floor. The link must carry NO inline color (it inherits
+    // .paige-solo's --violet, ~6.7:1) and the dismiss uses --ink-2 (~4:1
+    // ink-3 is below the floor).
+    expect(noticeSrc).not.toContain("var(--gold-bright)");
+    expect(noticeSrc).not.toMatch(/<Link[^>]*color/);
+    expect(noticeSrc).toMatch(/button[\s\S]*?color: "var\(--ink-2\)"/);
+    // Sabotage-sensitivity: reintroducing either low-contrast override trips.
+    const goldBack = noticeSrc.replace("<Link to={setupHref}>", '<Link to={setupHref} style={{ color: "var(--gold-bright)" }}>');
+    expect(goldBack).toMatch(/<Link[^>]*color/);
+  });
+
+  it("Codex a1c5cfd0 P2 regression: the editor probe verdict is tenant+user-keyed — an account switch can never surface the previous workspace's verdict", () => {
+    // The derived value must be false the instant the identity changes
+    // (before any RPC resolves, and indefinitely if one hangs).
+    expect(soloAppSrc).toMatch(/editorProbe\.tenant === activeTenantId/);
+    expect(soloAppSrc).toMatch(/editorProbe\.user === activeUserId/);
+    expect(soloAppSrc).toMatch(/const isMembershipEditor =[\s\S]*?editorProbe\.ok;/);
+    // Sabotage-sensitivity: a bare boolean (the stale shape) fails the pin.
+    const bare = soloAppSrc.replace(
+      /editorProbe\.tenant === activeTenantId\s*&&\s*editorProbe\.user === activeUserId\s*&&\s*editorProbe\.ok/,
+      "editorProbe.ok",
+    );
+    expect(/editorProbe\.tenant === activeTenantId/.test(bare)).toBe(false);
+  });
+
   it("the shell (not the gate) owns dismissal, so it survives route remounts", () => {
     expect(soloAppSrc).toContain("const [setupReminderDismissed, setSetupReminderDismissed] = React.useState(false);");
   });
@@ -143,7 +171,7 @@ describe("one viewport owner: the reminder renders inside SoloApp's height-owned
     // The notice component renders the link ONLY on a non-null href, and
     // role-appropriate copy otherwise (no dead-end CTA).
     const noticeSrc = read("src/solo/SoloSetupReadinessNotice.tsx");
-    expect(noticeSrc).toMatch(/setupHref != null \? \(\s*<Link/);
+    expect(noticeSrc).toMatch(/setupHref != null \? \([\s\S]*?<Link/);
     expect(noticeSrc).toContain("an owner or admin completes it from Settings");
     // Sabotage-sensitivity: unlinking the gate (link for everyone) fails the pin.
     const ungated = soloAppSrc.replace("showSetupReminder && canFinishSetup", "showSetupReminder");

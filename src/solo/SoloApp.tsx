@@ -195,13 +195,22 @@ const showSetupReminder =
 // Fail-closed: on RPC error the primary-owner fact stands alone.
 const isPrimaryOwner =
   activeTenant?.owner_user_id != null && activeTenant.owner_user_id === activeUserId;
-const [isMembershipEditor, setIsMembershipEditor] = React.useState(false);
+// Codex a1c5cfd0 P2: the probe result is TENANT+USER-KEYED so an account
+// switch can never surface the previous workspace's editor verdict — the
+// derived value is false the instant the identity changes, before any RPC
+// resolves (and stays false if one hangs).
+const [editorProbe, setEditorProbe] = React.useState<{ tenant: string; user: string; ok: boolean } | null>(null);
+const isMembershipEditor =
+  editorProbe !== null
+  && editorProbe.tenant === activeTenantId
+  && editorProbe.user === activeUserId
+  && editorProbe.ok;
 const editProbeTenant = showSetupReminder ? activeTenantId : null;
 const editProbeUser = showSetupReminder ? activeUserId : null;
 React.useEffect(() => {
   let alive = true;
   if (!editProbeTenant || !editProbeUser) {
-    setIsMembershipEditor(false);
+    setEditorProbe(null);
     return () => { alive = false; };
   }
   void (async () => {
@@ -211,8 +220,8 @@ React.useEffect(() => {
       supabase.rpc("has_tenant_role", { _user_id: editProbeUser, _tenant_id: editProbeTenant, _role: "owner" }),
       supabase.rpc("has_tenant_role", { _user_id: editProbeUser, _tenant_id: editProbeTenant, _role: "admin" }),
     ]);
-    if (alive) setIsMembershipEditor(owner.data === true || admin.data === true);
-  })().catch(() => { if (alive) setIsMembershipEditor(false); });
+    if (alive) setEditorProbe({ tenant: editProbeTenant, user: editProbeUser, ok: owner.data === true || admin.data === true });
+  })().catch(() => { if (alive) setEditorProbe({ tenant: editProbeTenant, user: editProbeUser, ok: false }); });
   return () => { alive = false; };
 }, [editProbeTenant, editProbeUser]);
 const canFinishSetup = isPrimaryOwner || isMembershipEditor;
