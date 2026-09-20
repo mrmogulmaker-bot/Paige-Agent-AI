@@ -212,6 +212,36 @@ describe("Paige Live Conversation owner surface", () => {
     expect(onAnswer).not.toHaveBeenCalled();
   });
 
+  it("does not end an open session when Retry is invoked while its parent is disabled", async () => {
+    await render();
+
+    await act(async () => {
+      clickText("Talk live with Paige");
+    });
+    await flush();
+
+    control.transition.mockClear();
+    await render(null, "tenant-a||", false, null, true);
+
+    const retry = Array.from(document.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("Retry setup check"),
+    );
+
+    expect(retry).toBeInstanceOf(HTMLButtonElement);
+    expect((retry as HTMLButtonElement).disabled).toBe(true);
+
+    // Force the handler path too: the in-handler guard must remain a backstop
+    // even if a stale/synthetic event bypasses the native disabled control.
+    (retry as HTMLButtonElement).disabled = false;
+    await act(async () => {
+      (retry as HTMLButtonElement).click();
+    });
+
+    expect(control.transition).not.toHaveBeenCalled();
+    expect(control.start).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+  });
+
   it("shows permission denial and retry without fabricating audio state", async () => {
     control.start.mockResolvedValueOnce({ ok: false, sessionId: null, availability: "UNAVAILABLE", code: "microphone_permission_denied", explanation: "Microphone access was denied. Nothing was recorded." });
     await render();

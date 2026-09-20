@@ -268,6 +268,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   };
 
   const retry = async () => {
+    if (disabled) return;
     transitionCurrent("end");
     sessionIdRef.current = null;
     sessionScopeRef.current = null;
@@ -352,7 +353,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
           <p id="plc-description" className="plc-context">Working in this exact Paige thread. Nothing here creates a second assistant or a separate memory.</p>
           <div className="plc-working" aria-live="polite"><span>Paige is working on</span><strong>{working ? (workingLabel || "your current request") : "No active work"}</strong></div>
           {(state !== "checking" && availability !== "LIVE") && (
-            <div className="plc-notice" role="status"><strong>{availability}</strong><p>{explanation}</p><Button variant="outline" size="sm" onClick={() => void retry()}><RefreshCw aria-hidden />Retry setup check</Button></div>
+            <div className="plc-notice" role="status"><strong>{availability}</strong><p>{explanation}</p><Button variant="outline" size="sm" disabled={disabled} onClick={() => void retry()}><RefreshCw aria-hidden />Retry setup check</Button></div>
           )}
         </section>
         <section className="plc-workspace" aria-label="Live conversation workspace">
