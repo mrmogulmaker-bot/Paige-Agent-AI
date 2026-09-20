@@ -283,11 +283,24 @@ const OWNER_DECISION_REFERENCE = /(?:(?:PR|issue|discussion)\s*#?\s*[0-9]+|#[0-9
 // A substantive reason is prose, not an interjection: at least four DISTINCT
 // words — "ok ok ok ok" is filler, not prose.
 const MIN_REASON_WORDS = 4;
-// FLOW_BY_FLOW eligibility (Codex a5163ade P2): the doctrine permits this
-// waiver ONLY when the skill is genuinely unavailable in the delivery
-// environment — never because it was inconvenient. The reason must therefore
-// establish unavailability in its own words.
-const FLOW_BY_FLOW_WAIVER_ELIGIBILITY = /(?:unavailable|not installed|not present|absent)/i;
+// FLOW_BY_FLOW eligibility (Codex a5163ade/cb73e6df P2s): the doctrine
+// permits this waiver ONLY when the skill is genuinely unavailable in the
+// delivery environment — never because it was inconvenient. The reason must
+// establish unavailability in its own words, and a NEGATED unavailability
+// claim ("the skill is not unavailable in this environment") establishes
+// availability, not unavailability.
+function establishesUnavailability(reason) {
+  // A negator immediately before an AVAILABILITY word is unavailability:
+  // "not installed", "not present", "not available", "never installed",
+  // "no longer available".
+  if (/\b(?:not|never|isn[’']?t|no longer)\s+(?:installed|present|available)\b/i.test(reason)) {
+    return true;
+  }
+  // An affirmative unavailability word is eligible ONLY when it is not itself
+  // negated: "unavailable"/"absent" pass, "not unavailable"/"not absent" fail.
+  if (!/\b(?:unavailable|absent)\b/i.test(reason)) return false;
+  return !/\b(?:not|never|isn[’']?t)\s+(?:unavailable|absent)\b/i.test(reason);
+}
 
 function isWaivedWithOwnerDecision(value, eligibility) {
   const match = /^WAIVED:\s*owner-decision=([^;]+);\s*reason=(\S.+)$/i.exec(String(value ?? "").trim());
@@ -306,7 +319,7 @@ function isWaivedWithOwnerDecision(value, eligibility) {
   if (distinct.size < MIN_REASON_WORDS) return false;
   // Gate-specific eligibility, when the doctrine ties the waiver to a
   // condition the reason itself must establish.
-  if (eligibility && !eligibility.test(reason)) return false;
+  if (eligibility && !eligibility(reason)) return false;
   return true;
 }
 
@@ -385,7 +398,7 @@ export function validateEvidenceText(text, classification) {
   // (the honest path when the skill is unavailable and the owner accepts the
   // grounded flow trace in its place). No other value passes — and the
   // waiver's reason must establish the skill's genuine unavailability.
-  if (!isPassWithEvidence(fields.get("FLOW_BY_FLOW")) && !isWaivedWithOwnerDecision(fields.get("FLOW_BY_FLOW"), FLOW_BY_FLOW_WAIVER_ELIGIBILITY)) {
+  if (!isPassWithEvidence(fields.get("FLOW_BY_FLOW")) && !isWaivedWithOwnerDecision(fields.get("FLOW_BY_FLOW"), establishesUnavailability)) {
     errors.push("FLOW_BY_FLOW must be PASS: with a non-placeholder evidence reference, or WAIVED: owner-decision=<reference>; reason=<reason establishing the skill's genuine unavailability>.");
   }
   if (!isPassWithEvidence(fields.get("PAIGE_UI_DESIGN"))) errors.push("PAIGE_UI_DESIGN must be PASS: with a non-placeholder evidence reference.");

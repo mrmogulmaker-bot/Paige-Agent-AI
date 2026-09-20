@@ -667,6 +667,34 @@ test("Codex a5163ade P2: a FLOW_BY_FLOW waiver whose reason does NOT establish u
   assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
 });
 
+test("Codex cb73e6df P2: a NEGATED unavailability claim establishes availability and fails", () => {
+  for (const reason of [
+    "the skill is not unavailable in this environment",
+    "the skill is not absent from this environment",
+    "the skill was never unavailable during this delivery",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, false, `${reason}: ${result.errors.join("\n")}`);
+    assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+  }
+});
+
+test("Codex cb73e6df P2: negated AVAILABILITY still passes (not installed / no longer available)", () => {
+  for (const reason of [
+    "the skill is not installed in this environment and the owner accepted the grounded trace",
+    "the skill is no longer available in this environment for this delivery",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, true, `${reason}: ${result.errors.join("\n")}`);
+  }
+});
+
 test("Codex a5163ade P2: the FLOW_PROTOTYPE waiver carries NO unavailability requirement (its eligibility is the owner's flow ruling)", () => {
   const record = coreEvidence
     .replace(/^MATERIAL_FLOW_CHANGE:.*$/m, "MATERIAL_FLOW_CHANGE: YES: landing flow changed")
