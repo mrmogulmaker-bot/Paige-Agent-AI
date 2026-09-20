@@ -1,7 +1,7 @@
 /**
  * DictationMicButton — the one shared mic control for every composer (#170).
  *
- * Press-to-talk: hold (pointer or keyboard) to record, release to stop; the
+ * Tap once to record and tap again to stop; pointer release never ends capture.
  * dictated words are handed back via `onText` for the composer to append. It
  * drives the shared `useDictation` hook (§18 one home) so the two composers
  * behave identically.
@@ -9,16 +9,16 @@
  * §11: the mic is NEUTRAL/indigo — a mic is not an "act", so gold stays on Send.
  * Motion-safe (every pulse guards `motion-reduce`), token-only, jargon-free.
  */
-import { useEffect, useId, useRef, useState } from "react";
-import { Mic } from "lucide-react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import { Mic, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useDictation } from "@/lib/voice/useDictation";
+import { useDictation, type DictationInsertionPoint } from "@/lib/voice/useDictation";
 import type { ButtonProps } from "@/components/ui/button";
 
 interface DictationMicButtonProps {
   /** Receives each finalized transcript segment (no leading space). */
-  onText: (segment: string) => void;
+  onText: (segment: string, insertionPoint?: DictationInsertionPoint | null) => void;
   /** Surface a plain, jargon-free failure (e.g. via a toast). */
   onError?: (message: string) => void;
   disabled?: boolean;
@@ -32,10 +32,10 @@ interface DictationMicButtonProps {
   showStatus?: boolean;
   /** Authenticated account epoch used to invalidate a recording generation. */
   scopeEpoch?: string | null;
+  /** Owning composer; preserves its caret even when focus crosses toolbar controls. */
+  composerRef?: RefObject<HTMLTextAreaElement | HTMLInputElement>;
   className?: string;
 }
-
-const HOLD_KEYS = new Set([" ", "Enter"]);
 
 export function DictationMicButton({
   onText,
@@ -47,12 +47,15 @@ export function DictationMicButton({
   activeLabel,
   showStatus = false,
   scopeEpoch = null,
+  composerRef,
   className,
 }: DictationMicButtonProps) {
   const [resultVisible, setResultVisible] = useState(false);
   const resultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const insertionPointRef = useRef<DictationInsertionPoint | null>(null);
   const handleText = (segment: string) => {
-    onText(segment);
+    if (insertionPointRef.current) onText(segment, insertionPointRef.current);
+    else onText(segment);
     setResultVisible(true);
     if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
     resultTimerRef.current = setTimeout(() => {
@@ -61,49 +64,52 @@ export function DictationMicButton({
     }, 2_000);
   };
   const dictation = useDictation({ onText: handleText, onError, scopeEpoch });
-  const { status, failure, supported, start, stop } = dictation;
+  const { status, failure, notice, supported, start, stop } = dictation;
   const statusId = useId();
-  const holdingRef = useRef(false);
 
   useEffect(() => () => {
     if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
   }, []);
 
   useEffect(() => {
-    if (status === "idle" || status === "error") {
-      holdingRef.current = false;
-    }
-  }, [status]);
-
-  useEffect(() => {
-    if ((disabled || !supported) && (status === "requesting" || status === "listening")) {
-      holdingRef.current = false;
+    if ((disabled || !supported) && (
+      status === "requesting" || status === "connecting" || status === "listening"
+    )) {
       stop();
     }
   }, [disabled, status, stop, supported]);
 
-  const beginHold = () => {
-    if (disabled || !supported || holdingRef.current || (status !== "idle" && status !== "error")) return;
+  const rememberInsertionPoint = (fallback: EventTarget | null) => {
+    const candidate = composerRef?.current ?? fallback;
+    if (!(candidate instanceof HTMLTextAreaElement) && !(candidate instanceof HTMLInputElement)) return;
+    insertionPointRef.current = { offset: candidate.selectionStart ?? candidate.value.length };
+  };
+
+  const begin = () => {
+    if (disabled || !supported || (status !== "idle" && status !== "error")) return;
     if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
     resultTimerRef.current = null;
     setResultVisible(false);
-    holdingRef.current = true;
     void start();
   };
-  const endHold = () => {
-    holdingRef.current = false;
-    // stop() is generation-aware and idempotent; calling it unconditionally is
-    // what makes a release safe even before the requesting state repaints.
-    stop();
+  const toggle = () => {
+    if (disabled || !supported || status === "transcribing") return;
+    if (status === "requesting" || status === "connecting" || status === "listening") {
+      stop();
+      return;
+    }
+    begin();
   };
 
   const unsupported = !supported;
   const isDisabled = disabled || unsupported;
   const activationUnavailable = isDisabled || status === "transcribing";
-  const isCapturing = status === "requesting" || status === "listening";
+  const isCapturing = status === "requesting" || status === "connecting" || status === "listening";
   const failed = status === "error";
 
-  const state = unsupported ? "unsupported" : failure ?? (status === "idle" && resultVisible ? "success" : status);
+  const state = unsupported
+    ? "unsupported"
+    : failure ?? (notice ? "notice" : status === "idle" && resultVisible ? "success" : status);
   const stateLabel = unsupported
     ? "Mic unsupported"
     : failure === "permission-denied"
@@ -112,44 +118,52 @@ export function DictationMicButton({
         ? "Voice typing failed"
         : failure === "unavailable"
           ? "Voice typing unavailable"
-          : status === "requesting"
-            ? "Requesting mic"
-            : status === "listening"
-              ? "Listening"
-              : status === "transcribing"
-                ? "Transcribing"
-                : resultVisible
-                  ? "Added to draft"
-                  : "";
-  const statusVisible = showStatus && (unsupported || failed || status !== "idle" || resultVisible);
+          : notice
+            ? notice
+            : status === "requesting"
+              ? "Requesting mic"
+              : status === "connecting"
+                ? "Connecting"
+                : status === "listening"
+                  ? "Listening · tap to stop"
+                  : status === "transcribing"
+                    ? "Finishing"
+                    : resultVisible
+                      ? "Added to draft"
+                      : "";
+  const statusVisible = showStatus && (unsupported || failed || !!notice || status !== "idle" || resultVisible);
 
   const title = unsupported
     ? "Voice typing isn't supported in this browser"
     : status === "requesting"
-      ? "Requesting microphone access"
-      : status === "listening"
-      ? "Release to stop dictating"
-      : status === "transcribing"
-        ? "Finishing voice typing"
-        : failed
-          ? dictation.error ?? "Voice typing isn't available right now"
-      : "Hold to dictate — speak, then release";
+      ? "Requesting microphone access — tap to stop"
+      : status === "connecting"
+        ? "Connecting voice typing — tap to stop"
+        : status === "listening"
+          ? "Listening — tap to stop"
+          : status === "transcribing"
+            ? "Finishing voice typing"
+            : failed
+              ? dictation.error ?? "Voice typing isn't available right now"
+              : "Tap to dictate";
 
   const accessibleLabel = unsupported
     ? "Voice typing unsupported"
     : failure === "permission-denied"
       ? "Microphone permission off"
       : failure === "provider-failure"
-        ? "Voice typing failed — hold to retry"
+        ? "Voice typing failed — tap to retry"
         : failure === "unavailable"
-          ? "Voice typing unavailable — hold to retry"
+          ? "Voice typing unavailable — tap to retry"
           : status === "requesting"
-            ? "Requesting microphone access — release to stop"
-            : status === "listening"
-              ? "Listening — release to stop"
-              : status === "transcribing"
-                ? "Transcribing recorded speech"
-                : "Hold to dictate";
+            ? "Requesting microphone access — tap to stop"
+            : status === "connecting"
+              ? "Connecting voice typing — tap to stop"
+              : status === "listening"
+                ? "Listening — tap to stop"
+                : status === "transcribing"
+                  ? "Finishing recorded speech"
+                  : "Start voice typing";
 
   const button = (
     <Button
@@ -169,28 +183,13 @@ export function DictationMicButton({
           "bg-primary/10 text-primary ring-2 ring-primary/50 animate-pulse motion-reduce:animate-none",
         className,
       )}
-      onPointerDown={(e) => {
-        if (e.button !== 0 && e.pointerType === "mouse") return;
-        e.preventDefault();
-        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-        beginHold();
-      }}
-      onPointerUp={endHold}
-      onPointerCancel={endHold}
-      onLostPointerCapture={endHold}
-      onKeyDown={(e) => {
-        if (!HOLD_KEYS.has(e.key) || e.repeat || holdingRef.current) return;
-        e.preventDefault();
-        beginHold();
-      }}
-      onKeyUp={(e) => {
-        if (!HOLD_KEYS.has(e.key)) return;
-        e.preventDefault();
-        endHold();
-      }}
-      onBlur={endHold}
+      onPointerDown={() => rememberInsertionPoint(document.activeElement)}
+      onFocus={(event) => rememberInsertionPoint(event.relatedTarget)}
+      onClick={toggle}
     >
-      <Mic className={cn(size === "icon" ? "h-4 w-4" : "mr-1.5 h-3.5 w-3.5")} />
+      {isCapturing
+        ? <Square aria-hidden className={cn(size === "icon" ? "h-3.5 w-3.5 fill-current" : "mr-1.5 h-3.5 w-3.5 fill-current")} />
+        : <Mic aria-hidden className={cn(size === "icon" ? "h-4 w-4" : "mr-1.5 h-3.5 w-3.5")} />}
       {label && <span>{isCapturing ? activeLabel ?? label : label}</span>}
     </Button>
   );
@@ -205,7 +204,7 @@ export function DictationMicButton({
           role={failed || unsupported ? "alert" : "status"}
           aria-live={failed || unsupported ? "assertive" : "polite"}
           className={cn(
-            "max-w-24 truncate text-[10px] font-medium leading-tight",
+            "max-w-52 text-[10px] font-medium leading-tight",
             failed || unsupported ? "text-destructive" : "text-muted-foreground",
           )}
         >

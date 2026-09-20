@@ -1,0 +1,68 @@
+[
+  {
+    "viewport": {
+      "name": "1536x770",
+      "width": 1536,
+      "height": 770
+    },
+    "geometry": {
+      "scrollWidth": 1536,
+      "clientWidth": 1536,
+      "scrollHeight": 770,
+      "clientHeight": 770,
+      "state": "listening",
+      "label": "Listening — tap to stop"
+    }
+  },
+  {
+    "viewport": {
+      "name": "1366x768",
+      "width": 1366,
+      "height": 768
+    },
+    "geometry": {
+      "scrollWidth": 1366,
+      "clientWidth": 1366,
+      "scrollHeight": 768,
+      "clientHeight": 768,
+      "state": "listening",
+      "label": "Listening — tap to stop"
+    }
+  },
+  {
+    "viewport": {
+      "name": "1024x768",
+      "width": 1024,
+      "height": 768
+    },
+    "geometry": {
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "scrollHeight": 768,
+      "clientHeight": 768,
+      "state": "listening",
+      "label": "Listening — tap to stop"
+    }
+  },
+  {
+    "viewport": {
+      "name": "900x1000",
+      "width": 900,
+      "height": 1000
+    },
+    "geometry": {
+      "scrollWidth": 900,
+      "clientWidth": 900,
+      "scrollHeight": 1000,
+      "clientHeight": 1000,
+      "state": "listening",
+      "label": "Listening — tap to stop"
+    }
+  },
+  {
+    "keyboard": {
+      "focusAfterStart": true,
+      "focusAfterStop": true
+    }
+  }
+]
