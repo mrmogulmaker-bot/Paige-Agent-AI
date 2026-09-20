@@ -631,6 +631,25 @@ test("Codex c52d3725 P2: prose without any recognizable decision reference fails
   assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
 });
 
+test("Codex 8f76b0b6 P2: labeled PR and issue references (no hash) are recognizable and pass", () => {
+  for (const reference of ["PR 1280 owner ruling", "issue 1280 owner ruling"]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=${reference}; reason=the owner granted this waiver explicitly during the reconciliation session`,
+    );
+    assert.equal(result.ok, true, `${reference}: ${result.errors.join("\n")}`);
+  }
+});
+
+test("Codex 8f76b0b6 P2: repeated filler is not substantive prose — reason=ok ok ok ok fails", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=ok ok ok ok",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
 test("Codex c52d3725 P2: a dated owner ruling is a recognizable reference and passes", () => {
   const result = withField(
     "FLOW_BY_FLOW",

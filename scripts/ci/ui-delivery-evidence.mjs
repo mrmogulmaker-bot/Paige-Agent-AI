@@ -276,10 +276,12 @@ function isPassWithEvidence(value) {
  * placeholder, never "pending"/"unknown"/"none", never bare prose.
  *   WAIVED: owner-decision=<substantive reference>; reason=<substantive reason>
  */
-// A recognizable decision reference: a PR/issue/discussion number, a URL, or
-// a dated ruling — something a reviewer can go read, not a bare word.
-const OWNER_DECISION_REFERENCE = /(?:#[0-9]+|https?:\/\/\S+|20\d{2}-\d{2}-\d{2})/i;
-// A substantive reason is prose, not an interjection: at least four words.
+// A recognizable decision reference: a PR/issue/discussion number (with or
+// without the hash, labeled or bare), a URL, or a dated ruling — something
+// a reviewer can go read, not a bare word.
+const OWNER_DECISION_REFERENCE = /(?:(?:PR|issue|discussion)\s*#?\s*[0-9]+|#[0-9]+|https?:\/\/\S+|20\d{2}-\d{2}-\d{2})/i;
+// A substantive reason is prose, not an interjection: at least four DISTINCT
+// words — "ok ok ok ok" is filler, not prose.
 const MIN_REASON_WORDS = 4;
 
 function isWaivedWithOwnerDecision(value) {
@@ -294,7 +296,9 @@ function isWaivedWithOwnerDecision(value) {
   // the reason must be meaningful prose — "owner-decision=no; reason=ok" is
   // a bypass, not a recorded owner ruling.
   if (!OWNER_DECISION_REFERENCE.test(ownerDecision)) return false;
-  return reason.trim().split(/\s+/).filter((word) => word.length > 0).length >= MIN_REASON_WORDS;
+  const words = reason.trim().split(/\s+/).filter((word) => word.length > 0);
+  const distinct = new Set(words.map((word) => word.toLowerCase().replace(/[^a-z0-9]/g, "")));
+  return distinct.size >= MIN_REASON_WORDS;
 }
 
 export function validateEvidenceText(text, classification) {
