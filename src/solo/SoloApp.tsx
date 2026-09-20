@@ -170,8 +170,15 @@ const { activeTenant, activeTenantId, activeUserId, isPlatformStaff } = useTenan
 // Setup readiness reminder (owner adjudication: Setup is NOT an access gate).
 // The SHELL holds the dismissal so it survives route remounts; the reminder
 // itself renders INSIDE the height-owned paige-solo column below — the shell
-// stays the one viewport owner, tcs-main the one scroll owner.
-const [setupReminderDismissed, setSetupReminderDismissed] = React.useState(false);
+// stays the one viewport owner, tcs-main the one scroll owner. The dismissal
+// is keyed to the tenant+user that dismissed it (Codex d4c85392 P2): a
+// multi-workspace owner's dismissal in one workspace never hides another
+// workspace's readiness notice after an in-place switch.
+const [setupReminderDismissal, setSetupReminderDismissed] = React.useState<{ tenant: string; user: string } | null>(null);
+const setupReminderDismissed =
+  setupReminderDismissal !== null
+  && setupReminderDismissal.tenant === activeTenantId
+  && setupReminderDismissal.user === activeUserId;
 // Codex ea0e7a8b P2: a platform operator acting inside a standalone tenant must
 // not receive Solo-owner setup guidance — the staff guard moves WITH the
 // notice. Codex 1c401d1b P2: the deep link exists ONLY for callers who can
@@ -353,7 +360,7 @@ paigeReturnHref={urlDriven?branchPath('solo',urlAccount,'command-center'):undefi
 brandHomeHref={activeTenant?.account_number!=null?branchPath('solo',String(activeTenant.account_number),'command-center'):undefined}
 onSignOut={()=>void performSignOut({redirectTo:'/'})}>
 <div className="paige-solo" data-theme={theme} style={{width:'100%',maxWidth:'none',height:'100%',minWidth:0,minHeight:0,alignSelf:'stretch',display:'flex',flexDirection:'column'}}>
-<SoloSetupReadinessNotice visible={showSetupReminder} setupHref={soloSetupHref} dismissed={setupReminderDismissed} onDismiss={()=>setSetupReminderDismissed(true)}/>
+<SoloSetupReadinessNotice visible={showSetupReminder} setupHref={soloSetupHref} dismissed={setupReminderDismissed} onDismiss={()=>setSetupReminderDismissed(activeTenantId && activeUserId ? { tenant: activeTenantId, user: activeUserId } : null)}/>
 <div style={{display:'flex',flex:1,minHeight:0,overflow:'hidden'}}>
 <main key={route} data-solo-screen-host style={{flex:1,overflow:full?'hidden':'auto',minHeight:0,minWidth:0}}>{route==='paige'?null:screens[route]}</main>
 {studio&&<VibeStudio onBack={closeStudio}/>}</div></div>

@@ -144,7 +144,20 @@ describe("one viewport owner: the reminder renders inside SoloApp's height-owned
   });
 
   it("the shell (not the gate) owns dismissal, so it survives route remounts", () => {
-    expect(soloAppSrc).toContain("const [setupReminderDismissed, setSetupReminderDismissed] = React.useState(false);");
+    expect(soloAppSrc).toContain("const [setupReminderDismissal, setSetupReminderDismissed] = React.useState");
+  });
+
+  it("Codex d4c85392 P2 regression: dismissal is tenant+user-keyed — one workspace's dismissal never hides another's notice after an in-place switch", () => {
+    // The stored record carries the identity that dismissed; the DERIVED
+    // boolean is false the instant the active identity changes.
+    expect(soloAppSrc).toMatch(/setupReminderDismissal\.tenant === activeTenantId/);
+    expect(soloAppSrc).toMatch(/setupReminderDismissal\.user === activeUserId/);
+    // Sabotage-sensitivity: the unkeyed bare-boolean shape fails the pin.
+    const bare = soloAppSrc.replace(
+      /setupReminderDismissal !== null\s*&&\s*setupReminderDismissal\.tenant === activeTenantId\s*&&\s*setupReminderDismissal\.user === activeUserId/,
+      "setupReminderDismissal !== null",
+    );
+    expect(/setupReminderDismissal\.tenant === activeTenantId/.test(bare)).toBe(false);
   });
 
   it("Codex ea0e7a8b P2 regression: the reminder predicate carries the STAFF guard — an operator acting inside an incomplete standalone tenant gets no owner setup guidance", () => {
