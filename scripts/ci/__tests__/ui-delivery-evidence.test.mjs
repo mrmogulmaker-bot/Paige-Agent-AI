@@ -700,7 +700,7 @@ test("Codex 5081b595 P2: non-adjacent negations of unavailability also fail (fai
 test("Codex 0dd07dc3 P2: a canonical phrase RIDING WITH a contradictory negation fails", () => {
   for (const reason of [
     "the skill is not installed, but it is not currently unavailable",
-    "not available, but does not appear to be unavailable",
+    "the skill is not available, but does not appear to be unavailable",
     "the skill is no longer available and was never unavailable here",
   ]) {
     const result = withField(
@@ -710,6 +710,33 @@ test("Codex 0dd07dc3 P2: a canonical phrase RIDING WITH a contradictory negation
     assert.equal(result.ok, false, `${reason}: ${result.errors.join("\n")}`);
     assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
   }
+});
+
+test("Codex 84e06888 P2: neither/nor denials of unavailability fail", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the skill is neither unavailable nor absent; it is installed and available here",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex 84e06888 P2: unavailability of ANOTHER subject does not qualify — the claim must be about the skill", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the Flow-by-Flow skill is installed and available; the owner is unavailable for review",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex 84e06888 P2: a qualifying clause alongside a clause affirming the skill's availability fails (the veto is load-bearing)", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the tool is unavailable in this environment today; the skill is available here tomorrow",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
 });
 
 test("Codex 5081b595 P2: an affirmative unavailability claim in negation-free prose passes", () => {

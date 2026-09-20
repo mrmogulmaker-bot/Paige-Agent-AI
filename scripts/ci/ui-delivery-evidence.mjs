@@ -283,16 +283,17 @@ const OWNER_DECISION_REFERENCE = /(?:(?:PR|issue|discussion)\s*#?\s*[0-9]+|#[0-9
 // A substantive reason is prose, not an interjection: at least four DISTINCT
 // words — "ok ok ok ok" is filler, not prose.
 const MIN_REASON_WORDS = 4;
-// FLOW_BY_FLOW eligibility (Codex a5163ade/cb73e6df/5081b595 P2s): the
-// doctrine permits this waiver ONLY when the skill is genuinely unavailable
-// in the delivery environment. English negation is adversarial ("not
-// currently unavailable", "does not appear to be unavailable"), so the
-// check is deliberately FAIL-CLOSED rather than a natural-language parse:
-// exactly two unambiguous forms establish unavailability, and ANY other
-// negation word anywhere in the reason rejects it.
+// FLOW_BY_FLOW eligibility (Codex rounds a5163ade → 84e06888): the doctrine
+// permits this waiver ONLY when the skill is genuinely unavailable in the
+// delivery environment. English negation is adversarial, so the check is
+// deliberately FAIL-CLOSED and SUBJECT-SCOPED rather than a natural-language
+// parse: the unavailability must be asserted OF THE SKILL within one clause,
+// and no clause may affirm the skill's availability.
 const NEGATED_AVAILABILITY = /\b(?:not|never|isn[’']?t|no longer)\s+(?:installed|present|available)\b/i;
-const ANY_NEGATION = /\b(?:not|never|no|isn[’']?t|isnt|aren[’']?t|wasn[’']?t|weren[’']?t|doesn[’']?t|doesnt|don[’']?t|dont|cannot|cant|can[’']?t|couldnt|couldn[’']?t|won[’']?t|wont|wouldnt|wouldn[’']?t|hardly|barely|scarcely|anything but)\b/i;
+const ANY_NEGATION = /\b(?:not|never|no|neither|nor|isn[’']?t|isnt|aren[’']?t|wasn[’']?t|weren[’']?t|doesn[’']?t|doesnt|don[’']?t|dont|cannot|cant|can[’']?t|couldnt|couldn[’']?t|won[’']?t|wont|wouldnt|wouldn[’']?t|hardly|barely|scarcely|anything but)\b/i;
 const AFFIRMATIVE_UNAVAILABILITY = /\b(?:unavailable|absent)\b/i;
+const SKILL_SUBJECT = /\b(?:skill|flow[- ]by[- ]flow|tool)\b/i;
+const AFFIRMATIVE_AVAILABILITY = /\b(?:installed|present|available)\b/i;
 function establishesUnavailability(reason) {
   // Canonical form 1 — a negator immediately before an AVAILABILITY word:
   // "not installed", "not present", "not available", "never installed",
@@ -306,6 +307,26 @@ function establishesUnavailability(reason) {
   // Canonical form 2 — an affirmative unavailability word in otherwise
   // negation-free prose: "the skill is unavailable…", "absent from…".
   return canonicalMatches.length > 0 || AFFIRMATIVE_UNAVAILABILITY.test(reason);
+}
+// Subject-scoped eligibility, ANDed with the whole-reason fail-closed check:
+// at least one clause must name the skill AND establish ITS unavailability,
+// no clause may name the skill and affirm ITS availability ("the skill is
+// installed and available; the owner is unavailable" is not an
+// unavailability claim about the skill), and the reason as a whole must
+// survive the negation sweep (a contradictory negation in ANY clause — even
+// one not naming the skill — still rejects).
+function establishesSkillUnavailability(reason) {
+  if (!establishesUnavailability(reason)) return false;
+  const clauses = reason.split(/[,;]|\bbut\b/i);
+  let qualifying = false;
+  for (const clause of clauses) {
+    if (!SKILL_SUBJECT.test(clause)) continue;
+    if (establishesUnavailability(clause)) qualifying = true;
+    const canonical = new RegExp(NEGATED_AVAILABILITY.source, "gi");
+    const stripped = clause.replace(canonical, " ");
+    if (AFFIRMATIVE_AVAILABILITY.test(stripped)) return false;
+  }
+  return qualifying;
 }
 
 function isWaivedWithOwnerDecision(value, eligibility) {
@@ -404,7 +425,7 @@ export function validateEvidenceText(text, classification) {
   // (the honest path when the skill is unavailable and the owner accepts the
   // grounded flow trace in its place). No other value passes — and the
   // waiver's reason must establish the skill's genuine unavailability.
-  if (!isPassWithEvidence(fields.get("FLOW_BY_FLOW")) && !isWaivedWithOwnerDecision(fields.get("FLOW_BY_FLOW"), establishesUnavailability)) {
+  if (!isPassWithEvidence(fields.get("FLOW_BY_FLOW")) && !isWaivedWithOwnerDecision(fields.get("FLOW_BY_FLOW"), establishesSkillUnavailability)) {
     errors.push("FLOW_BY_FLOW must be PASS: with a non-placeholder evidence reference, or WAIVED: owner-decision=<reference>; reason=<reason establishing the skill's genuine unavailability>.");
   }
   if (!isPassWithEvidence(fields.get("PAIGE_UI_DESIGN"))) errors.push("PAIGE_UI_DESIGN must be PASS: with a non-placeholder evidence reference.");
