@@ -45,6 +45,7 @@ import { resolveEffectApproval } from "./effect-policy.ts";
 import { validateToolResult } from "./result.ts";
 import { argsShapeHash, type ApprovalVerifier } from "./consent.ts";
 import type { ConnectionLoader } from "./connection.ts";
+import { type CallerAuthority, resolveRestrictedUse } from "./authority.ts";
 
 function errorCodeOf(e: unknown): string {
   if (e && typeof e === "object" && typeof (e as { code?: unknown }).code === "string") {
@@ -121,6 +122,13 @@ export type RunnerRequest = {
    *  is refused `foreign_tenant` (§9); `get_mcp_connection_secret` is tenant-agnostic, so this is
    *  where cross-tenant use is caught. */
   tenantId: string;
+  /** The caller's SERVER-DERIVED authority (INT-082/INT-089). REQUIRED to use an `owner_only`
+   *  connection — a run that omits it (or presents an unknown shape) is refused `owner_only_forbidden`
+   *  (fail closed). Typed optional so the "missing authority" case is representable and caught, exactly
+   *  like the DB's `_loaded_endpoint_hash` guard: a guard that cannot be exercised for its absent case
+   *  is not a guard. A `tenant`-visibility connection never consults it. It is a CAPABILITY, never a
+   *  role literal — see {@link CallerAuthority}. */
+  callerAuthority?: CallerAuthority;
   toolName: string;
   args: Record<string, unknown>;
   mode: "prepare" | "execute";
@@ -132,6 +140,14 @@ export async function runConnectionCapability(
   deps: RunnerDeps = {},
 ): Promise<RunnerResult> {
   const runId = crypto.randomUUID();
+  // INT-082: when an `owner_only` run is authorized by EXPLICIT system authority, the reason is
+  // attached to the receipt detail so the run is attributable (never a silent service-role bypass).
+  // HONEST CAVEAT (§13): the canonical Rail writer (`makeCanonicalRailReceipt`) currently DROPS
+  // `detail`, so this is best-effort attribution captured on the receipt object / the operational
+  // `mcp_connection_receipts` writer — NOT a persisted Rail field. Persisting it is a separate change
+  // to the `record_capability_run` contract, out of INT-082's scope. The security property (no system
+  // use of an owner_only connection WITHOUT an explicit reason) holds regardless of persistence.
+  let authorityDetail: Record<string, unknown> = {};
   const emit = async (outcome: RunnerOutcome, code: string | null): Promise<RunnerResult> => {
     // The receipt is best-effort for the OUTCOME (a landed effect is never downgraded to a failure
     // because its Rail row did not persist — §13/§32) but TRUTHFUL for the RECORD: whatever the
@@ -145,7 +161,7 @@ export async function runConnectionCapability(
         toolName: req.toolName,
         outcome,
         runId,
-        detail: code ? { code } : {},
+        detail: { ...authorityDetail, ...(code ? { code } : {}) },
       });
       if (filing) receipt = filing;
     } catch { receipt = { filed: false, reason: "record_threw" }; }
@@ -175,6 +191,22 @@ export async function runConnectionCapability(
   // row's tenant is the caller's server-derived tenant. A foreign-tenant connection never dispatches
   // — nor prepares.
   if (!sameId(req.tenantId, canon.tenantId)) return await emit("refused", "foreign_tenant");
+
+  // INT-082: an `owner_only` connection is usable only by a caller holding the restricted-use
+  // capability. `get_mcp_connections_v2` already HIDES it from an ordinary member's list, but the
+  // runner resolves BY ID, so a member who learned the id could otherwise prepare/execute it. Enforce
+  // on BOTH prepare and execute, AFTER `foreign_tenant` (a cross-tenant caller is refused first, so an
+  // owner_only refusal never leaks that a connection exists in another tenant) and BEFORE the prepare
+  // affirmation and any approval/dispatch (an ordinary member never gets an owner_only connection
+  // affirmed as prepared, and never reaches the provider). Fail closed: a missing/unknown authority is
+  // refused. The check is on the CAPABILITY, never a role literal — a delegated grant added to the
+  // server-side mapping (`_mcp_caller_capabilities`) is honored here with no code change (INT-089).
+  if (canon.visibility === "owner_only") {
+    const restricted = resolveRestrictedUse(req.callerAuthority);
+    if (!restricted.allowed) return await emit("refused", "owner_only_forbidden");
+    // Explicit system authority: record its reason for attribution (see the emit caveat above).
+    if (restricted.systemReason) authorityDetail = { restricted_use: "system", system_authority_reason: restricted.systemReason };
+  }
 
   // prepare stages intent only — the connection is validated above, but it opens no session and
   // contacts no provider.
