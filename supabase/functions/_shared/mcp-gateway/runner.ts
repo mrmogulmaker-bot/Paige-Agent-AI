@@ -205,6 +205,9 @@ export async function runConnectionCapability(
               connectionId: req.connectionId,
               toolName: tool.name,
               livePin: tool.pin,
+              // INT-078: bind consent to the endpoint the loader resolved (what we will dispatch to),
+              // not merely the connection id — closes the load↔verify TOCTOU.
+              loadedEndpointHash: canon.endpointHash,
               argsShapeHash: shapeHash,
             })
             : { authorized: false, reason: "approval_unavailable" };
