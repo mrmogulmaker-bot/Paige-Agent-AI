@@ -82,12 +82,18 @@ function hasMindUnion(content) {
 
 /**
  * A file is a CANDIDATE Mind projection if it declares a `*MindEvidence` union type OR exports
- * a `project`- or `render`-prefixed `*MindEvidence` function. This is deliberately independent of whether the
- * union carries all three states, so a second projection that omits or renames a state is still
- * DISCOVERED here and then judged by MC1 — the P1 evasion this guard must not have.
+ * a `project`- or `render`-prefixed `*MindEvidence` callable — a `function` declaration OR a
+ * function-valued `const` (`export const projectFooMindEvidence = (...) => ...`). This is
+ * deliberately independent of whether the union carries all three states, so a second projection
+ * that omits or renames a state — even one that reuses the canonical type and is written as an
+ * arrow const — is still DISCOVERED here and then judged by MC1/MC4. This closes both the
+ * `export function` gap (PR-A) and the `export const` gap (PR-A2).
  */
 export function isMindProjectionCandidate(content) {
-  return hasMindUnion(content) || /export\s+function\s+(?:project|render)\w*MindEvidence\b/.test(content);
+  return (
+    hasMindUnion(content) ||
+    /export\s+(?:function|const)\s+(?:project|render)\w*MindEvidence\b/.test(content)
+  );
 }
 
 /**
@@ -125,6 +131,45 @@ function nearestStateBefore(content, idx) {
   return matches.length ? matches[matches.length - 1][1].toLowerCase() : null;
 }
 
+/** Slice a balanced `{...}` block starting at the `{` at openIdx (returns the block incl. braces). */
+function sliceBalancedBlock(source, openIdx) {
+  let depth = 0;
+  for (let i = openIdx; i < source.length; i++) {
+    if (source[i] === "{") depth++;
+    else if (source[i] === "}") {
+      depth--;
+      if (depth === 0) return source.slice(openIdx, i + 1);
+    }
+  }
+  return source.slice(openIdx);
+}
+
+/**
+ * Extract the BODIES of exported callables — `export [async] function NAME(...) {…}` and
+ * `export const NAME = (...) => {…}` / `=> expr;`. Used to scope MC5 to the Chat adapter's exported
+ * entry points, so an unused or non-exported helper cannot satisfy the render check for an exported
+ * entry point that actually re-implements the states (PR-A2 fix). Pass comment-stripped source.
+ */
+export function exportedCallableBodies(content) {
+  const out = [];
+  const fnRe = /export\s+(?:async\s+)?function\s+(\w+)\s*\([^)]*\)\s*(?::[^{]+?)?\{/g;
+  for (let m; (m = fnRe.exec(content)); ) {
+    const openIdx = m.index + m[0].length - 1; // the `{`
+    out.push({ name: m[1], body: sliceBalancedBlock(content, openIdx) });
+  }
+  const constRe = /export\s+const\s+(\w+)\s*=\s*(?:async\s+)?\([^)]*\)\s*(?::[^=]+?)?=>\s*/g;
+  for (let m; (m = constRe.exec(content)); ) {
+    const rest = content.slice(m.index + m[0].length);
+    if (rest[0] === "{") {
+      out.push({ name: m[1], body: sliceBalancedBlock(content, m.index + m[0].length) });
+    } else {
+      const end = rest.search(/;\s*(?:\n|$)/);
+      out.push({ name: m[1], body: end >= 0 ? rest.slice(0, end) : rest });
+    }
+  }
+  return out;
+}
+
 /**
  * The whole check, as a pure function of file contents, so a test can drive it with fixtures.
  * @param {{ projections: {path:string, content:string}[], chatAdapter?: {path:string, content:string}, canonicalPath?: string }} inputs
@@ -136,12 +181,20 @@ export function analyzeMindContract(inputs) {
   const chat = inputs.chatAdapter;
   const canonicalPath = inputs.canonicalPath ?? CANONICAL_PROJECTION;
 
-  // MC4 — one home. No projection at all, or a second one without an SCR marker.
+  // MC4 — one home. No projection at all; the canonical home missing; or a second one without SCR.
   if (projections.length === 0) {
     violations.push({
       code: "MC4",
       path: relative(REPO_ROOT, SPINE_DIR),
       message: "No Mind projection found. The three-state Mind contract must live in exactly one projection module (the canonical path).",
+    });
+  } else if (!projections.some((proj) => proj.path === canonicalPath)) {
+    // The canonical home must EXIST — otherwise a marked replacement could silently stand in for a
+    // deleted/moved `mindEvidence.ts` and the analysis would return clean (PR-A2 fix).
+    violations.push({
+      code: "MC4",
+      path: canonicalPath,
+      message: `The canonical Mind projection home is missing at ${canonicalPath}. A Spine Change Request may add a SECOND projection, but it may never replace the one canonical home — restore it or relocate the canonical path deliberately (§18).`,
     });
   }
   for (const proj of projections) {
@@ -203,7 +256,9 @@ export function analyzeMindContract(inputs) {
     }
   }
 
-  // MC5 — the Chat adapter must exist and return via the projection, not re-derive states.
+  // MC5 — the Chat adapter must exist, and EACH exported entry point must return via the projection,
+  // not re-derive states. Scoped to the exported callable BODIES (PR-A2 fix) so an unused/non-entry
+  // helper's render call can no longer mask an exported entry point that re-implements the states.
   if (!chat) {
     violations.push({
       code: "MC5",
@@ -211,18 +266,27 @@ export function analyzeMindContract(inputs) {
       message: "The configured Chat adapter was not found. Chat must exist and render via the Mind projection; a missing adapter is not a silently-passing state (§18/§13).",
     });
   } else {
-    const code = stripComments(chat.content);
-    const rendersViaProjection = /(?:return|=>)\s*(?:await\s+)?render\w*MindEvidence\s*\(/.test(code);
-    const rederivesStates = /["']no_evidence["']/.test(code); // the one Mind state literal unique enough to be a re-derivation tell
-    if (!rendersViaProjection || rederivesStates) {
-      const why = !rendersViaProjection
-        ? "it does not RETURN via the Mind projection (return render*MindEvidence(…))"
-        : "it constructs the no_evidence state literal itself";
+    const bodies = exportedCallableBodies(stripComments(chat.content));
+    if (bodies.length === 0) {
       violations.push({
         code: "MC5",
         path: chat.path,
-        message: `The Chat adapter re-derives Mind evidence (${why}). Chat must be a caller of the one projection so Chat and Mind cannot drift into two accounts of the same record (§18).`,
+        message: "The Chat adapter exports no entry point. Chat must expose an exported function that returns via the Mind projection (§18).",
       });
+    }
+    for (const fn of bodies) {
+      const rendersViaProjection = /(?:return|=>)\s*(?:await\s+)?render\w*MindEvidence\s*\(/.test(fn.body);
+      const rederivesStates = /["']no_evidence["']/.test(fn.body); // the one Mind state literal unique enough to be a re-derivation tell
+      if (!rendersViaProjection || rederivesStates) {
+        const why = !rendersViaProjection
+          ? "does not RETURN via the Mind projection (return render*MindEvidence(…))"
+          : "constructs the no_evidence state literal itself";
+        violations.push({
+          code: "MC5",
+          path: chat.path,
+          message: `The exported Chat entry point \`${fn.name}\` re-derives Mind evidence (${why}). Every exported Chat entry point must be a caller of the one projection so Chat and Mind cannot drift into two accounts of the same record (§18).`,
+        });
+      }
     }
   }
 
@@ -298,7 +362,16 @@ function selfTest() {
     { code: "MC2", inputs: { projections: [mc2], chatAdapter: goodChat, canonicalPath: mc2.path } },
     { code: "MC3", inputs: { projections: [mc3], chatAdapter: goodChat, canonicalPath: mc3.path } },
     { code: "MC4", inputs: { projections: [good, loadFixture("bad-mc4-second-projection.ts")], chatAdapter: goodChat, canonicalPath: canon } },
+    // PR-A2 (a): a SECOND projection written as `export const project*MindEvidence = (...) =>`,
+    // reusing the canonical type (no own union), is now DISCOVERED as a candidate → MC4.
+    { code: "MC4", inputs: { projections: [good, loadFixture("bad-p1b-const-projection.ts")], chatAdapter: goodChat, canonicalPath: canon } },
+    // PR-A2 (b): the canonical home is MISSING (only a marked replacement remains) → MC4, even
+    // though the replacement carries a valid SCR marker.
+    { code: "MC4", inputs: { projections: [loadFixture("scr-marked-projection.ts")], chatAdapter: goodChat, canonicalPath: "supabase/functions/_shared/paige-spine/mindEvidence.ts" } },
     { code: "MC5", inputs: { projections: [good], chatAdapter: loadFixture("bad-mc5-chat.ts"), canonicalPath: canon } },
+    // PR-A2 (c): the exported entry point re-implements the states while an UNUSED helper carries
+    // the render call — the whole-file check missed this; the exported-body scope catches it → MC5.
+    { code: "MC5", inputs: { projections: [good], chatAdapter: loadFixture("bad-mc5b-chat-scoped.ts"), canonicalPath: canon } },
     // MC5: a missing configured adapter is a violation, not a silent pass.
     { code: "MC5", inputs: { projections: [good], chatAdapter: undefined, canonicalPath: canon } },
   ];
@@ -307,6 +380,13 @@ function selfTest() {
     if (!codes.includes(c.code)) fail(`${c.code} case was NOT flagged (got: ${codes.join(", ") || "none"}).`);
     else console.log(`SELF-TEST: ${c.code} case correctly flagged.`);
   }
+
+  // 2) PR-A2 (a) — the DETECTOR itself (used by readRealSpineInputs to FILTER real files) must
+  // recognize a function-valued `export const` projection, and NOT the Chat adapter or a plain file.
+  if (!isMindProjectionCandidate(loadFixture("bad-p1b-const-projection.ts").content)) fail("PR-A2(a): export-const projection NOT detected as a candidate.");
+  else console.log("SELF-TEST: PR-A2(a) export-const projection detected as a candidate.");
+  if (isMindProjectionCandidate(goodChat.content)) fail("PR-A2(a): the Chat adapter was wrongly detected as a projection candidate.");
+  else console.log("SELF-TEST: PR-A2(a) Chat adapter correctly NOT a candidate.");
 
   console.log(ok ? "SELF-TEST: PASS — the Mind-contract guard behaves correctly." : "SELF-TEST: FAIL.");
   return ok;
