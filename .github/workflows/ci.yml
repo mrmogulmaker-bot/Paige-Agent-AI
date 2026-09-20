@@ -710,6 +710,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run smoke:voice-twiml-handler
 
+      # Appended LAST in the verify job so no existing step's ordinal shifts (§ inherited failing
+      # baseline is tracked by number). One step, running the guard then its own self-test.
+      - name: Mind three-state contract guard (§18/§13/§00 — one projection, fail-closed, honest absence)
+        if: ${{ !cancelled() }}
+        run: npm run lint:mind-contract && npm run lint:mind-contract:test
+
   web-fetch-hardening-smoke:
     # Its own job, deliberately on Node 22: the smoke imports the real
     # `_shared/ssrfGuard.ts`, whose `SsrfError` uses a TS parameter property that needs
