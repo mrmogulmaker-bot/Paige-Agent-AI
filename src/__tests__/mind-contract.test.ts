@@ -7,6 +7,7 @@ import {
   analyzeMindContract,
   CANONICAL_MIND_STATES,
   extractMindStateLiterals,
+  isMindProjectionCandidate,
   readRealSpineInputs,
 } from "@/../scripts/ci/mind-contract-lint.mjs";
 
@@ -34,6 +35,13 @@ describe("Mind three-state evidence contract (§18/§13/§00)", () => {
     // P1 regression: a SECOND two-state projection ({recorded, unavailable}) is DISCOVERED as a
     // candidate and flagged MC1 (bad state set), not silently filtered out.
     expect(codes({ projections: [good, fixture("bad-p1-twostate-second.ts")], chatAdapter: fixture("good-chat.ts"), canonicalPath: good.path })).toContain("MC1");
+    // PR-A2 (a) — load-bearing on the DETECTOR (what readRealSpineInputs filters real files with):
+    // a function-valued `export const project*MindEvidence` (reusing the canonical type, no own
+    // union) is recognized as a candidate; the Chat adapter is not.
+    expect(isMindProjectionCandidate(fixture("bad-p1b-const-projection.ts").content)).toBe(true);
+    expect(isMindProjectionCandidate(fixture("good-chat.ts").content)).toBe(false);
+    // …and once discovered, alongside the canonical home it is flagged MC4 (second home, no SCR).
+    expect(codes({ projections: [good, fixture("bad-p1b-const-projection.ts")], chatAdapter: fixture("good-chat.ts"), canonicalPath: good.path })).toContain("MC4");
   });
 
   it("MC2 — the live projector is fail-closed at its RETURN branches; a projector that returns 'recorded' for an empty/partial set is caught", () => {
@@ -58,6 +66,9 @@ describe("Mind three-state evidence contract (§18/§13/§00)", () => {
     const scrSecond = { path: "a.ts", content: "export type NewMindEvidence = never;\n// mind-projection-scr: SCR-approved" };
     const withScrSecond = analyzeMindContract({ projections: [...real.projections, scrSecond], chatAdapter: real.chatAdapter, canonicalPath: real.canonicalPath });
     expect(withScrSecond.filter((v: { code: string; path: string }) => v.code === "MC4" && v.path === real.canonicalPath)).toEqual([]);
+    // PR-A2 (b): the canonical home is MISSING (only a marked replacement remains) → MC4, even
+    // though the replacement carries a valid SCR marker.
+    expect(codes({ projections: [fixture("scr-marked-projection.ts")], chatAdapter: real.chatAdapter, canonicalPath: real.canonicalPath })).toContain("MC4");
   });
 
   it("MC5 — the live Chat adapter RETURNS via the Mind projection (comments ignored); a re-deriving adapter and a MISSING adapter are both caught", () => {
@@ -66,5 +77,8 @@ describe("Mind three-state evidence contract (§18/§13/§00)", () => {
     expect(codes({ projections: real.projections, chatAdapter: fixture("bad-mc5-chat.ts"), canonicalPath: real.canonicalPath })).toContain("MC5");
     // A missing/deleted configured adapter is a violation, not a silent pass.
     expect(codes({ projections: real.projections, chatAdapter: undefined, canonicalPath: real.canonicalPath })).toContain("MC5");
+    // PR-A2 (c): an exported entry point that re-implements the states is caught even when an
+    // UNUSED non-exported helper carries the render call (the whole-file check missed this).
+    expect(codes({ projections: real.projections, chatAdapter: fixture("bad-mc5b-chat-scoped.ts"), canonicalPath: real.canonicalPath })).toContain("MC5");
   });
 });
