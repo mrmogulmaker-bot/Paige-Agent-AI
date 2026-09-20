@@ -85,6 +85,12 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const contextInjectedRef = useRef(false);
   const isMobile = useIsMobile();
   const location = useLocation();
+  const dictationScopeEpoch = [
+    user.id,
+    clientId ?? "",
+    location.pathname,
+    location.search ?? "",
+  ].join("|");
 
   // Page awareness — derive human-readable page name from current route.
   // Tracked in a ref so the latest value is always included in outgoing
@@ -111,6 +117,15 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     mkMessage({ role: "assistant", content: playbook.persona.greeting }),
   ]);
   const [input, setInput] = useState("");
+  const [dictationActivity, setDictationActivity] = useState({
+    epoch: dictationScopeEpoch,
+    active: false,
+  });
+  const dictationActive =
+    dictationActivity.epoch === dictationScopeEpoch && dictationActivity.active;
+  const handleDictationActivity = useCallback((active: boolean) => {
+    setDictationActivity({ epoch: dictationScopeEpoch, active });
+  }, [dictationScopeEpoch]);
   const [isLoading, setIsLoading] = useState(false);
   // Paige's live reasoning trace (#95/#125) — the "watch her work" steps she streams.
   const [steps, setSteps] = useState<PaigeStep[]>([]);
@@ -335,6 +350,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   };
 
   const handleSend = async (overrideInput?: string) => {
+    if (dictationActive) return;
     const messageText = overrideInput || input;
     if ((!messageText.trim() && !attachedDoc) || isLoading) return;
 
@@ -670,7 +686,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             <button
               key={action.label}
               onClick={() => handleSend(action.prompt)}
-              disabled={isLoading}
+              disabled={isLoading || dictationActive}
               className="text-[10px] sm:text-[11px] px-2.5 py-1 rounded-full border border-border bg-background hover:bg-accent/10 hover:border-accent/40 text-muted-foreground hover:text-gold-dark transition-colors disabled:opacity-50 whitespace-nowrap flex-shrink-0"
             >
               {action.label}
@@ -704,14 +720,17 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
           {/* Tap-to-dictate — neutral/indigo mic (never gold; Send owns the act, §11).
               Dictated words append into the composer for the client to edit + send. */}
           <DictationMicButton
+            key={dictationScopeEpoch}
+            scopeEpoch={dictationScopeEpoch}
             composerRef={inputRef}
             onText={(seg, insertionPoint) => setInput((prev) => appendDictation(prev, seg, insertionPoint))}
+            onActiveChange={handleDictationActivity}
             onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
             disabled={isLoading}
             variant="secondary"
             className={`flex-shrink-0 ${isMobile ? "h-10 w-10" : "h-9 w-9"}`}
           />
-          <Button onClick={() => handleSend()} disabled={isLoading || (!input.trim() && !attachedDoc)} className="bg-gradient-gold hover:opacity-90 h-10 w-10" size="icon">
+          <Button onClick={() => handleSend()} disabled={isLoading || dictationActive || (!input.trim() && !attachedDoc)} className="bg-gradient-gold hover:opacity-90 h-10 w-10" size="icon">
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>
         </div>

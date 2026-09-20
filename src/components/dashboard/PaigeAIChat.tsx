@@ -386,6 +386,20 @@ const PaigeAIChatInner = ({
   // Surfaces that never focus a client (the operator desk) pass no `clientId`, so their
   // epoch is `"<tenant>|"` and their behaviour is byte-for-byte what it was.
   const scopeEpoch = `${activeTenantId ?? ""}|${clientId ?? ""}|${businessMissionId ?? ""}`;
+  const dictationEpoch = [
+    scopeEpoch,
+    scopedUserId ?? "anonymous",
+    activeThreadId ?? "new",
+  ].join("|");
+  const [dictationActivity, setDictationActivity] = useState({
+    epoch: dictationEpoch,
+    active: false,
+  });
+  const dictationActive =
+    dictationActivity.epoch === dictationEpoch && dictationActivity.active;
+  const handleDictationActivity = useCallback((active: boolean) => {
+    setDictationActivity({ epoch: dictationEpoch, active });
+  }, [dictationEpoch]);
   const transcriptContextPrefix = [
     platform ? "platform" : soloTenantSafety ? "solo" : presentation,
     scopedUserId ?? "anonymous",
@@ -1173,6 +1187,7 @@ const PaigeAIChatInner = ({
    *  gate requires the call it is about to run to be one of them; a `confirm:true` flag alone no
    *  longer opens it. Absent on every ordinary turn. */
   const handleSend = async (overrideText?: string, approvedFingerprints?: string[], declinedFingerprints?: string[]) => {
+    if (dictationActive) return;
     const text = (overrideText ?? input).trim();
     // Allow a send with text OR an attachment alone (#480). An override (confirm
     // card Approve/Deny) never carries a doc, so snapshot only on a real compose.
@@ -1180,10 +1195,8 @@ const PaigeAIChatInner = ({
     if ((!text && !currentDoc) || isLoading || (soloTenantSafety && (historyTransitioning || !activeTenantId))) return;
     // An accepted send closes the current dictation generation before clearing
     // the composer. A delayed provider final can never become the next draft.
-    if (soloTenantSafety) {
-      dictationGenerationRef.current += 1;
-      setDictationGeneration(dictationGenerationRef.current);
-    }
+    dictationGenerationRef.current += 1;
+    setDictationGeneration(dictationGenerationRef.current);
     const rollback = messages;
     const userContent = text || (currentDoc ? `Analyze this document: ${currentDoc.name}` : "");
     const base = [
@@ -1252,6 +1265,7 @@ const PaigeAIChatInner = ({
         ? `${traceDepartments} ${traceDepartments === 1 ? "department" : "departments"} worked on this`
         : `${visibleSteps.length} ${visibleSteps.length === 1 ? "step" : "steps"} so far`;
   const composerBlocked = isLoading || (soloTenantSafety && (historyTransitioning || !activeTenantId));
+  const composerSendBlocked = composerBlocked || dictationActive;
 
   // The composer's pieces, built once and arranged by presentation. Both chromes
   // drive the SAME handlers — one engine, two frames (§18: no forked composer).
@@ -1315,23 +1329,22 @@ const PaigeAIChatInner = ({
     </Button>
   );
 
-  /* Hold-to-dictate — neutral/indigo mic, never gold. Dictated words append into
+  /* Tap-to-dictate — neutral/indigo mic, never gold. Dictated words append into
      the composer; the operator edits before sending. The callback closes over the
      authenticated epoch so a late prior-account final cannot enter the new composer. */
-  // The dictation epoch is the SAME scope value the fence and the reset use. It was
-  // `activeTenantId`, which stopped matching `acceptedEpochRef` the moment that ref became
-  // composite — and the guard below compares the two, so every dictated segment was silently
-  // dropped. Caught by the existing contract suite, which is what it is for.
-  const dictationEpoch = scopeEpoch;
+  // Dictation adds the authenticated user and open thread to the turn scope. The
+  // hook owns teardown for that full epoch; the callback also checks the accepted
+  // tenant/client/mission scope and local generation before it may append.
   const micButton = (
     <DictationMicButton
-      key={soloTenantSafety ? `${dictationEpoch ?? "resolving"}:${dictationGeneration}` : "shared"}
-      scopeEpoch={soloTenantSafety ? dictationEpoch : null}
+      key={`${dictationEpoch}:${dictationGeneration}`}
+      scopeEpoch={dictationEpoch}
       composerRef={inputRef}
       showStatus={soloTenantSafety}
+      onActiveChange={handleDictationActivity}
       onText={(seg, insertionPoint) => {
-        if (soloTenantSafety && acceptedEpochRef.current !== dictationEpoch) return;
-        if (soloTenantSafety && dictationGenerationRef.current !== dictationGeneration) return;
+        if (acceptedEpochRef.current !== scopeEpoch) return;
+        if (dictationGenerationRef.current !== dictationGeneration) return;
         setInput((prev) => appendDictation(prev, seg, insertionPoint));
       }}
       onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
@@ -1903,7 +1916,7 @@ const PaigeAIChatInner = ({
                     {micButton}
                     <Button
                       onClick={() => (soloTenantSafety && isLoading ? cancelSoloRequest() : handleSend())}
-                      disabled={soloTenantSafety ? (!isLoading && (composerBlocked || (!input.trim() && !attachedDoc))) : isLoading || (!input.trim() && !attachedDoc)}
+                      disabled={soloTenantSafety ? (!isLoading && (composerSendBlocked || (!input.trim() && !attachedDoc))) : composerSendBlocked || (!input.trim() && !attachedDoc)}
                       variant="gold"
                       size="sm"
                       aria-label={soloTenantSafety && isLoading ? "Cancel PAIGE response" : "Send message"}
@@ -1956,7 +1969,7 @@ const PaigeAIChatInner = ({
                     {clearComposerButton}
                     <Button
                       onClick={() => (isLoading ? cancelSoloRequest() : handleSend())}
-                      disabled={!isLoading && (composerBlocked || (!input.trim() && !attachedDoc))}
+                      disabled={!isLoading && (composerSendBlocked || (!input.trim() && !attachedDoc))}
                       variant="gold"
                       size="icon"
                       aria-label={isLoading ? "Cancel PAIGE response" : "Send message"}
@@ -1974,7 +1987,7 @@ const PaigeAIChatInner = ({
                   {micButton}
                   <Button
                     onClick={() => (soloTenantSafety && isLoading ? cancelSoloRequest() : handleSend())}
-                    disabled={soloTenantSafety ? (!isLoading && (composerBlocked || (!input.trim() && !attachedDoc))) : isLoading || (!input.trim() && !attachedDoc)}
+                    disabled={soloTenantSafety ? (!isLoading && (composerSendBlocked || (!input.trim() && !attachedDoc))) : composerSendBlocked || (!input.trim() && !attachedDoc)}
                     variant="gold"
                     size="icon"
                     aria-label={soloTenantSafety && isLoading ? "Cancel PAIGE response" : "Send message"}

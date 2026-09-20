@@ -513,4 +513,55 @@ describe("Solo dictation control", () => {
     await act(async () => sockets[0].message({ type: "transcript", text: "PAIGE", is_final: true }));
     expect(textarea.value).toBe("hello PAIGE world");
   });
+
+  it("surfaces safety-stop and error reasons even when compact status is not requested", async () => {
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        root.render(<DictationMicButton onText={vi.fn()} scopeEpoch="account-a" />);
+      });
+      await act(async () => { host.querySelector("button")!.click(); });
+      await flush();
+      await act(async () => sockets[0].open());
+      await act(async () => sockets[0].message({ type: "ready" }));
+      await act(async () => { vi.advanceTimersByTime(5 * 60_000); });
+      expect(host.textContent).toContain("Stopped after 5 minutes of silence");
+
+      const denied = new Error("denied"); denied.name = "NotAllowedError";
+      voiceHarness.recorderStart.mockRejectedValueOnce(denied);
+      await act(async () => {
+        root.render(<DictationMicButton onText={vi.fn()} scopeEpoch="account-b" />);
+      });
+      await act(async () => { host.querySelector("button")!.click(); });
+      await flush();
+      expect(host.textContent).toContain("Mic permission off");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports capture activity through finalization so a composer can hold Send", async () => {
+    const onActiveChange = vi.fn();
+    const props = {
+      onText: vi.fn(),
+      scopeEpoch: "account-a",
+      onActiveChange,
+    } as Parameters<typeof DictationMicButton>[0] & {
+      onActiveChange: (active: boolean) => void;
+    };
+    await act(async () => root.render(<DictationMicButton {...props} />));
+    expect(onActiveChange).toHaveBeenLastCalledWith(false);
+
+    await act(async () => { host.querySelector("button")!.click(); });
+    await flush();
+    expect(onActiveChange).toHaveBeenLastCalledWith(true);
+    await act(async () => sockets[0].open());
+    await act(async () => sockets[0].message({ type: "ready" }));
+    await act(async () => { host.querySelector("button")!.click(); });
+    expect(onActiveChange).toHaveBeenLastCalledWith(true);
+
+    await act(async () => sockets[0].message({ type: "transcript", text: "trailing words", is_final: true }));
+    await act(async () => sockets[0].closed(true));
+    expect(onActiveChange).toHaveBeenLastCalledWith(false);
+  });
 });

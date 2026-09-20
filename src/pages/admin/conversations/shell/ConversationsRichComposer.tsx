@@ -44,7 +44,7 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
     templates = [], onApplyTemplate, snippets = [], onApplySnippet, showCombinedInsert = false,
     signatureAvailable = false, appendSignature = true, onToggleSignature,
     scheduledFor, onSchedule,
-    showDictation = false, onDictate, onDictateError,
+    showDictation, dictationScopeEpoch, onDictate, onDictateError,
     editingDraft = false, onCancelEdit,
     dragOver = false, onDropFiles, onDragOverZone, onDragLeaveZone,
   } = model;
@@ -56,6 +56,12 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [insertOpen, setInsertOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dictationActivity, setDictationActivity] = useState({
+    epoch: dictationScopeEpoch,
+    active: false,
+  });
+  const dictationActive =
+    dictationActivity.epoch === dictationScopeEpoch && dictationActivity.active;
 
   const fireDraft = () => onDraftWithPaige?.({ guide: draftGuide.trim(), tone: draftTone });
 
@@ -153,11 +159,14 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
         </>
       )}
 
-      {/* Hold-to-dictate — neutral utility; dictated text feeds THROUGH the container's
+      {/* Tap-to-dictate — neutral utility; dictated text feeds THROUGH the container's
           snippet-expanding onChange (via onDictate + a live ref) so expansion still runs. */}
       {showDictation && (
         <DictationMicButton
+          key={dictationScopeEpoch}
+          scopeEpoch={dictationScopeEpoch}
           onText={(seg) => (onDictate ? onDictate(seg) : onChange(appendDictation(value, seg)))}
+          onActiveChange={(active) => setDictationActivity({ epoch: dictationScopeEpoch, active })}
           onError={(msg) => onDictateError?.(msg)}
           disabled={disabled || sending || drafting || uploading}
           variant="outline"
@@ -365,7 +374,7 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
       onSend={onSend}
       sending={sending}
       disabled={disabled}
-      sendDisabled={sendDisabled}
+      sendDisabled={sendDisabled || dictationActive}
       sendOnEnter={sendOnEnter}
       placeholder={placeholder}
       note={note}
