@@ -505,3 +505,419 @@ test("the Visible-Flow-Impact trailer match is strict: line-anchored, value yes|
   assert.equal(hasVisibleFlowTrailer(""), false);
   assert.equal(hasVisibleFlowTrailer(undefined), false);
 });
+
+// ─── Owner-waiver grammar: FLOW_BY_FLOW WAIVED, and FLOW_PROTOTYPE WAIVED when
+// MATERIAL_FLOW_CHANGE is YES. A waiver is an honest owner decision on record —
+// never a placeholder, never "pending", never a second path for any other gate.
+
+const withField = (field, value) =>
+  validateEvidenceText(coreEvidence.replace(new RegExp(`^${field}:.*$`, "m"), `${field}: ${value}`), {
+    required: true,
+    solo: false,
+  });
+
+test("FLOW_BY_FLOW WAIVED with a substantive owner-decision reference and reason passes", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR #1277 coordinator adjudication; reason=the Flow-by-Flow skill is not installed in the delivery environment and the owner accepted the grounded flow trace in its place",
+  );
+  assert.equal(result.ok, true, result.errors.join("\n"));
+});
+
+test("FLOW_BY_FLOW WAIVED with an empty owner-decision fails", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED: owner-decision=; reason=a substantive reason is present here");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("FLOW_BY_FLOW WAIVED with a placeholder owner-decision fails", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED: owner-decision=TODO add link; reason=a substantive reason is present here");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("FLOW_BY_FLOW WAIVED with a pending owner-decision fails", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED: owner-decision=pending; reason=a substantive reason is present here");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("FLOW_BY_FLOW WAIVED with an empty reason fails", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED: owner-decision=PR #1277 adjudication; reason=");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("FLOW_BY_FLOW WAIVED with an unresolved reason fails", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED: owner-decision=PR #1277 adjudication; reason=unknown");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("WAIVED is FLOW_BY_FLOW ONLY — a WAIVED PAIGE_UI_DESIGN still fails", () => {
+  const result = withField(
+    "PAIGE_UI_DESIGN",
+    "WAIVED: owner-decision=PR #1277 adjudication; reason=not a waiver path for this gate",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /PAIGE_UI_DESIGN/);
+});
+
+test("a bare WAIVED with no owner-decision or reason fails", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED:");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("a bare WAIVED with prose but no owner-decision/reason structure fails", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED: the owner said it was fine in conversation");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("MATERIAL_FLOW_CHANGE YES + FLOW_PROTOTYPE WAIVED with a reference and reason passes", () => {
+  const waived = coreEvidence
+    .replace(/^MATERIAL_FLOW_CHANGE:.*$/m, "MATERIAL_FLOW_CHANGE: YES: the Solo landing flow changed (redirect removed, banner added)")
+    .replace(
+      /^FLOW_PROTOTYPE:.*$/m,
+      "FLOW_PROTOTYPE: WAIVED: owner-decision=PR #1277 owner ruling; reason=the owner adjudicated the changed landing flow and waived the prototype gate for it",
+    );
+  const result = validateEvidenceText(waived, { required: true, solo: false });
+  assert.equal(result.ok, true, result.errors.join("\n"));
+});
+
+test("MATERIAL_FLOW_CHANGE YES + FLOW_PROTOTYPE WAIVED with an empty owner-decision fails", () => {
+  const record = coreEvidence
+    .replace(/^MATERIAL_FLOW_CHANGE:.*$/m, "MATERIAL_FLOW_CHANGE: YES: landing flow changed")
+    .replace(/^FLOW_PROTOTYPE:.*$/m, "FLOW_PROTOTYPE: WAIVED: owner-decision=; reason=a substantive reason is present here");
+  const result = validateEvidenceText(record, { required: true, solo: false });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_PROTOTYPE/);
+});
+
+test("Codex ad58a9d4 P2: an unresolved token EMBEDDED in waiver prose fails on both halves", () => {
+  const embeddedDecision = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=approval pending from owner; reason=a substantive reason is present here",
+  );
+  assert.equal(embeddedDecision.ok, false);
+  assert.match(embeddedDecision.errors.join("\n"), /FLOW_BY_FLOW/);
+  const embeddedReason = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR #1277 coordinator adjudication; reason=proof owed until review",
+  );
+  assert.equal(embeddedReason.ok, false);
+  assert.match(embeddedReason.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex c52d3725 P2: an interjection waiver (owner-decision=no; reason=ok) fails — substance required", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED: owner-decision=no; reason=ok");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex c52d3725 P2: a recognizable reference with a thin one-word reason still fails", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED: owner-decision=PR #1277 adjudication; reason=ok");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex c52d3725 P2: prose without any recognizable decision reference fails", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=verbal approval at standup; reason=the owner accepted the grounded flow trace in its place for this delivery",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex 8f76b0b6 P2: labeled PR and issue references (no hash) are recognizable and pass", () => {
+  for (const reference of ["PR 1280 owner ruling", "issue 1280 owner ruling"]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=${reference}; reason=the Flow-by-Flow skill is not installed in this environment and the owner accepted the grounded flow trace`,
+    );
+    assert.equal(result.ok, true, `${reference}: ${result.errors.join("\n")}`);
+  }
+});
+
+test("Codex 8f76b0b6 P2: repeated filler is not substantive prose — reason=ok ok ok ok fails", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=ok ok ok ok",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex c52d3725 P2: a dated owner ruling is a recognizable reference and passes", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=2026-09-20 session ruling for PR 1280; reason=the Flow-by-Flow skill is absent from this environment and the owner accepted the grounded flow trace in its place",
+  );
+  assert.equal(result.ok, true, result.errors.join("\n"));
+});
+
+test("Codex a5163ade P2: a FLOW_BY_FLOW waiver whose reason does NOT establish unavailability fails (inconvenience is not eligibility)", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the installed skill was available but inconvenient",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex cb73e6df P2: a NEGATED unavailability claim establishes availability and fails", () => {
+  for (const reason of [
+    "the Flow-by-Flow skill is not unavailable in this environment",
+    "the Flow-by-Flow skill is not absent from this environment",
+    "Flow-by-Flow was never unavailable during this delivery",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, false, `${reason}: ${result.errors.join("\n")}`);
+    assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+  }
+});
+
+test("Codex 5081b595 P2: non-adjacent negations of unavailability also fail (fail-closed to any negation)", () => {
+  for (const reason of [
+    "the skill does not appear to be unavailable in this environment",
+    "the Flow-by-Flow skill is not currently unavailable in this environment",
+    "the Flow-by-Flow skill is anything but unavailable for this delivery run",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, false, `${reason}: ${result.errors.join("\n")}`);
+    assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+  }
+});
+
+test("Codex 0dd07dc3 P2: a canonical phrase RIDING WITH a contradictory negation fails", () => {
+  for (const reason of [
+    "the Flow-by-Flow skill is not installed, but it is not currently unavailable",
+    "not available, but does not appear to be unavailable",
+    "the Flow-by-Flow skill is no longer available and was never unavailable here",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, false, `${reason}: ${result.errors.join("\n")}`);
+    assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+  }
+});
+
+test("Codex 84e06888 P2: neither/nor denials of unavailability fail", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the Flow-by-Flow skill is neither unavailable nor absent; it is installed and available here",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex 84e06888 P2: unavailability of ANOTHER subject does not qualify — the claim must be about the skill", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the Flow-by-Flow skill is installed and available; the owner is unavailable for review",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex 84e06888 P2: a qualifying clause alongside a clause affirming the skill's availability fails (the veto is load-bearing)", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the tool is unavailable in this environment today; the Flow-by-Flow skill is available here tomorrow",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex 7aa2236b P2: an unrelated tool's unavailability is not a Flow-by-Flow claim — the subject must be the skill", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the screenshot tool is unavailable in this delivery environment",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex 1b48c7fb P2: another skill's unavailability is not a Flow-by-Flow claim — the clause must name Flow-by-Flow itself", () => {
+  for (const reason of [
+    "the screenshot skill is unavailable in this delivery environment",
+    "the accessibility skill is absent from this delivery environment",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, false, `${reason}: ${result.errors.join("\n")}`);
+    assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+  }
+});
+
+test("Codex 1b48c7fb P2: Flow-by-Flow named directly (hyphenated or spaced) qualifies", () => {
+  for (const reason of [
+    "Flow-by-Flow is not installed in this environment and the owner accepted the grounded trace",
+    "Flow by Flow is no longer available in this environment for this delivery",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, true, `${reason}: ${result.errors.join("\n")}`);
+  }
+});
+
+test("Codex 5fdbf940 P2: mentioning Flow-by-Flow is not enough — the predicate must be asserted OF Flow-by-Flow", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=Flow-by-Flow documents that the screenshot skill is unavailable in this delivery environment",
+  );
+  assert.equal(result.ok, false, result.errors.join("\n"));
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex 5fdbf940 P2 guard: a clause that both denies and affirms Flow-by-Flow's availability fails", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the Flow-by-Flow skill is not installed and is available here",
+  );
+  assert.equal(result.ok, false, result.errors.join("\n"));
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex b8d6ba27 P2: cross-clause availability contradictions fail — a pronoun clause cannot affirm what the gate denies", () => {
+  for (const reason of [
+    "Flow-by-Flow is unavailable in this environment; it is installed and available here",
+    "Flow-by-Flow is unavailable here; the review tool is available",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, false, `${reason}: ${result.errors.join("\n")}`);
+    assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+  }
+});
+
+test("Codex 1ed64059 P2: temporal 'at present' and adjectival 'the present …' are not availability affirmations", () => {
+  for (const reason of [
+    "Flow-by-Flow is unavailable at present in this delivery environment and the owner accepted the grounded trace",
+    "the Flow-by-Flow skill is absent from the present delivery environment and the owner accepted the grounded trace",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, true, `${reason}: ${result.errors.join("\n")}`);
+  }
+});
+
+test("Codex 1ed64059 P2 guard: a predicative 'is present' still vetoes the waiver", () => {
+  for (const reason of [
+    "Flow-by-Flow is unavailable in this environment; it is present here",
+    "Flow-by-Flow is unavailable in this delivery environment; it is currently present here",
+    "Flow-by-Flow is unavailable in this delivery environment; it continues to be present here",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, false, `${reason}: ${result.errors.join("\n")}`);
+    assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+  }
+});
+
+test("Codex e771e911 P2: a hyphenated predicative assertion ('present-here') is not the adjectival 'present-day' exemption", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=Flow-by-Flow is unavailable in this delivery environment; it is present-here today",
+  );
+  assert.equal(result.ok, false, result.errors.join("\n"));
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex 5081b595 P2: an affirmative unavailability claim in negation-free prose passes", () => {
+  for (const reason of [
+    "the Flow-by-Flow skill is unavailable in this delivery environment",
+    "the Flow-by-Flow skill is absent from this environment and the owner accepted the grounded trace",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, true, `${reason}: ${result.errors.join("\n")}`);
+  }
+});
+
+test("Codex cb73e6df P2: negated AVAILABILITY still passes (not installed / no longer available)", () => {
+  for (const reason of [
+    "the Flow-by-Flow skill is not installed in this environment and the owner accepted the grounded trace",
+    "the Flow-by-Flow skill is no longer available in this environment for this delivery",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, true, `${reason}: ${result.errors.join("\n")}`);
+  }
+});
+
+test("Codex a5163ade P2: the FLOW_PROTOTYPE waiver carries NO unavailability requirement (its eligibility is the owner's flow ruling)", () => {
+  const record = coreEvidence
+    .replace(/^MATERIAL_FLOW_CHANGE:.*$/m, "MATERIAL_FLOW_CHANGE: YES: landing flow changed")
+    .replace(
+      /^FLOW_PROTOTYPE:.*$/m,
+      "FLOW_PROTOTYPE: WAIVED: owner-decision=PR 1280 owner ruling; reason=the owner adjudicated the changed landing flow and waived the prototype gate",
+    );
+  const result = validateEvidenceText(record, { required: true, solo: false });
+  assert.equal(result.ok, true, result.errors.join("\n"));
+});
+
+test("MATERIAL_FLOW_CHANGE YES + FLOW_PROTOTYPE WAIVED with a pending owner-decision fails", () => {
+  const record = coreEvidence
+    .replace(/^MATERIAL_FLOW_CHANGE:.*$/m, "MATERIAL_FLOW_CHANGE: YES: landing flow changed")
+    .replace(/^FLOW_PROTOTYPE:.*$/m, "FLOW_PROTOTYPE: WAIVED: owner-decision=pending; reason=a substantive reason is present here");
+  const result = validateEvidenceText(record, { required: true, solo: false });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_PROTOTYPE/);
+});
+
+test("MATERIAL_FLOW_CHANGE YES + FLOW_PROTOTYPE NOT_REQUIRED still fails", () => {
+  const record = coreEvidence
+    .replace(/^MATERIAL_FLOW_CHANGE:.*$/m, "MATERIAL_FLOW_CHANGE: YES: landing flow changed")
+    .replace(/^FLOW_PROTOTYPE:.*$/m, "FLOW_PROTOTYPE: NOT_REQUIRED: owner says it is fine");
+  const result = validateEvidenceText(record, { required: true, solo: false });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_PROTOTYPE/);
+});
+
+test("MATERIAL_FLOW_CHANGE NO + FLOW_PROTOTYPE WAIVED fails (the waiver leg requires YES)", () => {
+  const record = coreEvidence.replace(
+    /^FLOW_PROTOTYPE:.*$/m,
+    "FLOW_PROTOTYPE: WAIVED: owner-decision=PR #1277 adjudication; reason=the material flag is NO so the waiver grammar does not apply",
+  );
+  const result = validateEvidenceText(record, { required: true, solo: false });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_PROTOTYPE/);
+});
+
+test("MATERIAL_FLOW_CHANGE YES + FLOW_PROTOTYPE PASS with evidence still passes (the unchanged leg)", () => {
+  const record = coreEvidence
+    .replace(/^MATERIAL_FLOW_CHANGE:.*$/m, "MATERIAL_FLOW_CHANGE: YES: landing flow changed")
+    .replace(/^FLOW_PROTOTYPE:.*$/m, "FLOW_PROTOTYPE: PASS: prototype at docs/prototypes/landing.html");
+  const result = validateEvidenceText(record, { required: true, solo: false });
+  assert.equal(result.ok, true, result.errors.join("\n"));
+});
+
+test("existing records still pass (both unchanged legs)", () => {
+  const result = validateEvidenceText(coreEvidence, { required: true, solo: false });
+  assert.equal(result.ok, true, result.errors.join("\n"));
+});

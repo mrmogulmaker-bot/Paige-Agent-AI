@@ -135,10 +135,10 @@ export const CRM_COMMAND_TOOLS = (Object.entries(CRM_ACTION_CAPABILITY) as [CrmA
         },
       },
       required: required[action],
-      ...(action === "deal.update" ? {
-        anyOf: ["title", "value_cents", "currency", "expected_close_date", "offer_type", "tags", "notes"]
-          .map((field) => ({ required: [field] })),
-      } : {}),
+      // `crm-command` validates that deal.update carries at least one reversible field before
+      // execution. Keep that invariant at the authoritative executor: Anthropic rejects a
+      // top-level schema combinator in a tool input_schema, which otherwise rejects every Chat
+      // turn before the model can answer.
       additionalProperties: false,
     },
   },

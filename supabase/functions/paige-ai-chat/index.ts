@@ -732,15 +732,18 @@ serve(async (req) => {
     // context at the profile read) and passed BY REFERENCE to every call site, so a site that runs
     // after resolution gets the real tenant without re-deriving it (§18 one home).
     //
-    // HONEST BOUND — FIVE ATTRIBUTED, FOUR NOT. The first version of this comment said "three run
-    // before persona resolution" and then listed four of them in the same sentence: the THREE
-    // `generateSessionSummary` folds AND the credit-report read-check. Four sites, four platform
-    // rows, five attributed. That miscount was caught by an independent reviewer driving the rows
-    // rather than reading the sentence, and it is recorded here because it is the ninth counting
-    // error on this branch and pretending otherwise is how the tenth happens.
+    // HONEST BOUND — SIX ATTRIBUTED, FOUR NOT. An earlier version said "three run before persona
+    // resolution" and then listed four of them in the same sentence: the THREE `generateSessionSummary`
+    // folds AND the credit-report read-check. Four sites, four platform rows, five attributed at the
+    // time — and #1255 Option A (Codex P2) then added the general-document extraction as the SIXTH
+    // attributed site (it now runs after resolution and carries `traceFor("general-document-extraction")`).
+    // The original miscount was caught by an independent reviewer driving the rows rather than reading
+    // the sentence, and the history is kept here because it was the ninth counting error on this branch
+    // and pretending otherwise is how the tenth happens.
     //
     // Attributed (all lexically below the stamp): the entry call, the tool-loop continuation, the
-    // closing call, the rolling-summary fold, the credit-report extraction.
+    // closing call, the rolling-summary fold, the credit-report extraction, the general-document
+    // extraction.
     // Untenanted (all lexically above it): the three session-summary folds, the document
     // read-check.
     //
@@ -751,8 +754,9 @@ serve(async (req) => {
     // tell an untenanted pre-resolution row from an untenanted bug — and group 23 of the
     // knowledge-scope harness now asserts the exact split, so neither half can drift silently.
     //
-    // §37 — `job_kind` IS A CONSUMED FIELD, so widening its vocabulary is a contract change. Eight
-    // sites moved off the single value `"chat"`. Consumers walked: `paige_llm_trace.job_kind` has
+    // §37 — `job_kind` IS A CONSUMED FIELD, so widening its vocabulary is a contract change. Nine
+    // sites moved off the single value `"chat"` (the general-document extraction is the ninth, added
+    // by #1255 Option A). Consumers walked: `paige_llm_trace.job_kind` has
     // no CHECK constraint; `usePaigeContribution` only GROUPS by it, so new values appear as new
     // groups rather than breaking; `paige-eval` filters `.eq("job_kind", jobKind)`, so a saved
     // eval batch targeting `"chat"` now selects a NARROWER population — the entry call only,
@@ -1280,6 +1284,33 @@ JSON:`;
     // inside the inline POST. Best-effort: a storage hiccup never blocks the turn.
     let paigeChatGeneralDocPath: string | null = null;
     let extractionProposal: any = null;
+    // #1255 — the general-document structured-field extraction is a PROVIDER CALL, and it used
+    // to run right here, BEFORE the active account is resolved (`personaCtx`, far below) and
+    // before `revalidateTenantKnowledgeScope` exists. On a turn whose account switches after
+    // upload, that one call still egressed — the streamed reply was correctly withheld, but the
+    // extraction had already reached the provider (test:knowledge-scope 15.9: observed 1,
+    // expected 0). The fix DEFERS this call to immediately AFTER the pre-egress active-account
+    // revalidation that already guards the chat dispatch: that guard early-returns 409 on a
+    // switched/stale/unresolved scope, so a switched turn returns before the extraction can run —
+    // NO stale-context provider egress, fail closed. Precisely: a switched DOCX/image turn makes
+    // ZERO provider calls (15.9); a switched general-PDF turn still makes exactly ONE pre-resolution
+    // `runDocumentReadCheck` call (line ~1315 — the caller's OWN uploaded PDF bytes + the fixed
+    // read-check prompt only, never tenant Knowledge or a prior workspace's messages; booked
+    // `document-read-check:PLATFORM`), and this deferral still prevents BOTH the general-document
+    // extraction AND the Knowledge-carrying chat dispatch from egressing on the stale scope (15.9e).
+    // TWO pre-dispatch validations then bracket the
+    // deferred call: (1) the pre-egress guard BEFORE it catches a switch already present at turn
+    // start; (2) a SECOND `revalidateTenantKnowledgeScope()` immediately AFTER the extraction and
+    // before the chat dispatch (added for the Codex P1 on head a84bfcd6) catches a switch that
+    // lands DURING the awaited extraction round-trip — without it the chat dispatch would egress
+    // the prior workspace's aiMessages + Knowledge and only the reply, not the egress, would be
+    // withheld at the close boundary (15.9d). A switch during the chat-dispatch round-trip itself
+    // is the irreducible race the close-boundary guard still catches (15.10a/15.10/15.11). The
+    // second check runs only on this deferred (general-document) path, because only it inserts the
+    // awaited round-trip that widens the window. Provider-call order is preserved: extraction stays
+    // the first provider call, the streamed chat reply the second. This flag only carries the
+    // intent from the general-document branch to that gate.
+    let deferGeneralDocExtraction = false;
     let isCreditReportPdf = false;
     if (attachedDocument) {
       const docKind = attachedDocument.kind || (attachedDocument.mimeType === "application/pdf" ? "pdf" : attachedDocument.mimeType?.startsWith("image/") ? "image" : "docx");
@@ -1353,22 +1384,14 @@ JSON:`;
           console.error("[Paige] Error storing PDF:", storeErr);
         }
       } else {
-        // General document path — run a lightweight structured-field extraction
-        // and emit an extraction_proposal SSE event after the chat stream.
-        try {
-          extractionProposal = await runGeneralDocumentExtraction(
-            attachedDocument,
-          );
-        } catch (e) {
-          // §13/§32: extraction is an enhancement — a failure must never break the
-          // turn — but it must never disappear either. The helper itself returns an
-          // honest null for every expected absence (no readable content, a failed
-          // model call, nothing found), so reaching this catch means something
-          // genuinely unexpected threw. Log it at error level, named, so it shows up
-          // in the function logs instead of blending into routine warnings.
-          extractionProposal = null;
-          console.error("[Paige] general extraction threw unexpectedly:", e);
-        }
+        // General document path — request the lightweight structured-field extraction, but
+        // DEFER the actual provider call to the guarded pre-dispatch region (#1255). The
+        // extraction_proposal SSE event is still emitted after the chat stream from the value
+        // computed there. Running it here would egress before the active account is validated;
+        // a switched general-document turn would then make one EXTRACTION provider call it must
+        // not (the pre-existing pre-resolution `runDocumentReadCheck` on a general PDF is separate
+        // and accepted — see 15.9 for DOCX/image, 15.9e for the general-PDF read-check contract).
+        deferGeneralDocExtraction = true;
 
         // #322 — durably store a general PDF in the SAME private bucket the credit path uses
         // (§9 reuse — no new bucket; the bucket + RLS are (re)created in migration
@@ -8026,6 +8049,48 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       );
     }
 
+    // #1255 — DEFERRED general-document extraction, gated by POSITION. This line is reached only
+    // after the pre-egress `revalidateTenantKnowledgeScope()` above returned true, so a switched,
+    // stale, or unresolved scope has already 409'd and returned — the extraction never egresses on
+    // a bad scope (test:knowledge-scope 15.9). On a valid turn it stays the FIRST provider call,
+    // before the streamed chat dispatch below, so provider-call order is unchanged. §13/§32:
+    // extraction is a best-effort enhancement — the helper returns an honest null for every
+    // expected absence, and an unexpected throw is logged and swallowed so it can never break the
+    // turn.
+    if (deferGeneralDocExtraction) {
+      try {
+        // #1255 Option A (Codex P2) — this deferred extraction runs AFTER active-account
+        // resolution, so it egresses through the SAME tenant-attributed trace/budget seam as the
+        // chat dispatch below (`traceFor("chat")`): its provider call is attributed to the resolved
+        // tenant and honors the gateway's tenant budget gate, instead of booking as an unattributed
+        // platform row. Mirrors the already-attributed credit-report extraction. `gatewayCompat` is
+        // passed explicitly (its own default) only so the third trace argument can be threaded.
+        extractionProposal = await runGeneralDocumentExtraction(
+          attachedDocument,
+          gatewayCompat,
+          traceFor("general-document-extraction"),
+        );
+      } catch (e) {
+        extractionProposal = null;
+        console.error("[Paige] general extraction threw unexpectedly:", e);
+      }
+      // #1255 P1 (Codex, head a84bfcd6) — the extraction above is an AWAITED provider round-trip,
+      // so deferring it here WIDENS the window between the pre-egress guard and the chat dispatch
+      // below. Re-validate the active-account scope ONCE MORE, immediately before dispatch, so a
+      // switch that lands DURING the extraction fails closed with NO chat provider call — rather
+      // than dispatching the prior workspace's aiMessages + Knowledge and only withholding the
+      // streamed reply at the close boundary, which is too late (the cross-context egress already
+      // happened). Only deferred (general-document) turns pay this second check, because only they
+      // insert the awaited round-trip; every other turn keeps the pre-egress guard adjacent to the
+      // dispatch, so its single pre-egress check still suffices.
+      if (!(await revalidateTenantKnowledgeScope())) {
+        return new Response(
+          JSON.stringify({ error: "Active workspace changed. Start this request again in the current workspace.", code: "ACTIVE_ACCOUNT_CHANGED" }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
     const response = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
@@ -14184,6 +14249,12 @@ function generalDocFieldValue(key: string, raw: unknown): string | null {
 export async function runGeneralDocumentExtraction(
   doc: { base64?: string; mimeType?: string; kind?: string; fileName?: string; textContent?: string } | null | undefined,
   complete: typeof gatewayCompat = gatewayCompat,
+  // #1255 Option A (Codex P2) — the resolved-tenant trace/budget context for this provider call.
+  // The extraction now runs AFTER active-account resolution, so its egress must use the same
+  // tenant-attributed trace/budget seam as every other post-resolution call (traceFor("...")),
+  // instead of booking as an unattributed platform row. Optional and defaulting to undefined so
+  // the injected-completion callers (the __checks__ structural tests) are byte-for-byte unchanged.
+  trace?: Parameters<typeof gatewayCompat>[2],
 ): Promise<{ id: string; source: "document"; documentType?: string; intro?: string; fields: Array<{ key: string; label: string; value: string; displayValue?: string }> } | null> {
   if (!doc) return null;
   const docKind = doc.kind
@@ -14251,7 +14322,7 @@ Rules:
           { role: "user", content },
         ],
       }),
-    });
+    }, trace);
   } catch (err) {
     console.error("[Paige] general extraction call failed:", err);
     return null;

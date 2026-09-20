@@ -269,6 +269,114 @@ function isPassWithEvidence(value) {
   return /^PASS:\s*\S.+$/i.test(value ?? "") && !isUnresolvedEvidence(String(value ?? "").replace(/^PASS:\s*/i, ""));
 }
 
+/**
+ * Owner-waiver grammar (governance PR): the ONLY honest alternative to a
+ * PASS leg for the gates the owner can waive. A waiver must name the owner
+ * decision that granted it and carry a substantive reason — never a
+ * placeholder, never "pending"/"unknown"/"none", never bare prose.
+ *   WAIVED: owner-decision=<substantive reference>; reason=<substantive reason>
+ */
+// A recognizable decision reference: a PR/issue/discussion number (with or
+// without the hash, labeled or bare), a URL, or a dated ruling — something
+// a reviewer can go read, not a bare word.
+const OWNER_DECISION_REFERENCE = /(?:(?:PR|issue|discussion)\s*#?\s*[0-9]+|#[0-9]+|https?:\/\/\S+|20\d{2}-\d{2}-\d{2})/i;
+// A substantive reason is prose, not an interjection: at least four DISTINCT
+// words — "ok ok ok ok" is filler, not prose.
+const MIN_REASON_WORDS = 4;
+// FLOW_BY_FLOW eligibility (Codex rounds a5163ade → 84e06888): the doctrine
+// permits this waiver ONLY when the skill is genuinely unavailable in the
+// delivery environment. English negation is adversarial, so the check is
+// deliberately FAIL-CLOSED and SUBJECT-SCOPED rather than a natural-language
+// parse: the unavailability must be asserted OF THE SKILL within one clause,
+// and no clause may affirm the skill's availability.
+const NEGATED_AVAILABILITY = /\b(?:not|never|isn[’']?t|no longer)\s+(?:installed|present|available)\b/i;
+const ANY_NEGATION = /\b(?:not|never|no|neither|nor|isn[’']?t|isnt|aren[’']?t|wasn[’']?t|weren[’']?t|doesn[’']?t|doesnt|don[’']?t|dont|cannot|cant|can[’']?t|couldnt|couldn[’']?t|won[’']?t|wont|wouldnt|wouldn[’']?t|hardly|barely|scarcely|anything but)\b/i;
+const AFFIRMATIVE_UNAVAILABILITY = /\b(?:unavailable|absent)\b/i;
+// The unavailability predicate must be BOUND to Flow-by-Flow inside the
+// clause: the predicate follows the mention directly, optionally through
+// "skill" and a copula. A bare "skill" clause is not identifying ("the
+// screenshot skill is unavailable", Codex 1b48c7fb P2), and neither is a
+// mere MENTION of Flow-by-Flow whose predicate describes another subject
+// ("Flow-by-Flow documents that the screenshot skill is unavailable",
+// Codex 5fdbf940 P2) — only a direct assertion of Flow-by-Flow's own
+// unavailability qualifies.
+const BOUND_UNAVAILABILITY = /\bflow[- ]by[- ]flow(?:\s+skill)?(?:\s+(?:is|was|are|were|remains?)\s+)?(?:unavailable|absent)\b|\bflow[- ]by[- ]flow(?:\s+skill)?(?:\s+(?:is|was|are|were|remains?)\s+)?(?:not\s+|never\s+|no\s+longer\s+)(?:installed|present|available)\b/i;
+// Availability affirmations are PREDICATES about a subject — "is installed",
+// "remains available", "was present" — not every occurrence of every word
+// (Codex 1ed64059 P2): "unavailable at present" (temporal) and "absent from
+// the present delivery environment" (adjectival) assert unavailability, not
+// availability. "installed"/"available" keep the bare-token veto because
+// their bare occurrence in a waiver reason is an availability claim;
+// "present" needs a predicative test because of its other senses.
+const BARE_AVAILABILITY_CLAIM = /\b(?:installed|available)\b/i;
+// A "present" occurrence is NON-predicative only in the temporal/adjectival
+// forms ("at present", "the present environment", "present-day tooling").
+// The hyphen exemption is the documented "present-day" adjectival compound
+// ONLY — a predicative assertion can't hyphenate its way out ("is
+// present-here today", Codex e771e911 P2). Every other occurrence is an
+// affirmation, whatever ordinary adverbs or verb phrases sit between the
+// verb and the word ("is currently present", "continues to be present").
+const NON_PREDICATIVE_PRESENT = /\b(?:at|the|this|that|these|those|a|an|our|their|its|his|her)\s+present\b|\bpresent[-–—]day\b/gi;
+function affirmsPresent(clause) {
+  const occurrences = clause.match(/\bpresent\b/gi) ?? [];
+  const exempt = clause.match(NON_PREDICATIVE_PRESENT) ?? [];
+  return occurrences.length > exempt.length;
+}
+function establishesUnavailability(reason) {
+  // Canonical form 1 — a negator immediately before an AVAILABILITY word:
+  // "not installed", "not present", "not available", "never installed",
+  // "no longer available". Strip every occurrence, then sweep the REMAINDER:
+  // a contradictory negation riding alongside a canonical phrase ("not
+  // installed, but it is not currently unavailable") must still reject.
+  const canonical = new RegExp(NEGATED_AVAILABILITY.source, "gi");
+  const canonicalMatches = reason.match(canonical) ?? [];
+  const remainder = canonicalMatches.length ? reason.replace(canonical, " ") : reason;
+  if (ANY_NEGATION.test(remainder)) return false;
+  // Canonical form 2 — an affirmative unavailability word in otherwise
+  // negation-free prose: "the skill is unavailable…", "absent from…".
+  return canonicalMatches.length > 0 || AFFIRMATIVE_UNAVAILABILITY.test(reason);
+}
+// Binding-scoped eligibility, ANDed with the whole-reason fail-closed check:
+// at least one clause must assert FLOW-BY-FLOW'S OWN unavailability (the
+// predicate bound to the mention), and NO clause may affirm availability
+// after canonical stripping — whether it names the gate, another subject, or
+// only a pronoun referring back to it ("unavailable here; it is installed
+// and available", Codex b8d6ba27 P2). The reason must stay an unavailability
+// statement: editorializing that anything is available rejects the waiver.
+function establishesSkillUnavailability(reason) {
+  if (!establishesUnavailability(reason)) return false;
+  const clauses = reason.split(/[,;]|\bbut\b/i);
+  let qualifying = false;
+  for (const clause of clauses) {
+    if (BOUND_UNAVAILABILITY.test(clause)) qualifying = true;
+    const canonical = new RegExp(NEGATED_AVAILABILITY.source, "gi");
+    const stripped = clause.replace(canonical, " ");
+    if (BARE_AVAILABILITY_CLAIM.test(stripped) || affirmsPresent(stripped)) return false;
+  }
+  return qualifying;
+}
+
+function isWaivedWithOwnerDecision(value, eligibility) {
+  const match = /^WAIVED:\s*owner-decision=([^;]+);\s*reason=(\S.+)$/i.exec(String(value ?? "").trim());
+  if (!match) return false;
+  const [, ownerDecision, reason] = match;
+  // Token-level unresolved checks (hasUnresolvedToken): the whole-string
+  // isUnresolvedValue compares only the exact normalized value, so an
+  // embedded marker ("approval pending from owner") would slip through.
+  if (hasUnresolvedToken(ownerDecision) || hasUnresolvedToken(reason)) return false;
+  // Substance (Codex c52d3725 P2): the reference must be recognizable and
+  // the reason must be meaningful prose — "owner-decision=no; reason=ok" is
+  // a bypass, not a recorded owner ruling.
+  if (!OWNER_DECISION_REFERENCE.test(ownerDecision)) return false;
+  const words = reason.trim().split(/\s+/).filter((word) => word.length > 0);
+  const distinct = new Set(words.map((word) => word.toLowerCase().replace(/[^a-z0-9]/g, "")));
+  if (distinct.size < MIN_REASON_WORDS) return false;
+  // Gate-specific eligibility, when the doctrine ties the waiver to a
+  // condition the reason itself must establish.
+  if (eligibility && !eligibility(reason)) return false;
+  return true;
+}
+
 export function validateEvidenceText(text, classification) {
   if (!classification.required) return { ok: true, errors: [] };
   if (!text.trim()) {
@@ -340,7 +448,13 @@ export function validateEvidenceText(text, classification) {
   if (!recoveryParts || recoveryParts.slice(1).some((value) => !value.trim() || isUnresolvedValue(value))) errors.push("RELEASE_RECOVERY must include substantive position=...; reference=... values.");
   const truthBoundary = /^(?:LIVE|PARTIAL|UNAVAILABLE|PROOF OWED):\s*(\S.+)$/i.exec(fields.get("RELEASE_TRUTH_BOUNDARY") ?? "");
   if (!truthBoundary || isUnresolvedValue(truthBoundary[1])) errors.push("RELEASE_TRUTH_BOUNDARY must name at least one governed status and its claim boundary.");
-  if (!isPassWithEvidence(fields.get("FLOW_BY_FLOW"))) errors.push("FLOW_BY_FLOW must be PASS: with a non-placeholder evidence reference.");
+  // FLOW_BY_FLOW: PASS with evidence, or an explicit owner waiver on record
+  // (the honest path when the skill is unavailable and the owner accepts the
+  // grounded flow trace in its place). No other value passes — and the
+  // waiver's reason must establish the skill's genuine unavailability.
+  if (!isPassWithEvidence(fields.get("FLOW_BY_FLOW")) && !isWaivedWithOwnerDecision(fields.get("FLOW_BY_FLOW"), establishesSkillUnavailability)) {
+    errors.push("FLOW_BY_FLOW must be PASS: with a non-placeholder evidence reference, or WAIVED: owner-decision=<reference>; reason=<reason establishing the skill's genuine unavailability>.");
+  }
   if (!isPassWithEvidence(fields.get("PAIGE_UI_DESIGN"))) errors.push("PAIGE_UI_DESIGN must be PASS: with a non-placeholder evidence reference.");
 
   const materialFlow = fields.get("MATERIAL_FLOW_CHANGE");
@@ -349,8 +463,11 @@ export function validateEvidenceText(text, classification) {
   }
   const flowPrototype = fields.get("FLOW_PROTOTYPE");
   if (/^YES:/i.test(materialFlow ?? "")) {
-    if (!isPassWithEvidence(flowPrototype)) {
-      errors.push("FLOW_PROTOTYPE must be PASS with a prototype/approval reference for a material flow change.");
+    // A material flow change needs a real prototype/approval reference — or,
+    // only when the owner has ruled the change itself and waived the
+    // prototype gate, the same owner-waiver grammar as FLOW_BY_FLOW.
+    if (!isPassWithEvidence(flowPrototype) && !isWaivedWithOwnerDecision(flowPrototype)) {
+      errors.push("FLOW_PROTOTYPE must be PASS with a prototype/approval reference for a material flow change, or WAIVED: owner-decision=<reference>; reason=<reason>.");
     }
   } else if (!/^(?:PASS|NOT_REQUIRED):\s*\S.+$/i.test(flowPrototype ?? "") || hasPlaceholder(flowPrototype)) {
     errors.push("FLOW_PROTOTYPE must be PASS: evidence or NOT_REQUIRED: reason.");

@@ -23,6 +23,7 @@
  *   node scripts/ci/tool-catalogue-lint.mjs
  */
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 
 /**
  * The baseline is a COUNT plus the exact keys, because a count alone can stay flat while the
@@ -143,4 +144,16 @@ if (ungoverned.length) {
     `  Those ${ungoverned.length} are real: the operator cannot turn them off. Closing the gap is` +
       ` the catalogue-completion task, and this guard stops it widening in the meantime.`,
   );
+}
+
+// INT-080: the operator catalogue and the provider manifest are two views of the same governed
+// tool population. Exercise the shipped Chat handler through the repository's offline loader so
+// a provider-incompatible schema cannot pass this already-required tool-catalogue CI step.
+const contractCheck = spawnSync(process.execPath, [
+  "--import", "./scripts/knowledge-scope/register.mjs",
+  "scripts/ci/paige-chat-tool-contract-check.mjs",
+], { stdio: "inherit" });
+if (contractCheck.error || contractCheck.status !== 0) {
+  console.error(`✗ tool-catalogue-lint: Anthropic tool contract check failed${contractCheck.error ? ` — ${contractCheck.error.message}` : ""}.`);
+  process.exit(contractCheck.status ?? 1);
 }
