@@ -49,6 +49,8 @@ RELEASE_RECOVERY: position=REPLACE_ME rollback/forward-fix position; reference=R
 
 For a non-material flow change, use `MATERIAL_FLOW_CHANGE: NO: reason` and `FLOW_PROTOTYPE: NOT_REQUIRED: reason`. Do not use `NOT_REQUIRED` merely because a prototype was inconvenient.
 
+Owner waivers (governance rule): the owner may waive exactly two gates, and only in this grammar — `FLOW_BY_FLOW: WAIVED: owner-decision=<substantive reference>; reason=<substantive reason>` (when the Flow-by-Flow skill is genuinely unavailable and the owner accepts the grounded flow trace in its place), and, only when `MATERIAL_FLOW_CHANGE: YES:`, `FLOW_PROTOTYPE: WAIVED: owner-decision=<substantive reference>; reason=<substantive reason>` (when the owner has ruled the changed flow itself and waived the prototype gate). A waiver with an empty, placeholder, or unresolved owner-decision or reason is rejected, exactly like any other non-substantive value. `WAIVED` is invalid for every other field, including `PAIGE_UI_DESIGN`, and for `FLOW_PROTOTYPE` when the change is not material. A waiver is a recorded owner decision — never a convenience default.
+
 For Solo work, set `SOLO_UI: YES: affected canonical surface` and include all eight records:
 
 SOLO_1536X770_PAIGE_CLOSED: PASS: artifact and observations

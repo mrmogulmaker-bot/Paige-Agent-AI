@@ -505,3 +505,133 @@ test("the Visible-Flow-Impact trailer match is strict: line-anchored, value yes|
   assert.equal(hasVisibleFlowTrailer(""), false);
   assert.equal(hasVisibleFlowTrailer(undefined), false);
 });
+
+// ─── Owner-waiver grammar: FLOW_BY_FLOW WAIVED, and FLOW_PROTOTYPE WAIVED when
+// MATERIAL_FLOW_CHANGE is YES. A waiver is an honest owner decision on record —
+// never a placeholder, never "pending", never a second path for any other gate.
+
+const withField = (field, value) =>
+  validateEvidenceText(coreEvidence.replace(new RegExp(`^${field}:.*$`, "m"), `${field}: ${value}`), {
+    required: true,
+    solo: false,
+  });
+
+test("FLOW_BY_FLOW WAIVED with a substantive owner-decision reference and reason passes", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=PR #1277 coordinator adjudication; reason=the Flow-by-Flow skill is not installed in the delivery environment and the owner accepted the grounded flow trace in its place",
+  );
+  assert.equal(result.ok, true, result.errors.join("\n"));
+});
+
+test("FLOW_BY_FLOW WAIVED with an empty owner-decision fails", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED: owner-decision=; reason=a substantive reason is present here");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("FLOW_BY_FLOW WAIVED with a placeholder owner-decision fails", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED: owner-decision=TODO add link; reason=a substantive reason is present here");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("FLOW_BY_FLOW WAIVED with a pending owner-decision fails", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED: owner-decision=pending; reason=a substantive reason is present here");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("FLOW_BY_FLOW WAIVED with an empty reason fails", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED: owner-decision=PR #1277 adjudication; reason=");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("FLOW_BY_FLOW WAIVED with an unresolved reason fails", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED: owner-decision=PR #1277 adjudication; reason=unknown");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("WAIVED is FLOW_BY_FLOW ONLY — a WAIVED PAIGE_UI_DESIGN still fails", () => {
+  const result = withField(
+    "PAIGE_UI_DESIGN",
+    "WAIVED: owner-decision=PR #1277 adjudication; reason=not a waiver path for this gate",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /PAIGE_UI_DESIGN/);
+});
+
+test("a bare WAIVED with no owner-decision or reason fails", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED:");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("a bare WAIVED with prose but no owner-decision/reason structure fails", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED: the owner said it was fine in conversation");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("MATERIAL_FLOW_CHANGE YES + FLOW_PROTOTYPE WAIVED with a reference and reason passes", () => {
+  const waived = coreEvidence
+    .replace(/^MATERIAL_FLOW_CHANGE:.*$/m, "MATERIAL_FLOW_CHANGE: YES: the Solo landing flow changed (redirect removed, banner added)")
+    .replace(
+      /^FLOW_PROTOTYPE:.*$/m,
+      "FLOW_PROTOTYPE: WAIVED: owner-decision=PR #1277 owner ruling; reason=the owner adjudicated the changed landing flow and waived the prototype gate for it",
+    );
+  const result = validateEvidenceText(waived, { required: true, solo: false });
+  assert.equal(result.ok, true, result.errors.join("\n"));
+});
+
+test("MATERIAL_FLOW_CHANGE YES + FLOW_PROTOTYPE WAIVED with an empty owner-decision fails", () => {
+  const record = coreEvidence
+    .replace(/^MATERIAL_FLOW_CHANGE:.*$/m, "MATERIAL_FLOW_CHANGE: YES: landing flow changed")
+    .replace(/^FLOW_PROTOTYPE:.*$/m, "FLOW_PROTOTYPE: WAIVED: owner-decision=; reason=a substantive reason is present here");
+  const result = validateEvidenceText(record, { required: true, solo: false });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_PROTOTYPE/);
+});
+
+test("MATERIAL_FLOW_CHANGE YES + FLOW_PROTOTYPE WAIVED with a pending owner-decision fails", () => {
+  const record = coreEvidence
+    .replace(/^MATERIAL_FLOW_CHANGE:.*$/m, "MATERIAL_FLOW_CHANGE: YES: landing flow changed")
+    .replace(/^FLOW_PROTOTYPE:.*$/m, "FLOW_PROTOTYPE: WAIVED: owner-decision=pending; reason=a substantive reason is present here");
+  const result = validateEvidenceText(record, { required: true, solo: false });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_PROTOTYPE/);
+});
+
+test("MATERIAL_FLOW_CHANGE YES + FLOW_PROTOTYPE NOT_REQUIRED still fails", () => {
+  const record = coreEvidence
+    .replace(/^MATERIAL_FLOW_CHANGE:.*$/m, "MATERIAL_FLOW_CHANGE: YES: landing flow changed")
+    .replace(/^FLOW_PROTOTYPE:.*$/m, "FLOW_PROTOTYPE: NOT_REQUIRED: owner says it is fine");
+  const result = validateEvidenceText(record, { required: true, solo: false });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_PROTOTYPE/);
+});
+
+test("MATERIAL_FLOW_CHANGE NO + FLOW_PROTOTYPE WAIVED fails (the waiver leg requires YES)", () => {
+  const record = coreEvidence.replace(
+    /^FLOW_PROTOTYPE:.*$/m,
+    "FLOW_PROTOTYPE: WAIVED: owner-decision=PR #1277 adjudication; reason=the material flag is NO so the waiver grammar does not apply",
+  );
+  const result = validateEvidenceText(record, { required: true, solo: false });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_PROTOTYPE/);
+});
+
+test("MATERIAL_FLOW_CHANGE YES + FLOW_PROTOTYPE PASS with evidence still passes (the unchanged leg)", () => {
+  const record = coreEvidence
+    .replace(/^MATERIAL_FLOW_CHANGE:.*$/m, "MATERIAL_FLOW_CHANGE: YES: landing flow changed")
+    .replace(/^FLOW_PROTOTYPE:.*$/m, "FLOW_PROTOTYPE: PASS: prototype at docs/prototypes/landing.html");
+  const result = validateEvidenceText(record, { required: true, solo: false });
+  assert.equal(result.ok, true, result.errors.join("\n"));
+});
+
+test("existing records still pass (both unchanged legs)", () => {
+  const result = validateEvidenceText(coreEvidence, { required: true, solo: false });
+  assert.equal(result.ok, true, result.errors.join("\n"));
+});

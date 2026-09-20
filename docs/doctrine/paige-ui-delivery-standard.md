@@ -14,6 +14,15 @@ This standard applies to any agent designing, redesigning, or materially changin
 
 A material flow change changes a user's goal, choice, step, state, transition, confirmation, exit, recovery path, or side effect. Forms, onboarding, funnels, drawers, modals, settings, payment and connection flows, destructive actions, and multi-state interactions normally qualify. A presentation-only change may record a reason that Flow Prototype was not required.
 
+### Owner waivers (governance rule)
+
+The owner may waive exactly two of these gates, and the UI delivery evidence validator enforces the grammar:
+
+- **Flow-by-Flow** may be recorded as `FLOW_BY_FLOW: WAIVED: owner-decision=<substantive reference>; reason=<substantive reason>` when the skill is genuinely unavailable in the delivery environment and the owner has accepted a grounded flow trace in its place. A waiver is never a substitute for reading the skill when the skill is available.
+- **Flow Prototype**, only when the flow change is material (`MATERIAL_FLOW_CHANGE: YES:`), may be recorded with the same `WAIVED: owner-decision=...; reason=...` grammar when the owner has ruled the changed flow itself and waived the prototype gate for it. When the change is not material, `NOT_REQUIRED: reason` remains the only non-PASS form.
+
+A waiver with an empty, placeholder, or unresolved owner-decision or reason is rejected exactly like any other non-substantive value. `WAIVED` is invalid for every other gate, including `PAIGE_UI_DESIGN`. A waiver records an owner decision on the record; it is never a default, and it never weakens any other check.
+
 ## Design contract
 
 Start with the user's actual job, audience, primary action, data and permission truth, and a stated visual direction. Reuse Paige tokens and established patterns before inventing replacements. Avoid generic cards, decorative gradients, oversized empty space, redundant banners, filler copy, static-looking selectors, and dashboard chrome without a user purpose.

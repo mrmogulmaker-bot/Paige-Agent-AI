@@ -269,6 +269,25 @@ function isPassWithEvidence(value) {
   return /^PASS:\s*\S.+$/i.test(value ?? "") && !isUnresolvedEvidence(String(value ?? "").replace(/^PASS:\s*/i, ""));
 }
 
+/**
+ * Owner-waiver grammar (governance PR): the ONLY honest alternative to a
+ * PASS leg for the gates the owner can waive. A waiver must name the owner
+ * decision that granted it and carry a substantive reason — never a
+ * placeholder, never "pending"/"unknown"/"none", never bare prose.
+ *   WAIVED: owner-decision=<substantive reference>; reason=<substantive reason>
+ */
+function isWaivedWithOwnerDecision(value) {
+  const match = /^WAIVED:\s*owner-decision=([^;]+);\s*reason=(\S.+)$/i.exec(String(value ?? "").trim());
+  if (!match) return false;
+  const [, ownerDecision, reason] = match;
+  return ownerDecision.trim().length > 0
+    && !hasPlaceholder(ownerDecision)
+    && !isUnresolvedValue(ownerDecision.trim())
+    && reason.trim().length > 0
+    && !hasPlaceholder(reason)
+    && !isUnresolvedValue(reason.trim());
+}
+
 export function validateEvidenceText(text, classification) {
   if (!classification.required) return { ok: true, errors: [] };
   if (!text.trim()) {
@@ -340,7 +359,12 @@ export function validateEvidenceText(text, classification) {
   if (!recoveryParts || recoveryParts.slice(1).some((value) => !value.trim() || isUnresolvedValue(value))) errors.push("RELEASE_RECOVERY must include substantive position=...; reference=... values.");
   const truthBoundary = /^(?:LIVE|PARTIAL|UNAVAILABLE|PROOF OWED):\s*(\S.+)$/i.exec(fields.get("RELEASE_TRUTH_BOUNDARY") ?? "");
   if (!truthBoundary || isUnresolvedValue(truthBoundary[1])) errors.push("RELEASE_TRUTH_BOUNDARY must name at least one governed status and its claim boundary.");
-  if (!isPassWithEvidence(fields.get("FLOW_BY_FLOW"))) errors.push("FLOW_BY_FLOW must be PASS: with a non-placeholder evidence reference.");
+  // FLOW_BY_FLOW: PASS with evidence, or an explicit owner waiver on record
+  // (the honest path when the skill is unavailable and the owner accepts the
+  // grounded flow trace in its place). No other value passes.
+  if (!isPassWithEvidence(fields.get("FLOW_BY_FLOW")) && !isWaivedWithOwnerDecision(fields.get("FLOW_BY_FLOW"))) {
+    errors.push("FLOW_BY_FLOW must be PASS: with a non-placeholder evidence reference, or WAIVED: owner-decision=<reference>; reason=<reason>.");
+  }
   if (!isPassWithEvidence(fields.get("PAIGE_UI_DESIGN"))) errors.push("PAIGE_UI_DESIGN must be PASS: with a non-placeholder evidence reference.");
 
   const materialFlow = fields.get("MATERIAL_FLOW_CHANGE");
@@ -349,8 +373,11 @@ export function validateEvidenceText(text, classification) {
   }
   const flowPrototype = fields.get("FLOW_PROTOTYPE");
   if (/^YES:/i.test(materialFlow ?? "")) {
-    if (!isPassWithEvidence(flowPrototype)) {
-      errors.push("FLOW_PROTOTYPE must be PASS with a prototype/approval reference for a material flow change.");
+    // A material flow change needs a real prototype/approval reference — or,
+    // only when the owner has ruled the change itself and waived the
+    // prototype gate, the same owner-waiver grammar as FLOW_BY_FLOW.
+    if (!isPassWithEvidence(flowPrototype) && !isWaivedWithOwnerDecision(flowPrototype)) {
+      errors.push("FLOW_PROTOTYPE must be PASS with a prototype/approval reference for a material flow change, or WAIVED: owner-decision=<reference>; reason=<reason>.");
     }
   } else if (!/^(?:PASS|NOT_REQUIRED):\s*\S.+$/i.test(flowPrototype ?? "") || hasPlaceholder(flowPrototype)) {
     errors.push("FLOW_PROTOTYPE must be PASS: evidence or NOT_REQUIRED: reason.");
