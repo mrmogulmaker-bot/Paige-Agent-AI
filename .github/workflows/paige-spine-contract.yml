@@ -233,7 +233,8 @@ jobs:
       # Connected MCP Gateway — owner_only visibility is caller-authority enforced (INT-082/INT-089,
       # migration 20270328000000). Proves get_mcp_connection_secret returns `visibility` (and STILL
       # returns endpoint_hash — the 4th replace did not drop INT-078), and that the single mapping
-      # _mcp_caller_capabilities grants mcp.connections.use_restricted to owner + admin + platform owner,
+      # _mcp_caller_capabilities grants mcp.connections.use_restricted to owner + admin + platform owner
+      # (and, per INT-099, mcp.connections.manage to owner + admin only — never a platform owner),
       # holds NOTHING for an ordinary member (even one carrying a global staff role — §59 trap), a NULL
       # actor (no service-role bypass), and a different tenant's owner (§9).
       - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_owner_only_visibility.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres

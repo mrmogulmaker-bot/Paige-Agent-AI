@@ -4,15 +4,19 @@
 -- Proves migration 20270329000000 at the DB layer:
 --   • THE INVARIANT — changing the endpoint re-binds the secret from arguments (or NULL); the old
 --     ciphertext is never inherited; the derived endpoint_hash follows; endpoint-bound approvals are
---     deleted by the 20270322000000 trigger THROUGH the setter; A→B→A does not resurrect them.
+--     deleted by the 20270322000000 trigger THROUGH the setter; A→B→A does not resurrect them; and
+--     provider_state + the discovered-tool catalog are reset (nothing operational carries over).
 --   • A2 — authority is the `mcp.connections.manage` capability (owner/tenant-admin only); a platform
---     owner is REFUSED (capability gate when the tenant matches; scope guard on a foreign tenant); a
---     member, a cross-tenant owner, and a NULL actor (no service-role bypass) are all refused.
---   • D1 — a legacy-projected row is refused.
+--     owner is REFUSED; a member, a cross-tenant owner, and a NULL actor (no service-role bypass) are
+--     all refused — each with the EXPECTED refusal reason pinned (not merely "some error").
+--   • §9 — authority is resolved BEFORE the connection is read: a member is refused at the capability
+--     gate; a cross-tenant owner at the uniform connection-in-tenant guard.
+--   • D1 — a legacy-projected row is refused (for a legitimate admin, with the distinct legacy code).
 --   • A1 — a hashes-only audit row is written to paige_audit_log in the SAME transaction; if the audit
 --     INSERT fails, the UPDATE does NOT commit.
 --   • A3 — the return carries only connection_id/status/endpoint_hash/auth_token_last4 — no secret, no URL.
---   • A4 — the static URL validator rejects the unsafe shapes and accepts a public https endpoint.
+--   • A4 — the static URL validator classifies IP literals by VALUE (inet), catching expanded IPv6,
+--     shorthand/encoded IPv4, and the full private/reserved ranges — not just canonical spellings.
 --
 -- Synthetic fixtures only; self-contained; ROLLS BACK. Seeds run as the superuser test role (RLS
 -- bypassed); each setter call mocks the CALLER via request.jwt.claims so auth.uid() / the tenant
@@ -47,13 +51,16 @@ INSERT INTO public.user_roles (user_id, role) VALUES
 ON CONFLICT DO NOTHING;
 
 -- A NATIVE connection (legacy_source IS NULL) on T with an initial endpoint, a real secret, a granted
--- scope ceiling, and an endpoint-bound approval — everything the setter must re-bind / revoke.
+-- scope ceiling, provider_state, and an endpoint-bound approval + a discovered tool — everything the
+-- setter must re-bind / reset / revoke.
 INSERT INTO public.mcp_connections
-  (connection_id, tenant_id, provider_key, label, server_url_ct, auth_kind, auth_token_ct, auth_token_last4, granted_scopes, status, health)
+  (connection_id, tenant_id, provider_key, label, server_url_ct, auth_kind, auth_token_ct, auth_token_last4,
+   granted_scopes, provider_state, status, health)
 VALUES
   ('0e900000-0000-0000-0000-0000000000c1', '0e900000-0000-0000-0000-0000000000a1', 'generic-remote', 'es-native',
      public.platform_encrypt('https://mcp-init.example.com/rpc'), 'bearer',
-     public.platform_encrypt('tok-initial-1234'), '1234', '{read,write}', 'connected', 'healthy');
+     public.platform_encrypt('tok-initial-1234'), '1234', '{read,write}',
+     '{"n8n_generation": 5}'::jsonb, 'connected', 'healthy');
 
 -- A LEGACY-projected connection on T — the setter must refuse it (D1).
 INSERT INTO public.mcp_connections
@@ -62,50 +69,71 @@ VALUES
   ('0e900000-0000-0000-0000-0000000000c2', '0e900000-0000-0000-0000-0000000000a1', 'generic-remote', 'es-legacy',
      public.platform_encrypt('https://mcp-legacy.example.com/rpc'), 'bearer', 'tenant_mcp_connections', 'generic-remote');
 
--- An endpoint-bound approval on the native connection (proves revoke-on-change through the setter).
+-- An endpoint-bound approval + a discovered tool on the native connection (proves revoke + catalog
+-- reset through the setter).
 INSERT INTO public.mcp_connection_approvals (connection_id, tool_name, pin, approved_by, endpoint_hash)
 VALUES ('0e900000-0000-0000-0000-0000000000c1', 'demo.tool', repeat('a',64),
         '0e900000-0000-0000-0000-000000000001',
         public._mcp_endpoint_hash('https://mcp-init.example.com/rpc'));
+INSERT INTO public.mcp_connection_tools (connection_id, tool_name, schema_hash)
+VALUES ('0e900000-0000-0000-0000-0000000000c1', 'demo.tool', repeat('a',64));
 
--- ── (A4) static URL validator matrix ─────────────────────────────────────────────────────────
+-- ── (A4) static URL validator matrix — value-based, notation-agnostic ──────────────────────────
 DO $$
 BEGIN
-  -- ACCEPT: public https, with port, bracketed public IPv6.
+  -- ACCEPT: public https, with port, bracketed public IPv6, public dotted-quad, host with digits,
+  -- and a dotted-quad just OUTSIDE a private block (172.32/16 is public; 172.16/12 is not).
   IF NOT public._mcp_endpoint_write_safe('https://api.example.com/mcp')        THEN RAISE EXCEPTION '(A4) public https must pass'; END IF;
   IF NOT public._mcp_endpoint_write_safe('https://api.example.com:8443/mcp')   THEN RAISE EXCEPTION '(A4) public https:port must pass'; END IF;
   IF NOT public._mcp_endpoint_write_safe('https://[2606:4700:4700::1111]/rpc') THEN RAISE EXCEPTION '(A4) public bracketed IPv6 must pass'; END IF;
+  IF NOT public._mcp_endpoint_write_safe('https://8.8.8.8/mcp')                THEN RAISE EXCEPTION '(A4) public dotted-quad must pass'; END IF;
+  IF NOT public._mcp_endpoint_write_safe('https://172.32.0.1/mcp')             THEN RAISE EXCEPTION '(A4) 172.32/16 is public and must pass'; END IF;
+  IF NOT public._mcp_endpoint_write_safe('https://api2.example.com/mcp')       THEN RAISE EXCEPTION '(A4) host with a digit must pass'; END IF;
   -- REJECT: scheme / userinfo.
-  IF public._mcp_endpoint_write_safe('http://api.example.com/mcp')             THEN RAISE EXCEPTION '(A4) http must be rejected'; END IF;
-  IF public._mcp_endpoint_write_safe('https://user:pass@api.example.com/mcp')  THEN RAISE EXCEPTION '(A4) userinfo must be rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('http://api.example.com/mcp')             THEN RAISE EXCEPTION '(A4) http rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://user:pass@api.example.com/mcp')  THEN RAISE EXCEPTION '(A4) userinfo rejected'; END IF;
   -- REJECT: names.
-  IF public._mcp_endpoint_write_safe('https://localhost/mcp')                  THEN RAISE EXCEPTION '(A4) localhost must be rejected'; END IF;
-  IF public._mcp_endpoint_write_safe('https://svc.local/mcp')                  THEN RAISE EXCEPTION '(A4) *.local must be rejected'; END IF;
-  IF public._mcp_endpoint_write_safe('https://svc.internal/mcp')               THEN RAISE EXCEPTION '(A4) *.internal must be rejected'; END IF;
-  IF public._mcp_endpoint_write_safe('https://svc.localhost/mcp')              THEN RAISE EXCEPTION '(A4) *.localhost must be rejected'; END IF;
-  IF public._mcp_endpoint_write_safe('https://api.example.com./mcp')           THEN RAISE EXCEPTION '(A4) trailing-dot host must be rejected'; END IF;
-  -- REJECT: private / loopback / link-local IPv4 literals.
-  IF public._mcp_endpoint_write_safe('https://127.0.0.1/mcp')                  THEN RAISE EXCEPTION '(A4) 127/8 must be rejected'; END IF;
-  IF public._mcp_endpoint_write_safe('https://10.0.0.5/mcp')                   THEN RAISE EXCEPTION '(A4) 10/8 must be rejected'; END IF;
-  IF public._mcp_endpoint_write_safe('https://172.16.0.1/mcp')                 THEN RAISE EXCEPTION '(A4) 172.16/12 must be rejected'; END IF;
-  IF public._mcp_endpoint_write_safe('https://192.168.1.1/mcp')                THEN RAISE EXCEPTION '(A4) 192.168/16 must be rejected'; END IF;
-  IF public._mcp_endpoint_write_safe('https://169.254.169.254/latest')         THEN RAISE EXCEPTION '(A4) 169.254 metadata must be rejected'; END IF;
-  IF public._mcp_endpoint_write_safe('https://0.0.0.0/mcp')                    THEN RAISE EXCEPTION '(A4) 0.0.0.0 must be rejected'; END IF;
-  -- REJECT: encoded IPv4 (decimal / hex / octal).
-  IF public._mcp_endpoint_write_safe('https://2130706433/mcp')                 THEN RAISE EXCEPTION '(A4) decimal-encoded IPv4 must be rejected'; END IF;
-  IF public._mcp_endpoint_write_safe('https://0x7f000001/mcp')                 THEN RAISE EXCEPTION '(A4) hex-encoded IPv4 must be rejected'; END IF;
-  IF public._mcp_endpoint_write_safe('https://0177.0.0.1/mcp')                 THEN RAISE EXCEPTION '(A4) octal-encoded IPv4 must be rejected'; END IF;
-  -- REJECT: IPv6 loopback / mapped / ULA / link-local.
-  IF public._mcp_endpoint_write_safe('https://[::1]/mcp')                      THEN RAISE EXCEPTION '(A4) ::1 must be rejected'; END IF;
-  IF public._mcp_endpoint_write_safe('https://[::ffff:127.0.0.1]/mcp')         THEN RAISE EXCEPTION '(A4) IPv4-mapped IPv6 must be rejected'; END IF;
-  IF public._mcp_endpoint_write_safe('https://[fc00::1]/mcp')                  THEN RAISE EXCEPTION '(A4) fc00::/7 must be rejected'; END IF;
-  IF public._mcp_endpoint_write_safe('https://[fd12::1]/mcp')                  THEN RAISE EXCEPTION '(A4) fd (ULA) must be rejected'; END IF;
-  IF public._mcp_endpoint_write_safe('https://[fe80::1]/mcp')                  THEN RAISE EXCEPTION '(A4) fe80::/10 must be rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://localhost/mcp')                  THEN RAISE EXCEPTION '(A4) localhost rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://svc.local/mcp')                  THEN RAISE EXCEPTION '(A4) *.local rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://svc.internal/mcp')               THEN RAISE EXCEPTION '(A4) *.internal rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://svc.localhost/mcp')              THEN RAISE EXCEPTION '(A4) *.localhost rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://api.example.com./mcp')           THEN RAISE EXCEPTION '(A4) trailing-dot rejected'; END IF;
+  -- REJECT: private / loopback / link-local / CGNAT / benchmark / 6to4 / protocol / multicast / reserved IPv4.
+  IF public._mcp_endpoint_write_safe('https://127.0.0.1/mcp')                  THEN RAISE EXCEPTION '(A4) 127/8 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://10.0.0.5/mcp')                   THEN RAISE EXCEPTION '(A4) 10/8 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://172.16.0.1/mcp')                 THEN RAISE EXCEPTION '(A4) 172.16/12 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://192.168.1.1/mcp')                THEN RAISE EXCEPTION '(A4) 192.168/16 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://169.254.169.254/latest')         THEN RAISE EXCEPTION '(A4) 169.254 metadata rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://0.0.0.0/mcp')                    THEN RAISE EXCEPTION '(A4) 0.0.0.0 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://100.64.0.1/mcp')                 THEN RAISE EXCEPTION '(A4) CGNAT 100.64/10 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://198.18.0.1/mcp')                 THEN RAISE EXCEPTION '(A4) benchmark 198.18/15 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://192.0.0.1/mcp')                  THEN RAISE EXCEPTION '(A4) 192.0.0/24 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://192.88.99.1/mcp')                THEN RAISE EXCEPTION '(A4) 6to4 192.88.99/24 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://255.255.255.255/mcp')            THEN RAISE EXCEPTION '(A4) broadcast rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://224.0.0.1/mcp')                  THEN RAISE EXCEPTION '(A4) multicast 224/4 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://240.0.0.1/mcp')                  THEN RAISE EXCEPTION '(A4) reserved 240/4 rejected'; END IF;
+  -- REJECT: encoded / shorthand IPv4 (decimal / hex / octal / 2-/3-part).
+  IF public._mcp_endpoint_write_safe('https://2130706433/mcp')                 THEN RAISE EXCEPTION '(A4) decimal-encoded IPv4 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://0x7f000001/mcp')                 THEN RAISE EXCEPTION '(A4) hex-encoded IPv4 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://0177.0.0.1/mcp')                 THEN RAISE EXCEPTION '(A4) octal-encoded IPv4 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://127.1/mcp')                      THEN RAISE EXCEPTION '(A4) 2-part shorthand rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://10.1/mcp')                       THEN RAISE EXCEPTION '(A4) 2-part shorthand rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://192.168.1/mcp')                  THEN RAISE EXCEPTION '(A4) 3-part shorthand rejected'; END IF;
+  -- REJECT: IPv6 loopback / mapped / ULA / link-local / multicast — canonical AND expanded spellings.
+  IF public._mcp_endpoint_write_safe('https://[::1]/mcp')                      THEN RAISE EXCEPTION '(A4) ::1 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://[0:0:0:0:0:0:0:1]/mcp')          THEN RAISE EXCEPTION '(A4) expanded ::1 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://[::ffff:127.0.0.1]/mcp')         THEN RAISE EXCEPTION '(A4) IPv4-mapped rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://[0:0:0:0:0:ffff:127.0.0.1]/mcp') THEN RAISE EXCEPTION '(A4) expanded IPv4-mapped rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://[fc00::1]/mcp')                  THEN RAISE EXCEPTION '(A4) fc00::/7 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://[fd12::1]/mcp')                  THEN RAISE EXCEPTION '(A4) fd (ULA) rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://[fe80::1]/mcp')                  THEN RAISE EXCEPTION '(A4) fe80::/10 rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://[ff02::1]/mcp')                  THEN RAISE EXCEPTION '(A4) IPv6 multicast rejected'; END IF;
 END $$;
 
--- ── (INVARIANT + A3) admin changes the endpoint WITHOUT a new token: the old secret must NOT survive ──
+-- ── (INVARIANT + A3 + reset) admin changes the endpoint WITHOUT a new token: the old secret must NOT
+--    survive; provider_state + tool catalog reset; approval revoked; return write-only ────────────────
 DO $$
-DECLARE _r jsonb; _row public.mcp_connections%ROWTYPE; _appr int;
+DECLARE _r jsonb; _row public.mcp_connections%ROWTYPE; _appr int; _tools int;
 BEGIN
   PERFORM set_config('request.jwt.claims', '{"sub":"0e900000-0000-0000-0000-000000000002","role":"authenticated"}', true);
   _r := public.set_mcp_connection_endpoint(
@@ -133,13 +161,17 @@ BEGIN
   IF _row.refresh_token_ct IS NOT NULL        THEN RAISE EXCEPTION 'invariant: old refresh_token_ct survived'; END IF;
   IF _row.oauth_client_secret_ct IS NOT NULL  THEN RAISE EXCEPTION 'invariant: old oauth_client_secret_ct survived'; END IF;
   IF _row.granted_scopes <> '{}'              THEN RAISE EXCEPTION 'invariant: granted scope ceiling not reset'; END IF;
+  IF _row.provider_state <> '{}'::jsonb       THEN RAISE EXCEPTION 'invariant: provider_state not reset'; END IF;
   IF _row.auth_kind <> 'none'                 THEN RAISE EXCEPTION 'invariant: auth_kind not updated'; END IF;
   IF _row.status <> 'pending_verification' OR _row.health <> 'unknown' THEN RAISE EXCEPTION 'invariant: status/health not reset'; END IF;
   IF public.platform_decrypt(_row.server_url_ct) <> 'https://mcp-new1.example.com/rpc' THEN RAISE EXCEPTION 'invariant: endpoint not updated'; END IF;
 
-  -- the endpoint-bound approval was revoked by the trigger THROUGH the setter.
-  SELECT count(*) INTO _appr FROM public.mcp_connection_approvals WHERE connection_id = '0e900000-0000-0000-0000-0000000000c1';
-  IF _appr <> 0 THEN RAISE EXCEPTION 'consent not revoked on endpoint change: % approvals remain', _appr; END IF;
+  -- the endpoint-bound approval was revoked by the trigger THROUGH the setter, and the stale tool
+  -- catalog was cleared.
+  SELECT count(*) INTO _appr  FROM public.mcp_connection_approvals WHERE connection_id = '0e900000-0000-0000-0000-0000000000c1';
+  SELECT count(*) INTO _tools FROM public.mcp_connection_tools     WHERE connection_id = '0e900000-0000-0000-0000-0000000000c1';
+  IF _appr  <> 0 THEN RAISE EXCEPTION 'consent not revoked on endpoint change: % approvals remain', _appr; END IF;
+  IF _tools <> 0 THEN RAISE EXCEPTION 'stale tool catalog not cleared on endpoint change: % tools remain', _tools; END IF;
 END $$;
 
 -- ── (A1) the audit row exists, hashes/enums only, no URL/token ──────────────────────────────────
@@ -197,49 +229,51 @@ BEGIN
   IF public.platform_decrypt(_row.auth_token_ct) <> 'rot-token-9999' THEN RAISE EXCEPTION '(rotate) wrong token stored'; END IF;
 END $$;
 
--- ── (A2 + §9 + no-bypass) refusals; each must RAISE and leave the endpoint unchanged ───────────────
+-- ── (A2 + §9 + no-bypass) refusals; each must RAISE with the EXPECTED reason and leave the endpoint
+--    unchanged. Authority-first ordering: member/platform-owner/NULL fail at the capability gate; a
+--    cross-tenant owner fails at the uniform connection-in-tenant guard ───────────────────────────────
 DO $$
-DECLARE _before text; _after text; _raised boolean;
+DECLARE _before text; _after text; _msg text;
 BEGIN
-  -- capture the endpoint before the refusal battery
   SELECT public._mcp_endpoint_hash(public.platform_decrypt(server_url_ct)) INTO _before
     FROM public.mcp_connections WHERE connection_id = '0e900000-0000-0000-0000-0000000000c1';
 
-  -- (a) ordinary member (with a global staff role, §59) — no `manage`.
+  -- (a) ordinary member (with a global staff role, §59) — no `manage` ⇒ capability gate.
   PERFORM set_config('request.jwt.claims', '{"sub":"0e900000-0000-0000-0000-000000000003","role":"authenticated"}', true);
-  _raised := false;
+  _msg := NULL;
   BEGIN PERFORM public.set_mcp_connection_endpoint('0e900000-0000-0000-0000-0000000000c1','https://evil.example.com/rpc','none');
-  EXCEPTION WHEN OTHERS THEN _raised := true; END;
-  IF NOT _raised THEN RAISE EXCEPTION '(A2a) a member must be refused'; END IF;
+  EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
+  IF _msg IS NULL OR _msg NOT LIKE '%manage capability required%' THEN RAISE EXCEPTION '(A2a) member: expected manage-capability refusal, got: %', _msg; END IF;
 
-  -- (b) platform owner, tenant MATCHES the connection → refused at the CAPABILITY gate (manage excludes platform owner).
+  -- (b) platform owner, tenant MATCHES → still refused at the CAPABILITY gate (manage excludes platform owner).
   PERFORM set_config('request.jwt.claims', '{"sub":"0e900000-0000-0000-0000-000000000004","role":"authenticated"}', true);
-  _raised := false;
+  _msg := NULL;
   BEGIN PERFORM public.set_mcp_connection_endpoint('0e900000-0000-0000-0000-0000000000c1','https://evil.example.com/rpc','none',
                                                    NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'0e900000-0000-0000-0000-0000000000a1');
-  EXCEPTION WHEN OTHERS THEN _raised := true; END;
-  IF NOT _raised THEN RAISE EXCEPTION '(A2b) a platform owner (not tenant admin) must be refused for manage'; END IF;
+  EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
+  IF _msg IS NULL OR _msg NOT LIKE '%manage capability required%' THEN RAISE EXCEPTION '(A2b) platform owner (tenant match): expected manage-capability refusal, got: %', _msg; END IF;
 
-  -- (c) platform owner, no tenant given → resolves to no tenant → refused at the SCOPE guard (foreign tenant).
-  _raised := false;
+  -- (c) platform owner, no tenant given → resolves to no manage ⇒ capability gate.
+  _msg := NULL;
   BEGIN PERFORM public.set_mcp_connection_endpoint('0e900000-0000-0000-0000-0000000000c1','https://evil.example.com/rpc','none');
-  EXCEPTION WHEN OTHERS THEN _raised := true; END;
-  IF NOT _raised THEN RAISE EXCEPTION '(A2c) a platform owner resolving a foreign tenant must be refused'; END IF;
+  EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
+  IF _msg IS NULL OR _msg NOT LIKE '%manage capability required%' THEN RAISE EXCEPTION '(A2c) platform owner (no tenant): expected manage-capability refusal, got: %', _msg; END IF;
 
-  -- (d) owner of a DIFFERENT tenant → cross-tenant scope refusal (§9).
+  -- (d) owner of a DIFFERENT tenant → HAS manage for their own tenant, but the connection is not in it
+  --     ⇒ uniform connection-in-tenant refusal (§9).
   PERFORM set_config('request.jwt.claims', '{"sub":"0e900000-0000-0000-0000-000000000005","role":"authenticated"}', true);
-  _raised := false;
+  _msg := NULL;
   BEGIN PERFORM public.set_mcp_connection_endpoint('0e900000-0000-0000-0000-0000000000c1','https://evil.example.com/rpc','none');
-  EXCEPTION WHEN OTHERS THEN _raised := true; END;
-  IF NOT _raised THEN RAISE EXCEPTION '(A2d) a cross-tenant owner must be refused'; END IF;
+  EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
+  IF _msg IS NULL OR _msg NOT LIKE '%connection not in tenant%' THEN RAISE EXCEPTION '(A2d) cross-tenant owner: expected connection-not-in-tenant refusal, got: %', _msg; END IF;
 
-  -- (e) NULL actor (service-role / no JWT) even naming the tenant → {} caps → refused (no service-role bypass).
+  -- (e) NULL actor (service-role / no JWT) even naming the tenant → {} caps ⇒ capability gate (no bypass).
   PERFORM set_config('request.jwt.claims', '', true);
-  _raised := false;
+  _msg := NULL;
   BEGIN PERFORM public.set_mcp_connection_endpoint('0e900000-0000-0000-0000-0000000000c1','https://evil.example.com/rpc','none',
                                                    NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'0e900000-0000-0000-0000-0000000000a1');
-  EXCEPTION WHEN OTHERS THEN _raised := true; END;
-  IF NOT _raised THEN RAISE EXCEPTION '(A2e) a NULL actor must be refused (no service-role bypass)'; END IF;
+  EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
+  IF _msg IS NULL OR _msg NOT LIKE '%manage capability required%' THEN RAISE EXCEPTION '(A2e) NULL actor: expected manage-capability refusal (no service-role bypass), got: %', _msg; END IF;
 
   -- none of the refusals may have changed the endpoint.
   SELECT public._mcp_endpoint_hash(public.platform_decrypt(server_url_ct)) INTO _after
@@ -247,14 +281,15 @@ BEGIN
   IF _before IS DISTINCT FROM _after THEN RAISE EXCEPTION 'a refused call changed the endpoint'; END IF;
 END $$;
 
--- ── (D1) a legacy-projected row is refused even for a legitimate admin ─────────────────────────────
+-- ── (D1) a legacy-projected row is refused even for a legitimate admin, with the distinct code ───────
 DO $$
-DECLARE _raised boolean := false;
+DECLARE _msg text;
 BEGIN
   PERFORM set_config('request.jwt.claims', '{"sub":"0e900000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+  _msg := NULL;
   BEGIN PERFORM public.set_mcp_connection_endpoint('0e900000-0000-0000-0000-0000000000c2','https://mcp-x.example.com/rpc','none');
-  EXCEPTION WHEN OTHERS THEN _raised := true; END;
-  IF NOT _raised THEN RAISE EXCEPTION '(D1) a legacy-projected connection must be refused'; END IF;
+  EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_LEGACY_CONNECTION_READONLY%' THEN RAISE EXCEPTION '(D1) expected legacy-readonly refusal, got: %', _msg; END IF;
 END $$;
 
 -- ── (A1) audit-fails ⇒ UPDATE-does-not-commit ─────────────────────────────────────────────────────

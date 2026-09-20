@@ -9,7 +9,9 @@
 -- DECRYPTED endpoint), so it recomputes automatically; the shipped AFTER-UPDATE trigger
 -- `trg_mcp_gw_revoke_approvals_on_endpoint_change` (20270322000000) deletes the endpoint-bound
 -- consent in the SAME transaction when the decrypted endpoint changes — this setter relies on it and
--- does not re-implement it. (A→B→A cannot resurrect A's approvals: A→B already deleted them.)
+-- does not re-implement it. (A→B→A cannot resurrect A's approvals: A→B already deleted them.) The
+-- re-point ALSO resets provider_state and deletes the stale discovered-tool catalog: nothing
+-- operational from the old endpoint carries onto the new one, which is unverified until a re-probe.
 --
 -- WHAT THIS PR IS NOT. It does NOT wire the gateway (still library-only, zero deployed importer), does
 -- NOT probe/verify the endpoint (no outbound call — see below), does NOT register a paige_action_kind
@@ -20,12 +22,18 @@
 -- directly JWT-invokable, which is why its authority gate + URL validation + tenant scope must be
 -- correct on merge, not deferred to activation.
 --
+-- ORDER (§9, INT-099 peer-gate). Authority is resolved BEFORE the connection is read: an unauthorized
+-- or cross-tenant caller gets a UNIFORM MCP_FORBIDDEN and can never learn (by a distinct error code)
+-- whether a connection_id exists or is legacy-projected. Only an authorized manage-capable admin of
+-- the connection's own tenant reaches the existence / D1-legacy distinctions — matching
+-- set_mcp_connection_approval's resolve-tenant-first shape.
+--
 -- D1 — REFUSES a legacy-projected row (legacy_source IS NOT NULL). tenant_mcp_connections /
 --      tenant_n8n_connections remain the sole LIVE write path (20270319000000 header); writing an
 --      endpoint onto a projection would diverge it from its source of truth (§57). No cutover here.
 --
--- A2 — Authority is the CAPABILITY `mcp.connections.manage`, resolved SERVER-SIDE for the connection's
---      own tenant via the single re-pointable mapping public._mcp_caller_capabilities (INT-089:
+-- A2 — Authority is the CAPABILITY `mcp.connections.manage`, resolved SERVER-SIDE for the caller's
+--      resolved tenant via the single re-pointable mapping public._mcp_caller_capabilities (INT-089:
 --      capability keys, never role literals; a delegated grant is added THERE alone). `manage` is held
 --      by the OWNER / TENANT-ADMIN of THIS tenant ONLY — a platform owner is EXCLUDED from `manage`
 --      (they keep `use_restricted` only). NOTE: public._mcp_resolve_tenant(_tenant, false) does NOT by
@@ -40,6 +48,9 @@
 --      ONLY: old + new endpoint_hash and auth_kind before + after — NEVER the URL, a token, or
 --      ciphertext. If the audit INSERT fails, the whole function transaction aborts and the UPDATE does
 --      NOT commit (plain in-transaction INSERT; no autonomous-transaction anywhere in the audit path).
+--      The row sets actor_user_id = auth.uid(), which satisfies the current INSERT policy
+--      "Actors record their own actions" WITH CHECK (actor_user_id = auth.uid()) (20261027000000, which
+--      dropped the older is_staff requirement) — and the SECURITY DEFINER owner bypasses RLS regardless.
 --      (Honesty §13: paige_audit_log is not trigger-immutable and service_role retains UPDATE/DELETE —
 --      A1 requires a durable RECORD, not DB-enforced immutability; none of the candidate homes provides
 --      the latter today, and it would be a separate trigger on the existing table if ever required.)
@@ -48,11 +59,14 @@
 --      status, the new endpoint_hash, and auth_token_last4.
 --
 -- A4 — URL validation is STATIC (pure SQL, no network call): https only; rejects userinfo, localhost,
---      *.local / *.internal / *.localhost, trailing-dot hosts, loopback/private/link-local IPv4 and
---      IPv6 literals, IPv4-mapped IPv6 (::ffff:), and decimal / octal / hex-encoded IPv4 hosts.
---      HOSTNAME-TO-PRIVATE-IP RESOLUTION IS NOT COVERED AT WRITE TIME (SQL cannot resolve DNS) and
---      remains the job of _shared/mcp-client.ts's SSRF-guarded egress at DISPATCH. This validation is
---      an additional write-time layer, never a replacement for that runtime guard.
+--      *.local / *.internal / *.localhost, trailing-dot hosts, and every IP LITERAL that is not a
+--      public address. IP literals are parsed to `inet` and range-checked NUMERICALLY (notation-
+--      agnostic — every spelling of loopback/mapped/ULA/link-local IPv6 and every private/reserved
+--      IPv4 is caught, not just canonical strings), and encoded / shorthand IPv4 (decimal, hex, octal,
+--      2-/3-part dotted) is refused outright. HOSTNAME-TO-PRIVATE-IP RESOLUTION IS NOT COVERED AT WRITE
+--      TIME (SQL cannot resolve DNS) and remains the job of _shared/mcp-client.ts's SSRF-guarded egress
+--      at DISPATCH. This validation is an additional write-time layer, never a replacement for that
+--      runtime guard.
 --
 -- A5 — Grants: EXECUTE to `authenticated` ONLY (revoked from PUBLIC + anon). _mcp_caller_capabilities
 --      stays service_role-only and is called from inside this SECURITY DEFINER function.
@@ -72,14 +86,64 @@
 -- ROLLBACK:
 --   DROP FUNCTION IF EXISTS public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid);
 --   DROP FUNCTION IF EXISTS public._mcp_endpoint_write_safe(text);
+--   DROP FUNCTION IF EXISTS public._mcp_inet_is_public(inet);
 --   -- and restore public._mcp_caller_capabilities(uuid, uuid) to its 20270328000000 body (drop the
 --   -- `mcp.connections.manage` branch; the mapping is additive, so removing that one append reverts it).
 -- ============================================================================
 
 -- ─────────────────────────────────────────────────────────────────────────────────
--- 1. Static, write-time endpoint safety (A4). IMMUTABLE, pure — no auth, no I/O, no DNS. Defense in
---    depth ONLY; the authoritative runtime egress SSRF guard is _shared/mcp-client.ts at dispatch.
---    Returns TRUE only for an https endpoint whose host is not a known-unsafe literal/name.
+-- 1a. Numeric address classifier — is this inet a PUBLIC address? Parsed value, not spelling, so
+--     every notation of a blocked range is caught (INT-099 peer-gate). IMMUTABLE, pure, no I/O.
+-- ─────────────────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public._mcp_inet_is_public(_ip inet)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+BEGIN
+  IF _ip IS NULL THEN RETURN false; END IF;
+  IF family(_ip) = 4 THEN
+    RETURN NOT (
+         _ip <<= '0.0.0.0/8'::inet          -- "this" network / 0.0.0.0
+      OR _ip <<= '10.0.0.0/8'::inet          -- private
+      OR _ip <<= '100.64.0.0/10'::inet       -- CGNAT
+      OR _ip <<= '127.0.0.0/8'::inet         -- loopback
+      OR _ip <<= '169.254.0.0/16'::inet      -- link-local (incl. 169.254.169.254 metadata)
+      OR _ip <<= '172.16.0.0/12'::inet       -- private
+      OR _ip <<= '192.0.0.0/24'::inet        -- IETF protocol assignments
+      OR _ip <<= '192.88.99.0/24'::inet      -- 6to4 relay anycast
+      OR _ip <<= '192.168.0.0/16'::inet      -- private
+      OR _ip <<= '198.18.0.0/15'::inet       -- benchmarking
+      OR _ip <<= '224.0.0.0/4'::inet         -- multicast
+      OR _ip <<= '240.0.0.0/4'::inet         -- reserved (incl. 255.255.255.255 broadcast)
+    );
+  ELSIF family(_ip) = 6 THEN
+    RETURN NOT (
+         _ip <<= '::1/128'::inet             -- loopback
+      OR _ip <<= '::/128'::inet              -- unspecified
+      OR _ip <<= '::ffff:0:0/96'::inet       -- IPv4-mapped
+      OR _ip <<= '::/96'::inet               -- IPv4-compatible (deprecated)
+      OR _ip <<= '64:ff9b::/96'::inet        -- IPv4/IPv6 translation
+      OR _ip <<= 'fc00::/7'::inet            -- unique local (fc/fd)
+      OR _ip <<= 'fe80::/10'::inet           -- link-local
+      OR _ip <<= 'ff00::/8'::inet            -- multicast
+    );
+  END IF;
+  RETURN false;  -- unknown family ⇒ not provably public
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public._mcp_inet_is_public(inet) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public._mcp_inet_is_public(inet) TO authenticated, service_role;
+
+COMMENT ON FUNCTION public._mcp_inet_is_public(inet) IS
+  'INT-099/A4: numeric (value, not spelling) classifier — TRUE only for a public IPv4/IPv6 address. Blocks loopback/private/link-local/CGNAT/benchmark/6to4/multicast/reserved/broadcast (v4) and loopback/unspecified/IPv4-mapped/-compatible/-translated/ULA/link-local/multicast (v6), via inet <<= CIDR so every notation is caught. Defense in depth for the endpoint setter; the authoritative runtime egress guard is _shared/mcp-client.ts.';
+
+-- ─────────────────────────────────────────────────────────────────────────────────
+-- 1b. Static, write-time endpoint safety (A4). IMMUTABLE, pure — no auth, no I/O, no DNS. Defense in
+--     depth ONLY; the authoritative runtime egress SSRF guard is _shared/mcp-client.ts at dispatch.
+--     Returns TRUE only for an https endpoint whose host is not a known-unsafe literal/name. IP
+--     literals are parsed to inet and range-checked numerically; encoded/shorthand IPv4 is rejected.
 -- ─────────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public._mcp_endpoint_write_safe(_url text)
 RETURNS boolean
@@ -87,14 +151,14 @@ LANGUAGE plpgsql
 IMMUTABLE
 AS $$
 DECLARE
-  _hostport text;
-  _host     text;
-  _is_v6    boolean := false;
-  _a int; _b int;
+  _hostport   text;
+  _host       text;
+  _bracketed  boolean := false;
+  _ip         inet;
 BEGIN
   -- https only (D6).
   IF _url IS NULL OR _url !~ '^https://' THEN RETURN false; END IF;
-  -- No userinfo (https://user:pass@host…) — a common SSRF/credential smuggling shape.
+  -- No userinfo (https://user:pass@host…) — a common SSRF/credential-smuggling shape.
   IF _url ~ '^https://[^/?#]*@' THEN RETURN false; END IF;
 
   -- host[:port] is everything after the scheme up to the first /, ? or #.
@@ -103,7 +167,7 @@ BEGIN
 
   IF left(_hostport, 1) = '[' THEN
     -- bracketed IPv6 literal.
-    _is_v6 := true;
+    _bracketed := true;
     _host := substring(_hostport from '^\[([0-9A-Fa-f:.]+)\]');
     IF _host IS NULL OR _host = '' THEN RETURN false; END IF;
   ELSE
@@ -119,29 +183,35 @@ BEGIN
   IF _host ~ '\.$' THEN RETURN false; END IF;                       -- trailing-dot host
   IF _host ~ '\.(local|internal|localhost)$' THEN RETURN false; END IF;
 
-  IF _is_v6 THEN
-    IF _host = '::1' OR _host = '::' THEN RETURN false; END IF;      -- loopback / unspecified
-    IF _host ~ '^::ffff:' THEN RETURN false; END IF;                -- IPv4-mapped IPv6
-    IF _host ~ '^f[cd]' THEN RETURN false; END IF;                  -- fc00::/7 unique-local
-    IF _host ~ '^fe[89ab]' THEN RETURN false; END IF;               -- fe80::/10 link-local
-    RETURN true;
+  -- Bracketed ⇒ an IPv6 literal: parse to inet and classify by VALUE (every spelling of loopback /
+  -- mapped / ULA / link-local is caught, not just the canonical strings).
+  IF _bracketed THEN
+    BEGIN
+      _ip := _host::inet;
+    EXCEPTION WHEN OTHERS THEN
+      RETURN false;   -- unparseable bracketed literal
+    END;
+    RETURN public._mcp_inet_is_public(_ip);
   END IF;
 
-  -- Encoded-IPv4 shapes (decimal / hex / octal) — reject rather than try to decode.
-  IF _host ~ '^[0-9]+$' THEN RETURN false; END IF;                  -- bare decimal integer host
+  -- Encoded / shorthand IPv4 shapes — reject rather than try to decode.
   IF _host ~ '0[xX]' THEN RETURN false; END IF;                     -- hex-encoded octet(s)
-  IF _host ~ '(^|\.)0[0-9]' THEN RETURN false; END IF;             -- octal (leading-zero) octet
+  IF _host ~ '(^|\.)0[0-9]' THEN RETURN false; END IF;              -- octal (leading-zero) octet
+  IF _host ~ '^[0-9]+$' THEN RETURN false; END IF;                  -- bare decimal integer host
 
-  -- Dotted-quad IPv4 literal: block loopback / private / link-local / unspecified.
+  -- A clean dotted-quad IPv4 literal: parse to inet and classify by value.
   IF _host ~ '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' THEN
-    _a := split_part(_host, '.', 1)::int;
-    _b := split_part(_host, '.', 2)::int;
-    IF _a = 127 OR _a = 10 OR _a = 0 THEN RETURN false; END IF;     -- loopback / private / 0.0.0.0/8
-    IF _a = 169 AND _b = 254 THEN RETURN false; END IF;            -- link-local incl. 169.254.169.254 metadata
-    IF _a = 172 AND _b BETWEEN 16 AND 31 THEN RETURN false; END IF; -- 172.16/12
-    IF _a = 192 AND _b = 168 THEN RETURN false; END IF;            -- 192.168/16
-    RETURN true;
+    BEGIN
+      _ip := _host::inet;
+    EXCEPTION WHEN OTHERS THEN
+      RETURN false;   -- e.g. an octet > 255
+    END;
+    RETURN public._mcp_inet_is_public(_ip);
   END IF;
+
+  -- Any OTHER all-numeric-and-dots host is a 2-/3-part shorthand or malformed IPv4 (e.g. 127.1,
+  -- 10.0.1) that resolvers expand to loopback/private — refuse it outright.
+  IF _host ~ '^[0-9.]+$' THEN RETURN false; END IF;
 
   -- A normal public https hostname.
   RETURN true;
@@ -152,7 +222,7 @@ REVOKE ALL ON FUNCTION public._mcp_endpoint_write_safe(text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public._mcp_endpoint_write_safe(text) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public._mcp_endpoint_write_safe(text) IS
-  'INT-099/A4: static write-time SSRF/endpoint validation for the MCP gateway endpoint setter. https only; rejects userinfo, localhost, *.local/*.internal/*.localhost, trailing-dot hosts, loopback/private/link-local IPv4 and IPv6 literals, IPv4-mapped IPv6 (::ffff:), and decimal/octal/hex-encoded IPv4. IMMUTABLE, pure, NO DNS — defense in depth ONLY; the authoritative runtime egress guard is _shared/mcp-client.ts at dispatch (hostname→private-IP resolution is not covered here).';
+  'INT-099/A4: static write-time SSRF/endpoint validation for the MCP gateway endpoint setter. https only; rejects userinfo, localhost, *.local/*.internal/*.localhost, trailing-dot hosts, encoded/shorthand IPv4 (decimal/hex/octal/2-3-part), and every non-public IP literal (parsed to inet and range-checked by value via _mcp_inet_is_public, so all notations are caught). IMMUTABLE, pure, NO DNS — defense in depth ONLY; the authoritative runtime egress guard is _shared/mcp-client.ts at dispatch (hostname→private-IP resolution is not covered here).';
 
 -- ─────────────────────────────────────────────────────────────────────────────────
 -- 2. Extend the ONE capability mapping with `mcp.connections.manage` (A2/D2/INT-089). Same signature,
@@ -200,9 +270,9 @@ REVOKE ALL ON FUNCTION public._mcp_caller_capabilities(uuid, uuid) FROM PUBLIC, 
 GRANT EXECUTE ON FUNCTION public._mcp_caller_capabilities(uuid, uuid) TO service_role;
 
 -- ─────────────────────────────────────────────────────────────────────────────────
--- 3. The endpoint setter. SECURITY DEFINER; the endpoint + FULL credential bundle are written in one
---    atomic UPDATE (the invariant), the change is audited in the SAME transaction (A1), and the return
---    is write-only (A3).
+-- 3. The endpoint setter. SECURITY DEFINER; authority resolved BEFORE the connection is read (§9);
+--    the endpoint + FULL credential bundle written in one atomic UPDATE (the invariant); provider
+--    state + tool catalog reset; the change audited in the SAME transaction (A1); return write-only (A3).
 -- ─────────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.set_mcp_connection_endpoint(
   _connection_id           uuid,
@@ -234,31 +304,28 @@ BEGIN
     RAISE EXCEPTION 'MCP_NO_CONNECTION' USING ERRCODE = '22023';
   END IF;
 
-  -- Serialize on the connection and read its current state (for the old hash + old auth_kind audit).
-  SELECT * INTO _conn FROM public.mcp_connections WHERE connection_id = _connection_id FOR UPDATE;
-  IF _conn.connection_id IS NULL THEN
-    RAISE EXCEPTION 'MCP_NO_CONNECTION' USING ERRCODE = '22023';
-  END IF;
-
-  -- D1: a legacy-projected row is owned by the legacy live path; never write its endpoint here (§57).
-  IF _conn.legacy_source IS NOT NULL THEN
-    RAISE EXCEPTION 'MCP_LEGACY_CONNECTION_READONLY: managed by the legacy connection path' USING ERRCODE = '42501';
-  END IF;
-
-  -- Tenant scope (server-side). _mcp_resolve_tenant(_tenant_id, false) resolves the caller's tenant and
-  -- raises on a foreign tenant for a non-owner; the connection must live in the resolved tenant. NOTE
-  -- (A2): a platform owner passes this scope for any tenant — it is NOT the authority; the capability
-  -- gate below is.
+  -- Authority FIRST (§9): resolve the caller's tenant server-side, then require the manage capability
+  -- for it — BEFORE any connection is read, so an unauthorized/cross-tenant caller cannot learn a
+  -- connection's existence or legacy status by a distinct error code. A NULL actor (service-role)
+  -- holds {} ⇒ refused (no service-role bypass); a platform owner who is not a tenant admin holds no
+  -- `manage` ⇒ refused (A2 — _mcp_resolve_tenant scopes but is not the authority).
   _tenant := public._mcp_resolve_tenant(_tenant_id, false);
-  IF _conn.tenant_id <> _tenant THEN
+  IF NOT ('mcp.connections.manage' = ANY(public._mcp_caller_capabilities(_tenant, auth.uid()))) THEN
+    RAISE EXCEPTION 'MCP_FORBIDDEN: mcp.connections.manage capability required' USING ERRCODE = '42501';
+  END IF;
+
+  -- Serialize on the connection. A missing connection AND a connection in another tenant are the SAME
+  -- uniform refusal (§9 — no existence oracle across tenants). IS DISTINCT FROM is NULL-safe.
+  SELECT * INTO _conn FROM public.mcp_connections WHERE connection_id = _connection_id FOR UPDATE;
+  IF _conn.connection_id IS NULL OR _conn.tenant_id IS DISTINCT FROM _tenant THEN
     RAISE EXCEPTION 'MCP_FORBIDDEN: connection not in tenant' USING ERRCODE = '42501';
   END IF;
 
-  -- Authority (A2/INT-089, fail closed): the manage capability for the connection's own tenant, actor =
-  -- auth.uid() (server-derived, never a request body). A NULL actor (service-role) holds {} ⇒ refused
-  -- (no service-role bypass); a platform owner who is not a tenant admin holds no `manage` ⇒ refused.
-  IF NOT ('mcp.connections.manage' = ANY(public._mcp_caller_capabilities(_conn.tenant_id, auth.uid()))) THEN
-    RAISE EXCEPTION 'MCP_FORBIDDEN: mcp.connections.manage capability required' USING ERRCODE = '42501';
+  -- D1: a legacy-projected row is owned by the legacy live path; never write its endpoint here (§57).
+  -- Reached only by an authorized admin of the connection's own tenant, so the distinct code is not a
+  -- cross-tenant oracle.
+  IF _conn.legacy_source IS NOT NULL THEN
+    RAISE EXCEPTION 'MCP_LEGACY_CONNECTION_READONLY: managed by the legacy connection path' USING ERRCODE = '42501';
   END IF;
 
   -- Shape validation.
@@ -277,8 +344,10 @@ BEGIN
 
   -- THE INVARIANT: one atomic UPDATE; every credential-bearing column is set from the arguments (new
   -- value or NULL), NONE carried forward. A changed endpoint therefore cannot inherit the old secret.
-  -- The AFTER-UPDATE trigger (20270322000000) deletes endpoint-bound approvals when the DECRYPTED
-  -- endpoint changes. status/health reset because the new endpoint is unverified until a probe.
+  -- provider_state is reset and (below) the discovered-tool catalog is cleared: no operational state
+  -- from the old endpoint carries onto the new one. The AFTER-UPDATE trigger (20270322000000) deletes
+  -- endpoint-bound approvals when the DECRYPTED endpoint changes. status/health reset because the new
+  -- endpoint is unverified until a probe.
   UPDATE public.mcp_connections SET
     server_url_ct           = public.platform_encrypt(_server_url),
     auth_kind               = _auth_kind,
@@ -291,6 +360,7 @@ BEGIN
     oauth_client_secret_ct  = CASE WHEN _oauth_client_secret IS NULL THEN NULL ELSE public.platform_encrypt(_oauth_client_secret) END,
     oauth_scopes            = _oauth_scopes,
     granted_scopes          = '{}',                       -- the old grant ceiling is void on re-bind
+    provider_state          = '{}'::jsonb,                -- old-endpoint operational state does not carry over
     access_token_expires_at = _access_token_expires_at,
     status                  = 'pending_verification',
     health                  = 'unknown',
@@ -298,6 +368,9 @@ BEGIN
     updated_by              = auth.uid(),
     updated_at              = now()
   WHERE connection_id = _connection_id;
+
+  -- The old endpoint's discovered tools are stale; a re-probe rediscovers the new endpoint's set.
+  DELETE FROM public.mcp_connection_tools WHERE connection_id = _connection_id;
 
   -- A1: durable audit in the SAME transaction — HASHES/ENUMS ONLY. A failure here aborts the txn, so
   -- the UPDATE above does not commit. actor_user_id = auth.uid() (a real tenant-admin: the capability
@@ -324,7 +397,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid) IS
-  'INT-099 (MCP PR-2): the endpoint setter for the Connected MCP Gateway. Writes a connection''s endpoint + FULL credential bundle in one atomic UPDATE, sourcing every credential column from the arguments (never carrying the old ciphertext forward) so a changed endpoint can never inherit the old secret; the derived endpoint_hash recomputes and the 20270322000000 trigger revokes endpoint-bound consent on a real change. REFUSES a legacy-projected row (D1). Authority = the mcp.connections.manage capability for the connection''s tenant via _mcp_caller_capabilities (owner/tenant-admin only; platform owner EXCLUDED, A2), server-derived actor auth.uid(), fail closed, no service-role bypass. Records a hashes-only audit into paige_audit_log in the same transaction (A1). Returns only connection_id/status/endpoint_hash/auth_token_last4 (A3). Static https/SSRF URL validation only — runtime egress SSRF stays in mcp-client.ts (A4). EXECUTE to authenticated only (A5).';
+  'INT-099 (MCP PR-2): the endpoint setter for the Connected MCP Gateway. Resolves authority BEFORE reading the connection (§9): the mcp.connections.manage capability for the caller''s server-resolved tenant via _mcp_caller_capabilities (owner/tenant-admin only; platform owner EXCLUDED, A2), fail closed, no service-role bypass; a missing or foreign-tenant connection is a uniform MCP_FORBIDDEN. REFUSES a legacy-projected row (D1). Writes the endpoint + FULL credential bundle in one atomic UPDATE, sourcing every credential column from the arguments (never carrying the old ciphertext forward) so a changed endpoint can never inherit the old secret; resets provider_state, deletes the stale tool catalog, and the 20270322000000 trigger revokes endpoint-bound consent on a real change. Records a hashes-only audit into paige_audit_log in the same transaction (A1). Returns only connection_id/status/endpoint_hash/auth_token_last4 (A3). Static https + value-based IP SSRF URL validation only — runtime egress SSRF stays in mcp-client.ts (A4). EXECUTE to authenticated only (A5).';
 
 REVOKE ALL ON FUNCTION public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid) TO authenticated;
