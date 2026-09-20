@@ -809,9 +809,12 @@ console.log("\n— executable-facet gate: the loader refuses non-MCP-drivable ro
 console.log("\n— owner_only visibility (INT-082) —");
 {
   const RESTRICTED = authorityMod.MCP_RESTRICTED_CAPABILITY;
-  const CAP = { kind: "capabilities", capabilities: [RESTRICTED] };
-  const NO_CAP = { kind: "capabilities", capabilities: [] };
-  const OTHER_CAP = { kind: "capabilities", capabilities: ["some.other.capability"] };
+  // Codex P2: the capabilities authority is BOUND to the tenant it was resolved for. TENANT is the
+  // owner_only connection's tenant below, so these are bound to it; WRONG_TENANT_CAP is bound elsewhere.
+  const CAP = { kind: "capabilities", tenantId: TENANT, capabilities: [RESTRICTED] };
+  const NO_CAP = { kind: "capabilities", tenantId: TENANT, capabilities: [] };
+  const OTHER_CAP = { kind: "capabilities", tenantId: TENANT, capabilities: ["some.other.capability"] };
+  const WRONG_TENANT_CAP = { kind: "capabilities", tenantId: "ten-other", capabilities: [RESTRICTED] };
   const SYSTEM = { kind: "system", reason: "paige-headless: nightly digest run" };
   const SYSTEM_NO_REASON = { kind: "system", reason: "" };
 
@@ -853,6 +856,11 @@ console.log("\n— owner_only visibility (INT-082) —");
   check("owner_only + capabilities lacking the restricted cap → refused owner_only_forbidden", ooNoCap.outcome === "refused" && ooNoCap.code === "owner_only_forbidden", JSON.stringify(ooNoCap));
   const ooOtherCap = await runOO("owner_only", { toolName: "list_records", args: {}, mode: "execute" }, OTHER_CAP);
   check("owner_only + a DIFFERENT capability → refused owner_only_forbidden (the exact capability is required)", ooOtherCap.outcome === "refused" && ooOtherCap.code === "owner_only_forbidden", JSON.stringify(ooOtherCap));
+  // Codex P2: the restricted capability RESOLVED FOR ANOTHER TENANT must NOT authorize this run, even
+  // though the connection is the caller's own tenant (foreign_tenant already passed). This is the
+  // workspace-switch cache/mix the tenant-binding closes. LOAD-BEARING for the tenant-bind fix.
+  const ooWrongTenantCap = await runOO("owner_only", { toolName: "list_records", args: {}, mode: "execute" }, WRONG_TENANT_CAP);
+  check("owner_only + the restricted cap RESOLVED FOR ANOTHER TENANT → refused owner_only_forbidden (capability is tenant-bound)", ooWrongTenantCap.outcome === "refused" && ooWrongTenantCap.code === "owner_only_forbidden", JSON.stringify(ooWrongTenantCap));
 
   // THE INT-089 CASE: a caller holding the capability — REGARDLESS of role (a "delegated non-owner grant
   // holder") — is ALLOWED. The runner authorizes on the capability, never a role literal.
@@ -894,22 +902,30 @@ console.log("\n— owner_only visibility (INT-082) —");
   const ooMutCapNoApproval = await runOO("owner_only", { toolName: "send_message", args: {}, mode: "execute" }, CAP);
   check("owner_only mutation + the capability but NO approval → approval_required (owner_only passed, then the approval gate)", ooMutCapNoApproval.outcome === "refused" && ooMutCapNoApproval.code === "approval_required", JSON.stringify(ooMutCapNoApproval));
 
-  // (c) makeRpcCapabilityResolver maps the _mcp_caller_capabilities RPC → capabilities; fails closed on error.
+  // (c) makeRpcCapabilityResolver maps the _mcp_caller_capabilities RPC → a tenant-BOUND capabilities
+  // authority (Codex P2: correct-by-construction — it binds the caps to the tenant it resolved for, so
+  // the wiring cannot forget); fails closed to empty caps on error.
   const capAdmin = (data, error = null) => ({ rpc: async (fn) => (fn === "_mcp_caller_capabilities" ? { data, error } : { data: null, error: null }) });
   const resolver = (data, error) => authorityMod.makeRpcCapabilityResolver(capAdmin(data, error));
   const resolvedOwner = await resolver([RESTRICTED])({ tenantId: TENANT, actorUserId: "u-1" });
-  check("resolver: maps _mcp_caller_capabilities output to the capability list", Array.isArray(resolvedOwner) && resolvedOwner.includes(RESTRICTED));
+  check("resolver: returns a tenant-bound capabilities authority (kind, tenantId, and the resolved caps)",
+    resolvedOwner.kind === "capabilities" && resolvedOwner.tenantId === TENANT && resolvedOwner.capabilities.includes(RESTRICTED),
+    JSON.stringify(resolvedOwner));
   const resolvedErr = await resolver(null, { message: "boom" })({ tenantId: TENANT, actorUserId: "u-1" });
-  check("resolver: fails closed to [] on an RPC error (an unresolvable authority grants nothing)", Array.isArray(resolvedErr) && resolvedErr.length === 0);
-  const resolvedCaps = await resolver([RESTRICTED])({ tenantId: TENANT, actorUserId: "u-1" });
-  const ooResolved = await runOO("owner_only", { toolName: "list_records", args: {}, mode: "execute" }, { kind: "capabilities", capabilities: resolvedCaps });
-  check("owner_only + authority built from the resolver's output → ALLOWED (read_observed)", ooResolved.outcome === "read_observed", JSON.stringify(ooResolved));
+  check("resolver: fails closed to empty caps on an RPC error (still tenant-bound, grants nothing)",
+    resolvedErr.kind === "capabilities" && resolvedErr.tenantId === TENANT && resolvedErr.capabilities.length === 0,
+    JSON.stringify(resolvedErr));
+  const resolvedAuthority = await resolver([RESTRICTED])({ tenantId: TENANT, actorUserId: "u-1" });
+  const ooResolved = await runOO("owner_only", { toolName: "list_records", args: {}, mode: "execute" }, resolvedAuthority);
+  check("owner_only + the authority the resolver produced (tenant-bound) → ALLOWED (read_observed)", ooResolved.outcome === "read_observed", JSON.stringify(ooResolved));
 
   // LOAD-BEARING (§39): removing the runner's `if (canon.visibility === "owner_only") …` gate flips the
-  // refusals below to runs; removing the "with a reason" requirement flips ooSystemNoReason to a run.
-  check("LOAD-BEARING: the owner_only gate + the system-reason requirement are what produce these refusals",
+  // refusals below to runs; removing the "with a reason" requirement flips ooSystemNoReason to a run;
+  // removing the tenant-bind (Codex P2) flips ooWrongTenantCap to a run.
+  check("LOAD-BEARING: the owner_only gate + the system-reason requirement + the tenant-bind produce these refusals",
     ooNoAuthExec.code === "owner_only_forbidden" && ooNoCap.code === "owner_only_forbidden"
       && ooMutNoCap.code === "owner_only_forbidden" && ooSystemNoReason.code === "owner_only_forbidden"
+      && ooWrongTenantCap.code === "owner_only_forbidden"
       && ooCapExec.outcome === "read_observed" && tenNoAuth.outcome === "read_observed");
 }
 

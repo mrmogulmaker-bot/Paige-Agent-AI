@@ -202,7 +202,10 @@ export async function runConnectionCapability(
   // refused. The check is on the CAPABILITY, never a role literal — a delegated grant added to the
   // server-side mapping (`_mcp_caller_capabilities`) is honored here with no code change (INT-089).
   if (canon.visibility === "owner_only") {
-    const restricted = resolveRestrictedUse(req.callerAuthority);
+    // The capability authority is checked for the restricted capability AND bound to the loaded
+    // connection's tenant via `sameId` (Codex P2) — a cap resolved for another tenant cannot authorize
+    // this run even after `foreign_tenant` proved the connection is the caller's own tenant.
+    const restricted = resolveRestrictedUse(req.callerAuthority, canon.tenantId, sameId);
     if (!restricted.allowed) return await emit("refused", "owner_only_forbidden");
     // Explicit system authority: record its reason for attribution (see the emit caveat above).
     if (restricted.systemReason) authorityDetail = { restricted_use: "system", system_authority_reason: restricted.systemReason };
