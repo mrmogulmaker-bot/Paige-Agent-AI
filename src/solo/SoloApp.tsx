@@ -9,6 +9,7 @@ import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { supabase } from "@/integrations/supabase/client";
 import { SoloSetupReadinessNotice } from "./SoloSetupReadinessNotice";
+import { soloShellRole } from "./shell-role";
 import { isSoloSetupComplete } from "@/components/auth/RequireSetupComplete";
 import { branchBySlug, branchByKey, branchPath, defaultBranchSlug } from "@/lib/routing/tierBranches";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
@@ -202,35 +203,39 @@ const showSetupReminder =
 // Fail-closed: on RPC error the primary-owner fact stands alone.
 const isPrimaryOwner =
   activeTenant?.owner_user_id != null && activeTenant.owner_user_id === activeUserId;
-// Codex a1c5cfd0 P2: the probe result is TENANT+USER-KEYED so an account
-// switch can never surface the previous workspace's editor verdict — the
-// derived value is false the instant the identity changes, before any RPC
-// resolves (and stays false if one hangs).
-const [editorProbe, setEditorProbe] = React.useState<{ tenant: string; user: string; ok: boolean } | null>(null);
+// Codex a1c5cfd0 P2 (kept): the probe result is TENANT+USER-KEYED so an
+// account switch can never surface the previous workspace's verdict — the
+// derived values are false the instant the identity changes, before any RPC
+// resolves (and stay false if one hangs). INT-071 owner-label repair: the
+// probe now carries the owner and admin verdicts SEPARATELY and runs
+// whenever the shell has a resolved identity (the Owner/Team label needs the
+// owner verdict even when Setup is complete) — still one pair of
+// has_tenant_role calls per tenant+user, never per render.
+const [roleProbe, setRoleProbe] = React.useState<{ tenant: string; user: string; owner: boolean; admin: boolean } | null>(null);
 const isMembershipEditor =
-  editorProbe !== null
-  && editorProbe.tenant === activeTenantId
-  && editorProbe.user === activeUserId
-  && editorProbe.ok;
-const editProbeTenant = showSetupReminder ? activeTenantId : null;
-const editProbeUser = showSetupReminder ? activeUserId : null;
+  roleProbe !== null
+  && roleProbe.tenant === activeTenantId
+  && roleProbe.user === activeUserId
+  && (roleProbe.owner || roleProbe.admin);
+const probeTenant = activeTenantId;
+const probeUser = activeUserId;
 React.useEffect(() => {
   let alive = true;
-  if (!editProbeTenant || !editProbeUser) {
-    setEditorProbe(null);
+  if (!probeTenant || !probeUser) {
+    setRoleProbe(null);
     return () => { alive = false; };
   }
   void (async () => {
     // One probe per role: has_tenant_role answers a single _role, and the
     // owner arm already covers both membership-owner shapes.
     const [owner, admin] = await Promise.all([
-      supabase.rpc("has_tenant_role", { _user_id: editProbeUser, _tenant_id: editProbeTenant, _role: "owner" }),
-      supabase.rpc("has_tenant_role", { _user_id: editProbeUser, _tenant_id: editProbeTenant, _role: "admin" }),
+      supabase.rpc("has_tenant_role", { _user_id: probeUser, _tenant_id: probeTenant, _role: "owner" }),
+      supabase.rpc("has_tenant_role", { _user_id: probeUser, _tenant_id: probeTenant, _role: "admin" }),
     ]);
-    if (alive) setEditorProbe({ tenant: editProbeTenant, user: editProbeUser, ok: owner.data === true || admin.data === true });
-  })().catch(() => { if (alive) setEditorProbe({ tenant: editProbeTenant, user: editProbeUser, ok: false }); });
+    if (alive) setRoleProbe({ tenant: probeTenant, user: probeUser, owner: owner.data === true, admin: admin.data === true });
+  })().catch(() => { if (alive) setRoleProbe({ tenant: probeTenant, user: probeUser, owner: false, admin: false }); });
   return () => { alive = false; };
-}, [editProbeTenant, editProbeUser]);
+}, [probeTenant, probeUser]);
 const canFinishSetup = isPrimaryOwner || isMembershipEditor;
 const soloSetupHref = showSetupReminder && canFinishSetup
   ? `/solo/${activeTenant!.account_number}/settings/setup`
@@ -343,10 +348,15 @@ const contextualNavigation=route==='settings'&&urlDriven?{
   activeId:settingsActive,
   items:SOLO_SETTINGS_DESTINATIONS.filter(item=>item.key!=='vault'||canShowVaultNavigation(vaultAccess)).map(item=>({id:item.key,label:item.label,href:`/solo/${urlAccount}/settings/${item.key}${location.search}`,icon:SETTINGS_ICONS[item.key]})),
 }:undefined;
-// Presentation only; authorization stays in the owning server/RLS contracts.
-// `owner_user_id` and the authenticated subject both come from useTenantContext,
-// so a URL/account name can never manufacture the visible Owner claim.
-const shellRole = activeUserId != null && activeTenant?.owner_user_id === activeUserId ? "admin" : "coach";
+// INT-071 census repair — presentation only; authorization stays in the
+// owning server/RLS contracts. The shell's Owner/Team label derives from
+// authoritative membership ownership (the tenant+user-keyed has_tenant_role
+// 'owner' verdict), NEVER from the display-only tenants.owner_user_id
+// pointer. Fails to "coach" (Team workspace) while the verdict is unresolved
+// OR keyed to a previous identity, so an account switch can never show the
+// prior workspace's label and a URL/account name can never manufacture the
+// visible Owner claim.
+const shellRole = soloShellRole(roleProbe, activeTenantId, activeUserId);
 return <TenantCommandCenterShell
 accountName={accountContext.accountName}
 accountType={accountContext.accountType}
