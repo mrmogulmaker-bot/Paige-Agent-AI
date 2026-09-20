@@ -84,6 +84,17 @@ A UI feature is not working merely because it renders, has fixtures, passes a st
 
 Before opening or closing a PR, merging, deploying, assigning a version, or describing a change to a customer, read `docs/doctrine/release-governance-and-customer-update-policy.md`. Record the exact internal build identity and release channel for every delivery. Create a customer release name/version only for a coherent owner-visible outcome that passes the policy's announcement gate. Never turn a commit, preview, prototype, shell, listed provider, or `PROOF OWED` capability into a `LIVE` customer claim.
 
+## Merge gate
+
+Marking a PR **Ready for review auto-triggers a repository Codex review on the exact head.** After marking Ready:
+
+1. **Wait for that auto-triggered exact-head review to COMPLETE before merging.** Never merge while it is running.
+2. **Disposition every finding** — fix it, or record a reasoned decline on the thread. If you push a fix, the head changed: repeat from step 1 **once**. If a further round would be needed, stop and escalate rather than merging.
+3. **"Exactly one review" means one REQUESTED review plus the auto-triggered exact-head review.** Never merge ahead of either.
+4. **Docs-only closeout PRs wait for the auto review too** — they are small and it is fast.
+
+This is in addition to every existing gate (exact-head required CI green, mergeability, evidence). It exists because a PR marked Ready and merged seconds later has had real defects — including a P1 — surfaced by the auto review only after merge.
+
 ## Shipped Delivery Log
 
 At workstream startup and before PR preparation, read `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` Section 4.0. After every merge to `main`, append one verified row to its Shipped Delivery Log in the same closeout change: exact PR and main commit, what shipped and why, actual delivery/proof boundary, canonical evidence, and customer-release eligibility. A workstream may not be reported complete until that row exists, or its closeout records an explicit `N/A` because the PR did not reach `main`. Never create a second shipped log, delivery ledger, master file, roadmap, or program registry.
