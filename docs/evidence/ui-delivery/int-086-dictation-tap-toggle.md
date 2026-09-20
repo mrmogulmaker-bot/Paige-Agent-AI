@@ -7,7 +7,7 @@ MATERIAL_FLOW_CHANGE: YES: Dictation changes from press-and-hold/release to one 
 FLOW_PROTOTYPE: PASS: The installed Flow Prototype skill and `references/flow-ui.md` were executed against local artifact `work/int-086-dictation-flow-prototype.html`; the owner decision dated 2026-09-20 explicitly requires tap-to-start, persistent recording, and tap-to-stop.
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: An authenticated PAIGE Chat user can dictate a complete utterance without holding the microphone control; the primary action is tap once to record and tap the same obvious control again to stop.
 VISUAL_DIRECTION: PASS: Existing PAIGE Chat composer geometry and tokens are preserved; the only visible delta is a persistent, truthful icon and short state label for requesting, connecting, listening, stopping, safety-stop, or error.
-AUTOMATED_EVIDENCE: PASS: `npx vitest run src/components/voice/DictationMicButton.test.tsx` passes 20/20 after five new assertions failed on the previous shape; covered tap start/stop, pointer-release during startup, silence guard, maximum duration, cleanup, permission refusal, and append-at-cursor behavior.
+AUTOMATED_EVIDENCE: PASS: `npx vitest run src/components/voice/DictationMicButton.test.tsx` passes 22/22 after seven new assertions failed on the previous shapes; covered tap start/stop, pointer-release during startup, stop-during-connect flush, silence guard, maximum duration, cleanup, permission refusal, and append-at-preserved-cursor behavior.
 STATIC_EVIDENCE: PASS: `npm run ci:tsc` passes with baseline 12/current 12; `npm run build` passes with 5,706 modules; `git diff --check` passes; `impeccable detect --json` returns `[]`.
 RENDERED_EVIDENCE: PASS: Deterministic light-theme renders of the actual `DictationMicButton` are stored under `docs/evidence/ui-delivery/assets/int-086-dictation-toggle/` at 1536x770, 1366x768, 1024x768, and 900x1000 in PAIGE-closed and PAIGE-open/listening states; `render-results.json` records zero horizontal overflow and no page overflow at all four sizes.
 BEHAVIORAL_EVIDENCE: PASS: A local Chromium drive mounted the actual button with a deterministic hook seam, drove click start and click stop, retained focus after each transition, and confirmed `state=listening` with `Listening — tap to stop`; unit tests drive the real hook's media, WebSocket, timer, insertion, and teardown behavior.
@@ -35,13 +35,13 @@ ACCEPTANCE_CRITERIA: On the authenticated production platform, tap the mic once 
 MOTION_PURPOSE: The existing pulse communicates live capture only; reduced-motion removes the pulse while the icon, status label, and pressed state preserve the same information.
 PROTECTED_SEAMS: Impacted and tested: dictation media capture, Deepgram WebSocket startup/buffering, transcript insertion, composer scope-change cleanup, and shared chat-wrapper integration. Explicitly unaffected: `paige-dictate`, `stt-router.ts`, `paige-tts`, `paige-live-session`, `paige-ai-chat/index.ts`, Live Conversation, and message-send error wording.
 
-INTERNAL_BUILD_IDENTITY: d9b681520ad8620aaa877dc26ad34cf58ece6221; deployment=none-pre-merge; environment=local; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=focused-tests+tsc-ratchet+build+render-results; current-main-integration=af2a36a56a167270f4abe2efd2f194860721552b
+INTERNAL_BUILD_IDENTITY: e03df45fb09cbc2493119a668eddc7d99ceb2ee6; deployment=none-pre-merge; environment=local; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=focused-tests+tsc-ratchet+build+render-results+codex-review-disposition; current-main-integration=7747a755d3e69898b98704232235dac9aca8df10
 RELEASE_CHANNEL: development: draft PR #1290; owner standing authority INT-083 permits guarded merge only after exact-head CI and one clean or dispositioned Codex review; production monitoring and recovery follow the Vercel deployment
 RELEASE_CLASSIFICATION: patch: restores the intended dictation interaction and reliability without provider, data-model, entitlement, or architecture change
 CUSTOMER_RELEASE_IDENTITY: none: internal PAIGE Chat UX repair; no named customer release is proposed
 RELEASE_NOTE_REQUIRED: NO: bounded repair of an existing control with no new capability or provider
 RELEASE_TRUTH_BOUNDARY: PROOF OWED: local automated/static/rendered behavior is proven; authenticated production microphone/provider operation is not yet proven
-RELEASE_RECOVERY: position=revert PR #1290's merge commit if deployment verification exposes a regression, otherwise forward-fix within INT-086; reference=code-head-d9b681520ad8620aaa877dc26ad34cf58ece6221
+RELEASE_RECOVERY: position=revert PR #1290's merge commit if deployment verification exposes a regression, otherwise forward-fix within INT-086; reference=code-head-e03df45fb09cbc2493119a668eddc7d99ceb2ee6
 
 ## Scope and collisions
 
@@ -57,13 +57,13 @@ The Solo user opens PAIGE Chat and taps the microphone. The control first says i
 
 ## Evidence index
 
-- Code head: `d9b681520ad8620aaa877dc26ad34cf58ece6221`; current-main integration: `af2a36a56a167270f4abe2efd2f194860721552b`; PR: #1290.
-- Failing-first: five new assertions failed before implementation; focused baseline was 14/14 and repaired suite is 20/20.
-- Load-bearing mutation: temporarily restoring pointer-release stop made `keeps recording after release` fail (`recorderStops` expected 0, received 1); restoration returns 20/20 green.
+- Code head: `e03df45fb09cbc2493119a668eddc7d99ceb2ee6`; current-main integration: `7747a755d3e69898b98704232235dac9aca8df10`; PR: #1290.
+- Failing-first: five initial assertions failed before implementation, then both Codex-review regressions failed before their repair: stop-during-connect emitted `stop` before provider readiness, and caret insertion produced `hello world PAIGE` instead of `hello PAIGE world`; focused baseline was 14/14 and repaired suite is 22/22.
+- Load-bearing mutation: temporarily restoring pointer-release stop made `keeps recording after release` fail (`recorderStops` expected 0, received 1); restoration returns 22/22 green. The two review-regression tests also fail when their provider-ready flush or composer-ref fixes are removed.
 - Commands: `npx vitest run src/components/voice/DictationMicButton.test.tsx`; `npm run ci:tsc`; `npm run build`; `git diff --check`; `impeccable detect --json`.
 - Render metadata: `assets/int-086-dictation-toggle/render-results.json`; Chromium, light theme, reduced-motion preference, deterministic local hook seam, 2026-09-20. The renders are layout/state evidence, not authenticated/provider evidence.
 - Provider/data boundary: no production provider call, no customer identity, no customer content, no preference/data write, and no Edge Function edit.
 
 ## Review and limitations
 
-Exactly one exact-head Codex review is required after this evidence commit and CI. A code finding stops delivery; one evidence-wording finding may be corrected once without a second review under the coordinator's rule. Authenticated production, real microphone/Deepgram, Safari/macOS, iPhone, zoom/reflow, deployment identity, and owner acceptance remain explicitly unverified until the post-merge gate.
+Exactly one Codex review ran on head `7fe41bc20d93683dcaf04118fc758326c47f020f` and returned two valid code findings: **P1** flush buffered speech before stopping during connection, and **P2** preserve the caret across intervening toolbar controls. Both were reproduced failing-first and fixed in code head `e03df45fb09cbc2493119a668eddc7d99ceb2ee6`; the focused suite is 22/22. Per the coordinator's exactly-one-review rule, no second review is requested. Authenticated production, real microphone/Deepgram, Safari/macOS, iPhone, zoom/reflow, deployment identity, and owner acceptance remain explicitly unverified until the post-merge gate.
