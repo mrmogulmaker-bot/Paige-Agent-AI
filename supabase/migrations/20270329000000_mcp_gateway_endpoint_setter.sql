@@ -1,6 +1,13 @@
 -- ============================================================================
 -- Connected MCP Gateway — the endpoint setter (INT-099, MCP PR-2).
 --
+-- THE PRINCIPLE (coordinator ruling, round 3). "A bundle the setter accepts must be one the runtime
+-- loads as usable. The setter never destructively replaces a working connection with an unusable one."
+-- Concretely, every credential bundle this setter ACCEPTS is one that authFromSecret + authUsable
+-- (_shared/mcp-client.ts) report as usable; every runtime-unusable credential shape is REJECTED before
+-- the destructive reset. That parity is proven both here (pgTAP bundle matrix) and on the TS side
+-- (scripts/mcp-gateway-smoke.mjs), under identical case names, so the two can never silently diverge.
+--
 -- THE INVARIANT (one, this PR). A connection's endpoint and its credential are written in ONE
 -- atomic UPDATE whose credential-bearing columns are ALWAYS sourced from the call arguments (a new
 -- value, or NULL) and NEVER carried forward from the prior row. So a changed endpoint can never
@@ -85,14 +92,28 @@
 -- A5 — Grants: EXECUTE to `authenticated` ONLY (revoked from PUBLIC + anon). _mcp_caller_capabilities
 --      stays service_role-only and is called from inside this SECURITY DEFINER function.
 --
--- A6 — CREDENTIAL-BUNDLE validation (round-2). The supplied credential columns must match auth_kind,
---      checked BEFORE any destructive write so a bundle that could never authenticate never clears
---      state or lands a half-written credential: header → auth_header_name + token; bearer / api_key →
---      token; oauth → oauth_issuer + oauth_client_id + (token OR refresh_token) (client_secret optional
---      for PKCE / public clients); url / none → NO credential material at all (any stray token / header
---      name / refresh / oauth field is rejected). Text presence is btrim(COALESCE(...)) so a
---      whitespace-only value counts as absent. Closed code MCP_BAD_CREDENTIAL_BUNDLE (22023); never
---      echoes a value.
+-- A6 — CREDENTIAL-BUNDLE validation (round-3, F1/F2/F3 — enforcing THE PRINCIPLE above). The supplied
+--      credential columns must match auth_kind AND be runtime-usable, checked BEFORE any destructive
+--      write so a bundle that could never authenticate never clears state or lands a half-written
+--      credential. Per kind: (required) + (no stray fields from another scheme):
+--        • header  → token + a header_name that public._mcp_header_name_usable accepts (F1: the runtime's
+--          RFC 9110 token grammar AND reserved-name set, mirrored from mcp-client.ts:77/:63-72); reject
+--          refresh / any oauth-* field.
+--        • bearer / api_key → token; reject header_name / refresh / any oauth-* field.
+--        • oauth → token + oauth_issuer + oauth_client_id (F3: token REQUIRED — the runtime has no
+--          refresh step, so a refresh-only bundle loads unusable; refresh_token / client_secret /
+--          scopes / expiry are optional-additional); reject a header_name.
+--        • url / none → NO credential material at all (F2: any stray token / header_name / refresh /
+--          oauth-* field is rejected).
+--      Text presence is btrim(COALESCE(...)) so a whitespace-only value counts as absent. Closed code
+--      MCP_BAD_CREDENTIAL_BUNDLE (22023); never echoes a value. FORWARD-CONSTRAINT (F3): refresh-only
+--      OAuth becomes acceptable only when the gateway grows a refresh step that mints a token before
+--      first use — a wiring-lane item (INT-083), not this setter.
+--
+-- A7 — AUDIT credential_changed (round-3, F4) is derived from EVERY credential-bearing field
+--      (auth_kind, header name, token, refresh token, oauth issuer / client_id / client_secret, scopes,
+--      expiry), comparing DECRYPTED values in-definer — so a same-URL rotation of any of them reads
+--      true, and the receipt is faithful. The plaintext is never logged; only the boolean is recorded.
 --
 -- D2 — `mcp.connections.manage` scope: it authorizes CREATE, CONFIGURE and ROTATE of a connection
 --      (this setter is its first consumer — configure/rotate the endpoint + credential). It EXCLUDES
@@ -108,6 +129,7 @@
 --
 -- ROLLBACK:
 --   DROP FUNCTION IF EXISTS public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid);
+--   DROP FUNCTION IF EXISTS public._mcp_header_name_usable(text);
 --   DROP FUNCTION IF EXISTS public._mcp_endpoint_write_safe(text);
 --   DROP FUNCTION IF EXISTS public._mcp_inet_is_public(inet);
 --   -- and restore public._mcp_caller_capabilities(uuid, uuid) to its 20270328000000 body (drop the
@@ -269,6 +291,45 @@ COMMENT ON FUNCTION public._mcp_endpoint_write_safe(text) IS
   'INT-099/A4: static write-time SSRF/endpoint validation for the MCP gateway endpoint setter. https only; rejects userinfo, localhost, *.local/*.internal/*.localhost, trailing-dot hosts, encoded/shorthand IPv4 (decimal/hex/octal/2-3-part), and every non-public IP literal (parsed to inet and range-checked by value via _mcp_inet_is_public, so all notations are caught). IMMUTABLE, pure, NO DNS — defense in depth ONLY; the authoritative runtime egress guard is _shared/mcp-client.ts at dispatch (hostname→private-IP resolution is not covered here).';
 
 -- ─────────────────────────────────────────────────────────────────────────────────
+-- 1c. A custom `header`-auth name the transport can actually PRESENT (round-3, F1). MIRRORS the runtime
+--     gate EXACTLY so an accepted header bundle is one the loader loads as usable — never a destructive
+--     rebind that strands a connection the runtime then refuses. Kept byte-for-byte in step with
+--     `_shared/mcp-client.ts`:
+--       • grammar: mcp-client.ts:77  `HEADER_NAME_RE = /^[A-Za-z0-9!#$%&'*+.^_\`|~-]+$/`  (RFC 9110 token)
+--       • reserved set: mcp-client.ts:63-72 `RESERVED_HEADERS` (compared case-insensitively at :82)
+--     If either drifts, this and `isUsableHeaderName` disagree and a header the setter accepts is one
+--     `authUsable` refuses — exactly the class this PR closes. IMMUTABLE, pure.
+-- ─────────────────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public._mcp_header_name_usable(_name text)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+BEGIN
+  IF _name IS NULL OR _name = '' THEN RETURN false; END IF;
+  -- RFC 9110 token grammar (mirror of HEADER_NAME_RE @ mcp-client.ts:77). The bracket carries every
+  -- tchar: A-Za-z0-9 and ! # $ % & ' * + - . ^ _ ` | ~  ('' is one escaped quote; the trailing - is a
+  -- literal hyphen).
+  IF _name !~ '^[A-Za-z0-9!#$%&''*+.^_`|~-]+$' THEN RETURN false; END IF;
+  -- Reserved headers this transport sets itself (mirror of RESERVED_HEADERS @ mcp-client.ts:63-72),
+  -- compared case-insensitively (mcp-client.ts:82 lowercases before the set lookup).
+  IF lower(_name) IN (
+       'authorization','content-type','accept','mcp-protocol-version','mcp-session-id',
+       'host','content-length','connection','transfer-encoding'
+     ) THEN
+    RETURN false;
+  END IF;
+  RETURN true;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public._mcp_header_name_usable(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public._mcp_header_name_usable(text) TO authenticated, service_role;
+
+COMMENT ON FUNCTION public._mcp_header_name_usable(text) IS
+  'INT-099/F1: TRUE only for a custom header-auth name the MCP transport can present — a valid RFC 9110 token AND not a reserved header. EXACT mirror of isUsableHeaderName (_shared/mcp-client.ts:81): grammar HEADER_NAME_RE (:77) + case-insensitive RESERVED_HEADERS (:63-72, :82). Cited so drift is traceable. Ensures a header bundle the setter accepts is one the runtime loads as usable (never a destructive rebind that strands the connection). IMMUTABLE, pure.';
+
+-- ─────────────────────────────────────────────────────────────────────────────────
 -- 2. Extend the ONE capability mapping with `mcp.connections.manage` (A2/D2/INT-089). Same signature,
 --    CREATE OR REPLACE. `use_restricted` is UNCHANGED (owner/admin/platform-owner). `manage` is added
 --    for the OWNER / TENANT-ADMIN of THIS tenant ONLY — a platform owner is EXCLUDED. Append order is
@@ -344,6 +405,8 @@ DECLARE
   _new_hash           text;
   _new_last4          text;
   _old_token          text;      -- decrypted in-definer ONLY to derive _credential_changed; NEVER logged
+  _old_refresh        text;      -- ditto
+  _old_client_secret  text;      -- ditto
   _endpoint_changed   boolean;
   _credential_changed boolean;
   _approvals_revoked  integer := 0;
@@ -385,31 +448,56 @@ BEGIN
     RAISE EXCEPTION 'MCP_BAD_ENDPOINT' USING ERRCODE = '22023';   -- closed code; never echoes the URL
   END IF;
 
-  -- Credential-bundle validation (round-2 item 2). The supplied credential columns MUST match the
-  -- auth_kind, validated BEFORE any destructive write, so a bundle that could never authenticate never
-  -- triggers the reset (tools/approvals/state cleared) and never lands a half-written credential. A
-  -- closed code (MCP_BAD_CREDENTIAL_BUNDLE) that NEVER echoes a value; text presence is btrim/COALESCE
-  -- so a whitespace-only field counts as absent.
-  --   header         → auth_header_name + a token
-  --   bearer/api_key → a token
-  --   oauth          → issuer + client_id + (a token OR a refresh_token); client_secret optional (PKCE)
-  --   url / none      → NO credential material at all (any stray token/header/oauth/refresh field rejected)
+  -- Credential-bundle validation (round-3, F1/F2/F3). PRINCIPLE: a bundle the setter ACCEPTS must be
+  -- one the runtime loads as USABLE (authFromSecret + authUsable, _shared/mcp-client.ts) — the setter
+  -- never destructively replaces a working connection with an unusable one. Validated BEFORE any
+  -- destructive write, so a bundle that could never authenticate never clears state or lands a
+  -- half-written credential. Two rules per kind: (a) the fields the runtime REQUIRES; (b) NO STRAY
+  -- fields from another scheme (nothing the runtime would ignore is stored). Closed code
+  -- MCP_BAD_CREDENTIAL_BUNDLE; NEVER echoes a value; text presence via btrim(COALESCE(...)).
   IF _auth_kind = 'header' THEN
-    IF btrim(COALESCE(_auth_header_name, '')) = '' OR btrim(COALESCE(_auth_token, '')) = '' THEN
+    -- runtime: authFromSecret needs auth_token + auth_header_name; authUsable needs a presentable name
+    -- (F1). Reject a missing token, a missing name, or a name the transport cannot present.
+    IF btrim(COALESCE(_auth_token, '')) = ''
+       OR btrim(COALESCE(_auth_header_name, '')) = ''
+       OR NOT public._mcp_header_name_usable(_auth_header_name) THEN
+      RAISE EXCEPTION 'MCP_BAD_CREDENTIAL_BUNDLE' USING ERRCODE = '22023';
+    END IF;
+    -- F2: header's scheme is {token, header_name}; refresh/oauth-* belong to another scheme.
+    IF btrim(COALESCE(_refresh_token, '')) <> '' OR btrim(COALESCE(_oauth_issuer, '')) <> ''
+       OR btrim(COALESCE(_oauth_client_id, '')) <> '' OR btrim(COALESCE(_oauth_client_secret, '')) <> ''
+       OR _oauth_scopes IS NOT NULL OR _access_token_expires_at IS NOT NULL THEN
       RAISE EXCEPTION 'MCP_BAD_CREDENTIAL_BUNDLE' USING ERRCODE = '22023';
     END IF;
   ELSIF _auth_kind IN ('bearer', 'api_key') THEN
+    -- runtime: authFromSecret needs auth_token (maps to bearer). Its scheme is {token} only.
     IF btrim(COALESCE(_auth_token, '')) = '' THEN
       RAISE EXCEPTION 'MCP_BAD_CREDENTIAL_BUNDLE' USING ERRCODE = '22023';
     END IF;
+    -- F2: a header name, a refresh token, or any oauth-* field is not this scheme's.
+    IF btrim(COALESCE(_auth_header_name, '')) <> '' OR btrim(COALESCE(_refresh_token, '')) <> ''
+       OR btrim(COALESCE(_oauth_issuer, '')) <> '' OR btrim(COALESCE(_oauth_client_id, '')) <> ''
+       OR btrim(COALESCE(_oauth_client_secret, '')) <> '' OR _oauth_scopes IS NOT NULL
+       OR _access_token_expires_at IS NOT NULL THEN
+      RAISE EXCEPTION 'MCP_BAD_CREDENTIAL_BUNDLE' USING ERRCODE = '22023';
+    END IF;
   ELSIF _auth_kind = 'oauth' THEN
-    IF btrim(COALESCE(_oauth_issuer, '')) = ''
-       OR btrim(COALESCE(_oauth_client_id, '')) = ''
-       OR (btrim(COALESCE(_auth_token, '')) = '' AND btrim(COALESCE(_refresh_token, '')) = '') THEN
+    -- F3 (coordinator spec correction): the runtime's authFromSecret has NO refresh step — it ignores
+    -- refresh_token and returns null without auth_token, so a refresh-only bundle loads as unusable and
+    -- a rebind would strand a working connection. REQUIRE _auth_token, plus issuer + client_id; a
+    -- refresh token (and client_secret/scopes/expiry) is OPTIONAL and additional. FORWARD-CONSTRAINT:
+    -- refresh-only OAuth becomes acceptable only when the gateway grows a refresh step that mints a
+    -- token before first use — a wiring-lane item (INT-083), not this setter.
+    IF btrim(COALESCE(_auth_token, '')) = '' OR btrim(COALESCE(_oauth_issuer, '')) = ''
+       OR btrim(COALESCE(_oauth_client_id, '')) = '' THEN
+      RAISE EXCEPTION 'MCP_BAD_CREDENTIAL_BUNDLE' USING ERRCODE = '22023';
+    END IF;
+    -- F2: a custom header name belongs to the 'header' scheme, not oauth.
+    IF btrim(COALESCE(_auth_header_name, '')) <> '' THEN
       RAISE EXCEPTION 'MCP_BAD_CREDENTIAL_BUNDLE' USING ERRCODE = '22023';
     END IF;
   ELSE
-    -- url / none: no credential material may accompany a credential-less kind.
+    -- url / none: no credential material at all may accompany a credential-less kind (F2).
     IF btrim(COALESCE(_auth_token, '')) <> ''
        OR btrim(COALESCE(_auth_header_name, '')) <> ''
        OR btrim(COALESCE(_refresh_token, '')) <> ''
@@ -428,13 +516,29 @@ BEGIN
   _new_hash  := public._mcp_endpoint_hash(_server_url);
   _new_last4 := CASE WHEN _auth_token IS NULL THEN NULL ELSE right(_auth_token, 4) END;
 
-  -- Change-detection for the audit (round-2 item 4). The old token is decrypted in-definer ONLY to
-  -- derive the boolean _credential_changed; the plaintext is NEVER logged or returned. _endpoint_changed
-  -- compares the derived hashes (NULL-safe). These are recorded as booleans, not values.
+  -- Change-detection for the audit (round-3, F4). credential_changed is derived from EVERY
+  -- credential-bearing field, not just the access token — a same-URL rotation of a header name, refresh
+  -- token, client secret, issuer, client id, scopes, or expiry is a real credential change and must
+  -- read true. The three encrypted fields are decrypted in-definer ONLY to compare; the plaintext is
+  -- NEVER logged or returned. All comparisons are IS DISTINCT FROM (NULL-safe). _endpoint_changed
+  -- compares the derived hashes. Both are recorded as booleans, never values.
   _old_token          := CASE WHEN _conn.auth_token_ct IS NULL THEN NULL
                               ELSE public.platform_decrypt(_conn.auth_token_ct) END;
-  _endpoint_changed   := _old_hash  IS DISTINCT FROM _new_hash;
-  _credential_changed := _old_token IS DISTINCT FROM _auth_token;
+  _old_refresh        := CASE WHEN _conn.refresh_token_ct IS NULL THEN NULL
+                              ELSE public.platform_decrypt(_conn.refresh_token_ct) END;
+  _old_client_secret  := CASE WHEN _conn.oauth_client_secret_ct IS NULL THEN NULL
+                              ELSE public.platform_decrypt(_conn.oauth_client_secret_ct) END;
+  _endpoint_changed   := _old_hash IS DISTINCT FROM _new_hash;
+  _credential_changed :=
+       _conn.auth_kind               IS DISTINCT FROM _auth_kind
+    OR _conn.auth_header_name        IS DISTINCT FROM _auth_header_name
+    OR _old_token                    IS DISTINCT FROM _auth_token
+    OR _old_refresh                  IS DISTINCT FROM _refresh_token
+    OR _conn.oauth_issuer            IS DISTINCT FROM _oauth_issuer
+    OR _conn.oauth_client_id         IS DISTINCT FROM _oauth_client_id
+    OR _old_client_secret            IS DISTINCT FROM _oauth_client_secret
+    OR _conn.oauth_scopes            IS DISTINCT FROM _oauth_scopes
+    OR _conn.access_token_expires_at IS DISTINCT FROM _access_token_expires_at;
 
   -- Unconditional approval revocation (round-2 item 1), done EXPLICITLY here — BEFORE the UPDATE — so
   -- it also covers a same-URL CREDENTIAL rotation (new token, same endpoint), which the shipped
@@ -511,7 +615,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid) IS
-  'INT-099 (MCP PR-2): the endpoint setter for the Connected MCP Gateway. Resolves authority BEFORE reading the connection (§9): the mcp.connections.manage capability for the caller''s server-resolved tenant via _mcp_caller_capabilities (owner/tenant-admin only; platform owner EXCLUDED, A2), fail closed, no service-role bypass; a missing or foreign-tenant connection is a uniform MCP_FORBIDDEN. REFUSES a legacy-projected row (D1). Validates the CREDENTIAL BUNDLE against auth_kind BEFORE any write (header→header-name+token; bearer/api_key→token; oauth→issuer+client_id+(token|refresh); url/none→no credential material; closed code MCP_BAD_CREDENTIAL_BUNDLE, never echoes a value). Writes the endpoint + FULL credential bundle in one atomic UPDATE, sourcing every credential column from the arguments (never carrying the old ciphertext forward) so a changed endpoint can never inherit the old secret; resets provider_state, and — EXPLICITLY, before the UPDATE — deletes the stale tool catalog AND revokes every endpoint-bound approval (unconditionally, so a same-URL credential rotation also drops consent; the 20270322000000 trigger then no-ops). Records a hashes/enums/counts-only audit into paige_audit_log in the same transaction (old/new endpoint_hash, endpoint_changed, credential_changed [boolean from an in-definer decrypt — plaintext never logged], auth_kind + auth_token_last4 before/after, approvals_revoked, tools_cleared) (A1). Returns only connection_id/status/endpoint_hash/auth_token_last4 (A3). Static https + value-based IP + DNS-syntax SSRF URL validation only — runtime egress SSRF stays in mcp-client.ts (A4). EXECUTE to authenticated only (A5).';
+  'INT-099 (MCP PR-2): the endpoint setter for the Connected MCP Gateway. Resolves authority BEFORE reading the connection (§9): the mcp.connections.manage capability for the caller''s server-resolved tenant via _mcp_caller_capabilities (owner/tenant-admin only; platform owner EXCLUDED, A2), fail closed, no service-role bypass; a missing or foreign-tenant connection is a uniform MCP_FORBIDDEN. REFUSES a legacy-projected row (D1). PRINCIPLE (round 3): a bundle it accepts is one the runtime (authFromSecret/authUsable in _shared/mcp-client.ts) loads as usable — never a destructive rebind that strands a working connection. Validates the CREDENTIAL BUNDLE against auth_kind BEFORE any write (header→token + a runtime-usable header_name via _mcp_header_name_usable [F1], reject stray; bearer/api_key→token, reject stray; oauth→token+issuer+client_id [F3: token REQUIRED; refresh/secret/scopes/expiry optional-additional], reject stray header; url/none→no credential material [F2]; closed code MCP_BAD_CREDENTIAL_BUNDLE, never echoes a value). Writes the endpoint + FULL credential bundle in one atomic UPDATE, sourcing every credential column from the arguments (never carrying the old ciphertext forward) so a changed endpoint can never inherit the old secret; resets provider_state, and — EXPLICITLY, before the UPDATE — deletes the stale tool catalog AND revokes every endpoint-bound approval (unconditionally, so a same-URL credential rotation also drops consent; the 20270322000000 trigger then no-ops). Records a hashes/enums/counts-only audit into paige_audit_log in the same transaction (old/new endpoint_hash, endpoint_changed, credential_changed [F4: boolean derived in-definer from ALL credential-bearing fields — plaintext never logged], auth_kind + auth_token_last4 before/after, approvals_revoked, tools_cleared) (A1). Returns only connection_id/status/endpoint_hash/auth_token_last4 (A3). Static https + value-based IP + DNS-syntax SSRF URL validation only — runtime egress SSRF stays in mcp-client.ts (A4). EXECUTE to authenticated only (A5).';
 
 REVOKE ALL ON FUNCTION public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid) TO authenticated;

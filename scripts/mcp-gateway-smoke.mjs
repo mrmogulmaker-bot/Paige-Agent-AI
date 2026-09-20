@@ -73,6 +73,10 @@ const railMod = await bundle("supabase/functions/_shared/mcp-gateway/rail-receip
 const effectMod = await bundle("supabase/functions/_shared/mcp-gateway/effect-policy.ts", "effect.mjs");
 const connMod = await bundle("supabase/functions/_shared/mcp-gateway/connection.ts", "connection.mjs");
 const authorityMod = await bundle("supabase/functions/_shared/mcp-gateway/authority.ts", "authority.mjs");
+// INT-099 round-3 (item 5): READ-ONLY import of the runtime credential resolver, so the SQL setter's
+// accept/reject bundle matrix can be proven in parity with what the runtime actually loads as usable.
+// mcp-client.ts is NEVER edited here (standing rule) — only bundled + imported.
+const clientMod = await bundle("supabase/functions/_shared/mcp-client.ts", "mcp-client.mjs");
 
 let passed = 0;
 const failures = [];
@@ -927,6 +931,40 @@ console.log("\n— owner_only visibility (INT-082) —");
       && ooMutNoCap.code === "owner_only_forbidden" && ooSystemNoReason.code === "owner_only_forbidden"
       && ooWrongTenantCap.code === "owner_only_forbidden"
       && ooCapExec.outcome === "read_observed" && tenNoAuth.outcome === "read_observed");
+}
+
+// ── 9. INT-099 round-3 (item 5) — runtime-parity of the SQL endpoint-setter bundle matrix ──
+// THE CLASS-CLOSER. The SQL setter (migration 20270329000000) accepts/rejects credential bundles; the
+// runtime (authFromSecret + authUsable in _shared/mcp-client.ts) decides what actually loads as usable.
+// This asserts the two agree, under CASE NAMES IDENTICAL to the pgTAP bundle matrix
+// (supabase/tests/mcp_gateway_endpoint_setter.sql): every accept_* the SQL accepts is runtime-USABLE,
+// and every reject_* the SQL rejects is runtime-UNUSABLE. If either side drifts, this section fails —
+// the parity is proven, not asserted. Only the fields the runtime loader receives (StoredMcpSecret:
+// server_url/auth_token/auth_kind/auth_header_name) are set; oauth issuer/client_id are SQL-only and the
+// runtime never sees them (so accept_oauth resolves as bearer, exactly as production would).
+console.log("\n— runtime parity: SQL-accept ⟹ runtime-usable; enumerated runtime-unusable ⟹ SQL-reject (INT-099 R3) —");
+{
+  const SRV = "https://public.example/parity";
+  const runtimeUsable = (secret) => {
+    const auth = clientMod.authFromSecret(secret);
+    return auth !== null && clientMod.authUsable(auth);
+  };
+  // ACCEPT cases — the SQL setter accepts these (proven in the pgTAP under the same names); each MUST be
+  // runtime-usable here.
+  check("parity accept_header → runtime usable", runtimeUsable({ server_url: SRV, auth_kind: "header", auth_token: "tok-h", auth_header_name: "X-Api-Key" }));
+  check("parity accept_bearer → runtime usable", runtimeUsable({ server_url: SRV, auth_kind: "bearer", auth_token: "tok-b" }));
+  check("parity accept_api_key → runtime usable", runtimeUsable({ server_url: SRV, auth_kind: "api_key", auth_token: "tok-k" }));
+  check("parity accept_oauth → runtime usable (resolves as bearer; runtime never sees issuer/client_id)", runtimeUsable({ server_url: SRV, auth_kind: "oauth", auth_token: "tok-o" }));
+  check("parity accept_url → runtime usable", runtimeUsable({ server_url: SRV, auth_kind: "url" }));
+  check("parity accept_none → runtime usable", runtimeUsable({ server_url: SRV, auth_kind: "none" }));
+  // REJECT cases — each is runtime-UNUSABLE, so the SQL validator must reject it (proven in the pgTAP
+  // under the same names). If any of these were runtime-usable, the SQL reject would be over-strict; if
+  // the SQL accepted one, a rebind could strand a working connection.
+  check("parity reject_header_reserved → runtime UNusable", !runtimeUsable({ server_url: SRV, auth_kind: "header", auth_token: "t", auth_header_name: "Authorization" }));
+  check("parity reject_header_bad_grammar → runtime UNusable", !runtimeUsable({ server_url: SRV, auth_kind: "header", auth_token: "t", auth_header_name: "Bad Header" }));
+  check("parity reject_bearer_no_token → runtime UNusable", !runtimeUsable({ server_url: SRV, auth_kind: "bearer" }));
+  check("parity reject_api_key_no_token → runtime UNusable", !runtimeUsable({ server_url: SRV, auth_kind: "api_key" }));
+  check("parity reject_oauth_no_token → runtime UNusable (no refresh step; F3)", !runtimeUsable({ server_url: SRV, auth_kind: "oauth" }));
 }
 
 server.close();

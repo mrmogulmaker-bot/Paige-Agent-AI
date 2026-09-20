@@ -9,9 +9,13 @@
 --   • item 1 (UNCONDITIONAL revocation) — a SAME-URL credential rotation (which the 20270322000000
 --     URL-change trigger does NOT catch) STILL revokes the endpoint-bound approval + clears the tool
 --     catalog, and a REJECTED rebind deletes NOTHING.
---   • item 2 (credential bundle) — the bundle must match auth_kind, validated BEFORE any write: one
---     REJECT + one ACCEPT per kind (header/bearer/api_key/oauth/url/none), closed
---     code MCP_BAD_CREDENTIAL_BUNDLE, incl. oauth refresh-only (the token-OR-refresh rule).
+--   • credential bundle (round-3 F1/F2/F3) — the bundle must match auth_kind AND be runtime-usable,
+--     validated BEFORE any write. The PARITY MATRIX (accept_*/reject_* case names identical to the
+--     runtime-parity proof in scripts/mcp-gateway-smoke.mjs): accept header/bearer/api_key/oauth/url/none;
+--     reject a reserved/bad-grammar header name (F1), a refresh-ONLY oauth bundle (F3 — token now
+--     REQUIRED), and stray cross-scheme fields per kind (F2). Closed code MCP_BAD_CREDENTIAL_BUNDLE.
+--   • credential_changed (round-3 F4) — a same-URL rebind that changes only the header NAME (token
+--     unchanged) audits credential_changed=true (round-2 compared only the token).
 --   • A2 — authority is the `mcp.connections.manage` capability (owner/tenant-admin only); a platform
 --     owner is REFUSED; a member, a cross-tenant owner, and a NULL actor (no service-role bypass) are
 --     all refused — each with the EXPECTED refusal reason pinned (not merely "some error").
@@ -264,8 +268,11 @@ BEGIN
   IF public.platform_decrypt(_row.auth_token_ct) <> 'rot-token-9999' THEN RAISE EXCEPTION '(rotate) wrong token stored'; END IF;
 END $$;
 
--- ── (item 2) credential-bundle validation per auth_kind: one REJECT + one ACCEPT each. A reject RAISEs
---    MCP_BAD_CREDENTIAL_BUNDLE before any write; an accept succeeds and stores the matching columns ─────
+-- ── (round-3 F1/F2/F3) credential-bundle validation per auth_kind — the PARITY MATRIX. Case names here
+--    are IDENTICAL to the runtime-parity proof in scripts/mcp-gateway-smoke.mjs (item 5): every accept_*
+--    here is proven runtime-USABLE there (authFromSecret/authUsable); every reject_* here is proven
+--    runtime-UNUSABLE there. A reject RAISEs MCP_BAD_CREDENTIAL_BUNDLE before any write; an accept stores
+--    the matching columns. Extra SQL-stricter rejects (stray fields, header-no-name) are covered too. ────
 DO $$
 DECLARE _msg text; _row public.mcp_connections%ROWTYPE;
   C uuid := '0e900000-0000-0000-0000-0000000000c1';
@@ -273,78 +280,121 @@ DECLARE _msg text; _row public.mcp_connections%ROWTYPE;
 BEGIN
   PERFORM set_config('request.jwt.claims', '{"sub":"0e900000-0000-0000-0000-000000000002","role":"authenticated"}', true);
 
-  -- helper inline: assert a call RAISEs the closed credential-bundle code.
-  -- header: needs auth_header_name + token.
-  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'header', 'tok', NULL);
+  -- ===== REJECT cases (parity: runtime-UNUSABLE ⇒ SQL rejects) =====
+  -- reject_header_reserved (F1): a reserved header name the transport sets itself.
+  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'header', 'tok', 'Authorization');
     EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
-  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION '(bundle) header w/o header-name must reject, got: %', _msg; END IF;
-  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'header', NULL, 'X-Api-Key');
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'reject_header_reserved must reject, got: %', _msg; END IF;
+  -- reject_header_bad_grammar (F1): a name outside the RFC 9110 token grammar.
+  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'header', 'tok', 'Bad Header');
     EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
-  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION '(bundle) header w/o token must reject, got: %', _msg; END IF;
-
-  -- bearer / api_key: need a token.
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'reject_header_bad_grammar must reject, got: %', _msg; END IF;
+  -- reject_bearer_no_token / reject_api_key_no_token: no token.
   _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'bearer');
     EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
-  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION '(bundle) bearer w/o token must reject, got: %', _msg; END IF;
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'reject_bearer_no_token must reject, got: %', _msg; END IF;
   _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'api_key', '   ');  -- whitespace-only ⇒ absent
     EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
-  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION '(bundle) api_key w/ whitespace-only token must reject, got: %', _msg; END IF;
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'reject_api_key_no_token must reject, got: %', _msg; END IF;
+  -- reject_oauth_no_token (F3): a refresh-ONLY oauth bundle — accepted before round 3, now REJECTED
+  -- because the runtime has no refresh step and would load it as connection_unusable.
+  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'oauth', NULL, NULL, 'refresh-only', 'https://iss.example.com', 'cid');
+    EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'reject_oauth_no_token (refresh-only) must reject, got: %', _msg; END IF;
 
-  -- oauth: needs issuer + client_id + (token OR refresh).
-  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'oauth');
+  -- ===== extra SQL-stricter rejects (not in the runtime-unusable parity set, but hardening) =====
+  -- header with no name / no token.
+  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'header', 'tok', NULL);
     EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
-  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION '(bundle) oauth w/o issuer/client/token must reject, got: %', _msg; END IF;
-  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'oauth', NULL, NULL, NULL, 'https://iss.example.com', 'cid');  -- issuer+client but no token/refresh
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'header w/o name must reject, got: %', _msg; END IF;
+  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'header', NULL, 'X-Api-Key');
     EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
-  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION '(bundle) oauth w/o token-or-refresh must reject, got: %', _msg; END IF;
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'header w/o token must reject, got: %', _msg; END IF;
+  -- oauth missing issuer / client_id (token present).
+  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'oauth', 'tok', NULL, NULL, NULL, 'cid');
+    EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'oauth w/o issuer must reject, got: %', _msg; END IF;
+  -- F2 stray-field rejects: a field belonging to another scheme, per kind.
+  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'bearer', 'tok', NULL, 'stray-refresh');  -- bearer + refresh
+    EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'F2 bearer+stray-refresh must reject, got: %', _msg; END IF;
+  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'bearer', 'tok', NULL, NULL, 'https://iss.example.com');  -- bearer + oauth issuer
+    EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'F2 bearer+stray-oauth must reject, got: %', _msg; END IF;
+  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'header', 'tok', 'X-Api-Key', NULL, 'https://iss.example.com', 'cid');  -- header + oauth
+    EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'F2 header+stray-oauth must reject, got: %', _msg; END IF;
+  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'oauth', 'tok', 'X-Stray', NULL, 'https://iss.example.com', 'cid');  -- oauth + header name
+    EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'F2 oauth+stray-header must reject, got: %', _msg; END IF;
+  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'url', 'stray-tok');  -- url + token
+    EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'F2 url+stray-token must reject, got: %', _msg; END IF;
+  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'none', NULL, 'X-Stray');  -- none + header name
+    EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'F2 none+stray-header must reject, got: %', _msg; END IF;
 
-  -- url / none: NO credential material.
-  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'url', 'stray-tok');
-    EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
-  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION '(bundle) url w/ stray token must reject, got: %', _msg; END IF;
-  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'none', NULL, 'X-Stray');  -- stray header name
-    EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
-  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION '(bundle) none w/ stray header must reject, got: %', _msg; END IF;
-
-  -- none of the rejects may have changed the endpoint (all failed before the write).
+  -- no reject may have changed the endpoint (all failed before the write).
   SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
   IF public.platform_decrypt(_row.server_url_ct) = BAD THEN RAISE EXCEPTION '(bundle) a rejected call changed the endpoint'; END IF;
 
-  -- ACCEPT: header (name + token).
+  -- ===== ACCEPT cases (parity: SQL accepts ⇒ runtime-USABLE) =====
+  -- accept_header (a runtime-usable custom name + token).
   PERFORM public.set_mcp_connection_endpoint(C, 'https://cred-header.example.com/rpc', 'header', 'tok-h', 'X-Api-Key');
   SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
   IF _row.auth_kind <> 'header' OR _row.auth_header_name <> 'X-Api-Key'
-     OR public.platform_decrypt(_row.auth_token_ct) <> 'tok-h' THEN RAISE EXCEPTION '(bundle) header accept did not store the bundle'; END IF;
+     OR public.platform_decrypt(_row.auth_token_ct) <> 'tok-h' THEN RAISE EXCEPTION 'accept_header did not store the bundle'; END IF;
 
-  -- ACCEPT: bearer (token).
+  -- accept_bearer.
   PERFORM public.set_mcp_connection_endpoint(C, 'https://cred-bearer.example.com/rpc', 'bearer', 'tok-b');
   SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
-  IF _row.auth_kind <> 'bearer' OR public.platform_decrypt(_row.auth_token_ct) <> 'tok-b' THEN RAISE EXCEPTION '(bundle) bearer accept did not store the token'; END IF;
+  IF _row.auth_kind <> 'bearer' OR public.platform_decrypt(_row.auth_token_ct) <> 'tok-b' THEN RAISE EXCEPTION 'accept_bearer did not store the token'; END IF;
 
-  -- ACCEPT: api_key (token).
+  -- accept_api_key.
   PERFORM public.set_mcp_connection_endpoint(C, 'https://cred-apikey.example.com/rpc', 'api_key', 'tok-k');
   SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
-  IF _row.auth_kind <> 'api_key' OR public.platform_decrypt(_row.auth_token_ct) <> 'tok-k' THEN RAISE EXCEPTION '(bundle) api_key accept did not store the token'; END IF;
+  IF _row.auth_kind <> 'api_key' OR public.platform_decrypt(_row.auth_token_ct) <> 'tok-k' THEN RAISE EXCEPTION 'accept_api_key did not store the token'; END IF;
 
-  -- ACCEPT: oauth with REFRESH ONLY (no access token) — proves the (token OR refresh) rule.
-  PERFORM public.set_mcp_connection_endpoint(C, 'https://cred-oauth1.example.com/rpc', 'oauth',
-            NULL, NULL, 'refresh-o', 'https://iss.example.com', 'cid-1');
+  -- accept_oauth (F3: token REQUIRED + issuer + client_id; a refresh token is optional-additional).
+  PERFORM public.set_mcp_connection_endpoint(C, 'https://cred-oauth.example.com/rpc', 'oauth',
+            'tok-o', NULL, 'refresh-o', 'https://iss.example.com', 'cid-2', 'sec', ARRAY['read']::text[]);
   SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
-  IF _row.auth_kind <> 'oauth' OR _row.oauth_issuer <> 'https://iss.example.com' OR _row.oauth_client_id <> 'cid-1'
-     OR _row.auth_token_ct IS NOT NULL OR public.platform_decrypt(_row.refresh_token_ct) <> 'refresh-o' THEN
-    RAISE EXCEPTION '(bundle) oauth refresh-only accept did not store the bundle'; END IF;
+  IF _row.auth_kind <> 'oauth' OR public.platform_decrypt(_row.auth_token_ct) <> 'tok-o'
+     OR _row.oauth_issuer <> 'https://iss.example.com' OR _row.oauth_client_id <> 'cid-2'
+     OR public.platform_decrypt(_row.refresh_token_ct) <> 'refresh-o' THEN RAISE EXCEPTION 'accept_oauth did not store the bundle'; END IF;
 
-  -- ACCEPT: oauth with an access TOKEN.
-  PERFORM public.set_mcp_connection_endpoint(C, 'https://cred-oauth2.example.com/rpc', 'oauth',
-            'tok-o', NULL, NULL, 'https://iss.example.com', 'cid-2');
-  SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
-  IF _row.auth_kind <> 'oauth' OR public.platform_decrypt(_row.auth_token_ct) <> 'tok-o' THEN RAISE EXCEPTION '(bundle) oauth token accept did not store the token'; END IF;
-
-  -- ACCEPT: url (no credential material).
+  -- accept_url (no credential material).
   PERFORM public.set_mcp_connection_endpoint(C, 'https://cred-url.example.com/rpc', 'url');
   SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
   IF _row.auth_kind <> 'url' OR _row.auth_token_ct IS NOT NULL OR _row.auth_header_name IS NOT NULL THEN
-    RAISE EXCEPTION '(bundle) url accept must carry no credential'; END IF;
+    RAISE EXCEPTION 'accept_url must carry no credential'; END IF;
+
+  -- accept_none.
+  PERFORM public.set_mcp_connection_endpoint(C, 'https://cred-none.example.com/rpc', 'none');
+  SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
+  IF _row.auth_kind <> 'none' OR _row.auth_token_ct IS NOT NULL THEN RAISE EXCEPTION 'accept_none must carry no credential'; END IF;
+END $$;
+
+-- ── (round-3 F4) credential_changed reflects a NON-TOKEN credential field. A same-URL rebind that keeps
+--    the token but changes the header NAME must audit credential_changed=true (the round-2 code compared
+--    only the token and would have said false) ────────────────────────────────────────────────────────
+DO $$
+DECLARE _p jsonb; C uuid := '0e900000-0000-0000-0000-0000000000c1'; U text := 'https://cred-f4.example.com/rpc';
+BEGIN
+  PERFORM set_config('request.jwt.claims', '{"sub":"0e900000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+  -- baseline: header at U with X-Api-Key + tok-f4.
+  PERFORM public.set_mcp_connection_endpoint(C, U, 'header', 'tok-f4', 'X-Api-Key');
+  -- same URL, SAME token, DIFFERENT header name.
+  PERFORM public.set_mcp_connection_endpoint(C, U, 'header', 'tok-f4', 'X-Other-Key');
+  -- filter by the UNIQUE new_endpoint_hash (created_at is transaction-time, so it cannot order rows here).
+  SELECT payload INTO _p FROM public.paige_audit_log
+    WHERE action = 'mcp_connection.endpoint_changed' AND target_id = C
+      AND (payload->>'new_endpoint_hash') = public._mcp_endpoint_hash(U)
+      AND (payload->>'endpoint_changed') = 'false'
+    LIMIT 1;
+  IF _p IS NULL THEN RAISE EXCEPTION '(F4) no same-URL header-name-change audit row found'; END IF;
+  IF (_p->>'credential_changed') IS DISTINCT FROM 'true' THEN
+    RAISE EXCEPTION '(F4) credential_changed must be true when only the header name changed: %', _p; END IF;
 END $$;
 
 -- ── (item 1) UNCONDITIONAL approval revocation: a SAME-URL credential rotation (which the shipped
@@ -373,11 +423,13 @@ BEGIN
   IF _appr  <> 0 THEN RAISE EXCEPTION '(item1) same-URL rotation did NOT revoke approvals: % remain', _appr; END IF;
   IF _tools <> 0 THEN RAISE EXCEPTION '(item1) same-URL rotation did NOT clear the tool catalog: % remain', _tools; END IF;
 
-  -- The audit for THIS rotation (the only endpoint_changed=false row in the txn) records it faithfully.
+  -- The audit for THIS rotation records it faithfully. Filter by the UNIQUE new_endpoint_hash for U
+  -- (created_at is transaction-time and cannot order rows; other blocks also write endpoint_changed=false).
   SELECT payload INTO _p FROM public.paige_audit_log
     WHERE action = 'mcp_connection.endpoint_changed' AND target_id = C
+      AND (payload->>'new_endpoint_hash') = public._mcp_endpoint_hash(U)
       AND (payload->>'endpoint_changed') = 'false'
-    ORDER BY created_at DESC LIMIT 1;
+    LIMIT 1;
   IF _p IS NULL THEN RAISE EXCEPTION '(item1) no same-URL-rotation audit row found'; END IF;
   IF (_p->>'credential_changed') IS DISTINCT FROM 'true' THEN RAISE EXCEPTION '(item1) rotation credential_changed wrong: %', _p; END IF;
   IF (_p->>'approvals_revoked') IS DISTINCT FROM '1'     THEN RAISE EXCEPTION '(item1) rotation approvals_revoked wrong: %', _p; END IF;
