@@ -72,16 +72,18 @@ const canonicalUuid = (v: string): string | null => {
 // Do two identifiers name the SAME identity? Both valid UUIDs → compare canonical keys (so any accepted
 // spelling matches). A valid UUID vs a non-UUID → NEVER the same (this is what refuses Codex's
 // `zzabcdef…` alias against a real UUID row — a malformed value is not silently reduced to a colliding
-// key). Neither a UUID → byte-for-byte equal (trimmed, case-insensitive), a NON-STRIPPING fallback so
-// distinct opaque aliases still never collide, while a loader that legitimately keys on the same alias
-// on both sides still matches. In production both ids are UUIDs (the typed-`uuid` RPC + server-resolved
-// tenant), so the first branch always applies; the fallback keeps this guard loader-independent (§39).
+// key). Neither a UUID → an OPAQUE identifier from an alternate loader, compared EXACTLY: case-
+// sensitive and NOT trimmed. Lowercasing or trimming would equate distinct identities (`tenant/foo`
+// vs `TENANT/FOO`, or `x` vs `x `) and let consent verify against one id while dispatch resolves the
+// other — defeating the loader-independent single-source guard (Codex P2, bba9d5d3). In production both
+// ids are UUIDs (the typed-`uuid` RPC + server-resolved tenant), so the first branch always applies;
+// the exact fallback keeps the guard loader-independent (§39) without ever coercing two ids to match.
 const sameId = (a: string, b: string): boolean => {
   const ka = canonicalUuid(a);
   const kb = canonicalUuid(b);
   if (ka !== null && kb !== null) return ka === kb;
   if (ka !== null || kb !== null) return false;
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
+  return a === b;
 };
 
 export type RunnerDeps = {

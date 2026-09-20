@@ -567,6 +567,18 @@ console.log("\n— single source: consent + dispatch from one canonical connecti
   const grouped = await runnerMod.runConnectionCapability({ connectionId: "abcd-ef01-2345-6789-abcd-ef01-2345-6789", tenantId: CANON_HEX_TEN, toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: spellLoad });
   check("a PostgreSQL-valid alternative grouping (hyphen after every 4-digit group) that canonicalizes to the row is NOT falsely refused", grouped.outcome === "read_observed", JSON.stringify(grouped));
 
+  // Codex P2 (bba9d5d3): an OPAQUE (non-UUID) identifier from an alternate loader is compared EXACTLY —
+  // case-sensitive, no lowercasing/trim — so distinct identities differing only in case are NOT equated
+  // (else consent could verify against one id while dispatch resolves the other). LOAD-BEARING: a
+  // toLowerCase() fallback flips these to a false pass.
+  const opaqueLoad = () => ({ ok: true, connectionId: "conn/foo", tenantId: "tenant/foo", serverUrl: CANON_URL, auth: bearer });
+  approvals = {};
+  const opaqueConn = await runnerMod.runConnectionCapability({ connectionId: "CONN/FOO", tenantId: "tenant/foo", toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: opaqueLoad });
+  check("an opaque connection_id differing only in case (CONN/FOO vs conn/foo) → connection_mismatch (exact, no lowercasing)", opaqueConn.outcome === "refused" && opaqueConn.code === "connection_mismatch", JSON.stringify(opaqueConn));
+  approvals = {};
+  const opaqueTen = await runnerMod.runConnectionCapability({ connectionId: "conn/foo", tenantId: "TENANT/FOO", toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: opaqueLoad });
+  check("an opaque tenant_id differing only in case (TENANT/FOO vs tenant/foo) → foreign_tenant (exact, no lowercasing)", opaqueTen.outcome === "refused" && opaqueTen.code === "foreign_tenant", JSON.stringify(opaqueTen));
+
   // (6) the consent verifier is asked to authorize the SAME canonical connection_id that backs
   // dispatch, and (7) the mutation dispatches to that same row's endpoint — single source, proven together.
   approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
@@ -655,6 +667,24 @@ console.log("\n— executable-facet gate: the loader refuses non-MCP-drivable ro
   check("loader: a header facet named 'Authorization' (reserved) → connection_unusable", reservedHeaderRes.ok === false && reservedHeaderRes.reason === "connection_unusable", JSON.stringify(reservedHeaderRes));
   const invalidHeaderRes = await loaderFor({ ...baseRow, server_url: REFUSE_URL, auth_kind: "header", auth_header_name: "bad name" })("conn-canon");
   check("loader: a header facet with an invalid RFC-token name ('bad name') → connection_unusable", invalidHeaderRes.ok === false && invalidHeaderRes.reason === "connection_unusable", JSON.stringify(invalidHeaderRes));
+
+  // Codex P2 (bba9d5d3): a row declaring auth_kind='header' but with a null/empty auth_header_name
+  // falls through authFromSecret to BEARER — the loader must REFUSE it (never send the credential as
+  // Authorization instead of the configured custom header). Enforced at the loader; the shared
+  // missing-name→bearer fallback stays unchanged (pinned by smoke:mcp-transport, §37). LOAD-BEARING:
+  // dropping the header-kind guard resolves the null/empty case as bearer and dispatches. (A BLANK name
+  // resolves to a header auth with an unusable name and is refused by authUsable.)
+  const headerNullNameRow = { ...baseRow, server_url: REFUSE_URL, auth_kind: "header" }; // auth_header_name absent → null
+  const headerNullNameRes = await loaderFor(headerNullNameRow)("conn-canon");
+  check("loader: a header row with a NULL auth_header_name → connection_unusable (never a bearer fallthrough)", headerNullNameRes.ok === false && headerNullNameRes.reason === "connection_unusable", JSON.stringify(headerNullNameRes));
+  const headerEmptyNameRes = await loaderFor({ ...baseRow, server_url: REFUSE_URL, auth_kind: "header", auth_header_name: "" })("conn-canon");
+  check("loader: a header row with an EMPTY auth_header_name → connection_unusable", headerEmptyNameRes.ok === false && headerEmptyNameRes.reason === "connection_unusable", JSON.stringify(headerEmptyNameRes));
+  const headerBlankNameRes = await loaderFor({ ...baseRow, server_url: REFUSE_URL, auth_kind: "header", auth_header_name: "   " })("conn-canon");
+  check("loader: a header row with a BLANK auth_header_name → connection_unusable", headerBlankNameRes.ok === false && headerBlankNameRes.reason === "connection_unusable", JSON.stringify(headerBlankNameRes));
+  const prepHeaderNoName = await runReal(headerNullNameRow, "prepare");
+  check("runner: prepare on a header row with no name → refused, never a false 'prepared'", prepHeaderNoName.outcome === "refused" && prepHeaderNoName.code === "connection_unusable", JSON.stringify(prepHeaderNoName));
+  const execHeaderNoName = await runReal(headerNullNameRow, "execute");
+  check("runner: execute on a header row with no name → refused connection_unusable (credential never sent as Authorization)", execHeaderNoName.outcome === "refused" && execHeaderNoName.code === "connection_unusable", JSON.stringify(execHeaderNoName));
   // Mcp-Session-Id is the transport's negotiated session header (applied AFTER the auth headers in
   // post()), so a credential named it would override the real session id; it is reserved, so any
   // casing is refused at the loader before prepare can affirm and before execute can corrupt dispatch.

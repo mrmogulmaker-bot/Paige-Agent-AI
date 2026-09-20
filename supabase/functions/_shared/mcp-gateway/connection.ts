@@ -108,7 +108,16 @@ export function makeRpcConnectionLoader(admin: Admin): ConnectionLoader {
       // timestamp passes. Only an oauth row's `expires_at` is a live access-token expiry.
       const expiresAt = typeof row.expires_at === "string" ? Date.parse(row.expires_at) : NaN;
       const oauthExpired = row.auth_kind === "oauth" && Number.isFinite(expiresAt) && expiresAt <= Date.now();
-      if (!authUsable(auth) || oauthExpired) {
+      // A row that DECLARES `auth_kind='header'` but carries a null/empty/blank `auth_header_name`
+      // falls through `authFromSecret` to a BEARER object (that shared missing-name→bearer fallback is
+      // pinned by `smoke:mcp-transport` and left UNCHANGED, §37). Dispatching it would send the
+      // credential in `Authorization` instead of the configured custom-header scheme — the wrong auth.
+      // Enforce the resolution HERE, not in the shared helper: a `header` row must resolve to a
+      // `header` auth, else refuse `connection_unusable` (Codex P2, bba9d5d3). (A blank name resolves
+      // to a header auth with an unusable name and is already refused by `authUsable` below; the null/
+      // empty cases fall through to bearer and are what this guard catches.)
+      const headerRowNotHeaderAuth = row.auth_kind === "header" && auth.kind !== "header";
+      if (!authUsable(auth) || oauthExpired || headerRowNotHeaderAuth) {
         return { ok: false, reason: "connection_unusable" };
       }
       return { ok: true, connectionId: row.connection_id, tenantId: row.tenant_id, serverUrl: row.server_url, auth };
