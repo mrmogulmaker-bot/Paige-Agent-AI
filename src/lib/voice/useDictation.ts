@@ -1,8 +1,8 @@
 /**
- * useDictation — press-to-talk voice dictation for any composer (#170, §49 Wave A).
+ * useDictation — tap-to-toggle voice dictation for any composer (#170, §49 Wave A).
  *
  * Replaces the dead voice-chat stub with a simple, honest mic → text pipeline:
- * hold the mic, speak, release; the words land in the composer. There is NO
+ * tap the mic, speak a complete thought, then tap again; the words land in the composer. There is NO
  * agent, NO two-way voice, NO playback — dictation only.
  *
  * Pipeline
@@ -42,9 +42,18 @@ import { supabase } from "@/integrations/supabase/client";
 
 const DEEPGRAM_SAMPLE_RATE = 16000;
 const TRANSCRIPTION_SETTLE_TIMEOUT_MS = 15_000;
+export const DICTATION_SILENCE_TIMEOUT_MS = 5 * 60_000;
+export const DICTATION_MAX_DURATION_MS = 30 * 60_000;
+const AUDIO_ACTIVITY_RMS_FLOOR = 0.01;
 
-export type DictationStatus = "idle" | "requesting" | "listening" | "transcribing" | "error";
+export type DictationStatus = "idle" | "requesting" | "connecting" | "listening" | "transcribing" | "error";
 export type DictationFailure = "permission-denied" | "unsupported" | "provider-failure" | "unavailable";
+export type DictationStopReason = "silence" | "max-duration";
+
+export interface DictationInsertionPoint {
+  /** Mutable insertion offset advanced after each finalized segment. */
+  offset: number;
+}
 
 export interface UseDictationOptions {
   /** Called with each finalized transcript segment (no leading space). */
@@ -63,6 +72,8 @@ export interface UseDictationApi {
   error: string | null;
   /** Stable failure class for accessible, truthful UI copy. */
   failure: DictationFailure | null;
+  /** Plain completion notice when a safety guard stopped capture. */
+  notice: string | null;
   /** True while capturing or transcribing. */
   isActive: boolean;
   /** getUserMedia + WebSocket both available in this browser. */
@@ -74,15 +85,29 @@ export interface UseDictationApi {
 }
 
 /**
- * Smart-join a dictated segment onto existing composer text: insert a single
- * separating space only when the previous text doesn't already end in
- * whitespace, so we never produce "worldhello" or double spaces. Shared so both
- * composers append dictation identically (§18 one home).
+ * Smart-join a dictated segment at the captured composer cursor. A mutable
+ * insertion point advances after every final segment, while any selected or
+ * surrounding typed text is preserved. Without an insertion point this keeps
+ * the legacy append-to-end behavior for non-chat consumers.
  */
-export function appendDictation(prev: string, segment: string): string {
+export function appendDictation(
+  prev: string,
+  segment: string,
+  insertionPoint?: DictationInsertionPoint | null,
+): string {
   if (!segment) return prev;
-  if (!prev) return segment;
-  return /\s$/.test(prev) ? prev + segment : prev + " " + segment;
+  if (!insertionPoint) {
+    if (!prev) return segment;
+    return /\s$/.test(prev) ? prev + segment : prev + " " + segment;
+  }
+
+  const offset = Math.max(0, Math.min(prev.length, insertionPoint.offset));
+  const before = prev.slice(0, offset);
+  const after = prev.slice(offset);
+  const leftSpace = before && !/\s$/.test(before) ? " " : "";
+  const rightSpace = after && !/^\s/.test(after) ? " " : "";
+  insertionPoint.offset = offset + leftSpace.length + segment.length;
+  return before + leftSpace + segment + rightSpace + after;
 }
 
 // Float32 [-1,1] → Int16 PCM little-endian. Same clamp as VoiceAudio's
@@ -94,6 +119,13 @@ function floatTo16BitPCM(input: Float32Array): ArrayBuffer {
     out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
   }
   return out.buffer;
+}
+
+function hasAudioActivity(input: Float32Array): boolean {
+  if (input.length === 0) return false;
+  let sumSquares = 0;
+  for (let i = 0; i < input.length; i += 1) sumSquares += input[i] * input[i];
+  return Math.sqrt(sumSquares / input.length) >= AUDIO_ACTIVITY_RMS_FLOOR;
 }
 
 /** Map any capture/socket failure to a plain, jargon-free message (§3). */
@@ -130,10 +162,13 @@ type DictationRun = {
   generation: number;
   scopeEpoch: string | null;
   released: boolean;
+  providerReady: boolean;
   recorder: AudioRecorder | null;
   socket: WebSocket | null;
   pendingFrames: ArrayBuffer[];
   settleTimer: ReturnType<typeof setTimeout> | null;
+  silenceTimer: ReturnType<typeof setTimeout> | null;
+  maxTimer: ReturnType<typeof setTimeout> | null;
 };
 
 export function useDictation({ onText, onError, scopeEpoch = null }: UseDictationOptions): UseDictationApi {
@@ -141,6 +176,7 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
   const [partial, setPartial] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [failure, setFailure] = useState<DictationFailure | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const generationRef = useRef(0);
   const currentRunRef = useRef<DictationRun | null>(null);
   const scopeEpochRef = useRef(scopeEpoch);
@@ -159,7 +195,11 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
 
   const teardownRun = useCallback((run: DictationRun) => {
     if (run.settleTimer) clearTimeout(run.settleTimer);
+    if (run.silenceTimer) clearTimeout(run.silenceTimer);
+    if (run.maxTimer) clearTimeout(run.maxTimer);
     run.settleTimer = null;
+    run.silenceTimer = null;
+    run.maxTimer = null;
     run.pendingFrames = [];
     try { run.recorder?.stop(); } catch { /* best-effort */ }
     run.recorder = null;
@@ -191,22 +231,31 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
     currentRunRef.current = null;
     setFailure(nextFailure);
     setError(message);
+    setNotice(null);
     setStatus("error");
     setPartial("");
     onErrorRef.current?.(message);
     teardownRun(run);
   }, [isCurrent, teardownRun]);
 
-  const stop = useCallback(() => {
-    const run = currentRunRef.current;
-    if (!run || run.released) return;
+  const releaseRun = useCallback((run: DictationRun, reason?: DictationStopReason) => {
+    if (!isCurrent(run) || run.released) return;
     run.released = true;
+    if (run.silenceTimer) clearTimeout(run.silenceTimer);
+    if (run.maxTimer) clearTimeout(run.maxTimer);
+    run.silenceTimer = null;
+    run.maxTimer = null;
+    if (reason === "silence") {
+      setNotice("Stopped after 5 minutes of silence. Your words are still in the draft.");
+    } else if (reason === "max-duration") {
+      setNotice("Stopped at the 30-minute limit. Your words are still in the draft.");
+    }
     // Stop the mic immediately; keep the socket open briefly so any trailing
     // final transcript still arrives, then the server closes it.
     try { run.recorder?.stop(); } catch { /* best-effort */ }
     run.recorder = null;
     const ws = run.socket;
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    if (run.providerReady && ws && ws.readyState === WebSocket.OPEN) {
       try { ws.send(JSON.stringify({ type: "stop" })); } catch { /* best-effort */ }
     }
     run.settleTimer = setTimeout(() => {
@@ -214,7 +263,12 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
     }, TRANSCRIPTION_SETTLE_TIMEOUT_MS);
     setPartial("");
     setStatus((s) => (s === "error" ? s : "transcribing"));
-  }, [failRun]);
+  }, [failRun, isCurrent]);
+
+  const stop = useCallback(() => {
+    const run = currentRunRef.current;
+    if (run) releaseRun(run);
+  }, [releaseRun]);
 
   const start = useCallback(async () => {
     // One provider stream at a time. A released run remains current until its
@@ -229,34 +283,35 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
 
     setError(null);
     setFailure(null);
+    setNotice(null);
     setPartial("");
     setStatus("requesting");
     const run: DictationRun = {
       generation: ++generationRef.current,
       scopeEpoch: scopeEpochRef.current,
       released: false,
+      providerReady: false,
       recorder: null,
       socket: null,
       pendingFrames: [],
       settleTimer: null,
+      silenceTimer: null,
+      maxTimer: null,
     };
     currentRunRef.current = run;
 
-    // Acquire the mic FIRST, inside the caller's gesture (iOS requirement). If
-    // the user denies, we never open a needless socket.
+    // Acquire the mic FIRST, inside the caller's gesture (iOS requirement), and
+    // buffer frames while session lookup and the provider socket are starting.
+    // This ordering prevents the first spoken words from being clipped.
     let recorder: AudioRecorder;
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!isCurrent(run)) return;
-      if (run.released) { finishRun(run); return; }
-      const token = session?.access_token;
-      if (!token) { failRun(run, "unavailable", "Please sign in to use voice typing."); return; }
-
-      const url = dictateWsUrl(token);
-      if (!url) { failRun(run, "unavailable", "Voice typing isn't available right now."); return; }
-
+      const armSilenceGuard = () => {
+        if (run.silenceTimer) clearTimeout(run.silenceTimer);
+        run.silenceTimer = setTimeout(() => releaseRun(run, "silence"), DICTATION_SILENCE_TIMEOUT_MS);
+      };
       recorder = new AudioRecorder((frame) => {
         if (!isCurrent(run) || run.released) return;
+        if (hasAudioActivity(frame)) armSilenceGuard();
         const buf = floatTo16BitPCM(frame);
         const ws = run.socket;
         if (ws && ws.readyState === WebSocket.OPEN) ws.send(buf);
@@ -268,6 +323,17 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
       await recorder.start();
       if (!isCurrent(run)) return; // invalidation already tore this run down
       if (run.released) { finishRun(run); return; }
+      setStatus("connecting");
+      armSilenceGuard();
+      run.maxTimer = setTimeout(() => releaseRun(run, "max-duration"), DICTATION_MAX_DURATION_MS);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!isCurrent(run)) return;
+      const token = session?.access_token;
+      if (!token) { failRun(run, "unavailable", "Please sign in to use voice typing."); return; }
+
+      const url = dictateWsUrl(token);
+      if (!url) { failRun(run, "unavailable", "Voice typing isn't available right now."); return; }
 
       const ws = new WebSocket(url);
       ws.binaryType = "arraybuffer";
@@ -282,10 +348,9 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
           ws.send(JSON.stringify({ type: "start", sampleRate: DEEPGRAM_SAMPLE_RATE }));
           // Flush frames captured before the socket finished connecting.
           for (const buf of run.pendingFrames) ws.send(buf);
-          if (run.released) ws.send(JSON.stringify({ type: "stop" }));
         } catch { /* best-effort */ }
         run.pendingFrames = [];
-        setStatus(run.released ? "transcribing" : "listening");
+        setStatus(run.released ? "transcribing" : "connecting");
       };
 
       ws.onmessage = (ev) => {
@@ -312,6 +377,13 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
             ? "Voice typing isn't available right now."
             : "Voice typing hit a snag. Please try again.");
         } else if (msg.type === "ready") {
+          run.providerReady = true;
+          // A short utterance can finish while the provider is still opening.
+          // Wait for ready so the server has flushed its pending PCM into the
+          // provider stream before asking it for the trailing final transcript.
+          if (run.released && ws.readyState === WebSocket.OPEN) {
+            try { ws.send(JSON.stringify({ type: "stop" })); } catch { /* best-effort */ }
+          }
           setStatus(run.released ? "transcribing" : "listening");
         }
       };
@@ -330,7 +402,7 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
       const described = describeDictationError(err);
       failRun(run, described.failure, described.message);
     }
-  }, [supported, failRun, finishRun, isCurrent]);
+  }, [supported, failRun, finishRun, isCurrent, releaseRun]);
 
   useEffect(() => {
     const run = currentRunRef.current;
@@ -338,7 +410,7 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
     generationRef.current += 1;
     currentRunRef.current = null;
     teardownRun(run);
-    setStatus("idle"); setPartial(""); setError(null); setFailure(null);
+    setStatus("idle"); setPartial(""); setError(null); setFailure(null); setNotice(null);
   }, [scopeEpoch, teardownRun]);
 
   // Clean up on unmount so a mid-dictation navigation never leaks the mic/socket.
@@ -354,7 +426,8 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
     partial,
     error,
     failure,
-    isActive: status === "listening" || status === "transcribing" || status === "requesting",
+    notice,
+    isActive: status === "connecting" || status === "listening" || status === "transcribing" || status === "requesting",
     supported,
     start,
     stop,

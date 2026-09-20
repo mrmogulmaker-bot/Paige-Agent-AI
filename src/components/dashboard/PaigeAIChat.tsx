@@ -1327,11 +1327,12 @@ const PaigeAIChatInner = ({
     <DictationMicButton
       key={soloTenantSafety ? `${dictationEpoch ?? "resolving"}:${dictationGeneration}` : "shared"}
       scopeEpoch={soloTenantSafety ? dictationEpoch : null}
+      composerRef={inputRef}
       showStatus={soloTenantSafety}
-      onText={(seg) => {
+      onText={(seg, insertionPoint) => {
         if (soloTenantSafety && acceptedEpochRef.current !== dictationEpoch) return;
         if (soloTenantSafety && dictationGenerationRef.current !== dictationGeneration) return;
-        setInput((prev) => appendDictation(prev, seg));
+        setInput((prev) => appendDictation(prev, seg, insertionPoint));
       }}
       onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
       disabled={composerBlocked}

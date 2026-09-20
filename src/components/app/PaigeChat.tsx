@@ -701,10 +701,11 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             className="flex-1 text-sm min-h-[40px] max-h-[200px] resize-none py-2"
             disabled={isLoading}
           />
-          {/* Hold-to-dictate — neutral/indigo mic (never gold; Send owns the act, §11).
+          {/* Tap-to-dictate — neutral/indigo mic (never gold; Send owns the act, §11).
               Dictated words append into the composer for the client to edit + send. */}
           <DictationMicButton
-            onText={(seg) => setInput((prev) => appendDictation(prev, seg))}
+            composerRef={inputRef}
+            onText={(seg, insertionPoint) => setInput((prev) => appendDictation(prev, seg, insertionPoint))}
             onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
             disabled={isLoading}
             variant="secondary"
