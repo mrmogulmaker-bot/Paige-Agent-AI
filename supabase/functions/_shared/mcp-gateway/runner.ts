@@ -53,6 +53,15 @@ function errorCodeOf(e: unknown): string {
   return "runner_failed";
 }
 
+// Postgres accepts several equivalent UUID input spellings — hyphenated, hyphenless, brace-wrapped,
+// and any case — but always serializes a stored id to its canonical lowercase-hyphenated form. So a
+// caller can name the SAME connection/tenant in a different-but-valid spelling than the row carries;
+// a raw string compare (even lowercased) would then falsely refuse a legitimate request. Reducing
+// both sides to the 32 hex nibbles they all share compares true UUID identity, not text (Codex P2).
+// A non-UUID value never reaches here: the typed-`uuid` RPC arg rejects it, so the loader returns
+// not-found before either guard runs.
+const uuidKey = (v: string): string => v.toLowerCase().replace(/[^0-9a-f]/g, "");
+
 export type RunnerDeps = {
   /** Records the run's outcome. In production this is the CANONICAL-Rail receipt
    *  (`makeCanonicalRailReceipt`); the smoke injects a collector. Best-effort — a recording
@@ -134,14 +143,15 @@ export async function runConnectionCapability(
   // invariant LOADER-INDEPENDENT — a future/alternate loader that resolved an alias or redirect to a
   // different row could otherwise reintroduce a two-source divergence (consent for id A, dispatch to
   // row B) without this guard.
-  // UUIDs are case-insensitive and Postgres serializes them canonical-lowercase, while a caller may
-  // pass uppercase hex — so both identity comparisons are case-insensitive (Codex P2), or a valid
-  // uppercase `connection_id`/`tenant_id` would be falsely refused as a mismatch.
-  if (canon.connectionId.toLowerCase() !== req.connectionId.toLowerCase()) return await emit("refused", "connection_mismatch");
+  // Both identity comparisons are by canonical UUID (`uuidKey`), not text — a caller may name a valid
+  // UUID in any accepted spelling (uppercase, hyphenless, brace-wrapped) while the row carries the
+  // canonical lowercase-hyphenated form, and a raw/lowercased string compare would falsely refuse it
+  // (Codex P2).
+  if (uuidKey(canon.connectionId) !== uuidKey(req.connectionId)) return await emit("refused", "connection_mismatch");
   // §9 isolation: `get_mcp_connection_secret` is tenant-agnostic, so the runner enforces that the
   // row's tenant is the caller's server-derived tenant. A foreign-tenant connection never dispatches
   // — nor prepares.
-  if (canon.tenantId.toLowerCase() !== req.tenantId.toLowerCase()) return await emit("refused", "foreign_tenant");
+  if (uuidKey(canon.tenantId) !== uuidKey(req.tenantId)) return await emit("refused", "foreign_tenant");
 
   // prepare stages intent only — the connection is validated above, but it opens no session and
   // contacts no provider.

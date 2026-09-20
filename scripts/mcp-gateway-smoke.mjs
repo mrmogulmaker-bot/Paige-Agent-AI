@@ -519,6 +519,22 @@ console.log("\n— single source: consent + dispatch from one canonical connecti
   const caseRun = await runnerMod.runConnectionCapability({ connectionId: UP_ID, tenantId: UP_TEN, toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: caseLoad });
   check("an uppercase-hex connection_id/tenant matching the canonical lowercase row is NOT a false mismatch/foreign_tenant", caseRun.outcome === "read_observed", JSON.stringify(caseRun));
 
+  // Codex P2 (follow-up): case is not the only valid non-canonical UUID spelling — Postgres also
+  // accepts hyphenless and brace-wrapped inputs and still serializes the stored id canonical-
+  // hyphenated-lowercase, so a caller naming the SAME row that way must NOT be a false
+  // connection_mismatch/foreign_tenant. The runner now compares by canonical UUID (`uuidKey` — the 32
+  // shared hex nibbles). LOAD-BEARING: the prior lowercased-STRING compare fails these — a hyphenless
+  // `abcdef0123…` is not string-equal to canonical `abcdef01-2345-…` even lowercased.
+  const CANON_HEX_ID = "abcdef01-2345-6789-abcd-ef0123456789";
+  const CANON_HEX_TEN = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+  const spellLoad = () => ({ ok: true, connectionId: CANON_HEX_ID, tenantId: CANON_HEX_TEN, serverUrl: CANON_URL, auth: bearer });
+  approvals = {};
+  const hyphenless = await runnerMod.runConnectionCapability({ connectionId: "abcdef0123456789abcdef0123456789", tenantId: "aaaaaaaabbbbccccddddeeeeeeeeeeee", toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: spellLoad });
+  check("a hyphenless connection_id/tenant that canonicalizes to the row is NOT a false mismatch/foreign_tenant", hyphenless.outcome === "read_observed", JSON.stringify(hyphenless));
+  approvals = {};
+  const braced = await runnerMod.runConnectionCapability({ connectionId: "{ABCDEF01-2345-6789-ABCD-EF0123456789}", tenantId: "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}", toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: spellLoad });
+  check("a brace-wrapped uppercase connection_id/tenant that canonicalizes to the row is NOT a false mismatch/foreign_tenant", braced.outcome === "read_observed", JSON.stringify(braced));
+
   // (6) the consent verifier is asked to authorize the SAME canonical connection_id that backs
   // dispatch, and (7) the mutation dispatches to that same row's endpoint — single source, proven together.
   approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };
