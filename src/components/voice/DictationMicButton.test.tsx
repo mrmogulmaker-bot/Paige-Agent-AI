@@ -1,4 +1,4 @@
-import { act, useState } from "react";
+import { act, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DictationMicButton } from "./DictationMicButton";
@@ -387,6 +387,26 @@ describe("Solo dictation control", () => {
     expect(sockets[0].sent[1]).toBeInstanceOf(ArrayBuffer);
   });
 
+  it("defers a deliberate stop during connecting until the provider is ready", async () => {
+    const onText = vi.fn();
+    await renderControl("account-a", onText);
+    const button = host.querySelector("button")!;
+
+    await act(async () => { button.click(); });
+    await flush();
+    await act(async () => voiceHarness.frameCallbacks[0](new Float32Array([0.2, -0.2])));
+    await act(async () => sockets[0].open());
+    await act(async () => { button.click(); });
+
+    expect(host.textContent).toContain("Finishing");
+    expect(sockets[0].sent).not.toContain(JSON.stringify({ type: "stop" }));
+
+    await act(async () => sockets[0].message({ type: "ready" }));
+    expect(sockets[0].sent.filter((frame) => frame === JSON.stringify({ type: "stop" }))).toHaveLength(1);
+    await act(async () => sockets[0].message({ type: "transcript", text: "short utterance", is_final: true }));
+    expect(onText).toHaveBeenCalledWith("short utterance");
+  });
+
   it("uses a five-minute silence guard without ending a natural pause", async () => {
     vi.useFakeTimers();
     try {
@@ -459,5 +479,38 @@ describe("Solo dictation control", () => {
     await act(async () => sockets[0].message({ type: "transcript", text: "PAIGE", is_final: true }));
     await act(async () => sockets[0].message({ type: "transcript", text: "systems", is_final: true }));
     expect(textarea.value).toBe("hello PAIGE systems world");
+  });
+
+  it("preserves the composer caret when keyboard focus crosses another toolbar control", async () => {
+    const Composer = () => {
+      const [value, setValue] = useState("hello world");
+      const composerRef = useRef<HTMLTextAreaElement>(null);
+      return (
+        <>
+          <textarea ref={composerRef} aria-label="Composer" value={value} onChange={(event) => setValue(event.target.value)} />
+          <button type="button" aria-label="Toolbar control">Toolbar control</button>
+          <DictationMicButton
+            composerRef={composerRef}
+            onText={(segment, insertion) => setValue((previous) => appendDictation(previous, segment, insertion))}
+            showStatus
+            scopeEpoch="account-a"
+          />
+        </>
+      );
+    };
+    await act(async () => root.render(<Composer />));
+    const textarea = host.querySelector("textarea")!;
+    textarea.focus();
+    textarea.setSelectionRange(6, 6);
+    const toolbarControl = host.querySelector<HTMLButtonElement>('[aria-label="Toolbar control"]')!;
+    toolbarControl.focus();
+    const mic = host.querySelectorAll("button")[1]!;
+    mic.focus();
+    await act(async () => { mic.click(); });
+    await flush();
+    await act(async () => sockets[0].open());
+    await act(async () => sockets[0].message({ type: "ready" }));
+    await act(async () => sockets[0].message({ type: "transcript", text: "PAIGE", is_final: true }));
+    expect(textarea.value).toBe("hello PAIGE world");
   });
 });

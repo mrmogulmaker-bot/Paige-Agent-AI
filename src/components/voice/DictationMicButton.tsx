@@ -9,7 +9,7 @@
  * §11: the mic is NEUTRAL/indigo — a mic is not an "act", so gold stays on Send.
  * Motion-safe (every pulse guards `motion-reduce`), token-only, jargon-free.
  */
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { Mic, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -32,6 +32,8 @@ interface DictationMicButtonProps {
   showStatus?: boolean;
   /** Authenticated account epoch used to invalidate a recording generation. */
   scopeEpoch?: string | null;
+  /** Owning composer; preserves its caret even when focus crosses toolbar controls. */
+  composerRef?: RefObject<HTMLTextAreaElement | HTMLInputElement>;
   className?: string;
 }
 
@@ -45,6 +47,7 @@ export function DictationMicButton({
   activeLabel,
   showStatus = false,
   scopeEpoch = null,
+  composerRef,
   className,
 }: DictationMicButtonProps) {
   const [resultVisible, setResultVisible] = useState(false);
@@ -76,7 +79,8 @@ export function DictationMicButton({
     }
   }, [disabled, status, stop, supported]);
 
-  const rememberInsertionPoint = (candidate: EventTarget | null) => {
+  const rememberInsertionPoint = (fallback: EventTarget | null) => {
+    const candidate = composerRef?.current ?? fallback;
     if (!(candidate instanceof HTMLTextAreaElement) && !(candidate instanceof HTMLInputElement)) return;
     insertionPointRef.current = { offset: candidate.selectionStart ?? candidate.value.length };
   };

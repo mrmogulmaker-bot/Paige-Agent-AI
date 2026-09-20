@@ -162,6 +162,7 @@ type DictationRun = {
   generation: number;
   scopeEpoch: string | null;
   released: boolean;
+  providerReady: boolean;
   recorder: AudioRecorder | null;
   socket: WebSocket | null;
   pendingFrames: ArrayBuffer[];
@@ -254,7 +255,7 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
     try { run.recorder?.stop(); } catch { /* best-effort */ }
     run.recorder = null;
     const ws = run.socket;
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    if (run.providerReady && ws && ws.readyState === WebSocket.OPEN) {
       try { ws.send(JSON.stringify({ type: "stop" })); } catch { /* best-effort */ }
     }
     run.settleTimer = setTimeout(() => {
@@ -289,6 +290,7 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
       generation: ++generationRef.current,
       scopeEpoch: scopeEpochRef.current,
       released: false,
+      providerReady: false,
       recorder: null,
       socket: null,
       pendingFrames: [],
@@ -346,7 +348,6 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
           ws.send(JSON.stringify({ type: "start", sampleRate: DEEPGRAM_SAMPLE_RATE }));
           // Flush frames captured before the socket finished connecting.
           for (const buf of run.pendingFrames) ws.send(buf);
-          if (run.released) ws.send(JSON.stringify({ type: "stop" }));
         } catch { /* best-effort */ }
         run.pendingFrames = [];
         setStatus(run.released ? "transcribing" : "connecting");
@@ -376,6 +377,13 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
             ? "Voice typing isn't available right now."
             : "Voice typing hit a snag. Please try again.");
         } else if (msg.type === "ready") {
+          run.providerReady = true;
+          // A short utterance can finish while the provider is still opening.
+          // Wait for ready so the server has flushed its pending PCM into the
+          // provider stream before asking it for the trailing final transcript.
+          if (run.released && ws.readyState === WebSocket.OPEN) {
+            try { ws.send(JSON.stringify({ type: "stop" })); } catch { /* best-effort */ }
+          }
           setStatus(run.released ? "transcribing" : "listening");
         }
       };

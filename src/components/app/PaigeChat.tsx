@@ -704,6 +704,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
           {/* Tap-to-dictate — neutral/indigo mic (never gold; Send owns the act, §11).
               Dictated words append into the composer for the client to edit + send. */}
           <DictationMicButton
+            composerRef={inputRef}
             onText={(seg, insertionPoint) => setInput((prev) => appendDictation(prev, seg, insertionPoint))}
             onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
             disabled={isLoading}

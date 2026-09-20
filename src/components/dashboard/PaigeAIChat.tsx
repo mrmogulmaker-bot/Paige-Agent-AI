@@ -1327,6 +1327,7 @@ const PaigeAIChatInner = ({
     <DictationMicButton
       key={soloTenantSafety ? `${dictationEpoch ?? "resolving"}:${dictationGeneration}` : "shared"}
       scopeEpoch={soloTenantSafety ? dictationEpoch : null}
+      composerRef={inputRef}
       showStatus={soloTenantSafety}
       onText={(seg, insertionPoint) => {
         if (soloTenantSafety && acceptedEpochRef.current !== dictationEpoch) return;
