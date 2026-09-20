@@ -535,6 +535,18 @@ console.log("\n— single source: consent + dispatch from one canonical connecti
   const braced = await runnerMod.runConnectionCapability({ connectionId: "{ABCDEF01-2345-6789-ABCD-EF0123456789}", tenantId: "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}", toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: spellLoad });
   check("a brace-wrapped uppercase connection_id/tenant that canonicalizes to the row is NOT a false mismatch/foreign_tenant", braced.outcome === "read_observed", JSON.stringify(braced));
 
+  // Codex P2 (follow-up on 304ce3c6): a MALFORMED identity must be REJECTED, not stripped to a
+  // colliding key. A garbage-prefixed value whose hex nibbles match the row (Codex's `zz…` example)
+  // is refused — canonicalUuid validates (hex + hyphens → exactly 32 nibbles) and returns null for a
+  // non-UUID. LOAD-BEARING: the prior strip-only reducer would equate `zz`+canonical with canonical
+  // and flip both of these to a false pass.
+  approvals = {};
+  const badConn = await runnerMod.runConnectionCapability({ connectionId: "zz" + CANON_HEX_ID, tenantId: CANON_HEX_TEN, toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: spellLoad });
+  check("a malformed (garbage-prefixed, non-UUID) connection_id is refused connection_mismatch, never stripped to a colliding key", badConn.outcome === "refused" && badConn.code === "connection_mismatch", JSON.stringify(badConn));
+  approvals = {};
+  const badTen = await runnerMod.runConnectionCapability({ connectionId: CANON_HEX_ID, tenantId: "zz" + CANON_HEX_TEN, toolName: "list_records", args: {}, mode: "execute" }, { ...deps, loadConnection: spellLoad });
+  check("a malformed (garbage-prefixed, non-UUID) tenant_id is refused foreign_tenant, never stripped to a colliding key", badTen.outcome === "refused" && badTen.code === "foreign_tenant", JSON.stringify(badTen));
+
   // (6) the consent verifier is asked to authorize the SAME canonical connection_id that backs
   // dispatch, and (7) the mutation dispatches to that same row's endpoint — single source, proven together.
   approvals = { send_message: { pin: pinOf("send_message"), endpoint: "current" } };

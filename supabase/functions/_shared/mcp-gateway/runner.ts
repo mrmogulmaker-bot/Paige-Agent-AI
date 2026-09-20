@@ -53,14 +53,38 @@ function errorCodeOf(e: unknown): string {
   return "runner_failed";
 }
 
-// Postgres accepts several equivalent UUID input spellings — hyphenated, hyphenless, brace-wrapped,
-// and any case — but always serializes a stored id to its canonical lowercase-hyphenated form. So a
-// caller can name the SAME connection/tenant in a different-but-valid spelling than the row carries;
-// a raw string compare (even lowercased) would then falsely refuse a legitimate request. Reducing
-// both sides to the 32 hex nibbles they all share compares true UUID identity, not text (Codex P2).
-// A non-UUID value never reaches here: the typed-`uuid` RPC arg rejects it, so the loader returns
-// not-found before either guard runs.
-const uuidKey = (v: string): string => v.toLowerCase().replace(/[^0-9a-f]/g, "");
+// Reduce a UUID to its 32-hex canonical key for identity comparison, or `null` when the value is NOT
+// a valid UUID. Postgres accepts several equivalent spellings — canonical hyphenated, hyphenless,
+// brace-wrapped, any case — and serializes a stored id to canonical lowercase-hyphenated, so a caller
+// may name the SAME connection/tenant in a different-but-valid spelling than the row carries; a raw
+// (even lowercased) string compare would then falsely refuse it. This VALIDATES rather than merely
+// strips: after dropping one optional pair of braces, the value must contain ONLY hex + hyphens and
+// reduce to exactly 32 hex nibbles — so a malformed identity (a garbage-prefixed alias like
+// `zzabcdef…`, or an all-non-hex string) is rejected, never silently stripped down to a key that
+// could COLLIDE with a valid UUID and slip past the loader-independent guard (Codex P2). In production
+// the typed-`uuid` RPC arg already rejects a non-UUID; this guard validates independently because it
+// is deliberately loader-independent (§39) — an alternate loader accepting aliases must not defeat it.
+const canonicalUuid = (v: string): string | null => {
+  const s = v.trim().toLowerCase().replace(/^\{(.*)\}$/, "$1");
+  if (!/^[0-9a-f-]+$/.test(s)) return null;
+  const hex = s.replace(/-/g, "");
+  return /^[0-9a-f]{32}$/.test(hex) ? hex : null;
+};
+
+// Do two identifiers name the SAME identity? Both valid UUIDs → compare canonical keys (so any accepted
+// spelling matches). A valid UUID vs a non-UUID → NEVER the same (this is what refuses Codex's
+// `zzabcdef…` alias against a real UUID row — a malformed value is not silently reduced to a colliding
+// key). Neither a UUID → byte-for-byte equal (trimmed, case-insensitive), a NON-STRIPPING fallback so
+// distinct opaque aliases still never collide, while a loader that legitimately keys on the same alias
+// on both sides still matches. In production both ids are UUIDs (the typed-`uuid` RPC + server-resolved
+// tenant), so the first branch always applies; the fallback keeps this guard loader-independent (§39).
+const sameId = (a: string, b: string): boolean => {
+  const ka = canonicalUuid(a);
+  const kb = canonicalUuid(b);
+  if (ka !== null && kb !== null) return ka === kb;
+  if (ka !== null || kb !== null) return false;
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+};
 
 export type RunnerDeps = {
   /** Records the run's outcome. In production this is the CANONICAL-Rail receipt
@@ -143,15 +167,14 @@ export async function runConnectionCapability(
   // invariant LOADER-INDEPENDENT — a future/alternate loader that resolved an alias or redirect to a
   // different row could otherwise reintroduce a two-source divergence (consent for id A, dispatch to
   // row B) without this guard.
-  // Both identity comparisons are by canonical UUID (`uuidKey`), not text — a caller may name a valid
-  // UUID in any accepted spelling (uppercase, hyphenless, brace-wrapped) while the row carries the
-  // canonical lowercase-hyphenated form, and a raw/lowercased string compare would falsely refuse it
-  // (Codex P2).
-  if (uuidKey(canon.connectionId) !== uuidKey(req.connectionId)) return await emit("refused", "connection_mismatch");
+  // Identity comparison is by `sameId` (canonical-UUID equality for valid UUIDs; exact, non-stripping
+  // otherwise) — a caller may name a valid UUID in any accepted spelling while the row carries the
+  // canonical form, but a malformed value is never coerced into a colliding match (Codex P2).
+  if (!sameId(req.connectionId, canon.connectionId)) return await emit("refused", "connection_mismatch");
   // §9 isolation: `get_mcp_connection_secret` is tenant-agnostic, so the runner enforces that the
   // row's tenant is the caller's server-derived tenant. A foreign-tenant connection never dispatches
   // — nor prepares.
-  if (uuidKey(canon.tenantId) !== uuidKey(req.tenantId)) return await emit("refused", "foreign_tenant");
+  if (!sameId(req.tenantId, canon.tenantId)) return await emit("refused", "foreign_tenant");
 
   // prepare stages intent only — the connection is validated above, but it opens no session and
   // contacts no provider.
