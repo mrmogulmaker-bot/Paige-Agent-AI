@@ -1291,8 +1291,14 @@ JSON:`;
     // extraction had already reached the provider (test:knowledge-scope 15.9: observed 1,
     // expected 0). The fix DEFERS this call to immediately AFTER the pre-egress active-account
     // revalidation that already guards the chat dispatch: that guard early-returns 409 on a
-    // switched/stale/unresolved scope, so a switched turn returns before the extraction can run
-    // (0 provider calls, fail closed — 15.9). TWO pre-dispatch validations then bracket the
+    // switched/stale/unresolved scope, so a switched turn returns before the extraction can run —
+    // NO stale-context provider egress, fail closed. Precisely: a switched DOCX/image turn makes
+    // ZERO provider calls (15.9); a switched general-PDF turn still makes exactly ONE pre-resolution
+    // `runDocumentReadCheck` call (line ~1315 — the caller's OWN uploaded PDF bytes + the fixed
+    // read-check prompt only, never tenant Knowledge or a prior workspace's messages; booked
+    // `document-read-check:PLATFORM`), and this deferral still prevents BOTH the general-document
+    // extraction AND the Knowledge-carrying chat dispatch from egressing on the stale scope (15.9e).
+    // TWO pre-dispatch validations then bracket the
     // deferred call: (1) the pre-egress guard BEFORE it catches a switch already present at turn
     // start; (2) a SECOND `revalidateTenantKnowledgeScope()` immediately AFTER the extraction and
     // before the chat dispatch (added for the Codex P1 on head a84bfcd6) catches a switch that
@@ -1382,7 +1388,9 @@ JSON:`;
         // DEFER the actual provider call to the guarded pre-dispatch region (#1255). The
         // extraction_proposal SSE event is still emitted after the chat stream from the value
         // computed there. Running it here would egress before the active account is validated;
-        // a switched-document turn would still make one provider call (15.9).
+        // a switched general-document turn would then make one EXTRACTION provider call it must
+        // not (the pre-existing pre-resolution `runDocumentReadCheck` on a general PDF is separate
+        // and accepted — see 15.9 for DOCX/image, 15.9e for the general-PDF read-check contract).
         deferGeneralDocExtraction = true;
 
         // #322 — durably store a general PDF in the SAME private bucket the credit path uses

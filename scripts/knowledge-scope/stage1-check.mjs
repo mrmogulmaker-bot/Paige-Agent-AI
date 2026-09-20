@@ -287,6 +287,17 @@ globalThis.fetch = async (url, init) => {
         headers: { "Content-Type": "application/json" },
       });
     }
+    // The SAME pre-resolution PDF read-check, but for a readable PDF that is NOT a credit report:
+    // `document_kind` is not `credit_report`, so `isCreditReportPdf` is false and the turn routes to
+    // the general-document (deferred-extraction) path. This is what a general-PDF turn hits — the
+    // one accepted pre-resolution provider call 15.9e pins the contract of.
+    if (next === "read-check-general") {
+      const readCheck = JSON.stringify({ can_read_document: true, document_kind: "other" });
+      return new Response(JSON.stringify({ content: [{ type: "text", text: readCheck }], model: "test", usage: { input_tokens: 1, output_tokens: 1 } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     // A provider round that FAILS. Used to reach the loop's forced-termination path — the
     // branch that issues a tools-less CLOSING call — without needing to exhaust MAX_ROUNDS.
     if (next === "fail") {
@@ -1019,7 +1030,8 @@ group("attached-document turns DO carry tenant Knowledge, and its guard actually
   assert("15.4 telemetry is written for a scope that held", !!valid.telemetry, JSON.stringify(valid.telemetry?.row ?? null));
   assert("15.5 the existing document response path remains usable", valid.responseText.includes("CHILD-PRIVATE-MARKER"), valid.responseText);
   // #1255 — the general-document extraction was DEFERRED past the pre-egress active-account guard
-  // so a switched turn (15.9) makes zero provider calls. This pins the other half of that change:
+  // so a switched DOCX/image turn (15.9) makes zero provider calls (a general-PDF turn still makes
+  // its one accepted pre-resolution read-check — see 15.9e). This pins the other half of that change:
   // on a valid, unswitched turn the deferral must still run the extraction exactly ONCE and leave
   // the streamed reply intact — two provider calls, no more (a re-added eager call would make it
   // three), no fewer (a dropped deferral would make it one and silently lose the extraction).
@@ -1058,7 +1070,7 @@ group("attached-document turns DO carry tenant Knowledge, and its guard actually
     JSON.stringify(switched.telemetry?.row ?? null),
   );
   assert(
-    "15.9 a switched document turn makes no provider call at all",
+    "15.9 a switched DOCX document turn makes no provider call at all (the `document` fixture is DOCX; general-PDF has its own read-check contract — 15.9e)",
     switched.providerCalls.length === 0,
     `provider calls: ${switched.providerCalls.length}`,
   );
@@ -1082,6 +1094,59 @@ group("attached-document turns DO carry tenant Knowledge, and its guard actually
     "15.9c a switched document turn whose Knowledge lookup MISSED still makes no provider call",
     switchedKbMiss.providerCalls.length === 0,
     `provider calls: ${switchedKbMiss.providerCalls.length}`,
+  );
+
+  // #1255 (coordinator disposition of the Codex PDF P1) — the SWITCHED GENERAL-PDF contract.
+  // A general PDF (unlike DOCX/image) runs a pre-resolution `runDocumentReadCheck` BEFORE the active
+  // account is resolved. That one provider call is ACCEPTED and intentional: it carries only the
+  // caller's OWN uploaded PDF bytes + the fixed read-check prompt — never tenant Knowledge or a
+  // prior workspace's messages — and books `document-read-check:PLATFORM`. So the honest contract
+  // for a switched general-PDF turn is EXACTLY ONE provider call (that read-check), with the deferred
+  // general-document extraction AND the Knowledge-carrying chat dispatch both prevented by the
+  // pre-egress guard, and the turn failing closed. This is the precise per-document-type statement
+  // that "a switched document turn makes zero provider calls" (15.9, DOCX-only) must NOT be read to
+  // claim for PDFs. `document_kind:"other"` routes the read-check to the general path; the trailing
+  // provider entries would only answer a (buggy) extraction/chat call, so the count/trace assertions
+  // — not a missing-response crash — are what catch a regression.
+  const generalPdfBytes = Buffer.from("PRIVATE-PDFBYTES-MARKER").toString("base64");
+  const switchedGeneralPdf = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD, AGENCY],
+    memberships: [CHILD, AGENCY],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    bodyExtras: { document: { fileName: "operating-notes.pdf", mimeType: "application/pdf", kind: "pdf", base64: generalPdfBytes } },
+    provider: ["read-check-general", "private-text", "private-text"],
+  });
+  assert(
+    "15.9e a switched general-PDF turn makes EXACTLY ONE provider call — the pre-resolution read-check",
+    switchedGeneralPdf.providerCalls.length === 1,
+    `provider calls: ${switchedGeneralPdf.providerCalls.length}`,
+  );
+  assert(
+    "15.9e-i that sole call IS the PDF read-check — it carries the caller's uploaded PDF bytes + the read-check prompt only",
+    switchedGeneralPdf.providerCalls.length === 1
+      && JSON.stringify(switchedGeneralPdf.providerCalls[0]).includes(generalPdfBytes)
+      && JSON.stringify(switchedGeneralPdf.providerCalls[0]).includes("application/pdf"),
+    JSON.stringify(switchedGeneralPdf.providerCalls).slice(0, 400),
+  );
+  assert(
+    "15.9e-ii the read-check payload carries NO tenant Knowledge — no cross-context egress",
+    !switchedGeneralPdf.providerCalls.some((body) => JSON.stringify(body).includes("PRIVATE-KB-SOURCE-MARKER")),
+    JSON.stringify(switchedGeneralPdf.providerCalls).slice(0, 400),
+  );
+  const switchedGeneralPdfTraceRows = switchedGeneralPdf.rec.inserts
+    .filter((i) => i.table === "paige_llm_trace")
+    .map((i) => `${i.row?.job_kind ?? "?"}:${i.row?.tenant_id ? "tenant" : "PLATFORM"}`)
+    .sort();
+  assert(
+    "15.9e-iii the ONLY trace row is document-read-check:PLATFORM — no general-document-extraction call, no chat dispatch fired on the switched turn",
+    JSON.stringify(switchedGeneralPdfTraceRows) === JSON.stringify(["document-read-check:PLATFORM"]),
+    JSON.stringify(switchedGeneralPdfTraceRows),
+  );
+  assert(
+    "15.9e-iv the switched general-PDF turn fails closed with the active-account cancellation",
+    switchedGeneralPdf.responseText.includes("ACTIVE_ACCOUNT_CHANGED"),
+    switchedGeneralPdf.responseText.slice(0, 400),
   );
 
   // #1255 P1 (Codex, head a84bfcd6) — the DEFERRED general-document extraction is an AWAITED
