@@ -19,6 +19,91 @@ import { accruedSpendToday, BudgetExceeded, enforceBudget, resolveCeiling, type 
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
+const ANTHROPIC_ERROR_CAPTURE_BYTES = 4096;
+
+/**
+ * Preserve enough structure to diagnose a rejected Anthropic request without ever retaining the
+ * provider's raw message. Provider errors can echo request content, so only fixed classifications,
+ * a tool-schema path, and a validated request id survive into the trace.
+ */
+async function anthropicFailureDiagnostic(resp: Response): Promise<string> {
+  let excerpt = "";
+  let capturedBytes = 0;
+  let truncated = false;
+  if (resp.body) {
+    const reader = resp.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    try {
+      while (received <= ANTHROPIC_ERROR_CAPTURE_BYTES) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const remaining = ANTHROPIC_ERROR_CAPTURE_BYTES + 1 - received;
+        const part = value.subarray(0, Math.max(0, remaining));
+        if (part.length) chunks.push(part);
+        received += part.length;
+        if (value.length > part.length || received > ANTHROPIC_ERROR_CAPTURE_BYTES) {
+          truncated = true;
+          break;
+        }
+      }
+    } finally {
+      if (truncated) {
+        try { await reader.cancel(); } catch { /* response already closed */ }
+      }
+    }
+    capturedBytes = Math.min(received, ANTHROPIC_ERROR_CAPTURE_BYTES);
+    const combined = new Uint8Array(capturedBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      if (offset >= capturedBytes) break;
+      const part = chunk.subarray(0, capturedBytes - offset);
+      combined.set(part, offset);
+      offset += part.length;
+    }
+    excerpt = new TextDecoder().decode(combined);
+  }
+
+  let parsed: any = null;
+  try { parsed = excerpt ? JSON.parse(excerpt) : null; } catch { /* classify as unparsed */ }
+  const rawType = parsed?.error?.type ?? parsed?.type;
+  const errorType = typeof rawType === "string" && /^[a-zA-Z0-9_-]{1,64}$/.test(rawType)
+    ? rawType
+    : "unknown";
+  const rawMessage = typeof parsed?.error?.message === "string" ? parsed.error.message : "";
+  const pathMatch = rawMessage.match(
+    /^\s*((?:tools|tool_choice)(?:(?:\.\d+)|(?:\.[A-Za-z_][A-Za-z0-9_-]*)){1,8})\s*:/i,
+  );
+  const errorPath = pathMatch?.[1] ?? null;
+  const lower = rawMessage.toLowerCase();
+  const issueCodes: string[] = [];
+  const addIssue = (condition: boolean, code: string) => { if (condition) issueCodes.push(code); };
+  addIssue(/input[_ ]schema/.test(lower), "input_schema");
+  addIssue(/invalid.{0,24}json schema|json schema.{0,24}invalid/.test(lower), "invalid_json_schema");
+  addIssue(/top[- ]level.{0,40}anyof|anyof.{0,40}top[- ]level/.test(lower), "top_level_anyof");
+  addIssue(/top[- ]level.{0,40}oneof|oneof.{0,40}top[- ]level/.test(lower), "top_level_oneof");
+  addIssue(/top[- ]level.{0,40}allof|allof.{0,40}top[- ]level/.test(lower), "top_level_allof");
+  addIssue(/unsupported.{0,24}keyword|keyword.{0,24}unsupported/.test(lower), "unsupported_keyword");
+  addIssue(/required.{0,40}propert|propert.{0,40}required/.test(lower), "required_properties");
+  if (!issueCodes.length) issueCodes.push("unclassified");
+
+  const headerRequestId = resp.headers.get("request-id") ?? resp.headers.get("x-request-id");
+  const bodyRequestId = parsed?.request_id;
+  const candidateRequestId = headerRequestId ?? (typeof bodyRequestId === "string" ? bodyRequestId : null);
+  const providerRequestId = candidateRequestId && /^[a-zA-Z0-9_-]{1,128}$/.test(candidateRequestId)
+    ? candidateRequestId
+    : null;
+
+  return JSON.stringify({
+    provider_request_id: providerRequestId,
+    http_status: resp.status,
+    error_type: errorType,
+    error_path: errorPath,
+    issue_codes: [...new Set(issueCodes)],
+    captured_bytes: capturedBytes,
+    truncated,
+  });
+}
 
 export const CLAUDE_REASONING = "claude-sonnet-5";       // alias: auto-upgrades
 export const CLAUDE_CLASSIFICATION = "claude-haiku-4-5"; // alias: auto-upgrades
@@ -191,8 +276,8 @@ export async function callClaude(opts: ClaudeCallOpts): Promise<ClaudeResult> {
     });
 
     if (!resp.ok) {
-      const detail = await resp.text().catch(() => "");
-      throw new Error(`Anthropic ${resp.status}: ${detail.slice(0, 500)}`);
+      const detail = await anthropicFailureDiagnostic(resp);
+      throw new Error(`Anthropic ${resp.status}: ${detail}`);
     }
     const data = await resp.json();
     const blocks: unknown[] = Array.isArray(data?.content) ? data.content : [];
@@ -438,6 +523,7 @@ async function streamAnthropicAsOpenAI(
     // §34 L1.1 — a rejected STREAMING request (400/429/500) early-returns before the ReadableStream (and
     // its finally-trace) is ever built. Without this, the most common streaming failure — the exact 400
     // the live HOTFIX references — would go UNTRACED and under-report the fleet error rate (§13). Emit it.
+    const detail = await anthropicFailureDiagnostic(resp);
     if (trace) {
       traceLLMCall({
         ...trace,
@@ -448,8 +534,8 @@ async function streamAnthropicAsOpenAI(
         status: "error",
         latency_ms: Date.now() - streamStarted,
         input: (reqBody as { messages?: unknown }).messages,
-        error_class: `http_${resp.status}`,
-        error_message: `Anthropic stream ${resp.status}`,
+        error_class: resp.ok ? "missing_body" : `http_${resp.status}`,
+        error_message: detail,
         metadata: { caller_function: trace.agent_id },
       });
     }

@@ -12,8 +12,20 @@ describe("Paige Chat canonical CRM adoption", () => {
     for (const [action, tool] of Object.entries(CRM_ACTION_CAPABILITY)) expect(CRM_TOOL_TO_ACTION[tool]).toBe(action);
     expect(chat).toContain("toolDefs.push(...CRM_COMMAND_TOOLS as any)");
     const dealUpdate = CRM_COMMAND_TOOLS.find((tool) => tool.function.name === "crm_update_deal");
-    expect(dealUpdate?.function.parameters).toMatchObject({ anyOf: expect.any(Array) });
-    expect((dealUpdate?.function.parameters as { anyOf?: unknown[] }).anyOf).toHaveLength(7);
+    expect(dealUpdate?.function.parameters).toMatchObject({
+      type: "object",
+      required: ["deal_id", "expected_version"],
+      properties: expect.objectContaining({
+        title: expect.any(Object),
+        value_cents: expect.any(Object),
+        stage_id: expect.any(Object),
+        expected_close_date: expect.any(Object),
+        contact_id: expect.any(Object),
+        owner_user_id: expect.any(Object),
+        currency: expect.any(Object),
+      }),
+    });
+    expect(dealUpdate?.function.parameters).not.toHaveProperty("anyOf");
   });
 
   it("uses one stable record subject to disambiguate same-tool approval batches", async () => {
