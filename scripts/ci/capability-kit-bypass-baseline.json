@@ -1,0 +1,1517 @@
+[
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "action_advance"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "action_file"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "agency_create_subaccount"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "agency_enter_subaccount"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "agency_exit_subaccount"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "approval_claim"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "approval_comment"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "approval_create"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "approval_decide"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "author_event_kind"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "automation_draft"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "automation_rule_create"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "automation_rule_delete"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "automation_rule_update"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "automation_set_grant"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "automation_set_state"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "billing_create_invoice"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "billing_send_invoice"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "booking_preset_archive"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "booking_preset_create"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "booking_preset_duplicate"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "booking_preset_pause"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "booking_preset_publish"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "booking_preset_restore"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "booking_preset_revise"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "business_create"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "business_update"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "business_verify"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "calendar_book_meeting"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "calendar_link_send"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "campaign_brief_create"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "campaign_brief_revise"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "client_log_progress"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "coach_grant_role_globally"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "coach_revoke_role_globally"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "coach_update_profile"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "comms_add_email_domain"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "comms_buy_number"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "comms_draft_email"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "comms_draft_registration"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "comms_name_number"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "comms_send_bulk_email"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "comms_send_email"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "comms_send_email_choosing_the_sender"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "comms_set_primary_email_domain"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "comms_set_primary_number"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "comms_upsert_email_template"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "content_save"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_add_note"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_advance_journey_stage"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_append_contact_notes"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_archive_company"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_archive_contact"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_assign_coach"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_assign_contact"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_assign_contact_owner"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_assign_deal_contact"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_assign_deal_owner"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_assign_task"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_bulk_update_contacts"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_cancel_task"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_close_deal"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_complete_task"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_create_company"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_create_contact"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_create_task"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_delete_deal"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_delete_task"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_file_document"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_hard_delete_contact"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_link_contact_company"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_log_activity"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_merge_contacts"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_propose_contact_update"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_reopen_deal"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_reopen_task"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_reschedule_task"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_restore_company"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_restore_contact"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_unlink_contact_company"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_update_company"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_update_contact"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_update_deal"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_update_lifecycle_stage"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_update_pipeline_stage"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "crm_update_task"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "deal_create"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "deal_move_stage"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "delegate_to_subagent"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "document_generate"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "draft_marketing_content"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "forge_subagent"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "generate_image"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "growth_funnel_build"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "growth_funnel_publish"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "growth_page_publish"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "growth_page_save"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "improvement_decide"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "improvement_propose"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "ingest_banking_snapshot"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "ingest_client_memory"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "ingest_confirm_proposal"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "ingest_credit_scores"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "ingest_reject_proposal"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "marketplace_install"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "marketplace_uninstall"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "member_grant_role"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "member_revoke_role"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "mission_create"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "mission_revise"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "mission_transition"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "n8n_activate_workflow"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "n8n_archive_workflow"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "n8n_create_workflow"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "n8n_deactivate_workflow"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "n8n_delete_workflow"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "n8n_run_workflow"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "n8n_update_workflow"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "nav_pull_business_credit"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "pipeline_configure"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "plan_add_milestone"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "plan_assign_task"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "plan_create"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "plan_remove_item"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "plan_set_reminder"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "plan_update_item"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "platform_post_notification"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "privacy_handle_request"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "program_enroll"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "propose_business_brief_update"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "readiness_approve_proposal"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "readiness_reject_proposal"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "save_to_knowledge_base"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "skill_run"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "smartcredit_pull_snapshot"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "social_account_select"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "social_connection_disconnect"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "social_connection_start"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "subagent_approve_proposal"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "subagent_create"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "team_invite_member"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "team_invite_mint"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "team_invite_resend"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "team_invite_revoke"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "team_set_permission"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "team_set_work_profile"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "tenant_create"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "tenant_set_features"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "tenant_set_status"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "update_business_profile"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "update_client_data"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "update_social_accounts"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "workflow_cancel_run"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "workflow_register"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "workflow_run"
+  },
+  {
+    "rule": "direct-risk-entry",
+    "path": "supabase/functions/_shared/action-risk.ts",
+    "symbol": "zapier_run_action"
+  },
+  {
+    "rule": "direct-capability-receipt",
+    "path": "supabase/functions/_shared/capability-record.ts",
+    "symbol": "record_capability_run"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/claude.ts",
+    "symbol": "<dynamic>"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/crm-command/catalog.ts",
+    "symbol": "<dynamic>"
+  },
+  {
+    "rule": "direct-capability-receipt",
+    "path": "supabase/functions/_shared/mcp-outcome.ts",
+    "symbol": "record_capability_run"
+  },
+  {
+    "rule": "direct-capability-receipt",
+    "path": "supabase/functions/_shared/n8n-management.ts",
+    "symbol": "record_capability_run"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/n8n-management.ts",
+    "symbol": "<dynamic>"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-capability-gateway/gateway.ts",
+    "symbol": "capability_status"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-capability-gateway/gateway.ts",
+    "symbol": "contact_event_status"
+  },
+  {
+    "rule": "direct-governed-execution",
+    "path": "supabase/functions/_shared/paige-mcp/governed-adapter.ts",
+    "symbol": "decideGovernedExecution"
+  },
+  {
+    "rule": "direct-governed-binding",
+    "path": "supabase/functions/_shared/paige-orchestration/approve-executor.ts",
+    "symbol": "rpc:paige_approve_act_execution"
+  },
+  {
+    "rule": "direct-governed-binding",
+    "path": "supabase/functions/_shared/paige-orchestration/approve-executor.ts",
+    "symbol": "rpc:paige_record_act_execution"
+  },
+  {
+    "rule": "direct-governed-execution",
+    "path": "supabase/functions/_shared/paige-orchestration/approve-executor.ts",
+    "symbol": "decideGovernedExecution"
+  },
+  {
+    "rule": "direct-governed-binding",
+    "path": "supabase/functions/_shared/paige-orchestration/engine.ts",
+    "symbol": "rpc:paige_record_act_execution"
+  },
+  {
+    "rule": "direct-governed-binding",
+    "path": "supabase/functions/_shared/paige-orchestration/engine.ts",
+    "symbol": "rpc:resolve_automation_autonomy"
+  },
+  {
+    "rule": "direct-governed-execution",
+    "path": "supabase/functions/_shared/paige-orchestration/engine.ts",
+    "symbol": "decideGovernedExecution"
+  },
+  {
+    "rule": "direct-governed-execution",
+    "path": "supabase/functions/_shared/paige-skill/governed-adapter.ts",
+    "symbol": "decideGovernedExecution"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/business_mission.ts",
+    "symbol": "mission_create"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/business_mission.ts",
+    "symbol": "mission_revise"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/business_mission.ts",
+    "symbol": "mission_transition"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/calendar_link.ts",
+    "symbol": "calendar_link_prepare"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/calendar_link.ts",
+    "symbol": "calendar_link_send"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/calendar_link.ts",
+    "symbol": "calendar_link_social_copy"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/calendar_preset.ts",
+    "symbol": "booking_preset_archive"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/calendar_preset.ts",
+    "symbol": "booking_preset_create"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/calendar_preset.ts",
+    "symbol": "booking_preset_duplicate"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/calendar_preset.ts",
+    "symbol": "booking_preset_list"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/calendar_preset.ts",
+    "symbol": "booking_preset_pause"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/calendar_preset.ts",
+    "symbol": "booking_preset_publish"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/calendar_preset.ts",
+    "symbol": "booking_preset_restore"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/calendar_preset.ts",
+    "symbol": "booking_preset_revise"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/campaigns.ts",
+    "symbol": "campaign_brief_create"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/campaigns.ts",
+    "symbol": "campaign_brief_list"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/campaigns.ts",
+    "symbol": "campaign_brief_revise"
+  },
+  {
+    "rule": "direct-governed-execution",
+    "path": "supabase/functions/_shared/paige-write-back/governed-adapter.ts",
+    "symbol": "decideGovernedExecution"
+  },
+  {
+    "rule": "direct-governed-binding",
+    "path": "supabase/functions/_shared/social-provider/governance.ts",
+    "symbol": "rpc:resolve_tool_autonomy"
+  },
+  {
+    "rule": "direct-governed-execution",
+    "path": "supabase/functions/_shared/social-provider/governance.ts",
+    "symbol": "decideGovernedExecution"
+  },
+  {
+    "rule": "direct-governed-binding",
+    "path": "supabase/functions/crm-command/index.ts",
+    "symbol": "rpc:current_user_tenant_id"
+  },
+  {
+    "rule": "direct-governed-binding",
+    "path": "supabase/functions/crm-command/index.ts",
+    "symbol": "rpc:execute_crm_command"
+  },
+  {
+    "rule": "direct-governed-binding",
+    "path": "supabase/functions/crm-command/index.ts",
+    "symbol": "rpc:preview_crm_command"
+  },
+  {
+    "rule": "direct-governed-binding",
+    "path": "supabase/functions/crm-command/index.ts",
+    "symbol": "rpc:read_crm_command_result"
+  },
+  {
+    "rule": "direct-governed-binding",
+    "path": "supabase/functions/crm-command/index.ts",
+    "symbol": "rpc:resolve_tool_autonomy"
+  },
+  {
+    "rule": "direct-governed-execution",
+    "path": "supabase/functions/crm-command/index.ts",
+    "symbol": "decideGovernedExecution"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/generate-outreach-draft/index.ts",
+    "symbol": "report_compliance_flags"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "action_advance"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "action_file"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "action_get"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "action_list"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "ask_choices"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "author_event_kind"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "automation_draft"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "automation_list"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "automation_set_grant"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "automation_set_state"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "automation_triggers_list"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "calendar_book_meeting"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "comms_buy_number"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "comms_connection_summary"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "comms_draft_registration"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "comms_list_numbers"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "comms_name_number"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "comms_registration_status"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "comms_search_numbers"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "comms_set_primary_number"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "content_save"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "crm_add_note"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "crm_assign_coach"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "crm_assign_contact"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "crm_create_contact"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "crm_create_task"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "crm_file_document"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "crm_get_contact_summary"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "crm_list_deals"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "crm_list_documents"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "crm_list_tasks"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "crm_list_team"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "crm_log_activity"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "crm_pipeline_summary"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "crm_search_contacts"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "crm_update_contact"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "crm_update_pipeline_stage"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "deal_create"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "deal_move_stage"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "deep_research"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "delegate_to_subagent"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "document_generate"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "document_pending_reviews"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "document_resume_review"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "draft_marketing_content"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "forge_subagent"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "generate_image"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "get_client_rail"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "get_current_rates"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "growth_funnel_build"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "growth_funnel_generate"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "growth_funnel_publish"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "growth_list"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "growth_page_generate"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "growth_page_publish"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "growth_page_save"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "improvement_decide"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "improvement_list"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "improvement_propose"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "inbox_list"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "integrations_list"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "list_event_kinds"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "list_subagents"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "marketplace_browse"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "member_grant_role"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "member_revoke_role"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "pipeline_archive_preview"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "pipeline_catalogue"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "pipeline_configure"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "pipeline_folder_archive_preview"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "plan_add_milestone"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "plan_assign_task"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "plan_create"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "plan_list"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "plan_remove_item"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "plan_set_reminder"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "plan_update_item"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "presence_is_online"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "presence_who_online"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "program_enroll"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "program_list"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "propose_action"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "propose_business_brief_update"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "save_to_knowledge_base"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "search_funding_marketplace"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "search_regional_lenders"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "search_sba_lenders"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "team_invite_member"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "team_invite_resend"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "team_invite_revoke"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "team_set_permission"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "team_set_work_profile"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "update_business_profile"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "update_client_data"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "web_fetch"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "web_search"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "zapier_list_actions"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-ai-chat/index.ts",
+    "symbol": "zapier_run_action"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-context-router/index.ts",
+    "symbol": "add_client_note"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-context-router/index.ts",
+    "symbol": "create_task"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/paige-mcp/index.ts",
+    "symbol": "<dynamic>"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/personal-build-suggestions/index.ts",
+    "symbol": "provide_credit_recommendations"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/skill-forge/index.ts",
+    "symbol": "<dynamic>"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/subagent-forge/index.ts",
+    "symbol": "<dynamic>"
+  }
+]
