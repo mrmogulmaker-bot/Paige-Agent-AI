@@ -1,0 +1,13 @@
+[
+  { "name": "root anyOf", "stage": "schema", "rootExtra": { "anyOf": [] } },
+  { "name": "root oneOf", "stage": "schema", "rootExtra": { "oneOf": [] } },
+  { "name": "root allOf", "stage": "schema", "rootExtra": { "allOf": [] } },
+  { "name": "root not", "stage": "schema", "rootExtra": { "not": {} } },
+  { "name": "role literal permission", "stage": "permission", "permission": "owner" },
+  { "name": "role namespace permission", "stage": "permission", "permission": "roles.owner.manage" },
+  { "name": "marketplace listing as grant", "stage": "permission", "permission": "marketplace.listing.installed" },
+  { "name": "missing idempotency", "stage": "definition", "omit": "idempotency" },
+  { "name": "missing receipt", "stage": "definition", "omit": "receipt" },
+  { "name": "missing outcome", "stage": "definition", "omit": "outcome" },
+  { "name": "marketplace authority field", "stage": "definition", "extra": { "authoritySource": "marketplace_listing" } }
+]

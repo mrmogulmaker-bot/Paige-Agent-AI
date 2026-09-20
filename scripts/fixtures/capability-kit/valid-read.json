@@ -1,0 +1,12 @@
+{
+  "id": "knowledge.documents.read",
+  "effect": "read",
+  "permission": "knowledge.documents.read",
+  "input": {
+    "description": "Read one governed document.",
+    "properties": {
+      "documentId": { "type": "string", "minLength": 1 }
+    },
+    "required": ["documentId"]
+  }
+}
