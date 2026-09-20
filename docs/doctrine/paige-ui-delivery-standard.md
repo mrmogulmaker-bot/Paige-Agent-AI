@@ -21,7 +21,7 @@ The owner may waive exactly two of these gates, and the UI delivery evidence val
 - **Flow-by-Flow** may be recorded as `FLOW_BY_FLOW: WAIVED: owner-decision=<substantive reference>; reason=<substantive reason>` when the skill is genuinely unavailable in the delivery environment and the owner has accepted a grounded flow trace in its place. A waiver is never a substitute for reading the skill when the skill is available.
 - **Flow Prototype**, only when the flow change is material (`MATERIAL_FLOW_CHANGE: YES:`), may be recorded with the same `WAIVED: owner-decision=...; reason=...` grammar when the owner has ruled the changed flow itself and waived the prototype gate for it. When the change is not material, `NOT_REQUIRED: reason` remains the only non-PASS form.
 
-A waiver with an empty, placeholder, or unresolved owner-decision or reason is rejected exactly like any other non-substantive value. `WAIVED` is invalid for every other gate, including `PAIGE_UI_DESIGN`. A waiver records an owner decision on the record; it is never a default, and it never weakens any other check.
+The reference must be recognizable and reviewable (a PR/issue number, a URL, or a dated ruling) and the reason must be meaningful prose — an interjection pair like `owner-decision=no; reason=ok` is a bypass, not a waiver. A waiver with an empty, placeholder, or unresolved owner-decision or reason is rejected exactly like any other non-substantive value. `WAIVED` is invalid for every other gate, including `PAIGE_UI_DESIGN`. A waiver records an owner decision on the record; it is never a default, and it never weakens any other check.
 
 ## Design contract
 

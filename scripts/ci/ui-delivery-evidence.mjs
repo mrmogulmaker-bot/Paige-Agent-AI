@@ -276,6 +276,12 @@ function isPassWithEvidence(value) {
  * placeholder, never "pending"/"unknown"/"none", never bare prose.
  *   WAIVED: owner-decision=<substantive reference>; reason=<substantive reason>
  */
+// A recognizable decision reference: a PR/issue/discussion number, a URL, or
+// a dated ruling — something a reviewer can go read, not a bare word.
+const OWNER_DECISION_REFERENCE = /(?:#[0-9]+|https?:\/\/\S+|20\d{2}-\d{2}-\d{2})/i;
+// A substantive reason is prose, not an interjection: at least four words.
+const MIN_REASON_WORDS = 4;
+
 function isWaivedWithOwnerDecision(value) {
   const match = /^WAIVED:\s*owner-decision=([^;]+);\s*reason=(\S.+)$/i.exec(String(value ?? "").trim());
   if (!match) return false;
@@ -283,10 +289,12 @@ function isWaivedWithOwnerDecision(value) {
   // Token-level unresolved checks (hasUnresolvedToken): the whole-string
   // isUnresolvedValue compares only the exact normalized value, so an
   // embedded marker ("approval pending from owner") would slip through.
-  return ownerDecision.trim().length > 0
-    && !hasUnresolvedToken(ownerDecision)
-    && reason.trim().length > 0
-    && !hasUnresolvedToken(reason);
+  if (hasUnresolvedToken(ownerDecision) || hasUnresolvedToken(reason)) return false;
+  // Substance (Codex c52d3725 P2): the reference must be recognizable and
+  // the reason must be meaningful prose — "owner-decision=no; reason=ok" is
+  // a bypass, not a recorded owner ruling.
+  if (!OWNER_DECISION_REFERENCE.test(ownerDecision)) return false;
+  return reason.trim().split(/\s+/).filter((word) => word.length > 0).length >= MIN_REASON_WORDS;
 }
 
 export function validateEvidenceText(text, classification) {

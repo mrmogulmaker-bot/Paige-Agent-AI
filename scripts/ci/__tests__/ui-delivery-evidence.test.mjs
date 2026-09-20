@@ -610,6 +610,35 @@ test("Codex ad58a9d4 P2: an unresolved token EMBEDDED in waiver prose fails on b
   assert.match(embeddedReason.errors.join("\n"), /FLOW_BY_FLOW/);
 });
 
+test("Codex c52d3725 P2: an interjection waiver (owner-decision=no; reason=ok) fails — substance required", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED: owner-decision=no; reason=ok");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex c52d3725 P2: a recognizable reference with a thin one-word reason still fails", () => {
+  const result = withField("FLOW_BY_FLOW", "WAIVED: owner-decision=PR #1277 adjudication; reason=ok");
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex c52d3725 P2: prose without any recognizable decision reference fails", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=verbal approval at standup; reason=the owner accepted the grounded flow trace in its place for this delivery",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+});
+
+test("Codex c52d3725 P2: a dated owner ruling is a recognizable reference and passes", () => {
+  const result = withField(
+    "FLOW_BY_FLOW",
+    "WAIVED: owner-decision=2026-09-20 session ruling for PR 1280; reason=the owner granted the waiver explicitly during the reconciliation session",
+  );
+  assert.equal(result.ok, true, result.errors.join("\n"));
+});
+
 test("MATERIAL_FLOW_CHANGE YES + FLOW_PROTOTYPE WAIVED with a pending owner-decision fails", () => {
   const record = coreEvidence
     .replace(/^MATERIAL_FLOW_CHANGE:.*$/m, "MATERIAL_FLOW_CHANGE: YES: landing flow changed")
