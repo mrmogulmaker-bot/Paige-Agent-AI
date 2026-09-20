@@ -33,6 +33,7 @@ const soloAppSrc = read("src/solo/SoloApp.tsx");
 
 const { SoloSetupReadinessNotice } = await import("../solo/SoloSetupReadinessNotice");
 const { isSoloSetupComplete } = await import("@/components/auth/RequireSetupComplete");
+const { soloShellRole } = await import("../solo/shell-role");
 
 let host: HTMLDivElement;
 let root: Root | null = null;
@@ -129,18 +130,20 @@ describe("one viewport owner: the reminder renders inside SoloApp's height-owned
     expect(goldBack).toMatch(/<Link[^>]*color/);
   });
 
-  it("Codex a1c5cfd0 P2 regression: the editor probe verdict is tenant+user-keyed — an account switch can never surface the previous workspace's verdict", () => {
+  it("Codex a1c5cfd0 P2 regression: the membership probe verdict is tenant+user-keyed — an account switch can never surface the previous workspace's verdict", () => {
     // The derived value must be false the instant the identity changes
-    // (before any RPC resolves, and indefinitely if one hangs).
-    expect(soloAppSrc).toMatch(/editorProbe\.tenant === activeTenantId/);
-    expect(soloAppSrc).toMatch(/editorProbe\.user === activeUserId/);
-    expect(soloAppSrc).toMatch(/const isMembershipEditor =[\s\S]*?editorProbe\.ok;/);
+    // (before any RPC resolves, and indefinitely if one hangs). Renamed with
+    // the INT-071 owner-label repair: editorProbe → roleProbe carrying the
+    // owner and admin verdicts; the keying contract is unchanged.
+    expect(soloAppSrc).toMatch(/roleProbe\.tenant === activeTenantId/);
+    expect(soloAppSrc).toMatch(/roleProbe\.user === activeUserId/);
+    expect(soloAppSrc).toMatch(/const isMembershipEditor =[\s\S]*?\(roleProbe\.owner \|\| roleProbe\.admin\);/);
     // Sabotage-sensitivity: a bare boolean (the stale shape) fails the pin.
     const bare = soloAppSrc.replace(
-      /editorProbe\.tenant === activeTenantId\s*&&\s*editorProbe\.user === activeUserId\s*&&\s*editorProbe\.ok/,
-      "editorProbe.ok",
+      /roleProbe\.tenant === activeTenantId\s*&&\s*roleProbe\.user === activeUserId\s*&&\s*\(roleProbe\.owner \|\| roleProbe\.admin\)/,
+      "roleProbe.owner",
     );
-    expect(/editorProbe\.tenant === activeTenantId/.test(bare)).toBe(false);
+    expect(/roleProbe\.tenant === activeTenantId/.test(bare)).toBe(false);
   });
 
   it("the shell (not the gate) owns dismissal, so it survives route remounts", () => {
@@ -197,12 +200,15 @@ describe("one viewport owner: the reminder renders inside SoloApp's height-owned
     // role='owner') AND to admin_operational (role='admin' — the save RPC
     // accepts it and the Setup UI enables operational editing). The canonical
     // client-callable predicate for both membership halves is has_tenant_role
-    // (authenticated-granted, STABLE, the §18 one home); the probes run ONLY
-    // while the reminder is visible and fail closed.
+    // (authenticated-granted, STABLE, the §18 one home). Since the INT-071
+    // owner-label repair the probe pair runs whenever the shell has a
+    // resolved identity (the label needs the owner verdict even when Setup is
+    // complete) — still ONE pair of calls per tenant+user, still fail-closed.
     expect(soloAppSrc.match(/supabase\.rpc\("has_tenant_role"/g)?.length).toBe(2);
     expect(soloAppSrc).toMatch(/_role: "owner"/);
     expect(soloAppSrc).toMatch(/_role: "admin"/);
-    expect(soloAppSrc).toMatch(/const editProbeTenant = showSetupReminder \? activeTenantId : null;/);
+    expect(soloAppSrc).toMatch(/const probeTenant = activeTenantId;/);
+    expect(soloAppSrc).toMatch(/const probeUser = activeUserId;/);
     expect(soloAppSrc).toMatch(/canFinishSetup = isPrimaryOwner \|\| isMembershipEditor/);
     // Sabotage-sensitivity: dropping either half breaks the classification pin.
     const membershipDropped = soloAppSrc.replace("isPrimaryOwner || isMembershipEditor", "isPrimaryOwner");
@@ -210,6 +216,65 @@ describe("one viewport owner: the reminder renders inside SoloApp's height-owned
     const adminDropped = soloAppSrc.replace('_role: "admin"', '_role: "owner"');
     expect(soloAppSrc.match(/_role: "admin"/g)?.length ?? 0).toBe(1);
     expect((adminDropped.match(/_role: "admin"/g)?.length ?? 0) === 0).toBe(true);
+  });
+});
+
+describe("the shell's Owner/Team label derives from authoritative membership (INT-071 census repair)", () => {
+  const probe = (over: Partial<{ tenant: string; user: string; owner: boolean; admin: boolean }>) =>
+    ({ tenant: "t-1", user: "u-1", owner: false, admin: false, ...over });
+
+  it("a membership OWNER (co-owner seat) sees the Owner workspace label", () => {
+    expect(soloShellRole(probe({ owner: true }), "t-1", "u-1")).toBe("admin");
+  });
+
+  it("membership ADMIN and MEMBER both see the Team workspace label", () => {
+    expect(soloShellRole(probe({ admin: true }), "t-1", "u-1")).toBe("coach");
+    expect(soloShellRole(probe({}), "t-1", "u-1")).toBe("coach");
+  });
+
+  it("unresolved verdict fails to Team workspace", () => {
+    expect(soloShellRole(null, "t-1", "u-1")).toBe("coach");
+  });
+
+  it("an account switch never leaks the previous workspace's label — a verdict keyed to a prior tenant OR prior user is dead", () => {
+    expect(soloShellRole(probe({ owner: true, tenant: "t-prior" }), "t-1", "u-1")).toBe("coach");
+    expect(soloShellRole(probe({ owner: true, user: "u-prior" }), "t-1", "u-1")).toBe("coach");
+  });
+
+  it("pointer/membership disagreement resolves to membership — the derivation's CODE has no owner_user_id input at all", () => {
+    // Comments may NAME the forbidden pointer (documentation); the code must
+    // never read it. Strip comments, then assert the token is absent.
+    const shellRoleSrc = read("src/solo/shell-role.ts")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    expect(shellRoleSrc).not.toContain("owner_user_id");
+    // The pointer CANNOT disagree because it is not consulted: a pointer-owner
+    // without a membership-owner verdict is "coach", a membership owner whose
+    // pointer names someone else is "admin".
+    expect(soloShellRole(probe({ owner: true }), "t-1", "u-1")).toBe("admin");
+    expect(soloShellRole(null, "t-1", "u-1")).toBe("coach");
+  });
+
+  it("SoloApp wires the label to the tenant+user-keyed membership probe — never to the display-only tenants.owner_user_id pointer", () => {
+    expect(soloAppSrc).toContain("const shellRole = soloShellRole(roleProbe, activeTenantId, activeUserId);");
+    // The defective pointer expression is gone entirely.
+    expect(soloAppSrc).not.toContain('owner_user_id === activeUserId ? "admin" : "coach"');
+    expect(soloAppSrc).not.toMatch(/shellRole[^;\n]*owner_user_id/);
+    // The presentation repair does NOT touch the CTA's authorization halves:
+    // isPrimaryOwner keeps the server-derived column (solo_setup_access_scope's
+    // own owner_full definition) and isMembershipEditor keeps the probe.
+    expect(soloAppSrc).toMatch(/const isPrimaryOwner =/);
+    expect(soloAppSrc).toMatch(/canFinishSetup = isPrimaryOwner \|\| isMembershipEditor/);
+    // Sabotage-sensitivity: re-pointing the label at the pointer fails the pin.
+    const pointerWired = soloAppSrc.replace(
+      "const shellRole = soloShellRole(roleProbe, activeTenantId, activeUserId);",
+      'const shellRole = activeUserId != null && activeTenant?.owner_user_id === activeUserId ? "admin" : "coach";',
+    );
+    expect(/const shellRole = soloShellRole\(roleProbe, activeTenantId, activeUserId\);/.test(pointerWired)).toBe(false);
+  });
+
+  it("the probe state carries the owner and admin verdicts separately (the label needs owner alone; the CTA needs owner OR admin)", () => {
+    expect(soloAppSrc).toMatch(/setRoleProbe\(\{ tenant: probeTenant, user: probeUser, owner: owner\.data === true, admin: admin\.data === true \}\)/);
   });
 });
 
