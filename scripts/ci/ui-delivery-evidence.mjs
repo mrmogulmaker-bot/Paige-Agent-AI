@@ -301,7 +301,15 @@ const AFFIRMATIVE_UNAVAILABILITY = /\b(?:unavailable|absent)\b/i;
 // Codex 5fdbf940 P2) — only a direct assertion of Flow-by-Flow's own
 // unavailability qualifies.
 const BOUND_UNAVAILABILITY = /\bflow[- ]by[- ]flow(?:\s+skill)?(?:\s+(?:is|was|are|were|remains?)\s+)?(?:unavailable|absent)\b|\bflow[- ]by[- ]flow(?:\s+skill)?(?:\s+(?:is|was|are|were|remains?)\s+)?(?:not\s+|never\s+|no\s+longer\s+)(?:installed|present|available)\b/i;
-const AFFIRMATIVE_AVAILABILITY = /\b(?:installed|present|available)\b/i;
+// Availability affirmations are PREDICATES about a subject — "is installed",
+// "remains available", "was present" — not every occurrence of every word
+// (Codex 1ed64059 P2): "unavailable at present" (temporal) and "absent from
+// the present delivery environment" (adjectival) assert unavailability, not
+// availability. "installed"/"available" keep the bare-token veto because
+// their bare occurrence in a waiver reason is an availability claim;
+// "present" needs a predicative anchor because of its other senses.
+const BARE_AVAILABILITY_CLAIM = /\b(?:installed|available)\b/i;
+const PRESENT_PREDICATE = /\b(?:is|was|are|were|remains?|seems?|appears?|been|becomes?)\s+(?:and\s+|or\s+|also\s+|still\s+|now\s+)*present\b/i;
 function establishesUnavailability(reason) {
   // Canonical form 1 — a negator immediately before an AVAILABILITY word:
   // "not installed", "not present", "not available", "never installed",
@@ -331,7 +339,7 @@ function establishesSkillUnavailability(reason) {
     if (BOUND_UNAVAILABILITY.test(clause)) qualifying = true;
     const canonical = new RegExp(NEGATED_AVAILABILITY.source, "gi");
     const stripped = clause.replace(canonical, " ");
-    if (AFFIRMATIVE_AVAILABILITY.test(stripped)) return false;
+    if (BARE_AVAILABILITY_CLAIM.test(stripped) || PRESENT_PREDICATE.test(stripped)) return false;
   }
   return qualifying;
 }
