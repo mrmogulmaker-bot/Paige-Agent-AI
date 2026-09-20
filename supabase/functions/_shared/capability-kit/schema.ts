@@ -1,3 +1,5 @@
+import { snapshotPlainData } from "./snapshot.ts";
+
 export type StringInputSchema = Readonly<{
   type: "string";
   description?: string;
@@ -46,7 +48,7 @@ export type NestedInputSchema =
       anyOf: readonly NestedInputSchema[];
     }>;
 
-const CAPABILITY_INPUT_SCHEMA = Symbol("paige.capability-input-schema");
+declare const capabilityInputSchemaBrand: unique symbol;
 const CAPABILITY_INPUT_SCHEMAS = new WeakSet<object>();
 
 export type CapabilityInputSchema = Readonly<{
@@ -55,7 +57,7 @@ export type CapabilityInputSchema = Readonly<{
   properties: Readonly<Record<string, NestedInputSchema>>;
   required: readonly string[];
   additionalProperties: false;
-  readonly [CAPABILITY_INPUT_SCHEMA]: true;
+  readonly [capabilityInputSchemaBrand]: true;
 }>;
 
 type ObjectInputDefinition<
@@ -242,52 +244,67 @@ export function objectInputSchema<
   const Properties extends Readonly<Record<string, NestedInputSchema>>,
   const Required extends readonly (Extract<keyof Properties, string>)[] = readonly [],
 >(definition: ObjectInputDefinition<Properties, Required>): CapabilityInputSchema {
-  if (!isPlainObject(definition)) {
-    throw new TypeError("Capability input schema roots must be plain objects.");
-  }
+  const snapshot = snapshotPlainData(definition, "Capability input schema root");
+  if (!isPlainObject(snapshot)) throw new TypeError("Capability input schema roots must be plain objects.");
 
   for (const keyword of ROOT_COMBINATORS) {
-    if (Object.prototype.hasOwnProperty.call(definition, keyword)) {
+    if (Object.prototype.hasOwnProperty.call(snapshot, keyword)) {
       throw new TypeError(`Capability input schema roots cannot declare ${keyword}.`);
     }
   }
 
-  assertExactKeys(definition, ["description", "properties", "required"], "capability input root");
-  assertOptionalString(definition.description, "Capability input schema description");
-  assertSafeProperties(definition.properties, "Capability input schema properties");
+  assertExactKeys(snapshot, ["description", "properties", "required"], "capability input root");
+  assertOptionalString(snapshot.description, "Capability input schema description");
+  assertSafeProperties(snapshot.properties, "Capability input schema properties");
 
-  for (const [key, child] of Object.entries(definition.properties)) {
+  for (const [key, child] of Object.entries(snapshot.properties)) {
     assertNestedSchema(child, `Capability input property ${key}`);
   }
 
   const required = [...assertRequiredKeys(
-    definition.required,
-    definition.properties,
+    snapshot.required,
+    snapshot.properties,
     "Capability input schema required",
   )];
 
   const schema = {
     type: "object" as const,
-    ...(definition.description !== undefined ? { description: definition.description } : {}),
-    properties: { ...definition.properties },
+    ...(snapshot.description !== undefined ? { description: snapshot.description } : {}),
+    properties: { ...snapshot.properties },
     required,
     additionalProperties: false as const,
   } as unknown as CapabilityInputSchema;
-  Object.defineProperty(schema, CAPABILITY_INPUT_SCHEMA, {
-    value: true,
-    enumerable: false,
-    configurable: false,
-    writable: false,
-  });
+
   const frozen = freezeDeep(schema);
   CAPABILITY_INPUT_SCHEMAS.add(frozen);
   return frozen;
 }
 
 export function isCapabilityInputSchema(value: unknown): value is CapabilityInputSchema {
+  if (!value || typeof value !== "object" || !CAPABILITY_INPUT_SCHEMAS.has(value)) return false;
   if (!isPlainObject(value)) return false;
-  if (value[CAPABILITY_INPUT_SCHEMA] !== true || !CAPABILITY_INPUT_SCHEMAS.has(value) || value.type !== "object") return false;
+  if (value.type !== "object") return false;
   if (value.additionalProperties !== false || !isPlainObject(value.properties)) return false;
   if (!Array.isArray(value.required) || !Object.isFrozen(value)) return false;
   return ROOT_COMBINATORS.every((keyword) => !(keyword in value));
+}
+
+export function snapshotCapabilityInputSchema(value: unknown): CapabilityInputSchema {
+  if (!isCapabilityInputSchema(value)) {
+    throw new TypeError("Capability input must come from objectInputSchema().");
+  }
+  const snapshot = snapshotPlainData(value, "Capability input") as Record<string, unknown>;
+  assertExactKeys(
+    snapshot,
+    ["type", "description", "properties", "required", "additionalProperties"],
+    "capability input",
+  );
+  if (snapshot.type !== "object" || snapshot.additionalProperties !== false) {
+    throw new TypeError("Capability input must be a provider-safe object schema.");
+  }
+  return objectInputSchema({
+    ...(snapshot.description !== undefined ? { description: snapshot.description as string } : {}),
+    properties: snapshot.properties as Readonly<Record<string, NestedInputSchema>>,
+    required: snapshot.required as readonly string[],
+  });
 }

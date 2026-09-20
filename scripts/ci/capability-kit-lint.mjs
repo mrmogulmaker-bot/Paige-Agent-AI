@@ -29,6 +29,7 @@ const KIT_FILES = [
   "supabase/functions/_shared/capability-kit/types.ts",
   "supabase/functions/_shared/capability-kit/permission.ts",
   "supabase/functions/_shared/capability-kit/schema.ts",
+  "supabase/functions/_shared/capability-kit/snapshot.ts",
   "supabase/functions/_shared/capability-kit/seams.ts",
   "supabase/functions/_shared/capability-kit/defineCapability.ts",
   "supabase/functions/_shared/capability-kit/mod.ts",
@@ -249,7 +250,10 @@ function createAstResolver(files) {
     }
     const info = fileInfo.get(file);
     const imported = info?.namedImports.get(localName);
-    if (imported && memberPath.length === 0 && resolveExport(imported.target, imported.imported, seen)) {
+    if (imported && ((memberPath.length === 0 && resolveExport(imported.target, imported.imported, seen)) ||
+      (memberPath.length > 0 && resolveNamespaceExportMember(
+        imported.target, imported.imported, memberPath, seen,
+      )))) {
       localResolutionCache.set(key, true);
       return true;
     }
@@ -264,6 +268,34 @@ function createAstResolver(files) {
     return resolved;
   }
 
+  function resolveNamespaceExportMember(file, exportName, memberPath, seen) {
+    if (memberPath.length === 0) return resolveExport(file, exportName, seen);
+    const key = `namespace-export:${file}:${exportName}:${memberPath.join(".")}`;
+    if (seen.has(key)) return false;
+    const nextSeen = new Set(seen);
+    nextSeen.add(key);
+    const source = sources.get(file);
+    for (const statement of source?.statements ?? []) {
+      if (!ts.isExportDeclaration(statement) || !statement.exportClause) continue;
+      const target = statement.moduleSpecifier && ts.isStringLiteralLike(statement.moduleSpecifier)
+        ? moduleFile(file, statement.moduleSpecifier.text)
+        : file;
+      if (!target) continue;
+      if (ts.isNamespaceExport(statement.exportClause) && statement.exportClause.name.text === exportName) {
+        const [next, ...rest] = memberPath;
+        return rest.length === 0
+          ? resolveExport(target, next, nextSeen)
+          : resolveNamespaceExportMember(target, next, rest, nextSeen);
+      }
+      if (!ts.isNamedExports(statement.exportClause)) continue;
+      for (const specifier of statement.exportClause.elements) {
+        if (specifier.name.text !== exportName) continue;
+        const local = specifier.propertyName?.text ?? specifier.name.text;
+        if (resolveNamespaceExportMember(target, local, memberPath, nextSeen)) return true;
+      }
+    }
+    return false;
+  }
   function resolveExport(file, exportName, seen) {
     const key = `export:${file}:${exportName}`;
     const cached = exportResolutionCache.get(key);
@@ -526,8 +558,9 @@ function runSelfTest() {
     ["defaulted object binding", "alias-default-binding.ts", 1],
     ["assignment destructuring", "alias-assignment-binding.ts", 1],
     ["parameter destructuring", "alias-parameter-binding.ts", 1],
+    ["NamespaceExport re-export", "alias-namespace-export-consumer.ts", 1],
   ];
-  const aliasFiles = ["alias-governance.ts", "alias-barrel.ts", ...aliasCases.map((entry) => entry[1])]
+  const aliasFiles = ["alias-governance.ts", "alias-barrel.ts", "alias-namespace-export.ts", ...aliasCases.map((entry) => entry[1])]
     .map((file) => path.join(ROOT, "scripts", "fixtures", "capability-kit", file));
   const aliasResolver = createAstResolver(aliasFiles);
   for (const [name, fixture, expected] of aliasCases) {

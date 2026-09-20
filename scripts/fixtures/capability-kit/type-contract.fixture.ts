@@ -2,10 +2,20 @@ import {
   defineCapability,
   objectInputSchema,
   ownerGrantablePermission,
+  type CapabilityAvailability,
   type CapabilityDefinition,
   type DefinedCapability,
 } from "../../../supabase/functions/_shared/capability-kit/mod.ts";
 import type { CallerAuthority } from "../../../supabase/functions/_shared/mcp-gateway/authority.ts";
+import type {
+  PerCapabilityAvailability,
+} from "../../../supabase/functions/_shared/paige-capability-status/resolver.ts";
+
+type Equal<Left, Right> =
+  (<Value>() => Value extends Left ? 1 : 2) extends
+  (<Value>() => Value extends Right ? 1 : 2) ? true : false;
+const exactAvailabilityVocabulary: Equal<CapabilityAvailability, PerCapabilityAvailability> = true;
+void exactAvailabilityVocabulary;
 
 const input = objectInputSchema({
   properties: { id: { type: "string" } },

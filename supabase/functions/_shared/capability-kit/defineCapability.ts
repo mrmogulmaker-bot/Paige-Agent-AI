@@ -1,8 +1,10 @@
-import { isOwnerGrantablePermissionKey } from "./permission.ts";
-import { isCapabilityInputSchema } from "./schema.ts";
+import { isOwnerGrantablePermissionKey, snapshotOwnerGrantablePermission } from "./permission.ts";
+import { isCapabilityInputSchema, snapshotCapabilityInputSchema } from "./schema.ts";
+import { snapshotPlainData } from "./snapshot.ts";
 import { CAPABILITY_SEAM_IDS } from "./seams.ts";
 import { classifyAction, MUTATION_VERB } from "../action-risk.ts";
 import {
+  CAPABILITY_AVAILABILITY_STATES,
   EVIDENCE_STATES,
   EXECUTION_OUTCOMES,
   type CapabilityDefinition,
@@ -15,10 +17,7 @@ const IDENTIFIER = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$/;
 const EFFECTS = new Set(["read", "mutation", "external_effect"]);
 const RISKS = new Set(["read_only", "ordinary", "high", "owner_only"]);
 const APPROVALS = new Set(["none", "confirm", "owner_only"]);
-const AVAILABILITY_STATES = new Set([
-  "live", "needs_approval", "needs_setup", "proof_owed", "planned",
-  "not_for_tier", "unavailable", "no_applicable",
-]);
+const AVAILABILITY_STATES = new Set<string>(CAPABILITY_AVAILABILITY_STATES);
 const REVALIDATION_SEAMS = new Set([
   "before_availability", "before_execution", "before_receipt",
 ]);
@@ -80,7 +79,12 @@ function freezeDeep<T>(value: T): T {
 }
 
 export function defineCapability(definition: CapabilityDefinition): DefinedCapability {
-  const root = exactKeys(definition, EXPECTED_KEYS.definition, "Capability definition");
+  const declaration = snapshotPlainData(definition, "Capability definition", (value) => {
+    if (isCapabilityInputSchema(value)) return { value: snapshotCapabilityInputSchema(value) };
+    if (isOwnerGrantablePermissionKey(value)) return { value: snapshotOwnerGrantablePermission(value) };
+    return undefined;
+  });
+  const root = exactKeys(declaration, EXPECTED_KEYS.definition, "Capability definition");
   const identity = exactKeys(root.identity, EXPECTED_KEYS.identity, "Capability identity");
   const governance = exactKeys(root.governance, EXPECTED_KEYS.governance, "Capability governance");
   const tenantScope = exactKeys(root.tenantScope, EXPECTED_KEYS.tenantScope, "Capability tenant scope");
@@ -200,7 +204,7 @@ export function defineCapability(definition: CapabilityDefinition): DefinedCapab
   }
 
   const capability = {
-    ...definition,
+    ...declaration,
     executionOutcomes: EXECUTION_OUTCOMES,
     evidenceStates: EVIDENCE_STATES,
   } as DefinedCapability;

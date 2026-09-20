@@ -1,3 +1,7 @@
+import {
+  PER_CAPABILITY_AVAILABILITY_STATES,
+  type PerCapabilityAvailability,
+} from "../paige-capability-status/resolver.ts";
 import type { OwnerGrantablePermissionKey } from "./permission.ts";
 import type { CapabilityInputSchema } from "./schema.ts";
 import type {
@@ -29,15 +33,8 @@ export type EvidenceState = (typeof EVIDENCE_STATES)[number];
 export type CapabilityEffect = "read" | "mutation" | "external_effect";
 export type CapabilityRisk = "read_only" | "ordinary" | "high" | "owner_only";
 export type CapabilityApproval = "none" | "confirm" | "owner_only";
-export type CapabilityAvailability =
-  | "live"
-  | "needs_approval"
-  | "needs_setup"
-  | "proof_owed"
-  | "planned"
-  | "not_for_tier"
-  | "unavailable"
-  | "no_applicable";
+export const CAPABILITY_AVAILABILITY_STATES = PER_CAPABILITY_AVAILABILITY_STATES;
+export type CapabilityAvailability = PerCapabilityAvailability;
 
 export type CapabilityIdentity = Readonly<{
   id: string;

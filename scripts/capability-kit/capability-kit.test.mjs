@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
+  CAPABILITY_AVAILABILITY_STATES,
   EVIDENCE_STATES,
   EXECUTION_OUTCOMES,
   defineCapability,
@@ -10,6 +11,9 @@ import {
   objectInputSchema,
   ownerGrantablePermission,
 } from "../../supabase/functions/_shared/capability-kit/mod.ts";
+import {
+  PER_CAPABILITY_AVAILABILITY_STATES,
+} from "../../supabase/functions/_shared/paige-capability-status/resolver.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, "..", "fixtures", "capability-kit");
@@ -79,20 +83,61 @@ test("valid read and mutation declarations are branded and recursively immutable
   }
 });
 
-test("already-frozen parents cannot hide mutable descendants", () => {
+test("shallow-frozen parents are snapshotted without freezing caller-owned children", () => {
   const revalidateAt = ["before_availability", "before_execution", "before_receipt"];
   const candidate = definitionFromFixture(readFixture);
   candidate.tenantScope = Object.freeze({ ...candidate.tenantScope, revalidateAt });
   const capability = defineCapability(candidate);
-  assert.equal(Object.isFrozen(capability.tenantScope), true);
-  assert.equal(Object.isFrozen(revalidateAt), true);
-  assert.throws(() => revalidateAt.pop(), TypeError);
+  assert.notStrictEqual(capability, candidate);
+  assert.notStrictEqual(capability.input, candidate.input);
+  assert.notStrictEqual(capability.governance.requiredPermission, candidate.governance.requiredPermission);
+  assert.notStrictEqual(capability.tenantScope, candidate.tenantScope);
+  assert.notStrictEqual(capability.tenantScope.revalidateAt, revalidateAt);
+  assert.equal(Object.isFrozen(capability.tenantScope.revalidateAt), true);
+  assert.equal(Object.isFrozen(revalidateAt), false);
+  revalidateAt.push("before_execution");
+  assert.equal(capability.tenantScope.revalidateAt.length, 3);
 
   const nestedProperties = { value: { type: "string" } };
   const frozenChild = Object.freeze({ type: "object", properties: nestedProperties, additionalProperties: false });
   const schema = objectInputSchema({ properties: { nested: frozenChild } });
+  assert.notStrictEqual(schema.properties.nested, frozenChild);
+  assert.notStrictEqual(schema.properties.nested.properties, nestedProperties);
   assert.equal(Object.isFrozen(schema.properties.nested), true);
-  assert.equal(Object.isFrozen(nestedProperties), true);
+  assert.equal(Object.isFrozen(nestedProperties), false);
+});
+
+test("declarations and schemas reject accessors, Proxies, functions, symbols, and non-plain prototypes", () => {
+  let getterCalls = 0;
+  const candidate = definitionFromFixture(readFixture);
+  Object.defineProperty(candidate.identity, "owner", {
+    enumerable: true,
+    get() { getterCalls += 1; return "Accessor"; },
+  });
+  assert.throws(() => defineCapability(candidate), /accessors/);
+  assert.equal(getterCalls, 0);
+
+  const proxied = definitionFromFixture(readFixture);
+  proxied.identity = new Proxy(proxied.identity, {});
+  assert.throws(() => defineCapability(proxied), /Proxy/);
+  assert.throws(() => objectInputSchema(new Proxy({ properties: {} }, {})), /Proxy/);
+
+  const schemaWithGetter = { properties: {} };
+  Object.defineProperty(schemaWithGetter, "description", {
+    enumerable: true,
+    get() { getterCalls += 1; return "Accessor"; },
+  });
+  assert.throws(() => objectInputSchema(schemaWithGetter), /accessors/);
+  assert.equal(getterCalls, 0);
+
+  assert.throws(() => objectInputSchema({ properties: { value: { type: "string", transform() {} } } }), /functions/);
+  assert.throws(() => objectInputSchema({ properties: { value: Symbol("value") } }), /symbols/);
+  assert.throws(() => defineCapability({ ...definitionFromFixture(readFixture), identity: new (class Identity {})() }), /plain prototype/);
+});
+
+test("availability states are the canonical resolver's exact per-capability set", () => {
+  assert.strictEqual(CAPABILITY_AVAILABILITY_STATES, PER_CAPABILITY_AVAILABILITY_STATES);
+  assert.deepEqual([...CAPABILITY_AVAILABILITY_STATES].sort(), [...PER_CAPABILITY_AVAILABILITY_STATES].sort());
 });
 
 test("every accepted schema keyword validates type and value before branding", () => {
@@ -224,7 +269,7 @@ test("copied private symbols cannot fabricate schema or permission authority", (
 
 test("schema roots must be plain objects", () => {
   class SchemaRoot { constructor() { this.properties = {}; } }
-  assert.throws(() => objectInputSchema(new SchemaRoot()), /plain objects/);
+  assert.throws(() => objectInputSchema(new SchemaRoot()), /plain/);
 });
 
 for (const fixture of invalidCases) {

@@ -20,6 +20,7 @@ export {
   type CapabilityTenantResolverId,
 } from "./seams.ts";
 export {
+  CAPABILITY_AVAILABILITY_STATES,
   EVIDENCE_STATES,
   EXECUTION_OUTCOMES,
   type CapabilityApproval,

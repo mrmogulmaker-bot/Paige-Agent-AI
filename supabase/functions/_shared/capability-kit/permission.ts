@@ -1,9 +1,11 @@
-const OWNER_GRANTABLE_PERMISSION = Symbol("paige.owner-grantable-permission");
+import { snapshotPlainData } from "./snapshot.ts";
+
+declare const ownerGrantablePermissionBrand: unique symbol;
 const OWNER_GRANTABLE_PERMISSIONS = new WeakSet<object>();
 
 export type OwnerGrantablePermissionKey = Readonly<{
   key: string;
-  readonly [OWNER_GRANTABLE_PERMISSION]: true;
+  readonly [ownerGrantablePermissionBrand]: true;
 }>;
 
 const ROLE_LITERALS = new Set([
@@ -33,10 +35,9 @@ export function ownerGrantablePermission(key: string): OwnerGrantablePermissionK
     throw new TypeError("Marketplace listing or installation state is not authority.");
   }
 
-  const permission = Object.freeze({
-    key: normalized,
-    [OWNER_GRANTABLE_PERMISSION]: true as const,
-  });
+  const permission = { key: normalized } as OwnerGrantablePermissionKey;
+
+  Object.freeze(permission);
   OWNER_GRANTABLE_PERMISSIONS.add(permission);
   return permission;
 }
@@ -44,11 +45,19 @@ export function ownerGrantablePermission(key: string): OwnerGrantablePermissionK
 export function isOwnerGrantablePermissionKey(
   value: unknown,
 ): value is OwnerGrantablePermissionKey {
-  return Boolean(
-    value &&
-      typeof value === "object" &&
-      (value as Record<PropertyKey, unknown>)[OWNER_GRANTABLE_PERMISSION] === true &&
-      OWNER_GRANTABLE_PERMISSIONS.has(value as object) &&
-      Object.isFrozen(value),
-  );
+  if (!value || typeof value !== "object" || !OWNER_GRANTABLE_PERMISSIONS.has(value)) return false;
+  return Object.isFrozen(value);
+}
+
+export function snapshotOwnerGrantablePermission(
+  value: unknown,
+): OwnerGrantablePermissionKey {
+  if (!isOwnerGrantablePermissionKey(value)) {
+    throw new TypeError("requiredPermission must come from ownerGrantablePermission().");
+  }
+  const snapshot = snapshotPlainData(value, "Owner-grantable permission") as Record<string, unknown>;
+  if (Object.keys(snapshot).length !== 1 || typeof snapshot.key !== "string") {
+    throw new TypeError("Owner-grantable permissions must contain only their key.");
+  }
+  return ownerGrantablePermission(snapshot.key);
 }
