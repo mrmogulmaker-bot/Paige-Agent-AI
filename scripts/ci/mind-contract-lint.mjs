@@ -14,25 +14,37 @@
  *
  * This guard is DEPLOYMENT-INERT. It edits no runtime file, changes no bundle, and asserts
  * only STRUCTURAL facts about the Spine projection + its Chat adapter as they already exist
- * on main. It exists so a later edit cannot silently: add a fourth Mind state, make the
- * projector return a partial answer instead of failing closed, drop the "infer nothing"
- * honesty copy from an absence block, stand up a SECOND Mind projection without a Spine
- * Change Request, or let Chat re-derive the states itself and drift from Mind.
+ * on main. It exists so a later edit cannot silently: add a fourth Mind state, rename or
+ * drop one, make the projector return a partial answer instead of failing closed, mis-word
+ * or swap an absence honesty block, stand up a SECOND Mind projection without a Spine Change
+ * Request, or let Chat re-derive the states itself and drift from Mind.
  *
  * WHAT IT CHECKS (violation codes):
- *   MC1  the Mind projection's state union is EXACTLY {recorded, no_evidence, unavailable}.
- *   MC2  the projector is FAIL-CLOSED: non-available -> unavailable, empty -> no_evidence,
- *        any un-projectable signal -> unavailable (never a partial "recorded").
- *   MC3  the UNAVAILABLE and NO_EVIDENCE render blocks carry their honesty guardrail copy
- *        ("infer nothing" / "not proof none happened").
- *   MC4  there is ONE Mind projection home. A second projection module must declare a Spine
- *        Change Request marker (`sharedPrimitiveChange: "SCR-..."` or `// mind-projection-scr: <ref>`).
- *   MC5  the Chat adapter RENDERS VIA the Mind projection and does not re-derive the states
- *        itself (the three-state union literal must not appear in the Chat adapter).
+ *   MC1  every candidate Mind projection's state union is EXACTLY {recorded, no_evidence,
+ *        unavailable}. (Candidates are discovered independently of their state set, so a
+ *        second projection that OMITS or RENAMES a state cannot evade detection.)
+ *   MC2  the projector is FAIL-CLOSED, tied to its RETURN branches: non-available ->
+ *        return unavailable, empty -> return no_evidence, any un-projectable signal ->
+ *        return unavailable (never a partial "recorded").
+ *   MC3  the honesty guardrail copy is bound to the RIGHT state: the "infer nothing" line
+ *        renders under UNAVAILABLE and the "not proof of none" line under NO_EVIDENCE
+ *        (swapping or dropping either is caught).
+ *   MC4  there is ONE Mind projection home (the explicit canonical path). Every OTHER
+ *        candidate projection must declare a Spine Change Request marker
+ *        (`sharedPrimitiveChange: "SCR-..."` or `// mind-projection-scr: <ref>`).
+ *   MC5  the Chat adapter must EXIST and RETURN via the Mind projection
+ *        (`return render*MindEvidence(...)`), in code (comments stripped), and must not
+ *        re-derive a Mind state literal itself.
  *
  * SCOPE (§00): this guard's jurisdiction is correctness and honesty of the data contract.
  * It has zero opinion about how the Mind surface LOOKS. It only proves the states stay
  * three, stay fail-closed, and stay honestly worded.
+ *
+ * HONEST LIMIT (§13): this is a static text guard, not an interpreter. MC2/MC5 bind tokens
+ * to `return` sites and MC3 binds copy to the nearest state, which defeats the realistic
+ * evasions (a token in a log line, a swapped constant, a comment-only match) — but a guard
+ * that does not execute the code can never be as strong as running it. The vitest file and
+ * the projector's own unit tests exercise behaviour; this guard is the structural tripwire.
  *
  * Deliberately regex/text-based and dependency-free so it runs anywhere `node` runs — the
  * same shape as view-security-invoker-lint / definer-fn-lint / tier-feature-lint.
@@ -48,6 +60,8 @@ const __dirname = dirname(__filename);
 const REPO_ROOT = join(__dirname, "..", "..");
 const SPINE_DIR = join(REPO_ROOT, "supabase", "functions", "_shared", "paige-spine");
 const CHAT_ADAPTER_REL = "supabase/functions/_shared/paige-spine/chatEvidence.ts";
+/** The one true Mind projection home. Extended only by an owner-approved Spine Change Request. */
+export const CANONICAL_PROJECTION = "supabase/functions/_shared/paige-spine/mindEvidence.ts";
 const FIXTURE_DIR = join(REPO_ROOT, "scripts", "fixtures", "mind-contract");
 
 /** The one true set of Mind states. Extended only by an owner-approved Spine Change Request. */
@@ -56,21 +70,30 @@ export const CANONICAL_MIND_STATES = Object.freeze(["no_evidence", "recorded", "
 /** An SCR marker permits a second Mind projection home (the §18 escape, made explicit). */
 const SCR_MARKER = /sharedPrimitiveChange\s*:\s*["'`]SCR-|\/\/\s*mind-projection-scr\s*:\s*\S+/;
 
+/** Remove block and line comments so a comment-only token cannot satisfy a check. */
+function stripComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+
+/** A file DECLARES a Mind-evidence union type (the strongest projection signal). */
+function hasMindUnion(content) {
+  return /export\s+type\s+\w*MindEvidence\s*=/.test(content);
+}
+
 /**
- * A file DEFINES a Mind projection when it exports a `*MindEvidence` union type and that
- * union carries all three canonical `status` literals. This deliberately does NOT match the
- * `*ChatEvidence.ts` adapters or the domain descriptors, which reference `mindBinding` but
- * define no three-state union.
+ * A file is a CANDIDATE Mind projection if it declares a `*MindEvidence` union type OR exports
+ * a `project`- or `render`-prefixed `*MindEvidence` function. This is deliberately independent of whether the
+ * union carries all three states, so a second projection that omits or renames a state is still
+ * DISCOVERED here and then judged by MC1 — the P1 evasion this guard must not have.
  */
-export function isMindProjection(content) {
-  if (!/export\s+type\s+\w*MindEvidence\b/.test(content)) return false;
-  return CANONICAL_MIND_STATES.every((state) => new RegExp(`status\\s*:\\s*["']${state}["']`).test(content));
+export function isMindProjectionCandidate(content) {
+  return hasMindUnion(content) || /export\s+function\s+(?:project|render)\w*MindEvidence\b/.test(content);
 }
 
 /**
  * Extract the `status` string literals from the exported `*MindEvidence` union, scoped to the
- * union members (lines that, trimmed, start with `|`) so projector/return-site literals do not
- * leak in. Returns a sorted, de-duplicated array.
+ * union members (lines that, trimmed, start with `|` or `{`) so projector/return-site literals do
+ * not leak in. Returns a sorted, de-duplicated array.
  */
 export function extractMindStateLiterals(content) {
   const lines = content.split(/\r?\n/);
@@ -78,9 +101,8 @@ export function extractMindStateLiterals(content) {
   let inUnion = false;
   for (const raw of lines) {
     const line = raw.trim();
-    if (/^export\s+type\s+\w*MindEvidence\b/.test(line)) {
+    if (/^export\s+type\s+\w*MindEvidence\s*=/.test(line)) {
       inUnion = true;
-      // A single-line union declaration is possible; scan the same line too.
       for (const m of line.matchAll(/status\s*:\s*["']([a-z_]+)["']/g)) states.add(m[1]);
       if (line.endsWith(";") && line.includes("|")) inUnion = false;
       continue;
@@ -88,104 +110,114 @@ export function extractMindStateLiterals(content) {
     if (!inUnion) continue;
     if (line.startsWith("|") || line.startsWith("{")) {
       for (const m of line.matchAll(/status\s*:\s*["']([a-z_]+)["']/g)) states.add(m[1]);
-      if (line.endsWith(";")) inUnion = false; // last member terminates the type
+      if (line.endsWith(";")) inUnion = false;
       continue;
     }
-    // A non-member, non-blank line ends the union block.
     if (line.length > 0) inUnion = false;
   }
   return [...states].sort();
 }
 
+/** The state keyword nearest-BEFORE an index (used to bind honesty copy to its own state). */
+function nearestStateBefore(content, idx) {
+  const region = content.slice(Math.max(0, idx - 400), idx);
+  const matches = [...region.matchAll(/(unavailable|no_evidence|recorded)/gi)];
+  return matches.length ? matches[matches.length - 1][1].toLowerCase() : null;
+}
+
 /**
  * The whole check, as a pure function of file contents, so a test can drive it with fixtures.
- * @param {{ projections: {path:string, content:string}[], chatAdapter: {path:string, content:string} }} inputs
+ * @param {{ projections: {path:string, content:string}[], chatAdapter?: {path:string, content:string}, canonicalPath?: string }} inputs
  * @returns {{ code:string, path:string, message:string }[]}
  */
 export function analyzeMindContract(inputs) {
   const violations = [];
   const projections = inputs.projections ?? [];
   const chat = inputs.chatAdapter;
+  const canonicalPath = inputs.canonicalPath ?? CANONICAL_PROJECTION;
 
-  // MC4 — one home (or an SCR marker on the extras). Evaluate first so the "primary" is stable.
+  // MC4 — one home. No projection at all, or a second one without an SCR marker.
   if (projections.length === 0) {
     violations.push({
       code: "MC4",
       path: relative(REPO_ROOT, SPINE_DIR),
-      message: "No Mind projection found. The three-state Mind contract must live in exactly one projection module.",
+      message: "No Mind projection found. The three-state Mind contract must live in exactly one projection module (the canonical path).",
     });
   }
-  if (projections.length > 1) {
-    // The canonical home is the shortest-path projection (mindEvidence.ts at the spine root);
-    // every additional projection must carry an SCR marker.
-    const sorted = [...projections].sort((a, b) => a.path.length - b.path.length || a.path.localeCompare(b.path));
-    for (const extra of sorted.slice(1)) {
-      if (!SCR_MARKER.test(extra.content)) {
-        violations.push({
-          code: "MC4",
-          path: extra.path,
-          message:
-            "A second Mind projection exists without a Spine Change Request. Generalising Mind retrieval is a shared-primitive change — declare `sharedPrimitiveChange: \"SCR-<ref>\"` or `// mind-projection-scr: <ref>`, or fold it back into the one home (§18).",
-        });
-      }
+  for (const proj of projections) {
+    if (proj.path === canonicalPath) continue; // the known canonical home needs no marker
+    if (!SCR_MARKER.test(proj.content)) {
+      violations.push({
+        code: "MC4",
+        path: proj.path,
+        message:
+          `A Mind projection exists outside the canonical home (${canonicalPath}) without a Spine Change Request. Generalising Mind retrieval is a shared-primitive change — declare \`sharedPrimitiveChange: "SCR-<ref>"\` or \`// mind-projection-scr: <ref>\`, or fold it back into the one home (§18).`,
+      });
     }
   }
 
-  // MC1/MC2/MC3 run against each projection (there is normally exactly one).
+  // MC1/MC2/MC3 run against every candidate that declares a union (there is normally exactly one).
   for (const proj of projections) {
+    if (!hasMindUnion(proj.content)) continue;
     const states = extractMindStateLiterals(proj.content);
     const canonical = [...CANONICAL_MIND_STATES].sort();
     if (states.length !== canonical.length || states.some((s, i) => s !== canonical[i])) {
       violations.push({
         code: "MC1",
         path: proj.path,
-        message: `Mind state union is {${states.join(", ") || "∅"}} but must be exactly {${canonical.join(", ")}}. A fourth or renamed state silently changes what the Mind surface can honestly claim.`,
+        message: `Mind state union is {${states.join(", ") || "∅"}} but must be exactly {${canonical.join(", ")}}. A fourth, missing, or renamed state silently changes what the Mind surface can honestly claim.`,
       });
     }
 
-    const nonAvailableClosed = /status\s*!==\s*["']available["'][\s\S]{0,120}?["']unavailable["']/.test(proj.content);
-    const emptyIsNoEvidence = /\.signals\.length[\s\S]{0,120}?["']no_evidence["']/.test(proj.content);
-    const unprojectableClosed = /===\s*null[\s\S]{0,120}?["']unavailable["']/.test(proj.content);
+    // MC2 — fail-closed, tied to the RETURN branch (not mere token proximity).
+    const nonAvailableClosed = /status\s*!==\s*["']available["'][\s\S]{0,80}?return\s*\{[^{}]*status:\s*["']unavailable["']/.test(proj.content);
+    const emptyIsNoEvidence = /\.signals\.length[\s\S]{0,80}?return\s*\{[^{}]*status:\s*["']no_evidence["']/.test(proj.content);
+    const unprojectableClosed = /===\s*null[\s\S]{0,80}?return\s*\{[^{}]*status:\s*["']unavailable["']/.test(proj.content);
     if (!nonAvailableClosed || !emptyIsNoEvidence || !unprojectableClosed) {
       const missing = [
-        nonAvailableClosed ? null : "non-available resolver result -> unavailable",
-        emptyIsNoEvidence ? null : "empty signal set -> no_evidence",
-        unprojectableClosed ? null : "any un-projectable signal -> unavailable (no partial answer)",
+        nonAvailableClosed ? null : "non-available resolver result must `return { status: \"unavailable\" }`",
+        emptyIsNoEvidence ? null : "empty signal set must `return { status: \"no_evidence\" }`",
+        unprojectableClosed ? null : "any un-projectable signal must `return { status: \"unavailable\" }` (no partial answer)",
       ].filter(Boolean);
       violations.push({
         code: "MC2",
         path: proj.path,
-        message: `Mind projector is not provably fail-closed. Missing: ${missing.join("; ")}. A projector that returns a partial answer can imply activity it never verified (§13).`,
+        message: `Mind projector is not provably fail-closed. Missing return-bound branch: ${missing.join("; ")}. A projector that returns a partial answer can imply activity it never verified (§13).`,
       });
     }
 
-    const saysInferNothing = /infer\s+(nothing|activity)/i.test(proj.content);
-    const saysNotProofOfNone = /not\s+(treat\s+that\s+as\s+proof|proof)|no\s+activity\s+occurred/i.test(proj.content);
-    if (!saysInferNothing || !saysNotProofOfNone) {
-      const missing = [
-        saysInferNothing ? null : "UNAVAILABLE must tell the reader to infer nothing",
-        saysNotProofOfNone ? null : "NO_EVIDENCE must say absence is not proof that nothing happened",
-      ].filter(Boolean);
+    // MC3 — honesty copy bound to the RIGHT state (defeats a swapped/dropped block).
+    const inferIdx = proj.content.search(/infer\s+(?:nothing|activity)/i);
+    const notProofIdx = proj.content.search(/(?:not\s+(?:treat\s+that\s+as\s+proof|proof)|no\s+activity\s+occurred)/i);
+    const mc3 = [];
+    if (inferIdx < 0) mc3.push("UNAVAILABLE must tell the reader to infer nothing");
+    else if (nearestStateBefore(proj.content, inferIdx) !== "unavailable") mc3.push("the 'infer nothing' line is not bound to the UNAVAILABLE state");
+    if (notProofIdx < 0) mc3.push("NO_EVIDENCE must say absence is not proof that nothing happened");
+    else if (nearestStateBefore(proj.content, notProofIdx) !== "no_evidence") mc3.push("the 'not proof of none' line is not bound to the NO_EVIDENCE state");
+    if (mc3.length) {
       violations.push({
         code: "MC3",
         path: proj.path,
-        message: `An absence render block is missing its honesty guardrail: ${missing.join("; ")}. Absence must never read as activity, or as proof of none (§13/§00).`,
+        message: `An absence render block's honesty guardrail is missing or mis-bound: ${mc3.join("; ")}. Absence must never read as activity, or as proof of none, and never under the wrong state (§13/§00).`,
       });
     }
   }
 
-  // MC5 — Chat is a caller, not a second author.
-  if (chat) {
-    const rendersViaProjection = /render\w*MindEvidence\s*\(/.test(chat.content);
-    const rederivesStates = CANONICAL_MIND_STATES.filter((s) => s !== "unavailable" && s !== "recorded")
-      // Only `no_evidence` is unique enough to be a re-derivation tell; `unavailable`/`recorded`
-      // are ordinary words. If the Chat adapter constructs the `no_evidence` literal itself, it
-      // is re-deriving the state machine instead of calling the projection.
-      .some((s) => new RegExp(`["']${s}["']`).test(chat.content));
+  // MC5 — the Chat adapter must exist and return via the projection, not re-derive states.
+  if (!chat) {
+    violations.push({
+      code: "MC5",
+      path: CHAT_ADAPTER_REL,
+      message: "The configured Chat adapter was not found. Chat must exist and render via the Mind projection; a missing adapter is not a silently-passing state (§18/§13).",
+    });
+  } else {
+    const code = stripComments(chat.content);
+    const rendersViaProjection = /(?:return|=>)\s*(?:await\s+)?render\w*MindEvidence\s*\(/.test(code);
+    const rederivesStates = /["']no_evidence["']/.test(code); // the one Mind state literal unique enough to be a re-derivation tell
     if (!rendersViaProjection || rederivesStates) {
       const why = !rendersViaProjection
-        ? "it does not render via the Mind projection (render*MindEvidence)"
-        : "it constructs a Mind state literal itself";
+        ? "it does not RETURN via the Mind projection (return render*MindEvidence(…))"
+        : "it constructs the no_evidence state literal itself";
       violations.push({
         code: "MC5",
         path: chat.path,
@@ -212,25 +244,26 @@ function walk(dir) {
   return out;
 }
 
-/** Read the real Spine projection files + the Chat adapter into `analyzeMindContract` inputs. */
+/** Read the real Spine projection candidates + the Chat adapter into `analyzeMindContract` inputs. */
 export function readRealSpineInputs() {
   const files = walk(SPINE_DIR).map((abs) => ({
     path: relative(REPO_ROOT, abs).split(sep).join("/"),
     content: readFileSync(abs, "utf8"),
   }));
-  const projections = files.filter((f) => isMindProjection(f.content));
+  const projections = files.filter((f) => isMindProjectionCandidate(f.content));
   const chatAbs = join(REPO_ROOT, CHAT_ADAPTER_REL);
   let chatAdapter;
   try {
     chatAdapter = { path: CHAT_ADAPTER_REL, content: readFileSync(chatAbs, "utf8") };
   } catch {
-    chatAdapter = undefined;
+    chatAdapter = undefined; // MC5 treats a missing configured adapter as a violation
   }
-  return { projections, chatAdapter };
+  return { projections, chatAdapter, canonicalPath: CANONICAL_PROJECTION };
 }
 
+const FIXTURE_DIR_REL = "scripts/fixtures/mind-contract";
 function loadFixture(name) {
-  return readFileSync(join(FIXTURE_DIR, name), "utf8");
+  return { path: `${FIXTURE_DIR_REL}/${name}`, content: readFileSync(join(FIXTURE_DIR, name), "utf8") };
 }
 
 function selfTest() {
@@ -240,26 +273,39 @@ function selfTest() {
     console.error(`SELF-TEST FAIL: ${msg}`);
   };
 
-  const goodProjection = { path: "fixtures/good-projection.ts", content: loadFixture("good-projection.ts") };
-  const goodChat = { path: "fixtures/good-chat.ts", content: loadFixture("good-chat.ts") };
+  const good = loadFixture("good-projection.ts");
+  const goodChat = loadFixture("good-chat.ts");
+  const canon = good.path; // treat the good fixture as the canonical home for the fixture set
 
   // 0) The compliant fixtures must produce zero violations.
-  const clean = analyzeMindContract({ projections: [goodProjection], chatAdapter: goodChat });
+  const clean = analyzeMindContract({ projections: [good], chatAdapter: goodChat, canonicalPath: canon });
   if (clean.length !== 0) fail(`compliant fixtures produced ${clean.length} violation(s): ${clean.map((v) => v.code).join(", ")}`);
   else console.log("SELF-TEST: compliant fixtures produced 0 violations.");
 
-  // 1) One planted violation per code must be caught, and nothing else.
+  // 1) One planted violation per code must be caught.
+  const mc1 = loadFixture("bad-mc1-projection.ts");
+  const mc2 = loadFixture("bad-mc2-projection.ts");
+  const mc3 = loadFixture("bad-mc3-projection.ts");
+  const twoState = loadFixture("bad-p1-twostate-second.ts");
   const cases = [
-    { code: "MC1", inputs: { projections: [{ path: "bad-mc1.ts", content: loadFixture("bad-mc1-projection.ts") }], chatAdapter: goodChat } },
-    { code: "MC2", inputs: { projections: [{ path: "bad-mc2.ts", content: loadFixture("bad-mc2-projection.ts") }], chatAdapter: goodChat } },
-    { code: "MC3", inputs: { projections: [{ path: "bad-mc3.ts", content: loadFixture("bad-mc3-projection.ts") }], chatAdapter: goodChat } },
-    { code: "MC4", inputs: { projections: [goodProjection, { path: "bad-mc4.ts", content: loadFixture("bad-mc4-second-projection.ts") }], chatAdapter: goodChat } },
-    { code: "MC5", inputs: { projections: [goodProjection], chatAdapter: { path: "bad-mc5.ts", content: loadFixture("bad-mc5-chat.ts") } } },
+    // canonicalPath is set to the SINGLE projection's own path so the isolated MC1/MC2/MC3 cases
+    // do not also trip MC4 (a non-canonical projection without an SCR marker).
+    { code: "MC1", inputs: { projections: [mc1], chatAdapter: goodChat, canonicalPath: mc1.path } },
+    // P1 regression: a SECOND two-state projection is DISCOVERED and flagged (MC1 for its bad
+    // states AND MC4 for being a second home) — the evasion Codex found, now closed.
+    { code: "MC1", inputs: { projections: [good, twoState], chatAdapter: goodChat, canonicalPath: canon } },
+    { code: "MC4", inputs: { projections: [good, twoState], chatAdapter: goodChat, canonicalPath: canon } },
+    { code: "MC2", inputs: { projections: [mc2], chatAdapter: goodChat, canonicalPath: mc2.path } },
+    { code: "MC3", inputs: { projections: [mc3], chatAdapter: goodChat, canonicalPath: mc3.path } },
+    { code: "MC4", inputs: { projections: [good, loadFixture("bad-mc4-second-projection.ts")], chatAdapter: goodChat, canonicalPath: canon } },
+    { code: "MC5", inputs: { projections: [good], chatAdapter: loadFixture("bad-mc5-chat.ts"), canonicalPath: canon } },
+    // MC5: a missing configured adapter is a violation, not a silent pass.
+    { code: "MC5", inputs: { projections: [good], chatAdapter: undefined, canonicalPath: canon } },
   ];
   for (const c of cases) {
     const codes = analyzeMindContract(c.inputs).map((v) => v.code);
-    if (!codes.includes(c.code)) fail(`${c.code} fixture was NOT flagged (got: ${codes.join(", ") || "none"}).`);
-    else console.log(`SELF-TEST: ${c.code} fixture correctly flagged.`);
+    if (!codes.includes(c.code)) fail(`${c.code} case was NOT flagged (got: ${codes.join(", ") || "none"}).`);
+    else console.log(`SELF-TEST: ${c.code} case correctly flagged.`);
   }
 
   console.log(ok ? "SELF-TEST: PASS — the Mind-contract guard behaves correctly." : "SELF-TEST: FAIL.");

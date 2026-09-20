@@ -1,8 +1,8 @@
-// FIXTURE (mind-contract-lint) — VIOLATES MC3. The union and the projector are correct, but the
-// absence render blocks were stripped of their honesty guardrail copy: the UNAVAILABLE and
-// NONE-FOUND branches emit only a status word and caution the reader about nothing. A rendered orb
-// built on this could read silence as real activity.
-// (This comment is deliberately worded to avoid the guardrail phrases the guard scans for.)
+// FIXTURE (mind-contract-lint) — VIOLATES MC3 by SWAPPING the honesty copy across states. Both
+// guardrail phrases are still present in the file (module-wide search would pass), but the
+// UNAVAILABLE branch now carries the NO_EVIDENCE line and vice-versa — so an unresolved result is
+// described as merely having no evidence. The state-bound MC3 check catches the swap.
+// (This comment avoids the guardrail phrases so only the render constants carry them.)
 
 export type SampleMindEvidence =
   | { readonly status: "recorded"; readonly capability: string; readonly records: readonly unknown[] }
@@ -17,8 +17,11 @@ export function projectSampleMindEvidence(result) {
   return { status: "recorded", capability: "sample", records };
 }
 
+const UNAVAILABLE = "Status: UNAVAILABLE — Do not treat that as proof that no activity occurred.";
+const NO_EVIDENCE = "Status: NONE FOUND (no_evidence) — Do not infer activity, absence, or outcomes.";
+
 export function renderSampleMindEvidence(evidence) {
-  if (evidence.status === "unavailable") return "Status: UNAVAILABLE";
-  if (evidence.status === "no_evidence") return "Status: NONE FOUND";
+  if (evidence.status === "unavailable") return UNAVAILABLE;
+  if (evidence.status === "no_evidence") return NO_EVIDENCE;
   return "Status: AVAILABLE";
 }

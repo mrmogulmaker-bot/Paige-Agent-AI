@@ -13,46 +13,58 @@ import {
 const FIXTURES = "scripts/fixtures/mind-contract";
 const fixture = (name: string) => ({ path: `${FIXTURES}/${name}`, content: readFileSync(`${FIXTURES}/${name}`, "utf8") });
 
-// The real Spine projection + Chat adapter, exactly as they ship on main. Every test below proves
-// the LIVE contract holds AND that a planted regression is caught — the failing-first pair.
+// The real Spine projection + Chat adapter, exactly as they ship on main. Every test proves the
+// LIVE contract holds AND that a planted regression is caught — the failing-first pair.
 const real = readRealSpineInputs();
 const realViolations = analyzeMindContract(real);
-const codes = (inputs: Parameters<typeof analyzeMindContract>[0]) => analyzeMindContract(inputs).map((v: { code: string }) => v.code);
+type Inputs = Parameters<typeof analyzeMindContract>[0];
+const codes = (inputs: Inputs) => analyzeMindContract(inputs).map((v: { code: string }) => v.code);
 
 describe("Mind three-state evidence contract (§18/§13/§00)", () => {
-  it("MC1 — the live Mind projection's state union is EXACTLY {recorded, no_evidence, unavailable}, and a fourth state is caught", () => {
+  it("MC1 — the live union is EXACTLY {recorded, no_evidence, unavailable}; a fourth state AND a second projection that omits a state are both caught", () => {
     // The live contract is fully clean end-to-end (asserted once here).
     expect(realViolations).toEqual([]);
     expect(real.projections.length).toBeGreaterThan(0);
     for (const projection of real.projections) {
       expect(extractMindStateLiterals(projection.content)).toEqual([...CANONICAL_MIND_STATES].sort());
     }
+    const good = fixture("good-projection.ts");
     // Failing-first: a projection that adds a "partial" state is flagged MC1.
-    expect(codes({ projections: [fixture("bad-mc1-projection.ts")], chatAdapter: fixture("good-chat.ts") })).toContain("MC1");
+    expect(codes({ projections: [fixture("bad-mc1-projection.ts")], chatAdapter: fixture("good-chat.ts"), canonicalPath: `${FIXTURES}/bad-mc1-projection.ts` })).toContain("MC1");
+    // P1 regression: a SECOND two-state projection ({recorded, unavailable}) is DISCOVERED as a
+    // candidate and flagged MC1 (bad state set), not silently filtered out.
+    expect(codes({ projections: [good, fixture("bad-p1-twostate-second.ts")], chatAdapter: fixture("good-chat.ts"), canonicalPath: good.path })).toContain("MC1");
   });
 
-  it("MC2 — the live projector is fail-closed (non-available→unavailable, empty→no_evidence, any-null→unavailable), and a partial-answer projector is caught", () => {
+  it("MC2 — the live projector is fail-closed at its RETURN branches; a projector that returns 'recorded' for an empty/partial set is caught", () => {
     expect(realViolations.map((v: { code: string }) => v.code)).not.toContain("MC2");
-    // Failing-first: a projector that returns "recorded" for an empty/partial set is flagged MC2.
-    expect(codes({ projections: [fixture("bad-mc2-projection.ts")], chatAdapter: fixture("good-chat.ts") })).toContain("MC2");
+    const bad = fixture("bad-mc2-projection.ts");
+    expect(codes({ projections: [bad], chatAdapter: fixture("good-chat.ts"), canonicalPath: bad.path })).toContain("MC2");
   });
 
-  it("MC3 — the live absence blocks carry their honesty guardrail copy, and a stripped block is caught", () => {
+  it("MC3 — the honesty copy is bound to the right state; SWAPPING the UNAVAILABLE and NO_EVIDENCE lines is caught even though both phrases remain in the file", () => {
     expect(realViolations.map((v: { code: string }) => v.code)).not.toContain("MC3");
-    // Failing-first: a render that drops the 'infer nothing' / 'not proof of none' copy is flagged MC3.
-    expect(codes({ projections: [fixture("bad-mc3-projection.ts")], chatAdapter: fixture("good-chat.ts") })).toContain("MC3");
+    const bad = fixture("bad-mc3-projection.ts");
+    expect(codes({ projections: [bad], chatAdapter: fixture("good-chat.ts"), canonicalPath: bad.path })).toContain("MC3");
   });
 
-  it("MC4 — there is exactly ONE Mind projection home, and a second projection without a Spine Change Request is caught", () => {
+  it("MC4 — exactly ONE Mind projection at the explicit canonical path; a second without a Spine Change Request is caught, and a shorter-pathed SCR'd projection does not falsely blame the canonical one", () => {
     expect(real.projections.length).toBe(1);
     expect(realViolations.map((v: { code: string }) => v.code)).not.toContain("MC4");
-    // Failing-first: adding a second, SCR-less Mind projection alongside the real one is flagged MC4.
-    expect(codes({ projections: [...real.projections, fixture("bad-mc4-second-projection.ts")], chatAdapter: real.chatAdapter })).toContain("MC4");
+    // Failing-first: a second SCR-less Mind projection alongside the real one is flagged MC4.
+    expect(codes({ projections: [...real.projections, fixture("bad-mc4-second-projection.ts")], chatAdapter: real.chatAdapter, canonicalPath: real.canonicalPath })).toContain("MC4");
+    // The canonical anchor is explicit (not shortest-path): a marked second projection with a
+    // SHORTER path than the canonical home does NOT cause the canonical one to be blamed for MC4.
+    const scrSecond = { path: "a.ts", content: "export type NewMindEvidence = never;\n// mind-projection-scr: SCR-approved" };
+    const withScrSecond = analyzeMindContract({ projections: [...real.projections, scrSecond], chatAdapter: real.chatAdapter, canonicalPath: real.canonicalPath });
+    expect(withScrSecond.filter((v: { code: string; path: string }) => v.code === "MC4" && v.path === real.canonicalPath)).toEqual([]);
   });
 
-  it("MC5 — the live Chat adapter renders VIA the Mind projection (no re-derived states), and a re-deriving adapter is caught", () => {
+  it("MC5 — the live Chat adapter RETURNS via the Mind projection (comments ignored); a re-deriving adapter and a MISSING adapter are both caught", () => {
     expect(realViolations.map((v: { code: string }) => v.code)).not.toContain("MC5");
     // Failing-first: a Chat adapter that constructs the no_evidence branch itself is flagged MC5.
-    expect(codes({ projections: real.projections, chatAdapter: fixture("bad-mc5-chat.ts") })).toContain("MC5");
+    expect(codes({ projections: real.projections, chatAdapter: fixture("bad-mc5-chat.ts"), canonicalPath: real.canonicalPath })).toContain("MC5");
+    // A missing/deleted configured adapter is a violation, not a silent pass.
+    expect(codes({ projections: real.projections, chatAdapter: undefined, canonicalPath: real.canonicalPath })).toContain("MC5");
   });
 });
