@@ -23,6 +23,7 @@ const valid: CapabilityDefinition = {
   input,
   effect: "read",
   governance: {
+    actionRiskKey: null,
     risk: "read_only",
     approval: "none",
     requiredPermission: ownerGrantablePermission("knowledge.documents.read"),

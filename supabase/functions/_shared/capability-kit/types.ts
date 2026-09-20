@@ -41,6 +41,7 @@ export type CapabilityIdentity = Readonly<{
 }>;
 
 export type CapabilityGovernance = Readonly<{
+  actionRiskKey: string | null;
   risk: CapabilityRisk;
   approval: CapabilityApproval;
   requiredPermission: OwnerGrantablePermissionKey;

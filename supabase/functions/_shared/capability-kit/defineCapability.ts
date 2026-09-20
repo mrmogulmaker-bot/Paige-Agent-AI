@@ -1,5 +1,6 @@
 import { isOwnerGrantablePermissionKey } from "./permission.ts";
 import { isCapabilityInputSchema } from "./schema.ts";
+import { classifyAction, MUTATION_VERB } from "../action-risk.ts";
 import {
   EVIDENCE_STATES,
   EXECUTION_OUTCOMES,
@@ -36,7 +37,7 @@ const EXPECTED_KEYS = Object.freeze({
     "outcome",
   ],
   identity: ["id", "version", "domain", "owner", "humanSurface", "description"],
-  governance: ["risk", "approval", "requiredPermission"],
+  governance: ["actionRiskKey", "risk", "approval", "requiredPermission"],
   tenantScope: ["source", "tenantResolver", "actorResolver", "revalidateAt"],
   availability: ["resolver", "states"],
   providerBinding: ["kind", "operation", "connectionResolver"],
@@ -72,9 +73,9 @@ function nonEmpty(value: unknown, label: string): asserts value is string {
 }
 
 function freezeDeep<T>(value: T): T {
-  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+  if (!value || typeof value !== "object") return value;
   for (const child of Object.values(value as Record<string, unknown>)) freezeDeep(child);
-  return Object.freeze(value);
+  return Object.isFrozen(value) ? value : Object.freeze(value);
 }
 
 export function defineCapability(definition: CapabilityDefinition): DefinedCapability {
@@ -96,8 +97,26 @@ export function defineCapability(definition: CapabilityDefinition): DefinedCapab
   if (!EFFECTS.has(String(root.effect))) throw new TypeError("Capability effect is invalid.");
   if (!RISKS.has(String(governance.risk))) throw new TypeError("Capability risk is invalid.");
   if (!APPROVALS.has(String(governance.approval))) throw new TypeError("Capability approval class is invalid.");
-  if ((governance.risk === "owner_only") !== (governance.approval === "owner_only")) {
-    throw new TypeError("owner_only risk and approval must be declared together.");
+  if (root.effect === "read") {
+    if (governance.actionRiskKey !== null || governance.risk !== "read_only" || governance.approval !== "none") {
+      throw new TypeError("Read capabilities must declare no action-risk key, read_only risk, and no approval.");
+    }
+  } else {
+    nonEmpty(governance.actionRiskKey, "governance.actionRiskKey");
+    if (!MUTATION_VERB.test(governance.actionRiskKey)) {
+      throw new TypeError("Mutation action-risk keys must identify a canonical mutation action.");
+    }
+    const canonicalRisk = classifyAction(governance.actionRiskKey);
+    if (canonicalRisk === "unclassified") {
+      throw new TypeError("Mutation action-risk keys must exist in the canonical action-risk policy.");
+    }
+    if (governance.risk !== canonicalRisk) {
+      throw new TypeError("Capability risk must match the canonical action-risk policy.");
+    }
+    const canonicalApproval = canonicalRisk === "owner_only" ? "owner_only" : "confirm";
+    if (governance.approval !== canonicalApproval) {
+      throw new TypeError("Capability approval must match the canonical action-risk policy.");
+    }
   }
   if (!IDENTIFIER.test(String(identity.id))) throw new TypeError("Capability identity.id is invalid.");
   if (!Number.isInteger(identity.version) || Number(identity.version) < 1) {

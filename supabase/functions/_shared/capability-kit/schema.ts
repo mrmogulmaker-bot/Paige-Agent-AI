@@ -76,9 +76,15 @@ function isPlainObject(value: unknown): value is Record<PropertyKey, unknown> {
 }
 
 function freezeDeep<T>(value: T): T {
-  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+  if (!value || typeof value !== "object") return value;
   for (const child of Object.values(value as Record<string, unknown>)) freezeDeep(child);
-  return Object.freeze(value);
+  return Object.isFrozen(value) ? value : Object.freeze(value);
+}
+
+function assertOptionalNonNegativeInteger(value: unknown, label: string): void {
+  if (value !== undefined && (!Number.isFinite(value) || !Number.isInteger(value) || Number(value) < 0)) {
+    throw new TypeError(`${label} must be a finite non-negative integer.`);
+  }
 }
 
 function assertExactKeys(value: Record<PropertyKey, unknown>, allowed: readonly string[], label: string): void {
@@ -108,6 +114,11 @@ function assertNestedSchema(value: unknown, label: string): void {
       assertExactKeys(schema, ["type", "description", "enum", "minLength", "maxLength", "pattern", "format"], label);
       if (schema.enum !== undefined && (!Array.isArray(schema.enum) || schema.enum.some((item) => typeof item !== "string"))) {
         throw new TypeError(`${label}.enum must contain only strings.`);
+      }
+      assertOptionalNonNegativeInteger(schema.minLength, `${label}.minLength`);
+      assertOptionalNonNegativeInteger(schema.maxLength, `${label}.maxLength`);
+      if (schema.minLength !== undefined && schema.maxLength !== undefined && Number(schema.maxLength) < Number(schema.minLength)) {
+        throw new TypeError(`${label}.maxLength must be greater than or equal to minLength.`);
       }
       return;
     case "number":

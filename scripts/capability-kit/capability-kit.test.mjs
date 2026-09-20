@@ -32,6 +32,7 @@ function definitionFromFixture(fixture) {
     input: objectInputSchema(fixture.input),
     effect,
     governance: {
+      actionRiskKey: effect === "read" ? null : "crm_create_contact",
       risk: effect === "read" ? "read_only" : "ordinary",
       approval: effect === "read" ? "none" : "confirm",
       requiredPermission: ownerGrantablePermission(fixture.permission),
@@ -76,6 +77,41 @@ test("valid read and mutation declarations are branded and recursively immutable
     assert.equal(Object.isFrozen(capability.identity), true);
     assert.equal(Object.isFrozen(capability.input.properties), true);
   }
+});
+
+test("already-frozen parents cannot hide mutable descendants", () => {
+  const revalidateAt = ["before_availability", "before_execution", "before_receipt"];
+  const candidate = definitionFromFixture(readFixture);
+  candidate.tenantScope = Object.freeze({ ...candidate.tenantScope, revalidateAt });
+  const capability = defineCapability(candidate);
+  assert.equal(Object.isFrozen(capability.tenantScope), true);
+  assert.equal(Object.isFrozen(revalidateAt), true);
+  assert.throws(() => revalidateAt.pop(), TypeError);
+
+  const nestedProperties = { value: { type: "string" } };
+  const frozenChild = Object.freeze({ type: "object", properties: nestedProperties, additionalProperties: false });
+  const schema = objectInputSchema({ properties: { nested: frozenChild } });
+  assert.equal(Object.isFrozen(schema.properties.nested), true);
+  assert.equal(Object.isFrozen(nestedProperties), true);
+});
+
+test("string lengths must be finite non-negative integers", () => {
+  for (const minLength of [-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(() => objectInputSchema({ properties: { value: { type: "string", minLength } } }), /non-negative integer/);
+  }
+  assert.throws(() => objectInputSchema({ properties: { value: { type: "string", minLength: 2, maxLength: 1 } } }), /greater than or equal/);
+});
+
+test("mutations must match the canonical action-risk policy", () => {
+  const candidate = definitionFromFixture(mutationFixture);
+  assert.throws(() => defineCapability({
+    ...candidate,
+    governance: { ...candidate.governance, risk: "read_only", approval: "none" },
+  }), /canonical action-risk policy/);
+  assert.throws(() => defineCapability({
+    ...candidate,
+    governance: { ...candidate.governance, actionRiskKey: "crm_create_unclassified_thing" },
+  }), /canonical action-risk policy/);
 });
 
 test("execution outcomes and evidence states remain separate exact dimensions", () => {
