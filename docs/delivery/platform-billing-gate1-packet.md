@@ -83,7 +83,7 @@ in this session); every row is static/code evidence unless marked otherwise.
 
 | Item | State | Evidence |
 |---|---|---|
-| Tab exists in the canonical Solo shell, eighth of eight | LIVE (structure) | `src/solo/settings.tsx:1464`, `settings-contract.ts:102` label `PARTIAL` |
+| Tab exists in the canonical Solo shell — seventh of the SEVEN settings destinations (corrected 2026-09-20 from "eighth of eight": the registry `settings-contract.ts` lists exactly setup, team, connections, integrations, security-data, vault, billing — Notifications retired #1090) | LIVE (structure) | `src/solo/settings.tsx:1464`, `settings-contract.ts:100` label `PARTIAL` |
 | "Platform subscription" card: Plan · Status · Price · Renewal | PARTIAL, read-only | `settings.tsx:1457-1459`; reads `platform_subscription_plans`, `get_tenant_platform_subscription()`, `is_current_user_tenant_admin()` via `useSoloComms.ts:259-270` |
 | "Invoices & payment method" card | UNAVAILABLE (honest static copy) | `settings.tsx:1459` — "No proven frontend read supports invoices or payment methods here." |
 | "Usage & limits" card | UNAVAILABLE (honest static copy) | same line — "No totals are shown." |

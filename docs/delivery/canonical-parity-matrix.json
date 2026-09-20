@@ -47,7 +47,7 @@
     "sub_account": "structural only: /business/{n} (AgencyApp sub-account mode)",
     "agency": "two legs: bare /agency -> legacy AgencyLayout; numeric /agency/{n} gated at login by agency_switch_context().agency_shell_enabled (the one live canary)",
     "operator": "/operator -> RequireOperator(is_platform_admin); both roles land on /choose-account",
-    "setup_gate": "RequireSetupComplete: playbook | playbook_config | solo_setup_complete (PR1 #1269)"
+    "setup_gate": "CORRECTED 2026-09-20 (#1277): Setup is NOT an access gate for solo — RequireSetupComplete solo tier never redirects and renders children ONLY; a dismissible readiness notice shows while setup is incomplete; the sub-account redirect contract is unchanged; solo_setup_complete/playbook markers drive notice visibility, never access (#1285: the shell Owner/Team label likewise derives from membership ownership)"
   },
   "accounts": [
     {
@@ -115,8 +115,8 @@
       "status": "active",
       "flags": {},
       "setup_complete": false,
-      "expected_shell": "/solo/{n}/settings/setup (gated)",
-      "resolved_shell": "/solo/{n}/settings/setup",
+      "expected_shell": "/solo/{n} — Command Center → Business Game Plan (#1277: Setup is not an access gate)",
+      "resolved_shell": "/solo/{n}/command-center (Business Game Plan) with the dismissible readiness notice while incomplete",
       "parity": "CANONICAL",
       "reason": "test fixture (controlled-proof tenant); playbook-less by design",
       "divergence_class": "none"
@@ -128,10 +128,10 @@
       "status": "active",
       "flags": {},
       "setup_complete": false,
-      "expected_shell": "/solo/{n}/settings/setup (gated)",
-      "resolved_shell": "/solo/{n}/settings/setup",
+      "expected_shell": "/solo/{n} — Command Center → Business Game Plan (#1277: Setup is not an access gate)",
+      "resolved_shell": "/solo/{n}/command-center (Business Game Plan) with the dismissible readiness notice while incomplete",
       "parity": "CANONICAL",
-      "reason": "playbook-less; gate + marker path",
+      "reason": "playbook-less; readiness-notice path",
       "divergence_class": "none"
     },
     {
@@ -169,10 +169,10 @@
       "status": "trial",
       "flags": {},
       "setup_complete": false,
-      "expected_shell": "/solo/{n}/settings/setup (gated)",
-      "resolved_shell": "/solo/{n}/settings/setup",
+      "expected_shell": "/solo/{n} — Command Center → Business Game Plan (#1277: Setup is not an access gate)",
+      "resolved_shell": "/solo/{n}/command-center (Business Game Plan) with the dismissible readiness notice while incomplete",
       "parity": "CANONICAL",
-      "reason": "playbook-less: #826 gate holds on Setup; completes via solo_setup_complete on first save",
+      "reason": "playbook-less: readiness notice only (#1277); solo_setup_complete retires it on first save",
       "divergence_class": "none"
     },
     {
