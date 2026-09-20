@@ -669,9 +669,9 @@ test("Codex a5163ade P2: a FLOW_BY_FLOW waiver whose reason does NOT establish u
 
 test("Codex cb73e6df P2: a NEGATED unavailability claim establishes availability and fails", () => {
   for (const reason of [
-    "the skill is not unavailable in this environment",
-    "the skill is not absent from this environment",
-    "the skill was never unavailable during this delivery",
+    "the Flow-by-Flow skill is not unavailable in this environment",
+    "the Flow-by-Flow skill is not absent from this environment",
+    "Flow-by-Flow was never unavailable during this delivery",
   ]) {
     const result = withField(
       "FLOW_BY_FLOW",
@@ -685,8 +685,8 @@ test("Codex cb73e6df P2: a NEGATED unavailability claim establishes availability
 test("Codex 5081b595 P2: non-adjacent negations of unavailability also fail (fail-closed to any negation)", () => {
   for (const reason of [
     "the skill does not appear to be unavailable in this environment",
-    "the skill is not currently unavailable in this environment",
-    "the skill is anything but unavailable for this delivery run",
+    "the Flow-by-Flow skill is not currently unavailable in this environment",
+    "the Flow-by-Flow skill is anything but unavailable for this delivery run",
   ]) {
     const result = withField(
       "FLOW_BY_FLOW",
@@ -699,9 +699,9 @@ test("Codex 5081b595 P2: non-adjacent negations of unavailability also fail (fai
 
 test("Codex 0dd07dc3 P2: a canonical phrase RIDING WITH a contradictory negation fails", () => {
   for (const reason of [
-    "the skill is not installed, but it is not currently unavailable",
-    "the skill is not available, but does not appear to be unavailable",
-    "the skill is no longer available and was never unavailable here",
+    "the Flow-by-Flow skill is not installed, but it is not currently unavailable",
+    "not available, but does not appear to be unavailable",
+    "the Flow-by-Flow skill is no longer available and was never unavailable here",
   ]) {
     const result = withField(
       "FLOW_BY_FLOW",
@@ -715,7 +715,7 @@ test("Codex 0dd07dc3 P2: a canonical phrase RIDING WITH a contradictory negation
 test("Codex 84e06888 P2: neither/nor denials of unavailability fail", () => {
   const result = withField(
     "FLOW_BY_FLOW",
-    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the skill is neither unavailable nor absent; it is installed and available here",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the Flow-by-Flow skill is neither unavailable nor absent; it is installed and available here",
   );
   assert.equal(result.ok, false);
   assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
@@ -733,7 +733,7 @@ test("Codex 84e06888 P2: unavailability of ANOTHER subject does not qualify — 
 test("Codex 84e06888 P2: a qualifying clause alongside a clause affirming the skill's availability fails (the veto is load-bearing)", () => {
   const result = withField(
     "FLOW_BY_FLOW",
-    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the tool is unavailable in this environment today; the skill is available here tomorrow",
+    "WAIVED: owner-decision=PR 1280 owner ruling; reason=the tool is unavailable in this environment today; the Flow-by-Flow skill is available here tomorrow",
   );
   assert.equal(result.ok, false);
   assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
@@ -748,10 +748,37 @@ test("Codex 7aa2236b P2: an unrelated tool's unavailability is not a Flow-by-Flo
   assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
 });
 
+test("Codex 1b48c7fb P2: another skill's unavailability is not a Flow-by-Flow claim — the clause must name Flow-by-Flow itself", () => {
+  for (const reason of [
+    "the screenshot skill is unavailable in this delivery environment",
+    "the accessibility skill is absent from this delivery environment",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, false, `${reason}: ${result.errors.join("\n")}`);
+    assert.match(result.errors.join("\n"), /FLOW_BY_FLOW/);
+  }
+});
+
+test("Codex 1b48c7fb P2: Flow-by-Flow named directly (hyphenated or spaced) qualifies", () => {
+  for (const reason of [
+    "Flow-by-Flow is not installed in this environment and the owner accepted the grounded trace",
+    "Flow by Flow is no longer available in this environment for this delivery",
+  ]) {
+    const result = withField(
+      "FLOW_BY_FLOW",
+      `WAIVED: owner-decision=PR 1280 owner ruling; reason=${reason}`,
+    );
+    assert.equal(result.ok, true, `${reason}: ${result.errors.join("\n")}`);
+  }
+});
+
 test("Codex 5081b595 P2: an affirmative unavailability claim in negation-free prose passes", () => {
   for (const reason of [
     "the Flow-by-Flow skill is unavailable in this delivery environment",
-    "the skill is absent from this environment and the owner accepted the grounded trace",
+    "the Flow-by-Flow skill is absent from this environment and the owner accepted the grounded trace",
   ]) {
     const result = withField(
       "FLOW_BY_FLOW",
@@ -763,8 +790,8 @@ test("Codex 5081b595 P2: an affirmative unavailability claim in negation-free pr
 
 test("Codex cb73e6df P2: negated AVAILABILITY still passes (not installed / no longer available)", () => {
   for (const reason of [
-    "the skill is not installed in this environment and the owner accepted the grounded trace",
-    "the skill is no longer available in this environment for this delivery",
+    "the Flow-by-Flow skill is not installed in this environment and the owner accepted the grounded trace",
+    "the Flow-by-Flow skill is no longer available in this environment for this delivery",
   ]) {
     const result = withField(
       "FLOW_BY_FLOW",

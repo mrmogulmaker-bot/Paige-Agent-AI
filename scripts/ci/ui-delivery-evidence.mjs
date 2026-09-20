@@ -292,10 +292,10 @@ const MIN_REASON_WORDS = 4;
 const NEGATED_AVAILABILITY = /\b(?:not|never|isn[’']?t|no longer)\s+(?:installed|present|available)\b/i;
 const ANY_NEGATION = /\b(?:not|never|no|neither|nor|isn[’']?t|isnt|aren[’']?t|wasn[’']?t|weren[’']?t|doesn[’']?t|doesnt|don[’']?t|dont|cannot|cant|can[’']?t|couldnt|couldn[’']?t|won[’']?t|wont|wouldnt|wouldn[’']?t|hardly|barely|scarcely|anything but)\b/i;
 const AFFIRMATIVE_UNAVAILABILITY = /\b(?:unavailable|absent)\b/i;
-// The subject must be THE skill itself ("skill", "flow-by-flow") — a generic
-// "tool" clause ("the screenshot tool is unavailable") is not a Flow-by-Flow
-// unavailability claim.
-const SKILL_SUBJECT = /\b(?:skill|flow[- ]by[- ]flow)\b/i;
+// The clause must NAME Flow-by-Flow itself (hyphenated or spaced) — the bare
+// word "skill" is not identifying: "the screenshot skill is unavailable"
+// (Codex 1b48c7fb P2) is another skill's unavailability claim, not this gate's.
+const SKILL_SUBJECT = /\bflow[- ]by[- ]flow\b/i;
 const AFFIRMATIVE_AVAILABILITY = /\b(?:installed|present|available)\b/i;
 function establishesUnavailability(reason) {
   // Canonical form 1 — a negator immediately before an AVAILABILITY word:
