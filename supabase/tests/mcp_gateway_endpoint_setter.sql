@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Connected MCP Gateway — endpoint setter (INT-099 / MCP PR-2, DB proof).
 --
--- Proves migration 20270329000000 at the DB layer:
+-- Proves migration 20270330000000 at the DB layer:
 --   • THE INVARIANT — changing the endpoint re-binds the secret from arguments (or NULL); the old
 --     ciphertext is never inherited; the derived endpoint_hash follows; endpoint-bound approvals are
 --     deleted THROUGH the setter; A→B→A does not resurrect them; and provider_state + the

@@ -6,12 +6,22 @@ DECLARE
   actor_id uuid := '00000000-0000-4000-8000-000000000701';
   deleted_actor_id uuid := '00000000-0000-4000-8000-000000000703';
   proof_id uuid := '00000000-0000-4000-8000-000000000702';
+  tenant_id uuid := '00000000-0000-4000-8000-000000000704';
   first_id uuid;
   second_id uuid;
   after_release_id uuid;
 BEGIN
   PERFORM set_config('request.jwt.claim.role','service_role',true);
   INSERT INTO auth.users(id,aud,role) VALUES(actor_id,'authenticated','authenticated') ON CONFLICT(id) DO NOTHING;
+  INSERT INTO public.tenants(id,slug,name,status,account_type,account_number_prefix,features)
+    VALUES(tenant_id,'voice-cost-proof','Voice Cost Proof','active','standalone','VCP','{}');
+  INSERT INTO public.tenant_members(tenant_id,user_id,role,status,is_owner,joined_at)
+    VALUES(tenant_id,actor_id,'owner','active',true,now());
+  INSERT INTO public.paige_voice_tenant_budgets(tenant_id,enabled,monthly_limit_usd)
+    VALUES(tenant_id,true,0.20);
+  UPDATE public.paige_voice_platform_budget
+     SET enabled=true,emergency_disabled=false,monthly_limit_usd=0.20,max_usd_per_1000_chars=0.10
+   WHERE singleton=true;
   INSERT INTO public.paige_voice_provider_verifications(id,provider,provider_voice_ref,key_scope_verified,voice_authorized,retention_policy_approved,zero_retention_confirmed,quota_verified,hard_cost_limit_usd,max_usd_per_1000_chars,verified_at,evidence_ref,verified_by_actor_id)
   VALUES(proof_id,'elevenlabs','proof-fixture-ref',true,true,true,true,true,0.20,0.10,now(),'proof-fixture',actor_id);
 
@@ -24,28 +34,30 @@ BEGIN
   UPDATE public.paige_voice_profiles SET provider='elevenlabs',provider_voice_ref='proof-fixture-ref',revision='proof-fixture-r1',approved=true,active=true,effective_at=now(),provider_verification_id=proof_id,provider_verification_receipt_ref='proof-fixture',provider_verified_at=now() WHERE slot='active';
   UPDATE public.paige_voice_readiness SET transport_enabled=true,availability='PARTIAL',key_scope_verified=true,voice_authorized=true,retention_policy_approved=true,zero_retention_confirmed=true,quota_verified=true,hard_cost_limit_usd=0.20,max_usd_per_1000_chars=0.10,provider_verification_id=proof_id,account_verification_receipt_ref='proof-fixture',account_verified_at=now() WHERE singleton=true;
 
-  first_id := (public.reserve_paige_voice_cost_internal(actor_id,NULL,'proof-fixture-r1',gen_random_uuid(),1000)->>'reservation_id')::uuid;
-  IF (public.reserve_paige_voice_cost_internal(actor_id,NULL,'proof-fixture-r1',(SELECT request_ref FROM public.paige_voice_cost_reservations WHERE id=first_id),1000)->>'reservation_id')::uuid<>first_id THEN RAISE EXCEPTION 'idempotent retry changed reservation'; END IF;
-  second_id := (public.reserve_paige_voice_cost_internal(actor_id,NULL,'proof-fixture-r1',gen_random_uuid(),1000)->>'reservation_id')::uuid;
+  first_id := (public.reserve_paige_voice_cost_internal(actor_id,tenant_id,'proof-fixture-r1',gen_random_uuid(),1000)->>'reservation_id')::uuid;
+  IF (public.reserve_paige_voice_cost_internal(actor_id,tenant_id,'proof-fixture-r1',(SELECT request_ref FROM public.paige_voice_cost_reservations WHERE id=first_id),1000)->>'reservation_id')::uuid<>first_id THEN RAISE EXCEPTION 'idempotent retry changed reservation'; END IF;
+  second_id := (public.reserve_paige_voice_cost_internal(actor_id,tenant_id,'proof-fixture-r1',gen_random_uuid(),1000)->>'reservation_id')::uuid;
   IF first_id IS NULL OR second_id IS NULL THEN RAISE EXCEPTION 'below/exact cap reservation failed'; END IF;
   BEGIN
-    PERFORM public.reserve_paige_voice_cost_internal(actor_id,NULL,'proof-fixture-r1',gen_random_uuid(),1);
+    PERFORM public.reserve_paige_voice_cost_internal(actor_id,tenant_id,'proof-fixture-r1',gen_random_uuid(),1);
     RAISE EXCEPTION 'over-cap reservation unexpectedly succeeded';
   EXCEPTION WHEN SQLSTATE '54000' THEN NULL; END;
 
   PERFORM public.settle_paige_voice_cost_internal(first_id,actor_id,'released');
-  after_release_id := (public.reserve_paige_voice_cost_internal(actor_id,NULL,'proof-fixture-r1',gen_random_uuid(),1)->>'reservation_id')::uuid;
+  after_release_id := (public.reserve_paige_voice_cost_internal(actor_id,tenant_id,'proof-fixture-r1',gen_random_uuid(),1)->>'reservation_id')::uuid;
   IF after_release_id IS NULL THEN RAISE EXCEPTION 'released reservation did not restore capacity'; END IF;
   PERFORM public.settle_paige_voice_cost_internal(second_id,actor_id,'committed');
   PERFORM public.settle_paige_voice_cost_internal(after_release_id,actor_id,'committed');
 
   INSERT INTO auth.users(id,aud,role) VALUES(deleted_actor_id,'authenticated','authenticated');
-  first_id := (public.reserve_paige_voice_cost_internal(deleted_actor_id,NULL,'proof-fixture-r1',gen_random_uuid(),999)->>'reservation_id')::uuid;
+  INSERT INTO public.tenant_members(tenant_id,user_id,role,status,is_owner,joined_at)
+    VALUES(tenant_id,deleted_actor_id,'member','active',false,now());
+  first_id := (public.reserve_paige_voice_cost_internal(deleted_actor_id,tenant_id,'proof-fixture-r1',gen_random_uuid(),999)->>'reservation_id')::uuid;
   PERFORM public.settle_paige_voice_cost_internal(first_id,deleted_actor_id,'committed');
   DELETE FROM auth.users WHERE id=deleted_actor_id;
   IF NOT EXISTS(SELECT 1 FROM public.paige_voice_cost_reservations WHERE id=first_id AND actor_user_id=deleted_actor_id AND state='committed') THEN RAISE EXCEPTION 'actor deletion erased committed cost'; END IF;
   BEGIN
-    PERFORM public.reserve_paige_voice_cost_internal(actor_id,NULL,'proof-fixture-r1',gen_random_uuid(),1);
+    PERFORM public.reserve_paige_voice_cost_internal(actor_id,tenant_id,'proof-fixture-r1',gen_random_uuid(),1);
     RAISE EXCEPTION 'actor deletion reopened hard cap';
   EXCEPTION WHEN SQLSTATE '54000' THEN NULL; END;
 

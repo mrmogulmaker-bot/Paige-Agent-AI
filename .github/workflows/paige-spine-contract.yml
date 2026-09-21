@@ -20,6 +20,9 @@ on:
       - "supabase/tests/mcp_gateway_endpoint_setter.sql"
       - "scripts/proof/mcp-gateway-endpoint-consent-race.mjs"
       - "supabase/functions/_shared/mcp-gateway/**"
+      - "supabase/functions/paige-tts/**"
+      - "supabase/tests/paige_voice_budget_control.sql"
+      - "scripts/proof/paige-voice-budget-concurrency.mjs"
       - "supabase/tests/paige_spine_foundation.sql"
       - "supabase/tests/governed_crm_commands.sql"
       - "supabase/tests/media_credit_ledger.sql"
@@ -72,6 +75,9 @@ on:
       - "supabase/tests/mcp_gateway_endpoint_setter.sql"
       - "scripts/proof/mcp-gateway-endpoint-consent-race.mjs"
       - "supabase/functions/_shared/mcp-gateway/**"
+      - "supabase/functions/paige-tts/**"
+      - "supabase/tests/paige_voice_budget_control.sql"
+      - "scripts/proof/paige-voice-budget-concurrency.mjs"
       - "supabase/tests/paige_spine_foundation.sql"
       - "supabase/tests/governed_crm_commands.sql"
       - "supabase/tests/media_credit_ledger.sql"
@@ -238,13 +244,20 @@ jobs:
       # holds NOTHING for an ordinary member (even one carrying a global staff role — §59 trap), a NULL
       # actor (no service-role bypass), and a different tenant's owner (§9).
       - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_owner_only_visibility.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
-      # Connected MCP Gateway — the endpoint setter (INT-099, migration 20270329000000). Proves the
+      # Connected MCP Gateway — the endpoint setter (INT-099, migration 20270330000000). Proves the
       # re-bind invariant (a changed endpoint never inherits the old secret; approvals revoked through
       # the setter; A→B→A no resurrection), the mcp.connections.manage capability gate (owner/tenant-admin
       # only; platform owner excluded, A2; member / cross-tenant / NULL-actor refused), the D1 legacy-row
       # refusal, the same-transaction hashes-only paige_audit_log write with audit-fail⇒no-commit (A1),
       # the write-only return (A3), and the static https/SSRF URL validation (A4).
       - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_endpoint_setter.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      # PAIGE Voice V1a — capability-gated zero/disabled configuration, tenant + platform
+      # monthly caps, idempotency, rollover, ambiguity settlement, provider parity, and a
+      # true two-session exact-cap race. No provider request is made by either proof.
+      - run: supabase test db supabase/tests/paige_voice_budget_control.sql
+      - run: node scripts/proof/paige-voice-budget-concurrency.mjs
+        env:
+          PAIGE_VOICE_BUDGET_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
       # And the two-session concurrency proof that the approval-write vs endpoint-change RACE is closed:
       # set_mcp_connection_approval's FOR UPDATE row lock serializes it against a concurrent endpoint
       # change, so no approval is ever left bound to an endpoint the connection no longer has (#1262 finding 3).

@@ -3,8 +3,8 @@
  *
  * Tap once to record and tap again to stop; pointer release never ends capture.
  * dictated words are handed back via `onText` for the composer to append. It
- * drives the shared `useDictation` hook (§18 one home) so the two composers
- * behave identically.
+ * drives the shared `useDictation` hook (§18 one home) so every composer
+ * behaves identically.
  *
  * §11: the mic is NEUTRAL/indigo — a mic is not an "act", so gold stays on Send.
  * Motion-safe (every pulse guards `motion-reduce`), token-only, jargon-free.
@@ -28,10 +28,12 @@ interface DictationMicButtonProps {
   label?: string;
   /** Label shown while actively listening (defaults to `label`). */
   activeLabel?: string;
-  /** Show the compact persistent state beside the control (Solo composer). */
+  /** Show ongoing compact state; safety-stop and error reasons are always visible. */
   showStatus?: boolean;
-  /** Authenticated account epoch used to invalidate a recording generation. */
-  scopeEpoch?: string | null;
+  /** Authenticated composer context epoch used to invalidate a recording generation. */
+  scopeEpoch: string;
+  /** True from mic request through provider finalization; lets the composer hold Send. */
+  onActiveChange?: (active: boolean) => void;
   /** Owning composer; preserves its caret even when focus crosses toolbar controls. */
   composerRef?: RefObject<HTMLTextAreaElement | HTMLInputElement>;
   className?: string;
@@ -46,7 +48,8 @@ export function DictationMicButton({
   label,
   activeLabel,
   showStatus = false,
-  scopeEpoch = null,
+  scopeEpoch,
+  onActiveChange,
   composerRef,
   className,
 }: DictationMicButtonProps) {
@@ -64,11 +67,21 @@ export function DictationMicButton({
     }, 2_000);
   };
   const dictation = useDictation({ onText: handleText, onError, scopeEpoch });
-  const { status, failure, notice, supported, start, stop } = dictation;
+  const { status, failure, notice, supported, start, stop, isActive } = dictation;
+  const onActiveChangeRef = useRef(onActiveChange);
+  onActiveChangeRef.current = onActiveChange;
   const statusId = useId();
 
   useEffect(() => () => {
     if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    onActiveChangeRef.current?.(isActive);
+  }, [isActive]);
+
+  useEffect(() => () => {
+    onActiveChangeRef.current?.(false);
   }, []);
 
   useEffect(() => {
@@ -131,7 +144,7 @@ export function DictationMicButton({
                     : resultVisible
                       ? "Added to draft"
                       : "";
-  const statusVisible = showStatus && (unsupported || failed || !!notice || status !== "idle" || resultVisible);
+  const statusVisible = unsupported || failed || !!notice || (showStatus && (status !== "idle" || resultVisible));
 
   const title = unsupported
     ? "Voice typing isn't supported in this browser"
@@ -194,7 +207,7 @@ export function DictationMicButton({
     </Button>
   );
 
-  if (!showStatus) return button;
+  if (!showStatus && !statusVisible) return button;
   return (
     <span className="inline-flex min-w-0 flex-none items-center gap-1.5" data-dictation-state={state}>
       {button}

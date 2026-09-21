@@ -931,7 +931,7 @@ console.log("\n— owner_only visibility (INT-082) —");
 }
 
 // ── 9. INT-099 round-4 (item 5, CLASS-CLOSER v2) — parity against the REAL runtime LOADER ──
-// The SQL setter (migration 20270329000000) accepts/rejects credential bundles; the production loader
+// The SQL setter (migration 20270330000000) accepts/rejects credential bundles; the production loader
 // makeRpcConnectionLoader (_shared/mcp-gateway/connection.ts) decides what actually loads as usable —
 // the TRUE gate. Round-3 used authFromSecret/authUsable, a SUBSET (it missed api_key/expired-oauth);
 // round-4 drives the REAL loader via loaderFor(row). Under CASE NAMES IDENTICAL to the pgTAP bundle

@@ -180,6 +180,8 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
   const generationRef = useRef(0);
   const currentRunRef = useRef<DictationRun | null>(null);
   const scopeEpochRef = useRef(scopeEpoch);
+  // Render-time assignment is the delivery fence. A provider callback can run
+  // after a scope-changing commit but before the passive teardown below.
   scopeEpochRef.current = scopeEpoch;
   // Keep the latest callbacks in refs so an inline closure from the consumer
   // never needs to re-subscribe and never goes stale mid-session.
@@ -389,6 +391,7 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
       };
 
       ws.onerror = () => {
+        if (!isCurrent(run)) return;
         failRun(run, "provider-failure", "Couldn't reach voice typing. Check your connection and try again.");
       };
 
