@@ -36,13 +36,13 @@ SOLO_900X1000_PAIGE_CLOSED: PASS: light/dark Auth screenshots; responsive phone 
 SOLO_900X1000_PAIGE_OPEN: NOT_APPLICABLE: public Auth does not mount the Paige panel.
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
-INTERNAL_BUILD_IDENTITY: 77df71e44536d2d58de8266e91f677aa4d27fbca; deployment=NOT_DEPLOYED; environment=local; migrations=PROOF_OWED(production_recovery_hotfix); edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/solo-beta-phone-entry.md
-RELEASE_CHANNEL: development: retained implementation build and rendered proof; owner-approved production promotion follows exact-head PR checks.
+INTERNAL_BUILD_IDENTITY: 42ad0d36107cfaf9198988606754b22f3de01c81; deployment=production (verified: the merge SHA is an ancestor of main and deploy-migrations run 34735838226 succeeded at head 42ad0d36; the application deployment run 6417319452 and the 178/178 production rendered checks are recorded in stale PR #1192, not independently re-verified — the run is no longer retained by the Actions API); environment=production; migrations=APPLIED (run 34735838226); edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/solo-beta-phone-entry.md
+RELEASE_CHANNEL: production: phone entry and database recovery are deployed from merge 42ad0d36107cfaf9198988606754b22f3de01c81 (verified); closeout carried forward 2026-09-21 under INT-108
 RELEASE_CLASSIFICATION: patch: customer-visible phone repair plus fail-closed migration convergence.
-CUSTOMER_RELEASE_IDENTITY: none: hotfix not yet merged or deployed.
+CUSTOMER_RELEASE_IDENTITY: 42ad0d36107cfaf9198988606754b22f3de01c81; application deployment run 6417319452 (recorded in stale PR #1192, not independently re-verified).
 RELEASE_NOTE_REQUIRED: YES: customer-visible signup entry changes.
-RELEASE_TRUTH_BOUNDARY: PARTIAL: local normalization and rendered behavior are verified; production Auth persistence and migration recovery remain proof owed.
-RELEASE_RECOVERY: position=forward-fix-on-main; reference=PR #1148 merge a725633b and failed migration run 34731904027.
+RELEASE_TRUTH_BOUNDARY: PARTIAL: production phone interaction, public flow, and migration recovery are verified to the extent recorded; authenticated Auth persistence, SMS delivery, and Stripe live financial activation remain proof owed.
+RELEASE_RECOVERY: position=forward-fix-complete; reference=PR #1190 merge 42ad0d36, migration run 34735838226, application deployment run 6417319452 (recorded in stale PR #1192, not independently re-verified).
 
 ## Scope and collisions
 
