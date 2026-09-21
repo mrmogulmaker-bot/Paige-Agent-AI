@@ -12952,6 +12952,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         billing_create_invoice: "paige_invoices", billing_send_invoice: "paige_invoices",
         business_create: "businesses", business_update: "businesses",
         business_verify: "business_verification_runs",
+        // #1213 / #1214 — the two governed credit-pull capabilities. Both are classified `high`
+        // in action-risk.ts (executable, NOT owner_only), so CI check 19.8 requires them here — but
+        // Chat never DISPATCHES them (they run through their own edge functions
+        // nav-pull-profile / smartcredit-pull-snapshot, which file their OWN paige_audit_log rows),
+        // so this is classifier-coverage only, with no effect on any Chat turn. Values are read off
+        // the verified handler write, not the tool name: nav-pull-profile persists
+        // `paige_business_credit_profiles` (its own governed door labels the subject
+        // `business_credit_profile`), and smartcredit-pull-snapshot persists
+        // `paige_owner_credit_snapshots`.
+        nav_pull_business_credit: "paige_business_credit_profiles",
+        smartcredit_pull_snapshot: "paige_owner_credit_snapshots",
         coach_update_profile: "profiles",
         coach_grant_role_globally: "user_roles", coach_revoke_role_globally: "user_roles",
         team_invite_mint: "invitations",
