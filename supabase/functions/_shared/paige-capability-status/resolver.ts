@@ -13,17 +13,18 @@
 // by resolveCapabilityStatus; it is carried here so the type is the single complete vocabulary and is
 // named as an explicit resolution in the rendered directive (render.ts), closing the owner's taxonomy.
 /** How Paige may act on a capability for this tenant — in the owner's own verbs. */
-export type CapabilityAvailability =
-  | "live"            // available now with no approval (a read, or an auto-lane write)
-  | "needs_approval"  // available, but drafted for the owner to approve/run (confirm or off lane)
-  | "needs_setup"     // a connection or setup step is required before Paige can do it
-  | "proof_owed"      // the governed path is built but its behavior is not proven for this workspace
-                      // yet AND it fails closed — Paige may attempt it but must not promise the result
-  | "planned"         // no governed path here yet — not something Paige can do (whether the seam is
-                      // unbuilt, or a raw tool exists but is not a governed, tenant-safe capability)
-  | "not_for_tier"    // not available to this account type
-  | "unavailable"     // provider/account evidence is missing, so Paige must not claim it
-  | "no_applicable_capability"; // request matches no capability (a request-level resolution; see render.ts)
+export const PER_CAPABILITY_AVAILABILITY_STATES = Object.freeze([
+  "live",            // available now with no approval (a read, or an auto-lane write)
+  "needs_approval",  // available, but drafted for the owner to approve/run (confirm or off lane)
+  "needs_setup",     // a connection or setup step is required before Paige can do it
+  "proof_owed",      // the governed path is built but its behavior is not proven for this workspace
+  "planned",         // no governed path here yet — not something Paige can do
+  "not_for_tier",    // not available to this account type
+  "unavailable",     // provider/account evidence is missing, so Paige must not claim it
+] as const);
+
+export type PerCapabilityAvailability = (typeof PER_CAPABILITY_AVAILABILITY_STATES)[number];
+export type CapabilityAvailability = PerCapabilityAvailability | "no_applicable_capability";
 
 export type CapabilityActionKind = "read" | "draft" | "create" | "update" | "configure" | "external_effect";
 

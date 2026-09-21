@@ -721,6 +721,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:solo-parity && npm run lint:solo-parity:test
 
+      # Appended LAST in verify so inherited failing-step ordinals do not move. Existing bypass
+      # debt is an exact path+symbol, shrink-only snapshot; the kit's own contract is strict now.
+      - name: Capability Kit contract + anti-bypass guard (INT-003)
+        if: ${{ !cancelled() }}
+        run: node scripts/ci/capability-kit-lint.mjs && node scripts/ci/capability-kit-lint.mjs --self-test && node --import ./scripts/capability-kit/register.mjs scripts/capability-kit/capability-kit.test.mjs
+
   web-fetch-hardening-smoke:
     # Its own job, deliberately on Node 22: the smoke imports the real
     # `_shared/ssrfGuard.ts`, whose `SsrfError` uses a TS parameter property that needs
