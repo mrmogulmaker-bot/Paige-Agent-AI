@@ -22,6 +22,7 @@
  */
 import http from "node:http";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { build } from "esbuild";
@@ -927,6 +928,104 @@ console.log("\n— owner_only visibility (INT-082) —");
       && ooMutNoCap.code === "owner_only_forbidden" && ooSystemNoReason.code === "owner_only_forbidden"
       && ooWrongTenantCap.code === "owner_only_forbidden"
       && ooCapExec.outcome === "read_observed" && tenNoAuth.outcome === "read_observed");
+}
+
+// ── 9. INT-099 round-4 (item 5, CLASS-CLOSER v2) — parity against the REAL runtime LOADER ──
+// The SQL setter (migration 20270330000000) accepts/rejects credential bundles; the production loader
+// makeRpcConnectionLoader (_shared/mcp-gateway/connection.ts) decides what actually loads as usable —
+// the TRUE gate. Round-3 used authFromSecret/authUsable, a SUBSET (it missed api_key/expired-oauth);
+// round-4 drives the REAL loader via loaderFor(row). Under CASE NAMES IDENTICAL to the pgTAP bundle
+// matrix (supabase/tests/mcp_gateway_endpoint_setter.sql): every accept_* loads ok:true; every reject_*
+// loads connection_unusable. Only fields the loader row carries are set; oauth issuer/client_id are
+// SQL-only (the loader never sees them, so accept_oauth resolves as bearer, exactly as production would).
+// READ-ONLY use of the loader — connection.ts / mcp-client.ts are never edited.
+console.log("\n— runtime parity vs makeRpcConnectionLoader: SQL-accept ⟺ loader-usable (INT-099 R4 class-closer) —");
+{
+  const SRV = "https://public.example/parity";
+  const FUT = new Date(Date.now() + 3_600_000).toISOString();
+  const PAST = new Date(Date.now() - 60_000).toISOString();
+  // A fake service-role admin whose get_mcp_connection_secret returns the chosen row (mirrors the
+  // production RPC-backed loader path). Only the credential fields vary; everything else is a valid,
+  // loadable row so the ONLY thing under test is the bundle.
+  const adminReturning = (row) => ({ rpc: async (fn) => (fn === "get_mcp_connection_secret" ? { data: row, error: null } : { data: null, error: null }) });
+  const load = (secret) => connMod.makeRpcConnectionLoader(adminReturning({
+    configured: true, enabled: true, connection_id: "conn-parity", tenant_id: "parity-tenant",
+    server_url: SRV, endpoint_hash: endpointHashOf(SRV), visibility: "tenant", transport: "http",
+    auth_token: null, auth_header_name: null, ...secret,
+  }))("conn-parity");
+  const usable = async (secret) => (await load(secret)).ok === true;
+  const unusable = async (secret) => { const r = await load(secret); return r.ok === false && r.reason === "connection_unusable"; };
+
+  // ACCEPT cases — each loads ok:true through the LOADER (names identical to the pgTAP).
+  check("parity accept_header → loader usable", await usable({ auth_kind: "header", auth_token: "tok-h", auth_header_name: "X-Api-Key" }));
+  check("parity accept_bearer → loader usable", await usable({ auth_kind: "bearer", auth_token: "tok-b" }));
+  check("parity accept_oauth → loader usable (token + future expiry)", await usable({ auth_kind: "oauth", auth_token: "tok-o", expires_at: FUT }));
+  check("parity accept_url → loader usable", await usable({ auth_kind: "url" }));
+  check("parity accept_none → loader usable", await usable({ auth_kind: "none" }));
+
+  // REJECT cases — each is loader connection_unusable (names identical to the pgTAP).
+  check("parity reject_header_reserved → loader unusable", await unusable({ auth_kind: "header", auth_token: "t", auth_header_name: "Authorization" }));
+  check("parity reject_header_bad_grammar → loader unusable", await unusable({ auth_kind: "header", auth_token: "t", auth_header_name: "Bad Header" }));
+  check("parity reject_header_no_name → loader unusable (header row falls through to bearer)", await unusable({ auth_kind: "header", auth_token: "t" }));
+  check("parity reject_bearer_no_token → loader unusable", await unusable({ auth_kind: "bearer" }));
+  check("parity reject_oauth_no_token → loader unusable (no refresh step; F3)", await unusable({ auth_kind: "oauth" }));
+  check("parity reject_oauth_expired → loader unusable (oauthExpired, connection.ts:118)", await unusable({ auth_kind: "oauth", auth_token: "t", expires_at: PAST }));
+  check("parity reject_api_key → loader unusable (not in MCP_EXECUTABLE_AUTH_KINDS, connection.ts:58)", await unusable({ auth_kind: "api_key", auth_token: "t" }));
+
+  // DIVERGENCE GUARD (round-5 F4) — TWO HALVES that meet at a documented executable set. The SQL half
+  // moved to the pgTAP (supabase/tests/mcp_gateway_endpoint_setter.sql), which drives the REAL setter for
+  // every auth_kind in the mcp_connections CHECK set and asserts the accepted set == the documented set.
+  // THIS half asserts the LOADER's MCP_EXECUTABLE_AUTH_KINDS (connection.ts:58) == that SAME documented
+  // set. The constant is module-private and INT-105 forbids editing _shared to export it, so read the
+  // loader source (read-only) and parse it. Neither half alone proves the setter and the loader agree:
+  // the pgTAP pins the setter to the documented set, this pins the loader to it, so the pair proves
+  // setter-accepts <=> loader-executable. (The accept_*/reject_* cases above are the BEHAVIORAL loader
+  // coverage; this is the exact-set assertion.)
+  const DOCUMENTED_EXECUTABLE_AUTH_KINDS = ["bearer", "header", "none", "oauth", "url"];  // == pgTAP _expected + migration header
+  {
+    const connSrc = readFileSync(path.join(process.cwd(), "supabase/functions/_shared/mcp-gateway/connection.ts"), "utf8");
+    const m = connSrc.match(/MCP_EXECUTABLE_AUTH_KINDS\s*=\s*new Set\(\s*\[([^\]]*)\]\s*\)/);
+    check("F4: MCP_EXECUTABLE_AUTH_KINDS found in the loader source (connection.ts)", !!m, "constant not found — parser or source changed");
+    const loaderKinds = m ? [...m[1].matchAll(/["']([^"']+)["']/g)].map((x) => x[1]).sort() : [];
+    const documented = [...DOCUMENTED_EXECUTABLE_AUTH_KINDS].sort();
+    check("F4: the loader's MCP_EXECUTABLE_AUTH_KINDS EQUALS the documented executable set (pairs with the pgTAP setter enumeration)",
+      JSON.stringify(loaderKinds) === JSON.stringify(documented), `loader=${JSON.stringify(loaderKinds)} documented=${JSON.stringify(documented)}`);
+  }
+}
+
+// ── 10. INT-099 round-5 (F3) — shared IP-literal parity: ssrfGuard.ts ⟺ the SQL classifier ──
+// ONE canonical named list (supabase/tests/mcp-ip-literal-cases.json). THIS half drives ssrfGuard.ts's
+// assertPublicHttpUrl (READ-ONLY import — connection.ts/ssrfGuard.ts are never edited, INT-105) for each
+// literal and asserts throw ⇔ unsafe. The pgTAP half (supabase/tests/mcp_gateway_endpoint_setter.sql,
+// the F3-SHARED-IP-LIST block) asserts _mcp_inet_is_public(literal::inet) = NOT unsafe under the IDENTICAL
+// names. Neither alone proves _mcp_inet_is_public matches ssrfGuard; the pair does. A cross-check here
+// proves the pgTAP's embedded (name, literal, unsafe) rows EQUAL the JSON — genuinely ONE list.
+console.log("\n— F3 shared IP-literal parity: ssrfGuard.ts ⟺ SQL classifier (INT-099 R5) —");
+{
+  const ssrfMod = await bundle("supabase/functions/_shared/ssrfGuard.ts", "ssrfguard.mjs");
+  const casesDoc = JSON.parse(readFileSync(path.join(process.cwd(), "supabase/tests/mcp-ip-literal-cases.json"), "utf8"));
+  const cases = casesDoc.cases;
+  check("F3: the shared IP-literal list is non-trivial", Array.isArray(cases) && cases.length >= 20, `n=${cases?.length}`);
+
+  // CROSS-CHECK: the pgTAP file embeds the IDENTICAL (name, literal, unsafe) set between its markers, so
+  // the SQL half and this TS half are provably one list (add a case to the JSON and the pgTAP must follow,
+  // or this fails). This closes the "two independently-drifting lists" gap the F3 ruling names.
+  const pgtap = readFileSync(path.join(process.cwd(), "supabase/tests/mcp_gateway_endpoint_setter.sql"), "utf8");
+  const block = pgtap.split("F3-SHARED-IP-LIST BEGIN")[1]?.split("F3-SHARED-IP-LIST END")[0] ?? "";
+  const pgRows = [...block.matchAll(/\(\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*(true|false)\s*\)/g)]
+    .map((r) => `${r[1]}|${r[2]}|${r[3] === "true"}`).sort();
+  const jsonRows = cases.map((c) => `${c.name}|${c.literal}|${c.unsafe === true}`).sort();
+  check("F3: the pgTAP embedded shared list EQUALS the JSON (one source; identical names, literals, verdicts)",
+    JSON.stringify(pgRows) === JSON.stringify(jsonRows), `pg=${pgRows.length} json=${jsonRows.length}`);
+
+  // drive ssrfGuard for each case: a v6 literal is bracketed in the URL authority, a v4 is bare. For a
+  // clean IP-literal URL the ONLY reason assertPublicHttpUrl throws is ipUnsafe, so throw ⇔ unsafe.
+  for (const c of cases) {
+    const host = c.literal.includes(":") ? `[${c.literal}]` : c.literal;
+    let threw = false;
+    try { await ssrfMod.assertPublicHttpUrl(`https://${host}/mcp`); } catch { threw = true; }
+    check(`F3 ssrfGuard ${c.name} (${c.literal}) is ${c.unsafe ? "unsafe" : "public"}`, threw === (c.unsafe === true), `threw=${threw}`);
+  }
 }
 
 server.close();
