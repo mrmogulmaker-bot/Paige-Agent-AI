@@ -2,7 +2,15 @@
 
 Date: 2026-09-08
 Owner scope: actual production transcript jump after the shipped exact-bottom hotfix
-Status: REOPENED P0 — delayed reading-position theft reported after #1057/#1066
+Status: corrections #1075 and #1080 merged and production-deployed; authenticated production owner acceptance PROOF OWED — workstream not accepted (closeout carried forward 2026-09-21 under INT-108)
+
+## Corrective release #1075 — deployed, owner acceptance still owed (carried forward from stale PR #1076)
+
+Merged 2026-09-08 at 16:03 EDT as `f86b1c401c492c4d0dc122258b6c26b96870befe` (verified on current main; a successful production deployment exists at exactly this SHA — GitHub deployment 6336077034). Vercel deployment `dpl_63jHR5ys6w9h5NVQUJk7D2eiS9w7` READY and the both-domains build `f86b1c401c492c4d0dc122258b6c26b96870befe-mtt3l0yt` are recorded in stale PR #1076, not independently re-verified. A fresh unauthenticated Chromium entry check returned 200 with no page errors; development diagnostic emission absent from production build assets. No migration, provider change or shared mount change. Proof recorded in #1076: 113 affected tests; 290 files/4026 tests; the 117/117 settled-endpoint rendered run (the one 116/117 run sampled a transient minimize transition — the harness waits actual finite CSS animation completion, never a fixed debounce; settled endpoints proven, not every painted frame). Runtime files changed: `src/components/chat/anchoredTranscriptScroll.ts` and `src/components/dashboard/PaigeAIChat.tsx`. **The owner reported the reset persisting past this build — superseded by #1080 below.**
+
+## #1080 release checkpoint — 2026-09-08 (carried forward from stale PR #1081)
+
+Public production browser smoke: both domains returned HTTP 200 with the expected Paige title and zero page runtime exceptions; contexts were unauthenticated, so this does not prove signed-in transcript interaction. Production deployment `dpl_7V1rPr1apLDUVujH9uZiWc3ZLH7y` READY from exact main commit `42a8d5aa760877fc34316ab3712523f86f95b19e` (verified: GitHub deployment 6338189386, success, at exactly 42a8d5aa; the dpl id and the both-domains build `42a8d5aa760877fc34316ab3712523f86f95b19e-mtt84zjl` are recorded in stale PR #1081, not independently re-verified). Migrations/Edge: NOT_APPLICABLE. Fresh alternate independent reviewer approved exact PR head `d7b66d75716890fa9b36275b70a63e3b42a4ffad`, independently ran 31/31 shell ownership tests and inspected 4051 full-test passes and the exact-head 127/127 rendered report; no actionable findings. Product diff solely the parent-node guard in `src/components/tenant-shell/TenantCommandCenterShell.tsx` — no timer, delay, threshold, second controller or context change. This verifies deployment and review, not authenticated acceptance; recovery is a reviewed revert of the single portal guard only on a demonstrated new regression.
 
 ## Same-parent portal reset investigation — 2026-09-08
 
@@ -80,6 +88,14 @@ SOLO_900X1000_PAIGE_OPEN: PASS: middle, one-pixel, stream, resize, reload, and m
 - Explicit exclusions: Secure Browser, Vault, logo/refresh, Live Voice, Live Conversation, authority/Spine, Skills, Interview, Tenant Brain, Business Game Plan, and chat redesign.
 
 ## User job and state map
+
+### Durable transcript preservation contract — owner reaffirmed 2026-09-08 (carried forward from stale PR #1081)
+
+> Once an owner deliberately moves the transcript even one pixel away from the exact bottom, no programmatic render, stream token, status update, resize, hydration, focus change, minimize/restore, pop-out return, remount, or thread-ID adoption may move their reading position. Automatic following resumes only when the owner returns to the exact bottom or explicitly selects Jump to latest.
+
+This is indefinite semantic-message/pixel ownership, not an absolute-scrollTop snapshot and not a time-limited pause. Hidden, detached or zero-size measurements must not replace a valid anchor. Stale asynchronous work cannot reclaim ownership. The existing controller is the sole scroll-position authority; surrounding mounts must not unnecessarily detach/reinsert its ancestor. Actual pop-out relocation retains the existing anchor handoff. No timer, near-bottom tolerance, delayed compensation or fallback controller may be introduced as a substitute. Tests and signed-in acceptance must distinguish unchanged-layout parent refresh from real layout compensation, and must not treat a settled endpoint as proof of every animation frame.
+
+Acceptance check after loading the deployed build: in the signed-in owner's long conversation, manually move one pixel upward and then into older content; allow streamed text/status/completion and ordinary delayed refresh to finish; resize, minimize/restore and pop-out/return. The same semantic text must remain at the chosen pixel offset. Verify explicit Jump to latest and manual exact-bottom return resume follow. Record PASS/FAIL against the exact served build. Until the owner confirms this formerly failing flow, acceptance is PROOF OWED and the defect is not declared fully resolved.
 
 The owner reads Paige history at a chosen location. Any deliberate movement away from the exact bottom immediately stores the first visible stable message and its pixel offset. Ordinary updates restore only that valid identity with visible non-zero geometry. Transient content cannot replace it. Automatic following resumes only through Jump to latest or a genuine deliberate return to exact bottom.
 
