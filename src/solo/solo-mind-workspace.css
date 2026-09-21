@@ -33,7 +33,7 @@
 .mind-orb-fallback span{display:block;color:var(--pg-muted);font-size:10px;max-width:52ch;margin-top:3px}
 /* domain callouts anchored around the orb */
 .mind-callouts{position:absolute;inset:0;z-index:6;pointer-events:none}
-.mind-callout{pointer-events:auto;position:absolute;display:flex;align-items:center;gap:9px;max-width:210px;padding:7px 10px;text-align:left;cursor:pointer;border:1px solid var(--pg-line);border-radius:11px;background:color-mix(in srgb,var(--pg-surface) 86%,transparent);box-shadow:var(--pg-lift-1,var(--pg-e1));backdrop-filter:blur(3px)}
+.mind-callout{pointer-events:auto;position:absolute;display:flex;align-items:center;gap:9px;max-width:210px;padding:7px 10px;text-align:left;cursor:pointer;border:1px solid var(--pg-line);border-radius:11px;background:color-mix(in srgb,var(--pg-surface) 86%,transparent);box-shadow:var(--pg-lift-1,var(--pg-e1));backdrop-filter:blur(3px);color:var(--mind-label)}
 .mind-callout:hover{border-color:var(--pg-gold)}
 .mind-callout[aria-pressed="true"]{border-color:var(--pg-line-authority,var(--pg-gold))}
 .mind-callout-plate{width:26px;height:26px;border-radius:8px;background:var(--pg-canvas);box-shadow:var(--pg-rim);display:grid;place-items:center;font-size:13px;flex-shrink:0}
@@ -47,7 +47,7 @@
 .mind-orb-controls button:hover{border-color:var(--pg-gold);color:var(--pg-gold)}
 .mind-orb-controls button[aria-pressed="true"]{background:var(--pg-gold-bloom,color-mix(in srgb,var(--pg-gold) 16%,transparent));border-color:var(--pg-line-authority,var(--pg-gold));color:var(--pg-ink)}
 /* source-signal legend */
-.mind-legend{position:absolute;right:12px;bottom:44px;z-index:7;padding:9px 11px;border:1px solid var(--pg-line);border-radius:11px;background:color-mix(in srgb,var(--pg-surface) 86%,transparent);box-shadow:var(--pg-lift-1,var(--pg-e1));backdrop-filter:blur(3px)}
+.mind-legend{position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:7;padding:9px 11px;border:1px solid var(--pg-line);border-radius:11px;background:color-mix(in srgb,var(--pg-surface) 86%,transparent);box-shadow:var(--pg-lift-1,var(--pg-e1));backdrop-filter:blur(3px)}
 .mind-legend h4{margin:0 0 6px;font-size:9px;font-weight:850;letter-spacing:.04em}
 .mind-legend-row{display:flex;align-items:center;gap:7px;font-size:9px;color:var(--pg-muted);padding:1px 0}
 .mind-callout:focus-visible,.mind-orb-controls button:focus-visible{outline:3px solid color-mix(in srgb,var(--pg-gold) 68%,transparent);outline-offset:2px}
