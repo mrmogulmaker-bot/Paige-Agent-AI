@@ -1,41 +1,51 @@
-// MindOrbCanvas — the React mount for the owner-approved Mind orb engine (§28 frozen rendering).
+// MindOrbCanvas — the React mount for the owner-approved "Synapse" Mind particle field.
 //
 // This wrapper owns ONLY the plumbing; it decides nothing about the look (§00). It:
 //  - probes WebGL with the shared §18 one-home probe (`supportsWebGL`) before touching three;
 //  - CODE-SPLITS three by loading the engine through a dynamic `import("./engine")` (the type-only
 //    import below is erased, so `three` never lands in the main bundle — the lazy-chunk boundary
-//    every 3D surface relies on still holds, per src/lib/webgl.ts's note and R3FScene's pattern);
+//    every 3D surface relies on still holds);
 //  - reconciles prop changes onto the live handle WITHOUT re-initialising (preserving rotation);
+//  - fires the incoming-knowledge stream ONLY on a real feed signal (a new governed record — §13);
 //  - pauses offscreen (IntersectionObserver) and resizes (Resize + window), then disposes on unmount;
 //  - degrades LOUDLY, never white-screening: a SceneBoundary catches render-phase throws and the
 //    async mount is try/caught, both routing to `onUnavailable` so the PARENT renders its list
-//    fallback (modelled on StudioHeroScene's SceneBoundary; §32 "never fail silently").
+//    fallback (§32 "never fail silently").
 //
-// The parent (SoloMindWorkspace) owns the drawer, states, record list, category filter, and the
-// data→node/ring mapping; it passes `nodes` + `onPick` and reads back the ORIGINAL node object.
+// The parent (SoloMindWorkspace) owns the headline count, legend, drawer, states, record list, and the
+// record→node mapping; it passes `records` + `onPick` and reads back the ORIGINAL record object.
 import { Component, useEffect, useRef, type ReactNode } from "react";
 import { supportsWebGL } from "@/lib/webgl";
-import type { MindOrbHandle, MindOrbNode, MindOrbRing } from "./engine";
+import { reconcileFeedSignal } from "./orbInteraction";
+import type {
+  MindOrbHandle,
+  MindOrbRecordNode,
+  MindOrbDomain,
+  MindEvidenceState,
+  MindMineralMode,
+} from "./engine";
 
 export interface MindOrbCanvasProps {
-  nodes: MindOrbNode[];
-  rings?: MindOrbRing[];
+  records: MindOrbRecordNode[];
+  domains: MindOrbDomain[];
+  state: MindEvidenceState;
   dark: boolean;
-  running: boolean; // presentation orbit on/off
+  mineral: MindMineralMode;
+  running: boolean; // presentation animation on/off
   reduced: boolean; // reduced-motion (already OR-ed with OS by the parent)
-  onPick: (node: MindOrbNode) => void;
-  onUnavailable?: (reason: string) => void; // WebGL/init failed OR boundary caught → parent renders its list fallback
+  onPick: (node: MindOrbRecordNode) => void;
+  onUnavailable?: (reason: string) => void; // WebGL/init failed OR boundary caught → parent list fallback
   ariaLabel: string;
   className?: string;
-  focusDomain?: string | null; // orient the orb to a domain hub (null = show all); declarative
+  focusDomain?: string | null; // orient the field to a domain region (null = show all); declarative
   resetToken?: number; // bump to trigger handle.reset() (re-centre + clear focus); declarative
+  feedSignal?: { token: number; domain: string } | null; // real new-record event → fire the stream
 }
 
 /**
  * Degrade gracefully (never white-screen), but NOT silently: a render-phase throw in the canvas
  * subtree is caught here, logged loudly, and reported to the parent via `onUnavailable` so it can
- * show its own fallback. Renders null on failure — the parent owns the visible fallback. Modelled
- * on StudioHeroScene's SceneBoundary (§32: a runtime crash must be diagnosable, not invisible).
+ * show its own fallback (§32: a runtime crash must be diagnosable, not invisible).
  */
 class SceneBoundary extends Component<{ onUnavailable?: (reason: string) => void; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -52,9 +62,11 @@ class SceneBoundary extends Component<{ onUnavailable?: (reason: string) => void
 }
 
 function MindOrbCanvasInner({
-  nodes,
-  rings,
+  records,
+  domains,
+  state,
   dark,
+  mineral,
   running,
   reduced,
   onPick,
@@ -63,34 +75,41 @@ function MindOrbCanvasInner({
   className,
   focusDomain,
   resetToken,
+  feedSignal,
 }: MindOrbCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const handleRef = useRef<MindOrbHandle | null>(null);
-  // Keep the latest callbacks in refs so the engine mounts ONCE — a changed `onPick`/`onUnavailable`
-  // identity must never tear down and re-init the scene (that would reset the rotation, §28).
+  // Keep the latest callbacks in refs so the engine mounts ONCE — a changed callback identity must
+  // never tear down and re-init the scene (that would reset rotation, §28).
   const onPickRef = useRef(onPick);
   onPickRef.current = onPick;
   const onUnavailableRef = useRef(onUnavailable);
   onUnavailableRef.current = onUnavailable;
-  // Latest prop values in refs. The engine loads through an ASYNC dynamic import, so any prop that
-  // changes during that import window would otherwise be lost: the reconcile effects below fire once
-  // while `handleRef.current` is still null (no-op) and never re-run unless the value changes AGAIN.
-  // The parent flips `dark` (dark→light) and `reduced` (OS prefers-reduced-motion) in its own
-  // post-mount effects, precisely inside this window — so without this, a reduced-motion user would
-  // get an ANIMATING orb all session and a light shell would render dark. We therefore (a) construct
-  // the engine from the LATEST values and (b) re-assert every reconciled value once the handle exists.
-  const focusDomainRef = useRef(focusDomain);
-  focusDomainRef.current = focusDomain;
-  const nodesRef = useRef(nodes);
-  nodesRef.current = nodes;
-  const ringsRef = useRef(rings);
-  ringsRef.current = rings;
+  // Latest prop values in refs — the engine loads through an ASYNC dynamic import, so a prop that
+  // changes during that window would otherwise be lost. We construct from the LATEST values and
+  // re-assert every reconciled value once the handle exists.
+  const recordsRef = useRef(records);
+  recordsRef.current = records;
+  const domainsRef = useRef(domains);
+  domainsRef.current = domains;
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const darkRef = useRef(dark);
   darkRef.current = dark;
+  const mineralRef = useRef(mineral);
+  mineralRef.current = mineral;
   const runningRef = useRef(running);
   runningRef.current = running;
   const reducedRef = useRef(reduced);
   reducedRef.current = reduced;
+  const focusDomainRef = useRef(focusDomain);
+  focusDomainRef.current = focusDomain;
+  // Feed-signal reconciliation state, declared here (above the mount effect) so the mount effect can
+  // FLUSH a signal that arrived during the async engine import. feedSeen = the last token that fired;
+  // pendingFeed = a new signal that arrived while the handle was still null, held (not dropped) until
+  // the handle mounts (#1303 P2).
+  const feedSeen = useRef(feedSignal?.token);
+  const pendingFeed = useRef<{ token: number; domain: string } | null>(null);
 
   // Mount / unmount the engine once. `three` loads here via the dynamic import (code-split).
   useEffect(() => {
@@ -110,12 +129,12 @@ function MindOrbCanvasInner({
       try {
         const { createMindOrb } = await import("./engine");
         if (disposed) return;
-        // Construct from the LATEST values (refs), not the closure captured at first render — the
-        // parent may already have flipped theme/reduced-motion during this import window.
         const result = createMindOrb(canvas, {
-          nodes: nodesRef.current,
-          rings: ringsRef.current ?? [],
+          records: recordsRef.current,
+          domains: domainsRef.current,
+          state: stateRef.current,
           dark: darkRef.current,
+          mineral: mineralRef.current,
           running: runningRef.current,
           reduced: reducedRef.current,
           onPick: (n) => onPickRef.current?.(n),
@@ -127,31 +146,34 @@ function MindOrbCanvasInner({
           return;
         }
         if (disposed) {
-          // Unmounted while the engine chunk was loading — dispose the just-created instance.
           result.handle.dispose();
           return;
         }
         handleRef.current = result.handle;
-        // Re-assert EVERY reconciled value once the handle exists. Each sibling effect below fired
-        // once during the async import while handleRef was null (a no-op) and will not re-run unless
-        // its value changes AGAIN — so a value the parent set exactly once, inside the import window
-        // (light theme; OS reduced-motion), would be silently lost. Re-applying from the refs here
-        // makes the mounted orb match the current props regardless of async timing (§11 motion-safe,
-        // §13 honesty). Construction above already used these values; re-applying is idempotent.
-        handleRef.current.applyTheme(null, darkRef.current);
-        handleRef.current.setData({ nodes: nodesRef.current, rings: ringsRef.current ?? [] });
+        // Re-assert EVERY reconciled value once the handle exists (each sibling effect below fired once
+        // during the async import while handleRef was null, a no-op, and will not re-run unless its
+        // value changes AGAIN — so a value the parent set exactly once inside the import window would
+        // otherwise be silently lost). Idempotent.
+        handleRef.current.applyTheme(darkRef.current, mineralRef.current);
+        handleRef.current.setData(recordsRef.current, stateRef.current);
         handleRef.current.setRunning(runningRef.current);
         handleRef.current.setReduced(reducedRef.current);
         handleRef.current.focus(focusDomainRef.current ?? null);
+        // Flush a feed signal that arrived DURING the async import — it was held (not dropped) with
+        // its token unmarked, so fire it once now and only then mark it seen (#1303 P2).
+        if (pendingFeed.current) {
+          const pf = pendingFeed.current;
+          pendingFeed.current = null;
+          feedSeen.current = pf.token;
+          handleRef.current.fireFeed(pf.domain);
+        }
 
-        // Pause when scrolled offscreen (the engine also pauses on document.hidden).
         io = new IntersectionObserver((entries) => {
           const entry = entries[0];
           if (entry) handleRef.current?.setVisible(entry.isIntersecting);
         });
         io.observe(canvas);
 
-        // Keep the drawing buffer in step with the element's box, and with window resizes.
         ro = new ResizeObserver(() => handleRef.current?.resize());
         ro.observe(canvas);
         window.addEventListener("resize", onWindowResize);
@@ -169,24 +191,20 @@ function MindOrbCanvasInner({
       handleRef.current?.dispose();
       handleRef.current = null;
     };
-    // Mount-once: the effect body reads only refs + stable callbacks, so it has no reactive deps;
-    // data/theme/running/reduced are reconciled by the dedicated effects below.
+    // Mount-once: reads only refs + stable callbacks; data/theme/running/reduced/state reconcile below.
   }, []);
 
-  // Data change → recolour/re-lay in place (NOT a re-init — preserves rotation, §28).
+  // Data or state change → recolour/relay + set the form state in place (NOT a re-init).
   useEffect(() => {
-    handleRef.current?.setData({ nodes, rings: rings ?? [] });
-  }, [nodes, rings]);
+    handleRef.current?.setData(records, state);
+  }, [records, state]);
 
-  // Theme flip → re-tune bloom/exposure AND repaint node/ring colours (the parent passes fresh
-  // per-theme colorHex, so setData refreshes the palette for the new theme).
+  // Theme / Mineral flip → re-tune blending + colours.
   useEffect(() => {
-    handleRef.current?.applyTheme(null, dark);
-    handleRef.current?.setData({ nodes, rings: rings ?? [] });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dark]);
+    handleRef.current?.applyTheme(dark, mineral);
+  }, [dark, mineral]);
 
-  // Presentation orbit on/off.
+  // Presentation animation on/off.
   useEffect(() => {
     handleRef.current?.setRunning(running);
   }, [running]);
@@ -196,7 +214,7 @@ function MindOrbCanvasInner({
     handleRef.current?.setReduced(reduced);
   }, [reduced]);
 
-  // Orient to a domain hub (or show all when null).
+  // Orient to a domain region (or show all when null).
   useEffect(() => {
     handleRef.current?.focus(focusDomain ?? null);
   }, [focusDomain]);
@@ -208,6 +226,16 @@ function MindOrbCanvasInner({
     resetSeen.current = resetToken;
     handleRef.current?.reset();
   }, [resetToken]);
+
+  // Fire the incoming-knowledge stream ONLY on a real feed signal (a genuinely new record). Skip the
+  // initial mount value so a fresh mount never plays a phantom stream (§13 — motion never implies
+  // activity that did not happen). A signal that arrives while the handle is still importing is HELD
+  // as pending (not marked seen) and flushed on mount, instead of being dropped (#1303 P2).
+  useEffect(() => {
+    const r = reconcileFeedSignal(!!handleRef.current, feedSignal?.token, feedSeen.current);
+    if (r.hold) { pendingFeed.current = feedSignal ?? null; return; }
+    if (r.fire && feedSignal) { feedSeen.current = feedSignal.token; handleRef.current?.fireFeed(feedSignal.domain); }
+  }, [feedSignal]);
 
   return (
     <canvas

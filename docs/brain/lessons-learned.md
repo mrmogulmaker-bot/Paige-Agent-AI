@@ -6,6 +6,12 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## Never hand over a FLAT approximation of a real rendering ask — build the proven stack, and the visual DIRECTION is Claude Design's, not CC's (2026-09-20)
+
+- **Symptom.** Asked to recreate the Mind orb, CC first shipped a flat 2D pseudo-3D canvas circle ("a very light circle with a couple of dots in the middle"). The owner rejected it outright — "a thousand times better" — and re-issued the visual direction himself (the owner-approved "Synapse" reference), because the approximation was neither the fidelity asked nor a design CC had any authority to choose.
+- **Root cause.** Two compounding misses. (1) §31 engineering shortcut: a flat 2D stand-in was handed over where the ask implied a real GPU particle field on the proven three.js stack — an approximation hoped to pass. (2) §00 jurisdiction: CC treated the orb's look as its own to invent, when the visual direction is Claude Design's; CC's job is to PORT the approved pack faithfully and prove it runs, never to originate or approximate a design.
+- **Rule.** For any real rendering ask, build the FULL thing on the proven stack at the fidelity asked (§31) — a flat/2D stand-in for a real particle/3D surface is an automatic reject. The DIRECTION is not CC's to choose (§00): with no approved pack, ask CD; do not fill the gap. When a reference IS given, port it verbatim (shaders, form math, parameters), confirm it RENDERS (not just compiles, §32 — swiftshader under-accumulates additive blending, so a headless still proves structure, never device-brightness parity), and hand the frames over as EVIDENCE, never as a design CC judged or invented.
+
 ## A guard that keys on the STORED value of a mutable discriminator has a symmetric launder-IN hole — pin BOTH directions of change to it (2026-09-13)
 
 - **Symptom.** #15's orchestration INSERT guard blocked a JWT caller from creating a `source='paige_orchestration'` row already `approved` and from transitioning one to approved. Codex found a bypass anyway: INSERT an ALLOWED non-orchestration row at `status='approved'` (out of the guard's scope), then UPDATE only `source='paige_orchestration'` — leaving an approved orchestration row `execute-approval` never drove.

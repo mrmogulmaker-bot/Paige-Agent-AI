@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrainCircuit, ChevronLeft, ExternalLink, Maximize2, Minimize2, Pause, Play, RefreshCw, Rotate3D, RotateCcw, X } from "lucide-react";
 import { useN8nSpineReadiness } from "./data/useN8nSpineReadiness";
 import { N8N_ACTION_WORDS, N8N_API_WORDS, N8N_MCP_WORDS } from "../../supabase/functions/_shared/paige-spine/domains/n8nReadiness";
@@ -15,21 +15,27 @@ import {
   type MindOrbitPreferenceScope,
 } from "./mindOrbitPreference";
 import { MindOrbCanvas } from "./mind-orb/MindOrbCanvas";
+import type { MindEvidenceState, MindMineralMode, MindOrbRecordNode } from "./mind-orb/engine";
 import {
   buildMindDomains,
-  buildOrbNodes,
-  buildOrbRings,
+  buildOrbRecords,
+  groundedCount,
+  orbDomains,
   allRecords,
   MIND_DOMAINS,
   SIGNAL_LABEL,
   SIGNAL_TOKEN,
   type MindDomainKey,
   type MindInputs,
-  type MindOrbNodeLite,
   type MindRecord,
   type MindSignalState,
 } from "./mind-orb/mindDomains";
 import "./solo-mind-workspace.css";
+
+// A3 light-theme treatment. "well" = a contained dark stage for the additive field (works everywhere);
+// "light" = true-light alpha-blended particles on the bright ground. The owner picks ONE at sign-off;
+// the default keeps light mode WORKING (additive on a bright ground washes out) pending that pick.
+const MINERAL_MODE: MindMineralMode = "well";
 
 // Callout placement ports the approved prototype's slots (offers has no callout — it lives in the orb
 // + legend only). §00: this ports the approved design, it does not invent one.
@@ -40,42 +46,6 @@ const CALLOUT_SLOT: Partial<Record<MindDomainKey, string>> = {
   systems: "co-tr",
   knowledge: "co-br",
 };
-
-// Fallback signal palette (the pack's --sig-* token values) for when getComputedStyle cannot resolve
-// a CSS var — jsdom tests and the very first paint. The live path resolves the real token so this is
-// only a safety net; kept in step with the design system's --sig-* chain (§13: mirrors, never invents).
-const SIGNAL_FALLBACK: Record<"dark" | "light", Record<MindSignalState, number>> = {
-  dark: { owner_confirmed: 0xd4a752, connection_sourced: 0x9b8de0, source_refreshed: 0x8fa9c4, needs_confirmation: 0x8fd1ae, legacy_sourced: 0xedc17f, unavailable: 0xeda093 },
-  light: { owner_confirmed: 0xc9a96a, connection_sourced: 0x655a96, source_refreshed: 0x4d6f92, needs_confirmation: 0x327458, legacy_sourced: 0x986322, unavailable: 0xa5483d },
-};
-
-// Resolve the six --sig-* tokens to hex ints in the CURRENT theme. Reads the live CSS chain via a
-// throwaway probe placed under `.mind-workspace` — the element that DEFINES --sig-* (they map to the
-// theme's --pg-* chain). Falls back to the pack values when that element is not yet in the DOM (first
-// paint / SSR / jsdom); never probes an element that lacks the tokens (that would return the inherited
-// ink colour for all six and silently collapse the palette).
-function resolveSignalColors(dark: boolean): Record<MindSignalState, number> {
-  const fallback = SIGNAL_FALLBACK[dark ? "dark" : "light"];
-  if (typeof document === "undefined" || typeof getComputedStyle === "undefined") return { ...fallback };
-  const host = document.querySelector(".mind-workspace");
-  if (!host) return { ...fallback };
-  const probe = document.createElement("span");
-  probe.setAttribute("aria-hidden", "true");
-  probe.style.cssText = "position:absolute;left:-9999px;top:-9999px;width:0;height:0;pointer-events:none";
-  host.appendChild(probe);
-  const out = {} as Record<MindSignalState, number>;
-  try {
-    (Object.keys(SIGNAL_TOKEN) as MindSignalState[]).forEach((state) => {
-      probe.style.color = "";
-      probe.style.color = `var(${SIGNAL_TOKEN[state]})`;
-      const m = getComputedStyle(probe).color.match(/(\d+)[,\s]+(\d+)[,\s]+(\d+)/);
-      out[state] = m ? ((parseInt(m[1], 10) << 16) | (parseInt(m[2], 10) << 8) | parseInt(m[3], 10)) : fallback[state];
-    });
-  } finally {
-    host.removeChild(probe);
-  }
-  return out;
-}
 
 function detectDark(el: HTMLElement | null): boolean {
   const root = el?.closest("[data-pg]") as HTMLElement | null;
@@ -106,6 +76,9 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   const [dismissed, setDismissed] = useState<Set<string>>(() => readMindDismissed(preferenceScope));
   const [orbUnavailable, setOrbUnavailable] = useState<string | null>(null);
   const [resetToken, setResetToken] = useState(0);
+  // The incoming-knowledge stream trigger. Bumped ONLY when a genuinely new governed record is
+  // observed (§13 — motion never implies activity); the orb replays the stream on the token change.
+  const [feedSignal, setFeedSignal] = useState<{ token: number; domain: string } | null>(null);
   const [dark, setDark] = useState(true);
   const [announcement, setAnnouncement] = useState("Mind presentation orbit is visual only. Tenant activity is unchanged.");
 
@@ -115,11 +88,6 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const knownIds = useRef<Set<string> | null>(null);
-  // Was the orb canvas the last real focus target? Tracked so a canvas re-mount (a node-structure
-  // change from a data refresh, which bumps `orbKey`) can hand keyboard focus back to the fresh
-  // canvas instead of dropping it to <body>. We set it from focusin only: a focusout to <body> (which
-  // is exactly what the old canvas being removed produces) must NOT clear it, or the restore no-ops.
-  const orbHadFocus = useRef(false);
 
   // Effective reduced-motion: an explicit user choice OVERRIDES the OS default in both directions;
   // absent a choice ("system"), follow the OS. This is what lets the ambient orbit run for a user
@@ -190,51 +158,18 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   // domain's honest-empty copy (a record that's merely dismissed still exists, §13).
   const dismissedInDomain = useMemo(() => inDomain.filter((r) => dismissed.has(r.id)).length, [inDomain, dismissed]);
 
-  // Resolve the live --sig-* tokens in a POST-COMMIT effect, not in render: resolveSignalColors
-  // mutates the DOM (appends/removes a probe span), which is impure in a useMemo (concurrent-mode
-  // hazard) and — because the default theme is dark and `dark` never flips after mount on a dark
-  // shell — would run exactly once during first render, before `.mind-workspace` is in the DOM, and
-  // silently return the constant fallback for the WHOLE session. Running it here (after the element
-  // is committed) makes the live-token path actually exercise for BOTH themes; the vetted fallback
-  // (mirrors the --pg-* chain) is only the first-paint value, replaced on the next tick.
-  const [signalColors, setSignalColors] = useState<Record<MindSignalState, number>>(() => resolveSignalColors(true));
-  useEffect(() => {
-    setSignalColors(resolveSignalColors(dark));
-  }, [dark]);
-  const orbNodes = useMemo(() => buildOrbNodes(domains, (s) => signalColors[s]), [domains, signalColors]);
-  const orbRings = useMemo(() => buildOrbRings((s) => signalColors[s]), [signalColors]);
-  // The engine sizes its instanced mesh at init and setData only recolours in place. Re-mount the
-  // canvas (fresh context) ONLY when the node STRUCTURE changes (records added/removed/reordered);
-  // recolour/theme/focus keep the same ids, so those reconcile in place with no rotation jump (§28).
-  const orbKey = useMemo(() => orbNodes.map((n) => n.id).join("|"), [orbNodes]);
-
-  // Track whether the orb canvas holds focus. Set true when it gains focus; cleared only when a
-  // DIFFERENT real element gains focus (never on a focusout to <body>, which is what removing the
-  // focused canvas produces) — so the flag survives the re-mount and the layout effect below can
-  // restore focus to the fresh canvas.
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const onFocusIn = (e: FocusEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (!t) return;
-      if (t.classList?.contains("mind-canvas")) orbHadFocus.current = true;
-      else if (t !== document.body) orbHadFocus.current = false;
-    };
-    document.addEventListener("focusin", onFocusIn);
-    return () => document.removeEventListener("focusin", onFocusIn);
-  }, []);
-
-  // When a node-structure change re-mounts the canvas (fresh `orbKey`) and the OLD canvas had
-  // keyboard focus, return focus to the new canvas so an arrow-key user is not dropped to <body>
-  // (a11y-as-function; skip the initial mount so we never steal focus on first paint).
-  const orbKeySeen = useRef(orbKey);
-  useLayoutEffect(() => {
-    if (orbKey === orbKeySeen.current) return;
-    orbKeySeen.current = orbKey;
-    if (orbHadFocus.current && !orbUnavailable && typeof document !== "undefined") {
-      document.querySelector<HTMLElement>(".mind-canvas")?.focus({ preventScroll: true });
-    }
-  }, [orbKey, orbUnavailable]);
+  // The Synapse field: the engine renders the structural FORM itself; the page supplies only the DATA
+  // layer — one bright node per governed record (coloured by truth tier), the six domain regions, the
+  // grounded headline, and the evidence state. Record count drives ONLY the bright nodes; the form is
+  // always fully shown (A1 FORM FLOOR). The engine reconciles a record add/remove in place (no
+  // re-mount), so rotation AND a running feed stream survive a data change (§28) — hence no orbKey.
+  const orbRecords = useMemo(() => buildOrbRecords(domains), [domains]);
+  const orbDomainList = useMemo(() => orbDomains(), []);
+  const grounded = useMemo(() => groundedCount(domains), [domains]);
+  // Empty renders the FORMED mind with no bright nodes (A2). Loading replaces the whole panel (below),
+  // so in the live path the orb sees populated | empty; the engine's loading/error scatter is exercised
+  // by the harness and reachable if the orb is ever mounted during a soft reload.
+  const evidenceState: MindEvidenceState = records.length ? "populated" : "empty";
 
   const loading = knowledge.loading || command.loading || n8n.loading;
   const partial = !!knowledge.error || command.isError || !!n8n.error;
@@ -244,7 +179,12 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
     const ids = new Set(records.map((r) => r.id));
     if (!loading && !partial && knownIds.current !== null) {
       const added = records.find((r) => !knownIds.current?.has(r.id));
-      if (added) setAnnouncement(`${added.title} was newly observed from ${added.source}. ${added.truth}.`);
+      if (added) {
+        setAnnouncement(`${added.title} was newly observed from ${added.source}. ${added.truth}.`);
+        // Fire the orb's incoming-knowledge stream — ONLY here, on a genuinely NEW governed record
+        // (§13: motion never implies activity). No timer, no ambient trigger.
+        setFeedSignal({ token: Date.now(), domain: added.domain });
+      }
     }
     if (!loading && !partial) knownIds.current = ids;
   }, [loading, partial, records]);
@@ -291,11 +231,12 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
     setAnnouncement(`${record.title}. ${record.truth}.`);
   }, []);
 
-  const onPick = useCallback((node: MindOrbNodeLite) => {
-    // Return focus to the orb (not <body>) when a record is opened via keyboard/click on the canvas.
-    if (node.record) { chooseRecord(node.record, document.querySelector<HTMLElement>(".mind-canvas")); return; }
-    // A hub (or ghost) pick focuses that domain and filters the list to it.
-    setDomainFilter(node.domain);
+  const onPick = useCallback((node: MindOrbRecordNode) => {
+    // The Synapse orb only ever picks bright RECORD nodes; open that record's evidence drawer and keep
+    // focus on the canvas (not <body>). The domain fallback stays defensive.
+    const rec = node.record as MindRecord | undefined;
+    if (rec) { chooseRecord(rec, document.querySelector<HTMLElement>(".mind-canvas")); return; }
+    setDomainFilter(node.domain as MindDomainKey);
     const def = MIND_DOMAINS.find((d) => d.key === node.domain);
     setAnnouncement(`Focused ${def?.name ?? node.domain}.`);
   }, [chooseRecord]);
@@ -368,7 +309,7 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   const truthClass = (truth: string) =>
     truth === "LIVE SOURCE" ? "mind-truth--live" : truth === "UNAVAILABLE" ? "mind-truth--unavail" : truth === "PROPOSED" ? "mind-truth--proposed" : "mind-truth--partial";
 
-  const orbLabel = `Interactive Mind knowledge orb. Governed records are positioned by domain and coloured by their canonical source state. ${presentationOrbit && !reduced ? "A slow presentation orbit shows depth." : "The orb is still."} Presentation motion does not represent tenant activity. Drag to rotate, scroll or +/- to zoom, arrow keys to rotate, and Enter to inspect the front record.`;
+  const orbLabel = `Interactive Mind knowledge orb. Governed records are positioned by domain and coloured by evidence tier: grounded, partial (held, not yet confirmed), or unavailable. ${presentationOrbit && !reduced ? "A slow presentation orbit shows depth." : "The orb is still."} Presentation motion does not represent tenant activity. Drag to rotate, scroll or +/- to zoom, arrow keys to rotate, and Enter to inspect the front record.`;
 
   return (
     <section className="mind-workspace" aria-labelledby="mind-title" ref={rootRef}>
@@ -394,11 +335,11 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
             {partial && <div className="mind-source-warning" role="status"><strong>Mind has partial coverage</strong><span>No missing source is treated as empty. Retry refreshes read-only records.</span></div>}
             <section className="mind-panel" aria-labelledby="mind-brain-title">
               <div className="mind-panel-head">
-                <div><h2 id="mind-brain-title">PAIGE knowledge orb</h2><p>Each node is a governed record, coloured by its source signal. The slow orbit shows depth only — it is not tenant activity.</p></div>
-                <span className="mind-truth mind-truth--proposed">INTERACTIVE 3D · PRESENTATION</span>
+                <div><h2 id="mind-brain-title">PAIGE knowledge orb</h2><p>The glowing form is Paige's mind. Each bright point is one thing she holds, coloured by how grounded it is. Motion shows depth — it is not tenant activity.</p></div>
+                <span className="mind-mind-count" aria-label={`${grounded} grounded of ${records.length} held`}><b>{grounded}</b> grounded<i aria-hidden="true">·</i>{records.length} held</span>
               </div>
 
-              <div className="mind-stage">
+              <div className="mind-stage" data-mineral={MINERAL_MODE}>
                 {orbUnavailable ? (
                   <div className="mind-orb-fallback" role="note">
                     <BrainCircuit aria-hidden="true" />
@@ -406,17 +347,19 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
                   </div>
                 ) : (
                   <MindOrbCanvas
-                    key={orbKey}
                     className="mind-canvas"
-                    nodes={orbNodes}
-                    rings={orbRings}
+                    records={orbRecords}
+                    domains={orbDomainList}
+                    state={evidenceState}
                     dark={dark}
+                    mineral={MINERAL_MODE}
                     running={presentationOrbit}
                     reduced={reduced}
                     onPick={onPick}
                     onUnavailable={(reason) => setOrbUnavailable(reason)}
                     focusDomain={domainFilter === "all" ? null : domainFilter}
                     resetToken={resetToken}
+                    feedSignal={feedSignal}
                     ariaLabel={orbLabel}
                   />
                 )}
@@ -456,12 +399,15 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
                   <button type="button" aria-pressed={reduced} onClick={toggleReduced}>Reduced motion</button>
                 </div>
 
-                {/* Source-signal legend (the approved palette) */}
-                <aside className="mind-legend" aria-label="Source signals">
-                  <h4>Source signals</h4>
-                  {(["owner_confirmed", "connection_sourced", "source_refreshed", "needs_confirmation", "legacy_sourced", "unavailable"] as MindSignalState[]).map((s) => (
-                    <div key={s} className="mind-legend-row"><i className="mind-dot" style={{ background: `var(${SIGNAL_TOKEN[s]})` }} />{SIGNAL_LABEL[s]}</div>
-                  ))}
+                {/* The orb's colour legend — the owner-approved 6→3 tiers (via the Synapse reference).
+                    The finer 6-state source signal stays on each record's dot + the evidence drawer, so
+                    no provenance detail is lost (§58); the orb just speaks the coarser truth language. */}
+                <aside className="mind-legend" aria-label="What the orb colours mean">
+                  <h4>The mind, at a glance</h4>
+                  <div className="mind-legend-row"><i className="mind-dot" style={{ background: "var(--mind-tier-grounded)" }} />Grounded</div>
+                  <div className="mind-legend-row"><i className="mind-dot" style={{ background: "var(--mind-tier-partial)" }} />Partial — held, not yet confirmed</div>
+                  <div className="mind-legend-row"><i className="mind-dot" style={{ background: "var(--mind-tier-unavailable)" }} />Unavailable</div>
+                  <div className="mind-legend-row"><i className="mind-dot mind-dot--hollow" aria-hidden="true" />No evidence yet</div>
                 </aside>
 
                 <p className="mind-stage-caption">This view reflects governed records and their source signals. It is not exhaustive, and presentation motion is not tenant activity.</p>
@@ -469,7 +415,7 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
 
               {/* Domain filter — the approved six domains */}
               <div className="mind-categories" role="group" aria-label="Filter Mind records by domain">
-                <button type="button" aria-pressed={domainFilter === "all"} onClick={() => setDomainFilter("all")}><span>All domains</span><small>{records.length} GROUNDED</small></button>
+                <button type="button" aria-pressed={domainFilter === "all"} onClick={() => setDomainFilter("all")}><span>All domains</span><small>{records.length} held</small></button>
                 {MIND_DOMAINS.map((d) => {
                   const count = records.filter((r) => r.domain === d.key).length;
                   return (

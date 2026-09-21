@@ -80,6 +80,22 @@ describe("Solo Mind workspace — orb port", () => {
     expect(text).toContain("without hidden reasoning");
   });
 
+  it("headline counts GROUNDED records only and labels the total 'held', never 'grounded' (ruling #2)", () => {
+    render();
+    // mock: 2 owner-confirmed knowledge docs (grounded) + 1 approval (partial), n8n null → 2 grounded of 3 held
+    const count = host.querySelector(".mind-mind-count");
+    expect(count).toBeTruthy();
+    const txt = count?.textContent ?? "";
+    expect(txt).toContain("2"); // grounded subset
+    expect(txt.toLowerCase()).toContain("grounded");
+    expect(txt).toContain("3"); // total held
+    expect(txt.toLowerCase()).toContain("held");
+    // the TOTAL is never presented as "grounded" — the All-domains chip says "held", not "GROUNDED"
+    const allChip = button("All domains");
+    expect(allChip?.textContent).toContain("3 held");
+    expect((allChip?.textContent ?? "").toUpperCase()).not.toContain("GROUNDED");
+  });
+
   it("degrades to the record list when WebGL is unavailable (jsdom) — never blank", () => {
     render();
     expect(host.textContent).toContain("Showing your records as a list");

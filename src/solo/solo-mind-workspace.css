@@ -72,4 +72,23 @@
    removes the last focusable card and no restore button exists — don't paint a ring on the whole list. */
 .mind-records:focus{outline:none}
 
+/* --- Synapse orb (R1a, owner-approved 2026-09-20): tier legend tokens + headline + Mineral "well" --- */
+/* The three tier tokens MIRROR the engine's fixed particle colours (the approved reference palette,
+   §00) so the orb legend shows the ACTUAL colours the field renders (§13). Defined ONCE here as named
+   tokens; the light-theme variants darken them for AA on the light legend card. */
+.mind-workspace{--mind-tier-grounded:#5ee0c4;--mind-tier-partial:#f0b359;--mind-tier-unavailable:#707a8f;--mind-well-deep:#0b1220;--mind-well-base:#070a10}
+[data-pg="light"] .mind-workspace{--mind-tier-grounded:#1f9c86;--mind-tier-partial:#b0771d;--mind-tier-unavailable:#5c6575}
+.mind-dot--hollow{background:none;border:1px solid var(--mind-tier-unavailable)}
+/* Headline stat (owner ruling 2026-09-20): grounded count labelled "grounded"; the total is "held",
+   NEVER presented as grounded. */
+.mind-mind-count{display:inline-flex;align-items:baseline;gap:5px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--pg-muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.mind-mind-count b{font-size:15px;font-weight:800;color:var(--mind-tier-grounded)}
+.mind-mind-count i{font-style:normal;opacity:.5;margin:0 1px}
+@container solo-mind (max-width:560px){.mind-panel-head .mind-mind-count{display:none}}
+/* A3 "well": in LIGHT theme keep the orb STAGE a deep contained well so the additive field still reads
+   (additive on the bright cream ground washes out). The owner picks well vs true-light at sign-off;
+   this default keeps light mode WORKING. When the true-light option is chosen, drop this rule and the
+   engine switches to alpha blending on the existing cream "SUN" ground. */
+[data-pg="light"] .mind-stage[data-mineral="well"]{background:radial-gradient(circle at 50% 46%,color-mix(in srgb,var(--pg-gold-core) 22%,transparent),color-mix(in srgb,var(--pg-violet) 24%,transparent) 30%,transparent 60%),radial-gradient(150% 120% at 50% 120%,color-mix(in srgb,var(--pg-violet) 22%,transparent),transparent 52%),linear-gradient(180deg,var(--mind-well-deep),var(--mind-well-base))}
+
 
