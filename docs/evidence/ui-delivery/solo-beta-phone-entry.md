@@ -37,9 +37,9 @@ SOLO_900X1000_PAIGE_OPEN: NOT_APPLICABLE: public Auth does not mount the Paige p
 
 <!-- RELEASE_GOVERNANCE_POLICY — read docs/doctrine/release-governance-and-customer-update-policy.md -->
 INTERNAL_BUILD_IDENTITY: 42ad0d36107cfaf9198988606754b22f3de01c81; deployment=production (verified: the merge SHA is an ancestor of main and deploy-migrations run 34735838226 succeeded at head 42ad0d36; the application deployment run 6417319452 and the 178/178 production rendered checks are recorded in stale PR #1192, not independently re-verified — the run is no longer retained by the Actions API); environment=production; migrations=APPLIED (run 34735838226); edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/solo-beta-phone-entry.md
-RELEASE_CHANNEL: production: phone entry and database recovery are deployed from merge 42ad0d36107cfaf9198988606754b22f3de01c81 (verified); closeout carried forward 2026-09-21 under INT-108
+RELEASE_CHANNEL: production: the merge and database recovery are verified (42ad0d36 on main; deploy-migrations run 34735838226 success); the application deployment (run 6417319452, 178/178 rendered checks) is recorded in stale PR #1192, not independently re-verified — the run is no longer retained by the Actions API. Closeout carried forward 2026-09-21 under INT-108.
 RELEASE_CLASSIFICATION: patch: customer-visible phone repair plus fail-closed migration convergence.
-CUSTOMER_RELEASE_IDENTITY: 42ad0d36107cfaf9198988606754b22f3de01c81; application deployment run 6417319452 (recorded in stale PR #1192, not independently re-verified).
+CUSTOMER_RELEASE_IDENTITY: none: internal hotfix closeout; no approved customer version or release name — the internal build identifiers stay under INTERNAL_BUILD_IDENTITY.
 RELEASE_NOTE_REQUIRED: YES: customer-visible signup entry changes.
 RELEASE_TRUTH_BOUNDARY: PARTIAL: production phone interaction, public flow, and migration recovery are verified to the extent recorded; authenticated Auth persistence, SMS delivery, and Stripe live financial activation remain proof owed.
 RELEASE_RECOVERY: position=forward-fix-complete; reference=PR #1190 merge 42ad0d36, migration run 34735838226, application deployment run 6417319452 (recorded in stale PR #1192, not independently re-verified).
