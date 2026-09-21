@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { messageTts, type TtsFetchError } from "@/lib/voice/messageTts";
+import { classifyTtsFailure } from "@/lib/voice/messageTtsFailure";
 
 interface MessageAudioButtonProps {
   /** Stable message id — identifies which message owns the current playback. */
@@ -27,22 +28,36 @@ interface MessageAudioButtonProps {
  * handling is unreliable. On a non-2xx we read the honest `{ error }` code (the resolveFunctionError
  * philosophy) and mark a `needs_config` for the tts_not_configured / tts_tier_reserved degrades.
  */
-async function fetchMessageAudio(content: string): Promise<Blob> {
+async function fetchMessageAudio(content: string, requestId: string): Promise<Blob> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw { needsConfig: false, message: "Please sign in." } as TtsFetchError;
 
   const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-tts`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+      "Idempotency-Key": requestId,
+    },
     body: JSON.stringify({ text: content }),
   });
 
   if (!resp.ok) {
     let code: string | null = null;
-    try { code = (await resp.json())?.error ?? null; } catch { /* non-JSON body */ }
+    let resetAt: string | null = null;
+    try {
+      const body = await resp.json() as Record<string, unknown>;
+      code = typeof body.error === "string" ? body.error : null;
+      const suppliedReset = body.reset_at ?? body.resets_at ?? body.resetAt;
+      resetAt = typeof suppliedReset === "string" ? suppliedReset : null;
+    } catch { /* non-JSON body */ }
+    const feedback = classifyTtsFailure(code, resp.status, resetAt);
     throw {
-      needsConfig: code === "tts_not_configured" || code === "tts_tier_reserved",
+      needsConfig: feedback.kind === "not_configured",
       code,
+      status: resp.status,
+      resetAt,
+      message: feedback.message,
     } as TtsFetchError;
   }
   return await resp.blob();
@@ -59,12 +74,21 @@ export function MessageAudioButton({ messageId, content, className }: MessageAud
   const playing = isActive && snap.status === "playing";
 
   const onClick = () => {
+    // One explicit play tap owns one request id. Transport attempts made through this closure reuse
+    // it; the next tap creates a different closure and UUID.
+    const requestId = crypto.randomUUID();
     void messageTts.toggle(
       messageId,
-      () => fetchMessageAudio(trimmed),
+      () => fetchMessageAudio(trimmed, requestId),
       (e: TtsFetchError) => {
         // needsConfig is reflected by the disabled state below — don't scream a red error (§13/§36).
-        if (!e.needsConfig) toast.error("Couldn't play that just now — give it another try.");
+        if (e.needsConfig) return;
+        const feedback = classifyTtsFailure(e.code, e.status ?? 0, e.resetAt);
+        if (feedback.kind === "allowance" || feedback.kind === "pending") {
+          toast.message(feedback.message);
+        } else {
+          toast.error(e.message ?? feedback.message);
+        }
       },
     );
   };
@@ -81,7 +105,7 @@ export function MessageAudioButton({ messageId, content, className }: MessageAud
             </Button>
           </span>
         </TooltipTrigger>
-        <TooltipContent>Voice playback not yet configured for your workspace</TooltipContent>
+        <TooltipContent>Voice playback isn’t available for this workspace</TooltipContent>
       </Tooltip>
     );
   }

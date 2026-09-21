@@ -25,6 +25,8 @@ export interface TtsSnapshot {
 export interface TtsFetchError {
   needsConfig?: boolean;
   code?: string | null;
+  status?: number;
+  resetAt?: string | null;
   message?: string;
 }
 
