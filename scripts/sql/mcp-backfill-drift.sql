@@ -27,25 +27,35 @@
 --                          idempotency index does not constrain §6b (its legacy_provider is NULL), so
 --                          a duplicate created outside the guarded backfill would otherwise pass
 --                          silently. (§6a is uniquely indexed, so it cannot duplicate this way.)
---   credential_drift     — a matched pair whose VERBATIM-COPIED endpoint/credential columns diverge.
---                          Only columns the backfill copies byte-for-byte are compared. For §6a that
---                          is the COMPLETE copied runtime bundle: server_url_ct/auth_token_ct/
---                          auth_token_last4, the OAuth grant refresh_token_ct/oauth_client_secret_ct
---                          (the LIVE credential for a Zapier row, whose auth_token_ct is NULL), the
---                          header NAME (auth_header_name) a `header` connection dispatches with, the
---                          OAuth identity/expiry the secret reader consumes (access_token_expires_at
---                          — the loader refuses an expired-looking OAuth token, so a stale expiry
---                          mis-refuses — oauth_issuer/oauth_client_id/oauth_scopes), and
---                          auth_kind/transport; for §6b it is
+--   credential_drift     — a matched pair whose VERBATIM-COPIED, EXECUTION-AFFECTING columns diverge.
+--                          Only columns the backfill copies byte-for-byte AND the loader consumes to
+--                          dispatch or refuse are compared. For §6a that is the COMPLETE copied runtime
+--                          bundle: server_url_ct/auth_token_ct/auth_token_last4, the OAuth grant
+--                          refresh_token_ct/oauth_client_secret_ct (the LIVE credential for a Zapier
+--                          row, whose auth_token_ct is NULL), the header NAME (auth_header_name) a
+--                          `header` connection dispatches with, the OAuth identity/expiry the secret
+--                          reader consumes (access_token_expires_at — the loader refuses an
+--                          expired-looking OAuth token, so a stale expiry mis-refuses —
+--                          oauth_issuer/oauth_client_id/oauth_scopes), auth_kind/transport, AND the
+--                          `enabled` gate: §6a copies `enabled` VERBATIM (`r.enabled`) and the loader
+--                          refuses `enabled <> true` as `connection_disabled`, so a legacy enable/
+--                          disable after the backfill leaves the projection stale enough to EXECUTE a
+--                          connection legacy refuses (or vice versa) at cutover. For §6b it is
 --                          base_url_ct/api_key_ct/api_key_last4 plus the fixed http/api_key facet. An
 --                          updated legacy credential re-encrypts, changing the ciphertext, so an
 --                          `IS DISTINCT FROM` on the `*_ct` bytea is the staleness signal. CAVEAT: if
 --                          the cipher uses a random IV/salt, re-saving the SAME secret yields new
 --                          ciphertext and is reported as drift — an over-report in the SAFE direction
---                          (never a missed rotation). DERIVED columns (status→health, enabled,
---                          provider_state) are intentionally NOT compared — they are re-mapped, not
---                          copied, so per-connection field parity for those belongs to the Phase-C
---                          cutover parity proof, not this row check.
+--                          (never a missed rotation). DERIVED columns are NOT compared — they are
+--                          re-mapped, not copied, so their per-connection parity belongs to the
+--                          Phase-C cutover parity proof, not this row check: for both sources that is
+--                          label / status→health / provider_state, and for §6b ALSO `enabled`, which
+--                          §6b DERIVES as `(status IS DISTINCT FROM 'unconfigured')` rather than
+--                          copying — hence the deliberate a_cred/b_cred asymmetry (§6a enabled is
+--                          verbatim ⇒ compared; §6b enabled is derived ⇒ deferred). Audit lineage
+--                          (created_by/updated_by/created_at) and the backfill-stamped updated_at are
+--                          also never compared — the loader never reads them, so they cannot change
+--                          dispatch or refusal.
 --
 -- Result shape: (drift_kind, legacy_source, tenant_id, provider_key, connection_id, detail).
 
@@ -113,7 +123,8 @@ b_orphan AS (
              FROM public.tenant_n8n_connections l
             WHERE l.tenant_id = m.tenant_id)
 ),
--- §6a: matched pair whose verbatim-copied endpoint/credential columns diverge.
+-- §6a: matched pair whose verbatim-copied, execution-affecting columns diverge (endpoint +
+-- credential bundle + auth facet + the `enabled` gate — see the credential_drift header note).
 a_cred AS (
   SELECT 'credential_drift'::text,
          'tenant_mcp_connections'::text,
@@ -144,7 +155,13 @@ a_cred AS (
         OR m.oauth_client_id          IS DISTINCT FROM l.oauth_client_id
         OR m.oauth_scopes             IS DISTINCT FROM l.oauth_scopes
         OR m.auth_kind                IS DISTINCT FROM l.auth_kind
-        OR m.transport                IS DISTINCT FROM l.transport )
+        OR m.transport                IS DISTINCT FROM l.transport
+        -- The `enabled` gate. §6a copies `enabled` VERBATIM (`r.enabled`); the loader refuses
+        -- `enabled <> true` as `connection_disabled`, so a projection left stale after a legacy
+        -- enable/disable would EXECUTE a connection legacy refuses (or refuse one legacy allows) at
+        -- cutover. (§6b DERIVES enabled from status and is deferred to the cutover parity proof — see
+        -- the credential_drift note above for the deliberate a_cred/b_cred asymmetry.)
+        OR m.enabled                  IS DISTINCT FROM l.enabled )
 ),
 -- §6b: matched pair whose verbatim-copied endpoint/credential columns diverge. The backfill fixes
 -- transport='http' and auth_kind='api_key' for this facet, so those are compared to the constants.

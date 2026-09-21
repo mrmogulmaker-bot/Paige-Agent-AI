@@ -43,12 +43,12 @@ CREATE TABLE public.mcp_connections (
   server_url_ct bytea, auth_token_ct bytea, auth_token_last4 text,
   refresh_token_ct bytea, oauth_client_secret_ct bytea, auth_kind text, transport text,
   auth_header_name text, access_token_expires_at timestamptz,
-  oauth_issuer text, oauth_client_id text, oauth_scopes text[]);
+  oauth_issuer text, oauth_client_id text, oauth_scopes text[], enabled boolean);
 CREATE TABLE public.tenant_mcp_connections (
   tenant_id uuid, provider text, server_url_ct bytea, auth_token_ct bytea, auth_token_last4 text,
   refresh_token_ct bytea, oauth_client_secret_ct bytea, auth_kind text, transport text,
   auth_header_name text, access_token_expires_at timestamptz,
-  oauth_issuer text, oauth_client_id text, oauth_scopes text[]);
+  oauth_issuer text, oauth_client_id text, oauth_scopes text[], enabled boolean);
 CREATE TABLE public.tenant_n8n_connections (
   tenant_id uuid, base_url_ct bytea, api_key_ct bytea, api_key_last4 text);
 SQL
@@ -112,6 +112,16 @@ INSERT INTO public.tenant_mcp_connections (tenant_id, provider, server_url_ct, a
 INSERT INTO public.mcp_connections (tenant_id, provider_key, legacy_source, legacy_provider, server_url_ct, auth_token_ct, auth_token_last4, auth_kind, transport, auth_header_name) VALUES
   ('a6666666-6666-4666-8666-666666666666','custom','tenant_mcp_connections','custom','\x01','\x02','WXYZ','header','http','X-Old-Key');
 
+-- §6a credential_drift via the ENABLED gate (Codex P1, head 7b132df8): a matched pair whose `enabled`
+-- flag drifted — legacy DISABLED the connection but the projection still reads enabled=true. §6a copies
+-- `enabled` VERBATIM, and the gateway loader refuses `enabled <> true` (connection_disabled), so at
+-- cutover the projection would EXECUTE a connection the legacy path refuses. EVERY other column matches;
+-- undetectable unless `enabled` is compared. (§6b derives enabled from status ⇒ deferred, not seeded.)
+INSERT INTO public.tenant_mcp_connections (tenant_id, provider, server_url_ct, auth_token_ct, auth_token_last4, auth_kind, transport, enabled) VALUES
+  ('a7777777-7777-4777-8777-777777777777','n8n','\x01','\x02','WXYZ','bearer','http',false);
+INSERT INTO public.mcp_connections (tenant_id, provider_key, legacy_source, legacy_provider, server_url_ct, auth_token_ct, auth_token_last4, auth_kind, transport, enabled) VALUES
+  ('a7777777-7777-4777-8777-777777777777','n8n','tenant_mcp_connections','n8n','\x01','\x02','WXYZ','bearer','http',true);
+
 -- §6b duplicate_projection: one legacy row, TWO projections (the unindexed-NULL gap, Finding 2).
 INSERT INTO public.tenant_n8n_connections VALUES
   ('b5555555-5555-4555-8555-555555555555','\x0a','\x0b','K123');
@@ -136,13 +146,14 @@ have   "credential_drift|tenant_mcp_connections|a4444444"     "§6a credential_d
 have   "credential_drift|tenant_n8n_connections|b4444444"     "§6b credential_drift (last4) detected"
 have   "credential_drift|tenant_mcp_connections|a5555555"     "§6a ZAPIER credential_drift via refresh_token_ct detected (Finding 1)"
 have   "credential_drift|tenant_mcp_connections|a6666666"     "§6a credential_drift via auth_header_name detected (Codex P2 — full runtime bundle)"
+have   "credential_drift|tenant_mcp_connections|a7777777"     "§6a credential_drift via enabled gate detected (Codex P1 — stale-enabled would execute a disabled connection)"
 have   "duplicate_projection|tenant_n8n_connections|b5555555" "§6b duplicate_projection detected (Finding 2)"
 absent "a1111111" "CONTROL — clean §6a pair produces NO drift"
 absent "b1111111" "CONTROL — clean §6b pair produces NO drift"
 
-# 2 missing + 2 orphan + 2 cred + 1 zapier-cred + 1 header-cred + 2 duplicate rows = 10.
+# 2 missing + 2 orphan + 2 cred + 1 zapier-cred + 1 header-cred + 1 enabled-cred + 2 duplicate rows = 11.
 COUNT="$(echo "$OUT" | grep -c '|' || true)"
-[ "$COUNT" = "10" ] && echo "  ok   exactly 10 drift rows, no more" || { echo "  FAIL expected 10 drift rows, got $COUNT"; fail=1; }
+[ "$COUNT" = "11" ] && echo "  ok   exactly 11 drift rows, no more" || { echo "  FAIL expected 11 drift rows, got $COUNT"; fail=1; }
 
 echo
 if [ "$fail" = "0" ]; then echo "PROOF PASSED — mcp-backfill-drift.sql detects every drift kind and no clean pair."; else echo "PROOF FAILED"; exit 1; fi
