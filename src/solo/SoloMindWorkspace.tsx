@@ -413,6 +413,11 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
                 <p className="mind-stage-caption">This view reflects governed records and their source signals. It is not exhaustive, and presentation motion is not tenant activity.</p>
               </div>
 
+              {/* Right rail — the domain filter + record list, moved BESIDE the orb so the stage is
+                  the hero (owner-directed Mind layout slice). The record list gains the rail's full
+                  height (no longer a ~100px sliver). On narrow widths the panel collapses to one
+                  column and the rail flows back UNDER the orb — see .mind-rail responsive rules. */}
+              <div className="mind-rail">
               {/* Domain filter — the approved six domains */}
               <div className="mind-categories" role="group" aria-label="Filter Mind records by domain">
                 <button type="button" aria-pressed={domainFilter === "all"} onClick={() => setDomainFilter("all")}><span>All domains</span><small>{records.length} held</small></button>
@@ -456,6 +461,7 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
                     <RotateCcw size={12} />Restore {dismissedCount} dismissed
                   </button>
                 )}
+              </div>
               </div>
             </section>
           </>
