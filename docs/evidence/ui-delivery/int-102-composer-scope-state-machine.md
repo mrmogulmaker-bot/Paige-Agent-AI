@@ -7,8 +7,8 @@ MATERIAL_FLOW_CHANGE: YES: owner-approved INT-102 changes unsent text from one s
 FLOW_PROTOTYPE: PASS: the owner-approved 2026-09-21 Option 2 contract memo and the deterministic transition table below are the flow prototype; they specify every state, transition, write gate, and completion consequence without inventing a new visual treatment
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: a signed-in PAIGE user can write in one conversation, move elsewhere, and return without losing words or seeing them in another tenant, user, or thread
 VISUAL_DIRECTION: PASS: preserve both existing composer designs and controls exactly; only their enabled state, truthful existing status region, and in-memory value source change
-AUTOMATED_EVIDENCE: PASS: the round-one test-first head failed 3 files / 5 tests (27 passed) before implementation; completed focused verification passes 11 files / 115 tests; removing the full-handle delivery check fails its load-bearing test (1 failed / 20 passed) and restoring it passes 21/21
-STATIC_EVIDENCE: PASS: focused ESLint, TypeScript ratchet, regression lint, production build, and git diff whitespace check pass; PR diff has zero files under supabase/ and does not touch MessageAudioButton
+AUTOMATED_EVIDENCE: PASS: the final-round test-first head ae94b4426 fails the non-Solo rail-switch case before repair (1 failed / 5 passed); completed focused verification passes 11 files / 117 tests; suppressing the abort-path busy release strands the target composer disabled and fails the load-bearing rail-switch test, while restoring it passes
+STATIC_EVIDENCE: PASS: focused ESLint has 0 errors (one pre-existing hooks warning), the TypeScript ratchet holds at baseline 12/current 12, regression lint, production build, and git diff whitespace check pass; PR diff has zero files under supabase/ and does not touch MessageAudioButton
 RENDERED_EVIDENCE: UNVERIFIED: no authenticated browser or preview drive was available before review; no visual or layout rule changed
 BEHAVIORAL_EVIDENCE: PASS: jsdom integration tests drive both composer mounts through unresolved identity/history, thread hydration, tenant/user switches, late dictation, lazy thread creation, terminal stream completion, failure, Retry, and edit preservation
 AUTHENTICATED_RUNTIME: UNVERIFIED: production deployment and authenticated interaction have not occurred; session-memory restoration and account/thread switching remain production proof owed
@@ -35,8 +35,8 @@ ACCEPTANCE_CRITERIA: Draft A is disabled but remains visible while B hydrates, t
 MOTION_PURPOSE: NONE: no motion change.
 PROTECTED_SEAMS: AFFECTED and tested — AppShell PaigeChat composer, Solo/AppShell PaigeAIChat composer, View-as-Client displayed-tenant read, history hydration, controlled selection, session-memory draft store, dictation delivery, send/retry completion, and request abort/delivery fences. NOT AFFECTED — MessageAudioButton and INT-104 voice ownership; Draft with Paige deferred P2; ConversationsRichComposer implementation; authenticated send authority; Edge functions and _shared; provider/model/tool execution; migrations; durable storage.
 
-INTERNAL_BUILD_IDENTITY: 428c39165fc4726ba3de5acf3fadea82c771d6c8; deployment=none-pre-push; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=this record, transition-table suite, both mount suites, and focused 115-test regression set
-RELEASE_CHANNEL: development: post-sync branch build from current main 47291b603ccae615145d313d11ce2620e8cf03cd; production deploy is authorized only after the Ready/review/CI gates
+INTERNAL_BUILD_IDENTITY: 991f5150ff90be00e1b5b948c774d2c1d505a4d6; deployment=none-pre-push; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=this record, transition-table suite, both mount suites, and focused 117-test regression set
+RELEASE_CHANNEL: development: branch merged current main ecde68450e1283eec0c63df7a27b7035bbd40d12 conflict-free at 8a6223763cc62376110919598a5058eabfcdc5b5; production deploy is authorized only after the Ready/review/CI gates
 RELEASE_CLASSIFICATION: patch: restores conversation-owned unsent text and fail-closed scope transitions in existing PAIGE composer flows
 CUSTOMER_RELEASE_IDENTITY: none: internal reliability and tenant-isolation repair, not a separately named customer release
 RELEASE_NOTE_REQUIRED: no: no approved customer publication record and no new advertised capability
@@ -70,11 +70,13 @@ View-as-Client resolves the displayed tenant from the existing RLS-protected `cl
 
 ## Evidence index
 
-- Fresh base at branch creation: 2d9350a116137a759e0d033ef181366a0ab483f3; conflict-free current-main sync and PR base: 47291b603ccae615145d313d11ce2620e8cf03cd; round-one code head: 428c39165fc4726ba3de5acf3fadea82c771d6c8.
+- Fresh base at branch creation: 2d9350a116137a759e0d033ef181366a0ab483f3; current-main sync ecde68450e1283eec0c63df7a27b7035bbd40d12 merged conflict-free at 8a6223763cc62376110919598a5058eabfcdc5b5; round-one code head: 428c39165fc4726ba3de5acf3fadea82c771d6c8; final-round code head: 991f5150ff90be00e1b5b948c774d2c1d505a4d6.
 - Round-one test-first head 88c71cd69f46aeb9d5d1f7a6c4344d46df6d2a09: the shared-fence, effective-user tenant, AppShell abort, and PaigeAIChat thread-switch expectations produced 3 failed files / 5 failed tests, with 27 passing.
-- Completed focused suite: 11 files / 115 tests passed across the transition table, both composer integrations, Solo workspace contract, dictation component/contract, AppShell remount/scroll, PaigeAIChat honesty, document proposal, and client scope.
+- Final-round failing-first head ae94b4426deffeaae2a264ff465e5aa4be72bafb: the real non-Solo rail-switch drive failed with 1 failed / 5 passed because the origin request was not aborted and its busy state kept the target composer locked.
+- Completed focused suite: 11 files / 117 tests passed across the transition table, both composer integrations, Solo workspace contract, dictation component/contract, AppShell remount/scroll, PaigeAIChat honesty, document proposal, and client scope.
 - Load-bearing mutation: removing `composerDraftHandlesMatch` from `createComposerRequestFence.isCurrent` made the full-handle delivery contract fail (1 failed / 20 passed); restoring it passed 21/21.
-- Static checks: focused ESLint passed; npm run ci:tsc passed; npm run ci:regression passed; npm run build passed with only the repository's existing Tailwind ambiguity warning; git diff --check passed.
+- Final-round mutation: forcing `createComposerRequestFence.invalidate()` to report no released busy owner made the non-Solo rail-switch test fail because the target textarea remained disabled; restoring request-owned release made that test and the complete 117-test suite pass.
+- Static checks: focused ESLint passed with 0 errors and one pre-existing hooks warning; npm run ci:tsc passed at baseline 12/current 12; npm run ci:regression passed; npm run build passed with only repository warnings; git diff --check passed.
 - Storage inspection: the resolver module uses a process-memory Map; no localStorage, sessionStorage, database, Edge function, migration, or network persistence was added.
 
 ## Review and limitations
