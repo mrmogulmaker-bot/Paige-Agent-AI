@@ -8,12 +8,12 @@
 //      benign; no role gate).
 //   2. Resolve the approved profile through the service-only config-as-data RPC.
 //   3. PLAN one attempt for that bound revision. No unapproved fallback or request override.
-//   4. §14 CACHE + SYNTH — for each attempt: key = SHA-256(provider:model:voice:text), path =
+//   4. §14 CACHE + BUDGET + SYNTH — for each attempt: key = SHA-256(provider:model:voice:text), path =
 //      <tenantId>/<hash>.mp3 in the PRIVATE, tenant-scoped `tts-cache` bucket (§9 — never cross-tenant,
-//      never cross-provider). HIT → return stored bytes (zero cost), meter cache_hit:true. MISS →
-//      ElevenLabs (buffered bytes) or OpenAI (streamed + tee); on that attempt's failure, LOUD-log and
-//      fall to the NEXT attempt (§32). The cache key + meter reflect the provider that ACTUALLY
-//      rendered — never the intended one (§13).
+//      never cross-provider). HIT → return stored bytes (zero provider cost), meter cache_hit:true.
+//      MISS → atomically reserve BOTH the tenant and platform monthly budgets before either provider
+//      can be called. Ambiguous post-dispatch failures remain charged until reconciliation. The cache
+//      key + meter reflect the provider that ACTUALLY rendered — never the intended one (§13).
 //   5. §17 METER — chars to platform_usage_events { event_type:"tts_char", unit:"char" }, service-role,
 //      with the true provider/voice/model + a fell_back flag (§13/§17 honest).
 //   6. §13 HONEST DEGRADE — NEITHER provider keyed → 503 { error:"tts_not_configured" }; every keyed
@@ -41,7 +41,7 @@ const MAX_TEXT_CHARS = 4096; // OpenAI TTS hard limit; cap here so a long messag
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key",
 };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -142,6 +142,10 @@ serve(async (req: Request) => {
     if (body?.voice_id != null || body?.voiceId != null) return json({ error: "voice_override_not_allowed" }, 400);
     if (!text) return json({ error: "empty_text" }, 400);
     const capped = text.length > MAX_TEXT_CHARS ? text.slice(0, MAX_TEXT_CHARS) : text;
+    const idempotencyKey = String(req.headers.get("Idempotency-Key") ?? "").trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey)) {
+      return json({ error: "idempotency_key_required" }, 400);
+    }
 
     const admin = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -204,25 +208,32 @@ serve(async (req: Request) => {
         // Not cached — fall through to synth. Never fatal.
       }
 
-      if (attempt.provider === "elevenlabs") {
-        // Reserve a conservative cost upper bound atomically BEFORE transport. Cache hits above
-        // never reserve. Concurrent calls serialize on the readiness row, exact-cap is allowed,
-        // and provider failures release their reservation.
-        const requestRef = crypto.randomUUID();
-        const { data: reservation, error: reservationError } = await admin.rpc("reserve_paige_voice_cost_internal", {
-          _actor_user_id: user.id,
-          _tenant_id: meterTenantId,
-          _profile_revision: attempt.profileRevision,
-          _request_ref: requestRef,
-          _character_count: capped.length,
-        });
-        const reservationId = reservation && typeof reservation === "object" && typeof (reservation as Record<string, unknown>).reservation_id === "string"
-          ? String((reservation as Record<string, unknown>).reservation_id) : null;
-        if (reservationError || !reservationId) {
-          console.error("[paige-tts] provider cost reservation refused", { code: reservationError?.code });
-          return json({ error: "tts_cost_limit_unavailable" }, 503);
-        }
+      // Every provider-bearing cache miss crosses the same fail-closed budget gate. The database
+      // serializes the platform + tenant rows, binds this request idempotently to the server-resolved
+      // actor/tenant/profile/provider, and refuses zero, disabled, emergency-stopped, or exhausted
+      // configurations. No provider transport is called before this succeeds.
+      const requestRef = idempotencyKey;
+      const { data: reservation, error: reservationError } = await admin.rpc("reserve_paige_voice_cost_internal", {
+        _actor_user_id: user.id,
+        _tenant_id: meterTenantId,
+        _profile_revision: attempt.profileRevision,
+        _request_ref: requestRef,
+        _character_count: capped.length,
+      });
+      const reservationId = reservation && typeof reservation === "object" && typeof (reservation as Record<string, unknown>).reservation_id === "string"
+        ? String((reservation as Record<string, unknown>).reservation_id) : null;
+      if (reservationError || !reservationId) {
+        console.error("[paige-tts] provider cost reservation refused", { code: reservationError?.code });
+        return json({ error: "tts_cost_limit_unavailable" }, 503);
+      }
+      if ((reservation as Record<string, unknown>).replayed === true) {
+        // A retry must never cross the provider boundary again. If the first attempt completed, its
+        // tenant-private cache will satisfy a later request; otherwise reconciliation decides whether
+        // the counted reservation may be released. This is safer than guessing after a lost response.
+        return json({ error: "tts_request_already_reserved" }, 409);
+      }
 
+      if (attempt.provider === "elevenlabs") {
         let res: Awaited<ReturnType<typeof elevenlabsTts>>;
         try {
           res = await elevenlabsTts({ text: capped, voiceId: attempt.voiceId, modelId: attempt.model });
@@ -232,6 +243,8 @@ serve(async (req: Request) => {
           // after dispatch and must remain reserved so retries cannot exceed real provider spend.
           if (e instanceof NeedsConfigError) {
             await admin.rpc("settle_paige_voice_cost_internal", { _reservation_id: reservationId, _actor_user_id: user.id, _outcome: "released" });
+          } else {
+            await admin.rpc("settle_paige_voice_cost_internal", { _reservation_id: reservationId, _actor_user_id: user.id, _outcome: "ambiguous" });
           }
           lastErr = (e as Error)?.message ?? "elevenlabs_error";
           console.error("[paige-tts] selected provider attempt failed:", lastErr);
@@ -241,6 +254,7 @@ serve(async (req: Request) => {
         if (!bytes || bytes.length === 0) {
           // Defensive only: the adapter already rejects empty bodies. Keep the reservation counted
           // because the request crossed the provider boundary.
+          await admin.rpc("settle_paige_voice_cost_internal", { _reservation_id: reservationId, _actor_user_id: user.id, _outcome: "ambiguous" });
           lastErr = "elevenlabs_empty_bytes";
           continue;
         }
@@ -264,18 +278,34 @@ serve(async (req: Request) => {
       try {
         openaiResp = await synthesizeSpeechStream({ model: attempt.model, voice: attempt.voice }, capped);
       } catch (e) {
+        // A missing key is known pre-dispatch and may be released. Every other failure is ambiguous
+        // after the call boundary and remains counted until an explicit reconciliation proves no charge.
+        const outcome = e instanceof NeedsConfigError ? "released" : "ambiguous";
+        await admin.rpc("settle_paige_voice_cost_internal", { _reservation_id: reservationId, _actor_user_id: user.id, _outcome: outcome });
         lastErr = (e as Error)?.message ?? "openai_error";
         console.error("[paige-tts] OpenAI attempt failed:", lastErr);
         continue;
       }
       const srcBody = openaiResp.body;
       if (!srcBody) {
+        await admin.rpc("settle_paige_voice_cost_internal", { _reservation_id: reservationId, _actor_user_id: user.id, _outcome: "ambiguous" });
         lastErr = "openai_no_body";
         console.error("[paige-tts] OpenAI returned no body");
         continue;
       }
 
       const [clientStream, cacheStream] = srcBody.tee();
+      const { error: settleError } = await admin.rpc("settle_paige_voice_cost_internal", {
+        _reservation_id: reservationId,
+        _actor_user_id: user.id,
+        _outcome: "committed",
+      });
+      if (settleError) {
+        // The reservation remains counted. Do not stream provider output when its durable settlement
+        // could not be recorded; this is deliberately fail-closed on accounting integrity.
+        console.error("[paige-tts] provider cost settlement failed closed", { code: settleError.code });
+        return json({ error: "tts_cost_settlement_unavailable" }, 503);
+      }
 
       // Background: drain the cache branch, upload to the tenant-scoped path (upsert), then meter.
       runAfter(
