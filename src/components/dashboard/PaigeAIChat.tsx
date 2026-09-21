@@ -43,6 +43,7 @@ import {
   acceptComposerDelivery,
   clearComposerDraft,
   composerDraftHandlesMatch,
+  createComposerRequestFence,
   createComposerScopeIdentity,
   initialComposerConversation,
   moveComposerDraft,
@@ -54,6 +55,7 @@ import {
   type ComposerConversationState,
   type ComposerDraftHandle,
   type ComposerConversationIntent,
+  type ComposerRequestTicket,
 } from "@/lib/paigeComposerScopeState";
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
@@ -105,40 +107,6 @@ const safeUuid = (): string => {
 };
 const mkMsg = (m: Omit<Message, "id" | "ts"> & Partial<Pick<Message, "id" | "ts">>): Message =>
   ({ ...m, id: m.id ?? safeUuid(), ts: m.ts ?? Date.now() });
-
-export type PaigeRequestTicket = {
-  generation: number;
-  scopeEpoch: string | null;
-  signal: AbortSignal;
-};
-
-/**
- * A tiny client-side acceptance fence for Solo's active-account boundary. It is
- * deliberately not an identity resolver: the epoch comes from useTenantContext,
- * while the server and RLS remain authoritative for every read and write.
- */
-// eslint-disable-next-line react-refresh/only-export-components -- exported for deterministic stale-request contract tests
-export function createPaigeRequestFence() {
-  let generation = 0;
-  let controller: AbortController | null = null;
-
-  return {
-    begin(scopeEpoch: string | null): PaigeRequestTicket {
-      controller?.abort();
-      controller = new AbortController();
-      generation += 1;
-      return { generation, scopeEpoch, signal: controller.signal };
-    },
-    invalidate(): void {
-      generation += 1;
-      controller?.abort();
-      controller = null;
-    },
-    isCurrent(ticket: PaigeRequestTicket, scopeEpoch: string | null): boolean {
-      return !ticket.signal.aborted && ticket.generation === generation && ticket.scopeEpoch === scopeEpoch;
-    },
-  };
-}
 
 // Optional, back-compatible props (cc-spec §3). Legacy mounts (Dashboard) pass
 // none of these and behave exactly as before.
@@ -409,7 +377,7 @@ const PaigeAIChatInner = ({
   // CD's reasoning strip is a disclosure, not an always-open list. Collapsed at rest.
   const [traceOpen, setTraceOpen] = useState(false);
   const openingGreeting = greeting ?? "Hey, how can I help?";
-  const requestFenceRef = useRef(createPaigeRequestFence());
+  const requestFenceRef = useRef(createComposerRequestFence());
   // === THE TURN'S SCOPE, AS ONE VALUE (§9, purpose clause 2) ===
   // A turn is scoped by TWO things, not one: the active workspace, and the client in focus. The
   // fence, the reset and the dictation epoch were all keyed on the tenant alone, so an account
@@ -438,6 +406,19 @@ const PaigeAIChatInner = ({
     tenantId: platform ? "platform" : activeTenantId,
     userId: scopedUserId,
   });
+  const requestScopeEpoch = `${scopeEpoch}|${requestedConversation.requested.kind}:${requestedConversation.requested.id}`;
+  const requestScopeHandle = draftIdentity
+    ? { ...draftIdentity, conversationId: requestedConversation.requested.id }
+    : null;
+  const requestScopeRef = useRef({ handle: requestScopeHandle, epoch: requestScopeEpoch });
+  requestScopeRef.current = { handle: requestScopeHandle, epoch: requestScopeEpoch };
+  const acceptedRequestScopeEpochRef = useRef(requestScopeEpoch);
+  const requestScopeFor = (kind: "new" | "thread", id: string) => draftIdentity
+    ? {
+        handle: { ...draftIdentity, conversationId: id },
+        epoch: `${scopeEpoch}|${kind}:${id}`,
+      }
+    : null;
   const displayedDraftIdentityRef = useRef(draftIdentity);
   const composerScope = resolveComposerScopeState({
     currentIdentity: draftIdentity,
@@ -544,7 +525,11 @@ const PaigeAIChatInner = ({
   // Cancellation, the timeout fence and the offline pre-flight stay behind the flag — those are
   // genuinely presentational choices — but whether a resolved request may still commit is not.
   const ticketAccepted = useCallback(
-    (ticket: PaigeRequestTicket) => requestFenceRef.current.isCurrent(ticket, acceptedEpochRef.current),
+    (ticket: ComposerRequestTicket) => requestFenceRef.current.isCurrent(
+      ticket,
+      requestScopeRef.current.handle,
+      requestScopeRef.current.epoch,
+    ),
     [],
   );
 
@@ -576,6 +561,17 @@ const PaigeAIChatInner = ({
     setLatestAnnouncement("Latest PAIGE message reached.");
     requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
   }, []);
+
+  useEffect(() => {
+    if (acceptedRequestScopeEpochRef.current === requestScopeEpoch) return;
+    acceptedRequestScopeEpochRef.current = requestScopeEpoch;
+    requestFenceRef.current.invalidate();
+    setIsLoading(false);
+    setStreamingThreadId(null);
+    setWritingPhase(false);
+    setCompacting(null);
+    setStreamedLiveCard(null);
+  }, [requestScopeEpoch]);
 
   // SCOPE changes — the workspace or the client in focus — are a hard frontend isolation
   // boundary. Invalidate first, then clear every scope-derived or scope-authored state before
@@ -659,10 +655,9 @@ const PaigeAIChatInner = ({
   ]);
 
   useEffect(() => {
-    if (!soloTenantSafety) return;
     const requestFence = requestFenceRef.current;
     return () => requestFence.invalidate();
-  }, [soloTenantSafety]);
+  }, []);
 
   useLayoutEffect(() => {
     transcriptScrollRef.current?.setContext(transcriptContext);
@@ -759,6 +754,10 @@ const PaigeAIChatInner = ({
         && currentConversation.displayed.id === id
       )
     ) return;
+    const targetRequestScope = requestScopeFor("thread", id);
+    if (!targetRequestScope) return;
+    requestScopeRef.current = targetRequestScope;
+    acceptedRequestScopeEpochRef.current = targetRequestScope.epoch;
     applyConversationEvent({ type: "thread-requested", id, intent });
     if (isLoading) cancelSoloRequest();
     // OPENING A SAVED CONVERSATION RELEASES THE FOCUSED CLIENT.
@@ -783,7 +782,10 @@ const PaigeAIChatInner = ({
     const previousTranscriptThreadId = conversationStateRef.current.displayed.kind === "thread"
       ? conversationStateRef.current.displayed.id
       : null;
-    const requestTicket = requestFenceRef.current.begin(scopeEpoch);
+    const requestTicket = requestFenceRef.current.begin(
+      targetRequestScope.handle,
+      targetRequestScope.epoch,
+    );
     if (soloTenantSafety) {
       setCancelled(false);
       setActiveThreadId(id);
@@ -813,12 +815,16 @@ const PaigeAIChatInner = ({
   };
 
   const startNewChat = () => {
+    const targetRequestScope = requestScopeFor("new", conversationStateRef.current.newConversationId);
+    if (!targetRequestScope) return;
     if (isLoading) {
       if (!soloTenantSafety) return; // legacy callers keep the current behavior
       cancelSoloRequest();
-    } else if (soloTenantSafety) {
+    } else {
       requestFenceRef.current.invalidate();
     }
+    requestScopeRef.current = targetRequestScope;
+    acceptedRequestScopeEpochRef.current = targetRequestScope.epoch;
     hydratedFromRef.current = null;
     applyConversationEvent({ type: "new-chat-requested" });
     setActiveThreadId(null);
@@ -918,6 +924,10 @@ const PaigeAIChatInner = ({
     declinedFingerprints?: string[],
   ) => {
     if (soloTenantSafety && !activeTenantId) return;
+    const requestHandle = originDraft ?? composerScopeRef.current.writableHandle;
+    const requestScope = requestScopeRef.current;
+    if (!requestHandle || !composerDraftHandlesMatch(requestHandle, requestScope.handle)) return;
+    let requestTicket = requestFenceRef.current.begin(requestHandle, requestScope.epoch);
     // Deliberately NOT stored on the retry: an approval is for one call at one moment. Replaying it
     // on a network retry would re-approve whatever the model emits the second time, which is the
     // exact substitution the fingerprint exists to prevent.
@@ -929,7 +939,6 @@ const PaigeAIChatInner = ({
       return;
     }
     const newMessages = base;
-    const requestTicket = requestFenceRef.current.begin(scopeEpoch);
     setIsLoading(true);
     setCancelled(false);
     setSteps([]); // fresh "watch her work" trace per turn
@@ -970,6 +979,17 @@ const PaigeAIChatInner = ({
           if (!threadId) {
             threadId = await threadsApi.ensureThread(userText);
             if (!ticketAccepted(requestTicket)) return;
+            const threadRequestScope = {
+              handle: { ...requestTicket.scopeHandle, conversationId: threadId },
+              epoch: `${scopeEpoch}|thread:${threadId}`,
+            };
+            requestScopeRef.current = threadRequestScope;
+            acceptedRequestScopeEpochRef.current = threadRequestScope.epoch;
+            requestTicket = requestFenceRef.current.rebind(
+              requestTicket,
+              threadRequestScope.handle,
+              threadRequestScope.epoch,
+            );
             if (persistedDraft) {
               const threadDraft = { ...persistedDraft, conversationId: threadId };
               moveComposerDraft(persistedDraft, threadDraft);

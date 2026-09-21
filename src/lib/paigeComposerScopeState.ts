@@ -256,6 +256,61 @@ export function composerDraftHandlesMatch(
     && left.conversationId === right.conversationId;
 }
 
+export type ComposerRequestTicket = Readonly<{
+  generation: number;
+  scopeHandle: ComposerDraftHandle;
+  scopeEpoch: string;
+  signal: AbortSignal;
+}>;
+
+/**
+ * One request owner for a composer mount. A ticket is deliverable only while
+ * its generation, full draft handle, and render-time epoch still name the
+ * conversation currently requested by that mount.
+ */
+export function createComposerRequestFence() {
+  let generation = 0;
+  let controller: AbortController | null = null;
+
+  const ticket = (
+    scopeHandle: ComposerDraftHandle,
+    scopeEpoch: string,
+    signal: AbortSignal,
+  ): ComposerRequestTicket => ({ generation, scopeHandle, scopeEpoch, signal });
+
+  return {
+    begin(scopeHandle: ComposerDraftHandle, scopeEpoch: string): ComposerRequestTicket {
+      controller?.abort();
+      controller = new AbortController();
+      generation += 1;
+      return ticket(scopeHandle, scopeEpoch, controller.signal);
+    },
+    rebind(
+      current: ComposerRequestTicket,
+      scopeHandle: ComposerDraftHandle,
+      scopeEpoch: string,
+    ): ComposerRequestTicket {
+      if (current.signal.aborted || current.generation !== generation) return current;
+      return ticket(scopeHandle, scopeEpoch, current.signal);
+    },
+    invalidate(): void {
+      generation += 1;
+      controller?.abort();
+      controller = null;
+    },
+    isCurrent(
+      current: ComposerRequestTicket,
+      scopeHandle: ComposerDraftHandle | null,
+      scopeEpoch: string,
+    ): boolean {
+      return !current.signal.aborted
+        && current.generation === generation
+        && current.scopeEpoch === scopeEpoch
+        && composerDraftHandlesMatch(current.scopeHandle, scopeHandle);
+    },
+  };
+}
+
 export function acceptComposerDelivery(
   captured: ComposerDraftHandle,
   current: ComposerScopeState,

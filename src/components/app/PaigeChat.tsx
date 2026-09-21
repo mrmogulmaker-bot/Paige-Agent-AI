@@ -37,15 +37,19 @@ import { PaigeReasoningStrip, upsertStep, type PaigeStep } from "@/components/da
 import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingIndicator";
 import { createAnchoredTranscriptScroll } from "@/components/chat/anchoredTranscriptScroll";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useImpersonation } from "@/contexts/ImpersonationContext";
 import {
   acceptComposerDelivery,
   clearComposerDraft,
+  composerDraftHandlesMatch,
+  createComposerRequestFence,
   createComposerScopeIdentity,
   initialComposerConversation,
   readComposerDraft,
   resolveComposerScopeState,
   shouldClearComposerDraft,
   useComposerDraft,
+  type ComposerRequestTicket,
 } from "@/lib/paigeComposerScopeState";
 
 type Message = {
@@ -87,7 +91,41 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   // a skeleton so the Paige avatar never flashes before the tenant's resolves.
   const { brand: portalBrand, loading: portalBrandLoading } = useClientPortalBrandState();
   const { activeTenantId } = useTenantContext();
+  const { target: impersonationTarget } = useImpersonation();
   const portalBrandTenantId = portalBrand?.tenant_id ?? null;
+  const impersonationTargetKey = impersonationTarget
+    ? `${impersonationTarget.contactId}:${impersonationTarget.targetUserId}`
+    : null;
+  const [impersonatedTenant, setImpersonatedTenant] = useState<{
+    key: string | null;
+    tenantId: string | null;
+    loading: boolean;
+  }>({ key: null, tenantId: null, loading: false });
+  useEffect(() => {
+    if (!impersonationTarget || !impersonationTargetKey) {
+      setImpersonatedTenant({ key: null, tenantId: null, loading: false });
+      return;
+    }
+
+    let cancelled = false;
+    setImpersonatedTenant({ key: impersonationTargetKey, tenantId: null, loading: true });
+    void supabase
+      .from("clients")
+      .select("tenant_id, linked_user_id")
+      .eq("id", impersonationTarget.contactId)
+      .eq("linked_user_id", impersonationTarget.targetUserId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || !data?.tenant_id || data.linked_user_id !== impersonationTarget.targetUserId) {
+          setImpersonatedTenant({ key: impersonationTargetKey, tenantId: null, loading: false });
+          return;
+        }
+        setImpersonatedTenant({ key: impersonationTargetKey, tenantId: data.tenant_id, loading: false });
+      });
+
+    return () => { cancelled = true; };
+  }, [impersonationTarget, impersonationTargetKey]);
   const { contextBlock, isLoading: contextLoading, hasCreditData } = useClientChatContext(clientId, clientId ? null : user.id);
   // Snapshot of profile/business fields used by the conversational extractor
   // to skip already-populated values. Refreshed after every successful save.
@@ -107,8 +145,13 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     [newConversationId],
   );
   const isSignedIn = Boolean(session);
-  const resolvedDisplayedTenantId = isSignedIn && !portalBrandLoading
-    ? portalBrandTenantId
+  const impersonatedTenantPending = impersonationTarget !== null
+    && (impersonatedTenant.key !== impersonationTargetKey || impersonatedTenant.loading);
+  const displayedTenantLoading = impersonationTarget ? impersonatedTenantPending : portalBrandLoading;
+  const resolvedDisplayedTenantId = isSignedIn && !displayedTenantLoading
+    ? impersonationTarget
+      ? impersonatedTenant.tenantId
+      : portalBrandTenantId
     : null;
   const currentIdentity = createComposerScopeIdentity({
     tenantId: isSignedIn ? activeTenantId : null,
@@ -143,11 +186,11 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     ? "Sign in before writing to PAIGE."
     : !activeTenantId
       ? "Select a workspace before writing to PAIGE."
-      : portalBrandLoading
+      : displayedTenantLoading
         ? "Resolving the conversation before you can write to PAIGE."
-        : !portalBrandTenantId
+        : !resolvedDisplayedTenantId
           ? "This conversation is unavailable until its workspace is resolved."
-          : activeTenantId !== portalBrandTenantId
+          : activeTenantId !== resolvedDisplayedTenantId
             ? "The active workspace does not match this conversation."
             : composerScope.unavailableReason;
   const dictationScopeEpoch = [
@@ -160,10 +203,26 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     isSignedIn ? "signed-in" : "signed-out",
     activeTenantId ?? "no-active-tenant",
     user.id,
-    portalBrandLoading ? "brand-loading" : (portalBrandTenantId ?? "no-brand-tenant"),
+    impersonationTargetKey ?? "self",
+    displayedTenantLoading ? "tenant-loading" : (resolvedDisplayedTenantId ?? "no-displayed-tenant"),
     newConversationId,
   ].join("|");
   const acceptedAppComposerScopeKeyRef = useRef(appComposerScopeKey);
+  const requestScopeEpoch = `${appComposerScopeKey}|${conversation.requested.kind}:${conversation.requested.id}`;
+  const requestScopeHandle = currentIdentity
+    ? { ...currentIdentity, conversationId: conversation.requested.id }
+    : null;
+  const requestScopeRef = useRef({ handle: requestScopeHandle, epoch: requestScopeEpoch });
+  requestScopeRef.current = { handle: requestScopeHandle, epoch: requestScopeEpoch };
+  const requestFenceRef = useRef(createComposerRequestFence());
+  const ticketAccepted = useCallback(
+    (ticket: ComposerRequestTicket) => requestFenceRef.current.isCurrent(
+      ticket,
+      requestScopeRef.current.handle,
+      requestScopeRef.current.epoch,
+    ),
+    [],
+  );
 
   // Page awareness — derive human-readable page name from current route.
   // Tracked in a ref so the latest value is always included in outgoing
@@ -236,10 +295,14 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       return;
     }
 
+    const openingScope = requestScopeRef.current;
+    if (!openingScope.handle) return;
     contextInjectedRef.current = true;
     (async () => {
+      const requestTicket = requestFenceRef.current.begin(openingScope.handle, openingScope.epoch);
       try {
         const { data: { session: freshSession } } = await supabase.auth.getSession();
+        if (!ticketAccepted(requestTicket)) return;
         if (!freshSession) return;
 
         // Detect fresh sign-in: auth session created within the last 2 minutes.
@@ -274,9 +337,11 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
               ...(clientId ? { clientId } : {}),
               ...getUserClock(),
             }),
+            signal: requestTicket.signal,
           }
         );
 
+        if (!ticketAccepted(requestTicket)) return;
         if (!response.ok) { setIsLoading(false); return; }
 
         const reader = response.body?.getReader();
@@ -285,6 +350,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
         while (reader) {
           const { done, value } = await reader.read();
+          if (!ticketAccepted(requestTicket)) return;
           if (done) break;
           const chunk = decoder.decode(value);
           for (const line of chunk.split("\n")) {
@@ -299,15 +365,27 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
           }
         }
 
+        if (!ticketAccepted(requestTicket)) return;
         if (greeting.trim()) {
           setMessages([mkMessage({ role: "assistant", content: greeting.trim() })]);
         }
         setIsLoading(false);
       } catch {
+        if (!ticketAccepted(requestTicket)) return;
         setIsLoading(false);
       }
     })();
-  }, [clientId, contextBlock, contextLoading, hasCreditData, messages.length, user, buildContextWithPage]);
+  }, [
+    buildContextWithPage,
+    clientId,
+    contextBlock,
+    contextLoading,
+    hasCreditData,
+    messages.length,
+    playbook.persona.greeting,
+    ticketAccepted,
+    user,
+  ]);
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
@@ -334,7 +412,13 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   useBeforeUnloadGuard(input.trim().length > 0 || attachedDoc !== null || isProcessingFile || isLoading);
 
   useEffect(() => {
+    const requestFence = requestFenceRef.current;
+    return () => requestFence.invalidate();
+  }, []);
+
+  useEffect(() => {
     if (acceptedAppComposerScopeKeyRef.current === appComposerScopeKey) return;
+    requestFenceRef.current.invalidate();
     acceptedAppComposerScopeKeyRef.current = appComposerScopeKey;
     acceptedDisplayedIdentityRef.current = createComposerScopeIdentity({
       tenantId: resolvedDisplayedTenantId,
@@ -452,6 +536,9 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     if (dictationActive || !originDraft) return;
     const messageText = overrideInput || input;
     if (!composerScope.writable || (!messageText.trim() && !attachedDoc)) return;
+    const requestScope = requestScopeRef.current;
+    if (!composerDraftHandlesMatch(originDraft, requestScope.handle)) return;
+    const requestTicket = requestFenceRef.current.begin(originDraft, requestScope.epoch);
 
     resetInactivityTimer();
 
@@ -480,6 +567,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
     try {
       const { data: { session: freshSession } } = await supabase.auth.getSession();
+      if (!ticketAccepted(requestTicket)) return;
 
       if (!freshSession) {
         toast({ title: "Session Expired", description: "Please sign in again.", variant: "destructive" });
@@ -519,8 +607,11 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             Authorization: `Bearer ${freshSession.access_token}`,
           },
           body: JSON.stringify(payload),
+          signal: requestTicket.signal,
         }
       );
+
+      if (!ticketAccepted(requestTicket)) return;
 
       if (!response.ok) {
         if (response.status === 429) {
@@ -532,6 +623,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         // #587 — surface the structured { code, reason, recommendation } from the server (e.g. a
         // size/page limit) rather than a generic "Failed to send message" toast.
         const chatErr = await parsePaigeChatError(response);
+        if (!ticketAccepted(requestTicket)) return;
         toast({ title: chatErr.title, description: chatErr.description, variant: "destructive" });
         setMessages(messages);
         setIsLoading(false);
@@ -546,12 +638,14 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       let syncStatus: SyncStatus | null = null;
       const assistantId = safeMessageId();
 
+      if (!ticketAccepted(requestTicket)) return;
       setMessages([...newMessages, mkMessage({ id: assistantId, role: "assistant", content: "" })]);
       setSteps([]); // clear last turn's reasoning as this one starts
       setWritingPhase(false); // #11 — back to "Thinking…" until the first token this turn
 
       while (reader && !streamDone) {
         const { done, value } = await reader.read();
+        if (!ticketAccepted(requestTicket)) return;
         if (done) break;
 
         textBuffer += decoder.decode(value, { stream: true });
@@ -570,6 +664,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
           try {
             const parsed = JSON.parse(jsonStr);
+            if (!ticketAccepted(requestTicket)) return;
             if (parsed.paige_step) {
               // Live "watch her work" frame — upsert into the reasoning strip.
               setSteps((prev) => upsertStep(prev, parsed.paige_step as PaigeStep));
@@ -594,6 +689,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         }
       }
 
+      if (!ticketAccepted(requestTicket)) return;
       if (!streamDone) {
         throw new Error("PAIGE response stream ended before [DONE].");
       }
@@ -657,6 +753,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
       setIsLoading(false);
     } catch (error) {
+      if (!ticketAccepted(requestTicket)) return;
       console.error("Chat error:", error);
       toast({ title: "Error", description: "Failed to send message. Please try again.", variant: "destructive" });
       setMessages(messages);

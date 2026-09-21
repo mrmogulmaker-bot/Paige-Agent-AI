@@ -198,7 +198,7 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
   });
 
   it("aborts a controlled thread stream, preserves A's draft, and lets B send before A resolves", async () => {
-    await render({ controlledThreadId: "thread-a", soloTenantSafety: false });
+    await render({ activeThreadId: "thread-a", soloTenantSafety: false });
     await type("thread A retained draft");
 
     let resolveOrigin: ((response: Response) => void) | null = null;
@@ -217,7 +217,7 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    await render({ controlledThreadId: "thread-b", soloTenantSafety: false });
+    await render({ activeThreadId: "thread-b", soloTenantSafety: false });
     expect(originSignal?.aborted).toBe(true);
     expect(textarea().disabled).toBe(false);
     expect(textarea().value).toBe("");
@@ -235,7 +235,7 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     });
     expect(host.textContent).not.toContain("STALE THREAD A");
 
-    await render({ controlledThreadId: "thread-a", soloTenantSafety: false });
+    await render({ activeThreadId: "thread-a", soloTenantSafety: false });
     expect(textarea().value).toBe("thread A retained draft");
   });
 

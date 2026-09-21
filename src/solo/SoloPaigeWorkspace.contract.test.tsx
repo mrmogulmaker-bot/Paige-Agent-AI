@@ -4,7 +4,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import { createPaigeRequestFence, PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
+import { PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
+import { createComposerRequestFence } from "@/lib/paigeComposerScopeState";
 import { SoloPaigeWorkspace } from "./SoloPaigeWorkspace";
 
 function visibleTranscriptGeometry(transcript: HTMLDivElement) {
@@ -202,11 +203,13 @@ describe("Solo PAIGE workspace contract", () => {
 
   it("keeps the shared async safety additive and Solo-only", () => {
     const chat = source("src/components/dashboard/PaigeAIChat.tsx");
+    const composerScope = source("src/lib/paigeComposerScopeState.ts");
     const shell = source("src/components/tenant-shell/TenantCommandCenterShell.tsx");
     const operator = source("src/components/paige/PaigePlatformDesk.tsx");
     const sharedWorkspace = source("src/components/paige/PaigeWorkspace.tsx");
     expect(chat).toContain("soloTenantSafety?: boolean");
-    expect(chat).toContain("new AbortController()");
+    expect(chat).toContain("createComposerRequestFence()");
+    expect(composerScope).toContain("new AbortController()");
     expect(chat).toContain("signal: requestTicket.signal");
     expect(chat).toContain("Cancel PAIGE response");
     expect(shell).not.toContain("soloTenantSafety");
@@ -221,48 +224,54 @@ describe("Solo PAIGE workspace contract", () => {
   });
 
   it("aborts and rejects every stale request generation", () => {
-    const fence = createPaigeRequestFence();
-    const accountA = fence.begin("account-a");
-    expect(fence.isCurrent(accountA, "account-a")).toBe(true);
+    const fence = createComposerRequestFence();
+    const scopeA = { tenantId: "account-a", userId: "user-a", conversationId: "thread-a" };
+    const scopeB = { tenantId: "account-b", userId: "user-a", conversationId: "thread-b" };
+    const accountA = fence.begin(scopeA, "account-a");
+    expect(fence.isCurrent(accountA, scopeA, "account-a")).toBe(true);
 
     fence.invalidate();
     expect(accountA.signal.aborted).toBe(true);
-    expect(fence.isCurrent(accountA, "account-a")).toBe(false);
+    expect(fence.isCurrent(accountA, scopeA, "account-a")).toBe(false);
 
-    const accountB = fence.begin("account-b");
-    expect(fence.isCurrent(accountA, "account-b")).toBe(false);
-    expect(fence.isCurrent(accountB, "account-b")).toBe(true);
+    const accountB = fence.begin(scopeB, "account-b");
+    expect(fence.isCurrent(accountA, scopeB, "account-b")).toBe(false);
+    expect(fence.isCurrent(accountB, scopeB, "account-b")).toBe(true);
   });
 
   it("cannot commit delayed account-A or history work after account B is accepted", async () => {
-    const fence = createPaigeRequestFence();
+    const fence = createComposerRequestFence();
     const committed: string[] = [];
-    const accountA = fence.begin("account-a");
+    const scopeA = { tenantId: "account-a", userId: "user-a", conversationId: "thread-a" };
+    const scopeB = { tenantId: "account-b", userId: "user-a", conversationId: "thread-b" };
+    const accountA = fence.begin(scopeA, "account-a");
     let releaseAccountA!: () => void;
     const delayedAccountA = new Promise<void>((resolve) => { releaseAccountA = resolve; }).then(() => {
-      if (fence.isCurrent(accountA, "account-b")) committed.push("account-a transcript or history");
+      if (fence.isCurrent(accountA, scopeB, "account-b")) committed.push("account-a transcript or history");
     });
 
     fence.invalidate();
-    const accountB = fence.begin("account-b");
+    const accountB = fence.begin(scopeB, "account-b");
     releaseAccountA();
     await delayedAccountA;
-    if (fence.isCurrent(accountB, "account-b")) committed.push("account-b accepted");
+    if (fence.isCurrent(accountB, scopeB, "account-b")) committed.push("account-b accepted");
 
     expect(committed).toEqual(["account-b accepted"]);
   });
 
   it("cannot let a superseded request timeout invalidate the accepted request", () => {
     vi.useFakeTimers();
-    const fence = createPaigeRequestFence();
-    const accountA = fence.begin("account-a");
+    const fence = createComposerRequestFence();
+    const scopeA = { tenantId: "account-a", userId: "user-a", conversationId: "thread-a" };
+    const scopeB = { tenantId: "account-b", userId: "user-a", conversationId: "thread-b" };
+    const accountA = fence.begin(scopeA, "account-a");
     window.setTimeout(() => {
-      if (!fence.isCurrent(accountA, "account-b")) return;
+      if (!fence.isCurrent(accountA, scopeB, "account-b")) return;
       fence.invalidate();
     }, 45_000);
-    const accountB = fence.begin("account-b");
+    const accountB = fence.begin(scopeB, "account-b");
     vi.advanceTimersByTime(45_000);
-    expect(fence.isCurrent(accountB, "account-b")).toBe(true);
+    expect(fence.isCurrent(accountB, scopeB, "account-b")).toBe(true);
     vi.useRealTimers();
     expect(source("src/components/dashboard/PaigeAIChat.tsx")).toMatch(/setTimeout\(\(\) => \{\s*if \(!ticketAccepted\(requestTicket\)\) return;/);
   });
@@ -328,11 +337,11 @@ describe("Solo PAIGE workspace contract", () => {
     // The epoch is composite across the active workspace and either focused record. A client or
     // Strategic Play switch must end acceptance of the prior transcript/stream before any later
     // response can render under the new scope. The ordering remains accept, invalidate, then clear.
-    expect(chat).toContain("const scopeEpoch = `${activeTenantId ?? \"\"}|${clientId ?? \"\"}|${businessMissionId ?? \"\"}`;");
+    expect(chat).toMatch(/const scopeEpoch = \[[\s\S]*activeTenantId \?\? "",[\s\S]*scopedUserId \?\? "",[\s\S]*clientId \?\? "",[\s\S]*businessMissionId \?\? "",[\s\S]*\]\.join\("\|"\);/);
     // Bounded so it cannot reach the LATER `invalidate()` calls (startNewChat, unmount). The
     // unbounded `[\s\S]*` version could not fail: inverting the accept/invalidate order left the
     // whole 507-test suite green.
-    expect(chat).toMatch(/acceptedEpochRef\.current = scopeEpoch;(?:[^\n]*\n){0,6}\s*requestFenceRef\.current\.invalidate\(\);/);
+    expect(chat).toMatch(/acceptedEpochRef\.current = scopeEpoch;(?:[^\n]*\n){0,10}\s*requestFenceRef\.current\.invalidate\(\);/);
     // §13 — THIS ASSERTION HAD GONE VACUOUS. The reset now seeds `scopeNotice ?? openingGreeting`,
     // so the old literal no longer matched the reset at all — it was satisfied by the unrelated
     // `startNewChat` and controlled-sync sites, and deleting the reset's `setMessages` entirely
@@ -349,8 +358,10 @@ describe("Solo PAIGE workspace contract", () => {
     // `parked.epoch === leavingEpoch`, and a refusal parks under a CLIENT epoch, so an account
     // transition never carries one and `scopeNotice` is null. The behaviour this line was written
     // to pin is unchanged; only the refusal path is now protected.
-    expect(chat).toContain("setHistoryHydrated(scopeNotice !== null)");
-    expect(chat).toContain("setHistoryTransitioning(false)");
+    expect(chat).toContain("let nextConversation = initialComposerConversation(enableHistory, newConversationId)");
+    expect(chat).toContain('type: "history-confirmed-empty"');
+    expect(chat).toContain("conversationStateRef.current = nextConversation");
+    expect(chat).toContain("setConversationState(nextConversation)");
     expect(chat).toContain("retryTurnRef.current = null");
     expect(app).toMatch(/paigeTabEpochRef\.current=activeTenantId;setPaigeDockedTab\('chat'\)/);
   });
@@ -364,16 +375,18 @@ describe("Solo PAIGE workspace contract", () => {
     expect(app).toContain("accountEpochKey");
     expect(app).toContain("activeTenantId??'resolving'");
     expect(app).not.toMatch(/accountEpochKey=.*urlAccount/);
-    expect(app).not.toContain("tenant_id:");
+    expect(app).toContain("soloPaigeWorkspace={<SoloPaigeWorkspace key={accountEpochKey}");
   });
 
   it("blocks sends during account resolution and thread hydration and guards history failures", () => {
     const chat = source("src/components/dashboard/PaigeAIChat.tsx");
+    const scopeState = source("src/lib/paigeComposerScopeState.ts");
     expect(chat).toContain("soloTenantSafety && !activeTenantId");
-    expect(chat).toContain("setHistoryTransitioning(true)");
+    expect(chat).toContain('applyConversationEvent({ type: "thread-requested", id, intent })');
+    expect(chat).toContain("const composerScope = resolveComposerScopeState({");
     expect(chat).toContain("if (!ticketAccepted(requestTicket)) return;");
     expect(chat).toContain("composerBlocked");
-    expect(chat).toContain("Resolving the active account");
+    expect(scopeState).toContain("Resolving the conversation before you can write to PAIGE.");
     expect(chat).toContain("previousTranscriptThreadId");
     expect(chat).toMatch(/hydratedFromRef\.current = id;[\s\S]*setConnectionIssue\(null\);[\s\S]*retryTurnRef\.current = null;/);
   });
