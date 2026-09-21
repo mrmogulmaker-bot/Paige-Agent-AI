@@ -36,6 +36,17 @@ import { readableTextOn } from "@/lib/brand/contrast";
 import { PaigeReasoningStrip, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingIndicator";
 import { createAnchoredTranscriptScroll } from "@/components/chat/anchoredTranscriptScroll";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import {
+  acceptComposerDelivery,
+  clearComposerDraft,
+  createComposerScopeIdentity,
+  initialComposerConversation,
+  readComposerDraft,
+  resolveComposerScopeState,
+  shouldClearComposerDraft,
+  useComposerDraft,
+} from "@/lib/paigeComposerScopeState";
 
 type Message = {
   id: string;
@@ -75,6 +86,8 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   // Same resolver the /app chrome uses (get_client_portal_brand); `loading` gates
   // a skeleton so the Paige avatar never flashes before the tenant's resolves.
   const { brand: portalBrand, loading: portalBrandLoading } = useClientPortalBrandState();
+  const { activeTenantId } = useTenantContext();
+  const portalBrandTenantId = portalBrand?.tenant_id ?? null;
   const { contextBlock, isLoading: contextLoading, hasCreditData } = useClientChatContext(clientId, clientId ? null : user.id);
   // Snapshot of profile/business fields used by the conversational extractor
   // to skip already-populated values. Refreshed after every successful save.
@@ -85,12 +98,72 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const contextInjectedRef = useRef(false);
   const isMobile = useIsMobile();
   const location = useLocation();
+  const [isLoading, setIsLoading] = useState(false);
+  const newConversationId = clientId
+    ? `new-chat:app-shell:client:${clientId}`
+    : "new-chat:app-shell";
+  const conversation = useMemo(
+    () => initialComposerConversation(false, newConversationId),
+    [newConversationId],
+  );
+  const isSignedIn = Boolean(session);
+  const resolvedDisplayedTenantId = isSignedIn && !portalBrandLoading
+    ? portalBrandTenantId
+    : null;
+  const currentIdentity = createComposerScopeIdentity({
+    tenantId: isSignedIn ? activeTenantId : null,
+    userId: isSignedIn ? user.id : null,
+  });
+  const displayedIdentity = createComposerScopeIdentity({
+    tenantId: resolvedDisplayedTenantId,
+    userId: isSignedIn ? user.id : null,
+  });
+  const acceptedDisplayedIdentityRef = useRef(displayedIdentity);
+  const acceptedConversationRef = useRef(conversation);
+  const [, forceComposerScopeReadback] = useState(0);
+  const displayedConversation = acceptedConversationRef.current.newConversationId === newConversationId
+    ? conversation
+    : {
+        ...conversation,
+        displayed: acceptedConversationRef.current.displayed,
+        intent: "controlled" as const,
+      };
+  const composerScope = resolveComposerScopeState({
+    currentIdentity,
+    displayedIdentity: acceptedDisplayedIdentityRef.current,
+    conversation: displayedConversation,
+    busy: isLoading,
+  });
+  const composerScopeRef = useRef(composerScope);
+  composerScopeRef.current = composerScope;
+  const draft = useComposerDraft(composerScope);
+  const input = draft.value;
+  const setInput = draft.setValue;
+  const composerUnavailableReason = !session
+    ? "Sign in before writing to PAIGE."
+    : !activeTenantId
+      ? "Select a workspace before writing to PAIGE."
+      : portalBrandLoading
+        ? "Resolving the conversation before you can write to PAIGE."
+        : !portalBrandTenantId
+          ? "This conversation is unavailable until its workspace is resolved."
+          : activeTenantId !== portalBrandTenantId
+            ? "The active workspace does not match this conversation."
+            : composerScope.unavailableReason;
   const dictationScopeEpoch = [
-    user.id,
-    clientId ?? "",
+    currentIdentity ? `${currentIdentity.tenantId}:${currentIdentity.userId}` : "resolving",
+    newConversationId,
     location.pathname,
     location.search ?? "",
   ].join("|");
+  const appComposerScopeKey = [
+    isSignedIn ? "signed-in" : "signed-out",
+    activeTenantId ?? "no-active-tenant",
+    user.id,
+    portalBrandLoading ? "brand-loading" : (portalBrandTenantId ?? "no-brand-tenant"),
+    newConversationId,
+  ].join("|");
+  const acceptedAppComposerScopeKeyRef = useRef(appComposerScopeKey);
 
   // Page awareness — derive human-readable page name from current route.
   // Tracked in a ref so the latest value is always included in outgoing
@@ -116,7 +189,6 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     mkMessage({ role: "assistant", content: playbook.persona.greeting }),
   ]);
-  const [input, setInput] = useState("");
   const [dictationActivity, setDictationActivity] = useState({
     epoch: dictationScopeEpoch,
     active: false,
@@ -126,7 +198,6 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const handleDictationActivity = useCallback((active: boolean) => {
     setDictationActivity({ epoch: dictationScopeEpoch, active });
   }, [dictationScopeEpoch]);
-  const [isLoading, setIsLoading] = useState(false);
   // Paige's live reasoning trace (#95/#125) — the "watch her work" steps she streams.
   const [steps, setSteps] = useState<PaigeStep[]>([]);
   // #11 — true once the first answer token arrives this turn (label flips Thinking→Writing).
@@ -263,10 +334,37 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   useBeforeUnloadGuard(input.trim().length > 0 || attachedDoc !== null || isProcessingFile || isLoading);
 
   useEffect(() => {
+    if (acceptedAppComposerScopeKeyRef.current === appComposerScopeKey) return;
+    acceptedAppComposerScopeKeyRef.current = appComposerScopeKey;
+    acceptedDisplayedIdentityRef.current = createComposerScopeIdentity({
+      tenantId: resolvedDisplayedTenantId,
+      userId: isSignedIn ? user.id : null,
+    });
+    acceptedConversationRef.current = initialComposerConversation(false, newConversationId);
+    contextInjectedRef.current = false;
+    declinedFieldsRef.current.clear();
+    resetSession();
+    setAttachedDoc(null);
+    setMessages([mkMessage({ role: "assistant", content: playbook.persona.greeting })]);
+    setSteps([]);
+    setWritingPhase(false);
+    setIsLoading(false);
+    forceComposerScopeReadback((revision) => revision + 1);
+  }, [
+    appComposerScopeKey,
+    isSignedIn,
+    newConversationId,
+    playbook.persona.greeting,
+    resolvedDisplayedTenantId,
+    resetSession,
+    setAttachedDoc,
+    user.id,
+  ]);
+
+  useEffect(() => {
     const handleFactoryReset = () => {
       contextInjectedRef.current = false;
       resetSession();
-      setInput("");
       transcriptScrollRef.current?.jumpToBottom("auto");
       setMessages([mkMessage({ role: "assistant", content: playbook.persona.greeting })]);
     };
@@ -350,9 +448,10 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   };
 
   const handleSend = async (overrideInput?: string) => {
-    if (dictationActive) return;
+    const originDraft = composerScope.writableHandle;
+    if (dictationActive || !originDraft) return;
     const messageText = overrideInput || input;
-    if ((!messageText.trim() && !attachedDoc) || isLoading) return;
+    if (!composerScope.writable || (!messageText.trim() && !attachedDoc)) return;
 
     resetInactivityTimer();
 
@@ -360,7 +459,6 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     const isFirstUserMessage = messages.every((m) => m.role !== "user");
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
-    setInput("");
 
     if (isFirstUserMessage) {
       void trackEvent("paige_session_start", "engagement", { page: currentPageRef.current });
@@ -496,6 +594,10 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         }
       }
 
+      if (!streamDone) {
+        throw new Error("PAIGE response stream ended before [DONE].");
+      }
+
       if (currentDoc && assistantMessage.length > 100) {
         extractDocumentSummary(assistantMessage, currentDoc.name);
 
@@ -543,6 +645,14 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         } catch (err) {
           console.warn("Conversational extractor failed:", err);
         }
+      }
+
+      if (shouldClearComposerDraft({
+        terminalDone: streamDone,
+        currentDraft: readComposerDraft(originDraft),
+        submittedText: messageText,
+      })) {
+        clearComposerDraft(originDraft);
       }
 
       setIsLoading(false);
@@ -686,7 +796,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             <button
               key={action.label}
               onClick={() => handleSend(action.prompt)}
-              disabled={isLoading || dictationActive}
+              disabled={!composerScope.writable || dictationActive}
               className="text-[10px] sm:text-[11px] px-2.5 py-1 rounded-full border border-border bg-background hover:bg-accent/10 hover:border-accent/40 text-muted-foreground hover:text-gold-dark transition-colors disabled:opacity-50 whitespace-nowrap flex-shrink-0"
             >
               {action.label}
@@ -703,8 +813,13 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
       {/* Input area — safe area padding on mobile */}
       <div className="p-2 sm:p-3 border-t border-border space-y-2 flex-shrink-0 pb-[env(safe-area-inset-bottom,8px)]">
+        {!composerScope.writable && !isLoading && composerUnavailableReason && (
+          <p role="status" className="text-xs text-muted-foreground">
+            {composerUnavailableReason}
+          </p>
+        )}
         <div className="flex gap-1.5 sm:gap-2 items-center">
-          <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading} title="Attach a document (PDF)">
+          <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={!composerScope.writable} title="Attach a document (PDF)">
             <Paperclip className="w-4 h-4" />
           </Button>
           <Textarea
@@ -715,21 +830,29 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             placeholder={attachedDoc ? "Add a message or send document... (Shift+Enter for new line)" : "Ask Paige anything... (Shift+Enter for new line)"}
             rows={1}
             className="flex-1 text-sm min-h-[40px] max-h-[200px] resize-none py-2"
-            disabled={isLoading}
+            disabled={!composerScope.writable}
           />
           {/* Tap-to-dictate — neutral/indigo mic (never gold; Send owns the act, §11).
               Dictated words append into the composer for the client to edit + send. */}
           <DictationMicButton
             scopeEpoch={dictationScopeEpoch}
             composerRef={inputRef}
-            onText={(seg, insertionPoint) => setInput((prev) => appendDictation(prev, seg, insertionPoint))}
+            onText={(seg, insertionPoint) => {
+              const captured = composerScope.writableHandle;
+              if (!captured || !acceptComposerDelivery(captured, composerScopeRef.current)) return;
+              setInput((prev) => appendDictation(prev, seg, insertionPoint));
+            }}
             onActiveChange={handleDictationActivity}
-            onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
-            disabled={isLoading}
+            onError={(msg) => {
+              const captured = composerScope.writableHandle;
+              if (!captured || !acceptComposerDelivery(captured, composerScopeRef.current)) return;
+              toast({ title: "Voice typing", description: msg, variant: "destructive" });
+            }}
+            disabled={!composerScope.writable}
             variant="secondary"
             className={`flex-shrink-0 ${isMobile ? "h-10 w-10" : "h-9 w-9"}`}
           />
-          <Button onClick={() => handleSend()} disabled={isLoading || dictationActive || (!input.trim() && !attachedDoc)} className="bg-gradient-gold hover:opacity-90 h-10 w-10" size="icon">
+          <Button onClick={() => handleSend()} disabled={!composerScope.writable || dictationActive || (!input.trim() && !attachedDoc)} className="bg-gradient-gold hover:opacity-90 h-10 w-10" size="icon">
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>
         </div>

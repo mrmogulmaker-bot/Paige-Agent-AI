@@ -26,6 +26,7 @@ const thread = (id: string) => ({ kind: "thread" as const, id });
 
 const readyThreadConversation = (id = "thread-a"): ComposerConversationState => ({
   history: "settled",
+  newConversationId: NEW_CHAT_CONVERSATION.id,
   requested: thread(id),
   displayed: thread(id),
   intent: "explicit",

@@ -21,8 +21,9 @@ describe("dictation composer scope and send contract", () => {
     expect(sources[1]).toContain("scopeEpoch={dictationScopeEpoch}");
     expect(sources[2]).toContain("scopeEpoch={dictationScopeEpoch}");
     expect(sources[0]).toContain('scopedUserId ?? "anonymous"');
-    expect(sources[0]).toContain('activeThreadId ?? "new"');
-    expect(sources[1]).toContain("user.id,");
+    expect(sources[0]).toContain("requestedConversation.requested.id,");
+    expect(sources[1]).toContain('currentIdentity ? \`${currentIdentity.tenantId}:${currentIdentity.userId}\` : "resolving"');
+    expect(sources[1]).toContain("newConversationId,");
     expect(sources[1]).toContain("location.pathname,");
     expect(sources[1]).toContain('location.search ?? ""');
   });
@@ -71,9 +72,9 @@ describe("dictation composer scope and send contract", () => {
     const paigeChat = read("src/components/app/PaigeChat.tsx");
     const conversations = read("src/pages/admin/conversations/shell/ConversationsRichComposer.tsx");
     expect(paigeAiChat).toContain("const composerSendBlocked = composerBlocked || dictationActive;");
-    expect(paigeAiChat).toContain("if (dictationActive) return;");
-    expect(paigeChat).toContain("if (dictationActive) return;");
-    expect(paigeChat).toContain("disabled={isLoading || dictationActive || (!input.trim() && !attachedDoc)}");
+    expect(paigeAiChat).toContain("if (dictationActive || !originDraft) return;");
+    expect(paigeChat).toContain("if (dictationActive || !originDraft) return;");
+    expect(paigeChat).toContain("disabled={!composerScope.writable || dictationActive || (!input.trim() && !attachedDoc)}");
     expect(conversations).toContain("sendDisabled={sendDisabled || dictationActive}");
   });
 
@@ -88,14 +89,14 @@ describe("dictation composer scope and send contract", () => {
       paigeAiChat.indexOf("<PaigeLiveConversation"),
       paigeAiChat.indexOf("/>\n  ) : null", paigeAiChat.indexOf("<PaigeLiveConversation")),
     );
-    expect(paigeAiChat).toContain("if (dictationActive) return;\n    if (chip.autoSend)");
-    expect(paigeAiChat).toContain("const slashOpen = !!slashMatch && filteredCommands.length > 0 && !isLoading && !dictationActive;");
-    expect(paigeAiChat).toContain("const pickCommand = (c: QuickChip) => {\n    if (dictationActive) return;");
+    expect(paigeAiChat).toContain("if (dictationActive || !composerScope.writable) return;\n    if (chip.autoSend)");
+    expect(paigeAiChat).toContain("&& composerScope.writable\n    && !dictationActive;");
+    expect(paigeAiChat).toContain("const pickCommand = (c: QuickChip) => {\n    if (dictationActive || !composerScope.writable) return;");
     expect(composerTextarea).toContain("disabled={composerBlocked}");
     expect(liveConversation).toContain("disabled={composerBlocked || dictationActive}");
     expect(paigeLiveConversation).toContain("disabled={working || Boolean(disabled)}");
-    expect(paigeAiChat).toContain("disabled={isLoading || dictationActive}");
-    expect(paigeAiChat).toContain("disabled={isLoading || dictationActive || !activeTenantId}");
+    expect(paigeAiChat).toContain("disabled={composerSendBlocked}");
+    expect(paigeAiChat).toContain("disabled={!composerScope.writable || dictationActive}");
   });
 
   it("binds the conversations epoch to tenant, selected thread, and edited-draft identity", () => {
