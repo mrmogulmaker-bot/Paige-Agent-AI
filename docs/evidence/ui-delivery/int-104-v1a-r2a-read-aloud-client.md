@@ -35,7 +35,7 @@ ACCEPTANCE_CRITERIA: Each play tap sends one new `Idempotency-Key`; any transpor
 MOTION_PURPOSE: Existing loading rotation communicates an in-progress fetch and already becomes static under reduced motion; no motion is added or changed.
 PROTECTED_SEAMS: AFFECTED and tested — chat message identity/playback state, browser preflight, integration failure/retry behavior, accessibility, responsive shell geometry. NOT AFFECTED — tenant/workspace/client/account isolation; authentication/account choice; Solo entitlement/signup/paywall/billing/provisioning; approval/autonomy/authority; Spine execution; canonical writes/readback; Rail/receipts/Memory; transcript scroll/stream/thread/pop-out/minimize/history hydration; Live Conversation; Secure Browser/Vault; durable jobs; privacy/secrets. Provider selection and synthesis transport are not changed.
 
-INTERNAL_BUILD_IDENTITY: 3e36c3069a3b60d2ae84b5d34137835e14f6c176; deployment=none-pre-push; environment=development; migrations=NOT_APPLICABLE; edge=PROOF_OWED(paige-tts exact-only redeploy after merge); evidence=this record and focused 12-test suite
+INTERNAL_BUILD_IDENTITY: 1d1ae4dae5c37350a58b21469b92893aeeaf33d3; deployment=none-pre-push; environment=development; migrations=NOT_APPLICABLE; edge=PROOF_OWED(paige-tts exact-only redeploy after merge); evidence=this record and focused 12-test suite
 RELEASE_CHANNEL: development: pre-push branch build; production deployment is authorized but not yet observed
 RELEASE_CLASSIFICATION: patch: reliability and truthful recovery for existing read-aloud without a new capability or customer release identity
 CUSTOMER_RELEASE_IDENTITY: none: internal reliability patch, not a separately named customer release
