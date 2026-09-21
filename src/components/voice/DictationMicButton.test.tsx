@@ -263,7 +263,6 @@ describe("Solo dictation control", () => {
     await flush();
     await act(async () => sockets.at(-1)!.open());
     await act(async () => sockets.at(-1)!.message({ type: "ready" }));
-    await act(async () => { host.querySelector("button")!.click(); });
     await act(async () => sockets.at(-1)!.error());
     expect(host.textContent).toContain("Voice typing failed");
 
@@ -389,6 +388,91 @@ describe("Solo dictation control", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("keeps a trailing final after STOP -> onerror -> clean close without surfacing an error", async () => {
+    const onText = vi.fn();
+    const onError = vi.fn();
+    let latest!: UseDictationApi;
+    const Probe = () => {
+      latest = useDictation({ onText, onError, scopeEpoch: "account-a" });
+      return <span>{latest.status}:{latest.error ?? ""}</span>;
+    };
+    await act(async () => root.render(<Probe />));
+    await act(async () => { void latest.start(); await Promise.resolve(); await Promise.resolve(); });
+    const socket = sockets[0];
+    await act(async () => socket.open());
+    await act(async () => socket.message({ type: "ready" }));
+    await act(async () => latest.stop());
+    await act(async () => socket.error());
+    await act(async () => socket.message({ type: "transcript", text: "trailing final", is_final: true }));
+    await act(async () => socket.closed(true));
+    expect(onText).toHaveBeenCalledWith("trailing final");
+    expect(onError).not.toHaveBeenCalled();
+    expect(latest.status).toBe("idle");
+    expect(latest.error).toBeNull();
+  });
+
+  it("surfaces a truthful disconnect after STOP -> onerror -> unclean close", async () => {
+    const onError = vi.fn();
+    let latest!: UseDictationApi;
+    const Probe = () => {
+      latest = useDictation({ onText: vi.fn(), onError, scopeEpoch: "account-a" });
+      return null;
+    };
+    await act(async () => root.render(<Probe />));
+    await act(async () => { void latest.start(); await Promise.resolve(); await Promise.resolve(); });
+    const socket = sockets[0];
+    await act(async () => socket.open());
+    await act(async () => socket.message({ type: "ready" }));
+    await act(async () => latest.stop());
+    await act(async () => socket.error());
+    await act(async () => socket.closed(false));
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith("Voice typing disconnected. Please try again.");
+    expect(latest.status).toBe("error");
+  });
+
+  it("times out when STOP receives no final transcript or close", async () => {
+    vi.useFakeTimers();
+    try {
+      const onError = vi.fn();
+      let latest!: UseDictationApi;
+      const Probe = () => {
+        latest = useDictation({ onText: vi.fn(), onError, scopeEpoch: "account-a" });
+        return null;
+      };
+      await act(async () => root.render(<Probe />));
+      await act(async () => { void latest.start(); await Promise.resolve(); await Promise.resolve(); });
+      const socket = sockets[0];
+      await act(async () => socket.open());
+      await act(async () => socket.message({ type: "ready" }));
+      await act(async () => latest.stop());
+      await act(async () => { vi.advanceTimersByTime(15_000); });
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledWith("Voice typing took too long to finish. Please try again.");
+      expect(latest.status).toBe("error");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps pre-STOP onerror terminal", async () => {
+    const onError = vi.fn();
+    let latest!: UseDictationApi;
+    const Probe = () => {
+      latest = useDictation({ onText: vi.fn(), onError, scopeEpoch: "account-a" });
+      return null;
+    };
+    await act(async () => root.render(<Probe />));
+    await act(async () => { void latest.start(); await Promise.resolve(); await Promise.resolve(); });
+    const socket = sockets[0];
+    await act(async () => socket.open());
+    await act(async () => socket.message({ type: "ready" }));
+    await act(async () => socket.error());
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith("Couldn't reach voice typing. Check your connection and try again.");
+    expect(latest.status).toBe("error");
   });
 
   it("keeps recording after release and stops only on the second tap", async () => {

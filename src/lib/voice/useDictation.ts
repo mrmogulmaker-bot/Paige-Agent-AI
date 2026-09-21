@@ -228,8 +228,8 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
     setStatus("idle");
   }, [isCurrent, teardownRun]);
 
-  const failRun = useCallback((run: DictationRun, nextFailure: DictationFailure, message: string) => {
-    if (!isCurrent(run)) return;
+  const failRun = useCallback((run: DictationRun, nextFailure: DictationFailure, message: string, ignoreAfterRelease = false) => {
+    if (!isCurrent(run) || (ignoreAfterRelease && run.released)) return;
     currentRunRef.current = null;
     setFailure(nextFailure);
     setError(message);
@@ -392,7 +392,7 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
 
       ws.onerror = () => {
         if (!isCurrent(run)) return;
-        failRun(run, "provider-failure", "Couldn't reach voice typing. Check your connection and try again.");
+        failRun(run, "provider-failure", "Couldn't reach voice typing. Check your connection and try again.", true);
       };
 
       ws.onclose = (ev) => {
