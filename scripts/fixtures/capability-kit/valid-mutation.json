@@ -1,0 +1,11 @@
+{
+  "id": "crm.contacts.create",
+  "effect": "mutation",
+  "permission": "crm.contacts.create",
+  "input": {
+    "properties": {
+      "email": { "type": "string", "format": "email" }
+    },
+    "required": ["email"]
+  }
+}
