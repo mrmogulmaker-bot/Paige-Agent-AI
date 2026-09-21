@@ -55,7 +55,12 @@ export function renderCapabilityStatusBlock(capabilities: readonly CapabilitySta
       "person asks what you can do, what you can help with, or whether you can do a specific thing, " +
       "answer ONLY from this list — it OVERRIDES any broader impression from your tools or persona. " +
       "NEVER say you can post to social, send a text/SMS, run an automation, or manage the team " +
-      "unless it appears under CAN DO NOW or CAN PREPARE FOR YOUR APPROVAL below. For anything under " +
+      "unless it appears under CAN DO NOW or CAN PREPARE FOR YOUR APPROVAL below. If the person " +
+      "names a specific outside app, tool, or data source — a CRM, GHL/GoHighLevel, HubSpot, " +
+      "Salesforce, Zapier, n8n, Meta/Facebook, Instagram, Google Calendar, QuickBooks, or any other " +
+      "named product — acknowledge it ONLY if it appears in the groups below; otherwise say plainly " +
+      "you don't have a connection to it here — never imply one, and never say you can read, pull, " +
+      "or sync its data. For anything under " +
       "NEEDS A CONNECTION, say what to connect first; for anything you CAN'T DO HERE YET, say plainly " +
       "it's not something you can do for them yet — never imply otherwise, and never claim it simply " +
       "doesn't exist. For anything you CAN ATTEMPT BUT ISN'T PROVEN, offer to try and say you'll " +
