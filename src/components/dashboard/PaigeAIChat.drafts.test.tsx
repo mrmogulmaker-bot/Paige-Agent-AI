@@ -352,6 +352,54 @@ describe("PaigeAIChat per-thread composer drafts", () => {
     expect(textarea().value).toBe("retry must preserve me");
   });
 
+  it("preserves a newer edit when retry succeeds without sending it twice", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(failedStream())
+      .mockResolvedValueOnce(successfulStream());
+    vi.stubGlobal("fetch", fetchMock);
+    await type("original failed turn");
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!.click();
+      await settle();
+    });
+    await type("newer unsent edit");
+
+    const retryButton = Array.from(host.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent === "Retry")!;
+    await act(async () => {
+      retryButton.click();
+      await settle();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(textarea().value).toBe("newer unsent edit");
+  });
+
+  it("preserves a newer edit when retry fails", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(failedStream())
+      .mockResolvedValueOnce(failedStream());
+    vi.stubGlobal("fetch", fetchMock);
+    await type("original failed turn");
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!.click();
+      await settle();
+    });
+    await type("newer unsent edit");
+
+    const retryButton = Array.from(host.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent === "Retry")!;
+    await act(async () => {
+      retryButton.click();
+      await settle();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(textarea().value).toBe("newer unsent edit");
+  });
+
   it("isolates tenant and user scopes while preserving their own session drafts", async () => {
     await type("tenant A / user A");
     const originalTenant = harness.tenantId;

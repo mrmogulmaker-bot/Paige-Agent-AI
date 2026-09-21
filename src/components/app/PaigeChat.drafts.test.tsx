@@ -181,6 +181,23 @@ describe("AppShell PaigeChat scoped session drafts", () => {
     expect(host.querySelector<HTMLButtonElement>('button[aria-label="Dictate"]')!.disabled).toBe(false);
   });
 
+  it("keeps the composer disabled when portal brand resolves before the active tenant", async () => {
+    const activeUser = user(`app-user-${testNumber}`);
+    harness.tenantId = null;
+    harness.portalBrandTenantId = `app-tenant-${testNumber}`;
+    harness.portalBrandLoading = false;
+
+    await act(async () => {
+      root.render(<PaigeChat user={activeUser} session={session} clientId="client-in-view" />);
+      await settle();
+    });
+
+    expect(textarea().disabled).toBe(true);
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Dictate"]')!.disabled).toBe(true);
+    expect(Array.from(host.querySelectorAll<HTMLButtonElement>("button")).at(-1)!.disabled).toBe(true);
+    expect(host.textContent).toContain("Select a workspace before writing to PAIGE.");
+  });
+
   it("isolates and restores drafts across tenant switches", async () => {
     const firstTenant = harness.tenantId;
     const activeUser = user(`app-user-${testNumber}`);
