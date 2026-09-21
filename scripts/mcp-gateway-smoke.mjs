@@ -22,6 +22,7 @@
  */
 import http from "node:http";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { build } from "esbuild";
@@ -971,23 +972,59 @@ console.log("\n— runtime parity vs makeRpcConnectionLoader: SQL-accept ⟺ loa
   check("parity reject_oauth_expired → loader unusable (oauthExpired, connection.ts:118)", await unusable({ auth_kind: "oauth", auth_token: "t", expires_at: PAST }));
   check("parity reject_api_key → loader unusable (not in MCP_EXECUTABLE_AUTH_KINDS, connection.ts:58)", await unusable({ auth_kind: "api_key", auth_token: "t" }));
 
-  // DIVERGENCE GUARD — the setter's accept-set MUST equal the loader's MCP_EXECUTABLE_AUTH_KINDS
-  // (connection.ts:58). That constant is private, so test it BEHAVIORALLY: for every recognized schema
-  // kind, does the loader accept a minimally-valid row of that kind? That set must equal SQL_EXECUTABLE
-  // (what the setter accepts). If connection.ts adds/removes an executable kind without the setter
-  // following (or vice-versa), this FAILS CI — the two can never silently diverge.
-  const SQL_EXECUTABLE = new Set(["oauth", "bearer", "header", "url", "none"]);  // setter accept-set (migration 20270329000000)
-  const minimalRow = {
-    oauth:   { auth_kind: "oauth",   auth_token: "t", expires_at: FUT },
-    bearer:  { auth_kind: "bearer",  auth_token: "t" },
-    header:  { auth_kind: "header",  auth_token: "t", auth_header_name: "X-Api-Key" },
-    url:     { auth_kind: "url" },
-    none:    { auth_kind: "none" },
-    api_key: { auth_kind: "api_key", auth_token: "t" },
-  };
-  for (const kind of Object.keys(minimalRow)) {
-    const loaderOk = await usable(minimalRow[kind]);
-    check(`parity divergence-guard: loader-accepts(${kind}) === setter-accepts(${kind})`, loaderOk === SQL_EXECUTABLE.has(kind), `loaderOk=${loaderOk} sqlAccepts=${SQL_EXECUTABLE.has(kind)}`);
+  // DIVERGENCE GUARD (round-5 F4) — TWO HALVES that meet at a documented executable set. The SQL half
+  // moved to the pgTAP (supabase/tests/mcp_gateway_endpoint_setter.sql), which drives the REAL setter for
+  // every auth_kind in the mcp_connections CHECK set and asserts the accepted set == the documented set.
+  // THIS half asserts the LOADER's MCP_EXECUTABLE_AUTH_KINDS (connection.ts:58) == that SAME documented
+  // set. The constant is module-private and INT-105 forbids editing _shared to export it, so read the
+  // loader source (read-only) and parse it. Neither half alone proves the setter and the loader agree:
+  // the pgTAP pins the setter to the documented set, this pins the loader to it, so the pair proves
+  // setter-accepts <=> loader-executable. (The accept_*/reject_* cases above are the BEHAVIORAL loader
+  // coverage; this is the exact-set assertion.)
+  const DOCUMENTED_EXECUTABLE_AUTH_KINDS = ["bearer", "header", "none", "oauth", "url"];  // == pgTAP _expected + migration header
+  {
+    const connSrc = readFileSync(path.join(process.cwd(), "supabase/functions/_shared/mcp-gateway/connection.ts"), "utf8");
+    const m = connSrc.match(/MCP_EXECUTABLE_AUTH_KINDS\s*=\s*new Set\(\s*\[([^\]]*)\]\s*\)/);
+    check("F4: MCP_EXECUTABLE_AUTH_KINDS found in the loader source (connection.ts)", !!m, "constant not found — parser or source changed");
+    const loaderKinds = m ? [...m[1].matchAll(/["']([^"']+)["']/g)].map((x) => x[1]).sort() : [];
+    const documented = [...DOCUMENTED_EXECUTABLE_AUTH_KINDS].sort();
+    check("F4: the loader's MCP_EXECUTABLE_AUTH_KINDS EQUALS the documented executable set (pairs with the pgTAP setter enumeration)",
+      JSON.stringify(loaderKinds) === JSON.stringify(documented), `loader=${JSON.stringify(loaderKinds)} documented=${JSON.stringify(documented)}`);
+  }
+}
+
+// ── 10. INT-099 round-5 (F3) — shared IP-literal parity: ssrfGuard.ts ⟺ the SQL classifier ──
+// ONE canonical named list (supabase/tests/mcp-ip-literal-cases.json). THIS half drives ssrfGuard.ts's
+// assertPublicHttpUrl (READ-ONLY import — connection.ts/ssrfGuard.ts are never edited, INT-105) for each
+// literal and asserts throw ⇔ unsafe. The pgTAP half (supabase/tests/mcp_gateway_endpoint_setter.sql,
+// the F3-SHARED-IP-LIST block) asserts _mcp_inet_is_public(literal::inet) = NOT unsafe under the IDENTICAL
+// names. Neither alone proves _mcp_inet_is_public matches ssrfGuard; the pair does. A cross-check here
+// proves the pgTAP's embedded (name, literal, unsafe) rows EQUAL the JSON — genuinely ONE list.
+console.log("\n— F3 shared IP-literal parity: ssrfGuard.ts ⟺ SQL classifier (INT-099 R5) —");
+{
+  const ssrfMod = await bundle("supabase/functions/_shared/ssrfGuard.ts", "ssrfguard.mjs");
+  const casesDoc = JSON.parse(readFileSync(path.join(process.cwd(), "supabase/tests/mcp-ip-literal-cases.json"), "utf8"));
+  const cases = casesDoc.cases;
+  check("F3: the shared IP-literal list is non-trivial", Array.isArray(cases) && cases.length >= 20, `n=${cases?.length}`);
+
+  // CROSS-CHECK: the pgTAP file embeds the IDENTICAL (name, literal, unsafe) set between its markers, so
+  // the SQL half and this TS half are provably one list (add a case to the JSON and the pgTAP must follow,
+  // or this fails). This closes the "two independently-drifting lists" gap the F3 ruling names.
+  const pgtap = readFileSync(path.join(process.cwd(), "supabase/tests/mcp_gateway_endpoint_setter.sql"), "utf8");
+  const block = pgtap.split("F3-SHARED-IP-LIST BEGIN")[1]?.split("F3-SHARED-IP-LIST END")[0] ?? "";
+  const pgRows = [...block.matchAll(/\(\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*(true|false)\s*\)/g)]
+    .map((r) => `${r[1]}|${r[2]}|${r[3] === "true"}`).sort();
+  const jsonRows = cases.map((c) => `${c.name}|${c.literal}|${c.unsafe === true}`).sort();
+  check("F3: the pgTAP embedded shared list EQUALS the JSON (one source; identical names, literals, verdicts)",
+    JSON.stringify(pgRows) === JSON.stringify(jsonRows), `pg=${pgRows.length} json=${jsonRows.length}`);
+
+  // drive ssrfGuard for each case: a v6 literal is bracketed in the URL authority, a v4 is bare. For a
+  // clean IP-literal URL the ONLY reason assertPublicHttpUrl throws is ipUnsafe, so throw ⇔ unsafe.
+  for (const c of cases) {
+    const host = c.literal.includes(":") ? `[${c.literal}]` : c.literal;
+    let threw = false;
+    try { await ssrfMod.assertPublicHttpUrl(`https://${host}/mcp`); } catch { threw = true; }
+    check(`F3 ssrfGuard ${c.name} (${c.literal}) is ${c.unsafe ? "unsafe" : "public"}`, threw === (c.unsafe === true), `threw=${threw}`);
   }
 }
 

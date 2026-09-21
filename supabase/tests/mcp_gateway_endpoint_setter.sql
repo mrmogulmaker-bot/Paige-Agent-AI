@@ -33,6 +33,17 @@
 --     shorthand/encoded IPv4, and the full private/reserved ranges — not just canonical spellings —
 --     (P2b) enforces DNS-name syntax so whitespace/control/percent-encoding/over-length hosts reject,
 --     and (round-4) rejects a bracketed IPv4 authority ([8.8.8.8]) since brackets are IPv6-only.
+--   • F3 (round-5) — the value classifier _mcp_inet_is_public is at FULL PARITY with ssrfGuard.ts's
+--     ipUnsafe: fec0::/10 site-local, the top-64-zero blanket (mapped/compatible), and EMBEDDED-IPv4
+--     inspection for 6to4 (2002::/16) + NAT64 (64:ff9b::/32). The SHARED IP-literal list (from
+--     supabase/tests/mcp-ip-literal-cases.json, mirrored in the F3-SHARED-IP-LIST block below) is
+--     asserted here against _mcp_inet_is_public and, under IDENTICAL names, against ssrfGuard.ts in
+--     scripts/mcp-gateway-smoke.mjs; the smoke also cross-checks the two lists are equal. Pair-proof:
+--     neither half alone proves parity.
+--   • F4 (round-5) — the accept-set divergence guard's SQL half: every auth_kind in the mcp_connections
+--     CHECK set is driven THROUGH THE REAL setter and the accepted set is asserted == the documented
+--     executable set {oauth,bearer,header,url,none}; the smoke asserts the loader's
+--     MCP_EXECUTABLE_AUTH_KINDS == that same set. Pair-proof: neither alone proves setter==loader.
 --
 -- Synthetic fixtures only; self-contained; ROLLS BACK. Seeds run as the superuser test role (RLS
 -- bypassed); each setter call mocks the CALLER via request.jwt.claims so auth.uid() / the tenant
@@ -164,6 +175,68 @@ BEGIN
   IF public._mcp_endpoint_write_safe('https://api%2Eexample.com/mcp')          THEN RAISE EXCEPTION '(A4/P2b) percent-encoding in host rejected'; END IF;
   IF public._mcp_endpoint_write_safe('https://' || repeat('a.', 130) || 'example.com/mcp') THEN RAISE EXCEPTION '(A4/P2b) over-length host rejected'; END IF;
   IF public._mcp_endpoint_write_safe('https://exa_mple.example.com/mcp')       THEN RAISE EXCEPTION '(A4/P2b) underscore (outside DNS label charset) rejected'; END IF;
+END $$;
+
+-- ── (round-5 F3) shared IP-literal parity list — the SQL half. Asserts public._mcp_inet_is_public
+--    classifies each named literal EXACTLY as ssrfGuard.ts's ipUnsafe does (public = NOT unsafe),
+--    including fec0::/10 site-local, the top-64-zero blanket (mapped/compatible), and EMBEDDED-IPv4
+--    inspection of 6to4 (2002::/16) + NAT64 (64:ff9b::/32). The IDENTICAL named list is asserted on the
+--    TS side (scripts/mcp-gateway-smoke.mjs) against ssrfGuard.ts's assertPublicHttpUrl (read-only
+--    import). ONE canonical source: supabase/tests/mcp-ip-literal-cases.json — the smoke cross-checks
+--    that this block's (name, literal, unsafe) rows EQUAL that JSON, so the two halves are one list and
+--    cannot silently diverge. NEITHER half alone proves _mcp_inet_is_public matches ssrfGuard; the pair
+--    does (this asserts the SQL classifier; the TS half asserts ssrfGuard, over identical names +
+--    literals + verdicts). Keep the rows below in EXACT sync with the JSON (name, literal, boolean).
+DO $$
+DECLARE _c record; _got boolean;
+BEGIN
+  FOR _c IN
+    -- >>> F3-SHARED-IP-LIST BEGIN (MIRROR of supabase/tests/mcp-ip-literal-cases.json; the smoke asserts set-equality)
+    SELECT * FROM (VALUES
+      ('v4_public_google_dns','8.8.8.8',false),
+      ('v4_loopback_127','127.0.0.1',true),
+      ('v4_private_10','10.0.0.1',true),
+      ('v4_private_192168','192.168.1.1',true),
+      ('v4_linklocal_metadata','169.254.169.254',true),
+      ('v4_cgnat_100_64','100.64.0.1',true),
+      ('v4_6to4_relay_anycast','192.88.99.1',true),
+      ('v4_benchmark_198_18','198.18.0.1',true),
+      ('v6_loopback','::1',true),
+      ('v6_ipv4_mapped_loopback','::ffff:127.0.0.1',true),
+      ('v6_ipv4_mapped_public','::ffff:8.8.8.8',true),
+      ('v6_ipv4_compatible_public','::8.8.8.8',true),
+      ('v6_link_local_fe80','fe80::1',true),
+      ('v6_site_local_fec0','fec0::1',true),
+      ('v6_ula_fc00','fc00::1',true),
+      ('v6_ula_fd12','fd12::1',true),
+      ('v6_multicast_ff02','ff02::1',true),
+      ('v6_6to4_embed_private_10','2002:0a00:0001::',true),
+      ('v6_6to4_embed_loopback_127','2002:7f00:0001::',true),
+      ('v6_6to4_embed_linklocal_169254','2002:a9fe:0001::',true),
+      ('v6_6to4_embed_private_192168','2002:c0a8:0101::',true),
+      ('v6_6to4_embed_cgnat_100_64','2002:6440:0001::',true),
+      ('v6_6to4_embed_benchmark_198_18','2002:c612:0001::',true),
+      ('v6_6to4_embed_protocol_192_0_0','2002:c000:0001::',true),
+      ('v6_6to4_embed_relay_192_88_99','2002:c058:6301::',true),
+      ('v6_6to4_embed_multicast_224','2002:e000:0001::',true),
+      ('v6_6to4_embed_reserved_240','2002:f000:0001::',true),
+      ('v6_6to4_embed_public_8888','2002:0808:0808::',false),
+      ('v6_nat64_embed_loopback_127','64:ff9b::7f00:1',true),
+      ('v6_nat64_embed_private_10','64:ff9b::a00:1',true),
+      ('v6_nat64_embed_linklocal_169254','64:ff9b::a9fe:1',true),
+      ('v6_nat64_embed_private_192168','64:ff9b::c0a8:101',true),
+      ('v6_nat64_embed_public_8888','64:ff9b::808:808',false),
+      ('v6_public_cloudflare','2606:4700:4700::1111',false),
+      ('v6_public_google','2001:4860:4860::8888',false)
+    ) AS v(name, literal, unsafe)
+    -- <<< F3-SHARED-IP-LIST END
+  LOOP
+    _got := public._mcp_inet_is_public(_c.literal::inet);
+    IF _got IS DISTINCT FROM (NOT _c.unsafe) THEN
+      RAISE EXCEPTION '(F3 shared IP-literal) % (%): _mcp_inet_is_public=% expected public=%',
+        _c.name, _c.literal, _got, (NOT _c.unsafe);
+    END IF;
+  END LOOP;
 END $$;
 
 -- ── (INVARIANT + A3 + reset) admin changes the endpoint WITHOUT a new token: the old secret must NOT
@@ -389,6 +462,52 @@ BEGIN
   PERFORM public.set_mcp_connection_endpoint(C, 'https://cred-none.example.com/rpc', 'none');
   SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
   IF _row.auth_kind <> 'none' OR _row.auth_token_ct IS NOT NULL THEN RAISE EXCEPTION 'accept_none must carry no credential'; END IF;
+END $$;
+
+-- ── (round-5 F4) accept-set divergence guard — the SQL half. Enumerate EVERY auth_kind the
+--    mcp_connections auth_kind CHECK constraint permits ({oauth,bearer,header,api_key,url,none}) THROUGH
+--    THE REAL setter, and assert the ACCEPTED set EQUALS the documented executable set
+--    {oauth,bearer,header,url,none}. The TS half (scripts/mcp-gateway-smoke.mjs) asserts the loader's
+--    MCP_EXECUTABLE_AUTH_KINDS (connection.ts:58) EQUALS that SAME documented set. NEITHER half alone
+--    proves the setter and the loader agree: this pins the SETTER's accept-set to the documented set; the
+--    smoke pins the LOADER's executable-set to it; only the pair proves setter-accepts <=> loader-
+--    executable. api_key must reject with the DISTINCT code (MCP_AUTH_KIND_NOT_EXECUTABLE), never a
+--    generic bad-bundle. Each accepted kind uses a MINIMAL otherwise-valid bundle so only the KIND is
+--    under test; a rejected kind writes nothing (the auth_kind gate is before any write). ────────────────
+DO $$
+DECLARE
+  _kind text; _accepted text[] := '{}'::text[];
+  _expected text[] := ARRAY['oauth','bearer','header','url','none'];  -- documented executable set (== connection.ts:58)
+  C uuid := '0e900000-0000-0000-0000-0000000000c1';
+BEGIN
+  PERFORM set_config('request.jwt.claims', '{"sub":"0e900000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+  FOREACH _kind IN ARRAY ARRAY['oauth','bearer','header','api_key','url','none'] LOOP  -- the auth_kind CHECK set
+    BEGIN
+      CASE _kind
+        WHEN 'oauth'   THEN PERFORM public.set_mcp_connection_endpoint(C, 'https://f4-oauth.example.com/rpc',  'oauth',  'tok', NULL, NULL, 'https://iss.example.com', 'cid');
+        WHEN 'bearer'  THEN PERFORM public.set_mcp_connection_endpoint(C, 'https://f4-bearer.example.com/rpc', 'bearer', 'tok');
+        WHEN 'header'  THEN PERFORM public.set_mcp_connection_endpoint(C, 'https://f4-header.example.com/rpc', 'header', 'tok', 'X-Api-Key');
+        WHEN 'api_key' THEN PERFORM public.set_mcp_connection_endpoint(C, 'https://f4-apikey.example.com/rpc', 'api_key', 'tok');
+        WHEN 'url'     THEN PERFORM public.set_mcp_connection_endpoint(C, 'https://f4-url.example.com/rpc',    'url');
+        WHEN 'none'    THEN PERFORM public.set_mcp_connection_endpoint(C, 'https://f4-none.example.com/rpc',   'none');
+      END CASE;
+      _accepted := array_append(_accepted, _kind);   -- reached only if the setter did NOT raise
+    EXCEPTION WHEN OTHERS THEN
+      -- a rejected kind: api_key MUST reject with the DISTINCT executable code; any other rejection here
+      -- (or api_key rejecting with the wrong code) is a bug.
+      IF _kind = 'api_key' THEN
+        IF SQLERRM NOT LIKE '%MCP_AUTH_KIND_NOT_EXECUTABLE%' THEN
+          RAISE EXCEPTION '(F4) api_key must reject with MCP_AUTH_KIND_NOT_EXECUTABLE, got: %', SQLERRM;
+        END IF;
+      ELSE
+        RAISE EXCEPTION '(F4) documented-executable kind % was unexpectedly rejected: %', _kind, SQLERRM;
+      END IF;
+    END;
+  END LOOP;
+  -- the accepted set must EQUAL the documented executable set (order-independent, no dups on either side).
+  IF NOT (_accepted @> _expected AND _expected @> _accepted) THEN
+    RAISE EXCEPTION '(F4) setter accept-set % != documented executable set %', _accepted, _expected;
+  END IF;
 END $$;
 
 -- ── (round-3 F4) credential_changed reflects a NON-TOKEN credential field. A same-URL rebind that keeps

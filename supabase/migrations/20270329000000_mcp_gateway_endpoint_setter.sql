@@ -32,8 +32,11 @@
 --          the CREATE path); its UPDATE never sets it, so it cannot produce or fix this.
 --   L10 auth_kind not in MCP_EXECUTABLE_AUTH_KINDS → unusable (:102; const :58 = {oauth,bearer,header,url,
 --          none}) ....................................... (a) REJECTED: api_key (the only recognized non-
---          executable kind) → MCP_AUTH_KIND_NOT_EXECUTABLE — test reject_api_key; the accept-set==constant
---          divergence guard lives in the smoke.
+--          executable kind) → MCP_AUTH_KIND_NOT_EXECUTABLE — test reject_api_key. Round-5 F4 accept-set
+--          divergence guard is a TWO-HALVES proof: the pgTAP enumerates every CHECK-set kind through the
+--          REAL setter and asserts the accepted set == the documented executable set; the smoke asserts
+--          the loader's MCP_EXECUTABLE_AUTH_KINDS (:58) == that SAME documented set. Neither alone proves
+--          setter==loader; the pair does.
 --   L11 !authUsable(auth) — reserved/invalid header name → unusable (:128) (a) REJECTED via
 --          _mcp_header_name_usable — tests reject_header_reserved / reject_header_bad_grammar.
 --   L12 oauthExpired → unusable (:118/:128) ............ (a) REJECTED: oauth access_token_expires_at<=now()
@@ -121,7 +124,15 @@
 --      literals are parsed to `inet` and range-checked NUMERICALLY (notation-agnostic — every spelling
 --      of loopback/mapped/ULA/link-local IPv6 and every private/reserved IPv4 is caught, not just
 --      canonical strings), and encoded / shorthand IPv4 (decimal, hex, octal, 2-/3-part dotted) is
---      refused outright. A non-literal host must also be SYNTACTICALLY valid DNS (labels of [a-z0-9-],
+--      refused outright. ROUND-5 (F3): the value classifier _mcp_inet_is_public is now at FULL PARITY
+--      with ssrfGuard.ts's ipUnsafe (_shared/ssrfGuard.ts:116-143) — it adds fec0::/10 site-local, the
+--      top-64-zero blanket (mapped/compatible/translated), and EMBEDDED-IPv4 inspection for 6to4
+--      (2002::/16) and NAT64 (64:ff9b::/32) so a public embedded v4 is public and a private one blocked,
+--      exactly as ssrfGuard. The class is closed by ONE shared, named IP-literal list
+--      (supabase/tests/mcp-ip-literal-cases.json) asserted on BOTH sides under identical names: the
+--      pgTAP asserts _mcp_inet_is_public; the TS smoke asserts ssrfGuard.ts's assertPublicHttpUrl
+--      (read-only import). Neither alone proves parity; the pair does. A non-literal host must also be
+--      SYNTACTICALLY valid DNS (labels of [a-z0-9-],
 --      1–63 chars, no leading/trailing hyphen, ≥1 dot, total ≤253) — so whitespace, control chars, and
 --      percent-encoding in the host (all outside the label charset) are rejected before the destructive
 --      reset, matching what a runtime `new URL(...)` would refuse. A BRACKETED host must be a valid IPv6
@@ -140,7 +151,10 @@
 --        • auth_kind (round-4): the accepted set EQUALS the loader's MCP_EXECUTABLE_AUTH_KINDS
 --          (connection.ts:58 = {oauth,bearer,header,url,none}). `api_key` is a recognized schema kind the
 --          loader marks connection_unusable, so it is REJECTED with MCP_AUTH_KIND_NOT_EXECUTABLE; a
---          garbage kind is MCP_BAD_AUTH_KIND. The smoke has a divergence guard.
+--          garbage kind is MCP_BAD_AUTH_KIND. Round-5 F4: the accept-set divergence guard is proven in
+--          TWO HALVES that meet at a documented executable set {oauth,bearer,header,url,none} — the pgTAP
+--          drives the REAL setter for every CHECK-set kind (accepted == documented); the smoke asserts
+--          the loader constant == documented. Neither alone proves setter==loader; the pair does.
 --        • header  → token + a header_name that public._mcp_header_name_usable accepts (F1: the runtime's
 --          RFC 9110 token grammar AND reserved-name set, mirrored from mcp-client.ts:77/:63-72); reject
 --          refresh / any oauth-* field.
@@ -148,10 +162,12 @@
 --          bundle stage — rejected at the auth_kind gate above.)
 --        • oauth → token + oauth_issuer + oauth_client_id (F3: token REQUIRED — the runtime has no
 --          refresh step, so a refresh-only bundle loads unusable; refresh_token / client_secret /
---          scopes / expiry are optional-additional); reject a header_name; and (round-4) reject an
---          already-EXPIRED access token — `access_token_expires_at <= now()` → MCP_OAUTH_TOKEN_EXPIRED,
---          mirroring the loader's oauthExpired (connection.ts:118) EXACTLY (exact <=, no skew/grace; a
---          NULL/absent expiry is live).
+--          scopes / expiry are optional-additional); reject a header_name; and (round-4, round-5 F2)
+--          reject an already-EXPIRED access token — `access_token_expires_at <= clock_timestamp()` →
+--          MCP_OAUTH_TOKEN_EXPIRED, mirroring the loader's oauthExpired (connection.ts:118) EXACTLY.
+--          F2: clock_timestamp() (live wall clock), NOT now()/transaction_timestamp() (frozen at txn
+--          start), is the faithful mirror of the loader's Date.now(); exact <=, no skew/grace; a
+--          NULL/absent expiry is live.
 --        • url / none → NO credential material at all (F2: any stray token / header_name / refresh /
 --          oauth-* field is rejected).
 --      Text presence is btrim(COALESCE(...)) so a whitespace-only value counts as absent. Closed codes
@@ -174,6 +190,15 @@
 --      any system/headless authority path is wired. This setter has NO system path (D5): its authority
 --      is the capability held by a real tenant-admin actor (auth.uid()), so no system reason arises here.
 --
+-- FORWARD-CONSTRAINT (INT-107, round-5 F1 — probe TOCTOU, recorded in the decision-log). The endpoint
+--      PROBE/verify step (a future PR, NOT this one and NOT authorized) inspects an endpoint's identity
+--      to mark it verified. It MUST carry and verify the endpoint_hash / generation it inspected, and
+--      re-confirm that value, BEFORE any wiring acts on the probe result — so a probe of endpoint A can
+--      never mark a since-repointed endpoint B verified (the load↔verify TOCTOU, the same class INT-078
+--      closed for dispatch). This setter already resets status to pending_verification and clears
+--      provider_state/tools on every rebind, so a repoint can never leave a stale "verified" behind; the
+--      constraint binds the probe lane, which does not exist yet.
+--
 -- Carries INT-079's url exemption, INT-078's endpoint_hash and INT-082's visibility UNTOUCHED (this
 -- migration does not redefine get_mcp_connection_secret). anon reaches none of the new surface.
 --
@@ -182,48 +207,121 @@
 --   DROP FUNCTION IF EXISTS public._mcp_header_name_usable(text);
 --   DROP FUNCTION IF EXISTS public._mcp_endpoint_write_safe(text);
 --   DROP FUNCTION IF EXISTS public._mcp_inet_is_public(inet);
+--   DROP FUNCTION IF EXISTS public._mcp_v4_is_private(inet);   -- round-5 F3 helper (the ONE v4 range set)
 --   -- and restore public._mcp_caller_capabilities(uuid, uuid) to its 20270328000000 body (drop the
 --   -- `mcp.connections.manage` branch; the mapping is additive, so removing that one append reverts it).
 -- ============================================================================
 
 -- ─────────────────────────────────────────────────────────────────────────────────
+-- 1a-0. The ONE IPv4 private/reserved range set (round-5 F3). Mirrors ssrfGuard.ts's ipv4Private
+--     (supabase/functions/_shared/ssrfGuard.ts:42-60) EXACTLY. Single source: it is used for a
+--     family-4 input AND for the embedded IPv4 of a 6to4/NAT64 IPv6 address (below), so the v4 range
+--     set exists in exactly one place and cannot drift between the direct-v4 and embedded paths.
+--     IMMUTABLE, pure. TRUE ⇒ the v4 address is private/reserved (blocked); FALSE ⇒ public.
+-- ─────────────────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public._mcp_v4_is_private(_v4 inet)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT _v4 <<= '0.0.0.0/8'::inet          -- "this" network / 0.0.0.0        (ssrfGuard.ts:50)
+      OR _v4 <<= '10.0.0.0/8'::inet          -- private                         (:50)
+      OR _v4 <<= '100.64.0.0/10'::inet       -- CGNAT                           (:52)
+      OR _v4 <<= '127.0.0.0/8'::inet         -- loopback                        (:50)
+      OR _v4 <<= '169.254.0.0/16'::inet      -- link-local (incl. 169.254.169.254 metadata) (:51)
+      OR _v4 <<= '172.16.0.0/12'::inet       -- private                         (:51)
+      OR _v4 <<= '192.0.0.0/24'::inet        -- IETF protocol assignments       (:52)
+      OR _v4 <<= '192.88.99.0/24'::inet      -- 6to4 relay anycast              (:55)
+      OR _v4 <<= '192.168.0.0/16'::inet      -- private                         (:51)
+      OR _v4 <<= '198.18.0.0/15'::inet       -- benchmarking                    (:52)
+      OR _v4 <<= '224.0.0.0/4'::inet         -- multicast                       (:58)
+      OR _v4 <<= '240.0.0.0/4'::inet;        -- reserved (incl. 255.255.255.255 broadcast) (:58-59)
+$$;
+
+REVOKE ALL ON FUNCTION public._mcp_v4_is_private(inet) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public._mcp_v4_is_private(inet) TO authenticated, service_role;
+
+COMMENT ON FUNCTION public._mcp_v4_is_private(inet) IS
+  'INT-099/A4/F3: the ONE IPv4 private/reserved range set — mirror of ssrfGuard.ts ipv4Private (_shared/ssrfGuard.ts:42-60). Used by _mcp_inet_is_public for a family-4 input AND for the embedded IPv4 of a 6to4/NAT64 IPv6 address, so the range set lives in exactly one place. TRUE = private/reserved (blocked), FALSE = public. IMMUTABLE, pure.';
+
+-- ─────────────────────────────────────────────────────────────────────────────────
 -- 1a. Numeric address classifier — is this inet a PUBLIC address? Parsed value, not spelling, so
 --     every notation of a blocked range is caught (INT-099 peer-gate). IMMUTABLE, pure, no I/O.
+--     Round-5 (F3): brought to FULL PARITY with ssrfGuard.ts's ipUnsafe (_shared/ssrfGuard.ts:116-143),
+--     the authoritative runtime egress classifier this defends in depth. The IPv6 branch now mirrors it
+--     line-for-line: (1) the top-64-zero BLANKET refusal (:129) — one ::/64 containment covers loopback,
+--     unspecified, IPv4-mapped, IPv4-compatible AND every IPv4-translated low form, so a PUBLIC v4 in a
+--     mapped/compatible spelling is refused on the block rule exactly as ssrfGuard refuses it (a
+--     piecewise subset check was a spelling short); (2) fe80::/10 link-local (:132); (3) fec0::/10
+--     site-local (:133 — was MISSING before F3); (4) fc00::/7 ULA (:134); (5) ff00::/8 multicast (:135);
+--     (6) NAT64 64:ff9b::/32 judged by its EMBEDDED IPv4 (:138), so 64:ff9b:: + a public v4 is public and
+--     + a private v4 is blocked (was a whole-block refusal, which wrongly refused public-embedded NAT64);
+--     (7) 6to4 2002::/16 judged by its EMBEDDED IPv4 (:140), same semantics. ssrfGuard matches NAT64 on
+--     the /32 prefix and inspects ONLY the last 32 bits (ignoring bytes 4-11), so the NAT64 branch masks
+--     to the low 32 bits (& ::ffff:ffff) rather than a single CIDR (which cannot express "ignore the
+--     middle"); 6to4's embedded bytes sit immediately after the /16 prefix, so its private ranges ARE a
+--     mechanical CIDR translation (2002:<v4>::/(16+bits)) that naturally leaves bytes 6-15 free. The
+--     SAME v4 range set (_mcp_v4_is_private) backs the family-4 path and the NAT64 embedded check; the
+--     6to4 CIDR chain is the same set translated, and the pgTAP shared IP-literal list asserts every
+--     range in every form against this classifier AND (on the TS side) against ssrfGuard.ts, so the two
+--     cannot drift. Hostname->IP resolution stays runtime-owned (mcp-client.ts); this is IP-literal only.
 -- ─────────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public._mcp_inet_is_public(_ip inet)
 RETURNS boolean
 LANGUAGE plpgsql
 IMMUTABLE
 AS $$
+DECLARE _n bigint;   -- the embedded IPv4 of a NAT64 address, as an integer (0..4294967295)
 BEGIN
   IF _ip IS NULL THEN RETURN false; END IF;
+
   IF family(_ip) = 4 THEN
-    RETURN NOT (
-         _ip <<= '0.0.0.0/8'::inet          -- "this" network / 0.0.0.0
-      OR _ip <<= '10.0.0.0/8'::inet          -- private
-      OR _ip <<= '100.64.0.0/10'::inet       -- CGNAT
-      OR _ip <<= '127.0.0.0/8'::inet         -- loopback
-      OR _ip <<= '169.254.0.0/16'::inet      -- link-local (incl. 169.254.169.254 metadata)
-      OR _ip <<= '172.16.0.0/12'::inet       -- private
-      OR _ip <<= '192.0.0.0/24'::inet        -- IETF protocol assignments
-      OR _ip <<= '192.88.99.0/24'::inet      -- 6to4 relay anycast
-      OR _ip <<= '192.168.0.0/16'::inet      -- private
-      OR _ip <<= '198.18.0.0/15'::inet       -- benchmarking
-      OR _ip <<= '224.0.0.0/4'::inet         -- multicast
-      OR _ip <<= '240.0.0.0/4'::inet         -- reserved (incl. 255.255.255.255 broadcast)
-    );
+    RETURN NOT public._mcp_v4_is_private(_ip);
+
   ELSIF family(_ip) = 6 THEN
-    RETURN NOT (
-         _ip <<= '::1/128'::inet             -- loopback
-      OR _ip <<= '::/128'::inet              -- unspecified
-      OR _ip <<= '::ffff:0:0/96'::inet       -- IPv4-mapped
-      OR _ip <<= '::/96'::inet               -- IPv4-compatible (deprecated)
-      OR _ip <<= '64:ff9b::/96'::inet        -- IPv4/IPv6 translation
-      OR _ip <<= 'fc00::/7'::inet            -- unique local (fc/fd)
-      OR _ip <<= 'fe80::/10'::inet           -- link-local
-      OR _ip <<= 'ff00::/8'::inet            -- multicast
-    );
+    -- (1) top-64-zero BLANKET (ssrfGuard.ts:129): loopback ::1, unspecified ::, IPv4-mapped
+    -- ::ffff:0:0/96, IPv4-compatible ::/96, and every IPv4-translated low form. A public v4 embedded in
+    -- a mapped/compatible spelling is refused HERE (ssrfGuard does not embed-inspect these — the whole
+    -- low block is refused). Postgres keeps ::ffff:x.x.x.x as family 6, so it reaches this branch.
+    IF _ip <<= '::/64'::inet     THEN RETURN false; END IF;
+    IF _ip <<= 'fe80::/10'::inet THEN RETURN false; END IF;   -- (2) link-local (ssrfGuard.ts:132)
+    IF _ip <<= 'fec0::/10'::inet THEN RETURN false; END IF;   -- (3) site-local (F3; ssrfGuard.ts:133)
+    IF _ip <<= 'fc00::/7'::inet  THEN RETURN false; END IF;   -- (4) unique local fc/fd (ssrfGuard.ts:134)
+    IF _ip <<= 'ff00::/8'::inet  THEN RETURN false; END IF;   -- (5) multicast (ssrfGuard.ts:135)
+    -- (6) NAT64 64:ff9b::/32 (ssrfGuard.ts:138): ssrfGuard matches the /32 prefix and judges by the
+    -- EMBEDDED IPv4 (bytes 12-15), IGNORING bytes 4-11 — so mask to the low 32 bits (discarding bytes
+    -- 0-11), rebuild that embedded v4, and judge it by the ONE v4 range set. A single CIDR cannot
+    -- express "ignore the middle bytes", which is why this uses the mask, not a CIDR chain.
+    IF _ip <<= '64:ff9b::/32'::inet THEN
+      _n := (_ip & '::ffff:ffff'::inet) - '::'::inet;   -- embedded v4 as an integer
+      RETURN NOT public._mcp_v4_is_private(
+        ((_n / 16777216 % 256)::text || '.' || (_n / 65536 % 256)::text || '.'
+         || (_n / 256 % 256)::text || '.' || (_n % 256)::text)::inet);
+    END IF;
+    -- (7) 6to4 2002::/16 (ssrfGuard.ts:140): judged by the EMBEDDED IPv4 (bytes 2-5), which sit
+    -- immediately after the /16 prefix — so each private range is a mechanical translation to
+    -- 2002:<v4>::/(16+bits), whose length naturally fixes prefix+embedded and leaves bytes 6-15 free
+    -- (matching ssrfGuard ignoring them). Same set as _mcp_v4_is_private, translated (the pgTAP shared
+    -- IP-literal list pins every range in this form to ssrfGuard so it cannot drift from the v4 set).
+    IF _ip <<= '2002::/16'::inet THEN
+      RETURN NOT (
+           _ip <<= '2002:0000::/24'::inet      -- 0.0.0.0/8
+        OR _ip <<= '2002:0a00::/24'::inet      -- 10.0.0.0/8
+        OR _ip <<= '2002:6440::/26'::inet      -- 100.64.0.0/10
+        OR _ip <<= '2002:7f00::/24'::inet      -- 127.0.0.0/8
+        OR _ip <<= '2002:a9fe::/32'::inet      -- 169.254.0.0/16
+        OR _ip <<= '2002:ac10::/28'::inet      -- 172.16.0.0/12
+        OR _ip <<= '2002:c000::/40'::inet      -- 192.0.0.0/24
+        OR _ip <<= '2002:c058:6300::/40'::inet -- 192.88.99.0/24
+        OR _ip <<= '2002:c0a8::/32'::inet      -- 192.168.0.0/16
+        OR _ip <<= '2002:c612::/31'::inet      -- 198.18.0.0/15
+        OR _ip <<= '2002:e000::/20'::inet      -- 224.0.0.0/4
+        OR _ip <<= '2002:f000::/20'::inet      -- 240.0.0.0/4 (incl. 255.255.255.255)
+      );
+    END IF;
+    RETURN true;  -- a routable public IPv6 (ssrfGuard.ts:142)
   END IF;
+
   RETURN false;  -- unknown family ⇒ not provably public
 END;
 $$;
@@ -232,7 +330,7 @@ REVOKE ALL ON FUNCTION public._mcp_inet_is_public(inet) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public._mcp_inet_is_public(inet) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public._mcp_inet_is_public(inet) IS
-  'INT-099/A4: numeric (value, not spelling) classifier — TRUE only for a public IPv4/IPv6 address. Blocks loopback/private/link-local/CGNAT/benchmark/6to4/multicast/reserved/broadcast (v4) and loopback/unspecified/IPv4-mapped/-compatible/-translated/ULA/link-local/multicast (v6), via inet <<= CIDR so every notation is caught. Defense in depth for the endpoint setter; the authoritative runtime egress guard is _shared/mcp-client.ts.';
+  'INT-099/A4: numeric (value, not spelling) classifier — TRUE only for a public IPv4/IPv6 address. Round-5 (F3) brought the IPv6 branch to FULL PARITY with ssrfGuard.ts ipUnsafe (_shared/ssrfGuard.ts:116-143): a top-64-zero BLANKET (loopback/unspecified/IPv4-mapped/-compatible/-translated, :129), fe80::/10 (:132), fec0::/10 site-local (F3, :133), fc00::/7 ULA (:134), ff00::/8 multicast (:135), and NAT64 64:ff9b::/32 (:138) + 6to4 2002::/16 (:140) judged by their EMBEDDED IPv4 (a public embedded v4 is public, a private one blocked). v4 uses the ONE range set _mcp_v4_is_private (also backing the NAT64 embedded check). Every case is asserted, under identical names, against BOTH this classifier (pgTAP) and ssrfGuard.ts (TS smoke) via supabase/tests/mcp-ip-literal-cases.json, so they cannot silently diverge. Defense in depth for the endpoint setter; the authoritative runtime egress guard is _shared/mcp-client.ts. IP-literal only; hostname->IP resolution is runtime-owned.';
 
 -- ─────────────────────────────────────────────────────────────────────────────────
 -- 1b. Static, write-time endpoint safety (A4). IMMUTABLE, pure — no auth, no I/O, no DNS. Defense in
@@ -562,12 +660,16 @@ BEGIN
     IF btrim(COALESCE(_auth_header_name, '')) <> '' THEN
       RAISE EXCEPTION 'MCP_BAD_CREDENTIAL_BUNDLE' USING ERRCODE = '22023';
     END IF;
-    -- round-4 (F/expired-oauth): mirror makeRpcConnectionLoader's oauthExpired EXACTLY
-    -- (connection.ts:118 — `row.auth_kind === "oauth" && Number.isFinite(expiresAt) && expiresAt <=
-    -- Date.now()`). An already-expired access token would load as connection_unusable (no refresh step),
-    -- so reject it at write time. EXACT `<= now()` — no skew, no grace, matching the loader. A NULL /
-    -- absent expiry is NOT expired (the loader treats a non-finite expiresAt as live), so it is allowed.
-    IF _access_token_expires_at IS NOT NULL AND _access_token_expires_at <= now() THEN
+    -- round-4 (F/expired-oauth), round-5 F2 (now() -> clock_timestamp()): mirror the loader's oauthExpired
+    -- EXACTLY (connection.ts:118 — `row.auth_kind === "oauth" && Number.isFinite(expiresAt) && expiresAt
+    -- <= Date.now()`). `Date.now()` is the WALL CLOCK at the moment the check runs. In Postgres, now() is
+    -- transaction_timestamp() — FIXED at the start of the transaction, so inside this setter's transaction
+    -- it is a stale point that could pass a token the loader (using live time) would reject. clock_timestamp()
+    -- is the true current wall clock and advances during the transaction, so it is the faithful mirror of
+    -- Date.now(). EXACT `<=` — no skew, no grace. An already-expired access token loads as connection_unusable
+    -- (no refresh step), so reject it at write time. A NULL / absent expiry is NOT expired (the loader treats
+    -- a non-finite expiresAt as live), so it is allowed.
+    IF _access_token_expires_at IS NOT NULL AND _access_token_expires_at <= clock_timestamp() THEN
       RAISE EXCEPTION 'MCP_OAUTH_TOKEN_EXPIRED' USING ERRCODE = '22023';   -- closed code; never echoes a value
     END IF;
   ELSE
