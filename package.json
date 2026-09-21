@@ -72,6 +72,7 @@
     "smoke:mcp-egress": "node scripts/mcp-egress-smoke.mjs",
     "smoke:mcp-oauth": "node scripts/mcp-oauth-smoke.mjs",
     "smoke:mcp-gateway": "node scripts/mcp-gateway-smoke.mjs",
+    "smoke:mcp-backfill-drift": "bash scripts/mcp-backfill-drift-proof.sh",
     "smoke:n8n-ssrf": "node scripts/paige-n8n-ssrf-smoke.mjs",
     "smoke:n8n-egress": "node scripts/n8n-egress-smoke.mjs",
     "smoke:web-fetch-hardening": "node --experimental-transform-types scripts/web-fetch-hardening-smoke.mjs",
