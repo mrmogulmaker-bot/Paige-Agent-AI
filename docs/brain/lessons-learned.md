@@ -6,6 +6,12 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## A headless/structural comp must mock the REAL shell chrome, or it renders the component in the wrong responsive mode and misses container-collapse bugs (2026-09-21)
+
+- **Symptom.** On the Mind orb-hero + right-rail layout (#1314), the structural comp harness reported 1366×768 PAIGE-open as a ~956px container → 2-column, and every comp looked clean. Codex's exact-head review then found a **P1**: at 1366×768 PAIGE-open the real container is ~830px → the ≤900 stacked layout fires, and a short-wide `@media` `grid-template-rows` override left the stacked 3-area grid with only 2 row sizes → the rail became an unbounded implicit track that clipped the orb/list. The comp missed it entirely.
+- **Root cause.** The harness mocked the PAIGE panel at a flat `410px` and OMITTED the 72px nav rail. The real `TenantCommandCenterShell` gives PAIGE `minmax(440px,34vw)` (=464px at 1366) PLUS a 72px nav rail — so real Mind = 1366−464−72 ≈ 830px, not 1366−410 ≈ 956px. Because the comp put the container in the wrong bucket (2-column vs stacked), it exercised the wrong CSS branch and the container-query/media-query cascade clash never appeared. A container query (`@container`) is only as truthful as the container width you feed it.
+- **Rule.** When a comp stands in for a surface governed by container queries, reproduce the REAL ancestor chrome that sets the container's inline-size — every fixed rail/sidebar width AND the responsive formula of every flexible panel (here PAIGE `minmax(440px,34vw)`), plus the exact ancestor attributes/ids that high-specificity selectors key on (`[data-tenant-shell][data-paige="open"] #tenant-shell-main`). Read the shell's actual `grid-template-columns`/panel widths from source; never approximate them with a round number. And treat a green comp at container-query breakpoints as *necessary, not sufficient* — the authenticated live render (or a peer review reading the real geometry) is still owed (§32.c). This is the layout twin of §32 "a green build is not a working render": a green comp on fabricated geometry is not a verified layout.
+
 ## A push to an already-Ready bot-authored PR auto-triggers NEITHER Codex re-review NOR the `ci` workflow (2026-09-21)
 
 - **Symptom.** During PR #1303's re-review rounds, pushing a new fix head to the (already Ready, bot-authored) PR produced no Codex review and no `ci/verify` run — the head sat with stale checks and no review, and time was lost waiting for events that never fired.
