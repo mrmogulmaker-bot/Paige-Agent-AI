@@ -66,8 +66,10 @@ describe("MessageAudioButton request identity and failure delivery", () => {
     });
     const button = await renderButton();
 
-    await act(async () => { button.click(); await Promise.resolve(); await Promise.resolve(); });
-    await act(async () => { button.click(); await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { button.click(); });
+    await vi.waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2));
+    await act(async () => { button.click(); });
+    await vi.waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(4));
 
     expect(randomUUID).toHaveBeenCalledTimes(2);
     const calls = vi.mocked(fetch).mock.calls;

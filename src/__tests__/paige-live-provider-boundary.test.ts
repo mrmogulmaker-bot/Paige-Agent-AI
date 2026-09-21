@@ -38,9 +38,9 @@ describe("Paige voice provider boundary", () => {
 
   it("keeps request identity client-owned while allowing the per-tap key through CORS", () => {
     expect(messageAudioButton).toContain("const requestId = crypto.randomUUID()");
-    expect(messageAudioButton).toContain('\"Idempotency-Key\": requestId');
+    expect(messageAudioButton).toContain(`"Idempotency-Key": requestId`);
     expect(tts).toContain(
-      '\"Access-Control-Allow-Headers\": \"authorization, x-client-info, apikey, content-type, Idempotency-Key\"',
+      `"Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, Idempotency-Key"`,
     );
     expect(tts).not.toContain("suppliedIdempotencyKey");
     expect(tts).not.toContain("fallbackRequestRef");
