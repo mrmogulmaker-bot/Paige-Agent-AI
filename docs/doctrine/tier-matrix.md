@@ -4140,7 +4140,7 @@ narrower safe-field projection contract — status + provenance only, never a ra
 
 No new entitlement, tier feature flag, `/admin` route, sub-account inheritance, or Agency/operator surface is implied by the Solo child route.
 
-### Solo Beta public-enrollment boundary — Gate A candidate (2026-09-12)
+### Solo Beta public-enrollment boundary — production boundary (2026-09-12)
 
 | Capability | Solo | Agency / Enterprise | Platform Operator | Sub-account / Client Portal | Anonymous |
 |---|---|---|---|---|---|
