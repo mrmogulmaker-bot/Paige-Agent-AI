@@ -2,6 +2,10 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Session, User } from "@supabase/supabase-js";
+import {
+  NEW_PAIGE_CHAT_DRAFT_SLOT,
+  writePaigeComposerDraft,
+} from "@/lib/paigeComposerDrafts";
 
 const harness = vi.hoisted(() => ({
   tenantId: "tenant-a" as string | null,
@@ -143,6 +147,19 @@ describe("AppShell PaigeChat scoped session drafts", () => {
     expect(textarea().value).toBe("tenant A draft");
   });
 
+  it("does not alias the AppShell session draft with a Solo New-chat draft", async () => {
+    await act(async () => {
+      writePaigeComposerDraft({
+        tenantId: harness.tenantId!,
+        userId: `app-user-${testNumber}`,
+        threadSlot: NEW_PAIGE_CHAT_DRAFT_SLOT,
+      }, "Solo-only new-chat draft");
+      await settle();
+    });
+
+    expect(textarea().value).toBe("");
+  });
+
   it("isolates and restores drafts across effective-user switches", async () => {
     const firstUser = user(`app-user-${testNumber}`);
     await type("user A draft");
@@ -191,5 +208,20 @@ describe("AppShell PaigeChat scoped session drafts", () => {
     });
 
     expect(textarea().value).toBe("retry me");
+  });
+
+  it("retains the composer draft when a 2xx stream closes without the completion sentinel", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "Partial" } }] })}\n\n`,
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    )));
+    await type("retain truncated AppShell turn");
+
+    await act(async () => {
+      Array.from(host.querySelectorAll<HTMLButtonElement>("button")).at(-1)!.click();
+      await settle();
+    });
+
+    expect(textarea().value).toBe("retain truncated AppShell turn");
   });
 });

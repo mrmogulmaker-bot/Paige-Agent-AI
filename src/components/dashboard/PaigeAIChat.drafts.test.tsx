@@ -225,6 +225,21 @@ describe("PaigeAIChat per-thread composer drafts", () => {
     expect(textarea().value).toBe("retain after failure");
   });
 
+  it("retains a first-send draft when a 2xx stream closes without the completion sentinel", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "Partial" } }] })}\n\n`,
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    )));
+    await type("retain truncated Solo turn");
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!.click();
+      await settle();
+    });
+
+    expect(textarea().value).toBe("retain truncated Solo turn");
+  });
+
   it("isolates tenant and user scopes while preserving their own session drafts", async () => {
     await type("tenant A / user A");
     const originalTenant = harness.tenantId;

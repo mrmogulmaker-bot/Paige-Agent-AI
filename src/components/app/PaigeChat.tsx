@@ -127,14 +127,15 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     mkMessage({ role: "assistant", content: playbook.persona.greeting }),
   ]);
+  const appShellDraftSlot = `${NEW_PAIGE_CHAT_DRAFT_SLOT}:app-shell`;
   const draftIdentity = useMemo<PaigeComposerDraftIdentity | null>(() => {
     if (!session || !resolvedDraftTenantId) return null;
     return {
       tenantId: resolvedDraftTenantId,
       userId: user.id,
-      threadSlot: clientId ? `${NEW_PAIGE_CHAT_DRAFT_SLOT}:client:${clientId}` : NEW_PAIGE_CHAT_DRAFT_SLOT,
+      threadSlot: clientId ? `${appShellDraftSlot}:client:${clientId}` : appShellDraftSlot,
     };
-  }, [clientId, resolvedDraftTenantId, session, user.id]);
+  }, [appShellDraftSlot, clientId, resolvedDraftTenantId, session, user.id]);
   const draft = usePaigeComposerDraft(draftIdentity);
   const [submittedDraftKey, setSubmittedDraftKey] = useState<string | null>(null);
   const input = submittedDraftKey === draft.key ? "" : draft.value;
@@ -518,6 +519,17 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             break;
           }
         }
+      }
+
+      if (!streamDone) {
+        toast({
+          title: "Response interrupted",
+          description: "PAIGE's reply ended early. Your draft is still here so you can try again.",
+          variant: "destructive",
+        });
+        setMessages(messages);
+        setIsLoading(false);
+        return;
       }
 
       if (currentDoc && assistantMessage.length > 100) {

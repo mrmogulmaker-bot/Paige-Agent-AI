@@ -1132,6 +1132,18 @@ const PaigeAIChatInner = ({
       }
 
       if (!ticketAccepted(requestTicket)) return false;
+      if (!streamDone) {
+        toast({
+          title: "Response interrupted",
+          description: "PAIGE's reply ended early. Your draft is still here so you can try again.",
+          variant: "destructive",
+        });
+        setMessages(rollback);
+        setIsLoading(false);
+        if (enableHistory) setStreamingThreadId(null);
+        setConnectionIssue("server");
+        return false;
+      }
       setIsLoading(false);
       if (enableHistory) {
         setStreamingThreadId(null);
