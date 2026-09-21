@@ -87,7 +87,7 @@ export function MessageAudioButton({ messageId, content, className }: MessageAud
         if (feedback.kind === "allowance" || feedback.kind === "pending") {
           toast.message(feedback.message);
         } else {
-          toast.error(e.message ?? feedback.message);
+          toast.error(feedback.message);
         }
       },
     );

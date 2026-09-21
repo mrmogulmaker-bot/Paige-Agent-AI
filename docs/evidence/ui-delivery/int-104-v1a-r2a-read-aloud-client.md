@@ -7,11 +7,11 @@ MATERIAL_FLOW_CHANGE: YES: playback gains named unavailable and recovery states 
 FLOW_PROTOTYPE: PASS: owner ruling 2026-09-21 approved the exact states and recovery behavior; the deterministic state-and-transition review surface is the matrix below and preserves the approved inline button plus toast/tooltip interaction
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: a signed-in workspace user taps an assistant message's existing play control and either hears it or receives a truthful, actionable explanation
 VISUAL_DIRECTION: PASS: preserve the approved existing neutral MessageMeta-sized ghost button, established tooltip, Sonner feedback, Paige tokens, and no provider-facing or technical copy
-AUTOMATED_EVIDENCE: PASS: fail-first captured 2 failed files and 5 failed behaviors; completed `messageTts`, failure-contract, and component suites pass 3 files / 9 tests
-STATIC_EVIDENCE: PASS: focused ESLint passes; `ci:tsc` passes with 12 baseline and 12 current errors; production build passes; protected-file and zero-`supabase/` diff checks pass
+AUTOMATED_EVIDENCE: PASS: original fail-first captured 2 failed files / 5 failed behaviors; the review-fix fail-first captured exactly 3 failures (preflight allowlist, transport copy, playback copy); completed CORS, `messageTts`, failure-contract, and component suites pass 4 files / 12 tests
+STATIC_EVIDENCE: PASS: focused ESLint passes; `ci:tsc` passes with 12 baseline and 12 current errors; production build and regression lint pass; `git diff --check` passes; the Edge diff is exactly one CORS line with zero `_shared/` changes
 RENDERED_EVIDENCE: UNVERIFIED: no authenticated preview was available before review; the unchanged compact button geometry is covered structurally but no screenshot is promoted to rendered proof
 BEHAVIORAL_EVIDENCE: UNVERIFIED: jsdom proves tap identity and response delivery structurally; authenticated browser play/stop and workspace-switch behavior remain production proof owed
-AUTHENTICATED_RUNTIME: UNVERIFIED: production deployment and owner interaction have not occurred; r2a does not change or prove server-side idempotency or budget enforcement
+AUTHENTICATED_RUNTIME: UNVERIFIED: production deployment and owner interaction have not occurred; r2a makes the browser header admissible but does not change or prove server-side idempotency or budget enforcement
 KEYBOARD_FOCUS: UNVERIFIED: the native `button` and existing accessible labels are unchanged and statically inspected; an authenticated browser keyboard drive remains proof owed
 ZOOM_REFLOW: UNVERIFIED: no authenticated rendered 200% zoom drive was available before review; no geometry or layout rule changed
 REDUCED_MOTION: PASS: source inspection confirms the existing `motion-reduce:animate-none` loading treatment remains unchanged and the production build contains it
@@ -29,27 +29,28 @@ SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: authenticated rendered drive unavailable b
 UNVERIFIED: authenticated production rendering, future server-code delivery, and server consumption of Idempotency-Key remain unverified until their owning phases deploy
 
 OWNER_INTENT: The 2026-09-21 owner ruling requires a fresh UUID for every explicit play tap, reuse only inside transport attempts for that tap, plain non-technical failure states, and no fake state for server codes not emitted yet.
-MUST_NOT_HAPPEN: No provider call or spend during development proof; no provider name in copy; no fabricated cap state; no persistent disable for a retryable failure; no second playback controller; no edits to `PaigeChat.tsx`, `PaigeAIChat.tsx`, or `supabase/`; no regression to playback, stop, focus, or one-audio-at-a-time behavior.
+MUST_NOT_HAPPEN: No provider call or spend during development proof; no provider name or raw browser/fetch error in copy; no fabricated cap state; no persistent disable for a retryable failure; no second playback controller; no edits to `PaigeChat.tsx`, `PaigeAIChat.tsx`, any migration, any `_shared/` file, or any `paige-tts` line except its CORS allowlist; no regression to playback, stop, focus, or one-audio-at-a-time behavior.
 MUST_PRESERVE: Existing neutral icon treatment, authenticated `paige-tts` fetch, single shared audio element, current stop/pause semantics, empty-content omission, workspace-wide honest not-configured disable, canonical Solo shell, tenant isolation, and #1308 file ownership.
 ACCEPTANCE_CRITERIA: Each play tap sends one new `Idempotency-Key`; any transport attempt within that tap uses the same key; a later tap sends a different key; named response codes show the approved distinct plain-language state; reset timing appears only when supplied; future-only states are not displayed without a matching response; current playback still starts and stops.
 MOTION_PURPOSE: Existing loading rotation communicates an in-progress fetch and already becomes static under reduced motion; no motion is added or changed.
-PROTECTED_SEAMS: AFFECTED and tested — chat message identity/playback state, integration failure/retry behavior, accessibility, responsive shell geometry. NOT AFFECTED — tenant/workspace/client/account isolation; authentication/account choice; Solo entitlement/signup/paywall/billing/provisioning; approval/autonomy/authority; Spine execution; canonical writes/readback; Rail/receipts/Memory; transcript scroll/stream/thread/pop-out/minimize/history hydration; Live Conversation; Secure Browser/Vault; durable jobs; privacy/secrets. Provider transport is consumed but not changed.
+PROTECTED_SEAMS: AFFECTED and tested — chat message identity/playback state, browser preflight, integration failure/retry behavior, accessibility, responsive shell geometry. NOT AFFECTED — tenant/workspace/client/account isolation; authentication/account choice; Solo entitlement/signup/paywall/billing/provisioning; approval/autonomy/authority; Spine execution; canonical writes/readback; Rail/receipts/Memory; transcript scroll/stream/thread/pop-out/minimize/history hydration; Live Conversation; Secure Browser/Vault; durable jobs; privacy/secrets. Provider selection and synthesis transport are not changed.
 
-INTERNAL_BUILD_IDENTITY: c849231075ad5a33219fa5380691d38ae1950503; deployment=none-pre-push; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=this record and focused 9-test suite
+INTERNAL_BUILD_IDENTITY: 3e36c3069a3b60d2ae84b5d34137835e14f6c176; deployment=none-pre-push; environment=development; migrations=NOT_APPLICABLE; edge=PROOF_OWED(paige-tts exact-only redeploy after merge); evidence=this record and focused 12-test suite
 RELEASE_CHANNEL: development: pre-push branch build; production deployment is authorized but not yet observed
 RELEASE_CLASSIFICATION: patch: reliability and truthful recovery for existing read-aloud without a new capability or customer release identity
 CUSTOMER_RELEASE_IDENTITY: none: internal reliability patch, not a separately named customer release
 RELEASE_NOTE_REQUIRED: no: no approved customer publication record; owner-visible behavior remains within existing read-aloud
-RELEASE_TRUTH_BOUNDARY: PARTIAL: client sends per-tap request identity and classifies named failures; PROOF OWED: restored server currently ignores that header and future budget codes are not live
+RELEASE_TRUTH_BOUNDARY: PARTIAL: client sends per-tap request identity, the Edge preflight admits it, and the UI classifies named failures; PROOF OWED: restored server ignores the idempotency value and future budget codes are not live
 RELEASE_RECOVERY: position=rollback the frontend deployment to the preceding exact production build if playback regresses; reference=Vercel production deployment record and this PR
 
 ## Scope and collisions
 
-- Classification: frontend-only existing-flow reliability patch.
+- Classification: existing-flow reliability patch with one CORS-only Edge change.
 - Affected flows: explicit assistant-message read-aloud tap, fetch/loading, playback/stop, failure explanation, next-tap retry.
 - Neighboring regressions: single-output pause/resume; empty message; session loss; workspace-wide not-configured state; chat message identity and focus.
 - Active-owner/file collisions: PR #1308 head `cda1b0fd11913fc976a872607897524f5def2114` owns `src/components/app/PaigeChat.tsx` and `src/components/dashboard/PaigeAIChat.tsx`; neither file is in r2a scope.
-- Explicit exclusions: every file under `supabase/`; both chat containers; dictation; Live Conversation; budgets/schema/provider configuration; server enforcement.
+- Edge scope and redeploy: exactly `supabase/functions/paige-tts/index.ts`, one allowlist line; expected redeploy set is exactly `paige-tts`.
+- Explicit exclusions: every migration and DB object; every `_shared/` file; all other Edge functions; both chat containers; dictation; Live Conversation; budgets/schema/provider configuration; server enforcement.
 
 ## User job and state map
 
@@ -77,9 +78,11 @@ Variants: Future server responses are contract-tested but appear only if actuall
 
 - Pre-edit baseline: `origin/main` `0f3c994cb54168099e9a102bdb07fd10524c9219`; #1308 exact head and collision files above.
 - Pre-edit deployed refs: `edge-live=9c2d33dc282ae2a14c4b79825a6117628061f7cd`; `db-live=6d46ff6671785c646bcf0739340896a1baa56ede`.
-- Server contract inspection: restored `paige-tts` reads `Authorization` only and does not inspect `Idempotency-Key`.
+- Server contract inspection: restored `paige-tts` reads `Authorization` only and does not inspect `Idempotency-Key`; its preflight now admits that browser header.
+- Custom-header pre-check: the only production browser-to-Edge custom request header found under `src/` is this `Idempotency-Key` request to `paige-tts`. `Retry-After` appears only as response/comment handling, and the send-email idempotency header is Edge-to-provider, not browser-to-Edge. No other same-gap Edge function was identified.
 - Fail-first: `npx vitest run src/lib/voice/messageTtsFailure.test.ts src/components/chat/MessageAudioButton.test.tsx --reporter=verbose` — expected 2 failed files / 5 failed behaviors before implementation.
-- Focused completed suite: `npx vitest run src/lib/voice/messageTts.test.ts src/lib/voice/messageTtsFailure.test.ts src/components/chat/MessageAudioButton.test.tsx` — 3 files / 9 tests passed.
+- Review-fix fail-first: `npx vitest run src/__tests__/paige-tts-cors.test.ts src/components/chat/MessageAudioButton.test.tsx --reporter=verbose` — exactly 3 intended failures before implementation; the 5 existing component behaviors passed.
+- Focused completed suite: `npx vitest run src/__tests__/paige-tts-cors.test.ts src/lib/voice/messageTts.test.ts src/lib/voice/messageTtsFailure.test.ts src/components/chat/MessageAudioButton.test.tsx --reporter=verbose` — 4 files / 12 tests passed.
 - Focused lint: `npx eslint` over the five changed TypeScript/TSX files — passed.
 - Type ratchet: `npm run ci:tsc` — passed, baseline 12 / current 12. Ordinary `npm run typecheck` reports those same unrelated baseline errors.
 - Build: `npm run build` — passed. `npm run ci:regression` — passed.
@@ -88,5 +91,5 @@ Variants: Future server responses are contract-tested but appear only if actuall
 ## Review and limitations
 
 - Exact-head Codex review and every thread disposition: pending.
-- Current-server limitation: the header is ignored until a separately authorized server phase.
+- Current-server limitation: the browser may send the header after the CORS redeploy, but its value is ignored until a separately authorized server phase.
 - Future-state limitation: allowance/global/pending server codes are deterministic contract coverage, not claims that those responses are live.

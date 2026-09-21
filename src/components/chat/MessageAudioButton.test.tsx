@@ -98,4 +98,32 @@ describe("MessageAudioButton request identity and failure delivery", () => {
     const sink = channel === "message" ? harness.toastMessage : harness.toastError;
     expect(sink).toHaveBeenCalledWith(expect.stringMatching(copy));
   });
+
+  it("uses the approved retry copy when the per-tap request transport fails", async () => {
+    vi.stubGlobal("crypto", { randomUUID: () => "tap-transport-error" });
+    vi.mocked(fetch).mockRejectedValueOnce(new Error("Failed to fetch internal transport detail"));
+    harness.toggle.mockImplementation(async (_id, fetchAudio, onError) => {
+      try { await fetchAudio(); } catch (error) { onError?.(error as Error); }
+    });
+    const button = await renderButton();
+
+    await act(async () => { button.click(); await Promise.resolve(); await Promise.resolve(); });
+
+    expect(harness.toastError).toHaveBeenCalledWith("Voice playback didn’t start. Please try again.");
+    expect(harness.toastError).not.toHaveBeenCalledWith("Failed to fetch internal transport detail");
+    const requestHeaders = vi.mocked(fetch).mock.calls[0]?.[1]?.headers;
+    expect(new Headers(requestHeaders).get("Idempotency-Key")).toBe("tap-transport-error");
+  });
+
+  it("uses the approved retry copy when browser playback fails", async () => {
+    harness.toggle.mockImplementation(async (_id, _fetchAudio, onError) => {
+      onError?.(new Error("play() failed because autoplay is blocked"));
+    });
+    const button = await renderButton();
+
+    await act(async () => { button.click(); await Promise.resolve(); });
+
+    expect(harness.toastError).toHaveBeenCalledWith("Voice playback didn’t start. Please try again.");
+    expect(harness.toastError).not.toHaveBeenCalledWith("play() failed because autoplay is blocked");
+  });
 });
