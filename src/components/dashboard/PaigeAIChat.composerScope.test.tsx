@@ -69,6 +69,10 @@ const successfulStream = () => new Response(
   `data: ${JSON.stringify({ choices: [{ delta: { content: "Done" } }] })}\n\ndata: [DONE]\n\n`,
   { status: 200, headers: { "Content-Type": "text/event-stream" } },
 );
+const streamed = (content: string) => new Response(
+  `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: [DONE]\n\n`,
+  { status: 200, headers: { "Content-Type": "text/event-stream" } },
+);
 const serverFailure = () => new Response(
   JSON.stringify({ code: "chat_unavailable", reason: "Temporary failure." }),
   { status: 500, headers: { "Content-Type": "application/json" } },
@@ -191,6 +195,48 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
 
     await act(async () => originDelivery(" late"));
     expect(textarea().value).toBe("");
+  });
+
+  it("aborts a controlled thread stream, preserves A's draft, and lets B send before A resolves", async () => {
+    await render({ controlledThreadId: "thread-a", soloTenantSafety: false });
+    await type("thread A retained draft");
+
+    let resolveOrigin: ((response: Response) => void) | null = null;
+    let originSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce((_url: string, init?: RequestInit) => {
+        originSignal = init?.signal as AbortSignal | undefined;
+        return new Promise<Response>((resolve) => { resolveOrigin = resolve; });
+      })
+      .mockResolvedValueOnce(streamed("FRESH THREAD B"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await act(async () => {
+      send().click();
+      await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await render({ controlledThreadId: "thread-b", soloTenantSafety: false });
+    expect(originSignal?.aborted).toBe(true);
+    expect(textarea().disabled).toBe(false);
+    expect(textarea().value).toBe("");
+
+    await type("thread B prompt");
+    await act(async () => {
+      send().click();
+      await settle();
+    });
+    expect(host.textContent).toContain("FRESH THREAD B");
+
+    await act(async () => {
+      resolveOrigin?.(streamed("STALE THREAD A"));
+      await settle();
+    });
+    expect(host.textContent).not.toContain("STALE THREAD A");
+
+    await render({ controlledThreadId: "thread-a", soloTenantSafety: false });
+    expect(textarea().value).toBe("thread A retained draft");
   });
 
   it("migrates a lazy new-chat draft and preserves a newer edit after successful Retry", async () => {

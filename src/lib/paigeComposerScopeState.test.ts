@@ -4,6 +4,7 @@ import {
   NEW_CHAT_CONVERSATION,
   acceptComposerDelivery,
   clearComposerDraft,
+  createComposerRequestFence,
   createComposerScopeIdentity,
   initialComposerConversation,
   moveComposerDraft,
@@ -240,5 +241,33 @@ describe("ComposerScopeState delivery and completion rules", () => {
 
     expect(acceptComposerDelivery(captured, ready)).toBe(true);
     expect(acceptComposerDelivery(captured, switched)).toBe(false);
+  });
+
+  it("accepts request delivery only for the captured full handle and epoch", () => {
+    const fence = createComposerRequestFence();
+    const origin = { ...identity(), conversationId: "thread-a" };
+    const ticket = fence.begin(origin, "epoch-a");
+
+    expect(fence.isCurrent(ticket, origin, "epoch-a")).toBe(true);
+    expect(fence.isCurrent(ticket, { ...origin, tenantId: "tenant-b" }, "epoch-a")).toBe(false);
+    expect(fence.isCurrent(ticket, { ...origin, userId: "user-b" }, "epoch-a")).toBe(false);
+    expect(fence.isCurrent(ticket, { ...origin, conversationId: "thread-b" }, "epoch-a")).toBe(false);
+    expect(fence.isCurrent(ticket, origin, "epoch-b")).toBe(false);
+  });
+
+  it("aborts the prior request and supports an authorized lazy new-chat rebind", () => {
+    const fence = createComposerRequestFence();
+    const newChat = { ...identity(), conversationId: "new-chat" };
+    const first = fence.begin(newChat, "new-epoch");
+    const thread = { ...newChat, conversationId: "thread-created" };
+    const rebound = fence.rebind(first, thread, "thread-epoch");
+
+    expect(first.signal.aborted).toBe(false);
+    expect(fence.isCurrent(rebound, thread, "thread-epoch")).toBe(true);
+
+    const next = fence.begin({ ...thread, conversationId: "thread-b" }, "next-epoch");
+    expect(first.signal.aborted).toBe(true);
+    expect(fence.isCurrent(rebound, thread, "thread-epoch")).toBe(false);
+    expect(fence.isCurrent(next, { ...thread, conversationId: "thread-b" }, "next-epoch")).toBe(true);
   });
 });

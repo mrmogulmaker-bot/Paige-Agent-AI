@@ -7,6 +7,8 @@ const harness = vi.hoisted(() => ({
   activeTenantId: "tenant-a" as string | null,
   brandTenantId: "tenant-a" as string | null,
   brandLoading: false,
+  impersonationTarget: null as null | { contactId: string; targetUserId: string; targetName: string },
+  impersonatedTenantId: null as string | null,
   micCallbacks: [] as Array<{ onText: (text: string, at?: number | null) => void; disabled?: boolean }>,
 }));
 
@@ -21,6 +23,15 @@ vi.mock("@tanstack/react-query", async () => {
 });
 vi.mock("@/hooks/useTenantContext", () => ({
   useTenantContext: () => ({ activeTenantId: harness.activeTenantId }),
+}));
+vi.mock("@/contexts/ImpersonationContext", () => ({
+  useImpersonation: () => ({
+    target: harness.impersonationTarget,
+    isImpersonating: harness.impersonationTarget !== null,
+    effectiveUserId: (selfId: string | null | undefined) => harness.impersonationTarget?.targetUserId ?? selfId ?? undefined,
+    start: vi.fn(),
+    stop: vi.fn(),
+  }),
 }));
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 vi.mock("@/lib/playbook", () => ({
@@ -72,6 +83,21 @@ vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     auth: { getSession: vi.fn(async () => ({ data: { session: { access_token: "test-token" } } })) },
     functions: { invoke: vi.fn() },
+    from: vi.fn(() => {
+      const query = {
+        select: vi.fn(),
+        eq: vi.fn(),
+        maybeSingle: vi.fn(async () => ({
+          data: harness.impersonationTarget && harness.impersonatedTenantId
+            ? { tenant_id: harness.impersonatedTenantId, linked_user_id: harness.impersonationTarget.targetUserId }
+            : null,
+          error: null,
+        })),
+      };
+      query.select.mockReturnValue(query);
+      query.eq.mockReturnValue(query);
+      return query;
+    }),
   },
 }));
 
@@ -83,6 +109,10 @@ const session = { access_token: "session-token" } as Session;
 const user = (id: string) => ({ id, user_metadata: {} } as User);
 const success = () => new Response(
   `data: ${JSON.stringify({ choices: [{ delta: { content: "Done" } }] })}\n\ndata: [DONE]\n\n`,
+  { status: 200, headers: { "Content-Type": "text/event-stream" } },
+);
+const streamed = (content: string) => new Response(
+  `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: [DONE]\n\n`,
   { status: 200, headers: { "Content-Type": "text/event-stream" } },
 );
 const truncated = () => new Response(
@@ -114,6 +144,8 @@ describe("PaigeChat ComposerScopeState integration", () => {
     harness.activeTenantId = `tenant-a-${testNumber}`;
     harness.brandTenantId = harness.activeTenantId;
     harness.brandLoading = false;
+    harness.impersonationTarget = null;
+    harness.impersonatedTenantId = null;
     harness.micCallbacks = [];
     currentUser = user(`user-a-${testNumber}`);
     vi.stubGlobal("fetch", vi.fn(async () => success()));
@@ -189,6 +221,44 @@ describe("PaigeChat ComposerScopeState integration", () => {
     expect(textarea().value).toBe("tenant A, user A");
   });
 
+  it("resolves View-as-Client from the effective user's client row and restores staff scope on exit", async () => {
+    const staffUser = currentUser;
+    const tenantId = harness.activeTenantId!;
+    await type("staff draft");
+
+    harness.brandTenantId = `staff-brand-${testNumber}`;
+    harness.impersonationTarget = {
+      contactId: `contact-${testNumber}`,
+      targetUserId: `client-user-${testNumber}`,
+      targetName: "Client",
+    };
+    harness.impersonatedTenantId = tenantId;
+    await render(user(harness.impersonationTarget.targetUserId));
+
+    expect(textarea().disabled).toBe(false);
+    expect(textarea().value).toBe("");
+    expect(host.textContent).not.toContain("does not match this conversation");
+    await type("client-only draft");
+
+    harness.impersonationTarget = {
+      contactId: `other-contact-${testNumber}`,
+      targetUserId: `other-client-${testNumber}`,
+      targetName: "Other client",
+    };
+    harness.impersonatedTenantId = `other-tenant-${testNumber}`;
+    await render(user(harness.impersonationTarget.targetUserId));
+    expect(textarea().disabled).toBe(true);
+    expect(textarea().value).toBe("");
+    expect(host.textContent).toContain("does not match this conversation");
+
+    harness.impersonationTarget = null;
+    harness.impersonatedTenantId = null;
+    harness.brandTenantId = tenantId;
+    await render(staffUser);
+    expect(textarea().disabled).toBe(false);
+    expect(textarea().value).toBe("staff draft");
+  });
+
   it("drops a dictation callback captured by the prior tenant", async () => {
     const oldDelivery = harness.micCallbacks.at(-1)!.onText;
     harness.activeTenantId = `tenant-b-${testNumber}`;
@@ -197,6 +267,51 @@ describe("PaigeChat ComposerScopeState integration", () => {
 
     await act(async () => oldDelivery("late words"));
     expect(textarea().value).toBe("");
+  });
+
+  it("aborts and drops an origin identity stream while preserving its draft and allowing the new scope to send", async () => {
+    let resolveOrigin: ((response: Response) => void) | null = null;
+    let originSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce((_url: string, init?: RequestInit) => {
+        originSignal = init?.signal as AbortSignal | undefined;
+        return new Promise<Response>((resolve) => { resolveOrigin = resolve; });
+      })
+      .mockResolvedValueOnce(streamed("FRESH RESPONSE"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const originTenant = harness.activeTenantId!;
+    await type("origin draft");
+    await act(async () => {
+      send().click();
+      await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    harness.activeTenantId = `tenant-next-${testNumber}`;
+    harness.brandTenantId = harness.activeTenantId;
+    await render();
+    expect(originSignal?.aborted).toBe(true);
+    expect(textarea().value).toBe("");
+
+    await type("new scope draft");
+    await act(async () => {
+      send().click();
+      await settle();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(host.textContent).toContain("FRESH RESPONSE");
+
+    await act(async () => {
+      resolveOrigin?.(streamed("STALE RESPONSE"));
+      await settle();
+    });
+    expect(host.textContent).not.toContain("STALE RESPONSE");
+
+    harness.activeTenantId = originTenant;
+    harness.brandTenantId = originTenant;
+    await render();
+    expect(textarea().value).toBe("origin draft");
   });
 
   it("clears only after terminal DONE and preserves a draft on a truncated stream", async () => {

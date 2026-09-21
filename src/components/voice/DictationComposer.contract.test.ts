@@ -22,7 +22,7 @@ describe("dictation composer scope and send contract", () => {
     expect(sources[2]).toContain("scopeEpoch={dictationScopeEpoch}");
     expect(sources[0]).toContain('scopedUserId ?? "anonymous"');
     expect(sources[0]).toContain("requestedConversation.requested.id,");
-    expect(sources[1]).toContain('currentIdentity ? \`${currentIdentity.tenantId}:${currentIdentity.userId}\` : "resolving"');
+    expect(sources[1]).toContain('currentIdentity ? `${currentIdentity.tenantId}:${currentIdentity.userId}` : "resolving"');
     expect(sources[1]).toContain("newConversationId,");
     expect(sources[1]).toContain("location.pathname,");
     expect(sources[1]).toContain('location.search ?? ""');
