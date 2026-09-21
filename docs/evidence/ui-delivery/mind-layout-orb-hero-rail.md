@@ -79,7 +79,7 @@ UNVERIFIED: OWED — owner live look on the preview: the authenticated Solo rout
 real-device fps, the real orb filling the wider stage, and the four Solo viewports PAIGE open/closed with
 the real shell chrome — none reachable from headless CI (no browser, no auth). Structural comps stand in
 for the layout; the live render is owed to the owner
-INTERNAL_BUILD_IDENTITY: e862cc15aecbcc7f0265f1e632fdfdec46b324fc; deployment=PROOF_OWED; environment=preview; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/mind-layout-orb-hero-rail.md
+INTERNAL_BUILD_IDENTITY: a3c2dbe9622262eb95f40beaa687bbc37e379cf9; deployment=PROOF_OWED; environment=preview; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/mind-layout-orb-hero-rail.md
 RELEASE_CHANNEL: preview: OWNER APPROVED 2026-09-21 (comps reviewed; "this is the one I like") — merge-bound to main under INT-083 after exact-head Codex review. The channel field stays preview because deployment=PROOF_OWED: a commit cannot contain its own production deployment id, which is only minted when the merge deploys. SHA is the code commit carrying the layout + the two additions (contrast fix + legend reposition); the production deployment id is reported to the coordinator once Vercel builds it. Pre-launch §4: verified + non-destructive → merge, owner reviews live on main.
 RELEASE_CLASSIFICATION: internal-only: pre-launch layout change on the Solo Mind surface; no customer surface
 CUSTOMER_RELEASE_IDENTITY: none: internal-only, pre-launch, no customer-facing release
