@@ -16,6 +16,7 @@
 // record→node mapping; it passes `records` + `onPick` and reads back the ORIGINAL record object.
 import { Component, useEffect, useRef, type ReactNode } from "react";
 import { supportsWebGL } from "@/lib/webgl";
+import { reconcileFeedSignal } from "./orbInteraction";
 import type {
   MindOrbHandle,
   MindOrbRecordNode,
@@ -103,6 +104,12 @@ function MindOrbCanvasInner({
   reducedRef.current = reduced;
   const focusDomainRef = useRef(focusDomain);
   focusDomainRef.current = focusDomain;
+  // Feed-signal reconciliation state, declared here (above the mount effect) so the mount effect can
+  // FLUSH a signal that arrived during the async engine import. feedSeen = the last token that fired;
+  // pendingFeed = a new signal that arrived while the handle was still null, held (not dropped) until
+  // the handle mounts (#1303 P2).
+  const feedSeen = useRef(feedSignal?.token);
+  const pendingFeed = useRef<{ token: number; domain: string } | null>(null);
 
   // Mount / unmount the engine once. `three` loads here via the dynamic import (code-split).
   useEffect(() => {
@@ -152,6 +159,14 @@ function MindOrbCanvasInner({
         handleRef.current.setRunning(runningRef.current);
         handleRef.current.setReduced(reducedRef.current);
         handleRef.current.focus(focusDomainRef.current ?? null);
+        // Flush a feed signal that arrived DURING the async import — it was held (not dropped) with
+        // its token unmarked, so fire it once now and only then mark it seen (#1303 P2).
+        if (pendingFeed.current) {
+          const pf = pendingFeed.current;
+          pendingFeed.current = null;
+          feedSeen.current = pf.token;
+          handleRef.current.fireFeed(pf.domain);
+        }
 
         io = new IntersectionObserver((entries) => {
           const entry = entries[0];
@@ -214,12 +229,12 @@ function MindOrbCanvasInner({
 
   // Fire the incoming-knowledge stream ONLY on a real feed signal (a genuinely new record). Skip the
   // initial mount value so a fresh mount never plays a phantom stream (§13 — motion never implies
-  // activity that did not happen).
-  const feedSeen = useRef(feedSignal?.token);
+  // activity that did not happen). A signal that arrives while the handle is still importing is HELD
+  // as pending (not marked seen) and flushed on mount, instead of being dropped (#1303 P2).
   useEffect(() => {
-    if (!feedSignal || feedSignal.token === feedSeen.current) return;
-    feedSeen.current = feedSignal.token;
-    handleRef.current?.fireFeed(feedSignal.domain);
+    const r = reconcileFeedSignal(!!handleRef.current, feedSignal?.token, feedSeen.current);
+    if (r.hold) { pendingFeed.current = feedSignal ?? null; return; }
+    if (r.fire && feedSignal) { feedSeen.current = feedSignal.token; handleRef.current?.fireFeed(feedSignal.domain); }
   }, [feedSignal]);
 
   return (

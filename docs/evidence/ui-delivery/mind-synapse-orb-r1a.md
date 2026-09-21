@@ -13,14 +13,14 @@ MATERIAL_FLOW_CHANGE: NO: presentation-only rendering swap on the existing Mind 
 FLOW_PROTOTYPE: PASS: the owner-approved Synapse reference is the flow-prototype (coordinator relay 2026-09-20); the production port follows it verbatim
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: a Solo or sub-account operator sees what Paige holds — read the mind at a glance, focus a domain, open a record's evidence drawer
 VISUAL_DIRECTION: PASS: the owner-approved Synapse particle-field reference, ported verbatim (shaders, form math, parameters); nothing invented (§00)
-AUTOMATED_EVIDENCE: PASS: vitest 44/44 — synapseForm §32 generator smoke incl. the dustCap A1 form-floor lock, mindDomains data layer, and SoloMindWorkspace incl. the ruling #2 headline assertion
+AUTOMATED_EVIDENCE: PASS: vitest 55/55 — synapseForm §32 smoke + dustCap A1 form-floor, mindDomains data layer, SoloMindWorkspace behaviour incl. ruling #2 headline, AND orbInteraction (11) proving the three #1303 Codex fixes: the focus-scaled pointer AND keyboard-Enter pick select the RENDERED node (and MISS at the pre-focus position, so the fix is load-bearing), reduced-motion fires NO flash, and a feed arriving during the engine import is held not dropped
 STATIC_EVIDENCE: PASS: tsc-ratchet 12 to 12 with no new type errors; changed-file eslint clean; lint:mind-contract green; lint:gold clean on src/solo
 RENDERED_EVIDENCE: PASS: real-engine harness (esbuild-bundled engine.ts + three) rendered 8 scenarios at 1440x900; every frame inspected non-blank (see the coverage table below)
-BEHAVIORAL_EVIDENCE: PASS: the harness and code exercise rotation, wheel and keyboard zoom, focus re-form, feed-on-real-event, scatter transitions, and reduced-motion; the full authenticated behavioural drive is tracked under AUTHENTICATED_RUNTIME
+BEHAVIORAL_EVIDENCE: PASS: the harness and code exercise rotation, wheel and keyboard zoom, focus re-form, feed-on-real-event, scatter transitions, and reduced-motion; pick accuracy under focus (pointer + Enter) now mirrors the shader focus scale via the unit-tested orbInteraction seam (#1303 fix); the full authenticated behavioural drive is tracked under AUTHENTICATED_RUNTIME
 AUTHENTICATED_RUNTIME: UNVERIFIED: OWED — owner live review on production per the 2026-09-20/21 owner decision; the authenticated Solo route is not accessible from headless CI (no browser, no GPU, no auth session), so the owner reviews the live orb on main
 KEYBOARD_FOCUS: PASS: record list, drawer, and dismiss keyboard order and visible focus are verified by SoloMindWorkspace tests; canvas arrow-key rotation and Enter-to-inspect are wired in the engine
 ZOOM_REFLOW: UNVERIFIED: OWED — owner live review on production per the 2026-09-20/21 owner decision; browser zoom and reflow at the four Solo viewports are not accessible from headless CI (no browser)
-REDUCED_MOTION: PASS: reduced-motion renders a static formed field with instant morphs and no ambient flow, breath, or stream (engine uReduced + parent OS/user OR); harness scenario 08
+REDUCED_MOTION: PASS: reduced-motion renders a static formed field with instant morphs and no ambient flow, breath, or stream, AND a new record fires NO animation in reduced-motion (fireFeed skips the flash via orbInteraction.feedVisual; setReduced clears any in-flight flash — unit-tested); CORRECTION — the prior R1a REDUCED_MOTION PASS was WRONG: a new record in reduced-motion set uFlash, which the render loop then decayed frame by frame (an animated flash), the #1303 Codex P2 fixed this round
 STATE_COVERAGE: PASS: first-use/empty (formed mind, no bright nodes), populated, loading and error scatter, reduced-motion, WebGL-unavailable to List fallback, focus, and feed — harness plus workspace tests
 TRUTHFUL_STATE_LABELS: PASS: grounded, partial, and unavailable tiers plus a hollow no-evidence render; the headline counts grounded only and labels the total held; the three-state Spine contract is untouched (lint:mind-contract green)
 SOLO_UI: YES: the Solo Mind orb surface (src/solo/mind-orb + SoloMindWorkspace)
@@ -65,6 +65,16 @@ no composer), `src/solo/mind-orb/synapseForm.ts` (NEW — pure form math, depend
 (`buildOrbRecords` / `truthToTier` / `groundedCount` / `orbDomains` replace the glass-globe node/ring builders),
 `src/solo/SoloMindWorkspace.tsx` (headline, 6→3 orb legend, feed wiring, Mineral), `src/solo/solo-mind-workspace.css`,
 tests. **Zero `supabase/_shared/` diff (INT-105), zero `paige-ai-chat`.**
+
+**#1303 fix round (one round, coordinator-authorized 2026-09-21) — the three exact-head Codex P2s:**
+NEW `src/solo/mind-orb/orbInteraction.ts` — the pure, dependency-free interaction math (no three, no React)
+the engine now CALLS, so rendered and pickable behaviour cannot diverge (§18) and the fixes are unit-tested
+headless (§32): (1) `engine.ts` `pickAt` + `pickFront` compute each node's EFFECTIVE world position with the
+same `focusScale` the vertex shader applies (`uFocus`/`uFocusAmt`/`aMeta.y`, 0.82/1.12), so a pointer click or a
+keyboard Enter under focus lands on the RENDERED node; (2) `engine.ts` `fireFeed` uses `feedVisual` — reduced-motion
+fires no flash — and `setReduced(true)` clears any in-flight flash so the loop goes idle; (3) `MindOrbCanvas.tsx`
+holds a `feedSignal` that arrives during the async engine import (via `reconcileFeedSignal`) and flushes it once the
+handle mounts, instead of marking it seen and dropping it. Still zero `supabase/**` / `paige-ai-chat`.
 
 ## Complete-state coverage
 

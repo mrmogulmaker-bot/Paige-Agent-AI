@@ -25,6 +25,7 @@
 
 import * as THREE from "three";
 import { makeRng, gauss, rdir, domainCenter, synapsePoint, hashSeed, dustCap } from "./synapseForm";
+import { focusScale, pickRayIndex, pickFrontIndex, feedVisual, type Vec3 } from "./orbInteraction";
 
 // ---------------------------------------------------------------------------
 // Public types (exported)
@@ -521,14 +522,19 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     S.streamU.uA.value.set(c[0] * 3.1, c[1] * 3.1 + 0.4, c[2] * 3.1);
     S.streamU.uB.value.set(c[0] * 1.08 * 0.72, c[1] * 1.08 * 0.72, c[2] * 1.08 * 0.72);
     S.U.uFlashD.value = di;
-    if (S.running && !S.reduced) { S.stream.visible = true; S.feedT0 = now(); }
-    else { S.U.uFlash.value = 0.9; markDirty(); }
+    // Reduced-motion NEVER animates on a new record (#1303 P2): feedVisual returns neither a stream
+    // nor a flash, so the render loop stays idle — the new node still appears statically via setData.
+    const fv = feedVisual(S.reduced, S.running);
+    if (fv.stream) { S.stream.visible = true; S.feedT0 = now(); }
+    else if (fv.flash) { S.U.uFlash.value = 0.9; markDirty(); }
   }
 
   function setRunning(v: boolean) { if (!S) return; S.running = v; S.last = now(); markDirty(); }
   function setReduced(v: boolean) {
     if (!S) return; S.reduced = v; S.U.uReduced.value = v ? 1 : 0;
-    if (v) { S.stream.visible = false; S.feedT0 = -1; }
+    // Turning reduced-motion ON clears any in-flight feed flash so the loop goes idle instead of
+    // decaying a residual flash frame by frame (#1303 P2).
+    if (v) { S.stream.visible = false; S.feedT0 = -1; S.U.uFlash.value = 0; }
     S.last = now(); markDirty();
   }
   // The default framing distance for the current aspect/screen; zoom is applied ON TOP of it as a
@@ -583,27 +589,39 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     });
   }
 
+  // The EFFECTIVE world position of every node — base position × the shader's focus scale, then the
+  // group's world matrix — so hit-testing lands on what is DRAWN under focus, not the pre-focus
+  // position (#1303 P2). Both pick paths (pointer + keyboard Enter) share this one computation so
+  // rendered and pickable positions can never diverge (§18).
+  function effectiveNodeWorld(): Vec3[] {
+    S.group.updateMatrixWorld();
+    const pos = S.nodes.geometry.getAttribute("position") as THREE.BufferAttribute;
+    const meta = S.nodes.geometry.getAttribute("aMeta") as THREE.BufferAttribute;
+    const uFocus = S.U.uFocus.value, uFocusAmt = S.U.uFocusAmt.value;
+    const v = new THREE.Vector3();
+    const out: Vec3[] = [];
+    for (let i = 0; i < S.nodeRecords.length; i++) {
+      const f = focusScale(meta.getY(i), uFocus, uFocusAmt);
+      v.set(pos.getX(i) * f, pos.getY(i) * f, pos.getZ(i) * f).applyMatrix4(S.group.matrixWorld);
+      out.push([v.x, v.y, v.z]);
+    }
+    return out;
+  }
   function pickAt(e: PointerEvent) {
     if (!S || !S.nodes.visible || S.nodeRecords.length === 0) return;
     const rect = S.canvas.getBoundingClientRect();
     const m = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
     S.raycaster = S.raycaster || new THREE.Raycaster();
-    S.raycaster.params.Points = { threshold: 0.12 };
     S.raycaster.setFromCamera(m, S.camera);
-    const hit = S.raycaster.intersectObject(S.nodes)[0];
-    if (hit && hit.index != null) { const rec = S.nodeRecords[hit.index]; if (rec) S.onPick(rec); }
+    const o = S.raycaster.ray.origin, d = S.raycaster.ray.direction;
+    const idx = pickRayIndex(effectiveNodeWorld(), [o.x, o.y, o.z], [d.x, d.y, d.z], 0.12);
+    if (idx >= 0) { const rec = S.nodeRecords[idx]; if (rec) S.onPick(rec); }
   }
   function pickFront() {
     if (!S || S.nodeRecords.length === 0) return;
-    let best: MindOrbRecordNode | null = null, bd = Infinity;
-    const pos = S.nodes.geometry.getAttribute("position") as THREE.BufferAttribute;
-    const v = new THREE.Vector3();
-    S.nodeRecords.forEach((rec, i) => {
-      v.set(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(S.group.matrixWorld);
-      const d = v.distanceTo(S.camera.position);
-      if (d < bd) { bd = d; best = rec; }
-    });
-    if (best) S.onPick(best);
+    const c = S.camera.position;
+    const idx = pickFrontIndex(effectiveNodeWorld(), [c.x, c.y, c.z]);
+    if (idx >= 0) { const rec = S.nodeRecords[idx]; if (rec) S.onPick(rec); }
   }
 
   function resize() {

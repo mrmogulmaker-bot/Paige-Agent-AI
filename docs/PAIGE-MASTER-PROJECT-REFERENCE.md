@@ -3411,10 +3411,10 @@ WebGL-unavailable List fallback, reduced-motion, and drag/arrow-key rotation + w
 
 **Scope & governance.** `src/solo/mind-orb/{engine,MindOrbCanvas,mindDomains,synapseForm}` + `SoloMindWorkspace` +
 `solo-mind-workspace.css` + tests — **zero `supabase/functions/_shared/` (INT-105), zero `paige-ai-chat`**; no
-migration, no edge change (`edge-live`/`db-live` unmoved). **Merged under the owner's live-review decision** (§4:
-the owner reviews on `main`, not a preview); a Mind-tab production regression triggers a pre-authorized INT-083 revert
-of the merge commit. **Tier matrix: N/A** — no tier visibility/gating change (§66). Evidence:
-`docs/evidence/ui-delivery/mind-synapse-orb-r1a.md`; the decision-log carries the owner decision, the merge SHA, and
+migration, no edge change (`edge-live`/`db-live` unmoved). **Merge AUTHORIZED under the owner's live-review decision**
+(§4: the owner reviews on `main`, not a preview) — not yet merged as of this write; a Mind-tab production regression
+triggers a pre-authorized INT-083 revert of the merge commit. **Tier matrix: N/A** — no tier visibility/gating change
+(§66). Evidence: `docs/evidence/ui-delivery/mind-synapse-orb-r1a.md`; the decision-log carries the owner decision, the merge SHA, and
 the deploy truth. Real-GPU device-brightness/fidelity parity, the four Solo viewports, and real-device fps are OWED to
 the owner's live review on `main` (§32.c).
 
