@@ -3392,6 +3392,32 @@ is OWED to the owner** (headless can't auth the app). Evidence:
 `docs/evidence/ui-delivery/command-center-mind-production-port.md`; per-tier rows:
 `docs/doctrine/tier-matrix.md`. Fast-follow: frontend hooks for the three not-yet-wired domains.
 
+### PAIGE Mind — the "Synapse" particle-field orb replaces the glass-globe rendering (R1a) — 2026-09-21
+
+**What changed (PR #1303).** The owner-approved **"Synapse"** direction replaces the glass-globe WebGL orb of the
+#969 port with a GPU `THREE.Points` additive particle field on the Synapse form (two lobes, gyri ridge, flattened
+base, stem; no composer/bloom — the fragment shader glows). This is a **frontend rendering swap, not a data-capability
+change** (§30 strip-then-rebuild; §28 unfrozen by the owner approving Synapse): it is wired to the SAME live reads
+(`useSoloKnowledge` / `useCommandCenter` / `useN8nSpineReadiness` → `mindDomains`), the same six owner-approved
+domains, and the SAME three-state honesty — the `_shared/paige-spine/mindEvidence.ts` contract is untouched and
+`lint:mind-contract` stays green (§13/§58). Structural dust IS the glowing form and never scales with record count (A1
+form floor — the mind reads at 0/13/1,284 records); bright nodes are exactly one per governed record, in the record's
+domain region, coloured by truth tier (grounded/partial/unavailable — the owner-approved 6→3 orb legend; the finer
+six-state provenance stays in the drawer + list, §58); the headline counts GROUNDED (LIVE SOURCE) only and labels the
+total "held", never "grounded". Empty = the formed mind with no bright nodes; scatter is reserved for loading/error;
+the incoming-knowledge stream fires ONLY on a genuinely new governed record (§13 — motion never implies activity).
+Mineral default = "well" (contained dark stage); true-light is implemented but NOT default (the owner picks live). The
+WebGL-unavailable List fallback, reduced-motion, and drag/arrow-key rotation + wheel/keyboard zoom are preserved.
+
+**Scope & governance.** `src/solo/mind-orb/{engine,MindOrbCanvas,mindDomains,synapseForm}` + `SoloMindWorkspace` +
+`solo-mind-workspace.css` + tests — **zero `supabase/functions/_shared/` (INT-105), zero `paige-ai-chat`**; no
+migration, no edge change (`edge-live`/`db-live` unmoved). **Merged under the owner's live-review decision** (§4:
+the owner reviews on `main`, not a preview); a Mind-tab production regression triggers a pre-authorized INT-083 revert
+of the merge commit. **Tier matrix: N/A** — no tier visibility/gating change (§66). Evidence:
+`docs/evidence/ui-delivery/mind-synapse-orb-r1a.md`; the decision-log carries the owner decision, the merge SHA, and
+the deploy truth. Real-GPU device-brightness/fidelity parity, the four Solo viewports, and real-device fps are OWED to
+the owner's live review on `main` (§32.c).
+
 ### PAIGE Mind — the integration matrix (Wave 0 grounding, 2026-09-03; documentation only, NOTHING shipped)
 
 **What it settles.** `docs/architecture/paige-mind-integration-matrix.md` records, per Solo surface,

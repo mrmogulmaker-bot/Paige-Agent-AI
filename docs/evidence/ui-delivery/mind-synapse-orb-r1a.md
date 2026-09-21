@@ -1,6 +1,6 @@
 # UI delivery evidence — Command Center → Mind: the Synapse particle-field orb (R1a)
 
-**Date:** 2026-09-21 · **Branch:** `claude/mind-synapse-orb-r1a` (PR #1303) · **Status:** DRAFT PR, gated on owner sign-off.
+**Date:** 2026-09-21 · **Branch:** `claude/mind-synapse-orb-r1a` (PR #1303) · **Status:** Ready for merge — the owner waived the pre-merge preview sign-off (2026-09-20/21 decision) and reviews the Synapse orb LIVE ON MAIN; a revert tripwire is pre-authorized (INT-083). Mineral default = "well"; true-light is implemented but not default (owner picks live).
 **Authority:** coordinator authorization + amendments A1–A7 (owner-approved "Synapse" direction). §00: CC ports the
 approved direction and proves it runs; it does not originate, judge, or approximate the visual direction.
 
@@ -17,33 +17,33 @@ AUTOMATED_EVIDENCE: PASS: vitest 44/44 — synapseForm §32 generator smoke incl
 STATIC_EVIDENCE: PASS: tsc-ratchet 12 to 12 with no new type errors; changed-file eslint clean; lint:mind-contract green; lint:gold clean on src/solo
 RENDERED_EVIDENCE: PASS: real-engine harness (esbuild-bundled engine.ts + three) rendered 8 scenarios at 1440x900; every frame inspected non-blank (see the coverage table below)
 BEHAVIORAL_EVIDENCE: PASS: the harness and code exercise rotation, wheel and keyboard zoom, focus re-form, feed-on-real-event, scatter transitions, and reduced-motion; the full authenticated behavioural drive is tracked under AUTHENTICATED_RUNTIME
-AUTHENTICATED_RUNTIME: UNVERIFIED: the authenticated Solo route is not accessible from headless CI (no browser, no auth session); the owner's live Vercel-preview drive on a real GPU is required at sign-off
+AUTHENTICATED_RUNTIME: UNVERIFIED: OWED — owner live review on production per the 2026-09-20/21 owner decision; the authenticated Solo route is not accessible from headless CI (no browser, no GPU, no auth session), so the owner reviews the live orb on main
 KEYBOARD_FOCUS: PASS: record list, drawer, and dismiss keyboard order and visible focus are verified by SoloMindWorkspace tests; canvas arrow-key rotation and Enter-to-inspect are wired in the engine
-ZOOM_REFLOW: UNVERIFIED: browser zoom and reflow at the four Solo viewports are not accessible from headless CI (no browser); required at the owner's live drive
+ZOOM_REFLOW: UNVERIFIED: OWED — owner live review on production per the 2026-09-20/21 owner decision; browser zoom and reflow at the four Solo viewports are not accessible from headless CI (no browser)
 REDUCED_MOTION: PASS: reduced-motion renders a static formed field with instant morphs and no ambient flow, breath, or stream (engine uReduced + parent OS/user OR); harness scenario 08
 STATE_COVERAGE: PASS: first-use/empty (formed mind, no bright nodes), populated, loading and error scatter, reduced-motion, WebGL-unavailable to List fallback, focus, and feed — harness plus workspace tests
 TRUTHFUL_STATE_LABELS: PASS: grounded, partial, and unavailable tiers plus a hollow no-evidence render; the headline counts grounded only and labels the total held; the three-state Spine contract is untouched (lint:mind-contract green)
 SOLO_UI: YES: the Solo Mind orb surface (src/solo/mind-orb + SoloMindWorkspace)
-UNVERIFIED: the owner's authenticated live-drive on a real GPU (fidelity parity + the A3 Mineral pick), the four Solo viewports PAIGE open and closed, and real-device fps are not accessible from headless CI (no browser, no auth) and are owed at sign-off
+UNVERIFIED: OWED — owner live review on production per the 2026-09-20/21 owner decision: the authenticated live-drive on a real GPU (fidelity parity + the A3 Mineral pick), the four Solo viewports PAIGE open and closed, and real-device fps are not reachable from headless CI (no browser, no auth) and are owed to the owner's live review on main
 OWNER_INTENT: recreate the Mind orb as the owner-approved Synapse particle field, replacing the rejected flat orb, ported faithfully
 MUST_NOT_HAPPEN: no touch to supabase/functions/_shared, paige-ai-chat, or the three-state Spine contract; no invented data; no change to the honest states
 MUST_PRESERVE: the honest states, the three-state Spine contract, tenant-scoped reads, the WebGL-unavailable List fallback, and record list/drawer/dismiss accessibility
 PROTECTED_SEAMS: supabase/functions/_shared (INT-105), paige-ai-chat, the Mind read hooks, and the Spine mindEvidence contract — none changed
-INTERNAL_BUILD_IDENTITY: bf3d467ad71a651da678df9ed56f53d909376e23; deployment=dpl_2FaT9a3t9FdzeuEhs2EEpBTzsQPG; environment=preview; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/mind-synapse-orb-r1a.md
-RELEASE_CHANNEL: preview: Vercel PR preview for owner review; draft PR #1303, not production, gated on owner sign-off
-RELEASE_CLASSIFICATION: internal-only: presentation rendering swap pending owner acceptance; no customer-facing release
-CUSTOMER_RELEASE_IDENTITY: none: internal-only draft gated on owner sign-off
-RELEASE_NOTE_REQUIRED: NO: internal-only work with no customer-facing change yet
-RELEASE_TRUTH_BOUNDARY: PARTIAL: form, nodes, states, and colours render correctly (automated + harness); device-brightness parity and the authenticated Solo drive are owed to the owner's live preview
-RELEASE_RECOVERY: position=draft PR #1303 is not merged (recovery is dropping the branch); reference=https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1303
-SOLO_1536X770_PAIGE_CLOSED: UNVERIFIED: authenticated Solo route not accessible from headless CI (no browser); owed to the owner live-drive at sign-off
-SOLO_1536X770_PAIGE_OPEN: UNVERIFIED: authenticated Solo route not accessible from headless CI (no browser); owed to the owner live-drive at sign-off
-SOLO_1366X768_PAIGE_CLOSED: UNVERIFIED: authenticated Solo route not accessible from headless CI (no browser); owed to the owner live-drive at sign-off
-SOLO_1366X768_PAIGE_OPEN: UNVERIFIED: authenticated Solo route not accessible from headless CI (no browser); owed to the owner live-drive at sign-off
-SOLO_1024X768_PAIGE_CLOSED: UNVERIFIED: authenticated Solo route not accessible from headless CI (no browser); owed to the owner live-drive at sign-off
-SOLO_1024X768_PAIGE_OPEN: UNVERIFIED: authenticated Solo route not accessible from headless CI (no browser); owed to the owner live-drive at sign-off
-SOLO_900X1000_PAIGE_CLOSED: UNVERIFIED: authenticated Solo route not accessible from headless CI (no browser); owed to the owner live-drive at sign-off
-SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: authenticated Solo route not accessible from headless CI (no browser); owed to the owner live-drive at sign-off
+INTERNAL_BUILD_IDENTITY: 114c0bad3bb2f8d0364e3214ee6b5284a95ba130; deployment=dpl_74PYWE2ua4zy6aXNJwP3wHGypEBC; environment=preview; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/mind-synapse-orb-r1a.md
+RELEASE_CHANNEL: preview: this record documents the verified Vercel PR preview (dpl_74PYWE2ua4zy6aXNJwP3wHGypEBC); merge to main (Vercel production) is authorized under the 2026-09-20/21 owner live-review decision and the production deployment id is reported to the coordinator post-merge
+RELEASE_CLASSIFICATION: internal-only: presentation rendering swap on a pre-launch platform with no customers; the owner reviews live on main and acceptance follows separately
+CUSTOMER_RELEASE_IDENTITY: none: internal-only, pre-launch, no customer-facing release
+RELEASE_NOTE_REQUIRED: NO: internal-only work with no customer-facing change
+RELEASE_TRUTH_BOUNDARY: PARTIAL: form, nodes, states, and colours render correctly (automated + real-engine harness); device-brightness parity, the authenticated Solo drive, and the four Solo viewports are OWED to the owner's live review on main per the 2026-09-20/21 decision
+RELEASE_RECOVERY: position=merge to main authorized under the 2026-09-20/21 owner live-review decision — a Mind-tab production regression (blank canvas, crash, fallback loop) triggers an immediate INT-083 revert of the merge commit (pre-authorized); reference=https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1303
+SOLO_1536X770_PAIGE_CLOSED: UNVERIFIED: OWED — owner live review on production per the 2026-09-20/21 owner decision; the authenticated Solo route is not accessible from headless CI (no browser)
+SOLO_1536X770_PAIGE_OPEN: UNVERIFIED: OWED — owner live review on production per the 2026-09-20/21 owner decision; the authenticated Solo route is not accessible from headless CI (no browser)
+SOLO_1366X768_PAIGE_CLOSED: UNVERIFIED: OWED — owner live review on production per the 2026-09-20/21 owner decision; the authenticated Solo route is not accessible from headless CI (no browser)
+SOLO_1366X768_PAIGE_OPEN: UNVERIFIED: OWED — owner live review on production per the 2026-09-20/21 owner decision; the authenticated Solo route is not accessible from headless CI (no browser)
+SOLO_1024X768_PAIGE_CLOSED: UNVERIFIED: OWED — owner live review on production per the 2026-09-20/21 owner decision; the authenticated Solo route is not accessible from headless CI (no browser)
+SOLO_1024X768_PAIGE_OPEN: UNVERIFIED: OWED — owner live review on production per the 2026-09-20/21 owner decision; the authenticated Solo route is not accessible from headless CI (no browser)
+SOLO_900X1000_PAIGE_CLOSED: UNVERIFIED: OWED — owner live review on production per the 2026-09-20/21 owner decision; the authenticated Solo route is not accessible from headless CI (no browser)
+SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: OWED — owner live review on production per the 2026-09-20/21 owner decision; the authenticated Solo route is not accessible from headless CI (no browser)
 
 ## Job & direction
 
@@ -93,9 +93,9 @@ tests. **Zero `supabase/_shared/` diff (INT-105), zero `paige-ai-chat`.**
 - **PARTIAL:** device-brightness/fidelity parity vs the reference — the FORM, nodes, states, and colours render
   correctly on swiftshader, but additive brightness on a real GPU is not yet proven here.
 - **UNAVAILABLE:** none for this surface (rendering swap on the existing Mind read contracts).
-- **UNVERIFIED (owed at sign-off):** owner authenticated Vercel-preview live-drive on a real GPU; the four Solo
-  viewports (1536×770 / 1366×768 / 1024×768 / 900×1000) PAIGE open & closed; the A3 Mineral pick (well vs true-light);
-  real device fps (mid-range laptop + phone).
+- **UNVERIFIED (OWED — owner live review on production, 2026-09-20/21 owner decision):** owner authenticated live
+  drive on a real GPU on main; the four Solo viewports (1536×770 / 1366×768 / 1024×768 / 900×1000) PAIGE open & closed;
+  the A3 Mineral pick (well vs true-light); real device fps (mid-range laptop + phone).
 
 ## Evidence classes
 
@@ -117,20 +117,29 @@ tests. **Zero `supabase/_shared/` diff (INT-105), zero `paige-ai-chat`.**
   layer + the list fallback, not pointer/WebGL interaction, since jsdom has no WebGL). Drag and zoom work while the
   orbit is PAUSED or reduced-motion (a §58 regression the peer-gate caught and this build fixes). Full behavioural
   drive on the authenticated route is owed.
-- **Authenticated runtime:** **UNVERIFIED** — the Mind orb is behind Solo auth; this CI session is headless with no
-  browser/auth reach to live prod. Owed to the owner's Vercel-preview live-drive at sign-off (§32.c).
-- **UNVERIFIED:** device-class fps; the four Solo viewports PAIGE open/closed; the Mineral pick.
+- **Authenticated runtime:** **UNVERIFIED — OWED (owner live review on production, 2026-09-20/21 owner decision)** —
+  the Mind orb is behind Solo auth; this CI session is headless with no browser/auth reach to live prod, so the owner
+  reviews the live orb on main (§32.c).
+- **UNVERIFIED — OWED (owner live review on production):** device-class fps; the four Solo viewports PAIGE open/closed;
+  the Mineral pick.
 
 ## Measured numbers (harness, headless swiftshader — NOT device-representative, A5)
 
 Dust particles 160,000 (desktop cap) / 48,000 (small); nodes = real record count (13 / 1,284 / 0 as driven);
 `uDustFraction` stayed 1.0 (no step-down needed at this size on swiftshader); adaptive step-down floor = 0.5 (never
 drops the form below readable — A1). p50/p95 frame-ms are swiftshader software-raster figures and are recorded in
-`measures.json` for completeness only; **real-device fps is owed** — the owner's machine at sign-off is the first real
-device (A5).
+`measures.json` for completeness only; **real-device fps is OWED — owner live review on production per the
+2026-09-20/21 owner decision** — the owner's machine on the live main site is the first real device (A5).
 
 ## Gates
 
 - **§69 flow-prototype approval:** satisfied by the owner-approved Synapse reference (the prototype).
-- **Merge gate:** owner sign-off of the real build is REQUIRED before Ready/merge (coordinator ruling; INT-083 does
-  not cover this merge). #1251 reissue + PR-A3 (AST guard) remain gated.
+- **Merge gate:** the owner WAIVED the pre-merge preview sign-off (2026-09-20/21 decision) and reviews the Synapse
+  orb LIVE ON MAIN per §4 (pre-launch: go all the way to main). Merge is authorized under the coordinator's gate:
+  ship "well" as the Mineral default, mark Ready, then merge on a clean exact-head Codex review (INT-096) — P2-or-lower
+  non-regression findings are deferred to a "Mind R1a follow-up list" and the threads resolved; any P1 or any
+  behaviour worse than main STOPS and returns.
+- **Revert tripwire (pre-authorized, INT-083):** if the owner reports the live orb is unacceptable, or a production
+  failure on the Mind tab is observed (blank canvas, crash, fallback loop), the #1303 merge commit is reverted
+  immediately under INT-083 with no further approval.
+- **Still gated:** R1b, the #1251 reissue, and PR-A3 (AST guard) remain gated.
