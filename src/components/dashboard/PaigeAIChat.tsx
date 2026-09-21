@@ -391,6 +391,7 @@ const PaigeAIChatInner = ({
     scopedUserId ?? "anonymous",
     activeThreadId ?? "new",
   ].join("|");
+  const dictationDeliveryEpoch = `${dictationEpoch}:${dictationGeneration}`;
   const [dictationActivity, setDictationActivity] = useState({
     epoch: dictationEpoch,
     active: false,
@@ -1343,8 +1344,7 @@ const PaigeAIChatInner = ({
   // tenant/client/mission scope and local generation before it may append.
   const micButton = (
     <DictationMicButton
-      key={`${dictationEpoch}:${dictationGeneration}`}
-      scopeEpoch={dictationEpoch}
+      scopeEpoch={dictationDeliveryEpoch}
       composerRef={inputRef}
       showStatus={soloTenantSafety}
       onActiveChange={handleDictationActivity}

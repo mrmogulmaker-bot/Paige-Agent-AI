@@ -16,7 +16,8 @@ describe("dictation composer scope and send contract", () => {
       0,
     );
     expect(mountCount).toBe(3);
-    expect(sources[0]).toContain("scopeEpoch={dictationEpoch}");
+    expect(sources[0]).toContain("scopeEpoch={dictationDeliveryEpoch}");
+    expect(sources[0]).toContain("const dictationDeliveryEpoch = `${dictationEpoch}:${dictationGeneration}`;");
     expect(sources[1]).toContain("scopeEpoch={dictationScopeEpoch}");
     expect(sources[2]).toContain("scopeEpoch={dictationScopeEpoch}");
     expect(sources[0]).toContain('scopedUserId ?? "anonymous"');
@@ -34,6 +35,35 @@ describe("dictation composer scope and send contract", () => {
     );
     expect(scopeEffect).toMatch(/generationRef\.current \+= 1;[\s\S]*currentRunRef\.current = null;[\s\S]*teardownRun\(run\);/);
     expect(hook).toContain("run.scopeEpoch === scopeEpochRef.current");
+  });
+
+  it("keeps all three mic mounts alive so render-time epoch fencing precedes passive cleanup", () => {
+    const mounts = [
+      read("src/components/dashboard/PaigeAIChat.tsx"),
+      read("src/components/app/PaigeChat.tsx"),
+      read("src/pages/admin/conversations/shell/ConversationsRichComposer.tsx"),
+    ].map((source) => {
+      const start = source.indexOf("<DictationMicButton");
+      return source.slice(start, source.indexOf("/>", start) + 2);
+    });
+
+    for (const mount of mounts) expect(mount).not.toMatch(/\bkey=/);
+
+    const hook = read("src/lib/voice/useDictation.ts");
+    const renderFence = hook.indexOf("scopeEpochRef.current = scopeEpoch;");
+    const passiveCleanup = hook.indexOf("if (!run || run.scopeEpoch === scopeEpoch) return;");
+    const providerCallbacks = hook.slice(
+      hook.indexOf("ws.onmessage ="),
+      hook.indexOf("} catch (err)"),
+    );
+
+    expect(renderFence).toBeGreaterThan(-1);
+    expect(passiveCleanup).toBeGreaterThan(renderFence);
+    expect(providerCallbacks).toContain("ws.onmessage = (ev) => {\n        if (!isCurrent(run)) return;");
+    expect(providerCallbacks).toContain("ws.onerror = () => {\n        if (!isCurrent(run)) return;\n        failRun(run");
+    expect(providerCallbacks).toContain("ws.onclose = (ev) => {\n        if (!isCurrent(run)) return;");
+    expect(hook).toContain("const failRun = useCallback((run: DictationRun");
+    expect(hook).toContain("if (!isCurrent(run)) return;");
   });
 
   it("holds each composer send path until dictation finalization completes", () => {

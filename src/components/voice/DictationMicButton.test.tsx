@@ -1,4 +1,4 @@
-import { act, useRef, useState } from "react";
+import { act, useLayoutEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DictationMicButton } from "./DictationMicButton";
@@ -185,6 +185,55 @@ describe("Solo dictation control", () => {
     expect(voiceHarness.recorderStops).toBe(1);
     expect(sockets).toHaveLength(0);
     expect(onText).not.toHaveBeenCalled();
+  });
+
+  it("drops final, interim, and error delivery between the epoch render and passive cleanup", async () => {
+    const onText = vi.fn();
+    const onError = vi.fn();
+    const deliver = vi.fn();
+    let latest!: UseDictationApi;
+    const Probe = ({ epoch }: { epoch: string }) => {
+      latest = useDictation({ onText, onError, scopeEpoch: epoch });
+      useLayoutEffect(() => {
+        if (epoch === "account-b") deliver();
+      }, [epoch]);
+      return <span>{latest.status}:{latest.partial}:{latest.error}</span>;
+    };
+
+    await act(async () => root.render(<Probe epoch="account-a" />));
+    await act(async () => { void latest.start(); await Promise.resolve(); await Promise.resolve(); });
+    const socket = sockets[0];
+    await act(async () => socket.open());
+    await act(async () => socket.message({ type: "ready" }));
+    deliver.mockImplementation(() => {
+      socket.message({ type: "transcript", text: "stale final", is_final: true });
+      socket.message({ type: "transcript", text: "stale interim", is_final: false });
+      socket.error();
+    });
+
+    await act(async () => root.render(<Probe epoch="account-b" />));
+
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(onText).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+    expect(host.textContent).toBe("idle::");
+  });
+
+  it("stops an active recording when its scope changes", async () => {
+    const onText = vi.fn();
+    await renderControl("account-a", onText);
+    await act(async () => { host.querySelector("button")!.click(); });
+    await flush();
+    const socket = sockets[0];
+    await act(async () => socket.open());
+    await act(async () => socket.message({ type: "ready" }));
+    expect(voiceHarness.recorderStops).toBe(0);
+
+    await renderControl("account-b", onText);
+
+    expect(voiceHarness.recorderStops).toBe(1);
+    expect(socket.closeCalls).toBe(1);
+    expect(host.querySelector("button")?.getAttribute("aria-pressed")).toBe("false");
   });
 
   it("releases the mic and socket when the composer unmounts", async () => {

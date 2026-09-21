@@ -163,7 +163,6 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
           snippet-expanding onChange (via onDictate + a live ref) so expansion still runs. */}
       {showDictation && (
         <DictationMicButton
-          key={dictationScopeEpoch}
           scopeEpoch={dictationScopeEpoch}
           onText={(seg) => (onDictate ? onDictate(seg) : onChange(appendDictation(value, seg)))}
           onActiveChange={(active) => setDictationActivity({ epoch: dictationScopeEpoch, active })}
