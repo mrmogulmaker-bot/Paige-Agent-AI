@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeRng, gauss, domainCenter, synapsePoint, hashSeed, type FormDomain } from "./synapseForm";
+import { makeRng, gauss, domainCenter, synapsePoint, hashSeed, dustCap, type FormDomain } from "./synapseForm";
 
 // §32 headless smoke: prove the crash-prone generator math RUNS and produces finite, bounded output
 // against real inputs BEFORE the GPU ever touches it. A green build proves nothing about this.
@@ -54,5 +54,14 @@ describe("synapseForm — pure generators (§32 headless smoke)", () => {
     expect(hashSeed("knowledge:doc1")).toBe(hashSeed("knowledge:doc1"));
     expect(hashSeed("decision:a1")).not.toBe(hashSeed("systems:n8n-api"));
     expect(hashSeed("x")).toBe(hashSeed("x") >>> 0);
+  });
+
+  it("dustCap is the A1 FORM FLOOR: the form count depends on cap/screen ONLY, never records", () => {
+    expect(dustCap(undefined, false)).toBe(160000); // desktop form
+    expect(dustCap(undefined, true)).toBe(48000); // small-screen form
+    expect(dustCap(5000, false)).toBe(5000); // explicit override honoured
+    expect(dustCap(10, false)).toBe(4000); // hard floor keeps the form readable
+    // The signature takes NO record-count parameter — the form can never thin as records change (A1).
+    expect(dustCap.length).toBe(2);
   });
 });

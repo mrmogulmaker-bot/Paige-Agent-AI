@@ -1,6 +1,6 @@
 # UI delivery evidence — Command Center → Mind: the Synapse particle-field orb (R1a)
 
-**Date:** 2026-09-21 · **Branch:** `claude/command-center-mind-redesign-wpjt5e` · **Status:** DRAFT PR, gated on owner sign-off.
+**Date:** 2026-09-21 · **Branch:** `claude/mind-synapse-orb-r1a` (PR #1303) · **Status:** DRAFT PR, gated on owner sign-off.
 **Authority:** coordinator authorization + amendments A1–A7 (owner-approved "Synapse" direction). §00: CC ports the
 approved direction and proves it runs; it does not originate, judge, or approximate the visual direction.
 
@@ -35,6 +35,8 @@ tests. **Zero `supabase/_shared/` diff (INT-105), zero `paige-ai-chat`.**
 | Loading | Scatter (dispersed field) — reserved for loading/error only (A2) | harness `04-loading-dark` |
 | Error | Scatter + grey wash | harness `05-error-dark` |
 | Reduced motion | Static formed mind, instant morphs, no ambient flow/breath | harness `08-real13-dark-reduced` |
+| Mineral "well" (light theme, A3 opt 1) | Contained dark stage so the additive field still reads on the light shell | harness `06-real13-light-well` |
+| Mineral true-light (A3 opt 2) | Alpha-blended dark-on-cream particles on the bright "SUN" ground | harness `07-real13-light-alpha` |
 | WebGL unavailable | Existing List fallback (SceneBoundary → onUnavailable → parent list) | workspace test |
 | Focus a domain | Region pulls forward + brightens, rest dims (`uFocus`) | code + workspace focus path |
 | New-record feed | Incoming stream fires ONLY on a genuinely new governed record (§13) | code + workspace new-record effect |
@@ -42,8 +44,11 @@ tests. **Zero `supabase/_shared/` diff (INT-105), zero `paige-ai-chat`.**
 ## Capability labels
 
 - **LIVE:** the record→node mapping (one bright node per governed record, tier-coloured), the grounded headline
-  (LIVE SOURCE only), the six-domain regions, empty/populated states, drag + arrow-key rotation, reduced-motion,
-  WebGL-unavailable → List — all exercised by automated tests + the real-engine harness.
+  (LIVE SOURCE only), the six-domain regions, empty/populated states, reduced-motion, and WebGL-unavailable →
+  List — exercised by automated tests. Drag / arrow-key rotation, wheel + keyboard zoom, and focus re-form are
+  exercised by the real-engine harness + code (no jsdom pointer/WebGL test drives them); they work while the
+  orbit is PAUSED or reduced-motion (a §58 regression the peer-gate caught and this build fixes). Authenticated
+  drive owed.
 - **PARTIAL:** device-brightness/fidelity parity vs the reference — the FORM, nodes, states, and colours render
   correctly on swiftshader, but additive brightness on a real GPU is not yet proven here.
 - **UNAVAILABLE:** none for this surface (rendering swap on the existing Mind read contracts).
@@ -54,16 +59,23 @@ tests. **Zero `supabase/_shared/` diff (INT-105), zero `paige-ai-chat`.**
 ## Evidence classes
 
 - **Automated:** `vitest` — `synapseForm.test.ts` (§32 generator smoke: deterministic RNG, `gauss` never `Math.log(0)`,
-  3,000 finite/bounded points per domain for dust + nodes), `mindDomains.test.ts` (one node per record; tier mapping;
-  grounded < total; empty→0 nodes; six regions), `SoloMindWorkspace.test.tsx` (headings, list, WebGL fallback, §58
-  no findings, domain filter, drawer, orbit/reduced-motion persistence, dismiss/restore, refresh, states). **42/42 pass.**
-- **Static:** `tsc --noEmit -p tsconfig.app.json` exit 0; changed-file `eslint` exit 0; `lint:mind-contract` GREEN
+  3,000 finite/bounded points per domain for dust + nodes, AND `dustCap` locking the A1 FORM FLOOR — the dust count
+  depends on cap/screen only, never records), `mindDomains.test.ts` (one node per record; tier mapping; grounded <
+  total; empty→0 nodes; six regions), `SoloMindWorkspace.test.tsx` (headings, list, WebGL fallback, §58 no findings,
+  domain filter, drawer, orbit/reduced-motion persistence, dismiss/restore, refresh, states, AND ruling #2 — the
+  headline labels the grounded count and never the total). Full focused suite passes.
+- **Static:** `tsc-ratchet` **12→12** (no NEW type errors; the 12 pre-existing errors are all in unrelated files,
+  zero in R1a — a bare `tsc -p tsconfig.app.json` exits non-zero on that pre-existing baseline, which is exactly why
+  the repo gates on the ratchet, not a raw exit code); changed-file `eslint` exit 0; `lint:mind-contract` GREEN
   (three-state Spine contract untouched — A6); `lint:gold` clean on `src/solo`.
 - **Rendered:** real-engine harness (esbuild-bundled `engine.ts` + real `three`) at 1440×900 across the 8 scenarios
-  above (`scripts`-external throwaway harness; measures in `measures.json`). Confirmed non-blank render by direct
-  inspection of the frames.
-- **Behavioral:** rotation (drag + arrow keys), focus re-form, feed-on-real-event, scatter transitions, reduced-motion
-  static — exercised in the harness and unit tests. Full behavioural drive on the authenticated route is owed.
+  above (throwaway scratch harness — supporting evidence only per the coordinator's A4 ruling; the render PROOF is
+  the owner's live GPU preview). Confirmed non-blank render by direct inspection of the frames.
+- **Behavioral:** rotation (drag + arrow keys), wheel + keyboard zoom, focus re-form, feed-on-real-event, scatter
+  transitions, reduced-motion static — exercised via the real-engine harness + code (unit tests cover the data/state
+  layer + the list fallback, not pointer/WebGL interaction, since jsdom has no WebGL). Drag and zoom work while the
+  orbit is PAUSED or reduced-motion (a §58 regression the peer-gate caught and this build fixes). Full behavioural
+  drive on the authenticated route is owed.
 - **Authenticated runtime:** **UNVERIFIED** — the Mind orb is behind Solo auth; this CI session is headless with no
   browser/auth reach to live prod. Owed to the owner's Vercel-preview live-drive at sign-off (§32.c).
 - **UNVERIFIED:** device-class fps; the four Solo viewports PAIGE open/closed; the Mineral pick.

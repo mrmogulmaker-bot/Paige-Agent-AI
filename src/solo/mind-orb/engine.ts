@@ -24,7 +24,7 @@
 // smoke script. Additive blending + one soft-sprite shader; NO composer/bloom pass (the FS glows).
 
 import * as THREE from "three";
-import { makeRng, gauss, rdir, domainCenter, synapsePoint, hashSeed } from "./synapseForm";
+import { makeRng, gauss, rdir, domainCenter, synapsePoint, hashSeed, dustCap } from "./synapseForm";
 
 // ---------------------------------------------------------------------------
 // Public types (exported)
@@ -218,6 +218,7 @@ interface State {
   t: number;
   last: number;
   visible: boolean;
+  dirty: boolean; // a discrete change (drag/zoom/theme/data) needs ONE render while otherwise static
   dpr: number;
   canvas: HTMLCanvasElement;
   capDust: number;
@@ -225,6 +226,7 @@ interface State {
   raycaster?: THREE.Raycaster;
   rotX: number;
   rotY: number;
+  zoomPct: number; // 100 = default framing; >100 closer, <100 farther (survives resize)
   // targets eased each frame
   tgt: { scatter: number; grey: number; flow: number; mix: number; focus: number; focusAmt: number };
   // feed stream
@@ -243,10 +245,7 @@ interface State {
 export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): MindOrbInit {
   let S: State | null = null;
 
-  function buildDust(capDust: number, domains: MindOrbDomain[]): {
-    geo: THREE.BufferGeometry;
-    disposables: { dispose?: () => void }[];
-  } {
+  function buildDust(capDust: number, domains: MindOrbDomain[]): THREE.BufferGeometry {
     const r = makeRng(20260920);
     const centers = domains.map(domainCenter);
     const nD = Math.max(1, centers.length);
@@ -274,13 +273,10 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     geo.setAttribute("sc", new THREE.BufferAttribute(sc, 3));
     geo.setAttribute("aColor", new THREE.BufferAttribute(col, 3));
     geo.setAttribute("aMeta", new THREE.BufferAttribute(meta, 4));
-    return { geo, disposables: [geo] };
+    return geo;
   }
 
-  function buildNodes(records: MindOrbRecordNode[], domains: MindOrbDomain[]): {
-    geo: THREE.BufferGeometry;
-    disposables: { dispose?: () => void }[];
-  } {
+  function buildNodes(records: MindOrbRecordNode[], domains: MindOrbDomain[]): THREE.BufferGeometry {
     const centers = domains.map(domainCenter);
     const idxOf = new Map(domains.map((d, i) => [d.key, i]));
     const n = Math.max(1, records.length); // never a zero-length attribute; alpha 0 hides the placeholder
@@ -313,7 +309,7 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     geo.setAttribute("sc", new THREE.BufferAttribute(sc, 3));
     geo.setAttribute("aColor", new THREE.BufferAttribute(col, 3));
     geo.setAttribute("aMeta", new THREE.BufferAttribute(meta, 4));
-    return { geo, disposables: [geo] };
+    return geo;
   }
 
   function fragFor(mineral: MindMineralMode, dark: boolean): string {
@@ -338,7 +334,7 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     const small = Math.min(window.innerWidth, window.innerHeight) < 700;
-    const capDust = Math.max(4000, cfg.particleCap ?? (small ? 48000 : 160000));
+    const capDust = dustCap(cfg.particleCap, small); // A1: dust count is independent of record count
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 50);
@@ -362,9 +358,9 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     const domains = cfg.domains && cfg.domains.length ? cfg.domains : [{ key: "all", az: 0, el: 0 }];
     const domainIndex = new Map(domains.map((d, i) => [d.key, i]));
 
-    const { geo: dustGeo, disposables: dustDisp } = buildDust(capDust, domains);
+    const dustGeo = buildDust(capDust, domains);
     const records = cfg.records || [];
-    const { geo: nodeGeo, disposables: nodeDisp } = buildNodes(records, domains);
+    const nodeGeo = buildNodes(records, domains);
 
     const dustMat = new THREE.ShaderMaterial({
       uniforms: U, vertexShader: VERT, fragmentShader: fragFor(mineral, dark),
@@ -415,11 +411,13 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     S = {
       renderer, scene, camera, group, dust, dustMat, nodes, nodeMat, nodeRecords: records,
       stream, streamMat, streamU, U, domains, domainIndex,
-      disposables: [...dustDisp, ...nodeDisp, dustMat, nodeMat, streamGeo, streamMat],
+      // materials + stream geo only; the dust + node geometries (which the node one is rebuilt on a
+      // count change) are disposed EXACTLY once, explicitly, in dispose() — never double-freed here.
+      disposables: [dustMat, nodeMat, streamGeo, streamMat],
       raf: 0, running: cfg.running !== false, reduced: !!cfg.reduced, dark, mineral,
       state: cfg.state || "populated", focusKey: null, onPick: cfg.onPick || (() => {}),
-      clock: new THREE.Clock(), t: 0, last: now(), visible: true, dpr, canvas,
-      capDust, dustFractionFloor: 0.5, rotX: 0.18, rotY: 0.4,
+      clock: new THREE.Clock(), t: 0, last: now(), visible: true, dirty: true, dpr, canvas,
+      capDust, dustFractionFloor: 0.5, rotX: 0.18, rotY: 0.4, zoomPct: 100,
       tgt: { scatter: 0, grey: 0, flow: 0.022, mix: 1, focus: -1, focusAmt: 0 },
       feedT0: -1, frameMs: [], frames: 0, stepChecked: false,
     };
@@ -435,10 +433,6 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     return typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
   }
 
-  function reduced(): boolean {
-    return !!(S && S.reduced);
-  }
-
   function applyState(state: MindEvidenceState) {
     if (!S) return;
     S.state = state;
@@ -450,7 +444,10 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     markDirty();
   }
 
-  function markDirty() { if (S) S.last = now(); }
+  // Mark that a discrete change happened (drag, zoom, theme, data, state). The always-running loop
+  // renders ONE frame for it even when the orb is otherwise static (paused / reduced-motion), then
+  // clears the flag. This is what keeps drag-to-rotate + wheel-zoom alive with the orbit paused.
+  function markDirty() { if (S) { S.last = now(); S.dirty = true; } }
 
   function applyTheme(dark: boolean, mineral?: MindMineralMode) {
     if (!S) return;
@@ -476,10 +473,9 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     const recs = records || [];
     if (recs.length !== S.nodeRecords.length) {
       const old = S.nodes.geometry;
-      const { geo } = buildNodes(recs, S.domains);
+      const geo = buildNodes(recs, S.domains);
       S.nodes.geometry = geo;
-      S.disposables.push(geo);
-      old.dispose();
+      old.dispose(); // free the superseded geometry now; the live one is freed once at dispose()
     } else {
       // in-place recolour/reposition (ids may differ but count is stable)
       const centers = S.domains.map(domainCenter);
@@ -495,7 +491,9 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
         pos.setXYZ(i, p[0], p[1], p[2]);
         const c = TIER_RGB[rec.tier] ?? TIER_RGB.grounded;
         col.setXYZ(i, c[0], c[1], c[2]);
-        meta.setW(i, 0.92);
+        // keep ALL of aMeta in sync with the new record so focus dim/brighten + feed flash target the
+        // RIGHT node (y is the domain index the shader reads): x seed, y domain, z size, w alpha.
+        meta.setXYZW(i, (seed % 1000) / 1000, di, 1.7 + ((seed >>> 6) % 50) / 100, 0.95);
       });
       pos.needsUpdate = true; col.needsUpdate = true; meta.needsUpdate = true;
     }
@@ -527,25 +525,31 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     else { S.U.uFlash.value = 0.9; markDirty(); }
   }
 
-  function setRunning(v: boolean) { if (!S) return; S.running = v; if (!v) render(); else { S.last = now(); loop(); } }
+  function setRunning(v: boolean) { if (!S) return; S.running = v; S.last = now(); markDirty(); }
   function setReduced(v: boolean) {
     if (!S) return; S.reduced = v; S.U.uReduced.value = v ? 1 : 0;
     if (v) { S.stream.visible = false; S.feedT0 = -1; }
-    render(); if (!v && S.running) { S.last = now(); loop(); }
+    S.last = now(); markDirty();
   }
-  function setZoom(percent: number) {
+  // The default framing distance for the current aspect/screen; zoom is applied ON TOP of it as a
+  // percentage, so a resize preserves the user's zoom instead of snapping back to default.
+  function baseZoomZ(): number {
+    const r = S.canvas.getBoundingClientRect();
+    const aspect = Math.max(0.0001, r.width) / Math.max(1, r.height);
+    return aspect < 0.85 ? 6.2 : Math.min(window.innerWidth, window.innerHeight) < 700 ? 5.2 : 4.5;
+  }
+  function applyZoom() {
     if (!S) return;
-    const base = Math.min(window.innerWidth, window.innerHeight) < 700 ? 5.2 : 4.5;
-    const z = Math.max(2.6, Math.min(9, base * (100 / Math.max(1, percent))));
-    S.camera.position.z = z; S.U.uCamZ.value = z; S.camera.updateProjectionMatrix(); render();
+    const z = Math.max(2.6, Math.min(9, baseZoomZ() * (100 / Math.max(1, S.zoomPct))));
+    S.camera.position.z = z; S.U.uCamZ.value = z; S.camera.updateProjectionMatrix();
   }
+  function setZoom(percent: number) { if (!S) return; S.zoomPct = Math.max(40, Math.min(260, percent)); applyZoom(); markDirty(); }
+  function zoomBy(factor: number) { if (!S) return; S.zoomPct = Math.max(40, Math.min(260, S.zoomPct * factor)); applyZoom(); markDirty(); }
   function reset() {
     if (!S) return;
     S.focusKey = null; S.tgt.focus = -1; S.tgt.focusAmt = 0;
-    S.rotX = 0.18; S.rotY = 0.4;
-    const base = Math.min(window.innerWidth, window.innerHeight) < 700 ? 5.2 : 4.5;
-    S.camera.position.z = base; S.U.uCamZ.value = base; S.camera.updateProjectionMatrix();
-    render();
+    S.rotX = 0.18; S.rotY = 0.4; S.zoomPct = 100;
+    applyZoom(); markDirty();
   }
 
   function bindInteraction() {
@@ -562,6 +566,8 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     });
     cv.addEventListener("pointerup", (e) => { if (drag.on && !drag.moved) pickAt(e); drag.on = false; });
     cv.addEventListener("pointercancel", () => { drag.on = false; });
+    // Scroll / trackpad to zoom (advertised in the aria-label + hint). Incremental, clamped.
+    cv.addEventListener("wheel", (e) => { if (!S) return; e.preventDefault(); zoomBy(e.deltaY < 0 ? 1.08 : 0.926); }, { passive: false });
     cv.addEventListener("keydown", (e) => {
       if (!S) return;
       const k = e.key; const step = 0.16;
@@ -569,11 +575,11 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
       else if (k === "ArrowRight") S.rotY += step;
       else if (k === "ArrowUp") S.rotX = Math.max(-1.1, S.rotX - step);
       else if (k === "ArrowDown") S.rotX = Math.min(1.1, S.rotX + step);
-      else if (k === "+" || k === "=") setZoom(120);
-      else if (k === "-") setZoom(80);
-      else if (k === "Enter") pickFront();
+      else if (k === "+" || k === "=") { zoomBy(1.1); e.preventDefault(); return; } // zoomBy already marks dirty
+      else if (k === "-") { zoomBy(0.9); e.preventDefault(); return; }
+      else if (k === "Enter") { pickFront(); return; }
       else return;
-      e.preventDefault(); markDirty(); render();
+      e.preventDefault(); markDirty();
     });
   }
 
@@ -607,11 +613,9 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     S.renderer.setPixelRatio(S.dpr);
     S.renderer.setSize(w, h, false);
     S.camera.aspect = w / h;
-    S.camera.position.z = w / h < 0.85 ? 6.2 : (Math.min(window.innerWidth, window.innerHeight) < 700 ? 5.2 : 4.5);
-    S.camera.updateProjectionMatrix();
+    applyZoom(); // recompute camera z from the NEW aspect × the user's zoom (never snaps zoom back)
     S.U.uPx.value = h * S.dpr * 0.0185; // A1: v2 uPx
-    S.U.uCamZ.value = S.camera.position.z;
-    render();
+    markDirty();
   }
 
   function ease(a: number, b: number, k: number): number { return a + (b - a) * k; }
@@ -656,20 +660,30 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     }
   }
 
+  // ONE perpetual loop, started once at init and never stopped (only paused when offscreen/hidden and
+  // cancelled at dispose). It renders every frame while ANIMATING or mid-transition, and exactly one
+  // frame per discrete `dirty` change (drag/zoom/theme/data) while otherwise static — so a paused or
+  // reduced-motion orb still responds to interaction.
   function loop() {
     if (!S) return;
     cancelAnimationFrame(S.raf);
     const tick = () => {
       if (!S) return;
       if (!S.visible || (typeof document !== "undefined" && document.hidden)) { S.raf = requestAnimationFrame(tick); return; }
-      const animating = (S.running && !S.reduced) || S.feedT0 >= 0 || S.U.uScatter.value !== S.tgt.scatter || S.U.uFocusAmt.value !== S.tgt.focusAmt;
-      if (animating) render();
+      const active =
+        (S.running && !S.reduced) ||
+        S.feedT0 >= 0 ||
+        S.U.uFlash.value > 0.01 ||
+        Math.abs(S.U.uScatter.value - S.tgt.scatter) > 1e-4 ||
+        Math.abs(S.U.uFocusAmt.value - S.tgt.focusAmt) > 1e-4;
+      if (active) render();
+      else if (S.dirty) { render(); S.dirty = false; }
       S.raf = requestAnimationFrame(tick);
     };
     S.raf = requestAnimationFrame(tick);
   }
 
-  function setVisible(v: boolean) { if (S) { S.visible = v; if (v) { S.clock.getDelta(); S.last = now(); loop(); } } }
+  function setVisible(v: boolean) { if (S) { S.visible = v; if (v) { S.clock.getDelta(); markDirty(); } } }
   function available() { return !!S; }
 
   function measure(): MindOrbMeasure {

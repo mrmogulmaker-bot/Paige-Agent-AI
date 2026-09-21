@@ -15,6 +15,16 @@ export interface FormDomain {
   el: number;
 }
 
+/**
+ * The dust (structural FORM) particle count — the A1 FORM FLOOR invariant made testable. It depends
+ * ONLY on an explicit cap override or the small-screen flag, and takes NO record-count parameter, so
+ * the glowing form can never thin as records change (records drive only the bright nodes). The 4,000
+ * floor keeps even a downshifted field readable.
+ */
+export function dustCap(particleCap: number | undefined, small: boolean): number {
+  return Math.max(4000, particleCap ?? (small ? 48000 : 160000));
+}
+
 /** mulberry-style deterministic RNG so the field is stable across renders (ported from the reference). */
 export function makeRng(seed: number): () => number {
   let s = seed | 0;
