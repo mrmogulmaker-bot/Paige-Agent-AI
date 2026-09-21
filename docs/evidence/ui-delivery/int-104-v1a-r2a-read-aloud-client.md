@@ -7,17 +7,25 @@ MATERIAL_FLOW_CHANGE: YES: playback gains named unavailable and recovery states 
 FLOW_PROTOTYPE: PASS: owner ruling 2026-09-21 approved the exact states and recovery behavior; the deterministic state-and-transition review surface is the matrix below and preserves the approved inline button plus toast/tooltip interaction
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: a signed-in workspace user taps an assistant message's existing play control and either hears it or receives a truthful, actionable explanation
 VISUAL_DIRECTION: PASS: preserve the approved existing neutral MessageMeta-sized ghost button, established tooltip, Sonner feedback, Paige tokens, and no provider-facing or technical copy
-AUTOMATED_EVIDENCE: UNVERIFIED: fail-first and completed focused test results will be recorded before review
-STATIC_EVIDENCE: UNVERIFIED: lint, typecheck, build, protected-file diff, and zero-supabase diff will be recorded before review
-RENDERED_EVIDENCE: UNVERIFIED: required Solo viewport artifacts and observations will be recorded before review
-BEHAVIORAL_EVIDENCE: UNVERIFIED: keyboard, play/stop, failure, recovery, and workspace-switch observations will be recorded before review
+AUTOMATED_EVIDENCE: PASS: fail-first captured 2 failed files and 5 failed behaviors; completed `messageTts`, failure-contract, and component suites pass 3 files / 9 tests
+STATIC_EVIDENCE: PASS: focused ESLint passes; `ci:tsc` passes with 12 baseline and 12 current errors; production build passes; protected-file and zero-`supabase/` diff checks pass
+RENDERED_EVIDENCE: UNVERIFIED: no authenticated preview was available before review; the unchanged compact button geometry is covered structurally but no screenshot is promoted to rendered proof
+BEHAVIORAL_EVIDENCE: UNVERIFIED: jsdom proves tap identity and response delivery structurally; authenticated browser play/stop and workspace-switch behavior remain production proof owed
 AUTHENTICATED_RUNTIME: UNVERIFIED: production deployment and owner interaction have not occurred; r2a does not change or prove server-side idempotency or budget enforcement
-KEYBOARD_FOCUS: UNVERIFIED: the native button keyboard path and retained focus will be driven before review
-ZOOM_REFLOW: UNVERIFIED: 200% zoom/reflow will be checked before review
-REDUCED_MOTION: UNVERIFIED: loading-spinner reduced-motion behavior will be checked before review
+KEYBOARD_FOCUS: UNVERIFIED: the native `button` and existing accessible labels are unchanged and statically inspected; an authenticated browser keyboard drive remains proof owed
+ZOOM_REFLOW: UNVERIFIED: no authenticated rendered 200% zoom drive was available before review; no geometry or layout rule changed
+REDUCED_MOTION: PASS: source inspection confirms the existing `motion-reduce:animate-none` loading treatment remains unchanged and the production build contains it
 STATE_COVERAGE: PASS: idle, loading, playing, stop, allowance reached, temporary platform stop, pending/ambiguous, retryable failure, not configured, sign-in loss, recovery, and next-tap identity are specified below; empty content remains non-rendering
 TRUTHFUL_STATE_LABELS: PASS: no state claims a provider, spend, cap value, or server enforcement; future-only response codes are reachable only through response handling and deterministic tests
 SOLO_UI: YES: canonical PAIGE message read-aloud control in the shared Solo PAIGE workspace
+SOLO_1536X770_PAIGE_CLOSED: UNVERIFIED: authenticated rendered drive unavailable before review; no shell geometry changed
+SOLO_1536X770_PAIGE_OPEN: UNVERIFIED: authenticated rendered drive unavailable before review; component contract is structurally covered
+SOLO_1366X768_PAIGE_CLOSED: UNVERIFIED: authenticated rendered drive unavailable before review; no shell geometry changed
+SOLO_1366X768_PAIGE_OPEN: UNVERIFIED: authenticated rendered drive unavailable before review; component contract is structurally covered
+SOLO_1024X768_PAIGE_CLOSED: UNVERIFIED: authenticated rendered drive unavailable before review; no shell geometry changed
+SOLO_1024X768_PAIGE_OPEN: UNVERIFIED: authenticated rendered drive unavailable before review; component contract is structurally covered
+SOLO_900X1000_PAIGE_CLOSED: UNVERIFIED: authenticated rendered drive unavailable before review; no shell geometry changed
+SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: authenticated rendered drive unavailable before review; component contract is structurally covered
 UNVERIFIED: authenticated production rendering, future server-code delivery, and server consumption of Idempotency-Key remain unverified until their owning phases deploy
 
 OWNER_INTENT: The 2026-09-21 owner ruling requires a fresh UUID for every explicit play tap, reuse only inside transport attempts for that tap, plain non-technical failure states, and no fake state for server codes not emitted yet.
@@ -27,9 +35,9 @@ ACCEPTANCE_CRITERIA: Each play tap sends one new `Idempotency-Key`; any transpor
 MOTION_PURPOSE: Existing loading rotation communicates an in-progress fetch and already becomes static under reduced motion; no motion is added or changed.
 PROTECTED_SEAMS: AFFECTED and tested — chat message identity/playback state, integration failure/retry behavior, accessibility, responsive shell geometry. NOT AFFECTED — tenant/workspace/client/account isolation; authentication/account choice; Solo entitlement/signup/paywall/billing/provisioning; approval/autonomy/authority; Spine execution; canonical writes/readback; Rail/receipts/Memory; transcript scroll/stream/thread/pop-out/minimize/history hydration; Live Conversation; Secure Browser/Vault; durable jobs; privacy/secrets. Provider transport is consumed but not changed.
 
-INTERNAL_BUILD_IDENTITY: PENDING_PR_HEAD; deployment=PENDING; environment=production-after-merge; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=this record
-RELEASE_CHANNEL: production: owner authorized r2a through merge and requested the exact Vercel deployment identity; no staged cohort
-RELEASE_CLASSIFICATION: internal patch: reliability and truthful recovery for existing read-aloud; no customer release identity is created
+INTERNAL_BUILD_IDENTITY: c849231075ad5a33219fa5380691d38ae1950503; deployment=none-pre-push; environment=development; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=this record and focused 9-test suite
+RELEASE_CHANNEL: development: pre-push branch build; production deployment is authorized but not yet observed
+RELEASE_CLASSIFICATION: patch: reliability and truthful recovery for existing read-aloud without a new capability or customer release identity
 CUSTOMER_RELEASE_IDENTITY: none: internal reliability patch, not a separately named customer release
 RELEASE_NOTE_REQUIRED: no: no approved customer publication record; owner-visible behavior remains within existing read-aloud
 RELEASE_TRUTH_BOUNDARY: PARTIAL: client sends per-tap request identity and classifies named failures; PROOF OWED: restored server currently ignores that header and future budget codes are not live
@@ -70,7 +78,12 @@ Variants: Future server responses are contract-tested but appear only if actuall
 - Pre-edit baseline: `origin/main` `0f3c994cb54168099e9a102bdb07fd10524c9219`; #1308 exact head and collision files above.
 - Pre-edit deployed refs: `edge-live=9c2d33dc282ae2a14c4b79825a6117628061f7cd`; `db-live=6d46ff6671785c646bcf0739340896a1baa56ede`.
 - Server contract inspection: restored `paige-tts` reads `Authorization` only and does not inspect `Idempotency-Key`.
-- Remaining artifacts and exact commands: pending implementation and verification.
+- Fail-first: `npx vitest run src/lib/voice/messageTtsFailure.test.ts src/components/chat/MessageAudioButton.test.tsx --reporter=verbose` — expected 2 failed files / 5 failed behaviors before implementation.
+- Focused completed suite: `npx vitest run src/lib/voice/messageTts.test.ts src/lib/voice/messageTtsFailure.test.ts src/components/chat/MessageAudioButton.test.tsx` — 3 files / 9 tests passed.
+- Focused lint: `npx eslint` over the five changed TypeScript/TSX files — passed.
+- Type ratchet: `npm run ci:tsc` — passed, baseline 12 / current 12. Ordinary `npm run typecheck` reports those same unrelated baseline errors.
+- Build: `npm run build` — passed. `npm run ci:regression` — passed.
+- Known unrelated baseline: `npm run lint:gold` still reports `src/components/dashboard/BusinessCreditDashboard.tsx:271`; r2a changes no gold styling or that file.
 
 ## Review and limitations
 
