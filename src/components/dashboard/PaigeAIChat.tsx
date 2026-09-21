@@ -42,7 +42,9 @@ import { createAnchoredTranscriptScroll, messageScrollAnchorKey } from "@/compon
 import {
   acceptComposerDelivery,
   clearComposerDraft,
+  composerDraftKey,
   composerDraftHandlesMatch,
+  composerScopeIdentityKey,
   createComposerRequestFence,
   createComposerScopeIdentity,
   initialComposerConversation,
@@ -327,9 +329,9 @@ const PaigeAIChatInner = ({
   const isThreadControlled = controlledThreadId !== undefined;
   const [localThreadId, setLocalThreadId] = useState<string | null>(null);
   const activeThreadId = isThreadControlled ? controlledThreadId : localThreadId;
-  const newConversationId = clientId || businessMissionId
-    ? `new-chat:${clientId ?? ""}:${businessMissionId ?? ""}`
-    : "new-chat";
+  // Focus is a first-class part of ComposerScopeIdentity. Keep the conversation slot stable so
+  // client/mission isolation has exactly one owner instead of being duplicated in this id.
+  const newConversationId = "new-chat";
   const [conversationState, setConversationState] = useState<ComposerConversationState>(
     () => initialComposerConversation(enableHistory, newConversationId),
   );
@@ -379,9 +381,8 @@ const PaigeAIChatInner = ({
   const openingGreeting = greeting ?? "Hey, how can I help?";
   const requestFenceRef = useRef(createComposerRequestFence());
   // === THE TURN'S SCOPE, AS ONE VALUE (§9, purpose clause 2) ===
-  // A turn is scoped by TWO things, not one: the active workspace, and the client in focus. The
-  // fence, the reset and the dictation epoch were all keyed on the tenant alone, so an account
-  // change ended the conversation correctly and a CLIENT change did not end it at all.
+  // Draft storage, writability, request delivery, busy ownership, dictation and retry all use this
+  // complete identity: workspace, effective user, focused client and focused Business Mission.
   //
   // That mattered because this component re-POSTs its entire local `messages` array on every
   // turn. Focusing a different client — or clearing focus — left the previous client's answers
@@ -390,35 +391,30 @@ const PaigeAIChatInner = ({
   // that the prose already in the transcript is about someone else. So the isolation had to be
   // here, on the surface that owns the array.
   //
-  // Composite rather than a second parallel epoch (§18): every mechanism that already keyed on
-  // the tenant now keys on this, and there is one definition of "the scope changed" instead of
-  // two that can disagree.
+  // Focus is normalized into the handle itself rather than living only in an epoch. Every consumer
+  // therefore agrees on the same scope and the explicit `none` focus is a real isolated slot.
   //
-  // Surfaces that never focus a client (the operator desk) pass no `clientId`, so their
-  // epoch is `"<tenant>|"` and their behaviour is byte-for-byte what it was.
-  const scopeEpoch = [
-    activeTenantId ?? "",
-    scopedUserId ?? "",
-    clientId ?? "",
-    businessMissionId ?? "",
-  ].join("|");
   const draftIdentity = createComposerScopeIdentity({
     tenantId: platform ? "platform" : activeTenantId,
     userId: scopedUserId,
+    focusedClientId: clientId,
+    focusedBusinessMissionId: businessMissionId,
   });
-  const requestScopeEpoch = `${scopeEpoch}|${requestedConversation.requested.kind}:${requestedConversation.requested.id}`;
+  const scopeEpoch = draftIdentity ? composerScopeIdentityKey(draftIdentity) : "identity-unresolved";
   const requestScopeHandle = draftIdentity
     ? { ...draftIdentity, conversationId: requestedConversation.requested.id }
     : null;
+  const requestScopeEpoch = requestScopeHandle
+    ? composerDraftKey(requestScopeHandle)
+    : "identity-unresolved";
   const requestScopeRef = useRef({ handle: requestScopeHandle, epoch: requestScopeEpoch });
   requestScopeRef.current = { handle: requestScopeHandle, epoch: requestScopeEpoch };
   const acceptedRequestScopeEpochRef = useRef(requestScopeEpoch);
-  const requestScopeFor = (kind: "new" | "thread", id: string) => draftIdentity
-    ? {
-        handle: { ...draftIdentity, conversationId: id },
-        epoch: `${scopeEpoch}|${kind}:${id}`,
-      }
-    : null;
+  const requestScopeFor = (_kind: "new" | "thread", id: string) => {
+    if (!draftIdentity) return null;
+    const handle = { ...draftIdentity, conversationId: id };
+    return { handle, epoch: composerDraftKey(handle) };
+  };
   const displayedDraftIdentityRef = useRef(draftIdentity);
   const composerScope = resolveComposerScopeState({
     currentIdentity: draftIdentity,
@@ -434,10 +430,7 @@ const PaigeAIChatInner = ({
   // A deployment reload must never discard an unsent prompt, attachment, or
   // response currently arriving from Paige.
   useBeforeUnloadGuard(input.trim().length > 0 || attachedDoc !== null || isProcessingFile || isLoading);
-  const dictationEpoch = [
-    scopeEpoch,
-    requestedConversation.requested.id,
-  ].join("|");
+  const dictationEpoch = requestScopeEpoch;
   const dictationDeliveryEpoch = `${dictationEpoch}:${dictationGeneration}`;
   const [dictationActivity, setDictationActivity] = useState({
     epoch: dictationEpoch,
@@ -603,6 +596,8 @@ const PaigeAIChatInner = ({
     displayedDraftIdentityRef.current = createComposerScopeIdentity({
       tenantId: platform ? "platform" : activeTenantId,
       userId: scopedUserId,
+      focusedClientId: clientId,
+      focusedBusinessMissionId: businessMissionId,
     });
     dictationGenerationRef.current += 1;
     setDictationGeneration(dictationGenerationRef.current);
@@ -647,6 +642,8 @@ const PaigeAIChatInner = ({
   }, [
     activeTenantId,
     abortActiveRequest,
+    businessMissionId,
+    clientId,
     enableHistory,
     newConversationId,
     openingGreeting,
@@ -880,7 +877,15 @@ const PaigeAIChatInner = ({
       applyConversationEvent({ type: "history-confirmed-empty" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enableHistory, threadsApi.isFetched, threadsApi.threads, isThreadControlled, controlledThreadId, clientId]);
+  }, [
+    businessMissionId,
+    clientId,
+    controlledThreadId,
+    enableHistory,
+    isThreadControlled,
+    threadsApi.isFetched,
+    threadsApi.threads,
+  ]);
 
   // CONTROLLED SYNC — the other half of "one thread, two doors". When the parent moves
   // the selection (the other door opened a thread, or created one on its first send),
@@ -973,7 +978,7 @@ const PaigeAIChatInner = ({
             if (!ticketAccepted(requestTicket)) return;
             const threadRequestScope = {
               handle: { ...requestTicket.scopeHandle, conversationId: threadId },
-              epoch: `${scopeEpoch}|thread:${threadId}`,
+              epoch: composerDraftKey({ ...requestTicket.scopeHandle, conversationId: threadId }),
             };
             requestScopeRef.current = threadRequestScope;
             acceptedRequestScopeEpochRef.current = threadRequestScope.epoch;

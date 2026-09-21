@@ -41,7 +41,9 @@ import { useImpersonation } from "@/contexts/ImpersonationContext";
 import {
   acceptComposerDelivery,
   clearComposerDraft,
+  composerDraftKey,
   composerDraftHandlesMatch,
+  composerScopeIdentityKey,
   createComposerRequestFence,
   createComposerScopeIdentity,
   initialComposerConversation,
@@ -137,9 +139,9 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const isMobile = useIsMobile();
   const location = useLocation();
   const [isLoading, setIsLoading] = useState(false);
-  const newConversationId = clientId
-    ? `new-chat:app-shell:client:${clientId}`
-    : "new-chat:app-shell";
+  // The mount keeps its own stable new-chat slot; focused-client isolation belongs only to the
+  // normalized ComposerScopeIdentity shared by drafts, delivery, retry and dictation.
+  const newConversationId = "new-chat:app-shell";
   const conversation = useMemo(
     () => initialComposerConversation(false, newConversationId),
     [newConversationId],
@@ -156,10 +158,14 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const currentIdentity = createComposerScopeIdentity({
     tenantId: isSignedIn ? activeTenantId : null,
     userId: isSignedIn ? user.id : null,
+    focusedClientId: clientId,
+    focusedBusinessMissionId: null,
   });
   const displayedIdentity = createComposerScopeIdentity({
     tenantId: resolvedDisplayedTenantId,
     userId: isSignedIn ? user.id : null,
+    focusedClientId: clientId,
+    focusedBusinessMissionId: null,
   });
   const acceptedDisplayedIdentityRef = useRef(displayedIdentity);
   const acceptedConversationRef = useRef(conversation);
@@ -193,25 +199,29 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
           : activeTenantId !== resolvedDisplayedTenantId
             ? "The active workspace does not match this conversation."
             : composerScope.unavailableReason;
+  const requestScopeHandle = currentIdentity
+    ? { ...currentIdentity, conversationId: conversation.requested.id }
+    : null;
+  const requestScopeEpoch = requestScopeHandle
+    ? composerDraftKey(requestScopeHandle)
+    : "identity-unresolved";
   const dictationScopeEpoch = [
-    currentIdentity ? `${currentIdentity.tenantId}:${currentIdentity.userId}` : "resolving",
-    newConversationId,
+    requestScopeEpoch,
     location.pathname,
     location.search ?? "",
   ].join("|");
   const appComposerScopeKey = [
     isSignedIn ? "signed-in" : "signed-out",
-    activeTenantId ?? "no-active-tenant",
-    user.id,
+    currentIdentity ? composerScopeIdentityKey(currentIdentity) : "identity-unresolved",
     impersonationTargetKey ?? "self",
-    displayedTenantLoading ? "tenant-loading" : (resolvedDisplayedTenantId ?? "no-displayed-tenant"),
-    newConversationId,
+    displayedTenantLoading
+      ? "tenant-loading"
+      : displayedIdentity
+        ? composerScopeIdentityKey(displayedIdentity)
+        : "displayed-identity-unresolved",
+    conversation.requested.id,
   ].join("|");
   const acceptedAppComposerScopeKeyRef = useRef(appComposerScopeKey);
-  const requestScopeEpoch = `${appComposerScopeKey}|${conversation.requested.kind}:${conversation.requested.id}`;
-  const requestScopeHandle = currentIdentity
-    ? { ...currentIdentity, conversationId: conversation.requested.id }
-    : null;
   const requestScopeRef = useRef({ handle: requestScopeHandle, epoch: requestScopeEpoch });
   requestScopeRef.current = { handle: requestScopeHandle, epoch: requestScopeEpoch };
   const requestFenceRef = useRef(createComposerRequestFence());
@@ -438,6 +448,8 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     acceptedDisplayedIdentityRef.current = createComposerScopeIdentity({
       tenantId: resolvedDisplayedTenantId,
       userId: isSignedIn ? user.id : null,
+      focusedClientId: clientId,
+      focusedBusinessMissionId: null,
     });
     acceptedConversationRef.current = initialComposerConversation(false, newConversationId);
     contextInjectedRef.current = false;
@@ -451,6 +463,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   }, [
     abortActiveRequest,
     appComposerScopeKey,
+    clientId,
     isSignedIn,
     newConversationId,
     playbook.persona.greeting,

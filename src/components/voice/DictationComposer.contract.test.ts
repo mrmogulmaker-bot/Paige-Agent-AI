@@ -20,10 +20,12 @@ describe("dictation composer scope and send contract", () => {
     expect(sources[0]).toContain("const dictationDeliveryEpoch = `${dictationEpoch}:${dictationGeneration}`;");
     expect(sources[1]).toContain("scopeEpoch={dictationScopeEpoch}");
     expect(sources[2]).toContain("scopeEpoch={dictationScopeEpoch}");
-    expect(sources[0]).toContain('scopedUserId ?? "anonymous"');
-    expect(sources[0]).toContain("requestedConversation.requested.id,");
-    expect(sources[1]).toContain('currentIdentity ? `${currentIdentity.tenantId}:${currentIdentity.userId}` : "resolving"');
-    expect(sources[1]).toContain("newConversationId,");
+    expect(sources[0]).toContain("focusedClientId: clientId");
+    expect(sources[0]).toContain("focusedBusinessMissionId: businessMissionId");
+    expect(sources[0]).toContain("const dictationEpoch = requestScopeEpoch;");
+    expect(sources[1]).toContain("focusedClientId: clientId");
+    expect(sources[1]).toContain("focusedBusinessMissionId: null");
+    expect(sources[1]).toContain("requestScopeEpoch,");
     expect(sources[1]).toContain("location.pathname,");
     expect(sources[1]).toContain('location.search ?? ""');
   });

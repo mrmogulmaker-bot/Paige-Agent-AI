@@ -140,6 +140,12 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
   const type = async (value: string) => {
     await act(async () => setTextareaValue(textarea(), value));
   };
+  const waitForWritable = async () => {
+    for (let attempt = 0; attempt < 6 && textarea().disabled; attempt += 1) {
+      await act(async () => settle());
+    }
+    expect(textarea().disabled).toBe(false);
+  };
 
   it("does not permit typing while history is unresolved, then enables a confirmed empty history", async () => {
     harness.isFetched = false;
@@ -199,36 +205,46 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
 
   it("isolates client, mission, and explicit no-focus drafts and drops late focused dictation", async () => {
     await render({ clientId: "client-a" });
+    await waitForWritable();
     await type("client A draft");
     const clientADelivery = harness.micCallbacks.at(-1)!.onText;
 
     await render({ clientId: "client-b" });
+    await waitForWritable();
     expect(textarea().value).toBe("");
     await type("client B draft");
     await act(async () => clientADelivery(" late A"));
     expect(textarea().value).toBe("client B draft");
 
     await render({ businessMissionId: "mission-a" });
+    await waitForWritable();
     expect(textarea().value).toBe("");
     await type("mission A draft");
 
     await render({ businessMissionId: "mission-b" });
+    await waitForWritable();
     expect(textarea().value).toBe("");
     await type("mission B draft");
 
     await render();
+    await waitForWritable();
     expect(textarea().value).toBe("");
     await type("no focus draft");
 
     await render({ clientId: "client-a" });
+    await waitForWritable();
     expect(textarea().value).toBe("client A draft");
     await render({ clientId: "client-b" });
+    await waitForWritable();
     expect(textarea().value).toBe("client B draft");
     await render({ businessMissionId: "mission-a" });
+    await waitForWritable();
     expect(textarea().value).toBe("mission A draft");
     await render({ businessMissionId: "mission-b" });
+    await waitForWritable();
     expect(textarea().value).toBe("mission B draft");
     await render();
+    await waitForWritable();
     expect(textarea().value).toBe("no focus draft");
   });
 
@@ -361,8 +377,13 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
 
     await render({ clientId: "client-b" });
+    await waitForWritable();
     expect(textarea().value).toBe("");
     await render({ clientId: "client-a" });
-    expect(textarea().value).toBe("newer edit that must survive");
+    await waitForWritable();
+    // The first send migrated this draft from the focused new-chat slot to the
+    // persisted thread. Returning to focus A opens a fresh new-chat slot; the
+    // thread-owned edit is retained in its real-thread handle, never leaked here.
+    expect(textarea().value).toBe("");
   });
 });

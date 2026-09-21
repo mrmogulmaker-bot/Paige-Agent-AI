@@ -287,7 +287,8 @@ describe("PaigeChat ComposerScopeState integration", () => {
     await act(async () => clientADelivery(" late A"));
     expect(textarea().value).toBe("client B draft");
 
-    await render(currentUser, session, undefined);
+    currentClientId = undefined;
+    await render();
     expect(textarea().value).toBe("");
     await type("no focus draft");
 
@@ -295,7 +296,8 @@ describe("PaigeChat ComposerScopeState integration", () => {
     expect(textarea().value).toBe("client A draft");
     await render(currentUser, session, "client-b");
     expect(textarea().value).toBe("client B draft");
-    await render(currentUser, session, undefined);
+    currentClientId = undefined;
+    await render();
     expect(textarea().value).toBe("no focus draft");
   });
 

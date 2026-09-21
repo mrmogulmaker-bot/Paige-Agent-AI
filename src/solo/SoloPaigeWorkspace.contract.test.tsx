@@ -225,8 +225,8 @@ describe("Solo PAIGE workspace contract", () => {
 
   it("aborts and rejects every stale request generation", () => {
     const fence = createComposerRequestFence();
-    const scopeA = { tenantId: "account-a", userId: "user-a", conversationId: "thread-a" };
-    const scopeB = { tenantId: "account-b", userId: "user-a", conversationId: "thread-b" };
+    const scopeA = { tenantId: "account-a", userId: "user-a", focusedClientId: "none", focusedBusinessMissionId: "none", conversationId: "thread-a" };
+    const scopeB = { tenantId: "account-b", userId: "user-a", focusedClientId: "none", focusedBusinessMissionId: "none", conversationId: "thread-b" };
     const accountA = fence.begin(scopeA, "account-a");
     expect(fence.isCurrent(accountA, scopeA, "account-a")).toBe(true);
 
@@ -242,8 +242,8 @@ describe("Solo PAIGE workspace contract", () => {
   it("cannot commit delayed account-A or history work after account B is accepted", async () => {
     const fence = createComposerRequestFence();
     const committed: string[] = [];
-    const scopeA = { tenantId: "account-a", userId: "user-a", conversationId: "thread-a" };
-    const scopeB = { tenantId: "account-b", userId: "user-a", conversationId: "thread-b" };
+    const scopeA = { tenantId: "account-a", userId: "user-a", focusedClientId: "none", focusedBusinessMissionId: "none", conversationId: "thread-a" };
+    const scopeB = { tenantId: "account-b", userId: "user-a", focusedClientId: "none", focusedBusinessMissionId: "none", conversationId: "thread-b" };
     const accountA = fence.begin(scopeA, "account-a");
     let releaseAccountA!: () => void;
     const delayedAccountA = new Promise<void>((resolve) => { releaseAccountA = resolve; }).then(() => {
@@ -262,8 +262,8 @@ describe("Solo PAIGE workspace contract", () => {
   it("cannot let a superseded request timeout invalidate the accepted request", () => {
     vi.useFakeTimers();
     const fence = createComposerRequestFence();
-    const scopeA = { tenantId: "account-a", userId: "user-a", conversationId: "thread-a" };
-    const scopeB = { tenantId: "account-b", userId: "user-a", conversationId: "thread-b" };
+    const scopeA = { tenantId: "account-a", userId: "user-a", focusedClientId: "none", focusedBusinessMissionId: "none", conversationId: "thread-a" };
+    const scopeB = { tenantId: "account-b", userId: "user-a", focusedClientId: "none", focusedBusinessMissionId: "none", conversationId: "thread-b" };
     const accountA = fence.begin(scopeA, "account-a");
     window.setTimeout(() => {
       if (!fence.isCurrent(accountA, scopeB, "account-b")) return;
@@ -334,10 +334,12 @@ describe("Solo PAIGE workspace contract", () => {
   it("clears account-authored UI before the next account hydrates", () => {
     const chat = source("src/components/dashboard/PaigeAIChat.tsx");
     const app = source("src/solo/SoloApp.tsx");
-    // The epoch is composite across the active workspace and either focused record. A client or
-    // Strategic Play switch must end acceptance of the prior transcript/stream before any later
-    // response can render under the new scope. The ordering remains accept, abort, then clear.
-    expect(chat).toMatch(/const scopeEpoch = \[[\s\S]*activeTenantId \?\? "",[\s\S]*scopedUserId \?\? "",[\s\S]*clientId \?\? "",[\s\S]*businessMissionId \?\? "",[\s\S]*\]\.join\("\|"\);/);
+    // The shared scope handle, not a parallel epoch-only dimension, carries tenant, effective user,
+    // focused client and focused mission. A focus switch therefore changes drafts and delivery
+    // acceptance together. The ordering remains accept, abort, then clear.
+    expect(chat).toMatch(/createComposerScopeIdentity\(\{[\s\S]*tenantId: platform \? "platform" : activeTenantId,[\s\S]*userId: scopedUserId,[\s\S]*focusedClientId: clientId,[\s\S]*focusedBusinessMissionId: businessMissionId,/);
+    expect(chat).toContain("const scopeEpoch = draftIdentity ? composerScopeIdentityKey(draftIdentity) : \"identity-unresolved\"");
+    expect(chat).toContain("? composerDraftKey(requestScopeHandle)");
     // Bounded so it cannot reach the LATER abort calls (startNewChat, unmount). The
     // unbounded `[\s\S]*` version could not fail: inverting the accept/abort order left the
     // whole 507-test suite green.
