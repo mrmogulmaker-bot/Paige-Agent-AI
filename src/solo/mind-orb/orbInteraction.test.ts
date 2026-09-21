@@ -186,4 +186,39 @@ describe("orbInteraction — reduced-motion and idle wakes are never measured (#
     expect(recordsFrameInterval(true, /*lastAnimated*/ false, /*lastFrameAt*/ 5000)).toBe(false);
     expect(recordsFrameInterval(true, false, -1)).toBe(false); // no prior timestamp yet
   });
+
+  it("a hide→show WITHIN 250 ms does not sample the hidden gap (the engine clears cadence state on a hidden frame)", () => {
+    // Mirror the engine's cadence state machine with the pure seam. The engine's hidden/offscreen
+    // early-return sets lastAnimated=false and lastFrameAt=-1; render() records an interval only when
+    // recordsFrameInterval() is true, then updates the state. The bug this guards (#1303 re-review P2):
+    // WITHOUT the reset, a hide of, say, 120 ms would be recorded as one ~120 ms slow frame and could
+    // trip the one-time step-down. WITH the reset, the resumed frame is a fresh start.
+    const samples: number[] = [];
+    let lastAnimated = false;
+    let lastFrameAt = -1;
+    const renderFrame = (nowT: number, animate: boolean) => {
+      if (recordsFrameInterval(animate, lastAnimated, lastFrameAt)) {
+        const interval = nowT - lastFrameAt;
+        if (interval > 0 && interval < 250) samples.push(interval);
+      }
+      lastFrameAt = nowT;
+      lastAnimated = animate;
+    };
+    const hiddenFrame = () => { lastAnimated = false; lastFrameAt = -1; }; // the engine's early-return reset
+
+    renderFrame(0, true); // first animation frame — nothing prior, no sample
+    renderFrame(16, true); // steady 60 FPS — records 16
+    renderFrame(32, true); // records 16
+    expect(samples).toEqual([16, 16]);
+
+    hiddenFrame(); // tab/canvas hidden for a stretch — cadence state cleared
+    renderFrame(152, true); // shown again 120 ms later, still animating — MUST NOT record the 120 ms gap
+    expect(samples).toEqual([16, 16]); // unchanged — the hidden gap was skipped
+    renderFrame(168, true); // next real frame — records 16 again
+    expect(samples).toEqual([16, 16, 16]);
+
+    // Sanity: had the engine NOT reset (lastAnimated stayed true, lastFrameAt=32), the resumed frame
+    // would have recorded the 120 ms hidden gap:
+    expect(recordsFrameInterval(true, /*lastAnimated (not reset)*/ true, /*lastFrameAt*/ 32)).toBe(true);
+  });
 });

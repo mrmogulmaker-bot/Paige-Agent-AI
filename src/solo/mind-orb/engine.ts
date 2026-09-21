@@ -712,7 +712,17 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     cancelAnimationFrame(S.raf);
     const tick = () => {
       if (!S) return;
-      if (!S.visible || (typeof document !== "undefined" && document.hidden)) { S.raf = requestAnimationFrame(tick); return; }
+      if (!S.visible || (typeof document !== "undefined" && document.hidden)) {
+        // Skipping a hidden/offscreen frame: clear the cadence state so the FIRST resumed frame is not
+        // sampled as a displayed-frame interval. Without this, a hide→show within 250 ms would record
+        // the whole hidden gap as one slow frame and could irreversibly trip the one-time density
+        // step-down (#1303 re-review P2). recordsFrameInterval requires lastAnimated && lastFrameAt>=0,
+        // so clearing both makes the resumed frame a fresh start, not a measured interval.
+        S.lastAnimated = false;
+        S.lastFrameAt = -1;
+        S.raf = requestAnimationFrame(tick);
+        return;
+      }
       const active =
         (S.running && !S.reduced) ||
         S.feedT0 >= 0 ||

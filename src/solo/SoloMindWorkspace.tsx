@@ -309,7 +309,7 @@ export function SoloMindWorkspace({ accountContext, openPaige, preferenceScope }
   const truthClass = (truth: string) =>
     truth === "LIVE SOURCE" ? "mind-truth--live" : truth === "UNAVAILABLE" ? "mind-truth--unavail" : truth === "PROPOSED" ? "mind-truth--proposed" : "mind-truth--partial";
 
-  const orbLabel = `Interactive Mind knowledge orb. Governed records are positioned by domain and coloured by their canonical source state. ${presentationOrbit && !reduced ? "A slow presentation orbit shows depth." : "The orb is still."} Presentation motion does not represent tenant activity. Drag to rotate, scroll or +/- to zoom, arrow keys to rotate, and Enter to inspect the front record.`;
+  const orbLabel = `Interactive Mind knowledge orb. Governed records are positioned by domain and coloured by evidence tier: grounded, partial (held, not yet confirmed), or unavailable. ${presentationOrbit && !reduced ? "A slow presentation orbit shows depth." : "The orb is still."} Presentation motion does not represent tenant activity. Drag to rotate, scroll or +/- to zoom, arrow keys to rotate, and Enter to inspect the front record.`;
 
   return (
     <section className="mind-workspace" aria-labelledby="mind-title" ref={rootRef}>
