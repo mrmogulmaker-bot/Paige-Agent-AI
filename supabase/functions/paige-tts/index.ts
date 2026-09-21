@@ -59,6 +59,17 @@ function runAfter(p: Promise<void>): void {
   else void p.catch((e) => console.error("[paige-tts] background task failed:", (e as Error)?.message));
 }
 
+/** Compatibility idempotency for the deployed playback caller while its UI seam is collision-locked.
+ * Explicit keys remain authoritative; an absent key is bound to actor, scope, profile, and text so a
+ * retry of the same synthesis cannot create a second provider dispatch. */
+async function fallbackRequestRef(parts: string[]): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(parts))));
+  digest[6] = (digest[6] & 0x0f) | 0x50;
+  digest[8] = (digest[8] & 0x3f) | 0x80;
+  const hex = Array.from(digest.slice(0, 16), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
 /** §17 meter — chars to platform_usage_events (service-role, tenant-scoped). Never throws into the
  *  request path; a metering failure is logged, not surfaced. A NULL tenantId is the operator/
  *  platform-owner path (§9 — the Super Admin is not a billable tenant, and platform_usage_events
@@ -142,8 +153,8 @@ serve(async (req: Request) => {
     if (body?.voice_id != null || body?.voiceId != null) return json({ error: "voice_override_not_allowed" }, 400);
     if (!text) return json({ error: "empty_text" }, 400);
     const capped = text.length > MAX_TEXT_CHARS ? text.slice(0, MAX_TEXT_CHARS) : text;
-    const idempotencyKey = String(req.headers.get("Idempotency-Key") ?? "").trim();
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey)) {
+    const suppliedIdempotencyKey = String(req.headers.get("Idempotency-Key") ?? "").trim();
+    if (suppliedIdempotencyKey && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(suppliedIdempotencyKey)) {
       return json({ error: "idempotency_key_required" }, 400);
     }
 
@@ -212,7 +223,10 @@ serve(async (req: Request) => {
       // serializes the platform + tenant rows, binds this request idempotently to the server-resolved
       // actor/tenant/profile/provider, and refuses zero, disabled, emergency-stopped, or exhausted
       // configurations. No provider transport is called before this succeeds.
-      const requestRef = idempotencyKey;
+      const requestRef = suppliedIdempotencyKey || await fallbackRequestRef([
+        user.id, storagePrefix, new Date().toISOString().slice(0, 7), attempt.profileRevision,
+        attempt.provider, attempt.model, usedVoice, capped,
+      ]);
       const { data: reservation, error: reservationError } = await admin.rpc("reserve_paige_voice_cost_internal", {
         _actor_user_id: user.id,
         _tenant_id: meterTenantId,

@@ -15,7 +15,7 @@ BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 
-SELECT plan(46);
+SELECT plan(48);
 
 SELECT ok(
   NOT has_table_privilege('authenticated', 'public.paige_voice_platform_budget', 'SELECT,INSERT,UPDATE,DELETE'),
@@ -171,6 +171,9 @@ SET provider='elevenlabs',
 WHERE slot='active';
 SELECT lives_ok($$SELECT public.reserve_paige_voice_cost_internal('10400000-0000-4000-8000-000000000001','10400000-0000-4000-8000-0000000000a1','elevenlabs-budget-proof-r1','10400000-0000-4000-8000-000000000108',1)$$, 'the same budget controller covers an ElevenLabs profile');
 SELECT is((SELECT provider FROM public.paige_voice_cost_reservations WHERE request_ref='10400000-0000-4000-8000-000000000108'),'elevenlabs','reservation records the actual selected provider');
+
+SELECT lives_ok($$SELECT public.reserve_paige_voice_cost_internal('10400000-0000-4000-8000-000000000003',NULL,'elevenlabs-budget-proof-r1','10400000-0000-4000-8000-000000000109',1)$$, 'platform staff without a tenant consumes the platform budget only');
+SELECT is((SELECT tenant_id FROM public.paige_voice_cost_reservations WHERE request_ref='10400000-0000-4000-8000-000000000109'),NULL::uuid,'operator reservation never fabricates a tenant');
 
 SELECT matches(pg_get_functiondef('public.reserve_paige_voice_cost_internal(uuid,uuid,text,uuid,integer)'::regprocedure),'FOR[[:space:]]+UPDATE[[:space:][:print:]]+ON CONFLICT','reservation implementation combines row locks with guarded month buckets for concurrent cap enforcement');
 

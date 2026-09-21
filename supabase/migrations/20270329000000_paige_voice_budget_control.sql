@@ -77,6 +77,22 @@ ALTER TABLE public.paige_voice_cost_reservations
   ADD CONSTRAINT paige_voice_cost_provider_check CHECK (provider IN ('elevenlabs','openai')),
   ADD CONSTRAINT paige_voice_cost_rate_check CHECK (rate_usd_per_1000_chars > 0);
 
+INSERT INTO public.paige_voice_platform_monthly_usage(budget_month, reserved_usd)
+SELECT budget_month, sum(reserved_usd)
+FROM public.paige_voice_cost_reservations
+WHERE state IN ('reserved','committed','ambiguous')
+GROUP BY budget_month
+ON CONFLICT (budget_month) DO UPDATE
+SET reserved_usd = EXCLUDED.reserved_usd;
+
+INSERT INTO public.paige_voice_tenant_monthly_usage(tenant_id, budget_month, reserved_usd)
+SELECT tenant_id, budget_month, sum(reserved_usd)
+FROM public.paige_voice_cost_reservations
+WHERE tenant_id IS NOT NULL AND state IN ('reserved','committed','ambiguous')
+GROUP BY tenant_id, budget_month
+ON CONFLICT (tenant_id, budget_month) DO UPDATE
+SET reserved_usd = EXCLUDED.reserved_usd;
+
 ALTER TABLE public.paige_voice_cost_reservations
   DROP CONSTRAINT paige_voice_cost_reservations_state_check;
 ALTER TABLE public.paige_voice_cost_reservations
@@ -274,19 +290,21 @@ DECLARE
   _platform_used numeric;
   _reserve numeric;
   _id uuid;
+  _is_operator boolean := false;
 BEGIN
   IF auth.role() <> 'service_role' THEN
     RAISE EXCEPTION 'PAIGE_VOICE_COST_FORBIDDEN' USING ERRCODE = '42501';
   END IF;
-  IF _actor_user_id IS NULL OR _tenant_id IS NULL OR _request_ref IS NULL
+  IF _actor_user_id IS NULL OR _request_ref IS NULL
      OR _character_count IS NULL OR _character_count <= 0
      OR nullif(btrim(_profile_revision), '') IS NULL THEN
     RAISE EXCEPTION 'PAIGE_VOICE_COST_INVALID' USING ERRCODE = '22023';
   END IF;
-  IF NOT EXISTS (
+  _is_operator := _tenant_id IS NULL AND public.is_platform_admin(_actor_user_id);
+  IF (_tenant_id IS NULL AND NOT _is_operator) OR (_tenant_id IS NOT NULL AND NOT EXISTS (
     SELECT 1 FROM public.tenant_members
     WHERE tenant_id = _tenant_id AND user_id = _actor_user_id AND status = 'active'
-  ) THEN
+  )) THEN
     RAISE EXCEPTION 'PAIGE_VOICE_COST_SCOPE_MISMATCH' USING ERRCODE = '42501';
   END IF;
 
@@ -303,12 +321,14 @@ BEGIN
     RAISE EXCEPTION 'PAIGE_VOICE_BUDGET_DISABLED' USING ERRCODE = '55000';
   END IF;
 
-  SELECT * INTO _tenant
-  FROM public.paige_voice_tenant_budgets
-  WHERE tenant_id = _tenant_id
-  FOR UPDATE;
-  IF _tenant.tenant_id IS NULL OR NOT _tenant.enabled OR _tenant.monthly_limit_usd <= 0 THEN
-    RAISE EXCEPTION 'PAIGE_VOICE_TENANT_BUDGET_DISABLED' USING ERRCODE = '55000';
+  IF NOT _is_operator THEN
+    SELECT * INTO _tenant
+    FROM public.paige_voice_tenant_budgets
+    WHERE tenant_id = _tenant_id
+    FOR UPDATE;
+    IF _tenant.tenant_id IS NULL OR NOT _tenant.enabled OR _tenant.monthly_limit_usd <= 0 THEN
+      RAISE EXCEPTION 'PAIGE_VOICE_TENANT_BUDGET_DISABLED' USING ERRCODE = '55000';
+    END IF;
   END IF;
 
   SELECT * INTO _profile
@@ -367,15 +387,17 @@ BEGIN
   -- Unique month buckets plus ON CONFLICT are the concurrency boundary. Unlike
   -- an aggregate or ordinary UPDATE inside a waiting function statement, the
   -- conflict path observes and guards the latest concurrently committed tuple.
-  INSERT INTO public.paige_voice_tenant_monthly_usage(tenant_id, budget_month, reserved_usd)
-  VALUES (_tenant_id, _budget_month, _reserve)
-  ON CONFLICT (tenant_id, budget_month) DO UPDATE
-    SET reserved_usd = public.paige_voice_tenant_monthly_usage.reserved_usd + EXCLUDED.reserved_usd
-    WHERE public.paige_voice_tenant_monthly_usage.reserved_usd + EXCLUDED.reserved_usd
-          <= _tenant.monthly_limit_usd
-  RETURNING reserved_usd INTO _tenant_used;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'PAIGE_VOICE_TENANT_COST_LIMIT' USING ERRCODE = '54000';
+  IF NOT _is_operator THEN
+    INSERT INTO public.paige_voice_tenant_monthly_usage(tenant_id, budget_month, reserved_usd)
+    VALUES (_tenant_id, _budget_month, _reserve)
+    ON CONFLICT (tenant_id, budget_month) DO UPDATE
+      SET reserved_usd = public.paige_voice_tenant_monthly_usage.reserved_usd + EXCLUDED.reserved_usd
+      WHERE public.paige_voice_tenant_monthly_usage.reserved_usd + EXCLUDED.reserved_usd
+            <= _tenant.monthly_limit_usd
+    RETURNING reserved_usd INTO _tenant_used;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'PAIGE_VOICE_TENANT_COST_LIMIT' USING ERRCODE = '54000';
+    END IF;
   END IF;
 
   INSERT INTO public.paige_voice_platform_monthly_usage(budget_month, reserved_usd)
@@ -448,13 +470,13 @@ BEGIN
     SET state = _outcome, settled_at = now()
     WHERE id = _reservation_id;
     IF _outcome = 'released' THEN
-      UPDATE public.paige_voice_platform_monthly_usage
-      SET reserved_usd = GREATEST(0, reserved_usd - _reservation.reserved_usd)
-      WHERE budget_month = _reservation.budget_month;
       UPDATE public.paige_voice_tenant_monthly_usage
       SET reserved_usd = GREATEST(0, reserved_usd - _reservation.reserved_usd)
       WHERE tenant_id = _reservation.tenant_id
         AND budget_month = _reservation.budget_month;
+      UPDATE public.paige_voice_platform_monthly_usage
+      SET reserved_usd = GREATEST(0, reserved_usd - _reservation.reserved_usd)
+      WHERE budget_month = _reservation.budget_month;
     END IF;
     RETURN;
   END IF;
