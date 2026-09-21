@@ -5,13 +5,28 @@ FLOW_BY_FLOW: PASS: The affected flow is the existing Solo PAIGE Chat voice-typi
 PAIGE_UI_DESIGN: PASS: No visual design, layout, copy, token, navigation, focus, or accessibility contract changes. The repair keeps the existing composer, status, and toast treatment and makes the result truthful.
 VISIBLE_FLOW_IMPACT: YES: The user-visible STOP outcome changes from a premature connection-failure toast after `WebSocket.onerror` to settlement by the subsequent final transcript and close result.
 MATERIAL_FLOW_CHANGE: YES: Once STOP has been sent, `onerror` is no longer terminal; the released run waits for final transcript frames plus close, or the existing 15-second settlement timeout. Before STOP, `onerror` remains terminal.
-FLOW_PROTOTYPE: NOT_REQUIRED: This is a state-machine correction within the owner-approved dictation interaction; it adds no surface, control, copy, or interaction shape.
+FLOW_PROTOTYPE: WAIVED: owner-decision=Antonio Cook owner ruling 2026-09-21 for INT-118; reason=this bug fix removes a false error toast after STOP and makes no visual, layout, or design change
+PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: An authenticated Solo PAIGE Chat user dictates into the existing composer, taps the existing STOP control, keeps the trailing final words, and sees no false connection-error toast after a clean close.
+VISUAL_DIRECTION: PASS: The existing PAIGE composer, dictation control, status treatment, toast treatment, layout, and tokens are unchanged; this repair changes only which existing result is shown after WebSocket settlement.
 AUTOMATED_EVIDENCE: PASS: The focused dictation suite covers all four required cases and passes; the adjacent static contract suite also passes. Removing the released-run guard restores the defect and fails the two post-STOP settlement cases.
+STATIC_EVIDENCE: PASS: Scoped ESLint, the TypeScript ratchet, regression lint, production build, and `git diff --check` pass; source inspection confirms no exported hook name, option, callback signature, return shape, markup, style, or copy changed.
 RENDERED_EVIDENCE: NOT_APPLICABLE: No markup, style, geometry, copy, focus, or responsive behavior changed.
-BEHAVIORAL_EVIDENCE: PASS: Deterministic hook tests drive STOP, `onerror`, trailing `is_final`, clean/unclean close, and the 15-second settlement timer. This is automated state-machine evidence, not authenticated production proof.
+BEHAVIORAL_EVIDENCE: UNVERIFIED: Hook tests are automated evidence only; no authenticated browser interaction has been driven. The owner's post-deployment live dictation plus STOP check is the required behavioral proof.
 AUTHENTICATED_RUNTIME: UNVERIFIED: The authenticated production STOP flow must be exercised by the owner after deployment. Until that live check, production restoration is proof owed.
+KEYBOARD_FOCUS: NOT_APPLICABLE: No control, focus order, keyboard handler, or focus-restoration behavior changed; the existing STOP control contract is preserved.
+ZOOM_REFLOW: NOT_APPLICABLE: No markup, style, sizing, positioning, or responsive rule changed, so this state-machine repair has no zoom or reflow delta.
+REDUCED_MOTION: NOT_APPLICABLE: No animation, transition, timing presentation, or motion preference behavior changed.
+STATE_COVERAGE: PASS: Automated cases cover STOP then `onerror` then final then clean close, STOP then `onerror` then unclean close, STOP with no completion through the 15-second timeout, and the unchanged pre-STOP terminal `onerror` path.
 TRUTHFUL_STATE_LABELS: PASS: A clean close after STOP produces success without an error toast; an unclean close reports a disconnect; silence through the settlement deadline reports a timeout; pre-STOP connection failure keeps the existing connection error.
 SOLO_UI: YES: The affected surface is the Solo `PaigeAIChat` side-panel composer on Command Center and every existing consumer of the unchanged `useDictation` public API.
+SOLO_1536X770_PAIGE_CLOSED: UNVERIFIED: No authenticated production browser drive was performed at this viewport; no layout or geometry changed, and the owner STOP check remains proof owed.
+SOLO_1536X770_PAIGE_OPEN: UNVERIFIED: No authenticated production browser drive was performed at this viewport with PAIGE open; no layout or geometry changed, and the owner STOP check remains proof owed.
+SOLO_1366X768_PAIGE_CLOSED: UNVERIFIED: No authenticated production browser drive was performed at this viewport; no layout or geometry changed, and the owner STOP check remains proof owed.
+SOLO_1366X768_PAIGE_OPEN: UNVERIFIED: No authenticated production browser drive was performed at this viewport with PAIGE open; no layout or geometry changed, and the owner STOP check remains proof owed.
+SOLO_1024X768_PAIGE_CLOSED: UNVERIFIED: No authenticated production browser drive was performed at this viewport; no layout or geometry changed, and the owner STOP check remains proof owed.
+SOLO_1024X768_PAIGE_OPEN: UNVERIFIED: No authenticated production browser drive was performed at this viewport with PAIGE open; no layout or geometry changed, and the owner STOP check remains proof owed.
+SOLO_900X1000_PAIGE_CLOSED: UNVERIFIED: No authenticated production browser drive was performed at this viewport; no layout or geometry changed, and the owner STOP check remains proof owed.
+SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: No authenticated production browser drive was performed at this viewport with PAIGE open; no layout or geometry changed, and the owner STOP check remains proof owed.
 UNVERIFIED: Authenticated production dictation followed by an explicit STOP, receipt of the trailing final transcript, absence of a false toast after clean close, and the exact production Vercel deployment remain unverified until the owner live check after deployment.
 
 OWNER_INTENT: On STOP, preserve and deliver the trailing final utterance; do not surface a false connection failure merely because the browser fires `onerror` during normal released-run settlement.
