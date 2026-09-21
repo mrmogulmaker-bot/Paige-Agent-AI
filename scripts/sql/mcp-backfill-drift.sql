@@ -29,9 +29,14 @@
 --                          silently. (§6a is uniquely indexed, so it cannot duplicate this way.)
 --   credential_drift     — a matched pair whose VERBATIM-COPIED endpoint/credential columns diverge.
 --                          Only columns the backfill copies byte-for-byte are compared. For §6a that
---                          is server_url_ct/auth_token_ct/auth_token_last4 AND the OAuth grant columns
---                          refresh_token_ct/oauth_client_secret_ct (the LIVE credential for a Zapier
---                          row, whose auth_token_ct is NULL), plus auth_kind/transport; for §6b it is
+--                          is the COMPLETE copied runtime bundle: server_url_ct/auth_token_ct/
+--                          auth_token_last4, the OAuth grant refresh_token_ct/oauth_client_secret_ct
+--                          (the LIVE credential for a Zapier row, whose auth_token_ct is NULL), the
+--                          header NAME (auth_header_name) a `header` connection dispatches with, the
+--                          OAuth identity/expiry the secret reader consumes (access_token_expires_at
+--                          — the loader refuses an expired-looking OAuth token, so a stale expiry
+--                          mis-refuses — oauth_issuer/oauth_client_id/oauth_scopes), and
+--                          auth_kind/transport; for §6b it is
 --                          base_url_ct/api_key_ct/api_key_last4 plus the fixed http/api_key facet. An
 --                          updated legacy credential re-encrypts, changing the ciphertext, so an
 --                          `IS DISTINCT FROM` on the `*_ct` bytea is the staleness signal. CAVEAT: if
@@ -121,16 +126,25 @@ a_cred AS (
       ON l.tenant_id = m.tenant_id
      AND l.provider IS NOT DISTINCT FROM m.legacy_provider
    WHERE m.legacy_source = 'tenant_mcp_connections'
-     AND ( m.server_url_ct           IS DISTINCT FROM l.server_url_ct
-        OR m.auth_token_ct           IS DISTINCT FROM l.auth_token_ct
-        OR m.auth_token_last4        IS DISTINCT FROM l.auth_token_last4
+     AND ( m.server_url_ct            IS DISTINCT FROM l.server_url_ct
+        OR m.auth_token_ct            IS DISTINCT FROM l.auth_token_ct
+        OR m.auth_token_last4         IS DISTINCT FROM l.auth_token_last4
         -- The OAuth grant columns are copied verbatim by §6a and are the LIVE credential for a
         -- Zapier connection (provider='zapier' ⇒ auth_kind='oauth', with auth_token_ct/last4 NULL),
         -- so a refresh-token / client-secret rotation must count as drift or Zapier would be blind.
-        OR m.refresh_token_ct        IS DISTINCT FROM l.refresh_token_ct
-        OR m.oauth_client_secret_ct  IS DISTINCT FROM l.oauth_client_secret_ct
-        OR m.auth_kind               IS DISTINCT FROM l.auth_kind
-        OR m.transport               IS DISTINCT FROM l.transport )
+        OR m.refresh_token_ct         IS DISTINCT FROM l.refresh_token_ct
+        OR m.oauth_client_secret_ct   IS DISTINCT FROM l.oauth_client_secret_ct
+        -- The rest of the copied runtime bundle the secret reader consumes: the header NAME a
+        -- `header` connection dispatches with, the OAuth identity used to refresh, and the
+        -- access-token expiry the loader reads to refuse an expired OAuth token. A stale value in
+        -- any of these makes the projection dispatch (or refuse) differently from legacy at cutover.
+        OR m.auth_header_name         IS DISTINCT FROM l.auth_header_name
+        OR m.access_token_expires_at  IS DISTINCT FROM l.access_token_expires_at
+        OR m.oauth_issuer             IS DISTINCT FROM l.oauth_issuer
+        OR m.oauth_client_id          IS DISTINCT FROM l.oauth_client_id
+        OR m.oauth_scopes             IS DISTINCT FROM l.oauth_scopes
+        OR m.auth_kind                IS DISTINCT FROM l.auth_kind
+        OR m.transport                IS DISTINCT FROM l.transport )
 ),
 -- §6b: matched pair whose verbatim-copied endpoint/credential columns diverge. The backfill fixes
 -- transport='http' and auth_kind='api_key' for this facet, so those are compared to the constants.
