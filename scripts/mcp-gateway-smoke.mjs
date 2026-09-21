@@ -73,10 +73,6 @@ const railMod = await bundle("supabase/functions/_shared/mcp-gateway/rail-receip
 const effectMod = await bundle("supabase/functions/_shared/mcp-gateway/effect-policy.ts", "effect.mjs");
 const connMod = await bundle("supabase/functions/_shared/mcp-gateway/connection.ts", "connection.mjs");
 const authorityMod = await bundle("supabase/functions/_shared/mcp-gateway/authority.ts", "authority.mjs");
-// INT-099 round-3 (item 5): READ-ONLY import of the runtime credential resolver, so the SQL setter's
-// accept/reject bundle matrix can be proven in parity with what the runtime actually loads as usable.
-// mcp-client.ts is NEVER edited here (standing rule) — only bundled + imported.
-const clientMod = await bundle("supabase/functions/_shared/mcp-client.ts", "mcp-client.mjs");
 
 let passed = 0;
 const failures = [];
@@ -933,38 +929,66 @@ console.log("\n— owner_only visibility (INT-082) —");
       && ooCapExec.outcome === "read_observed" && tenNoAuth.outcome === "read_observed");
 }
 
-// ── 9. INT-099 round-3 (item 5) — runtime-parity of the SQL endpoint-setter bundle matrix ──
-// THE CLASS-CLOSER. The SQL setter (migration 20270329000000) accepts/rejects credential bundles; the
-// runtime (authFromSecret + authUsable in _shared/mcp-client.ts) decides what actually loads as usable.
-// This asserts the two agree, under CASE NAMES IDENTICAL to the pgTAP bundle matrix
-// (supabase/tests/mcp_gateway_endpoint_setter.sql): every accept_* the SQL accepts is runtime-USABLE,
-// and every reject_* the SQL rejects is runtime-UNUSABLE. If either side drifts, this section fails —
-// the parity is proven, not asserted. Only the fields the runtime loader receives (StoredMcpSecret:
-// server_url/auth_token/auth_kind/auth_header_name) are set; oauth issuer/client_id are SQL-only and the
-// runtime never sees them (so accept_oauth resolves as bearer, exactly as production would).
-console.log("\n— runtime parity: SQL-accept ⟹ runtime-usable; enumerated runtime-unusable ⟹ SQL-reject (INT-099 R3) —");
+// ── 9. INT-099 round-4 (item 5, CLASS-CLOSER v2) — parity against the REAL runtime LOADER ──
+// The SQL setter (migration 20270329000000) accepts/rejects credential bundles; the production loader
+// makeRpcConnectionLoader (_shared/mcp-gateway/connection.ts) decides what actually loads as usable —
+// the TRUE gate. Round-3 used authFromSecret/authUsable, a SUBSET (it missed api_key/expired-oauth);
+// round-4 drives the REAL loader via loaderFor(row). Under CASE NAMES IDENTICAL to the pgTAP bundle
+// matrix (supabase/tests/mcp_gateway_endpoint_setter.sql): every accept_* loads ok:true; every reject_*
+// loads connection_unusable. Only fields the loader row carries are set; oauth issuer/client_id are
+// SQL-only (the loader never sees them, so accept_oauth resolves as bearer, exactly as production would).
+// READ-ONLY use of the loader — connection.ts / mcp-client.ts are never edited.
+console.log("\n— runtime parity vs makeRpcConnectionLoader: SQL-accept ⟺ loader-usable (INT-099 R4 class-closer) —");
 {
   const SRV = "https://public.example/parity";
-  const runtimeUsable = (secret) => {
-    const auth = clientMod.authFromSecret(secret);
-    return auth !== null && clientMod.authUsable(auth);
+  const FUT = new Date(Date.now() + 3_600_000).toISOString();
+  const PAST = new Date(Date.now() - 60_000).toISOString();
+  // A fake service-role admin whose get_mcp_connection_secret returns the chosen row (mirrors the
+  // production RPC-backed loader path). Only the credential fields vary; everything else is a valid,
+  // loadable row so the ONLY thing under test is the bundle.
+  const adminReturning = (row) => ({ rpc: async (fn) => (fn === "get_mcp_connection_secret" ? { data: row, error: null } : { data: null, error: null }) });
+  const load = (secret) => connMod.makeRpcConnectionLoader(adminReturning({
+    configured: true, enabled: true, connection_id: "conn-parity", tenant_id: "parity-tenant",
+    server_url: SRV, endpoint_hash: endpointHashOf(SRV), visibility: "tenant", transport: "http",
+    auth_token: null, auth_header_name: null, ...secret,
+  }))("conn-parity");
+  const usable = async (secret) => (await load(secret)).ok === true;
+  const unusable = async (secret) => { const r = await load(secret); return r.ok === false && r.reason === "connection_unusable"; };
+
+  // ACCEPT cases — each loads ok:true through the LOADER (names identical to the pgTAP).
+  check("parity accept_header → loader usable", await usable({ auth_kind: "header", auth_token: "tok-h", auth_header_name: "X-Api-Key" }));
+  check("parity accept_bearer → loader usable", await usable({ auth_kind: "bearer", auth_token: "tok-b" }));
+  check("parity accept_oauth → loader usable (token + future expiry)", await usable({ auth_kind: "oauth", auth_token: "tok-o", expires_at: FUT }));
+  check("parity accept_url → loader usable", await usable({ auth_kind: "url" }));
+  check("parity accept_none → loader usable", await usable({ auth_kind: "none" }));
+
+  // REJECT cases — each is loader connection_unusable (names identical to the pgTAP).
+  check("parity reject_header_reserved → loader unusable", await unusable({ auth_kind: "header", auth_token: "t", auth_header_name: "Authorization" }));
+  check("parity reject_header_bad_grammar → loader unusable", await unusable({ auth_kind: "header", auth_token: "t", auth_header_name: "Bad Header" }));
+  check("parity reject_header_no_name → loader unusable (header row falls through to bearer)", await unusable({ auth_kind: "header", auth_token: "t" }));
+  check("parity reject_bearer_no_token → loader unusable", await unusable({ auth_kind: "bearer" }));
+  check("parity reject_oauth_no_token → loader unusable (no refresh step; F3)", await unusable({ auth_kind: "oauth" }));
+  check("parity reject_oauth_expired → loader unusable (oauthExpired, connection.ts:118)", await unusable({ auth_kind: "oauth", auth_token: "t", expires_at: PAST }));
+  check("parity reject_api_key → loader unusable (not in MCP_EXECUTABLE_AUTH_KINDS, connection.ts:58)", await unusable({ auth_kind: "api_key", auth_token: "t" }));
+
+  // DIVERGENCE GUARD — the setter's accept-set MUST equal the loader's MCP_EXECUTABLE_AUTH_KINDS
+  // (connection.ts:58). That constant is private, so test it BEHAVIORALLY: for every recognized schema
+  // kind, does the loader accept a minimally-valid row of that kind? That set must equal SQL_EXECUTABLE
+  // (what the setter accepts). If connection.ts adds/removes an executable kind without the setter
+  // following (or vice-versa), this FAILS CI — the two can never silently diverge.
+  const SQL_EXECUTABLE = new Set(["oauth", "bearer", "header", "url", "none"]);  // setter accept-set (migration 20270329000000)
+  const minimalRow = {
+    oauth:   { auth_kind: "oauth",   auth_token: "t", expires_at: FUT },
+    bearer:  { auth_kind: "bearer",  auth_token: "t" },
+    header:  { auth_kind: "header",  auth_token: "t", auth_header_name: "X-Api-Key" },
+    url:     { auth_kind: "url" },
+    none:    { auth_kind: "none" },
+    api_key: { auth_kind: "api_key", auth_token: "t" },
   };
-  // ACCEPT cases — the SQL setter accepts these (proven in the pgTAP under the same names); each MUST be
-  // runtime-usable here.
-  check("parity accept_header → runtime usable", runtimeUsable({ server_url: SRV, auth_kind: "header", auth_token: "tok-h", auth_header_name: "X-Api-Key" }));
-  check("parity accept_bearer → runtime usable", runtimeUsable({ server_url: SRV, auth_kind: "bearer", auth_token: "tok-b" }));
-  check("parity accept_api_key → runtime usable", runtimeUsable({ server_url: SRV, auth_kind: "api_key", auth_token: "tok-k" }));
-  check("parity accept_oauth → runtime usable (resolves as bearer; runtime never sees issuer/client_id)", runtimeUsable({ server_url: SRV, auth_kind: "oauth", auth_token: "tok-o" }));
-  check("parity accept_url → runtime usable", runtimeUsable({ server_url: SRV, auth_kind: "url" }));
-  check("parity accept_none → runtime usable", runtimeUsable({ server_url: SRV, auth_kind: "none" }));
-  // REJECT cases — each is runtime-UNUSABLE, so the SQL validator must reject it (proven in the pgTAP
-  // under the same names). If any of these were runtime-usable, the SQL reject would be over-strict; if
-  // the SQL accepted one, a rebind could strand a working connection.
-  check("parity reject_header_reserved → runtime UNusable", !runtimeUsable({ server_url: SRV, auth_kind: "header", auth_token: "t", auth_header_name: "Authorization" }));
-  check("parity reject_header_bad_grammar → runtime UNusable", !runtimeUsable({ server_url: SRV, auth_kind: "header", auth_token: "t", auth_header_name: "Bad Header" }));
-  check("parity reject_bearer_no_token → runtime UNusable", !runtimeUsable({ server_url: SRV, auth_kind: "bearer" }));
-  check("parity reject_api_key_no_token → runtime UNusable", !runtimeUsable({ server_url: SRV, auth_kind: "api_key" }));
-  check("parity reject_oauth_no_token → runtime UNusable (no refresh step; F3)", !runtimeUsable({ server_url: SRV, auth_kind: "oauth" }));
+  for (const kind of Object.keys(minimalRow)) {
+    const loaderOk = await usable(minimalRow[kind]);
+    check(`parity divergence-guard: loader-accepts(${kind}) === setter-accepts(${kind})`, loaderOk === SQL_EXECUTABLE.has(kind), `loaderOk=${loaderOk} sqlAccepts=${SQL_EXECUTABLE.has(kind)}`);
+  }
 }
 
 server.close();

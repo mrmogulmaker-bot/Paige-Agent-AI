@@ -3,10 +3,50 @@
 --
 -- THE PRINCIPLE (coordinator ruling, round 3). "A bundle the setter accepts must be one the runtime
 -- loads as usable. The setter never destructively replaces a working connection with an unusable one."
--- Concretely, every credential bundle this setter ACCEPTS is one that authFromSecret + authUsable
--- (_shared/mcp-client.ts) report as usable; every runtime-unusable credential shape is REJECTED before
--- the destructive reset. That parity is proven both here (pgTAP bundle matrix) and on the TS side
--- (scripts/mcp-gateway-smoke.mjs), under identical case names, so the two can never silently diverge.
+-- The true yardstick (round-4 correction) is makeRpcConnectionLoader (_shared/mcp-gateway/connection.ts),
+-- NOT just authFromSecret/authUsable (a subset). Every bundle this setter ACCEPTS loads usable through
+-- that LOADER; every loader-unusable credential shape is REJECTED before the destructive reset. Proven
+-- both here (pgTAP bundle matrix) and on the TS side (scripts/mcp-gateway-smoke.mjs, which drives the
+-- REAL loader via loaderFor(row)), under identical case names, so the two can never silently diverge.
+--
+-- CLASS-CLOSER v2 (round-4, by enumeration). Every path in makeRpcConnectionLoader (connection.ts) that
+-- yields a non-usable result, and how this setter relates to it — (a) the setter REJECTS it (+ the test),
+-- or (b) NOT the setter's concern (+ why):
+--   L1  RPC read error → no_connection ............... (b) a runtime read failure; the setter writes the
+--          row, it does not control whether a later service-role read errors.
+--   L2  configured!=true → no_connection (conn.ts:86)  (b) row-state projection: `configured` means an
+--          endpoint is set; the setter ALWAYS writes a validated endpoint, so it only ever yields
+--          configured=true — it cannot produce this state.
+--   L3  enabled!=true → connection_disabled (:87) ..... (b) runtime state the setter does NOT write (its
+--          UPDATE never touches `enabled`).
+--   L4  auth===null → connection_unusable (:91) ....... (a) a token-requiring kind with no token — REJECTED
+--          (MCP_BAD_CREDENTIAL_BUNDLE): tests reject_bearer_no_token / reject_oauth_no_token / header-no-token.
+--   L5  server_url empty/non-string → unusable (:92) .. (a) REJECTED: _mcp_endpoint_write_safe requires a
+--          non-empty https URL (MCP_BAD_ENDPOINT) — A4 matrix.
+--   L6  connection_id non-string → unusable (:93) ..... (b) structural: connection_id is the PK, always present.
+--   L7  tenant_id non-string → unusable (:94) ......... (b) structural: tenant_id is NOT NULL on every row.
+--   L8  endpoint_hash not 64-hex → unusable (:98) ..... (b) RPC-DERIVED: get_mcp_connection_secret computes
+--          it as sha256 of the loaded endpoint — always 64-hex for any row with an endpoint, which the
+--          setter guarantees by writing a validated endpoint.
+--   L9  transport not in {http} → unusable (:101/:52) . (b) the setter does NOT write `transport` (owned by
+--          the CREATE path); its UPDATE never sets it, so it cannot produce or fix this.
+--   L10 auth_kind not in MCP_EXECUTABLE_AUTH_KINDS → unusable (:102; const :58 = {oauth,bearer,header,url,
+--          none}) ....................................... (a) REJECTED: api_key (the only recognized non-
+--          executable kind) → MCP_AUTH_KIND_NOT_EXECUTABLE — test reject_api_key; the accept-set==constant
+--          divergence guard lives in the smoke.
+--   L11 !authUsable(auth) — reserved/invalid header name → unusable (:128) (a) REJECTED via
+--          _mcp_header_name_usable — tests reject_header_reserved / reject_header_bad_grammar.
+--   L12 oauthExpired → unusable (:118/:128) ............ (a) REJECTED: oauth access_token_expires_at<=now()
+--          → MCP_OAUTH_TOKEN_EXPIRED, mirroring conn.ts:118 exactly — test reject_oauth_expired.
+--   L13 header row → bearer auth (no header_name) → unusable (:127/:128) (a) REJECTED: header requires a
+--          header_name — test header-no-name.
+--   L14 visibility owner_only (normalized) (:138) ...... (b) explicitly an AUTHORITY facet, NOT a usability
+--          gate; the runner enforces owner_only per caller — never the setter.
+--   D1  new URL(server_url) throws at DISPATCH (e.g. bracketed IPv4 [8.8.8.8]) — not a loader branch but a
+--          runtime WHATWG-URL rejection (a) REJECTED: _mcp_endpoint_write_safe is https-only + DNS-syntax +
+--          bracketed⇒family(_ip)=6 — tests reject bracketed-IPv4 / accept valid IPv6.
+--   D2  endpoint-bound consent/approval facet ......... (b) not a load result; the setter revokes approvals
+--          on every rebind (round-2 item 1), it is not a load-usability gate.
 --
 -- THE INVARIANT (one, this PR). A connection's endpoint and its credential are written in ONE
 -- atomic UPDATE whose credential-bearing columns are ALWAYS sourced from the call arguments (a new
@@ -84,31 +124,41 @@
 --      refused outright. A non-literal host must also be SYNTACTICALLY valid DNS (labels of [a-z0-9-],
 --      1–63 chars, no leading/trailing hyphen, ≥1 dot, total ≤253) — so whitespace, control chars, and
 --      percent-encoding in the host (all outside the label charset) are rejected before the destructive
---      reset, matching what a runtime `new URL(...)` would refuse. HOSTNAME-TO-PRIVATE-IP RESOLUTION IS
---      NOT COVERED AT WRITE TIME (SQL cannot resolve DNS) and remains the job of
---      _shared/mcp-client.ts's SSRF-guarded egress at DISPATCH. This validation is an additional
---      write-time layer, never a replacement for that runtime guard.
+--      reset, matching what a runtime `new URL(...)` would refuse. A BRACKETED host must be a valid IPv6
+--      (round-4: `family(_ip)=6`) — a bracketed IPv4 like `[8.8.8.8]` is an invalid URL WHATWG rejects
+--      at dispatch, so it is refused here too. HOSTNAME-TO-PRIVATE-IP RESOLUTION IS NOT COVERED AT WRITE
+--      TIME (SQL cannot resolve DNS) and remains the job of _shared/mcp-client.ts's SSRF-guarded egress
+--      at DISPATCH. This validation is an additional write-time layer, never a replacement for that
+--      runtime guard.
 --
 -- A5 — Grants: EXECUTE to `authenticated` ONLY (revoked from PUBLIC + anon). _mcp_caller_capabilities
 --      stays service_role-only and is called from inside this SECURITY DEFINER function.
 --
--- A6 — CREDENTIAL-BUNDLE validation (round-3, F1/F2/F3 — enforcing THE PRINCIPLE above). The supplied
---      credential columns must match auth_kind AND be runtime-usable, checked BEFORE any destructive
---      write so a bundle that could never authenticate never clears state or lands a half-written
---      credential. Per kind: (required) + (no stray fields from another scheme):
+-- A6 — CREDENTIAL-BUNDLE validation (round-3 F1/F2/F3, round-4 tightening — enforcing THE PRINCIPLE
+--      above, measured against makeRpcConnectionLoader). Checked BEFORE any destructive write so a bundle
+--      the loader could never accept never clears state or lands a half-written credential.
+--        • auth_kind (round-4): the accepted set EQUALS the loader's MCP_EXECUTABLE_AUTH_KINDS
+--          (connection.ts:58 = {oauth,bearer,header,url,none}). `api_key` is a recognized schema kind the
+--          loader marks connection_unusable, so it is REJECTED with MCP_AUTH_KIND_NOT_EXECUTABLE; a
+--          garbage kind is MCP_BAD_AUTH_KIND. The smoke has a divergence guard.
 --        • header  → token + a header_name that public._mcp_header_name_usable accepts (F1: the runtime's
 --          RFC 9110 token grammar AND reserved-name set, mirrored from mcp-client.ts:77/:63-72); reject
 --          refresh / any oauth-* field.
---        • bearer / api_key → token; reject header_name / refresh / any oauth-* field.
+--        • bearer → token; reject header_name / refresh / any oauth-* field. (api_key never reaches the
+--          bundle stage — rejected at the auth_kind gate above.)
 --        • oauth → token + oauth_issuer + oauth_client_id (F3: token REQUIRED — the runtime has no
 --          refresh step, so a refresh-only bundle loads unusable; refresh_token / client_secret /
---          scopes / expiry are optional-additional); reject a header_name.
+--          scopes / expiry are optional-additional); reject a header_name; and (round-4) reject an
+--          already-EXPIRED access token — `access_token_expires_at <= now()` → MCP_OAUTH_TOKEN_EXPIRED,
+--          mirroring the loader's oauthExpired (connection.ts:118) EXACTLY (exact <=, no skew/grace; a
+--          NULL/absent expiry is live).
 --        • url / none → NO credential material at all (F2: any stray token / header_name / refresh /
 --          oauth-* field is rejected).
---      Text presence is btrim(COALESCE(...)) so a whitespace-only value counts as absent. Closed code
---      MCP_BAD_CREDENTIAL_BUNDLE (22023); never echoes a value. FORWARD-CONSTRAINT (F3): refresh-only
---      OAuth becomes acceptable only when the gateway grows a refresh step that mints a token before
---      first use — a wiring-lane item (INT-083), not this setter.
+--      Text presence is btrim(COALESCE(...)) so a whitespace-only value counts as absent. Closed codes
+--      (all 22023, never echoing a value): MCP_BAD_CREDENTIAL_BUNDLE, MCP_AUTH_KIND_NOT_EXECUTABLE,
+--      MCP_OAUTH_TOKEN_EXPIRED. FORWARD-CONSTRAINT (F3): refresh-only OAuth becomes acceptable only when
+--      the gateway grows a refresh step that mints a token before first use — a wiring-lane item
+--      (INT-083), not this setter.
 --
 -- A7 — AUDIT credential_changed (round-3, F4) is derived from EVERY credential-bearing field
 --      (auth_kind, header name, token, refresh token, oauth issuer / client_id / client_secret, scopes,
@@ -248,8 +298,14 @@ BEGIN
     BEGIN
       _ip := _host::inet;
     EXCEPTION WHEN OTHERS THEN
-      RETURN false;   -- unparseable bracketed literal
+      RETURN false;   -- unparseable bracketed literal (incl. dotted forms that are not valid IPv6)
     END;
+    -- round-4 (F/bracketed-IPv4): brackets are for IPv6 ONLY. The `[0-9A-Fa-f:.]` capture admits dots,
+    -- so `[8.8.8.8]` parses as a family-4 inet — but WHATWG `new URL()` rejects a bracketed IPv4 as an
+    -- invalid URL, so the runtime could never dispatch it. Require family 6 (a bracketed IPv4 or an
+    -- IPv4-mapped `::ffff:x.x.x.x` is then either family 4 → rejected here, or a mapped IPv6 → rejected
+    -- by _mcp_inet_is_public's ::ffff:0:0/96 block).
+    IF family(_ip) <> 6 THEN RETURN false; END IF;
     RETURN public._mcp_inet_is_public(_ip);
   END IF;
 
@@ -440,17 +496,26 @@ BEGIN
     RAISE EXCEPTION 'MCP_LEGACY_CONNECTION_READONLY: managed by the legacy connection path' USING ERRCODE = '42501';
   END IF;
 
-  -- Shape validation.
+  -- Shape validation. A recognized schema kind first (a garbage value is MCP_BAD_AUTH_KIND)...
   IF _auth_kind IS NULL OR _auth_kind NOT IN ('oauth','bearer','header','api_key','url','none') THEN
     RAISE EXCEPTION 'MCP_BAD_AUTH_KIND' USING ERRCODE = '22023';
+  END IF;
+  -- ...then reject a recognized-but-NOT-MCP-EXECUTABLE kind (round-4). The setter's accepted set must
+  -- EQUAL makeRpcConnectionLoader's MCP_EXECUTABLE_AUTH_KINDS = {oauth,bearer,header,url,none}
+  -- (_shared/mcp-gateway/connection.ts:58); `api_key` is the n8n REST facet, which the loader returns
+  -- as connection_unusable (connection.ts:102) — accepting it would strand the connection. The
+  -- scripts/mcp-gateway-smoke.mjs parity assertion FAILS CI if this accept-set and that constant diverge.
+  IF _auth_kind = 'api_key' THEN
+    RAISE EXCEPTION 'MCP_AUTH_KIND_NOT_EXECUTABLE' USING ERRCODE = '22023';   -- closed code; never echoes a value
   END IF;
   IF NOT public._mcp_endpoint_write_safe(_server_url) THEN
     RAISE EXCEPTION 'MCP_BAD_ENDPOINT' USING ERRCODE = '22023';   -- closed code; never echoes the URL
   END IF;
 
-  -- Credential-bundle validation (round-3, F1/F2/F3). PRINCIPLE: a bundle the setter ACCEPTS must be
-  -- one the runtime loads as USABLE (authFromSecret + authUsable, _shared/mcp-client.ts) — the setter
-  -- never destructively replaces a working connection with an unusable one. Validated BEFORE any
+  -- Credential-bundle validation (round-3 F1/F2/F3, round-4 tightening). PRINCIPLE: a bundle the setter
+  -- ACCEPTS must be one the runtime loads as USABLE — measured against makeRpcConnectionLoader
+  -- (_shared/mcp-gateway/connection.ts), the true gate (authFromSecret/authUsable are only a subset).
+  -- The setter never destructively replaces a working connection with an unusable one. Validated BEFORE any
   -- destructive write, so a bundle that could never authenticate never clears state or lands a
   -- half-written credential. Two rules per kind: (a) the fields the runtime REQUIRES; (b) NO STRAY
   -- fields from another scheme (nothing the runtime would ignore is stored). Closed code
@@ -469,8 +534,9 @@ BEGIN
        OR _oauth_scopes IS NOT NULL OR _access_token_expires_at IS NOT NULL THEN
       RAISE EXCEPTION 'MCP_BAD_CREDENTIAL_BUNDLE' USING ERRCODE = '22023';
     END IF;
-  ELSIF _auth_kind IN ('bearer', 'api_key') THEN
+  ELSIF _auth_kind = 'bearer' THEN
     -- runtime: authFromSecret needs auth_token (maps to bearer). Its scheme is {token} only.
+    -- (api_key was already rejected above as MCP_AUTH_KIND_NOT_EXECUTABLE, so it never reaches here.)
     IF btrim(COALESCE(_auth_token, '')) = '' THEN
       RAISE EXCEPTION 'MCP_BAD_CREDENTIAL_BUNDLE' USING ERRCODE = '22023';
     END IF;
@@ -495,6 +561,14 @@ BEGIN
     -- F2: a custom header name belongs to the 'header' scheme, not oauth.
     IF btrim(COALESCE(_auth_header_name, '')) <> '' THEN
       RAISE EXCEPTION 'MCP_BAD_CREDENTIAL_BUNDLE' USING ERRCODE = '22023';
+    END IF;
+    -- round-4 (F/expired-oauth): mirror makeRpcConnectionLoader's oauthExpired EXACTLY
+    -- (connection.ts:118 — `row.auth_kind === "oauth" && Number.isFinite(expiresAt) && expiresAt <=
+    -- Date.now()`). An already-expired access token would load as connection_unusable (no refresh step),
+    -- so reject it at write time. EXACT `<= now()` — no skew, no grace, matching the loader. A NULL /
+    -- absent expiry is NOT expired (the loader treats a non-finite expiresAt as live), so it is allowed.
+    IF _access_token_expires_at IS NOT NULL AND _access_token_expires_at <= now() THEN
+      RAISE EXCEPTION 'MCP_OAUTH_TOKEN_EXPIRED' USING ERRCODE = '22023';   -- closed code; never echoes a value
     END IF;
   ELSE
     -- url / none: no credential material at all may accompany a credential-less kind (F2).
@@ -615,7 +689,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid) IS
-  'INT-099 (MCP PR-2): the endpoint setter for the Connected MCP Gateway. Resolves authority BEFORE reading the connection (§9): the mcp.connections.manage capability for the caller''s server-resolved tenant via _mcp_caller_capabilities (owner/tenant-admin only; platform owner EXCLUDED, A2), fail closed, no service-role bypass; a missing or foreign-tenant connection is a uniform MCP_FORBIDDEN. REFUSES a legacy-projected row (D1). PRINCIPLE (round 3): a bundle it accepts is one the runtime (authFromSecret/authUsable in _shared/mcp-client.ts) loads as usable — never a destructive rebind that strands a working connection. Validates the CREDENTIAL BUNDLE against auth_kind BEFORE any write (header→token + a runtime-usable header_name via _mcp_header_name_usable [F1], reject stray; bearer/api_key→token, reject stray; oauth→token+issuer+client_id [F3: token REQUIRED; refresh/secret/scopes/expiry optional-additional], reject stray header; url/none→no credential material [F2]; closed code MCP_BAD_CREDENTIAL_BUNDLE, never echoes a value). Writes the endpoint + FULL credential bundle in one atomic UPDATE, sourcing every credential column from the arguments (never carrying the old ciphertext forward) so a changed endpoint can never inherit the old secret; resets provider_state, and — EXPLICITLY, before the UPDATE — deletes the stale tool catalog AND revokes every endpoint-bound approval (unconditionally, so a same-URL credential rotation also drops consent; the 20270322000000 trigger then no-ops). Records a hashes/enums/counts-only audit into paige_audit_log in the same transaction (old/new endpoint_hash, endpoint_changed, credential_changed [F4: boolean derived in-definer from ALL credential-bearing fields — plaintext never logged], auth_kind + auth_token_last4 before/after, approvals_revoked, tools_cleared) (A1). Returns only connection_id/status/endpoint_hash/auth_token_last4 (A3). Static https + value-based IP + DNS-syntax SSRF URL validation only — runtime egress SSRF stays in mcp-client.ts (A4). EXECUTE to authenticated only (A5).';
+  'INT-099 (MCP PR-2): the endpoint setter for the Connected MCP Gateway. Resolves authority BEFORE reading the connection (§9): the mcp.connections.manage capability for the caller''s server-resolved tenant via _mcp_caller_capabilities (owner/tenant-admin only; platform owner EXCLUDED, A2), fail closed, no service-role bypass; a missing or foreign-tenant connection is a uniform MCP_FORBIDDEN. REFUSES a legacy-projected row (D1). PRINCIPLE (round 3, round-4 corrected oracle): a bundle it accepts is one the runtime LOADER makeRpcConnectionLoader (_shared/mcp-gateway/connection.ts) loads as usable — never a destructive rebind that strands a working connection. Validates the CREDENTIAL BUNDLE against auth_kind BEFORE any write: accepted kinds EQUAL the loader''s MCP_EXECUTABLE_AUTH_KINDS (connection.ts:58) — api_key → MCP_AUTH_KIND_NOT_EXECUTABLE (round-4); header→token + a runtime-usable header_name via _mcp_header_name_usable [F1], reject stray; bearer→token, reject stray; oauth→token+issuer+client_id [F3: token REQUIRED; refresh/secret/scopes optional-additional] + reject an already-expired access token (access_token_expires_at<=now() → MCP_OAUTH_TOKEN_EXPIRED, mirroring the loader''s oauthExpired connection.ts:118), reject stray header; url/none→no credential material [F2]; closed codes MCP_BAD_CREDENTIAL_BUNDLE / MCP_AUTH_KIND_NOT_EXECUTABLE / MCP_OAUTH_TOKEN_EXPIRED, never echoes a value). A bracketed endpoint host must be valid IPv6 (round-4: a bracketed IPv4 is refused, matching WHATWG new URL()). Writes the endpoint + FULL credential bundle in one atomic UPDATE, sourcing every credential column from the arguments (never carrying the old ciphertext forward) so a changed endpoint can never inherit the old secret; resets provider_state, and — EXPLICITLY, before the UPDATE — deletes the stale tool catalog AND revokes every endpoint-bound approval (unconditionally, so a same-URL credential rotation also drops consent; the 20270322000000 trigger then no-ops). Records a hashes/enums/counts-only audit into paige_audit_log in the same transaction (old/new endpoint_hash, endpoint_changed, credential_changed [F4: boolean derived in-definer from ALL credential-bearing fields — plaintext never logged], auth_kind + auth_token_last4 before/after, approvals_revoked, tools_cleared) (A1). Returns only connection_id/status/endpoint_hash/auth_token_last4 (A3). Static https + value-based IP + DNS-syntax SSRF URL validation only — runtime egress SSRF stays in mcp-client.ts (A4). EXECUTE to authenticated only (A5).';
 
 REVOKE ALL ON FUNCTION public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid) TO authenticated;

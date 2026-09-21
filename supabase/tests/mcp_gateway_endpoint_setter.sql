@@ -9,11 +9,13 @@
 --   • item 1 (UNCONDITIONAL revocation) — a SAME-URL credential rotation (which the 20270322000000
 --     URL-change trigger does NOT catch) STILL revokes the endpoint-bound approval + clears the tool
 --     catalog, and a REJECTED rebind deletes NOTHING.
---   • credential bundle (round-3 F1/F2/F3) — the bundle must match auth_kind AND be runtime-usable,
---     validated BEFORE any write. The PARITY MATRIX (accept_*/reject_* case names identical to the
---     runtime-parity proof in scripts/mcp-gateway-smoke.mjs): accept header/bearer/api_key/oauth/url/none;
---     reject a reserved/bad-grammar header name (F1), a refresh-ONLY oauth bundle (F3 — token now
---     REQUIRED), and stray cross-scheme fields per kind (F2). Closed code MCP_BAD_CREDENTIAL_BUNDLE.
+--   • credential bundle (round-3 F1/F2/F3 + round-4) — the bundle must match auth_kind AND be
+--     LOADER-usable (makeRpcConnectionLoader). PARITY MATRIX (accept_*/reject_* case names identical to
+--     the loader-driven parity proof in scripts/mcp-gateway-smoke.mjs): accept header/bearer/oauth/url/
+--     none; reject a reserved/bad-grammar header name + header-no-name (F1), a refresh-ONLY oauth bundle
+--     (F3), an EXPIRED oauth token (round-4, MCP_OAUTH_TOKEN_EXPIRED), api_key (round-4, NOT in the
+--     loader's MCP_EXECUTABLE_AUTH_KINDS → MCP_AUTH_KIND_NOT_EXECUTABLE), and stray cross-scheme fields
+--     per kind (F2). api_key is NO LONGER accepted.
 --   • credential_changed (round-3 F4) — a same-URL rebind that changes only the header NAME (token
 --     unchanged) audits credential_changed=true (round-2 compared only the token).
 --   • A2 — authority is the `mcp.connections.manage` capability (owner/tenant-admin only); a platform
@@ -28,8 +30,9 @@
 --     NOT commit; no URL/token substring appears in the payload.
 --   • A3 — the return carries only connection_id/status/endpoint_hash/auth_token_last4 — no secret, no URL.
 --   • A4 — the static URL validator classifies IP literals by VALUE (inet), catching expanded IPv6,
---     shorthand/encoded IPv4, and the full private/reserved ranges — not just canonical spellings — and
---     (P2b) enforces DNS-name syntax so whitespace/control/percent-encoding/over-length hosts reject.
+--     shorthand/encoded IPv4, and the full private/reserved ranges — not just canonical spellings —
+--     (P2b) enforces DNS-name syntax so whitespace/control/percent-encoding/over-length hosts reject,
+--     and (round-4) rejects a bracketed IPv4 authority ([8.8.8.8]) since brackets are IPv6-only.
 --
 -- Synthetic fixtures only; self-contained; ROLLS BACK. Seeds run as the superuser test role (RLS
 -- bypassed); each setter call mocks the CALLER via request.jwt.claims so auth.uid() / the tenant
@@ -138,6 +141,11 @@ BEGIN
   IF public._mcp_endpoint_write_safe('https://127.1/mcp')                      THEN RAISE EXCEPTION '(A4) 2-part shorthand rejected'; END IF;
   IF public._mcp_endpoint_write_safe('https://10.1/mcp')                       THEN RAISE EXCEPTION '(A4) 2-part shorthand rejected'; END IF;
   IF public._mcp_endpoint_write_safe('https://192.168.1/mcp')                  THEN RAISE EXCEPTION '(A4) 3-part shorthand rejected'; END IF;
+  -- REJECT (round-4): a bracketed IPv4 authority — brackets are IPv6-only; WHATWG new URL() rejects it,
+  -- so the setter must too (family(_ip)=6). A public-looking IPv4 inside brackets must NOT slip through.
+  IF public._mcp_endpoint_write_safe('https://[8.8.8.8]/mcp')                  THEN RAISE EXCEPTION '(A4) bracketed IPv4 [8.8.8.8] rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://[8.8.8.8]:443/mcp')              THEN RAISE EXCEPTION '(A4) bracketed IPv4 with port rejected'; END IF;
+  IF public._mcp_endpoint_write_safe('https://[8.8.8.8.8]/mcp')                THEN RAISE EXCEPTION '(A4) malformed bracketed literal rejected'; END IF;
   -- REJECT: IPv6 loopback / mapped / ULA / link-local / multicast — canonical AND expanded spellings.
   IF public._mcp_endpoint_write_safe('https://[::1]/mcp')                      THEN RAISE EXCEPTION '(A4) ::1 rejected'; END IF;
   IF public._mcp_endpoint_write_safe('https://[0:0:0:0:0:0:0:1]/mcp')          THEN RAISE EXCEPTION '(A4) expanded ::1 rejected'; END IF;
@@ -268,11 +276,13 @@ BEGIN
   IF public.platform_decrypt(_row.auth_token_ct) <> 'rot-token-9999' THEN RAISE EXCEPTION '(rotate) wrong token stored'; END IF;
 END $$;
 
--- ── (round-3 F1/F2/F3) credential-bundle validation per auth_kind — the PARITY MATRIX. Case names here
---    are IDENTICAL to the runtime-parity proof in scripts/mcp-gateway-smoke.mjs (item 5): every accept_*
---    here is proven runtime-USABLE there (authFromSecret/authUsable); every reject_* here is proven
---    runtime-UNUSABLE there. A reject RAISEs MCP_BAD_CREDENTIAL_BUNDLE before any write; an accept stores
---    the matching columns. Extra SQL-stricter rejects (stray fields, header-no-name) are covered too. ────
+-- ── (round-3 F1/F2/F3 + round-4) credential-bundle validation per auth_kind — the PARITY MATRIX. Case
+--    names here are IDENTICAL to the runtime-parity proof in scripts/mcp-gateway-smoke.mjs (item 5),
+--    which drives the REAL makeRpcConnectionLoader: every accept_* here is proven loader-USABLE there;
+--    every reject_* here is proven loader-UNUSABLE there. A reject RAISEs its closed code before any
+--    write (MCP_BAD_CREDENTIAL_BUNDLE, or the round-4 distinct codes MCP_AUTH_KIND_NOT_EXECUTABLE /
+--    MCP_OAUTH_TOKEN_EXPIRED); an accept stores the matching columns. Extra SQL-stricter rejects (stray
+--    fields) are covered too. api_key is NO LONGER an accept case (round-4 — loader-unexecutable). ────
 DO $$
 DECLARE _msg text; _row public.mcp_connections%ROWTYPE;
   C uuid := '0e900000-0000-0000-0000-0000000000c1';
@@ -289,24 +299,34 @@ BEGIN
   _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'header', 'tok', 'Bad Header');
     EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
   IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'reject_header_bad_grammar must reject, got: %', _msg; END IF;
-  -- reject_bearer_no_token / reject_api_key_no_token: no token.
+  -- reject_bearer_no_token: no token.
   _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'bearer');
     EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
   IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'reject_bearer_no_token must reject, got: %', _msg; END IF;
-  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'api_key', '   ');  -- whitespace-only ⇒ absent
+  -- reject_api_key (round-4): api_key is a recognized kind the loader cannot execute (not in
+  -- MCP_EXECUTABLE_AUTH_KINDS, connection.ts:58) — REJECTED with the DISTINCT code even WITH a valid token.
+  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'api_key', 'tok-k');
     EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
-  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'reject_api_key_no_token must reject, got: %', _msg; END IF;
-  -- reject_oauth_no_token (F3): a refresh-ONLY oauth bundle — accepted before round 3, now REJECTED
-  -- because the runtime has no refresh step and would load it as connection_unusable.
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_AUTH_KIND_NOT_EXECUTABLE%' THEN RAISE EXCEPTION 'reject_api_key must reject with NOT_EXECUTABLE, got: %', _msg; END IF;
+  -- reject_oauth_no_token (F3): a refresh-ONLY oauth bundle — the runtime has no refresh step and
+  -- would load it as connection_unusable.
   _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'oauth', NULL, NULL, 'refresh-only', 'https://iss.example.com', 'cid');
     EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
   IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'reject_oauth_no_token (refresh-only) must reject, got: %', _msg; END IF;
+  -- reject_oauth_expired (round-4): a full oauth bundle whose access token is already expired — the
+  -- loader''s oauthExpired (connection.ts:118) would mark it connection_unusable.
+  _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'oauth', 'tok', NULL, NULL, 'https://iss.example.com', 'cid', NULL, NULL, now() - interval '1 minute');
+    EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_OAUTH_TOKEN_EXPIRED%' THEN RAISE EXCEPTION 'reject_oauth_expired must reject with OAUTH_TOKEN_EXPIRED, got: %', _msg; END IF;
 
-  -- ===== extra SQL-stricter rejects (not in the runtime-unusable parity set, but hardening) =====
-  -- header with no name / no token.
+  -- reject_header_no_name (parity: the loader's headerRowNotHeaderAuth → connection_unusable): a header
+  -- row with no name falls through to bearer at the loader, so the setter refuses it.
   _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'header', 'tok', NULL);
     EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
-  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'header w/o name must reject, got: %', _msg; END IF;
+  IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'reject_header_no_name must reject, got: %', _msg; END IF;
+
+  -- ===== extra SQL-stricter rejects (not in the runtime-unusable parity set, but hardening) =====
+  -- header with no token.
   _msg := NULL; BEGIN PERFORM public.set_mcp_connection_endpoint(C, BAD, 'header', NULL, 'X-Api-Key');
     EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
   IF _msg IS NULL OR _msg NOT LIKE '%MCP_BAD_CREDENTIAL_BUNDLE%' THEN RAISE EXCEPTION 'header w/o token must reject, got: %', _msg; END IF;
@@ -350,14 +370,10 @@ BEGIN
   SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
   IF _row.auth_kind <> 'bearer' OR public.platform_decrypt(_row.auth_token_ct) <> 'tok-b' THEN RAISE EXCEPTION 'accept_bearer did not store the token'; END IF;
 
-  -- accept_api_key.
-  PERFORM public.set_mcp_connection_endpoint(C, 'https://cred-apikey.example.com/rpc', 'api_key', 'tok-k');
-  SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
-  IF _row.auth_kind <> 'api_key' OR public.platform_decrypt(_row.auth_token_ct) <> 'tok-k' THEN RAISE EXCEPTION 'accept_api_key did not store the token'; END IF;
-
-  -- accept_oauth (F3: token REQUIRED + issuer + client_id; a refresh token is optional-additional).
+  -- accept_oauth (F3: token REQUIRED + issuer + client_id; refresh optional-additional). A FUTURE
+  -- access_token_expires_at is accepted (round-4: only an already-expired token is rejected).
   PERFORM public.set_mcp_connection_endpoint(C, 'https://cred-oauth.example.com/rpc', 'oauth',
-            'tok-o', NULL, 'refresh-o', 'https://iss.example.com', 'cid-2', 'sec', ARRAY['read']::text[]);
+            'tok-o', NULL, 'refresh-o', 'https://iss.example.com', 'cid-2', 'sec', ARRAY['read']::text[], now() + interval '1 hour');
   SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
   IF _row.auth_kind <> 'oauth' OR public.platform_decrypt(_row.auth_token_ct) <> 'tok-o'
      OR _row.oauth_issuer <> 'https://iss.example.com' OR _row.oauth_client_id <> 'cid-2'
