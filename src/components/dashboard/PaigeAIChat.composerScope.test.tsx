@@ -10,6 +10,7 @@ const harness = vi.hoisted(() => ({
   isFetched: true,
   rail: null as ChatRailApi | null,
   micCallbacks: [] as Array<{ onText: (text: string, at?: number | null) => void; disabled?: boolean }>,
+  liveEnsureThread: null as (() => Promise<string>) | null,
   ensureThread: vi.fn(async () => "thread-created"),
   loadTurns: vi.fn(async () => [] as Array<{ role: string; content: string }>),
 }));
@@ -59,7 +60,12 @@ vi.mock("@/hooks/usePaigeThreads", () => ({
     deleteThread: vi.fn(),
   }),
 }));
-vi.mock("@/components/paige/live/PaigeLiveConversation", () => ({ PaigeLiveConversation: () => null }));
+vi.mock("@/components/paige/live/PaigeLiveConversation", () => ({
+  PaigeLiveConversation: (props: { ensureThread: () => Promise<string> }) => {
+    harness.liveEnsureThread = props.ensureThread;
+    return null;
+  },
+}));
 
 import { PaigeAIChat } from "./PaigeAIChat";
 
@@ -104,6 +110,7 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     harness.isFetched = true;
     harness.rail = null;
     harness.micCallbacks = [];
+    harness.liveEnsureThread = null;
     harness.ensureThread.mockReset();
     harness.ensureThread.mockResolvedValue(`thread-created-${testNumber}`);
     harness.loadTurns.mockReset();
@@ -146,6 +153,89 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     }
     expect(textarea().disabled).toBe(false);
   };
+
+  it.each(["tenant", "effective-user", "client", "mission", "clear-focus"] as const)(
+    "does not adopt a Live thread when the %s scope changes while thread creation is pending",
+    async (change) => {
+      const originalTenant = harness.tenantId;
+      const originalUser = harness.userId;
+      const originProps = change === "client"
+        ? { clientId: "client-a" }
+        : change === "mission"
+          ? { businessMissionId: "mission-a" }
+          : change === "clear-focus"
+            ? { clientId: "client-a", businessMissionId: "mission-a" }
+            : {};
+      const targetProps = change === "client"
+        ? { clientId: "client-b" }
+        : change === "mission"
+          ? { businessMissionId: "mission-b" }
+          : {};
+      let resolveThread: ((id: string) => void) | null = null;
+      harness.ensureThread.mockImplementationOnce(() => new Promise((resolve) => { resolveThread = resolve; }));
+
+      await render(originProps);
+      await waitForWritable();
+      await type(`origin ${change} draft`);
+      const ensureForOrigin = harness.liveEnsureThread!;
+      let pendingCreation: Promise<string> | null = null;
+      await act(async () => {
+        pendingCreation = ensureForOrigin();
+        await Promise.resolve();
+      });
+      expect(harness.ensureThread).toHaveBeenCalledTimes(1);
+
+      if (change === "tenant") harness.tenantId = `${originalTenant}-next`;
+      if (change === "effective-user") harness.userId = `${originalUser}-next`;
+      if (change === "tenant" || change === "effective-user") {
+        // A real tenant/user query publishes a new result object for the new scope.
+        harness.threads = [...harness.threads];
+      }
+      await render(targetProps);
+      await waitForWritable();
+      expect(textarea().value).toBe("");
+
+      await act(async () => {
+        resolveThread?.(`orphan-${change}-${testNumber}`);
+        await pendingCreation;
+        await settle();
+      });
+      expect(harness.rail!.activeThreadId).toBeNull();
+      expect(textarea().value).toBe("");
+
+      harness.tenantId = originalTenant;
+      harness.userId = originalUser;
+      if (change === "tenant" || change === "effective-user") {
+        harness.threads = [...harness.threads];
+      }
+      await render(originProps);
+      await waitForWritable();
+      expect(textarea().value).toBe(`origin ${change} draft`);
+    },
+  );
+
+  it("adopts and migrates the Live thread when the complete scope remains unchanged", async () => {
+    let resolveThread: ((id: string) => void) | null = null;
+    harness.ensureThread.mockImplementationOnce(() => new Promise((resolve) => { resolveThread = resolve; }));
+    await render({ clientId: "client-a", businessMissionId: "mission-a" });
+    await waitForWritable();
+    await type("same-scope draft");
+    const ensureForOrigin = harness.liveEnsureThread!;
+    let pendingCreation: Promise<string> | null = null;
+
+    await act(async () => {
+      pendingCreation = ensureForOrigin();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      resolveThread?.(`live-thread-${testNumber}`);
+      await pendingCreation;
+      await settle();
+    });
+
+    expect(harness.rail!.activeThreadId).toBe(`live-thread-${testNumber}`);
+    expect(textarea().value).toBe("same-scope draft");
+  });
 
   it("does not permit typing while history is unresolved, then enables a confirmed empty history", async () => {
     harness.isFetched = false;

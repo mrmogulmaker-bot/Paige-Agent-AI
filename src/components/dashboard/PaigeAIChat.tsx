@@ -1598,8 +1598,15 @@ const PaigeAIChatInner = ({
   const ensureLiveThread = useCallback(async () => {
     if (activeThreadId) return activeThreadId;
     const originDraft = composerScope.visibleHandle;
+    const originScope = requestScopeRef.current;
     const id = await threadsApi.ensureThread("Live Conversation");
-    if (originDraft && originDraft.conversationId === conversationStateRef.current.newConversationId) {
+    if (
+      !originDraft
+      || !composerDraftHandlesMatch(originDraft, originScope.handle)
+      || originScope.epoch !== requestScopeRef.current.epoch
+      || !composerDraftHandlesMatch(originScope.handle, requestScopeRef.current.handle)
+    ) return id;
+    if (originDraft.conversationId === conversationStateRef.current.newConversationId) {
       const threadDraft = { ...originDraft, conversationId: id };
       moveComposerDraft(originDraft, threadDraft);
     }
