@@ -71,8 +71,8 @@ const invoke = (requestRef) => new Promise((resolve, reject) => {
 
 try {
   const outcomes = await Promise.all(requests.map(invoke));
-  const lines = outcomes.map((output) => output.split(/\r?\n/).find((line) => line.startsWith("{") || line.startsWith("54000:")));
-  assert.equal(lines.filter((line) => line?.startsWith("{")).length, 1, "exactly one reservation reaches the exact cap");
+  const lines = outcomes.map((output) => output.split(/\r?\n/).find((line) => line.includes('"reservation_id"') || line.startsWith("54000:")));
+  assert.equal(lines.filter((line) => line?.includes('"reservation_id"')).length, 1, "exactly one reservation reaches the exact cap");
   assert.equal(lines.filter((line) => line === "54000:PAIGE_VOICE_TENANT_COST_LIMIT").length, 1, "the concurrent over-cap reservation is refused");
   assert.equal(run(`SELECT count(*) FROM public.paige_voice_cost_reservations WHERE tenant_id='${tenant}'`), "1");
   assert.equal(run(`SELECT sum(reserved_usd)=0.20 FROM public.paige_voice_cost_reservations WHERE tenant_id='${tenant}'`), "t");

@@ -8,8 +8,8 @@
 --   * both OpenAI and ElevenLabs reservations consume the same tenant + platform monthly budgets;
 --   * exact cap succeeds, over-cap fails, idempotency is scope-bound, old months do not consume this
 --     month, and ambiguous post-dispatch outcomes remain charged until explicitly reconciled;
---   * the reservation implementation owns both lock rows. A separate two-session proof exercises the
---     real race; this pgTAP assertion prevents a lock-free implementation from passing this matrix.
+--   * the reservation implementation owns both lock rows and guarded counters. A separate two-session
+--     proof exercises the real race; this assertion prevents a lock-free implementation from passing.
 
 BEGIN;
 
@@ -139,6 +139,8 @@ SELECT throws_ok($$SELECT public.reserve_paige_voice_cost_internal('10400000-000
 
 -- Monthly reset: prior-month committed spend does not consume the new month's caps.
 UPDATE public.paige_voice_cost_reservations SET budget_month=(date_trunc('month',now() AT TIME ZONE 'UTC')::date - 1) WHERE tenant_id='10400000-0000-4000-8000-0000000000a1';
+UPDATE public.paige_voice_platform_monthly_usage SET budget_month=(date_trunc('month',now() AT TIME ZONE 'UTC')::date - 1);
+UPDATE public.paige_voice_tenant_monthly_usage SET budget_month=(date_trunc('month',now() AT TIME ZONE 'UTC')::date - 1) WHERE tenant_id='10400000-0000-4000-8000-0000000000a1';
 SELECT lives_ok($$SELECT public.reserve_paige_voice_cost_internal('10400000-0000-4000-8000-000000000001','10400000-0000-4000-8000-0000000000a1','openai-fallback-r1','10400000-0000-4000-8000-000000000106',2000)$$, 'prior-month spend does not consume the current-month tenant cap');
 
 -- Ambiguous dispatch stays charged; explicit reconciliation can release it later.
@@ -156,12 +158,21 @@ SET transport_enabled=true,key_scope_verified=true,voice_authorized=true,retenti
     provider_verification_id='10400000-0000-4000-8000-000000000201',
     account_verification_receipt_ref='synthetic-budget-proof',account_verified_at=now()
 WHERE singleton=true;
-UPDATE public.paige_voice_profiles SET active=false WHERE slot='active';
-UPDATE public.paige_voice_profiles SET active=true,approved=true,revision='elevenlabs-budget-proof-r1',effective_at=now(),provider_verification_id='10400000-0000-4000-8000-000000000201',provider_verification_receipt_ref='synthetic-budget-proof',provider_verified_at=now() WHERE slot='candidate';
+UPDATE public.paige_voice_profiles
+SET provider='elevenlabs',
+    provider_voice_ref='cgSgspJ2msm6clMCkdW9',
+    active=true,
+    approved=true,
+    revision='elevenlabs-budget-proof-r1',
+    effective_at=now(),
+    provider_verification_id='10400000-0000-4000-8000-000000000201',
+    provider_verification_receipt_ref='synthetic-budget-proof',
+    provider_verified_at=now()
+WHERE slot='active';
 SELECT lives_ok($$SELECT public.reserve_paige_voice_cost_internal('10400000-0000-4000-8000-000000000001','10400000-0000-4000-8000-0000000000a1','elevenlabs-budget-proof-r1','10400000-0000-4000-8000-000000000108',1)$$, 'the same budget controller covers an ElevenLabs profile');
 SELECT is((SELECT provider FROM public.paige_voice_cost_reservations WHERE request_ref='10400000-0000-4000-8000-000000000108'),'elevenlabs','reservation records the actual selected provider');
 
-SELECT like(pg_get_functiondef('public.reserve_paige_voice_cost_internal(uuid,uuid,text,uuid,integer)'::regprocedure),'%FOR UPDATE%','reservation implementation takes row locks for concurrent cap enforcement');
+SELECT matches(pg_get_functiondef('public.reserve_paige_voice_cost_internal(uuid,uuid,text,uuid,integer)'::regprocedure),'FOR[[:space:]]+UPDATE[[:space:][:print:]]+ON CONFLICT','reservation implementation combines row locks with guarded month buckets for concurrent cap enforcement');
 
 SELECT * FROM finish();
 ROLLBACK;

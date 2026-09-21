@@ -14,7 +14,7 @@
 -- emergency_disabled=true, and deploy paige-tts without the V1a reservation contract.
 -- Then CREATE OR REPLACE reserve/settle with their 20260907155052 bodies. After proving
 -- no caller uses the V1a columns/functions, drop the two setter functions, two capability
--- functions, both budget tables, the budget-period index, and the provider/budget_month/
+-- functions, the budget and monthly-usage tables, the budget-period index, and the provider/budget_month/
 -- rate columns; finally restore the former reservation state check. Existing reservation
 -- rows must be exported before dropping columns. Do not down-migrate a live deployment.
 
@@ -40,9 +40,24 @@ INSERT INTO public.paige_voice_platform_budget(singleton)
 VALUES (true)
 ON CONFLICT (singleton) DO NOTHING;
 
+CREATE TABLE public.paige_voice_platform_monthly_usage (
+  budget_month date PRIMARY KEY,
+  reserved_usd numeric NOT NULL CHECK (reserved_usd >= 0)
+);
+
+CREATE TABLE public.paige_voice_tenant_monthly_usage (
+  tenant_id uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  budget_month date NOT NULL,
+  reserved_usd numeric NOT NULL CHECK (reserved_usd >= 0),
+  PRIMARY KEY (tenant_id, budget_month)
+);
+
 ALTER TABLE public.paige_voice_platform_budget ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.paige_voice_tenant_budgets ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.paige_voice_platform_budget, public.paige_voice_tenant_budgets
+ALTER TABLE public.paige_voice_platform_monthly_usage ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.paige_voice_tenant_monthly_usage ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.paige_voice_platform_budget, public.paige_voice_tenant_budgets,
+  public.paige_voice_platform_monthly_usage, public.paige_voice_tenant_monthly_usage
   FROM PUBLIC, anon, authenticated, service_role;
 
 ALTER TABLE public.paige_voice_cost_reservations
@@ -348,20 +363,29 @@ BEGIN
   END IF;
 
   _reserve := (_character_count::numeric / 1000) * _platform.max_usd_per_1000_chars;
-  SELECT COALESCE(sum(reserved_usd), 0) INTO _tenant_used
-  FROM public.paige_voice_cost_reservations
-  WHERE tenant_id = _tenant_id
-    AND budget_month = _budget_month
-    AND state IN ('reserved','committed','ambiguous');
-  IF _tenant_used + _reserve > _tenant.monthly_limit_usd THEN
+
+  -- Unique month buckets plus ON CONFLICT are the concurrency boundary. Unlike
+  -- an aggregate or ordinary UPDATE inside a waiting function statement, the
+  -- conflict path observes and guards the latest concurrently committed tuple.
+  INSERT INTO public.paige_voice_tenant_monthly_usage(tenant_id, budget_month, reserved_usd)
+  VALUES (_tenant_id, _budget_month, _reserve)
+  ON CONFLICT (tenant_id, budget_month) DO UPDATE
+    SET reserved_usd = public.paige_voice_tenant_monthly_usage.reserved_usd + EXCLUDED.reserved_usd
+    WHERE public.paige_voice_tenant_monthly_usage.reserved_usd + EXCLUDED.reserved_usd
+          <= _tenant.monthly_limit_usd
+  RETURNING reserved_usd INTO _tenant_used;
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'PAIGE_VOICE_TENANT_COST_LIMIT' USING ERRCODE = '54000';
   END IF;
 
-  SELECT COALESCE(sum(reserved_usd), 0) INTO _platform_used
-  FROM public.paige_voice_cost_reservations
-  WHERE budget_month = _budget_month
-    AND state IN ('reserved','committed','ambiguous');
-  IF _platform_used + _reserve > _platform.monthly_limit_usd THEN
+  INSERT INTO public.paige_voice_platform_monthly_usage(budget_month, reserved_usd)
+  VALUES (_budget_month, _reserve)
+  ON CONFLICT (budget_month) DO UPDATE
+    SET reserved_usd = public.paige_voice_platform_monthly_usage.reserved_usd + EXCLUDED.reserved_usd
+    WHERE public.paige_voice_platform_monthly_usage.reserved_usd + EXCLUDED.reserved_usd
+          <= _platform.monthly_limit_usd
+  RETURNING reserved_usd INTO _platform_used;
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'PAIGE_VOICE_PLATFORM_COST_LIMIT' USING ERRCODE = '54000';
   END IF;
 
@@ -398,7 +422,8 @@ VOLATILE
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
-DECLARE _current_state text;
+DECLARE
+  _reservation public.paige_voice_cost_reservations%ROWTYPE;
 BEGIN
   IF auth.role() <> 'service_role' THEN
     RAISE EXCEPTION 'PAIGE_VOICE_COST_FORBIDDEN' USING ERRCODE = '42501';
@@ -407,21 +432,30 @@ BEGIN
     RAISE EXCEPTION 'PAIGE_VOICE_COST_INVALID_OUTCOME' USING ERRCODE = '22023';
   END IF;
 
-  SELECT state INTO _current_state
+  SELECT * INTO _reservation
   FROM public.paige_voice_cost_reservations
   WHERE id = _reservation_id AND actor_user_id = _actor_user_id
   FOR UPDATE;
-  IF _current_state IS NULL THEN
+  IF _reservation.id IS NULL THEN
     RAISE EXCEPTION 'PAIGE_VOICE_COST_RESERVATION_NOT_FOUND' USING ERRCODE = '42501';
   END IF;
-  IF _current_state = _outcome THEN
+  IF _reservation.state = _outcome THEN
     RETURN;
   END IF;
-  IF _current_state = 'reserved'
-     OR (_current_state = 'ambiguous' AND _outcome IN ('committed','released')) THEN
+  IF _reservation.state = 'reserved'
+     OR (_reservation.state = 'ambiguous' AND _outcome IN ('committed','released')) THEN
     UPDATE public.paige_voice_cost_reservations
     SET state = _outcome, settled_at = now()
     WHERE id = _reservation_id;
+    IF _outcome = 'released' THEN
+      UPDATE public.paige_voice_platform_monthly_usage
+      SET reserved_usd = GREATEST(0, reserved_usd - _reservation.reserved_usd)
+      WHERE budget_month = _reservation.budget_month;
+      UPDATE public.paige_voice_tenant_monthly_usage
+      SET reserved_usd = GREATEST(0, reserved_usd - _reservation.reserved_usd)
+      WHERE tenant_id = _reservation.tenant_id
+        AND budget_month = _reservation.budget_month;
+    END IF;
     RETURN;
   END IF;
   RAISE EXCEPTION 'PAIGE_VOICE_COST_SETTLEMENT_CONFLICT' USING ERRCODE = '23514';
