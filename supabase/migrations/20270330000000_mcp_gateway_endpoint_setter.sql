@@ -104,8 +104,12 @@
 --      BOOLEANS / COUNTS ONLY — NEVER the URL, a token, or ciphertext. Payload keys: old + new
 --      endpoint_hash; endpoint_changed and credential_changed (booleans — credential_changed is derived
 --      from an in-definer decrypt of the OLD token compared to the new argument; the plaintext is never
---      logged); auth_kind before + after; auth_token_last4 before + after (last4 is already non-secret,
---      stored on the row); approvals_revoked and tools_cleared (row counts from the pre-UPDATE deletes).
+--      logged); auth_kind before + after; auth_token_last4 before + after (round-6: a last4 hint is
+--      emitted ONLY for a token of length >= 12, where the trailing 4 chars are a negligible non-secret
+--      suffix; a token < 12 chars has NO non-secret hint and is recorded as NULL — right(token,4) on a
+--      short token returns the whole (or nearly the whole) credential, so last4 is redacted everywhere it
+--      is written [the row column, the audit before/after, and the return]); approvals_revoked and
+--      tools_cleared (row counts from the pre-UPDATE deletes).
 --      If the audit INSERT fails, the whole function transaction aborts and the UPDATE + deletes do
 --      NOT commit (plain in-transaction INSERT; no autonomous-transaction anywhere in the audit path).
 --      The row sets actor_user_id = auth.uid(), which satisfies the current INSERT policy
@@ -690,7 +694,13 @@ BEGIN
   _old_hash  := CASE WHEN _conn.server_url_ct IS NULL THEN NULL
                      ELSE public._mcp_endpoint_hash(public.platform_decrypt(_conn.server_url_ct)) END;
   _new_hash  := public._mcp_endpoint_hash(_server_url);
-  _new_last4 := CASE WHEN _auth_token IS NULL THEN NULL ELSE right(_auth_token, 4) END;
+  -- round-6 (secret-exposure fix): right(token,4) returns the WHOLE token when it is <= 4 chars, and a
+  -- 5-char token still leaks 4 of 5. A trailing-4 hint is only genuinely non-secret when the token is long
+  -- enough that those 4 chars are a negligible suffix; below 12 chars there is no such hint, so emit NULL.
+  -- This ONE value feeds the row column, the audit after-hint, and the return (there is no second last4
+  -- code path), so redacting it here redacts it everywhere. (INT-111 tracks the repo-wide last4 convention
+  -- at OTHER call sites — out of this PR's scope.)
+  _new_last4 := CASE WHEN _auth_token IS NULL OR length(_auth_token) < 12 THEN NULL ELSE right(_auth_token, 4) END;
 
   -- Change-detection for the audit (round-3, F4). credential_changed is derived from EVERY
   -- credential-bearing field, not just the access token — a same-URL rotation of a header name, refresh
@@ -762,7 +772,8 @@ BEGIN
   -- so the UPDATE + deletes above do not commit. actor_user_id = auth.uid() (a real tenant-admin: the
   -- capability gate refused a NULL actor), which also satisfies paige_audit_log's INSERT RLS as
   -- belt-and-suspenders. credential_changed is a BOOLEAN derived from an in-definer decrypt — the token
-  -- plaintext is never logged; only last4 (already non-secret, stored on the row) and the flags appear.
+  -- plaintext is never logged; only last4 (round-6: a non-secret trailing-4 hint, present ONLY for a
+  -- token >= 12 chars and NULL below that — never the whole short token) and the flags appear.
   INSERT INTO public.paige_audit_log (actor_user_id, tenant_id, action, target_type, target_id, payload)
   VALUES (
     auth.uid(), _conn.tenant_id, 'mcp_connection.endpoint_changed', 'mcp_connections', _connection_id,

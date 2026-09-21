@@ -44,6 +44,10 @@
 --     CHECK set is driven THROUGH THE REAL setter and the accepted set is asserted == the documented
 --     executable set {oauth,bearer,header,url,none}; the smoke asserts the loader's
 --     MCP_EXECUTABLE_AUTH_KINDS == that same set. Pair-proof: neither alone proves setter==loader.
+--   • round-6 (secret-exposure fix) — auth_token_last4 redaction: right(token,4) leaks the whole (or
+--     nearly-whole) token when it is short, so last4 is emitted ONLY for a token >= 12 chars and NULL
+--     below that, in the row column + audit after-hint + return. Tokens of length {1,4,5,11} → last4 NULL
+--     everywhere AND the full short token appears NOWHERE in the audit payload; {12,40} → right(token,4).
 --
 -- Synthetic fixtures only; self-contained; ROLLS BACK. Seeds run as the superuser test role (RLS
 -- bypassed); each setter call mocks the CALLER via request.jwt.claims so auth.uid() / the tenant
@@ -508,6 +512,60 @@ BEGIN
   IF NOT (_accepted @> _expected AND _expected @> _accepted) THEN
     RAISE EXCEPTION '(F4) setter accept-set % != documented executable set %', _accepted, _expected;
   END IF;
+END $$;
+
+-- ── (round-6 secret-exposure fix) auth_token_last4 redaction. right(_auth_token,4) returns the WHOLE
+--    token when it is <= 4 chars (and 4 of 5 for a 5-char token), so a short custom-server token would land
+--    in paige_audit_log and the RPC return in plaintext. The setter now emits last4 ONLY for a token >= 12
+--    chars (a negligible non-secret suffix) and NULL below that — in the row column, the audit after-hint,
+--    AND the return (one _new_last4 value feeds all three). Assert: length {1,4,5,11} → last4 NULL in row +
+--    audit payload + return AND the full short token appears NOWHERE in the audit payload for that write;
+--    length {12,40} → last4 = right(token,4). (INT-111 tracks the repo-wide last4 convention at other call
+--    sites — out of this PR's scope.) Each token uses a UNIQUE endpoint so its audit row is identifiable. ─
+DO $$
+DECLARE _r jsonb; _row public.mcp_connections%ROWTYPE; _p jsonb; _c record; _exp text;
+  C uuid := '0e900000-0000-0000-0000-0000000000c1';
+BEGIN
+  PERFORM set_config('request.jwt.claims', '{"sub":"0e900000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+  FOR _c IN
+    SELECT * FROM (VALUES
+      ('len1',  'Q',                                        'https://last4-1.example.com/rpc'),
+      ('len4',  'QRST',                                     'https://last4-4.example.com/rpc'),
+      ('len5',  'QRSTU',                                    'https://last4-5.example.com/rpc'),
+      ('len11', 'QRSTUVWXYZq',                              'https://last4-11.example.com/rpc'),
+      ('len12', 'QRSTUVWXYZqr',                             'https://last4-12.example.com/rpc'),
+      ('len40', 'QRSTUVWXYZqrstuvwxyzQRSTUVWXYZqrstuvwXYZ', 'https://last4-40.example.com/rpc')
+    ) AS v(name, tok, url)
+  LOOP
+    _r := public.set_mcp_connection_endpoint(C, _c.url, 'bearer', _c.tok);
+    SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
+    -- new_endpoint_hash is unique per token's URL, so this identifies THIS write's audit row exactly.
+    SELECT payload INTO _p FROM public.paige_audit_log
+      WHERE action = 'mcp_connection.endpoint_changed' AND target_id = C
+        AND (payload->>'new_endpoint_hash') = public._mcp_endpoint_hash(_c.url)
+      LIMIT 1;
+    IF _p IS NULL THEN RAISE EXCEPTION '(round-6 last4) %: no audit row for the write', _c.name; END IF;
+
+    IF length(_c.tok) < 12 THEN
+      IF _row.auth_token_last4 IS NOT NULL THEN
+        RAISE EXCEPTION '(round-6 last4) %: row last4 must be NULL for a <12-char token (leak), got %', _c.name, _row.auth_token_last4; END IF;
+      IF (_r ? 'auth_token_last4') IS NOT TRUE OR (_r->>'auth_token_last4') IS NOT NULL THEN
+        RAISE EXCEPTION '(round-6 last4) %: return last4 must be present and NULL', _c.name; END IF;
+      IF (_p ? 'auth_token_last4_after') IS NOT TRUE OR (_p->>'auth_token_last4_after') IS NOT NULL THEN
+        RAISE EXCEPTION '(round-6 last4) %: audit after-hint must be present and NULL', _c.name; END IF;
+      -- the full short token must appear NOWHERE in the audit payload for this write.
+      IF position(_c.tok IN _p::text) > 0 THEN
+        RAISE EXCEPTION '(round-6 last4) %: the full short token leaked into the audit payload: %', _c.name, _p; END IF;
+    ELSE
+      _exp := right(_c.tok, 4);
+      IF _row.auth_token_last4 IS DISTINCT FROM _exp THEN
+        RAISE EXCEPTION '(round-6 last4) %: row last4 must be right(token,4)=%, got %', _c.name, _exp, _row.auth_token_last4; END IF;
+      IF (_r->>'auth_token_last4') IS DISTINCT FROM _exp THEN
+        RAISE EXCEPTION '(round-6 last4) %: return last4 must be %, got %', _c.name, _exp, (_r->>'auth_token_last4'); END IF;
+      IF (_p->>'auth_token_last4_after') IS DISTINCT FROM _exp THEN
+        RAISE EXCEPTION '(round-6 last4) %: audit after-hint must be %, got %', _c.name, _exp, (_p->>'auth_token_last4_after'); END IF;
+    END IF;
+  END LOOP;
 END $$;
 
 -- ── (round-3 F4) credential_changed reflects a NON-TOKEN credential field. A same-URL rebind that keeps
