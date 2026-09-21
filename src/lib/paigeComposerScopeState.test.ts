@@ -1,0 +1,243 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  COMPOSER_SCOPE_FIELDS,
+  NEW_CHAT_CONVERSATION,
+  acceptComposerDelivery,
+  clearComposerDraft,
+  createComposerScopeIdentity,
+  initialComposerConversation,
+  moveComposerDraft,
+  readComposerDraft,
+  resolveComposerScopeState,
+  shouldClearComposerDraft,
+  transitionComposerConversation,
+  writeComposerDraft,
+  type ComposerConversationState,
+  type ComposerScopeIdentity,
+  type ComposerScopeResolverInput,
+} from "./paigeComposerScopeState";
+
+const identity = (tenantId = "tenant-a", userId = "user-a"): ComposerScopeIdentity => ({
+  tenantId,
+  userId,
+});
+
+const thread = (id: string) => ({ kind: "thread" as const, id });
+
+const readyThreadConversation = (id = "thread-a"): ComposerConversationState => ({
+  history: "settled",
+  requested: thread(id),
+  displayed: thread(id),
+  intent: "explicit",
+});
+
+const baseInput = (overrides: Partial<ComposerScopeResolverInput> = {}): ComposerScopeResolverInput => ({
+  currentIdentity: identity(),
+  displayedIdentity: identity(),
+  conversation: readyThreadConversation(),
+  busy: false,
+  ...overrides,
+});
+
+describe("ComposerScopeState transition table", () => {
+  const cases: Array<{
+    name: string;
+    input: ComposerScopeResolverInput;
+    status: ReturnType<typeof resolveComposerScopeState>["status"];
+    writable: boolean;
+    visibleConversationId: string | null;
+  }> = [
+    {
+      name: "sign-out leaves identity unresolved and exposes no prior draft",
+      input: baseInput({ currentIdentity: null }),
+      status: "identity-unresolved",
+      writable: false,
+      visibleConversationId: null,
+    },
+    {
+      name: "effective-user change before cleanup is non-writable and hides the old user's draft",
+      input: baseInput({ currentIdentity: identity("tenant-a", "user-b") }),
+      status: "hydrating",
+      writable: false,
+      visibleConversationId: null,
+    },
+    {
+      name: "account switch before cleanup is non-writable and hides the old tenant draft",
+      input: baseInput({ currentIdentity: identity("tenant-b", "user-a") }),
+      status: "hydrating",
+      writable: false,
+      visibleConversationId: null,
+    },
+    {
+      name: "pending history is different from a confirmed empty history",
+      input: baseInput({ conversation: initialComposerConversation(true) }),
+      status: "history-unresolved",
+      writable: false,
+      visibleConversationId: "new-chat",
+    },
+    {
+      name: "confirmed empty history is a writable new chat",
+      input: baseInput({
+        conversation: transitionComposerConversation(
+          initialComposerConversation(true),
+          { type: "history-confirmed-empty" },
+        ),
+      }),
+      status: "ready-new",
+      writable: true,
+      visibleConversationId: "new-chat",
+    },
+    {
+      name: "newest-thread auto-resume disables writes while its transcript hydrates",
+      input: baseInput({
+        conversation: transitionComposerConversation(
+          initialComposerConversation(true),
+          { type: "thread-requested", id: "thread-newest", intent: "automatic" },
+        ),
+      }),
+      status: "hydrating",
+      writable: false,
+      visibleConversationId: "new-chat",
+    },
+    {
+      name: "an explicit New chat wins while history is still pending",
+      input: baseInput({
+        conversation: transitionComposerConversation(
+          initialComposerConversation(true),
+          { type: "new-chat-requested" },
+        ),
+      }),
+      status: "ready-new",
+      writable: true,
+      visibleConversationId: "new-chat",
+    },
+    {
+      name: "controlled-parent A to B disables before B is loaded and keeps A visible",
+      input: baseInput({
+        conversation: transitionComposerConversation(
+          readyThreadConversation("thread-a"),
+          { type: "thread-requested", id: "thread-b", intent: "controlled" },
+        ),
+      }),
+      status: "hydrating",
+      writable: false,
+      visibleConversationId: "thread-a",
+    },
+    {
+      name: "a failed load returns to the prior displayed conversation",
+      input: baseInput({
+        conversation: transitionComposerConversation(
+          transitionComposerConversation(
+            readyThreadConversation("thread-a"),
+            { type: "thread-requested", id: "thread-b", intent: "explicit" },
+          ),
+          { type: "thread-load-failed", id: "thread-b" },
+        ),
+      }),
+      status: "ready-thread",
+      writable: true,
+      visibleConversationId: "thread-a",
+    },
+    {
+      name: "a loaded requested thread becomes writable",
+      input: baseInput({
+        conversation: transitionComposerConversation(
+          transitionComposerConversation(
+            readyThreadConversation("thread-a"),
+            { type: "thread-requested", id: "thread-b", intent: "explicit" },
+          ),
+          { type: "thread-loaded", id: "thread-b" },
+        ),
+      }),
+      status: "ready-thread",
+      writable: true,
+      visibleConversationId: "thread-b",
+    },
+    {
+      name: "lazy New-chat to persisted-thread migration remains the displayed conversation",
+      input: baseInput({
+        conversation: transitionComposerConversation(
+          transitionComposerConversation(
+            initialComposerConversation(true),
+            { type: "new-chat-requested" },
+          ),
+          { type: "lazy-thread-created", id: "thread-created" },
+        ),
+      }),
+      status: "ready-thread",
+      writable: true,
+      visibleConversationId: "thread-created",
+    },
+    {
+      name: "a ready conversation is non-writable while a send or retry is in flight",
+      input: baseInput({ busy: true }),
+      status: "ready-thread",
+      writable: false,
+      visibleConversationId: "thread-a",
+    },
+  ];
+
+  it.each(cases)("$name", ({ input, status, writable, visibleConversationId }) => {
+    const state = resolveComposerScopeState(input);
+    expect(state.status).toBe(status);
+    expect(state.writable).toBe(writable);
+    expect(state.visibleHandle?.conversationId ?? null).toBe(visibleConversationId);
+    expect(state.writableHandle !== null).toBe(writable);
+  });
+
+  it("makes every draft-key field mandatory before the composer can be writable", () => {
+    const complete = { tenantId: "tenant-a", userId: "user-a" };
+    expect(createComposerScopeIdentity(complete)).toEqual(complete);
+    expect(COMPOSER_SCOPE_FIELDS).toEqual(["tenantId", "userId"]);
+
+    for (const field of COMPOSER_SCOPE_FIELDS) {
+      expect(createComposerScopeIdentity({ ...complete, [field]: null })).toBeNull();
+    }
+  });
+});
+
+describe("ComposerScopeState delivery and completion rules", () => {
+  beforeEach(() => {
+    clearComposerDraft({ ...identity(), conversationId: "new-chat" });
+    clearComposerDraft({ ...identity(), conversationId: "thread-created" });
+    clearComposerDraft({ ...identity(), conversationId: "thread-a" });
+  });
+
+  it("moves a lazy new-chat draft to the first persisted thread without losing words", () => {
+    const from = { ...identity(), conversationId: NEW_CHAT_CONVERSATION.id };
+    const to = { ...identity(), conversationId: "thread-created" };
+    writeComposerDraft(from, "words written before persistence");
+
+    moveComposerDraft(from, to);
+
+    expect(readComposerDraft(from)).toBe("");
+    expect(readComposerDraft(to)).toBe("words written before persistence");
+  });
+
+  it.each([
+    { name: "no edit and retry succeeds", current: "  send me  ", done: true, clears: true },
+    { name: "no edit and retry fails", current: "send me", done: false, clears: false },
+    { name: "edited draft and retry succeeds", current: "send me plus a newer edit", done: true, clears: false },
+    { name: "edited draft and retry fails", current: "a newer replacement", done: false, clears: false },
+  ])("$name", ({ current, done, clears }) => {
+    expect(shouldClearComposerDraft({
+      terminalDone: done,
+      currentDraft: current,
+      submittedText: "send me",
+    })).toBe(clears);
+  });
+
+  it("drops a late dictation callback once the requested/displayed scope no longer matches", () => {
+    const ready = resolveComposerScopeState(baseInput());
+    const captured = ready.writableHandle!;
+    const switched = resolveComposerScopeState(baseInput({
+      conversation: transitionComposerConversation(
+        readyThreadConversation("thread-a"),
+        { type: "thread-requested", id: "thread-b", intent: "explicit" },
+      ),
+    }));
+
+    expect(acceptComposerDelivery(captured, ready)).toBe(true);
+    expect(acceptComposerDelivery(captured, switched)).toBe(false);
+  });
+});
