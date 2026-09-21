@@ -42,8 +42,11 @@ import { createAnchoredTranscriptScroll, messageScrollAnchorKey } from "@/compon
 import {
   NEW_PAIGE_CHAT_DRAFT_SLOT,
   clearPaigeComposerDraft,
+  createPaigeComposerScopeHandle,
   movePaigeComposerDraft,
+  paigeComposerScopeHandlesMatch,
   paigeComposerDraftKey,
+  readPaigeComposerDraft,
   usePaigeComposerDraft,
   type PaigeComposerDraftIdentity,
 } from "@/lib/paigeComposerDrafts";
@@ -354,15 +357,36 @@ const PaigeAIChatInner = ({
   const newChatDraftSlot = clientId || businessMissionId
     ? `${NEW_PAIGE_CHAT_DRAFT_SLOT}:${clientId ?? ""}:${businessMissionId ?? ""}`
     : NEW_PAIGE_CHAT_DRAFT_SLOT;
-  const draftIdentity = useMemo<PaigeComposerDraftIdentity | null>(() => {
-    const tenantId = platform ? "platform" : activeTenantId;
-    if (!tenantId || !scopedUserId) return null;
-    return {
-      tenantId,
-      userId: scopedUserId,
-      threadSlot: activeThreadId ?? newChatDraftSlot,
-    };
-  }, [activeTenantId, activeThreadId, newChatDraftSlot, platform, scopedUserId]);
+  // Shared tenant/client/mission epoch. The full isolation rationale remains
+  // beside the reset effect below; drafts also refuse the render-before-cleanup
+  // window by requiring this epoch to have been accepted.
+  const scopeEpoch = `${activeTenantId ?? ""}|${clientId ?? ""}|${businessMissionId ?? ""}`;
+  const acceptedEpochRef = useRef<string>(scopeEpoch);
+  // Which thread the CURRENT `messages` were hydrated from. Distinct from
+  // `activeThreadId`: a controlled parent can move the selection out from under us.
+  const hydratedFromRef = useRef<string | null>(null);
+  const scopeAccepted = acceptedEpochRef.current === scopeEpoch;
+  const draftTenantId = platform ? "platform" : activeTenantId;
+  const draftScopeHandle = useMemo(
+    () => createPaigeComposerScopeHandle({
+      tenantId: scopeAccepted ? draftTenantId : null,
+      userId: scopeAccepted ? scopedUserId : null,
+      threadSlot: scopeAccepted ? (activeThreadId ?? newChatDraftSlot) : null,
+    }),
+    [activeThreadId, draftTenantId, newChatDraftSlot, scopeAccepted, scopedUserId],
+  );
+  const displayedScopeHandle = createPaigeComposerScopeHandle({
+    tenantId: scopeAccepted ? draftTenantId : null,
+    userId: scopeAccepted ? scopedUserId : null,
+    threadSlot: scopeAccepted
+      ? (enableHistory ? (hydratedFromRef.current ?? newChatDraftSlot) : (activeThreadId ?? newChatDraftSlot))
+      : null,
+  });
+  const draftScopeMatchesDisplay = paigeComposerScopeHandlesMatch(
+    draftScopeHandle,
+    displayedScopeHandle,
+  );
+  const draftIdentity = draftScopeMatchesDisplay ? draftScopeHandle : null;
   const draft = usePaigeComposerDraft(draftIdentity);
   const [submittedDraftKey, setSubmittedDraftKey] = useState<string | null>(null);
   const input = submittedDraftKey === draft.key ? "" : draft.value;
@@ -370,10 +394,6 @@ const PaigeAIChatInner = ({
   // A deployment reload must never discard an unsent prompt, attachment, or
   // response currently arriving from Paige.
   useBeforeUnloadGuard(input.trim().length > 0 || attachedDoc !== null || isProcessingFile || isLoading);
-  // Which thread the CURRENT `messages` were hydrated from. Distinct from
-  // `activeThreadId`: a controlled parent can move the selection out from under us,
-  // and this is how the sync effect below notices it has to re-hydrate.
-  const hydratedFromRef = useRef<string | null>(null);
   const setActiveThreadId = useCallback(
     (id: string | null) => {
       if (!isThreadControlled) setLocalThreadId(id);
@@ -407,7 +427,6 @@ const PaigeAIChatInner = ({
   //
   // Surfaces that never focus a client (the operator desk) pass no `clientId`, so their
   // epoch is `"<tenant>|"` and their behaviour is byte-for-byte what it was.
-  const scopeEpoch = `${activeTenantId ?? ""}|${clientId ?? ""}|${businessMissionId ?? ""}`;
   const dictationEpoch = [
     scopeEpoch,
     scopedUserId ?? "anonymous",
@@ -467,7 +486,6 @@ const PaigeAIChatInner = ({
   // The notice is adopted only when the epoch actually moves OFF the one it was parked under, and
   // discarded otherwise. A notice about a scope nobody is leaving is not a notice.
   const pendingScopeNoticeRef = useRef<{ epoch: string; text: string } | null>(null);
-  const acceptedEpochRef = useRef<string>(scopeEpoch);
   const dictationGenerationRef = useRef(0);
   const [cancelled, setCancelled] = useState(false);
   // `server` joins `offline` and `timeout` because all three are the same thing to the person:
@@ -1285,7 +1303,16 @@ const PaigeAIChatInner = ({
         resolvedDraft,
       );
       if (succeeded) {
-        if (resolvedDraft) clearPaigeComposerDraft(resolvedDraft);
+        // A Retry answers the previously submitted text, but the person may
+        // have edited the retained draft before retrying. Clear only when the
+        // current draft is still the exact submitted value under submit's
+        // trimming rule; a newer edit belongs to the person and survives.
+        if (
+          resolvedDraft
+          && readPaigeComposerDraft(resolvedDraft).trim() === userText.trim()
+        ) {
+          clearPaigeComposerDraft(resolvedDraft);
+        }
         retryTurnRef.current = null;
       }
       return succeeded;
@@ -1400,16 +1427,14 @@ const PaigeAIChatInner = ({
       : traceDepartments > 0
         ? `${traceDepartments} ${traceDepartments === 1 ? "department" : "departments"} worked on this`
         : `${visibleSteps.length} ${visibleSteps.length === 1 ? "step" : "steps"} so far`;
-  const draftMatchesDisplayedConversation = !enableHistory
-    || activeThreadId === hydratedFromRef.current;
   const composerDraftReady = draft.identity !== null
     && !historyTransitioning
-    && draftMatchesDisplayedConversation;
+    && draftScopeMatchesDisplay;
   const composerUnavailableReason = !draft.identity
-    ? "Resolving the conversation before you can write to PAIGE."
-    : enableHistory && !draftMatchesDisplayedConversation
+    ? enableHistory && !draftScopeMatchesDisplay
       ? "Opening that conversation before you can write."
-      : historyTransitioning
+      : "Resolving the conversation before you can write to PAIGE."
+    : historyTransitioning
         ? "Opening that conversation before you can write."
         : null;
   const composerBlocked = isLoading || !composerDraftReady || (soloTenantSafety && !activeTenantId);
@@ -1424,6 +1449,7 @@ const PaigeAIChatInner = ({
       value={input}
       rows={1}
       onChange={(e) => {
+        if (!composerDraftReady) return;
         setInput(e.target.value);
         setSlashActive(0);
         const el = e.target; el.style.height = "auto";
@@ -1494,6 +1520,7 @@ const PaigeAIChatInner = ({
       onText={(seg, insertionPoint) => {
         if (acceptedEpochRef.current !== scopeEpoch) return;
         if (dictationGenerationRef.current !== dictationGeneration) return;
+        if (!composerDraftReady) return;
         setInput((prev) => appendDictation(prev, seg, insertionPoint));
       }}
       onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
@@ -1567,6 +1594,7 @@ const PaigeAIChatInner = ({
       disabled={composerBlocked}
       className={cd ? "h-[27px] w-[27px] flex-none rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted" : "flex-none"}
       onClick={() => {
+        if (!composerDraftReady) return;
         dictationGenerationRef.current += 1;
         setDictationGeneration(dictationGenerationRef.current);
         setInput("");

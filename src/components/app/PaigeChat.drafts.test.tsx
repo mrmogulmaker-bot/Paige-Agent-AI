@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Session, User } from "@supabase/supabase-js";
 import {
   NEW_PAIGE_CHAT_DRAFT_SLOT,
+  PAIGE_COMPOSER_SCOPE_FIELDS,
+  createPaigeComposerScopeHandle,
+  readPaigeComposerDraft,
   writePaigeComposerDraft,
 } from "@/lib/paigeComposerDrafts";
 
@@ -136,6 +139,19 @@ describe("AppShell PaigeChat scoped session drafts", () => {
     await act(async () => setTextareaValue(textarea(), value));
   };
 
+  it("constructs a writable scope handle only when every draft-key component is present", () => {
+    const complete = {
+      tenantId: "tenant-complete",
+      userId: "user-complete",
+      threadSlot: "thread-complete",
+    };
+    expect(createPaigeComposerScopeHandle(complete)).toEqual(complete);
+
+    for (const field of PAIGE_COMPOSER_SCOPE_FIELDS) {
+      expect(createPaigeComposerScopeHandle({ ...complete, [field]: null })).toBeNull();
+    }
+  });
+
   it("keeps every write control disabled until the AppShell draft identity resolves", async () => {
     const activeUser = user(`app-user-${testNumber}`);
     harness.tenantId = null;
@@ -196,6 +212,11 @@ describe("AppShell PaigeChat scoped session drafts", () => {
     expect(host.querySelector<HTMLButtonElement>('button[aria-label="Dictate"]')!.disabled).toBe(true);
     expect(Array.from(host.querySelectorAll<HTMLButtonElement>("button")).at(-1)!.disabled).toBe(true);
     expect(host.textContent).toContain("Select a workspace before writing to PAIGE.");
+    expect(readPaigeComposerDraft({
+      tenantId: harness.portalBrandTenantId,
+      userId: activeUser.id,
+      threadSlot: `${NEW_PAIGE_CHAT_DRAFT_SLOT}:app-shell:client:client-in-view`,
+    })).toBe("");
   });
 
   it("isolates and restores drafts across tenant switches", async () => {

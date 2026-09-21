@@ -12,6 +12,47 @@ export type PaigeComposerDraftIdentity = Readonly<{
   threadSlot: string;
 }>;
 
+export type PaigeComposerScopeCandidate = Readonly<{
+  [K in keyof PaigeComposerDraftIdentity]: string | null | undefined;
+}>;
+
+/**
+ * This list is the construction-time tripwire for draft scope. Adding a new
+ * identity component without adding it here fails TypeScript before a composer
+ * can become writable under a partial key.
+ */
+export const PAIGE_COMPOSER_SCOPE_FIELDS = [
+  "tenantId",
+  "userId",
+  "threadSlot",
+] as const satisfies readonly (keyof PaigeComposerDraftIdentity)[];
+
+type MissingPaigeComposerScopeField = Exclude<
+  keyof PaigeComposerDraftIdentity,
+  (typeof PAIGE_COMPOSER_SCOPE_FIELDS)[number]
+>;
+type AssertNoMissingPaigeComposerScopeField<T extends never> = T;
+export type PaigeComposerScopeFieldCoverage =
+  AssertNoMissingPaigeComposerScopeField<MissingPaigeComposerScopeField>;
+
+/** A scope handle is complete or absent; partial identities never reach the store. */
+export function createPaigeComposerScopeHandle(
+  candidate: PaigeComposerScopeCandidate,
+): PaigeComposerDraftIdentity | null {
+  const { tenantId, userId, threadSlot } = candidate;
+  if (!tenantId || !userId || !threadSlot) return null;
+  return { tenantId, userId, threadSlot };
+}
+
+export function paigeComposerScopeHandlesMatch(
+  draft: PaigeComposerDraftIdentity | null,
+  displayed: PaigeComposerDraftIdentity | null,
+): boolean {
+  return draft !== null
+    && displayed !== null
+    && PAIGE_COMPOSER_SCOPE_FIELDS.every((field) => draft[field] === displayed[field]);
+}
+
 type Listener = () => void;
 
 const drafts = new Map<string, string>();

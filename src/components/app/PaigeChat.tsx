@@ -40,9 +40,10 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import {
   NEW_PAIGE_CHAT_DRAFT_SLOT,
   clearPaigeComposerDraft,
+  createPaigeComposerScopeHandle,
+  paigeComposerScopeHandlesMatch,
   paigeComposerDraftKey,
   usePaigeComposerDraft,
-  type PaigeComposerDraftIdentity,
 } from "@/lib/paigeComposerDrafts";
 
 type Message = {
@@ -85,10 +86,6 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const { brand: portalBrand, loading: portalBrandLoading } = useClientPortalBrandState();
   const { activeTenantId } = useTenantContext();
   const portalBrandTenantId = portalBrand?.tenant_id ?? null;
-  const tenantContextMatchesBrand = !activeTenantId || !portalBrandTenantId || activeTenantId === portalBrandTenantId;
-  const resolvedDraftTenantId = tenantContextMatchesBrand
-    ? activeTenantId ?? portalBrandTenantId
-    : null;
   const { contextBlock, isLoading: contextLoading, hasCreditData } = useClientChatContext(clientId, clientId ? null : user.id);
   // Snapshot of profile/business fields used by the conversational extractor
   // to skip already-populated values. Refreshed after every successful save.
@@ -99,8 +96,31 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const contextInjectedRef = useRef(false);
   const isMobile = useIsMobile();
   const location = useLocation();
+  const appShellDraftSlot = `${NEW_PAIGE_CHAT_DRAFT_SLOT}:app-shell`;
+  const draftThreadSlot = clientId ? `${appShellDraftSlot}:client:${clientId}` : appShellDraftSlot;
+  const activeScopeHandle = useMemo(
+    () => createPaigeComposerScopeHandle({
+      tenantId: session ? activeTenantId : null,
+      userId: session ? user.id : null,
+      threadSlot: session ? draftThreadSlot : null,
+    }),
+    [activeTenantId, draftThreadSlot, session, user.id],
+  );
+  const displayedScopeHandle = useMemo(
+    () => createPaigeComposerScopeHandle({
+      tenantId: session && !portalBrandLoading ? portalBrandTenantId : null,
+      userId: session ? user.id : null,
+      threadSlot: session ? draftThreadSlot : null,
+    }),
+    [draftThreadSlot, portalBrandLoading, portalBrandTenantId, session, user.id],
+  );
+  const tenantContextMatchesBrand = paigeComposerScopeHandlesMatch(
+    activeScopeHandle,
+    displayedScopeHandle,
+  );
+  const draftIdentity = tenantContextMatchesBrand ? activeScopeHandle : null;
   const dictationScopeEpoch = [
-    resolvedDraftTenantId ?? "resolving",
+    draftIdentity ? paigeComposerDraftKey(draftIdentity) : "resolving",
     user.id,
     clientId ?? "",
     location.pathname,
@@ -131,26 +151,21 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     mkMessage({ role: "assistant", content: playbook.persona.greeting }),
   ]);
-  const appShellDraftSlot = `${NEW_PAIGE_CHAT_DRAFT_SLOT}:app-shell`;
-  const draftIdentity = useMemo<PaigeComposerDraftIdentity | null>(() => {
-    if (!session || !resolvedDraftTenantId) return null;
-    return {
-      tenantId: resolvedDraftTenantId,
-      userId: user.id,
-      threadSlot: clientId ? `${appShellDraftSlot}:client:${clientId}` : appShellDraftSlot,
-    };
-  }, [appShellDraftSlot, clientId, resolvedDraftTenantId, session, user.id]);
   const draft = usePaigeComposerDraft(draftIdentity);
   const draftUnavailableReason = !session
     ? "Sign in before writing to PAIGE."
     : portalBrandLoading
       ? "Resolving the conversation before you can write to PAIGE."
-      : !tenantContextMatchesBrand
-        ? "The active workspace does not match this conversation."
-        : !resolvedDraftTenantId
-          ? "Select a workspace before writing to PAIGE."
+      : !activeTenantId
+        ? "Select a workspace before writing to PAIGE."
+        : !portalBrandTenantId
+          ? "This conversation is unavailable until its workspace is resolved."
+          : !tenantContextMatchesBrand
+            ? "The active workspace does not match this conversation."
           : null;
-  const composerWritable = draft.identity !== null && draftUnavailableReason === null;
+  const composerWritable = draft.identity !== null
+    && tenantContextMatchesBrand
+    && draftUnavailableReason === null;
   const [submittedDraftKey, setSubmittedDraftKey] = useState<string | null>(null);
   const input = submittedDraftKey === draft.key ? "" : draft.value;
   const setInput = draft.setValue;
@@ -765,7 +780,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
           <Textarea
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={composerWritable ? (e) => setInput(e.target.value) : undefined}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
             placeholder={attachedDoc ? "Add a message or send document... (Shift+Enter for new line)" : "Ask Paige anything... (Shift+Enter for new line)"}
             rows={1}
@@ -777,7 +792,10 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
           <DictationMicButton
             scopeEpoch={dictationScopeEpoch}
             composerRef={inputRef}
-            onText={(seg, insertionPoint) => setInput((prev) => appendDictation(prev, seg, insertionPoint))}
+            onText={(seg, insertionPoint) => {
+              if (!composerWritable) return;
+              setInput((prev) => appendDictation(prev, seg, insertionPoint));
+            }}
             onActiveChange={handleDictationActivity}
             onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
             disabled={isLoading || !composerWritable}
