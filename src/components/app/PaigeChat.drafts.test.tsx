@@ -9,6 +9,8 @@ import {
 
 const harness = vi.hoisted(() => ({
   tenantId: "tenant-a" as string | null,
+  portalBrandTenantId: "tenant-a" as string | null,
+  portalBrandLoading: false,
 }));
 
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
@@ -33,8 +35,10 @@ vi.mock("@/lib/playbook", () => ({
 }));
 vi.mock("@/hooks/useClientPortalBrand", () => ({
   useClientPortalBrandState: () => ({
-    brand: harness.tenantId ? { tenant_id: harness.tenantId, tenant_name: "Harness" } : null,
-    loading: false,
+    brand: harness.portalBrandTenantId
+      ? { tenant_id: harness.portalBrandTenantId, tenant_name: "Harness" }
+      : null,
+    loading: harness.portalBrandLoading,
   }),
 }));
 vi.mock("@/hooks/useClientChatContext", () => ({
@@ -67,7 +71,11 @@ vi.mock("@/hooks/useChatDocumentUpload", () => ({
     setAttachedDoc: vi.fn(),
   }),
 }));
-vi.mock("@/components/voice/DictationMicButton", () => ({ DictationMicButton: () => <button type="button">Dictate</button> }));
+vi.mock("@/components/voice/DictationMicButton", () => ({
+  DictationMicButton: ({ disabled }: { disabled?: boolean }) => (
+    <button type="button" aria-label="Dictate" disabled={disabled}>Dictate</button>
+  ),
+}));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     auth: { getSession: vi.fn(async () => ({ data: { session: { access_token: "test-token" } } })) },
@@ -102,6 +110,8 @@ describe("AppShell PaigeChat scoped session drafts", () => {
   beforeEach(async () => {
     testNumber += 1;
     harness.tenantId = `app-tenant-${testNumber}`;
+    harness.portalBrandTenantId = harness.tenantId;
+    harness.portalBrandLoading = false;
     vi.stubGlobal("fetch", vi.fn(async () => new Response(
       `data: ${JSON.stringify({ choices: [{ delta: { content: "Done" } }] })}\n\ndata: [DONE]\n\n`,
       { status: 200, headers: { "Content-Type": "text/event-stream" } },
@@ -125,6 +135,42 @@ describe("AppShell PaigeChat scoped session drafts", () => {
   const type = async (value: string) => {
     await act(async () => setTextareaValue(textarea(), value));
   };
+
+  it("keeps every write control disabled until the AppShell draft identity resolves", async () => {
+    const activeUser = user(`app-user-${testNumber}`);
+    harness.tenantId = null;
+    harness.portalBrandTenantId = null;
+    harness.portalBrandLoading = true;
+
+    await act(async () => {
+      root.render(<PaigeChat user={activeUser} session={session} />);
+      await settle();
+    });
+
+    expect(textarea().disabled).toBe(true);
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Dictate"]')!.disabled).toBe(true);
+    expect(Array.from(host.querySelectorAll<HTMLButtonElement>("button")).at(-1)!.disabled).toBe(true);
+    expect(host.textContent).toContain("Resolving the conversation before you can write to PAIGE.");
+
+    harness.portalBrandLoading = false;
+    await act(async () => {
+      root.render(<PaigeChat user={activeUser} session={session} />);
+      await settle();
+    });
+
+    expect(textarea().disabled).toBe(true);
+    expect(host.textContent).toContain("Select a workspace before writing to PAIGE.");
+
+    harness.tenantId = `app-tenant-${testNumber}`;
+    harness.portalBrandTenantId = harness.tenantId;
+    await act(async () => {
+      root.render(<PaigeChat user={activeUser} session={session} />);
+      await settle();
+    });
+
+    expect(textarea().disabled).toBe(false);
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Dictate"]')!.disabled).toBe(false);
+  });
 
   it("isolates and restores drafts across tenant switches", async () => {
     const firstTenant = harness.tenantId;

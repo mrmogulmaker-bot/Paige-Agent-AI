@@ -2,6 +2,10 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatRailApi } from "@/components/dashboard/PaigeAIChat";
+import {
+  readPaigeComposerDraft,
+  writePaigeComposerDraft,
+} from "@/lib/paigeComposerDrafts";
 
 const harness = vi.hoisted(() => ({
   tenantId: "tenant-a" as string | null,
@@ -10,6 +14,7 @@ const harness = vi.hoisted(() => ({
   mic: null as null | {
     scopeEpoch: string;
     onText: (segment: string, insertionPoint?: number | null) => void;
+    disabled?: boolean;
   },
   ensureThread: vi.fn(async () => "thread-created"),
   loadTurns: vi.fn(async () => [] as Array<{ role: string; content: string }>),
@@ -26,9 +31,10 @@ vi.mock("@/components/voice/DictationMicButton", () => ({
   DictationMicButton: (props: {
     scopeEpoch: string;
     onText: (segment: string, insertionPoint?: number | null) => void;
+    disabled?: boolean;
   }) => {
     harness.mic = props;
-    return <button type="button">Dictate</button>;
+    return <button type="button" aria-label="Dictate" disabled={props.disabled}>Dictate</button>;
   },
 }));
 vi.mock("@/hooks/useChatDocumentUpload", () => ({
@@ -166,6 +172,58 @@ describe("PaigeAIChat per-thread composer drafts", () => {
     expect(textarea().value).toBe("draft for B");
   });
 
+  it("disables composition before a requested thread finishes hydrating and never writes the origin draft", async () => {
+    await selectThread("thread-a");
+    await type("origin A draft");
+    writePaigeComposerDraft({
+      tenantId: harness.tenantId!,
+      userId: harness.userId!,
+      threadSlot: "thread-b",
+    }, "destination B draft");
+
+    await act(async () => {
+      root.render(
+        <PaigeAIChat
+          hideHeader
+          fill
+          enableHistory
+          renderRail={(api) => {
+            harness.rail = api;
+            return null;
+          }}
+        />,
+      );
+      await settle();
+    });
+
+    let resolveTurns: ((turns: Array<{ role: string; content: string }>) => void) | null = null;
+    harness.loadTurns.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveTurns = resolve;
+    }));
+
+    await act(async () => {
+      harness.rail!.onSelect("thread-b");
+      await Promise.resolve();
+    });
+
+    if (!textarea().disabled) await type("typed while B hydrates");
+    expect(textarea().disabled).toBe(true);
+    expect(harness.mic!.disabled).toBe(true);
+    expect(readPaigeComposerDraft({
+      tenantId: harness.tenantId!,
+      userId: harness.userId!,
+      threadSlot: "thread-a",
+    })).toBe("origin A draft");
+
+    await act(async () => {
+      resolveTurns?.([]);
+      await settle();
+    });
+
+    expect(textarea().disabled).toBe(false);
+    expect(textarea().value).toBe("destination B draft");
+  });
+
   it("gives New chat its own stable slot without discarding a saved-thread draft", async () => {
     await selectThread("thread-a");
     await type("saved-thread draft");
@@ -238,6 +296,60 @@ describe("PaigeAIChat per-thread composer drafts", () => {
     });
 
     expect(textarea().value).toBe("retain truncated Solo turn");
+  });
+
+  it("clears the original lazily-created-thread draft only after a retry reaches DONE", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(failedStream())
+      .mockResolvedValueOnce(successfulStream());
+    vi.stubGlobal("fetch", fetchMock);
+    await type("retry succeeds once");
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!.click();
+      await settle();
+    });
+    expect(textarea().value).toBe("retry succeeds once");
+
+    const retryButton = Array.from(host.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent === "Retry")!;
+    await act(async () => {
+      retryButton.click();
+      await settle();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(textarea().value).toBe("");
+    const send = host.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!;
+    expect(send.disabled).toBe(true);
+    await act(async () => {
+      send.click();
+      await settle();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves the original draft when a retry stream does not reach DONE", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(failedStream())
+      .mockResolvedValueOnce(new Response(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "Partial retry" } }] })}\n\n`,
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      )));
+    await type("retry must preserve me");
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!.click();
+      await settle();
+    });
+    const retryButton = Array.from(host.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent === "Retry")!;
+    await act(async () => {
+      retryButton.click();
+      await settle();
+    });
+
+    expect(textarea().value).toBe("retry must preserve me");
   });
 
   it("isolates tenant and user scopes while preserving their own session drafts", async () => {
