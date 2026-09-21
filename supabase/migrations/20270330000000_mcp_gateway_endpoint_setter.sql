@@ -562,7 +562,8 @@ DECLARE
   _old_hash           text;
   _new_hash           text;
   _new_last4          text;
-  _old_token          text;      -- decrypted in-definer ONLY to derive _credential_changed; NEVER logged
+  _old_last4          text;      -- round-6 cont.: redacted before-hint (>=12-char last4 only), from _old_token
+  _old_token          text;      -- decrypted in-definer to derive _credential_changed AND _old_last4; PLAINTEXT never logged
   _old_refresh        text;      -- ditto
   _old_client_secret  text;      -- ditto
   _endpoint_changed   boolean;
@@ -714,6 +715,13 @@ BEGIN
                               ELSE public.platform_decrypt(_conn.refresh_token_ct) END;
   _old_client_secret  := CASE WHEN _conn.oauth_client_secret_ct IS NULL THEN NULL
                               ELSE public.platform_decrypt(_conn.oauth_client_secret_ct) END;
+  -- round-6 continuation (before-hint redaction): the AUDIT before-hint is DERIVED here from the
+  -- decrypted _old_token under the SAME length floor as _new_last4 (L703) — it is NEVER copied from the
+  -- stored _conn.auth_token_last4, which a prior writer may have populated with the WHOLE short token
+  -- under the historical right(token,4) convention (copying that would re-persist the credential into
+  -- the durable audit). An unavailable old token (never-configured row, NULL ciphertext) => NULL, never
+  -- a stored pass-through. The plaintext _old_token itself is still never logged.
+  _old_last4          := CASE WHEN _old_token IS NULL OR length(_old_token) < 12 THEN NULL ELSE right(_old_token, 4) END;
   _endpoint_changed   := _old_hash IS DISTINCT FROM _new_hash;
   _credential_changed :=
        _conn.auth_kind               IS DISTINCT FROM _auth_kind
@@ -773,7 +781,10 @@ BEGIN
   -- capability gate refused a NULL actor), which also satisfies paige_audit_log's INSERT RLS as
   -- belt-and-suspenders. credential_changed is a BOOLEAN derived from an in-definer decrypt — the token
   -- plaintext is never logged; only last4 (round-6: a non-secret trailing-4 hint, present ONLY for a
-  -- token >= 12 chars and NULL below that — never the whole short token) and the flags appear.
+  -- token >= 12 chars and NULL below that — never the whole short token) and the flags appear. BOTH
+  -- last4 hints are redacted this way: _new_last4 from the new token, _old_last4 from the DECRYPTED old
+  -- token (round-6 cont.) — never the stored _conn.auth_token_last4, which a legacy short-token row could
+  -- carry whole.
   INSERT INTO public.paige_audit_log (actor_user_id, tenant_id, action, target_type, target_id, payload)
   VALUES (
     auth.uid(), _conn.tenant_id, 'mcp_connection.endpoint_changed', 'mcp_connections', _connection_id,
@@ -784,7 +795,7 @@ BEGIN
       'credential_changed',       _credential_changed,
       'auth_kind_before',         _conn.auth_kind,
       'auth_kind_after',          _auth_kind,
-      'auth_token_last4_before',  _conn.auth_token_last4,
+      'auth_token_last4_before',  _old_last4,
       'auth_token_last4_after',   _new_last4,
       'approvals_revoked',        _approvals_revoked,
       'tools_cleared',            _tools_cleared

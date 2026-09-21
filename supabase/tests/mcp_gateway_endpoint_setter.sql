@@ -48,6 +48,11 @@
 --     nearly-whole) token when it is short, so last4 is emitted ONLY for a token >= 12 chars and NULL
 --     below that, in the row column + audit after-hint + return. Tokens of length {1,4,5,11} → last4 NULL
 --     everywhere AND the full short token appears NOWHERE in the audit payload; {12,40} → right(token,4).
+--   • round-6 continuation (before-hint redaction) — the audit auth_token_last4_before is DERIVED from the
+--     decrypted OLD token under the same >=12 floor, never copied from the stored auth_token_last4 column
+--     (which a legacy short-token row could carry whole). Rebinding a row whose stored last4 is a whole
+--     4-char token asserts before-hint present-and-NULL, the whole short token NOWHERE in the audit payload
+--     or the RPC return, and the return still carries no before-hint field (A3 contract unchanged).
 --
 -- Synthetic fixtures only; self-contained; ROLLS BACK. Seeds run as the superuser test role (RLS
 -- bypassed); each setter call mocks the CALLER via request.jwt.claims so auth.uid() / the tenant
@@ -92,6 +97,20 @@ VALUES
      public.platform_encrypt('https://mcp-init.example.com/rpc'), 'bearer',
      public.platform_encrypt('tok-initial-1234'), '1234', '{read,write}',
      '{"n8n_generation": 5}'::jsonb, 'connected', 'healthy', now());
+
+-- A NATIVE connection whose STORED auth_token_last4 is a WHOLE short (4-char) token — the exact legacy
+-- shape a prior writer could leave under the old right(token,4) convention (right('Zq7K',4) = 'Zq7K').
+-- The round-6-continuation before-hint redaction must NOT copy this stored value into the durable audit:
+-- it recomputes the before-hint from the DECRYPTED old token under the >=12 floor, so the before-hint is
+-- NULL and 'Zq7K' never lands in paige_audit_log. (The decrypted old token here is also 'Zq7K', 4 chars.)
+INSERT INTO public.mcp_connections
+  (connection_id, tenant_id, provider_key, label, server_url_ct, auth_kind, auth_token_ct, auth_token_last4,
+   granted_scopes, provider_state, status, health, last_checked_at)
+VALUES
+  ('0e900000-0000-0000-0000-0000000000c3', '0e900000-0000-0000-0000-0000000000a1', 'generic-remote', 'es-shortlegacy',
+     public.platform_encrypt('https://mcp-short.example.com/rpc'), 'bearer',
+     public.platform_encrypt('Zq7K'), 'Zq7K', '{read}',
+     '{}'::jsonb, 'connected', 'healthy', now());
 
 -- A LEGACY-projected connection on T — the setter must refuse it (D1).
 INSERT INTO public.mcp_connections
@@ -566,6 +585,46 @@ BEGIN
         RAISE EXCEPTION '(round-6 last4) %: audit after-hint must be %, got %', _c.name, _exp, (_p->>'auth_token_last4_after'); END IF;
     END IF;
   END LOOP;
+END $$;
+
+-- ── (round-6 continuation — before-hint redaction) The AUDIT before-hint auth_token_last4_before must be
+--    DERIVED from the DECRYPTED old token under the same >=12 floor, NEVER copied from the stored
+--    auth_token_last4 column, which a legacy writer could have populated with a WHOLE short token. Seeded
+--    row c3 stores last4='Zq7K' (the whole 4-char old token). After a rebind assert: the before-hint is
+--    present-and-NULL in the audit row; the whole short token 'Zq7K' appears NOWHERE in the audit payload;
+--    and it appears NOWHERE in the RPC return (which by A3 carries no before-hint field at all — contract
+--    unchanged). The after-hint reflects the new (>=12) token, proving the write itself proceeded. Under the
+--    pre-fix code (before-hint = _conn.auth_token_last4) both the audit-payload and the field asserts fail. ─
+DO $$
+DECLARE _r jsonb; _p jsonb;
+  C uuid := '0e900000-0000-0000-0000-0000000000c3';
+  U text := 'https://short-rebind.example.com/rpc';
+BEGIN
+  PERFORM set_config('request.jwt.claims', '{"sub":"0e900000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+  -- rebind to a NEW long bearer token ('rebind-token-EFGH', 17 chars → after-hint 'EFGH'); the OLD short
+  -- token 'Zq7K' (4 chars, stored whole as last4) must redact to a NULL before-hint.
+  _r := public.set_mcp_connection_endpoint(C, U, 'bearer', 'rebind-token-EFGH');
+  SELECT payload INTO _p FROM public.paige_audit_log
+    WHERE action = 'mcp_connection.endpoint_changed' AND target_id = C
+      AND (payload->>'new_endpoint_hash') = public._mcp_endpoint_hash(U)
+    LIMIT 1;
+  IF _p IS NULL THEN RAISE EXCEPTION '(before-hint) no audit row for the rebind'; END IF;
+  -- before-hint present-and-NULL — the stored whole short token must NOT have been copied through.
+  IF (_p ? 'auth_token_last4_before') IS NOT TRUE OR (_p->>'auth_token_last4_before') IS NOT NULL THEN
+    RAISE EXCEPTION '(before-hint) audit before-hint must be present and NULL, got %', (_p->>'auth_token_last4_before'); END IF;
+  -- the whole short old token must appear NOWHERE in the durable audit payload for this write.
+  IF position('Zq7K' IN _p::text) > 0 THEN
+    RAISE EXCEPTION '(before-hint) the whole short old token leaked into the audit payload: %', _p; END IF;
+  -- the RPC return carries NO before-hint field (A3 unchanged) AND must not leak the short token anywhere.
+  IF (_r ? 'auth_token_last4_before') THEN
+    RAISE EXCEPTION '(before-hint) the RPC return must NOT carry a before-hint field (A3 contract unchanged): %', _r; END IF;
+  IF position('Zq7K' IN _r::text) > 0 THEN
+    RAISE EXCEPTION '(before-hint) the whole short old token leaked into the RPC return: %', _r; END IF;
+  -- sanity: the after-hint reflects the NEW (>=12) token, proving the write itself proceeded normally.
+  IF (_p->>'auth_token_last4_after') IS DISTINCT FROM 'EFGH' THEN
+    RAISE EXCEPTION '(before-hint) after-hint must be right(new_token,4)=EFGH, got %', (_p->>'auth_token_last4_after'); END IF;
+  IF (_r->>'auth_token_last4') IS DISTINCT FROM 'EFGH' THEN
+    RAISE EXCEPTION '(before-hint) return last4 must be EFGH, got %', (_r->>'auth_token_last4'); END IF;
 END $$;
 
 -- ── (round-3 F4) credential_changed reflects a NON-TOKEN credential field. A same-URL rebind that keeps
