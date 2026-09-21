@@ -4,6 +4,47 @@
 **Authority:** coordinator authorization + amendments A1–A7 (owner-approved "Synapse" direction). §00: CC ports the
 approved direction and proves it runs; it does not originate, judge, or approximate the visual direction.
 
+## Machine-readable evidence contract (validated by `ui-delivery-evidence`)
+
+UI_DELIVERY_EVIDENCE_VERSION: 1
+FLOW_BY_FLOW: PASS: flow-by-flow skill read this session; the pre-edit flow packet (actor/goal/entry/exit, protected seams, regression map) is in PR #1303's body
+PAIGE_UI_DESIGN: PASS: paige-ui-design SKILL.md + references/paige-quality-gates read before implementation; visual direction ported from the approved Synapse reference, not invented (§00)
+MATERIAL_FLOW_CHANGE: NO: presentation-only rendering swap on the existing Mind flow — the same goals, steps, states (populated/empty/loading/error), exits, and actions (rotate/zoom/focus/pick) are preserved; only how they render changes
+FLOW_PROTOTYPE: PASS: the owner-approved Synapse reference is the flow-prototype (coordinator relay 2026-09-20); the production port follows it verbatim
+PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: a Solo or sub-account operator sees what Paige holds — read the mind at a glance, focus a domain, open a record's evidence drawer
+VISUAL_DIRECTION: PASS: the owner-approved Synapse particle-field reference, ported verbatim (shaders, form math, parameters); nothing invented (§00)
+AUTOMATED_EVIDENCE: PASS: vitest 44/44 — synapseForm §32 generator smoke incl. the dustCap A1 form-floor lock, mindDomains data layer, and SoloMindWorkspace incl. the ruling #2 headline assertion
+STATIC_EVIDENCE: PASS: tsc-ratchet 12 to 12 with no new type errors; changed-file eslint clean; lint:mind-contract green; lint:gold clean on src/solo
+RENDERED_EVIDENCE: PASS: real-engine harness (esbuild-bundled engine.ts + three) rendered 8 scenarios at 1440x900; every frame inspected non-blank (see the coverage table below)
+BEHAVIORAL_EVIDENCE: PASS: the harness and code exercise rotation, wheel and keyboard zoom, focus re-form, feed-on-real-event, scatter transitions, and reduced-motion; the full authenticated behavioural drive is tracked under AUTHENTICATED_RUNTIME
+AUTHENTICATED_RUNTIME: UNVERIFIED: the authenticated Solo route is not accessible from headless CI (no browser, no auth session); the owner's live Vercel-preview drive on a real GPU is required at sign-off
+KEYBOARD_FOCUS: PASS: record list, drawer, and dismiss keyboard order and visible focus are verified by SoloMindWorkspace tests; canvas arrow-key rotation and Enter-to-inspect are wired in the engine
+ZOOM_REFLOW: UNVERIFIED: browser zoom and reflow at the four Solo viewports are not accessible from headless CI (no browser); required at the owner's live drive
+REDUCED_MOTION: PASS: reduced-motion renders a static formed field with instant morphs and no ambient flow, breath, or stream (engine uReduced + parent OS/user OR); harness scenario 08
+STATE_COVERAGE: PASS: first-use/empty (formed mind, no bright nodes), populated, loading and error scatter, reduced-motion, WebGL-unavailable to List fallback, focus, and feed — harness plus workspace tests
+TRUTHFUL_STATE_LABELS: PASS: grounded, partial, and unavailable tiers plus a hollow no-evidence render; the headline counts grounded only and labels the total held; the three-state Spine contract is untouched (lint:mind-contract green)
+SOLO_UI: YES: the Solo Mind orb surface (src/solo/mind-orb + SoloMindWorkspace)
+UNVERIFIED: the owner's authenticated live-drive on a real GPU (fidelity parity + the A3 Mineral pick), the four Solo viewports PAIGE open and closed, and real-device fps are not accessible from headless CI (no browser, no auth) and are owed at sign-off
+OWNER_INTENT: recreate the Mind orb as the owner-approved Synapse particle field, replacing the rejected flat orb, ported faithfully
+MUST_NOT_HAPPEN: no touch to supabase/functions/_shared, paige-ai-chat, or the three-state Spine contract; no invented data; no change to the honest states
+MUST_PRESERVE: the honest states, the three-state Spine contract, tenant-scoped reads, the WebGL-unavailable List fallback, and record list/drawer/dismiss accessibility
+PROTECTED_SEAMS: supabase/functions/_shared (INT-105), paige-ai-chat, the Mind read hooks, and the Spine mindEvidence contract — none changed
+INTERNAL_BUILD_IDENTITY: bf3d467ad71a651da678df9ed56f53d909376e23; deployment=dpl_2FaT9a3t9FdzeuEhs2EEpBTzsQPG; environment=preview; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=docs/evidence/ui-delivery/mind-synapse-orb-r1a.md
+RELEASE_CHANNEL: preview: Vercel PR preview for owner review; draft PR #1303, not production, gated on owner sign-off
+RELEASE_CLASSIFICATION: internal-only: presentation rendering swap pending owner acceptance; no customer-facing release
+CUSTOMER_RELEASE_IDENTITY: none: internal-only draft gated on owner sign-off
+RELEASE_NOTE_REQUIRED: NO: internal-only work with no customer-facing change yet
+RELEASE_TRUTH_BOUNDARY: PARTIAL: form, nodes, states, and colours render correctly (automated + harness); device-brightness parity and the authenticated Solo drive are owed to the owner's live preview
+RELEASE_RECOVERY: position=draft PR #1303 is not merged (recovery is dropping the branch); reference=https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1303
+SOLO_1536X770_PAIGE_CLOSED: UNVERIFIED: authenticated Solo route not accessible from headless CI (no browser); owed to the owner live-drive at sign-off
+SOLO_1536X770_PAIGE_OPEN: UNVERIFIED: authenticated Solo route not accessible from headless CI (no browser); owed to the owner live-drive at sign-off
+SOLO_1366X768_PAIGE_CLOSED: UNVERIFIED: authenticated Solo route not accessible from headless CI (no browser); owed to the owner live-drive at sign-off
+SOLO_1366X768_PAIGE_OPEN: UNVERIFIED: authenticated Solo route not accessible from headless CI (no browser); owed to the owner live-drive at sign-off
+SOLO_1024X768_PAIGE_CLOSED: UNVERIFIED: authenticated Solo route not accessible from headless CI (no browser); owed to the owner live-drive at sign-off
+SOLO_1024X768_PAIGE_OPEN: UNVERIFIED: authenticated Solo route not accessible from headless CI (no browser); owed to the owner live-drive at sign-off
+SOLO_900X1000_PAIGE_CLOSED: UNVERIFIED: authenticated Solo route not accessible from headless CI (no browser); owed to the owner live-drive at sign-off
+SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: authenticated Solo route not accessible from headless CI (no browser); owed to the owner live-drive at sign-off
+
 ## Job & direction
 
 - **Purpose:** show a Solo tenant what Paige actually holds, as the owner-approved "Synapse" living mind.
