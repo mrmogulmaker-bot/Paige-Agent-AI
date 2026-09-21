@@ -6,6 +6,12 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## A push to an already-Ready bot-authored PR auto-triggers NEITHER Codex re-review NOR the `ci` workflow (2026-09-21)
+
+- **Symptom.** During PR #1303's re-review rounds, pushing a new fix head to the (already Ready, bot-authored) PR produced no Codex review and no `ci/verify` run — the head sat with stale checks and no review, and time was lost waiting for events that never fired.
+- **Root cause.** For a bot-authored PR that is already `ready_for_review`, a subsequent `push`/`synchronize` does not re-fire the Codex reviewer (it keys on open/ready/`@codex review`, not every synchronize) and does not auto-run `ci.yml` for the bot actor. The `pull_request`-triggered workflows (`ui-delivery-evidence`, `audit`, `web-fetch-hardening-smoke`) DO auto-run on the synchronize; `ci.yml` and Codex do not.
+- **Rule.** After every push to a Ready bot-PR, explicitly (1) post an `@codex review` comment to request the exact-head review, and (2) `workflow_dispatch` `ci.yml` on the branch (`actions_run_trigger` run_workflow). `ci.yml` needs a `workflow_dispatch` trigger for this; a workflow without one (e.g. `ui-delivery-evidence.yml`) can't be dispatched but auto-runs on the PR event anyway — verify via the PR's check-runs rather than assuming. Confirm the reviewed head equals the head you intend to merge before merging.
+
 ## Never hand over a FLAT approximation of a real rendering ask — build the proven stack, and the visual DIRECTION is Claude Design's, not CC's (2026-09-20)
 
 - **Symptom.** Asked to recreate the Mind orb, CC first shipped a flat 2D pseudo-3D canvas circle ("a very light circle with a couple of dots in the middle"). The owner rejected it outright — "a thousand times better" — and re-issued the visual direction himself (the owner-approved "Synapse" reference), because the approximation was neither the fidelity asked nor a design CC had any authority to choose.
