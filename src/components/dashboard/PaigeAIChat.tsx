@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useLayoutEffect } from "react";
+import { useState, useRef, useEffect, useCallback, useLayoutEffect, useMemo } from "react";
 import { PaigeReasoningStrip, StepTimeline, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -39,6 +39,14 @@ import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/c
 import { PaigeLiveConversation } from "@/components/paige/live/PaigeLiveConversation";
 import { parseLiveConversationCard, type LiveConversationCard } from "@/lib/paigeLiveConversation/contract";
 import { createAnchoredTranscriptScroll, messageScrollAnchorKey } from "@/components/chat/anchoredTranscriptScroll";
+import {
+  NEW_PAIGE_CHAT_DRAFT_SLOT,
+  clearPaigeComposerDraft,
+  movePaigeComposerDraft,
+  paigeComposerDraftKey,
+  usePaigeComposerDraft,
+  type PaigeComposerDraftIdentity,
+} from "@/lib/paigeComposerDrafts";
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
 type QueuedApproval = { id: string; summary: string; category: string; contact_id: string | null };
@@ -295,7 +303,6 @@ const PaigeAIChatInner = ({
   const [messages, setMessages] = useState<Message[]>([
     mkMsg({ role: "assistant", content: greeting ?? "Hey, how can I help?" }),
   ]);
-  const [input, setInput] = useState("");
   const [dictationGeneration, setDictationGeneration] = useState(0);
   const [slashActive, setSlashActive] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -335,10 +342,6 @@ const PaigeAIChatInner = ({
     openFilePicker,
     setAttachedDoc,
   } = useChatDocumentUpload();
-  // A deployment reload must never discard an unsent prompt, attachment, or
-  // response currently arriving from Paige.
-  useBeforeUnloadGuard(input.trim().length > 0 || attachedDoc !== null || isProcessingFile || isLoading);
-
   // ── Multi-chat history (#94) — owner "Your Paige" only (enableHistory). ──
   const scopedUserId = useScopedUserId();
   const { activeTenantId } = useTenantContext();
@@ -348,6 +351,25 @@ const PaigeAIChatInner = ({
   const isThreadControlled = controlledThreadId !== undefined;
   const [localThreadId, setLocalThreadId] = useState<string | null>(null);
   const activeThreadId = isThreadControlled ? controlledThreadId : localThreadId;
+  const newChatDraftSlot = clientId || businessMissionId
+    ? `${NEW_PAIGE_CHAT_DRAFT_SLOT}:${clientId ?? ""}:${businessMissionId ?? ""}`
+    : NEW_PAIGE_CHAT_DRAFT_SLOT;
+  const draftIdentity = useMemo<PaigeComposerDraftIdentity | null>(() => {
+    const tenantId = platform ? "platform" : activeTenantId;
+    if (!tenantId || !scopedUserId) return null;
+    return {
+      tenantId,
+      userId: scopedUserId,
+      threadSlot: activeThreadId ?? newChatDraftSlot,
+    };
+  }, [activeTenantId, activeThreadId, newChatDraftSlot, platform, scopedUserId]);
+  const draft = usePaigeComposerDraft(draftIdentity);
+  const [submittedDraftKey, setSubmittedDraftKey] = useState<string | null>(null);
+  const input = submittedDraftKey === draft.key ? "" : draft.value;
+  const setInput = draft.setValue;
+  // A deployment reload must never discard an unsent prompt, attachment, or
+  // response currently arriving from Paige.
+  useBeforeUnloadGuard(input.trim().length > 0 || attachedDoc !== null || isProcessingFile || isLoading);
   // Which thread the CURRENT `messages` were hydrated from. Distinct from
   // `activeThreadId`: a controlled parent can move the selection out from under us,
   // and this is how the sync effect below notices it has to re-hydrate.
@@ -544,7 +566,6 @@ const PaigeAIChatInner = ({
     pendingScopeNoticeRef.current = null;
     const scopeNotice = parked?.epoch === leavingEpoch ? parked.text : null;
     setMessages([mkMsg({ role: "assistant", content: scopeNotice ?? openingGreeting })]);
-    setInput("");
     setAttachedDoc(null);
     setIsLoading(false);
     setStreamingThreadId(null);
@@ -790,8 +811,16 @@ const PaigeAIChatInner = ({
   // lazy thread title in history mode. A single assistantId/Ts is threaded through
   // every streamed setMessages so the bubble never remounts mid-stream (copy/retry/
   // feedback stay stable).
-  const streamTurn = async (base: Message[], rollback: Message[], userText: string, doc?: AttachedDocument | null, approvedFingerprints?: string[], declinedFingerprints?: string[]) => {
-    if (soloTenantSafety && !activeTenantId) return;
+  const streamTurn = async (
+    base: Message[],
+    rollback: Message[],
+    userText: string,
+    doc?: AttachedDocument | null,
+    approvedFingerprints?: string[],
+    declinedFingerprints?: string[],
+    onThreadResolved?: (threadId: string) => void,
+  ): Promise<boolean> => {
+    if (soloTenantSafety && !activeTenantId) return false;
     // Deliberately NOT stored on the retry: an approval is for one call at one moment. Replaying it
     // on a network retry would re-approve whatever the model emits the second time, which is the
     // exact substitution the fingerprint exists to prevent.
@@ -799,7 +828,7 @@ const PaigeAIChatInner = ({
     setConnectionIssue(null);
     if (soloTenantSafety && typeof navigator !== "undefined" && navigator.onLine === false) {
       setConnectionIssue("offline");
-      return;
+      return false;
     }
     const newMessages = base;
     const requestTicket = requestFenceRef.current.begin(scopeEpoch);
@@ -822,7 +851,7 @@ const PaigeAIChatInner = ({
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!ticketAccepted(requestTicket)) return;
+      if (!ticketAccepted(requestTicket)) return false;
       
       if (!session) {
         toast({
@@ -832,7 +861,7 @@ const PaigeAIChatInner = ({
         });
         setMessages(rollback);
         setIsLoading(false);
-        return;
+        return false;
       }
 
       // History mode: create the thread lazily on the first send, then stream
@@ -842,21 +871,22 @@ const PaigeAIChatInner = ({
         try {
           if (!threadId) {
             threadId = await threadsApi.ensureThread(userText);
-            if (!ticketAccepted(requestTicket)) return;
+            if (!ticketAccepted(requestTicket)) return false;
             // The transcript on screen IS this new thread's — mark it hydrated so the
             // controlled-sync effect below doesn't immediately re-load and wipe it.
+            onThreadResolved?.(threadId);
             hydratedFromRef.current = threadId;
             transcriptScrollRef.current?.adoptContext([transcriptContextPrefix, threadId].join(":"));
             setActiveThreadId(threadId);
           }
           setStreamingThreadId(threadId);
         } catch (e) {
-          if (!ticketAccepted(requestTicket)) return;
+          if (!ticketAccepted(requestTicket)) return false;
           console.error("[PaigeAIChat] ensureThread failed:", e);
           toast({ title: "Couldn't start that chat", description: "Give it another try in a moment.", variant: "destructive" });
           setMessages(rollback);
           setIsLoading(false);
-          return;
+          return false;
         }
       }
 
@@ -902,7 +932,7 @@ const PaigeAIChatInner = ({
         }
       );
 
-      if (!ticketAccepted(requestTicket)) return;
+      if (!ticketAccepted(requestTicket)) return false;
 
       if (!response.ok) {
         if (response.status === 429) {
@@ -913,12 +943,12 @@ const PaigeAIChatInner = ({
           });
           setMessages(rollback);
           setIsLoading(false);
-          return;
+          return false;
         }
         // #587 — read the structured { code, reason, recommendation } body and show the SPECIFIC
         // message (e.g. a 15 MB size limit) instead of a generic "Failed to send message" toast.
         const chatErr = await parsePaigeChatError(response);
-        if (!ticketAccepted(requestTicket)) return;
+        if (!ticketAccepted(requestTicket)) return false;
         toast({ title: chatErr.title, description: chatErr.description, variant: "destructive" });
         setMessages(rollback);
         setIsLoading(false);
@@ -932,7 +962,7 @@ const PaigeAIChatInner = ({
         // refused identically next time, and a Retry button that cannot succeed is exactly the kind
         // of control §70 counts as not delivered.
         if (response.status >= 500) setConnectionIssue("server");
-        return;
+        return false;
       }
 
       const reader = response.body?.getReader();
@@ -956,7 +986,7 @@ const PaigeAIChatInner = ({
 
       while (reader && !streamDone) {
         const { done, value } = await reader.read();
-        if (!ticketAccepted(requestTicket)) return;
+        if (!ticketAccepted(requestTicket)) return false;
         if (done) break;
 
         textBuffer += decoder.decode(value, { stream: true });
@@ -978,7 +1008,7 @@ const PaigeAIChatInner = ({
 
           try {
             const parsed = JSON.parse(jsonStr);
-            if (!ticketAccepted(requestTicket)) return;
+            if (!ticketAccepted(requestTicket)) return false;
             // Structured event: a "watch her work" step (#95). Upsert by id, sorted by seq.
             if (parsed.paige_step) {
               setSteps((prev) => upsertStep(prev, parsed.paige_step as PaigeStep));
@@ -1101,7 +1131,7 @@ const PaigeAIChatInner = ({
         }
       }
 
-      if (!ticketAccepted(requestTicket)) return;
+      if (!ticketAccepted(requestTicket)) return false;
       setIsLoading(false);
       if (enableHistory) {
         setStreamingThreadId(null);
@@ -1113,13 +1143,14 @@ const PaigeAIChatInner = ({
           if (ticketAccepted(requestTicket)) threadsApi.onTurnPersisted();
         }, 1800);
       }
+      return true;
     } catch (error) {
-      if (!ticketAccepted(requestTicket)) return;
+      if (!ticketAccepted(requestTicket)) return false;
       if (error instanceof DOMException && error.name === "AbortError") {
         setIsLoading(false);
         setStreamingThreadId(null);
         setCancelled(true);
-        return;
+        return false;
       }
       console.error("Chat error:", error);
       toast({
@@ -1130,6 +1161,7 @@ const PaigeAIChatInner = ({
       setMessages(rollback);
       setIsLoading(false);
       if (enableHistory) setStreamingThreadId(null);
+      return false;
     } finally {
       if (timeoutId !== null) window.clearTimeout(timeoutId);
       if (businessMissionId && ticketAccepted(requestTicket)) {
@@ -1195,8 +1227,13 @@ const PaigeAIChatInner = ({
     // card Approve/Deny) never carries a doc, so snapshot only on a real compose.
     const currentDoc = overrideText === undefined ? attachedDoc : null;
     if ((!text && !currentDoc) || isLoading || (soloTenantSafety && (historyTransitioning || !activeTenantId))) return;
-    // An accepted send closes the current dictation generation before clearing
-    // the composer. A delayed provider final can never become the next draft.
+    // A card/quick-action turn is not the person's editable composer draft. Only
+    // a real composer send stages and eventually clears that draft.
+    const originDraft = overrideText === undefined ? draft.identity : null;
+    let resolvedDraft = originDraft;
+    if (originDraft) setSubmittedDraftKey(paigeComposerDraftKey(originDraft));
+    // An accepted send closes the current dictation generation before staging
+    // the draft. A delayed provider final can never become the next draft.
     dictationGenerationRef.current += 1;
     setDictationGeneration(dictationGenerationRef.current);
     const rollback = messages;
@@ -1210,9 +1247,27 @@ const PaigeAIChatInner = ({
       }),
     ];
     setMessages(base);
-    setInput("");
     if (currentDoc) setAttachedDoc(null);
-    await streamTurn(base, rollback, userContent, currentDoc, approvedFingerprints, declinedFingerprints);
+    try {
+      const succeeded = await streamTurn(
+        base,
+        rollback,
+        userContent,
+        currentDoc,
+        approvedFingerprints,
+        declinedFingerprints,
+        (threadId) => {
+          if (!originDraft) return;
+          const persistedDraft = { ...originDraft, threadSlot: threadId };
+          movePaigeComposerDraft(originDraft, persistedDraft);
+          resolvedDraft = persistedDraft;
+          setSubmittedDraftKey(paigeComposerDraftKey(persistedDraft));
+        },
+      );
+      if (succeeded && resolvedDraft) clearPaigeComposerDraft(resolvedDraft);
+    } finally {
+      if (originDraft) setSubmittedDraftKey(null);
+    }
   };
 
   // Regenerate an assistant turn: re-run the nearest preceding user turn and REPLACE

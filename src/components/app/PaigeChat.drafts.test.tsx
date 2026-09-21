@@ -162,17 +162,20 @@ describe("AppShell PaigeChat scoped session drafts", () => {
     expect(textarea().value).toBe("user A draft");
   });
 
-  it("clears the signed-out user's in-memory drafts", async () => {
+  it("hides a signed-out draft and restores it only to the same user in this browser session", async () => {
     const activeUser = user(`app-user-${testNumber}`);
-    await type("must not survive sign-out");
+    await type("same-user session draft");
 
     await act(async () => {
       root.render(<PaigeChat user={activeUser} session={null} />);
       await settle();
+    });
+    expect(textarea().value).toBe("");
+    await act(async () => {
       root.render(<PaigeChat user={activeUser} session={session} />);
       await settle();
     });
-    expect(textarea().value).toBe("");
+    expect(textarea().value).toBe("same-user session draft");
   });
 
   it("retains the composer draft when the backend rejects the send", async () => {

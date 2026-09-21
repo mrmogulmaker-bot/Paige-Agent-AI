@@ -36,6 +36,14 @@ import { readableTextOn } from "@/lib/brand/contrast";
 import { PaigeReasoningStrip, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingIndicator";
 import { createAnchoredTranscriptScroll } from "@/components/chat/anchoredTranscriptScroll";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import {
+  NEW_PAIGE_CHAT_DRAFT_SLOT,
+  clearPaigeComposerDraft,
+  paigeComposerDraftKey,
+  usePaigeComposerDraft,
+  type PaigeComposerDraftIdentity,
+} from "@/lib/paigeComposerDrafts";
 
 type Message = {
   id: string;
@@ -75,6 +83,8 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   // Same resolver the /app chrome uses (get_client_portal_brand); `loading` gates
   // a skeleton so the Paige avatar never flashes before the tenant's resolves.
   const { brand: portalBrand, loading: portalBrandLoading } = useClientPortalBrandState();
+  const { activeTenantId } = useTenantContext();
+  const resolvedDraftTenantId = activeTenantId ?? portalBrand?.tenant_id ?? null;
   const { contextBlock, isLoading: contextLoading, hasCreditData } = useClientChatContext(clientId, clientId ? null : user.id);
   // Snapshot of profile/business fields used by the conversational extractor
   // to skip already-populated values. Refreshed after every successful save.
@@ -86,6 +96,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const isMobile = useIsMobile();
   const location = useLocation();
   const dictationScopeEpoch = [
+    resolvedDraftTenantId ?? "resolving",
     user.id,
     clientId ?? "",
     location.pathname,
@@ -116,7 +127,18 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     mkMessage({ role: "assistant", content: playbook.persona.greeting }),
   ]);
-  const [input, setInput] = useState("");
+  const draftIdentity = useMemo<PaigeComposerDraftIdentity | null>(() => {
+    if (!session || !resolvedDraftTenantId) return null;
+    return {
+      tenantId: resolvedDraftTenantId,
+      userId: user.id,
+      threadSlot: clientId ? `${NEW_PAIGE_CHAT_DRAFT_SLOT}:client:${clientId}` : NEW_PAIGE_CHAT_DRAFT_SLOT,
+    };
+  }, [clientId, resolvedDraftTenantId, session, user.id]);
+  const draft = usePaigeComposerDraft(draftIdentity);
+  const [submittedDraftKey, setSubmittedDraftKey] = useState<string | null>(null);
+  const input = submittedDraftKey === draft.key ? "" : draft.value;
+  const setInput = draft.setValue;
   const [dictationActivity, setDictationActivity] = useState({
     epoch: dictationScopeEpoch,
     active: false,
@@ -273,7 +295,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
     window.addEventListener("paige-factory-reset", handleFactoryReset);
     return () => window.removeEventListener("paige-factory-reset", handleFactoryReset);
-  }, [resetSession, playbook.persona.greeting]);
+  }, [resetSession, playbook.persona.greeting, setInput]);
 
   useLayoutEffect(() => {
     transcriptScrollRef.current?.setContext(transcriptContext);
@@ -351,8 +373,10 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
   const handleSend = async (overrideInput?: string) => {
     if (dictationActive) return;
-    const messageText = overrideInput || input;
+    const messageText = overrideInput ?? input;
     if ((!messageText.trim() && !attachedDoc) || isLoading) return;
+    const originDraft = overrideInput === undefined ? draft.identity : null;
+    if (originDraft) setSubmittedDraftKey(paigeComposerDraftKey(originDraft));
 
     resetInactivityTimer();
 
@@ -360,7 +384,6 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     const isFirstUserMessage = messages.every((m) => m.role !== "user");
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
-    setInput("");
 
     if (isFirstUserMessage) {
       void trackEvent("paige_session_start", "engagement", { page: currentPageRef.current });
@@ -379,6 +402,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     const currentDoc = attachedDoc;
     setAttachedDoc(null);
     setIsLoading(true);
+    let succeeded = false;
 
     try {
       const { data: { session: freshSession } } = await supabase.auth.getSession();
@@ -546,11 +570,15 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       }
 
       setIsLoading(false);
+      succeeded = true;
     } catch (error) {
       console.error("Chat error:", error);
       toast({ title: "Error", description: "Failed to send message. Please try again.", variant: "destructive" });
       setMessages(messages);
       setIsLoading(false);
+    } finally {
+      if (originDraft && succeeded) clearPaigeComposerDraft(originDraft);
+      if (originDraft) setSubmittedDraftKey(null);
     }
   };
 

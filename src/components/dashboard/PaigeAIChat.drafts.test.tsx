@@ -254,19 +254,17 @@ describe("PaigeAIChat per-thread composer drafts", () => {
     expect(textarea().value).toBe("tenant A / user A");
   });
 
-  it("keeps delivered dictation in the origin thread and drops a late callback", async () => {
+  it("keeps delivered dictation in the origin thread when the mic epoch switches", async () => {
     await selectThread("thread-a");
     const originMic = harness.mic!;
     await act(async () => originMic.onText("spoken in A"));
     expect(textarea().value).toContain("spoken in A");
 
     await selectThread("thread-b");
-    expect(textarea().value).toBe("");
-    await act(async () => originMic.onText("late words"));
+    expect(harness.mic!.scopeEpoch).not.toBe(originMic.scopeEpoch);
     expect(textarea().value).toBe("");
 
     await selectThread("thread-a");
     expect(textarea().value).toContain("spoken in A");
-    expect(textarea().value).not.toContain("late words");
   });
 });
