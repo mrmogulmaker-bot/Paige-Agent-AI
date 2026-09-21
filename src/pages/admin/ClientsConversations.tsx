@@ -1430,6 +1430,7 @@ export default function ClientsConversations() {
     scheduledFor,
     onSchedule: isSolo && handlingMode === "governed" ? undefined : setScheduledFor,
     showDictation: true,
+    dictationScopeEpoch: `${activeTenantId ?? "resolving"}|${selected.key}|${editingDraftId ?? "new-reply"}`,
     onDictate: (seg) => handleBodyChange(appendDictation(bodyRef.current, seg)),
     onDictateError: (msg) => toast.error(msg),
     editingDraft: !!editingDraftId,

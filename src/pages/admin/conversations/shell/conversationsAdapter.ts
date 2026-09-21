@@ -194,7 +194,7 @@ export interface ConversationsListModel<TRaw = unknown> {
  * the schedule popover open state); the container owns the substantive values (body, subject,
  * scheduledFor, attachments, drafting status).
  */
-export interface ConversationsComposerModel {
+interface ConversationsComposerModelBase {
   capabilities: ConversationsCapabilities;
 
   // core (passthrough → MessageComposer)
@@ -259,13 +259,6 @@ export interface ConversationsComposerModel {
   scheduledFor?: string | null;
   onSchedule?: (iso: string | null) => void;
 
-  // dictation — pass onDictate to append through the container's snippet-expanding onChange
-  // (via a live ref, avoiding a stale closure). Omitted → no mic button.
-  showDictation?: boolean;
-  onDictate?: (segment: string) => void;
-  /** Surface a dictation/STT failure to the user (tenant wires toast.error) — never swallowed (§13). */
-  onDictateError?: (message: string) => void;
-
   // editing-an-existing-draft banner
   editingDraft?: boolean;
   onCancelEdit?: () => void;
@@ -276,6 +269,26 @@ export interface ConversationsComposerModel {
   onDragOverZone?: () => void;
   onDragLeaveZone?: () => void;
 }
+
+type ConversationsDictationConfig =
+  | {
+      /** Dictation requires an explicit tenant + thread context epoch. */
+      showDictation: true;
+      dictationScopeEpoch: string;
+      /** Append through the container's snippet-expanding onChange seam. */
+      onDictate?: (segment: string) => void;
+      /** Surface a dictation/STT failure to the user — never swallowed (§13). */
+      onDictateError?: (message: string) => void;
+    }
+  | {
+      showDictation?: false;
+      dictationScopeEpoch?: never;
+      onDictate?: never;
+      onDictateError?: never;
+    };
+
+export type ConversationsComposerModel =
+  ConversationsComposerModelBase & ConversationsDictationConfig;
 
 export type DraftTone = "professional" | "friendly" | "warm" | "direct";
 
