@@ -271,13 +271,14 @@ describe("PaigeChat ComposerScopeState integration", () => {
 
   it("aborts and drops an origin identity stream while preserving its draft and allowing the new scope to send", async () => {
     let resolveOrigin: ((response: Response) => void) | null = null;
+    let resolveTarget: ((response: Response) => void) | null = null;
     let originSignal: AbortSignal | undefined;
     const fetchMock = vi.fn()
       .mockImplementationOnce((_url: string, init?: RequestInit) => {
         originSignal = init?.signal as AbortSignal | undefined;
         return new Promise<Response>((resolve) => { resolveOrigin = resolve; });
       })
-      .mockResolvedValueOnce(streamed("FRESH RESPONSE"));
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveTarget = resolve; }));
     vi.stubGlobal("fetch", fetchMock);
 
     const originTenant = harness.activeTenantId!;
@@ -297,16 +298,24 @@ describe("PaigeChat ComposerScopeState integration", () => {
     await type("new scope draft");
     await act(async () => {
       send().click();
-      await settle();
+      await Promise.resolve();
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(host.textContent).toContain("FRESH RESPONSE");
+    expect(textarea().disabled).toBe(true);
 
     await act(async () => {
       resolveOrigin?.(streamed("STALE RESPONSE"));
       await settle();
     });
     expect(host.textContent).not.toContain("STALE RESPONSE");
+    expect(textarea().disabled).toBe(true);
+
+    await act(async () => {
+      resolveTarget?.(streamed("FRESH RESPONSE"));
+      await settle();
+    });
+    expect(host.textContent).toContain("FRESH RESPONSE");
+    expect(textarea().disabled).toBe(false);
 
     harness.activeTenantId = originTenant;
     harness.brandTenantId = originTenant;

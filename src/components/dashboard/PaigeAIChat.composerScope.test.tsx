@@ -197,47 +197,85 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     expect(textarea().value).toBe("");
   });
 
-  it("aborts a controlled thread stream, preserves A's draft, and lets B send before A resolves", async () => {
-    await render({ activeThreadId: "thread-a", soloTenantSafety: false });
-    await type("thread A retained draft");
+  it.each([false, true])(
+    "aborts an origin rail stream, releases its busy state, and never clears the target request (solo=%s)",
+    async (soloTenantSafety) => {
+      await render({ soloTenantSafety });
+      await act(async () => {
+        harness.rail!.onSelect("thread-a");
+        await settle();
+      });
+      await type("thread A retained draft");
 
-    let resolveOrigin: ((response: Response) => void) | null = null;
-    let originSignal: AbortSignal | undefined;
-    const fetchMock = vi.fn()
-      .mockImplementationOnce((_url: string, init?: RequestInit) => {
-        originSignal = init?.signal as AbortSignal | undefined;
-        return new Promise<Response>((resolve) => { resolveOrigin = resolve; });
-      })
-      .mockResolvedValueOnce(streamed("FRESH THREAD B"));
-    vi.stubGlobal("fetch", fetchMock);
+      let resolveOrigin: ((response: Response) => void) | null = null;
+      let resolveTarget: ((response: Response) => void) | null = null;
+      let originSignal: AbortSignal | undefined;
+      const fetchMock = vi.fn()
+        .mockImplementationOnce((_url: string, init?: RequestInit) => {
+          originSignal = init?.signal as AbortSignal | undefined;
+          return new Promise<Response>((resolve) => { resolveOrigin = resolve; });
+        })
+        .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveTarget = resolve; }));
+      vi.stubGlobal("fetch", fetchMock);
 
-    await act(async () => {
-      send().click();
-      await Promise.resolve();
-    });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        send().click();
+        await Promise.resolve();
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    await render({ activeThreadId: "thread-b", soloTenantSafety: false });
-    expect(originSignal?.aborted).toBe(true);
-    expect(textarea().disabled).toBe(false);
-    expect(textarea().value).toBe("");
+      await act(async () => {
+        harness.rail!.onSelect("thread-b");
+        await settle();
+      });
+      const originWasAborted = originSignal?.aborted === true;
+      expect.soft(originWasAborted).toBe(true);
+      if (!originWasAborted) {
+        await act(async () => {
+          resolveOrigin?.(streamed("PRE-FIX ORIGIN COMPLETION"));
+          await settle();
+        });
+        return;
+      }
+      expect(textarea().disabled).toBe(false);
+      expect(textarea().value).toBe("");
 
-    await type("thread B prompt");
-    await act(async () => {
-      send().click();
-      await settle();
-    });
-    expect(host.textContent).toContain("FRESH THREAD B");
+      await type("thread B prompt");
+      await act(async () => {
+        send().click();
+        await Promise.resolve();
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(textarea().disabled).toBe(true);
 
-    await act(async () => {
-      resolveOrigin?.(streamed("STALE THREAD A"));
-      await settle();
-    });
-    expect(host.textContent).not.toContain("STALE THREAD A");
+      await act(async () => {
+        resolveOrigin?.(streamed("STALE THREAD A"));
+        await settle();
+      });
+      expect(host.textContent).not.toContain("STALE THREAD A");
+      expect(textarea().disabled).toBe(true);
 
-    await render({ activeThreadId: "thread-a", soloTenantSafety: false });
-    expect(textarea().value).toBe("thread A retained draft");
-  });
+      await act(async () => {
+        resolveTarget?.(streamed("FRESH THREAD B"));
+        await settle();
+      });
+      expect(host.textContent).toContain("FRESH THREAD B");
+      expect(textarea().disabled).toBe(false);
+
+      await act(async () => {
+        harness.rail!.onNewChat();
+        await settle();
+      });
+      expect(textarea().disabled).toBe(false);
+      expect(textarea().value).toBe("");
+
+      await act(async () => {
+        harness.rail!.onSelect("thread-a");
+        await settle();
+      });
+      expect(textarea().value).toBe("thread A retained draft");
+    },
+  );
 
   it("migrates a lazy new-chat draft and preserves a newer edit after successful Retry", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => serverFailure()));
