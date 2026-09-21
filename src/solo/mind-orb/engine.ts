@@ -25,7 +25,17 @@
 
 import * as THREE from "three";
 import { makeRng, gauss, rdir, domainCenter, synapsePoint, hashSeed, dustCap } from "./synapseForm";
-import { focusScale, pickRayIndex, pickFrontIndex, feedVisual, type Vec3 } from "./orbInteraction";
+import {
+  focusScale,
+  pickRayIndex,
+  pickFrontIndex,
+  feedVisual,
+  recordsFrameInterval,
+  percentileMs,
+  fpsFromIntervals,
+  shouldStepDown,
+  type Vec3,
+} from "./orbInteraction";
 
 // ---------------------------------------------------------------------------
 // Public types (exported)
@@ -232,9 +242,13 @@ interface State {
   tgt: { scatter: number; grey: number; flow: number; mix: number; focus: number; focusAmt: number };
   // feed stream
   feedT0: number;
-  // A5 measurement
+  // A5 measurement — DISPLAYED-frame intervals (ms) between consecutive rendered animation frames,
+  // not the CPU cost of one render() (#1303 re-review P2). lastFrameAt/lastAnimated gate recording so
+  // an idle→wake gap is never counted as a slow frame.
   frameMs: number[];
   frames: number;
+  lastFrameAt: number;
+  lastAnimated: boolean;
   // adaptive step-down
   stepChecked: boolean;
 }
@@ -420,7 +434,7 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
       clock: new THREE.Clock(), t: 0, last: now(), visible: true, dirty: true, dpr, canvas,
       capDust, dustFractionFloor: 0.5, rotX: 0.18, rotY: 0.4, zoomPct: 100,
       tgt: { scatter: 0, grey: 0, flow: 0.022, mix: 1, focus: -1, focusAmt: 0 },
-      feedT0: -1, frameMs: [], frames: 0, stepChecked: false,
+      feedT0: -1, frameMs: [], frames: 0, lastFrameAt: -1, lastAnimated: false, stepChecked: false,
     };
 
     applyState(S.state);
@@ -663,16 +677,27 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
     S.group.rotation.set(S.rotX, S.rotY, 0);
     S.group.updateMatrixWorld();
     S.renderer.render(S.scene, S.camera);
-    // A5 measurement (real frame times)
-    const frameMs = now() - nowT;
-    S.frameMs.push(frameMs); if (S.frameMs.length > 180) S.frameMs.shift();
+    // A5 measurement — record the DISPLAYED-frame interval (the wall-clock gap between the starts of
+    // consecutive rendered animation frames), NOT render()'s CPU cost, so fps + the step-down reflect
+    // what the screen actually shows on a vsync-pinned/throttled device (#1303 re-review P2). nowT is
+    // this frame's start; S.lastFrameAt is the previous rendered frame's start (updated ONLY here, so
+    // it is decoupled from the animation-timing S.last that markDirty/setRunning also touch). An
+    // idle→wake gap is skipped via recordsFrameInterval; a pathological hitch (>250 ms) is dropped.
+    if (recordsFrameInterval(animate, S.lastAnimated, S.lastFrameAt)) {
+      const intervalMs = nowT - S.lastFrameAt;
+      if (intervalMs > 0 && intervalMs < 250) {
+        S.frameMs.push(intervalMs);
+        if (S.frameMs.length > 180) S.frameMs.shift();
+      }
+    }
+    S.lastFrameAt = nowT;
+    S.lastAnimated = animate;
     S.frames++;
-    // adaptive one-time step-down (hard floor keeps the FORM readable — A1/A5)
-    if (!S.stepChecked && S.frames >= 90 && animate) {
+    // adaptive one-time step-down (hard floor keeps the FORM readable — A1/A5). Keyed on having enough
+    // MEASURED interval samples, not the raw frame count, since dirty-only frames add no sample.
+    if (!S.stepChecked && animate && S.frameMs.length >= 60) {
       S.stepChecked = true;
-      const sorted = [...S.frameMs].sort((a, b) => a - b);
-      const p95 = sorted[Math.floor(sorted.length * 0.95)] || 0;
-      if (p95 > 22 && S.U.uDustFraction.value > S.dustFractionFloor) {
+      if (shouldStepDown(percentileMs(S.frameMs, 0.95), 22, S.U.uDustFraction.value, S.dustFractionFloor)) {
         S.U.uDustFraction.value = Math.max(S.dustFractionFloor, 0.66);
       }
     }
@@ -706,17 +731,15 @@ export function createMindOrb(canvas: HTMLCanvasElement, cfg: MindOrbConfig): Mi
 
   function measure(): MindOrbMeasure {
     if (!S) return { particlesDust: 0, particlesNodes: 0, dustFraction: 1, fps: 0, p50FrameMs: 0, p95FrameMs: 0, frames: 0 };
-    const sorted = [...S.frameMs].sort((a, b) => a - b);
-    const p50 = sorted[Math.floor(sorted.length * 0.5)] || 0;
-    const p95 = sorted[Math.floor(sorted.length * 0.95)] || 0;
-    const avg = S.frameMs.length ? S.frameMs.reduce((a, b) => a + b, 0) / S.frameMs.length : 0;
+    // fps + percentiles are over the DISPLAYED-frame intervals now held in S.frameMs, via the same
+    // pure helpers the render loop uses — so the reported fps and the step-down decision agree (§18).
     return {
       particlesDust: Math.round(S.capDust * S.U.uDustFraction.value),
       particlesNodes: S.nodeRecords.length,
       dustFraction: S.U.uDustFraction.value,
-      fps: avg > 0 ? Math.min(60, Math.round(1000 / Math.max(avg, 1000 / 60))) : 0,
-      p50FrameMs: Math.round(p50 * 100) / 100,
-      p95FrameMs: Math.round(p95 * 100) / 100,
+      fps: fpsFromIntervals(S.frameMs),
+      p50FrameMs: Math.round(percentileMs(S.frameMs, 0.5) * 100) / 100,
+      p95FrameMs: Math.round(percentileMs(S.frameMs, 0.95) * 100) / 100,
       frames: S.frames,
     };
   }

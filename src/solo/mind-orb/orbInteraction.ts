@@ -99,3 +99,61 @@ export function reconcileFeedSignal(
   if (handleReady) return { fire: true, markSeen: true, hold: false };
   return { fire: false, markSeen: false, hold: true };
 }
+
+// ---------------------------------------------------------------------------
+// Frame-cadence math (#1303 re-review P2, performance).
+//
+// The first cut measured `now() - nowT` INSIDE render() — the CPU cost of one frame's prep, not the
+// interval the screen actually shows. On a vsync-pinned device (a 30 Hz panel, a throttled tab, a
+// battery-saver GPU) that CPU slice can be ~4 ms while the DISPLAYED frame is 33 ms apart, so
+// `measure().fps` reported ~60 on a 30 FPS device and the adaptive density step-down never fired.
+//
+// The engine now records the wall-clock interval BETWEEN successive rendered rAF callbacks, and only
+// while it is CONTINUOUSLY animating (see recordsFrameInterval) so an idle→wake gap is never counted
+// as a slow frame. These pure helpers do the arithmetic the engine calls, so the tested numbers and
+// the shipped numbers cannot diverge (§18) and the fix is proven headless without a GPU (§32).
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether THIS rendered frame's interval is a true displayed-frame gap worth measuring. Only when the
+ * orb is animating now AND was animating on the previous rendered frame AND we have a previous
+ * timestamp — so the interval spans two consecutive animation frames, never an idle period (a paused
+ * or reduced-motion orb renders only on a discrete `dirty` change, and the first frame after waking
+ * would otherwise record the whole idle gap). Reduced-motion (animate=false) is therefore never
+ * measured and can never trigger a density step-down.
+ */
+export function recordsFrameInterval(animate: boolean, lastAnimated: boolean, lastFrameAt: number): boolean {
+  return animate && lastAnimated && lastFrameAt >= 0;
+}
+
+/**
+ * The p-th percentile of a sample set, in ms. Mirrors the engine's original `sorted[floor(len*p)]`
+ * indexing exactly (p in [0,1]); 0 for an empty set. Not mutating: sorts a copy.
+ */
+export function percentileMs(samples: number[], p: number): number {
+  if (!samples.length) return 0;
+  const sorted = [...samples].sort((a, b) => a - b);
+  const i = Math.floor(sorted.length * p);
+  return sorted[Math.min(i, sorted.length - 1)] || 0;
+}
+
+/**
+ * FPS from a set of displayed-frame intervals (ms). Mean interval → 1000/mean, clamped to 60 (the
+ * loop never exceeds the display's refresh) and floored at the 60 FPS interval so noise can't report
+ * >60; 0 when there is no sample. Identical formula to `measure()` so the exposed fps and the
+ * internal one agree.
+ */
+export function fpsFromIntervals(intervalsMs: number[]): number {
+  if (!intervalsMs.length) return 0;
+  const avg = intervalsMs.reduce((a, b) => a + b, 0) / intervalsMs.length;
+  return avg > 0 ? Math.min(60, Math.round(1000 / Math.max(avg, 1000 / 60))) : 0;
+}
+
+/**
+ * Whether to take the one-time density step-down: the 95th-percentile displayed-frame interval is
+ * over the budget AND there is still headroom above the dust floor (which keeps the FORM readable —
+ * A1/A5). thresholdMs of 22 ≈ below ~45 FPS sustained.
+ */
+export function shouldStepDown(p95Ms: number, thresholdMs: number, currentFraction: number, floor: number): boolean {
+  return p95Ms > thresholdMs && currentFraction > floor;
+}

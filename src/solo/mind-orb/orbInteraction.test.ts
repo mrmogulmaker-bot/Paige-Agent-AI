@@ -5,6 +5,10 @@ import {
   pickFrontIndex,
   feedVisual,
   reconcileFeedSignal,
+  recordsFrameInterval,
+  percentileMs,
+  fpsFromIntervals,
+  shouldStepDown,
   type Vec3,
 } from "./orbInteraction";
 
@@ -120,5 +124,66 @@ describe("orbInteraction — a feed during import is held, not dropped (reconcil
     expect(flushed.markSeen).toBe(true);
     // 3) seen now — no double fire
     expect(reconcileFeedSignal(true, 7, 7).fire).toBe(false);
+  });
+});
+
+describe("orbInteraction — frame cadence reflects the DISPLAYED frame, not CPU time (#1303 re-review P2)", () => {
+  // The engine records the interval BETWEEN rendered animation frames. A device pinned to 30 FPS shows
+  // ~33.3 ms between frames; a 60 FPS device ~16.7 ms. render()'s own CPU cost (~4 ms) is NOT the
+  // interval — the old code measured that and so reported ~60 FPS on a 30 FPS panel.
+  const intervals = (fps: number, n = 90): number[] => Array.from({ length: n }, () => 1000 / fps);
+
+  it("a 30 FPS device reports ~30 fps (not 60) and takes the density step-down", () => {
+    const at30 = intervals(30);
+    expect(fpsFromIntervals(at30)).toBe(30);
+    // p95 of ~33.3 ms intervals is over the 22 ms budget, and there is headroom above the dust floor.
+    expect(percentileMs(at30, 0.95)).toBeCloseTo(1000 / 30, 6);
+    expect(shouldStepDown(percentileMs(at30, 0.95), 22, /*fraction*/ 1.0, /*floor*/ 0.5)).toBe(true);
+  });
+
+  it("the OLD CPU-time measurement would have hidden the 30 FPS device — the fix does not", () => {
+    // render()'s CPU slice (~4 ms) is what the old `now() - nowT` captured: it reports the full 60 and
+    // never steps down, EVEN on the 30 FPS panel above. The displayed-interval measurement corrects it.
+    const cpuTimes = Array.from({ length: 90 }, () => 4);
+    expect(fpsFromIntervals(cpuTimes)).toBe(60); // the false-green the old code produced
+    expect(shouldStepDown(percentileMs(cpuTimes, 0.95), 22, 1.0, 0.5)).toBe(false);
+    // Same device, measured correctly by interval, is caught:
+    expect(fpsFromIntervals(intervals(30))).toBe(30);
+  });
+
+  it("a 60 FPS device reports 60 fps and does NOT step down", () => {
+    const at60 = intervals(60);
+    expect(fpsFromIntervals(at60)).toBe(60);
+    expect(shouldStepDown(percentileMs(at60, 0.95), 22, 1.0, 0.5)).toBe(false);
+  });
+
+  it("fps is clamped to 60 and floored at 0 for the empty set", () => {
+    expect(fpsFromIntervals(intervals(120))).toBe(60); // a >60 rate can never be reported
+    expect(fpsFromIntervals([])).toBe(0);
+    expect(percentileMs([], 0.95)).toBe(0);
+  });
+
+  it("shouldStepDown respects the dust floor — no step-down once at the floor", () => {
+    const at30p95 = percentileMs(intervals(30), 0.95);
+    expect(shouldStepDown(at30p95, 22, /*fraction at floor*/ 0.5, /*floor*/ 0.5)).toBe(false);
+    expect(shouldStepDown(at30p95, 22, /*fraction above floor*/ 0.66, 0.5)).toBe(true);
+  });
+});
+
+describe("orbInteraction — reduced-motion and idle wakes are never measured (#1303 re-review P2)", () => {
+  it("records an interval only across two consecutive animation frames", () => {
+    // steady animation: this frame animates, the previous did too, and we have a prior timestamp.
+    expect(recordsFrameInterval(/*animate*/ true, /*lastAnimated*/ true, /*lastFrameAt*/ 100)).toBe(true);
+  });
+  it("reduced-motion (not animating) never records — so it can never trigger a step-down", () => {
+    expect(recordsFrameInterval(false, true, 100)).toBe(false);
+    expect(recordsFrameInterval(false, false, -1)).toBe(false);
+    // an empty measurement buffer (what a reduced-motion orb leaves) reports 0 fps and no step-down.
+    expect(fpsFromIntervals([])).toBe(0);
+    expect(shouldStepDown(percentileMs([], 0.95), 22, 1.0, 0.5)).toBe(false);
+  });
+  it("the first animation frame after an idle/dirty wake is skipped (no idle gap counted as a slow frame)", () => {
+    expect(recordsFrameInterval(true, /*lastAnimated*/ false, /*lastFrameAt*/ 5000)).toBe(false);
+    expect(recordsFrameInterval(true, false, -1)).toBe(false); // no prior timestamp yet
   });
 });
