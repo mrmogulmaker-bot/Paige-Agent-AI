@@ -67,9 +67,11 @@ describe("MessageAudioButton request identity and failure delivery", () => {
     const button = await renderButton();
 
     await act(async () => { button.click(); });
-    await vi.waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2));
-    await act(async () => { button.click(); });
-    await vi.waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(4));
+    await vi.waitFor(() => expect(harness.toggle).toHaveBeenCalledTimes(1));
+    await act(async () => { await harness.toggle.mock.results[0]?.value; });
+    await act(async () => { host.querySelector("button")!.click(); });
+    await vi.waitFor(() => expect(harness.toggle).toHaveBeenCalledTimes(2));
+    await act(async () => { await harness.toggle.mock.results[1]?.value; });
 
     expect(randomUUID).toHaveBeenCalledTimes(2);
     const calls = vi.mocked(fetch).mock.calls;
