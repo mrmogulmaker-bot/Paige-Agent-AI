@@ -137,6 +137,7 @@ describe("PaigeChat ComposerScopeState integration", () => {
   let host: HTMLDivElement;
   let root: Root;
   let currentUser: User;
+  let currentClientId: string | undefined;
   let testNumber = 0;
 
   beforeEach(async () => {
@@ -148,6 +149,7 @@ describe("PaigeChat ComposerScopeState integration", () => {
     harness.impersonatedTenantId = null;
     harness.micCallbacks = [];
     currentUser = user(`user-a-${testNumber}`);
+    currentClientId = undefined;
     vi.stubGlobal("fetch", vi.fn(async () => success()));
     host = document.createElement("div");
     document.body.append(host);
@@ -167,10 +169,15 @@ describe("PaigeChat ComposerScopeState integration", () => {
   const textarea = () => host.querySelector<HTMLTextAreaElement>("textarea")!;
   const dictate = () => host.querySelector<HTMLButtonElement>('button[aria-label="Dictate"]')!;
   const send = () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).at(-1)!;
-  const render = async (nextUser = currentUser, nextSession: Session | null = session) => {
+  const render = async (
+    nextUser = currentUser,
+    nextSession: Session | null = session,
+    nextClientId = currentClientId,
+  ) => {
     currentUser = nextUser;
+    currentClientId = nextClientId;
     await act(async () => {
-      root.render(<PaigeChat user={nextUser} session={nextSession} />);
+      root.render(<PaigeChat user={nextUser} session={nextSession} clientId={nextClientId} />);
       await settle();
     });
   };
@@ -267,6 +274,29 @@ describe("PaigeChat ComposerScopeState integration", () => {
 
     await act(async () => oldDelivery("late words"));
     expect(textarea().value).toBe("");
+  });
+
+  it("isolates focused-client and explicit no-focus drafts and drops late focused dictation", async () => {
+    await render(currentUser, session, "client-a");
+    await type("client A draft");
+    const clientADelivery = harness.micCallbacks.at(-1)!.onText;
+
+    await render(currentUser, session, "client-b");
+    expect(textarea().value).toBe("");
+    await type("client B draft");
+    await act(async () => clientADelivery(" late A"));
+    expect(textarea().value).toBe("client B draft");
+
+    await render(currentUser, session, undefined);
+    expect(textarea().value).toBe("");
+    await type("no focus draft");
+
+    await render(currentUser, session, "client-a");
+    expect(textarea().value).toBe("client A draft");
+    await render(currentUser, session, "client-b");
+    expect(textarea().value).toBe("client B draft");
+    await render(currentUser, session, undefined);
+    expect(textarea().value).toBe("no focus draft");
   });
 
   it("aborts and drops an origin identity stream while preserving its draft and allowing the new scope to send", async () => {

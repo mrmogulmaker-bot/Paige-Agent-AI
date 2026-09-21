@@ -18,10 +18,17 @@ import {
   type ComposerScopeResolverInput,
 } from "./paigeComposerScopeState";
 
-const identity = (tenantId = "tenant-a", userId = "user-a"): ComposerScopeIdentity => ({
+const identity = (
+  tenantId = "tenant-a",
+  userId = "user-a",
+  focusedClientId = "none",
+  focusedBusinessMissionId = "none",
+): ComposerScopeIdentity => ({
   tenantId,
   userId,
-});
+  focusedClientId,
+  focusedBusinessMissionId,
+} as ComposerScopeIdentity);
 
 const thread = (id: string) => ({ kind: "thread" as const, id });
 
@@ -66,6 +73,36 @@ describe("ComposerScopeState transition table", () => {
     {
       name: "account switch before cleanup is non-writable and hides the old tenant draft",
       input: baseInput({ currentIdentity: identity("tenant-b", "user-a") }),
+      status: "hydrating",
+      writable: false,
+      visibleConversationId: null,
+    },
+    {
+      name: "client focus switch before cleanup is non-writable and hides the origin draft",
+      input: baseInput({
+        currentIdentity: identity("tenant-a", "user-a", "client-b"),
+        displayedIdentity: identity("tenant-a", "user-a", "client-a"),
+      }),
+      status: "hydrating",
+      writable: false,
+      visibleConversationId: null,
+    },
+    {
+      name: "mission focus switch before cleanup is non-writable and hides the origin draft",
+      input: baseInput({
+        currentIdentity: identity("tenant-a", "user-a", "none", "mission-b"),
+        displayedIdentity: identity("tenant-a", "user-a", "none", "mission-a"),
+      }),
+      status: "hydrating",
+      writable: false,
+      visibleConversationId: null,
+    },
+    {
+      name: "clearing focus before cleanup is non-writable and hides the focused draft",
+      input: baseInput({
+        currentIdentity: identity(),
+        displayedIdentity: identity("tenant-a", "user-a", "client-a", "mission-a"),
+      }),
       status: "hydrating",
       writable: false,
       visibleConversationId: null,
@@ -188,13 +225,29 @@ describe("ComposerScopeState transition table", () => {
   });
 
   it("makes every draft-key field mandatory before the composer can be writable", () => {
-    const complete = { tenantId: "tenant-a", userId: "user-a" };
+    const complete = {
+      tenantId: "tenant-a",
+      userId: "user-a",
+      focusedClientId: "none",
+      focusedBusinessMissionId: "none",
+    };
     expect(createComposerScopeIdentity(complete)).toEqual(complete);
-    expect(COMPOSER_SCOPE_FIELDS).toEqual(["tenantId", "userId"]);
+    expect(COMPOSER_SCOPE_FIELDS).toEqual([
+      "tenantId",
+      "userId",
+      "focusedClientId",
+      "focusedBusinessMissionId",
+    ]);
 
-    for (const field of COMPOSER_SCOPE_FIELDS) {
+    for (const field of ["tenantId", "userId"] as const) {
       expect(createComposerScopeIdentity({ ...complete, [field]: null })).toBeNull();
     }
+
+    expect(createComposerScopeIdentity({
+      ...complete,
+      focusedClientId: null,
+      focusedBusinessMissionId: undefined,
+    })).toEqual(complete);
   });
 });
 
@@ -206,14 +259,41 @@ describe("ComposerScopeState delivery and completion rules", () => {
   });
 
   it("moves a lazy new-chat draft to the first persisted thread without losing words", () => {
-    const from = { ...identity(), conversationId: NEW_CHAT_CONVERSATION.id };
+    const from = {
+      ...identity("tenant-a", "user-a", "client-a", "mission-a"),
+      conversationId: NEW_CHAT_CONVERSATION.id,
+    };
     const to = { ...identity(), conversationId: "thread-created" };
+    const focusedTo = { ...from, conversationId: "thread-created" };
     writeComposerDraft(from, "words written before persistence");
 
-    moveComposerDraft(from, to);
+    moveComposerDraft(from, focusedTo);
 
     expect(readComposerDraft(from)).toBe("");
-    expect(readComposerDraft(to)).toBe("words written before persistence");
+    expect(readComposerDraft(focusedTo)).toBe("words written before persistence");
+    expect(readComposerDraft(to)).toBe("");
+  });
+
+  it("keeps client focus, mission focus, and explicit no-focus drafts in separate slots", () => {
+    const conversationId = "focus-isolation-thread";
+    const noFocus = { ...identity(), conversationId };
+    const clientA = { ...identity("tenant-a", "user-a", "client-a"), conversationId };
+    const clientB = { ...identity("tenant-a", "user-a", "client-b"), conversationId };
+    const missionA = { ...identity("tenant-a", "user-a", "none", "mission-a"), conversationId };
+    const missionB = { ...identity("tenant-a", "user-a", "none", "mission-b"), conversationId };
+
+    for (const handle of [noFocus, clientA, clientB, missionA, missionB]) clearComposerDraft(handle);
+    writeComposerDraft(noFocus, "no focus");
+    writeComposerDraft(clientA, "client A");
+    writeComposerDraft(clientB, "client B");
+    writeComposerDraft(missionA, "mission A");
+    writeComposerDraft(missionB, "mission B");
+
+    expect(readComposerDraft(noFocus)).toBe("no focus");
+    expect(readComposerDraft(clientA)).toBe("client A");
+    expect(readComposerDraft(clientB)).toBe("client B");
+    expect(readComposerDraft(missionA)).toBe("mission A");
+    expect(readComposerDraft(missionB)).toBe("mission B");
   });
 
   it.each([
@@ -243,6 +323,35 @@ describe("ComposerScopeState delivery and completion rules", () => {
     expect(acceptComposerDelivery(captured, switched)).toBe(false);
   });
 
+  it.each([
+    {
+      name: "client A to B",
+      origin: identity("tenant-a", "user-a", "client-a"),
+      target: identity("tenant-a", "user-a", "client-b"),
+    },
+    {
+      name: "mission A to B",
+      origin: identity("tenant-a", "user-a", "none", "mission-a"),
+      target: identity("tenant-a", "user-a", "none", "mission-b"),
+    },
+    {
+      name: "clear focus",
+      origin: identity("tenant-a", "user-a", "client-a", "mission-a"),
+      target: identity(),
+    },
+  ])("drops late dictation delivery after $name", ({ origin, target }) => {
+    const ready = resolveComposerScopeState(baseInput({
+      currentIdentity: origin,
+      displayedIdentity: origin,
+    }));
+    const switched = resolveComposerScopeState(baseInput({
+      currentIdentity: target,
+      displayedIdentity: origin,
+    }));
+
+    expect(acceptComposerDelivery(ready.writableHandle!, switched)).toBe(false);
+  });
+
   it("accepts request delivery only for the captured full handle and epoch", () => {
     const fence = createComposerRequestFence();
     const origin = { ...identity(), conversationId: "thread-a" };
@@ -252,6 +361,8 @@ describe("ComposerScopeState delivery and completion rules", () => {
     expect(fence.isCurrent(ticket, { ...origin, tenantId: "tenant-b" }, "epoch-a")).toBe(false);
     expect(fence.isCurrent(ticket, { ...origin, userId: "user-b" }, "epoch-a")).toBe(false);
     expect(fence.isCurrent(ticket, { ...origin, conversationId: "thread-b" }, "epoch-a")).toBe(false);
+    expect(fence.isCurrent(ticket, { ...origin, focusedClientId: "client-b" }, "epoch-a")).toBe(false);
+    expect(fence.isCurrent(ticket, { ...origin, focusedBusinessMissionId: "mission-b" }, "epoch-a")).toBe(false);
     expect(fence.isCurrent(ticket, origin, "epoch-b")).toBe(false);
   });
 

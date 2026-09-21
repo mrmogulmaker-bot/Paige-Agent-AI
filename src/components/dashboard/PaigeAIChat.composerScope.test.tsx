@@ -197,6 +197,65 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     expect(textarea().value).toBe("");
   });
 
+  it("isolates client, mission, and explicit no-focus drafts and drops late focused dictation", async () => {
+    await render({ clientId: "client-a" });
+    await type("client A draft");
+    const clientADelivery = harness.micCallbacks.at(-1)!.onText;
+
+    await render({ clientId: "client-b" });
+    expect(textarea().value).toBe("");
+    await type("client B draft");
+    await act(async () => clientADelivery(" late A"));
+    expect(textarea().value).toBe("client B draft");
+
+    await render({ businessMissionId: "mission-a" });
+    expect(textarea().value).toBe("");
+    await type("mission A draft");
+
+    await render({ businessMissionId: "mission-b" });
+    expect(textarea().value).toBe("");
+    await type("mission B draft");
+
+    await render();
+    expect(textarea().value).toBe("");
+    await type("no focus draft");
+
+    await render({ clientId: "client-a" });
+    expect(textarea().value).toBe("client A draft");
+    await render({ clientId: "client-b" });
+    expect(textarea().value).toBe("client B draft");
+    await render({ businessMissionId: "mission-a" });
+    expect(textarea().value).toBe("mission A draft");
+    await render({ businessMissionId: "mission-b" });
+    expect(textarea().value).toBe("mission B draft");
+    await render();
+    expect(textarea().value).toBe("no focus draft");
+  });
+
+  it("releases focus before saved-thread hydration without moving the focused new-chat draft", async () => {
+    const onFocusRelease = vi.fn();
+    let releaseFocusedLoad: ((turns: Array<{ role: string; content: string }>) => void) | null = null;
+    harness.loadTurns.mockImplementationOnce(() => new Promise((resolve) => { releaseFocusedLoad = resolve; }));
+
+    await render({ clientId: "client-a", onFocusRelease });
+    await type("focused new-chat draft");
+    await act(async () => {
+      harness.rail!.onSelect("saved-thread");
+      await Promise.resolve();
+    });
+    expect(onFocusRelease).toHaveBeenCalledWith("thread_resumed");
+
+    await render({ onFocusRelease });
+    expect(textarea().value).toBe("");
+    await act(async () => {
+      releaseFocusedLoad?.([]);
+      await settle();
+    });
+
+    await render({ clientId: "client-a", onFocusRelease });
+    expect(textarea().value).toBe("focused new-chat draft");
+  });
+
   it.each([false, true])(
     "aborts an origin rail stream, releases its busy state, and never clears the target request (solo=%s)",
     async (soloTenantSafety) => {
@@ -279,7 +338,7 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
 
   it("migrates a lazy new-chat draft and preserves a newer edit after successful Retry", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => serverFailure()));
-    await render();
+    await render({ clientId: "client-a" });
     await type("original submission");
     await act(async () => {
       send().click();
@@ -300,5 +359,10 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     expect(textarea().value).toBe("newer edit that must survive");
     expect(host.textContent).not.toContain("Your message wasn't sent");
     expect(fetch).toHaveBeenCalledTimes(1);
+
+    await render({ clientId: "client-b" });
+    expect(textarea().value).toBe("");
+    await render({ clientId: "client-a" });
+    expect(textarea().value).toBe("newer edit that must survive");
   });
 });
