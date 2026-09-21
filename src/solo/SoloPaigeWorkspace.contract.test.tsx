@@ -336,12 +336,15 @@ describe("Solo PAIGE workspace contract", () => {
     const app = source("src/solo/SoloApp.tsx");
     // The epoch is composite across the active workspace and either focused record. A client or
     // Strategic Play switch must end acceptance of the prior transcript/stream before any later
-    // response can render under the new scope. The ordering remains accept, invalidate, then clear.
+    // response can render under the new scope. The ordering remains accept, abort, then clear.
     expect(chat).toMatch(/const scopeEpoch = \[[\s\S]*activeTenantId \?\? "",[\s\S]*scopedUserId \?\? "",[\s\S]*clientId \?\? "",[\s\S]*businessMissionId \?\? "",[\s\S]*\]\.join\("\|"\);/);
-    // Bounded so it cannot reach the LATER `invalidate()` calls (startNewChat, unmount). The
-    // unbounded `[\s\S]*` version could not fail: inverting the accept/invalidate order left the
+    // Bounded so it cannot reach the LATER abort calls (startNewChat, unmount). The
+    // unbounded `[\s\S]*` version could not fail: inverting the accept/abort order left the
     // whole 507-test suite green.
-    expect(chat).toMatch(/acceptedEpochRef\.current = scopeEpoch;(?:[^\n]*\n){0,10}\s*requestFenceRef\.current\.invalidate\(\);/);
+    expect(chat).toMatch(/acceptedEpochRef\.current = scopeEpoch;(?:[^\n]*\n){0,10}\s*abortActiveRequest\(\);/);
+    // The shared abort seam must both invalidate the request and release the busy state that
+    // belonged to it; replacing this with a raw invalidation strands non-Solo rail switches.
+    expect(chat).toMatch(/const abortActiveRequest = useCallback\(\(\) => \{(?:[^\n]*\n){0,3}\s*if \(requestFenceRef\.current\.invalidate\(\)\) setIsLoading\(false\);/);
     // §13 — THIS ASSERTION HAD GONE VACUOUS. The reset now seeds `scopeNotice ?? openingGreeting`,
     // so the old literal no longer matched the reset at all — it was satisfied by the unrelated
     // `startNewChat` and controlled-sync sites, and deleting the reset's `setMessages` entirely

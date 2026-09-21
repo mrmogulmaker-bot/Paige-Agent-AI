@@ -200,10 +200,10 @@ export interface PaigeAIChatProps {
   /** Fires whenever the selection moves (resume, pick, new chat, lazy create). */
   onActiveThreadIdChange?: (id: string | null) => void;
   /**
-   * Solo-only opt-in for active-account invalidation, stream cancellation, and
-   * late-result rejection. The accepted epoch is read from authenticated tenant
-   * context inside this component; callers cannot supply authority through props.
-   * Omitted by every existing non-Solo caller, preserving their current behavior.
+   * Solo-only opt-in for the active-account timeout/status and explicit cancel affordance.
+   * Request ownership and scope-transition cancellation apply to every history mount;
+   * the accepted tenant epoch is still read from authenticated context inside this
+   * component, so callers cannot supply authority through props.
    */
   soloTenantSafety?: boolean;
   /**
@@ -532,18 +532,30 @@ const PaigeAIChatInner = ({
     ),
     [],
   );
-
-  const cancelSoloRequest = useCallback(() => {
-    if (!soloTenantSafety) return;
-    requestFenceRef.current.invalidate();
+  const claimRequestBusy = useCallback((ticket: ComposerRequestTicket) => {
+    if (!requestFenceRef.current.claimBusy(ticket)) return false;
+    setIsLoading(true);
+    return true;
+  }, []);
+  const releaseRequestBusy = useCallback((ticket: ComposerRequestTicket) => {
+    if (!requestFenceRef.current.releaseBusy(ticket)) return false;
     setIsLoading(false);
+    return true;
+  }, []);
+  const abortActiveRequest = useCallback(() => {
+    if (requestFenceRef.current.invalidate()) setIsLoading(false);
     setStreamingThreadId(null);
     setWritingPhase(false);
     setCompacting(null);
     setStreamedLiveCard(null);
+  }, []);
+
+  const cancelSoloRequest = useCallback(() => {
+    if (!soloTenantSafety) return;
+    abortActiveRequest();
     setCancelled(true);
     setConnectionIssue(null);
-  }, [soloTenantSafety]);
+  }, [abortActiveRequest, soloTenantSafety]);
 
   const syncTranscriptPosition = useCallback(() => {
     transcriptScrollRef.current?.handleScroll();
@@ -565,13 +577,8 @@ const PaigeAIChatInner = ({
   useEffect(() => {
     if (acceptedRequestScopeEpochRef.current === requestScopeEpoch) return;
     acceptedRequestScopeEpochRef.current = requestScopeEpoch;
-    requestFenceRef.current.invalidate();
-    setIsLoading(false);
-    setStreamingThreadId(null);
-    setWritingPhase(false);
-    setCompacting(null);
-    setStreamedLiveCard(null);
-  }, [requestScopeEpoch]);
+    abortActiveRequest();
+  }, [abortActiveRequest, requestScopeEpoch]);
 
   // SCOPE changes — the workspace or the client in focus — are a hard frontend isolation
   // boundary. Invalidate first, then clear every scope-derived or scope-authored state before
@@ -599,7 +606,7 @@ const PaigeAIChatInner = ({
     });
     dictationGenerationRef.current += 1;
     setDictationGeneration(dictationGenerationRef.current);
-    requestFenceRef.current.invalidate();
+    abortActiveRequest();
     hydratedFromRef.current = null;
     setActiveThreadId(null);
     // A refusal parked a notice on its way out; adopt it as the opening message so the
@@ -616,12 +623,7 @@ const PaigeAIChatInner = ({
     const scopeNotice = parked?.epoch === leavingEpoch ? parked.text : null;
     setMessages([mkMsg({ role: "assistant", content: scopeNotice ?? openingGreeting })]);
     setAttachedDoc(null);
-    setIsLoading(false);
-    setStreamingThreadId(null);
     setSteps([]);
-    setStreamedLiveCard(null);
-    setWritingPhase(false);
-    setCompacting(null);
     setCancelled(false);
     setConnectionIssue(null);
     retryTurnRef.current = null;
@@ -644,6 +646,7 @@ const PaigeAIChatInner = ({
     setMobileRailOpen(false);
   }, [
     activeTenantId,
+    abortActiveRequest,
     enableHistory,
     newConversationId,
     openingGreeting,
@@ -656,7 +659,7 @@ const PaigeAIChatInner = ({
 
   useEffect(() => {
     const requestFence = requestFenceRef.current;
-    return () => requestFence.invalidate();
+    return () => { requestFence.invalidate(); };
   }, []);
 
   useLayoutEffect(() => {
@@ -737,14 +740,13 @@ const PaigeAIChatInner = ({
     // Guard on what is actually HYDRATED, not on the selection. In controlled mode the
     // parent has already moved `activeThreadId` to this id before we load it, so an
     // `id === activeThreadId` guard would early-return and the transcript would never
-    // arrive. `isLoading` still protects a streaming reply from being clobbered.
+    // arrive. A requested scope transition aborts the prior reply before accepting the target.
     if (
       id === hydratedFromRef.current
       && conversationStateRef.current.displayed.kind === "thread"
       && conversationStateRef.current.displayed.id === id
     ) return;
     if (soloTenantSafety && !activeTenantId) return;
-    if (isLoading && !soloTenantSafety) return;
     const currentConversation = conversationStateRef.current;
     if (
       currentConversation.requested.kind === "thread"
@@ -756,10 +758,10 @@ const PaigeAIChatInner = ({
     ) return;
     const targetRequestScope = requestScopeFor("thread", id);
     if (!targetRequestScope) return;
+    abortActiveRequest();
     requestScopeRef.current = targetRequestScope;
     acceptedRequestScopeEpochRef.current = targetRequestScope.epoch;
     applyConversationEvent({ type: "thread-requested", id, intent });
-    if (isLoading) cancelSoloRequest();
     // OPENING A SAVED CONVERSATION RELEASES THE FOCUSED CLIENT.
     //
     // The rail lists owner-level threads (`contact_id IS NULL`). Focus is not persisted with a
@@ -817,12 +819,7 @@ const PaigeAIChatInner = ({
   const startNewChat = () => {
     const targetRequestScope = requestScopeFor("new", conversationStateRef.current.newConversationId);
     if (!targetRequestScope) return;
-    if (isLoading) {
-      if (!soloTenantSafety) return; // legacy callers keep the current behavior
-      cancelSoloRequest();
-    } else {
-      requestFenceRef.current.invalidate();
-    }
+    abortActiveRequest();
     requestScopeRef.current = targetRequestScope;
     acceptedRequestScopeEpochRef.current = targetRequestScope.epoch;
     hydratedFromRef.current = null;
@@ -889,25 +886,23 @@ const PaigeAIChatInner = ({
   // the selection (the other door opened a thread, or created one on its first send),
   // adopt it: load that thread's turns so both doors show the SAME transcript. Keyed on
   // `hydratedFromRef`, not on `activeThreadId`, because our own writes already set both
-  // — without that guard this would re-load in a loop. Never interrupts a live reply.
+  // — without that guard this would re-load in a loop. A real selection change interrupts
+  // the prior scope's reply; a same-thread synchronization does not.
   useEffect(() => {
     if (!enableHistory || !isThreadControlled) return;
-    if (isLoading) {
-      if (!soloTenantSafety) return;
-      cancelSoloRequest();
-    }
     if (controlledThreadId === hydratedFromRef.current) return;
     if (controlledThreadId) {
       void selectThread(controlledThreadId, "controlled");
     } else {
       // Parent cleared the selection (New chat in the other door) — reset to a fresh one.
+      abortActiveRequest();
       hydratedFromRef.current = null;
       applyConversationEvent({ type: "new-chat-requested" });
       setMessages([mkMsg({ role: "assistant", content: openingGreeting })]);
       setSteps([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cancelSoloRequest, controlledThreadId, enableHistory, isLoading, isThreadControlled, soloTenantSafety]);
+  }, [abortActiveRequest, controlledThreadId, enableHistory, isThreadControlled]);
 
   // One turn runner, reused by send + regenerate. `base` ends at the user turn to
   // answer; `rollback` is the list restored if the turn fails; `userText` seeds the
@@ -939,7 +934,7 @@ const PaigeAIChatInner = ({
       return;
     }
     const newMessages = base;
-    setIsLoading(true);
+    if (!claimRequestBusy(requestTicket)) return;
     setCancelled(false);
     setSteps([]); // fresh "watch her work" trace per turn
     setWritingPhase(false); // #11 — back to "Thinking…" until the first token this turn
@@ -947,10 +942,7 @@ const PaigeAIChatInner = ({
     setStreamedLiveCard(null);
     const timeoutId = soloTenantSafety ? window.setTimeout(() => {
       if (!ticketAccepted(requestTicket)) return;
-      requestFenceRef.current.invalidate();
-      setIsLoading(false);
-      setStreamingThreadId(null);
-      setWritingPhase(false);
+      abortActiveRequest();
       setConnectionIssue("timeout");
     }, 45_000) : null;
     const assistantId = safeUuid();
@@ -967,7 +959,7 @@ const PaigeAIChatInner = ({
           variant: "destructive",
         });
         setMessages(rollback);
-        setIsLoading(false);
+        releaseRequestBusy(requestTicket);
         return;
       }
 
@@ -1014,7 +1006,7 @@ const PaigeAIChatInner = ({
           console.error("[PaigeAIChat] ensureThread failed:", e);
           toast({ title: "Couldn't start that chat", description: "Give it another try in a moment.", variant: "destructive" });
           setMessages(rollback);
-          setIsLoading(false);
+          releaseRequestBusy(requestTicket);
           return;
         }
       }
@@ -1071,7 +1063,7 @@ const PaigeAIChatInner = ({
             variant: "destructive",
           });
           setMessages(rollback);
-          setIsLoading(false);
+          releaseRequestBusy(requestTicket);
           return;
         }
         // #587 — read the structured { code, reason, recommendation } body and show the SPECIFIC
@@ -1080,7 +1072,7 @@ const PaigeAIChatInner = ({
         if (!ticketAccepted(requestTicket)) return;
         toast({ title: chatErr.title, description: chatErr.description, variant: "destructive" });
         setMessages(rollback);
-        setIsLoading(false);
+        releaseRequestBusy(requestTicket);
         if (enableHistory) setStreamingThreadId(null);
         // §70 — A TRANSIENT SERVER FAILURE LEFT NO WAY BACK. Retry existed only for the offline and
         // timeout cases; a 5xx rolled the turn back with a toast and nothing else, so the person's
@@ -1263,7 +1255,7 @@ const PaigeAIChatInner = ({
       if (!ticketAccepted(requestTicket)) return;
       if (!streamDone) {
         setMessages(rollback);
-        setIsLoading(false);
+        releaseRequestBusy(requestTicket);
         setStreamingThreadId(null);
         setConnectionIssue("server");
         return;
@@ -1276,7 +1268,7 @@ const PaigeAIChatInner = ({
         clearComposerDraft(persistedDraft);
       }
       retryTurnRef.current = null;
-      setIsLoading(false);
+      releaseRequestBusy(requestTicket);
       if (enableHistory) {
         setStreamingThreadId(null);
         // Reorder the rail + pick up the server-side auto-title. The assistant
@@ -1290,7 +1282,7 @@ const PaigeAIChatInner = ({
     } catch (error) {
       if (!ticketAccepted(requestTicket)) return;
       if (error instanceof DOMException && error.name === "AbortError") {
-        setIsLoading(false);
+        releaseRequestBusy(requestTicket);
         setStreamingThreadId(null);
         setCancelled(true);
         return;
@@ -1302,7 +1294,7 @@ const PaigeAIChatInner = ({
         variant: "destructive",
       });
       setMessages(rollback);
-      setIsLoading(false);
+      releaseRequestBusy(requestTicket);
       if (enableHistory) setStreamingThreadId(null);
       if (soloTenantSafety) setConnectionIssue("server");
     } finally {

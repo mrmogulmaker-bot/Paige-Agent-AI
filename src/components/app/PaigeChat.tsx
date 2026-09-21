@@ -223,6 +223,19 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     ),
     [],
   );
+  const claimRequestBusy = useCallback((ticket: ComposerRequestTicket) => {
+    if (!requestFenceRef.current.claimBusy(ticket)) return false;
+    setIsLoading(true);
+    return true;
+  }, []);
+  const releaseRequestBusy = useCallback((ticket: ComposerRequestTicket) => {
+    if (!requestFenceRef.current.releaseBusy(ticket)) return false;
+    setIsLoading(false);
+    return true;
+  }, []);
+  const abortActiveRequest = useCallback(() => {
+    if (requestFenceRef.current.invalidate()) setIsLoading(false);
+  }, []);
 
   // Page awareness — derive human-readable page name from current route.
   // Tracked in a ref so the latest value is always included in outgoing
@@ -314,7 +327,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         const sessionAgeSec = expiresAt ? Math.max(0, 3600 - (expiresAt - nowSec)) : 9999;
         const freshSignIn = sessionAgeSec < 120;
 
-        setIsLoading(true);
+        if (!claimRequestBusy(requestTicket)) return;
         const firstName = (user.user_metadata?.full_name || "").split(" ")[0] || undefined;
         const pageInstruction = getPageOpeningInstruction(currentPageRef.current, firstName, freshSignIn);
         const greetMessages = [{ role: "user" as const, content: pageInstruction }];
@@ -342,7 +355,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         );
 
         if (!ticketAccepted(requestTicket)) return;
-        if (!response.ok) { setIsLoading(false); return; }
+        if (!response.ok) { releaseRequestBusy(requestTicket); return; }
 
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
@@ -369,20 +382,22 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         if (greeting.trim()) {
           setMessages([mkMessage({ role: "assistant", content: greeting.trim() })]);
         }
-        setIsLoading(false);
+        releaseRequestBusy(requestTicket);
       } catch {
         if (!ticketAccepted(requestTicket)) return;
-        setIsLoading(false);
+        releaseRequestBusy(requestTicket);
       }
     })();
   }, [
     buildContextWithPage,
+    claimRequestBusy,
     clientId,
     contextBlock,
     contextLoading,
     hasCreditData,
     messages.length,
     playbook.persona.greeting,
+    releaseRequestBusy,
     ticketAccepted,
     user,
   ]);
@@ -413,12 +428,12 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
   useEffect(() => {
     const requestFence = requestFenceRef.current;
-    return () => requestFence.invalidate();
+    return () => { requestFence.invalidate(); };
   }, []);
 
   useEffect(() => {
     if (acceptedAppComposerScopeKeyRef.current === appComposerScopeKey) return;
-    requestFenceRef.current.invalidate();
+    abortActiveRequest();
     acceptedAppComposerScopeKeyRef.current = appComposerScopeKey;
     acceptedDisplayedIdentityRef.current = createComposerScopeIdentity({
       tenantId: resolvedDisplayedTenantId,
@@ -432,9 +447,9 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     setMessages([mkMessage({ role: "assistant", content: playbook.persona.greeting })]);
     setSteps([]);
     setWritingPhase(false);
-    setIsLoading(false);
     forceComposerScopeReadback((revision) => revision + 1);
   }, [
+    abortActiveRequest,
     appComposerScopeKey,
     isSignedIn,
     newConversationId,
@@ -539,6 +554,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     const requestScope = requestScopeRef.current;
     if (!composerDraftHandlesMatch(originDraft, requestScope.handle)) return;
     const requestTicket = requestFenceRef.current.begin(originDraft, requestScope.epoch);
+    if (!claimRequestBusy(requestTicket)) return;
 
     resetInactivityTimer();
 
@@ -563,7 +579,6 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
     const currentDoc = attachedDoc;
     setAttachedDoc(null);
-    setIsLoading(true);
 
     try {
       const { data: { session: freshSession } } = await supabase.auth.getSession();
@@ -572,7 +587,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       if (!freshSession) {
         toast({ title: "Session Expired", description: "Please sign in again.", variant: "destructive" });
         setMessages(messages);
-        setIsLoading(false);
+        releaseRequestBusy(requestTicket);
         return;
       }
 
@@ -617,7 +632,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         if (response.status === 429) {
           toast({ title: "Rate Limit Reached", description: "Please wait a moment.", variant: "destructive" });
           setMessages(messages);
-          setIsLoading(false);
+          releaseRequestBusy(requestTicket);
           return;
         }
         // #587 — surface the structured { code, reason, recommendation } from the server (e.g. a
@@ -626,7 +641,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         if (!ticketAccepted(requestTicket)) return;
         toast({ title: chatErr.title, description: chatErr.description, variant: "destructive" });
         setMessages(messages);
-        setIsLoading(false);
+        releaseRequestBusy(requestTicket);
         return;
       }
 
@@ -751,13 +766,13 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         clearComposerDraft(originDraft);
       }
 
-      setIsLoading(false);
+      releaseRequestBusy(requestTicket);
     } catch (error) {
       if (!ticketAccepted(requestTicket)) return;
       console.error("Chat error:", error);
       toast({ title: "Error", description: "Failed to send message. Please try again.", variant: "destructive" });
       setMessages(messages);
-      setIsLoading(false);
+      releaseRequestBusy(requestTicket);
     }
   };
 

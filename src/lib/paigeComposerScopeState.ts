@@ -271,6 +271,7 @@ export type ComposerRequestTicket = Readonly<{
 export function createComposerRequestFence() {
   let generation = 0;
   let controller: AbortController | null = null;
+  let busyGeneration: number | null = null;
 
   const ticket = (
     scopeHandle: ComposerDraftHandle,
@@ -293,10 +294,23 @@ export function createComposerRequestFence() {
       if (current.signal.aborted || current.generation !== generation) return current;
       return ticket(scopeHandle, scopeEpoch, current.signal);
     },
-    invalidate(): void {
+    claimBusy(current: ComposerRequestTicket): boolean {
+      if (current.signal.aborted || current.generation !== generation) return false;
+      busyGeneration = current.generation;
+      return true;
+    },
+    releaseBusy(current: ComposerRequestTicket): boolean {
+      if (busyGeneration !== current.generation) return false;
+      busyGeneration = null;
+      return true;
+    },
+    invalidate(): boolean {
+      const releasedBusy = busyGeneration !== null;
+      busyGeneration = null;
       generation += 1;
       controller?.abort();
       controller = null;
+      return releasedBusy;
     },
     isCurrent(
       current: ComposerRequestTicket,

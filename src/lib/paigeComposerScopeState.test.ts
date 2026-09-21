@@ -270,4 +270,19 @@ describe("ComposerScopeState delivery and completion rules", () => {
     expect(fence.isCurrent(rebound, thread, "thread-epoch")).toBe(false);
     expect(fence.isCurrent(next, { ...thread, conversationId: "thread-b" }, "next-epoch")).toBe(true);
   });
+
+  it("lets only the request that claimed busy release it and clears an aborted owner once", () => {
+    const fence = createComposerRequestFence();
+    const origin = fence.begin({ ...identity(), conversationId: "thread-a" }, "epoch-a");
+
+    expect(fence.claimBusy(origin)).toBe(true);
+    expect(fence.invalidate()).toBe(true);
+    expect(fence.invalidate()).toBe(false);
+
+    const target = fence.begin({ ...identity(), conversationId: "thread-b" }, "epoch-b");
+    expect(fence.claimBusy(target)).toBe(true);
+    expect(fence.releaseBusy(origin)).toBe(false);
+    expect(fence.releaseBusy(target)).toBe(true);
+    expect(fence.releaseBusy(target)).toBe(false);
+  });
 });
