@@ -41,7 +41,7 @@ describe("MessageAudioButton request identity and failure delivery", () => {
     harness.toggle.mockReset();
     harness.toastError.mockClear();
     harness.toastMessage.mockClear();
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(new Blob(["audio"]), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(new Uint8Array([1]), { status: 200 })));
   });
 
   afterEach(async () => {
@@ -66,8 +66,12 @@ describe("MessageAudioButton request identity and failure delivery", () => {
     });
     const button = await renderButton();
 
-    await act(async () => { button.click(); await Promise.resolve(); await Promise.resolve(); });
-    await act(async () => { button.click(); await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { button.click(); });
+    await vi.waitFor(() => expect(harness.toggle).toHaveBeenCalledTimes(1));
+    await act(async () => { await harness.toggle.mock.results[0]?.value; });
+    await act(async () => { host.querySelector("button")!.click(); });
+    await vi.waitFor(() => expect(harness.toggle).toHaveBeenCalledTimes(2));
+    await act(async () => { await harness.toggle.mock.results[1]?.value; });
 
     expect(randomUUID).toHaveBeenCalledTimes(2);
     const calls = vi.mocked(fetch).mock.calls;

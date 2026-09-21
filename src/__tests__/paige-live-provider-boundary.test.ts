@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const router = readFileSync("supabase/functions/_shared/model-router.ts", "utf8");
 const tts = readFileSync("supabase/functions/paige-tts/index.ts", "utf8");
+const messageAudioButton = readFileSync("src/components/chat/MessageAudioButton.tsx", "utf8");
 const session = readFileSync("supabase/functions/paige-live-session/index.ts", "utf8");
 const operator = readFileSync("supabase/functions/paige-voice-profile-admin/index.ts", "utf8");
 
@@ -35,10 +36,14 @@ describe("Paige voice provider boundary", () => {
     expect(tts).toContain("tts_cost_settlement_unavailable");
   });
 
-  it("keeps the deployed playback caller idempotent without requiring a UI collision change", () => {
-    expect(tts).toContain("suppliedIdempotencyKey || await fallbackRequestRef");
-    expect(tts).toContain('new Date().toISOString().slice(0, 7)');
-    expect(tts).toContain("if (suppliedIdempotencyKey && !/");
+  it("keeps request identity client-owned while allowing the per-tap key through CORS", () => {
+    expect(messageAudioButton).toContain("const requestId = crypto.randomUUID()");
+    expect(messageAudioButton).toContain(`"Idempotency-Key": requestId`);
+    expect(tts).toContain(
+      `"Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, Idempotency-Key"`,
+    );
+    expect(tts).not.toContain("suppliedIdempotencyKey");
+    expect(tts).not.toContain("fallbackRequestRef");
   });
 
   it("requires scope on every transition and permits stale cleanup only for explicit end", () => {
