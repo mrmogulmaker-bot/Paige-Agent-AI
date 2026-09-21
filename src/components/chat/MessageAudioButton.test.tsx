@@ -41,7 +41,7 @@ describe("MessageAudioButton request identity and failure delivery", () => {
     harness.toggle.mockReset();
     harness.toastError.mockClear();
     harness.toastMessage.mockClear();
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(new Blob(["audio"]), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(new Uint8Array([1]), { status: 200 })));
   });
 
   afterEach(async () => {
