@@ -95,7 +95,9 @@ export function usePaigeComposerDraft(identity: PaigeComposerDraftIdentity | nul
   const value = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   const setValue = useCallback((next: SetStateAction<string>) => {
-    if (!identity || !key) return;
+    if (!identity || !key) {
+      throw new Error("PAIGE composer draft writes require a resolved tenant, user, and conversation identity.");
+    }
     const previous = readKey(key);
     const valueToWrite = typeof next === "function"
       ? (next as (value: string) => string)(previous)

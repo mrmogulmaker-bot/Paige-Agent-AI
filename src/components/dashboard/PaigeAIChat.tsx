@@ -475,7 +475,13 @@ const PaigeAIChatInner = ({
   // the server refused on its merits will be refused identically on a retry, and offering one
   // would be a button that cannot work (§70).
   const [connectionIssue, setConnectionIssue] = useState<"offline" | "timeout" | "server" | null>(null);
-  const retryTurnRef = useRef<{ base: Message[]; rollback: Message[]; userText: string; doc?: AttachedDocument | null } | null>(null);
+  const retryTurnRef = useRef<{
+    base: Message[];
+    rollback: Message[];
+    userText: string;
+    doc?: AttachedDocument | null;
+    draftIdentity: PaigeComposerDraftIdentity | null;
+  } | null>(null);
 
   // §13 — `!ticket ||` USED TO SHORT-CIRCUIT THIS TO `true`, AND THAT UNDID THE WHOLE FENCE ON THE
   // ONE SURFACE THAT NEEDED IT. A ticket was only issued when `soloTenantSafety` was set, and the
@@ -623,6 +629,7 @@ const PaigeAIChatInner = ({
   // Chip click: prefill the composer + focus so the operator can edit before
   // Paige acts (cc-spec §3). Only chips flagged autoSend dispatch immediately.
   const handleChip = (chip: QuickChip) => {
+    if (!composerDraftReady) return;
     if (dictationActive) return;
     if (chip.autoSend) {
       void handleSend(chip.prompt);
@@ -696,18 +703,18 @@ const PaigeAIChatInner = ({
     }
     const previousTranscriptThreadId = hydratedFromRef.current;
     const requestTicket = requestFenceRef.current.begin(scopeEpoch);
-    if (soloTenantSafety) {
-      setHistoryTransitioning(true);
-      setCancelled(false);
-      setActiveThreadId(id);
-    }
+    setHistoryTransitioning(true);
+    if (soloTenantSafety) setCancelled(false);
+    // Move draft ownership to the requested conversation before awaiting its
+    // transcript. The composer stays disabled until hydration proves that the
+    // displayed transcript and draft identity agree.
+    setActiveThreadId(id);
     try {
       const turns = await threadsApi.loadTurns(id);
       if (!ticketAccepted(requestTicket)) return;
       const hydrated = turnsToMessages(turns);
       setMessages(hydrated.length ? hydrated : [mkMsg({ role: "assistant", content: openingGreeting })]);
       hydratedFromRef.current = id;
-      if (!soloTenantSafety) setActiveThreadId(id);
       setSteps([]);
       if (soloTenantSafety) {
         setConnectionIssue(null);
@@ -715,7 +722,7 @@ const PaigeAIChatInner = ({
       }
     } catch (e) {
       if (!ticketAccepted(requestTicket)) return;
-      if (soloTenantSafety) setActiveThreadId(previousTranscriptThreadId);
+      setActiveThreadId(previousTranscriptThreadId);
       console.error("[PaigeAIChat] load thread failed:", e);
       toast({ title: "Couldn't open that chat", description: "Give it another try in a moment.", variant: "destructive" });
     } finally {
@@ -818,13 +825,14 @@ const PaigeAIChatInner = ({
     doc?: AttachedDocument | null,
     approvedFingerprints?: string[],
     declinedFingerprints?: string[],
-    onThreadResolved?: (threadId: string) => void,
+    onThreadResolved?: (threadId: string) => PaigeComposerDraftIdentity | null,
+    draftIdentity: PaigeComposerDraftIdentity | null = null,
   ): Promise<boolean> => {
     if (soloTenantSafety && !activeTenantId) return false;
     // Deliberately NOT stored on the retry: an approval is for one call at one moment. Replaying it
     // on a network retry would re-approve whatever the model emits the second time, which is the
     // exact substitution the fingerprint exists to prevent.
-    retryTurnRef.current = { base, rollback, userText, doc };
+    retryTurnRef.current = { base, rollback, userText, doc, draftIdentity };
     setConnectionIssue(null);
     if (soloTenantSafety && typeof navigator !== "undefined" && navigator.onLine === false) {
       setConnectionIssue("offline");
@@ -874,7 +882,13 @@ const PaigeAIChatInner = ({
             if (!ticketAccepted(requestTicket)) return false;
             // The transcript on screen IS this new thread's — mark it hydrated so the
             // controlled-sync effect below doesn't immediately re-load and wipe it.
-            onThreadResolved?.(threadId);
+            const persistedDraftIdentity = onThreadResolved?.(threadId) ?? null;
+            if (persistedDraftIdentity && retryTurnRef.current) {
+              retryTurnRef.current = {
+                ...retryTurnRef.current,
+                draftIdentity: persistedDraftIdentity,
+              };
+            }
             hydratedFromRef.current = threadId;
             transcriptScrollRef.current?.adoptContext([transcriptContextPrefix, threadId].join(":"));
             setActiveThreadId(threadId);
@@ -1232,18 +1246,64 @@ const PaigeAIChatInner = ({
   /** `approvedFingerprints` carries the exact calls a person ticked on a confirm card. The server's
    *  gate requires the call it is about to run to be one of them; a `confirm:true` flag alone no
    *  longer opens it. Absent on every ordinary turn. */
+  const completeDraftBoundTurn = async ({
+    base,
+    rollback,
+    userText,
+    doc,
+    approvedFingerprints,
+    declinedFingerprints,
+    originDraft,
+  }: {
+    base: Message[];
+    rollback: Message[];
+    userText: string;
+    doc?: AttachedDocument | null;
+    approvedFingerprints?: string[];
+    declinedFingerprints?: string[];
+    originDraft: PaigeComposerDraftIdentity | null;
+  }): Promise<boolean> => {
+    let resolvedDraft = originDraft;
+    if (resolvedDraft) setSubmittedDraftKey(paigeComposerDraftKey(resolvedDraft));
+    try {
+      const succeeded = await streamTurn(
+        base,
+        rollback,
+        userText,
+        doc,
+        approvedFingerprints,
+        declinedFingerprints,
+        (threadId) => {
+          if (!resolvedDraft) return null;
+          if (resolvedDraft.threadSlot === threadId) return resolvedDraft;
+          const persistedDraft = { ...resolvedDraft, threadSlot: threadId };
+          movePaigeComposerDraft(resolvedDraft, persistedDraft);
+          resolvedDraft = persistedDraft;
+          setSubmittedDraftKey(paigeComposerDraftKey(persistedDraft));
+          return persistedDraft;
+        },
+        resolvedDraft,
+      );
+      if (succeeded) {
+        if (resolvedDraft) clearPaigeComposerDraft(resolvedDraft);
+        retryTurnRef.current = null;
+      }
+      return succeeded;
+    } finally {
+      if (originDraft) setSubmittedDraftKey(null);
+    }
+  };
+
   const handleSend = async (overrideText?: string, approvedFingerprints?: string[], declinedFingerprints?: string[]) => {
     if (dictationActive) return;
     const text = (overrideText ?? input).trim();
     // Allow a send with text OR an attachment alone (#480). An override (confirm
     // card Approve/Deny) never carries a doc, so snapshot only on a real compose.
     const currentDoc = overrideText === undefined ? attachedDoc : null;
-    if ((!text && !currentDoc) || isLoading || (soloTenantSafety && (historyTransitioning || !activeTenantId))) return;
+    if ((!text && !currentDoc) || isLoading || !composerDraftReady) return;
     // A card/quick-action turn is not the person's editable composer draft. Only
     // a real composer send stages and eventually clears that draft.
     const originDraft = overrideText === undefined ? draft.identity : null;
-    let resolvedDraft = originDraft;
-    if (originDraft) setSubmittedDraftKey(paigeComposerDraftKey(originDraft));
     // An accepted send closes the current dictation generation before staging
     // the draft. A delayed provider final can never become the next draft.
     dictationGenerationRef.current += 1;
@@ -1260,26 +1320,28 @@ const PaigeAIChatInner = ({
     ];
     setMessages(base);
     if (currentDoc) setAttachedDoc(null);
-    try {
-      const succeeded = await streamTurn(
-        base,
-        rollback,
-        userContent,
-        currentDoc,
-        approvedFingerprints,
-        declinedFingerprints,
-        (threadId) => {
-          if (!originDraft) return;
-          const persistedDraft = { ...originDraft, threadSlot: threadId };
-          movePaigeComposerDraft(originDraft, persistedDraft);
-          resolvedDraft = persistedDraft;
-          setSubmittedDraftKey(paigeComposerDraftKey(persistedDraft));
-        },
-      );
-      if (succeeded && resolvedDraft) clearPaigeComposerDraft(resolvedDraft);
-    } finally {
-      if (originDraft) setSubmittedDraftKey(null);
-    }
+    await completeDraftBoundTurn({
+      base,
+      rollback,
+      userText: userContent,
+      doc: currentDoc,
+      approvedFingerprints,
+      declinedFingerprints,
+      originDraft,
+    });
+  };
+
+  const handleConnectionRetry = () => {
+    if (isLoading || dictationActive || !composerDraftReady) return;
+    const retry = retryTurnRef.current;
+    if (!retry) return;
+    void completeDraftBoundTurn({
+      base: retry.base,
+      rollback: retry.rollback,
+      userText: retry.userText,
+      doc: retry.doc,
+      originDraft: retry.draftIdentity,
+    });
   };
 
   // Regenerate an assistant turn: re-run the nearest preceding user turn and REPLACE
@@ -1313,9 +1375,9 @@ const PaigeAIChatInner = ({
   const filteredCommands = slashMatch
     ? visibleChips.filter((c) => c.label.toLowerCase().includes(slashQuery.toLowerCase()))
     : [];
-  const slashOpen = !!slashMatch && filteredCommands.length > 0 && !isLoading && !dictationActive;
   const pickCommand = (c: QuickChip) => {
     if (dictationActive) return;
+    if (!composerDraftReady) return;
     setInput("");
     setSlashActive(0);
     handleChip(c);
@@ -1338,8 +1400,21 @@ const PaigeAIChatInner = ({
       : traceDepartments > 0
         ? `${traceDepartments} ${traceDepartments === 1 ? "department" : "departments"} worked on this`
         : `${visibleSteps.length} ${visibleSteps.length === 1 ? "step" : "steps"} so far`;
-  const composerBlocked = isLoading || (soloTenantSafety && (historyTransitioning || !activeTenantId));
+  const draftMatchesDisplayedConversation = !enableHistory
+    || activeThreadId === hydratedFromRef.current;
+  const composerDraftReady = draft.identity !== null
+    && !historyTransitioning
+    && draftMatchesDisplayedConversation;
+  const composerUnavailableReason = !draft.identity
+    ? "Resolving the conversation before you can write to PAIGE."
+    : enableHistory && !draftMatchesDisplayedConversation
+      ? "Opening that conversation before you can write."
+      : historyTransitioning
+        ? "Opening that conversation before you can write."
+        : null;
+  const composerBlocked = isLoading || !composerDraftReady || (soloTenantSafety && !activeTenantId);
   const composerSendBlocked = composerBlocked || dictationActive;
+  const slashOpen = !!slashMatch && filteredCommands.length > 0 && !composerBlocked && !dictationActive;
 
   // The composer's pieces, built once and arranged by presentation. Both chromes
   // drive the SAME handlers — one engine, two frames (§18: no forked composer).
@@ -1368,11 +1443,12 @@ const PaigeAIChatInner = ({
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
       }}
       placeholder={
-        cd
+        composerUnavailableReason ?? (cd
           ? "Ask about the platform — the fleet, the rails, the machine"
           : soloTenantSafety
             ? "Talk while she works…"
           : `Message ${persona.name || "Paige"} — type / for commands`
+        )
       }
       className={cn(
         "min-w-0 max-h-40 resize-none",
@@ -1488,6 +1564,7 @@ const PaigeAIChatInner = ({
       size="icon"
       aria-label="Clear unsent message"
       title="Clear the unsent message"
+      disabled={composerBlocked}
       className={cd ? "h-[27px] w-[27px] flex-none rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted" : "flex-none"}
       onClick={() => {
         dictationGenerationRef.current += 1;
@@ -1711,10 +1788,10 @@ const PaigeAIChatInner = ({
                                 key={a.id}
                                 artifact={a}
                                 tenantId={a.tenantId ?? activeTenantId}
-                                onSend={() => {
+                                onSend={composerDraftReady ? () => {
                                   setInput(`Send "${a.title}" to `);
                                   requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
-                                }}
+                                } : undefined}
                               />
                             ))}
                           </div>
@@ -1810,10 +1887,7 @@ const PaigeAIChatInner = ({
             {soloTenantSafety && connectionIssue && (
               <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
                 <span>{connectionIssue === "offline" ? "You appear to be offline. This message has not been sent." : connectionIssue === "server" ? "Something went wrong on our side and PAIGE didn't get to answer. Your message wasn't sent — try again." : "PAIGE did not respond before the local timeout. No later chunks will be accepted; earlier server work may still complete."}</span>
-                <Button type="button" variant="outline" size="sm" disabled={isLoading || dictationActive || !activeTenantId} onClick={() => {
-                  const retry = retryTurnRef.current;
-                  if (retry) void streamTurn(retry.base, retry.rollback, retry.userText, retry.doc);
-                }}>Retry</Button>
+                <Button type="button" variant="outline" size="sm" disabled={isLoading || dictationActive || !composerDraftReady} onClick={handleConnectionRetry}>Retry</Button>
               </div>
             )}
             </div>
@@ -1910,7 +1984,7 @@ const PaigeAIChatInner = ({
                     key={c.label}
                     type="button"
                     onClick={() => handleChip(c)}
-                    disabled={isLoading || dictationActive}
+                    disabled={composerBlocked || dictationActive}
                     className="flex-none whitespace-nowrap rounded-full border border-border bg-card px-[11px] py-1.5 text-[11px] transition-colors hover:border-border-strong hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {c.label}

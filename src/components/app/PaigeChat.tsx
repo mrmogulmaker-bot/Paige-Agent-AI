@@ -84,7 +84,11 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   // a skeleton so the Paige avatar never flashes before the tenant's resolves.
   const { brand: portalBrand, loading: portalBrandLoading } = useClientPortalBrandState();
   const { activeTenantId } = useTenantContext();
-  const resolvedDraftTenantId = activeTenantId ?? portalBrand?.tenant_id ?? null;
+  const portalBrandTenantId = portalBrand?.tenant_id ?? null;
+  const tenantContextMatchesBrand = !activeTenantId || !portalBrandTenantId || activeTenantId === portalBrandTenantId;
+  const resolvedDraftTenantId = tenantContextMatchesBrand
+    ? activeTenantId ?? portalBrandTenantId
+    : null;
   const { contextBlock, isLoading: contextLoading, hasCreditData } = useClientChatContext(clientId, clientId ? null : user.id);
   // Snapshot of profile/business fields used by the conversational extractor
   // to skip already-populated values. Refreshed after every successful save.
@@ -137,6 +141,16 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     };
   }, [appShellDraftSlot, clientId, resolvedDraftTenantId, session, user.id]);
   const draft = usePaigeComposerDraft(draftIdentity);
+  const draftUnavailableReason = !session
+    ? "Sign in before writing to PAIGE."
+    : portalBrandLoading
+      ? "Resolving the conversation before you can write to PAIGE."
+      : !tenantContextMatchesBrand
+        ? "The active workspace does not match this conversation."
+        : !resolvedDraftTenantId
+          ? "Select a workspace before writing to PAIGE."
+          : null;
+  const composerWritable = draft.identity !== null && draftUnavailableReason === null;
   const [submittedDraftKey, setSubmittedDraftKey] = useState<string | null>(null);
   const input = submittedDraftKey === draft.key ? "" : draft.value;
   const setInput = draft.setValue;
@@ -289,14 +303,14 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     const handleFactoryReset = () => {
       contextInjectedRef.current = false;
       resetSession();
-      setInput("");
+      if (composerWritable) setInput("");
       transcriptScrollRef.current?.jumpToBottom("auto");
       setMessages([mkMessage({ role: "assistant", content: playbook.persona.greeting })]);
     };
 
     window.addEventListener("paige-factory-reset", handleFactoryReset);
     return () => window.removeEventListener("paige-factory-reset", handleFactoryReset);
-  }, [resetSession, playbook.persona.greeting, setInput]);
+  }, [composerWritable, resetSession, playbook.persona.greeting, setInput]);
 
   useLayoutEffect(() => {
     transcriptScrollRef.current?.setContext(transcriptContext);
@@ -374,6 +388,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
   const handleSend = async (overrideInput?: string) => {
     if (dictationActive) return;
+    if (!composerWritable) return;
     const messageText = overrideInput ?? input;
     if ((!messageText.trim() && !attachedDoc) || isLoading) return;
     const originDraft = overrideInput === undefined ? draft.identity : null;
@@ -726,7 +741,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             <button
               key={action.label}
               onClick={() => handleSend(action.prompt)}
-              disabled={isLoading || dictationActive}
+              disabled={isLoading || dictationActive || !composerWritable}
               className="text-[10px] sm:text-[11px] px-2.5 py-1 rounded-full border border-border bg-background hover:bg-accent/10 hover:border-accent/40 text-muted-foreground hover:text-gold-dark transition-colors disabled:opacity-50 whitespace-nowrap flex-shrink-0"
             >
               {action.label}
@@ -744,7 +759,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       {/* Input area — safe area padding on mobile */}
       <div className="p-2 sm:p-3 border-t border-border space-y-2 flex-shrink-0 pb-[env(safe-area-inset-bottom,8px)]">
         <div className="flex gap-1.5 sm:gap-2 items-center">
-          <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading} title="Attach a document (PDF)">
+          <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading || !composerWritable} title="Attach a document (PDF)">
             <Paperclip className="w-4 h-4" />
           </Button>
           <Textarea
@@ -755,7 +770,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             placeholder={attachedDoc ? "Add a message or send document... (Shift+Enter for new line)" : "Ask Paige anything... (Shift+Enter for new line)"}
             rows={1}
             className="flex-1 text-sm min-h-[40px] max-h-[200px] resize-none py-2"
-            disabled={isLoading}
+            disabled={isLoading || !composerWritable}
           />
           {/* Tap-to-dictate — neutral/indigo mic (never gold; Send owns the act, §11).
               Dictated words append into the composer for the client to edit + send. */}
@@ -765,14 +780,19 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             onText={(seg, insertionPoint) => setInput((prev) => appendDictation(prev, seg, insertionPoint))}
             onActiveChange={handleDictationActivity}
             onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
-            disabled={isLoading}
+            disabled={isLoading || !composerWritable}
             variant="secondary"
             className={`flex-shrink-0 ${isMobile ? "h-10 w-10" : "h-9 w-9"}`}
           />
-          <Button onClick={() => handleSend()} disabled={isLoading || dictationActive || (!input.trim() && !attachedDoc)} className="bg-gradient-gold hover:opacity-90 h-10 w-10" size="icon">
+          <Button onClick={() => handleSend()} disabled={isLoading || dictationActive || !composerWritable || (!input.trim() && !attachedDoc)} className="bg-gradient-gold hover:opacity-90 h-10 w-10" size="icon">
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>
         </div>
+        {draftUnavailableReason && (
+          <p role="status" className="text-[10px] leading-4 text-muted-foreground">
+            {draftUnavailableReason}
+          </p>
+        )}
       </div>
     </div>
   );

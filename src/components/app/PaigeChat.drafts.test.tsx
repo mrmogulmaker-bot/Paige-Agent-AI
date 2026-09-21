@@ -143,7 +143,7 @@ describe("AppShell PaigeChat scoped session drafts", () => {
     harness.portalBrandLoading = true;
 
     await act(async () => {
-      root.render(<PaigeChat user={activeUser} session={session} />);
+      root.render(<PaigeChat user={activeUser} session={session} clientId="client-in-view" />);
       await settle();
     });
 
@@ -154,7 +154,7 @@ describe("AppShell PaigeChat scoped session drafts", () => {
 
     harness.portalBrandLoading = false;
     await act(async () => {
-      root.render(<PaigeChat user={activeUser} session={session} />);
+      root.render(<PaigeChat user={activeUser} session={session} clientId="client-in-view" />);
       await settle();
     });
 
@@ -162,9 +162,18 @@ describe("AppShell PaigeChat scoped session drafts", () => {
     expect(host.textContent).toContain("Select a workspace before writing to PAIGE.");
 
     harness.tenantId = `app-tenant-${testNumber}`;
+    harness.portalBrandTenantId = "different-displayed-workspace";
+    await act(async () => {
+      root.render(<PaigeChat user={activeUser} session={session} clientId="client-in-view" />);
+      await settle();
+    });
+
+    expect(textarea().disabled).toBe(true);
+    expect(host.textContent).toContain("The active workspace does not match this conversation.");
+
     harness.portalBrandTenantId = harness.tenantId;
     await act(async () => {
-      root.render(<PaigeChat user={activeUser} session={session} />);
+      root.render(<PaigeChat user={activeUser} session={session} clientId="client-in-view" />);
       await settle();
     });
 
@@ -178,6 +187,7 @@ describe("AppShell PaigeChat scoped session drafts", () => {
     await type("tenant A draft");
 
     harness.tenantId = "app-tenant-other";
+    harness.portalBrandTenantId = harness.tenantId;
     await act(async () => {
       root.render(<PaigeChat user={activeUser} session={session} />);
       await settle();
@@ -186,6 +196,7 @@ describe("AppShell PaigeChat scoped session drafts", () => {
     await type("tenant B draft");
 
     harness.tenantId = firstTenant;
+    harness.portalBrandTenantId = harness.tenantId;
     await act(async () => {
       root.render(<PaigeChat user={activeUser} session={session} />);
       await settle();
