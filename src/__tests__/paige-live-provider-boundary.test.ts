@@ -35,6 +35,12 @@ describe("Paige voice provider boundary", () => {
     expect(tts).toContain("tts_cost_settlement_unavailable");
   });
 
+  it("keeps the deployed playback caller idempotent without requiring a UI collision change", () => {
+    expect(tts).toContain("suppliedIdempotencyKey || await fallbackRequestRef");
+    expect(tts).toContain('new Date().toISOString().slice(0, 7)');
+    expect(tts).toContain("if (suppliedIdempotencyKey && !/");
+  });
+
   it("requires scope on every transition and permits stale cleanup only for explicit end", () => {
     expect(session).toContain("thread_id: z.string().uuid()");
     expect(session).toContain("context_epoch: z.string().min(1).max(512)");
