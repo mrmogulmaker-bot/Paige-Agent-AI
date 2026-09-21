@@ -58,9 +58,11 @@ export function renderCapabilityStatusBlock(capabilities: readonly CapabilitySta
       "unless it appears under CAN DO NOW or CAN PREPARE FOR YOUR APPROVAL below. If the person " +
       "names a specific outside app, tool, or data source — a CRM, GHL/GoHighLevel, HubSpot, " +
       "Salesforce, Zapier, n8n, Meta/Facebook, Instagram, Google Calendar, QuickBooks, or any other " +
-      "named product — acknowledge it ONLY if it appears in the groups below; otherwise say plainly " +
-      "you don't have a connection to it here — never imply one, and never say you can read, pull, " +
-      "or sync its data. For anything under " +
+      "named product — never imply you currently connect to it or can read, pull, or sync its data " +
+      "now unless a group below shows that connection, matching it by name OR by what the " +
+      "connection does (a generic group like \"your automations\" IS that connected lane for the " +
+      "product behind it). Discussing the tool, planning around it, or framing what you'll do once " +
+      "it's connected is fine — just never imply it's connected now when it isn't. For anything under " +
       "NEEDS A CONNECTION, say what to connect first; for anything you CAN'T DO HERE YET, say plainly " +
       "it's not something you can do for them yet — never imply otherwise, and never claim it simply " +
       "doesn't exist. For anything you CAN ATTEMPT BUT ISN'T PROVEN, offer to try and say you'll " +

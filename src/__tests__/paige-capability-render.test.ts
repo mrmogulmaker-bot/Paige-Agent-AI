@@ -54,59 +54,71 @@ describe("renderCapabilityStatusBlock — the authoritative 'what can you do' bl
     expect(out).toMatch(/do NOT\s+invent one/i);
   });
 
-  // INT-117 S3 — the named-third-party rule. Observed 2026-09-21: Paige claimed she could
-  // "read your GHL data" with no GoHighLevel integration anywhere in the registry. The render
-  // directive must bind acknowledgement of ANY named outside product to presence in the
-  // capability groups, and must name the trap classes so familiar brands cannot improvise
-  // an integration the workspace does not have.
-  it("INT-117 S3: carries the named-third-party rule — acknowledge an outside app ONLY if it appears in the groups", () => {
+  // INT-117 S3 — the named-third-party rule, per the owner's scope clarification (2026-09-21):
+  // FORBIDDEN is claiming CURRENT access/connection to a product not shown in the capability
+  // groups; ALLOWED is discussing the tool, planning around it, and conditional/future framing
+  // ("once GHL is connected I'll be able to…"). The rule must also match products to real
+  // connected capabilities BY KIND when the group label is generic (Codex P1: the manifest
+  // emits integrations.n8n_run_workflow as "Run one of your automations" — the word "n8n" never
+  // renders, so a name-only binding would deny a REAL connected lane).
+  it("INT-117 S3: carries the named-third-party rule — CURRENT-connection claims are bound to the groups, by name OR kind", () => {
     const out = renderCapabilityStatusBlock([cap("x", "live", "See things")]);
     expect(out).toMatch(/names a specific outside app, tool, or data source/i);
-    expect(out).toMatch(/acknowledge it ONLY if it appears in the groups below/i);
-    expect(out).toMatch(/say plainly you don't have a connection to it here/i);
-    expect(out).toMatch(/never imply one/i);
-    expect(out).toMatch(/never say you can read, pull, or sync its data/i);
+    expect(out).toMatch(/never imply you currently connect to it or can read, pull, or sync its data now unless a group below shows that connection/i);
+    expect(out).toMatch(/matching it by name OR by what the connection does/i);
     // The trap classes are named in the directive (familiar brands are the risk).
     for (const brand of ["GHL/GoHighLevel", "HubSpot", "Salesforce", "Zapier", "n8n", "Meta/Facebook", "Instagram", "Google Calendar", "QuickBooks"]) {
       expect(out).toContain(brand);
     }
     // Sabotage-sensitivity: dropping the rule from the directive fails the pin.
-    const without = out.replace(/If the person\s+names a specific outside app[^.]*\./i, "");
+    const without = out.replace(/If the person\s+names a specific outside app[^.]*\.[^.]*/i, "");
     expect(/names a specific outside app/i.test(without)).toBe(false);
   });
 
-  it("INT-117 S3 brand-name traps — when NO matching capability is resolved, no brand appears in any group and the refusal rules are the only governing text", () => {
-    // A manifest of unrelated live capabilities: nothing named Zapier/GHL/HubSpot/etc is resolved,
-    // so the ONLY text governing a "can you read my GHL?" ask is the named-party + no-invention
-    // rules — the model has nothing in the groups it could truthfully acknowledge.
+  it("INT-117 S3 OWNER FIXTURE (a) FORBIDDEN: a CURRENT-access claim on an absent product must be refused — the forbidden clause governs", () => {
+    // No GHL anywhere in the manifest: "I can read your GHL data" / "I've checked your HubSpot"
+    // has no group to stand on, and the directive's forbidden clause is the governing text.
     const out = renderCapabilityStatusBlock([
       cap("crm.search_contacts", "live", "See your contacts"),
       cap("calendar.read", "live", "See your calendar"),
     ]);
+    expect(out).toMatch(/never imply you currently connect to it or can read, pull, or sync its data now unless a group below shows that connection/i);
+    // The brand appears ONLY inside the rule (the class list), never as a capability row the
+    // model could treat as connected.
+    const rows = out.split("\n").filter((l: string) => l.trim().startsWith("- "));
     for (const brand of ["Zapier", "GHL", "GoHighLevel", "HubSpot", "Salesforce", "n8n", "Facebook", "Instagram", "Google Calendar", "QuickBooks"]) {
-      // The directive names the brand classes once (the rule itself); it must NOT appear as a
-      // capability row the model could treat as connected.
-      const rows = out.split("\n").filter((l: string) => l.trim().startsWith("- "));
       expect(rows.some((r: string) => r.includes(brand)), `brand ${brand} leaked into a capability row`).toBe(false);
     }
-    expect(out).toMatch(/say plainly you don't have a connection to it here/i);
-    expect(out).toMatch(/don't have a capability for that here/i);
     expect(out).toContain("See your contacts");
     expect(out).toContain("See your calendar");
   });
 
-  it("INT-117 S3: acknowledgement is permitted ONLY via the groups — a connected Zapier item appears under its group alongside the rule", () => {
-    // When Zapier IS genuinely resolved (here: an approval-gated zap run), the item appears under
-    // its group heading — the named-party rule then PERMITS acknowledgement of exactly that item.
+  it("INT-117 S3 OWNER FIXTURE (b) ALLOWED: conditional/future framing about the SAME absent tool is explicitly permitted — the rule must NOT read as refusal-only", () => {
+    // The owner's confirmed-correct reply ("…GHL for contacts, n8n for workflows. Once I can see
+    // into all of that I can start coordinating it…") is ALLOWED behaviour. The directive must
+    // carry an explicit allowance clause so a refusal-only reading fails this pin.
+    const out = renderCapabilityStatusBlock([cap("x", "live", "See things")]);
+    expect(out).toMatch(/Discussing the tool, planning around it, or framing what you'll do once it's connected is fine/i);
+    expect(out).toMatch(/just never imply it's connected now when it isn't/i);
+    // Sabotage-sensitivity: stripping the allowance clause must fail (a refusal-only rule is
+    // the exact over-hedging the owner rejected).
+    const refusalOnly = out.replace(/Discussing the tool[^.]*\./i, "");
+    expect(/Discussing the tool, planning around it/i.test(refusalOnly)).toBe(false);
+  });
+
+  it("INT-117 S3 Codex P1 regression: a REAL connected capability with a generic label is not denied — kind-matching covers the product behind it", () => {
+    // The real manifest shape: integrations.n8n_run_workflow renders as "Run one of your
+    // automations" (signals.ts:160-164) — the word "n8n" never appears in a group. The rule's
+    // kind-matching clause must cover exactly this, so "can you use my n8n?" is NOT forced down
+    // the no-connection path when the automation lane is connected.
     const out = renderCapabilityStatusBlock([
-      cap("zapier.run_zap", "needs_approval", "Run a Zapier zap for your approval", "Zapier is connected in this workspace."),
+      cap("integrations.n8n_run_workflow", "needs_approval", "Run one of your automations", "Automations are connected in this workspace."),
     ]);
     expect(out).toMatch(/CAN PREPARE FOR YOUR APPROVAL/i);
-    expect(out).toContain("Run a Zapier zap for your approval");
-    expect(out).toContain("Zapier is connected in this workspace.");
-    expect(out).toMatch(/acknowledge it ONLY if it appears in the groups below/i);
-    // The connected item rides a group heading, never a bare assertion outside the groups.
-    const itemLine = out.split("\n").find((l: string) => l.includes("Run a Zapier zap"));
+    expect(out).toContain("Run one of your automations");
+    expect(out).toMatch(/a generic group like "your automations" IS that connected lane for the product behind it/i);
+    // The connected item rides a group heading (a real capability, not a bare assertion).
+    const itemLine = out.split("\n").find((l: string) => l.includes("Run one of your automations"));
     expect(itemLine).toMatch(/^\s*-\s/);
   });
 
