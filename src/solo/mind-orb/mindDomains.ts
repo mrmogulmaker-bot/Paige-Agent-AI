@@ -7,7 +7,7 @@
 // approved prototype (docs/prototypes/command-center-mind-gate1.*). §00: this ports the approved
 // design, it does not invent one.
 
-import type { MindOrbNode, MindOrbRing } from "./engine";
+import type { MindOrbRecordNode, MindOrbDomain, MindTruthTier } from "./engine";
 
 export type MindDomainKey = "identity" | "people" | "goals" | "systems" | "knowledge" | "offers";
 
@@ -260,110 +260,54 @@ export function allRecords(domains: MindDomainModel[]): MindRecord[] {
   return domains.flatMap((d) => d.records);
 }
 
-// ---- Orb geometry (ported verbatim from the approved prototype's engine glue) ----
-
-function hash(value: string): number {
-  let out = 2166136261;
-  for (let i = 0; i < value.length; i += 1) out = Math.imul(out ^ value.charCodeAt(i), 16777619);
-  return out >>> 0;
-}
-
-function sph(az: number, el: number) {
-  const ce = Math.cos(el);
-  return { x: ce * Math.sin(az), y: Math.sin(el), z: ce * Math.cos(az) };
-}
-
-function spread(dir: { x: number; y: number; z: number }, rad: number, seed: number) {
-  const a = (seed % 360) / 57.29;
-  const b = ((seed >>> 9) % 100) / 100 * rad;
-  const t1 = { x: -dir.z, y: 0, z: dir.x };
-  const len = Math.hypot(t1.x, t1.z) || 1;
-  t1.x /= len;
-  t1.z /= len;
-  const t2 = {
-    x: dir.y * t1.z - dir.z * t1.y,
-    y: dir.z * t1.x - dir.x * t1.z,
-    z: dir.x * t1.y - dir.y * t1.x,
-  };
-  const s = Math.sin(b);
-  const c = Math.cos(b);
-  const ox = Math.cos(a) * t1.x + Math.sin(a) * t2.x;
-  const oy = Math.cos(a) * t1.y + Math.sin(a) * t2.y;
-  const oz = Math.cos(a) * t1.z + Math.sin(a) * t2.z;
-  return { x: dir.x * c + ox * s, y: dir.y * c + oy * s, z: dir.z * c + oz * s };
-}
-
-// Extend the engine's node/ring contracts so these feed MindOrbCanvas directly (the engine's
-// `[k: string]: unknown` index signature lets us attach `record` and it survives onPick untouched).
-export interface MindOrbNodeLite extends MindOrbNode {
-  domain: MindDomainKey;
-  record?: MindRecord;
-}
-
-export type MindOrbRingLite = MindOrbRing;
+// ---- Orb field mapping (owner-approved "Synapse" direction, 2026-09-20) ----
+// The engine renders the FORM (structural dust) itself; this module supplies only the DATA layer:
+// one bright node per governed MindRecord, in its domain region, coloured by its truth TIER. §00 ports
+// the approved direction; §13/§70: a node exists only because a real record does — nothing invented.
 
 /**
- * Build orb nodes from the reconciled domains. `resolveColor(state)` maps a signal state to a hex int
- * (the caller resolves the --sig-* token in the current theme). Hub node per domain, one record node
- * per real record, and — only for a domain with NO records — two faint ghost satellites so an empty
- * hub reads as present-but-sparse (ghosts carry no record and are non-interactive).
+ * Collapse the drawer/list truth badge to the three orb tiers (the owner-approved 6→3 orb legend, via
+ * the Synapse reference). The finer 6-state signal detail is NOT lost — it stays in the record drawer
+ * and list (§58: the legend is coarsened on the orb only, not the provenance). PROPOSED (legacy) and
+ * PARTIAL (needs confirmation / past freshness) both read as "held, not yet confirmed".
  */
-export function buildOrbNodes(
-  domains: MindDomainModel[],
-  resolveColor: (state: MindSignalState) => number,
-): MindOrbNodeLite[] {
-  const nodes: MindOrbNodeLite[] = [];
-  for (const domain of domains) {
-    const hubDir = sph(domain.def.az, domain.def.el);
-    const hubState: MindSignalState =
-      domain.verdict === "UNAVAILABLE"
-        ? "unavailable"
-        : domain.records[0]?.state ?? "needs_confirmation";
-    nodes.push({
-      id: `hub:${domain.def.key}`,
-      domain: domain.def.key,
-      hub: true,
-      label: domain.def.name,
-      colorHex: resolveColor(hubState),
-      dir: hubDir,
-    });
-    domain.records.forEach((record, index) => {
-      const seed = hash(`${domain.def.key}:${record.id}`);
-      nodes.push({
-        id: record.id,
-        domain: domain.def.key,
-        label: record.title,
-        colorHex: resolveColor(record.state),
-        dir: spread(hubDir, 0.34 + (seed % 40) / 100, seed >>> 6),
-        record,
-      });
-    });
-    // Ghost satellites make an empty-but-live/partial hub read as present-but-sparse. An UNAVAILABLE
-    // domain gets NONE: a "pending" (needs_confirmation-coloured) satellite around an "unavailable"
-    // hub reads as "items awaiting you" when the honest truth is there is genuinely nothing on file
-    // (§13/§70). An unavailable hub therefore stands alone.
-    if (!domain.records.length && domain.verdict !== "UNAVAILABLE") {
-      for (let i = 0; i < 2; i += 1) {
-        const seed = hash(`${domain.def.key}:ghost:${i}`);
-        nodes.push({
-          id: `ghost:${domain.def.key}:${i}`,
-          domain: domain.def.key,
-          ghost: true,
-          label: "",
-          colorHex: resolveColor("needs_confirmation"),
-          dir: spread(hubDir, 0.28, seed >>> 3),
-        });
-      }
-    }
+export function truthToTier(truth: MindTruth): MindTruthTier {
+  switch (truth) {
+    case "LIVE SOURCE":
+      return "grounded";
+    case "UNAVAILABLE":
+      return "unavailable";
+    default:
+      return "partial";
   }
-  return nodes;
 }
 
-export function buildOrbRings(resolveColor: (state: MindSignalState) => number): MindOrbRingLite[] {
-  return [
-    { tilt: 0.42, spin: 0.06, color: resolveColor("owner_confirmed"), a: 0.5 },
-    { tilt: -0.7, spin: -0.045, color: resolveColor("connection_sourced"), a: 0.42 },
-    { tilt: 1.15, spin: 0.03, color: resolveColor("source_refreshed"), a: 0.4 },
-    { tilt: 0.05, spin: -0.08, color: resolveColor("needs_confirmation"), a: 0.34 },
-  ];
+/**
+ * One bright node per governed record, tagged with its domain region and truth tier. The full record
+ * rides back on `record` for onPick (the engine's `[k: string]: unknown` index signature preserves it
+ * untouched). No hubs, no ghosts: an empty domain renders as a hollow-dim region in the form, never as
+ * "pending" satellites that would read as items awaiting you (§13/§70) — the owner-approved change.
+ */
+export function buildOrbRecords(domains: MindDomainModel[]): MindOrbRecordNode[] {
+  return allRecords(domains).map((record) => ({
+    id: record.id,
+    domain: record.domain,
+    tier: truthToTier(record.truth),
+    label: record.title,
+    record,
+  }));
+}
+
+/**
+ * The headline stat counts GROUNDED (LIVE SOURCE) records ONLY, and is labelled as such. The total
+ * bright-node count (every governed record, all tiers) is NEVER presented as "grounded" (owner ruling
+ * 2026-09-20). This returns the grounded subset; the caller labels it.
+ */
+export function groundedCount(domains: MindDomainModel[]): number {
+  return allRecords(domains).filter((r) => r.truth === "LIVE SOURCE").length;
+}
+
+/** The six domain regions the engine places nodes into (key + az/el hub direction, ported verbatim). */
+export function orbDomains(): MindOrbDomain[] {
+  return MIND_DOMAINS.map((d) => ({ key: d.key, az: d.az, el: d.el }));
 }

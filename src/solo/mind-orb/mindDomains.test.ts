@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildMindDomains,
-  buildOrbNodes,
-  buildOrbRings,
+  buildOrbRecords,
+  groundedCount,
+  orbDomains,
+  truthToTier,
   allRecords,
   truthForState,
   MIND_DOMAINS,
@@ -107,46 +109,58 @@ describe("truthForState", () => {
   });
 });
 
-describe("buildOrbNodes — geometry + honesty", () => {
-  const resolve = (state: MindSignalState) => (state === "unavailable" ? 0x111111 : 0xabcdef);
-
-  it("emits one hub per domain and one node per real record (deterministic dir vectors)", () => {
+describe("buildOrbRecords — one bright node per governed record (Synapse)", () => {
+  it("emits exactly one node per real record, carrying domain, truth tier, and the record ref", () => {
     const domains = buildMindDomains(FULL);
-    const nodes = buildOrbNodes(domains, resolve);
-    const hubs = nodes.filter((n) => n.hub);
-    expect(hubs).toHaveLength(6);
-    // each real record has a node carrying its record ref back for onPick
-    const recordNodes = nodes.filter((n) => n.record);
-    expect(recordNodes).toHaveLength(allRecords(domains).length);
-    expect(recordNodes.every((n) => n.record && n.id === n.record.id)).toBe(true);
-    // dir vectors are finite unit-ish vectors, deterministic
-    const again = buildOrbNodes(buildMindDomains(FULL), resolve);
-    expect(nodes.map((n) => n.dir)).toEqual(again.map((n) => n.dir));
-    expect(nodes.every((n) => Number.isFinite(n.dir.x) && Number.isFinite(n.dir.y) && Number.isFinite(n.dir.z))).toBe(true);
+    const nodes = buildOrbRecords(domains);
+    // one node per real record — no hubs, no ghosts (§13/§70: a node exists only because a record does)
+    expect(nodes).toHaveLength(allRecords(domains).length);
+    expect(nodes.every((n) => n.record && n.id === (n.record as { id: string }).id)).toBe(true);
+    // knowledge docs are grounded (LIVE SOURCE); the pending decision is partial
+    const know = nodes.filter((n) => n.domain === "knowledge");
+    expect(know).toHaveLength(2);
+    expect(know.every((n) => n.tier === "grounded")).toBe(true);
+    expect(nodes.find((n) => n.id === "decision:a1")?.tier).toBe("partial");
+    // deterministic
+    expect(buildOrbRecords(buildMindDomains(FULL)).map((n) => n.id)).toEqual(nodes.map((n) => n.id));
   });
 
-  it("adds ghost satellites to empty domains but NEVER to an UNAVAILABLE one, and ghosts carry no record", () => {
-    const domains = buildMindDomains(EMPTY);
-    const nodes = buildOrbNodes(domains, resolve);
-    const ghosts = nodes.filter((n) => n.ghost);
-    // With all-empty inputs, 5 domains are empty-but-partial (identity/people/goals/systems/knowledge)
-    // and get 2 ghosts each; offers is UNAVAILABLE and gets NONE — a "pending"-coloured satellite
-    // around an "unavailable" hub would read as "items awaiting you" when nothing is on file (§13/§70).
-    expect(ghosts).toHaveLength(10);
-    expect(ghosts.every((n) => !n.record)).toBe(true);
-    // the UNAVAILABLE domain (offers) has its hub but no ghosts
-    const offersNodes = nodes.filter((n) => n.domain === "offers");
-    expect(offersNodes.some((n) => n.hub)).toBe(true);
-    expect(offersNodes.some((n) => n.ghost)).toBe(false);
-    // a populated domain gets no ghosts
-    const knowledgeNodes = buildOrbNodes(buildMindDomains(FULL), resolve).filter((n) => n.domain === "knowledge");
-    expect(knowledgeNodes.some((n) => n.ghost)).toBe(false);
+  it("emits NO nodes when every source is empty — never a ghost/placeholder (§13/§70)", () => {
+    expect(buildOrbRecords(buildMindDomains(EMPTY))).toHaveLength(0);
+  });
+});
+
+describe("truthToTier — the owner-approved 6→3 orb legend", () => {
+  it.each([
+    ["LIVE SOURCE", "grounded"],
+    ["PARTIAL", "partial"],
+    ["PROPOSED", "partial"],
+    ["UNAVAILABLE", "unavailable"],
+  ] as const)("maps %s -> %s", (truth, tier) => {
+    expect(truthToTier(truth)).toBe(tier);
+  });
+});
+
+describe("groundedCount — grounded (LIVE SOURCE) only, never the total", () => {
+  it("counts only LIVE SOURCE records and is strictly below the total held", () => {
+    const domains = buildMindDomains(FULL);
+    // FULL held = 5: 2 knowledge (LIVE) + n8n api source_refreshed (LIVE) + n8n mcp needs_confirmation
+    // (PARTIAL) + 1 approval (PARTIAL). Grounded = 3.
+    expect(allRecords(domains)).toHaveLength(5);
+    expect(groundedCount(domains)).toBe(3);
+    expect(groundedCount(domains)).toBeLessThan(allRecords(domains).length);
   });
 
-  it("buildOrbRings resolves four per-signal rings", () => {
-    const rings = buildOrbRings(resolve);
-    expect(rings).toHaveLength(4);
-    expect(rings.every((r) => Number.isFinite(r.color) && r.a > 0)).toBe(true);
+  it("is 0 when nothing is grounded", () => {
+    expect(groundedCount(buildMindDomains(EMPTY))).toBe(0);
+  });
+});
+
+describe("orbDomains — the six regions handed to the engine", () => {
+  it("returns the six approved domains with finite az/el", () => {
+    const d = orbDomains();
+    expect(d.map((x) => x.key)).toEqual(["identity", "people", "goals", "systems", "knowledge", "offers"]);
+    expect(d.every((x) => Number.isFinite(x.az) && Number.isFinite(x.el))).toBe(true);
   });
 });
 
