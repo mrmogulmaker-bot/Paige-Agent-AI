@@ -10,7 +10,7 @@
 
 ## 1. Owner outcome and one-meter rule
 
-The $297/month Solo plan includes one **$30 provider-cost allowance per plan period**. Voice/TTS, Live Conversation, chat/LLM, Vibe Studio, and every later platform-paid provider operation draw from that same allowance. Voice is not a standalone meter.
+The $297/month Solo plan includes one **$30 provider-cost allowance per plan period**. Voice/TTS, Live Conversation, chat/LLM, Vibe Studio, and every later platform-paid provider operation ultimately draw from that same allowance. Voice is not a standalone meter. This Slice 1 contract defines only the Live Conversation cost path—STT, LLM, and TTS. Media/tool expansion and purchased media credits are later slices.
 
 `public.platform_usage_events` is the one tenant-scoped usage ledger. Every in-scope source ultimately writes one append-only lifecycle there; provider traces and domain receipts may remain as diagnostic/provenance sources, but they do not calculate a second allowance, balance, charge, or enforcement decision.
 
@@ -23,8 +23,8 @@ This slice is contract-only. The $30 allowance, cost-plus-25% overage rule, warn
 | `llm` | chat, governed runtime turns, reasoning/evaluation, and Live Conversation reasoning | input/output/cache tokens and requests | provider rate-card snapshot; provider-confirmed cost when available |
 | `speech_to_text` | dictation and Live Conversation ears | audio seconds/minutes | provider rate-card snapshot; provider-confirmed cost when available |
 | `text_to_speech` | message read-aloud and Live Conversation mouth | characters and/or audio seconds | provider rate-card snapshot; provider-confirmed cost when available |
-| `media` | Vibe image, edit, video, audio, and other generation | provider-native units plus job count | provider estimate reserved, then provider-confirmed actual when available |
-| `tools` | any later platform-paid external API/tool with a measurable provider charge | provider-native unit | provider rate-card snapshot or confirmed receipt |
+
+Media and tool usage remain part of the owner-approved eventual one-budget outcome, but are not in this Slice 1 contract. In particular, purchased media-credit migration and funding behavior belong only to **INT-116 Slice 1b: media-credit consolidation**.
 
 Included cost is the platform's direct provider cost attributable to a tenant. Failed operations settle to the actual non-refundable provider cost, if any; a failure is not assumed free.
 
@@ -61,11 +61,11 @@ The future schema extends `platform_usage_events`; it does not create a parallel
 - `released` — unused reservation returned when dispatch did not incur cost;
 - `ambiguous` — dispatch may have incurred cost but no authoritative result exists; it remains reserved until reconciliation.
 
-Required typed fields (columns rather than policy-critical JSON) are: tenant, operation/idempotency key, category, source, provider, model/product, state, native quantity/unit, reserved cost USD, settled cost USD, rate-card snapshot ID, plan-period start/end, funding source, optional prepaid-entitlement ID and exact entitlement quantity/unit debited, occurred/settled timestamps, and an optional source receipt/trace identifier. Metadata remains redacted descriptive context only.
+Required typed fields (columns rather than policy-critical JSON) are: tenant, operation/idempotency key, category, source, provider, model/product, state, native quantity/unit, reserved cost USD, settled cost USD, rate-card snapshot ID, plan-period start/end, occurred/settled timestamps, and an optional source receipt/trace identifier. Metadata remains redacted descriptive context only.
 
 Rules:
 
-- reserve makes one atomic funding decision before dispatch. It locks and checks **every selected funding source**: (a) the tenant's effective allowance—the plan allowance reduced by any tenant restriction; (b) the platform ceiling; and, for an eligible media operation that will draw purchased credits, (c) the media-only prepaid entitlement. The transaction reserves both the USD amount and the exact `media_credit` units selected before provider dispatch. A duplicate/idempotent reserve returns the existing lifecycle with the same funding-source debit and cannot reserve or debit the entitlement again;
+- reserve locks and atomically checks both (a) the tenant's effective allowance—the plan allowance reduced by any tenant restriction—and (b) the platform ceiling before dispatch; duplicate reserve returns the existing lifecycle;
 - settle/release is idempotent and may transition only the matching reservation;
 - settlement records actual provider cost when authoritative; otherwise it retains an explicitly estimated amount and provenance;
 - `ambiguous` never becomes zero automatically and is reconciled by receipt/readback or an explicit expiry policy;
@@ -77,7 +77,7 @@ Every platform-paid provider dispatcher, including the shared LLM/model-routing 
 
 ## 5. Versioned rate-card snapshots
 
-A rate card is platform billing configuration, not tenant data. Each immutable snapshot names provider, product/model, unit, input/output/cache distinctions where applicable, USD price, minimum/rounding rules, source URL or contract reference, effective interval, and who approved it. A reservation pins the snapshot used; later rate changes never rewrite prior usage. Future prepaid purchases separately snapshot their purchased quantity, unit, paid amount, and immutable receipt; a provider rate card must not be used to fabricate missing purchase provenance for a legacy entitlement.
+A rate card is platform billing configuration, not tenant data. Each immutable snapshot names provider, product/model, unit, input/output/cache distinctions where applicable, USD price, minimum/rounding rules, source URL or contract reference, effective interval, and who approved it. A reservation pins the snapshot used; later rate changes never rewrite prior usage.
 
 Provider-confirmed actual cost wins for settlement. If a provider supplies usage but not cost, the pinned snapshot calculates an **estimated** cost and the ledger preserves that label. If neither a confirmed cost nor a valid snapshot exists, the source is unpriced/coverage-incomplete; shadow reporting shows the gap and enforcement remains off.
 
@@ -105,12 +105,12 @@ No warning, stop, overage, or ceiling is live merely because this contract names
 
 - `platform_usage_events`: **reuse and extend** as the sole plan-usage ledger. Existing `llm_tokens` and `tts_char` rows remain historical source-unit evidence.
 - `paige_llm_trace`: **retain as LLM observability/provenance**. The shared model dispatcher writes the pre-dispatch reservation; a trace settles/reconciles it. The current hourly drain is historical/backfill repair only, never the live enforcement gate.
-- `paige_media_credit_entries` and media hold/consume/release: **migrate provider-usage lifecycle and history into the unified ledger, then retire as an allowance/balance authority only after prepaid value is preserved**. Outstanding non-expiring `grant_purchased` balances move one-for-one, in their existing `media_credit` units, into canonical Platform Billing prepaid entitlements restricted to `category = media`. A non-media operation cannot select or debit them. Where a legacy row lacks an immutable paid amount or receipt, migration copies only source fields that actually exist, records `provenance_status = unknown_legacy`, and does not invent a USD conversion, price, or receipt. That entitlement is not a usage meter and the purchase itself is not provider cost. The ledger still records the media operation's independently established provider cost; it also records the exact entitlement units debited. Unified reserve/settle draws the plan's included allowance first, then—only for media—preserved media-credit units, then separately authorized opt-in overage. Selection of prepaid funding is part of the same locked atomic reserve described in §4; no caller may read an entitlement balance and debit it later in a separate transaction. Funding-source fields ensure prepaid value is neither lost nor also counted against the `$30` allowance. Media job/receipt provenance may remain.
+- `paige_media_credit_entries` and media hold/consume/release: **unchanged and out of scope for Slice 1**. No balance, row, funding order, or authority moves under this contract. **INT-116 Slice 1b: media-credit consolidation** must separately define and prove `grant_purchased` preservation, media-only eligibility, atomic reserve/settle/release/ambiguous behavior, authoritative-cost unit reconciliation, insufficient-balance policy, provenance, migration parity, and retirement before any consolidation occurs.
 - `paige_voice_cost_reservations`, `paige_voice_*budget*`, and voice monthly-usage tables/functions from V1a: **retire after unified reserve/settle coverage and reconciliation are proven**. They stay unused and cannot be re-enabled as a parallel voice allowance.
 - `platform_metered_events`: remains the separate Layer-3 tenant pass-through billing rail defined by Doctrine §197; it is not used to meter Paige's included plan allowance.
 - legacy token-credit presentation (`included_ai_tokens_month`, `ai_credit_token_ratio`) is migrated to category detail under the one dollar-denominated allowance and then retired as an independent entitlement.
 
-Migration is reconcile-first: map each legacy source record to one unified operation, preserve and reconcile every outstanding purchased-media balance in its exact existing units and media-only scope before retiring its balance authority, explicitly mark absent legacy purchase provenance as unknown, compare per-tenant/per-period totals, quarantine duplicates/unknown rates, prove exact coverage, switch readers/writers, then disable and later remove the old balance authority. No dual enforcement window.
+Migration is reconcile-first for the in-scope STT/LLM/TTS sources: map each legacy source record to one unified operation, compare per-tenant/per-period totals, quarantine duplicates/unknown rates, prove exact coverage, switch readers/writers, then disable and later remove the old in-scope balance authority. No dual enforcement window. Media-credit data and authority do not participate until Slice 1b.
 
 ## 9. Coverage and activation gates
 
@@ -119,7 +119,7 @@ Enforcement and charging remain off until a production readback proves, for **ev
 1. exactly one valid allowance period and one plan allowance resolve, including the deterministic platform allowance window for every active no-expiry promotional grant;
 2. every dispatched provider operation has one idempotent ledger lifecycle;
 3. every settled operation has a confirmed cost or a pinned, dated estimate explicitly labelled as such;
-4. legacy-versus-unified reconciliation has no unexplained delta, and every purchased-media entitlement preserves its exact unit balance, media-only restriction, and honestly known-or-unknown purchase provenance;
+4. legacy-versus-unified reconciliation for every in-scope STT/LLM/TTS source has no unexplained delta;
 5. concurrency, duplicate, retry, ambiguous dispatch, rollover, tenant isolation, rate changes, and graceful Live Conversation boundaries pass;
 6. the client billing breakdown equals the ledger and exposes unknown/unpriced coverage honestly; and
 7. emergency-disable and rollback drills pass without taking already-allowed playback or conversation dark.
@@ -129,13 +129,14 @@ Only after a separate owner authorization may rollout progress: shadow telemetry
 ## 10. Small-slice delivery order
 
 1. **This contract (docs only):** decisions and boundaries; no runtime effect.
-2. **Schema foundation, enforcement off:** additive ledger lifecycle fields, immutable rate-card snapshots, plan usage policy, restrictive tenant preference, RLS/grants/RPCs, and coverage-readback function with fail-first pgTAP.
-3. **Writer convergence:** one provider-cost source at a time (LLM, TTS, STT/Live, media, tools), with synchronous pre-dispatch reservation at each shared dispatch seam, shadow settlement, and exact reconciliation; legacy writers remain read-only until each cutover proves parity.
+2. **Schema foundation, enforcement off:** additive ledger lifecycle fields, immutable rate-card snapshots, plan usage policy, restrictive tenant preference, RLS/grants/RPCs, and coverage-readback function with fail-first pgTAP for STT/LLM/TTS.
+3. **Writer convergence:** one in-scope provider-cost source at a time (LLM, TTS, STT/Live), with synchronous pre-dispatch reservation at each shared dispatch seam, shadow settlement, and exact reconciliation; legacy writers remain read-only until each cutover proves parity.
 4. **Client billing read model:** owner-visible period, `$30` included amount, total and per-category cost, estimated/confirmed labels, 80%/100% warnings, and overage projection; no charge controls yet.
 5. **Catalog migration to $297:** separately authorized Stripe/catalog/UI/webhook change with grandfathering decision and end-to-end billing proof.
 6. **Controlled enforcement:** only after all-tenant/source coverage readback passes; discrete-operation stop plus graceful Live Conversation boundary; key-less/old-client compatibility where applicable.
 7. **Opt-in overage:** separately authorized billing activation at provider cost +25%, invoice reconciliation, disputes/refunds, and owner consent.
-8. **Legacy retirement:** remove parallel budget/balance authority only after reconciliation, rollback window, and production proof.
+8. **INT-116 Slice 1b: media-credit consolidation:** separately contract and prove purchased-media preservation, media funding order, atomic unit reservation and settlement-delta reconciliation, insufficient-balance behavior, provenance, migration, and retirement before media joins the one ledger.
+9. **Legacy retirement:** remove in-scope parallel budget authority only after reconciliation, rollback window, and production proof.
 
 ## 11. Proof boundary and rollback position
 
