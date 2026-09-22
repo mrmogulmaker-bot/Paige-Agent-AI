@@ -180,7 +180,15 @@ describe("Truth boundary", () => {
 
   it("clears the previous account immediately and rejects its late response", async () => {
     const first = deferred<{ data: unknown; error: null }>();
-    rpc.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => first.promise);
+    // Hold open ONLY the tenant-A read this test is about, by NAME. It used to hold the first two
+    // calls by position, which silently stopped meaning "the n8n reads" the moment this surface
+    // mounted more of them: the extra calls fell through to a reset mock returning `undefined`, and
+    // the test ran out of doubles instead of exercising the switch. Scoping by name keeps it honest
+    // however many reads the surface grows.
+    world();
+    const answered = rpc.getMockImplementation() as (name: string, ...rest: unknown[]) => unknown;
+    rpc.mockImplementation((name: string, ...rest: unknown[]) =>
+      name === "get_tenant_n8n_api_readiness" ? first.promise : answered(name, ...rest));
     const { host, root } = await render();
 
     context.tenantId = "tenant-b";

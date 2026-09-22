@@ -238,20 +238,38 @@ export function useMcpGateway(): UseMcpGateway {
     if (loadedScope !== null) setLoadedScope(null);
   }
 
-  const load = useCallback(async () => {
+  /**
+ * Every RPC answer this hook acts on, reduced to a shape it can always read.
+ *
+ * `.catch` only fires when the adapter REJECTS. An adapter that RESOLVES with something unusable —
+ * `undefined`, `null`, a primitive — sails past it, and the very next line then throws on a property
+ * read, escaping as an unhandled rejection: the caller never settles, so the surface sits on
+ * "Loading your tools…" forever instead of reaching the honest error state below. That is the exact
+ * failure this hook's `.catch` exists to prevent, so the guarantee is made unconditional here rather
+ * than left dependent on HOW the adapter failed.
+ *
+ * An unreadable answer is treated as a failed read, never as an empty account (§13).
+ */
+function rpcResult(value: unknown): { data: unknown; error: unknown } {
+  if (typeof value !== "object" || value === null) return { data: null, error: true };
+  const row = value as { data?: unknown; error?: unknown };
+  return { data: row.data ?? null, error: row.error ?? null };
+}
+
+const load = useCallback(async () => {
     if (tenantLoading) return;
     const token = gate.current.begin();
-    const [list, admin] = (await Promise.all([
+    const answers = (await Promise.all([
       // Reads take NO tenant argument — the server derives the tenant. (Locked by the settings
       // truth-boundary test: every get_* call carries exactly its own name and no args.)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (supabase as any).rpc("get_mcp_connections_v2"),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (supabase as any).rpc("is_current_user_tenant_admin"),
-    ]).catch(() => [
-      { data: null, error: true },
-      { data: null, error: true },
-    ])) as [{ data: unknown; error: unknown }, { data: unknown; error: unknown }];
+    ]).catch(() => [])) as unknown[];
+    // Normalized per answer, so a rejection and an unusable resolution land in the same place.
+    const list = rpcResult(answers[0]);
+    const admin = rpcResult(answers[1]);
 
     if (!mounted.current || scopeRef.current !== scope || !gate.current.isCurrent(token)) return;
     setLoadedScope(scope);
@@ -324,10 +342,9 @@ export function useMcpGateway(): UseMcpGateway {
       // that from tsc). Same idiom as useN8nConnection.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const call = (supabase as any).rpc(name, { ...params, _tenant_id: activeTenantId });
-      const { data, error } = (await Promise.resolve(call).catch(() => ({
-        data: null,
-        error: true as unknown,
-      }))) as { data: unknown; error: unknown };
+      const { data, error } = rpcResult(
+        await Promise.resolve(call).catch(() => null),
+      );
 
       if (!current()) {
         // A stale request must NOT release a lock it no longer owns: if a write for the previous
