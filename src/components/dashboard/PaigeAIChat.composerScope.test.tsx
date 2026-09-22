@@ -609,6 +609,51 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     },
   );
 
+  it("rolls back the optimistic user turn on Cancel while retaining the scoped draft", async () => {
+    let originSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce((_url: string, init?: RequestInit) => {
+        originSignal = init?.signal as AbortSignal | undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          originSignal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        });
+      })
+      .mockImplementationOnce(async () => successfulStream());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await render();
+    await waitForWritable();
+    await type("cancel-safe prompt");
+    await act(async () => {
+      send().click();
+      await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const cancel = host.querySelector<HTMLButtonElement>('button[aria-label="Cancel PAIGE response"]')!;
+    await act(async () => {
+      cancel.click();
+      await settle();
+    });
+
+    expect(originSignal?.aborted).toBe(true);
+    expect(textarea().value).toBe("cancel-safe prompt");
+    expect(host.textContent?.match(/cancel-safe prompt/g)).toHaveLength(1);
+
+    await act(async () => {
+      send().click();
+      await settle();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(host.textContent?.match(/cancel-safe prompt/g)).toHaveLength(1);
+    const retryBody = JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit | undefined)?.body));
+    expect(retryBody.messages.filter((message: { role: string }) => message.role === "user")).toHaveLength(1);
+  });
+
   it("migrates a lazy new-chat draft and preserves a newer edit after successful Retry", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => serverFailure()));
     await render({ clientId: "client-a" });

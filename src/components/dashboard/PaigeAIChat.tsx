@@ -546,7 +546,9 @@ const PaigeAIChatInner = ({
 
   const cancelSoloRequest = useCallback(() => {
     if (!soloTenantSafety) return;
+    const cancelledTurn = retryTurnRef.current;
     abortActiveRequest();
+    if (cancelledTurn) setMessages(cancelledTurn.rollback);
     setCancelled(true);
     setConnectionIssue(null);
   }, [abortActiveRequest, soloTenantSafety]);
