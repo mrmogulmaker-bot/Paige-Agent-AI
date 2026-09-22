@@ -20,10 +20,10 @@
 
 import { envKey } from "./env-key.ts";
 
-/** STT tiers. One real tier today (Deepgram Nova-3 realtime); the table is a Partial<Record> so
+/** STT tiers. Nova-3 and Flux share the same Deepgram socket opener; the table is a Partial<Record> so
  *  a second tier (e.g. a batch/whisper lane) is an ADD, never a fork (§18). A missing cell ⇒
  *  needs_config, exactly like the model-router. */
-export type SttTier = "nova-realtime";
+export type SttTier = "nova-realtime" | "flux-realtime";
 
 export interface SttRouteCell {
   provider: string; // provider slug (audit + honest reporting)
@@ -42,6 +42,13 @@ const STT_ROUTE_TABLE: Partial<Record<SttTier, SttRouteCell>> = {
     justification:
       "Deepgram Nova-3 streaming STT — lowest-latency real-time transcription for the live-call co-pilot; the routable STT commodity behind Paige's router (§34), never a second client.",
     host: "wss://api.deepgram.com/v1/listen",
+  },
+  "flux-realtime": {
+    provider: "deepgram",
+    model: "flux-general-en",
+    justification:
+      "Deepgram Flux turn-based streaming for Paige Live Conversation; the single STT router keeps Nova-3 callers unchanged.",
+    host: "wss://api.deepgram.com/v2/listen",
   },
 };
 
@@ -64,18 +71,24 @@ export interface DeepgramStreamOpts {
   endpointing?: number;
 }
 
-/** PURE builder for the Deepgram Nova-3 streaming URL from a cell + Twilio-shaped defaults. */
+/** PURE builder for a Deepgram streaming URL. MIP opt-out is mandatory for both routes. */
 export function buildDeepgramStreamUrl(cell: SttRouteCell, opts: DeepgramStreamOpts = {}): string {
   const p = new URLSearchParams();
   p.set("model", opts.model ?? cell.model);
-  p.set("encoding", opts.encoding ?? "mulaw");
-  p.set("sample_rate", String(opts.sampleRate ?? 8000));
-  p.set("channels", String(opts.channels ?? 1));
-  p.set("punctuate", String(opts.punctuate ?? true));
-  p.set("interim_results", String(opts.interimResults ?? true));
-  p.set("smart_format", String(opts.smartFormat ?? true));
-  p.set("language", opts.language ?? "en-US");
-  if (opts.endpointing !== undefined) p.set("endpointing", String(opts.endpointing));
+  p.set("mip_opt_out", "true");
+  if (cell.host.endsWith("/v2/listen")) {
+    p.set("encoding", opts.encoding ?? "linear16");
+    p.set("sample_rate", String(opts.sampleRate ?? 16000));
+  } else {
+    p.set("encoding", opts.encoding ?? "mulaw");
+    p.set("sample_rate", String(opts.sampleRate ?? 8000));
+    p.set("channels", String(opts.channels ?? 1));
+    p.set("punctuate", String(opts.punctuate ?? true));
+    p.set("interim_results", String(opts.interimResults ?? true));
+    p.set("smart_format", String(opts.smartFormat ?? true));
+    p.set("language", opts.language ?? "en-US");
+    if (opts.endpointing !== undefined) p.set("endpointing", String(opts.endpointing));
+  }
   return `${cell.host}?${p.toString()}`;
 }
 
@@ -113,8 +126,39 @@ export function planSttStream(tier: SttTier = "nova-realtime", opts: DeepgramStr
 export function openDeepgramSocket(url: string): WebSocket | null {
   const key = envKey("DEEPGRAM_API_KEY");
   if (!key) return null;
+  // Defense in depth: no caller can omit or negate MIP opt-out, including legacy Nova callers.
+  // Reject non-Deepgram endpoints before attaching the server-only credential.
+  let endpoint: URL;
+  try { endpoint = new URL(url); } catch { return null; }
+  if (endpoint.protocol !== "wss:" || endpoint.hostname !== "api.deepgram.com" ||
+    !["/v1/listen", "/v2/listen"].includes(endpoint.pathname)) return null;
+  endpoint.searchParams.set("mip_opt_out", "true");
   // Deepgram's documented token-subprotocol auth: ["token", "<DEEPGRAM_API_KEY>"].
-  return new WebSocket(url, ["token", key]);
+  return new WebSocket(endpoint.toString(), ["token", key]);
+}
+
+/** Flux v2 TurnInfo: only EndOfTurn is a committed utterance. */
+export interface DeepgramFluxTurn {
+  transcript: string;
+  isFinal: boolean;
+  event: string;
+  turnIndex: number;
+  sequenceId: number;
+}
+
+export function extractDeepgramFluxTurn(raw: string | ArrayBuffer | Uint8Array): DeepgramFluxTurn | null {
+  const text = typeof raw === "string" ? raw : new TextDecoder().decode(raw instanceof Uint8Array ? raw : new Uint8Array(raw));
+  let frame: Record<string, unknown>;
+  try { frame = JSON.parse(text) as Record<string, unknown>; } catch { return null; }
+  if (frame.type !== "TurnInfo" || typeof frame.transcript !== "string" || !frame.transcript.trim() ||
+    typeof frame.event !== "string" || typeof frame.turn_index !== "number" || typeof frame.sequence_id !== "number") return null;
+  return {
+    transcript: frame.transcript,
+    isFinal: frame.event === "EndOfTurn",
+    event: frame.event,
+    turnIndex: frame.turn_index,
+    sequenceId: frame.sequence_id,
+  };
 }
 
 /** Shape of a Deepgram streaming `Results` message (the fields we consume for B1). */

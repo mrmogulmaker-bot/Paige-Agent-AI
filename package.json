@@ -86,6 +86,7 @@
     "smoke:repair-voice-twiml-app": "node scripts/repair-voice-twiml-app-handler-smoke.mjs",
     "smoke:live-relay": "node --import ./scripts/capability-kit/register.mjs scripts/paige-live-relay-smoke.mts",
     "smoke:live-ticket": "node --import ./scripts/capability-kit/register.mjs scripts/paige-live-ticket-smoke.mts",
+    "smoke:voice-stt": "node --import ./scripts/capability-kit/register.mjs scripts/voice-stt-smoke.mts",
     "test:deno-ratchet": "node scripts/ci/__tests__/deno-edge-ratchet.test.mjs",
     "test:client-memory-authz": "node --import ./scripts/client-memory-authz/register.mjs scripts/client-memory-authz/check.mjs",
     "test:token-pricing": "node --import ./scripts/client-memory-authz/register.mjs scripts/token-pricing/check.mjs",

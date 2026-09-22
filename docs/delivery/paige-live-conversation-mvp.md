@@ -360,3 +360,23 @@ session, daily allowance, lease, pricing, reserve, or counter gate. The
 `UsageSink` remains neutral non-blocking measurement for the Budget lane.
 Deepgram Flux, mandatory `mip_opt_out=true`, ElevenLabs voice/model correction,
 and provider activation remain separately gated later work.
+
+## INT-104 Flux ears route — Stage 1 candidate, 2026-09-22
+
+The one STT home, `_shared/stt-router.ts`, now has an additive `flux-realtime`
+route to Deepgram `/v2/listen` alongside the existing Nova-3 `/v1/listen`
+route. Both still use the same server-side `openDeepgramSocket` and the same
+`DEEPGRAM_API_KEY`; there is no second provider client. The opener forces
+`mip_opt_out=true` on every streaming URL, even if a caller omitted or negated
+it, and rejects non-Deepgram destinations before attaching the key. The Flux
+parser distinguishes interim `TurnInfo` from committed `EndOfTurn`. A mock
+WebSocket smoke test falsifies an absent or false MIP flag with zero network
+calls. The only deployed importers of this shared module are `paige-dictate`
+and `paige-stt`; the required redeploy set is exactly those functions.
+
+This route does **not** activate Live Conversation or send tenant audio. Before
+even the owner's Stage 1 audio, an actual request must be observed carrying
+`mip_opt_out=true` and the account-level MIP setting must be verified. Stage 1
+is owner tenant only. Other tenants remain unauthorized pending the INT-100/
+INT-107 privacy and split-vendor decisions. No provider-call, voice-quality,
+browser-latency, or authenticated-conversation proof is claimed here.

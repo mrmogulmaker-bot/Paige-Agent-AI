@@ -8,7 +8,7 @@
 //     WRONG secret, an EXPIRED token, and a CALL-SID MISMATCH all reject — this is the §9 gate
 //   • the voice-twiml <Start><Stream> XML: present when a stream URL is given, absent when not
 //
-// Run:  node --experimental-strip-types scripts/voice-stt-smoke.mts
+// Run:  npm run smoke:voice-stt (the repository's Node-20 TypeScript loader)
 // Exit: 0 = the pure pipe logic behaves; non-zero = a defect (fix before shipping).
 //
 // §13 HONEST — what this CANNOT verify (owed to a deployed call): the LIVE Deepgram Nova-3
@@ -29,7 +29,7 @@ const env: Record<string, string | undefined> = {};
 const { parseTwilioFrame, decodeMediaPayload, TWILIO_MEDIA_FRAME_MS } = await import(
   "../supabase/functions/_shared/twilio-media.ts"
 );
-const { planSttStream, resolveSttRoute, buildDeepgramStreamUrl, sttConfigured, extractDeepgramTranscript } =
+const { planSttStream, resolveSttRoute, buildDeepgramStreamUrl, sttConfigured, extractDeepgramTranscript, extractDeepgramFluxTurn, openDeepgramSocket } =
   await import("../supabase/functions/_shared/stt-router.ts");
 const { mintStreamToken, verifyStreamToken } = await import(
   "../supabase/functions/_shared/voice-stream-token.ts"
@@ -140,6 +140,26 @@ check("plan URL never contains the key (§13)", planSet.ok === true && !planSet.
 const cell = resolveSttRoute("nova-realtime");
 check("resolveSttRoute returns the deepgram cell", !!cell && cell.provider === "deepgram");
 check("buildDeepgramStreamUrl is pure/deterministic", cell ? buildDeepgramStreamUrl(cell) === buildDeepgramStreamUrl(cell) : false);
+const fluxCell = resolveSttRoute("flux-realtime");
+check("Flux resolves through the one STT router", !!fluxCell && fluxCell.host === "wss://api.deepgram.com/v2/listen" && fluxCell.model === "flux-general-en");
+const fluxPlan = planSttStream("flux-realtime", { encoding: "linear16", sampleRate: 16000 });
+check("Flux plan carries PCM format and mandatory MIP opt-out", fluxPlan.ok === true && fluxPlan.url.includes("encoding=linear16") && fluxPlan.url.includes("sample_rate=16000") && new URL(fluxPlan.url).searchParams.get("mip_opt_out") === "true");
+check("Nova plan also carries mandatory MIP opt-out", planSet.ok === true && new URL(planSet.url).searchParams.get("mip_opt_out") === "true");
+const oldSocket = globalThis.WebSocket;
+let openedUrl = "";
+let openedProtocols: string[] = [];
+(globalThis as unknown as { WebSocket: unknown }).WebSocket = class {
+  constructor(url: string, protocols: string[]) { openedUrl = url; openedProtocols = protocols; }
+};
+try {
+  openDeepgramSocket("wss://api.deepgram.com/v2/listen?model=flux-general-en&mip_opt_out=false");
+  check("socket opener overrides a caller's false MIP flag", new URL(openedUrl).searchParams.get("mip_opt_out") === "true");
+  openDeepgramSocket("wss://api.deepgram.com/v1/listen?model=nova-3");
+  check("socket opener adds absent MIP flag", new URL(openedUrl).searchParams.get("mip_opt_out") === "true");
+  check("socket opener keeps server-side token auth", openedProtocols[0] === "token" && openedProtocols[1] === "dg_test_key_headless");
+  check("socket opener never sends the key to another host", openDeepgramSocket("wss://example.test/v2/listen") === null);
+  check("socket opener fails closed on malformed URL", openDeepgramSocket("not-a-url") === null);
+} finally { (globalThis as unknown as { WebSocket: unknown }).WebSocket = oldSocket; }
 delete env.DEEPGRAM_API_KEY; // leave env clean for downstream
 
 // Deepgram transcript extractor: real Results → transcript; control frames → null.
@@ -155,6 +175,11 @@ check("extracts final transcript", !!tr && tr.transcript === "hello there" && tr
 check("Metadata control frame → null", extractDeepgramTranscript(JSON.stringify({ type: "Metadata" })) === null);
 check("empty transcript → null (no broadcast)", extractDeepgramTranscript(JSON.stringify({ type: "Results", channel: { alternatives: [{ transcript: "" }] } })) === null);
 check("garbage → null (no throw)", extractDeepgramTranscript("}{") === null);
+const fluxPartial = extractDeepgramFluxTurn(JSON.stringify({ type: "TurnInfo", event: "Update", turn_index: 2, sequence_id: 7, transcript: "hello" }));
+check("Flux Update is partial", fluxPartial?.transcript === "hello" && fluxPartial?.isFinal === false && fluxPartial?.turnIndex === 2);
+const fluxFinal = extractDeepgramFluxTurn(JSON.stringify({ type: "TurnInfo", event: "EndOfTurn", turn_index: 2, sequence_id: 8, transcript: "hello there" }));
+check("Flux EndOfTurn is final", fluxFinal?.transcript === "hello there" && fluxFinal?.isFinal === true && fluxFinal?.sequenceId === 8);
+check("Flux control frame is ignored", extractDeepgramFluxTurn(JSON.stringify({ type: "Connected", sequence_id: 0 })) === null);
 
 // ── Stream-token mint↔verify: the §9 gate ────────────────────────────────────
 console.log("stream-token (§9 gate):");
