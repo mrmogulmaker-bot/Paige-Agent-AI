@@ -37,11 +37,15 @@ confers zero authority** (§18 / AGENTS.md — see the DERIVED note above). The 
 tables below are preserved as delivered (§58); the notes here flag research confidence and scope so
 step 2 can prioritise — they decide, permit, and gate nothing.
 
-> **STEP 2 DEPENDENCY.** The candidate providers listed here must be recorded as `PROPOSED` entries
-> in the canonical `integration-capability-registry.json` **before any of them is seeded.**
-> (`PROPOSED` is the canonical status for "an approved/drafted DIRECTION exists; nothing is built."
-> The registry's status set is closed — `LIVE` / `PARTIAL` / `PROPOSED` / `UNAVAILABLE` / `DEFERRED` /
-> `PROOF_OWED` — enforced by `scripts/ci/integration-registry-lint.mjs`.) The **unverified
+> **STEP 2 DEPENDENCY.** Each listed candidate that has **no** existing canonical entry is recorded
+> as a **new `PROPOSED`** entry in `integration-capability-registry.json` **before it is seeded.**
+> Providers that **already** have a canonical entry (e.g. Google Workspace `PARTIAL`, Microsoft 365
+> `DEFERRED`, Stripe `PARTIAL`, QuickBooks `PROOF_OWED`) **keep their existing evidence-backed
+> delivery state** — step 2 **preserves and updates** those entries, never overwrites them to
+> `PROPOSED` and never creates a duplicate. (`PROPOSED` is the canonical status for "an approved/
+> drafted DIRECTION exists; nothing is built"; it is only for genuinely new, approved-but-unbuilt
+> candidates. The registry's status set is closed — `LIVE` / `PARTIAL` / `PROPOSED` / `UNAVAILABLE` /
+> `DEFERRED` / `PROOF_OWED` — enforced by `scripts/ci/integration-registry-lint.mjs`.) The **unverified
 > research/proof state is not a status**: per-provider verification confidence lives in this
 > catalogue's research notes and, at step 2, in the entry's own proof / `code_anchors` fields — never
 > as a status token. Tracked in the register. This catalogue does not create, gate, or authorize
