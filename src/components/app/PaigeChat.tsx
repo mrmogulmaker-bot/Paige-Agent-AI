@@ -36,6 +36,23 @@ import { readableTextOn } from "@/lib/brand/contrast";
 import { PaigeReasoningStrip, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingIndicator";
 import { createAnchoredTranscriptScroll } from "@/components/chat/anchoredTranscriptScroll";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { useImpersonation } from "@/contexts/ImpersonationContext";
+import {
+  acceptComposerDelivery,
+  clearComposerDraft,
+  composerDraftKey,
+  composerDraftHandlesMatch,
+  composerScopeIdentityKey,
+  createComposerRequestFence,
+  createComposerScopeIdentity,
+  initialComposerConversation,
+  readComposerDraft,
+  resolveComposerScopeState,
+  shouldClearComposerDraft,
+  useComposerDraft,
+  type ComposerRequestTicket,
+} from "@/lib/paigeComposerScopeState";
 
 type Message = {
   id: string;
@@ -75,6 +92,42 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   // Same resolver the /app chrome uses (get_client_portal_brand); `loading` gates
   // a skeleton so the Paige avatar never flashes before the tenant's resolves.
   const { brand: portalBrand, loading: portalBrandLoading } = useClientPortalBrandState();
+  const { activeTenantId } = useTenantContext();
+  const { target: impersonationTarget } = useImpersonation();
+  const portalBrandTenantId = portalBrand?.tenant_id ?? null;
+  const impersonationTargetKey = impersonationTarget
+    ? `${impersonationTarget.contactId}:${impersonationTarget.targetUserId}`
+    : null;
+  const [impersonatedTenant, setImpersonatedTenant] = useState<{
+    key: string | null;
+    tenantId: string | null;
+    loading: boolean;
+  }>({ key: null, tenantId: null, loading: false });
+  useEffect(() => {
+    if (!impersonationTarget || !impersonationTargetKey) {
+      setImpersonatedTenant({ key: null, tenantId: null, loading: false });
+      return;
+    }
+
+    let cancelled = false;
+    setImpersonatedTenant({ key: impersonationTargetKey, tenantId: null, loading: true });
+    void supabase
+      .from("clients")
+      .select("tenant_id, linked_user_id")
+      .eq("id", impersonationTarget.contactId)
+      .eq("linked_user_id", impersonationTarget.targetUserId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || !data?.tenant_id || data.linked_user_id !== impersonationTarget.targetUserId) {
+          setImpersonatedTenant({ key: impersonationTargetKey, tenantId: null, loading: false });
+          return;
+        }
+        setImpersonatedTenant({ key: impersonationTargetKey, tenantId: data.tenant_id, loading: false });
+      });
+
+    return () => { cancelled = true; };
+  }, [impersonationTarget, impersonationTargetKey]);
   const { contextBlock, isLoading: contextLoading, hasCreditData } = useClientChatContext(clientId, clientId ? null : user.id);
   // Snapshot of profile/business fields used by the conversational extractor
   // to skip already-populated values. Refreshed after every successful save.
@@ -85,12 +138,114 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const contextInjectedRef = useRef(false);
   const isMobile = useIsMobile();
   const location = useLocation();
+  const [isLoading, setIsLoading] = useState(false);
+  // The mount keeps its own stable new-chat slot; focused-client isolation belongs only to the
+  // normalized ComposerScopeIdentity shared by drafts, delivery, retry and dictation.
+  const newConversationId = "new-chat:app-shell";
+  const conversation = useMemo(
+    () => initialComposerConversation(false, newConversationId),
+    [newConversationId],
+  );
+  const isSignedIn = Boolean(session);
+  const impersonatedTenantPending = impersonationTarget !== null
+    && (impersonatedTenant.key !== impersonationTargetKey || impersonatedTenant.loading);
+  const displayedTenantLoading = impersonationTarget ? impersonatedTenantPending : portalBrandLoading;
+  const resolvedDisplayedTenantId = isSignedIn && !displayedTenantLoading
+    ? impersonationTarget
+      ? impersonatedTenant.tenantId
+      : portalBrandTenantId
+    : null;
+  const currentIdentity = createComposerScopeIdentity({
+    tenantId: isSignedIn ? activeTenantId : null,
+    userId: isSignedIn ? user.id : null,
+    focusedClientId: clientId,
+    focusedBusinessMissionId: null,
+  });
+  const displayedIdentity = createComposerScopeIdentity({
+    tenantId: resolvedDisplayedTenantId,
+    userId: isSignedIn ? user.id : null,
+    focusedClientId: clientId,
+    focusedBusinessMissionId: null,
+  });
+  const acceptedDisplayedIdentityRef = useRef(displayedIdentity);
+  const acceptedConversationRef = useRef(conversation);
+  const [, forceComposerScopeReadback] = useState(0);
+  const displayedConversation = acceptedConversationRef.current.newConversationId === newConversationId
+    ? conversation
+    : {
+        ...conversation,
+        displayed: acceptedConversationRef.current.displayed,
+        intent: "controlled" as const,
+      };
+  const composerScope = resolveComposerScopeState({
+    currentIdentity,
+    displayedIdentity: acceptedDisplayedIdentityRef.current,
+    conversation: displayedConversation,
+    busy: isLoading,
+  });
+  const composerScopeRef = useRef(composerScope);
+  composerScopeRef.current = composerScope;
+  const draft = useComposerDraft(composerScope);
+  const input = draft.value;
+  const setInput = draft.setValue;
+  const composerUnavailableReason = !session
+    ? "Sign in before writing to PAIGE."
+    : !activeTenantId
+      ? "Select a workspace before writing to PAIGE."
+      : displayedTenantLoading
+        ? "Resolving the conversation before you can write to PAIGE."
+        : !resolvedDisplayedTenantId
+          ? "This conversation is unavailable until its workspace is resolved."
+          : activeTenantId !== resolvedDisplayedTenantId
+            ? "The active workspace does not match this conversation."
+            : composerScope.unavailableReason;
+  const requestScopeHandle = currentIdentity
+    ? { ...currentIdentity, conversationId: conversation.requested.id }
+    : null;
+  const requestScopeEpoch = requestScopeHandle
+    ? composerDraftKey(requestScopeHandle)
+    : "identity-unresolved";
   const dictationScopeEpoch = [
-    user.id,
-    clientId ?? "",
+    requestScopeEpoch,
     location.pathname,
     location.search ?? "",
   ].join("|");
+  const appComposerScopeKey = [
+    isSignedIn ? "signed-in" : "signed-out",
+    currentIdentity ? composerScopeIdentityKey(currentIdentity) : "identity-unresolved",
+    impersonationTargetKey ?? "self",
+    displayedTenantLoading
+      ? "tenant-loading"
+      : displayedIdentity
+        ? composerScopeIdentityKey(displayedIdentity)
+        : "displayed-identity-unresolved",
+    conversation.requested.id,
+  ].join("|");
+  const acceptedAppComposerScopeKeyRef = useRef(appComposerScopeKey);
+  const requestScopeRef = useRef({ handle: requestScopeHandle, epoch: requestScopeEpoch });
+  requestScopeRef.current = { handle: requestScopeHandle, epoch: requestScopeEpoch };
+  const requestFenceRef = useRef(createComposerRequestFence());
+  const ticketAccepted = useCallback(
+    (ticket: ComposerRequestTicket) => requestFenceRef.current.isCurrent(
+      ticket,
+      requestScopeRef.current.handle,
+      requestScopeRef.current.epoch,
+    ),
+    [],
+  );
+  const claimRequestBusy = useCallback((ticket: ComposerRequestTicket) => {
+    if (!requestFenceRef.current.claimBusy(ticket)) return false;
+    setIsLoading(true);
+    return true;
+  }, []);
+  const releaseRequestBusy = useCallback((ticket: ComposerRequestTicket) => {
+    if (!requestFenceRef.current.releaseBusy(ticket)) return false;
+    setIsLoading(false);
+    return true;
+  }, []);
+  const abortActiveRequest = useCallback(() => {
+    if (requestFenceRef.current.invalidate()) setIsLoading(false);
+  }, []);
 
   // Page awareness — derive human-readable page name from current route.
   // Tracked in a ref so the latest value is always included in outgoing
@@ -116,7 +271,6 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     mkMessage({ role: "assistant", content: playbook.persona.greeting }),
   ]);
-  const [input, setInput] = useState("");
   const [dictationActivity, setDictationActivity] = useState({
     epoch: dictationScopeEpoch,
     active: false,
@@ -126,7 +280,6 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const handleDictationActivity = useCallback((active: boolean) => {
     setDictationActivity({ epoch: dictationScopeEpoch, active });
   }, [dictationScopeEpoch]);
-  const [isLoading, setIsLoading] = useState(false);
   // Paige's live reasoning trace (#95/#125) — the "watch her work" steps she streams.
   const [steps, setSteps] = useState<PaigeStep[]>([]);
   // #11 — true once the first answer token arrives this turn (label flips Thinking→Writing).
@@ -165,10 +318,14 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       return;
     }
 
+    const openingScope = requestScopeRef.current;
+    if (!openingScope.handle) return;
     contextInjectedRef.current = true;
     (async () => {
+      const requestTicket = requestFenceRef.current.begin(openingScope.handle, openingScope.epoch);
       try {
         const { data: { session: freshSession } } = await supabase.auth.getSession();
+        if (!ticketAccepted(requestTicket)) return;
         if (!freshSession) return;
 
         // Detect fresh sign-in: auth session created within the last 2 minutes.
@@ -180,7 +337,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         const sessionAgeSec = expiresAt ? Math.max(0, 3600 - (expiresAt - nowSec)) : 9999;
         const freshSignIn = sessionAgeSec < 120;
 
-        setIsLoading(true);
+        if (!claimRequestBusy(requestTicket)) return;
         const firstName = (user.user_metadata?.full_name || "").split(" ")[0] || undefined;
         const pageInstruction = getPageOpeningInstruction(currentPageRef.current, firstName, freshSignIn);
         const greetMessages = [{ role: "user" as const, content: pageInstruction }];
@@ -203,10 +360,12 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
               ...(clientId ? { clientId } : {}),
               ...getUserClock(),
             }),
+            signal: requestTicket.signal,
           }
         );
 
-        if (!response.ok) { setIsLoading(false); return; }
+        if (!ticketAccepted(requestTicket)) return;
+        if (!response.ok) { releaseRequestBusy(requestTicket); return; }
 
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
@@ -214,6 +373,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
         while (reader) {
           const { done, value } = await reader.read();
+          if (!ticketAccepted(requestTicket)) return;
           if (done) break;
           const chunk = decoder.decode(value);
           for (const line of chunk.split("\n")) {
@@ -228,15 +388,29 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
           }
         }
 
+        if (!ticketAccepted(requestTicket)) return;
         if (greeting.trim()) {
           setMessages([mkMessage({ role: "assistant", content: greeting.trim() })]);
         }
-        setIsLoading(false);
+        releaseRequestBusy(requestTicket);
       } catch {
-        setIsLoading(false);
+        if (!ticketAccepted(requestTicket)) return;
+        releaseRequestBusy(requestTicket);
       }
     })();
-  }, [clientId, contextBlock, contextLoading, hasCreditData, messages.length, user, buildContextWithPage]);
+  }, [
+    buildContextWithPage,
+    claimRequestBusy,
+    clientId,
+    contextBlock,
+    contextLoading,
+    hasCreditData,
+    messages.length,
+    playbook.persona.greeting,
+    releaseRequestBusy,
+    ticketAccepted,
+    user,
+  ]);
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
@@ -263,10 +437,46 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   useBeforeUnloadGuard(input.trim().length > 0 || attachedDoc !== null || isProcessingFile || isLoading);
 
   useEffect(() => {
+    const requestFence = requestFenceRef.current;
+    return () => { requestFence.invalidate(); };
+  }, []);
+
+  useEffect(() => {
+    if (acceptedAppComposerScopeKeyRef.current === appComposerScopeKey) return;
+    abortActiveRequest();
+    acceptedAppComposerScopeKeyRef.current = appComposerScopeKey;
+    acceptedDisplayedIdentityRef.current = createComposerScopeIdentity({
+      tenantId: resolvedDisplayedTenantId,
+      userId: isSignedIn ? user.id : null,
+      focusedClientId: clientId,
+      focusedBusinessMissionId: null,
+    });
+    acceptedConversationRef.current = initialComposerConversation(false, newConversationId);
+    contextInjectedRef.current = false;
+    declinedFieldsRef.current.clear();
+    resetSession();
+    setAttachedDoc(null);
+    setMessages([mkMessage({ role: "assistant", content: playbook.persona.greeting })]);
+    setSteps([]);
+    setWritingPhase(false);
+    forceComposerScopeReadback((revision) => revision + 1);
+  }, [
+    abortActiveRequest,
+    appComposerScopeKey,
+    clientId,
+    isSignedIn,
+    newConversationId,
+    playbook.persona.greeting,
+    resolvedDisplayedTenantId,
+    resetSession,
+    setAttachedDoc,
+    user.id,
+  ]);
+
+  useEffect(() => {
     const handleFactoryReset = () => {
       contextInjectedRef.current = false;
       resetSession();
-      setInput("");
       transcriptScrollRef.current?.jumpToBottom("auto");
       setMessages([mkMessage({ role: "assistant", content: playbook.persona.greeting })]);
     };
@@ -350,9 +560,14 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   };
 
   const handleSend = async (overrideInput?: string) => {
-    if (dictationActive) return;
+    const originDraft = composerScope.writableHandle;
+    if (dictationActive || !originDraft) return;
     const messageText = overrideInput || input;
-    if ((!messageText.trim() && !attachedDoc) || isLoading) return;
+    if (!composerScope.writable || (!messageText.trim() && !attachedDoc)) return;
+    const requestScope = requestScopeRef.current;
+    if (!composerDraftHandlesMatch(originDraft, requestScope.handle)) return;
+    const requestTicket = requestFenceRef.current.begin(originDraft, requestScope.epoch);
+    if (!claimRequestBusy(requestTicket)) return;
 
     resetInactivityTimer();
 
@@ -360,7 +575,6 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     const isFirstUserMessage = messages.every((m) => m.role !== "user");
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
-    setInput("");
 
     if (isFirstUserMessage) {
       void trackEvent("paige_session_start", "engagement", { page: currentPageRef.current });
@@ -378,15 +592,15 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
     const currentDoc = attachedDoc;
     setAttachedDoc(null);
-    setIsLoading(true);
 
     try {
       const { data: { session: freshSession } } = await supabase.auth.getSession();
+      if (!ticketAccepted(requestTicket)) return;
 
       if (!freshSession) {
         toast({ title: "Session Expired", description: "Please sign in again.", variant: "destructive" });
         setMessages(messages);
-        setIsLoading(false);
+        releaseRequestBusy(requestTicket);
         return;
       }
 
@@ -421,22 +635,26 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             Authorization: `Bearer ${freshSession.access_token}`,
           },
           body: JSON.stringify(payload),
+          signal: requestTicket.signal,
         }
       );
+
+      if (!ticketAccepted(requestTicket)) return;
 
       if (!response.ok) {
         if (response.status === 429) {
           toast({ title: "Rate Limit Reached", description: "Please wait a moment.", variant: "destructive" });
           setMessages(messages);
-          setIsLoading(false);
+          releaseRequestBusy(requestTicket);
           return;
         }
         // #587 — surface the structured { code, reason, recommendation } from the server (e.g. a
         // size/page limit) rather than a generic "Failed to send message" toast.
         const chatErr = await parsePaigeChatError(response);
+        if (!ticketAccepted(requestTicket)) return;
         toast({ title: chatErr.title, description: chatErr.description, variant: "destructive" });
         setMessages(messages);
-        setIsLoading(false);
+        releaseRequestBusy(requestTicket);
         return;
       }
 
@@ -448,12 +666,14 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       let syncStatus: SyncStatus | null = null;
       const assistantId = safeMessageId();
 
+      if (!ticketAccepted(requestTicket)) return;
       setMessages([...newMessages, mkMessage({ id: assistantId, role: "assistant", content: "" })]);
       setSteps([]); // clear last turn's reasoning as this one starts
       setWritingPhase(false); // #11 — back to "Thinking…" until the first token this turn
 
       while (reader && !streamDone) {
         const { done, value } = await reader.read();
+        if (!ticketAccepted(requestTicket)) return;
         if (done) break;
 
         textBuffer += decoder.decode(value, { stream: true });
@@ -472,6 +692,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
           try {
             const parsed = JSON.parse(jsonStr);
+            if (!ticketAccepted(requestTicket)) return;
             if (parsed.paige_step) {
               // Live "watch her work" frame — upsert into the reasoning strip.
               setSteps((prev) => upsertStep(prev, parsed.paige_step as PaigeStep));
@@ -494,6 +715,11 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             break;
           }
         }
+      }
+
+      if (!ticketAccepted(requestTicket)) return;
+      if (!streamDone) {
+        throw new Error("PAIGE response stream ended before [DONE].");
       }
 
       if (currentDoc && assistantMessage.length > 100) {
@@ -545,12 +771,21 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         }
       }
 
-      setIsLoading(false);
+      if (shouldClearComposerDraft({
+        terminalDone: streamDone,
+        currentDraft: readComposerDraft(originDraft),
+        submittedText: messageText,
+      })) {
+        clearComposerDraft(originDraft);
+      }
+
+      releaseRequestBusy(requestTicket);
     } catch (error) {
+      if (!ticketAccepted(requestTicket)) return;
       console.error("Chat error:", error);
       toast({ title: "Error", description: "Failed to send message. Please try again.", variant: "destructive" });
       setMessages(messages);
-      setIsLoading(false);
+      releaseRequestBusy(requestTicket);
     }
   };
 
@@ -686,7 +921,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             <button
               key={action.label}
               onClick={() => handleSend(action.prompt)}
-              disabled={isLoading || dictationActive}
+              disabled={!composerScope.writable || dictationActive}
               className="text-[10px] sm:text-[11px] px-2.5 py-1 rounded-full border border-border bg-background hover:bg-accent/10 hover:border-accent/40 text-muted-foreground hover:text-gold-dark transition-colors disabled:opacity-50 whitespace-nowrap flex-shrink-0"
             >
               {action.label}
@@ -703,8 +938,13 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
       {/* Input area — safe area padding on mobile */}
       <div className="p-2 sm:p-3 border-t border-border space-y-2 flex-shrink-0 pb-[env(safe-area-inset-bottom,8px)]">
+        {!composerScope.writable && !isLoading && composerUnavailableReason && (
+          <p role="status" className="text-xs text-muted-foreground">
+            {composerUnavailableReason}
+          </p>
+        )}
         <div className="flex gap-1.5 sm:gap-2 items-center">
-          <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading} title="Attach a document (PDF)">
+          <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={!composerScope.writable} title="Attach a document (PDF)">
             <Paperclip className="w-4 h-4" />
           </Button>
           <Textarea
@@ -715,21 +955,29 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             placeholder={attachedDoc ? "Add a message or send document... (Shift+Enter for new line)" : "Ask Paige anything... (Shift+Enter for new line)"}
             rows={1}
             className="flex-1 text-sm min-h-[40px] max-h-[200px] resize-none py-2"
-            disabled={isLoading}
+            disabled={!composerScope.writable}
           />
           {/* Tap-to-dictate — neutral/indigo mic (never gold; Send owns the act, §11).
               Dictated words append into the composer for the client to edit + send. */}
           <DictationMicButton
             scopeEpoch={dictationScopeEpoch}
             composerRef={inputRef}
-            onText={(seg, insertionPoint) => setInput((prev) => appendDictation(prev, seg, insertionPoint))}
+            onText={(seg, insertionPoint) => {
+              const captured = composerScope.writableHandle;
+              if (!captured || !acceptComposerDelivery(captured, composerScopeRef.current)) return;
+              setInput((prev) => appendDictation(prev, seg, insertionPoint));
+            }}
             onActiveChange={handleDictationActivity}
-            onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
-            disabled={isLoading}
+            onError={(msg) => {
+              const captured = composerScope.writableHandle;
+              if (!captured || !acceptComposerDelivery(captured, composerScopeRef.current)) return;
+              toast({ title: "Voice typing", description: msg, variant: "destructive" });
+            }}
+            disabled={!composerScope.writable}
             variant="secondary"
             className={`flex-shrink-0 ${isMobile ? "h-10 w-10" : "h-9 w-9"}`}
           />
-          <Button onClick={() => handleSend()} disabled={isLoading || dictationActive || (!input.trim() && !attachedDoc)} className="bg-gradient-gold hover:opacity-90 h-10 w-10" size="icon">
+          <Button onClick={() => handleSend()} disabled={!composerScope.writable || dictationActive || (!input.trim() && !attachedDoc)} className="bg-gradient-gold hover:opacity-90 h-10 w-10" size="icon">
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>
         </div>
