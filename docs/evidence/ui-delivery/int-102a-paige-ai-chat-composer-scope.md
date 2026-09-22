@@ -7,7 +7,7 @@ MATERIAL_FLOW_CHANGE: YES: Unsent typed or dictated text now belongs to its tena
 FLOW_PROTOTYPE: PASS: The owner-approved INT-102 state-machine contract and accepted 2026-09-22 split plan are represented by the deterministic transition table in src/lib/paigeComposerScopeState.test.ts and the three-mount interaction prototype in src/components/dashboard/PaigeAIChat.composerScope.test.tsx; the tests were written and run failing-first before implementation.
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: A signed-in tenant workspace, tenant-less platform desk, or Solo user can write in the displayed PAIGE conversation, switch context without losing or leaking an unsent draft, return to restore it, and send only from the fully resolved displayed scope.
 VISUAL_DIRECTION: PASS: Existing PaigeAIChat composer geometry, controls, labels, status treatment, and design tokens are preserved. This is state ownership and request fencing only; no visual design changed.
-AUTOMATED_EVIDENCE: PASS: Failing-first on current main produced 16 failures and 8 passes. The restored focused suite passes 76/76 across the pure resolver, PaigeAIChat integration, PaigeAIChat-only dictation assertions, and Solo contract. A wider 15-file affected-family run passed 210/211; its sole failure is a current-main brittle source-text assertion in unchanged TenantCommandCenterShell.ownership.test.tsx, separately handed off under the found-bug rule.
+AUTOMATED_EVIDENCE: PASS: Failing-first on current main produced 16 failures and 8 passes. Codex review's controlled-parent load-failure case also failed first (thread-b remained selected instead of restoring thread-a). The restored focused suite passes 77/77 across the pure resolver, PaigeAIChat integration, PaigeAIChat-only dictation assertions, and Solo contract. A wider 15-file affected-family run passed 210/211; its sole failure is a current-main brittle source-text assertion in unchanged TenantCommandCenterShell.ownership.test.tsx, separately handed off under the found-bug rule.
 STATIC_EVIDENCE: PASS: Scoped ESLint is clean; TypeScript ratchet reports baseline 12/current 12; production build succeeds with 5,699 modules; git diff --check passes; Impeccable context classified the work SCOPED_EXISTING_ALLOWED and its one final detector pass returned [].
 RENDERED_EVIDENCE: UNVERIFIED: No authenticated or browser-rendered frame was captured for this branch. The diff changes no classes, layout, copy, or control structure, so no screenshot is presented as proof of the new state behavior.
 BEHAVIORAL_EVIDENCE: PASS: React/jsdom drives the real PaigeAIChat composer through initial-history and confirmed-empty states, tenant workspace, tenant-less platform desk, Solo, agency/sub-account switches, client/mission/clear-focus switches, per-thread draft restoration, load failure, lazy thread migration, Retry, request abort, stale dictation, and Live thread creation. This is component behavior only; authenticated execution is separately UNVERIFIED.
@@ -35,7 +35,7 @@ ACCEPTANCE_CRITERIA: In tenant workspace, tenant-less platform, and Solo mounts,
 MOTION_PURPOSE: NONE: no motion change.
 PROTECTED_SEAMS: Tested: PaigeAIChat tenant workspace, tenant-less platform desk, Solo, thread hydration, in-session draft store, dictation delivery, request/busy ownership, Retry clearing, lazy New-chat migration, and basic Live post-await adoption fence. Unaffected and excluded: PaigeChat/AppShell tenant and identity resolution/send, ConversationsRichComposer, MessageAudioButton, providers, supabase, database, entitlements, INT-115, and INT-126's transition-generation ABA follow-up.
 
-INTERNAL_BUILD_IDENTITY: 9f6cbd8d5da11efa36ea4218839da57c40cc0d35; deployment=none-pre-ready; environment=local; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=failing-first+76-focused+210-of-211-broad+three-mutations+eslint+tsc-ratchet+build+impeccable
+INTERNAL_BUILD_IDENTITY: b098b2a9db5e04b91ff2e8eedd34d0a4c109ded6; synced-base=9bf9f53263c814b7374ab70afa4104d1f0d771da; deployment=none-pre-ready; environment=local; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=failing-first+77-focused+210-of-211-broad+three-mutations+eslint+tsc-ratchet+build+impeccable
 RELEASE_CHANNEL: development: Draft PR only; the live-path gate requires exact-head CI and Codex review, followed by a coordinator ruling before Ready
 RELEASE_CLASSIFICATION: patch: restores per-conversation in-session draft ownership and complete-scope async fencing in the PaigeAIChat family without visual, provider, schema, or entitlement change
 CUSTOMER_RELEASE_IDENTITY: none: internal PAIGE Chat state-isolation repair pending coordinator release ruling
@@ -58,16 +58,17 @@ The complete identity is tenant + effective user + focused client or explicit no
 
 ## Evidence index
 
-- Base/current main: 2546ceb5be44cb8f7addbb70db4bf35b94e399ee.
-- Implementation identity: 9f6cbd8d5da11efa36ea4218839da57c40cc0d35.
+- Base/current main: 9bf9f53263c814b7374ab70afa4104d1f0d771da (original authorized baseline: 2546ceb5be44cb8f7addbb70db4bf35b94e399ee; both later main syncs were conflict-free).
+- Implementation identity: b098b2a9db5e04b91ff2e8eedd34d0a4c109ded6.
 - Failing-first: `npx vitest run src/components/dashboard/PaigeAIChat.composerScope.test.tsx src/components/voice/DictationComposer.contract.test.ts --reporter=verbose` → 16 failed, 8 passed on current-main behavior before implementation.
-- Focused proof: resolver + PaigeAIChat integration + dictation contract + Solo contract → 76/76.
+- Focused proof: resolver + PaigeAIChat integration + dictation contract + Solo contract → 77/77.
 - Wider affected-family proof: 15 files → 210/211; sole failure is unchanged current-main source assertion at src/components/tenant-shell/TenantCommandCenterShell.ownership.test.tsx:224. Both that test and src/solo/SoloApp.tsx are byte-unchanged in this branch.
 - Mutation 1: remove client/mission from the full handle comparison → 1 failed, 46 passed; full-scope delivery test rejects the mutation.
 - Mutation 2: remove the request-handle comparison → 1 failed, 46 passed; stale tenant delivery is accepted and the fence test fails.
 - Mutation 3: remove the Live post-await handle/epoch check → all five tenant/effective-user/client/mission/clear-focus orphan-adoption rows fail.
-- Restored proof: focused 76/76; scoped ESLint clean; TypeScript ratchet 12/12; production build 5,699 modules; Impeccable detector [].
+- Review-fix failing-first: controlled parent remained on thread-b after B hydration failed; the regression expected restored thread-a and failed before the repair.
+- Restored proof: focused 77/77; scoped ESLint clean; TypeScript ratchet 12/12; production build 5,699 modules; Impeccable detector [].
 
 ## Review and limitations
 
-The requested exact-head Codex review and hosted CI are the remaining pre-Ready gates and will be recorded on the PR thread; no review result is claimed in this build-time record. No authenticated or browser-rendered runtime was driven. The test-only current-main assertion failure is outside this diff and will be collision-searched and logged under the found-bug handoff rule. Section 4 of the Master Reference is intentionally not updated before merge, per the coordinator ruling.
+The first exact-head Codex review found one P2 controlled-parent recovery defect; it was fixed failing-first and individually dispositioned. Fresh exact-head Codex review and hosted CI remain the pre-Ready gates and will be recorded on the PR thread. No authenticated or browser-rendered runtime was driven. The test-only current-main assertion failure is outside this diff and is logged as #1330 under the found-bug handoff rule. Section 4 of the Master Reference is intentionally not updated before merge, per the coordinator ruling.
