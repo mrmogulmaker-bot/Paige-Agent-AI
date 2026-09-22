@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 export async function load(url, context, nextLoad) {
-  if (url.startsWith("file://") && url.endsWith(".ts")) {
+  if (url.startsWith("file://") && (url.endsWith(".ts") || url.endsWith(".mts"))) {
     const filePath = fileURLToPath(url);
     const source = await readFile(filePath, "utf8");
     const result = ts.transpileModule(source, {

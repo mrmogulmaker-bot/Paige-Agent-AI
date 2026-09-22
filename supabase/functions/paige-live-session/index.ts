@@ -3,6 +3,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
+import { issueRelayTicket } from "../_shared/paige-live-ticket.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,6 +20,13 @@ const requestSchema = z.discriminatedUnion("action", [
     thread_id: z.string().uuid(),
     context_epoch: z.string().min(1).max(512),
     entry_mode: z.enum(["embedded", "existing-popout", "requested-popout"]),
+  }),
+  z.object({
+    action: z.literal("relay"),
+    thread_id: z.string().uuid(),
+    context_epoch: z.string().min(1).max(512),
+    entry_mode: z.enum(["embedded", "existing-popout", "requested-popout"]),
+    session_id: z.string().uuid().optional(),
   }),
   z.object({
     action: z.literal("transition"),
@@ -76,6 +84,35 @@ serve(async (req: Request) => {
     return json({ code: "workspace_unresolved" }, 500);
   }
   if (!thread) return (await endStaleSession()) ?? json({ code: "thread_scope_mismatch" }, 403);
+
+  if (parsed.data.action === "relay") {
+    // This is a first-party ticket, not a provider token. Existing sessions
+    // supply a fresh ticket on reconnect; replacing a pending digest revokes it.
+    const ticket = await issueRelayTicket();
+    const scoped = parsed.data.session_id
+      ? await admin.from("paige_live_sessions")
+        .update({ provider_session_ref: ticket.storedDigest, state: "reconnecting", updated_at: new Date().toISOString() })
+        .eq("id", parsed.data.session_id).eq("tenant_id", tenantId)
+        .eq("actor_user_id", user.id).eq("thread_id", parsed.data.thread_id)
+        .eq("context_epoch", parsed.data.context_epoch).neq("state", "ended")
+        .select("id").maybeSingle()
+      : await admin.from("paige_live_sessions")
+        .insert({
+          tenant_id: tenantId, actor_user_id: user.id, thread_id: parsed.data.thread_id,
+          context_epoch: parsed.data.context_epoch, entry_mode: parsed.data.entry_mode,
+          state: "connecting", availability: "PROOF OWED",
+          provider_session_ref: ticket.storedDigest,
+        }).select("id").single();
+    if (scoped.error || !scoped.data) {
+      console.error("[paige-live-session] relay ticket refused", { code: scoped.error?.code });
+      return json({ code: "relay_ticket_unavailable", explanation: "Paige could not secure this conversation. Try again or continue in chat." }, 409);
+    }
+    return json({
+      ok: true, session_id: scoped.data.id, availability: "PROOF OWED",
+      code: "relay_ticket_issued", ticket: ticket.value, ticket_expires_at: ticket.expiresAt,
+      explanation: "Paige is checking the live connection. Your microphone has not started.",
+    });
+  }
 
   if (parsed.data.action === "transition") {
     const { data, error } = await admin.rpc("paige_live_session_transition_internal", {
