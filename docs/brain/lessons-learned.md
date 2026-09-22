@@ -6,6 +6,52 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## A proof that stands up its own preconditions proves the RULES, never the REACHABILITY (2026-09-22)
+
+- **Symptom.** INT-163's agreements engine shipped with a 19-negative database integrity proof
+  asserting the exact SQLSTATE of every refusal, 36 Deno tests, and a green typecheck — all exit 0.
+  The independent review of the pushed diff then found that **nothing in the repository ever inserted
+  a row into `paige_agreement_signers`**. `save_paige_agreement` created the agreement alone, and the
+  send path and the link-minter both refused with *"add a signer"* on every agreement the product
+  could produce. Draft → send → sign → seal could not be exercised **once, by anybody**.
+- **Root cause.** Every proof inserted its own fixture signers, because a test needs a signer to test
+  a signer rule. So the suite exercised the trigger logic perfectly, on rows no production path could
+  create. The missing INSERT was invisible from inside the suite by construction: nothing in it ever
+  had to ask where a signer comes from. Three sibling defects hid in the same blind spot — sealing
+  demanded a stored PDF the approved page's own freeze path never produces, a resend wrote a status
+  its own forward-only trigger refuses, and the tenant half of the retained-record obligation had no
+  delivery path at all while its email said otherwise.
+- **Rule.** Every integrity/proof suite carries at least one control that **drives the product's own
+  create path and counts what comes out** — not a fixture, the real writer the UI or the tool calls.
+  Name it, assert on it, and make the runner fail loudly when it returns zero. Corollary, and it is
+  the §70 test in a different register: *before citing a green suite as evidence, ask what it had to
+  set up by hand, because that is exactly the part nobody is testing.* `N1` in
+  `scripts/agreements/signer-seam-proof.sql` is the worked example — it calls `save_paige_agreement`,
+  counts the signers that exist afterwards, and then issues the link that was previously impossible.
+
+---
+
+## A declared tier flag with zero call sites is not a control, and a ledger that records it as live is lying twice (2026-09-22)
+
+- **Symptom.** `agreement_signing` was declared in `tierFeatures.ts` as a §61 exception locking the
+  capability away from a pure Agency, documented as a deliberate exception, and recorded in
+  `docs/doctrine/tier-matrix.md` as **LIVE on merge**. A repo-wide grep found the identifier at three
+  declaration sites and two doc lines — **zero `hasFeature` call sites, no render gate, no server
+  check on most paths.** The same ledger table then showed `✓` for Agency in four tool rows, three
+  paragraphs under the row saying Agency was excluded.
+- **Root cause.** Declaring a flag feels like enforcing one, and the ledger recorded the declaration
+  rather than the behaviour. Nothing mechanical connected the two, so both drifted independently and
+  the table ended up giving two different answers to one question.
+- **Rule.** A tier decision is enforced where it cannot be bypassed — for anything with a database
+  writer, that is the database (a trigger or an in-body gate), because the RPC can always be called
+  directly and the service role bypasses RLS entirely. The `tierFeatures.ts` declaration stays as the
+  question a surface asks; it is never the answer. And §60's honesty clause is a real obligation:
+  **state the enforcement layer in the declaration comment**, so the next reader does not have to
+  grep for call sites to discover there are none. When correcting a ledger row, correct every row
+  that answers the same question in the same table.
+
+---
+
 ## A headless/structural comp must mock the REAL shell chrome, or it renders the component in the wrong responsive mode and misses container-collapse bugs (2026-09-21)
 
 - **Symptom.** On the Mind orb-hero + right-rail layout (#1314), the structural comp harness reported 1366×768 PAIGE-open as a ~956px container → 2-column, and every comp looked clean. Codex's exact-head review then found a **P1**: at 1366×768 PAIGE-open the real container is ~830px → the ≤900 stacked layout fires, and a short-wide `@media` `grid-template-rows` override left the stacked 3-area grid with only 2 row sizes → the rail became an unbounded implicit track that clipped the orb/list. The comp missed it entirely.
