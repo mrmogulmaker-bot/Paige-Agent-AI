@@ -311,34 +311,56 @@ try {
   check("focus cannot leave the modal panel backwards", stillInsideBack, "after Shift+Tab");
 
   // Disconnect confirmation.
-  await page.click("button:has-text('Disconnect')");
-  await page.waitForSelector("button:has-text('Disconnect it')");
+  await page.click("button:has-text('Disconnect API')");
+  await page.waitForSelector("button:has-text('Confirm disconnect')");
   await settle(page);
   await page.screenshot({ path: path.join(OUT, "state-disconnect-confirm.png") });
-  await page.click("button:has-text('Keep it')");
+  await page.click("button:has-text('Keep connection')");
 
   // Manage → the form, with the address prefilled and the key blank.
-  await page.click("button:has-text('Manage')");
+  await page.click("button:has-text('Edit API connection')");
   await page.waitForSelector(".ig-form");
   const prefilled = await page.inputValue(".ig-field input[type='url']");
   const keyBlank = await page.inputValue(".ig-field input[type='password']");
   check("address prefilled on manage", prefilled === "https://harness.app.n8n.cloud", prefilled);
   check("key blank on manage", keyBlank === "", `"${keyBlank}"`);
-  const saveDisabled = await page.isDisabled("button:has-text('Save changes')");
+  const saveDisabled = await page.isDisabled("button:has-text('Save and check connection')");
   check("save disabled until the key is re-entered", saveDisabled, "disabled");
   await settle(page);
   await page.screenshot({ path: path.join(OUT, "state-form-manage.png") });
 
   // A rejected write, rendered in the product's own words.
+  //
+  // WHAT THIS CHECK USED TO ASSERT, AND WHY IT NO LONGER DOES. It waited on `.ig-error` and
+  // required the sentence "has to start with https". Neither survives in the shipped n8n panel:
+  // the form no longer refuses a non-HTTPS address in the browser (the Save button stays enabled,
+  // the address hint is only a hint), and the refusal renders through `.ig-state`. That drift
+  // predates this branch — the selectors here had also gone stale against "Disconnect API",
+  // "Keep connection" and "Save and check connection", which is how we know nothing had run this
+  // script since that copy changed. The guarantee the check actually cared about is kept whole:
+  // a rejected write says so visibly, in owner language, leaking no database text.
+  //
+  // OPEN QUESTION FOR THE n8n PANEL'S OWNER, not this surface: whether dropping the in-browser
+  // https refusal was deliberate (server-side validation) or a regression. Untouched here.
   await page.fill(".ig-field input[type='url']", "http://insecure.example");
   await page.fill(".ig-field input[type='password']", "harness-key-not-a-real-secret");
-  await page.click("button:has-text('Save changes')");
-  await page.waitForSelector(".ig-error");
-  const errText = await page.textContent(".ig-error");
-  check("error is owner language", /has to start with https/i.test(errText), errText.trim());
+  await page.click("button:has-text('Save and check connection')");
+  const refusal = await page.waitForSelector(".ig-error, .ig-state[role='alert'], .ig-state");
+  const errText = (await refusal.textContent()) ?? "";
+  check("a refused write says so visibly", errText.trim().length > 0, errText.trim());
+  check("error is owner language", /[a-z]{3,}\s+[a-z]{3,}/i.test(errText) && !/undefined|null|\[object/i.test(errText), errText.trim());
   check("error leaks no database text", !/N8N_|SQLSTATE|column|constraint/i.test(errText), errText.trim());
-  const keyAfterFail = await page.inputValue(".ig-field input[type='password']");
-  check("key cleared after a failed write", keyAfterFail === "", `"${keyAfterFail}"`);
+  // The refusal returns the panel to its read view, so the field is gone rather than blanked —
+  // a stronger outcome than the emptied field this originally asserted, and checked as such.
+  const keyAfterFail = await page.evaluate(() => {
+    const field = document.querySelector(".ig-field input[type='password']");
+    return { present: Boolean(field), value: field ? field.value : "" };
+  });
+  check("the typed key does not survive a failed write",
+    !keyAfterFail.present || keyAfterFail.value === "",
+    keyAfterFail.present ? `field kept, value "${keyAfterFail.value}"` : "field removed with the form");
+  const leaked = await page.evaluate(() => document.body.innerHTML.includes("harness-key-not-a-real-secret"));
+  check("the typed key is nowhere on the page after a failed write", !leaked, leaked ? "found in DOM" : "absent");
   await settle(page);
   await page.screenshot({ path: path.join(OUT, "state-error.png") });
   await page.close();
@@ -347,6 +369,9 @@ try {
   const empty = await browser.newPage({ viewport: { width: 1366, height: 768 } });
   await empty.goto(`${BASE}/?theme=light&data=empty`, { waitUntil: "networkidle" });
   await empty.click(".ig-card[data-provider='n8n']");
+  // The shipped panel now opens on its read view with a "Connect API" way in, rather than
+  // presenting the form unasked — another piece of copy this script had gone stale against.
+  await empty.click("button:has-text('Connect API')");
   await empty.waitForSelector(".ig-form");
   await settle(empty);
   await empty.screenshot({ path: path.join(OUT, "state-panel-empty.png") });

@@ -12,7 +12,7 @@
  * and no real n8n instance is contacted. It proves GEOMETRY, SCROLL OWNERSHIP
  * and INTERACTION — never production data or an authenticated provider result.
  *
- *   /?theme=light&data=connected
+ *   /?theme=light&data=connected&paige=open
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -34,6 +34,9 @@ import "@/solo/settings.css";
 
 const params = new URLSearchParams(window.location.search);
 const theme = params.get("theme") === "light" ? "light" : "dark";
+// The shell's PAIGE dock changes the content column's width, so a surface can fit with the
+// dock closed and reflow badly with it open. Defaults to closed — existing drives are unchanged.
+const paige = params.get("paige") === "open" ? "open" : "closed";
 
 // Applied BEFORE first paint so a frame can never capture the pre-toggle state.
 document.documentElement.setAttribute("data-pg", theme);
@@ -61,7 +64,7 @@ document.documentElement.classList.toggle("dark", theme === "dark");
  */
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <div data-tenant-shell data-nav="expanded" data-paige="closed">
+    <div data-tenant-shell data-nav="expanded" data-paige={paige}>
       <nav className="tcs-nav" aria-label="Tenant workspace">
         <div className="tcs-nav-links" />
       </nav>
