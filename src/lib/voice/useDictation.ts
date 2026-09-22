@@ -28,6 +28,7 @@
  *   server → client (text, JSON):
  *     { "type": "ready" }                                    // Deepgram open
  *     { "type": "transcript", "text": string, "is_final": boolean }
+ *     { "type": "done" }                                     // terminal success receipt after STOP
  *     { "type": "error", "code": string, "message": string } // socket closes after
  *
  * §13 honesty: this hook reports only what actually happened. A denied mic, a
@@ -162,6 +163,7 @@ type DictationRun = {
   generation: number;
   scopeEpoch: string | null;
   released: boolean;
+  doneSeen: boolean;
   providerReady: boolean;
   recorder: AudioRecorder | null;
   socket: WebSocket | null;
@@ -292,6 +294,7 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
       generation: ++generationRef.current,
       scopeEpoch: scopeEpochRef.current,
       released: false,
+      doneSeen: false,
       providerReady: false,
       recorder: null,
       socket: null,
@@ -375,9 +378,18 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
           // for debugging, show a plain sentence.
           if (msg.message) console.warn("[dictation] server error:", msg.message);
           const unavailable = msg.code === "not_configured";
+          const finalizationMessage = msg.code === "stt_finalize_timeout"
+            ? "Voice typing took too long to finish. Please try again."
+            : msg.code === "stt_finalize_unavailable" || msg.code === "stt_finalize_failed"
+              ? "Voice typing stopped before it could finish. Please try again."
+              : null;
           failRun(run, unavailable ? "unavailable" : "provider-failure", unavailable
             ? "Voice typing isn't available right now."
-            : "Voice typing hit a snag. Please try again.");
+            : finalizationMessage ?? "Voice typing hit a snag. Please try again.");
+        } else if (msg.type === "done") {
+          if (!run.released) return;
+          run.doneSeen = true;
+          finishRun(run);
         } else if (msg.type === "ready") {
           run.providerReady = true;
           // A short utterance can finish while the provider is still opening.
@@ -397,8 +409,13 @@ export function useDictation({ onText, onError, scopeEpoch = null }: UseDictatio
 
       ws.onclose = (ev) => {
         if (!isCurrent(run)) return;
-        if (!ev.wasClean || !run.released) failRun(run, "provider-failure", "Voice typing disconnected. Please try again.");
-        else finishRun(run);
+        console.warn("[dictation] socket closed without done", {
+          code: ev.code,
+          reason: ev.reason,
+          released: run.released,
+          doneSeen: run.doneSeen,
+        });
+        failRun(run, "provider-failure", "Voice typing disconnected. Please try again.");
       };
     } catch (err) {
       if (!isCurrent(run)) return;
