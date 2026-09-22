@@ -274,6 +274,42 @@ describe("ComposerScopeState delivery and completion rules", () => {
     expect(readComposerDraft(to)).toBe("");
   });
 
+  it("deduplicates identical drafts when a focused draft reconciles into the visible thread", () => {
+    const conversationId = "focus-identical-thread";
+    const focused = {
+      ...identity("tenant-a", "user-a", "client-a"),
+      conversationId,
+    };
+    const visible = { ...identity(), conversationId };
+    clearComposerDraft(focused);
+    clearComposerDraft(visible);
+    writeComposerDraft(focused, "same retained words");
+    writeComposerDraft(visible, "same retained words");
+
+    moveComposerDraft(focused, visible);
+
+    expect(readComposerDraft(visible)).toBe("same retained words");
+    expect(readComposerDraft(focused)).toBe("");
+  });
+
+  it("preserves both drafts when an older focused draft reconciles into a newer visible draft", () => {
+    const conversationId = "focus-collision-thread";
+    const focused = {
+      ...identity("tenant-a", "user-a", "client-a"),
+      conversationId,
+    };
+    const visible = { ...identity(), conversationId };
+    clearComposerDraft(focused);
+    clearComposerDraft(visible);
+    writeComposerDraft(focused, "older focused-client draft");
+    writeComposerDraft(visible, "newer no-focus draft");
+
+    moveComposerDraft(focused, visible);
+
+    expect(readComposerDraft(visible)).toBe("newer no-focus draft");
+    expect(readComposerDraft(focused)).toBe("older focused-client draft");
+  });
+
   it("keeps client focus, mission focus, and explicit no-focus drafts in separate slots", () => {
     const conversationId = "focus-isolation-thread";
     const noFocus = { ...identity(), conversationId };

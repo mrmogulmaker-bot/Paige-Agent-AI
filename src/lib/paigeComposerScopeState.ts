@@ -419,6 +419,16 @@ export function moveComposerDraft(from: ComposerDraftHandle, to: ComposerDraftHa
 
   const value = drafts.get(fromKey);
   if (value === undefined) return;
+
+  const destinationValue = drafts.get(toKey);
+  if (destinationValue !== undefined) {
+    if (destinationValue === value) {
+      drafts.delete(fromKey);
+      emit(fromKey);
+    }
+    return;
+  }
+
   drafts.delete(fromKey);
   drafts.set(toKey, value);
   emit(fromKey);
