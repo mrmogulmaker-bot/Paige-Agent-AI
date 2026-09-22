@@ -35,7 +35,7 @@ ACCEPTANCE_CRITERIA: In tenant workspace, tenant-less platform, and Solo mounts,
 MOTION_PURPOSE: NONE: no motion change.
 PROTECTED_SEAMS: Tested: PaigeAIChat tenant workspace, tenant-less platform desk, Solo, thread hydration, in-session draft store, dictation delivery, request/busy ownership, Retry clearing, lazy New-chat migration, and basic Live post-await adoption fence. Unaffected and excluded: PaigeChat/AppShell tenant and identity resolution/send, ConversationsRichComposer, MessageAudioButton, providers, supabase, database, entitlements, INT-115, and INT-126's transition-generation ABA follow-up.
 
-INTERNAL_BUILD_IDENTITY: b1e6bd6afb554b7a9251d8b242c798e35927691f; synced-base=f722aa1d8b232b112a8b5fb2d57fa680b663bc14; implementation-commit=b1e6bd6afb554b7a9251d8b242c798e35927691f; deployment=none-pre-ready; environment=local; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=failing-first+82-focused+37-client-composer+205-of-206-broad+four-mutations+eslint+tsc-ratchet+build+impeccable
+INTERNAL_BUILD_IDENTITY: b1e6bd6afb554b7a9251d8b242c798e35927691f; synced-base=f5921fba7e027ca8c5d9e4dc191216f559328815; implementation-commit=b1e6bd6afb554b7a9251d8b242c798e35927691f; deployment=none-pre-ready; environment=local; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=failing-first+82-focused+37-client-composer+205-of-206-broad+four-mutations+eslint+tsc-ratchet+build+impeccable
 RELEASE_CHANNEL: development: Draft PR pending exact-head CI and both the requested and Ready-triggered Codex reviews; owner authorization covers merge and production release when those gates pass
 RELEASE_CLASSIFICATION: patch: restores per-conversation in-session draft ownership and complete-scope async fencing in the PaigeAIChat family without visual, provider, schema, or entitlement change
 CUSTOMER_RELEASE_IDENTITY: none: internal PAIGE Chat state-isolation repair pending coordinator release ruling
@@ -58,7 +58,7 @@ The complete identity is tenant + effective user + focused client or explicit no
 
 ## Evidence index
 
-- Base/current main: f722aa1d8b232b112a8b5fb2d57fa680b663bc14 (original authorized baseline: 2546ceb5be44cb8f7addbb70db4bf35b94e399ee; all later main syncs, including merge commit 223794cd8979f680607f372bb3385e8cae99c4a2, were conflict-free).
+- Base/current main: f5921fba7e027ca8c5d9e4dc191216f559328815 (original authorized baseline: 2546ceb5be44cb8f7addbb70db4bf35b94e399ee; all later main syncs, including merge commits 223794cd8979f680607f372bb3385e8cae99c4a2 and b9b9e7e6fb349e023a39c892fdd26c89d1b7f87a, were conflict-free).
 - Exact code head before this evidence-only update: b1e6bd6afb554b7a9251d8b242c798e35927691f.
 - Failing-first: `npx vitest run src/components/dashboard/PaigeAIChat.composerScope.test.tsx src/components/voice/DictationComposer.contract.test.ts --reporter=verbose` → 16 failed, 8 passed on current-main behavior before implementation.
 - Focused proof: resolver + PaigeAIChat integration + dictation contract + Solo contract → 82/82.
