@@ -42,6 +42,7 @@ import { createAnchoredTranscriptScroll, messageScrollAnchorKey } from "@/compon
 import {
   acceptComposerDelivery,
   clearComposerDraft,
+  COMPOSER_FOCUS_NONE,
   composerDraftKey,
   composerDraftHandlesMatch,
   composerScopeIdentityKey,
@@ -770,6 +771,14 @@ const PaigeAIChatInner = ({
     // Released rather than refused: the person asked to open this conversation, and it is a
     // conversation they own. What is not true is that it is about the client currently in focus.
     if (clientId || businessMissionId) {
+      if (draftIdentity) {
+        const focusedThreadDraft = { ...draftIdentity, conversationId: id };
+        moveComposerDraft(focusedThreadDraft, {
+          ...focusedThreadDraft,
+          focusedClientId: COMPOSER_FOCUS_NONE,
+          focusedBusinessMissionId: COMPOSER_FOCUS_NONE,
+        });
+      }
       // Park BEFORE releasing. The release drops the focus, which moves the epoch, which
       // invalidates this load through the request fence — so without this the person's click
       // is discarded and hydration resumes `threads[0]`, opening a conversation they did not
@@ -785,10 +794,8 @@ const PaigeAIChatInner = ({
       targetRequestScope.handle,
       targetRequestScope.epoch,
     );
-    if (soloTenantSafety) {
-      setCancelled(false);
-      setActiveThreadId(id);
-    }
+    if (soloTenantSafety) setCancelled(false);
+    if (soloTenantSafety || isThreadControlled) setActiveThreadId(id);
     try {
       const turns = await threadsApi.loadTurns(id);
       if (!ticketAccepted(requestTicket)) return;
@@ -796,7 +803,7 @@ const PaigeAIChatInner = ({
       setMessages(hydrated.length ? hydrated : [mkMsg({ role: "assistant", content: openingGreeting })]);
       hydratedFromRef.current = id;
       applyConversationEvent({ type: "thread-loaded", id });
-      if (!soloTenantSafety) setActiveThreadId(id);
+      if (!soloTenantSafety && !isThreadControlled) setActiveThreadId(id);
       setSteps([]);
       if (soloTenantSafety) {
         setConnectionIssue(null);
@@ -814,6 +821,10 @@ const PaigeAIChatInner = ({
   };
 
   const startNewChat = () => {
+    if (composerScopeRef.current.status === "ready-new") {
+      requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+      return;
+    }
     const targetRequestScope = requestScopeFor("new", conversationStateRef.current.newConversationId);
     if (!targetRequestScope) return;
     abortActiveRequest();

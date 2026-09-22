@@ -382,6 +382,71 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     expect(textarea().value).toBe("draft A survives");
   });
 
+  it("publishes a controlled rail selection before hydration can project the prior thread", async () => {
+    harness.threads = [
+      { id: "thread-a", title: "A", updated_at: "2026-09-22T00:00:00Z" },
+      { id: "thread-b", title: "B", updated_at: "2026-09-22T00:01:00Z" },
+    ];
+    let selectControlledThread: ((id: string | null) => void) | null = null;
+    const ControlledHost = () => {
+      const [threadId, setThreadId] = useState<string | null>("thread-a");
+      selectControlledThread = setThreadId;
+      return (
+        <PaigeAIChat
+          hideHeader
+          fill
+          enableHistory
+          activeThreadId={threadId}
+          onActiveThreadIdChange={setThreadId}
+          renderRail={(api) => { harness.rail = api; return null; }}
+        />
+      );
+    };
+
+    await act(async () => {
+      root.render(<ControlledHost />);
+      await settle();
+    });
+    await waitForWritable();
+    expect(selectControlledThread).not.toBeNull();
+
+    let resolveB: ((turns: Array<{ role: string; content: string }>) => void) | null = null;
+    harness.loadTurns.mockImplementationOnce(() => new Promise((resolve) => { resolveB = resolve; }));
+    await act(async () => {
+      harness.rail!.onSelect("thread-b");
+      await settle();
+    });
+    await act(async () => {
+      resolveB?.([{ role: "assistant", content: "THREAD B LOADED" }]);
+      await settle();
+    });
+
+    expect(harness.rail!.activeThreadId).toBe("thread-b");
+    expect(host.textContent).toContain("THREAD B LOADED");
+    expect(textarea().disabled).toBe(false);
+  });
+
+  it("keeps an already-new pending turn intact when New chat is clicked again", async () => {
+    let resolveThread: ((id: string) => void) | null = null;
+    harness.ensureThread.mockImplementationOnce(() => new Promise((resolve) => { resolveThread = resolve; }));
+    await render();
+    await waitForWritable();
+    await type("pending new-chat turn");
+
+    await act(async () => {
+      send().click();
+      await Promise.resolve();
+      harness.rail!.onNewChat();
+      resolveThread?.("thread-after-repeat-new");
+      await settle();
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(host.textContent).toContain("Done");
+    expect(textarea().value).toBe("");
+    expect(harness.rail!.activeThreadId).toBe("thread-after-repeat-new");
+  });
+
   it("isolates an account switch before cleanup and drops the origin dictation callback", async () => {
     await render();
     await type("origin words");
@@ -577,5 +642,64 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     // persisted thread. Returning to focus A opens a fresh new-chat slot; the
     // thread-owned edit is retained in its real-thread handle, never leaked here.
     expect(textarea().value).toBe("");
+  });
+
+  it("reconciles a failed focused-thread draft into the post-release thread scope", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => serverFailure()));
+    const releases = vi.fn();
+    let setFocusedClient: ((id: string | null) => void) | null = null;
+    const FocusedHost = () => {
+      const [focusedClient, setFocusedClientState] = useState<string | null>("client-a");
+      setFocusedClient = setFocusedClientState;
+      return (
+        <PaigeAIChat
+          hideHeader
+          fill
+          enableHistory
+          clientId={focusedClient}
+          onFocusRelease={(reason) => {
+            releases(reason);
+            setFocusedClientState(null);
+          }}
+          renderRail={(api) => { harness.rail = api; return null; }}
+        />
+      );
+    };
+
+    await act(async () => {
+      root.render(<FocusedHost />);
+      await settle();
+    });
+    await waitForWritable();
+    await type("focused failed draft");
+    await act(async () => {
+      send().click();
+      await settle();
+    });
+    const createdThreadId = "thread-created-" + testNumber;
+    expect(harness.rail!.activeThreadId).toBe(createdThreadId);
+    expect(textarea().value).toBe("focused failed draft");
+
+    await act(async () => {
+      setFocusedClient?.("client-b");
+      await settle();
+    });
+    await waitForWritable();
+    await act(async () => {
+      setFocusedClient?.("client-a");
+      await settle();
+    });
+    await waitForWritable();
+    expect(textarea().value).toBe("");
+
+    await act(async () => {
+      harness.rail!.onSelect(createdThreadId);
+      await settle();
+    });
+    await waitForWritable();
+
+    expect(releases).toHaveBeenCalledWith("thread_resumed");
+    expect(harness.rail!.activeThreadId).toBe(createdThreadId);
+    expect(textarea().value).toBe("focused failed draft");
   });
 });
