@@ -1054,6 +1054,80 @@ console.log("\n— G1a-1: create_mcp_rest_connection's api_key shape is non-MCP-
     restRes.ok === false && restRes.reason === "connection_unusable", JSON.stringify(restRes));
 }
 
+// ── Slice ① — VERIFY (runVerify: the probe's first live caller — authority gates + mapping) ──────
+// Drives the REAL runVerify against the REAL loader + REAL read-only intake over a genuine socket.
+// Fake clients supply the §9 gate answers; the fake service-role admin captures the probe write.
+console.log("\n— slice ①: verify (runVerify) —");
+{
+  const verifyMod = await bundle("supabase/functions/_shared/mcp-gateway/verify.ts", "verify.mjs");
+  const TEN = "ten-verify-1";
+  const CONN = "11111111-1111-4111-8111-111111111111";
+  const VERIFY_URL = "https://public.example/mcp-verify";
+  routes.set("/mcp-verify", mcpServer({}));
+
+  const probeCalls = [];
+  // Fake service-role admin: get_mcp_connection_secret feeds the loader; mcp_connection_probe is captured.
+  const makeAdmin = (secretRow, probeErr = null) => ({
+    rpc: async (fn, params) => {
+      if (fn === "get_mcp_connection_secret") return { data: secretRow, error: null };
+      if (fn === "mcp_connection_probe") { probeCalls.push(params); return { data: null, error: probeErr }; }
+      return { data: null, error: null };
+    },
+  });
+  // Fake caller (RLS-scoped) client: the three §9 authority gates.
+  const makeUser = (o = {}) => ({
+    rpc: async (fn) => {
+      if (fn === "current_user_tenant_id") return { data: o.tenant === undefined ? TEN : o.tenant, error: o.tenantErr ?? null };
+      if (fn === "is_current_user_tenant_admin") return { data: o.admin === undefined ? true : o.admin, error: null };
+      if (fn === "get_mcp_connections_v2") return { data: o.v2 === undefined ? [{ connection_id: CONN }] : o.v2, error: o.v2Err ?? null };
+      return { data: null, error: null };
+    },
+  });
+  const okSecret = { configured: true, enabled: true, connection_id: CONN, tenant_id: TEN, server_url: VERIFY_URL, endpoint_hash: endpointHashOf(VERIFY_URL), auth_token: "secret-token", auth_kind: "bearer", transport: "http", visibility: "tenant" };
+
+  // Happy path — authorized admin, connection in v2, loader resolves, live intake → connected.
+  probeCalls.length = 0;
+  const okRes = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin(okSecret) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify happy path → 200 ok connected healthy", okRes.httpStatus === 200 && okRes.body.ok === true && okRes.body.status === "connected" && okRes.body.health === "healthy", JSON.stringify(okRes.body));
+  check("verify reports the discovered tool count", okRes.body.tool_count === 6, JSON.stringify(okRes.body));
+  check("verify persists via the service-role probe exactly once (connected/healthy)", probeCalls.length === 1 && probeCalls[0]._status === "connected" && probeCalls[0]._health === "healthy", JSON.stringify(probeCalls.map((p) => p._status)));
+  check("probe receives the mapped catalog (tool_name keys, 6 tools)", Array.isArray(probeCalls[0]?._tools) && probeCalls[0]._tools.length === 6 && probeCalls[0]._tools.every((t) => typeof t.tool_name === "string" && typeof t.schema_hash === "string"), JSON.stringify(probeCalls[0]?._tools?.[0]));
+  const probeJson = JSON.stringify(probeCalls[0]?._tools ?? []);
+  check("no raw provider prose reaches the probe catalog (§13 — description/schema never leave mcp-client)", !probeJson.includes("RAW PROVIDER PROSE") && !probeJson.includes("description"), probeJson.slice(0, 120));
+  const bodyJson = JSON.stringify(okRes.body);
+  check("verify response leaks NO secret / server url / provider prose", !bodyJson.includes("secret-token") && !bodyJson.includes("public.example") && !bodyJson.includes("RAW PROVIDER PROSE"), bodyJson);
+
+  // §9 authority refusals.
+  const badId = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin(okSecret) }, { connectionId: "not-a-uuid", expectedTenantId: TEN });
+  check("verify refuses a malformed connection_id (400)", badId.httpStatus === 400 && badId.body.error === "bad_connection_id");
+  const noTen = await verifyMod.runVerify({ userClient: makeUser({ tenant: null }), admin: makeAdmin(okSecret) }, { connectionId: CONN, expectedTenantId: null });
+  check("verify refuses when the caller has no tenant (400)", noTen.httpStatus === 400 && noTen.body.error === "no_tenant");
+  const mism = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin(okSecret) }, { connectionId: CONN, expectedTenantId: "ten-OTHER" });
+  check("verify refuses a workspace-switch tenant mismatch (409)", mism.httpStatus === 409 && mism.body.error === "tenant_mismatch");
+  const nonAdmin = await verifyMod.runVerify({ userClient: makeUser({ admin: false }), admin: makeAdmin(okSecret) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify refuses a non-admin caller — the manage gate (403)", nonAdmin.httpStatus === 403 && nonAdmin.body.error === "forbidden");
+  const notMine = await verifyMod.runVerify({ userClient: makeUser({ v2: [] }), admin: makeAdmin(okSecret) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify refuses a connection not visible to the caller — §9 (404, no info leak)", notMine.httpStatus === 404 && notMine.body.error === "not_found");
+  probeCalls.length = 0;
+  const crossTenant = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, tenant_id: "ten-ELSEWHERE" }) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify refuses when the loaded row's tenant ≠ the caller's (defense in depth, 403)", crossTenant.httpStatus === 403 && crossTenant.body.error === "forbidden");
+  check("...and writes NO probe on that refusal (no cross-tenant side effect)", probeCalls.length === 0);
+
+  // Honest degrade — a disabled row: the loader refuses; verify records an honest error, never a fake connected.
+  probeCalls.length = 0;
+  const disabled = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, enabled: false }) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify on a disabled connection → 200 ok:false, honest error status", disabled.httpStatus === 200 && disabled.body.ok === false && disabled.body.status === "error", JSON.stringify(disabled.body));
+  check("...records an error probe (never a fabricated connected), catalog untouched (_tools=null)", probeCalls.length === 1 && probeCalls[0]._status === "error" && probeCalls[0]._tools === null, JSON.stringify(probeCalls[0]));
+
+  // Honest degrade — a reachable server that REJECTS the credential (401): needs_attention, catalog NOT wiped.
+  routes.set("/mcp-verify-401", (req, res) => { if (req.method === "DELETE") { res.writeHead(204).end(); return; } res.writeHead(401).end("bad token"); });
+  probeCalls.length = 0;
+  const V401 = "https://public.example/mcp-verify-401";
+  const badCred = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, server_url: V401, endpoint_hash: endpointHashOf(V401) }) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify on a rejected credential → 200 ok:false needs_attention (honest, never connected)", badCred.httpStatus === 200 && badCred.body.ok === false && badCred.body.health === "needs_attention", JSON.stringify(badCred.body));
+  check("...does NOT wipe the tool catalog (a failed probe passes _tools=null)", probeCalls.length === 1 && probeCalls[0]._status === "error" && probeCalls[0]._tools === null, JSON.stringify(probeCalls[0]));
+}
+
 server.close();
 console.log(`\n${passed} assertions passed.`);
 if (failures.length) { console.error(`\n${failures.length} FAILURE(S):\n- ${failures.join("\n- ")}`); process.exit(1); }
