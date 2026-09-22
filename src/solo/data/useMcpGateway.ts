@@ -154,23 +154,34 @@ function scopes(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
-/** Parse one registry row into the host-only, secret-free shape the UI renders. */
+/**
+ * Parse one registry row into the host-only, secret-free shape the UI renders.
+ *
+ * A row must carry the fields the contract promises. An id-only row used to be accepted and its
+ * identity INVENTED — "generic-remote", "Tool", a default status — which renders a tool the owner
+ * never added, described in words the server never said. Fabricated state is worse than a visible
+ * read failure, because nothing on screen marks it as a guess (§13).
+ */
 function readRow(value: unknown): GatewayConnection | null {
   if (!value || typeof value !== "object") return null;
   const r = value as Record<string, unknown>;
   const id = str(r.connection_id);
-  if (!id) return null;
-  const status = (str(r.status) ?? "unconfigured") as GatewayStatus;
+  const providerKey = str(r.provider_key);
+  const label = str(r.label);
+  const rawStatus = str(r.status);
+  if (!id || !providerKey || !label || !rawStatus) return null;
+  const status = rawStatus as GatewayStatus;
   const health = (str(r.health) ?? "unknown") as GatewayHealth;
+  if (!STATUSES.has(status)) return null;
   return {
     id,
-    providerKey: str(r.provider_key) ?? "generic-remote",
-    label: str(r.label) ?? "Tool",
+    providerKey,
+    label,
     transport: str(r.transport),
     authKind: str(r.auth_kind),
     configured: bool(r.configured),
     enabled: bool(r.enabled),
-    status: STATUSES.has(status) ? status : "unconfigured",
+    status,
     health: HEALTHS.has(health) ? health : "unknown",
     lastCheckedAt: str(r.last_checked_at),
     grantedScopes: scopes(r.granted_scopes),
@@ -195,9 +206,11 @@ function readList(value: unknown): GatewayConnection[] | null {
       ? (value as { connections: unknown[] }).connections
       : null;
   if (rows === null) return null;
-  const parsed = rows.map(readRow).filter((row): row is GatewayConnection => row !== null);
-  // Rows arrived but none of them parsed: the shape moved, so the account state is unknown.
-  if (rows.length > 0 && parsed.length === 0) return null;
+  const parsed = rows.map(readRow);
+  // ANY unreadable row fails the whole read. Dropping the bad ones and rendering the rest is a
+  // quieter lie than dropping all of them: the list would look complete while silently missing
+  // whatever did not parse, and the owner has no way to tell.
+  if (parsed.some((row) => row === null)) return null;
   return parsed;
 }
 
@@ -368,6 +381,19 @@ const load = useCallback(async () => {
         return { ok: false, code, message };
       }
       const out = (data ?? {}) as Record<string, unknown>;
+      // Every shipped writer acknowledges with `connection_id` (all 7 returns in
+      // 20270331000000_mcp_gateway_native_writers.sql, disconnect's three branches included). An
+      // answer without it did not confirm the operation, and the reload that follows cannot make
+      // a success claim retroactively true (§13).
+      //
+      // I previously declined this check on the stated grounds that disconnect returns no
+      // meaningful payload. That was wrong — I asserted it without reading the migration, and it
+      // does return one. Recorded here because the claim is in the PR history.
+      if (!str(out.connection_id)) {
+        const message = mcpGatewayMessage(null);
+        setState((prev) => ({ ...prev, saving: false, writeError: message }));
+        return { ok: false, code: null, message };
+      }
       setState((prev) => ({ ...prev, saving: false, writeError: null }));
       // Success — reload the list from the server (never optimistic; the server is the truth).
       void load();

@@ -341,6 +341,51 @@ describe("Writes reach the server", () => {
     expect(dialog(host)).toBeNull();
   });
 
+  it("never renders a tool whose identity the server did not state", async () => {
+    // An id-only row used to be accepted and its identity invented — "generic-remote", "Tool", a
+    // default status — rendering a tool the owner never added, described in words the server never
+    // said. Fabricated state is worse than a visible read failure: nothing marks it as a guess.
+    world({ rows: [] });
+    rpc.mockImplementation((name: string) =>
+      name === "get_mcp_connections_v2"
+        ? builder({ data: [{ connection_id: "conn-id-only" }], error: null })
+        : builder({ data: true, error: null }));
+    const { host } = await render();
+    expect(host.textContent).toMatch(/couldn’t be read/i);
+    expect(host.textContent).not.toContain("Tool");
+    expect(host.querySelectorAll(".ig-card").length).toBe(0);
+  });
+
+  it("fails the whole read when ANY row is unreadable, never a quietly short list", async () => {
+    // Dropping the bad rows and rendering the rest is the quieter lie: the list looks complete
+    // while silently missing whatever did not parse, and the owner cannot tell.
+    world({ rows: [] });
+    rpc.mockImplementation((name: string) =>
+      name === "get_mcp_connections_v2"
+        ? builder({ data: [row({ connection_id: "conn-good", label: "Readable tool" }), { connection_id: "conn-broken" }], error: null })
+        : builder({ data: true, error: null }));
+    const { host } = await render();
+    expect(host.textContent).toMatch(/couldn’t be read/i);
+    expect(host.textContent).not.toContain("Readable tool");
+  });
+
+  it("never reports a write as done on an envelope carrying no acknowledgement", async () => {
+    // `{data: null, error: null}` is a VALID envelope with no confirmation in it. Every shipped
+    // writer acknowledges with `connection_id`, so an answer without one did not confirm the write.
+    world({ rows: [] });
+    const { host } = await render();
+    await openAddForm(host);
+    await type(fieldFor(host, "Name"), "Unacknowledged tool");
+    await type(fieldFor(host, "Server URL"), "https://unacked.example.com/mcp");
+    await type(fieldFor(host, "Bearer token"), "harness-token-not-a-real-secret");
+    rpc.mockImplementation((name: string) =>
+      name.startsWith("create_")
+        ? builder({ data: null, error: null })
+        : builder({ data: [], error: null }));
+    await click(byText(host, "Add tool"));
+    expect(dialog(host)).toBeTruthy();
+  });
+
   it("never reports a write as done on an answer that confirms nothing", async () => {
     // An adapter that resolves `{}` carries no acknowledgement that anything happened. Treating the
     // absent `error` key as success would close the drawer on a write the server never confirmed,
