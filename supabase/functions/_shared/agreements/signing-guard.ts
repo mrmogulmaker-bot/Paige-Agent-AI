@@ -7,7 +7,16 @@
 // three. That is the exact inverse of the defect in `docusign-send-envelope`, which takes contact_id
 // from the request body and resolves it with the service-role client and no tenant filter.
 
+// WHAT USED TO LIVE HERE AND DELIBERATELY DOES NOT ANY MORE (§58 — removed openly, not silently).
+// `signingSecurityHeaders`, `mintNonce` and `signerFacingView` existed for an HTML signing page
+// this function no longer serves. The signer's surface is the owner-approved React route
+// `/sign/:token`, which carries its own response headers, and the page's read is the
+// `peek_agreement_signing` RPC, whose hand-written allow-list is the one home for what a signer
+// may be told (proven by K5 in the contract proof). Keeping unused twins of a live rule is worse
+// than deleting them: the next reader cannot tell which one governs.
+
 import { tokenState } from "./token.ts";
+
 
 /** A token is 64 lowercase hex characters. Anything else is refused before it is hashed. */
 export const TOKEN_SHAPE = /^[0-9a-f]{64}$/;
@@ -19,8 +28,6 @@ export type SigningRefusal =
   | "malformed_token"
   | "not_found"
   | "expired"
-  | "already_signed"
-  | "already_declined"
   | "agreement_not_signable"
   | "waiting_on_earlier_signer";
 
@@ -69,18 +76,21 @@ export function decideSigningAccess(input: {
   }
   if (!signer || !agreement) return { allow: false, reason: "not_found" };
 
+  // ORDER IS LOAD-BEARING HERE. A COMPLETED agreement stays readable by its signers — ESIGN wants
+  // the retained record available to BOTH parties, and the counterparty has no account here. It is
+  // checked BEFORE the agreement deadline because `expires_at` is the SIGNING deadline (send sets it
+  // to ~30 days) while the retrieval token is deliberately much longer. Checked the other way round,
+  // an agreement completed on day 20 had its counterparty's emailed copy die on day 30, telling them
+  // the link had expired — the retained-record guarantee quietly capped at the signing window. The
+  // token's own expiry is the correct bound once there is nothing left to sign.
+  if (agreement.status === "completed") {
+    return { allow: true, canSign: false };
+  }
+
   // The agreement's own deadline is checked at USE, alongside the token's. Expiry never depends on a
   // sweeper having run — a job that silently stops running would otherwise resurrect dead links.
   if (agreement.expires_at && new Date(agreement.expires_at).getTime() <= now.getTime()) {
     return { allow: false, reason: "expired" };
-  }
-
-  // A COMPLETED agreement stays readable by its signers, deliberately. ESIGN requires the retained
-  // record to remain available to BOTH parties, and the counterparty has no account here — so if
-  // completion closed their access, the only copy they could ever reach would be the one moment they
-  // happened to be on the page. They can read and download; they cannot sign again.
-  if (agreement.status === "completed") {
-    return { allow: true, canSign: false };
   }
   if (!["sent", "viewed", "partially_signed"].includes(agreement.status)) {
     return { allow: false, reason: "agreement_not_signable" };
@@ -105,46 +115,60 @@ export function explainCannotSign(signerStatus: string, earlierUnsignedCount: nu
   return "This agreement cannot be signed right now.";
 }
 
+/** The largest drawn mark accepted, in base64 characters — roughly 300 KB decoded. */
+export const MAX_SIGNATURE_IMAGE_B64 = 400_000;
+
+export type SignatureImageCheck =
+  | { ok: true; base64: string | null }
+  | { ok: false; reason: string };
+
 /**
- * Exactly what a signer may be told. Hand-written field by field — never a spread of the row.
+ * Validate a drawn signature BEFORE it is committed, not when it is stamped.
  *
- * A `select *` here is how tenant internals reach an external party: the row carries tenant ids,
- * storage keys, other signers' addresses and the token hash itself. The allow-list is the control,
- * and it is a list precisely so that adding a column to the table cannot widen it by accident.
+ * WHY AT THE BOUNDARY. `status = 'signed'` is terminal by trigger, and the sealed document is
+ * write-once. The review found that a signer-supplied blob was stored after nothing more than a
+ * `https?:` check and a 400 000-character slice — a slice that can itself break base64 padding — and
+ * then detonated inside `sealAndComplete`, one layer ABOVE the deliberate `embedPng` fallback that
+ * was supposed to catch it. The signature stood, sealing failed on that call and on every retry, and
+ * the signer was told their completed copy was "still being prepared" forever. There is no repair
+ * path: `authenticated` holds no UPDATE grant on the column.
+ *
+ * So the blob is decoded and identified HERE, where the answer is a 400 and the person simply signs
+ * again. Truncation is refused rather than performed: silently cutting a payload produces exactly the
+ * corrupt value this function exists to keep out.
  */
-export function signerFacingView(input: {
-  agreement: { title: string; status: string; expires_at: string | null; content_sha256: string | null };
-  signer: { full_name: string; email: string; signer_role: string; status: string; signing_order: number };
-  tenantDisplayName: string;
-  otherParties: Array<{ full_name: string; status: string; signing_order: number }>;
-  canSign: boolean;
-  disclosure: { slug: string; version: number; body: string; checkboxLabel: string } | null;
-  /** Why they cannot sign, when they cannot — already in words a signer can act on. */
-  cannotSignReason?: string | null;
-}) {
-  return {
-    agreement: {
-      title: input.agreement.title,
-      status: input.agreement.status,
-      expiresAt: input.agreement.expires_at,
-      documentSha256: input.agreement.content_sha256,
-    },
-    you: {
-      fullName: input.signer.full_name,
-      email: input.signer.email,
-      role: input.signer.signer_role,
-      status: input.signer.status,
-      order: input.signer.signing_order,
-    },
-    sentBy: input.tenantDisplayName,
-    // Names and progress only. Never another party's email address or network origin.
-    otherParties: input.otherParties.map((p) => ({
-      fullName: p.full_name,
-      status: p.status,
-      order: p.signing_order,
-    })),
-    canSign: input.canSign,
-    disclosure: input.disclosure,
-    cannotSignReason: input.canSign ? null : (input.cannotSignReason ?? null),
-  };
+export function checkSignatureImage(raw: unknown): SignatureImageCheck {
+  if (raw === null || raw === undefined || raw === "") return { ok: true, base64: null };
+  if (typeof raw !== "string") return { ok: false, reason: "A drawn signature must be sent as image data." };
+
+  // A URL here would make the sealer fetch an attacker-chosen address with our credentials.
+  if (/^\s*https?:/i.test(raw)) {
+    return { ok: false, reason: "A drawn signature must be sent as image data, not a link." };
+  }
+
+  const base64 = raw.replace(/^\s*data:image\/png;base64,/i, "").replace(/\s+/g, "");
+  if (base64.length > MAX_SIGNATURE_IMAGE_B64) {
+    return { ok: false, reason: "That drawn signature is too large. Draw it again, or type your name instead." };
+  }
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64) || base64.length % 4 !== 0) {
+    return { ok: false, reason: "That drawn signature could not be read. Draw it again, or type your name instead." };
+  }
+
+  let bytes: Uint8Array;
+  try {
+    const binary = atob(base64);
+    bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  } catch {
+    return { ok: false, reason: "That drawn signature could not be read. Draw it again, or type your name instead." };
+  }
+
+  // The PNG signature. The bucket is PDF-only and this column is not a bucket, so nothing else
+  // downstream would ever reject a JPEG or an HTML file sitting in this column — pdf-lib's
+  // `embedPng` would, at seal time, which is far too late.
+  const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  if (bytes.length < PNG_MAGIC.length || PNG_MAGIC.some((b, i) => bytes[i] !== b)) {
+    return { ok: false, reason: "A drawn signature must be a PNG image. Draw it again, or type your name instead." };
+  }
+
+  return { ok: true, base64 };
 }

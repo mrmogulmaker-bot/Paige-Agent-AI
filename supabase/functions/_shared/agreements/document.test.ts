@@ -17,6 +17,7 @@ import {
   hashDocument,
   renderPresentedPdf,
   sealAgreementPdf,
+  UnrenderableDocumentError,
   UnrenderableNameError,
   wouldLoseCharacters,
 } from "./document.ts";
@@ -75,6 +76,7 @@ function sealInput(over: Record<string, unknown> = {}) {
   return {
     presentedBytes: new Uint8Array(),
     presentedSha256: "0".repeat(64),
+    presentedKind: "file" as const,
     agreementTitle: "Services Agreement",
     agreementId: "6f1c2a1e-0000-4000-8000-000000000001",
     tenantName: "Acme Consulting",
@@ -208,4 +210,39 @@ Deno.test("a long event history and several parties still seal", async () => {
     events: many,
   }));
   assertEquals(head(sealed), PDF_MAGIC);
+});
+
+// ── The document's own text, not just a signer's name ────────────────────────────────────────────
+// The review caught the asymmetry: the engine refused a name it could not stamp and silently
+// replaced the entire contract text with question marks. `renderPresentedPdf`'s docstring claimed a
+// refusal it did not perform, which is worse than no docstring — the next reader trusts it.
+Deno.test("a body the exporter cannot reproduce is REFUSED, not silently mangled", async () => {
+  await assertRejects(
+    () => renderPresentedPdf({ title: "Services Agreement", bodyMarkdown: "Платёжные условия: 50%." }),
+    UnrenderableDocumentError,
+  );
+});
+
+Deno.test("a title the exporter cannot reproduce is refused too", async () => {
+  await assertRejects(
+    () => renderPresentedPdf({ title: "契約書", bodyMarkdown: BODY }),
+    UnrenderableDocumentError,
+  );
+});
+
+Deno.test("an ordinary Latin document still renders", async () => {
+  const bytes = await renderPresentedPdf({ title: "Services Agreement — Q3", bodyMarkdown: BODY });
+  assert(bytes.length > 500);
+  assertEquals(head(bytes), PDF_MAGIC);
+});
+
+Deno.test("the certificate names WHICH medium the frozen hash covers", async () => {
+  // Two freeze paths hash different things. A reader re-computing the digest against the wrong
+  // medium concludes the document was altered, so the page has to say which one it is.
+  const presented = await renderPresentedPdf({ title: "Services Agreement", bodyMarkdown: BODY });
+  const asFile = await sealAgreementPdf(sealInput({ presentedBytes: presented, presentedKind: "file" as const }));
+  const asText = await sealAgreementPdf(sealInput({ presentedBytes: presented, presentedKind: "text" as const }));
+  // pdf-lib writes text as glyph runs, so assert on the artifacts differing rather than on a
+  // substring: identical inputs but for the label must not produce identical bytes.
+  assertNotEquals(await hashDocument(asFile), await hashDocument(asText));
 });

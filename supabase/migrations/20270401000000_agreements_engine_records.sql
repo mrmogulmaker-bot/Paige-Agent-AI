@@ -65,13 +65,17 @@ CREATE TABLE IF NOT EXISTS public.paige_agreements (
 
   title text NOT NULL CHECK (btrim(title) <> ''),
 
-  -- WHERE THE BODY CAME FROM. 'inline' is text the tenant (or Paige) authored for this agreement.
-  -- 'tenant_agreement_version' is the existing template library; source_version_id then names the
-  -- exact row, so the retained record can always say which version was presented.
-  body_source text NOT NULL DEFAULT 'inline'
-    CHECK (body_source IN ('inline','tenant_agreement_version')),
+  -- WHERE THE BODY CAME FROM. The three values are the UI contract's (docs/delivery/
+  -- int162-ui-handover.md): 'paige_draft' is text Paige or the tenant authored here,
+  -- 'tenant_template' is the existing template library (source_version_id names the exact row, so
+  -- the record can always say which version was presented), and 'tenant_upload' is the tenant's own
+  -- attorney-approved file, which lives at document_path rather than as markdown.
+  body_source text NOT NULL DEFAULT 'paige_draft'
+    CHECK (body_source IN ('paige_draft','tenant_template','tenant_upload')),
   source_version_id uuid REFERENCES public.tenant_agreement_versions(id) ON DELETE SET NULL,
-  body_markdown text NOT NULL CHECK (btrim(body_markdown) <> ''),
+  -- An uploaded document has a path and no markdown; a drafted one has markdown and no path.
+  body_markdown text,
+  document_path text,
 
   status text NOT NULL DEFAULT 'draft'
     CHECK (status IN ('draft','sent','viewed','partially_signed','completed','declined','voided','expired')),
@@ -102,17 +106,31 @@ CREATE TABLE IF NOT EXISTS public.paige_agreements (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
 
-  -- A sent document must carry the frozen bytes it was sent as. This is what makes "the signer saw
-  -- exactly this" checkable later rather than asserted.
+  -- A sent document must carry a hash of exactly what was presented. This is what makes "the signer
+  -- saw exactly this" checkable later rather than asserted.
+  --
+  -- IT REQUIRES THE HASH, NOT A STORED FILE, and that distinction was found by running rather than
+  -- reading. The first version demanded `content_storage_key` too — but the approved page presents a
+  -- TEXT BODY, and the PDF is produced at signing. So a link could never be issued for a text
+  -- agreement without first rendering a PDF nobody was going to look at, which made `draft -> sent`
+  -- unreachable through the contract's own `issue_agreement_signing_link`. The invariant that
+  -- actually matters is that we recorded a digest of what was shown; where the bytes live is a
+  -- separate fact, and `content_storage_key` still carries it when there IS a file.
   CONSTRAINT pa_sent_is_frozen_ck CHECK (
     status = 'draft' OR status = 'voided'
-    OR (content_sha256 IS NOT NULL AND content_storage_key IS NOT NULL)
+    OR content_sha256 IS NOT NULL
   ),
   CONSTRAINT pa_completed_is_sealed_ck CHECK (
     status <> 'completed' OR (sealed_sha256 IS NOT NULL AND sealed_storage_key IS NOT NULL)
   ),
   CONSTRAINT pa_source_version_only_for_library_ck CHECK (
-    body_source = 'tenant_agreement_version' OR source_version_id IS NULL
+    body_source = 'tenant_template' OR source_version_id IS NULL
+  ),
+  -- Exactly one body. An uploaded agreement carries a path; anything else carries text. A row with
+  -- neither is a document that cannot be shown to the person being asked to sign it.
+  CONSTRAINT pa_has_exactly_one_body_ck CHECK (
+    (body_source = 'tenant_upload' AND document_path IS NOT NULL AND body_markdown IS NULL)
+    OR (body_source <> 'tenant_upload' AND btrim(coalesce(body_markdown,'')) <> '' AND document_path IS NULL)
   )
 );
 
@@ -728,8 +746,9 @@ CREATE OR REPLACE FUNCTION public.save_paige_agreement(
   _body_markdown text,
   _offer_id uuid DEFAULT NULL,
   _commercial_terms_id uuid DEFAULT NULL,
-  _body_source text DEFAULT 'inline',
+  _body_source text DEFAULT 'paige_draft',
   _source_version_id uuid DEFAULT NULL,
+  _document_path text DEFAULT NULL,
   _expected_updated_at timestamptz DEFAULT NULL
 )
 RETURNS jsonb
@@ -762,11 +781,15 @@ BEGIN
   IF _title_t = '' THEN
     RAISE EXCEPTION 'give this agreement a title' USING ERRCODE = '23514';
   END IF;
-  IF _body_t = '' THEN
-    RAISE EXCEPTION 'an agreement needs a body before it can be saved' USING ERRCODE = '23514';
-  END IF;
-  IF _body_source NOT IN ('inline','tenant_agreement_version') THEN
+  IF _body_source NOT IN ('paige_draft','tenant_template','tenant_upload') THEN
     RAISE EXCEPTION 'that is not a body source this engine understands' USING ERRCODE = '23514';
+  END IF;
+  IF _body_source = 'tenant_upload' THEN
+    IF coalesce(btrim(_document_path),'') = '' THEN
+      RAISE EXCEPTION 'an uploaded agreement needs the uploaded document' USING ERRCODE = '23514';
+    END IF;
+  ELSIF _body_t = '' THEN
+    RAISE EXCEPTION 'an agreement needs a body before it can be saved' USING ERRCODE = '23514';
   END IF;
 
   -- The IDOR gate. The trigger re-proves all of this on write; doing it here too turns a raw 42501
@@ -779,11 +802,13 @@ BEGIN
   IF _agreement_id IS NULL THEN
     INSERT INTO public.paige_agreements
       (tenant_id, contact_id, offer_id, commercial_terms_id, title, body_source,
-       source_version_id, body_markdown, status, version, created_by)
+       source_version_id, body_markdown, document_path, status, version, created_by)
     VALUES
       (_tenant, _contact_id, _offer_id, _commercial_terms_id, _title_t, _body_source,
-       CASE WHEN _body_source = 'tenant_agreement_version' THEN _source_version_id ELSE NULL END,
-       _body_t, 'draft', 1, _actor)
+       CASE WHEN _body_source = 'tenant_template' THEN _source_version_id ELSE NULL END,
+       CASE WHEN _body_source = 'tenant_upload' THEN NULL ELSE _body_t END,
+       CASE WHEN _body_source = 'tenant_upload' THEN btrim(_document_path) ELSE NULL END,
+       'draft', 1, _actor)
     RETURNING * INTO _row;
 
     INSERT INTO public.paige_agreement_events
@@ -808,9 +833,10 @@ BEGIN
       commercial_terms_id = _commercial_terms_id,
       title = _title_t,
       body_source = _body_source,
-      source_version_id = CASE WHEN _body_source = 'tenant_agreement_version'
+      source_version_id = CASE WHEN _body_source = 'tenant_template'
                                THEN _source_version_id ELSE NULL END,
-      body_markdown = _body_t,
+      body_markdown = CASE WHEN _body_source = 'tenant_upload' THEN NULL ELSE _body_t END,
+      document_path = CASE WHEN _body_source = 'tenant_upload' THEN btrim(_document_path) ELSE NULL END,
       -- A body edit is a new revision of what a signer would be shown.
       version = CASE WHEN _body_t IS DISTINCT FROM _row.body_markdown
                      THEN _row.version + 1 ELSE _row.version END,
@@ -836,9 +862,9 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.save_paige_agreement(uuid,uuid,uuid,text,text,uuid,uuid,text,uuid,timestamptz)
+REVOKE ALL ON FUNCTION public.save_paige_agreement(uuid,uuid,uuid,text,text,uuid,uuid,text,uuid,text,timestamptz)
   FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.save_paige_agreement(uuid,uuid,uuid,text,text,uuid,uuid,text,uuid,timestamptz)
+GRANT EXECUTE ON FUNCTION public.save_paige_agreement(uuid,uuid,uuid,text,text,uuid,uuid,text,uuid,text,timestamptz)
   TO authenticated;
 
 -- Voiding: the owner withdraws a document that is already out. It is terminal, and it kills every

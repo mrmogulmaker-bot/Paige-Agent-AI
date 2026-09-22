@@ -356,11 +356,22 @@ on. Recorded as an exception rather than followed silently.
 
 | Capability | God (act-as) | Agency-as-tenant | Standalone Solo | Sub-account | Client | Anonymous | Deploy state |
 |---|---|---|---|---|---|---|---|
-| `agreement_signing` tier flag | — | — | ✓ | ✓ | — | — | **flag LIVE on merge** (declared in `tierFeatures.ts`; Enterprise inherits via the Solo union) |
-| Records + integrity triggers (`paige_agreements`, `_signers`, `_events`) | ✓ (operator read) | ✓ own workspace | ✓ | ✓ | — (no policy grants it) | — (`anon` holds no grant) | **code MERGED, prod apply PENDING** — migrations `20270401000000`/`20270402000000`/`20270403000000` |
-| `agreement_draft` · `agreement_status` (Paige chat) | ✓ act-as | ✓ | ✓ | ✓ | — | 403 | edge logic LIVE on merge; RPCs deploy with the migrations |
-| `agreement_send` · `agreement_resend` · `agreement_void` (Paige chat, `high` → approval card) | ✓ act-as | ✓ | ✓ | ✓ | — | 403 | edge logic LIVE on merge |
-| Public signing ceremony (`agreement-sign`, `verify_jwt=false`) | n/a | n/a | n/a | n/a | n/a | **token-gated, not a tier** | LIVE on merge |
+| `agreement_signing` tier flag | — | **— (refused)** | ✓ | ✓ | — | — | **flag LIVE on merge, and now ENFORCED** — see the correction below |
+| Records + integrity triggers (`paige_agreements`, `_signers`, `_events`) | ✓ (operator read) | **— (refused by `trg_agreement_tier`)** | ✓ | ✓ | — (no policy grants it) | — (`anon` holds no grant) | **code MERGED, prod apply PENDING** — migrations `20270401000000`/`20270402000000`/`20270403000000`/`20270404000000`/`20270405000000` |
+| Counterparty signer derived from the client (`trg_agreement_seed_counterparty`) | ✓ act-as | — | ✓ | ✓ | — | — | **code MERGED, prod apply PENDING** — `20270405000000` |
+| `agreement_draft` · `agreement_add_signer` · `agreement_status` (Paige chat) | ✓ act-as | **refused at the database** | ✓ | ✓ | — | 403 | edge logic LIVE on merge; RPCs deploy with the migrations |
+| `agreement_send` · `agreement_resend` · `agreement_void` (Paige chat, `high` → approval card) | ✓ act-as | **refused (edge 403 + database)** | ✓ | ✓ | — | 403 | edge logic LIVE on merge |
+| Token-gated signing act (`sign-agreement`, `verify_jwt=false`) | n/a | n/a | n/a | n/a | n/a | **token-gated, not a tier** | LIVE on merge |
+| Sealed-record retrieval (`agreement-document`, `verify_jwt=false`) | n/a | n/a | ✓ own session (admin) | ✓ own session (admin) | **signer via retrieval token** | — | LIVE on merge |
+
+**§13 CORRECTION, recorded rather than quietly fixed (2026-09-22).** The two rows above previously
+read `—` for Agency in the flag row and `✓` for Agency in all four tool rows — two different answers
+to one question, in one table. The independent review also found the flag had **zero `hasFeature`
+call sites**: a §61 exception declared in `tierFeatures.ts`, recorded here as live, and read by no
+code, so an Agency could in fact draft, send and void through Paige chat. §66 says this ledger
+records what is LIVE, so both halves are corrected together: the enforcement is now a database
+trigger (`trg_agreement_tier`, migration `20270405000000`) that binds every write path including the
+service role, the edge function keeps its own 403 for the better message, and the rows now agree.
 | Expiry sweep (`sweep_expired_paige_agreements`, hourly `pg_cron`) | — | — | — | — | — | — | **conditional**: scheduled only where `pg_cron` is installed; the migration RAISEs a NOTICE and continues if it is not |
 
 **The signer is not a tier row, and that is the point.** An external counterparty has no Supabase

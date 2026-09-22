@@ -23,6 +23,22 @@ END $$;
 INSERT INTO public.paige_agreements (id,tenant_id,contact_id,title,body_markdown)
 VALUES ('dddddddd-0000-4000-8000-000000000001','aaaaaaaa-0000-4000-8000-000000000001','c1111111-0000-4000-8000-000000000001','Services','The body');
 
+-- `trg_agreement_seed_counterparty` (20270405000000) derives the counterparty from the client the
+-- agreement is with, so this agreement arrives already carrying one. This file is about the ORDER
+-- and CONSENT triggers over a signer set it controls exactly, so the derived party is removed here
+-- and the seam itself is proven in `signer-seam-proof.sql` — where it is the subject rather than a
+-- background condition. Asserted, not assumed: if the trigger ever stops firing, this fails loudly.
+DO $seed$
+DECLARE _n int;
+BEGIN
+  DELETE FROM public.paige_agreement_signers
+   WHERE agreement_id='dddddddd-0000-4000-8000-000000000001';
+  GET DIAGNOSTICS _n = ROW_COUNT;
+  IF _n <> 1 THEN
+    RAISE EXCEPTION 'P0 UNEXPECTED — expected exactly one derived counterparty, found %', _n;
+  END IF;
+END $seed$;
+
 SELECT pg_temp.probe('P1  agreement names another workspace''s client',
   $$INSERT INTO public.paige_agreements (tenant_id,contact_id,title,body_markdown) VALUES ('aaaaaaaa-0000-4000-8000-000000000001','c2222222-0000-4000-8000-000000000002','Leak','b')$$,'42501');
 SELECT pg_temp.probe('P2  draft jumps straight to completed',

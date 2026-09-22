@@ -87,6 +87,7 @@ BEGIN
       -- There is deliberately no `agreement_sign` row at any autonomy: Paige does not sign on
       -- anyone's behalf, so there is no such tool to govern.
       ('agreement_draft',               'Draft an agreement for a client', 'Agreements'),
+      ('agreement_add_signer',          'Name another signer on a draft agreement', 'Agreements'),
       ('agreement_send',                'Send an agreement for signature', 'Agreements'),
       ('agreement_resend',              'Send a signing link again', 'Agreements'),
       ('agreement_void',                'Withdraw an agreement', 'Agreements'),

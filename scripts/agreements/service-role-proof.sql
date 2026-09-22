@@ -16,7 +16,7 @@ END $$;
 SELECT 'table owner                     = '||tableowner FROM pg_tables WHERE tablename='paige_agreements';
 SELECT 'service_role is superuser       = '||rolsuper::text FROM pg_roles WHERE rolname='service_role';
 SELECT 'service_role bypasses RLS       = '||rolbypassrls::text FROM pg_roles WHERE rolname='service_role';
-SELECT 'service_role member of owner    = '||pg_has_role('service_role','pgtest','MEMBER')::text;
+SELECT 'service_role member of owner    = '||pg_has_role('service_role','proofrunner','MEMBER')::text;
 
 SET ROLE service_role;
 SELECT 'acting as                       = '||current_user;

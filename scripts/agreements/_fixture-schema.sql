@@ -1,3 +1,4 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 DO $r$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon NOLOGIN; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
@@ -30,7 +31,18 @@ INSERT INTO public.tenants (id,name) VALUES
   ('aaaaaaaa-0000-4000-8000-000000000001','Tenant A'),
   ('bbbbbbbb-0000-4000-8000-000000000002','Tenant B');
 ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS first_name text;
+ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS brand jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE public.tenant_client_agreements ADD COLUMN IF NOT EXISTS agreed_amount_minor bigint;
+ALTER TABLE public.tenant_client_agreements ADD COLUMN IF NOT EXISTS agreed_currency text;
+ALTER TABLE public.tenant_client_agreements ADD COLUMN IF NOT EXISTS term_kind text;
 ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS last_name text;
+-- §51/§61 tier columns. The tier trigger in 20270405000000 refuses a TOP-LEVEL agency, so both
+-- proof tenants are ordinary solo workspaces and a third exists purely to prove the refusal.
+ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS account_type text NOT NULL DEFAULT 'standalone';
+ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS parent_tenant_id uuid REFERENCES public.tenants(id);
+INSERT INTO public.tenants (id,name,account_type) VALUES
+  ('dddddddd-0000-4000-8000-000000000004','Agency D','agency');
 INSERT INTO public.clients (id,tenant_id,email) VALUES
   ('c1111111-0000-4000-8000-000000000001','aaaaaaaa-0000-4000-8000-000000000001','a-client@example.com'),
-  ('c2222222-0000-4000-8000-000000000002','bbbbbbbb-0000-4000-8000-000000000002','b-client@example.com');
+  ('c2222222-0000-4000-8000-000000000002','bbbbbbbb-0000-4000-8000-000000000002','b-client@example.com'),
+  ('c4444444-0000-4000-8000-000000000004','dddddddd-0000-4000-8000-000000000004','d-client@example.com');

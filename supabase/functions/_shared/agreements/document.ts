@@ -12,11 +12,11 @@
 // produced at send, uploaded once, hashed, and every later presentation serves THOSE STORED BYTES.
 // This file gives the caller no way to do otherwise.
 //
-// THE CERTIFICATE CANNOT CONTAIN THE SEALED HASH. A document cannot carry a hash of itself — adding
-// the value changes the bytes that the value describes. The certificate therefore lists the
+// THE SIGNING RECORD CANNOT CONTAIN THE SEALED HASH. A document cannot carry a hash of itself — adding
+// the value changes the bytes that the value describes. The signing record therefore lists the
 // PRESENTED hash (the thing it is attesting about) and the event log. The SEALED hash is computed
 // after the sealed file is saved, and lives in the database, the owner's UI, and the completion
-// email. Anyone specifying "print both hashes on the certificate" has described an impossible
+// email. Anyone specifying "print both hashes on that page" has described an impossible
 // object, and the only ways to satisfy it are to fake a value or to hash the wrong bytes.
 //
 // WHAT THIS FILE REUSES RATHER THAN FORKS (§18). Body rendering is `_shared/doc-render.ts`, the one
@@ -74,6 +74,41 @@ export function assertNamesAreStampable(names: Array<string | null | undefined>)
   if (bad.length > 0) throw new UnrenderableNameError([...new Set(bad)]);
 }
 
+/**
+ * The same refusal for the DOCUMENT rather than for a name.
+ *
+ * The review caught the asymmetry: the send path refused a signer's name it could not stamp — on
+ * the reasoning that a record which is provably wrong about the one fact it exists to establish must
+ * fail loudly — and left the entire contract TEXT open to the same mangling. An agreement drafted in
+ * Cyrillic, Japanese, Arabic, Greek or Hebrew rendered to a page of question marks, was hashed,
+ * frozen by `pa_sent_is_frozen_ck`, and presented as the document of record. Write-once means it
+ * could not then be corrected.
+ */
+export class UnrenderableDocumentError extends Error {
+  constructor(where: "title" | "body" | "title and body") {
+    super(
+      `This agreement's ${where} uses characters the PDF exporter cannot reproduce yet (Latin characters only), ` +
+        `so the document would be stored with those characters replaced by "?". Nothing was sent. ` +
+        `Rewrite it in Latin characters, or wait for Unicode font support.`,
+    );
+    this.name = "UnrenderableDocumentError";
+  }
+}
+
+/**
+ * Refuse a document whose own text cannot survive the exporter.
+ *
+ * Called at SEND and again immediately before a signature is committed, so a counterparty can never
+ * bind themselves to an agreement that then can never be sealed.
+ */
+export function assertDocumentIsRenderable(title: string, bodyMarkdown: string | null): void {
+  const badTitle = wouldLoseCharacters(String(title ?? ""));
+  const badBody = wouldLoseCharacters(String(bodyMarkdown ?? ""));
+  if (badTitle && badBody) throw new UnrenderableDocumentError("title and body");
+  if (badTitle) throw new UnrenderableDocumentError("title");
+  if (badBody) throw new UnrenderableDocumentError("body");
+}
+
 export interface AgreementPartyLine {
   fullName: string;
   email: string;
@@ -102,14 +137,20 @@ export interface AgreementEventLine {
 /**
  * Render the body a signer will be shown.
  *
- * Throws `NeedsConfigError` (from doc-render) when the body uses characters the PDF exporter cannot
+ * Throws `UnrenderableDocumentError` when the title or body uses characters the PDF exporter cannot
  * encode — Latin-only StandardFonts. That is a truthful refusal, not a silent mangling: an agreement
  * whose text was quietly replaced with `?` is not a document anybody should be asked to sign.
+ *
+ * §13 — THIS DOCSTRING USED TO BE FALSE, which is the worst kind of comment. It claimed a refusal on
+ * the strength of `renderDoc` throwing `NeedsConfigError`; `sanitizeWinAnsi` maps every unencodable
+ * codepoint to `?` precisely so pdf-lib never throws, and `renderDoc` catches and degrades besides.
+ * The check is performed here now rather than merely described.
  */
 export async function renderPresentedPdf(input: {
   title: string;
   bodyMarkdown: string;
 }): Promise<Uint8Array> {
+  assertDocumentIsRenderable(input.title, input.bodyMarkdown);
   const result = await renderDoc({
     format: "pdf",
     title: input.title,
@@ -124,12 +165,12 @@ export async function hashDocument(bytes: Uint8Array): Promise<string> {
 }
 
 /**
- * Seal a completed agreement: stamp each signature INTO the document, then append the certificate.
+ * Seal a completed agreement: stamp each signature INTO the document, then append the signing record.
  *
  * The signature is drawn onto the document itself rather than recorded beside it, because "the
  * signature is attached to or logically associated with the record" is the actual statutory test —
  * a row in a database that merely points at a PDF is weaker evidence than a PDF that carries the
- * mark. The certificate page then carries the provenance the page images cannot.
+ * mark. The signing-record page then carries the provenance the page images cannot.
  *
  * Returns the sealed bytes. The caller hashes THOSE and stores the result; this function neither
  * knows nor can know its own output's hash.
@@ -137,6 +178,14 @@ export async function hashDocument(bytes: Uint8Array): Promise<string> {
 export async function sealAgreementPdf(input: {
   presentedBytes: Uint8Array;
   presentedSha256: string;
+  /**
+   * WHAT THE FROZEN HASH ACTUALLY COVERS, because the two send paths freeze different media and the
+   * record must not imply otherwise. `agreement-send` stores a PDF and hashes the file; the approved
+   * page's own path presents the agreement's TEXT and the database freezes the digest of that text.
+   * Both are "the exact bytes presented" for their medium — saying which one is the difference
+   * between a reproducible check and a reader computing the wrong digest and concluding forgery.
+   */
+  presentedKind: "file" | "text";
   agreementTitle: string;
   agreementId: string;
   tenantName: string;
@@ -231,9 +280,11 @@ export async function sealAgreementPdf(input: {
     y -= 10;
   }
 
-  // ── 2) The certificate of completion ──────────────────────────────────────────────────────────
+  // ── 2) The signing record ─────────────────────────────────────────────────────────────────────
+  // NOT "certificate of completion": that is a signing vendor's product noun and is banned by owner
+  // ruling. The page is the same evidence; the name is ours.
   nextPage();
-  text("Certificate of completion", 18, bold);
+  text("Signing record", 18, bold);
   text(sanitizeWinAnsi(input.agreementTitle), 11, font, muted);
   hr();
   y -= 6;
@@ -247,7 +298,12 @@ export async function sealAgreementPdf(input: {
   // The hash of what every party was shown. This is the value a later reader re-computes against the
   // presented file to prove it was not altered. Split across lines because 64 hex characters do not
   // fit the measure at this size.
-  text("Document presented to all parties (SHA-256)", 11, bold);
+  text(
+    input.presentedKind === "file"
+      ? "Document presented to all parties (SHA-256 of the file)"
+      : "Agreement text presented to all parties (SHA-256 of the text, UTF-8)",
+    11, bold,
+  );
   text(input.presentedSha256.slice(0, 32), 9, font);
   text(input.presentedSha256.slice(32), 9, font);
   text(
@@ -278,7 +334,7 @@ export async function sealAgreementPdf(input: {
 
   hr();
   // The honest sentence. What we hold is possession of an address, a network origin and a client —
-  // strong circumstantial attribution, and not an identity check. Saying so on the certificate is
+  // strong circumstantial attribution, and not an identity check. Saying so on the record itself is
   // better than letting a reader assume more than the evidence carries.
   text(
     "Attribution is evidenced by control of the email address the signing link was sent to, together",

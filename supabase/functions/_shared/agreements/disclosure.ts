@@ -15,9 +15,11 @@
 //      than a migration — so it does not block building, only shipping to real counterparties.
 //   2. ITEMS 3 AND 4 CREATE A HUMAN OBLIGATION, NOT A CODE PATH. Promising a paper copy on request,
 //      and an address to withdraw consent, binds the TENANT to actually honour it. A disclosure that
-//      promises a process nobody performs is worse than no disclosure, so the tenant's own contact
-//      details are interpolated rather than invented, and a tenant with no contact address cannot
-//      send (the send path refuses rather than shipping a promise addressed to nobody).
+//      promises a process nobody performs is worse than no disclosure. So {{contact}} is resolved
+//      from the workspace (`tenantContactForDisclosure` — its public support address, else the
+//      owner's), and `agreement-send` REFUSES before minting a token when neither exists, rather
+//      than shipping a promise addressed to nobody. An earlier version of this file claimed both of
+//      those while interpolating the literal "the sender of this agreement"; the claim is now true.
 
 export interface ConsentDisclosure {
   slug: string;
@@ -67,9 +69,15 @@ export function renderDisclosure(
   tenantName: string,
   tenantContact: string,
 ): string {
+  // REPLACER FUNCTIONS, not strings. `String.replaceAll` expands `$&`, `$'`, "$`" and `$1` inside the
+  // REPLACEMENT argument, and the tenant writes its own name. A workspace called `Acme $'` therefore
+  // spliced copies of the surrounding paragraphs into the notice — and `consentEvidenceText` hashed
+  // that garbled version into `esign_consent_sha256`, permanently, on the one artifact in this engine
+  // whose entire purpose is to be provably the text the person was shown. A function replacement
+  // inserts the value literally and has no `$` syntax at all.
   return disclosure.body
-    .replaceAll("{{tenant}}", tenantName)
-    .replaceAll("{{contact}}", tenantContact);
+    .replaceAll("{{tenant}}", () => tenantName)
+    .replaceAll("{{contact}}", () => tenantContact);
 }
 
 /** The exact string whose hash is stored: the rendered notice plus the label beside the control. */

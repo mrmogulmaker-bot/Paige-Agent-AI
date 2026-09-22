@@ -621,9 +621,10 @@ jobs:
             supabase/functions/_shared/agreements/token.test.ts \
             supabase/functions/_shared/agreements/document.test.ts \
             supabase/functions/_shared/agreements/signing-guard.test.ts
-          # The two edge functions must at least TYPE-check; neither is exercised by the tests above.
+          # The edge functions must at least TYPE-check; none is exercised by the tests above.
           deno check --allow-import --node-modules-dir=none \
-            supabase/functions/agreement-sign/index.ts \
+            supabase/functions/sign-agreement/index.ts \
+            supabase/functions/agreement-document/index.ts \
             supabase/functions/agreement-send/index.ts
           # The integrity proof stands up its own throwaway Postgres cluster and asserts the exact
           # SQLSTATE of every refusal, plus positive controls. It needs no credentials.

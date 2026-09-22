@@ -17,8 +17,9 @@
 // comes from `current_user_tenant_id()` under the CALLER'S OWN JWT, every query is scoped to it, and
 // the database re-proves each link by trigger even for the service role.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { renderPresentedPdf, hashDocument, assertNamesAreStampable, UnrenderableNameError } from "../_shared/agreements/document.ts";
+import { renderPresentedPdf, hashDocument, assertDocumentIsRenderable, assertNamesAreStampable, UnrenderableDocumentError, UnrenderableNameError } from "../_shared/agreements/document.ts";
 import { expiryFromNow, mintSignerToken, sha256Hex, SIGNING_TOKEN_TTL_DAYS } from "../_shared/agreements/token.ts";
+import { tenantContactForDisclosure } from "../_shared/agreements/notify.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -53,6 +54,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const { data: tenantId } = await caller.rpc("current_user_tenant_id");
   if (!tenantId) return json({ ok: false, error: "Open a workspace and try again." }, 403);
 
+  // AUTHENTICATED IS NOT AUTHORIZED. The first version stopped at "has a tenant", which let any
+  // active member of any seat role — a coach, a sales rep, a client user who happens to hold a
+  // membership — send a legally binding agreement on their employer's behalf and freeze the
+  // document. save_paige_agreement and void_paige_agreement both gate on is_tenant_admin; the
+  // outward act was the one path that did not. Checked under the CALLER'S JWT, so it is the same
+  // predicate the RPCs enforce rather than a second opinion about it.
+  const { data: isAdmin } = await caller.rpc("is_tenant_admin", { _tenant_id: tenantId });
+  if (isAdmin !== true) {
+    return json({ ok: false, error: "Only an owner or admin can send an agreement for signature." }, 403);
+  }
+
+  // §60/§61 — the agreement_signing lock, enforced on the server rather than merely declared.
+  // A pure Agency manages sub-accounts, not a client book, so it has no book to send an agreement
+  // into. Enterprise is the hybrid tier and keeps it; sub-accounts and solo tenants keep it. Keyed
+  // on the §51 invariant (a child is never a manager tier), so parentage decides first.
+  const { data: tenantRow } = await admin.from("tenants")
+    .select("name,account_type,parent_tenant_id").eq("id", tenantId).maybeSingle();
+  if (!tenantRow?.parent_tenant_id && tenantRow?.account_type === "agency") {
+    return json({
+      ok: false,
+      error: "Agreements are sent from the account that holds the client relationship. Switch into the sub-account whose client this is and send it from there.",
+    }, 403);
+  }
+
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { return json({ ok: false, error: "Malformed request." }, 400); }
 
@@ -71,7 +96,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // Scoped by the caller's tenant, never by an id from the body alone.
   const { data: agreement } = await admin.from("paige_agreements")
-    .select("id,tenant_id,title,body_markdown,status,expires_at,content_storage_key,content_sha256")
+    .select("id,tenant_id,title,body_source,body_markdown,status,expires_at,content_storage_key,content_sha256")
     .eq("id", agreementId).eq("tenant_id", tenantId).maybeSingle();
   if (!agreement) return json({ ok: false, error: "That agreement is not in this workspace." }, 404);
 
@@ -100,8 +125,35 @@ Deno.serve(async (req: Request): Promise<Response> => {
     throw e;
   }
 
-  const { data: tenant } = await admin.from("tenants").select("name").eq("id", tenantId).maybeSingle();
-  const tenantName = (tenant?.name as string) ?? "Your business";
+  // And the same question about the DOCUMENT ITSELF, which the first version never asked. The
+  // exporter maps every unencodable codepoint to `?` rather than throwing, so an agreement written
+  // in Cyrillic, Japanese, Arabic, Greek or Hebrew was rendered as a page of question marks, hashed,
+  // frozen by `pa_sent_is_frozen_ck` and emailed as the document of record — exactly the "provably
+  // wrong about the one fact it exists to establish" failure the name check above refuses. Frozen
+  // means it could not then be corrected: the agreement had to be voided and redrafted.
+  try {
+    assertDocumentIsRenderable(
+      String(agreement.title),
+      agreement.body_source === "tenant_upload" ? null : (agreement.body_markdown as string | null),
+    );
+  } catch (e) {
+    if (e instanceof UnrenderableDocumentError) return json({ ok: false, error: e.message }, 422);
+    throw e;
+  }
+
+  const tenantName = (tenantRow?.name as string) ?? "Your business";
+
+  // The ESIGN disclosure promises the signer a route to a human for a paper copy and to withdraw
+  // consent. Refuse BEFORE anything is frozen or minted rather than shipping a notice addressed to
+  // nobody — and refuse here, where it is still a draft the owner can fix.
+  const tenantContact = await tenantContactForDisclosure(admin as never, String(tenantId));
+  if (!tenantContact) {
+    return json({
+      ok: false,
+      status: "needs_config",
+      error: "Add a contact email for your workspace before sending an agreement. The signer has to be told where to ask for a paper copy or withdraw consent, and that promise needs a real address behind it. Nothing was sent.",
+    }, 409);
+  }
 
   // ── 3/4) Render ONCE and freeze. On a resend the document is already frozen and is NOT re-rendered:
   // the whole integrity claim is that every signer saw the same bytes.
@@ -114,6 +166,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       bytes = await renderPresentedPdf({ title: agreement.title, bodyMarkdown: agreement.body_markdown });
     } catch (e) {
       console.error("[agreement-send] render failed", { agreementId, error: String(e) });
+      if (e instanceof UnrenderableDocumentError) return json({ ok: false, error: e.message }, 422);
       return json({ ok: false, error: "This agreement could not be turned into a document. Nothing was sent." }, 422);
     }
 
@@ -139,13 +192,32 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
     contentKey = key;
     contentHash = storedHash;
+
+    // Recorded NOW, not at the end. If the send fails after this point the agreement stays a draft
+    // — but it keeps the bytes it already froze, so a retry reuses them instead of rendering a
+    // second document and leaving the first orphaned in the bucket with no reaper.
+    const { error: freezeError } = await admin.from("paige_agreements")
+      .update({ content_storage_key: contentKey, content_sha256: contentHash })
+      .eq("id", agreementId).eq("tenant_id", tenantId);
+    if (freezeError) {
+      console.error("[agreement-send] frozen document could not be recorded", { agreementId, error: freezeError.message });
+      return json({ ok: false, error: "The document could not be recorded, so nothing was sent." }, 502);
+    }
   }
 
   // ── 5) Tokens. A signer already holding a LIVE link keeps it: a double-submitted send must not
   // silently kill a URL the person may already have open. An explicit resend re-mints deliberately.
+  //
+  // THE TOKEN IS WRITTEN ONLY ONCE ITS EMAIL IS ACCEPTED, and that ordering is the fix for a real
+  // defect. It used to persist first: when every delivery then failed, the function correctly left
+  // the agreement a draft — but the hash and the 30-day expiry stayed on the row. On the NEXT send
+  // that link read as `live`, so nothing was minted, nothing was emailed, and the signer was pushed
+  // into `sent` as "reused" — which made `sent.length` non-zero, advanced the status, and returned
+  // `{ok:true, status:'sent'}` with zero outbound requests made and the plaintext gone forever.
+  // Paige repeated that to the owner as delivery to a named person who would never receive it.
   const now = new Date();
-  const siteUrl = (Deno.env.get("PUBLIC_SITE_URL") ?? supabaseUrl).replace(/\/+$/, "");
-  const sent: Array<{ email: string; reused: boolean }> = [];
+  const sent: Array<{ email: string }> = [];
+  const notDelivered: Array<{ email: string; reason: string }> = [];
   const failed: Array<{ email: string; reason: string }> = [];
 
   for (const s of signers as Array<Record<string, unknown>>) {
@@ -154,29 +226,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const live = s.token_hash && !s.token_revoked_at && s.token_expires_at &&
       new Date(String(s.token_expires_at)).getTime() > now.getTime();
 
-    let token: string | null = null;
-    if (!live || resend) {
-      token = mintSignerToken();
-      const { error } = await admin.from("paige_agreement_signers").update({
-        token_hash: await sha256Hex(token),
-        token_expires_at: expiryFromNow(now, SIGNING_TOKEN_TTL_DAYS),
-        token_revoked_at: null,
-      }).eq("id", s.id).eq("tenant_id", tenantId);
-      if (error) {
-        console.error("[agreement-send] token mint failed", { signerId: s.id, error: error.message });
-        failed.push({ email: String(s.email), reason: "link could not be created" });
-        continue;
-      }
-    }
-
-    if (!token) {
-      // A live link exists but its plaintext is gone by design, so it cannot be re-sent in an email.
-      // Say so plainly instead of pretending a message went out.
-      sent.push({ email: String(s.email), reused: true });
+    if (live && !resend) {
+      // A live link exists but its plaintext is gone by design, so it cannot be put in an email.
+      // Reported in its OWN bucket: counting it as sent is how a send with no messages at all came
+      // to report success.
+      notDelivered.push({
+        email: String(s.email),
+        reason: "this signer already has a live link; the link itself cannot be re-read, so resend to issue a new one",
+      });
       continue;
     }
 
-    const link = `${supabaseUrl}/functions/v1/agreement-sign?token=${token}`;
+    const token = mintSignerToken();
+    const tokenHash = await sha256Hex(token);
+    const link = `${supabaseUrl}/functions/v1/sign-agreement?token=${token}`;
     const res = await fetch(`${supabaseUrl}/functions/v1/send-transactional-email`, {
       method: "POST",
       headers: { Authorization: authHeader, "Content-Type": "application/json" },
@@ -188,7 +251,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         templateName: "agreement-signature-request",
         recipientEmail: s.email,
         tenantId,
-        idempotencyKey: `agreement-${agreementId}-${s.id}-${(await sha256Hex(token)).slice(0, 16)}`,
+        idempotencyKey: `agreement-${agreementId}-${s.id}-${tokenHash.slice(0, 16)}`,
         templateData: {
           signer_name: s.full_name,
           tenant_name: tenantName,
@@ -201,11 +264,26 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
       console.error("[agreement-send] signer email failed", { signerId: s.id, status: res.status, detail: detail.slice(0, 300) });
+      // The token was never written, so the next attempt mints a fresh one and delivers it rather
+      // than finding a "live" link nobody holds.
       failed.push({ email: String(s.email), reason: "the email could not be delivered" });
       continue;
     }
 
-    sent.push({ email: String(s.email), reused: false });
+    // Delivered. NOW the link becomes real.
+    const { error: mintError } = await admin.from("paige_agreement_signers").update({
+      token_hash: tokenHash,
+      token_expires_at: expiryFromNow(now, SIGNING_TOKEN_TTL_DAYS),
+      token_revoked_at: null,
+    }).eq("id", s.id).eq("tenant_id", tenantId);
+    if (mintError) {
+      // The message is already out and its link will not work. Say exactly that; a resend fixes it.
+      console.error("[agreement-send] token write failed after the email went out", { signerId: s.id, error: mintError.message });
+      failed.push({ email: String(s.email), reason: "the email went out but its link could not be activated — resend it" });
+      continue;
+    }
+
+    sent.push({ email: String(s.email) });
     await admin.from("paige_agreement_events").insert({
       agreement_id: agreementId, tenant_id: tenantId, signer_id: s.id,
       event_type: resend ? "resent" : "sent", actor_kind: "owner", actor_user_id: actorId,
@@ -213,27 +291,42 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   if (sent.length === 0) {
-    // Nothing reached anybody, so the agreement stays a draft and can simply be sent again.
-    return json({ ok: false, status: "not_sent", error: "No signer could be reached, so this agreement is still a draft.", failed }, 502);
+    // Nothing reached anybody. The agreement keeps whatever status it had — a draft stays a draft —
+    // and the answer names every signer and why, rather than reporting a send that did not happen.
+    return json({
+      ok: false, status: "not_sent",
+      error: agreement.status === "draft"
+        ? "No signer could be reached, so this agreement is still a draft."
+        : "No new message went out, so nothing about this agreement changed.",
+      failed, notDelivered,
+    }, 502);
   }
 
-  // ── 7) Only now does the status move.
-  const { error: statusError } = await admin.from("paige_agreements").update({
-    status: "sent",
+  // ── 7) Only now does the status move — and ONLY from `draft`, which is the one legal edge into
+  // `sent`. The forward-only trigger allows viewed -> {partially_signed, completed, declined,
+  // voided, expired} and partially_signed -> {completed, ...}; neither set contains `sent`, so
+  // writing it unconditionally made every resend after the signer opened the document raise 23514.
+  // The links had already been reissued and the emails already sent by then, so the operator — and
+  // Paige, repeating it — got "sent but its status did not update" with no retry that could succeed.
+  const statusPatch: Record<string, unknown> = {
     sent_at: new Date().toISOString(),
     content_storage_key: contentKey,
     content_sha256: contentHash,
     expires_at: agreement.expires_at ?? expiryFromNow(now, SIGNING_TOKEN_TTL_DAYS),
-  }).eq("id", agreementId).eq("tenant_id", tenantId).in("status", ["draft", "sent", "viewed", "partially_signed"]);
+  };
+  if (agreement.status === "draft") statusPatch.status = "sent";
+
+  const { error: statusError } = await admin.from("paige_agreements").update(statusPatch)
+    .eq("id", agreementId).eq("tenant_id", tenantId).in("status", ["draft", "sent", "viewed", "partially_signed"]);
 
   if (statusError) {
     console.error("[agreement-send] status write failed after sending", { agreementId, error: statusError.message });
     // The emails ARE out. Reporting failure here would be a lie in the other direction.
     return json({
-      ok: true, status: "sent", documentSha256: contentHash, sent, failed,
+      ok: true, status: "sent", documentSha256: contentHash, sent, failed, notDelivered,
       warning: "The agreement was sent but its status did not update. Reload before sending again.",
     });
   }
 
-  return json({ ok: true, status: resend ? "resent" : "sent", documentSha256: contentHash, sent, failed });
+  return json({ ok: true, status: resend ? "resent" : "sent", documentSha256: contentHash, sent, failed, notDelivered });
 });

@@ -16,10 +16,13 @@
 # Exit 0 means every negative was refused with the expected code and every positive succeeded.
 #
 # WHAT IT DOES NOT PROVE (§13). The fixture schema is a stand-in for the real `clients` /
-# `tenant_products` / auth-helper surface, and the ownership model is representative of Supabase's
-# (tables owned by a non-superuser role; `service_role` BYPASSRLS but not a member of the owner) —
-# it is NOT production. Confirming the same behaviour on prod is a separate §32 step for a session
-# that holds database access.
+# `tenant_products` / auth-helper surface, and it is NOT production. One property is deliberately
+# NOT reproduced and was previously mis-stated here: the cluster is created with
+# `initdb -U proofrunner`, so these tables are owned by the BOOTSTRAP SUPERUSER, not by a
+# non-superuser role as on Supabase. What the service-role section does prove is the part that
+# matters for the trigger guarantees — `service_role` BYPASSRLS, is not a superuser, and is not a
+# member of the owning role, so it cannot disable a trigger or set session_replication_role.
+# Confirming the same behaviour on prod is a separate §32 step for a session with database access.
 set -euo pipefail
 
 # Postgres refuses to run as root. Containers and CI images frequently ARE root, so rather than
@@ -47,6 +50,8 @@ REPO="$(cd "$HERE/../.." && pwd)"
 MIGRATION="$REPO/supabase/migrations/20270401000000_agreements_engine_records.sql"
 MIGRATION2="$REPO/supabase/migrations/20270402000000_agreements_read_and_expiry.sql"
 MIGRATION3="$REPO/supabase/migrations/20270403000000_agreements_autonomy_catalogue.sql"
+MIGRATION4="$REPO/supabase/migrations/20270404000000_agreement_signing_contract.sql"
+MIGRATION5="$REPO/supabase/migrations/20270405000000_agreement_signer_seam.sql"
 WORK="$(mktemp -d)"
 PORT="${PGPORT:-55432}"
 
@@ -76,24 +81,30 @@ psql -v ON_ERROR_STOP=1 -q -f "$MIGRATION2" 2>&1 | grep -iE "^psql.*error" && { 
 # and friends), so it is deliberately NOT applied here. Its coverage is proven by
 # `npm run lint:tool-catalogue`, which reads the SQL directly — stating that rather than pretending
 # this proof covers it.
-echo "migrations 1 and 2 applied to a clean database (3 is catalogue-only, covered by lint:tool-catalogue)"
+psql -v ON_ERROR_STOP=1 -q -f "$MIGRATION4" 2>&1 | grep -iE "^psql.*error" && { echo "FAIL — the signing-contract migration did not apply"; exit 1; }
+psql -v ON_ERROR_STOP=1 -q -f "$MIGRATION5" 2>&1 | grep -iE "^psql.*error" && { echo "FAIL — the signer-seam migration did not apply"; exit 1; }
+echo "migrations 1, 2, 4 and 5 applied to a clean database (3 is catalogue-only, covered by lint:tool-catalogue)"
 echo
 
 OUT="$WORK/out.txt"
-psql -q -f "$HERE/integrity-proof.sql"     2>&1 | grep -E '^(P[0-9]|C[0-9]|---)' | tee "$OUT"
+psql -v ON_ERROR_STOP=1 -q -f "$HERE/integrity-proof.sql"     2>&1 | grep -E '^(P[0-9]|C[0-9]|---)' | tee "$OUT"
 echo
-psql -q -f "$HERE/service-role-proof.sql"  2>&1 | grep -E '^(table|service_role|acting|S[0-9])' | tee -a "$OUT"
+psql -v ON_ERROR_STOP=1 -q -f "$HERE/service-role-proof.sql"  2>&1 | grep -E '^(table|service_role|acting|S[0-9])' | tee -a "$OUT"
 echo
 # psql prefixes a NOTICE with "<file>:<line>: NOTICE:  ", so strip anything before the marker
 # rather than anchoring at the start of the line.
-psql -q -f "$HERE/read-and-expiry-proof.sql" 2>&1 | sed -E 's/^.*NOTICE:  //' | grep -E '^(E[0-9]|---)' | tee -a "$OUT"
+psql -v ON_ERROR_STOP=1 -q -f "$HERE/read-and-expiry-proof.sql" 2>&1 | sed -E 's/^.*NOTICE:  //' | grep -E '^(E[0-9]|---)' | tee -a "$OUT"
+echo
+psql -v ON_ERROR_STOP=1 -q -f "$HERE/contract-proof.sql" 2>&1 | sed -E 's/^.*NOTICE:  //' | grep -E '^(K[0-9]|---)' | tee -a "$OUT"
+echo
+psql -v ON_ERROR_STOP=1 -q -f "$HERE/signer-seam-proof.sql" 2>&1 | sed -E 's/^.*NOTICE:  //' | grep -E '^(N[0-9]|---)' | tee -a "$OUT"
 echo
 
 if grep -qE 'NO ERROR - GUARANTEE IS FALSE|UNEXPECTED|SUCCEEDED - INTEGRITY CLAIM IS FALSE' "$OUT"; then
   echo "FAIL — at least one integrity guarantee did not hold."
   exit 1
 fi
-if [ "$(grep -c 'PASS' "$OUT")" -lt 19 ]; then
+if [ "$(grep -c 'PASS' "$OUT")" -lt 25 ]; then
   echo "FAIL — fewer negatives ran than expected; the proof itself is broken."
   exit 1
 fi
@@ -104,6 +115,51 @@ fi
 if ! grep -q 'E8 refused' "$OUT" || ! grep -q 'E9 refused' "$OUT"; then
   echo "FAIL — the overview did not refuse a foreign workspace or a non-member."
   exit 1
+fi
+# The UI contract: the page's three depended-on properties, proven rather than asserted.
+if ! grep -q 'K3 raw_token_stored = false' "$OUT"; then
+  echo "FAIL — the raw signing token was found stored on the row; only its hash may be."; exit 1
+fi
+if ! grep -q 'K5 leaks = 0' "$OUT"; then
+  echo "FAIL — peek_agreement_signing exposes a tenant id, an email or a token column."; exit 1
+fi
+for row in 'K6a unknown  = false cols_null=true' 'K6b malformed= false cols_null=true' 'K6c expired  = false cols_null=true' 'K8 declined  = false cols_null=true'; do
+  grep -qF "$row" "$OUT" || { echo "FAIL — refusals are distinguishable: missing [$row]"; exit 1; }
+done
+if ! grep -q 'K7c decline after signing = false' "$OUT"; then
+  echo "FAIL — a signer who already signed was told their decline was recorded."; exit 1
+fi
+if ! grep -q 'K10b hash_gone = true' "$OUT" || ! grep -q 'K10c voided_refuses = false' "$OUT"; then
+  echo "FAIL — voiding left a usable link behind."; exit 1
+fi
+# The positive controls for peek. Without these, a peek that ALWAYS refused would pass every
+# refusal assertion above.
+if ! grep -q 'K4 Services Agreement valid=true' "$OUT"; then
+  echo "FAIL — peek did not return a live agreement; the refusal assertions prove nothing."; exit 1
+fi
+if ! grep -q 'K4b amount=250000 ccy=usd term=recurring valid=true' "$OUT"; then
+  echo "FAIL — peek did not return the agreed figure for a priced agreement."; exit 1
+fi
+if ! grep -q 'K12 reached: draft -> sent -> viewed -> completed' "$OUT"; then
+  echo "FAIL — a state this design claims is reachable was not reached."; exit 1
+fi
+if ! grep -q 'K12 expired reachable: expired' "$OUT"; then
+  echo "FAIL — expired is unreachable."; exit 1
+fi
+# THE REACHABILITY CONTROL. The independent review found that nothing in the repository inserted a
+# signer, so the whole engine was correct and unusable. This asserts the product's own create path
+# produces a signer AND that the link the approved page issues now succeeds.
+if ! grep -q 'N1 signers=1 email=a-client@example.com order=1' "$OUT"; then
+  echo "FAIL — creating an agreement did not produce its counterparty signer; the engine is unreachable again."; exit 1
+fi
+if ! grep -q 'N1 link issued = sent' "$OUT"; then
+  echo "FAIL — a signing link could not be issued for an agreement the product itself created."; exit 1
+fi
+if ! grep -q 'N2 agency refused 42501 PASS' "$OUT"; then
+  echo "FAIL — a top-level agency created an agreement; the §61 tier gate is not enforced."; exit 1
+fi
+if ! grep -q 'N6 token_hash readable=f full_name readable=t PASS' "$OUT"; then
+  echo "FAIL — authenticated can read token_hash, or can no longer read the columns it needs."; exit 1
 fi
 if ! grep -q 'C1 .*signed' "$OUT" || ! grep -q 'C2 .*signed' "$OUT"; then
   echo "FAIL — positive controls did not succeed, so the negatives prove nothing."

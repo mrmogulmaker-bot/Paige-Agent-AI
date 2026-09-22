@@ -12712,7 +12712,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         } else if (
           tc.function.name === "agreement_draft" || tc.function.name === "agreement_void" ||
           tc.function.name === "agreement_status" || tc.function.name === "agreement_send" ||
-          tc.function.name === "agreement_resend"
+          tc.function.name === "agreement_resend" || tc.function.name === "agreement_add_signer"
         ) {
           // INT-163 — PAIGE-native agreements. DRAFT/VOID/STATUS go to their canonical RPCs under the
           // CALLER'S JWT, so the tenant is resolved server-side and RLS plus each function's own
@@ -12748,6 +12748,20 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 error
                   ? { success:false, error: error.message, note:"Nothing was saved." }
                   : { success:true, saved:true, agreement: data, note:"This is a DRAFT. Nobody has seen it and nothing has been sent." },
+              ) });
+            } else if (tc.function.name === "agreement_add_signer") {
+              const { data, error } = await supabaseClient.rpc("add_agreement_signer", {
+                _expected_tenant_id: tid,
+                _signing_id: args.agreementId,
+                _full_name: args.fullName,
+                _email: args.email,
+                _signer_role: args.role ?? "counterparty",
+                _signing_order: args.signingOrder ?? null,
+              });
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(
+                error
+                  ? { success:false, error: error.message, note:"Nobody was added." }
+                  : { success:true, signer: data, note:"Named on the DRAFT only. Nothing has been sent and no signing link exists yet." },
               ) });
             } else if (tc.function.name === "agreement_void") {
               const { data, error } = await supabaseClient.rpc("void_paige_agreement", {

@@ -252,6 +252,7 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // `agreement_sign` tool at any class: Paige does not sign on anyone's behalf, and the only way a
   // signature happens is a human on the public signing page with their own token.
   ["agreement_draft", "ordinary", "saves a DRAFT agreement nobody outside this workspace can see; it sends nothing, freezes nothing, and the document cannot be edited once it HAS been sent — sending is the separate high-risk act"],
+  ["agreement_add_signer", "ordinary", "names another person who must sign a DRAFT agreement; nothing is sent and no link is created, and the database refuses it once the agreement has left draft"],
   ["agreement_send", "high", "emails a real person a link that lets them sign a legally binding document, and freezes the document at that moment — outward-facing, with legal weight, and not undoable by editing"],
   ["agreement_resend", "high", "emails a real person again and issues a NEW signing link, which stops the previous one working; the document itself never changes"],
   ["agreement_void", "high", "withdraws an agreement that is already out for signature — terminal, kills every outstanding signing link immediately, and can never be reopened"],

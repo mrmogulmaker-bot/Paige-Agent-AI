@@ -17,7 +17,7 @@
 // it. Nothing here rolls a completed agreement back because a message did not go out — that would
 // destroy a legal record to fix a delivery problem. Delivery is retried separately.
 
-import { sealAgreementPdf, UnrenderableNameError } from "./document.ts";
+import { renderPresentedPdf, sealAgreementPdf, UnrenderableDocumentError, UnrenderableNameError } from "./document.ts";
 import { expiryFromNow, mintSignerToken, RETRIEVAL_TOKEN_TTL_DAYS, sha256Hex } from "./token.ts";
 import { notify, ownerNotificationEmail } from "./notify.ts";
 
@@ -32,7 +32,7 @@ interface Db {
 
 export async function sealAndComplete(db: Db, agreementId: string): Promise<SealOutcome> {
   const { data: agreement } = await db.from("paige_agreements")
-    .select("id,tenant_id,title,status,content_storage_key,content_sha256,sealed_sha256")
+    .select("id,tenant_id,title,status,body_source,body_markdown,content_storage_key,content_sha256,sealed_sha256")
     .eq("id", agreementId).maybeSingle();
 
   if (!agreement) return { ok: false, reason: "not_ready", detail: "agreement not found" };
@@ -41,7 +41,7 @@ export async function sealAndComplete(db: Db, agreementId: string): Promise<Seal
     // burning a second seal. The write-once trigger would refuse anyway; this makes it graceful.
     return { ok: true, sealedSha256: agreement.sealed_sha256, sealedKey: "" };
   }
-  if (!agreement.content_storage_key || !agreement.content_sha256) {
+  if (!agreement.content_sha256) {
     return { ok: false, reason: "missing_presented", detail: "no frozen document to seal" };
   }
 
@@ -60,17 +60,61 @@ export async function sealAndComplete(db: Db, agreementId: string): Promise<Seal
 
   const { data: tenant } = await db.from("tenants").select("name").eq("id", agreement.tenant_id).maybeSingle();
 
-  const presented = await db.storage.from("paige-agreements").download(agreement.content_storage_key);
-  if (presented.error || !presented.data) {
-    return { ok: false, reason: "storage_failed", detail: presented.error?.message ?? "presented document unreadable" };
+  // ── WHAT THE SIGNER WAS SHOWN, and how we know ────────────────────────────────────────────────
+  // There are two freeze paths and they freeze different media, so this reads whichever one applies
+  // rather than assuming the first:
+  //
+  //   • `agreement-send` renders a PDF, stores it, and hashes the bytes it read back. The signer is
+  //     shown that file, so `content_sha256` is the digest of the FILE.
+  //   • `issue_agreement_signing_link` runs in the database, which cannot read storage or render a
+  //     PDF. The approved page presents the agreement's TEXT, so it freezes the digest of the TEXT
+  //     and stores no file.
+  //
+  // The earlier version demanded a stored file, which made the whole database-minted path — the one
+  // the approved page actually uses — unsealable: every signature would land and completion could
+  // never happen. The text is re-hashed here before it is rendered, so a body edited after the link
+  // was issued is caught rather than quietly sealed.
+  let presentedBytes: Uint8Array;
+  let presentedLabel: "file" | "text";
+
+  if (agreement.content_storage_key) {
+    const presented = await db.storage.from("paige-agreements").download(agreement.content_storage_key);
+    if (presented.error || !presented.data) {
+      return { ok: false, reason: "storage_failed", detail: presented.error?.message ?? "presented document unreadable" };
+    }
+    presentedBytes = new Uint8Array(await presented.data.arrayBuffer());
+    const actual = await sha256Hex(presentedBytes);
+    if (actual !== agreement.content_sha256) {
+      console.error("[agreements] the frozen document no longer matches its recorded hash", { agreementId });
+      return { ok: false, reason: "verify_failed", detail: "the frozen document does not match its recorded hash" };
+    }
+    presentedLabel = "file";
+  } else {
+    const body = String(agreement.body_markdown ?? "");
+    const actual = await sha256Hex(new TextEncoder().encode(body));
+    if (actual !== agreement.content_sha256) {
+      console.error("[agreements] the agreement text changed after the link was issued", { agreementId });
+      return { ok: false, reason: "verify_failed", detail: "the agreement text changed after the link was issued" };
+    }
+    try {
+      presentedBytes = await renderPresentedPdf({ title: agreement.title, bodyMarkdown: body });
+    } catch (e) {
+      if (e instanceof UnrenderableDocumentError) {
+        console.error("[agreements] seal refused — the agreement text cannot be exported", { agreementId });
+        return { ok: false, reason: "render_failed", detail: e.message };
+      }
+      console.error("[agreements] presented render failed at seal", { agreementId, error: String(e) });
+      return { ok: false, reason: "render_failed", detail: String(e) };
+    }
+    presentedLabel = "text";
   }
-  const presentedBytes = new Uint8Array(await presented.data.arrayBuffer());
 
   let sealedBytes: Uint8Array;
   try {
     sealedBytes = await sealAgreementPdf({
       presentedBytes,
       presentedSha256: agreement.content_sha256,
+      presentedKind: presentedLabel,
       agreementTitle: agreement.title,
       agreementId: agreement.id,
       tenantName: tenant?.name ?? "",
@@ -88,9 +132,11 @@ export async function sealAndComplete(db: Db, agreementId: string): Promise<Seal
         consentVersion: (s.esign_consent_version as number) ?? null,
         signingIp: (s.signing_ip as string) ?? null,
         signingUserAgent: (s.signing_user_agent as string) ?? null,
-        signatureImagePng: s.signature_image_png
-          ? Uint8Array.from(atob(String(s.signature_image_png)), (c) => c.charCodeAt(0))
-          : null,
+        // Guarded independently of the boundary check in `sign-agreement`: this ran INSIDE the
+        // argument object, so a blob that would not decode threw past `document.ts`'s deliberate
+        // embedPng fallback and failed the seal permanently. Rows written before that boundary
+        // existed still have to degrade to the typed name rather than strand the agreement.
+        signatureImagePng: decodeSignatureImage(s.signature_image_png, agreementId),
       })),
       events: (events ?? []).map((e: Record<string, unknown>) => ({
         eventType: String(e.event_type ?? ""),
@@ -132,17 +178,41 @@ export async function sealAndComplete(db: Db, agreementId: string): Promise<Seal
     return { ok: false, reason: "verify_failed", detail: "stored document does not match what was sealed" };
   }
 
+  // THE COMPLETION WRITE IS THE CONCURRENCY GUARD, and `.select("id")` is what makes it one.
+  // The read-then-write check at the top of this function has no atomicity: two final signatures
+  // landing together both see `sealed_sha256` NULL, both render, and both upload under distinct
+  // random keys. Without the returned rows, supabase-js reports a zero-row update as SUCCESS, so the
+  // loser returned ok:true for a seal that was never recorded, orphaned its PDF in the bucket, and —
+  // worst of all — ran the completion notices a second time, minting fresh retrieval tokens that
+  // killed the links the winner had already emailed.
   const completedAt = new Date().toISOString();
-  const { error: updateError } = await db.from("paige_agreements").update({
+  const { data: completed, error: updateError } = await db.from("paige_agreements").update({
     status: "completed",
     completed_at: completedAt,
     sealed_storage_key: sealedKey,
     sealed_sha256: sealedSha256,
-  }).eq("id", agreementId).in("status", ["sent", "viewed", "partially_signed"]);
+  }).eq("id", agreementId).in("status", ["sent", "viewed", "partially_signed"]).select("id");
 
   if (updateError) {
     console.error("[agreements] completion write refused after a successful seal", { agreementId, error: updateError.message });
     return { ok: false, reason: "verify_failed", detail: updateError.message };
+  }
+
+  if (!completed || completed.length === 0) {
+    // Another request sealed this agreement first. Clean up after ourselves, send nothing, and
+    // answer from the committed row rather than from what this call produced.
+    const rm = await db.storage.from("paige-agreements").remove([sealedKey]);
+    if (rm.error) {
+      console.error("[agreements] orphaned sealed copy could not be removed", { agreementId, sealedKey, error: rm.error.message });
+    }
+    const { data: winner } = await db.from("paige_agreements")
+      .select("sealed_sha256,sealed_storage_key").eq("id", agreementId).maybeSingle();
+    if (winner?.sealed_sha256) {
+      return { ok: true, sealedSha256: String(winner.sealed_sha256), sealedKey: String(winner.sealed_storage_key ?? "") };
+    }
+    // Nobody sealed it and the status moved elsewhere — voided or declined between our read and our
+    // write. Honest failure, not a claimed completion.
+    return { ok: false, reason: "not_ready", detail: "the agreement left the signing states while it was being sealed" };
   }
 
   for (const eventType of ["sealed", "completed"]) {
@@ -211,9 +281,9 @@ async function deliverCompletionNotices(
       tenantId: input.tenantId,
       idempotencyKey: `agreement-completed-${input.agreementId}-${String(s.email)}`,
       templateData: {
-        recipient_name: s.full_name,
+        signer_name: s.full_name,
         agreement_title: input.title,
-        document_url: `${supabaseUrl}/functions/v1/agreement-sign?token=${token}`,
+        document_url: `${supabaseUrl}/functions/v1/agreement-document?token=${token}`,
         sealed_sha256: input.sealedSha256,
         party_names: partyNames,
         is_signer: true,
@@ -239,6 +309,34 @@ async function deliverCompletionNotices(
       sealed_sha256: input.sealedSha256,
       party_names: partyNames,
       is_signer: false,
+      // The workspace's own door: no token, because the owner has a session. `agreement-document`
+      // refuses it unless that session resolves to THIS tenant and holds admin, so the link is
+      // useless to anybody else who reads the inbox.
+      document_url: `${supabaseUrl}/functions/v1/agreement-document?agreementId=${input.agreementId}`,
     },
   });
+}
+
+/**
+ * Decode a stored drawn mark, or give up on it quietly.
+ *
+ * Never throws. The typed name is the signature the record relies on; the image corroborates it. A
+ * corrupt blob costing an agreement its completion — permanently, with no repair path — is the
+ * failure this exists to prevent.
+ */
+function decodeSignatureImage(raw: unknown, agreementId: string): Uint8Array | null {
+  if (!raw || typeof raw !== "string") return null;
+  try {
+    const bytes = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
+    if (bytes.length < 8 || bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e || bytes[3] !== 0x47) {
+      console.error("[agreements] stored signature image is not a PNG — falling back to the typed name", { agreementId });
+      return null;
+    }
+    return bytes;
+  } catch (e) {
+    console.error("[agreements] stored signature image could not be decoded — falling back to the typed name", {
+      agreementId, error: String(e),
+    });
+    return null;
+  }
 }

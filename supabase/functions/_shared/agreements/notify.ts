@@ -97,3 +97,26 @@ export async function ownerNotificationEmail(
   const support = (tenant?.brand as { support_email?: string } | null)?.support_email;
   return support && support.includes("@") ? support : null;
 }
+
+/**
+ * The address the ESIGN disclosure tells a signer to contact for a paper copy or to withdraw consent.
+ *
+ * WHY THIS IS NOT COSMETIC. Items 1, 3, 4 and 6 of the disclosure promise the signer a route to a
+ * human. The first version of this interpolated the literal string "the sender of this agreement",
+ * so every signer read "contact Acme at the sender of this agreement" — and, because the disclosure
+ * is hashed into the consent evidence, that defective notice was permanently recorded as the thing
+ * they agreed to. A promise addressed to nobody is worse than no promise.
+ *
+ * Prefers the workspace's public support address, because this one is meant to be given out, and
+ * falls back to the owner's own address. Returns null when there is neither — and the send path
+ * REFUSES on null rather than shipping a notice with a hole in it.
+ */
+export async function tenantContactForDisclosure(
+  db: { from: (t: string) => any; auth: { admin: { getUserById: (id: string) => Promise<any> } } },
+  tenantId: string,
+): Promise<string | null> {
+  const { data: tenant } = await db.from("tenants").select("brand").eq("id", tenantId).maybeSingle();
+  const support = (tenant?.brand as { support_email?: string } | null)?.support_email;
+  if (support && support.includes("@")) return support;
+  return await ownerNotificationEmail(db, tenantId);
+}

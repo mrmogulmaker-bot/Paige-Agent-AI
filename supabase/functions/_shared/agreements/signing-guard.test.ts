@@ -4,12 +4,13 @@
 // so there is no excuse for leaving a branch untested.
 import { assert, assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
+  checkSignatureImage,
   decideSigningAccess,
   explainCannotSign,
   MAX_BODY_BYTES,
-  signerFacingView,
   TOKEN_SHAPE,
 } from "./signing-guard.ts";
+import { consentEvidenceText, ESIGN_CONSENT_DISCLOSURE, renderDisclosure } from "./disclosure.ts";
 
 const NOW = new Date("2026-06-01T12:00:00Z");
 const FUTURE = "2026-07-01T00:00:00Z";
@@ -83,6 +84,33 @@ Deno.test("A COMPLETED AGREEMENT STAYS READABLE BY ITS SIGNER — the retained-r
   );
 });
 
+Deno.test("A COMPLETED AGREEMENT STAYS READABLE PAST ITS SIGNING DEADLINE", () => {
+  // The previous fixture used expires_at:null, so it could never have caught this: `expires_at` is
+  // the ~30-day SIGNING deadline, while the retrieval token deliberately lives far longer. With the
+  // deadline checked first, a counterparty's emailed copy died on day 30 and told them the link had
+  // expired — the retained-record guarantee capped at the signing window.
+  assertEquals(
+    decideSigningAccess({
+      signer: signer({ status: "signed", token_expires_at: "2027-06-01T00:00:00Z" }),
+      agreement: agreement({ status: "completed", expires_at: PAST }),
+      earlierUnsignedCount: 0, now: NOW,
+    }),
+    { allow: true, canSign: false },
+  );
+});
+
+Deno.test("a still-live agreement past its deadline is still refused", () => {
+  // The other half of the same ordering: moving the completed branch up must not let an UNFINISHED
+  // agreement outlive its own deadline.
+  assertEquals(
+    decideSigningAccess({
+      signer: signer(), agreement: agreement({ status: "partially_signed", expires_at: PAST }),
+      earlierUnsignedCount: 0, now: NOW,
+    }),
+    { allow: false, reason: "expired" },
+  );
+});
+
 Deno.test("a voided agreement stops answering immediately", () => {
   for (const status of ["voided", "declined", "expired", "draft"]) {
     assertEquals(
@@ -124,23 +152,68 @@ Deno.test("the reason a signer cannot sign is said in words they can act on", ()
   assert(explainCannotSign("pending", 3).includes("3 other people"));
 });
 
-Deno.test("THE ALLOW-LIST LEAKS NOTHING — no tenant id, storage key, token, or other party's email", () => {
-  const view = signerFacingView({
-    agreement: { title: "Services", status: "sent", expires_at: FUTURE, content_sha256: "f".repeat(64) },
-    signer: { full_name: "Jordan", email: "jordan@example.com", signer_role: "counterparty", status: "pending", signing_order: 1 },
-    tenantDisplayName: "Acme Consulting",
-    otherParties: [{ full_name: "Sam Okafor", status: "pending", signing_order: 2 }],
-    canSign: true,
-    disclosure: { slug: "esign-consent", version: 1, body: "notice", checkboxLabel: "I agree" },
-  });
 
-  const serialized = JSON.stringify(view);
-  for (const forbidden of ["tenant_id", "tenantId", "token", "storage", "_key", "sealed", "contact_id", "signer_id"]) {
-    assert(!serialized.includes(forbidden), `the signer view leaked "${forbidden}": ${serialized}`);
+// ── The boundary checks, because what they keep out is IRREVERSIBLE ──────────────────────────────
+// `status = 'signed'` is terminal by trigger and the sealed document is write-once, so a value that
+// only fails when it is stamped strands the agreement forever: signature recorded, completion
+// impossible, no shipped path able to clear the column. These run at the door instead.
+
+Deno.test("no drawn signature is fine — the typed name is what the record relies on", () => {
+  for (const empty of [null, undefined, ""]) {
+    const r = checkSignatureImage(empty);
+    assert(r.ok && r.base64 === null, `empty input should be accepted as "none": ${JSON.stringify(r)}`);
   }
-  // A co-signer's progress is legitimate; their address is not.
-  assert(serialized.includes("Sam Okafor"));
-  assert(!serialized.includes("sam@"), "another party's email address must never reach this signer");
-  // Their own address is theirs to see.
-  assert(serialized.includes("jordan@example.com"));
+});
+
+Deno.test("A REAL PNG IS ACCEPTED, with or without its data-URL prefix", () => {
+  // The smallest valid PNG: signature + IHDR + IDAT + IEND.
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  const bare = checkSignatureImage(png);
+  assert(bare.ok && bare.base64 === png, `a bare base64 PNG must pass: ${JSON.stringify(bare)}`);
+  const dataUrl = checkSignatureImage(`data:image/png;base64,${png}`);
+  assert(dataUrl.ok && dataUrl.base64 === png, "the data-URL prefix must be stripped, not stored");
+});
+
+Deno.test("A NON-PNG IS REFUSED AT THE DOOR, not at the seal", () => {
+  // Valid base64, decodes cleanly, and is a JPEG. pdf-lib's embedPng would reject it at completion,
+  // by which time the signature is terminal.
+  const jpeg = btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46));
+  const r = checkSignatureImage(jpeg);
+  assert(!r.ok, "a JPEG must not be stored in a column that is only ever embedded as PNG");
+  assert(r.ok === false && r.reason.includes("PNG"), r.ok === false ? r.reason : "");
+});
+
+Deno.test("a malformed or over-long blob is REFUSED rather than truncated", () => {
+  assert(!checkSignatureImage("not base64 at all!!").ok);
+  assert(!checkSignatureImage("aGVsbG8").ok, "a length that is not a multiple of four cannot decode");
+  // Truncation is what produced the corrupt values in the first place: a 400 000-character slice
+  // through valid base64 breaks its own padding.
+  const huge = "A".repeat(500_000);
+  const r = checkSignatureImage(huge);
+  assert(!r.ok && r.reason.includes("too large"), "over-length must be refused, never silently cut");
+});
+
+Deno.test("a URL is refused — it would make the sealer fetch an attacker's address with our credentials", () => {
+  assert(!checkSignatureImage("https://attacker.test/x.png").ok);
+  assert(!checkSignatureImage("  HTTP://attacker.test/x.png").ok);
+});
+
+// ── The disclosure is the one artifact that must be provably the text the person was shown ───────
+Deno.test("A TENANT NAME CONTAINING $ IS INSERTED LITERALLY, not expanded", () => {
+  // `String.replaceAll` expands $&, $', $` and $1 in the REPLACEMENT. The tenant writes its own
+  // name, so `Acme $'` spliced copies of the surrounding paragraphs into the notice — and that
+  // garbled version was what `consentEvidenceText` hashed into the permanent record.
+  const hostile = "Acme $' $& $` $1 LLC";
+  const text = renderDisclosure(ESIGN_CONSENT_DISCLOSURE, hostile, "hello@acme.test");
+  assert(text.includes(hostile), "the tenant name must appear exactly as written");
+  assert(!text.includes("{{tenant}}"), "every placeholder must still be filled");
+  assert(!text.includes("{{contact}}"), "every placeholder must still be filled");
+  // The evidence text is what is hashed, so it has to carry the same literal value.
+  assert(consentEvidenceText(ESIGN_CONSENT_DISCLOSURE, hostile, "hello@acme.test").includes(hostile));
+});
+
+Deno.test("the disclosure names a REAL contact route, never a placeholder", () => {
+  const text = renderDisclosure(ESIGN_CONSENT_DISCLOSURE, "Acme Consulting", "hello@acme.test");
+  assert(text.includes("hello@acme.test"), "the promised route to a human must be a real address");
+  assert(!text.includes("the sender of this agreement"), "a hardcoded stand-in is not a contact route");
 });

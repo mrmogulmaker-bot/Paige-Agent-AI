@@ -87,6 +87,14 @@ export type Feature =
   // Solo + Sub-account + Enterprise (the hybrid tier), mirroring the lock already ruled for portal
   // invites. Noting it as an exception rather than silently following the §61 default, because the
   // default (God/Solo/Sub YES, Agency RESELL) would put it somewhere it has nothing to act on.
+  //
+  // WHERE THIS IS ENFORCED (§60's honesty clause — say the layer, do not imply one). NOT here: this
+  // declaration had zero `hasFeature` call sites, which the INT-163 review correctly called a flag
+  // read by no code and recorded as live. Enforcement is server-side, where a flag cannot be
+  // bypassed by calling the RPC directly: `trg_agreement_tier` (migration `20270405000000`) refuses
+  // the INSERT for a top-level agency on every write path including the service role, and
+  // `agreement-send` refuses with a sentence the operator can act on before it gets that far. The
+  // declaration stays because it is how a surface asks the question; the database is what answers it.
   | "agreement_signing"
   // Trust Compass — the Solo Command Center's governed per-capability autonomy control
   // (its 3rd sub-tab). SOLO ONLY for now: sub-account release is DEFERRED pending an

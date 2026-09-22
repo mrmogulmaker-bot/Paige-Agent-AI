@@ -607,6 +607,28 @@ Deno.serve(async (req) => {
   // as send-message), record the REAL outcome, and retire the Lovable worker (#79).
   const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 
+  // IDEMPOTENCY, which this function accepted and ignored until now. Callers pass a key and several
+  // of them carry comments promising it deduplicates; nothing read it, and every row was keyed on a
+  // fresh message_id. A parameter that reads as a control and is not one is worse than no parameter,
+  // because the next caller relies on it for something less forgiving than a duplicate email.
+  //
+  // Only fires when the caller actually supplied a key: with none, `idempotencyKey` defaults to this
+  // request's fresh messageId, which can never match a prior row. So no existing caller's behaviour
+  // changes (§37). Best-effort under a true race — see the migration for why that is deliberate.
+  if (idempotencyKey !== messageId) {
+    const { data: alreadySent } = await supabase.from('email_send_log')
+      .select('message_id')
+      .eq('idempotency_key', idempotencyKey)
+      .eq('status', 'sent')
+      .maybeSingle()
+    if (alreadySent) {
+      return new Response(
+        JSON.stringify({ success: true, sent: true, duplicate: true, messageId: alreadySent.message_id }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+  }
+
   // Log the attempt up front so there's always a record.
   await supabase.from('email_send_log').insert({
     message_id: messageId,
@@ -614,6 +636,7 @@ Deno.serve(async (req) => {
     recipient_email: effectiveRecipient,
     status: 'pending',
     tenant_id: tenantId,
+    idempotency_key: idempotencyKey,
     metadata: { from: resolvedFrom, reply_to: resolvedReplyTo },
   })
 

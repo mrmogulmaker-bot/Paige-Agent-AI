@@ -20,12 +20,19 @@ project_id = "xygzykjyynhzqytbqnzu"
   # Without verify_jwt=false the gateway 401s every callback before verification.
   [functions.paige-media-webhook]
     verify_jwt = false
-  # INT-163 — the signing ceremony for an EXTERNAL counterparty. That person has no account on
-  # this platform and never will, so there is no JWT to verify: the control is a 256-bit token,
-  # stored only as its SHA-256, scoped to exactly one signer on one agreement, expiring and
-  # revocable, checked on every single request. Tenant, agreement and signer are read FROM THE
-  # TOKEN ROW — no path segment, query parameter or body field names or steers any of them.
-  [functions.agreement-sign]
+  # INT-163 — the signing act for an EXTERNAL counterparty. That person has no account on this
+  # platform and never will, so there is no JWT to verify: the control is a 256-bit token, stored
+  # only as its SHA-256, scoped to exactly one signer on one agreement, expiring and revocable,
+  # checked on every single request. Tenant, agreement and signer are read FROM THE TOKEN ROW — no
+  # path segment, query parameter or body field names or steers any of them. The signer's PAGE is
+  # the React route /sign/:token; this function serves no markup, only the work that needs the
+  # service role (sealing, the certificate, notifications, audit).
+  [functions.sign-agreement]
+    verify_jwt = false
+  # The sealed copy, fetched with the long-lived RETRIEVAL token minted at completion. Same posture
+  # and the same reason: the counterparty has no account, and a completed record they can re-read is
+  # an ESIGN requirement, not a convenience.
+  [functions.agreement-document]
     verify_jwt = false
   # Public front-door signup — creates a pre-confirmed account via the service
   # role (email verification not wired yet). Must be reachable pre-auth.
