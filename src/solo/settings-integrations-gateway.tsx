@@ -343,13 +343,13 @@ function AddToolForm({ gw, preset, onDirtyChange, onDone }: { gw: UseMcpGateway;
         <button type="button" className={facet === "n8n-rest" ? "on" : ""} aria-pressed={facet === "n8n-rest"} onClick={() => { setFacet("n8n-rest"); setAuthKind("bearer"); }}>n8n — API key</button>
       </div>
       <label className={`ig-field${bad.label ? " ig-field-bad" : ""}`}><span>Name</span>
-        <input type="text" autoComplete="off" placeholder="e.g. HighLevel" value={label} onChange={(e) => setLabel(e.target.value)} aria-invalid={bad.label || undefined} />
-        {bad.label && <small className="ig-gw-err">Enter a name.</small>}
+        <input type="text" autoComplete="off" placeholder="e.g. HighLevel" value={label} onChange={(e) => setLabel(e.target.value)} aria-invalid={bad.label || undefined} aria-describedby={bad.label ? "ig-gw-add-label-err" : undefined} />
+        {bad.label && <small className="ig-gw-err" id="ig-gw-add-label-err">Enter a name.</small>}
       </label>
       <label className={`ig-field${bad.url ? " ig-field-bad" : ""}`}><span>{isRest ? "Base URL" : "Server URL"}</span>
-        <input type="url" autoComplete="off" spellCheck={false} placeholder={isRest ? "https://your-instance.app.n8n.cloud" : "https://services.example.com/mcp"} value={url} onChange={(e) => setUrl(e.target.value)} aria-invalid={bad.url || undefined} />
-        <small>Only public https:// addresses work. Local, private and non-HTTPS addresses are refused.</small>
-        {bad.url && <small className="ig-gw-err">Enter a public https:// address.</small>}
+        <input type="url" autoComplete="off" spellCheck={false} placeholder={isRest ? "https://your-instance.app.n8n.cloud" : "https://services.example.com/mcp"} value={url} onChange={(e) => setUrl(e.target.value)} aria-invalid={bad.url || undefined} aria-describedby={bad.url ? "ig-gw-add-url-note ig-gw-add-url-err" : "ig-gw-add-url-note"} />
+        <small id="ig-gw-add-url-note">Only public https:// addresses work. Local, private and non-HTTPS addresses are refused.</small>
+        {bad.url && <small className="ig-gw-err" id="ig-gw-add-url-err">Enter a public https:// address.</small>}
       </label>
       {!isRest && (
         <div className="ig-gw-seg ig-gw-seg-auth" role="group" aria-label="How does it authenticate?">
@@ -360,15 +360,15 @@ function AddToolForm({ gw, preset, onDirtyChange, onDone }: { gw: UseMcpGateway;
       )}
       {(isRest || authKind === "header") && authKind === "header" && !isRest && (
         <label className={`ig-field${bad.header ? " ig-field-bad" : ""}`}><span>Header name</span>
-          <input type="text" autoComplete="off" placeholder="X-Api-Key" value={headerName} onChange={(e) => setHeaderName(e.target.value)} aria-invalid={bad.header || undefined} />
-          {bad.header && <small className="ig-gw-err">Enter the header name.</small>}
+          <input type="text" autoComplete="off" placeholder="X-Api-Key" value={headerName} onChange={(e) => setHeaderName(e.target.value)} aria-invalid={bad.header || undefined} aria-describedby={bad.header ? "ig-gw-add-header-err" : undefined} />
+          {bad.header && <small className="ig-gw-err" id="ig-gw-add-header-err">Enter the header name.</small>}
         </label>
       )}
       {needsKey && (
         <label className={`ig-field${bad.token ? " ig-field-bad" : ""}`}><span>{isRest ? "API key" : authKind === "header" ? "Value" : "Bearer token"}</span>
-          <input type="password" autoComplete="off" placeholder={isRest ? "n8n_api_…" : "token…"} value={token} onChange={(e) => setToken(e.target.value)} aria-invalid={bad.token || undefined} />
-          <small>Stored encrypted. Paige never shows it back — to change it later you replace it.</small>
-          {bad.token && <small className="ig-gw-err">Enter the {isRest ? "API key" : "token"}.</small>}
+          <input type="password" autoComplete="off" placeholder={isRest ? "n8n_api_…" : "token…"} value={token} onChange={(e) => setToken(e.target.value)} aria-invalid={bad.token || undefined} aria-describedby={bad.token ? "ig-gw-add-token-note ig-gw-add-token-err" : "ig-gw-add-token-note"} />
+          <small id="ig-gw-add-token-note">Stored encrypted. Paige never shows it back — to change it later you replace it.</small>
+          {bad.token && <small className="ig-gw-err" id="ig-gw-add-token-err">Enter the {isRest ? "API key" : "token"}.</small>}
         </label>
       )}
       <div className="ig-actions ig-gw-actions">
@@ -555,20 +555,20 @@ function RekeyForm({ gw, tool, isRest, onDone, onCancel }: { gw: UseMcpGateway; 
       <div className="ig-gw-warn" role="note"><span>Re-keying resets this tool: Paige checks it again and its approvals are cleared, so you’ll approve its actions once more.</span></div>
       {message && <div className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} /><span>{message}</span></div>}
       <label className={`ig-field${bad.url ? " ig-field-bad" : ""}`}><span>{isRest ? "Base URL" : "Full address"}</span>
-        <input type="url" autoComplete="off" spellCheck={false} value={url} onChange={(e) => setUrl(e.target.value)} aria-invalid={bad.url || undefined} />
-        <small>Paige stores only the host, so confirm the whole address — including any path — before saving.</small>
-        {bad.url && <small className="ig-gw-err">Enter the full public https:// address.</small>}
+        <input type="url" autoComplete="off" spellCheck={false} value={url} onChange={(e) => setUrl(e.target.value)} aria-invalid={bad.url || undefined} aria-describedby={bad.url ? "ig-gw-rekey-url-note ig-gw-rekey-url-err" : "ig-gw-rekey-url-note"} />
+        <small id="ig-gw-rekey-url-note">Paige stores only the host, so confirm the whole address — including any path — before saving.</small>
+        {bad.url && <small className="ig-gw-err" id="ig-gw-rekey-url-err">Enter the full public https:// address.</small>}
       </label>
       {needsHeaderName && (
         <label className={`ig-field${bad.header ? " ig-field-bad" : ""}`}><span>Header name</span>
-          <input type="text" autoComplete="off" placeholder="X-Api-Key" value={headerName} onChange={(e) => setHeaderName(e.target.value)} aria-invalid={bad.header || undefined} />
-          {bad.header && <small className="ig-gw-err">Enter the header name.</small>}
+          <input type="text" autoComplete="off" placeholder="X-Api-Key" value={headerName} onChange={(e) => setHeaderName(e.target.value)} aria-invalid={bad.header || undefined} aria-describedby={bad.header ? "ig-gw-rekey-header-err" : undefined} />
+          {bad.header && <small className="ig-gw-err" id="ig-gw-rekey-header-err">Enter the header name.</small>}
         </label>
       )}
       {needsKey ? (
         <label className={`ig-field${bad.key ? " ig-field-bad" : ""}`}><span>{isRest ? "New API key" : "New key / value"}</span>
-          <input type="password" autoComplete="off" placeholder="new value…" value={key} onChange={(e) => setKey(e.target.value)} aria-invalid={bad.key || undefined} />
-          {bad.key && <small className="ig-gw-err">Enter the new {isRest ? "API key" : "value"}.</small>}
+          <input type="password" autoComplete="off" placeholder="new value…" value={key} onChange={(e) => setKey(e.target.value)} aria-invalid={bad.key || undefined} aria-describedby={bad.key ? "ig-gw-rekey-key-err" : undefined} />
+          {bad.key && <small className="ig-gw-err" id="ig-gw-rekey-key-err">Enter the new {isRest ? "API key" : "value"}.</small>}
         </label>
       ) : (
         <div className="ig-gw-info" role="status"><span>This tool carries no key, so only its address changes here.</span></div>

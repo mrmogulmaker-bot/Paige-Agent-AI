@@ -225,6 +225,14 @@ describe("Adding a tool", () => {
     await click(byText(host, "Add tool"));
     expect(host.textContent).toMatch(/enter a name/i);
     expect(rpc.mock.calls.some((c) => c[0] === "create_mcp_connection")).toBe(false);
+    // aria-invalid says THAT a field is wrong; the message has to be reachable from it, or a
+    // screen-reader user is told something is broken and never told what.
+    const name = fieldFor(host, "Name") as HTMLInputElement;
+    expect(name.getAttribute("aria-invalid")).toBe("true");
+    const described = name.getAttribute("aria-describedby");
+    expect(described).toBeTruthy();
+    const messages = described!.split(" ").map((id) => host.querySelector(`#${id}`)?.textContent ?? "");
+    expect(messages.join(" ")).toMatch(/enter a name/i);
   });
 
   it("sends the n8n API-key shape through the REST writer with named parameters", async () => {
