@@ -27,6 +27,7 @@
 import { makeRpcConnectionLoader } from "./connection.ts";
 import { runReadOnlyIntake } from "./intake.ts";
 import type { IntakeResult } from "./types.ts";
+import type { McpAuth, McpToolFingerprint } from "../mcp-client.ts";
 
 // deno-lint-ignore no-explicit-any
 type RpcClient = { rpc: (fn: string, params?: Record<string, unknown>) => Promise<{ data: any; error: any }> };
@@ -49,6 +50,44 @@ export type VerifyResult = {
   // Response body carries only model-/browser-safe facts; never a secret or provider prose.
   body: Record<string, unknown>;
 };
+
+/** The credential material a healthy provider must NEVER echo back to us. For bearer/header auth it
+ *  is the token we send; for the `none` kind the secret lives in the URL path/query (Zapier's shape),
+ *  so any sufficiently-long path or query segment is treated as secret. Short/common URL parts
+ *  (`mcp`, `api`, `v1`) are below the length floor, so a bearer connection's public path never
+ *  registers as a secret — only the token does. */
+function credentialMaterial(auth: McpAuth, serverUrl: string): string[] {
+  const out: string[] = [];
+  if ((auth.kind === "bearer" || auth.kind === "header") && typeof auth.token === "string" && auth.token.length >= 8) {
+    out.push(auth.token);
+  } else if (auth.kind === "none") {
+    try {
+      const u = new URL(serverUrl);
+      for (const seg of [...u.pathname.split("/"), ...u.searchParams.values()]) {
+        if (seg.length >= 12) out.push(seg);
+      }
+    } catch { /* the loader already validated the url shape; nothing to scan */ }
+  }
+  return out;
+}
+
+/** True if a discovered tool REFLECTS our own credential back inside a provider-controlled field
+ *  (name/app/actionType/effects). A compromised or hostile MCP server can copy the bearer token it
+ *  received — or the secret in a credential-bearing URL — into a tool name, and persisting that
+ *  verbatim would downgrade an encrypted, service-role-only credential into plaintext catalog data
+ *  that later surfaces to client state / logs (§13 — no secret in an artifact). The SHA-256 fields
+ *  (schemaHash/authorityHash/pin) cannot carry a raw secret, so they are not scanned. A server that
+ *  echoes our secret is not healthy: the caller rejects the WHOLE catalog rather than store any of it. */
+export function intakeReflectsCredential(tools: McpToolFingerprint[], auth: McpAuth, serverUrl: string): boolean {
+  const secrets = credentialMaterial(auth, serverUrl);
+  if (secrets.length === 0) return false;
+  for (const t of tools) {
+    for (const field of [t.name, t.app, t.actionType, ...(Array.isArray(t.effects) ? t.effects : [])]) {
+      if (typeof field === "string" && secrets.some((s) => field.includes(s))) return true;
+    }
+  }
+  return false;
+}
 
 /** Map the read-only intake's tool fingerprints to the shape the probe RPC persists. The probe is
  *  authoritative for the catalog: it replaces the connection's tools with exactly this set. */
@@ -117,13 +156,17 @@ export async function runVerify(deps: VerifyDeps, input: VerifyInput): Promise<V
   const resolved = await loader(id);
   if (!resolved.ok) {
     // Record an honest, secret-free health state so the row does not sit on a stale "pending".
-    await admin.rpc("mcp_connection_probe", {
+    // If THIS write itself fails, we must not return a successful error-state response — an
+    // already-`connected` row would silently stay connected/healthy despite a failed verify
+    // (e.g. an expired OAuth token). Surface probe_write_failed exactly as the success branch does.
+    const { error: lpErr } = await admin.rpc("mcp_connection_probe", {
       _connection_id: id,
       _status: "error",
       _health: "needs_attention",
       _last_error_code: resolved.reason,
       _tools: null,
     });
+    if (lpErr) return { httpStatus: 500, body: { error: "probe_write_failed" } };
     return { httpStatus: 200, body: { ok: false, status: "error", health: "needs_attention", tool_count: 0, error_code: resolved.reason } };
   }
 
@@ -134,6 +177,23 @@ export async function runVerify(deps: VerifyDeps, input: VerifyInput): Promise<V
 
   // Read-only handshake: initialize + tools/list via the SSRF-guarded client. Never a tools/call.
   const intake = await runReadOnlyIntake({ serverUrl: resolved.serverUrl, auth: resolved.auth });
+
+  // Credential-reflection guard (§13). A compromised/hostile server can echo the credential we just
+  // sent it back inside a tool field; persisting that would leak a service-role-only secret into the
+  // plaintext catalog. If the healthy-looking catalog reflects our secret, reject the WHOLE catalog
+  // and record an honest error — never store a poisoned tool set. Only meaningful on a successful
+  // read (a failed intake carries no catalog to persist).
+  if (intake.ok && intakeReflectsCredential(intake.tools, resolved.auth, resolved.serverUrl)) {
+    const { error: rpErr } = await admin.rpc("mcp_connection_probe", {
+      _connection_id: id,
+      _status: "error",
+      _health: "needs_attention",
+      _last_error_code: "provider_reflected_credential",
+      _tools: null,
+    });
+    if (rpErr) return { httpStatus: 500, body: { error: "probe_write_failed" } };
+    return { httpStatus: 200, body: { ok: false, status: "error", health: "needs_attention", tool_count: 0, error_code: "provider_reflected_credential" } };
+  }
 
   // Persist through the service-role probe — the ONLY writer of status='connected'/health='healthy'
   // and of mcp_connection_tools. Replace the catalog only on a successful read (a failed probe must

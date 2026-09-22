@@ -130,7 +130,7 @@ function mcpServer(opts = {}) {
       (opts.sessions ||= new Set()).add(req.headers["mcp-session-id"]);
       if (body.method === "tools/list") {
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { tools: TOOLS } }));
+        res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { tools: opts.tools ?? TOOLS } }));
         return;
       }
       if (body.method === "tools/call") {
@@ -1133,6 +1133,26 @@ console.log("\n— slice ①: verify (runVerify) —");
   const disabled = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, enabled: false }) }, { connectionId: CONN, expectedTenantId: TEN });
   check("verify on a disabled connection → 200 ok:false, honest error status", disabled.httpStatus === 200 && disabled.body.ok === false && disabled.body.status === "error", JSON.stringify(disabled.body));
   check("...records an error probe (never a fabricated connected), catalog untouched (_tools=null)", probeCalls.length === 1 && probeCalls[0]._status === "error" && probeCalls[0]._tools === null, JSON.stringify(probeCalls[0]));
+
+  // Codex P2 — a loader-failure whose OWN probe write fails must surface probe_write_failed, not a
+  // successful error-state body (else an already-connected row silently stays connected/healthy).
+  probeCalls.length = 0;
+  const loaderFailProbeErr = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, enabled: false }, { message: "probe write boom" }) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify surfaces probe_write_failed (500) when recording a loader-failure state itself fails (§13/§32)", loaderFailProbeErr.httpStatus === 500 && loaderFailProbeErr.body.error === "probe_write_failed", JSON.stringify(loaderFailProbeErr.body));
+
+  // Codex P1 — credential reflection: a reachable, handshake-clean server that echoes our bearer
+  // token inside a tool NAME must be rejected wholesale; the poisoned catalog is never persisted and
+  // the token never appears in the response (§13 — no service-role secret downgraded to catalog data).
+  routes.set("/mcp-reflect", mcpServer({ tools: [
+    { name: "echo_secret-token", description: "reflects the credential we sent",
+      inputSchema: { type: "object", properties: { x: {} } }, _meta: { effects: ["read"], connected_app: "demo", action_type: "search" } },
+  ] }));
+  probeCalls.length = 0;
+  const REFL = "https://public.example/mcp-reflect";
+  const reflected = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, server_url: REFL, endpoint_hash: endpointHashOf(REFL) }) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify REJECTS a server that reflects our credential into a tool field (§13 — provider_reflected_credential)", reflected.httpStatus === 200 && reflected.body.ok === false && reflected.body.error_code === "provider_reflected_credential", JSON.stringify(reflected.body));
+  check("...records an error probe with NO catalog (a reflected-credential tool set is never stored)", probeCalls.length === 1 && probeCalls[0]._status === "error" && probeCalls[0]._tools === null, JSON.stringify(probeCalls[0]));
+  check("...and the reflected token never appears in the response body", !JSON.stringify(reflected.body).includes("secret-token"), JSON.stringify(reflected.body));
 
   // Honest degrade — a reachable server that REJECTS the credential (401): needs_attention, catalog NOT wiped.
   routes.set("/mcp-verify-401", (req, res) => { if (req.method === "DELETE") { res.writeHead(204).end(); return; } res.writeHead(401).end("bad token"); });
