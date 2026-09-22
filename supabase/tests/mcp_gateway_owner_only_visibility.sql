@@ -99,21 +99,22 @@ DO $$
 DECLARE
   _T   uuid := 'e9c00000-0000-0000-0000-0000000000da';
   _OTH uuid := 'e9c00000-0000-0000-0000-0000000000db';
-  -- INT-099: the mapping now also grants `mcp.connections.manage` to owner/tenant-admin (appended
-  -- SECOND, so exact-equality arrays are [use_restricted, manage]). A platform owner is EXCLUDED from
-  -- manage (A2) — they hold use_restricted ONLY. Assertions stay EXACT equality against the full set.
-  _FULL       text[] := ARRAY['mcp.connections.use_restricted','mcp.connections.manage'];
+  -- INT-099/G1a-1: the mapping grants `mcp.connections.manage` (appended SECOND) and
+  -- `mcp.connections.delete` (appended THIRD) to owner/tenant-admin, so exact-equality arrays are
+  -- [use_restricted, manage, delete]. A platform owner is EXCLUDED from BOTH manage and delete (A2) —
+  -- they hold use_restricted ONLY. Assertions stay EXACT equality against the full set.
+  _FULL       text[] := ARRAY['mcp.connections.use_restricted','mcp.connections.manage','mcp.connections.delete'];
   _USE_ONLY   text[] := ARRAY['mcp.connections.use_restricted'];
   _EMPTY      text[] := ARRAY[]::text[];
 BEGIN
-  -- owner → holds use_restricted + manage
+  -- owner → holds use_restricted + manage + delete
   IF public._mcp_caller_capabilities(_T, 'e9c00000-0000-0000-0000-0000000000d1') IS DISTINCT FROM _FULL THEN
-    RAISE EXCEPTION '(B) owner of the tenant must hold use_restricted + manage: %',
+    RAISE EXCEPTION '(B) owner of the tenant must hold use_restricted + manage + delete: %',
       public._mcp_caller_capabilities(_T, 'e9c00000-0000-0000-0000-0000000000d1');
   END IF;
-  -- admin → holds use_restricted + manage
+  -- admin → holds use_restricted + manage + delete
   IF public._mcp_caller_capabilities(_T, 'e9c00000-0000-0000-0000-0000000000d2') IS DISTINCT FROM _FULL THEN
-    RAISE EXCEPTION '(B) admin of the tenant must hold use_restricted + manage: %',
+    RAISE EXCEPTION '(B) admin of the tenant must hold use_restricted + manage + delete: %',
       public._mcp_caller_capabilities(_T, 'e9c00000-0000-0000-0000-0000000000d2');
   END IF;
   -- ordinary member → holds NOTHING, EVEN THOUGH they carry a GLOBAL 'coach' staff role (§59 trap:
@@ -127,20 +128,25 @@ BEGIN
     RAISE EXCEPTION '(B) a NULL actor must hold NOTHING (no service-role bypass): %',
       public._mcp_caller_capabilities(_T, NULL);
   END IF;
-  -- platform owner (super_admin) → holds use_restricted ONLY, NEVER manage (INT-099/A2: platform
-  -- authority is not tenant-management authority; manage is owner/tenant-admin of THIS tenant only).
+  -- platform owner (super_admin) → holds use_restricted ONLY, NEVER manage OR delete (INT-099/G1a-1/A2:
+  -- platform authority is not tenant-management authority; manage AND the destructive delete are
+  -- owner/tenant-admin of THIS tenant only).
   IF public._mcp_caller_capabilities(_T, 'e9c00000-0000-0000-0000-0000000000d4') IS DISTINCT FROM _USE_ONLY THEN
-    RAISE EXCEPTION '(B) a platform owner must hold use_restricted ONLY (never manage): %',
+    RAISE EXCEPTION '(B) a platform owner must hold use_restricted ONLY (never manage/delete): %',
       public._mcp_caller_capabilities(_T, 'e9c00000-0000-0000-0000-0000000000d4');
+  END IF;
+  -- explicit belt-and-suspenders (G1a-1): a platform owner must NOT hold the destructive delete key.
+  IF 'mcp.connections.delete' = ANY(public._mcp_caller_capabilities(_T, 'e9c00000-0000-0000-0000-0000000000d4')) THEN
+    RAISE EXCEPTION '(B) a platform owner must NOT hold mcp.connections.delete (A2 — destructive tenant action is not a platform power)';
   END IF;
   -- owner of a DIFFERENT tenant, acting on T → holds NOTHING for T (cross-tenant; §9)
   IF public._mcp_caller_capabilities(_T, 'e9c00000-0000-0000-0000-0000000000d5') IS DISTINCT FROM _EMPTY THEN
     RAISE EXCEPTION '(B) the owner of another tenant must hold NOTHING for THIS tenant: %',
       public._mcp_caller_capabilities(_T, 'e9c00000-0000-0000-0000-0000000000d5');
   END IF;
-  -- ...and that same actor DOES hold use_restricted + manage for THEIR OWN tenant (mapping not broken).
+  -- ...and that same actor DOES hold use_restricted + manage + delete for THEIR OWN tenant (mapping not broken).
   IF public._mcp_caller_capabilities(_OTH, 'e9c00000-0000-0000-0000-0000000000d5') IS DISTINCT FROM _FULL THEN
-    RAISE EXCEPTION '(B) the owner of tenant OTHER must hold use_restricted + manage for tenant OTHER: %',
+    RAISE EXCEPTION '(B) the owner of tenant OTHER must hold use_restricted + manage + delete for tenant OTHER: %',
       public._mcp_caller_capabilities(_OTH, 'e9c00000-0000-0000-0000-0000000000d5');
   END IF;
 END $$;

@@ -18,6 +18,7 @@ on:
       - "supabase/tests/mcp_gateway_endpoint_load_binding.sql"
       - "supabase/tests/mcp_gateway_owner_only_visibility.sql"
       - "supabase/tests/mcp_gateway_endpoint_setter.sql"
+      - "supabase/tests/mcp_gateway_connection_create.sql"
       - "scripts/proof/mcp-gateway-endpoint-consent-race.mjs"
       - "supabase/functions/_shared/mcp-gateway/**"
       - "supabase/functions/paige-tts/**"
@@ -73,6 +74,7 @@ on:
       - "supabase/tests/mcp_gateway_endpoint_load_binding.sql"
       - "supabase/tests/mcp_gateway_owner_only_visibility.sql"
       - "supabase/tests/mcp_gateway_endpoint_setter.sql"
+      - "supabase/tests/mcp_gateway_connection_create.sql"
       - "scripts/proof/mcp-gateway-endpoint-consent-race.mjs"
       - "supabase/functions/_shared/mcp-gateway/**"
       - "supabase/functions/paige-tts/**"
@@ -251,6 +253,13 @@ jobs:
       # refusal, the same-transaction hashes-only paige_audit_log write with audit-fail⇒no-commit (A1),
       # the write-only return (A3), and the static https/SSRF URL validation (A4).
       - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_endpoint_setter.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      # Connected MCP Gateway — the registry-native connection WRITERS (G1a-1, migration 20270331000000).
+      # Proves create_mcp_connection / create_mcp_rest_connection (accept/reject matrix, F4 credential-bundle
+      # enumeration, REST lane), disconnect_mcp_connection (soft disable incl. the url-embedded credential
+      # scrub + hard delete with receipt/Rail history survival), the mcp.connections.delete capability gate,
+      # re-key = reconnect (enabled restored), get_mcp_connections_v2.configured honest for url/none, and the
+      # §51 per-tier write matrix + A1/A3 no-leak. Rides this replayed DB for the same §24 reason as above.
+      - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_connection_create.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       # PAIGE Voice V1a — capability-gated zero/disabled configuration, tenant + platform
       # monthly caps, idempotency, rollover, ambiguity settlement, provider parity, and a
       # true two-session exact-cap race. No provider request is made by either proof.
