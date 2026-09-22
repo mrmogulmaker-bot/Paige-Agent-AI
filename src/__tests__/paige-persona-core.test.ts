@@ -98,14 +98,26 @@ describe("PAIGE_PERSONA_CORE — naming and denylist cleanliness (§2/§3)", () 
 describe("PAIGE_PERSONA_CORE — one persona source (import graph, §18)", () => {
   it("paige-ai-chat imports the core from the one shared module and injects it ONCE, right after the voice", () => {
     expect(chatSrc).toContain('import { PAIGE_PERSONA_CORE, PAIGE_PERSONA_REGISTERS } from "../_shared/paige-persona/core.ts"');
-    expect(chatSrc.match(/\{ role: "system", content: PAIGE_PERSONA_CORE \}/g)).toHaveLength(1);
+    expect(chatSrc.match(/content: vpAddress \? PAIGE_PERSONA_REGISTERS : PAIGE_PERSONA_CORE/g)).toHaveLength(1);
     const voiceAt = chatSrc.indexOf('content: PAIGE_VOICE_BLOCK }');
-    const coreAt = chatSrc.indexOf('content: PAIGE_PERSONA_CORE }');
+    const coreAt = chatSrc.indexOf("content: vpAddress ? PAIGE_PERSONA_REGISTERS : PAIGE_PERSONA_CORE");
     expect(voiceAt).toBeGreaterThan(-1);
     expect(coreAt).toBeGreaterThan(voiceAt);
     // The injection stays INSIDE the assembly array (before the tenant context blocks).
     const ctxAt = chatSrc.indexOf("...(tenantDomainContext ?");
     expect(ctxAt).toBeGreaterThan(coreAt);
+  });
+
+  it("VP-addressed turns get the REGISTERS variant — the core's Paige identity never fights the VP block (Codex 2417d418 P1-3)", () => {
+    // The ternary selects PAIGE_PERSONA_REGISTERS when vpAddress is set (the VP block at
+    // the slot above owns the identity: "speak AS that VP... never deflect to Paige").
+    expect(chatSrc).toMatch(/content: vpAddress \? PAIGE_PERSONA_REGISTERS : PAIGE_PERSONA_CORE/);
+    // The VP block's own identity rule is present (context for why).
+    const vpSrc = readFileSync("supabase/functions/_shared/paige-context/vp-address.ts", "utf8");
+    expect(vpSrc).toContain("Do not deflect to Paige or describe yourself as an assistant");
+    // Sabotage-sensitivity: reverting to the unconditional core fails the pin.
+    const reverted = chatSrc.replace("content: vpAddress ? PAIGE_PERSONA_REGISTERS : PAIGE_PERSONA_CORE", "content: PAIGE_PERSONA_CORE");
+    expect(/vpAddress \? PAIGE_PERSONA_REGISTERS/.test(reverted)).toBe(false);
   });
 
   it("tenant-persona precedence is restated in the core itself (§7/§9)", () => {
@@ -143,28 +155,30 @@ describe("INT-117 S1 fix round — the STUDIO registers-only variant (Codex 226b
     const personaSwapAt = chatSrc.indexOf("const personaCoreIdx");
     expect(swapAt).toBeGreaterThan(-1);
     expect(personaSwapAt).toBeGreaterThan(swapAt);
-    // And the full core is still injected once in the base assembly for normal threads.
-    expect(chatSrc.match(/\{ role: "system", content: PAIGE_PERSONA_CORE \}/g)).toHaveLength(1);
+    // And the base injection selects the full core for normal threads (the VP ternary),
+    // so the studio-swap findIndex target still exists exactly once.
+    expect(chatSrc.match(/PAIGE_PERSONA_CORE \}/g)).toHaveLength(1);
     expect(chatSrc).toContain('import { PAIGE_PERSONA_CORE, PAIGE_PERSONA_REGISTERS } from "../_shared/paige-persona/core.ts"');
   });
 });
 
 describe("INT-117 S1 fix round — the distress carve-out in the legacy built-in funding prompt (Codex 226b4c41 P1)", () => {
-  it("the legacy built-in funding prompt's tone block carves distress out of every other tone rule", () => {
-    // Source pin (the prompt is a handler-local const): the carve-out sits in the TONE & STYLE
-    // block, immediately after the next-step rule it overrides. The line is pure SAFETY —
-    // it never names funding in its own wording (owner direction 2026-09-22).
+  it("the legacy built-in funding prompt's distress carve-out governs the WHOLE prompt (option (a) ruling)", () => {
+    // Source pin: the carve-out sits in the TONE & STYLE block, immediately after the next-step
+    // rule, and governs every other rule in the prompt (runway/intake included). The line is
+    // pure SAFETY — it never names funding in its own wording (owner direction 2026-09-22).
     const toneAt = chatSrc.indexOf("TONE & STYLE");
     const nextStepAt = chatSrc.indexOf("Action-oriented — every interaction ends with a concrete next step", toneAt);
-    const carveAt = chatSrc.indexOf("If the person is in distress or at risk of harm, the care-first register in the persona core overrides every other tone rule in this block", toneAt);
+    const carveAt = chatSrc.indexOf("If the person is in distress or at risk of harm, the care-first register in the persona core overrides every other rule in this prompt", toneAt);
     expect(toneAt).toBeGreaterThan(-1);
     expect(nextStepAt).toBeGreaterThan(toneAt);
     expect(carveAt).toBeGreaterThan(nextStepAt);
-    // The carve-out is complete: no next steps, no push, real person or crisis help.
     expect(chatSrc).toMatch(/no next steps, no push; get them to a real person or crisis help/);
     // The line itself stays funding-neutral.
-    const carveLine = chatSrc.split("\n").find((l) => l.includes("overrides every other tone rule in this block"));
+    const carveLine = chatSrc.split("\n").find((l) => l.includes("overrides every other rule in this prompt"));
     expect(carveLine).toBeTruthy();
     expect(carveLine).not.toMatch(/funding/i);
+    // Sabotage-sensitivity: scoping the line back to "this block" (the P1-4 defect) fails.
+    expect(chatSrc).not.toMatch(/overrides every other tone rule in this block/);
   });
 });

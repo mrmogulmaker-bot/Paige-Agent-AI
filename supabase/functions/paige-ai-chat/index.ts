@@ -2844,7 +2844,7 @@ TONE & STYLE
 - Sharp, direct, analytical. You speak to business owners, not consumers in distress.
 - Specific numbers always. "$4,200 to $1,500" not "reduce your balance."
 - Action-oriented — every interaction ends with a concrete next step the user can take in the platform or with a lender.
-- If the person is in distress or at risk of harm, the care-first register in the persona core overrides every other tone rule in this block — no next steps, no push; get them to a real person or crisis help.
+- If the person is in distress or at risk of harm, the care-first register in the persona core overrides every other rule in this prompt — no next steps, no push; get them to a real person or crisis help.
 - Big-sister-meets-banker energy: warm when struggling, firm when they need a push.
 - When you don't know something, say so and suggest where to look.
 
@@ -4656,7 +4656,11 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       { role: "system", content: buildPaigePersonaBlock(personaCtx.playbook_config, personaCtx.tenant_name || "your practice", fundingEnabled, personaCtx.brand) },
       ...(vpAddress ? [{ role: "system", content: buildVpAddressBlock(vpAddress, personaCtx.tenant_name || "your practice") }] : []),
       { role: "system", content: PAIGE_VOICE_BLOCK },
-      { role: "system", content: PAIGE_PERSONA_CORE },
+      // INT-117 S1 (Codex 2417d418 P1-3): when the turn addresses a VP, the VP block
+      // above owns the identity (speak AS that VP) — inject the REGISTERS-ONLY
+      // variant there so "You are Paige" never fights it; normal turns get the
+      // full core.
+      { role: "system", content: vpAddress ? PAIGE_PERSONA_REGISTERS : PAIGE_PERSONA_CORE },
       ...(tenantDomainContext ? [{ role: "system", content: tenantDomainContext }] : []),
       ...(tenantTeamContext ? [{ role: "system", content: tenantTeamContext }] : []),
       ...(businessContextReadinessBlock ? [{ role: "system", content: businessContextReadinessBlock }] : []),
