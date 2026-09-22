@@ -5,7 +5,7 @@ import type { LiveConversationCard } from "@/lib/paigeLiveConversation/contract"
 
 const control = vi.hoisted(() => ({
   start: vi.fn(),
-  transition: vi.fn(async () => undefined),
+  transition: vi.fn(async (_id?: string, _action?: string) => undefined),
   renew: vi.fn(),
 }));
 const relay = vi.hoisted(() => ({

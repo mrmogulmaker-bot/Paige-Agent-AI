@@ -46,12 +46,16 @@ export function connectPaigeLiveRelay(input: Readonly<{
   let context: AudioContext | null = null;
   let nextPlayAt = 0;
   let activeSources = new Set<AudioBufferSourceNode>();
+  let pendingPlayback = 0;
+  let playbackEpoch = 0;
   let stopped = false;
   let terminal = false;
   let runtimeDone = false;
   let muted = false;
 
   const clearPlayback = () => {
+    playbackEpoch++;
+    pendingPlayback = 0;
     for (const source of activeSources) { try { source.stop(); } catch { /* already ended */ } }
     activeSources = new Set();
     nextPlayAt = 0;
@@ -68,27 +72,41 @@ export function connectPaigeLiveRelay(input: Readonly<{
     if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close(1000, "owner_end");
   };
   const maybePlaybackDone = () => {
-    if (runtimeDone && !activeSources.size && socket.readyState === WebSocket.OPEN) {
+    if (runtimeDone && !pendingPlayback && !activeSources.size && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: "playback.complete" }));
       runtimeDone = false;
     }
   };
   const playPcm = async (data: ArrayBuffer) => {
     if (stopped || terminal || data.byteLength < 2 || data.byteLength % 2) return;
-    context ??= new AudioContext();
-    if (context.state === "suspended") await context.resume();
-    const values = new Int16Array(data);
-    const buffer = context.createBuffer(1, values.length, 16_000);
-    const channel = buffer.getChannelData(0);
-    for (let i = 0; i < values.length; i++) channel[i] = values[i] / 0x8000;
-    const source = context.createBufferSource();
-    source.buffer = buffer;
-    source.connect(context.destination);
-    activeSources.add(source);
-    source.onended = () => { activeSources.delete(source); maybePlaybackDone(); };
-    nextPlayAt = Math.max(context.currentTime, nextPlayAt);
-    source.start(nextPlayAt);
-    nextPlayAt += buffer.duration;
+    const epoch = playbackEpoch;
+    pendingPlayback++;
+    try {
+      const playbackContext = context ??= new AudioContext();
+      if (playbackContext.state === "suspended") await playbackContext.resume();
+      if (stopped || terminal || epoch !== playbackEpoch || socket.readyState !== WebSocket.OPEN) return;
+      const values = new Int16Array(data);
+      const buffer = playbackContext.createBuffer(1, values.length, 16_000);
+      const channel = buffer.getChannelData(0);
+      for (let i = 0; i < values.length; i++) channel[i] = values[i] / 0x8000;
+      const source = playbackContext.createBufferSource();
+      source.buffer = buffer;
+      source.connect(playbackContext.destination);
+      activeSources.add(source);
+      source.onended = () => { activeSources.delete(source); maybePlaybackDone(); };
+      nextPlayAt = Math.max(playbackContext.currentTime, nextPlayAt);
+      source.start(nextPlayAt);
+      nextPlayAt += buffer.duration;
+    } catch {
+      if (!stopped && !terminal) {
+        terminal = true;
+        clearPlayback();
+        input.onState({ kind: "unavailable", message: "Live audio stopped before Paige could speak. You can continue in chat." });
+        if (socket.readyState === WebSocket.OPEN) socket.close(1011, "playback_failed");
+      }
+    } finally {
+      if (epoch === playbackEpoch) { pendingPlayback--; maybePlaybackDone(); }
+    }
   };
 
   socket.onmessage = (event) => {
@@ -104,14 +122,16 @@ export function connectPaigeLiveRelay(input: Readonly<{
       clearPlayback();
       input.onState({ kind: "unavailable", message: "Live audio is not connected yet. You can keep working with Paige in chat." });
     } else if (frame.type === "ready") {
-      recorder = new AudioRecorder((samples) => {
+      const nextRecorder = new AudioRecorder((samples) => {
         if (socket.readyState === WebSocket.OPEN && !stopped && !terminal && !muted) socket.send(pcm16(samples));
       }, 16_000);
-      void recorder.start().then(() => {
-        if (stopped || terminal) { recorder?.stop(); return; }
+      recorder = nextRecorder;
+      void nextRecorder.start().then(() => {
+        if (stopped || terminal || recorder !== nextRecorder || socket.readyState !== WebSocket.OPEN) { nextRecorder.stop(); return; }
         socket.send(JSON.stringify({ type: "start", sampleRate: 16_000 }));
         input.onState({ kind: "ready" });
       }).catch(() => {
+        if (stopped || terminal || recorder !== nextRecorder) return;
         terminal = true;
         input.onState({ kind: "permission-denied" });
         stop();
@@ -127,11 +147,13 @@ export function connectPaigeLiveRelay(input: Readonly<{
   };
   socket.onerror = () => { /* onclose emits one truthful state */ };
   socket.onclose = () => {
+    const unexpected = !stopped && !terminal;
+    terminal = true;
     recorder?.stop();
     recorder = null;
     clearPlayback();
     if (context) { void context.close(); context = null; }
-    if (!stopped && !terminal) input.onState({ kind: "disconnected" });
+    if (unexpected) input.onState({ kind: "disconnected" });
   };
   return {
     setMuted(value) { muted = value; },

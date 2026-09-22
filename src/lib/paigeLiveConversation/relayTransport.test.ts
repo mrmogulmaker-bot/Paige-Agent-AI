@@ -60,4 +60,54 @@ describe("first-party Live relay transport", () => {
     transport.stop();
     expect(socket.readyState).toBe(3);
   });
+
+  it("does not complete playback while audio waits for the output context to resume", async () => {
+    let finishResume!: () => void;
+    const resume = new Promise<void>((resolve) => { finishResume = resolve; });
+    const sources: Array<{ onended: (() => void) | null }> = [];
+    vi.stubGlobal("AudioContext", class {
+      state = "suspended";
+      currentTime = 0;
+      destination = {};
+      resume = vi.fn(() => resume);
+      close = vi.fn(async () => undefined);
+      createBuffer(_channels: number, length: number) {
+        return { duration: length / 16_000, getChannelData: () => new Float32Array(length) };
+      }
+      createBufferSource() {
+        const source = { buffer: null, onended: null as (() => void) | null, connect: vi.fn(), start: vi.fn(), stop: vi.fn() };
+        sources.push(source);
+        return source;
+      }
+    });
+    const transport = connectPaigeLiveRelay({ sessionId: "session-3", ticket: "opaque-3", onState: () => undefined });
+    const socket = FakeSocket.instances[0];
+    socket.receive(new Int16Array([100, 200]).buffer);
+    socket.receive(JSON.stringify({ type: "runtime.done" }));
+    expect(socket.sent).not.toContain(JSON.stringify({ type: "playback.complete" }));
+    finishResume();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(sources).toHaveLength(1);
+    expect(socket.sent).not.toContain(JSON.stringify({ type: "playback.complete" }));
+    sources[0].onended?.();
+    expect(socket.sent).toContain(JSON.stringify({ type: "playback.complete" }));
+    transport.stop();
+  });
+
+  it("never reports ready when the socket closes during microphone startup", async () => {
+    let finishStart!: () => void;
+    recorder.start.mockImplementationOnce(() => new Promise<void>((resolve) => { finishStart = resolve; }));
+    const states: unknown[] = [];
+    connectPaigeLiveRelay({ sessionId: "session-4", ticket: "opaque-4", onState: (state) => states.push(state) });
+    const socket = FakeSocket.instances[0];
+    socket.receive(JSON.stringify({ type: "ready" }));
+    socket.close();
+    finishStart();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(states).toEqual([{ kind: "disconnected" }]);
+    expect(socket.sent).not.toContain(JSON.stringify({ type: "start", sampleRate: 16_000 }));
+    expect(recorder.stop).toHaveBeenCalled();
+  });
 });
