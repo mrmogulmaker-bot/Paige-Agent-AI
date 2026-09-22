@@ -1,16 +1,28 @@
-# PAIGE — MCP Connections Catalogue (build list)
+# PAIGE — MCP Integrations Catalogue (research reference)
 
-**Status:** reference build list for the Connected MCP Gateway.
+**Status:** research input for the Integrations roadmap — **not a provider registry** (see below).
 **Researched:** 2026-09-22 (owner-delivered).
-**Scope:** remote MCP over HTTPS / Streamable HTTP; auth: OAuth (incl. dynamic client
-registration), bearer, custom header, URL token, none.
-**Owner direction:** this is the list of connections the Connections screen and backend should be
-built to support.
+**Scope:** remote MCP over HTTPS / Streamable HTTP (the Connected MCP Gateway); auth: OAuth (incl.
+dynamic client registration), bearer, custom header, URL token, none.
+**Owner direction:** research input for the Integrations roadmap; the canonical provider registry
+governs what is actually built and seeded.
 
-This file is the **reference catalogue** only. It seeds nothing on its own — provider rows
-(`mcp_providers` / the descriptor catalogue) are authored in a later, separately-authorized slice
-(the provider-catalogue schema+seed step), and the confidence gate below governs what may be
-seeded there. Sibling: the G1b Connections UI backend contract at
+### This document is DERIVED — it is not a provider registry (§18 / AGENTS.md)
+
+- **`docs/integration-registry/integration-capability-registry.json` is THE single authoritative
+  provider registry** (its README, "What this is", L12–20). AGENTS.md forbids any *second* provider
+  registry as blocking, so this catalogue does **not** compete with it — like the other provider
+  docs, it **cites** the canonical registry rather than restating provider governance (README L33–40).
+- **This catalogue is planning research only.** It confers **zero** provider-governance, build, or
+  runtime authority and **is not a provider registry.** A provider appearing here is not connected,
+  available, or governed by that fact.
+- **Every provider's governed entry** — its authority lane, limitations, receipts, cost controls, and
+  honest delivery status — is authored in the **canonical registry at seeding** (the separately-
+  authorized provider-catalogue schema + seed step), **never from this document.** No Integrations
+  work seeds a provider from this file; it seeds through the canonical registry's governance, and the
+  confidence gate below governs which rows may even be *considered* there.
+
+Sibling: the G1b Integrations UI backend contract at
 [`g1a1-connections-contract.md`](./g1a1-connections-contract.md).
 
 ---
@@ -29,13 +41,13 @@ preserved as delivered).
    auth/URL/transport check the seeding step performs.
 2. **SSE transport is EXCLUDED for now (coordinator ruling).** The executable loader path is
    Streamable-HTTP-only. **Square** and **Make** (SSE-only / SSE-documented) therefore stay
-   **"Not available yet"** in the Connections screen until/unless SSE transport is added as its own
+   **"Not available yet"** in the Integrations screen until/unless SSE transport is added as its own
    slice. They are catalogued below for completeness, not for seeding.
 3. **Lane (owner, §2).** PaigeAgent AI serves **small business and commercial funding only.**
    **Consumer credit-repair and dispute tools are OUT OF SCOPE** and are not in this catalogue.
 4. **Honest UI states.** A provider that is not seeded, not yet available, or restricted to an
-   allowlist renders an honest disabled/"Not available yet" state — never a tile that implies a
-   connection Paige cannot actually make (§13/§70).
+   allowlist renders an honest disabled/"Not available yet" state — never a tile that implies an
+   integration Paige cannot actually make (§13/§70).
 
 **Legend.** **[DCR]** = dynamic client registration, plug-and-play. **[PRE-REG]** = Paige must
 register its own OAuth app with the vendor first. **[ALLOWLIST]** = vendor only admits approved
@@ -45,7 +57,7 @@ clients. **[ADMIN]** = the client's admin or a paid plan is required.
 
 ---
 
-## A. Build tiers (how to sequence the Connections screen)
+## A. Build tiers (how to sequence the Integrations screen)
 
 ### Tier 1: connect in one click (OAuth; most support DCR)
 - **CRM and sales:** HighLevel (v2 OAuth), HubSpot, Close [DCR], Attio, Apollo.io.
