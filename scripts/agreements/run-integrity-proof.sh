@@ -31,10 +31,17 @@ if [ "$(id -u)" -eq 0 ]; then
     echo "already re-executed and still root — refusing to run postgres as root"; exit 2
   fi
   export PROOF_REEXEC=1
-  exec su "$RUNNER" -c "PROOF_REEXEC=1 PGBIN='${PGBIN:-/usr/lib/postgresql/16/bin}' TMPDIR=/var/tmp $(printf '%q' "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")")"
+  exec su "$RUNNER" -c "PROOF_REEXEC=1 PGBIN='${PGBIN:-}' TMPDIR=/var/tmp $(printf '%q' "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")")"
 fi
 
-PGBIN="${PGBIN:-/usr/lib/postgresql/16/bin}"
+# Find the server binaries. GitHub runners ship PostgreSQL but the major version moves, so the
+# version is discovered rather than pinned; PGBIN overrides everything.
+if [ -z "${PGBIN:-}" ]; then
+  for candidate in /usr/lib/postgresql/*/bin /usr/pgsql-*/bin /opt/homebrew/opt/postgresql@*/bin; do
+    [ -x "$candidate/initdb" ] && PGBIN="$candidate"
+  done
+  : "${PGBIN:=$(dirname "$(command -v initdb 2>/dev/null || echo /nonexistent/x)")}"
+fi
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 MIGRATION="$REPO/supabase/migrations/20270401000000_agreements_engine_records.sql"
@@ -44,7 +51,13 @@ PORT="${PGPORT:-55432}"
 cleanup() { "$PGBIN/pg_ctl" -D "$WORK/data" stop -m immediate >/dev/null 2>&1 || true; rm -rf "$WORK"; }
 trap cleanup EXIT
 
-[ -x "$PGBIN/initdb" ] || { echo "no postgres binaries at $PGBIN — set PGBIN"; exit 2; }
+[ -x "$PGBIN/initdb" ] || {
+  echo "FAIL — no PostgreSQL server binaries found (looked for initdb; PGBIN='$PGBIN')."
+  echo "This proof is the only thing asserting the engine's integrity triggers actually fire."
+  echo "Install postgresql or set PGBIN. It is deliberately NOT skipped: a silently skipped"
+  echo "integrity proof reads exactly like a passing one."
+  exit 2
+}
 [ -f "$MIGRATION" ] || { echo "migration not found: $MIGRATION"; exit 2; }
 
 "$PGBIN/initdb" -D "$WORK/data" -U proofrunner --auth=trust >/dev/null
@@ -69,7 +82,7 @@ if grep -qE 'NO ERROR - GUARANTEE IS FALSE|UNEXPECTED|SUCCEEDED - INTEGRITY CLAI
   echo "FAIL — at least one integrity guarantee did not hold."
   exit 1
 fi
-if [ "$(grep -c 'PASS' "$OUT")" -lt 18 ]; then
+if [ "$(grep -c 'PASS' "$OUT")" -lt 19 ]; then
   echo "FAIL — fewer negatives ran than expected; the proof itself is broken."
   exit 1
 fi

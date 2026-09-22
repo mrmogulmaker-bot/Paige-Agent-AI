@@ -4,8 +4,20 @@
 // §32: a green typecheck proves this file parses. It proves nothing about whether pdf-lib can load
 // the bytes we produced, embed a font, take a PNG, append a page and save — which is exactly the
 // class of failure that compiles clean and then blanks at runtime. These tests RUN that path.
-import { assert, assertEquals, assertNotEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
-import { hashDocument, renderPresentedPdf, sealAgreementPdf } from "./document.ts";
+import {
+  assert,
+  assertEquals,
+  assertNotEquals,
+  assertRejects,
+} from "https://deno.land/std@0.190.0/testing/asserts.ts";
+import {
+  assertNamesAreStampable,
+  hashDocument,
+  renderPresentedPdf,
+  sealAgreementPdf,
+  UnrenderableNameError,
+  wouldLoseCharacters,
+} from "./document.ts";
 
 const PDF_MAGIC = "%PDF";
 
@@ -147,17 +159,35 @@ Deno.test("a CORRUPT signature image degrades to the typed signature instead of 
   assertEquals(head(sealed), PDF_MAGIC, "a bad PNG must never cost us the sealed agreement");
 });
 
-Deno.test("A NON-LATIN SIGNER NAME DOES NOT CRASH THE SEAL", async () => {
-  // pdf-lib's StandardFonts encode WinAnsi only and THROW on an unencodable codepoint. Without
-  // sanitising, a signer whose legal name is not Latin would blow up sealing — at the exact moment
-  // the legal record is being created, after they have already signed.
+Deno.test("A NON-LATIN SIGNER NAME IS REFUSED, NOT SILENTLY STAMPED AS '?'", async () => {
+  // This test previously asserted only that sealing did not CRASH — and it passed, while the sealed
+  // certificate recorded the signer as `?????? ??????`. A legal record that is quietly wrong about
+  // who signed it is worse than one that fails loudly, so the engine now refuses.
   const presented = await renderPresentedPdf({ title: "Services Agreement", bodyMarkdown: BODY });
-  const sealed = await sealAgreementPdf(sealInput({
-    presentedBytes: presented,
-    presentedSha256: await hashDocument(presented),
-    parties: [party({ fullName: "Дмитрий Иванов", typedName: "Дмитрий Иванов" })],
-  }));
-  assertEquals(head(sealed), PDF_MAGIC);
+  await assertRejects(
+    () => sealAgreementPdf(sealInput({
+      presentedBytes: presented,
+      presentedSha256: "0".repeat(64),
+      parties: [party({ fullName: "Дмитрий Иванов", typedName: "Дмитрий Иванов" })],
+    })),
+    UnrenderableNameError,
+  );
+});
+
+Deno.test("the unrenderable-name check names the offender and passes clean Latin text", () => {
+  assert(wouldLoseCharacters("Дмитрий"), "Cyrillic is not WinAnsi-encodable");
+  assert(wouldLoseCharacters("イワノフ"), "Japanese is not WinAnsi-encodable");
+  assert(!wouldLoseCharacters("Jordan Avery"), "plain Latin must pass");
+  assert(!wouldLoseCharacters("Zoë Ravensbourne-O'Neill"), "Latin-1 accents and punctuation must pass");
+  assert(!wouldLoseCharacters("Who? Me?"), "a name that already contains ? is not a loss");
+
+  try {
+    assertNamesAreStampable(["Jordan Avery", "Дмитрий Иванов", "Sam Okafor"]);
+    throw new Error("expected a refusal");
+  } catch (e) {
+    assert(e instanceof UnrenderableNameError);
+    assertEquals(e.names, ["Дмитрий Иванов"], "it names exactly the offender, not the whole party list");
+  }
 });
 
 Deno.test("a long event history and several parties still seal", async () => {

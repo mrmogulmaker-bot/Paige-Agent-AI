@@ -605,6 +605,25 @@ jobs:
           # is why the sibling `_business-context-readiness.test.ts` was written and never wired in.
           deno test --no-check --allow-import=esm.sh,deno.land --deny-net --deny-env --deny-read --deny-write --deny-run --deny-ffi --deny-sys supabase/functions/_shared/systems-check-runners/revenue_tracking_configured.test.ts
 
+      - name: Agreements engine — token contract, PDF seal, and database integrity (INT-163)
+        if: ${{ !cancelled() }}
+        run: |
+          # These run under Deno, not vitest: vitest globs src/** only, so an edge-function test
+          # placed beside its module executes NOWHERE unless it is named here. --node-modules-dir=auto
+          # is required because the repo has a package.json, which makes Deno resolve `npm:` through
+          # node_modules instead of the registry; pdf-lib is not a project dependency.
+          deno test --allow-import --node-modules-dir=auto --deny-net --deny-env --deny-run --deny-ffi --deny-sys \
+            supabase/functions/_shared/agreements/token.test.ts \
+            supabase/functions/_shared/agreements/document.test.ts \
+            supabase/functions/_shared/agreements/signing-guard.test.ts
+          # The two edge functions must at least TYPE-check; neither is exercised by the tests above.
+          deno check --allow-import --node-modules-dir=auto \
+            supabase/functions/agreement-sign/index.ts \
+            supabase/functions/agreement-send/index.ts
+          # The integrity proof stands up its own throwaway Postgres cluster and asserts the exact
+          # SQLSTATE of every refusal, plus positive controls. It needs no credentials.
+          ./scripts/agreements/run-integrity-proof.sh
+
       - name: Test
         if: ${{ !cancelled() }}
         run: npm run test

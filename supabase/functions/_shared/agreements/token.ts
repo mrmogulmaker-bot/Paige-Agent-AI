@@ -77,7 +77,11 @@ export function tokenState(
 ): TokenState {
   if (!row || !row.token_hash) return { usable: false, reason: "unknown" };
   if (row.token_revoked_at) return { usable: false, reason: "revoked" };
-  if (row.token_expires_at && new Date(row.token_expires_at).getTime() <= now.getTime()) {
+  // A token with no expiry is treated as ALREADY expired, never as eternal. The schema forbids the
+  // row (pas_token_needs_expiry_ck), so reaching here means something is wrong — and the safe
+  // reading of "wrong" on the only credential in the system is closed, not open.
+  if (!row.token_expires_at) return { usable: false, reason: "expired" };
+  if (new Date(row.token_expires_at).getTime() <= now.getTime()) {
     return { usable: false, reason: "expired" };
   }
   return { usable: true };

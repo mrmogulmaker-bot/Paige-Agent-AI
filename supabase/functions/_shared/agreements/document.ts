@@ -28,6 +28,52 @@ import { sha256Hex } from "./token.ts";
 
 const PDFLIB_SPEC = "npm:pdf-lib@1.17.1";
 
+/**
+ * A name this engine cannot faithfully put on paper.
+ *
+ * WHY THIS IS AN ERROR AND NOT A BEST EFFORT. pdf-lib's StandardFonts encode WinAnsi (CP1252) only,
+ * and the sanitiser every stamped string passes through maps anything outside that to `?`. For a
+ * heading or a body line that is a cosmetic loss. For the NAME ON A SIGNATURE it is the document
+ * asserting that someone called `?????? ??????` signed it — a legal record that is quietly, provably
+ * wrong about the one fact it exists to establish. Refusing is the honest outcome, and it is caught
+ * at SEND rather than at seal so nobody discovers it after they have already signed.
+ *
+ * The real fix is a Unicode font: pdf-lib supports it via fontkit and an embedded TTF, neither of
+ * which this repo ships today. That is a scoped follow-up, not something to fake in the meantime.
+ */
+export class UnrenderableNameError extends Error {
+  readonly names: string[];
+  constructor(names: string[]) {
+    super(
+      `These names use characters the PDF signature block cannot render yet (Latin characters only): ${names.join(", ")}. ` +
+        `Send this agreement with a Latin-character spelling of the name, or wait for Unicode font support.`,
+    );
+    this.name = "UnrenderableNameError";
+    this.names = names;
+  }
+}
+
+/** Would stamping this string lose characters to `?` — i.e. is the paper record about to lie? */
+export function wouldLoseCharacters(text: string): boolean {
+  const raw = String(text ?? "");
+  const before = (raw.match(/\?/g) ?? []).length;
+  const after = (sanitizeWinAnsi(raw).match(/\?/g) ?? []).length;
+  return after > before;
+}
+
+/**
+ * Refuse a set of names the signature block cannot render faithfully.
+ *
+ * Called at SEND (before a token is minted or an email goes out) and again at SEAL as a backstop,
+ * so the failure surfaces while it is still cheap to fix.
+ */
+export function assertNamesAreStampable(names: Array<string | null | undefined>): void {
+  const bad = names
+    .map((n) => String(n ?? "").trim())
+    .filter((n) => n.length > 0 && wouldLoseCharacters(n));
+  if (bad.length > 0) throw new UnrenderableNameError([...new Set(bad)]);
+}
+
 export interface AgreementPartyLine {
   fullName: string;
   email: string;
@@ -98,6 +144,10 @@ export async function sealAgreementPdf(input: {
   events: AgreementEventLine[];
   sealedAtIso: string;
 }): Promise<Uint8Array> {
+  // Backstop. The send path already refused these, so reaching here means a name changed after
+  // send or a caller skipped the check — either way, stamping `?` onto the record is not the answer.
+  assertNamesAreStampable(input.parties.flatMap((p) => [p.fullName, p.typedName]));
+
   const { PDFDocument, StandardFonts, rgb } = await import(PDFLIB_SPEC);
 
   // Load the EXACT bytes the signer saw. Everything below is additive to that document.

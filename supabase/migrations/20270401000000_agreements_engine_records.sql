@@ -169,7 +169,11 @@ CREATE TABLE IF NOT EXISTS public.paige_agreement_signers (
 
   -- Intent to sign: the name they typed, and the mark they drew if they drew one.
   typed_name text,
-  signature_image_key text,
+  -- The drawn mark, base64 PNG, held on the row rather than in the bucket. The bucket is PDF-only,
+  -- so a raster could never be written there; and a signature image sitting as a loose object with
+  -- its own URL is personal data with its own retention problem. Here it is deleted with the row,
+  -- has no address, and is composited into the sealed document at completion.
+  signature_image_png text,
 
   first_viewed_at timestamptz,
   signed_at timestamptz,
@@ -185,8 +189,10 @@ CREATE TABLE IF NOT EXISTS public.paige_agreement_signers (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
 
-  -- One person is asked once per agreement.
-  CONSTRAINT pas_unique_email_per_agreement UNIQUE (agreement_id, email),
+  -- One person is asked once per agreement. Case-INSENSITIVE: Bob@x.com and bob@x.com are the same
+  -- human, and admitting both would mint two tokens, create two signature slots, and leave the
+  -- signing-order trigger waiting on a duplicate of somebody who has already signed. The unique
+  -- index is declared after the table because a UNIQUE constraint cannot take an expression.
   -- A token with no expiry is a link that works forever. The column is nullable because a signer
   -- exists before one is minted; what must never exist is a MINTED token with no expiry, so the two
   -- are tied together here rather than left to whichever code path happens to set them.
@@ -212,6 +218,8 @@ COMMENT ON COLUMN public.paige_agreement_signers.token_hash IS
 COMMENT ON COLUMN public.paige_agreement_signers.signing_ip IS
   'Attribution evidence, not identity proof. Records where the signing request came from; it does not establish who the person is.';
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_paige_agreement_signers_email
+  ON public.paige_agreement_signers (agreement_id, lower(email));
 CREATE INDEX IF NOT EXISTS idx_paige_agreement_signers_agreement
   ON public.paige_agreement_signers (agreement_id, signing_order);
 CREATE INDEX IF NOT EXISTS idx_paige_agreement_signers_tenant
@@ -243,14 +251,20 @@ CREATE TABLE IF NOT EXISTS public.paige_agreement_events (
   user_agent text,
   detail jsonb NOT NULL DEFAULT '{}'::jsonb,
 
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+
+  -- A send to several signers writes several events inside the same millisecond, so created_at
+  -- alone is not a total order and the certificate of completion could list the same history two
+  -- different ways on two renderings. This makes the order deterministic and is unrecoverable for
+  -- rows already written, which is why it is here rather than added later.
+  seq bigint GENERATED ALWAYS AS IDENTITY
 );
 
 COMMENT ON TABLE public.paige_agreement_events IS
   'Append-only audit trail for the agreements engine. UPDATE and DELETE are refused by trigger, for the service role too.';
 
 CREATE INDEX IF NOT EXISTS idx_paige_agreement_events_agreement
-  ON public.paige_agreement_events (agreement_id, created_at);
+  ON public.paige_agreement_events (agreement_id, created_at, seq);
 CREATE INDEX IF NOT EXISTS idx_paige_agreement_events_tenant
   ON public.paige_agreement_events (tenant_id, created_at DESC);
 

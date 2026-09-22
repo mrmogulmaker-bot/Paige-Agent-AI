@@ -70,9 +70,19 @@ Deno.test("expiry is evaluated at USE, and the boundary is closed", () => {
   );
 });
 
-Deno.test("a live token with no expiry set is usable", () => {
+Deno.test("A TOKEN WITH NO EXPIRY IS TREATED AS EXPIRED, NEVER AS ETERNAL", () => {
+  // The fail-open reading of this row would be an immortal signing link — the worst possible
+  // default on the only credential in the system. The schema forbids the row outright; this is the
+  // code half of the same rule, so a row that somehow exists still cannot be used.
   assertEquals(
     tokenState({ token_hash: "c".repeat(64), token_expires_at: null, token_revoked_at: null }, new Date()),
+    { usable: false, reason: "expired" },
+  );
+});
+
+Deno.test("a live token with a future expiry is usable", () => {
+  assertEquals(
+    tokenState({ token_hash: "c".repeat(64), token_expires_at: "2099-01-01T00:00:00Z", token_revoked_at: null }, new Date()),
     { usable: true },
   );
 });

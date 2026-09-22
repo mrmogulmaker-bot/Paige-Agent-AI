@@ -75,6 +75,8 @@ SELECT pg_temp.probe('P17 token minted with no expiry (immortal link)',
   $$UPDATE public.paige_agreement_signers SET token_hash=repeat('7',64), token_expires_at=NULL WHERE id='f1111111-0000-4000-8000-000000000001'$$,'23514');
 INSERT INTO public.paige_agreement_signers (id,agreement_id,tenant_id,full_name,email,signing_order,status,declined_at)
 VALUES ('f3333333-0000-4000-8000-000000000003','dddddddd-0000-4000-8000-000000000001','aaaaaaaa-0000-4000-8000-000000000001','Third','three@example.com',9,'declined',now());
+SELECT pg_temp.probe('P19 same email in two cases on one agreement',
+  $$INSERT INTO public.paige_agreement_signers (agreement_id,tenant_id,full_name,email,signing_order) VALUES ('dddddddd-0000-4000-8000-000000000001','aaaaaaaa-0000-4000-8000-000000000001','Shouty','ONE@EXAMPLE.COM',7)$$,'23505');
 SELECT pg_temp.probe('P18 a declined signer is flipped to signed',
   $$UPDATE public.paige_agreement_signers SET status='signed', signed_at=now(), esign_consent_at=now()-interval '1 min', esign_consent_slug='c', esign_consent_version=1, esign_consent_sha256=repeat('e',64), typed_name='Third' WHERE id='f3333333-0000-4000-8000-000000000003'$$,'23514');
 
