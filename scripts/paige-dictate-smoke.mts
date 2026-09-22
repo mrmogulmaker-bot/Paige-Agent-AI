@@ -17,6 +17,8 @@
 // linear16 round-trip, and the transcript actually landing in the composer. Those are the OWED live
 // checks (§32) — this smoke does NOT fake a passing Deepgram round-trip or a live socket.
 
+import { readFileSync } from "node:fs";
+
 // stt-router → env-key.ts reads Deno.env (get + toObject); shim BOTH so the module imports in Node.
 const env: Record<string, string | undefined> = {};
 (globalThis as unknown as { Deno?: unknown }).Deno = {
@@ -112,6 +114,53 @@ check("interim Results is NOT final", !!interim && (interim.isFinal || interim.s
 check("Metadata control frame → null (no phantom transcript)", extractDeepgramTranscript(JSON.stringify({ type: "Metadata" })) === null);
 check("empty transcript → null (never emit an empty word)", extractDeepgramTranscript(JSON.stringify({ type: "Results", channel: { alternatives: [{ transcript: "" }] } })) === null);
 check("garbage → null (no throw)", extractDeepgramTranscript("}{ not json") === null);
+
+// ── paige-dictate terminal receipt contract (source guard; no live provider call) ────────────────────────────
+console.log("WS terminal receipt contract:");
+const dictateSource = readFileSync(new URL("../supabase/functions/paige-dictate/index.ts", import.meta.url), "utf8");
+const doneSends = dictateSource.match(/sendJson\(\{ type: "done" \}\)/g) ?? [];
+check("done is emitted from exactly one guarded send site", doneSends.length === 1, `count=${doneSends.length}`);
+check("done is documented in the server-to-client protocol", dictateSource.includes('• { "type":"done" }'));
+const documentedSuccessCodeMatch = dictateSource.match(/const DEEPGRAM_SUCCESS_CLOSE_CODE = (\d+);/);
+const documentedSuccessCode = Number(documentedSuccessCodeMatch?.[1]);
+check("Deepgram success close code is explicitly pinned to 1000", documentedSuccessCode === 1000);
+
+const upstreamCloseStart = dictateSource.indexOf("deepgram.onclose = (e) => {");
+const unexpectedCloseStart = dictateSource.indexOf("// UNEXPECTED provider close mid-dictation", upstreamCloseStart);
+const finalizeCloseBranch = dictateSource.slice(upstreamCloseStart, unexpectedCloseStart);
+check(
+  "upstream finalization closes only after the terminal receipt",
+  upstreamCloseStart >= 0 && finalizeCloseBranch.indexOf("sendDone();") >= 0 &&
+    finalizeCloseBranch.indexOf("sendDone();") < finalizeCloseBranch.indexOf('closeClient(1000, "stop")'),
+);
+check(
+  "upstream finalization error or non-success close emits an error and never earns done",
+  finalizeCloseBranch.includes("if (deepgramErrored || e.code !== DEEPGRAM_SUCCESS_CLOSE_CODE)") &&
+    finalizeCloseBranch.includes('sendError("stt_finalize_failed"') &&
+    /closeClient\(1011, "finalize_failed"\);\s+return;\s+}\s+sendDone\(\);/.test(finalizeCloseBranch),
+);
+const earnsDone = (closeCode: number, precedingOnError: boolean) =>
+  !precedingOnError && closeCode === documentedSuccessCode;
+check("normal close 1000 without onerror earns done", earnsDone(1000, false));
+check(
+  "non-success close with no preceding onerror never earns done",
+  !earnsDone(1008, false) && !earnsDone(1011, false) && !earnsDone(1006, false),
+);
+check("preceding onerror prevents done even on close 1000", !earnsDone(1000, true));
+
+const finalizeTimerStart = dictateSource.indexOf("finalizeTimer = setTimeout(() => {");
+const finalizeTimerEnd = dictateSource.indexOf("}, 2000);", finalizeTimerStart);
+const finalizeTimeoutBranch = dictateSource.slice(finalizeTimerStart, finalizeTimerEnd);
+check(
+  "finalization timeout emits error, closes non-successfully, and never emits done",
+  finalizeTimeoutBranch.includes('sendError("stt_finalize_timeout"') &&
+    finalizeTimeoutBranch.includes('closeClient(1011, "finalize_timeout")') &&
+    !finalizeTimeoutBranch.includes("sendDone"),
+);
+check(
+  "client socket lifetime is held by EdgeRuntime.waitUntil until close",
+  dictateSource.includes("waitUntil(clientSocketClosed);") && dictateSource.includes("resolveClientSocketClosed();"),
+);
 
 // ── sample-rate clamp (client-declared rate → Deepgram-sane window) ───────────────────────────────
 console.log("sample-rate clamp:");

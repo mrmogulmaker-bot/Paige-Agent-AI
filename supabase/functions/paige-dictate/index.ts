@@ -31,6 +31,7 @@
 //  server → client (all JSON text):
 //    • { "type":"ready" }                                   — Deepgram open; start sending audio.
 //    • { "type":"transcript", "text":string, "is_final":boolean }  — interim (false) + final (true).
+//    • { "type":"done" }                                    — final transcript flush completed.
 //    • { "type":"error", "code":string, "message":string }  — jargon-free; socket closes after.
 //
 // verify_jwt=false (config.toml) — a browser WS cannot present the Authorization header the gateway's
@@ -42,6 +43,22 @@ import { planSttStream, openDeepgramSocket, extractDeepgramTranscript } from "..
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+// Deepgram documents WebSocket close code 1000 as "Normal Closure" / successful closure.
+// CloseStream is the STT flush-and-terminate path; 1008 and 1011 are documented STT error closes.
+// Read 2026-09-21:
+// https://developers.deepgram.com/docs/close-stream
+// https://developers.deepgram.com/docs/stt-troubleshooting-websocket-data-and-net-errors
+// https://developers.deepgram.com/docs/tts-ws-close
+const DEEPGRAM_SUCCESS_CLOSE_CODE = 1000;
+
+// An upgraded WebSocket is not request-tracked by the Edge supervisor after the response returns.
+// Tie the isolate to the client socket's close event so queued terminal frames can leave the worker.
+const waitUntil = (promise: Promise<unknown>): void => {
+  const fn = (globalThis as unknown as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } })
+    .EdgeRuntime?.waitUntil;
+  if (fn) fn(promise);
 };
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
@@ -99,6 +116,9 @@ Deno.serve(async (req) => {
   console.log("[paige-dictate] auth ok", { userId: user.id, hasTenant: !!tenantId });
 
   const { socket, response } = Deno.upgradeWebSocket(req);
+  let resolveClientSocketClosed!: () => void;
+  const clientSocketClosed = new Promise<void>((resolve) => { resolveClientSocketClosed = resolve; });
+  waitUntil(clientSocketClosed);
 
   // ── Per-connection state ────────────────────────────────────────────────────
   let deepgram: WebSocket | null = null;
@@ -106,16 +126,26 @@ Deno.serve(async (req) => {
   let started = false; // the client's "start" frame was received (Deepgram opening/open)
   let tornDown = false;
   let finalizing = false; // client released → we've flushed Deepgram and await its trailing final + close
+  let deepgramErrored = false;
+  let doneSent = false;
   let finalizeTimer: ReturnType<typeof setTimeout> | null = null;
   let audioFrames = 0;
   const pendingAudio: Uint8Array[] = []; // buffer mic audio that arrives before Deepgram finishes opening
 
-  const sendJson = (obj: Record<string, unknown>) => {
+  const sendJson = (obj: Record<string, unknown>): boolean => {
     try {
-      if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(obj));
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(obj));
+        return true;
+      }
     } catch { /* client gone */ }
+    return false;
   };
   const sendError = (code: string, message: string) => sendJson({ type: "error", code, message });
+  const sendDone = () => {
+    if (doneSent) return;
+    doneSent = sendJson({ type: "done" });
+  };
 
   const teardown = (why: string) => {
     if (tornDown) return;
@@ -149,9 +179,10 @@ Deno.serve(async (req) => {
   const finalizeAndClose = () => {
     if (tornDown || finalizing) return;
     if (!deepgram || deepgram.readyState !== WebSocket.OPEN) {
-      // Nothing is streaming yet (or it's already gone) — nothing to flush; close cleanly now.
+      // No upstream completion boundary exists, so this cannot be reported as success.
+      sendError("stt_finalize_unavailable", "Voice typing stopped before it could finish. Please try again.");
       teardown("client_stop_no_stream");
-      closeClient(1000, "stop");
+      closeClient(1011, "finalize_unavailable");
       return;
     }
     finalizing = true;
@@ -159,8 +190,9 @@ Deno.serve(async (req) => {
     try { deepgram.send(JSON.stringify({ type: "CloseStream" })); } catch { /* best effort flush */ }
     finalizeTimer = setTimeout(() => {
       console.warn("[paige-dictate] finalize timeout — closing without a provider close", { userId: user.id });
+      sendError("stt_finalize_timeout", "Voice typing took too long to finish. Please try again.");
       teardown("finalize_timeout");
-      closeClient(1000, "stop");
+      closeClient(1011, "finalize_timeout");
     }, 2000);
   };
 
@@ -208,6 +240,7 @@ Deno.serve(async (req) => {
     };
     deepgram.onerror = (e) => {
       // §32 loud, never silent. Degrade the dictation honestly; the socket closes on dg close below.
+      deepgramErrored = true;
       console.error("[paige-dictate] deepgram socket error", { message: (e as ErrorEvent)?.message, userId: user.id });
     };
     deepgram.onclose = (e) => {
@@ -215,8 +248,16 @@ Deno.serve(async (req) => {
       console.log("[paige-dictate] deepgram closed", { code: e.code, reason: e.reason });
       if (tornDown) return; // WE initiated the close (client gone / hard teardown) — nothing to do
       if (finalizing) {
-        // Graceful path: the trailing final has been relayed; close the client cleanly now.
+        // The upstream close is ordered after its transcript frames. Only this successful boundary
+        // earns the exactly-once application receipt; transport close cleanliness is not the receipt.
         if (finalizeTimer !== null) { clearTimeout(finalizeTimer); finalizeTimer = null; }
+        if (deepgramErrored || e.code !== DEEPGRAM_SUCCESS_CLOSE_CODE) {
+          sendError("stt_finalize_failed", "Voice typing stopped before it could finish. Please try again.");
+          teardown("deepgram_failed_after_finalize");
+          closeClient(1011, "finalize_failed");
+          return;
+        }
+        sendDone();
         teardown("deepgram_closed_after_finalize");
         closeClient(1000, "stop");
         return;
@@ -286,6 +327,7 @@ Deno.serve(async (req) => {
   socket.onclose = () => {
     console.log("[paige-dictate] client socket closed", { userId: user.id, audioFrames });
     teardown("client_close");
+    resolveClientSocketClosed();
   };
 
   return response;
