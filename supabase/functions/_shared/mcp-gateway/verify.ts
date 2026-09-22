@@ -29,8 +29,13 @@ import { runReadOnlyIntake } from "./intake.ts";
 import type { IntakeResult } from "./types.ts";
 import type { McpAuth, McpToolFingerprint } from "../mcp-client.ts";
 
+// The one thing runVerify needs from a Supabase client: an awaitable `rpc`. The real
+// `SupabaseClient.rpc()` returns a PostgrestFilterBuilder — a thenable (`PromiseLike`), NOT a full
+// `Promise` (it lacks catch/finally/[Symbol.toStringTag]) — and `await` only needs a thenable, so
+// the seam is typed `PromiseLike`. Typing it `Promise` made the real client fail to satisfy the
+// dep under `deno check` (the smoke's esbuild strips types, so only the Deno ratchet catches it).
 // deno-lint-ignore no-explicit-any
-type RpcClient = { rpc: (fn: string, params?: Record<string, unknown>) => Promise<{ data: any; error: any }> };
+type RpcClient = { rpc: (fn: string, params?: Record<string, unknown>) => PromiseLike<{ data: any; error: any }> };
 
 export type VerifyDeps = {
   /** RLS-scoped as the caller (anon key + the caller's Authorization). All authority gates run here. */
