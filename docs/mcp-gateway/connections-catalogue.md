@@ -62,7 +62,7 @@ clients. **[ADMIN]** = the client's admin or a paid plan is required.
 Buffer (social posting across ~10 networks), Brevo, monday.com, PayPal, Mailchimp Transactional (Mandrill), n8n (instance URL + token), Pipedream / Composio (aggregators).
 
 ### Tier 3: Paige must register an OAuth app with the vendor first (one-time platform setup) [PRE-REG]
-Slack, Asana, Zoom, Front, Canva, Box, Google Workspace (Gmail/Calendar/Drive; Developer Preview; per-client GCP project), Salesforce (the client's admin creates an External Client App), Microsoft 365 (Entra + Copilot licence).
+Slack, Asana, Zoom, Front, Canva, Box, Google Workspace (Gmail/Calendar/Drive; Developer Preview; per-client GCP project), Salesforce (the client's admin creates an External Client App), Microsoft 365 (Entra + Microsoft's paid M365 agent licence).
 
 ### Tier 4: not available to Paige yet (route via Zapier/Pipedream or wait)
 - **Vendor-hosted but restricted to Claude/ChatGPT or an allowlist:** QuickBooks hosted, Shopify admin, Adobe, Figma.
@@ -138,7 +138,7 @@ Slack, Asana, Zoom, Front, Canva, Box, Google Workspace (Gmail/Calendar/Drive; D
 |---|---|---|---|---|---|
 | **Notion** | Official remote | `https://mcp.notion.com/mcp` | OAuth PKCE [DCR] | Search, create/update pages and databases | developers.notion.com |
 | Google Workspace | Official remote, Developer Preview | `https://{gmail,drive,docs,sheets,slides,calendar,chat}mcp.googleapis.com/mcp/v1` | OAuth [PRE-REG per-client GCP project][ADMIN] | Gmail, Calendar, Drive, etc. | developers.google.com/workspace |
-| Microsoft 365 (Work IQ) | Official remote, preview | `agent365.svc.cloud.microsoft/.../servers/mcp_MailTools` etc. | Entra [PRE-REG][ADMIN + Copilot licence] | Mail, Calendar, Teams, SharePoint | learn.microsoft.com |
+| Microsoft 365 (Work IQ) | Official remote, preview | `agent365.svc.cloud.microsoft/.../servers/mcp_MailTools` etc. | Entra [PRE-REG][ADMIN + paid M365 agent licence] | Mail, Calendar, Teams, SharePoint | learn.microsoft.com |
 | Slack | Official remote | `https://mcp.slack.com/mcp` | OAuth, no DCR [PRE-REG][ADMIN] | Search/read/send messages, files | docs.slack.dev |
 | Asana | Official remote (V2) | `https://mcp.asana.com/v2/mcp` | [PRE-REG] | Tasks, projects | developers.asana.com |
 | **ClickUp** | Official remote | `https://mcp.clickup.com/mcp` | OAuth 2.1 PKCE | Tasks, docs, time tracking (free plan capped) | developer.clickup.com |
