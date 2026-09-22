@@ -341,6 +341,24 @@ describe("Writes reach the server", () => {
     expect(dialog(host)).toBeNull();
   });
 
+  it("never reports a write as done on an answer that confirms nothing", async () => {
+    // An adapter that resolves `{}` carries no acknowledgement that anything happened. Treating the
+    // absent `error` key as success would close the drawer on a write the server never confirmed,
+    // and a later reload cannot make that success true (§13).
+    world({ rows: [] });
+    const { host } = await render();
+    await openAddForm(host);
+    await type(fieldFor(host, "Name"), "Unconfirmed tool");
+    await type(fieldFor(host, "Server URL"), "https://unconfirmed.example.com/mcp");
+    await type(fieldFor(host, "Bearer token"), "harness-token-not-a-real-secret");
+    rpc.mockImplementation((name: string) =>
+      name.startsWith("create_") ? Promise.resolve({}) : builder({ data: [], error: null }));
+    await click(byText(host, "Add tool"));
+    // The drawer stays open on the details, and the owner is told it did not go through.
+    expect(dialog(host)).toBeTruthy();
+    expect(host.textContent).not.toMatch(/Unconfirmed tool.*added/i);
+  });
+
   it("leaves the owner able to try again after a refused write", async () => {
     world({ rows: [], write: { data: null, error: { code: "42501" } } });
     const { host } = await render();

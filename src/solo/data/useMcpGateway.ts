@@ -248,11 +248,17 @@ export function useMcpGateway(): UseMcpGateway {
  * failure this hook's `.catch` exists to prevent, so the guarantee is made unconditional here rather
  * than left dependent on HOW the adapter failed.
  *
- * An unreadable answer is treated as a failed read, never as an empty account (§13).
+ * An unreadable answer is treated as a failed read, never as an empty account, and — on the write
+ * path — never as a confirmed write. `{}` carries no confirmation that anything happened, so
+ * reporting it as success would close the drawer on a write the server never acknowledged, which is
+ * the same lie as a fabricated result (§13). A later reload cannot make that success true.
  */
 function rpcResult(value: unknown): { data: unknown; error: unknown } {
   if (typeof value !== "object" || value === null) return { data: null, error: true };
   const row = value as { data?: unknown; error?: unknown };
+  // An object carrying NEITHER field is not an RPC envelope — `{}`, `[]`, a bare Response, a builder
+  // that never ran. Absence of an `error` key is not evidence of success.
+  if (!("data" in row) && !("error" in row)) return { data: null, error: true };
   return { data: row.data ?? null, error: row.error ?? null };
 }
 
