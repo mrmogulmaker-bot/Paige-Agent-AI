@@ -805,7 +805,7 @@ const PaigeAIChatInner = ({
     } catch (e) {
       if (!ticketAccepted(requestTicket)) return;
       applyConversationEvent({ type: "thread-load-failed", id });
-      if (soloTenantSafety) setActiveThreadId(previousTranscriptThreadId);
+      if (soloTenantSafety || isThreadControlled) setActiveThreadId(previousTranscriptThreadId);
       console.error("[PaigeAIChat] load thread failed:", e);
       toast({ title: "Couldn't open that chat", description: "Give it another try in a moment.", variant: "destructive" });
     } finally {

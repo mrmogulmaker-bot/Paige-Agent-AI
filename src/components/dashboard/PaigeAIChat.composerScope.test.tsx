@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatRailApi } from "./PaigeAIChat";
@@ -337,6 +337,49 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
       await settle();
     });
     expect(textarea().value).toBe("draft A");
+  });
+
+  it("restores a controlled parent to the displayed thread when the requested load fails", async () => {
+    harness.threads = [
+      { id: "thread-a", title: "A", updated_at: "2026-09-22T00:00:00Z" },
+      { id: "thread-b", title: "B", updated_at: "2026-09-22T00:01:00Z" },
+    ];
+    harness.loadTurns
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error("controlled load failed"));
+    let selectControlledThread: ((id: string | null) => void) | null = null;
+
+    const ControlledHost = () => {
+      const [threadId, setThreadId] = useState<string | null>("thread-a");
+      selectControlledThread = setThreadId;
+      return (
+        <PaigeAIChat
+          hideHeader
+          fill
+          enableHistory
+          activeThreadId={threadId}
+          onActiveThreadIdChange={setThreadId}
+          renderRail={(api) => { harness.rail = api; return null; }}
+        />
+      );
+    };
+
+    await act(async () => {
+      root.render(<ControlledHost />);
+      await settle();
+    });
+    await waitForWritable();
+    await type("draft A survives");
+
+    await act(async () => {
+      selectControlledThread?.("thread-b");
+      await settle();
+    });
+
+    expect(harness.loadTurns).toHaveBeenCalledTimes(2);
+    expect(harness.rail!.activeThreadId).toBe("thread-a");
+    expect(textarea().disabled).toBe(false);
+    expect(textarea().value).toBe("draft A survives");
   });
 
   it("isolates an account switch before cleanup and drops the origin dictation callback", async () => {
