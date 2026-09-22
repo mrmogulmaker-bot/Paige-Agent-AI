@@ -26,7 +26,7 @@ This slice is contract-only. The $30 allowance, cost-plus-25% overage rule, warn
 | `media` | Vibe image, edit, video, audio, and other generation | provider-native units plus job count | provider estimate reserved, then provider-confirmed actual when available |
 | `tools` | any later platform-paid external API/tool with a measurable provider charge | provider-native unit | provider rate-card snapshot or confirmed receipt |
 
-Included cost is the platform''s direct provider cost attributable to a tenant. Failed operations settle to the actual non-refundable provider cost, if any; a failure is not assumed free.
+Included cost is the platform's direct provider cost attributable to a tenant. Failed operations settle to the actual non-refundable provider cost, if any; a failure is not assumed free.
 
 Excluded:
 
@@ -38,7 +38,7 @@ Excluded:
 
 ## 3. Plan period, allowance, and catalog transition
 
-The allowance period is the tenant''s canonical `platform_subscriptions.current_period_start` (inclusive) through `current_period_end` (exclusive), not a calendar-month guess. If either boundary is missing or invalid, resolution fails closed to **coverage incomplete** in shadow reporting; it never invents a period or blocks a user.
+The allowance period is the tenant's canonical `platform_subscriptions.current_period_start` (inclusive) through `current_period_end` (exclusive), not a calendar-month guess. If either boundary is missing or invalid, resolution fails closed to **coverage incomplete** in shadow reporting; it never invents a period or blocks a user.
 
 Plan configuration belongs on the canonical `platform_subscription_plans` lineage. A later migration will replace the deployed Solo `$149` catalog price and the `$74.50` beta offer with the owner-approved **$297/month** Solo offer, while preserving immutable invoice/subscription history. It must:
 
@@ -63,13 +63,15 @@ Required typed fields (columns rather than policy-critical JSON) are: tenant, op
 
 Rules:
 
-- reserve is atomic against the tenant''s resolved period and the platform ceiling; duplicate reserve returns the existing lifecycle;
+- reserve locks and atomically checks both (a) the tenant's effective allowance—the plan allowance reduced by any tenant restriction—and (b) the platform ceiling before dispatch; duplicate reserve returns the existing lifecycle;
 - settle/release is idempotent and may transition only the matching reservation;
 - settlement records actual provider cost when authoritative; otherwise it retains an explicitly estimated amount and provenance;
 - `ambiguous` never becomes zero automatically and is reconciled by receipt/readback or an explicit expiry policy;
 - totals use `settled + active reserved + ambiguous`, preventing concurrency from overspending a cap;
 - state changes are append-only events or an equivalently immutable transition history; no caller may rewrite financial history in place;
 - client-visible category totals derive from this ledger only.
+
+Every platform-paid provider dispatcher, including the shared LLM/model-routing seam, must reserve synchronously before its first provider call once enforcement is enabled. `paige_llm_trace` remains LLM provenance: its writer settles or reconciles the matching reservation, while the existing hourly drain is limited to historical backfill and missing-settlement repair. An after-dispatch drain can never satisfy or replace the reserve gate.
 
 ## 5. Versioned rate-card snapshots
 
@@ -80,7 +82,7 @@ Provider-confirmed actual cost wins for settlement. If a provider supplies usage
 ## 6. Authority and tenant isolation (INT-100)
 
 - **Platform function:** only the platform owner, through a dedicated capability-gated platform function, may create/activate rate cards, set plan allowances/overage policy, or change the global emergency ceiling. This is platform configuration.
-- **Tenant preference:** a tenant owner/admin may only lower that tenant''s resolved allowance or disable provider-funded usage. The tenant function cannot raise the plan allowance, alter a rate, enable overage, or affect another tenant.
+- **Tenant preference:** a tenant owner/admin may only lower that tenant's resolved allowance or disable provider-funded usage. The tenant function cannot raise the plan allowance, alter a rate, enable overage, or affect another tenant.
 - **No platform tenant-data write:** a platform role does not call the tenant preference function or impersonate tenant authority. Provisioning resolves the platform plan assignment/configuration; it does not write a tenant preference row unless the tenant later chooses a restriction.
 - Direct table writes are denied to browser roles. Server callers use narrowly granted functions, derive tenant/actor identity server-side, and produce audit evidence without prompt, transcript, or secret content.
 
@@ -100,13 +102,13 @@ No warning, stop, overage, or ceiling is live merely because this contract names
 ## 8. Existing meters: reuse, migrate, retire
 
 - `platform_usage_events`: **reuse and extend** as the sole plan-usage ledger. Existing `llm_tokens` and `tts_char` rows remain historical source-unit evidence.
-- `paige_llm_trace`: **retain as LLM observability/provenance**; its drain writes priced usage into the one ledger. It is not a balance.
-- `paige_media_credit_entries` and media hold/consume/release: **migrate lifecycle and history into the unified ledger, then retire as an allowance/balance authority**. Media job/receipt provenance may remain.
+- `paige_llm_trace`: **retain as LLM observability/provenance**. The shared model dispatcher writes the pre-dispatch reservation; a trace settles/reconciles it. The current hourly drain is historical/backfill repair only, never the live enforcement gate.
+- `paige_media_credit_entries` and media hold/consume/release: **migrate provider-usage lifecycle and history into the unified ledger, then retire as an allowance/balance authority only after prepaid value is preserved**. Outstanding non-expiring `grant_purchased` value moves one-for-one into a canonical Platform Billing prepaid-usage entitlement, with its historical USD conversion and source receipt retained. That entitlement is not a usage meter and the purchase itself is not provider cost. Unified reserve/settle draws the plan's included allowance first, then preserved prepaid entitlement, then separately authorized opt-in overage; each usage row records its funding source so prepaid value is neither lost nor also counted against the `$30` allowance. Media job/receipt provenance may remain.
 - `paige_voice_cost_reservations`, `paige_voice_*budget*`, and voice monthly-usage tables/functions from V1a: **retire after unified reserve/settle coverage and reconciliation are proven**. They stay unused and cannot be re-enabled as a parallel voice allowance.
-- `platform_metered_events`: remains the separate Layer-3 tenant pass-through billing rail defined by Doctrine §197; it is not used to meter Paige''s included plan allowance.
+- `platform_metered_events`: remains the separate Layer-3 tenant pass-through billing rail defined by Doctrine §197; it is not used to meter Paige's included plan allowance.
 - legacy token-credit presentation (`included_ai_tokens_month`, `ai_credit_token_ratio`) is migrated to category detail under the one dollar-denominated allowance and then retired as an independent entitlement.
 
-Migration is reconcile-first: map each legacy source record to one unified operation, compare per-tenant/per-period totals, quarantine duplicates/unknown rates, prove exact coverage, switch readers/writers, then disable and later remove the old balance authority. No dual enforcement window.
+Migration is reconcile-first: map each legacy source record to one unified operation, migrate and reconcile every outstanding purchased-media entitlement before retiring its balance authority, compare per-tenant/per-period totals, quarantine duplicates/unknown rates, prove exact coverage, switch readers/writers, then disable and later remove the old balance authority. No dual enforcement window.
 
 ## 9. Coverage and activation gates
 
@@ -126,7 +128,7 @@ Only after a separate owner authorization may rollout progress: shadow telemetry
 
 1. **This contract (docs only):** decisions and boundaries; no runtime effect.
 2. **Schema foundation, enforcement off:** additive ledger lifecycle fields, immutable rate-card snapshots, plan usage policy, restrictive tenant preference, RLS/grants/RPCs, and coverage-readback function with fail-first pgTAP.
-3. **Writer convergence:** one provider-cost source at a time (LLM, TTS, STT/Live, media, tools), shadow writes and exact reconciliation; legacy writers remain read-only until each cutover proves parity.
+3. **Writer convergence:** one provider-cost source at a time (LLM, TTS, STT/Live, media, tools), with synchronous pre-dispatch reservation at each shared dispatch seam, shadow settlement, and exact reconciliation; legacy writers remain read-only until each cutover proves parity.
 4. **Client billing read model:** owner-visible period, `$30` included amount, total and per-category cost, estimated/confirmed labels, 80%/100% warnings, and overage projection; no charge controls yet.
 5. **Catalog migration to $297:** separately authorized Stripe/catalog/UI/webhook change with grandfathering decision and end-to-end billing proof.
 6. **Controlled enforcement:** only after all-tenant/source coverage readback passes; discrete-operation stop plus graceful Live Conversation boundary; key-less/old-client compatibility where applicable.
