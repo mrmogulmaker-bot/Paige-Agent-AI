@@ -88,6 +88,9 @@
 --
 -- ROLLBACK:
 --   DROP FUNCTION IF EXISTS public.disconnect_mcp_connection(uuid, boolean, uuid);
+--   -- P2 (Codex): disconnect_mcp_connection's SOFT-DISABLE branch now ALSO scrubs the url-embedded
+--   --   credential (server_url_ct = CASE WHEN auth_kind='url' THEN NULL ELSE server_url_ct END). A rollback
+--   --   to the prior body drops that url scrub; nothing else in the function changes.
 --   DROP FUNCTION IF EXISTS public.set_mcp_rest_connection_endpoint(uuid, text, text, uuid);
 --   DROP FUNCTION IF EXISTS public.create_mcp_rest_connection(text, text, text, text, text, uuid);
 --   DROP FUNCTION IF EXISTS public.create_mcp_connection(text, text, text, text, text, text, text, text, text, text, text[], timestamptz, text, uuid);
@@ -860,11 +863,15 @@ COMMENT ON FUNCTION public.set_mcp_rest_connection_endpoint(uuid, text, text, uu
 --    owner/tenant-admin only, platform owner EXCLUDED). Uniform MCP_FORBIDDEN on missing/foreign-tenant;
 --    D1 refuses a legacy row.
 --      • DISABLE (_hard=false): idempotent (already-disabled ⇒ no-op, no new audit). Otherwise null the
---        live credential ciphertexts (access token, refresh token, oauth client secret) + last4 (the
---        encrypted endpoint + oauth identity metadata are retained on the disabled shell;
---        get_mcp_connection_secret returns configured:false/enabled:false for a disabled row, so nothing
---        is exposed), empty granted_scopes/provider_state, status→unconfigured, health→unknown,
---        enabled→false; delete approvals + tools (LIVE state); audit 'mcp_connection.disabled'.
+--        live credential ciphertexts (access token, refresh token, oauth client secret) + last4, AND —
+--        for auth_kind='url' ONLY — the url-embedded credential in server_url_ct (P2, Codex): a url
+--        connection carries its secret INSIDE the endpoint, so a disconnect that left server_url_ct intact
+--        would keep a live credential on the disabled shell that get_mcp_connections_v2 (url/none widening)
+--        still reports configured:true. Every OTHER auth_kind (bearer/header/oauth/none) retains its
+--        encrypted endpoint + oauth identity metadata on the disabled shell (the endpoint alone is not a
+--        credential there; get_mcp_connection_secret returns configured:false/enabled:false for a disabled
+--        row, so nothing is exposed). Then empty granted_scopes/provider_state, status→unconfigured,
+--        health→unknown, enabled→false; delete approvals + tools (LIVE state); audit 'mcp_connection.disabled'.
 --      • DELETE (_hard=true, HISTORY-PRESERVING — G1a-1 Correction 2): count the LIVE child rows,
 --        WRITE THE 'mcp_connection.deleted' AUDIT FIRST (so an audit failure aborts before the
 --        destructive delete), THEN DELETE the connection — approvals + tools cascade away, receipts
@@ -971,6 +978,13 @@ BEGIN
     refresh_token_ct       = NULL,
     oauth_client_secret_ct = NULL,
     auth_token_last4       = NULL,
+    -- P2 (Codex): for auth_kind='url' the credential is EMBEDDED IN the endpoint, so nulling the token
+    -- ciphertexts above does NOT scrub the secret — it survives inside server_url_ct. A user-initiated
+    -- disconnect must clear that url-embedded credential too, or the disabled shell keeps a live secret
+    -- that get_mcp_connections_v2 (with this PR's url/none widening) STILL reports configured:true. Scrub
+    -- server_url_ct ONLY for a url row; every other auth_kind (bearer/header/oauth/none) keeps its endpoint
+    -- on the disabled shell (the endpoint alone is not a credential there), exactly as before.
+    server_url_ct          = CASE WHEN auth_kind = 'url' THEN NULL ELSE server_url_ct END,
     granted_scopes         = '{}',
     provider_state         = '{}'::jsonb,
     status                 = 'unconfigured',
@@ -1008,7 +1022,7 @@ REVOKE ALL ON FUNCTION public.disconnect_mcp_connection(uuid, boolean, uuid) FRO
 GRANT EXECUTE ON FUNCTION public.disconnect_mcp_connection(uuid, boolean, uuid) TO authenticated;
 
 COMMENT ON FUNCTION public.disconnect_mcp_connection(uuid, boolean, uuid) IS
-  'G1a-1 (MCP PR-G1a): SOFT disable (default) or HARD delete of a NATIVE connection. Authority FIRST (§9): hard delete needs mcp.connections.delete, disable needs mcp.connections.manage (both owner/tenant-admin only, platform owner EXCLUDED, no service-role bypass). Uniform MCP_FORBIDDEN on a missing/foreign-tenant connection (a second hard delete finds none ⇒ same refusal, no existence oracle); D1 refuses a legacy row. DISABLE: idempotent (already-disabled ⇒ already_disabled no-op); else null the live credential ciphertexts (access token, refresh token, oauth client secret) + last4 (the encrypted endpoint + oauth identity metadata are retained on the disabled shell; get_mcp_connection_secret returns configured:false/enabled:false for a disabled row, so nothing is exposed), empty scopes/state, status→unconfigured, enabled→false, delete approvals+tools (LIVE state), audit mcp_connection.disabled. DELETE (history-preserving): audit mcp_connection.deleted FIRST then delete the row — approvals+tools cascade away, mcp_connection_receipts survive with connection_id→NULL (this migration''s FK swap), paige_audit_log survives (no FK). Hashes/enums/counts-only audit; write-only return. EXECUTE to authenticated only.';
+  'G1a-1 (MCP PR-G1a): SOFT disable (default) or HARD delete of a NATIVE connection. Authority FIRST (§9): hard delete needs mcp.connections.delete, disable needs mcp.connections.manage (both owner/tenant-admin only, platform owner EXCLUDED, no service-role bypass). Uniform MCP_FORBIDDEN on a missing/foreign-tenant connection (a second hard delete finds none ⇒ same refusal, no existence oracle); D1 refuses a legacy row. DISABLE: idempotent (already-disabled ⇒ already_disabled no-op); else null the live credential ciphertexts (access token, refresh token, oauth client secret) + last4, AND — for auth_kind=url ONLY — the url-embedded credential in server_url_ct (P2: a url connection carries its secret inside the endpoint, so leaving server_url_ct intact would keep a live credential on the disabled shell that get_mcp_connections_v2''s url/none widening still reports configured:true). Every other auth_kind (bearer/header/oauth/none) retains its encrypted endpoint + oauth identity metadata on the disabled shell (the endpoint alone is not a credential there; get_mcp_connection_secret returns configured:false/enabled:false for a disabled row, so nothing is exposed). Empty scopes/state, status→unconfigured, enabled→false, delete approvals+tools (LIVE state), audit mcp_connection.disabled. DELETE (history-preserving): audit mcp_connection.deleted FIRST then delete the row — approvals+tools cascade away, mcp_connection_receipts survive with connection_id→NULL (this migration''s FK swap), paige_audit_log survives (no FK). Hashes/enums/counts-only audit; write-only return. EXECUTE to authenticated only.';
 
 -- ─────────────────────────────────────────────────────────────────────────────────
 -- 8. get_mcp_connections_v2 — CREATE OR REPLACE reproducing the 20270319000000 definition (:214-256)

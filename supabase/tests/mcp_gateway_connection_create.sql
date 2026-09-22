@@ -37,6 +37,14 @@
 --   • P2 list-side configured: get_mcp_connections_v2 reports configured:true for a credentialless url/none
 --     row (server_url_ct present, both tokens null) and STILL configured:false for a tokenless bearer row
 --     (a soft-disabled bearer — guard against over-widening).
+--   • P2 (Codex) url-credential scrub on disable: a soft disable of an auth_kind='url' connection (whose
+--     credential is EMBEDDED in the endpoint) nulls server_url_ct → get_mcp_connections_v2 reports
+--     configured:false (a NON-VACUITY negative control re-populates server_url_ct in place and shows the
+--     SAME row would report configured:true without the scrub); a subsequent url re-key RESTORES the row
+--     (enabled=true, status='pending_verification', configured:true — the P1(a) path); a disabled BEARER row
+--     RETAINS server_url_ct (the fix must not touch non-url; a bearer endpoint alone is not a credential);
+--     a disabled 'none' row also RETAINS server_url_ct and stays configured:true (documented — the
+--     coordinator scoped the credential scrub to 'url' only, as 'none' has no embedded credential).
 --
 -- NOTE (§13): a "manage-only, no-delete" actor is NOT constructible today — _mcp_caller_capabilities
 -- co-grants manage AND delete to owner/tenant-admin — so the delete gate is proven two ways instead: the
@@ -606,6 +614,94 @@ BEGIN
     FROM jsonb_array_elements(public.get_mcp_connections_v2(T)) elem
    WHERE (elem->>'connection_id')::uuid = _bearer_cid;
   IF _cfg IS DISTINCT FROM 'false' THEN RAISE EXCEPTION '(p2) tokenless bearer row must stay configured:false, got %', _cfg; END IF;
+END $$;
+
+-- ── (P2 Codex — url-embedded credential is SCRUBBED on soft disable; non-url endpoints retained) ───
+-- For auth_kind='url' the credential lives INSIDE the endpoint (server_url_ct). A soft disconnect must
+-- clear it, or the disabled shell keeps a live secret that get_mcp_connections_v2's url/none widening
+-- STILL reports configured:true. The fix nulls server_url_ct ONLY for a url row; every other auth_kind
+-- keeps its endpoint on the disabled shell (the endpoint alone is not a credential there).
+DO $$
+DECLARE _cfg text; _row public.mcp_connections%ROWTYPE; _r jsonb;
+  _url_cid uuid; _bearer_cid uuid; _none_cid uuid;
+  T uuid := 'c1a00000-0000-0000-0000-0000000000a1';
+  U  text := 'https://host.example.com/mcp/SECRETTOKEN';           -- credential embedded in the URL path
+  U2 text := 'https://host2.example.com/mcp/NEWTOKEN';             -- re-key endpoint (new embedded credential)
+BEGIN
+  PERFORM set_config('request.jwt.claims', '{"sub":"c1a00000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+
+  -- create a url-auth connection: server_url_ct present (the credential), both token columns NULL.
+  _url_cid := (public.create_mcp_connection('zapier','urldis-1',U,'url')->>'connection_id')::uuid;
+  SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = _url_cid;
+  IF _row.auth_kind <> 'url' OR _row.server_url_ct IS NULL OR _row.auth_token_ct IS NOT NULL THEN
+    RAISE EXCEPTION '(url scrub) precondition wrong: kind=% url_ct_null=% token_ct_null=%',
+      _row.auth_kind, (_row.server_url_ct IS NULL), (_row.auth_token_ct IS NULL); END IF;
+
+  -- soft disconnect → the url-embedded credential (server_url_ct) is scrubbed to NULL.
+  _r := public.disconnect_mcp_connection(_url_cid, false);
+  IF (_r->>'disconnected') <> 'true' OR (_r->>'mode') <> 'disable' THEN
+    RAISE EXCEPTION '(url scrub) bad disable return: %', _r; END IF;
+  SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = _url_cid;
+  IF _row.server_url_ct IS NOT NULL THEN
+    RAISE EXCEPTION '(url scrub) server_url_ct must be NULL after a url disable — the credential survived'; END IF;
+  IF _row.enabled IS NOT FALSE THEN RAISE EXCEPTION '(url scrub) disabled row must be enabled=false'; END IF;
+  -- and the list-side reports configured:false (nothing left to be configured with).
+  SELECT elem->>'configured' INTO _cfg
+    FROM jsonb_array_elements(public.get_mcp_connections_v2(T)) elem
+   WHERE (elem->>'connection_id')::uuid = _url_cid;
+  IF _cfg IS DISTINCT FROM 'false' THEN
+    RAISE EXCEPTION '(url scrub) disabled url row must report configured:false, got %', _cfg; END IF;
+
+  -- NON-VACUITY negative control: re-populate server_url_ct IN PLACE on the SAME disabled row (the exact
+  -- pre-fix shape — a disabled url row whose endpoint credential was retained). get_mcp_connections_v2's
+  -- url/none widening then reports configured:true, proving the assertion above is driven by the scrub and
+  -- would FAIL without the fix. Restore to NULL afterwards to leave the true post-fix disabled state.
+  UPDATE public.mcp_connections SET server_url_ct = public.platform_encrypt(U) WHERE connection_id = _url_cid;
+  SELECT elem->>'configured' INTO _cfg
+    FROM jsonb_array_elements(public.get_mcp_connections_v2(T)) elem
+   WHERE (elem->>'connection_id')::uuid = _url_cid;
+  IF _cfg IS DISTINCT FROM 'true' THEN
+    RAISE EXCEPTION '(url scrub NEG-CONTROL) a retained server_url_ct on a disabled url row MUST report configured:true (so the scrub is what drives configured:false), got %', _cfg; END IF;
+  UPDATE public.mcp_connections SET server_url_ct = NULL WHERE connection_id = _url_cid;
+
+  -- re-key restores (P1(a)): a fresh url endpoint reconnects → enabled=true, pending_verification, configured:true.
+  _r := public.set_mcp_connection_endpoint(_url_cid, U2, 'url');
+  IF (_r->>'status') <> 'pending_verification' THEN RAISE EXCEPTION '(url re-key) return status wrong: %', _r; END IF;
+  SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = _url_cid;
+  IF _row.enabled IS NOT TRUE OR _row.status <> 'pending_verification' OR _row.server_url_ct IS NULL THEN
+    RAISE EXCEPTION '(url re-key) must RECONNECT (enabled=true/pending/url present), got enabled=% status=% url_null=%',
+      _row.enabled, _row.status, (_row.server_url_ct IS NULL); END IF;
+  SELECT elem->>'configured' INTO _cfg
+    FROM jsonb_array_elements(public.get_mcp_connections_v2(T)) elem
+   WHERE (elem->>'connection_id')::uuid = _url_cid;
+  IF _cfg IS DISTINCT FROM 'true' THEN RAISE EXCEPTION '(url re-key) reconnected url row must be configured:true, got %', _cfg; END IF;
+
+  -- NON-URL UNCHANGED (bearer): a disabled bearer row RETAINS server_url_ct (the endpoint kept on the
+  -- disabled shell) — the fix must not touch non-url rows. Its token IS scrubbed, so configured stays false.
+  _bearer_cid := (public.create_mcp_connection('generic-remote','urldis-bearer','https://bearer-keep.example.com/rpc','bearer','tok-keep-123456')->>'connection_id')::uuid;
+  PERFORM public.disconnect_mcp_connection(_bearer_cid, false);
+  SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = _bearer_cid;
+  IF _row.server_url_ct IS NULL THEN
+    RAISE EXCEPTION '(non-url unchanged) a disabled BEARER row must RETAIN server_url_ct (fix must not touch non-url)'; END IF;
+  IF _row.auth_token_ct IS NOT NULL THEN RAISE EXCEPTION '(non-url unchanged) bearer token must still be scrubbed'; END IF;
+  SELECT elem->>'configured' INTO _cfg
+    FROM jsonb_array_elements(public.get_mcp_connections_v2(T)) elem
+   WHERE (elem->>'connection_id')::uuid = _bearer_cid;
+  IF _cfg IS DISTINCT FROM 'false' THEN RAISE EXCEPTION '(non-url unchanged) disabled tokenless bearer must be configured:false, got %', _cfg; END IF;
+
+  -- 'none' behavior DOCUMENTED, unchanged (coordinator scoped the scrub to 'url'): a 'none' row has NO
+  -- embedded credential, so its endpoint is retained on disable and it stays configured:true. Asserted to
+  -- lock the current behavior, NOT to change it.
+  _none_cid := (public.create_mcp_connection('generic-remote','urldis-none','https://none-keep.example.com/rpc','none')->>'connection_id')::uuid;
+  PERFORM public.disconnect_mcp_connection(_none_cid, false);
+  SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = _none_cid;
+  IF _row.server_url_ct IS NULL THEN
+    RAISE EXCEPTION '(none documented) a disabled NONE row must RETAIN server_url_ct (no embedded credential; fix scoped to url)'; END IF;
+  SELECT elem->>'configured' INTO _cfg
+    FROM jsonb_array_elements(public.get_mcp_connections_v2(T)) elem
+   WHERE (elem->>'connection_id')::uuid = _none_cid;
+  IF _cfg IS DISTINCT FROM 'true' THEN
+    RAISE EXCEPTION '(none documented) a disabled none row keeps its endpoint and stays configured:true (unchanged), got %', _cfg; END IF;
 END $$;
 
 DO $$ BEGIN RAISE NOTICE 'MCP_GW_CONNECTION_CREATE_PROVEN'; END $$;
