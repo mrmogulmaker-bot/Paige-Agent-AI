@@ -77,6 +77,13 @@ export async function runVerify(deps: VerifyDeps, input: VerifyInput): Promise<V
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(connectionId)) {
     return { httpStatus: 400, body: { error: "bad_connection_id" } };
   }
+  // Normalize to the canonical lowercase form Postgres returns for a uuid, so the JS ownership
+  // compare below matches a mixed-case input the way PG's case-insensitive uuid type does. Without
+  // this, an uppercase/mixed-case id passes the case-insensitive regex, then fails the exact
+  // string compare against the lowercase v2 rows → a spurious not_found. Fail-closed either way
+  // (a case mismatch could only narrow the gate, never widen it — no IDOR), so this is a
+  // usability fix, not a security fix; every downstream use keys off the canonical id.
+  const id = connectionId.toLowerCase();
 
   // Tenant from the caller's JWT context — never the body (§9).
   const { data: tenantId, error: tErr } = await userClient.rpc("current_user_tenant_id");
@@ -101,17 +108,17 @@ export async function runVerify(deps: VerifyDeps, input: VerifyInput): Promise<V
   const { data: v2, error: vErr } = await userClient.rpc("get_mcp_connections_v2");
   if (vErr) return { httpStatus: 500, body: { error: "lookup_failed" } };
   const rows = Array.isArray(v2) ? v2 : [];
-  const owned = rows.some((r) => r && typeof r === "object" && (r as { connection_id?: unknown }).connection_id === connectionId);
+  const owned = rows.some((r) => r && typeof r === "object" && (r as { connection_id?: unknown }).connection_id === id);
   if (!owned) return { httpStatus: 404, body: { error: "not_found" } };
 
   // Authorized. Resolve the endpoint + auth SERVER-SIDE from the one row (the loader is the §18 home
   // for secret→connection resolution + usability). It fails closed on a disabled/unusable row.
   const loader = makeRpcConnectionLoader(admin);
-  const resolved = await loader(connectionId);
+  const resolved = await loader(id);
   if (!resolved.ok) {
     // Record an honest, secret-free health state so the row does not sit on a stale "pending".
     await admin.rpc("mcp_connection_probe", {
-      _connection_id: connectionId,
+      _connection_id: id,
       _status: "error",
       _health: "needs_attention",
       _last_error_code: resolved.reason,
@@ -132,7 +139,7 @@ export async function runVerify(deps: VerifyDeps, input: VerifyInput): Promise<V
   // and of mcp_connection_tools. Replace the catalog only on a successful read (a failed probe must
   // not wipe a previously-good catalog to empty).
   const { error: pErr } = await admin.rpc("mcp_connection_probe", {
-    _connection_id: connectionId,
+    _connection_id: id,
     _status: intake.status,
     _health: intake.health,
     _last_error_code: intake.errorCode,

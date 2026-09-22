@@ -1097,6 +1097,21 @@ console.log("\n— slice ①: verify (runVerify) —");
   const bodyJson = JSON.stringify(okRes.body);
   check("verify response leaks NO secret / server url / provider prose", !bodyJson.includes("secret-token") && !bodyJson.includes("public.example") && !bodyJson.includes("RAW PROVIDER PROSE"), bodyJson);
 
+  // NOTE-A hardening (§39 peer-gate) — a mixed-case uuid is normalized to the PG-canonical lowercase
+  // form BEFORE the ownership compare, so it matches the lowercase v2 rows (no spurious 404) and every
+  // downstream write (the probe) keys the canonical id. Fail-closed either way; this proves the fix.
+  {
+    const CANON = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeffff0000";
+    const MIXED = "AAAAAAAA-BBBB-4CCC-8DDD-EEEEFFFF0000";
+    probeCalls.length = 0;
+    const mixedRes = await verifyMod.runVerify(
+      { userClient: makeUser({ v2: [{ connection_id: CANON }] }), admin: makeAdmin({ ...okSecret, connection_id: CANON }) },
+      { connectionId: MIXED, expectedTenantId: TEN },
+    );
+    check("verify normalizes a mixed-case uuid → owned, 200 connected (no spurious 404)", mixedRes.httpStatus === 200 && mixedRes.body.ok === true && mixedRes.body.status === "connected", JSON.stringify(mixedRes.body));
+    check("...and the probe is keyed by the canonical lowercase id", probeCalls.length === 1 && probeCalls[0]._connection_id === CANON, JSON.stringify(probeCalls[0]?._connection_id));
+  }
+
   // §9 authority refusals.
   const badId = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin(okSecret) }, { connectionId: "not-a-uuid", expectedTenantId: TEN });
   check("verify refuses a malformed connection_id (400)", badId.httpStatus === 400 && badId.body.error === "bad_connection_id");
