@@ -103,6 +103,25 @@ down**. That was measured here, not theorised. The signature field therefore use
 stack that always resolves. On the one page whose only job is signing a legal document, a prettier
 face is not worth a render that can fail.
 
+**Two constraints verified on the architecture ruling that this page, not the endpoint, is the
+signer's surface:**
+
+- *No dependency on a signed-in tenant.* The component imports exactly five things — React,
+  `useParams`, `Helmet`, the anon Supabase client, and its own stylesheet. It calls no auth or
+  tenant hook (`useTenantContext`, `useAuth`, `hasFeature`, `auth.*`): grepped, zero hits.
+- *The refusal never reveals whether a token exists.* Driven across five cases — unknown, expired,
+  voided, completed, and `is_valid: false` — all five render **byte-identically**: same copy, same
+  `<title>`, and the signing gate present in none of them.
+
+**And one thing the audit found that this page must NOT ship over —**
+[#1355](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/1355). `usePageView()` is mounted
+app-wide and reports `location.pathname` verbatim to the `track-event` endpoint, twice per view. On
+a token-in-path route that writes the **bearer credential into the analytics store**. Measured, not
+inferred. It already does this on the shipped `/join/:token`, so it is a live defect rather than a
+new one — but `/sign/:token`'s token authorises signing a legal document, so this page is not
+shippable until it is fixed. `src/hooks/useAnalytics.ts` is not this lane's file; filed rather than
+unilaterally edited.
+
 ---
 
 ## 3. A defect in the contract itself — corrected here
