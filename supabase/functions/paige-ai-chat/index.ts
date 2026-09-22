@@ -61,6 +61,11 @@ import { buildVpAddressBlock, detectVpAddress } from "../_shared/paige-context/v
 // edge function AND the §2/§3 denylist test import the same text (§32: the assembled
 // voice is scannable). A tenant-authored persona still OVERRIDES it (read first below).
 import { PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
+// INT-117 S1 — the ONE shared persona core (identity + read-the-room registers +
+// minimal safety), injected as a single system message right after the voice so
+// both chat and Live Conversation carry the same person. A tenant-authored
+// persona (read FIRST above) keeps its precedence over every default here.
+import { PAIGE_PERSONA_CORE } from "../_shared/paige-persona/core.ts";
 // §52 Phase 1 — the SUPER-ADMIN owner runtime-context composer (§18 one home). Reads the operator's
 // paige_owner_memory identity rows + live platform state and renders the operator briefing injected
 // below. NO-OP (returns null) for anyone but a seeded platform operator (the tenant-less God account).
@@ -4650,6 +4655,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       { role: "system", content: buildPaigePersonaBlock(personaCtx.playbook_config, personaCtx.tenant_name || "your practice", fundingEnabled, personaCtx.brand) },
       ...(vpAddress ? [{ role: "system", content: buildVpAddressBlock(vpAddress, personaCtx.tenant_name || "your practice") }] : []),
       { role: "system", content: PAIGE_VOICE_BLOCK },
+      { role: "system", content: PAIGE_PERSONA_CORE },
       ...(tenantDomainContext ? [{ role: "system", content: tenantDomainContext }] : []),
       ...(tenantTeamContext ? [{ role: "system", content: tenantTeamContext }] : []),
       ...(businessContextReadinessBlock ? [{ role: "system", content: businessContextReadinessBlock }] : []),
