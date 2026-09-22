@@ -56,14 +56,15 @@ export type VerifyResult = {
   body: Record<string, unknown>;
 };
 
-/** The credential material a healthy provider must NEVER echo back to us. For bearer/header auth it
- *  is the token we send; for the `none` kind the secret lives in the URL path/query (Zapier's shape),
- *  so any sufficiently-long path or query segment is treated as secret. Short/common URL parts
- *  (`mcp`, `api`, `v1`) are below the length floor, so a bearer connection's public path never
- *  registers as a secret — only the token does. */
+/** The credential material a healthy provider must NEVER echo back to us. For bearer/header auth this
+ *  is the EXACT token we send — matched at ANY non-empty length, since the writer accepts any nonblank
+ *  token, so a short credential is reachable and must still be caught (there is no false-positive risk:
+ *  we match the exact known secret, not a heuristic). For the `none` kind the secret lives in the URL
+ *  path/query (Zapier's shape), which we can only GUESS at, so there a length floor keeps short/common
+ *  parts (`mcp`, `api`, `v1`) from registering — only a sufficiently-long path/query segment counts. */
 function credentialMaterial(auth: McpAuth, serverUrl: string): string[] {
   const out: string[] = [];
-  if ((auth.kind === "bearer" || auth.kind === "header") && typeof auth.token === "string" && auth.token.length >= 8) {
+  if ((auth.kind === "bearer" || auth.kind === "header") && typeof auth.token === "string" && auth.token.length > 0) {
     out.push(auth.token);
   } else if (auth.kind === "none") {
     try {
