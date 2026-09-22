@@ -7,6 +7,12 @@
  */
 export const RELAY_TICKET_TTL_MS = 45_000;
 
+/** Pilot entitlement is operational tenant data, never a client-supplied scope. */
+export function isLiveAudioPilotEnabled(features: unknown): boolean {
+  return !!features && typeof features === "object" && !Array.isArray(features) &&
+    (features as Record<string, unknown>).paige_live_audio_pilot === true;
+}
+
 export interface RelayTicket {
   value: string;
   storedDigest: string;

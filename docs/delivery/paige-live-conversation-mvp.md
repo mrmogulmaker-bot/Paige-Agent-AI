@@ -374,9 +374,16 @@ WebSocket smoke test falsifies an absent or false MIP flag with zero network
 calls. The only deployed importers of this shared module are `paige-dictate`
 and `paige-stt`; the required redeploy set is exactly those functions.
 
-This route does **not** activate Live Conversation or send tenant audio. Before
-even the owner's Stage 1 audio, an actual request must be observed carrying
-`mip_opt_out=true` and the account-level MIP setting must be verified. Stage 1
-is owner tenant only. Other tenants remain unauthorized pending the INT-100/
-INT-107 privacy and split-vendor decisions. No provider-call, voice-quality,
-browser-latency, or authenticated-conversation proof is claimed here.
+This route does **not** activate Live Conversation or send tenant audio. Stage 1
+is gated by the server-stored `paige_live_audio_pilot` capability flag. It
+defaults off for every tenant, with no committed identity exceptions. Both
+ticket issuance and relay admission check it server-side; client presentation
+cannot bypass it. Enabling it is a server-side operational action. Its current
+holders are operational database data, never committed to this repository,
+placed in a ticket or PR body, or logged. When disabled, the control remains
+visible and reports `UNAVAILABLE` with text chat still usable. Before any real
+tenant audio, an actual request must be observed carrying `mip_opt_out=true`
+and the account-level MIP setting must be verified. Broader enablement also
+requires the INT-100/INT-107 privacy and split-vendor decisions. No
+provider-call, voice-quality, browser-latency, or authenticated-conversation
+proof is claimed here.

@@ -3,7 +3,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
-import { issueRelayTicket } from "../_shared/paige-live-ticket.ts";
+import { isLiveAudioPilotEnabled, issueRelayTicket } from "../_shared/paige-live-ticket.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -86,6 +86,14 @@ serve(async (req: Request) => {
   if (!thread) return (await endStaleSession()) ?? json({ code: "thread_scope_mismatch" }, 403);
 
   if (parsed.data.action === "relay") {
+    const { data: tenantPilot, error: pilotError } = await admin.from("tenants").select("features")
+      .eq("id", tenantId).maybeSingle();
+    if (pilotError || !isLiveAudioPilotEnabled(tenantPilot?.features)) {
+      return json({
+        ok: false, session_id: null, availability: "UNAVAILABLE", code: "live_audio_not_enabled",
+        explanation: "Live audio isn't available for this workspace yet. You can keep working with Paige in chat.",
+      });
+    }
     // This is a first-party ticket, not a provider token. Existing sessions
     // supply a fresh ticket on reconnect; replacing a pending digest revokes it.
     const ticket = await issueRelayTicket();

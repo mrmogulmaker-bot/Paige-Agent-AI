@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { consumeRelayTicket, issueRelayTicket, validateRelayTicket } from "../supabase/functions/_shared/paige-live-ticket.ts";
+import { consumeRelayTicket, issueRelayTicket, validateRelayTicket, isLiveAudioPilotEnabled } from "../supabase/functions/_shared/paige-live-ticket.ts";
 
 let network = 0;
 globalThis.fetch = (async () => { network++; throw new Error("network forbidden"); }) as typeof fetch;
@@ -30,6 +30,10 @@ const [first, second] = await Promise.all([
 ]);
 assert.equal(Number(first !== null) + Number(second !== null), 1, "one claim wins the concurrent race");
 assert.equal(await consumeRelayTicket(issued.value, sessionId, store, 1_000_000_001_000), null, "replay loses");
+assert.equal(isLiveAudioPilotEnabled({}), false, "pilot defaults off for every tenant");
+assert.equal(isLiveAudioPilotEnabled(null), false, "missing feature record fails closed");
+assert.equal(isLiveAudioPilotEnabled({ paige_live_audio_pilot: "true" }), false, "string truthiness never enables audio");
+assert.equal(isLiveAudioPilotEnabled({ paige_live_audio_pilot: true }), true, "only explicit server-stored boolean enables audio");
 
 const relay = readFileSync(new URL("../supabase/functions/paige-live-relay/index.ts", import.meta.url), "utf8");
 const session = readFileSync(new URL("../supabase/functions/paige-live-session/index.ts", import.meta.url), "utf8");
@@ -39,9 +43,14 @@ assert.ok(relay.indexOf("consumeRelayTicket(") < relay.indexOf("Deno.upgradeWebS
 assert.match(relay, /\.eq\("provider_session_ref", storedDigest\)/);
 assert.match(relay, /\.eq\("tenant_id", session.tenant_id\)/);
 assert.match(relay, /state: "unavailable", availability: "UNAVAILABLE", failure_code: code/, "terminal provider-free state is durable");
-assert.ok(relay.indexOf('markUnavailable("adapters_not_connected")') < relay.indexOf("Deno.upgradeWebSocket(req)"), "terminal state precedes unavailable socket");
+assert.ok(relay.indexOf("markUnavailable(unavailableCode)") < relay.indexOf("Deno.upgradeWebSocket(req)"), "terminal state precedes unavailable socket");
 assert.ok(session.indexOf('rpc("current_user_tenant_id")') < session.indexOf("issueRelayTicket()"));
 assert.ok(session.indexOf('from("paige_chat_threads")') < session.indexOf("issueRelayTicket()"));
+assert.ok(session.indexOf('from("tenants").select("features")') < session.indexOf("issueRelayTicket()"), "tenant pilot read precedes ticket issuance");
+assert.match(session, /isLiveAudioPilotEnabled\(tenantPilot\?\.features\)/, "session ticket requires the server-stored flag");
+assert.ok(relay.indexOf('from("tenants").select("features")') < relay.indexOf("Deno.upgradeWebSocket(req)"), "relay rechecks pilot before upgrade");
+assert.match(relay, /isLiveAudioPilotEnabled\(tenantPilot\?\.features\)/, "relay admission requires the server-stored flag");
+assert.ok(relay.indexOf('return new Response("live_audio_not_enabled", { status: 403 })') < relay.indexOf("Deno.upgradeWebSocket(req)"), "revoked or missing pilot rejects before socket upgrade");
 assert.doesNotMatch(relay + session, /daily_ceiling|concurrent_session_limit|reserve_paige_voice|allowance_gate/i);
 assert.doesNotMatch(relay, /stt-router|tts-router|elevenlabs|DEEPGRAM_API_KEY|ELEVENLABS_API_KEY/);
 assert.equal(network, 0);

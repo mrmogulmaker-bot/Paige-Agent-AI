@@ -11,7 +11,7 @@
 // voice is sent to a vendor or recorded by this function.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { createRelayState, reduceRelay } from "../_shared/paige-live-relay-contract.ts";
-import { consumeRelayTicket } from "../_shared/paige-live-ticket.ts";
+import { consumeRelayTicket, isLiveAudioPilotEnabled } from "../_shared/paige-live-ticket.ts";
 
 const waitUntil = (promise: Promise<unknown>): void => {
   const runtime = (globalThis as unknown as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
@@ -73,7 +73,15 @@ Deno.serve(async (req) => {
     if (!await markUnavailable("thread_scope_mismatch")) return new Response("relay_unavailable", { status: 503 });
     return new Response("thread_scope_mismatch", { status: 403 });
   }
-  if (!await markUnavailable("adapters_not_connected")) return new Response("relay_unavailable", { status: 503 });
+  const { data: tenantPilot, error: pilotError } = await admin.from("tenants").select("features")
+    .eq("id", session.tenant_id).maybeSingle();
+  const pilotEnabled = !pilotError && isLiveAudioPilotEnabled(tenantPilot?.features);
+  if (!pilotEnabled) {
+    if (!await markUnavailable("live_audio_not_enabled")) return new Response("relay_unavailable", { status: 503 });
+    return new Response("live_audio_not_enabled", { status: 403 });
+  }
+  const unavailableCode = "adapters_not_connected";
+  if (!await markUnavailable(unavailableCode)) return new Response("relay_unavailable", { status: 503 });
 
   const { socket, response } = Deno.upgradeWebSocket(req);
   let relay = createRelayState({
@@ -90,12 +98,12 @@ Deno.serve(async (req) => {
   waitUntil(closed);
   socket.onopen = () => {
     socket.send(JSON.stringify({
-      type: "unavailable", code: "adapters_not_connected",
+      type: "unavailable", code: unavailableCode,
       message: "Live audio is not connected yet. You can keep working with Paige in chat.",
     }));
     // The provider-free server never sends ready and never accepts microphone
     // frames. Give the terminal frame a task turn before closing.
-    setTimeout(() => socket.close(1013, "adapters_not_connected"), 0);
+    setTimeout(() => socket.close(1013, unavailableCode), 0);
   };
   socket.onmessage = () => {
     // A client that sends audio before an explicit ready frame violates the
