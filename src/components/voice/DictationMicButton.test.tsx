@@ -49,7 +49,10 @@ class FakeWebSocket {
   open() { this.readyState = FakeWebSocket.OPEN; this.onopen?.(new Event("open")); }
   message(value: Record<string, unknown>) { this.onmessage?.(new MessageEvent("message", { data: JSON.stringify(value) })); }
   error() { this.onerror?.(new Event("error")); }
-  closed(wasClean = true) { this.readyState = FakeWebSocket.CLOSED; this.onclose?.({ wasClean } as CloseEvent); }
+  closed({ wasClean = true, code = wasClean ? 1000 : 1006, reason = "" } = {}) {
+    this.readyState = FakeWebSocket.CLOSED;
+    this.onclose?.({ wasClean, code, reason } as CloseEvent);
+  }
 }
 
 let sockets: FakeWebSocket[] = [];
@@ -119,7 +122,8 @@ describe("Solo dictation control", () => {
     expect(onText).toHaveBeenCalledWith("Testing PAIGE");
     expect(host.textContent).toContain("Finishing");
 
-    await act(async () => sockets[0].closed(true));
+    await act(async () => sockets[0].message({ type: "done" }));
+    await act(async () => sockets[0].closed());
     expect(host.textContent).not.toContain("Hold to talk");
     expect(host.textContent).toContain("Added to draft");
     expect(button.getAttribute("aria-label")).toBe("Start voice typing");
@@ -284,7 +288,7 @@ describe("Solo dictation control", () => {
     await flush();
     await act(async () => sockets[0].open());
     await act(async () => sockets[0].message({ type: "ready" }));
-    await act(async () => sockets[0].closed(true));
+    await act(async () => sockets[0].closed());
     expect(host.textContent).toContain("Voice typing failed");
   });
 
@@ -324,7 +328,8 @@ describe("Solo dictation control", () => {
     await act(async () => { button.click(); });
     expect(host.textContent).toContain("Finishing");
     expect(document.activeElement).toBe(button);
-    await act(async () => sockets[0].closed(true));
+    await act(async () => sockets[0].message({ type: "done" }));
+    await act(async () => sockets[0].closed());
     expect(document.activeElement).toBe(button);
   });
 
@@ -346,7 +351,7 @@ describe("Solo dictation control", () => {
     expect(socketB).toBeDefined();
 
     await act(async () => socketA.message({ type: "transcript", text: "stale account A", is_final: true }));
-    await act(async () => socketA.closed(true));
+    await act(async () => socketA.closed());
     expect(onText).not.toHaveBeenCalled();
     expect(socketB.closeCalls).toBe(0);
 
@@ -368,7 +373,8 @@ describe("Solo dictation control", () => {
     await act(async () => { await latest.start(); });
     expect(sockets).toHaveLength(1);
     expect(latest.status).toBe("transcribing");
-    await act(async () => sockets[0].closed(true));
+    await act(async () => sockets[0].message({ type: "done" }));
+    await act(async () => sockets[0].closed());
     expect(latest.status).toBe("idle");
   });
 
@@ -390,7 +396,7 @@ describe("Solo dictation control", () => {
     }
   });
 
-  it("keeps a trailing final after STOP -> onerror -> clean close without surfacing an error", async () => {
+  it("treats final -> done -> close 1006 as success and never surfaces a toast", async () => {
     const onText = vi.fn();
     const onError = vi.fn();
     let latest!: UseDictationApi;
@@ -406,14 +412,46 @@ describe("Solo dictation control", () => {
     await act(async () => latest.stop());
     await act(async () => socket.error());
     await act(async () => socket.message({ type: "transcript", text: "trailing final", is_final: true }));
-    await act(async () => socket.closed(true));
+    await act(async () => socket.message({ type: "done" }));
+    await act(async () => socket.closed({ wasClean: false, code: 1006, reason: "" }));
     expect(onText).toHaveBeenCalledWith("trailing final");
     expect(onError).not.toHaveBeenCalled();
     expect(latest.status).toBe("idle");
     expect(latest.error).toBeNull();
   });
 
-  it("surfaces a truthful disconnect after STOP -> onerror -> unclean close", async () => {
+  it("surfaces a truthful disconnect when STOP closes without done, even with code 1000", async () => {
+    const onError = vi.fn();
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let latest!: UseDictationApi;
+    const Probe = () => {
+      latest = useDictation({ onText: vi.fn(), onError, scopeEpoch: "account-a" });
+      return null;
+    };
+    await act(async () => root.render(<Probe />));
+    await act(async () => { void latest.start(); await Promise.resolve(); await Promise.resolve(); });
+    const socket = sockets[0];
+    await act(async () => socket.open());
+    await act(async () => socket.message({ type: "ready" }));
+    await act(async () => latest.stop());
+    await act(async () => socket.closed({ wasClean: true, code: 1000, reason: "stop" }));
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith("Voice typing disconnected. Please try again.");
+    expect(latest.status).toBe("error");
+    expect(consoleWarn).toHaveBeenCalledWith("[dictation] socket closed without done", {
+      code: 1000,
+      reason: "stop",
+      released: true,
+      doneSeen: false,
+    });
+    consoleWarn.mockRestore();
+  });
+
+  it.each([
+    ["stt_finalize_timeout", "Voice typing took too long to finish. Please try again."],
+    ["stt_finalize_unavailable", "Voice typing stopped before it could finish. Please try again."],
+    ["stt_finalize_failed", "Voice typing stopped before it could finish. Please try again."],
+  ])("maps %s to its specific plain-language retry message", async (code, expectedMessage) => {
     const onError = vi.fn();
     let latest!: UseDictationApi;
     const Probe = () => {
@@ -426,11 +464,30 @@ describe("Solo dictation control", () => {
     await act(async () => socket.open());
     await act(async () => socket.message({ type: "ready" }));
     await act(async () => latest.stop());
-    await act(async () => socket.error());
-    await act(async () => socket.closed(false));
-    expect(onError).toHaveBeenCalledTimes(1);
-    expect(onError).toHaveBeenCalledWith("Voice typing disconnected. Please try again.");
-    expect(latest.status).toBe("error");
+    await act(async () => socket.message({ type: "error", code, message: "raw server detail" }));
+    expect(onError).toHaveBeenCalledWith(expectedMessage);
+    expect(latest.error).toBe(expectedMessage);
+  });
+
+  it("ignores transcript frames that arrive after done", async () => {
+    const onText = vi.fn();
+    let latest!: UseDictationApi;
+    const Probe = () => {
+      latest = useDictation({ onText, scopeEpoch: "account-a" });
+      return null;
+    };
+    await act(async () => root.render(<Probe />));
+    await act(async () => { void latest.start(); await Promise.resolve(); await Promise.resolve(); });
+    const socket = sockets[0];
+    await act(async () => socket.open());
+    await act(async () => socket.message({ type: "ready" }));
+    await act(async () => latest.stop());
+    await act(async () => socket.message({ type: "transcript", text: "kept final", is_final: true }));
+    await act(async () => socket.message({ type: "done" }));
+    await act(async () => socket.message({ type: "transcript", text: "late duplicate", is_final: true }));
+    expect(onText).toHaveBeenCalledTimes(1);
+    expect(onText).toHaveBeenCalledWith("kept final");
+    expect(latest.status).toBe("idle");
   });
 
   it("times out when STOP receives no final transcript or close", async () => {
@@ -694,7 +751,8 @@ describe("Solo dictation control", () => {
     expect(onActiveChange).toHaveBeenLastCalledWith(true);
 
     await act(async () => sockets[0].message({ type: "transcript", text: "trailing words", is_final: true }));
-    await act(async () => sockets[0].closed(true));
+    await act(async () => sockets[0].message({ type: "done" }));
+    await act(async () => sockets[0].closed());
     expect(onActiveChange).toHaveBeenLastCalledWith(false);
   });
 });
