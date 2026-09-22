@@ -7,6 +7,7 @@ These instructions apply to Codex, Claude, and every other implementation agent 
 1. Every software assignment starts by reading the installed Flow-by-Flow skill completely and following every routed reference.
 2. Before designing or implementing any visible-interface change, read `.agents/skills/paige-ui-design/SKILL.md` completely and follow every routed reference. Visible interface includes product screens, settings, modals, drawers, forms, onboarding, funnels, landing pages, dashboards, tabs, empty states, responsive/mobile layouts, interaction states, motion, and visual styling.
 3. A new or materially changed user flow also requires the installed Flow Prototype skill before production implementation. This includes forms, signup/onboarding, funnels, drawers, modals, settings, payments, connections, destructive actions, and any flow with multiple states or exits.
+4. **Impeccable is MANDATORY for every UI/UX design, redesign, visual-polish, or interaction task.** Before design or implementation, read the installed Impeccable skill and cite it (canonical upstream source: `https://github.com/pbakaus/impeccable/blob/main/.claude/skills/impeccable/SKILL.md`); report which of its checks were applied and their results. If the skill is not available in your environment, STOP and report it — never silently skip Impeccable. The finish-review is still required before delivery.
 
 Do not begin design or implementation until the applicable skills have been read. A wrapper, summary, checkbox, fixture, or rendered screenshot is not a substitute.
 
@@ -63,9 +64,15 @@ documentation, a flag is set, a migration merged, a preview deployed, or a previ
 said so. State `UNVERIFIED` or `UNAVAILABLE` honestly instead — that is always an acceptable answer,
 and a false `LIVE` never is.
 
+## Solo-shell product — one build for every tenant
+
+**Standing rule (owner, 2026-09-22).** Everything is built for the one **Solo shell** product — identical for every tenant. No tenant-specific code, config, migrations, or UI, and no tenant IDs, names, or one-account special cases in committed artifacts (or in shared prototypes and design surfaces). Owner-account setup steps (e.g. the owner reconnecting his own connections) are product usage, not code. Paige's core chat is identical for every account; optional capabilities (e.g. business funding) arrive as **opt-in Marketplace add-ons**, never built into the core. Apply the §200 platform-independence checklist on every PR. When an example or fixture tenant is genuinely needed, use a `test-tenant-*` row or a neutral placeholder, never a real account name. This is a go-forward choosing rule for product, example, demo, and tenant-conditional artifacts, not a purge; legitimate historical records — §13 corrections, decision-log entries, data-fix migrations, and audit/portfolio docs — may name real accounts and are never removed (§63/§58). Cross-refs: §9 (platform vs tenant seam), §2 (funding/credit is opt-in, never a platform default), §200 (platform independence), §63 (owner's real accounts are never example/reference targets).
+
 ## Interface standard
 
 Design around the user's actual job, real data contracts, permissions, and complete flow. Reuse Paige's established tokens and design system before creating replacements. Do not fabricate metrics, activity, history, health, providers, authorization, or capabilities. Do not ship generic card grids, decorative gradients, empty dashboard chrome, static-looking controls, or purposeless effects.
+
+**Owner UI principle — performance and interaction quality over wording.** Cut redundant banner and intro copy; do not repeat context the user already has from where they are. Prefer usable space for the real work over decorative headers. Motion must be purposeful and performant — animate `transform`/`opacity` only, and be reduced-motion safe (honor `prefers-reduced-motion`).
 
 The UI skill does not grant design authority. Follow `CLAUDE.md` §00: implementation agents record and faithfully port the approved Claude Design pack; they do not invent or override visual direction.
 
