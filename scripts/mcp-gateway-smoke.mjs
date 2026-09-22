@@ -130,7 +130,7 @@ function mcpServer(opts = {}) {
       (opts.sessions ||= new Set()).add(req.headers["mcp-session-id"]);
       if (body.method === "tools/list") {
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { tools: TOOLS } }));
+        res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { tools: opts.tools ?? TOOLS } }));
         return;
       }
       if (body.method === "tools/call") {
@@ -1052,6 +1052,130 @@ console.log("\n— G1a-1: create_mcp_rest_connection's api_key shape is non-MCP-
   const restRes = await connMod.makeRpcConnectionLoader(adminReturning(restRow))("conn-rest-g1a1");
   check("G1a-1: the api_key row create_mcp_rest_connection stores loads connection_unusable (writable-as-REST, non-MCP-executable — disjoint lanes; G2-2's REST adapter consumes this shape)",
     restRes.ok === false && restRes.reason === "connection_unusable", JSON.stringify(restRes));
+}
+
+// ── Slice ① — VERIFY (runVerify: the probe's first live caller — authority gates + mapping) ──────
+// Drives the REAL runVerify against the REAL loader + REAL read-only intake over a genuine socket.
+// Fake clients supply the §9 gate answers; the fake service-role admin captures the probe write.
+console.log("\n— slice ①: verify (runVerify) —");
+{
+  const verifyMod = await bundle("supabase/functions/_shared/mcp-gateway/verify.ts", "verify.mjs");
+  const TEN = "ten-verify-1";
+  const CONN = "11111111-1111-4111-8111-111111111111";
+  const VERIFY_URL = "https://public.example/mcp-verify";
+  routes.set("/mcp-verify", mcpServer({}));
+
+  const probeCalls = [];
+  // Fake service-role admin: get_mcp_connection_secret feeds the loader; mcp_connection_probe is captured.
+  const makeAdmin = (secretRow, probeErr = null) => ({
+    rpc: async (fn, params) => {
+      if (fn === "get_mcp_connection_secret") return { data: secretRow, error: null };
+      if (fn === "mcp_connection_probe") { probeCalls.push(params); return { data: null, error: probeErr }; }
+      return { data: null, error: null };
+    },
+  });
+  // Fake caller (RLS-scoped) client: the three §9 authority gates.
+  const makeUser = (o = {}) => ({
+    rpc: async (fn) => {
+      if (fn === "current_user_tenant_id") return { data: o.tenant === undefined ? TEN : o.tenant, error: o.tenantErr ?? null };
+      if (fn === "is_current_user_tenant_admin") return { data: o.admin === undefined ? true : o.admin, error: null };
+      if (fn === "get_mcp_connections_v2") return { data: o.v2 === undefined ? [{ connection_id: CONN }] : o.v2, error: o.v2Err ?? null };
+      return { data: null, error: null };
+    },
+  });
+  const okSecret = { configured: true, enabled: true, connection_id: CONN, tenant_id: TEN, server_url: VERIFY_URL, endpoint_hash: endpointHashOf(VERIFY_URL), auth_token: "secret-token", auth_kind: "bearer", transport: "http", visibility: "tenant" };
+
+  // Happy path — authorized admin, connection in v2, loader resolves, live intake → connected.
+  probeCalls.length = 0;
+  const okRes = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin(okSecret) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify happy path → 200 ok connected healthy", okRes.httpStatus === 200 && okRes.body.ok === true && okRes.body.status === "connected" && okRes.body.health === "healthy", JSON.stringify(okRes.body));
+  check("verify reports the discovered tool count", okRes.body.tool_count === 6, JSON.stringify(okRes.body));
+  check("verify persists via the service-role probe exactly once (connected/healthy)", probeCalls.length === 1 && probeCalls[0]._status === "connected" && probeCalls[0]._health === "healthy", JSON.stringify(probeCalls.map((p) => p._status)));
+  check("probe receives the mapped catalog (tool_name keys, 6 tools)", Array.isArray(probeCalls[0]?._tools) && probeCalls[0]._tools.length === 6 && probeCalls[0]._tools.every((t) => typeof t.tool_name === "string" && typeof t.schema_hash === "string"), JSON.stringify(probeCalls[0]?._tools?.[0]));
+  const probeJson = JSON.stringify(probeCalls[0]?._tools ?? []);
+  check("no raw provider prose reaches the probe catalog (§13 — description/schema never leave mcp-client)", !probeJson.includes("RAW PROVIDER PROSE") && !probeJson.includes("description"), probeJson.slice(0, 120));
+  const bodyJson = JSON.stringify(okRes.body);
+  check("verify response leaks NO secret / server url / provider prose", !bodyJson.includes("secret-token") && !bodyJson.includes("public.example") && !bodyJson.includes("RAW PROVIDER PROSE"), bodyJson);
+
+  // NOTE-A hardening (§39 peer-gate) — a mixed-case uuid is normalized to the PG-canonical lowercase
+  // form BEFORE the ownership compare, so it matches the lowercase v2 rows (no spurious 404) and every
+  // downstream write (the probe) keys the canonical id. Fail-closed either way; this proves the fix.
+  {
+    const CANON = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeffff0000";
+    const MIXED = "AAAAAAAA-BBBB-4CCC-8DDD-EEEEFFFF0000";
+    probeCalls.length = 0;
+    const mixedRes = await verifyMod.runVerify(
+      { userClient: makeUser({ v2: [{ connection_id: CANON }] }), admin: makeAdmin({ ...okSecret, connection_id: CANON }) },
+      { connectionId: MIXED, expectedTenantId: TEN },
+    );
+    check("verify normalizes a mixed-case uuid → owned, 200 connected (no spurious 404)", mixedRes.httpStatus === 200 && mixedRes.body.ok === true && mixedRes.body.status === "connected", JSON.stringify(mixedRes.body));
+    check("...and the probe is keyed by the canonical lowercase id", probeCalls.length === 1 && probeCalls[0]._connection_id === CANON, JSON.stringify(probeCalls[0]?._connection_id));
+  }
+
+  // §9 authority refusals.
+  const badId = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin(okSecret) }, { connectionId: "not-a-uuid", expectedTenantId: TEN });
+  check("verify refuses a malformed connection_id (400)", badId.httpStatus === 400 && badId.body.error === "bad_connection_id");
+  const noTen = await verifyMod.runVerify({ userClient: makeUser({ tenant: null }), admin: makeAdmin(okSecret) }, { connectionId: CONN, expectedTenantId: null });
+  check("verify refuses when the caller has no tenant (400)", noTen.httpStatus === 400 && noTen.body.error === "no_tenant");
+  const mism = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin(okSecret) }, { connectionId: CONN, expectedTenantId: "ten-OTHER" });
+  check("verify refuses a workspace-switch tenant mismatch (409)", mism.httpStatus === 409 && mism.body.error === "tenant_mismatch");
+  const nonAdmin = await verifyMod.runVerify({ userClient: makeUser({ admin: false }), admin: makeAdmin(okSecret) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify refuses a non-admin caller — the manage gate (403)", nonAdmin.httpStatus === 403 && nonAdmin.body.error === "forbidden");
+  const notMine = await verifyMod.runVerify({ userClient: makeUser({ v2: [] }), admin: makeAdmin(okSecret) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify refuses a connection not visible to the caller — §9 (404, no info leak)", notMine.httpStatus === 404 && notMine.body.error === "not_found");
+  probeCalls.length = 0;
+  const crossTenant = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, tenant_id: "ten-ELSEWHERE" }) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify refuses when the loaded row's tenant ≠ the caller's (defense in depth, 403)", crossTenant.httpStatus === 403 && crossTenant.body.error === "forbidden");
+  check("...and writes NO probe on that refusal (no cross-tenant side effect)", probeCalls.length === 0);
+
+  // Honest degrade — a disabled row: the loader refuses; verify records an honest error, never a fake connected.
+  probeCalls.length = 0;
+  const disabled = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, enabled: false }) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify on a disabled connection → 200 ok:false, honest error status", disabled.httpStatus === 200 && disabled.body.ok === false && disabled.body.status === "error", JSON.stringify(disabled.body));
+  check("...records an error probe (never a fabricated connected), catalog untouched (_tools=null)", probeCalls.length === 1 && probeCalls[0]._status === "error" && probeCalls[0]._tools === null, JSON.stringify(probeCalls[0]));
+
+  // Codex P2 — a loader-failure whose OWN probe write fails must surface probe_write_failed, not a
+  // successful error-state body (else an already-connected row silently stays connected/healthy).
+  probeCalls.length = 0;
+  const loaderFailProbeErr = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, enabled: false }, { message: "probe write boom" }) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify surfaces probe_write_failed (500) when recording a loader-failure state itself fails (§13/§32)", loaderFailProbeErr.httpStatus === 500 && loaderFailProbeErr.body.error === "probe_write_failed", JSON.stringify(loaderFailProbeErr.body));
+
+  // Codex P1 — credential reflection: a reachable, handshake-clean server that echoes our bearer
+  // token inside a tool NAME must be rejected wholesale; the poisoned catalog is never persisted and
+  // the token never appears in the response (§13 — no service-role secret downgraded to catalog data).
+  routes.set("/mcp-reflect", mcpServer({ tools: [
+    { name: "echo_secret-token", description: "reflects the credential we sent",
+      inputSchema: { type: "object", properties: { x: {} } }, _meta: { effects: ["read"], connected_app: "demo", action_type: "search" } },
+  ] }));
+  probeCalls.length = 0;
+  const REFL = "https://public.example/mcp-reflect";
+  const reflected = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, server_url: REFL, endpoint_hash: endpointHashOf(REFL) }) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify REJECTS a server that reflects our credential into a tool field (§13 — provider_reflected_credential)", reflected.httpStatus === 200 && reflected.body.ok === false && reflected.body.error_code === "provider_reflected_credential", JSON.stringify(reflected.body));
+  check("...records an error probe with NO catalog (a reflected-credential tool set is never stored)", probeCalls.length === 1 && probeCalls[0]._status === "error" && probeCalls[0]._tools === null, JSON.stringify(probeCalls[0]));
+  check("...and the reflected token never appears in the response body", !JSON.stringify(reflected.body).includes("secret-token"), JSON.stringify(reflected.body));
+  // Codex round 3 — the reflection matching policy, unit-tested directly on the exported helper.
+  // A credential is substring-matched only once it clears the collision floor; the `none` kind is
+  // scanned RAW and percent-DECODED (writer-side minimum length is the sound completion — Slice ②/INT-153).
+  const mkTool = (name, app = "", actionType = "", effects = []) => ({ name, app, actionType, effects, schemaHash: "h", authorityHash: "h", pin: "h" });
+  const bearerAuth = (t) => ({ kind: "bearer", token: t });
+  check("reflection helper catches a long bearer token echoed into a tool name",
+    verifyMod.intakeReflectsCredential([mkTool("echo_supersecrettoken12")], bearerAuth("supersecrettoken12"), "https://public.example/x") === true);
+  check("reflection helper does NOT false-positive a short token against ordinary tool names (Codex P2 — no collision DoS)",
+    verifyMod.intakeReflectsCredential([mkTool("search"), mkTool("read_records")], bearerAuth("a"), "https://public.example/x") === false);
+  check("reflection helper catches a percent-DECODED URL-path secret echoed into a tool name (Codex P1)",
+    verifyMod.intakeReflectsCredential([mkTool("route_supersecretlongvalue")], { kind: "none" }, "https://public.example/mcp/%73upersecretlongvalue") === true);
+  check("reflection helper catches the RAW percent-encoded URL-path secret too",
+    verifyMod.intakeReflectsCredential([mkTool("route_%73upersecretlongvalue")], { kind: "none" }, "https://public.example/mcp/%73upersecretlongvalue") === true);
+  check("reflection helper ignores short/common URL parts (no false-positive on api/mcp/v1)",
+    verifyMod.intakeReflectsCredential([mkTool("mcp_list"), mkTool("api_call")], { kind: "none" }, "https://public.example/api/mcp/v1") === false);
+
+  // Honest degrade — a reachable server that REJECTS the credential (401): needs_attention, catalog NOT wiped.
+  routes.set("/mcp-verify-401", (req, res) => { if (req.method === "DELETE") { res.writeHead(204).end(); return; } res.writeHead(401).end("bad token"); });
+  probeCalls.length = 0;
+  const V401 = "https://public.example/mcp-verify-401";
+  const badCred = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, server_url: V401, endpoint_hash: endpointHashOf(V401) }) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify on a rejected credential → 200 ok:false needs_attention (honest, never connected)", badCred.httpStatus === 200 && badCred.body.ok === false && badCred.body.health === "needs_attention", JSON.stringify(badCred.body));
+  check("...does NOT wipe the tool catalog (a failed probe passes _tools=null)", probeCalls.length === 1 && probeCalls[0]._status === "error" && probeCalls[0]._tools === null, JSON.stringify(probeCalls[0]));
 }
 
 server.close();

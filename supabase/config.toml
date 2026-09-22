@@ -584,3 +584,9 @@ verify_jwt = false
 # Authenticated Paige CRM/Pipeline action door. The gateway verifies the caller JWT;
 # the function verifies it again and resolves tenant, membership, role and autonomy server-side.
 verify_jwt = true
+
+[functions.mcp-gateway]
+# Connected MCP Gateway runtime door. Caller JWT is verified by the gateway and again in-function
+# (getUser). Tenant is resolved server-side from the JWT (current_user_tenant_id) and every action
+# is admin-gated + connection-visibility-scoped; the body tenant is a refusal-only cross-check.
+verify_jwt = true
