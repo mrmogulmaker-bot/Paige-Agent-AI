@@ -2,144 +2,99 @@
 
 Standing rules for how work gets done in this repo. These persist across sessions.
 
-## 00. JURISDICTION — THE FIRST RULE. IT OVERRIDES EVERY SECTION BELOW IT.
+## 00. UI AUTHORITY — THE FIRST RULE. IT OVERRIDES EVERY SECTION BELOW IT.
 
-> **"You own the backend. Claude Design owns the frontend and all the wonderful visual
-> abilities that it provides for our end user."** — Antonio, 2026-08-23
+> **"I told you to use Flow by Flow and then use Impeccable. That's it. We don't need Claude Design
+> any longer. You can update all the rules to make sure that that's clear: Flow by Flow, then
+> Impeccable. Impeccable is your priority when it comes to my user interface."**
+> — Antonio, 2026-09-22
 >
-> **"No, my friend, you have no input, ZERO input on the design. You have all of the control
-> over our backend."** — Antonio, 2026-08-23
+> **"It's the reason I hired you to do this work for me in the first place, so I'm not going to
+> approve anything until I actually see a design."** — Antonio, 2026-09-22
 
-**Claude Code has ZERO input on design. Not a veto, not a proposal, not an observation, not a
-preference, not a taste verdict, not a "worth an eye on." Zero.** Claude Design decides the
-frontend and everything visible in it. Claude Code owns the backend and everything under it.
+**Claude Code owns the user interface — design and engineering both — and executes it in a fixed
+order: FLOW-BY-FLOW first, then IMPECCABLE. Impeccable is the priority authority on anything the
+user sees.** The owner approves the design before it ships. There is no third party in this loop.
+
+### The order, and it is not optional
+
+1. **Flow-by-Flow** — inspection, flow mapping, the pre-edit packet, the proof gates. It decides
+   WHAT is being built and WHICH actor-goal flows must work. Read `flow-by-flow/SKILL.md` and the
+   references it routes to (§69 governs this and is unchanged).
+2. **Impeccable** — the design itself: direction, craft floor, audit, harden, finish-review. It
+   decides HOW the interface looks and behaves. Read its `SKILL.md`, then the playbook for the
+   request, then `reference/craft-floor.md` immediately before any UI edit. Its OPERATE mode
+   governs settings/tools/dashboard surfaces; its refuse-list is binding, not advisory.
+3. **Owner approval** — the owner sees the design and approves it BEFORE production. A design he
+   has not seen is not finished, however green the build is.
 
 ### What this means in practice
 
-- **CC does NOT:** judge whether a surface looks right · rank visual options · propose a design
-  improvement · flag something as "flat," "off," "competing," or "worth your eye" · argue a pack
-  decision · suggest a treatment · run a taste review · convene a design critic · decide colour,
-  depth, motion, type, layout, hierarchy, iconography, spacing, or in-surface copy.
-- **CC DOES:** write the port (turning the pack into working code is CC's work — writing it is
-  not deciding it) · wire every value to a real backend or an honest absence (§13) · own RPC and
-  edge seams, tenant scoping and RLS (§9/§51/§53), the callable seam (§10), performance, CI
-  gates, migrations, and proof that what shipped actually runs (§32).
-- **When CC renders a frame, it is EVIDENCE HANDED OVER, never a review.** Attach the address,
-  theme, width, measured geometry and the faces that actually loaded. Attach nothing else. No
-  reading, no verdict, no "what I notice." If CC would not be able to state it as a measurement,
-  CC does not state it.
-- **A measurement is not an opinion.** Contrast ratios, type sizes, grid tracks, whether a face
-  loaded, whether a control 404s, whether a surface renders at all — these are facts about
-  whether the thing WORKS, and reporting them is CC's job. What to DO about any of them is CD's.
-- **The pack is the ANSWER, never an input to CC's judgement.** If a surface is not in the pack,
-  CC asks CD. CC does not fill the gap.
-- **Every verifier, compliance officer, and subagent CC dispatches inherits this limit.** Their
-  jurisdiction is correctness, honesty, security, tenant scope, and port fidelity. None of them
-  has an opinion about the interface. **No agent debates UI.**
+- **CC DOES:** decide the visual direction · judge whether a surface is good enough · propose and
+  build better designs unprompted when the current one is weak · run Impeccable's audit and act on
+  it · own hierarchy, motion, type, colour, spacing, layout, iconography and in-surface copy · and
+  still own everything under it — RPC and edge seams, tenant scoping and RLS (§9/§51/§53), the
+  callable seam (§10), performance, CI gates, migrations, and proof that what shipped runs (§32).
+- **CC SHOWS THE WORK.** A design is presented to the owner as something he can SEE and, where it
+  has hover or motion, something he can FEEL — a rendered frame or an interactive page, never a
+  description of a design and never a Vercel link he has to log into to find.
+- **Measurements remain measurements.** Contrast ratios, type sizes, grid tracks, whether a face
+  loaded, whether a control 404s, whether a surface renders — these are facts and CC reports them
+  plainly. CC now also decides what to DO about them.
+- **A weak surface is CC's problem to raise.** If a screen is a flat wall, says so and brings a
+  better one. Shipping something CC can see is mediocre, and waiting to be told, is the failure
+  this section was rewritten to end.
 
-### MANDATORY UI DELIVERY SKILL — read before every visible-interface change
+### Evidence discipline — survives the rewrite, because it was never about the pack
 
-After Flow-by-Flow and before design or implementation, every visible-interface assignment must
-read `.agents/skills/paige-ui-design/SKILL.md` completely and follow every routed reference. A new
-or materially changed user flow also uses the installed Flow Prototype skill before production
-implementation. The evidence record and `ui-delivery-evidence` check are mandatory as defined by
-that project skill.
+Before writing or thinking *"missing" · "not specified" · "needs designing" · "a blocker"*, **search
+first**: at least four spellings grepped across the relevant source, plus the sibling files, plus
+READING the region of code. One grep is not a search.
 
-This requirement grants Claude Code no visual authority. CC records and ports the visual direction
-already approved in the Claude Design pack; it never invents, substitutes, critiques, or overrides
-that direction. The skill governs complete states, accessibility, responsive behavior, fidelity,
-and proof while this §00 jurisdiction remains absolute.
+**The standard:** never *"we don't have X."* Always *"searched for a, b, c, d and read L1234–L1290
+— not there."* An unfalsifiable claim of absence is indistinguishable from not having looked.
 
-### PACK-FIRST — read `docs/design-references/PACK-FIRST.md` before ANY UI work
+Where a design reference, prototype or prior artifact DOES exist in the repo, it is evidence and a
+starting point — read it before inventing a fourth variant of something already solved (§18/§30).
+It is no longer an authority that outranks CC's judgement or Impeccable's craft floor.
 
-**Owner, 2026-08-23:** *"You keep seeming to want to ask Claude Design about specifics when they
-actually gave you the exact code to just simply copy and write in. I think you just keep forgetting
-to keep looping back to that code as the reference point."*
+### What still stops CC cold
 
-**The pack is CODE, not a specification to interpret.** It is delivered markup, tokens, geometry and
-copy that already exist in the repo and can be copied. Treating it as a spec — reading it once,
-then reasoning from memory — is how CC keeps asking questions the pack already answered.
+- **The design cannot be wired as drawn** — the surface needs data that does not exist, a write with
+  no seam, or a value no tenant-scoped read may return (§9). Name the exact impossibility.
+- **The backend must change for the design to work** — a new table, column, RPC, edge function,
+  index or policy. Name it and stop.
+- **Owner approval before production**, per the quote above.
+- Every material boundary §69 lists: missing authority or a credential, spending money, accepting a
+  legal term, a destructive real-data action, a material product decision, unbounded scope.
 
-**The gate, which fires on a WORD rather than on a judgement.** Before writing or thinking any of:
-
-> *"missing" · "not in the pack" · "PACK SILENT" · "owed from CD" · "ask CD" · "a design decision" ·
-> "a blocker" · "needs designing" · "not specified"*
-
-**STOP and search.** A real search is: **at least FOUR spellings** grepped against the `.dc.html`,
-plus the PORT-SPEC, plus the sibling files (`absence-copy.md`, `paige-ia.js`,
-`design-system-port.md`), plus READING the region of markup. One grep is not a search.
-
-**The evidence standard:** never *"the pack doesn't have X."* Always *"searched for a, b, c, d and
-read L1234–L1290 — not there."* An unfalsifiable claim of absence is indistinguishable from not
-having looked, which is what actually happened every time so far.
-
-**Anchoring cases, all 2026-08-23:** the command palette was about to be scoped as a design blocker
-— the pack carries 115 × `summon`, 24 × `palette`, 3 × `⌘K`. A sign-out glyph was reported "not in
-the pack" after ONE grep, in a brief that then told a subagent to escalate it. Both times the answer
-was already in the repo.
-
-**A capability drawn in the pack is never a blocker — it is a port that has not happened yet.**
-
-### THE ONE THING CC MAY RAISE — incompatibility, in either direction
-
-**Owner ruling, 2026-08-23:** *"If the design itself needs to be modified in order for the backend
-to work, those are the only things that I want you to talk to me about. If we need to modify the
-backend in order for it to work properly, that is the only thing I want you to talk to me about.
-You, I, Claude Design, Cowork, Codex, and even ChatGPT can all get together and figure that out.
-Anything outside of that, no. You follow their designs with strict absoluteness."*
-
-So there is exactly ONE thing CC brings to the owner about the frontend, and it has two forms:
-
-1. **The design cannot be wired as drawn.** The surface asks for data that does not exist, a write
-   with no seam, a shape no query can produce, a value no tenant-scoped read may return (§9), or a
-   state the backend cannot represent.
-2. **The backend must change for the design to work.** A new table, column, RPC, edge function,
-   index, or policy is required to render what CD drew.
-
-That conversation is a ROUND TABLE — owner, CC, Claude Design, Cowork, Codex — not a CC decision
-and not a CC redesign. CC states the incompatibility precisely, names what it would take on the
-backend, and stops.
-
-**What this exception is NOT.** It is not a door for taste, preference, effort, elegance, "this
-would be simpler," "this would look better," or "this seems inconsistent." If the design CAN be
-wired as drawn, CC wires it as drawn and says nothing. Difficulty is not incompatibility. A CC
-message about the frontend that does not name a concrete backend impossibility is out of order.
-
-**The bar, stated as a question CC must be able to answer YES to before raising anything:** *"Can I
-name the exact data, seam, or constraint that makes this impossible — not hard — to build as
-drawn?"* If no, port it and be silent.
-
-**Everything else: follow their designs with strict absoluteness.**
+Difficulty is not impossibility. If it CAN be built, build it.
 
 ### This rule DELETES its conflicts. It does not negotiate with them.
 
-Any rule — in this file, in a nested `CLAUDE.md`, in a doc, in a skill, in a handoff, in a
-subagent brief — that gives Claude Code design authority, a taste verdict, a visual proposal
-path, or a "propose the better idea" posture about the interface **is void, and is DELETED on
-sight rather than reconciled.** Do not mark it superseded and leave it in place; a rule that is
-still readable is a rule some session will still follow.
+Any rule — here, in a nested `CLAUDE.md`, in a doc, in a skill, in a handoff, in a subagent brief —
+that hands interface authority to a party other than CC + the owner, or that forbids CC from
+judging or proposing design, **is void and is DELETED on sight rather than reconciled.**
 
-**Deleted 2026-08-23 under this section, recorded per §58 so the removal is not silent:**
-- **§25 "Design taste — see it before you ship it"** — mandated a CC design-critic seat rendering
-  SHIP/ITERATE/BLOCK taste verdicts. Its one useful mechanic survives here: render the surface and
-  hand the frame to CD. The judging does not.
-- **§27 "'Facelift' is a defined operation"** — a nine-point visual checklist CC walked to decide
-  space, symmetry, contrast, type, controls, motion and "pop." Every item is a CD decision.
-  "Facelift" now means: ask CD.
-- **§29 "Take the bold swing"** — instructed CC toward ambition in design/motion/graphics and to
-  choose rendering technology for visual effect. The engineering half (use the real asset, use the
-  proven stack, do not ship an approximation) is §31 and survives there.
-- **`src/operator/CLAUDE.md` "…but the goal is the BEST result, not frozen fidelity"** — told CC to
-  "actively look for improvements and PROPOSE them." Directly inverted by the ruling above.
+**Reversed 2026-09-22 by owner ruling, recorded per §58 so the change is not silent:**
+- **The Claude Design jurisdiction** — the prior §00 gave CC "ZERO input on design," made Claude
+  Design the deciding authority on everything visible, and bound every subagent to the same limit.
+  The owner removed Claude Design from the loop. CC now owns the interface, through Impeccable.
+- **PACK-FIRST as an authority** — the requirement to treat a delivered CD pack as "the ANSWER,
+  never an input to CC's judgement." The pack is now reference material like any other. Its useful
+  half — search before claiming absence — survives above.
+- **"Follow their designs with strict absoluteness"** and the round-table escalation for anything
+  beyond a backend impossibility. Superseded: CC designs, the owner approves.
+- **The subagent gag** — "No agent debates UI." Verifiers and reviewers CC dispatches may now judge
+  the interface against Impeccable's craft floor, and are expected to.
 
-Sections that remain and are NOT touched by this: §11's token/gold/AA rules and §23's contrast
-rules survive as **measurable constraints CC verifies**, never as taste CC judges. §22 and §30
-survive only where they govern engineering (which stack, strip-vs-patch), never visual direction.
+**Sections that survive and are NOT touched:** §11's token / gold-budget / AA rules and §23's
+contrast and light-vs-dark rules remain binding **constraints CC designs within**; §69's gates;
+§70's usability gate; §13 honesty; §28 approved-frozen; §58 anti-regression.
 
-**The test, every time:** *"Is this about how it LOOKS, or how it WORKS? Looks — I have no input;
-port what CD drew and say nothing about it. Works — it is mine, and nobody else will catch it."*
+**The test, every time:** *"Did I run Flow-by-Flow, then Impeccable, and can the owner SEE and
+approve this before it ships?"* If the answer is a description instead of a design, it isn't done.
 
----
 
 ## 0. SESSION START — READ THE MASTER PROJECT REFERENCE FIRST (single source of truth).
 
@@ -1309,8 +1264,9 @@ SHIP / ITERATE / BLOCK verdict** graded against the same anti-pattern vocabulary
 steered away from (`_shared/cheesy-tells.ts`, §18 one home for the tells). On ITERATE/BLOCK the critic
 hands back a refined prompt and the agent regenerates — closing, in software, the loop the owner keeps
 having to close by eye. This is a PRODUCT capability — Paige's own generation loop checking its own output before a
-tenant sees it. It is not a Claude Code authority: §00 gives CC zero input on design, and the
-human design-critic seat it once paired with (§25) was deleted on 2026-08-23.
+tenant sees it — a runtime gate on Paige's OWN generated output, separate from how CC designs the
+platform's interface under §00 (Flow-by-Flow, then Impeccable). The two do not share an authority:
+§33 grades what Paige generates for a tenant; §00 governs what CC designs and the owner approves.
 
 - **The eyes are three shared seams, never a fourth home (§18).** (1) `services/visual-renderer` — a Fly
   Playwright service that screenshots a URL or raw HTML (one warm browser; the reason it's a standalone

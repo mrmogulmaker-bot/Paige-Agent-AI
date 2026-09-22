@@ -65,25 +65,30 @@ is a port that has not happened yet.**
 
 ---
 
-## JURISDICTION — see root `CLAUDE.md` §00. ZERO input on design.
+## UI AUTHORITY — see root `CLAUDE.md` §00. Flow-by-Flow, then Impeccable.
 
-> **"You own the backend. Claude Design owns the frontend."**
-> **"No, my friend, you have no input, ZERO input on the design. You have all of the control
-> over our backend."** — Antonio, 2026-08-23
+> **"Flow by Flow, then Impeccable. Impeccable is your priority when it comes to my user
+> interface."** — Antonio, 2026-09-22
 
 The full rule is root `CLAUDE.md` **§00**, which loads on every run and overrides every section
 below it. The short form, because this file loads whenever a session touches `src/operator/`:
 
-- **CC writes the port and owns the backend.** Turning the pack into working code is CC's work.
-  Writing it is not deciding it.
-- **CC has no design input of any kind** — no verdict, no proposal, no observation, no "worth an
-  eye on." A frame is EVIDENCE handed to CD: address, theme, width, measured geometry, faces
-  loaded. Nothing else.
-- **A measurement is not an opinion.** Contrast, type sizes, grid tracks, a 404ing control, a
-  surface that does not render — those are facts about whether it WORKS and CC reports them.
-  What to do about them is CD's.
-- **If it is not in the pack, ask CD.** CC never fills a design gap.
-- **Every subagent CC dispatches inherits this.** No agent debates UI.
+- **CC owns the interface — design and engineering both.** Flow-by-Flow decides what is built and
+  which flows must work; Impeccable decides how it looks and behaves; the owner approves before
+  production.
+- **Impeccable's craft floor is binding**, not advisory. Read `reference/craft-floor.md`
+  immediately before any UI edit, and treat its refuse-list as a real constraint.
+- **A measurement is still a measurement.** Contrast, type sizes, grid tracks, a 404ing control, a
+  surface that does not render — facts about whether it WORKS. CC reports them AND decides what to
+  do about them.
+- **A weak surface is CC's to raise and CC's to fix.** Bring the better design rather than waiting
+  to be told.
+- **Existing packs and prototypes are reference, not authority.** Read them before inventing a
+  fourth variant of something already solved (§18/§30); they no longer outrank CC's judgement.
+- **Subagents may judge the interface** against Impeccable's craft floor, and are expected to.
+
+**Reversed 2026-09-22 by owner ruling (§58).** This block previously read "ZERO input on design"
+and made Claude Design the deciding authority. The owner removed Claude Design from the loop.
 
 An earlier version of this very section said CC "reports it, with a frame and a measurement, and
 lets CD rule." That was still input, and it was corrected the same day. Zero means zero.

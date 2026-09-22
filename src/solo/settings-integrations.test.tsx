@@ -67,6 +67,7 @@ function world(over: {
   n8n?: Record<string, unknown> | null;
   mcp?: Partial<Record<"n8n" | "zapier", Record<string, unknown>>> | null;
   zapierApi?: Record<string, unknown>;
+  gateway?: Record<string, unknown>[];
   socialConnections?: Record<string, unknown>[];
   socialAccounts?: Record<string, unknown>[];
   admin?: boolean;
@@ -77,6 +78,11 @@ function world(over: {
   rpc.mockImplementation((name: string) => {
     if (name === "get_tenant_n8n_api_readiness") return Promise.resolve({ data: api, error: null });
     if (name === "get_tenant_mcp_connections") return Promise.resolve({ data: over.mcp ?? {}, error: null });
+    // The registry-native gateway read that the MCP tools section performs on mount. Modelled
+    // explicitly, like every other read here: an unrecognised payload is a READ FAILURE to that
+    // reader, not an empty account, so leaving it to the catch-all would render an error state
+    // in this surface and put a second "Try again" on the page.
+    if (name === "get_mcp_connections_v2") return Promise.resolve({ data: over.gateway ?? [], error: null });
     if (name === "is_current_user_tenant_admin") return Promise.resolve({ data: over.admin !== false, error: null });
     if (name === "social_connection_status") return Promise.resolve({ data: over.socialConnections ?? [], error: null });
     if (name === "social_account_status") return Promise.resolve({ data: over.socialAccounts ?? [], error: null });
@@ -174,7 +180,15 @@ describe("Truth boundary", () => {
 
   it("clears the previous account immediately and rejects its late response", async () => {
     const first = deferred<{ data: unknown; error: null }>();
-    rpc.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => first.promise);
+    // Hold open ONLY the tenant-A read this test is about, by NAME. It used to hold the first two
+    // calls by position, which silently stopped meaning "the n8n reads" the moment this surface
+    // mounted more of them: the extra calls fell through to a reset mock returning `undefined`, and
+    // the test ran out of doubles instead of exercising the switch. Scoping by name keeps it honest
+    // however many reads the surface grows.
+    world();
+    const answered = rpc.getMockImplementation() as (name: string, ...rest: unknown[]) => unknown;
+    rpc.mockImplementation((name: string, ...rest: unknown[]) =>
+      name === "get_tenant_n8n_api_readiness" ? first.promise : answered(name, ...rest));
     const { host, root } = await render();
 
     context.tenantId = "tenant-b";
@@ -219,11 +233,21 @@ describe("Truth boundary", () => {
     // wins. The rest of the protocol vocabulary stays out — those are implementation
     // details a workspace never asked about, whereas "MCP" is the name of the thing they
     // came to connect.
+    //
+    // THE CATEGORY MOVED OFF THE CARD. Owner ruling, 2026-09-22: "Social is a category.
+    // It's not the name of Instagram or TikTok or Facebook or YouTube." A category word
+    // stamped under every tool inside it is eleven copies of a word the heading already
+    // said. So the kind of connection is still recognisable — it is named once, on the
+    // group that owns the card — and the card carries only what is its own.
     world();
     const { host } = await render();
     const card = host.querySelector('.ig-card[data-provider="mcp"]');
     expect(card?.textContent).toContain("Zapier");
-    expect(card?.textContent).toContain("Automation");
+    expect(card?.textContent).toContain("MCP");
+    // The category names itself on the group heading, and only there.
+    const group = card?.closest("section.ig-group");
+    expect(group?.querySelector(".ig-group-head b")?.textContent).toBe("Automation");
+    expect(card?.textContent).not.toContain("Automation");
     for (const jargon of ["bridge", "transport", "SSE", "Bearer", "JSON-RPC"]) {
       expect(card?.textContent).not.toContain(jargon);
     }
@@ -260,19 +284,28 @@ describe("Truth boundary", () => {
     const all = host.querySelectorAll(".ig-card").length;
     expect(all).toBeGreaterThan(1);
     await click(byText(host, "Documents"));
-    expect(host.querySelectorAll(".ig-card").length).toBeLessThan(all);
-    expect(host.querySelector('.ig-bar button[aria-pressed="true"]')?.textContent).toBe("Documents");
+    const shown = host.querySelectorAll(".ig-card").length;
+    expect(shown).toBeLessThan(all);
+    // The chip carries its own count, and the count is the truth: filtering to a
+    // category shows exactly as many tiles as the chip promised.
+    const pressed = host.querySelector('.ig-bar button[aria-pressed="true"]');
+    expect(pressed?.textContent).toContain("Documents");
+    expect(pressed?.querySelector("em")?.textContent).toBe(String(shown));
   });
 
   it("offers no setup for a provider with no tenant-safe contract, and says so plainly", async () => {
     world();
     const { host } = await render();
+    // Opening a card that owns no n8n seam must not read the n8n connection. Counted
+    // across the open, not against zero: the view itself legitimately reads the caller's
+    // write permission once on mount for the gateway section, and that read is not the
+    // n8n panel's. What this proves is that STRIPE mounts no seam of its own.
+    const adminReads = () => rpc.mock.calls.filter((c) => c[0] === "is_current_user_tenant_admin").length;
+    const before = adminReads();
     await openCard(host, "stripe");
     expect(host.querySelector('[role="dialog"]')?.textContent).toMatch(/not claimed|not offered here yet/i);
     expect(host.querySelector(".ig-form")).toBeNull();
-    // Opening a card that owns no n8n seam must not read the n8n connection.
-    const n8nAdminReads = rpc.mock.calls.filter((c) => c[0] === "is_current_user_tenant_admin");
-    expect(n8nAdminReads.length).toBe(0);
+    expect(adminReads()).toBe(before);
   });
 });
 
