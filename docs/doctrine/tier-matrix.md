@@ -356,11 +356,11 @@ on. Recorded as an exception rather than followed silently.
 
 | Capability | God (act-as) | Agency-as-tenant | Standalone Solo | Sub-account | Client | Anonymous | Deploy state |
 |---|---|---|---|---|---|---|---|
-| `agreement_signing` tier flag | — | **— (refused)** | ✓ | ✓ | — | — | **flag LIVE on merge, and now ENFORCED** — see the correction below |
+| `agreement_signing` tier flag | — | **— (refused)** | ✓ | ✓ | — | — | **flag LIVE on merge, and now ENFORCED** at the database — see the correction below |
 | Records + integrity triggers (`paige_agreements`, `_signers`, `_events`) | ✓ (operator read) | **— (refused by `trg_agreement_tier`)** | ✓ | ✓ | — (no policy grants it) | — (`anon` holds no grant) | **code MERGED, prod apply PENDING** — migrations `20270401000000`/`20270402000000`/`20270403000000`/`20270404000000`/`20270405000000` |
 | Counterparty signer derived from the client (`trg_agreement_seed_counterparty`) | ✓ act-as | — | ✓ | ✓ | — | — | **code MERGED, prod apply PENDING** — `20270405000000` |
-| `agreement_draft` · `agreement_add_signer` · `agreement_status` (Paige chat) | ✓ act-as | **refused at the database** | ✓ | ✓ | — | 403 | edge logic LIVE on merge; RPCs deploy with the migrations |
-| `agreement_send` · `agreement_resend` · `agreement_void` (Paige chat, `high` → approval card) | ✓ act-as | **refused (edge 403 + database)** | ✓ | ✓ | — | 403 | edge logic LIVE on merge |
+| Agreement RPC seams (`save_paige_agreement` · `add_agreement_signer` · `create_agreement_signing` · `issue_agreement_signing_link` · `void_paige_agreement` · `paige_agreement_overview`) | ✓ act-as | **refused at the database** | ✓ | ✓ | — | 403 | **LIVE on merge** — these are the §10 callable seams |
+| Agreement PAIGE CHAT TOOLS (draft · add_signer · send · resend · void · status) | — | — | — | — | — | — | **WITHHELD — not shipped in this PR.** The INT-003 capability-kit guard cannot admit a new mutating tool: `capability-kit-lint` rejects a new `RISK` entry, and its stated remedy (`defineCapability()`) requires that same entry via `classifyAction`. Measured, not inferred. Lands when INT-003 resolves it. |
 | Token-gated signing act (`sign-agreement`, `verify_jwt=false`) | n/a | n/a | n/a | n/a | n/a | **token-gated, not a tier** | LIVE on merge |
 | Sealed-record retrieval (`agreement-document`, `verify_jwt=false`) | n/a | n/a | ✓ own session (admin) | ✓ own session (admin) | **signer via retrieval token** | — | LIVE on merge |
 

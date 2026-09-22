@@ -49,7 +49,6 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 MIGRATION="$REPO/supabase/migrations/20270401000000_agreements_engine_records.sql"
 MIGRATION2="$REPO/supabase/migrations/20270402000000_agreements_read_and_expiry.sql"
-MIGRATION3="$REPO/supabase/migrations/20270403000000_agreements_autonomy_catalogue.sql"
 MIGRATION4="$REPO/supabase/migrations/20270404000000_agreement_signing_contract.sql"
 MIGRATION5="$REPO/supabase/migrations/20270405000000_agreement_signer_seam.sql"
 WORK="$(mktemp -d)"
@@ -77,13 +76,12 @@ psql() { "$PGBIN/psql" -h "$WORK" -p "$PORT" -U proofrunner -d proof "$@"; }
 psql -v ON_ERROR_STOP=1 -q -f "$HERE/_fixture-schema.sql" >/dev/null
 psql -v ON_ERROR_STOP=1 -q -f "$MIGRATION" >/dev/null 2>&1
 psql -v ON_ERROR_STOP=1 -q -f "$MIGRATION2" 2>&1 | grep -iE "^psql.*error" && { echo "FAIL — the read/expiry migration did not apply"; exit 1; }
-# The catalogue migration depends on tables this fixture does not stand up (tenant_tool_autonomy
-# and friends), so it is deliberately NOT applied here. Its coverage is proven by
-# `npm run lint:tool-catalogue`, which reads the SQL directly — stating that rather than pretending
-# this proof covers it.
+# There is no autonomy-catalogue migration any more: the agreements chat tools are withheld from
+# this PR because the INT-003 capability-kit guard cannot admit a new mutating tool (see the note in
+# `_shared/action-risk.ts`). With no governed tool there is nothing for `list_tool_autonomy` to show.
 psql -v ON_ERROR_STOP=1 -q -f "$MIGRATION4" 2>&1 | grep -iE "^psql.*error" && { echo "FAIL — the signing-contract migration did not apply"; exit 1; }
 psql -v ON_ERROR_STOP=1 -q -f "$MIGRATION5" 2>&1 | grep -iE "^psql.*error" && { echo "FAIL — the signer-seam migration did not apply"; exit 1; }
-echo "migrations 1, 2, 4 and 5 applied to a clean database (3 is catalogue-only, covered by lint:tool-catalogue)"
+echo "migrations 20270401/02/04/05 applied to a clean database"
 echo
 
 OUT="$WORK/out.txt"
