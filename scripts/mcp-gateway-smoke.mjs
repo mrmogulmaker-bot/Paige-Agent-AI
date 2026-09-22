@@ -1153,17 +1153,21 @@ console.log("\n— slice ①: verify (runVerify) —");
   check("verify REJECTS a server that reflects our credential into a tool field (§13 — provider_reflected_credential)", reflected.httpStatus === 200 && reflected.body.ok === false && reflected.body.error_code === "provider_reflected_credential", JSON.stringify(reflected.body));
   check("...records an error probe with NO catalog (a reflected-credential tool set is never stored)", probeCalls.length === 1 && probeCalls[0]._status === "error" && probeCalls[0]._tools === null, JSON.stringify(probeCalls[0]));
   check("...and the reflected token never appears in the response body", !JSON.stringify(reflected.body).includes("secret-token"), JSON.stringify(reflected.body));
-  // Codex P1 (follow-up) — a SHORT credential must be scanned too. The writer accepts any nonblank
-  // bearer/header token, so a <8ch secret is reachable; the exact token is matched at any length (no
-  // floor), only the URL-segment heuristic (kind none) keeps a length floor.
-  routes.set("/mcp-reflect-short", mcpServer({ tools: [
-    { name: "run_sk9_now", description: "reflects a short credential",
-      inputSchema: { type: "object", properties: { x: {} } }, _meta: { effects: ["read"], connected_app: "demo", action_type: "search" } },
-  ] }));
-  probeCalls.length = 0;
-  const RSHORT = "https://public.example/mcp-reflect-short";
-  const reflectedShort = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, auth_token: "sk9", server_url: RSHORT, endpoint_hash: endpointHashOf(RSHORT) }) }, { connectionId: CONN, expectedTenantId: TEN });
-  check("verify REJECTS reflection of a SHORT (<8ch) bearer credential too (exact token has no length floor)", reflectedShort.httpStatus === 200 && reflectedShort.body.ok === false && reflectedShort.body.error_code === "provider_reflected_credential", JSON.stringify(reflectedShort.body));
+  // Codex round 3 — the reflection matching policy, unit-tested directly on the exported helper.
+  // A credential is substring-matched only once it clears the collision floor; the `none` kind is
+  // scanned RAW and percent-DECODED (writer-side minimum length is the sound completion — Slice ②/INT-153).
+  const mkTool = (name, app = "", actionType = "", effects = []) => ({ name, app, actionType, effects, schemaHash: "h", authorityHash: "h", pin: "h" });
+  const bearerAuth = (t) => ({ kind: "bearer", token: t });
+  check("reflection helper catches a long bearer token echoed into a tool name",
+    verifyMod.intakeReflectsCredential([mkTool("echo_supersecrettoken12")], bearerAuth("supersecrettoken12"), "https://public.example/x") === true);
+  check("reflection helper does NOT false-positive a short token against ordinary tool names (Codex P2 — no collision DoS)",
+    verifyMod.intakeReflectsCredential([mkTool("search"), mkTool("read_records")], bearerAuth("a"), "https://public.example/x") === false);
+  check("reflection helper catches a percent-DECODED URL-path secret echoed into a tool name (Codex P1)",
+    verifyMod.intakeReflectsCredential([mkTool("route_supersecretlongvalue")], { kind: "none" }, "https://public.example/mcp/%73upersecretlongvalue") === true);
+  check("reflection helper catches the RAW percent-encoded URL-path secret too",
+    verifyMod.intakeReflectsCredential([mkTool("route_%73upersecretlongvalue")], { kind: "none" }, "https://public.example/mcp/%73upersecretlongvalue") === true);
+  check("reflection helper ignores short/common URL parts (no false-positive on api/mcp/v1)",
+    verifyMod.intakeReflectsCredential([mkTool("mcp_list"), mkTool("api_call")], { kind: "none" }, "https://public.example/api/mcp/v1") === false);
 
   // Honest degrade — a reachable server that REJECTS the credential (401): needs_attention, catalog NOT wiped.
   routes.set("/mcp-verify-401", (req, res) => { if (req.method === "DELETE") { res.writeHead(204).end(); return; } res.writeHead(401).end("bad token"); });

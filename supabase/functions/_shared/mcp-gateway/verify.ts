@@ -56,21 +56,34 @@ export type VerifyResult = {
   body: Record<string, unknown>;
 };
 
-/** The credential material a healthy provider must NEVER echo back to us. For bearer/header auth this
- *  is the EXACT token we send — matched at ANY non-empty length, since the writer accepts any nonblank
- *  token, so a short credential is reachable and must still be caught (there is no false-positive risk:
- *  we match the exact known secret, not a heuristic). For the `none` kind the secret lives in the URL
- *  path/query (Zapier's shape), which we can only GUESS at, so there a length floor keeps short/common
- *  parts (`mcp`, `api`, `v1`) from registering — only a sufficiently-long path/query segment counts. */
+// Substring-matching a credential against provider-controlled catalog text is only SOUND when the
+// credential is long enough not to collide with ordinary text. Below this floor a token like "a"
+// would match "search"/"read" and permanently reject a HEALTHY provider (a false-positive DoS),
+// while a real bearer/OAuth/API credential is far longer. The fully sound fix is a writer-side
+// MINIMUM credential length, so a stored secret is always both scannable AND collision-free — that
+// is a writer migration, tracked for Slice ② (INT-153). Until then a sub-floor credential is not
+// scanned by this defense-in-depth guard (the leak of a <12-char string is not a meaningful
+// credential exposure, and matching it would reject legitimate catalogs).
+const MIN_SECRET_SCAN_LEN = 12;
+
+/** The credential material a healthy provider must NEVER echo back to us. For bearer/header auth it is
+ *  the exact token we send (scanned once it clears the floor). For the `none` kind the secret lives in
+ *  the URL path/query (Zapier's shape) and a server can percent-DECODE its own route, so a stored
+ *  `%73ecret…` can come back as `secret…` — scan BOTH the raw segment and its decoded form. Short/common
+ *  URL parts (`api`, `mcp`, `v1`) stay below the floor, so a bearer connection's public path never
+ *  registers as a secret. */
 function credentialMaterial(auth: McpAuth, serverUrl: string): string[] {
   const out: string[] = [];
-  if ((auth.kind === "bearer" || auth.kind === "header") && typeof auth.token === "string" && auth.token.length > 0) {
+  if ((auth.kind === "bearer" || auth.kind === "header") && typeof auth.token === "string" && auth.token.length >= MIN_SECRET_SCAN_LEN) {
     out.push(auth.token);
   } else if (auth.kind === "none") {
     try {
       const u = new URL(serverUrl);
       for (const seg of [...u.pathname.split("/"), ...u.searchParams.values()]) {
-        if (seg.length >= 12) out.push(seg);
+        let decoded = seg;
+        try { decoded = decodeURIComponent(seg); } catch { /* malformed escape — keep the raw form */ }
+        if (seg.length >= MIN_SECRET_SCAN_LEN) out.push(seg);
+        if (decoded !== seg && decoded.length >= MIN_SECRET_SCAN_LEN) out.push(decoded);
       }
     } catch { /* the loader already validated the url shape; nothing to scan */ }
   }
