@@ -12,6 +12,19 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IntegrationsGatewaySection } from "./settings-integrations-gateway";
+import { useMcpGateway } from "./data/useMcpGateway";
+
+/** The Automation group heading the parent surface hands the gateway in production. */
+const GROUP = { label: "Automation", accent: "var(--k-automation)", blurb: "Run workflows and reach other apps." };
+/**
+ * The surface owns the one gateway hook instance and hands it down, so the filter bar can count
+ * the same tools the group renders. These tests stand in for that owner: the hook is the REAL
+ * one, running against the mocked RPC exactly as before — only who calls it moved.
+ */
+function Section({ onOpenLegacy }: { onOpenLegacy?: (which: "n8n" | "zapier" | "social") => void }) {
+  const gw = useMcpGateway();
+  return <IntegrationsGatewaySection onOpenLegacy={onOpenLegacy} gw={gw} group={GROUP} tiles={null} />;
+}
 
 const context = vi.hoisted(() => ({ tenantId: "tenant-a" as string | null, loading: false }));
 const rpc = vi.hoisted(() => vi.fn());
@@ -69,7 +82,7 @@ async function render(onOpenLegacy?: (which: "n8n" | "zapier" | "social") => voi
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
-  await act(async () => root.render(<IntegrationsGatewaySection onOpenLegacy={onOpenLegacy} />));
+  await act(async () => root.render(<Section onOpenLegacy={onOpenLegacy} />));
   await act(async () => { await Promise.resolve(); });
   return { host, root };
 }
@@ -96,8 +109,12 @@ const fieldFor = (host: HTMLElement, label: string) =>
 const tile = (host: HTMLElement, name: string) =>
   Array.from(host.querySelectorAll<HTMLButtonElement>(".ig-gw-tile"))
     .find((b) => b.querySelector(".ig-gw-tile-name")?.textContent === name);
+/** The repeatable "MCP server" tile — the one way in, always present, never only when empty
+ *  (owner ruling 2026-09-22). Matched on its own hook so the catalogue's "Any MCP server" tile
+ *  inside the open drawer can never be mistaken for it. */
+const addTile = (host: HTMLElement) => host.querySelector<HTMLButtonElement>('.ig-card[data-provider="mcp-add"]');
 /** Open the add drawer (the catalogue IS the add path). */
-const openCatalogue = async (host: HTMLElement) => { await click(byText(host, "Add a tool")); };
+const openCatalogue = async (host: HTMLElement) => { await click(addTile(host)); };
 /** Open the add FORM through the catalogue's generic entry, the way a human reaches it. */
 const openAddForm = async (host: HTMLElement) => {
   await openCatalogue(host);
@@ -138,7 +155,8 @@ describe("Truth boundary", () => {
       builder({ data: null, error: name === "get_mcp_connections_v2" ? { message: "read failed" } : null }));
     const { host } = await render();
     expect(host.textContent).toMatch(/couldn’t be read/i);
-    expect(host.textContent).not.toMatch(/no tools yet/i);
+    expect(addTile(host)).toBeNull();
+    expect(host.querySelectorAll(".ig-card").length).toBe(0);
     expect(byText(host, "Try again")).toBeTruthy();
   });
 
@@ -150,7 +168,7 @@ describe("Truth boundary", () => {
 
     context.tenantId = "tenant-b";
     world({ rows: [row({ connection_id: "conn-b", label: "Tenant B tool" })] });
-    await act(async () => root.render(<IntegrationsGatewaySection />));
+    await act(async () => root.render(<Section />));
     await act(async () => { await Promise.resolve(); });
 
     resolveFirst({ data: [row({ label: "Late tenant A tool" })], error: null });
@@ -170,14 +188,19 @@ describe("First use", () => {
   it("offers the add path from a genuinely empty account", async () => {
     world({ rows: [] });
     const { host } = await render();
-    expect(host.textContent).toMatch(/no tools yet/i);
-    expect(byText(host, "Add a tool")).toBeTruthy();
+    expect(host.textContent).not.toMatch(/couldn’t be read/i);
+    const add = addTile(host);
+    expect(add).toBeTruthy();
+    // The way in says it may be taken more than once, because it may.
+    expect(add?.textContent).toMatch(/repeatable/i);
+    await click(add);
+    expect(dialog(host)).toBeTruthy();
   });
 
   it("offers no add path to someone who cannot write, and claims nothing about why", async () => {
     world({ rows: [], admin: false });
     const { host } = await render();
-    expect(byText(host, "Add a tool")).toBeUndefined();
+    expect(addTile(host)).toBeNull();
   });
 });
 
@@ -376,20 +399,20 @@ describe("An unreadable account is never rendered as an empty one", () => {
     });
     const { host } = await render();
     expect(host.textContent).toMatch(/couldn’t be read/i);
-    expect(host.textContent).not.toMatch(/no tools yet/i);
+    expect(host.querySelectorAll(".ig-card").length).toBe(0);
   });
 
   it("treats rows that all fail to parse as a failed read", async () => {
     world({ rows: [{ nothing: "useful" }, { also: "bad" }] });
     const { host } = await render();
     expect(host.textContent).toMatch(/couldn’t be read/i);
-    expect(host.textContent).not.toMatch(/no tools yet/i);
+    expect(host.querySelectorAll(".ig-card").length).toBe(0);
   });
 
-  it("still renders the empty state for a genuinely empty account", async () => {
+  it("still offers the add path for a genuinely empty account", async () => {
     world({ rows: [] });
     const { host } = await render();
-    expect(host.textContent).toMatch(/no tools yet/i);
+    expect(addTile(host)).toBeTruthy();
     expect(host.textContent).not.toMatch(/couldn’t be read/i);
   });
 });
@@ -553,7 +576,7 @@ describe("Managing a tool", () => {
     expect(dialog(host)?.textContent).toContain("Tenant A tool");
     context.tenantId = "tenant-b";
     world({ rows: [] });
-    await act(async () => root.render(<IntegrationsGatewaySection />));
+    await act(async () => root.render(<Section />));
     await act(async () => { await Promise.resolve(); });
     // The drawer holds one workspace's facts; it must not keep painting them over another's.
     expect(dialog(host)).toBeNull();

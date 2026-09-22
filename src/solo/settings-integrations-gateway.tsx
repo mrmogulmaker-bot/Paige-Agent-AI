@@ -16,10 +16,9 @@
  * removed).
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { KeyRound, Plus, RefreshCw, Search, TriangleAlert, X } from "lucide-react";
+import { Plus, RefreshCw, Search, TriangleAlert, X } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import {
-  useMcpGateway,
   type GatewayConnection,
   type GatewayAuthKind,
   type UseMcpGateway,
@@ -630,10 +629,35 @@ function DisconnectConfirm({ gw, tool, onDone, onCancel }: { gw: UseMcpGateway; 
 /* ── The section mounted inside SoloIntegrationsView ──────────────────────────
    `onOpenLegacy` routes the catalogue's n8n/Zapier/Social tiles to the existing live drawers
    (§58 — nothing reimplemented). */
-export function IntegrationsGatewaySection({ onOpenLegacy }: { onOpenLegacy?: (which: CatLegacy) => void }) {
+/**
+ * The Automation group, and the home of every MCP server this account has pointed Paige at.
+ *
+ * Owner ruling 2026-09-22: an MCP connection is a REPEATABLE connection — a person adds as many
+ * servers as they need — and it belongs under Automation, not filed away under Developer. So this
+ * component owns the whole Automation group: the shipped automation tiles the parent hands it, the
+ * one repeatable "MCP server" tile that starts an add, and a tile per server already added. One
+ * group, one home (§18); nothing that shipped here was removed (§58).
+ */
+export function IntegrationsGatewaySection({
+  onOpenLegacy,
+  gw,
+  group,
+  tiles,
+  hidden,
+}: {
+  onOpenLegacy?: (which: CatLegacy) => void;
+  /** The one gateway hook instance, owned by the parent — the parent counts these tiles in the
+   *  filter bar, so it must read the same list this group renders, never a second fetch of it. */
+  gw: UseMcpGateway;
+  /** The Automation group's own heading data, owned by the parent's category ladder. */
+  group: { label: string; accent: string; blurb: string };
+  /** The shipped automation provider tiles, already rendered as <li> by the parent. */
+  tiles: ReactNode;
+  /** True when a category filter has this group filtered out. */
+  hidden?: boolean;
+}) {
   const { activeTenantId, activeUserId, loading: tenantLoading } = useTenantContext();
   const scopeKey = `${activeUserId ?? ""}:${activeTenantId ?? ""}`;
-  const gw = useMcpGateway();
   const [drawer, setDrawer] = useState<
     | { kind: "catalogue" }
     | { kind: "add"; preset: AddPreset }
@@ -658,41 +682,77 @@ export function IntegrationsGatewaySection({ onOpenLegacy }: { onOpenLegacy?: (w
 
   const openLegacy = (which: CatLegacy) => { close(); onOpenLegacy?.(which); };
 
+  if (hidden) return null;
+
+  /** The gateway's own tiles: the repeatable add, then one per server already added. */
+  const mcpTiles = (
+    <>
+      {gw.canWrite && (
+        <li>
+          <button type="button" className="ig-card" data-provider="mcp-add" data-owner="gateway"
+            onClick={() => setDrawer({ kind: "catalogue" })} aria-haspopup="dialog">
+            <span className="ig-logo" data-glyph="light" data-add style={{ ["--ig-brand" as string]: "var(--pg-violet)" }} aria-hidden>
+              <Plus size={22} strokeWidth={2.2} aria-hidden />
+            </span>
+            <span className="ig-card-title"><strong>MCP server</strong><span className="ig-chip">Repeatable</span></span>
+            <span className="ig-card-foot"><span className="ig-card-state" data-tone="neutral"><i aria-hidden />Add as many as you need</span></span>
+          </button>
+        </li>
+      )}
+      {gw.tools.map((c) => {
+        const chip = statusChip(c);
+        return (
+          <li key={c.id}>
+            <button type="button" className="ig-card" data-provider={`gateway-${c.id}`} data-gateway-tool={c.id}
+              data-owner="gateway" onClick={() => setDrawer({ kind: "detail", tool: c, scope: scopeKey })} aria-haspopup="dialog">
+              <span className="ig-logo" data-glyph="light" data-initials style={{ ["--ig-brand" as string]: "var(--pg-violet)" }} aria-hidden>
+                {c.label.slice(0, 2).toUpperCase()}
+              </span>
+              <span className="ig-card-title">
+                <strong>{c.label}</strong>
+                {!usable(c) && <span className="ig-chip" data-warn>not usable yet</span>}
+              </span>
+              <span className="ig-card-foot">
+                <span className="ig-card-state" data-tone={chip.tone === "ok" ? "ok" : chip.tone === "bad" ? "bad" : chip.tone === "warn" ? "warn" : "neutral"}>
+                  <i aria-hidden />{chip.label}
+                </span>
+                <span className="ig-card-host">{c.serverUrlHost ? `${c.serverUrlHost} · ${facetName(c)}` : facetName(c)}</span>
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </>
+  );
+
   return (
-    <section className="ig-gw-section" aria-label="Paige’s tools">
-      <div className="ig-gw-head">
-        <div><h3 className="ig-gw-h">Paige’s tools</h3><p className="ig-gw-sub">Give Paige an outside tool to work with. She can use it once you’ve verified it and approved what it may do.</p></div>
-        {gw.canWrite && <button type="button" className="ig-btn" data-primary onClick={() => setDrawer({ kind: "catalogue" })}><Plus aria-hidden size={14} />Add a tool</button>}
+    <section className="ig-group" aria-label={group.label}>
+      <div className="ig-group-head">
+        <i className="ig-bar-dot" style={{ background: group.accent }} aria-hidden />
+        <b>{group.label}</b><em>{group.blurb}</em><i className="ig-group-rule" aria-hidden />
       </div>
 
       {gw.loading ? (
         <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Loading your tools…</p>
       ) : gw.error ? (
         <div className="ig-state" role="alert"><TriangleAlert aria-hidden /><span>Your tools couldn’t be read just now. Nothing was changed.</span><button type="button" className="ig-btn" onClick={() => gw.reload()}>Try again</button></div>
-      ) : gw.tools.length === 0 ? (
-        <div className="ig-gw-empty"><KeyRound aria-hidden size={20} /><p>No tools yet. Add one and Paige can work with it — after you verify it and approve what she may touch.</p>{gw.canWrite && <button type="button" className="ig-btn" data-primary onClick={() => setDrawer({ kind: "catalogue" })}><Plus aria-hidden size={14} />Add a tool</button>}</div>
-      ) : (
-        <ul className="ig-gw-list">
-          {gw.tools.map((c) => {
-            const chip = statusChip(c);
-            return (
-              <li key={c.id}>
-                <button type="button" className="ig-gw-tool-row" data-gateway-tool={c.id} onClick={() => setDrawer({ kind: "detail", tool: c, scope: scopeKey })} aria-haspopup="dialog">
-                  <span className="ig-gw-glyph" aria-hidden>{c.label.slice(0, 2).toUpperCase()}</span>
-                  <span className="ig-gw-tool-body">
-                    <span className="ig-gw-tool-name">{c.label}{!usable(c) && <span className="ig-gw-tag">not usable yet</span>}</span>
-                    <span className="ig-gw-tool-meta">{c.serverUrlHost ? `${c.serverUrlHost} · ${facetName(c)}` : facetName(c)}</span>
-                  </span>
-                  <span className="ig-gw-tool-right"><span className="ig-gw-chip" data-tone={chip.tone}>{chip.label}</span></span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      ) : null}
+
+      <ul className="ig-grid">
+        {tiles}
+        {!gw.loading && !gw.error && mcpTiles}
+      </ul>
 
       {drawer?.kind === "catalogue" && (
-        <GatewayDrawer eyebrow="Connected MCP Gateway" title="Add a tool" onClose={close}>
+        <GatewayDrawer
+          eyebrow="Connected MCP Gateway"
+          title="Add a tool"
+          onClose={close}
+          // Shipped copy, kept verbatim (§58). It used to head the tools section; the section is
+          // now the Automation group, whose heading belongs to the category ladder — so the
+          // sentence moved to the moment it actually matters, choosing a tool to add.
+          footer={<span>Give Paige an outside tool to work with. She can use it once you’ve verified it and approved what it may do.</span>}
+        >
           <Catalogue
             onPick={(item) => setDrawer({ kind: "add", preset: { facet: item.legacy === "n8n" ? "n8n-rest" : "generic-remote", authKind: item.auth ?? "bearer", label: item.manual ? undefined : item.n, url: item.url } })}
             onSetup={(item) => setDrawer({ kind: "stop", item, via: "setup" })}

@@ -225,11 +225,21 @@ describe("Truth boundary", () => {
     // wins. The rest of the protocol vocabulary stays out — those are implementation
     // details a workspace never asked about, whereas "MCP" is the name of the thing they
     // came to connect.
+    //
+    // THE CATEGORY MOVED OFF THE CARD. Owner ruling, 2026-09-22: "Social is a category.
+    // It's not the name of Instagram or TikTok or Facebook or YouTube." A category word
+    // stamped under every tool inside it is eleven copies of a word the heading already
+    // said. So the kind of connection is still recognisable — it is named once, on the
+    // group that owns the card — and the card carries only what is its own.
     world();
     const { host } = await render();
     const card = host.querySelector('.ig-card[data-provider="mcp"]');
     expect(card?.textContent).toContain("Zapier");
-    expect(card?.textContent).toContain("Automation");
+    expect(card?.textContent).toContain("MCP");
+    // The category names itself on the group heading, and only there.
+    const group = card?.closest("section.ig-group");
+    expect(group?.querySelector(".ig-group-head b")?.textContent).toBe("Automation");
+    expect(card?.textContent).not.toContain("Automation");
     for (const jargon of ["bridge", "transport", "SSE", "Bearer", "JSON-RPC"]) {
       expect(card?.textContent).not.toContain(jargon);
     }
@@ -266,8 +276,13 @@ describe("Truth boundary", () => {
     const all = host.querySelectorAll(".ig-card").length;
     expect(all).toBeGreaterThan(1);
     await click(byText(host, "Documents"));
-    expect(host.querySelectorAll(".ig-card").length).toBeLessThan(all);
-    expect(host.querySelector('.ig-bar button[aria-pressed="true"]')?.textContent).toBe("Documents");
+    const shown = host.querySelectorAll(".ig-card").length;
+    expect(shown).toBeLessThan(all);
+    // The chip carries its own count, and the count is the truth: filtering to a
+    // category shows exactly as many tiles as the chip promised.
+    const pressed = host.querySelector('.ig-bar button[aria-pressed="true"]');
+    expect(pressed?.textContent).toContain("Documents");
+    expect(pressed?.querySelector("em")?.textContent).toBe(String(shown));
   });
 
   it("offers no setup for a provider with no tenant-safe contract, and says so plainly", async () => {

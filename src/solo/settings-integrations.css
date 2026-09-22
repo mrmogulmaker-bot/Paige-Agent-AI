@@ -34,20 +34,63 @@
 
 /* Card grid — compact, scannable, elevated. Auto-fills; never a fixed wall. */
 .ig-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 9px; margin: 0; padding: 0; list-style: none; min-width: 0; }
-.ig-card { position: relative; display: grid; width: 100%; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; overflow: hidden; padding: 10px 11px 10px 12px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-plate, 12px); background: var(--pg-surface); box-shadow: var(--pg-e1), var(--pg-rim); text-align: left; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
-.ig-card::before { position: absolute; inset: 0 auto 0 0; width: 2px; background: var(--ss-provider-accent, var(--pg-violet)); content: ""; transition: width .16s ease; }
-.ig-card:hover { border-color: color-mix(in srgb, var(--ss-provider-accent, var(--pg-violet)) 42%, var(--pg-line)); box-shadow: var(--pg-e2), var(--pg-rim); transform: translateY(-1px); }
-.ig-card:hover::before { width: 3px; }
+/* A tile is a real object: a brand plate you recognise before you read, the name beside it, and
+   whatever the backend says about it underneath. The colour lives in the plate — the card's own
+   interaction colour stays the product's violet, so nineteen brands don't become nineteen hover
+   states. */
+.ig-grid > li { display: grid; min-width: 0; }
+.ig-card { position: relative; display: grid; width: 100%; height: 100%; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto 1fr; align-items: center; gap: 11px; overflow: hidden; padding: 12px 13px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-plate, 12px); background: var(--pg-surface); box-shadow: var(--pg-e1), var(--pg-rim); text-align: left; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.ig-card:hover { border-color: color-mix(in srgb, var(--pg-violet) 46%, var(--pg-line)); box-shadow: var(--pg-e2), var(--pg-rim); transform: translateY(-2px); }
+.ig-card:hover .ig-logo { transform: scale(1.06); }
 .ig-card:active { transform: translateY(0); box-shadow: var(--pg-e1), var(--pg-rim); }
 .ig-card:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 2px; }
-.ig-card-title { display: grid; min-width: 0; gap: 1px; }
+
+/* The plate. Solid brand ground, the vendor's own single-path mark, a lit top edge and a drop that
+   carries the brand hue — the three things that separate an app icon from a coloured square. */
+.ig-logo { display: inline-grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 11px; background: var(--ig-brand, var(--pg-violet)); box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 34%, transparent), inset 0 0 0 1px color-mix(in srgb, #000 10%, transparent), 0 2px 5px -1px color-mix(in srgb, var(--ig-brand, var(--pg-violet)) 46%, transparent); transition: transform .18s cubic-bezier(.2, .8, .3, 1), box-shadow .18s ease; }
+.dark .ig-logo { box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 26%, transparent), inset 0 0 0 1px color-mix(in srgb, #fff 17%, transparent), 0 2px 6px -1px color-mix(in srgb, #000 55%, transparent); }
+.ig-logo svg { width: 21px; height: 21px; fill: #fff; }
+.ig-logo[data-glyph="dark"] svg { fill: #16161a; }
+.ig-logo[data-add] { color: #fff; }
+/* A monogram stands in for a vendor with no licensed mark — same plate, same weight, and it never
+   pretends to be their logo. */
+.ig-logo[data-letter] { color: #fff; font: 700 19px/1 var(--pg-font-display); letter-spacing: -.03em; }
+.ig-logo[data-letter][data-glyph="dark"] { color: #16161a; }
+.ig-logo[data-initials], .ig-logo-text { color: #fff; font: 750 13px/1 var(--pg-font-data); letter-spacing: -.02em; }
+.ig-logo-text { background: var(--pg-raised); box-shadow: inset 0 0 0 1px var(--pg-line-strong), var(--pg-rim); color: var(--pg-ink-2); }
+
+.ig-card-title { display: flex; min-width: 0; align-items: center; gap: 6px; }
 .ig-card-title strong { overflow: hidden; color: var(--pg-ink); font: 620 12.5px/1.2 var(--pg-font-display); text-overflow: ellipsis; white-space: nowrap; }
 .ig-card-title small { overflow: hidden; color: var(--pg-faint); font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
-.ig-card-state { display: inline-flex; grid-column: 1 / -1; align-items: center; gap: 5px; min-width: 0; color: var(--pg-muted); font-size: 9.5px; font-weight: 600; }
+.ig-chip { flex: none; padding: 1px 6px; border: 1px solid color-mix(in srgb, var(--pg-violet) 42%, var(--pg-line)); border-radius: var(--pg-r-pill, 999px); background: color-mix(in srgb, var(--pg-violet) 12%, transparent); color: var(--pg-violet); font: 700 8.5px/1.6 var(--pg-font-data); letter-spacing: .02em; white-space: nowrap; }
+.ig-chip[data-warn] { border-color: color-mix(in srgb, var(--pg-warning) 45%, var(--pg-line)); background: color-mix(in srgb, var(--pg-warning) 12%, transparent); color: var(--pg-warning); }
+
+/* Whatever the backend reported, and nothing this surface invented. */
+.ig-card-foot { display: grid; grid-column: 1 / -1; align-self: end; gap: 3px; min-width: 0; margin-top: 9px; }
+.ig-card-host { overflow: hidden; color: var(--pg-faint); font: 400 9.5px/1.45 var(--pg-font-data); text-overflow: ellipsis; white-space: nowrap; }
+.ig-card-state { display: inline-flex; align-items: center; gap: 5px; min-width: 0; color: var(--pg-muted); font-size: 9.5px; font-weight: 600; }
 .ig-card-state i { width: 5px; height: 5px; flex: none; border-radius: 50%; background: var(--pg-faint); }
 .ig-card-state[data-tone="ok"] { color: var(--pg-positive); } .ig-card-state[data-tone="ok"] i { background: var(--pg-positive); }
 .ig-card-state[data-tone="warn"] { color: var(--pg-warning); } .ig-card-state[data-tone="warn"] i { background: var(--pg-warning); }
 .ig-card-state[data-tone="bad"] { color: var(--pg-negative); } .ig-card-state[data-tone="bad"] i { background: var(--pg-negative); }
+
+/* A category is named once, on its own heading — never restated under every tool inside it. */
+.ig-group { margin: 0 0 18px; }
+.ig-group:last-of-type { margin-bottom: 0; }
+.ig-group-head { display: flex; align-items: center; gap: 8px; margin: 0 0 9px; min-width: 0; }
+.ig-group-head b { flex: none; color: var(--pg-ink); font: 700 12.5px/1.2 var(--pg-font-display); letter-spacing: -.01em; }
+.ig-group-head em { overflow: hidden; color: var(--pg-faint); font: 400 10px/1.4 var(--pg-font-ui); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.ig-group-rule { flex: 1 1 auto; min-width: 14px; height: 1px; background: var(--pg-line); }
+.ig-bar-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 8%, transparent); }
+.ig-bar button em { margin-left: 6px; color: var(--pg-faint); font-style: normal; font-weight: 700; }
+.ig-bar button[aria-pressed="true"] em { color: var(--pg-violet); }
+.ig-bar button { display: inline-flex; align-items: center; gap: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ig-card, .ig-logo { transition: none; }
+  .ig-card:hover { transform: none; }
+  .ig-card:hover .ig-logo { transform: none; }
+}
 
 /* Shared state / feedback blocks. */
 .ig-state { display: flex; align-items: center; gap: 9px; margin: 0; padding: 13px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-plate, 12px); background: var(--pg-surface); color: var(--pg-muted); font-size: 11.5px; line-height: 1.45; }
@@ -389,28 +432,12 @@
 .social-platform-mark[data-social-platform="snapchat"] { color: #746700; background: color-mix(in srgb, #fffc00 22%, var(--pg-surface)); }
 .social-platform-mark[data-social-platform="reddit"] { color: #d74200; background: color-mix(in srgb, #ff4500 9%, var(--pg-surface)); }
 
-/* ── Integrations → Paige's tools (Connected MCP Gateway) ────────────────────
-   Ported from the approved pack through this surface's own tokens: no new token is
-   introduced, gold stays on the act button only, and every status colour reuses the
-   `data-tone` vocabulary already on this page. Motion is transform/opacity only and
+/* ── Integrations → the MCP gateway's drawers ────────────────────────────────
+   The gateway's tools now render as ordinary `.ig-card` tiles inside the Automation
+   group (owner ruling 2026-09-22), so what remains here is the add/detail drawer
+   chrome. No new token is introduced, gold stays on the act button only, and every
+   status colour reuses the `data-tone` vocabulary already on this page. Motion is transform/opacity only and
    yields to `prefers-reduced-motion`. The page remains the one scroll owner. */
-.ig-gw-section { margin: 0 0 15px; padding-bottom: 14px; border-bottom: 1px solid var(--pg-line-soft); }
-.ig-gw-head { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 11px; flex-wrap: wrap; }
-.ig-gw-head > div { flex: 1 1 260px; min-width: 0; }
-.ig-gw-h { margin: 0; font: 700 14px/1.2 var(--pg-font-display); letter-spacing: -.01em; color: var(--pg-ink); }
-.ig-gw-sub { margin: 4px 0 0; max-width: 62ch; font: 400 11.5px/1.5 var(--pg-font-ui); color: var(--pg-muted); }
-
-/* Tool rows — one column; the row is the control, so the whole row lifts. */
-.ig-gw-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.ig-gw-tool-row { position: relative; display: grid; width: 100%; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 11px 12px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-plate, 12px); background: var(--pg-surface); box-shadow: var(--pg-e1), var(--pg-rim); text-align: left; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
-.ig-gw-tool-row:hover { border-color: color-mix(in srgb, var(--pg-violet) 42%, var(--pg-line)); box-shadow: var(--pg-e2), var(--pg-rim); transform: translateY(-1px); }
-.ig-gw-tool-row:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 2px; }
-.ig-gw-glyph { display: inline-grid; place-items: center; min-width: 34px; height: 30px; padding: 0 7px; border: 1px solid var(--pg-line); border-radius: 8px; background: var(--pg-raised); box-shadow: var(--pg-rim); color: var(--pg-ink-2); font: 750 10px/1 var(--pg-font-data); letter-spacing: -.02em; }
-.ig-gw-tool-body { min-width: 0; }
-.ig-gw-tool-name { display: flex; align-items: center; gap: 7px; font: 650 12.5px/1.3 var(--pg-font-ui); color: var(--pg-ink); }
-.ig-gw-tool-meta { display: block; margin-top: 3px; overflow: hidden; font: 400 10px/1.4 var(--pg-font-data); color: var(--pg-muted); text-overflow: ellipsis; white-space: nowrap; }
-.ig-gw-tool-right { display: flex; align-items: center; }
-.ig-gw-tag { padding: 1px 6px; border: 1px dashed color-mix(in srgb, var(--pg-violet) 45%, var(--pg-line)); border-radius: 5px; background: color-mix(in srgb, var(--pg-violet) 12%, transparent); color: var(--pg-violet); font: 650 9px/1.5 var(--pg-font-data); }
 
 /* Status chip — the same tone words the rest of this surface uses. */
 .ig-gw-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-pill, 999px); color: var(--pg-muted); font: 650 9.5px/1.5 var(--pg-font-data); white-space: nowrap; }
@@ -421,8 +448,6 @@
 .ig-gw-chip[data-tone="pending"] { color: var(--pg-violet); border-color: color-mix(in srgb, var(--pg-violet) 45%, var(--pg-line)); background: color-mix(in srgb, var(--pg-violet) 10%, transparent); }
 .ig-gw-chip[data-tone="off"] { color: var(--pg-faint); }
 
-.ig-gw-empty { display: grid; justify-items: center; gap: 9px; padding: 26px 18px; border: 1px dashed var(--pg-line-strong); border-radius: var(--pg-r-plate, 12px); background: var(--pg-surface); color: var(--pg-muted); text-align: center; }
-.ig-gw-empty p { max-width: 42ch; margin: 0; font: 400 11.5px/1.55 var(--pg-font-ui); }
 
 /* Drawer additions — the shell is the shared .ig-panel; these are its inner parts. */
 .ig-gw-eyebrow { display: block; font: 650 9px/1.4 var(--pg-font-data); letter-spacing: .1em; text-transform: uppercase; color: var(--pg-violet); }
@@ -476,6 +501,4 @@
 .ig-gw-badge[data-mode="setup"] { color: var(--pg-warning); border-color: color-mix(in srgb, var(--pg-warning) 45%, var(--pg-line)); background: color-mix(in srgb, var(--pg-warning) 9%, transparent); }
 
 @media (prefers-reduced-motion: reduce) {
-  .ig-gw-tool-row, .ig-gw-tile, .ig-gw-choice, .ig-gw-seg button, .ig-gw-search { transition: none; }
-  .ig-gw-tool-row:hover, .ig-gw-tile:hover { transform: none; }
 }

@@ -3,6 +3,8 @@ import { KeyRound, Link2Off, Plug, RefreshCw, TriangleAlert, Workflow, X, Zap } 
 import { useLocation, useNavigate } from "react-router-dom";
 import { SoloAutomationsView } from "./settings-automations";
 import { IntegrationsGatewaySection, type GatewayLegacyTarget } from "./settings-integrations-gateway";
+import { useMcpGateway } from "./data/useMcpGateway";
+import { IntegrationLogo } from "./integration-logos";
 import { SocialDrawer } from "./settings-integrations-social";
 import { socialCardState } from "./settings-integrations-social-state";
 import { SOCIAL_PLATFORMS, type SocialPlatformDefinition } from "./social-platform-catalog";
@@ -87,16 +89,6 @@ function sanitizeMcpByProvider(value: unknown): Partial<Record<"n8n" | "zapier",
 type ProviderIdentity = "n8n" | "zapier" | "mcp" | "quickbooks" | "stripe" | "docusign" | "apollo" | "plaid" | "api";
 type CatalogueCategory = "all" | "social" | "marketing" | "automation" | "financial" | "documents" | "client-data" | "developer";
 
-const CATALOGUE_FILTERS: ReadonlyArray<{ id: CatalogueCategory; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "social", label: "Social" },
-  { id: "marketing", label: "Marketing" },
-  { id: "automation", label: "Automation" },
-  { id: "financial", label: "Financial" },
-  { id: "documents", label: "Documents" },
-  { id: "client-data", label: "Client data" },
-  { id: "developer", label: "Developer" },
-];
 
 function statusPresentation(value: SafeConnectionStatus | null) {
   if (!value?.configured || value.status === "unconfigured") {
@@ -196,6 +188,33 @@ function providerMark(id: ProviderIdentity) {
   if (id === "mcp") return "zap";
   return id.slice(0, 2).toUpperCase();
 }
+
+/**
+ * The category ladder. Social is a CATEGORY — never a label restated under every tool inside it —
+ * so it is named once, on the group heading, and the tools below it carry only their own identity.
+ * Each group takes one of the platform's existing --k-* accents; no new colour enters the system.
+ */
+type GroupId = "automation" | "social" | "financial" | "documents" | "client-data" | "developer";
+const GROUPS: ReadonlyArray<{ id: GroupId; label: string; accent: string; blurb: string; note?: string }> = [
+  { id: "automation", label: "Automation", accent: "var(--k-automation)", blurb: "Run workflows and reach other apps." },
+  {
+    id: "social", label: "Social", accent: "var(--k-template)", blurb: "Post, schedule and read.",
+    // Shipped copy, kept verbatim and on its original condition (it showed only while the Social
+    // filter was active). It moved from above the wall to under this group's heading — the group
+    // it was always about — rather than being dropped in the restructure (§58).
+    note: "Connect each platform with its own secure sign-in. Add as many distinct accounts as this workspace is authorized to use. Channels that require pasted credentials are not offered here.",
+  },
+  { id: "financial", label: "Finance", accent: "var(--k-integration)", blurb: "Invoices, payments and books." },
+  { id: "documents", label: "Documents", accent: "var(--k-agent)", blurb: "Send, sign and track." },
+  { id: "client-data", label: "Client data", accent: "var(--k-skill)", blurb: "Find and enrich contacts." },
+  { id: "developer", label: "Developer", accent: "var(--pg-muted)", blurb: "Wire it up yourself." },
+];
+/** Providers whose own `filter` value already names their group; the rest map straight across. */
+const GROUP_OF: Record<string, GroupId> = {
+  automation: "automation", social: "social", financial: "financial",
+  documents: "documents", "client-data": "client-data", developer: "developer",
+  marketing: "social",
+};
 
 /* ── n8n: the one provider with a real connection flow ────────────────────── */
 
@@ -812,6 +831,9 @@ export function SoloIntegrationsView() {
   const api = useN8nConnection();
   const oauth = useN8nOAuth();
   const social = useSocialConnections();
+  /** One instance, read twice: the Automation group renders these tiles and the filter bar counts
+   *  them. A chip that promises a number the wall below it does not show is a lie (§13). */
+  const gw = useMcpGateway();
   const [category, setCategory] = useState<CatalogueCategory>("all");
   const [open, setOpen] = useState<{ row: ProviderRow; scope: string; initialMcp?: boolean } | null>(null);
   const [socialOpen, setSocialOpen] = useState<{ platform: SocialPlatformDefinition; scope: string } | null>(null);
@@ -836,38 +858,111 @@ export function SoloIntegrationsView() {
     const row = PROVIDERS.find((candidate) => candidate.id === (which === "zapier" ? "mcp" : "n8n"));
     if (row) setOpen({ row, scope: scopeKey });
   }, [scopeKey]);
-  const rows = PROVIDERS.filter(row => category === "all" || row.filter === category);
-  const socialPlatforms = category === "all" || category === "social" ? SOCIAL_PLATFORMS : [];
+  /**
+   * One flat list of everything this surface can show, each entry carrying its own group. Social
+   * platforms and provider rows are merged here rather than rendered as two separate walls: a
+   * person looking for Instagram does not care which table it came from.
+   */
+  type Tile =
+    | { kind: "social"; group: GroupId; id: string; name: string; platform: SocialPlatformDefinition }
+    | { kind: "provider"; group: GroupId; id: string; name: string; row: ProviderRow };
+  const tiles: Tile[] = [
+    ...SOCIAL_PLATFORMS.map((platform): Tile => ({
+      kind: "social", group: "social", id: `social-${platform.key}`, name: platform.name, platform,
+    })),
+    ...PROVIDERS.map((row): Tile => ({
+      kind: "provider", group: GROUP_OF[row.filter] ?? "developer", id: row.id, name: row.name, row,
+    })),
+  ];
+  /** Automation is rendered by IntegrationsGatewaySection, which owns the MCP tiles that belong
+   *  beside these (owner ruling 2026-09-22) — so it is handed over rather than drawn twice. */
+  const automation = GROUPS.find(g => g.id === "automation")!;
+  const automationTiles = tiles.filter(t => t.group === "automation");
+  /** What the Automation group actually renders: its shipped tiles, every MCP server already
+   *  added, and the repeatable add tile — but none of them while the list is unread. */
+  const gatewayCount = gw.loading || gw.error ? 0 : gw.tools.length + (gw.canWrite ? 1 : 0);
+  const countOf = (id: GroupId) => tiles.filter(t => t.group === id).length + (id === "automation" ? gatewayCount : 0);
+  const groupsShown = GROUPS
+    .filter(g => g.id !== "automation")
+    .map(g => ({ ...g, items: tiles.filter(t => t.group === g.id) }))
+    .filter(g => g.items.length > 0 && (category === "all" || category === g.id));
+  const totalTiles = tiles.length + gatewayCount;
+
   const tabs: ReadonlyArray<{ id: IntegrationsLeaf; label: string; Icon: typeof Workflow }> = [
     { id: "catalogue", label: "Integrations", Icon: Plug }, { id: "automations", label: "Automations", Icon: Zap },
   ];
+
+  /** One tile. The logo is the object; the state below it is whatever the backend reported. */
+  const renderTile = (t: Tile) => {
+    if (t.kind === "social") {
+      const platformConnections = social.connections.filter(c => c.requestedPlatform === t.platform.key);
+      const connectionIds = new Set(platformConnections.map(c => c.id));
+      const platformAccounts = social.accounts.filter(a => a.platform === t.platform.key && connectionIds.has(a.connectionId));
+      const state = t.platform.oauthAvailable
+        ? socialCardState({ loading: social.loading, statusError: social.statusError, connections: platformConnections, accounts: platformAccounts })
+        : { account: "OAuth unavailable", tone: "neutral" as const };
+      return (
+        <li key={t.id}>
+          <button type="button" className="ig-card social-platform-card" data-provider={`social-${t.platform.key}`}
+            data-owner="social" onClick={() => setSocialOpen({ platform: t.platform, scope: scopeKey })} aria-haspopup="dialog">
+            <IntegrationLogo id={t.platform.key} fallback={t.platform.mark} />
+            <span className="ig-card-title"><strong>{t.platform.name}</strong></span>
+            <span className="ig-card-foot"><N8nStateLabel value={state} /></span>
+          </button>
+        </li>
+      );
+    }
+    const row = t.row;
+    const live = statusPresentation(row.id === "mcp" ? status.mcp.zapier ?? null : null);
+    return (
+      <li key={row.id}>
+        <button type="button" className="ig-card" data-provider={row.id} data-owner="integrations"
+          onClick={() => setOpen({ row, scope: scopeKey })} aria-haspopup="dialog">
+          <IntegrationLogo id={row.id} fallback={providerMark(row.id)} />
+          <span className="ig-card-title"><strong>{row.name}</strong></span>
+          <span className="ig-card-foot">
+            {row.id === "n8n" ? <>
+              <span className="ig-n8n-tile-state"><span>API connection</span><N8nStateLabel value={n8nApiSummary(api, api.loading, api.error)} /></span>
+              <span className="ig-n8n-tile-state"><span>Paige tools (MCP)</span><N8nStateLabel value={n8nMcpSummary(oauth.readiness, oauth.loading, !!oauth.error)} /></span>
+            </> : row.id === "mcp" ? <>
+              <span className="ig-n8n-tile-state"><span>API connection</span><N8nStateLabel value={status.zapierApiError||!status.zapierApi?{account:"Status unavailable",tone:"neutral"}:{account:zapierApiWords(status.zapierApi.state),tone:status.zapierApi.state==="connected"?"ok":status.zapierApi.state==="not_connected"?"neutral":"warn"}}/></span>
+              <span className="ig-n8n-tile-state"><span>Paige tools (MCP)</span><N8nStateLabel value={status.mcpError?{account:"Status unavailable",tone:"neutral"}:live}/></span>
+            </> : <span className="ig-card-state" data-tone="neutral"><i aria-hidden />Not available</span>}
+          </span>
+        </button>
+      </li>
+    );
+  };
+
   return <div className="ss-integrations">
     <div className="ss-subtabs" role="tablist" aria-label="Integrations sections">{tabs.map(({ id, label, Icon }) => <button key={id} type="button" role="tab" className="ss-subtab" aria-selected={leaf === id} onClick={() => setLeaf(id)}><Icon aria-hidden size={14} />{label}</button>)}</div>
     {leaf === "automations" ? <SoloAutomationsView /> : <>
-      <IntegrationsGatewaySection onOpenLegacy={openLegacy} />
-      <div className="ig-bar" role="group" aria-label="Filter integrations">{CATALOGUE_FILTERS.map(filter => <button key={filter.id} type="button" aria-pressed={category === filter.id} onClick={() => setCategory(filter.id)}>{filter.label}</button>)}</div>
-      {category === "social" && <p className="ig-category-note">Connect each platform with its own secure sign-in. Add as many distinct accounts as this workspace is authorized to use. Channels that require pasted credentials are not offered here.</p>}
+      <div className="ig-bar" role="group" aria-label="Filter integrations">
+        <button type="button" aria-pressed={category === "all"} onClick={() => setCategory("all")}>
+          <i className="ig-bar-dot" style={{ background: "var(--pg-violet)" }} aria-hidden />All
+          <em>{totalTiles}</em>
+        </button>
+        {GROUPS.map(g => {
+          const n = countOf(g.id);
+          if (!n) return null;
+          return <button key={g.id} type="button" aria-pressed={category === g.id}
+            onClick={() => setCategory(g.id)}>
+            <i className="ig-bar-dot" style={{ background: g.accent }} aria-hidden />{g.label}<em>{n}</em>
+          </button>;
+        })}
+      </div>
       {status.loading ? <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Resolving this account…</p> : <>
         {status.error && <div className="ig-state" role="alert"><TriangleAlert aria-hidden /><span>Some integration status could not be read. Each connection below reports only its own available state.</span><button type="button" className="ig-btn" onClick={() => void status.retry()}>Try again</button></div>}
-        <ul className="ig-grid">{socialPlatforms.map((platform) => {
-          const platformConnections = social.connections.filter((connection) => connection.requestedPlatform === platform.key);
-          const connectionIds = new Set(platformConnections.map((connection) => connection.id));
-          const platformAccounts = social.accounts.filter((account) => account.platform === platform.key && connectionIds.has(account.connectionId));
-          const state = platform.oauthAvailable
-            ? socialCardState({ loading: social.loading, statusError: social.statusError, connections: platformConnections, accounts: platformAccounts })
-            : { account: "OAuth unavailable", tone: "neutral" as const };
-          return <li key={`social:${platform.key}`}><button type="button" className="ig-card social-platform-card" data-provider={`social-${platform.key}`} data-owner="social" onClick={() => setSocialOpen({ platform, scope: scopeKey })} aria-haspopup="dialog">
-            <span className="ss-provider-mark social-platform-mark" data-social-platform={platform.key} aria-hidden>{platform.mark}</span>
-            <span className="ig-card-title"><strong>{platform.name}</strong><small>Social</small></span>
-            <span className="ig-n8n-tile-state"><span>{platformAccounts.filter((account) => account.status === "connected").length ? "Tenant accounts" : "OAuth connection"}</span><N8nStateLabel value={state} /></span>
-          </button></li>;
-        })}{rows.map(row => {
-          const live = statusPresentation(row.id === "mcp" ? status.mcp.zapier ?? null : null);
-          return <li key={row.id}><button type="button" className="ig-card" data-provider={row.id} data-owner="integrations" onClick={() => setOpen({ row, scope: scopeKey })} aria-haspopup="dialog">
-            <span className="ss-provider-mark" data-provider-mark={row.id} aria-hidden>{providerMark(row.id)}</span><span className="ig-card-title"><strong>{row.name}</strong><small>{row.kind}</small></span>
-             {row.id === "n8n" ? <><span className="ig-n8n-tile-state"><span>API connection</span><N8nStateLabel value={n8nApiSummary(api, api.loading, api.error)} /></span><span className="ig-n8n-tile-state"><span>Paige tools (MCP)</span><N8nStateLabel value={n8nMcpSummary(oauth.readiness, oauth.loading, !!oauth.error)} /></span></> : row.id === "mcp" ? <><span className="ig-n8n-tile-state"><span>API connection</span><N8nStateLabel value={status.zapierApiError||!status.zapierApi?{account:"Status unavailable",tone:"neutral"}:{account:zapierApiWords(status.zapierApi.state),tone:status.zapierApi.state==="connected"?"ok":status.zapierApi.state==="not_connected"?"neutral":"warn"}}/></span><span className="ig-n8n-tile-state"><span>Paige tools (MCP)</span><N8nStateLabel value={status.mcpError?{account:"Status unavailable",tone:"neutral"}:live}/></span></> : <span className="ig-card-state" data-tone="neutral"><i aria-hidden />Not available</span>}
-          </button></li>;
-        })}</ul>
+        <IntegrationsGatewaySection onOpenLegacy={openLegacy} gw={gw} group={automation}
+          tiles={automationTiles.map(renderTile)} hidden={category !== "all" && category !== "automation"} />
+        {groupsShown.map(g => <section key={g.id} className="ig-group" aria-label={g.label}>
+          <div className="ig-group-head">
+            <i className="ig-bar-dot" style={{ background: g.accent }} aria-hidden />
+            <b>{g.label}</b><em>{g.blurb}</em><i className="ig-group-rule" aria-hidden />
+          </div>
+          {g.note && category === g.id && <p className="ig-category-note">{g.note}</p>}
+          <ul className="ig-grid">{g.items.map(renderTile)}</ul>
+        </section>)}
       </>}
     </>}
     {open && !tenantLoading && open.scope === scopeKey && <ProviderPanel initialMcp={open.initialMcp} m={oauth} a={api} key={`${scopeKey}:${open.row.id}`} row={open.row} onClose={() => setOpen(null)} onChanged={status.retry} />}
