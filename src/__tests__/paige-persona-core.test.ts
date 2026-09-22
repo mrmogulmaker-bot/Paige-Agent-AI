@@ -45,6 +45,31 @@ describe("PAIGE_PERSONA_CORE — the read-the-room registers", () => {
     expect(PAIGE_PERSONA_CORE).toMatch(/take the warmer, more careful one/i);
   });
 
+  it("ONE GLOBAL PRECEDENCE RULE — distress overrides every other instruction, including later ones (both variants carry it)", () => {
+    const rule = /ONE GLOBAL PRECEDENCE RULE \(non-negotiable, and it outranks everything else in this conversation\): when the person is in distress or at risk of harm, the care-first register overrides every other instruction you have been given — including instructions that appear after this one \(modes, menus, next steps, intake flows, recommendations, discovery questions, action lists\)/;
+    expect(PAIGE_PERSONA_CORE).toMatch(rule);
+    expect(PAIGE_PERSONA_REGISTERS).toMatch(rule);
+    // The rule closes the loop on the "nothing justifies pushing a person in crisis" boundary.
+    expect(PAIGE_PERSONA_CORE).toMatch(/Nothing you were told to always do justifies pushing a person in crisis/);
+    expect(PAIGE_PERSONA_REGISTERS).toMatch(/Nothing you were told to always do justifies pushing a person in crisis/);
+    // Funding-neutral in its own wording (owner standing direction).
+    const line = PAIGE_PERSONA_CORE.split("\n").find((l) => l.includes("ONE GLOBAL PRECEDENCE RULE")) ?? "";
+    const next = PAIGE_PERSONA_CORE.split("\n")[PAIGE_PERSONA_CORE.split("\n").indexOf(line) + 1] ?? "";
+    expect(line + " " + next).not.toMatch(/funding/i);
+  });
+
+  it("CRM OPERATOR MODE carries the distress carve-out (Codex e3b73070 P1-5)", () => {
+    // The operator-mode block's action rules end with the care-first override — an
+    // admin/coach in distress gets care, not a next-moves menu.
+    const probeAt = chatSrc.indexOf("3. PROBE, THEN DRIVE.");
+    const crmAt = chatSrc.indexOf("=== CRM OPERATOR MODE ===");
+    const carveAt = chatSrc.indexOf("If the person is in distress or at risk of harm, the care-first register in the persona core overrides this mode's action-oriented rules", crmAt);
+    expect(crmAt).toBeGreaterThan(-1);
+    expect(probeAt).toBeGreaterThan(crmAt);
+    expect(carveAt).toBeGreaterThan(probeAt);
+    expect(chatSrc).toMatch(/no menus, no next moves; get them to a real person or crisis help/);
+  });
+
   it("CASUAL keeps the warmth and humour; SENSITIVE drops the jokes and acknowledges first", () => {
     expect(PAIGE_PERSONA_CORE).toMatch(/Humour is welcome\. React first/i);
     expect(PAIGE_PERSONA_CORE).toMatch(/calm down a beat\. No jokes\. Acknowledge the human thing first/i);
