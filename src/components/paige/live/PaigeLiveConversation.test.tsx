@@ -191,6 +191,75 @@ describe("Paige Live Conversation owner surface", () => {
     expect(relay.connect).toHaveBeenLastCalledWith(expect.objectContaining({ ticket: "renewed-ticket" }));
   });
 
+  it("returns to listening with usable controls after holding a ready relay", async () => {
+    control.start.mockResolvedValueOnce({
+      ok: true, sessionId: "22222222-2222-4222-8222-222222222222",
+      ticket: "first-ticket", availability: "PROOF OWED", code: "relay_ticket_issued",
+    });
+    await render();
+    await act(async () => clickText("Talk live with Paige"));
+    await act(async () => relay.connect.mock.calls[0][0].onState({ kind: "ready" }));
+    await act(async () => clickText("Hold"));
+    expect(document.querySelector(".plc-presence")?.getAttribute("data-live-state")).toBe("held");
+    await act(async () => clickText("Resume"));
+    expect(document.querySelector(".plc-presence")?.getAttribute("data-live-state")).toBe("listening");
+    expect(relay.setMuted).toHaveBeenLastCalledWith(false);
+    expect(clickText("Interrupt").disabled).toBe(false);
+  });
+
+  it("never unmutes capture while the owner is on Hold", async () => {
+    control.start.mockResolvedValueOnce({
+      ok: true, sessionId: "22222222-2222-4222-8222-222222222222",
+      ticket: "first-ticket", availability: "PROOF OWED", code: "relay_ticket_issued",
+    });
+    await render();
+    await act(async () => clickText("Talk live with Paige"));
+    await act(async () => relay.connect.mock.calls[0][0].onState({ kind: "ready" }));
+    await act(async () => clickText("Hold"));
+    await act(async () => clickText("Mute"));
+    relay.setMuted.mockClear();
+    await act(async () => clickText("Unmute"));
+    expect(relay.setMuted).toHaveBeenLastCalledWith(true);
+    await act(async () => clickText("Resume"));
+    expect(relay.setMuted).toHaveBeenLastCalledWith(false);
+  });
+
+  it("keeps the owner's mute choice when replacing a relay ticket", async () => {
+    control.start.mockResolvedValueOnce({
+      ok: true, sessionId: "22222222-2222-4222-8222-222222222222",
+      ticket: "first-ticket", availability: "PROOF OWED", code: "relay_ticket_issued",
+    });
+    control.renew.mockResolvedValue({
+      ok: true, sessionId: "22222222-2222-4222-8222-222222222222",
+      ticket: "renewed-ticket", availability: "PROOF OWED", code: "relay_ticket_issued",
+    });
+    await render(null, "tenant-a||", false, "thread-a");
+    await act(async () => clickText("Talk live with Paige"));
+    await act(async () => relay.connect.mock.calls[0][0].onState({ kind: "ready" }));
+    await act(async () => clickText("Mute"));
+    await act(async () => clickText("Minimize"));
+    relay.setMuted.mockClear();
+    await act(async () => clickText("Talk live with Paige"));
+    await flush();
+    expect(relay.connect).toHaveBeenLastCalledWith(expect.objectContaining({ ticket: "renewed-ticket" }));
+    expect(relay.setMuted).toHaveBeenCalledWith(true);
+    expect(document.querySelector(".plc-controls")?.textContent).toContain("Unmute");
+  });
+
+  it("keeps listening controls available after a ready relay is interrupted", async () => {
+    control.start.mockResolvedValueOnce({
+      ok: true, sessionId: "22222222-2222-4222-8222-222222222222",
+      ticket: "first-ticket", availability: "PROOF OWED", code: "relay_ticket_issued",
+    });
+    await render();
+    await act(async () => clickText("Talk live with Paige"));
+    await act(async () => relay.connect.mock.calls[0][0].onState({ kind: "ready" }));
+    await act(async () => clickText("Interrupt"));
+    expect(relay.interrupt).toHaveBeenCalledOnce();
+    expect(document.querySelector(".plc-presence")?.getAttribute("data-live-state")).toBe("listening");
+    expect(clickText("Hold").disabled).toBe(false);
+  });
+
   it("ends a minimized session on workspace or thread switch", async () => {
     await render(null, "tenant-a||", false, "thread-a");
     await act(async () => clickText("Talk live with Paige"));

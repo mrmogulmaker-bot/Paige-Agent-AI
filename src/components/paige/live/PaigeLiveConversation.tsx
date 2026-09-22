@@ -109,6 +109,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   const sessionIdRef = useRef<string | null>(null);
   const sessionScopeRef = useRef<{ threadId: string; contextEpoch: string } | null>(null);
   const relayRef = useRef<RelayTransport | null>(null);
+  const relayReadyRef = useRef(false);
   const previousEpochRef = useRef(contextEpoch);
   const previousThreadRef = useRef(threadId);
   const requestGeneration = useRef(0);
@@ -166,6 +167,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
     stopPlayback.current();
     relayRef.current?.stop();
     relayRef.current = null;
+    relayReadyRef.current = false;
     transitionCurrent(kind);
     if (kind === "end") { sessionIdRef.current = null; sessionScopeRef.current = null; setSessionId(null); }
     const child = stageWindowRef.current;
@@ -213,6 +215,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
       stopPlayback.current();
       relayRef.current?.stop();
       relayRef.current = null;
+      relayReadyRef.current = false;
       transitionCurrent("end");
       const child = stageWindowRef.current;
       stageWindowRef.current = null;
@@ -239,6 +242,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
       stopPlayback.current();
       relayRef.current?.stop();
       relayRef.current = null;
+      relayReadyRef.current = false;
       setState("reconnecting");
       setExplanation("Live audio stopped when this window was hidden. Try again or continue in chat.");
     };
@@ -246,6 +250,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
       stopPlayback.current();
       relayRef.current?.stop();
       relayRef.current = null;
+      relayReadyRef.current = false;
       setState("reconnecting");
       setExplanation("The connection was interrupted. Try again or continue in chat.");
     };
@@ -312,6 +317,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   const connectResult = (result: PaigeLiveStartResult, generation: number) => {
     if (!result.sessionId || !result.ticket) return;
     relayRef.current?.stop();
+    relayReadyRef.current = false;
     setState("checking");
     setAvailability("PROOF OWED");
     setExplanation("Paige is checking the live connection. Your microphone has not started.");
@@ -321,24 +327,29 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
       onState: (next) => {
         if (!mounted.current || generation !== requestGeneration.current) return;
         if (next.kind === "ready") {
+          relayReadyRef.current = true;
           setState("listening");
           setAvailability("PARTIAL");
           setExplanation("The audio connection is open. Stay in this conversation to continue.");
         } else if (next.kind === "permission-denied") {
+          relayReadyRef.current = false;
           setState("permission-denied");
           setAvailability("UNAVAILABLE");
           setExplanation("Microphone access is off. Allow it in your browser settings, then try again.");
         } else if (next.kind === "disconnected") {
+          relayReadyRef.current = false;
           setState("reconnecting");
           setAvailability("UNAVAILABLE");
           setExplanation("The live connection ended. Try again or continue in chat.");
         } else {
+          relayReadyRef.current = false;
           setState("unavailable");
           setAvailability("UNAVAILABLE");
           setExplanation(next.message);
         }
       },
     });
+    relayRef.current.setMuted(muted);
   };
 
   const retry = async () => {
@@ -350,11 +361,13 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   };
 
   const toggleHold = () => {
-    if (state === "held") output.resume(); else output.pause();
-    relayRef.current?.setMuted(state !== "held" || muted);
-    const next = state === "held" ? "unavailable" : "held";
+    const resuming = state === "held";
+    if (resuming) output.resume(); else output.pause();
+    const live = resuming && relayReadyRef.current;
+    relayRef.current?.setMuted(!live || muted);
+    const next = resuming ? (live ? "listening" : "unavailable") : "held";
     setState(next);
-    setAnnouncement(next === "held" ? "Live Conversation is on hold." : "Live Conversation resumed. Audio remains unavailable until setup is verified.");
+    setAnnouncement(next === "held" ? "Live Conversation is on hold." : live ? "Live Conversation resumed." : "Live Conversation resumed. Audio remains unavailable until setup is verified.");
     transitionCurrent(next === "held" ? "hold" : "resume");
   };
 
@@ -382,6 +395,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
       stopPlayback.current();
       relayRef.current?.stop();
       relayRef.current = null;
+      relayReadyRef.current = false;
       transitionCurrent("minimize");
       setOpen(false);
       setPortalDocument(null);
@@ -446,9 +460,9 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
       </main>
       <footer className="plc-controls" aria-label="Live Conversation controls">
         {!pinned && <Button variant="outline" onClick={() => scrollController.jumpToBottom("auto")}>Jump to latest</Button>}
-        <Button variant="outline" disabled={controlsDisabled && !output.playing && !muted} aria-pressed={muted} onClick={() => { stopPlayback.current(); relayRef.current?.setMuted(!muted); setMuted((value) => !value); }}>{muted ? <MicOff aria-hidden /> : <Mic aria-hidden />}{muted ? "Unmute" : "Mute"}</Button>
+        <Button variant="outline" disabled={controlsDisabled && !output.playing && !muted} aria-pressed={muted} onClick={() => { stopPlayback.current(); relayRef.current?.setMuted(state === "held" || !muted); setMuted((value) => !value); }}>{muted ? <MicOff aria-hidden /> : <Mic aria-hidden />}{muted ? "Unmute" : "Mute"}</Button>
         <Button variant="outline" disabled={controlsDisabled && !output.playing} aria-pressed={state === "held"} onClick={toggleHold}><CirclePause aria-hidden />{state === "held" ? "Resume" : "Hold"}</Button>
-        <Button variant="outline" disabled={controlsDisabled && !output.playing} onClick={() => { stopPlayback.current(); relayRef.current?.interrupt(); setState("interrupted"); setAnnouncement("Paige stopped speaking. You can continue in this conversation."); }}><Hand aria-hidden />Interrupt</Button>
+        <Button variant="outline" disabled={controlsDisabled && !output.playing} onClick={() => { stopPlayback.current(); relayRef.current?.interrupt(); setState(relayReadyRef.current ? "listening" : "interrupted"); setAnnouncement("Paige stopped speaking. You can continue in this conversation."); }}><Hand aria-hidden />Interrupt</Button>
         <Button variant="outline" onClick={() => closeStage("minimize")}><Minimize2 aria-hidden />Minimize</Button>
         <Button variant="destructive" onClick={() => closeStage("end")}><PhoneOff aria-hidden />End</Button>
       </footer>
