@@ -119,6 +119,8 @@ export function signerFacingView(input: {
   otherParties: Array<{ full_name: string; status: string; signing_order: number }>;
   canSign: boolean;
   disclosure: { slug: string; version: number; body: string; checkboxLabel: string } | null;
+  /** Why they cannot sign, when they cannot — already in words a signer can act on. */
+  cannotSignReason?: string | null;
 }) {
   return {
     agreement: {
@@ -143,5 +145,6 @@ export function signerFacingView(input: {
     })),
     canSign: input.canSign,
     disclosure: input.disclosure,
+    cannotSignReason: input.canSign ? null : (input.cannotSignReason ?? null),
   };
 }

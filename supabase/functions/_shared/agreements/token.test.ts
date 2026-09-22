@@ -1,4 +1,4 @@
-// deno test --allow-import=esm.sh,deno.land supabase/functions/_shared/agreements/token.test.ts
+// deno test --allow-import --node-modules-dir=none supabase/functions/_shared/agreements/token.test.ts
 //
 // The signer token is the ONLY control on an unauthenticated endpoint, so these assert the
 // properties that make it one — not that the functions return something.

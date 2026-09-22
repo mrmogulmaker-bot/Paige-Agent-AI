@@ -36,6 +36,9 @@ import {
   TOKEN_SHAPE,
 } from "../_shared/agreements/signing-guard.ts";
 import { consentEvidenceText, ESIGN_CONSENT_DISCLOSURE, renderDisclosure } from "../_shared/agreements/disclosure.ts";
+// Markup and styling live in ONE file so the UI/UX lane's approved template replaces exactly that
+// file and nothing else. This function owns the route, the token, consent, evidence and security.
+import { esc, renderRefusalPage, renderSigningPage } from "../_shared/agreements/signing-page.ts";
 import { sealAndComplete } from "../_shared/agreements/seal.ts";
 import { notify, ownerNotificationEmail } from "../_shared/agreements/notify.ts";
 
@@ -72,14 +75,6 @@ function json(body: unknown, status = 200, extra: Record<string, string> = {}): 
   });
 }
 
-/** Escape for HTML text. The agreement body is TENANT-supplied and rendered to an EXTERNAL party's
- *  browser — a cross-party trust boundary, so no tenant string is ever interpolated as markup. */
-function esc(s: unknown): string {
-  return String(s ?? "")
-    .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
-}
-
 function readCookie(req: Request, name: string): string | null {
   const raw = req.headers.get("cookie");
   if (!raw) return null;
@@ -91,14 +86,7 @@ function readCookie(req: Request, name: string): string | null {
 }
 
 function refusalPage(title: string, detail: string, status: number): Response {
-  return html(
-    `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
-<style>body{font:16px/1.6 system-ui,sans-serif;max-width:34rem;margin:12vh auto;padding:0 1.25rem;color:#1a1a1f}
-h1{font-size:1.35rem;margin:0 0 .5rem}p{color:#55555f}</style></head>
-<body><h1>${esc(title)}</h1><p>${esc(detail)}</p></body></html>`,
-    status,
-  );
+  return html(renderRefusalPage(title, detail), status);
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -271,6 +259,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     tenantDisplayName: tenantName,
     otherParties: (others.data ?? []) as never,
     canSign: decision.canSign,
+    cannotSignReason: decision.canSign ? null : explainCannotSign(String(signer!.status), earlierUnsigned ?? 0),
     disclosure: decision.canSign
       ? {
         slug: ESIGN_CONSENT_DISCLOSURE.slug,
@@ -464,71 +453,4 @@ async function handleSign(
   await db.from("paige_agreements").update({ status: "partially_signed" })
     .eq("id", agreement.id).in("status", ["sent", "viewed"]);
   return json({ ok: true, status: "signed", allSigned: false });
-}
-
-/** A deliberately plain, functional signing surface. Its VISUAL direction is Claude Design's to own;
- *  this exists so the ceremony works, is readable, and is safe to serve to an external browser. */
-function renderSigningPage(v: ReturnType<typeof signerFacingView>): string {
-  const d = v.disclosure;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(v.agreement.title)}</title>
-<style>
- body{font:16px/1.65 system-ui,-apple-system,sans-serif;max-width:46rem;margin:0 auto;padding:2rem 1.25rem 5rem;color:#17171c}
- h1{font-size:1.5rem;margin:0 0 .25rem} .sub{color:#5a5a66;margin:0 0 2rem}
- .doc{border:1px solid #e2e2e8;border-radius:10px;padding:1.25rem;margin:0 0 1.5rem}
- .notice{background:#f7f7fa;border:1px solid #e2e2e8;border-radius:10px;padding:1rem 1.25rem;white-space:pre-wrap;font-size:.875rem;color:#3d3d47;max-height:15rem;overflow:auto}
- label{display:block;margin:1.25rem 0 .35rem;font-weight:600}
- input[type=text]{width:100%;padding:.65rem .75rem;font:inherit;border:1px solid #c9c9d2;border-radius:8px}
- .row{display:flex;gap:.6rem;align-items:flex-start;margin:1.25rem 0}
- button{font:inherit;font-weight:600;padding:.7rem 1.4rem;border-radius:8px;border:0;cursor:pointer}
- .go{background:#1a1a22;color:#fff} .no{background:transparent;color:#777784;text-decoration:underline}
- .msg{margin-top:1rem;padding:.75rem 1rem;border-radius:8px;display:none}
- .ok{background:#eef7ef;color:#1d5c2a} .err{background:#fdeeee;color:#8a2020}
- .parties{font-size:.875rem;color:#5a5a66} .hash{font-family:ui-monospace,monospace;font-size:.72rem;color:#8a8a96;word-break:break-all}
-</style></head><body>
-<h1>${esc(v.agreement.title)}</h1>
-<p class="sub">Sent by ${esc(v.sentBy)}</p>
-
-<div class="doc">
-  <p><a href="?document=1" target="_blank" rel="noopener noreferrer">Open the document (PDF)</a></p>
-  ${v.otherParties.length ? `<p class="parties">Other parties: ${v.otherParties.map((p) => `${esc(p.fullName)} — ${esc(p.status)}`).join(" · ")}</p>` : ""}
-  ${v.agreement.documentSha256 ? `<p class="hash">Document fingerprint (SHA-256): ${esc(v.agreement.documentSha256)}</p>` : ""}
-</div>
-
-${
-    v.canSign && d
-      ? `<form id="f">
-  <div class="notice">${esc(d.body)}</div>
-  <div class="row">
-    <input type="checkbox" id="consent" required>
-    <label for="consent" style="margin:0;font-weight:400">${esc(d.checkboxLabel)}</label>
-  </div>
-  <label for="name">Type your full legal name to sign</label>
-  <input type="text" id="name" autocomplete="name" required minlength="2" value="${esc(v.you.fullName)}">
-  <div class="row" style="margin-top:1.5rem">
-    <button type="submit" class="go">Sign this agreement</button>
-    <button type="button" class="no" id="decline">Decline</button>
-  </div>
-</form>
-<div class="msg ok" id="ok"></div><div class="msg err" id="err"></div>
-<script>
-const f=document.getElementById('f'),ok=document.getElementById('ok'),err=document.getElementById('err');
-const show=(el,t)=>{el.textContent=t;el.style.display='block'};
-async function post(payload,btn){err.style.display='none';btn.disabled=true;
- try{const r=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-  const j=await r.json();
-  if(j.ok){f.style.display='none';show(ok,payload.action==='sign'?'Thank you — your signature has been recorded. You will be emailed a copy when everyone has signed.':'Your decision has been recorded. The sender has been notified.');}
-  else{show(err,j.error||'That did not work. Please try again.');btn.disabled=false;}
- }catch(e){show(err,'That did not reach us. Check your connection and try again.');btn.disabled=false;}}
-f.addEventListener('submit',e=>{e.preventDefault();
- if(!document.getElementById('consent').checked){show(err,'Please agree to sign electronically before continuing.');return;}
- post({action:'sign',consent:true,typedName:document.getElementById('name').value},e.submitter||f.querySelector('.go'));});
-document.getElementById('decline').addEventListener('click',e=>{
- if(!confirm('Decline this agreement? The sender will be told, and it cannot be signed afterwards.'))return;
- post({action:'decline',reason:''},e.target);});
-</script>`
-      : `<p class="sub">${esc(explainCannotSign(v.you.status, 0))}</p>`
-  }
-</body></html>`;
 }

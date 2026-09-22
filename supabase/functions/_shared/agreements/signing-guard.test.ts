@@ -1,4 +1,4 @@
-// deno test --allow-import=deno.land supabase/functions/_shared/agreements/signing-guard.test.ts
+// deno test --allow-import --node-modules-dir=none supabase/functions/_shared/agreements/signing-guard.test.ts
 //
 // The access decision for an unauthenticated endpoint, driven exhaustively. Everything here is pure,
 // so there is no excuse for leaving a branch untested.

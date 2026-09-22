@@ -1,5 +1,7 @@
-// deno test --allow-import=esm.sh,deno.land,registry.npmjs.org,jsr.io \
-//   supabase/functions/_shared/agreements/document.test.ts
+// deno test --allow-import --node-modules-dir=none supabase/functions/_shared/agreements/document.test.ts
+//
+// --node-modules-dir=none matters: with a package.json present, Deno otherwise builds its own npm
+// layout inside node_modules and shadows the npm-installed vite, which breaks `npm run test`.
 //
 // §32: a green typecheck proves this file parses. It proves nothing about whether pdf-lib can load
 // the bytes we produced, embed a font, take a PNG, append a page and save — which is exactly the
