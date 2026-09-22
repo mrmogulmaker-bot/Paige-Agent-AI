@@ -315,3 +315,37 @@ recording `UsageSink`. CI runs it through `npm run smoke:live-relay`. Its determ
 
 This is contract/harness proof only. It is not a deployed relay, provider integration, production
 latency measurement, authenticated account drive, or evidence that realtime speech is available.
+
+## INT-104 provider-free ticketed relay candidate — development, 2026-09-22
+
+Code commit `3ecdfe3878d369c058072a1e7c45af097b7952e7` adds the first
+Edge Function importer of the relay contract, a new `paige-live-relay` browser WSS
+function, and a JWT-gated ticket-issuing path in `paige-live-session`. The
+required redeploy set after an approved merge is exactly those two Edge
+functions, plus Vercel for the browser change. This candidate is **not
+deployment-inert**. `paige-stt`, `paige-dictate`, and `paige-tts` are not
+modified; the active read-aloud profile remains OpenAI.
+
+The ticket is random, valid for 45 seconds, stored only as a SHA-256 digest in
+the existing session row, and consumed with a conditional update before WSS
+upgrade. The row supplies tenant and caller-owned thread scope; no client
+tenant ID is accepted. The provider-free relay sends an honest unavailable
+frame and closes; it never sends ready, requests microphone capture, contacts a
+vendor, or pretends speech worked. The browser transport contains only the
+public anon apikey and one-use ticket; vendor keys remain server-only.
+
+The contract repairs the three pre-activation P2s: a runtime terminal frame
+does not complete playback, a later runtime frame is rejected, and neutral
+LLM/TTS usage follows an explicit adapter-work acknowledgement rather than
+dispatch intent. The local fake-adapter smoke now passes 34 assertions with
+three negative mutation witnesses, 959 ms virtual mic-to-first-speech, and
+zero network/provider calls. Ticket smoke covers expiry, tamper, concurrent
+one-use, replay, scope, and pre-upgrade order. These are local proofs, **not**
+provider-backed speech, production latency, or authenticated owner acceptance.
+UI-delivery evidence: `docs/evidence/ui-delivery/int-104-provider-free-live-relay.md`.
+
+The three withdrawn relay safety ceilings are absent: no duration, concurrent
+session, daily allowance, lease, pricing, reserve, or counter gate. The
+`UsageSink` remains neutral non-blocking measurement for the Budget lane.
+Deepgram Flux, mandatory `mip_opt_out=true`, ElevenLabs voice/model correction,
+and provider activation remain separately gated later work.
