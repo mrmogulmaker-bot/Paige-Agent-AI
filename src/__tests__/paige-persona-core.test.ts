@@ -80,13 +80,17 @@ describe("INT-117 S1R — the seat-neutral content (carried from the parked #132
     expect(PAIGE_PERSONA_CORE).toMatch(/not a licensed professional/i);
   });
 
-  it("the naming rule bans the internal staff word for the PERSON — owner feel-check note (1)", () => {
-    // The person is "the owner"/"you"/"the business"/"the team" — never an internal
-    // staff word. The rule teaches the replacements and the ban shape.
-    expect(PAIGE_PERSONA_CORE).toMatch(/the owner/i);
-    expect(PAIGE_PERSONA_CORE).toMatch(/the business/i);
+  it("the naming rule bans the internal staff word — SEAT-NEUTRAL replacements (feel-check note 1 + Codex 39dfe3dd P2)", () => {
+    // The person is addressed the way their seat's persona already addresses them —
+    // their own name or "you" — never an internal staff word. The replacements are
+    // deliberately NOT seat-specific ("the owner"/"the business" would misidentify a
+    // client-portal caller; the core serves every seat).
+    expect(PAIGE_PERSONA_CORE).toMatch(/their own name, or "you"/i);
     expect(PAIGE_PERSONA_CORE).toMatch(/never an internal staff word/i);
     expect(PAIGE_PERSONA_CORE).toMatch(/internal platform jargon never appears/i);
+    // Sabotage: owner-specific replacements reintroduced → fails.
+    const ownerSpecific = PAIGE_PERSONA_CORE.replace('their own name, or "you"', '"the owner", "you", or "the business"');
+    expect(/their own name, or "you"/i.test(ownerSpecific)).toBe(false);
   });
 
   it("denylists stay clean (§2/§3)", () => {

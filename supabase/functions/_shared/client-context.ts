@@ -419,7 +419,10 @@ export async function resolveUserContext(
   contextUserId: string,
   fundingEnabled: boolean,
 ): Promise<UserContextSources> {
-  const fundingOff = <T>(): ContextSourceResult<T> => contextUnavailable("funding_lane_off");
+  // Cast through the unavailable shape: contextUnavailable returns
+  // ContextSourceResult<null> (its data IS null in every T instantiation), but the
+  // generic helper must surface ContextSourceResult<T> for each funding-gated source.
+  const fundingOff = <T>(): ContextSourceResult<T> => contextUnavailable("funding_lane_off") as ContextSourceResult<T>;
   // QuickBooks is UNGATED (cash/revenue is financial coaching, not credit). Resolved
   // ONCE — a supabase-js builder is thenable and must not be awaited twice.
   // No connection is AVAILABLE-null: the projection's "NOT connected" recommendation
