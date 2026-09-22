@@ -32,11 +32,12 @@
 - **MCP facets** (generic remote MCP · Zapier OAuth · n8n OAuth):
   `create_mcp_connection(_provider_key, _label, _server_url, _auth_kind, _auth_token?, _auth_header_name?, _refresh_token?, _oauth_issuer?, _oauth_client_id?, _oauth_client_secret?, _oauth_scopes?, _access_token_expires_at?, _visibility='tenant', _tenant_id?)`
   - authority: `manage` · output: `{connection_id, status:'pending_verification', endpoint_hash, auth_token_last4}` · creates `status='pending_verification', health='unknown', enabled=true`.
-  - errors: `MCP_FORBIDDEN`(42501) · `MCP_BAD_PROVIDER` · `MCP_BAD_VISIBILITY` · `MCP_BAD_AUTH_KIND` · `MCP_AUTH_KIND_NOT_EXECUTABLE` (api_key is not allowed here — use the REST create) · `MCP_BAD_ENDPOINT` · `MCP_BAD_CREDENTIAL_BUNDLE` · `MCP_OAUTH_TOKEN_EXPIRED` · `MCP_DUPLICATE_LABEL`.
+  - errors: `MCP_FORBIDDEN`(42501) · `MCP_BAD_LABEL` · `MCP_BAD_PROVIDER` · `MCP_BAD_VISIBILITY` · `MCP_BAD_AUTH_KIND` · `MCP_AUTH_KIND_NOT_EXECUTABLE` (api_key is not allowed here — use the REST create) · `MCP_BAD_ENDPOINT` · `MCP_BAD_CREDENTIAL_BUNDLE` · `MCP_OAUTH_TOKEN_EXPIRED` · `MCP_DUPLICATE_LABEL`.
 - **n8n REST (api-key):**
   `create_mcp_rest_connection(_provider_key='n8n', _label, _base_url, _api_key, _visibility='tenant', _tenant_id?)`
   - same output shape · creates `auth_kind='api_key', transport='http', status='pending_verification'`.
-  - errors: `MCP_FORBIDDEN` · `MCP_BAD_PROVIDER` · `MCP_BAD_VISIBILITY` · `MCP_BAD_ENDPOINT` · `MCP_BAD_CREDENTIAL_BUNDLE` · `MCP_DUPLICATE_LABEL`.
+  - errors: `MCP_FORBIDDEN` · `MCP_BAD_LABEL` · `MCP_BAD_PROVIDER` · `MCP_BAD_VISIBILITY` · `MCP_BAD_ENDPOINT` · `MCP_BAD_CREDENTIAL_BUNDLE` · `MCP_DUPLICATE_LABEL`.
+  - **Call with NAMED parameters.** `_label`/`_base_url`/`_api_key` are declared `DEFAULT NULL` (Postgres forbids a required parameter after the defaulted `_provider_key='n8n'`), so a *positional* call — `create_mcp_rest_connection('my-label', …)` — would bind `_provider_key='my-label'` → `MCP_BAD_PROVIDER`. Always call as `create_mcp_rest_connection(_label => …, _base_url => …, _api_key => …)`.
 
 ### OAuth start / callback — **UNDECIDED (NOT in G1a-1)**
 The create RPCs accept an **already-resolved** OAuth token bundle. The authorization dance
@@ -48,8 +49,8 @@ the dance and how the UI initiates it. Do not build OAuth start/callback against
 - **MCP:** `set_mcp_connection_endpoint(...)` (**EXISTING**) — re-point endpoint + rotate the
   credential for an MCP native row; resets to `pending_verification`, revokes approvals, clears tools.
 - **n8n REST:** `set_mcp_rest_connection_endpoint(_connection_id, _base_url, _api_key, _tenant_id?)`
-  (**SHIPPED G1a-1**) — errors incl. `MCP_NOT_A_REST_CONNECTION` (row is not api_key),
-  `MCP_LEGACY_CONNECTION_READONLY`, `MCP_BAD_ENDPOINT`, `MCP_BAD_CREDENTIAL_BUNDLE`, `MCP_FORBIDDEN`.
+  (**SHIPPED G1a-1**) — errors incl. `MCP_NO_CONNECTION` (null id), `MCP_NOT_A_REST_CONNECTION`
+  (row is not api_key), `MCP_LEGACY_CONNECTION_READONLY`, `MCP_BAD_ENDPOINT`, `MCP_BAD_CREDENTIAL_BUNDLE`, `MCP_FORBIDDEN`.
 
 ### disconnect — **SHIPPED (G1a-1)**
 `disconnect_mcp_connection(_connection_id, _hard=false, _tenant_id?)`
@@ -60,6 +61,7 @@ the dance and how the UI initiates it. Do not build OAuth start/callback against
   secrets + its **live** approvals/tools. **HISTORY IS PRESERVED:** receipts survive (unlinked,
   `connection_id → NULL`), the Rail (`paige_workspace_events`) survives (unlinked), and the audit
   log records the deletion. A second delete → uniform `MCP_FORBIDDEN` (no existence oracle).
+- errors: `MCP_NO_CONNECTION` (null id) · `MCP_FORBIDDEN` (missing/foreign-tenant, or lacking the required capability — `delete` for hard, `manage` for disable) · `MCP_LEGACY_CONNECTION_READONLY`.
   output `{connection_id, deleted:true, mode:'delete', approvals_revoked, tools_cleared}`.
 
 ### list connections — **EXISTING**
