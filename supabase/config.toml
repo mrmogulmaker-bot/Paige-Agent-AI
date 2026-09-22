@@ -400,6 +400,14 @@ project_id = "xygzykjyynhzqytbqnzu"
   # resolves tenant + thread server-side and currently fails closed before any provider or mic path.
   [functions.paige-live-session]
     verify_jwt = true
+  # Browser WebSocket handshakes cannot set the Authorization header checked by
+  # the gateway's verify_jwt. As with paige-dictate, the §9 gate is in-function:
+  # paige-live-relay atomically consumes a short-lived one-use ticket issued
+  # only by the JWT-gated paige-live-session endpoint, then derives the tenant
+  # and caller-owned thread from the stored session row. Query tenant IDs are
+  # never accepted. The public anon apikey is supplied in the WS query string.
+  [functions.paige-live-relay]
+    verify_jwt = false
   # Platform-owner-only profile activation. In-function authorization and canonical proof are
   # rechecked before the service-only profile/readiness RPCs are reachable.
   [functions.paige-voice-profile-admin]

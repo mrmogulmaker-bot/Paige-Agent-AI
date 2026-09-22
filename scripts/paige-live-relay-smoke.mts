@@ -71,9 +71,15 @@ class Harness {
     switch (effect.kind) {
       case "ears.start": this.ears.start(effect.turnId); break;
       case "ears.cancel": this.ears.cancel(effect.turnId); break;
-      case "runtime.dispatch": this.runtime.dispatch(effect.turnId, effect.transcript); break;
+      case "runtime.dispatch":
+        this.runtime.dispatch(effect.turnId, effect.transcript);
+        this.send({ kind: "runtime.dispatched", at: this.clock.now(), turnId: effect.turnId });
+        break;
       case "runtime.cancel": this.runtime.cancel(effect.turnId); break;
-      case "mouth.synthesize": this.mouth.synthesize(effect.turnId, effect.text); break;
+      case "mouth.synthesize":
+        this.mouth.synthesize(effect.turnId, effect.text);
+        this.send({ kind: "mouth.synthesized", at: this.clock.now(), turnId: effect.turnId, characters: effect.text.length });
+        break;
       case "mouth.cancel": this.mouth.cancel(effect.turnId); break;
       case "client.clear_playback": this.mouth.clearPlayback(); break;
       case "usage.emit": this.usage.emit(effect.event); break;
@@ -112,6 +118,20 @@ Object.defineProperty(globalThis, "WebSocket", {
 });
 
 console.log("── deterministic relay protocol ──");
+const undispatched = createRelayState({ sessionId: "probe", epoch: "probe-epoch", ticketId: "probe-ticket", ticketExpiresAt: 60_000 });
+const probeStart = reduceRelay(undispatched, { kind: "turn.start", at: 0, turnId: "probe-turn" });
+const probeFinal = reduceRelay(probeStart.state, {
+  kind: "frame", at: 1, sessionId: "probe", epoch: "probe-epoch", turnId: "probe-turn",
+  source: "ears", seq: 1, payload: { kind: "transcript.final", text: "Probe." },
+});
+check("final transcript reserves dispatch but does not meter unobserved runtime work",
+  probeFinal.effects.some((effect) => effect.kind === "runtime.dispatch")
+  && !probeFinal.effects.some((effect) => effect.kind === "usage.emit"));
+const prematureUsageMutation = [...probeFinal.effects, {
+  kind: "usage.emit" as const, event: { kind: "llm_turn" as const, sessionId: "probe", turnId: "probe-turn", units: 1 as const },
+}];
+check("observed-only usage mutation is rejected", prematureUsageMutation.some((effect) => effect.kind === "usage.emit")
+  && !probeFinal.effects.some((effect) => effect.kind === "usage.emit"));
 const h = new Harness();
 const turnStartedAt = h.clock.now();
 
@@ -124,6 +144,7 @@ h.send(frame(h, "turn-1", "ears", 3, { kind: "transcript.partial", text: "Tell m
 h.clock.advance(180);
 h.send(frame(h, "turn-1", "ears", 4, { kind: "transcript.final", text: "Tell me the status." }));
 check("partial -> final dispatches exactly one runtime turn", h.runtime.turns.length === 1 && h.runtime.turns[0]?.transcript === "Tell me the status.");
+check("LLM usage follows observed dispatch", h.usage.events.some((event) => event.kind === "llm_turn"));
 
 h.send(frame(h, "turn-1", "ears", 4, { kind: "transcript.final", text: "duplicate" }));
 h.send(frame(h, "turn-1", "ears", 3, { kind: "transcript.final", text: "reordered" }));
@@ -144,6 +165,24 @@ h.clock.advance(80);
 h.send(frame(h, "turn-1", "runtime", 2, { kind: "runtime.done" }));
 check("first audio predates runtime completion", firstSpeechAt < h.clock.now() && h.state.currentTurn?.runtimeDone === true);
 check("runtime completion flushes the final non-sentence fragment", h.mouth.speech[1]?.text === "More");
+effects = h.send({ kind: "turn.start", at: h.clock.now(), turnId: "premature-next" });
+check("runtime done does not allow another turn before playback completion", effects[0]?.kind === "turn.rejected" && effects[0].reason === "active_turn");
+const completedTooEarly = {
+  ...h.state,
+  currentTurn: { ...h.state.currentTurn!, playbackComplete: true },
+};
+check("playback-completion mutation would wrongly admit a new turn",
+  reduceRelay(completedTooEarly, { kind: "turn.start", at: h.clock.now(), turnId: "mutated-next" }).effects[0]?.kind === "ears.start");
+effects = h.send(frame(h, "turn-1", "runtime", 3, { kind: "runtime.chunk", text: "late" }));
+check("terminal runtime frame fences later chunks", effects[0]?.kind === "turn.rejected");
+const unterminatedMutation = {
+  ...h.state,
+  currentTurn: { ...h.state.currentTurn!, runtimeDone: false },
+};
+check("terminal-frame mutation would wrongly accept a late chunk",
+  reduceRelay(unterminatedMutation, frame(h, "turn-1", "runtime", 3, { kind: "runtime.chunk", text: "late" })).effects[0]?.kind !== "turn.rejected");
+effects = h.send({ kind: "playback.complete", at: h.clock.now(), turnId: "turn-1" });
+check("observed playback completion settles the turn", effects.length === 0 && h.state.currentTurn?.playbackComplete && h.state.phase === "idle");
 const reusedTurnEffects = h.send({ kind: "turn.start", at: h.clock.now(), turnId: "turn-1" });
 check("a completed turn ID cannot be reused", reusedTurnEffects[0]?.kind === "turn.rejected" && reusedTurnEffects[0].reason === "reused_turn");
 

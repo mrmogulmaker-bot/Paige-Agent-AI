@@ -7,9 +7,19 @@ const control = vi.hoisted(() => ({
   start: vi.fn(),
   transition: vi.fn(async () => undefined),
 }));
+const relay = vi.hoisted(() => ({
+  connect: vi.fn(),
+  stop: vi.fn(),
+  interrupt: vi.fn(),
+  setMuted: vi.fn(),
+}));
 vi.mock("@/lib/paigeLiveConversation/client", () => ({
   startPaigeLiveConversation: control.start,
   transitionPaigeLiveConversation: control.transition,
+  renewPaigeLiveRelayTicket: vi.fn(),
+}));
+vi.mock("@/lib/paigeLiveConversation/relayTransport", () => ({
+  connectPaigeLiveRelay: relay.connect,
 }));
 
 import { PaigeLiveConversation } from "./PaigeLiveConversation";
@@ -38,6 +48,11 @@ describe("Paige Live Conversation owner surface", () => {
     root = createRoot(host);
     control.start.mockReset();
     control.transition.mockClear();
+    relay.connect.mockReset();
+    relay.stop.mockClear();
+    relay.interrupt.mockClear();
+    relay.setMuted.mockClear();
+    relay.connect.mockReturnValue({ stop: relay.stop, interrupt: relay.interrupt, setMuted: relay.setMuted });
     ensureThread.mockClear();
     onAnswer.mockClear();
     onApprove.mockClear();
@@ -83,6 +98,28 @@ describe("Paige Live Conversation owner surface", () => {
     expect(document.querySelector(".plc-transcript")?.textContent).toContain("We are still in the same thread.");
     expect(document.querySelector(".plc-notice")?.textContent).toContain("PROOF OWED");
     expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("uses the one-use ticket only for the first-party relay and keeps capture off until ready", async () => {
+    control.start.mockResolvedValueOnce({
+      ok: true, sessionId: "22222222-2222-4222-8222-222222222222",
+      ticket: "opaque-once", availability: "PROOF OWED", code: "relay_ticket_issued",
+      explanation: "Checking the live connection.",
+    });
+    await render();
+    await act(async () => clickText("Talk live with Paige"));
+    await flush();
+    expect(relay.connect).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: "22222222-2222-4222-8222-222222222222", ticket: "opaque-once",
+    }));
+    expect(getUserMedia).not.toHaveBeenCalled();
+    const onState = relay.connect.mock.calls[0][0].onState;
+    await act(async () => onState({ kind: "unavailable", message: "Live audio is not connected yet. You can keep working with Paige in chat." }));
+    expect(document.querySelector(".plc-notice")?.textContent).toContain("UNAVAILABLE");
+    expect(document.querySelector(".plc-notice")?.textContent).toContain("keep working with Paige in chat");
+    expect(getUserMedia).not.toHaveBeenCalled();
+    await act(async () => clickText("End"));
+    expect(relay.stop).toHaveBeenCalledOnce();
   });
 
   it("keeps audio unavailable during genuine text work and clears working Presence afterwards", async () => {

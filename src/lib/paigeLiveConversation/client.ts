@@ -3,11 +3,13 @@ import type { TruthfulAvailability } from "./contract";
 export type PaigeLiveEntryMode = "embedded" | "existing-popout" | "requested-popout";
 
 export type PaigeLiveStartResult = Readonly<{
-  ok: false;
+  ok: boolean;
   sessionId: string | null;
   availability: TruthfulAvailability;
   code: string;
   explanation: string;
+  ticket?: string;
+  ticketExpiresAt?: number;
   profile?: Readonly<{ name: string; revision: string }>;
 }>;
 
@@ -38,16 +40,34 @@ export async function startPaigeLiveConversation(input: Readonly<{
   contextEpoch: string;
   entryMode: PaigeLiveEntryMode;
 }>): Promise<PaigeLiveStartResult> {
-  const payload = await callControlPlane({ action: "start", thread_id: input.threadId, context_epoch: input.contextEpoch, entry_mode: input.entryMode });
+  const payload = await callControlPlane({ action: "relay", thread_id: input.threadId, context_epoch: input.contextEpoch, entry_mode: input.entryMode });
   return {
-    ok: false,
+    ok: payload.ok === true,
     sessionId: typeof payload.session_id === "string" ? payload.session_id : null,
     availability: (payload.availability as TruthfulAvailability | undefined) ?? "UNAVAILABLE",
     code: typeof payload.code === "string" ? payload.code : "provider_unavailable",
+    ...(typeof payload.ticket === "string" ? { ticket: payload.ticket } : {}),
+    ...(typeof payload.ticket_expires_at === "number" ? { ticketExpiresAt: payload.ticket_expires_at } : {}),
     explanation: typeof payload.explanation === "string"
       ? payload.explanation
       : "Live audio is not available yet. You can keep working with Paige in this conversation.",
     ...(payload.profile && typeof payload.profile === "object" ? { profile: payload.profile as { name: string; revision: string } } : {}),
+  };
+}
+
+export async function renewPaigeLiveRelayTicket(input: Readonly<{ sessionId: string; threadId: string; contextEpoch: string; entryMode: PaigeLiveEntryMode }>): Promise<PaigeLiveStartResult> {
+  const payload = await callControlPlane({
+    action: "relay", session_id: input.sessionId, thread_id: input.threadId,
+    context_epoch: input.contextEpoch, entry_mode: input.entryMode,
+  });
+  return {
+    ok: payload.ok === true,
+    sessionId: typeof payload.session_id === "string" ? payload.session_id : null,
+    availability: "PROOF OWED",
+    code: typeof payload.code === "string" ? payload.code : "relay_ticket_unavailable",
+    explanation: typeof payload.explanation === "string" ? payload.explanation : "Paige could not reconnect live audio. You can continue in chat.",
+    ...(typeof payload.ticket === "string" ? { ticket: payload.ticket } : {}),
+    ...(typeof payload.ticket_expires_at === "number" ? { ticketExpiresAt: payload.ticket_expires_at } : {}),
   };
 }
 

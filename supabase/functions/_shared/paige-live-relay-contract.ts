@@ -2,8 +2,8 @@
  * Pure, provider-neutral protocol for Paige Live Conversation.
  *
  * This file opens no socket, calls no provider, and owns
- * no reasoning or mutation path. A future server relay may interpret its effects
- * through adapters. It intentionally has zero deployed importers in this slice.
+ * no reasoning or mutation path. A server relay interprets its effects
+ * through adapters; acknowledgements are emitted only after observed work.
  */
 
 export type UsageEvent =
@@ -62,6 +62,9 @@ export type RelayEvent =
   | RelayFrame
   | { kind: "turn.start"; at: number; turnId: string }
   | { kind: "turn.interrupt"; at: number; turnId: string }
+  | { kind: "runtime.dispatched"; at: number; turnId: string }
+  | { kind: "mouth.synthesized"; at: number; turnId: string; characters: number }
+  | { kind: "playback.complete"; at: number; turnId: string }
   | { kind: "session.cancel"; at: number; reason: string }
   | { kind: "session.reconnect"; at: number; epoch: string; ticketId: string; ticketExpiresAt: number }
   | { kind: "transport.failure"; at: number; turnId: string; beforeDispatch: boolean }
@@ -78,6 +81,7 @@ export type RelayRejectionReason =
   | "reused_epoch_or_ticket"
   | "reused_turn"
   | "source_payload_mismatch"
+  | "invalid_terminal_order"
   | "stale_epoch"
   | "stale_session"
   | "stale_turn";
@@ -101,6 +105,9 @@ export interface RelayTurnState {
   runtimeText: string;
   emittedCharacterCount: number;
   runtimeDone: boolean;
+  runtimeDispatched: boolean;
+  playbackComplete: boolean;
+  pendingSpeech: number[];
   interrupted: boolean;
   dispatchTruth: "not_dispatched" | "dispatched" | "ambiguous";
   sequence: Record<"ears" | "runtime" | "mouth", number>;
@@ -148,7 +155,7 @@ function copyState(state: RelayState): RelayState {
     usedTicketIds: [...state.usedTicketIds],
     usedEpochs: [...state.usedEpochs],
     usedTurnIds: [...state.usedTurnIds],
-    currentTurn: state.currentTurn ? { ...state.currentTurn, sequence: { ...state.currentTurn.sequence } } : null,
+    currentTurn: state.currentTurn ? { ...state.currentTurn, pendingSpeech: [...state.currentTurn.pendingSpeech], sequence: { ...state.currentTurn.sequence } } : null,
     rejections: [...state.rejections],
   };
 }
@@ -170,6 +177,9 @@ function validateFrame(state: RelayState, event: RelayFrame): RelayRejectionReas
     (event.source === "runtime" && ["runtime.chunk", "runtime.done"].includes(event.payload.kind)) ||
     (event.source === "mouth" && event.payload.kind === "audio.chunk");
   if (!sourceMatches) return "source_payload_mismatch";
+  if (event.payload.kind === "audio.observed"
+    && (!Number.isSafeInteger(event.payload.durationMs) || event.payload.durationMs <= 0)) return "invalid_units";
+  if (event.payload.kind === "transcript.final" && state.currentTurn.finalTranscript !== null) return "duplicate_or_reordered";
   return null;
 }
 
@@ -231,7 +241,7 @@ export function reduceRelay(previous: RelayState, event: RelayEvent): RelayTrans
   if (event.kind === "turn.start") {
     if (state.cancelled) return reject(state, event.at, event.turnId, "cancelled_session");
     if (state.usedTurnIds.includes(event.turnId)) return reject(state, event.at, event.turnId, "reused_turn");
-    if (state.currentTurn && !state.currentTurn.interrupted && !state.currentTurn.runtimeDone) {
+    if (state.currentTurn && !state.currentTurn.interrupted && !state.currentTurn.playbackComplete) {
       return reject(state, event.at, event.turnId, "active_turn");
     }
     state.currentTurn = {
@@ -241,6 +251,9 @@ export function reduceRelay(previous: RelayState, event: RelayEvent): RelayTrans
       runtimeText: "",
       emittedCharacterCount: 0,
       runtimeDone: false,
+      runtimeDispatched: false,
+      playbackComplete: false,
+      pendingSpeech: [],
       interrupted: false,
       dispatchTruth: "not_dispatched",
       sequence: { ears: 0, runtime: 0, mouth: 0 },
@@ -271,6 +284,28 @@ export function reduceRelay(previous: RelayState, event: RelayEvent): RelayTrans
     return { state, effects };
   }
 
+  if (event.kind === "runtime.dispatched" || event.kind === "mouth.synthesized" || event.kind === "playback.complete") {
+    const turn = state.currentTurn;
+    if (!turn || turn.id !== event.turnId) return reject(state, event.at, event.turnId, "stale_turn");
+    if (turn.interrupted || state.cancelled) return reject(state, event.at, event.turnId, "interrupted_turn");
+    if (event.kind === "runtime.dispatched") {
+      if (turn.finalTranscript === null || turn.runtimeDispatched) return reject(state, event.at, event.turnId, "invalid_terminal_order");
+      turn.runtimeDispatched = true;
+      turn.dispatchTruth = "dispatched";
+      effects.push({ kind: "usage.emit", event: { kind: "llm_turn", sessionId: state.session.sessionId, turnId: turn.id, units: 1 } });
+    } else if (event.kind === "mouth.synthesized") {
+      const expected = turn.pendingSpeech[0];
+      if (expected === undefined || expected !== event.characters) return reject(state, event.at, event.turnId, "invalid_terminal_order");
+      turn.pendingSpeech.shift();
+      effects.push({ kind: "usage.emit", event: { kind: "tts_chars", sessionId: state.session.sessionId, turnId: turn.id, units: expected } });
+    } else {
+      if (!turn.runtimeDone || turn.pendingSpeech.length || turn.playbackComplete) return reject(state, event.at, event.turnId, "invalid_terminal_order");
+      turn.playbackComplete = true;
+      state.phase = "idle";
+    }
+    return { state, effects };
+  }
+
   if (event.kind === "spoken.intent") {
     // Speech is input, never authority. Affirmation enters the existing governed
     // review path; this protocol intentionally has no execute effect.
@@ -284,38 +319,33 @@ export function reduceRelay(previous: RelayState, event: RelayEvent): RelayTrans
   const invalid = validateFrame(state, event);
   if (invalid) return reject(state, event.at, event.turnId, invalid);
   const turn = state.currentTurn as RelayTurnState;
+  if (turn.playbackComplete || (event.source === "runtime" && (!turn.runtimeDispatched || turn.runtimeDone))
+    || (event.payload.kind === "transcript.partial" && turn.finalTranscript !== null)
+    || (event.payload.kind === "audio.chunk" && !turn.pendingSpeech.length && turn.emittedCharacterCount === 0)) {
+    return reject(state, event.at, event.turnId, "invalid_terminal_order");
+  }
   turn.sequence[event.source] = event.seq;
 
   switch (event.payload.kind) {
     case "audio.observed":
-      if (!Number.isSafeInteger(event.payload.durationMs) || event.payload.durationMs <= 0) {
-        return reject(state, event.at, event.turnId, "invalid_units");
-      }
       effects.push({ kind: "usage.emit", event: { kind: "stt_audio_ms", sessionId: state.session.sessionId, turnId: turn.id, units: event.payload.durationMs } });
       break;
     case "transcript.partial":
       turn.partialTranscript = event.payload.text;
       break;
     case "transcript.final":
-      if (turn.finalTranscript !== null) return reject(state, event.at, event.turnId, "duplicate_or_reordered");
       turn.finalTranscript = event.payload.text;
       turn.partialTranscript = "";
-      turn.dispatchTruth = "dispatched";
       state.phase = "thinking";
-      effects.push(
-        { kind: "usage.emit", event: { kind: "llm_turn", sessionId: state.session.sessionId, turnId: turn.id, units: 1 } },
-        { kind: "runtime.dispatch", turnId: turn.id, transcript: event.payload.text },
-      );
+      effects.push({ kind: "runtime.dispatch", turnId: turn.id, transcript: event.payload.text });
       break;
     case "runtime.chunk": {
       turn.runtimeText += event.payload.text;
       for (let sentence = firstUnemittedSentence(turn); sentence; sentence = firstUnemittedSentence(turn)) {
         turn.emittedCharacterCount += sentence.consumed;
+        turn.pendingSpeech.push(sentence.text.length);
         state.phase = "speaking";
-        effects.push(
-          { kind: "usage.emit", event: { kind: "tts_chars", sessionId: state.session.sessionId, turnId: turn.id, units: sentence.text.length } },
-          { kind: "mouth.synthesize", turnId: turn.id, text: sentence.text },
-        );
+        effects.push({ kind: "mouth.synthesize", turnId: turn.id, text: sentence.text });
       }
       break;
     }
@@ -324,11 +354,9 @@ export function reduceRelay(previous: RelayState, event: RelayEvent): RelayTrans
       const remainder = turn.runtimeText.slice(turn.emittedCharacterCount).trim();
       if (remainder) {
         turn.emittedCharacterCount = turn.runtimeText.length;
+        turn.pendingSpeech.push(remainder.length);
         state.phase = "speaking";
-        effects.push(
-          { kind: "usage.emit", event: { kind: "tts_chars", sessionId: state.session.sessionId, turnId: turn.id, units: remainder.length } },
-          { kind: "mouth.synthesize", turnId: turn.id, text: remainder },
-        );
+        effects.push({ kind: "mouth.synthesize", turnId: turn.id, text: remainder });
       }
       break;
     }
