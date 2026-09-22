@@ -330,6 +330,9 @@ Review fix commit `c619a1cd` serializes pending minimize and restore
 transitions before renewal, and persists the provider-free unavailable state
 and failure code before the socket upgrade. The two reported P2 lifecycle
 defects have targeted failing-first regression checks.
+Code commit `0576dd529c5b3297961d52525a5b39c8665806a3` also
+fences pending playback during context resume and delayed microphone startup
+after socket close, with failing-first browser-transport tests.
 
 The ticket is random, valid for 45 seconds, stored only as a SHA-256 digest in
 the existing session row, and consumed with a conditional update before WSS
