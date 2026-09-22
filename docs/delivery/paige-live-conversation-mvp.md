@@ -272,3 +272,46 @@ in the delivery closeout and release checks.
 - Rail/Mind/Memory boundary is unchanged: consequential work uses the existing governed Spine, verified canonical readback, detailed receipt, and Rail evidence. Live cards are presentation objects. Raw audio, raw transcripts, card text, and casual conversation are not automatic Brain, Mind, or Memory facts.
 - PR #1044 remains separate and paused; it must re-ground and rebase onto this resulting `main` before resuming. No Skills/Intentful Interview, Secure Browser, or social-provider work was absorbed.
 - Customer release identity remains none. This is an internal production delivery with no approved customer version, name, release record, or announcement.
+
+## Provider-neutral relay contract and deterministic harness — 2026-09-22
+
+This internal development slice defines the future relay boundary without activating a live path.
+`supabase/functions/_shared/paige-live-relay-contract.ts` is a pure protocol/reducer with separate
+ears, existing PAIGE runtime, and mouth adapter interfaces. It owns no reasoning, tool execution,
+approval, mutation, provider selection, credential, persistence, or browser behavior. The existing
+PAIGE runtime remains the only brain and the existing governed review path remains the only route to
+consequential work. A spoken `yes` produces review input; the relay contract has no execution effect.
+
+The contract has **zero deployed importers** in this slice. No Edge Function imports it, no Edge
+Function changes, no migration exists, no browser code changes, and there is therefore **no redeploy
+set**. Provider-backed realtime audio remains `PROOF OWED`; authenticated owner audio remains
+`UNVERIFIED`. This slice performs no provider call, token issuance, microphone capture, network
+request, deployment, or customer release.
+
+The only future usage-system seam is the small provider-neutral `UsageSink`. It emits measured units
+with `sessionId` and `turnId`: `stt_audio_ms`, `llm_turn`, and `tts_chars`. It contains no pricing,
+allowance, ceiling, entitlement, reservation, settlement, enforcement, or billing logic. Ownership
+of any later sink implementation remains outside this relay slice.
+
+`scripts/paige-live-relay-smoke.mts` uses a virtual clock plus fake ears, PAIGE runtime, mouth, and a
+recording `UsageSink`. CI runs it through `npm run smoke:live-relay`. Its deterministic proof covers:
+
+- partial transcript to one final transcript creates exactly one PAIGE runtime turn;
+- duplicate, reordered, stale-epoch, stale-turn, reused-turn, cross-adapter payload, and interrupted
+  frames are rejected;
+- the first complete sentence reaches the mouth before runtime completion;
+- the virtual mic-to-first-speech path remains below one second, and runtime completion flushes the
+  final non-sentence fragment;
+- barge-in clears local playback, cancels all three adapters, and fences stale audio within 150 ms;
+- cancellation is idempotent across ears, runtime, mouth, and local playback;
+- a final transcript adjacent to interruption is neither lost nor double-dispatched;
+- reconnect requires a fresh epoch and unexpired single-use relay ticket, cancels every active
+  adapter, clears playback, and fences the old epoch;
+- pre-dispatch failure stays `not_dispatched`, while post-dispatch uncertainty stays `ambiguous`;
+- neutral STT, LLM, and TTS usage measurements carry session/turn attribution;
+- spoken `yes` never executes an action, with a mutation witness proving that invariant is
+  load-bearing; and
+- patched `fetch` and `WebSocket` tripwires observe zero network/provider calls.
+
+This is contract/harness proof only. It is not a deployed relay, provider integration, production
+latency measurement, authenticated account drive, or evidence that realtime speech is available.
