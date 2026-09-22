@@ -19,26 +19,35 @@ governs what is actually built and seeded.
 - **Every provider's governed entry** — its authority lane, limitations, receipts, cost controls, and
   honest delivery status — is authored in the **canonical registry at seeding** (the separately-
   authorized provider-catalogue schema + seed step), **never from this document.** No Integrations
-  work seeds a provider from this file; it seeds through the canonical registry's governance, and the
-  confidence gate below governs which rows may even be *considered* there.
+  work seeds a provider from this file; it seeds through the canonical registry's governance. The
+  research-confidence notes below only *flag* which rows still need re-verification before step 2
+  considers them — they decide nothing.
 
 Sibling: the G1b Integrations UI backend contract at
 [`g1a1-connections-contract.md`](./g1a1-connections-contract.md).
 
 ---
 
-## Coordinator rulings & seeding gate (2026-09-22) — read before seeding
+## Research-confidence notes & scope (2026-09-22) — this document authorizes nothing
 
-These decisions govern how this catalogue becomes live provider rows. They are recorded here so the
-seeding slice honours them; they do **not** rewrite the owner's asset below (§58 — the catalogue is
-preserved as delivered).
+**NO provider may be seeded, enabled, or built from this document.** Seeding a provider requires a
+canonical entry in `integration-capability-registry.json` authored at step 2 — carrying that entry's
+authority lane, limitations, receipts, cost controls, and honest delivery state. **This document
+confers zero authority** (§18 / AGENTS.md — see the DERIVED note above). The owner's provider research
+tables below are preserved as delivered (§58); the notes here flag research confidence and scope so
+step 2 can prioritise — they decide, permit, and gate nothing.
 
-1. **Confidence gate (owner + coordinator).** Every row marked **"(secondary)"** and **every item in
-   section D** is **medium-confidence** and MUST be **re-verified against vendor docs before that
-   provider is seeded.** No secondary/section-D provider is seeded on the strength of this doc alone
-   (§13/§32 — do not claim a verified contract that has not been re-read). High-confidence rows (a
-   vendor-docs URL read on 2026-09-21/22) may be seeded directly, still subject to the per-provider
-   auth/URL/transport check the seeding step performs.
+> **STEP 2 DEPENDENCY.** The candidate providers listed here must be recorded as `PROPOSED` /
+> `UNVERIFIED` entries in the canonical `integration-capability-registry.json` **before any of them
+> is seeded.** Tracked in the register. This catalogue does not create, gate, or authorize those
+> entries — the step-2 seeding slice does.
+
+1. **Confidence marker (research only).** Rows marked **"(secondary)"** and every item in section D
+   are **medium-confidence** — their auth mode, server URL, and transport came from third-party
+   directories and MUST be re-read against current vendor docs at step 2 (§13/§32 — do not claim a
+   verified contract that has not been re-read). Rows with a vendor-docs URL read on 2026-09-21/22 are
+   **high-confidence research** — still not a seeding decision; step 2's canonical entry and its
+   per-provider auth/URL/transport check decide whether anything is seeded.
 2. **SSE transport is EXCLUDED for now (coordinator ruling).** The executable loader path is
    Streamable-HTTP-only. **Square** and **Make** (SSE-only / SSE-documented) therefore stay
    **"Not available yet"** in the Integrations screen until/unless SSE transport is added as its own
@@ -79,14 +88,14 @@ Slack, Asana, Zoom, Front, Canva, Box, Google Workspace (Gmail/Calendar/Drive; D
 ### Tier 4: not available to Paige yet (route via Zapier/Pipedream or wait)
 - **Vendor-hosted but restricted to Claude/ChatGPT or an allowlist:** QuickBooks hosted, Shopify admin, Adobe, Figma.
 - **Local only:** Xero.
-- **SSE-only (excluded per coordinator ruling — see gate #2):** Square, Make.
+- **SSE-only (excluded per coordinator ruling — see note #2):** Square, Make.
 - **No official server:** organic Facebook/Instagram, LinkedIn, TikTok, YouTube. Use Buffer, Metricool or Hootsuite instead.
 
 ### Gateway capability gaps this list exposes (for the MCP agent)
 1. **OAuth with DCR** plus **pre-registered client credentials per provider** (G1a-3). Both are needed.
 2. **Multiple custom headers** on one connection. Pipedream needs 4 headers, HighLevel legacy needs a `locationId` header, Close needs `Close-API-Key` + `Close-Scope`, Stripe Connect needs a `Stripe-Account` header. Today the gateway's `header` auth supports a single header.
 3. **Per-account or regional server URLs** (Descript, Zoho, n8n, Make, Intercom EU, ElevenLabs EU, PandaDoc EU, WooCommerce).
-4. **SSE transport** (Square, Make), if those are wanted — currently **excluded** (gate #2).
+4. **SSE transport** (Square, Make), if those are wanted — currently **excluded** (note #2).
 5. **Human-confirmation hooks** (Stripe refunds, Gusto writes): map them onto Paige's approval + Trust Compass flow.
 
 ---
@@ -170,7 +179,7 @@ Slack, Asana, Zoom, Front, Canva, Box, Google Workspace (Gmail/Calendar/Drive; D
 |---|---|---|---|---|---|
 | **Stripe** | Official remote | `https://mcp.stripe.com` | OAuth or restricted key (+ `Stripe-Account` header) | Customers, invoices, payment links, subscriptions, refunds (human confirm) | docs.stripe.com/mcp |
 | PayPal | Official remote | `https://mcp.paypal.com` | Bearer (client credentials) | Invoices, payments | developer.paypal.com |
-| Square | Official remote, beta, SSE URL | `https://mcp.squareup.com/sse` | OAuth | Payments, customers, catalog, orders (**SSE — excluded, see gate #2; verify Streamable HTTP**) | secondary / github square |
+| Square | Official remote, beta, SSE URL | `https://mcp.squareup.com/sse` | OAuth | Payments, customers, catalog, orders (**SSE — excluded, see note #2; verify Streamable HTTP**) | secondary / github square |
 | QuickBooks | Hosted, Claude/ChatGPT only; OSS server is local | `ai-inc.quickbooks.intuit.com/v1/mcp` | OAuth | Invoices, customers, payments, reports | secondary |
 | Xero | Official local only | `@xeroapi/xero-mcp-server` | OAuth | Accounting CRUD | github.com/xeroapi |
 | **Mercury** | Official remote, read-only | `https://mcp.mercury.com/mcp` | OAuth [DCR] | Balances, transactions | docs.mercury.com |
@@ -196,7 +205,7 @@ Slack, Asana, Zoom, Front, Canva, Box, Google Workspace (Gmail/Calendar/Drive; D
 |---|---|---|---|---|---|
 | **Zapier MCP** | Official remote | `mcp.zapier.com` | OAuth or token | 8,000+ app actions (2 Zapier tasks per call) | docs.zapier.com/mcp |
 | **n8n** | Official, per instance | `<instance>/mcp-server/http` | OAuth or token | Search/run/create workflows | docs.n8n.io |
-| Make | Official cloud (SSE documented) | `https://<zone>/mcp/api/v1/u/<TOKEN>/sse` | URL token or bearer | On-demand scenarios (**SSE — excluded, see gate #2; verify transport**) | developers.make.com |
+| Make | Official cloud (SSE documented) | `https://<zone>/mcp/api/v1/u/<TOKEN>/sse` | URL token or bearer | On-demand scenarios (**SSE — excluded, see note #2; verify transport**) | developers.make.com |
 | Pipedream | Official remote | `https://remote.mcp.pipedream.net/v3` | Bearer + 4 `x-pd-*` headers | 3,000+ APIs with managed auth | pipedream.com/docs |
 | Composio | Official remote | `https://backend.composio.dev/v3/mcp/<id>` | `x-api-key` header | Per-toolkit servers | docs.composio.dev |
 
@@ -252,6 +261,7 @@ Slack, Asana, Zoom, Front, Canva, Box, Google Workspace (Gmail/Calendar/Drive; D
 ## D. Re-verify before building
 Mailchimp Marketing, Zendesk, Sprout Social, BambooHR, Fathom auth, Ramp, ActiveCampaign URL, Jotform URL, Pipedrive URL, WhatsApp Business Tools MCP, Miro URL, Square and Make transport.
 
-> **Section D is the medium-confidence re-verify list (gate #1).** No item here is seeded until its
-> auth mode, server URL, and transport have been re-read against current vendor docs. Square and Make
-> are additionally held by the SSE exclusion (gate #2).
+> **Section D is the medium-confidence re-verify list (note #1).** No item here is even a step-2
+> seeding candidate until its auth mode, server URL, and transport have been re-read against current
+> vendor docs and recorded in the canonical registry. Square and Make additionally carry the SSE
+> exclusion (note #2). This list authorizes nothing.
