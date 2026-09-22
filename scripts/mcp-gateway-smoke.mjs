@@ -1028,6 +1028,32 @@ console.log("\n— F3 shared IP-literal parity: ssrfGuard.ts ⟺ SQL classifier 
   }
 }
 
+// ── 11. G1a-1 — the api_key facet create_mcp_rest_connection WRITES is writable-as-REST yet correctly
+// NON-MCP-EXECUTABLE (disjoint lanes). This drives the REAL makeRpcConnectionLoader on a row shaped
+// EXACTLY as get_mcp_connection_secret returns for a create_mcp_rest_connection row (auth_kind='api_key',
+// server_url=base_url, auth_token=api_key, transport='http') and asserts connection_unusable — so a native
+// REST connection can never be MCP-dispatched even though it is a first-class writable connection.
+// (Section 7 already proves an api_key facet is refused via the executable-facet gate; THIS block pins it
+// to the exact shape the G1a-1 REST writer produces.) MCP_EXECUTABLE_AUTH_KINDS and the existing
+// loader-constant / api_key-unusable assertions above are UNCHANGED.
+// FORWARD-CONSTRAINT: G2-2's REST adapter is what consumes this shape (a REST call, not MCP JSON-RPC).
+console.log("\n— G1a-1: create_mcp_rest_connection's api_key shape is non-MCP-executable (disjoint lanes) —");
+{
+  const REST_BASE = "https://public.example/n8n/mcp-server/http";
+  const adminReturning = (row) => ({ rpc: async (fn) => (fn === "get_mcp_connection_secret" ? { data: row, error: null } : { data: null, error: null }) });
+  // The row create_mcp_rest_connection stores, as get_mcp_connection_secret returns it (migration
+  // 20270331000000 §5 + 20270319000000 §5c): api_key over http, credential in auth_token, no header name.
+  const restRow = {
+    configured: true, enabled: true, connection_id: "conn-rest-g1a1", tenant_id: "ten-1",
+    provider_key: "n8n", server_url: REST_BASE, endpoint_hash: endpointHashOf(REST_BASE),
+    visibility: "tenant", transport: "http", auth_kind: "api_key",
+    auth_token: "n8n-api-key-1234", auth_header_name: null,
+  };
+  const restRes = await connMod.makeRpcConnectionLoader(adminReturning(restRow))("conn-rest-g1a1");
+  check("G1a-1: the api_key row create_mcp_rest_connection stores loads connection_unusable (writable-as-REST, non-MCP-executable — disjoint lanes; G2-2's REST adapter consumes this shape)",
+    restRes.ok === false && restRes.reason === "connection_unusable", JSON.stringify(restRes));
+}
+
 server.close();
 console.log(`\n${passed} assertions passed.`);
 if (failures.length) { console.error(`\n${failures.length} FAILURE(S):\n- ${failures.join("\n- ")}`); process.exit(1); }
