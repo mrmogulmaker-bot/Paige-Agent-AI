@@ -1,0 +1,244 @@
+// _shared/agreements/document.ts — rendering, hashing and sealing the document of record (INT-163).
+//
+// THE INTEGRITY CLAIM THIS FILE HAS TO EARN. When a completed agreement is later questioned, the
+// system must be able to say two separate things and prove both: "this is exactly what the signer
+// was shown", and "this is exactly what they signed, unaltered since". That is two artifacts and
+// two hashes, and the order they are produced in is the whole design.
+//
+// RENDER ONCE. NEVER RE-RENDER. pdf-lib stamps /CreationDate and /ModDate into the file, so two
+// renders of byte-identical content produce different bytes and therefore different hashes. A
+// system that re-renders the document each time somebody opens it can hash whatever it likes — the
+// hash proves nothing, because the artifact it describes no longer exists. So: one Uint8Array is
+// produced at send, uploaded once, hashed, and every later presentation serves THOSE STORED BYTES.
+// This file gives the caller no way to do otherwise.
+//
+// THE CERTIFICATE CANNOT CONTAIN THE SEALED HASH. A document cannot carry a hash of itself — adding
+// the value changes the bytes that the value describes. The certificate therefore lists the
+// PRESENTED hash (the thing it is attesting about) and the event log. The SEALED hash is computed
+// after the sealed file is saved, and lives in the database, the owner's UI, and the completion
+// email. Anyone specifying "print both hashes on the certificate" has described an impossible
+// object, and the only ways to satisfy it are to fake a value or to hash the wrong bytes.
+//
+// WHAT THIS FILE REUSES RATHER THAN FORKS (§18). Body rendering is `_shared/doc-render.ts`, the one
+// structured-content→PDF home. Stamping is pdf-lib directly, the same technique `finalize-agreement`
+// already proves in this runtime. There is no third PDF path.
+
+import { renderDoc, sanitizeWinAnsi } from "../doc-render.ts";
+import { sha256Hex } from "./token.ts";
+
+const PDFLIB_SPEC = "npm:pdf-lib@1.17.1";
+
+export interface AgreementPartyLine {
+  fullName: string;
+  email: string;
+  role: string;
+  signingOrder: number;
+  status: string;
+  typedName: string | null;
+  signedAt: string | null;
+  consentAt: string | null;
+  consentSlug: string | null;
+  consentVersion: number | null;
+  signingIp: string | null;
+  signingUserAgent: string | null;
+  /** Data URL or raw base64 PNG of a drawn mark, when the signer drew one. */
+  signatureImagePng: Uint8Array | null;
+}
+
+export interface AgreementEventLine {
+  eventType: string;
+  at: string;
+  actorKind: string;
+  actorLabel: string | null;
+  ip: string | null;
+}
+
+/**
+ * Render the body a signer will be shown.
+ *
+ * Throws `NeedsConfigError` (from doc-render) when the body uses characters the PDF exporter cannot
+ * encode — Latin-only StandardFonts. That is a truthful refusal, not a silent mangling: an agreement
+ * whose text was quietly replaced with `?` is not a document anybody should be asked to sign.
+ */
+export async function renderPresentedPdf(input: {
+  title: string;
+  bodyMarkdown: string;
+}): Promise<Uint8Array> {
+  const result = await renderDoc({
+    format: "pdf",
+    title: input.title,
+    content: input.bodyMarkdown,
+  });
+  return result.bytes;
+}
+
+/** The presented-bytes hash. Takes the exact array that was uploaded — never a re-render. */
+export async function hashDocument(bytes: Uint8Array): Promise<string> {
+  return await sha256Hex(bytes);
+}
+
+/**
+ * Seal a completed agreement: stamp each signature INTO the document, then append the certificate.
+ *
+ * The signature is drawn onto the document itself rather than recorded beside it, because "the
+ * signature is attached to or logically associated with the record" is the actual statutory test —
+ * a row in a database that merely points at a PDF is weaker evidence than a PDF that carries the
+ * mark. The certificate page then carries the provenance the page images cannot.
+ *
+ * Returns the sealed bytes. The caller hashes THOSE and stores the result; this function neither
+ * knows nor can know its own output's hash.
+ */
+export async function sealAgreementPdf(input: {
+  presentedBytes: Uint8Array;
+  presentedSha256: string;
+  agreementTitle: string;
+  agreementId: string;
+  tenantName: string;
+  parties: AgreementPartyLine[];
+  events: AgreementEventLine[];
+  sealedAtIso: string;
+}): Promise<Uint8Array> {
+  const { PDFDocument, StandardFonts, rgb } = await import(PDFLIB_SPEC);
+
+  // Load the EXACT bytes the signer saw. Everything below is additive to that document.
+  const pdf = await PDFDocument.load(input.presentedBytes);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+
+  const PAGE_W = 612, PAGE_H = 792, MARGIN = 54;
+  const ink = rgb(0.09, 0.09, 0.11);
+  const muted = rgb(0.42, 0.42, 0.46);
+  const rule = rgb(0.78, 0.78, 0.82);
+
+  // ── 1) The signature block, stamped onto a page appended to the agreement itself ───────────────
+  let page = pdf.addPage([PAGE_W, PAGE_H]);
+  let y = PAGE_H - MARGIN;
+
+  const nextPage = () => { page = pdf.addPage([PAGE_W, PAGE_H]); y = PAGE_H - MARGIN; };
+  const room = (h: number) => { if (y - h < MARGIN) nextPage(); };
+
+  // Every string that reaches drawText goes through the same WinAnsi normalisation doc-render uses.
+  // pdf-lib's StandardFonts THROW on an unencodable codepoint, so an un-sanitised signer name would
+  // take down the seal — at the one moment the record matters most.
+  const text = (s: string, size: number, f: unknown, color = ink, indent = 0) => {
+    const line = sanitizeWinAnsi(s);
+    room(size * 1.5);
+    page.drawText(line, { x: MARGIN + indent, y: y - size, size, font: f, color });
+    y -= size * 1.5;
+  };
+
+  const hr = () => {
+    room(14);
+    page.drawLine({
+      start: { x: MARGIN, y: y - 6 },
+      end: { x: PAGE_W - MARGIN, y: y - 6 },
+      thickness: 0.5,
+      color: rule,
+    });
+    y -= 14;
+  };
+
+  text("Signatures", 18, bold);
+  hr();
+  y -= 4;
+
+  for (const p of input.parties.filter((x) => x.status === "signed")) {
+    room(120);
+    text(p.fullName, 13, bold);
+    text(`${p.role} · ${p.email}`, 9, font, muted);
+    y -= 4;
+
+    if (p.signatureImagePng) {
+      try {
+        const png = await pdf.embedPng(p.signatureImagePng);
+        const w = 200;
+        const h = w * (png.height / png.width);
+        room(h + 10);
+        page.drawImage(png, { x: MARGIN, y: y - h, width: w, height: h });
+        y -= h + 8;
+      } catch (e) {
+        // A drawn mark that will not embed must not cost us the seal. The typed name below is the
+        // signature that the record actually relies on; the image is corroboration.
+        console.error("[agreements] signature image embed failed", String(e));
+      }
+    }
+
+    text(`/s/ ${p.typedName ?? p.fullName}`, 14, bold);
+    page.drawLine({
+      start: { x: MARGIN, y: y + 4 },
+      end: { x: MARGIN + 260, y: y + 4 },
+      thickness: 0.5,
+      color: rule,
+    });
+    y -= 8;
+    text(`Signed ${p.signedAt ?? "—"} (UTC)`, 9, font, muted);
+    if (p.consentAt) {
+      text(
+        `Consented to sign electronically ${p.consentAt} (UTC) · disclosure ${p.consentSlug ?? "—"} v${p.consentVersion ?? "—"}`,
+        9, font, muted,
+      );
+    }
+    y -= 10;
+  }
+
+  // ── 2) The certificate of completion ──────────────────────────────────────────────────────────
+  nextPage();
+  text("Certificate of completion", 18, bold);
+  text(sanitizeWinAnsi(input.agreementTitle), 11, font, muted);
+  hr();
+  y -= 6;
+
+  text("Agreement", 11, bold);
+  text(`Reference: ${input.agreementId}`, 9, font);
+  text(`Prepared by: ${sanitizeWinAnsi(input.tenantName)}`, 9, font);
+  text(`Completed: ${input.sealedAtIso} (UTC)`, 9, font);
+  y -= 4;
+
+  // The hash of what every party was shown. This is the value a later reader re-computes against the
+  // presented file to prove it was not altered. Split across lines because 64 hex characters do not
+  // fit the measure at this size.
+  text("Document presented to all parties (SHA-256)", 11, bold);
+  text(input.presentedSha256.slice(0, 32), 9, font);
+  text(input.presentedSha256.slice(32), 9, font);
+  text(
+    "The completed file carries its own SHA-256, recorded alongside this agreement and shown with it.",
+    8, font, muted,
+  );
+  y -= 8;
+
+  text("Parties", 11, bold);
+  for (const p of input.parties) {
+    room(40);
+    text(`${p.signingOrder}. ${sanitizeWinAnsi(p.fullName)} — ${p.email}`, 9, font);
+    text(`   ${p.role} · ${p.status}${p.signedAt ? ` · signed ${p.signedAt} UTC` : ""}`, 8, font, muted);
+    if (p.signingIp) {
+      text(`   Origin ${p.signingIp} · ${sanitizeWinAnsi((p.signingUserAgent ?? "").slice(0, 78))}`, 8, font, muted);
+    }
+  }
+  y -= 8;
+
+  text("Event history", 11, bold);
+  for (const e of input.events) {
+    room(16);
+    const who = e.actorLabel ? ` · ${sanitizeWinAnsi(e.actorLabel)}` : "";
+    const from = e.ip ? ` · ${e.ip}` : "";
+    text(`${e.at}  ${e.eventType}  (${e.actorKind})${who}${from}`, 8, font);
+  }
+  y -= 10;
+
+  hr();
+  // The honest sentence. What we hold is possession of an address, a network origin and a client —
+  // strong circumstantial attribution, and not an identity check. Saying so on the certificate is
+  // better than letting a reader assume more than the evidence carries.
+  text(
+    "Attribution is evidenced by control of the email address the signing link was sent to, together",
+    8, font, muted,
+  );
+  text(
+    "with the network origin, client and timestamps recorded above. No government identity check was",
+    8, font, muted,
+  );
+  text("performed. All times are UTC, recorded by the server.", 8, font, muted);
+
+  return await pdf.save();
+}
