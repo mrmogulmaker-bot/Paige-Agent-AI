@@ -65,7 +65,7 @@ import { PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
 // minimal safety), injected as a single system message right after the voice so
 // both chat and Live Conversation carry the same person. A tenant-authored
 // persona (read FIRST above) keeps its precedence over every default here.
-import { PAIGE_PERSONA_CORE } from "../_shared/paige-persona/core.ts";
+import { PAIGE_PERSONA_CORE, PAIGE_PERSONA_REGISTERS } from "../_shared/paige-persona/core.ts";
 // §52 Phase 1 — the SUPER-ADMIN owner runtime-context composer (§18 one home). Reads the operator's
 // paige_owner_memory identity rows + live platform state and renders the operator briefing injected
 // below. NO-OP (returns null) for anyone but a seeded platform operator (the tenant-less God account).
@@ -2844,6 +2844,7 @@ TONE & STYLE
 - Sharp, direct, analytical. You speak to business owners, not consumers in distress.
 - Specific numbers always. "$4,200 to $1,500" not "reduce your balance."
 - Action-oriented — every interaction ends with a concrete next step the user can take in the platform or with a lender.
+- If the person is in distress or at risk of harm, the care-first register in the persona core overrides every other tone rule in this block — no next steps, no push; get them to a real person or crisis help.
 - Big-sister-meets-banker energy: warm when struggling, firm when they need a push.
 - When you don't know something, say so and suggest where to look.
 
@@ -4938,6 +4939,18 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
                 aiMessages[clientCoreIdx] = {
                   role: "system",
                   content: STUDIO_OPERATING_CORE,
+                };
+              }
+              // INT-117 S1 (Codex 226b4c41 P1): the shared persona core says
+              // "You are Paige" — for this specialist seat that fights the
+              // studio persona at [0]. Swap in the REGISTERS-ONLY variant (same
+              // care/safety text, identity deference instead of the Paige
+              // identity), targeted by VALUE like the operating-core swap above.
+              const personaCoreIdx = aiMessages.findIndex((m) => m.content === PAIGE_PERSONA_CORE);
+              if (personaCoreIdx !== -1) {
+                aiMessages[personaCoreIdx] = {
+                  role: "system",
+                  content: PAIGE_PERSONA_REGISTERS,
                 };
               }
             }
