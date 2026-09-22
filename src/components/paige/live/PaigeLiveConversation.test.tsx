@@ -6,6 +6,7 @@ import type { LiveConversationCard } from "@/lib/paigeLiveConversation/contract"
 const control = vi.hoisted(() => ({
   start: vi.fn(),
   transition: vi.fn(async () => undefined),
+  renew: vi.fn(),
 }));
 const relay = vi.hoisted(() => ({
   connect: vi.fn(),
@@ -16,7 +17,7 @@ const relay = vi.hoisted(() => ({
 vi.mock("@/lib/paigeLiveConversation/client", () => ({
   startPaigeLiveConversation: control.start,
   transitionPaigeLiveConversation: control.transition,
-  renewPaigeLiveRelayTicket: vi.fn(),
+  renewPaigeLiveRelayTicket: control.renew,
 }));
 vi.mock("@/lib/paigeLiveConversation/relayTransport", () => ({
   connectPaigeLiveRelay: relay.connect,
@@ -48,6 +49,8 @@ describe("Paige Live Conversation owner surface", () => {
     root = createRoot(host);
     control.start.mockReset();
     control.transition.mockClear();
+    control.transition.mockImplementation(async () => undefined);
+    control.renew.mockReset();
     relay.connect.mockReset();
     relay.stop.mockClear();
     relay.interrupt.mockClear();
@@ -152,6 +155,40 @@ describe("Paige Live Conversation owner surface", () => {
     await act(async () => clickText("Talk live with Paige"));
     expect(control.start).toHaveBeenCalledTimes(1);
     expect(control.transition).toHaveBeenCalledWith(expect.any(String), "restore", { threadId: "thread-a", contextEpoch: "tenant-a||" });
+  });
+
+  it("waits for minimize and restore to settle before renewing a ticket", async () => {
+    let finishMinimize!: () => void;
+    let finishRestore!: () => void;
+    const minimize = new Promise<void>((resolve) => { finishMinimize = resolve; });
+    const restore = new Promise<void>((resolve) => { finishRestore = resolve; });
+    control.start.mockResolvedValueOnce({
+      ok: true, sessionId: "22222222-2222-4222-8222-222222222222",
+      ticket: "first-ticket", availability: "PROOF OWED", code: "relay_ticket_issued",
+    });
+    control.transition.mockImplementation((_id, action) => {
+      if (action === "minimize") return minimize;
+      if (action === "restore") return restore;
+      return Promise.resolve();
+    });
+    control.renew.mockResolvedValue({
+      ok: true, sessionId: "22222222-2222-4222-8222-222222222222",
+      ticket: "renewed-ticket", availability: "PROOF OWED", code: "relay_ticket_issued",
+    });
+    await render(null, "tenant-a||", false, "thread-a");
+    await act(async () => clickText("Talk live with Paige"));
+    await act(async () => clickText("Minimize"));
+    await act(async () => clickText("Talk live with Paige"));
+    expect(control.renew).not.toHaveBeenCalled();
+    expect(control.transition).not.toHaveBeenCalledWith(expect.any(String), "restore", expect.anything());
+    await act(async () => finishMinimize());
+    await flush();
+    expect(control.transition).toHaveBeenCalledWith(expect.any(String), "restore", expect.anything());
+    expect(control.renew).not.toHaveBeenCalled();
+    await act(async () => finishRestore());
+    await flush();
+    expect(control.renew).toHaveBeenCalledOnce();
+    expect(relay.connect).toHaveBeenLastCalledWith(expect.objectContaining({ ticket: "renewed-ticket" }));
   });
 
   it("ends a minimized session on workspace or thread switch", async () => {

@@ -151,9 +151,14 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
     return () => { media?.removeEventListener("change", bind); scrollElement?.removeEventListener("scroll", scrollController.handleScroll); scrollController.detach(); };
   }, [open, portalDocument, scrollController]);
 
-  const transitionCurrent = useCallback((transition: "hold" | "resume" | "minimize" | "restore" | "retry" | "end") => {
+  const transitionQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const transitionCurrent = useCallback((transition: "hold" | "resume" | "minimize" | "restore" | "retry" | "end"): Promise<void> => {
     const scope = sessionScopeRef.current;
-    if (sessionIdRef.current && scope) void transitionPaigeLiveConversation(sessionIdRef.current, transition, scope).catch(() => undefined);
+    const id = sessionIdRef.current;
+    if (!id || !scope) return transitionQueueRef.current;
+    const next = transitionQueueRef.current.then(() => transitionPaigeLiveConversation(id, transition, scope)).catch(() => undefined);
+    transitionQueueRef.current = next;
+    return next;
   }, []);
 
   const closeStage = useCallback((kind: "minimize" | "end") => {
@@ -254,7 +259,8 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
     const generation = ++requestGeneration.current;
     setOpen(true);
     if (sessionIdRef.current && sessionScopeRef.current?.contextEpoch === contextEpoch && sessionScopeRef.current.threadId === threadId) {
-      transitionCurrent("restore");
+      await transitionCurrent("restore");
+      if (!mounted.current || generation !== requestGeneration.current) return;
       const scope = sessionScopeRef.current;
       try {
         const renewed = await renewPaigeLiveRelayTicket({

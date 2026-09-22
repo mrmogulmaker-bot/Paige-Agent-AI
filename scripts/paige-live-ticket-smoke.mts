@@ -38,6 +38,8 @@ assert.match(config, /\[functions\.paige-live-relay\]\s*verify_jwt = false/);
 assert.ok(relay.indexOf("consumeRelayTicket(") < relay.indexOf("Deno.upgradeWebSocket(req)"), "claim precedes upgrade");
 assert.match(relay, /\.eq\("provider_session_ref", storedDigest\)/);
 assert.match(relay, /\.eq\("tenant_id", session.tenant_id\)/);
+assert.match(relay, /state: "unavailable", availability: "UNAVAILABLE", failure_code: code/, "terminal provider-free state is durable");
+assert.ok(relay.indexOf('markUnavailable("adapters_not_connected")') < relay.indexOf("Deno.upgradeWebSocket(req)"), "terminal state precedes unavailable socket");
 assert.ok(session.indexOf('rpc("current_user_tenant_id")') < session.indexOf("issueRelayTicket()"));
 assert.ok(session.indexOf('from("paige_chat_threads")') < session.indexOf("issueRelayTicket()"));
 assert.doesNotMatch(relay + session, /daily_ceiling|concurrent_session_limit|reserve_paige_voice|allowance_gate/i);

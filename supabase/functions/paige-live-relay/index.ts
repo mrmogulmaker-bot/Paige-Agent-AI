@@ -48,12 +48,32 @@ Deno.serve(async (req) => {
   });
   if (!session) return new Response("invalid_or_consumed_ticket", { status: 401 });
 
+  const markUnavailable = async (code: string): Promise<boolean> => {
+    const { data, error } = await admin.from("paige_live_sessions")
+      .update({
+        state: "unavailable", availability: "UNAVAILABLE", failure_code: code,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", session.id).eq("tenant_id", session.tenant_id)
+      .eq("actor_user_id", session.actor_user_id).eq("state", "connecting")
+      .select("id").maybeSingle();
+    if (error || !data) {
+      console.error("[paige-live-relay] terminal state write failed", { code: error?.code });
+      return false;
+    }
+    return true;
+  };
+
   // Recheck the original caller-owned thread after the atomic claim. The
   // ticket only identifies a server-owned session; it grants no tenant choice.
   const { data: thread, error: threadError } = await admin.from("paige_chat_threads")
     .select("id").eq("id", session.thread_id).eq("tenant_id", session.tenant_id)
     .eq("caller_user_id", session.actor_user_id).maybeSingle();
-  if (threadError || !thread) return new Response("thread_scope_mismatch", { status: 403 });
+  if (threadError || !thread) {
+    if (!await markUnavailable("thread_scope_mismatch")) return new Response("relay_unavailable", { status: 503 });
+    return new Response("thread_scope_mismatch", { status: 403 });
+  }
+  if (!await markUnavailable("adapters_not_connected")) return new Response("relay_unavailable", { status: 503 });
 
   const { socket, response } = Deno.upgradeWebSocket(req);
   let relay = createRelayState({
