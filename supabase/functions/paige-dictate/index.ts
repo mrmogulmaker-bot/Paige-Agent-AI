@@ -45,6 +45,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Deepgram documents WebSocket close code 1000 as "Normal Closure" / successful closure.
+// CloseStream is the STT flush-and-terminate path; 1008 and 1011 are documented STT error closes.
+// Read 2026-09-21:
+// https://developers.deepgram.com/docs/close-stream
+// https://developers.deepgram.com/docs/stt-troubleshooting-websocket-data-and-net-errors
+// https://developers.deepgram.com/docs/tts-ws-close
+const DEEPGRAM_SUCCESS_CLOSE_CODE = 1000;
+
 // An upgraded WebSocket is not request-tracked by the Edge supervisor after the response returns.
 // Tie the isolate to the client socket's close event so queued terminal frames can leave the worker.
 const waitUntil = (promise: Promise<unknown>): void => {
@@ -243,7 +251,7 @@ Deno.serve(async (req) => {
         // The upstream close is ordered after its transcript frames. Only this successful boundary
         // earns the exactly-once application receipt; transport close cleanliness is not the receipt.
         if (finalizeTimer !== null) { clearTimeout(finalizeTimer); finalizeTimer = null; }
-        if (deepgramErrored) {
+        if (deepgramErrored || e.code !== DEEPGRAM_SUCCESS_CLOSE_CODE) {
           sendError("stt_finalize_failed", "Voice typing stopped before it could finish. Please try again.");
           teardown("deepgram_failed_after_finalize");
           closeClient(1011, "finalize_failed");

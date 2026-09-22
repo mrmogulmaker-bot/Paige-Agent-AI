@@ -121,6 +121,9 @@ const dictateSource = readFileSync(new URL("../supabase/functions/paige-dictate/
 const doneSends = dictateSource.match(/sendJson\(\{ type: "done" \}\)/g) ?? [];
 check("done is emitted from exactly one guarded send site", doneSends.length === 1, `count=${doneSends.length}`);
 check("done is documented in the server-to-client protocol", dictateSource.includes('• { "type":"done" }'));
+const documentedSuccessCodeMatch = dictateSource.match(/const DEEPGRAM_SUCCESS_CLOSE_CODE = (\d+);/);
+const documentedSuccessCode = Number(documentedSuccessCodeMatch?.[1]);
+check("Deepgram success close code is explicitly pinned to 1000", documentedSuccessCode === 1000);
 
 const upstreamCloseStart = dictateSource.indexOf("deepgram.onclose = (e) => {");
 const unexpectedCloseStart = dictateSource.indexOf("// UNEXPECTED provider close mid-dictation", upstreamCloseStart);
@@ -131,11 +134,19 @@ check(
     finalizeCloseBranch.indexOf("sendDone();") < finalizeCloseBranch.indexOf('closeClient(1000, "stop")'),
 );
 check(
-  "upstream finalization error emits an error and never earns done",
-  finalizeCloseBranch.includes("if (deepgramErrored)") &&
+  "upstream finalization error or non-success close emits an error and never earns done",
+  finalizeCloseBranch.includes("if (deepgramErrored || e.code !== DEEPGRAM_SUCCESS_CLOSE_CODE)") &&
     finalizeCloseBranch.includes('sendError("stt_finalize_failed"') &&
     /closeClient\(1011, "finalize_failed"\);\s+return;\s+}\s+sendDone\(\);/.test(finalizeCloseBranch),
 );
+const earnsDone = (closeCode: number, precedingOnError: boolean) =>
+  !precedingOnError && closeCode === documentedSuccessCode;
+check("normal close 1000 without onerror earns done", earnsDone(1000, false));
+check(
+  "non-success close with no preceding onerror never earns done",
+  !earnsDone(1008, false) && !earnsDone(1011, false) && !earnsDone(1006, false),
+);
+check("preceding onerror prevents done even on close 1000", !earnsDone(1000, true));
 
 const finalizeTimerStart = dictateSource.indexOf("finalizeTimer = setTimeout(() => {");
 const finalizeTimerEnd = dictateSource.indexOf("}, 2000);", finalizeTimerStart);
