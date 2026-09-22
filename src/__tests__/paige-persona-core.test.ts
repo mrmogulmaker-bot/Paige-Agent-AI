@@ -133,6 +133,14 @@ describe("INT-117 S1R — the injection: ONE unconditional system message, no pe
     expect(ctxAt).toBeGreaterThan(coreAt);
   });
 
+  it("DELIBERATE BOUNDARY (pinned): paige-public-chat does NOT assemble the core — the portal is S5's reconciliation", () => {
+    const portalSrc = readFileSync("supabase/functions/paige-public-chat/index.ts", "utf8");
+    expect(portalSrc).not.toMatch(/PAIGE_PERSONA_CORE/);
+    expect(portalSrc).not.toMatch(/paige-persona\/core/);
+    // The portal has its own persona fork (S5 reconciles it onto the core).
+    expect(portalSrc).toContain("function buildPersona(");
+  });
+
   it("the VP ternary and the Studio persona-core swap are DELETED (not left behind)", () => {
     expect(chatSrc).not.toMatch(/vpAddress \? PAIGE_PERSONA_REGISTERS : PAIGE_PERSONA_CORE/);
     expect(chatSrc).not.toMatch(/personaCoreIdx/);
