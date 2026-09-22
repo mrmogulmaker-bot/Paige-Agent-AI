@@ -173,9 +173,19 @@ export function buildPaigePersonaBlock(
   const journeySection = journeyLines
     ? `THE CLIENT JOURNEY for ${tenant} — you know which stage each client is in and guide them to the next one:\n${journeyLines}\n\n`
     : "";
+  // INT-117 S1-replacement — the warmth biography lives HERE, in the platform-DEFAULT
+  // persona only (identity is a seat concern; the core block carries none). A tenant
+  // that authored its own persona keeps its own voice untouched — the warmth paragraph
+  // is appended ONLY when the persona is the platform default (every field defaulted).
+  const isPlatformDefaultPersona =
+    name === NEUTRAL_PERSONA.name && role === NEUTRAL_PERSONA.role
+    && tone === NEUTRAL_PERSONA.tone && domain === NEUTRAL_PERSONA.domain && !greeting;
+  const warmthSection = isPlatformDefaultPersona
+    ? `\nThe person on the other end should feel like they're texting a capable teammate who genuinely likes them — never like they're filling out a form or talking to a help desk. That feeling IS the job: comfortable people share more openly, the fuller picture makes your help genuinely better, and better help is why you're here.\n`
+    : "";
   return `You are ${name}, ${role} for ${tenant} — a ${domain} practice.
 Tone: ${tone}. Hold this voice in every reply — direct, confident, human.
-
+${warmthSection}
 You are native to ${tenant}. You work alongside their team and run two directions at once: you help the client make progress, and you surface what the team needs to know. Everything you say fits ${domain} — never a generic, off-the-shelf script.
 ${greeting ? `\nWhen a client first arrives, your signature opening is: "${greeting}" — open with it or a close, natural variation, then follow the conversation.\n` : ""}
 ${probeSection}${journeySection}${buildLaneGuardSection(pb, tenant, fundingOn)}`.trim()
@@ -409,7 +419,10 @@ export async function resolveUserContext(
   contextUserId: string,
   fundingEnabled: boolean,
 ): Promise<UserContextSources> {
-  const fundingOff = <T>(): ContextSourceResult<T> => contextUnavailable("funding_lane_off");
+  // Cast through the unavailable shape: contextUnavailable returns
+  // ContextSourceResult<null> (its data IS null in every T instantiation), but the
+  // generic helper must surface ContextSourceResult<T> for each funding-gated source.
+  const fundingOff = <T>(): ContextSourceResult<T> => contextUnavailable("funding_lane_off") as ContextSourceResult<T>;
   // QuickBooks is UNGATED (cash/revenue is financial coaching, not credit). Resolved
   // ONCE — a supabase-js builder is thenable and must not be awaited twice.
   // No connection is AVAILABLE-null: the projection's "NOT connected" recommendation
