@@ -30,6 +30,13 @@
 --     _tenant_id → tenant-mismatch refusal; a NULL actor → refused (no service-role bypass).
 --   • A1/A3: the audit payload carries NO url/token substring (hashes/enums/name/last4 only); the return
 --     carries only the write-only keys (no secret, no decrypted URL).
+--   • P1(a) re-key = reconnect: a soft-disconnected (enabled=false) MCP row and REST row each RECONNECT
+--     (enabled=true, status='pending_verification') on a fresh-cred re-key, and get_mcp_connection_secret
+--     then returns a USABLE shape (configured/enabled true, server_url + auth_token loadable) after a probe;
+--     re-keying an ALREADY-enabled row is a no-op for enabled (stays true, no error, no flip).
+--   • P2 list-side configured: get_mcp_connections_v2 reports configured:true for a credentialless url/none
+--     row (server_url_ct present, both tokens null) and STILL configured:false for a tokenless bearer row
+--     (a soft-disabled bearer — guard against over-widening).
 --
 -- NOTE (§13): a "manage-only, no-delete" actor is NOT constructible today — _mcp_caller_capabilities
 -- co-grants manage AND delete to owner/tenant-admin — so the delete gate is proven two ways instead: the
@@ -479,6 +486,126 @@ BEGIN
   -- no URL / token substring anywhere in the payload.
   IF _p::text ~* 'audit-check\.example|https://|super-secret-token' THEN
     RAISE EXCEPTION '(A1) audit payload leaked a URL/token: %', _p; END IF;
+END $$;
+
+-- ── (P1(a) — MCP setter: a successful re-key RECONNECTS a soft-disabled connection) ───────────────
+-- A soft disconnect leaves enabled=false; the endpoint setter with fresh creds must set enabled=true
+-- (re-key = reconnect). Before the P1(a) fix the row stayed disabled and the secret loader returned a
+-- non-usable {configured:true, enabled:false} shape.
+DO $$
+DECLARE _r jsonb; _row public.mcp_connections%ROWTYPE; _sec jsonb; _cid uuid;
+  U1 text := 'https://rekey-oauth-1.example.com/rpc';
+  U2 text := 'https://rekey-oauth-2.example.com/rpc';
+BEGIN
+  PERFORM set_config('request.jwt.claims', '{"sub":"c1a00000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+
+  -- create an oauth native connection (enabled=true by construction).
+  _r := public.create_mcp_connection('generic-remote','rekey-oauth',U1,'oauth',
+          'tok-rk', NULL, 'refresh-rk', 'https://iss.example.com', 'cid-rk', 'sec-rk', ARRAY['read']::text[], now() + interval '1 hour');
+  _cid := (_r->>'connection_id')::uuid;
+  SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = _cid;
+  IF _row.enabled IS NOT TRUE THEN RAISE EXCEPTION '(rekey mcp) freshly-created row must be enabled'; END IF;
+
+  -- soft-disconnect it → enabled=false, status='unconfigured'.
+  _r := public.disconnect_mcp_connection(_cid, false);
+  SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = _cid;
+  IF _row.enabled IS NOT FALSE OR _row.status <> 'unconfigured' THEN
+    RAISE EXCEPTION '(rekey mcp) disable must set enabled=false/status=unconfigured, got enabled=% status=%', _row.enabled, _row.status; END IF;
+
+  -- re-key with FRESH creds (a different endpoint + a fresh bearer token) → RECONNECT.
+  _r := public.set_mcp_connection_endpoint(_cid, U2, 'bearer', 'tok-fresh-9999');
+  IF (_r->>'status') <> 'pending_verification' THEN RAISE EXCEPTION '(rekey mcp) return status wrong: %', _r; END IF;
+  SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = _cid;
+  IF _row.enabled IS NOT TRUE THEN RAISE EXCEPTION '(rekey mcp) re-key must RECONNECT (enabled=true), got %', _row.enabled; END IF;
+  IF _row.status <> 'pending_verification' THEN RAISE EXCEPTION '(rekey mcp) status must be pending_verification, got %', _row.status; END IF;
+
+  -- as the service-role probe writer, flip status→connected; the secret loader now returns a USABLE shape.
+  PERFORM public.mcp_connection_probe(_cid, 'connected', 'healthy', NULL, NULL);
+  _sec := public.get_mcp_connection_secret(_cid);
+  IF (_sec->>'configured') <> 'true' OR (_sec->>'enabled') <> 'true'
+     OR (_sec->>'server_url') <> U2 OR (_sec->>'auth_token') <> 'tok-fresh-9999'
+     OR (_sec->>'auth_kind') <> 'bearer' THEN
+    RAISE EXCEPTION '(rekey mcp) get_mcp_connection_secret not usable after reconnect: %', _sec; END IF;
+END $$;
+
+-- ── (P1(a) — REST setter: a successful re-key RECONNECTS a soft-disabled api_key connection) ───────
+DO $$
+DECLARE _r jsonb; _row public.mcp_connections%ROWTYPE; _sec jsonb; _cid uuid;
+  B1 text := 'https://rekey-rest-1.example.com/mcp-server/http';
+  B2 text := 'https://rekey-rest-2.example.com/mcp-server/http';
+BEGIN
+  PERFORM set_config('request.jwt.claims', '{"sub":"c1a00000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+
+  _r := public.create_mcp_rest_connection(_label=>'rekey-rest', _base_url=>B1, _api_key=>'n8n-api-key-1111');
+  _cid := (_r->>'connection_id')::uuid;
+
+  -- soft-disconnect → enabled=false / status=unconfigured (auth_kind stays api_key).
+  PERFORM public.disconnect_mcp_connection(_cid, false);
+  SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = _cid;
+  IF _row.enabled IS NOT FALSE OR _row.status <> 'unconfigured' OR _row.auth_kind <> 'api_key' THEN
+    RAISE EXCEPTION '(rekey rest) disable state wrong: enabled=% status=% kind=%', _row.enabled, _row.status, _row.auth_kind; END IF;
+
+  -- re-key → RECONNECT.
+  _r := public.set_mcp_rest_connection_endpoint(_cid, B2, 'n8n-api-key-2222');
+  IF (_r->>'status') <> 'pending_verification' THEN RAISE EXCEPTION '(rekey rest) return status wrong: %', _r; END IF;
+  SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = _cid;
+  IF _row.enabled IS NOT TRUE THEN RAISE EXCEPTION '(rekey rest) re-key must RECONNECT (enabled=true), got %', _row.enabled; END IF;
+  IF _row.status <> 'pending_verification' THEN RAISE EXCEPTION '(rekey rest) status must be pending_verification, got %', _row.status; END IF;
+
+  PERFORM public.mcp_connection_probe(_cid, 'connected', 'healthy', NULL, NULL);
+  _sec := public.get_mcp_connection_secret(_cid);
+  IF (_sec->>'configured') <> 'true' OR (_sec->>'enabled') <> 'true'
+     OR (_sec->>'server_url') <> B2 OR (_sec->>'auth_token') <> 'n8n-api-key-2222'
+     OR (_sec->>'auth_kind') <> 'api_key' THEN
+    RAISE EXCEPTION '(rekey rest) get_mcp_connection_secret not usable after reconnect: %', _sec; END IF;
+END $$;
+
+-- ── (P1(a) — no-op: re-keying an ALREADY-enabled row leaves enabled=true, no error, no flip) ───────
+DO $$
+DECLARE _r jsonb; _row public.mcp_connections%ROWTYPE; _cid uuid;
+  U1 text := 'https://rekey-noop-1.example.com/rpc';
+  U2 text := 'https://rekey-noop-2.example.com/rpc';
+BEGIN
+  PERFORM set_config('request.jwt.claims', '{"sub":"c1a00000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+  _cid := (public.create_mcp_connection('generic-remote','rekey-noop',U1,'bearer','tok-noop-123456')->>'connection_id')::uuid;
+  -- the row is enabled from creation; a re-key must NOT error and must NOT flip enabled to false.
+  _r := public.set_mcp_connection_endpoint(_cid, U2, 'bearer', 'tok-noop-654321');
+  SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = _cid;
+  IF _row.enabled IS NOT TRUE THEN RAISE EXCEPTION '(rekey no-op) an already-enabled re-key must stay enabled=true, got %', _row.enabled; END IF;
+  IF _row.status <> 'pending_verification' THEN RAISE EXCEPTION '(rekey no-op) status must be pending_verification, got %', _row.status; END IF;
+END $$;
+
+-- ── (P2 — get_mcp_connections_v2.configured is TRUE for credentialless url/none, FALSE for tokenless bearer) ─
+DO $$
+DECLARE _cfg text; _none_cid uuid; _url_cid uuid; _bearer_cid uuid;
+  T uuid := 'c1a00000-0000-0000-0000-0000000000a1';
+BEGIN
+  PERFORM set_config('request.jwt.claims', '{"sub":"c1a00000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+
+  -- a 'none' connection (no credential material) → configured:true (the credential is not token-borne).
+  _none_cid := (public.create_mcp_connection('generic-remote','p2-none','https://p2-none.example.com/rpc','none')->>'connection_id')::uuid;
+  -- a 'url' connection (credential inside the endpoint) → configured:true.
+  _url_cid  := (public.create_mcp_connection('zapier','p2-url','https://p2-url.example.com/rpc','url')->>'connection_id')::uuid;
+
+  SELECT elem->>'configured' INTO _cfg
+    FROM jsonb_array_elements(public.get_mcp_connections_v2(T)) elem
+   WHERE (elem->>'connection_id')::uuid = _none_cid;
+  IF _cfg IS DISTINCT FROM 'true' THEN RAISE EXCEPTION '(p2) none-auth row must be configured:true, got %', _cfg; END IF;
+
+  SELECT elem->>'configured' INTO _cfg
+    FROM jsonb_array_elements(public.get_mcp_connections_v2(T)) elem
+   WHERE (elem->>'connection_id')::uuid = _url_cid;
+  IF _cfg IS DISTINCT FROM 'true' THEN RAISE EXCEPTION '(p2) url-auth row must be configured:true, got %', _cfg; END IF;
+
+  -- guard against over-widening: a bearer row with NO token still reports configured:false. A soft
+  -- disable scrubs the bearer token (auth_token_ct→NULL) while leaving auth_kind='bearer' — the exact
+  -- shape the url/none widening must NOT catch.
+  _bearer_cid := (public.create_mcp_connection('generic-remote','p2-bearer','https://p2-bearer.example.com/rpc','bearer','tok-p2-123456')->>'connection_id')::uuid;
+  PERFORM public.disconnect_mcp_connection(_bearer_cid, false);   -- nulls auth_token_ct, keeps auth_kind='bearer'
+  SELECT elem->>'configured' INTO _cfg
+    FROM jsonb_array_elements(public.get_mcp_connections_v2(T)) elem
+   WHERE (elem->>'connection_id')::uuid = _bearer_cid;
+  IF _cfg IS DISTINCT FROM 'false' THEN RAISE EXCEPTION '(p2) tokenless bearer row must stay configured:false, got %', _cfg; END IF;
 END $$;
 
 DO $$ BEGIN RAISE NOTICE 'MCP_GW_CONNECTION_CREATE_PROVEN'; END $$;

@@ -93,9 +93,11 @@
 --   DROP FUNCTION IF EXISTS public.create_mcp_connection(text, text, text, text, text, text, text, text, text, text, text[], timestamptz, text, uuid);
 --   -- restore public._mcp_caller_capabilities(uuid,uuid) to its 20270330000000 body (drop the
 --   --   `mcp.connections.delete` append), and set_mcp_connection_endpoint(...) to its 20270330000000
---   --   body (re-inline the bundle block), then:
+--   --   body (re-inline the bundle block, drop the P1(a) `enabled = true` from the UPDATE), then:
 --   DROP FUNCTION IF EXISTS public._mcp_assert_credential_bundle(text, text, text, text, text, text, text, text[], timestamptz);
 --   -- and restore mcp_connection_receipts.connection_id to NOT NULL + ON DELETE CASCADE.
+--   -- P2: restore public.get_mcp_connections_v2(uuid) to its 20270319000000 `configured` expression
+--   --   (auth_token_ct IS NOT NULL OR refresh_token_ct IS NOT NULL) — dropping the url/none widening.
 -- ============================================================================
 
 -- ─────────────────────────────────────────────────────────────────────────────────
@@ -220,9 +222,12 @@ COMMENT ON FUNCTION public._mcp_assert_credential_bundle(text, text, text, text,
 --    (G1a-1 Correction 1). Order is unchanged: schema-kind check → api_key→NOT_EXECUTABLE (inline) →
 --    endpoint-safe → bundle-helper. Everything else (authority, D1, INVARIANT UPDATE, provider_state/
 --    status/health reset, approval revoke + tool clear, in-txn audit, write-only return) is byte-for-
---    byte the 20270330000000 body. The existing setter pgTAP + the loader-parity smoke prove the swap
---    is behavior-preserving. Grants re-emitted identical (authenticated only); the COMMENT persists
---    from 20270330000000 (CREATE OR REPLACE keeps it) and remains accurate.
+--    byte the 20270330000000 body EXCEPT the ONE P1(a) line `enabled = true` added to the atomic UPDATE's
+--    SET list — a successful re-key RECONNECTS (a no-op for an already-enabled row, a reconnect for a
+--    disabled / soft-disconnected one; same manage authority, no escalation). The existing setter pgTAP +
+--    the loader-parity smoke prove the rest of the swap is behavior-preserving. Grants re-emitted
+--    identical (authenticated only); the COMMENT is RE-ISSUED here (was inherited from 20270330000000) to
+--    record the reconnect semantics.
 -- ─────────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.set_mcp_connection_endpoint(
   _connection_id           uuid,
@@ -389,6 +394,10 @@ BEGIN
     granted_scopes          = '{}',                       -- the old grant ceiling is void on re-bind
     provider_state          = '{}'::jsonb,                -- old-endpoint operational state does not carry over
     access_token_expires_at = _access_token_expires_at,
+    enabled                 = true,                       -- P1(a): a successful re-key RECONNECTS. Re-keying an
+                                                          -- already-enabled row is a no-op for enabled; re-keying a
+                                                          -- disabled (soft-disconnected) row reconnects it. Same
+                                                          -- authority (manage) — no escalation.
     status                  = 'pending_verification',
     health                  = 'unknown',
     last_error_code         = NULL,
@@ -435,6 +444,10 @@ $$;
 
 REVOKE ALL ON FUNCTION public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid) TO authenticated;
+
+-- COMMENT re-issued (was inherited verbatim from 20270330000000) to record the P1(a) reconnect semantics.
+COMMENT ON FUNCTION public.set_mcp_connection_endpoint(uuid, text, text, text, text, text, text, text, text, text[], timestamptz, uuid) IS
+  'INT-099 (MCP PR-2) / G1a-1: the endpoint setter for the Connected MCP Gateway. Resolves authority BEFORE reading the connection (§9): the mcp.connections.manage capability for the caller''s server-resolved tenant via _mcp_caller_capabilities (owner/tenant-admin only; platform owner EXCLUDED, A2), fail closed, no service-role bypass; a missing or foreign-tenant connection is a uniform MCP_FORBIDDEN. REFUSES a legacy-projected row (D1). PRINCIPLE (round 3, round-4 corrected oracle): a bundle it accepts is one the runtime LOADER makeRpcConnectionLoader (_shared/mcp-gateway/connection.ts) loads as usable — never a destructive rebind that strands a working connection. Validates the CREDENTIAL BUNDLE against auth_kind BEFORE any write via the ONE helper _mcp_assert_credential_bundle (G1a-1 Correction 1): accepted kinds EQUAL the loader''s MCP_EXECUTABLE_AUTH_KINDS (connection.ts:58) — api_key → MCP_AUTH_KIND_NOT_EXECUTABLE (round-4); header→token + a runtime-usable header_name via _mcp_header_name_usable [F1], reject stray; bearer→token, reject stray; oauth→token+issuer+client_id [F3: token REQUIRED; refresh/secret/scopes optional-additional] + reject an already-expired access token (access_token_expires_at<=clock_timestamp() → MCP_OAUTH_TOKEN_EXPIRED, mirroring the loader''s oauthExpired connection.ts:118), reject stray header; url/none→no credential material [F2]; closed codes MCP_BAD_CREDENTIAL_BUNDLE / MCP_AUTH_KIND_NOT_EXECUTABLE / MCP_OAUTH_TOKEN_EXPIRED, never echoes a value. A bracketed endpoint host must be valid IPv6 (round-4: a bracketed IPv4 is refused, matching WHATWG new URL()). Writes the endpoint + FULL credential bundle in one atomic UPDATE, sourcing every credential column from the arguments (never carrying the old ciphertext forward) so a changed endpoint can never inherit the old secret; resets provider_state, and — EXPLICITLY, before the UPDATE — deletes the stale tool catalog AND revokes every endpoint-bound approval (unconditionally, so a same-URL credential rotation also drops consent; the 20270322000000 trigger then no-ops). P1(a): a successful re-key RESTORES enabled=true (re-key = reconnect) — re-keying an already-enabled row is a no-op for enabled, re-keying a disabled (soft-disconnected) row reconnects it, same manage authority, no escalation. Records a hashes/enums/counts-only audit into paige_audit_log in the same transaction (old/new endpoint_hash, endpoint_changed, credential_changed [F4: boolean derived in-definer from ALL credential-bearing fields — plaintext never logged], auth_kind + auth_token_last4 before/after, approvals_revoked, tools_cleared) (A1). Returns only connection_id/status/endpoint_hash/auth_token_last4 (A3). Static https + value-based IP + DNS-syntax SSRF URL validation only — runtime egress SSRF stays in mcp-client.ts (A4). EXECUTE to authenticated only (A5).';
 
 -- ─────────────────────────────────────────────────────────────────────────────────
 -- 3. Extend the ONE capability mapping with `mcp.connections.delete` (A2/D2/INT-089). Copied VERBATIM
@@ -799,6 +812,8 @@ BEGIN
     transport        = 'http',
     auth_token_ct    = public.platform_encrypt(_api_key),
     auth_token_last4 = _new_last4,
+    enabled          = true,                      -- P1(a): a successful re-key RECONNECTS (no-op if already
+                                                  -- enabled; reconnects a disabled row). Same manage authority.
     provider_state   = '{}'::jsonb,
     status           = 'pending_verification',
     health           = 'unknown',
@@ -837,7 +852,7 @@ REVOKE ALL ON FUNCTION public.set_mcp_rest_connection_endpoint(uuid, text, text,
 GRANT EXECUTE ON FUNCTION public.set_mcp_rest_connection_endpoint(uuid, text, text, uuid) TO authenticated;
 
 COMMENT ON FUNCTION public.set_mcp_rest_connection_endpoint(uuid, text, text, uuid) IS
-  'G1a-1 (MCP PR-G1a): RE-KEY the n8n REST api-key facet (rotate base_url + api_key). Authority FIRST (§9): mcp.connections.manage; uniform MCP_FORBIDDEN on a missing/foreign-tenant connection; D1 refuses a legacy-projected row. REST lane ONLY — a connection whose auth_kind <> api_key → MCP_NOT_A_REST_CONNECTION (shape error) so an MCP-executable connection is never silently converted. base_url via the SAME _mcp_endpoint_write_safe SSRF guard; api_key required. Voids consent + the discovered-tool catalog; resets provider_state/status/health; credential_changed from an in-definer decrypt-compare of the old key. Hashes/enums/last4/counts-only audit; write-only return. EXECUTE to authenticated only.';
+  'G1a-1 (MCP PR-G1a): RE-KEY the n8n REST api-key facet (rotate base_url + api_key). Authority FIRST (§9): mcp.connections.manage; uniform MCP_FORBIDDEN on a missing/foreign-tenant connection; D1 refuses a legacy-projected row. REST lane ONLY — a connection whose auth_kind <> api_key → MCP_NOT_A_REST_CONNECTION (shape error) so an MCP-executable connection is never silently converted. base_url via the SAME _mcp_endpoint_write_safe SSRF guard; api_key required. Voids consent + the discovered-tool catalog; resets provider_state/status/health; credential_changed from an in-definer decrypt-compare of the old key. P1(a): a successful re-key RESTORES enabled=true (re-key = reconnect) — a no-op for an already-enabled row, a reconnect for a disabled (soft-disconnected) one, same manage authority. Hashes/enums/last4/counts-only audit; write-only return. EXECUTE to authenticated only.';
 
 -- ─────────────────────────────────────────────────────────────────────────────────
 -- 7. disconnect_mcp_connection — SOFT disable (default) or HARD delete. Authority FIRST (§9): a hard
@@ -994,3 +1009,67 @@ GRANT EXECUTE ON FUNCTION public.disconnect_mcp_connection(uuid, boolean, uuid) 
 
 COMMENT ON FUNCTION public.disconnect_mcp_connection(uuid, boolean, uuid) IS
   'G1a-1 (MCP PR-G1a): SOFT disable (default) or HARD delete of a NATIVE connection. Authority FIRST (§9): hard delete needs mcp.connections.delete, disable needs mcp.connections.manage (both owner/tenant-admin only, platform owner EXCLUDED, no service-role bypass). Uniform MCP_FORBIDDEN on a missing/foreign-tenant connection (a second hard delete finds none ⇒ same refusal, no existence oracle); D1 refuses a legacy row. DISABLE: idempotent (already-disabled ⇒ already_disabled no-op); else null the live credential ciphertexts (access token, refresh token, oauth client secret) + last4 (the encrypted endpoint + oauth identity metadata are retained on the disabled shell; get_mcp_connection_secret returns configured:false/enabled:false for a disabled row, so nothing is exposed), empty scopes/state, status→unconfigured, enabled→false, delete approvals+tools (LIVE state), audit mcp_connection.disabled. DELETE (history-preserving): audit mcp_connection.deleted FIRST then delete the row — approvals+tools cascade away, mcp_connection_receipts survive with connection_id→NULL (this migration''s FK swap), paige_audit_log survives (no FK). Hashes/enums/counts-only audit; write-only return. EXECUTE to authenticated only.';
+
+-- ─────────────────────────────────────────────────────────────────────────────────
+-- 8. get_mcp_connections_v2 — CREATE OR REPLACE reproducing the 20270319000000 definition (:214-256)
+--    BYTE-FOR-BYTE EXCEPT the `configured` expression (P2). The list-side `configured` must agree with
+--    get_mcp_connection_secret's credential-less exemption (INT-079, 20270326000000/20270328000000): a
+--    url- or none-auth connection carries its credential INSIDE the encrypted endpoint, so both token
+--    columns are legitimately NULL, yet the connection IS configured once server_url_ct is present. The
+--    prior `(auth_token_ct IS NOT NULL OR refresh_token_ct IS NOT NULL)` reported such a row
+--    `configured:false`, contradicting the loader (which resolves it usable) and the secret RPC (which
+--    returns configured:true). This ADDITIVELY widens `configured:true` to `auth_kind IN ('url','none')
+--    AND server_url_ct IS NOT NULL`; behavior for every OTHER auth_kind is unchanged — a bearer/header/
+--    oauth row with no token column still reports `configured:false` (fail-closed preserved). RLS /
+--    owner_only visibility (`_full`), SECURITY DEFINER, SET search_path, and the REVOKE/GRANT are the
+--    20270319000000 originals, re-issued identically. No COMMENT existed on this function; none is added.
+-- ─────────────────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.get_mcp_connections_v2(
+  _tenant_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE _tenant uuid; _out jsonb; _full boolean;
+BEGIN
+  _tenant := public._mcp_resolve_tenant(_tenant_id, false);
+  -- owner_only connections are visible only to a tenant admin / platform owner (or a trusted
+  -- service-role caller, where auth.uid() is NULL); an ordinary member does not see them.
+  _full := auth.uid() IS NULL OR public.is_tenant_admin(_tenant) OR public.is_platform_owner();
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+           'connection_id', c.connection_id,
+           'provider_key', c.provider_key,
+           'label', c.label,
+           'transport', c.transport,
+           'auth_kind', c.auth_kind,
+           -- P2: a url/none connection carries its credential in the encrypted endpoint (both token
+           -- columns legitimately NULL), so it is configured once server_url_ct is present — mirroring
+           -- get_mcp_connection_secret's INT-079 exemption. Every other auth_kind is unchanged.
+           'configured', (c.auth_token_ct IS NOT NULL OR c.refresh_token_ct IS NOT NULL OR (c.auth_kind IN ('url','none') AND c.server_url_ct IS NOT NULL)),
+           'enabled', c.enabled,
+           'status', c.status,
+           'health', c.health,
+           -- observed_at, never presented as "verified now" (truth-boundary; the reader labels freshness).
+           'last_checked_at', c.last_checked_at,
+           'granted_scopes', c.granted_scopes,
+           'visibility', c.visibility,
+           -- Host only, never the secret-bearing full URL/path.
+           'server_url_host', CASE WHEN c.server_url_ct IS NOT NULL
+             THEN split_part(split_part(public.platform_decrypt(c.server_url_ct), '://', 2), '/', 1)
+             ELSE NULL END,
+           'tool_count', (SELECT count(*) FROM public.mcp_connection_tools t WHERE t.connection_id = c.connection_id),
+           'approved_count', (SELECT count(*) FROM public.mcp_connection_approvals a WHERE a.connection_id = c.connection_id)
+         ) ORDER BY c.created_at), '[]'::jsonb)
+    INTO _out
+    FROM public.mcp_connections c
+   WHERE c.tenant_id = _tenant
+     AND (_full OR c.visibility <> 'owner_only');
+  RETURN _out;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_mcp_connections_v2(uuid)                                    FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_mcp_connections_v2(uuid)                                    TO authenticated, service_role;
