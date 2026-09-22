@@ -73,6 +73,16 @@ Deno.serve(async (req) => {
     if (!await markUnavailable("thread_scope_mismatch")) return new Response("relay_unavailable", { status: 503 });
     return new Response("thread_scope_mismatch", { status: 403 });
   }
+  // A ticket binds the original user, tenant and thread. Recheck active
+  // membership at upgrade so a removal during the ticket TTL cannot enter.
+  // Owner, admin and member use the same scoped path; no role-specific shell.
+  const { data: membership, error: membershipError } = await admin.from("tenant_members")
+    .select("id").eq("tenant_id", session.tenant_id)
+    .eq("user_id", session.actor_user_id).eq("status", "active").maybeSingle();
+  if (membershipError || !membership) {
+    if (!await markUnavailable("membership_inactive")) return new Response("relay_unavailable", { status: 503 });
+    return new Response("membership_inactive", { status: 403 });
+  }
   const { data: tenantPilot, error: pilotError } = await admin.from("tenants").select("features")
     .eq("id", session.tenant_id).maybeSingle();
   const pilotEnabled = !pilotError && isLiveAudioPilotEnabled(tenantPilot?.features);

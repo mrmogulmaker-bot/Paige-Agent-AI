@@ -51,6 +51,10 @@ assert.match(session, /isLiveAudioPilotEnabled\(tenantPilot\?\.features\)/, "ses
 assert.ok(relay.indexOf('from("tenants").select("features")') < relay.indexOf("Deno.upgradeWebSocket(req)"), "relay rechecks pilot before upgrade");
 assert.match(relay, /isLiveAudioPilotEnabled\(tenantPilot\?\.features\)/, "relay admission requires the server-stored flag");
 assert.ok(relay.indexOf('return new Response("live_audio_not_enabled", { status: 403 })') < relay.indexOf("Deno.upgradeWebSocket(req)"), "revoked or missing pilot rejects before socket upgrade");
+assert.match(relay, /from\("tenant_members"\)[\s\S]*?\.eq\("user_id", session\.actor_user_id\)\.eq\("status", "active"\)/, "relay rechecks the signed-in user's active membership, independent of role label");
+const pilotMigration = readFileSync(new URL("../supabase/migrations/20270401000000_paige_live_pilot_feature_guard.sql", import.meta.url), "utf8");
+assert.match(pilotMigration, /BEFORE INSERT OR UPDATE OF features ON public\.tenants/, "pilot key is guarded on insert and update");
+assert.match(pilotMigration, /auth\.role\(\) IS DISTINCT FROM 'service_role'/, "tenant roles cannot change the pilot key");
 assert.doesNotMatch(relay + session, /daily_ceiling|concurrent_session_limit|reserve_paige_voice|allowance_gate/i);
 assert.doesNotMatch(relay, /stt-router|tts-router|elevenlabs|DEEPGRAM_API_KEY|ELEVENLABS_API_KEY/);
 assert.equal(network, 0);
