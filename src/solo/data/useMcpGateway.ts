@@ -1,6 +1,6 @@
 /**
  * useMcpGateway — the FIRST frontend binding of the G1a-1 registry-native connection writers
- * (PR #1322, migrations 20270319/20270323/20270331). It reads and writes the `mcp_connections`
+ * (PR #1322, migrations 20270319/20270330/20270331). It reads and writes the `mcp_connections`
  * registry DIRECTLY through SECURITY DEFINER RPCs.
  *
  * This is a DISTINCT authority from `useMcpConnection` (the legacy n8n/Zapier hook), which writes
@@ -73,7 +73,7 @@ export type GatewayWriteResult = {
 };
 
 export type McpGatewayState = {
-  connections: GatewayConnection[];
+  tools: GatewayConnection[];
   loading: boolean;
   /** A failed READ — distinct from an empty account (no connections yet). */
   error: boolean;
@@ -85,7 +85,7 @@ export type McpGatewayState = {
 };
 
 const EMPTY: McpGatewayState = {
-  connections: [],
+  tools: [],
   loading: true,
   error: false,
   canWrite: false,
@@ -101,22 +101,25 @@ const HEALTHS = new Set<GatewayHealth>(["unknown", "checking", "healthy", "needs
  * is the backend contract's). An unknown code degrades to a plain, honest sentence — never a raw code.
  */
 const ERR: Record<string, string> = {
-  MCP_FORBIDDEN: "You don't have permission to manage connections for this workspace.",
+  MCP_FORBIDDEN: "You don't have permission to manage tools for this workspace.",
   MCP_BAD_PROVIDER: "That provider isn't recognized.",
-  MCP_BAD_LABEL: "Enter a name for this connection.",
-  MCP_BAD_VISIBILITY: "That visibility isn't valid for this connection.",
-  MCP_BAD_AUTH_KIND: "That sign-in type isn't valid for this connection.",
+  MCP_BAD_LABEL: "Enter a name for this tool.",
+  MCP_BAD_VISIBILITY: "That visibility isn't valid for this tool.",
+  MCP_BAD_AUTH_KIND: "That sign-in type isn't valid for this tool.",
   MCP_AUTH_KIND_NOT_EXECUTABLE:
-    "An API key can't be used for a remote MCP connection — add it as an n8n API-key connection instead.",
+    "An API key can't be used for a remote MCP server — add it as an n8n API-key tool instead.",
   MCP_BAD_ENDPOINT:
     "That address can't be used. Enter a public https:// address — local, private, or non-HTTPS addresses aren't allowed.",
   MCP_BAD_CREDENTIAL_BUNDLE: "Those credentials are incomplete for this sign-in type.",
   MCP_OAUTH_TOKEN_EXPIRED: "That access token has already expired. Get a fresh one and try again.",
-  MCP_DUPLICATE_LABEL: "You already have a connection with that name — pick a different name.",
-  MCP_NOT_A_REST_CONNECTION: "This isn't an API-key connection, so it can't be re-keyed this way.",
-  MCP_NO_CONNECTION: "That connection could not be found.",
+  MCP_DUPLICATE_LABEL: "You already have a tool with that name — pick a different name.",
+  MCP_NOT_A_REST_CONNECTION: "This isn't an API-key tool, so it can't be re-keyed this way.",
+  MCP_NO_CONNECTION: "That tool could not be found.",
+  // This row is a projection of the shipped n8n/Zapier path, which still owns it. Telling the owner
+  // to "disconnect and add it again" here would be an instruction this surface cannot carry out —
+  // the same writers that refuse the edit refuse the disconnect. Name the surface that CAN.
   MCP_LEGACY_CONNECTION_READONLY:
-    "This older connection can't be edited here — disconnect it and add it again.",
+    "This one is managed on its own integration card below — open n8n or Zapier there to change it.",
 };
 
 /** Owner-facing copy for an MCP_* code. Exported so both the hook and its callers map identically. */
@@ -162,7 +165,7 @@ function readRow(value: unknown): GatewayConnection | null {
   return {
     id,
     providerKey: str(r.provider_key) ?? "generic-remote",
-    label: str(r.label) ?? "Connection",
+    label: str(r.label) ?? "Tool",
     transport: str(r.transport),
     authKind: str(r.auth_kind),
     configured: bool(r.configured),
@@ -255,7 +258,7 @@ export function useMcpGateway(): UseMcpGateway {
       return;
     }
     setState((prev) => ({
-      connections: readList(list.data),
+      tools: readList(list.data),
       loading: false,
       error: false,
       canWrite: admin && (admin as { error?: unknown }).error ? false : (admin as { data?: unknown }).data === true,
@@ -276,13 +279,15 @@ export function useMcpGateway(): UseMcpGateway {
     async (name: string, params: Record<string, unknown>): Promise<GatewayWriteResult> => {
       // Guard: real tenant, current scope, mounted, write authority, no in-flight write.
       if (!activeTenantId || tenantLoading) {
-        return { ok: false, code: null, message: mcpGatewayMessage(null) };
+        // Not ready is not a rejection: nothing was sent, so nothing was refused.
+        return { ok: false, code: "MCP_NOT_READY", message: null };
       }
       if (!state.canWrite) {
         return { ok: false, code: "MCP_FORBIDDEN", message: ERR.MCP_FORBIDDEN };
       }
       if (pendingMutation.current) {
-        return { ok: false, code: null, message: null };
+        // A write is already in flight; this one is dropped, and the one running still decides.
+        return { ok: false, code: "MCP_BUSY", message: null };
       }
       const request = ++mutation.current;
       pendingMutation.current = true;
@@ -290,11 +295,16 @@ export function useMcpGateway(): UseMcpGateway {
       setState((prev) => ({ ...prev, saving: true, writeError: null }));
 
       // Writes carry the caller's OWN tenant id as an expected-tenant guard against a mid-flight switch.
+      // `supabase.rpc()` returns a PostgrestFilterBuilder — a thenable with NO `.catch`, so it is
+      // adopted by Promise.resolve BEFORE any rejection handler is attached. Calling `.catch` on the
+      // builder directly throws before the request is sent (and an `as Promise<…>` assertion hides
+      // that from tsc). Same idiom as useN8nConnection.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await ((supabase as any).rpc(name, {
-        ...params,
-        _tenant_id: activeTenantId,
-      }) as Promise<{ data: unknown; error: unknown }>).catch(() => ({ data: null, error: true as unknown }));
+      const call = (supabase as any).rpc(name, { ...params, _tenant_id: activeTenantId });
+      const { data, error } = (await Promise.resolve(call).catch(() => ({
+        data: null,
+        error: true as unknown,
+      }))) as { data: unknown; error: unknown };
 
       if (!current()) {
         pendingMutation.current = false;
@@ -309,6 +319,7 @@ export function useMcpGateway(): UseMcpGateway {
         return { ok: false, code, message };
       }
       const out = (data ?? {}) as Record<string, unknown>;
+      setState((prev) => ({ ...prev, saving: false, writeError: null }));
       // Success — reload the list from the server (never optimistic; the server is the truth).
       void load();
       return {
@@ -364,7 +375,8 @@ export function useMcpGateway(): UseMcpGateway {
         _connection_id: connectionId,
         _server_url: serverUrl,
         _auth_kind: authKind,
-        _auth_token: authKind === "bearer" || authKind === "header" ? authToken ?? null : null,
+        // `url` and `none` carry no credential by contract; every other kind carries what it was given.
+        _auth_token: authKind === "url" || authKind === "none" ? null : authToken ?? null,
         _auth_header_name: authKind === "header" ? authHeaderName ?? null : null,
       }),
     [run],

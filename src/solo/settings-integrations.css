@@ -388,3 +388,96 @@
 .social-platform-mark[data-social-platform="google_business"] { color: #2672ec; background: color-mix(in srgb, #34a853 9%, var(--pg-surface)); }
 .social-platform-mark[data-social-platform="snapchat"] { color: #746700; background: color-mix(in srgb, #fffc00 22%, var(--pg-surface)); }
 .social-platform-mark[data-social-platform="reddit"] { color: #d74200; background: color-mix(in srgb, #ff4500 9%, var(--pg-surface)); }
+
+/* ── Integrations → Paige's tools (Connected MCP Gateway) ────────────────────
+   Ported from the approved pack through this surface's own tokens: no new token is
+   introduced, gold stays on the act button only, and every status colour reuses the
+   `data-tone` vocabulary already on this page. Motion is transform/opacity only and
+   yields to `prefers-reduced-motion`. The page remains the one scroll owner. */
+.ig-gw-section { margin: 0 0 15px; padding-bottom: 14px; border-bottom: 1px solid var(--pg-line-soft); }
+.ig-gw-head { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 11px; flex-wrap: wrap; }
+.ig-gw-head > div { flex: 1 1 260px; min-width: 0; }
+.ig-gw-h { margin: 0; font: 700 14px/1.2 var(--pg-font-display); letter-spacing: -.01em; color: var(--pg-ink); }
+.ig-gw-sub { margin: 4px 0 0; max-width: 62ch; font: 400 11.5px/1.5 var(--pg-font-ui); color: var(--pg-muted); }
+
+/* Tool rows — one column; the row is the control, so the whole row lifts. */
+.ig-gw-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.ig-gw-tool-row { position: relative; display: grid; width: 100%; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 11px 12px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-plate, 12px); background: var(--pg-surface); box-shadow: var(--pg-e1), var(--pg-rim); text-align: left; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.ig-gw-tool-row:hover { border-color: color-mix(in srgb, var(--pg-violet) 42%, var(--pg-line)); box-shadow: var(--pg-e2), var(--pg-rim); transform: translateY(-1px); }
+.ig-gw-tool-row:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 2px; }
+.ig-gw-glyph { display: inline-grid; place-items: center; min-width: 34px; height: 30px; padding: 0 7px; border: 1px solid var(--pg-line); border-radius: 8px; background: var(--pg-raised); box-shadow: var(--pg-rim); color: var(--pg-ink-2); font: 750 10px/1 var(--pg-font-data); letter-spacing: -.02em; }
+.ig-gw-tool-body { min-width: 0; }
+.ig-gw-tool-name { display: flex; align-items: center; gap: 7px; font: 650 12.5px/1.3 var(--pg-font-ui); color: var(--pg-ink); }
+.ig-gw-tool-meta { display: block; margin-top: 3px; overflow: hidden; font: 400 10px/1.4 var(--pg-font-data); color: var(--pg-muted); text-overflow: ellipsis; white-space: nowrap; }
+.ig-gw-tool-right { display: flex; align-items: center; }
+.ig-gw-tag { padding: 1px 6px; border: 1px dashed color-mix(in srgb, var(--pg-violet) 45%, var(--pg-line)); border-radius: 5px; background: color-mix(in srgb, var(--pg-violet) 12%, transparent); color: var(--pg-violet); font: 650 9px/1.5 var(--pg-font-data); }
+
+/* Status chip — the same tone words the rest of this surface uses. */
+.ig-gw-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-pill, 999px); color: var(--pg-muted); font: 650 9.5px/1.5 var(--pg-font-data); white-space: nowrap; }
+.ig-gw-chip::before { width: 6px; height: 6px; border-radius: 50%; background: currentColor; content: ""; }
+.ig-gw-chip[data-tone="ok"] { color: var(--pg-positive); border-color: color-mix(in srgb, var(--pg-positive) 42%, var(--pg-line)); background: color-mix(in srgb, var(--pg-positive) 10%, transparent); }
+.ig-gw-chip[data-tone="warn"] { color: var(--pg-warning); border-color: color-mix(in srgb, var(--pg-warning) 45%, var(--pg-line)); background: color-mix(in srgb, var(--pg-warning) 10%, transparent); }
+.ig-gw-chip[data-tone="bad"] { color: var(--pg-negative); border-color: color-mix(in srgb, var(--pg-negative) 45%, var(--pg-line)); background: color-mix(in srgb, var(--pg-negative) 10%, transparent); }
+.ig-gw-chip[data-tone="pending"] { color: var(--pg-violet); border-color: color-mix(in srgb, var(--pg-violet) 45%, var(--pg-line)); background: color-mix(in srgb, var(--pg-violet) 10%, transparent); }
+.ig-gw-chip[data-tone="pending"]::before { animation: ig-gw-pulse 1.4s ease-in-out infinite; }
+.ig-gw-chip[data-tone="off"] { color: var(--pg-faint); }
+@keyframes ig-gw-pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+
+.ig-gw-empty { display: grid; justify-items: center; gap: 9px; padding: 26px 18px; border: 1px dashed var(--pg-line-strong); border-radius: var(--pg-r-plate, 12px); background: var(--pg-surface); color: var(--pg-muted); text-align: center; }
+.ig-gw-empty p { max-width: 42ch; margin: 0; font: 400 11.5px/1.55 var(--pg-font-ui); }
+
+/* Drawer additions — the shell is the shared .ig-panel; these are its inner parts. */
+.ig-gw-eyebrow { display: block; font: 650 9px/1.4 var(--pg-font-data); letter-spacing: .1em; text-transform: uppercase; color: var(--pg-violet); }
+.ig-gw-foot { font: 400 10px/1.45 var(--pg-font-data); color: var(--pg-faint); }
+.ig-gw-actions { justify-content: flex-end; margin-top: 13px; }
+.ig-gw-err { color: var(--pg-negative); font: 600 10px/1.45 var(--pg-font-data); }
+.ig-field-bad input { border-color: var(--pg-negative); }
+
+.ig-gw-seg { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 12px; }
+.ig-gw-seg button { min-height: 28px; padding: 0 11px; border: 1px solid var(--pg-line); border-radius: 8px; background: var(--pg-surface); color: var(--pg-muted); font: 650 10.5px/1 var(--pg-font-data); cursor: pointer; transition: border-color .14s ease, color .14s ease, background .14s ease; }
+.ig-gw-seg button:hover { color: var(--pg-ink); border-color: var(--pg-line-strong); }
+.ig-gw-seg button.on { color: var(--pg-ink); border-color: color-mix(in srgb, var(--pg-violet) 62%, var(--pg-line)); background: color-mix(in srgb, var(--pg-violet) 12%, var(--pg-raised)); }
+.ig-gw-seg button:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 2px; }
+
+.ig-gw-info, .ig-gw-warn { display: flex; gap: 9px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid; border-radius: 10px; font: 400 11.5px/1.5 var(--pg-font-ui); color: var(--pg-ink-2); }
+.ig-gw-info { border-color: color-mix(in srgb, var(--pg-violet) 38%, var(--pg-line)); background: color-mix(in srgb, var(--pg-violet) 9%, transparent); }
+.ig-gw-warn { border-color: color-mix(in srgb, var(--pg-warning) 42%, var(--pg-line)); background: color-mix(in srgb, var(--pg-warning) 9%, transparent); }
+.ig-gw-info strong, .ig-gw-warn strong { color: var(--pg-ink); }
+
+.ig-gw-choices { display: grid; gap: 8px; margin: 0 0 4px; }
+.ig-gw-choice { display: grid; gap: 4px; padding: 11px 12px; border: 1px solid var(--pg-line); border-radius: 11px; background: var(--pg-surface); text-align: left; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, background .16s ease; }
+.ig-gw-choice strong { font: 700 12px/1.3 var(--pg-font-ui); color: var(--pg-ink); }
+.ig-gw-choice span { font: 400 11px/1.5 var(--pg-font-ui); color: var(--pg-muted); }
+.ig-gw-choice:hover { border-color: var(--pg-line-strong); box-shadow: var(--pg-e1); }
+.ig-gw-choice.on { border-color: color-mix(in srgb, var(--pg-violet) 58%, var(--pg-line)); background: color-mix(in srgb, var(--pg-violet) 9%, var(--pg-surface)); }
+.ig-gw-choice:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 2px; }
+
+/* Catalogue — the one browse path, inside the add drawer. */
+.ig-gw-search { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 8px 11px; border: 1px solid var(--pg-line-strong); border-radius: 10px; background: var(--pg-raised); color: var(--pg-faint); transition: border-color .16s ease, box-shadow .2s ease; }
+.ig-gw-search:focus-within { border-color: color-mix(in srgb, var(--pg-violet) 58%, var(--pg-line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pg-violet) 20%, transparent); }
+.ig-gw-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--pg-ink); font: 400 11.5px/1.4 var(--pg-font-data); outline: 0; }
+.ig-gw-search input::placeholder { color: var(--pg-faint); }
+.ig-gw-cat-sec { margin: 0 0 15px; }
+.ig-gw-cat-h { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; font: 700 12px/1.3 var(--pg-font-ui); color: var(--pg-ink); }
+.ig-gw-cat-h span { font: 400 9.5px/1 var(--pg-font-data); color: var(--pg-faint); }
+.ig-gw-cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(198px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.ig-gw-tile { display: flex; width: 100%; flex-direction: column; padding: 11px; border: 1px solid var(--pg-line); border-radius: 11px; background: var(--pg-surface); box-shadow: var(--pg-rim); text-align: left; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.ig-gw-tile:hover { border-color: color-mix(in srgb, var(--pg-violet) 42%, var(--pg-line)); box-shadow: var(--pg-e1), var(--pg-rim); transform: translateY(-1px); }
+.ig-gw-tile:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 2px; }
+.ig-gw-tile-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ig-gw-tile-mark { display: inline-grid; place-items: center; min-width: 28px; height: 26px; padding: 0 6px; border: 1px solid var(--pg-line); border-radius: 7px; background: var(--pg-raised); color: var(--pg-ink-2); font: 750 9.5px/1 var(--pg-font-data); }
+.ig-gw-tile-name { overflow: hidden; font: 650 11.5px/1.3 var(--pg-font-ui); color: var(--pg-ink); text-overflow: ellipsis; }
+.ig-gw-tile-desc { margin-top: 8px; font: 400 10px/1.5 var(--pg-font-data); color: var(--pg-muted); }
+.ig-gw-tile-net { margin-top: 5px; font: 400 9.5px/1.45 var(--pg-font-data); color: var(--pg-faint); }
+.ig-gw-tile-foot { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.ig-gw-badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-pill, 999px); color: var(--pg-muted); font: 700 9px/1.6 var(--pg-font-data); white-space: nowrap; }
+.ig-gw-badge::before { width: 5px; height: 5px; border-radius: 50%; background: currentColor; content: ""; }
+.ig-gw-badge[data-mode="key"] { color: var(--pg-positive); border-color: color-mix(in srgb, var(--pg-positive) 42%, var(--pg-line)); background: color-mix(in srgb, var(--pg-positive) 9%, transparent); }
+.ig-gw-badge[data-mode="connect"] { color: var(--pg-violet); border-color: color-mix(in srgb, var(--pg-violet) 42%, var(--pg-line)); background: color-mix(in srgb, var(--pg-violet) 9%, transparent); }
+.ig-gw-badge[data-mode="setup"] { color: var(--pg-warning); border-color: color-mix(in srgb, var(--pg-warning) 45%, var(--pg-line)); background: color-mix(in srgb, var(--pg-warning) 9%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ig-gw-tool-row, .ig-gw-tile, .ig-gw-choice, .ig-gw-seg button, .ig-gw-search { transition: none; }
+  .ig-gw-tool-row:hover, .ig-gw-tile:hover { transform: none; }
+  .ig-gw-chip[data-tone="pending"]::before { animation: none; }
+}

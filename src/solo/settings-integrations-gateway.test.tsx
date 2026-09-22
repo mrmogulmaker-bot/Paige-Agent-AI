@@ -1,0 +1,501 @@
+/**
+ * Integrations → Paige's tools (the MCP gateway section).
+ *
+ * Driven through the rendered DOM, not through the hook: the §70 question is whether a
+ * human can FINISH the job, and only the surface can answer that. Covered here are first
+ * use from a genuinely empty account, the add path through the one catalogue, the honest
+ * stops for a tool whose connect step is not wired, re-key, both disconnect shapes,
+ * permission refusal, a failed read kept distinct from an empty account, and the truth
+ * boundary — a tool is never shown as ready before the server proves it.
+ */
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { IntegrationsGatewaySection } from "./settings-integrations-gateway";
+
+const context = vi.hoisted(() => ({ tenantId: "tenant-a" as string | null, loading: false }));
+const rpc = vi.hoisted(() => vi.fn());
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+vi.mock("@/hooks/useTenantContext", () => ({
+  useTenantContext: () => ({ activeTenantId: context.tenantId, activeUserId: "user-a", loading: context.loading }),
+}));
+vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc } }));
+
+/**
+ * The REAL `supabase.rpc()` returns a PostgrestFilterBuilder: a thenable that has `then` and
+ * **no `.catch`**. A double that returns a plain Promise hides any code calling `.catch` on the
+ * builder directly — which is how a `TypeError` that killed every write on this surface once sat
+ * behind a green `tsc` and a green suite. Every double here returns the real shape, so the whole
+ * file guards that class.
+ */
+const builder = <T,>(value: T) => ({
+  then: <R1, R2>(ok?: ((v: T) => R1 | PromiseLike<R1>) | null, err?: ((e: unknown) => R2 | PromiseLike<R2>) | null) =>
+    Promise.resolve(value).then(ok, err),
+});
+
+/** One row as `get_mcp_connections_v2` returns it. No secret is ever in this shape. */
+const row = (over: Record<string, unknown> = {}) => ({
+  connection_id: "conn-1",
+  provider_key: "generic-remote",
+  label: "Scheduling tool",
+  transport: "http",
+  auth_kind: "bearer",
+  configured: true,
+  enabled: true,
+  status: "connected",
+  health: "healthy",
+  last_checked_at: "2026-09-20T10:00:00Z",
+  server_url_host: "services.example.com",
+  tool_count: 6,
+  approved_count: 2,
+  ...over,
+});
+
+/**
+ * Default world: the caller may write and the account holds whatever rows are passed.
+ * `write` decides what every write RPC returns, so a refusal can be driven end to end.
+ */
+function world(over: { rows?: Record<string, unknown>[]; admin?: boolean; write?: { data?: unknown; error?: unknown } } = {}) {
+  rpc.mockImplementation((name: string) => {
+    if (name === "get_mcp_connections_v2") return builder({ data: over.rows ?? [], error: null });
+    if (name === "is_current_user_tenant_admin") return builder({ data: over.admin !== false, error: null });
+    return builder(over.write ?? { data: { connection_id: "conn-new", status: "pending_verification" }, error: null });
+  });
+}
+
+async function render(onOpenLegacy?: (which: "n8n" | "zapier" | "social") => void) {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  await act(async () => root.render(<IntegrationsGatewaySection onOpenLegacy={onOpenLegacy} />));
+  await act(async () => { await Promise.resolve(); });
+  return { host, root };
+}
+
+const buttons = (host: HTMLElement) => Array.from(host.querySelectorAll("button"));
+const byText = (host: HTMLElement, text: string) => buttons(host).find((b) => b.textContent?.includes(text));
+const click = async (el: Element | undefined | null) => {
+  await act(async () => { el?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+  await act(async () => { await Promise.resolve(); });
+};
+const type = async (input: Element | null | undefined, value: string) => {
+  const field = input as HTMLInputElement;
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    setter?.call(field, value);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+};
+const dialog = (host: HTMLElement) => host.querySelector<HTMLElement>('[role="dialog"]');
+const fieldFor = (host: HTMLElement, label: string) =>
+  Array.from(host.querySelectorAll<HTMLLabelElement>("label.ig-field"))
+    .find((l) => l.querySelector("span")?.textContent === label)
+    ?.querySelector("input");
+const tile = (host: HTMLElement, name: string) =>
+  Array.from(host.querySelectorAll<HTMLButtonElement>(".ig-gw-tile"))
+    .find((b) => b.querySelector(".ig-gw-tile-name")?.textContent === name);
+/** Open the add drawer (the catalogue IS the add path). */
+const openCatalogue = async (host: HTMLElement) => { await click(byText(host, "Add a tool")); };
+/** Open the add FORM through the catalogue's generic entry, the way a human reaches it. */
+const openAddForm = async (host: HTMLElement) => {
+  await openCatalogue(host);
+  await click(tile(host, "Any MCP server"));
+};
+
+beforeEach(() => {
+  context.tenantId = "tenant-a";
+  context.loading = false;
+  rpc.mockReset();
+  document.body.innerHTML = "";
+});
+
+describe("Truth boundary", () => {
+  it("reads with no tenant argument and renders no payload of its own", async () => {
+    world({ rows: [row({ label: "Scheduling tool" })] });
+    const { host } = await render();
+    expect(rpc).toHaveBeenCalledWith("get_mcp_connections_v2");
+    for (const call of rpc.mock.calls.filter((c) => String(c[0]).startsWith("get_"))) {
+      expect(call.length).toBe(1);
+    }
+    expect(host.textContent).toContain("Scheduling tool");
+  });
+
+  it("never says a tool is ready before the server has proven it", async () => {
+    // A row that exists is not a row that works. The probe that promotes a row is a later slice,
+    // so nothing is checking it yet — and the label must not imply that something is.
+    world({ rows: [row({ status: "pending_verification", health: "unknown" })] });
+    const { host } = await render();
+    expect(host.textContent).toContain("Not checked yet");
+    expect(host.textContent).not.toMatch(/\bReady\b/);
+    expect(host.textContent).not.toMatch(/Checking…/);
+    expect(host.textContent).toContain("not usable yet");
+  });
+
+  it("keeps a failed read distinct from an account with no tools", async () => {
+    rpc.mockImplementation((name: string) =>
+      builder({ data: null, error: name === "get_mcp_connections_v2" ? { message: "read failed" } : null }));
+    const { host } = await render();
+    expect(host.textContent).toMatch(/couldn’t be read/i);
+    expect(host.textContent).not.toMatch(/no tools yet/i);
+    expect(byText(host, "Try again")).toBeTruthy();
+  });
+
+  it("drops the previous workspace's tools immediately and rejects its late answer", async () => {
+    let resolveFirst!: (value: { data: unknown; error: null }) => void;
+    const first = new Promise<{ data: unknown; error: null }>((done) => { resolveFirst = done; });
+    rpc.mockImplementationOnce(() => first).mockImplementation(() => builder({ data: [], error: null }));
+    const { host, root } = await render();
+
+    context.tenantId = "tenant-b";
+    world({ rows: [row({ connection_id: "conn-b", label: "Tenant B tool" })] });
+    await act(async () => root.render(<IntegrationsGatewaySection />));
+    await act(async () => { await Promise.resolve(); });
+
+    resolveFirst({ data: [row({ label: "Late tenant A tool" })], error: null });
+    await act(async () => { await Promise.resolve(); });
+    expect(host.textContent).not.toContain("Late tenant A tool");
+  });
+
+  it("never renders a secret, and shows only the endpoint host", async () => {
+    world({ rows: [row({ auth_token: "must-not-survive", api_key: "must-not-survive" })] });
+    const { host } = await render();
+    expect(host.textContent).not.toContain("must-not-survive");
+    expect(host.textContent).toContain("services.example.com");
+  });
+});
+
+describe("First use", () => {
+  it("offers the add path from a genuinely empty account", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    expect(host.textContent).toMatch(/no tools yet/i);
+    expect(byText(host, "Add a tool")).toBeTruthy();
+  });
+
+  it("offers no add path to someone who cannot write, and claims nothing about why", async () => {
+    world({ rows: [], admin: false });
+    const { host } = await render();
+    expect(byText(host, "Add a tool")).toBeUndefined();
+  });
+});
+
+describe("Adding a tool", () => {
+  it("browses one catalogue and adds a pasted-key tool end to end", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    await openCatalogue(host);
+    expect(dialog(host)).toBeTruthy();
+    // The catalogue IS the add path — there is no separate browse surface and no type picker.
+    expect(host.querySelectorAll(".ig-gw-tile").length).toBeGreaterThan(20);
+
+    await click(tile(host, "Any MCP server"));
+    await type(fieldFor(host, "Name"), "Scheduling tool");
+    await type(fieldFor(host, "Server URL"), "https://services.example.com/mcp");
+    await type(fieldFor(host, "Bearer token"), "tok_live_value");
+    await click(byText(host, "Add tool"));
+
+    const write = rpc.mock.calls.find((c) => c[0] === "create_mcp_connection");
+    expect(write).toBeTruthy();
+    expect(write?.[1]).toMatchObject({ _label: "Scheduling tool", _server_url: "https://services.example.com/mcp" });
+    // The write carries the caller's own tenant as an expected-tenant guard.
+    expect(write?.[1]._tenant_id).toBe("tenant-a");
+    // Success closes the drawer and the list is re-read from the server, never patched locally.
+    expect(dialog(host)).toBeNull();
+    expect(rpc.mock.calls.filter((c) => c[0] === "get_mcp_connections_v2").length).toBeGreaterThan(1);
+  });
+
+  it("refuses a private or non-HTTPS address instead of letting the server reject it", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    await openAddForm(host);
+    await type(fieldFor(host, "Name"), "Internal tool");
+    await type(fieldFor(host, "Server URL"), "http://localhost:5678/mcp");
+    await type(fieldFor(host, "Bearer token"), "tok");
+    await click(byText(host, "Add tool"));
+    expect(host.textContent).toMatch(/public https:\/\/ address/i);
+    expect(rpc.mock.calls.some((c) => c[0] === "create_mcp_connection")).toBe(false);
+  });
+
+  it("blocks submission until every detail the chosen shape needs is present", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    await openAddForm(host);
+    await click(byText(host, "Add tool"));
+    expect(host.textContent).toMatch(/enter a name/i);
+    expect(rpc.mock.calls.some((c) => c[0] === "create_mcp_connection")).toBe(false);
+  });
+
+  it("sends the n8n API-key shape through the REST writer with named parameters", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    await openAddForm(host);
+    await click(byText(host, "n8n — API key"));
+    await type(fieldFor(host, "Name"), "Workflow bridge");
+    await type(fieldFor(host, "Base URL"), "https://team.app.n8n.cloud");
+    await type(fieldFor(host, "API key"), "n8n_api_value");
+    await click(byText(host, "Add tool"));
+    const write = rpc.mock.calls.find((c) => c[0] === "create_mcp_rest_connection");
+    // Named, never positional: a positional call would bind the key to `_provider_key`.
+    expect(write?.[1]).toMatchObject({ _provider_key: "n8n", _label: "Workflow bridge", _base_url: "https://team.app.n8n.cloud" });
+  });
+
+  it("reports a refused write in the product's own words and keeps the details on screen", async () => {
+    world({ rows: [], write: { data: null, error: { code: "42501", message: "permission denied for function" } } });
+    const { host } = await render();
+    await openAddForm(host);
+    await type(fieldFor(host, "Name"), "Scheduling tool");
+    await type(fieldFor(host, "Server URL"), "https://services.example.com/mcp");
+    await type(fieldFor(host, "Bearer token"), "tok_live_value");
+    await click(byText(host, "Add tool"));
+    expect(dialog(host)).toBeTruthy();
+    expect(host.textContent).not.toContain("42501");
+    expect(host.textContent).not.toContain("permission denied for function");
+    expect((fieldFor(host, "Name") as HTMLInputElement).value).toBe("Scheduling tool");
+  });
+
+  it("says plainly that a tool whose sign-in is not wired cannot be added yet", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    await openCatalogue(host);
+    const connectTile = host.querySelector<HTMLButtonElement>('.ig-gw-tile[data-mode="connect"]');
+    expect(connectTile).toBeTruthy();
+    await click(connectTile);
+    // An honest stop, never a Connect that cannot connect.
+    expect(dialog(host)?.textContent).toMatch(/coming soon/i);
+    expect(rpc.mock.calls.some((c) => String(c[0]).startsWith("create_"))).toBe(false);
+  });
+
+  it("narrows the catalogue by search and still leaves a way to finish", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    await openCatalogue(host);
+    const search = host.querySelector<HTMLInputElement>('input[type="search"]');
+    await type(search, "zzzzznotarealtool");
+    // A tool we do not list is not a dead end: the generic entry survives every filter,
+    // and the empty note points at it by the name it actually carries.
+    expect(Array.from(host.querySelectorAll(".ig-gw-tile-name")).map((n) => n.textContent)).toEqual(["Any MCP server"]);
+    expect(host.textContent).toMatch(/no listed tool matches/i);
+    expect(tile(host, "Any MCP server")).toBeTruthy();
+  });
+
+  it("adds a tool it does not list, by address, with nothing prefilled", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    await openAddForm(host);
+    // The generic entry names no vendor, so it must not seed the name with its own label.
+    expect((fieldFor(host, "Name") as HTMLInputElement).value).toBe("");
+    await type(fieldFor(host, "Name"), "Ops server");
+    await type(fieldFor(host, "Server URL"), "https://ops.example.com/mcp");
+    await type(fieldFor(host, "Bearer token"), "tok_value");
+    await click(byText(host, "Add tool"));
+    expect(rpc.mock.calls.find((c) => c[0] === "create_mcp_connection")?.[1]).toMatchObject({ _label: "Ops server" });
+  });
+});
+
+describe("Writes reach the server", () => {
+  it("sends the write against the real builder shape, not a Promise double", async () => {
+    // Regression: `supabase.rpc()` returns a thenable with no `.catch`. Calling `.catch` on it
+    // threw before the request was ever sent, leaving the button stuck on "Adding…" with no error
+    // and every later write silently dropped. `tsc` and the suite were both green.
+    world({ rows: [] });
+    const { host } = await render();
+    await openAddForm(host);
+    await type(fieldFor(host, "Name"), "Ops server");
+    await type(fieldFor(host, "Server URL"), "https://ops.example.com/mcp");
+    await type(fieldFor(host, "Bearer token"), "tok_value");
+    await click(byText(host, "Add tool"));
+    expect(rpc.mock.calls.some((c) => c[0] === "create_mcp_connection")).toBe(true);
+    expect(dialog(host)).toBeNull();
+  });
+
+  it("leaves the owner able to try again after a refused write", async () => {
+    world({ rows: [], write: { data: null, error: { code: "42501" } } });
+    const { host } = await render();
+    await openAddForm(host);
+    await type(fieldFor(host, "Name"), "Ops server");
+    await type(fieldFor(host, "Server URL"), "https://ops.example.com/mcp");
+    await type(fieldFor(host, "Bearer token"), "tok_value");
+    await click(byText(host, "Add tool"));
+    // The submit control must come back — a write that failed once must not disable the surface.
+    const submit = byText(host, "Add tool") as HTMLButtonElement;
+    expect(submit.disabled).toBe(false);
+  });
+
+  it("accepts a public address that merely contains private-looking digits", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    await openAddForm(host);
+    await type(fieldFor(host, "Name"), "Versioned tool");
+    await type(fieldFor(host, "Server URL"), "https://api.example.com/v1.10.2/mcp");
+    await type(fieldFor(host, "Bearer token"), "tok_value");
+    await click(byText(host, "Add tool"));
+    expect(rpc.mock.calls.some((c) => c[0] === "create_mcp_connection")).toBe(true);
+  });
+});
+
+describe("Shipped flows are routed, never reimplemented", () => {
+  it("sends the n8n and Zapier tiles to their existing drawers instead of the gateway form", async () => {
+    world({ rows: [] });
+    const seen: string[] = [];
+    const { host } = await render((which) => seen.push(which));
+    await openCatalogue(host);
+    await click(tile(host, "n8n"));
+    expect(seen).toEqual(["n8n"]);
+    // Routing closes this drawer so the shipped one owns the screen.
+    expect(dialog(host)).toBeNull();
+
+    await openCatalogue(host);
+    await click(tile(host, "Zapier"));
+    expect(seen).toEqual(["n8n", "zapier"]);
+  });
+});
+
+describe("Managing a tool", () => {
+  it("opens a tool and re-keys it, warning that approvals are cleared", async () => {
+    world({ rows: [row()] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(dialog(host)?.textContent).toContain("services.example.com");
+
+    await click(byText(host, "Re-key"));
+    expect(host.textContent).toMatch(/approvals are cleared/i);
+    await type(fieldFor(host, "New key / value"), "new_token_value");
+    await click(byText(host, "Save & re-check"));
+    const write = rpc.mock.calls.find((c) => c[0] === "set_mcp_connection_endpoint");
+    expect(write?.[1]).toMatchObject({ _connection_id: "conn-1", _tenant_id: "tenant-a" });
+  });
+
+  it("will not re-key on an empty value", async () => {
+    world({ rows: [row()] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    await click(byText(host, "Re-key"));
+    await click(byText(host, "Save & re-check"));
+    expect(host.textContent).toMatch(/enter the new value/i);
+    expect(rpc.mock.calls.some((c) => c[0] === "set_mcp_connection_endpoint")).toBe(false);
+  });
+
+  it("disconnects only after an explicit choice, and defaults to the reversible one", async () => {
+    world({ rows: [row()] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    await click(byText(host, "Disconnect"));
+    expect(rpc.mock.calls.some((c) => c[0] === "disconnect_mcp_connection")).toBe(false);
+    await click(host.querySelector(".ig-gw-actions button[data-danger]"));
+    expect(rpc.mock.calls.find((c) => c[0] === "disconnect_mcp_connection")?.[1]).toMatchObject({ _connection_id: "conn-1", _hard: false });
+  });
+
+  it("deletes permanently only when that shape is chosen deliberately", async () => {
+    world({ rows: [row()] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    await click(byText(host, "Disconnect"));
+    await click(byText(host, "Delete it"));
+    await click(host.querySelector(".ig-gw-actions button[data-danger]"));
+    expect(rpc.mock.calls.find((c) => c[0] === "disconnect_mcp_connection")?.[1]).toMatchObject({ _hard: true });
+  });
+
+  it("offers no re-key or disconnect to someone who cannot write", async () => {
+    world({ rows: [row()], admin: false });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(dialog(host)).toBeTruthy();
+    expect(byText(host, "Re-key")).toBeUndefined();
+    expect(byText(host, "Disconnect")).toBeUndefined();
+  });
+
+  it("asks before discarding a half-entered key, and lets the owner keep editing", async () => {
+    world({ rows: [row()] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    await click(byText(host, "Re-key"));
+    await type(fieldFor(host, "New key / value"), "half-typed");
+    await click(host.querySelector(".ig-close"));
+    expect(host.querySelector('[role="alertdialog"]')).toBeTruthy();
+    await click(byText(host, "Keep editing"));
+    expect(dialog(host)).toBeTruthy();
+    await click(host.querySelector(".ig-close"));
+    await click(byText(host, "Discard them"));
+    expect(dialog(host)).toBeNull();
+  });
+
+  it("closes a tool with Escape when nothing has been typed", async () => {
+    world({ rows: [row()] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    await act(async () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
+    expect(dialog(host)).toBeNull();
+  });
+
+  it("re-keys to the address the owner confirms, never a truncated host", async () => {
+    // The read returns the HOST only by design, so rebuilding the address from it would silently
+    // re-point a working tool at its bare host and clear its approvals.
+    world({ rows: [row()] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    await click(byText(host, "Re-key"));
+    const address = fieldFor(host, "Full address") as HTMLInputElement;
+    expect(address).toBeTruthy();
+    await type(address, "https://services.example.com/mcp/v2");
+    await type(fieldFor(host, "New key / value"), "new_token_value");
+    await click(byText(host, "Save & re-check"));
+    expect(rpc.mock.calls.find((c) => c[0] === "set_mcp_connection_endpoint")?.[1])
+      .toMatchObject({ _server_url: "https://services.example.com/mcp/v2" });
+  });
+
+  it("carries the header name when the tool authenticates with a custom header", async () => {
+    world({ rows: [row({ auth_kind: "header" })] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    await click(byText(host, "Re-key"));
+    await type(fieldFor(host, "Header name"), "X-Api-Key");
+    await type(fieldFor(host, "New key / value"), "new_value");
+    await click(byText(host, "Save & re-check"));
+    // Without the header name the server refuses the bundle every time and the typed key is lost.
+    expect(rpc.mock.calls.find((c) => c[0] === "set_mcp_connection_endpoint")?.[1])
+      .toMatchObject({ _auth_header_name: "X-Api-Key", _auth_token: "new_value" });
+  });
+
+  it("offers no re-key for a tool whose credential is issued by a provider sign-in", async () => {
+    world({ rows: [row({ auth_kind: "oauth" })] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(byText(host, "Re-key")).toBeUndefined();
+    expect(byText(host, "Disconnect")).toBeTruthy();
+  });
+
+  it("drops an open tool when the workspace changes under it", async () => {
+    world({ rows: [row({ label: "Tenant A tool" })] });
+    const { host, root } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(dialog(host)?.textContent).toContain("Tenant A tool");
+    context.tenantId = "tenant-b";
+    world({ rows: [] });
+    await act(async () => root.render(<IntegrationsGatewaySection />));
+    await act(async () => { await Promise.resolve(); });
+    // The drawer holds one workspace's facts; it must not keep painting them over another's.
+    expect(dialog(host)).toBeNull();
+    expect(host.textContent).not.toContain("Tenant A tool");
+  });
+
+  it("says plainly that a tool the shipped path owns is changed on its own card", async () => {
+    world({ rows: [row()], write: { data: null, error: { code: "42501", message: "MCP_LEGACY_CONNECTION_READONLY: managed by the legacy connection path" } } });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    await click(byText(host, "Disconnect"));
+    await click(host.querySelector(".ig-gw-actions button[data-danger]"));
+    // A refused disconnect must say something — and must not tell the owner to do it here.
+    expect(dialog(host)?.textContent).toMatch(/integration card below/i);
+    expect(dialog(host)?.textContent).not.toMatch(/disconnect it and add it again/i);
+  });
+
+  it("says a broken tool is broken, and offers the fix rather than a status code", async () => {
+    world({ rows: [row({ status: "error", health: "needs_attention" })] });
+    const { host } = await render();
+    expect(host.textContent).toContain("Couldn’t reach it");
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(dialog(host)?.textContent).toMatch(/fix the address or re-key/i);
+  });
+});

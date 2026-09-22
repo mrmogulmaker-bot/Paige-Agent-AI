@@ -41,11 +41,22 @@ const row = (label: string, over: Record<string, unknown> = {}) => ({
 
 const listOk = (labels: string[]) => ({ data: labels.map((l) => row(l)), error: null });
 
+/**
+ * The REAL `supabase.rpc()` returns a PostgrestFilterBuilder: a thenable with `then` and **no
+ * `.catch`**. A plain-Promise double hides any code that calls `.catch` on the builder directly,
+ * which is exactly how a `TypeError` that killed every write on this hook once passed both `tsc`
+ * and this file. Every double below returns the real shape.
+ */
+const builder = <T,>(value: T) => ({
+  then: <R1, R2>(ok?: ((v: T) => R1 | PromiseLike<R1>) | null, err?: ((e: unknown) => R2 | PromiseLike<R2>) | null) =>
+    Promise.resolve(value).then(ok, err),
+});
+
 function defaultRpc(over: Partial<Record<string, unknown>> = {}) {
   return (name: string) => {
-    if (name === "get_mcp_connections_v2") return Promise.resolve(over.list ?? listOk(["A"]));
-    if (name === "is_current_user_tenant_admin") return Promise.resolve(over.admin ?? { data: true, error: null });
-    return Promise.resolve({ data: {}, error: null });
+    if (name === "get_mcp_connections_v2") return builder(over.list ?? listOk(["A"]));
+    if (name === "is_current_user_tenant_admin") return builder(over.admin ?? { data: true, error: null });
+    return builder({ data: {}, error: null });
   };
 }
 
@@ -83,14 +94,14 @@ describe("useMcpGateway", () => {
     expect(listCalls.length).toBeGreaterThan(0);
     // The truth-boundary seam: a get_* read carries only its own name, no args object.
     for (const call of listCalls) expect(call.length).toBe(1);
-    expect(latest().connections.map((c) => c.label)).toEqual(["A"]);
+    expect(latest().tools.map((c) => c.label)).toEqual(["A"]);
     expect(latest().canWrite).toBe(true);
     expect(latest().error).toBe(false);
   });
 
   it("parses host + aggregates only and never surfaces a secret shape", async () => {
     await mount();
-    const c = latest().connections[0];
+    const c = latest().tools[0];
     expect(c.serverUrlHost).toBe("services.example.com");
     expect(c.status).toBe("pending_verification");
     // No credential field of any kind is present on a rendered connection.
@@ -101,16 +112,16 @@ describe("useMcpGateway", () => {
 
   it("masks another workspace's rows across a switch, then loads the new tenant", async () => {
     await mount();
-    expect(latest().connections.map((c) => c.label)).toEqual(["A"]);
+    expect(latest().tools.map((c) => c.label)).toEqual(["A"]);
     const from = seen.length;
     h.rpc.mockImplementation(defaultRpc({ list: listOk(["B"]) }));
     h.tenant = "b";
     await rerender();
     // Every interim render between the switch and the new load is masked — never tenant A's rows.
     const interim = seen.slice(from);
-    expect(interim.some((s) => s.connections.length === 0 && s.loading)).toBe(true);
-    expect(interim.every((s) => !s.connections.some((c) => c.label === "A"))).toBe(true);
-    expect(latest().connections.map((c) => c.label)).toEqual(["B"]);
+    expect(interim.some((s) => s.tools.length === 0 && s.loading)).toBe(true);
+    expect(interim.every((s) => !s.tools.some((c) => c.label === "A"))).toBe(true);
+    expect(latest().tools.map((c) => c.label)).toEqual(["B"]);
   });
 
   it("distinguishes a failed READ from an empty account", async () => {
@@ -122,7 +133,7 @@ describe("useMcpGateway", () => {
     });
     await act(async () => {});
     expect(latest().error).toBe(true);
-    expect(latest().connections).toEqual([]);
+    expect(latest().tools).toEqual([]);
     expect(latest().canWrite).toBe(false);
   });
 
@@ -148,7 +159,7 @@ describe("useMcpGateway", () => {
     await mount();
     h.rpc.mockImplementation((name: string) => {
       if (name === "create_mcp_rest_connection") {
-        return Promise.resolve({ data: { connection_id: "id-new", status: "pending_verification", auth_token_last4: null }, error: null });
+        return builder({ data: { connection_id: "id-new", status: "pending_verification", auth_token_last4: null }, error: null });
       }
       return defaultRpc()(name);
     });
@@ -173,7 +184,7 @@ describe("useMcpGateway", () => {
     await mount();
     h.rpc.mockImplementation((name: string) => {
       if (name === "create_mcp_connection") {
-        return Promise.resolve({ data: null, error: { message: "MCP_DUPLICATE_LABEL", code: "22023" } });
+        return builder({ data: null, error: { message: "MCP_DUPLICATE_LABEL", code: "22023" } });
       }
       return defaultRpc()(name);
     });
@@ -183,7 +194,7 @@ describe("useMcpGateway", () => {
     });
     expect(result!.ok).toBe(false);
     expect(result!.code).toBe("MCP_DUPLICATE_LABEL");
-    expect(result!.message).toMatch(/already have a connection with that name/i);
-    expect(latest().writeError).toMatch(/already have a connection with that name/i);
+    expect(result!.message).toMatch(/already have a tool with that name/i);
+    expect(latest().writeError).toMatch(/already have a tool with that name/i);
   });
 });

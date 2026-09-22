@@ -1,8 +1,10 @@
 # UI delivery evidence: G1b Connections — registry-native connections (MCP gateway)
 
-This record covers the G1b Connections build (issue #1334 / PR #1338). This commit lands the
-**data layer only** (`src/solo/data/useMcpGateway.ts` + its unit test); the rendered
-Connections/Catalogue surface follows on the same branch and this record is updated then.
+This record covers the G1b build (issue #1334 / PR #1338). The first commit landed the data layer
+(`src/solo/data/useMcpGateway.ts`); **this commit lands the rendered surface** — the MCP gateway
+section mounted inside the existing Solo Settings → Integrations leaf, per the owner's 2026-09-22
+Option C ruling (Integrations is the only home; the Communications word is not used for this
+surface's copy or identifiers, INT-147; one catalogue, folded into the add path, §18).
 
 UI_DELIVERY_EVIDENCE_VERSION: 1
 FLOW_BY_FLOW: PASS: Flow-by-Flow v2.0.1 read in full; mode Existing Project / New Feature, risk R2; affected flow = a Solo tenant connects and governs an MCP tool; frame stated in PR #1338.
@@ -11,40 +13,40 @@ MATERIAL_FLOW_CHANGE: YES: it introduces a new connect-and-govern flow for MCP-g
 FLOW_PROTOTYPE: PASS: owner-approved Connections Studio prototype, Artifact Lw43kPk6PqUduNxNdbCkmD Version 5, approved 2026-09-22; ported verbatim per CLAUDE.md section 00.
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: purpose is to let a Solo tenant connect an MCP tool to Paige and govern it; audience is the Solo business owner or tenant admin; primary action is add a connection and manage its lifecycle from Settings then Integrations.
 VISUAL_DIRECTION: PASS: the approved pack v5 design tokens and layout; this data-layer commit reuses the established Paige design system and adds no visual surface of its own.
-AUTOMATED_EVIDENCE: PASS: src/solo/data/useMcpGateway.tenant.test.tsx runs 7 of 7 green — no-tenant-argument read, host-and-aggregates-only parse with no secret shape, workspace-switch masking, a failed read kept distinct from an empty account, a non-admin write refused with MCP_FORBIDDEN, a named-parameter REST create carrying the expected-tenant guard, and a duplicate-label refusal mapped to owner-facing copy.
-STATIC_EVIDENCE: PASS: tsc --noEmit -p tsconfig.app.json reports zero errors in the new files, and eslint is clean on src/solo/data/useMcpGateway.ts and its test.
-RENDERED_EVIDENCE: UNVERIFIED: this commit adds only the data-layer hook, so no Solo surface renders from it and there is no frame to capture at any geometry until the Connections and Catalogue surface lands on this branch.
-BEHAVIORAL_EVIDENCE: UNVERIFIED: the interactive add, re-key, and disconnect surface is not part of this commit; the hook's behavior is exercised by the automated unit test above rather than by a driven browser flow.
-AUTHENTICATED_RUNTIME: UNVERIFIED: the authenticated Solo route cannot be driven headless from this session, and the write RPCs require the #1322 migration applied to the target database, so the authenticated drive is owed to a browser-capable session or an owner live look once the surface ships.
-KEYBOARD_FOCUS: UNVERIFIED: no interactive control ships in this data-layer commit, so there is no keyboard route to exercise yet.
-ZOOM_REFLOW: UNVERIFIED: no rendered surface ships in this commit, so there is no layout to reflow at 200 percent yet.
-REDUCED_MOTION: UNVERIFIED: the hook contains no motion, and motion behavior belongs to the surface commit, so it is not exercised here.
-STATE_COVERAGE: PASS: the data layer models every connection state honestly — loading, empty, populated, a failed read kept distinct from an empty account, and a write refusal via MCP_FORBIDDEN — each asserted by the unit test; a newly created connection is never surfaced as connected before the G2 verify probe promotes it.
-TRUTHFUL_STATE_LABELS: PASS: the current truth label is PARTIAL — the hook binds the shipped G1a-1 contract, proven by static and automated evidence, while the authenticated runtime stays UNVERIFIED and the rendered surface UNAVAILABLE until it ships.
-SOLO_UI: YES: src/solo/data/useMcpGateway.ts is the data layer for the Solo Settings then Integrations Connections surface.
-SOLO_1536X770_PAIGE_CLOSED: UNVERIFIED: no Solo surface renders from this data-layer commit, so there is no frame to capture at 1536x770 with PAIGE closed until the Connections surface lands.
-SOLO_1536X770_PAIGE_OPEN: UNVERIFIED: no Solo surface renders from this data-layer commit, so there is no frame to capture at 1536x770 with PAIGE open until the Connections surface lands.
-SOLO_1366X768_PAIGE_CLOSED: UNVERIFIED: no Solo surface renders from this data-layer commit, so there is no frame to capture at 1366x768 with PAIGE closed until the Connections surface lands.
-SOLO_1366X768_PAIGE_OPEN: UNVERIFIED: no Solo surface renders from this data-layer commit, so there is no frame to capture at 1366x768 with PAIGE open until the Connections surface lands.
-SOLO_1024X768_PAIGE_CLOSED: UNVERIFIED: no Solo surface renders from this data-layer commit, so there is no frame to capture at 1024x768 with PAIGE closed until the Connections surface lands.
-SOLO_1024X768_PAIGE_OPEN: UNVERIFIED: no Solo surface renders from this data-layer commit, so there is no frame to capture at 1024x768 with PAIGE open until the Connections surface lands.
-SOLO_900X1000_PAIGE_CLOSED: UNVERIFIED: no Solo surface renders from this data-layer commit, so there is no frame to capture at 900x1000 with PAIGE closed until the Connections surface lands.
-SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: no Solo surface renders from this data-layer commit, so there is no frame to capture at 900x1000 with PAIGE open until the Connections surface lands.
-UNVERIFIED: the rendered Connections and Catalogue surface, its interactive flows, the four Solo viewports, and the authenticated-runtime drive are not part of this data-layer commit; each lands with the surface commit on this branch and is recorded then.
+AUTOMATED_EVIDENCE: PASS: 113 of 113 green across four suites — src/solo/settings-integrations-gateway.test.tsx 32 of 32 (the new surface, driven through the rendered DOM), src/solo/data/useMcpGateway.tenant.test.tsx 7 of 7, src/solo/settings-integrations.test.tsx 50 of 50 and src/solo/settings-integrations.n8n-tabs.test.tsx 24 of 24, both unchanged in behaviour. Every rpc double returns the real PostgrestFilterBuilder shape — a thenable with then and no catch — rather than a plain Promise, so the suite now guards the crash class described under Review and limitations.
+STATIC_EVIDENCE: PASS: tsc --noEmit -p tsconfig.app.json reports 12 errors, byte-identical to the count on a clean origin/main worktree, and zero in any file this branch touches. eslint reports zero errors on all six touched files; the one remaining warning on settings-integrations.tsx is the pre-existing react-refresh/only-export-components warning, present on origin/main at the same declaration. lint:pg-tokens, lint:definer-fns and lint:tier-features pass. lint:gold and lint:views fail identically on a clean origin/main worktree and are the inherited baseline, not this diff.
+RENDERED_EVIDENCE: UNVERIFIED: this session holds no browser-driving tool, so no frame of the deployed surface was captured at any geometry; the capture is owed to a browser-capable session or an owner live look (§32.c). The surface is exercised structurally instead, through the rendered DOM in jsdom, recorded under AUTOMATED_EVIDENCE.
+BEHAVIORAL_EVIDENCE: PARTIAL: every supported flow is driven end to end through the rendered component against test doubles — first use from an empty account, browse the one catalogue, add a listed pasted-key tool, add an unlisted tool by address with nothing prefilled, refuse a private or non-HTTPS address, block submission on a missing detail, route the n8n, Zapier and Social tiles into the shipped drawers, open a tool, re-key it to a confirmed full address, carry a custom header name, withhold re-key where the credential is provider-issued, disconnect reversibly and permanently as two deliberate choices, refuse both to a caller who cannot write, warn before discarding a half-typed key, close on Escape, and drop an open tool when the workspace changes. This is harness evidence against doubles, NOT authenticated runtime; the two are not interchangeable.
+AUTHENTICATED_RUNTIME: UNVERIFIED: the authenticated Solo route cannot be driven from this session, which holds no browser tool, and the write RPCs additionally require the #1322 migration applied to the target database. The authenticated drive — add, re-key and disconnect against a real tenant — is owed to a browser-capable session or an owner live look, and no claim of a working production write is made here (§70.1: the gate is a person finishing the job, and that has not been observed).
+KEYBOARD_FOCUS: PARTIAL: the drawer reuses the incumbent panel idiom — focus moves to the close control on open, Tab is trapped within the panel, Escape closes when nothing is typed and prompts when something is, and focus returns to the opener on close; the disconnect choice group meets radio semantics with a roving tabindex and arrow-key selection. Escape-closes and the discard prompt are asserted by the automated suite; the remaining keyboard route is structural and is re-checked with the owed browser drive.
+ZOOM_REFLOW: UNVERIFIED: reflow at 200 percent cannot be observed without a browser and is owed with the rendered capture. The layout uses the incumbent surface's own auto-fill grid and wrapping rows and introduces no fixed-width container.
+REDUCED_MOTION: PASS: every transition and the one keyframe in the appended .ig-gw-* block is covered by a prefers-reduced-motion reduce guard that removes the transitions, the hover translate and the pulsing status dot; verified by reading the block, and lint:pg-tokens passes with zero hardcoded colour.
+STATE_COVERAGE: PASS: first use, loading, empty, populated, a failed read kept distinct from an empty account, validation refusal, write refusal, a dropped concurrent write reported as nothing rather than as a failure, cancellation, the discard prompt, close and Escape, permission refusal, both destructive shapes, and the workspace switch — each asserted by the automated suite. A newly created or re-keyed row reads Not checked yet and is never surfaced as ready before the later verify probe promotes it.
+TRUTHFUL_STATE_LABELS: PASS: the current truth label is PARTIAL. List, add, re-key and disconnect are wired to the shipped G1a-1 contract and proven by static and automated evidence; OAuth sign-in, per-tool discovery and single-tool revoke are UNAVAILABLE and say so on the surface as honest stops; the authenticated runtime is UNVERIFIED and owed. A vendor appearing in the catalogue is never a claim that it is connected.
+SOLO_UI: YES: src/solo/settings-integrations-gateway.tsx renders inside the Solo Settings then Integrations leaf, with src/solo/data/useMcpGateway.ts as its data layer.
+SOLO_1536X770_PAIGE_CLOSED: UNVERIFIED: this session holds no browser-driving tool, so no frame was captured at 1536x770 with PAIGE closed; the capture is owed to a browser-capable session (§32.c) and no claim is made about how the surface renders at this geometry.
+SOLO_1536X770_PAIGE_OPEN: UNVERIFIED: this session holds no browser-driving tool, so no frame was captured at 1536x770 with PAIGE open; the capture is owed to a browser-capable session (§32.c) and no claim is made about how the surface renders at this geometry.
+SOLO_1366X768_PAIGE_CLOSED: UNVERIFIED: this session holds no browser-driving tool, so no frame was captured at 1366x768 with PAIGE closed; the capture is owed to a browser-capable session (§32.c) and no claim is made about how the surface renders at this geometry.
+SOLO_1366X768_PAIGE_OPEN: UNVERIFIED: this session holds no browser-driving tool, so no frame was captured at 1366x768 with PAIGE open; the capture is owed to a browser-capable session (§32.c) and no claim is made about how the surface renders at this geometry.
+SOLO_1024X768_PAIGE_CLOSED: UNVERIFIED: this session holds no browser-driving tool, so no frame was captured at 1024x768 with PAIGE closed; the capture is owed to a browser-capable session (§32.c) and no claim is made about how the surface renders at this geometry.
+SOLO_1024X768_PAIGE_OPEN: UNVERIFIED: this session holds no browser-driving tool, so no frame was captured at 1024x768 with PAIGE open; the capture is owed to a browser-capable session (§32.c) and no claim is made about how the surface renders at this geometry.
+SOLO_900X1000_PAIGE_CLOSED: UNVERIFIED: this session holds no browser-driving tool, so no frame was captured at 900x1000 with PAIGE closed; the capture is owed to a browser-capable session (§32.c) and no claim is made about how the surface renders at this geometry.
+SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: this session holds no browser-driving tool, so no frame was captured at 900x1000 with PAIGE open; the capture is owed to a browser-capable session (§32.c) and no claim is made about how the surface renders at this geometry.
+UNVERIFIED: the rendered capture at all four Solo viewports, zoom reflow, and the authenticated-runtime drive against a real tenant. All three need a browser this session does not have, and all three are owed to a browser-capable session or an owner live look. Also owed and named rather than claimed: Integration Capability Registry entries for the providers this catalogue lists, which the registry's delivery rule requires and which cannot be authored honestly here because each needs a dated pricing source (§13 — a fabricated source would be worse than the gap).
 OWNER_INTENT: a Solo tenant connects an MCP tool to Paige, approves what she may use, and manages it from Settings then Integrations, ported from approved pack v5 and wired to the shipped G1a-1 registry.
 MUST_NOT_HAPPEN: never call a legacy writer or the tenant-mcp-connect edge function; never render a Connect that cannot connect; never surface a connected or usable state a new row has not earned; never leak a secret, since the read returns host and last-4 only and the list read returns no last-4; never fork the Solo shell by tenant.
-MUST_PRESERVE: the legacy n8n and Zapier drawers stay live and untouched; the shipped Social connections surface; the workspace-switch drawer-drop and scope-masking behavior; the connections truth-boundary tests. This commit touches none of them — it adds new files only.
+MUST_PRESERVE: the legacy n8n and Zapier drawers stay live and untouched; the shipped Social surface; the provider card grid and its category filter; the Automations leaf; the n8n OAuth-return effect; the workspace-switch drawer-drop and scope-masking behaviour; the truth-boundary tests. The mount is a pure insertion above the filter bar and removes nothing. ONE tested assertion was changed and is called out rather than left silent (§58): settings-integrations.test.tsx previously asserted that is_current_user_tenant_admin was called ZERO times on this surface, as a proxy for the stripe card mounting no n8n seam. The gateway section legitimately reads the caller write permission once on mount, so the assertion now snapshots the count before opening the stripe card and requires it not to increase — the same before-and-after idiom this file already uses twice. The property it proves is unchanged and it still fails if the stripe card mounts that seam; what is genuinely lost is the incidental surface-wide property that nothing on Integrations reads tenant-admin unconditionally.
 ACCEPTANCE_CRITERIA: on the real platform a tenant can list, add a bearer, header, url, none, or api-key connection, re-key it, and soft-disconnect or hard-delete it, with OAuth tiles showing an honest sign-in-coming-soon stop, all validated against the shipped RPCs.
-MOTION_PURPOSE: NONE: no motion in this data-layer commit; the surface commit records its motion and reduced-motion behavior.
+MOTION_PURPOSE: the only motion is a one-pixel hover lift on the tool rows and catalogue tiles, which signals that a row is operable, and a slow opacity pulse on the not-checked-yet status dot, which distinguishes a waiting state from a settled one. Both are transform or opacity only, and both are removed under prefers-reduced-motion.
 PROTECTED_SEAMS: tenant and workspace isolation is AFFECTED and tested — server-derived tenant, no client id, scope masking, with the unit test asserting the masking and the MCP_FORBIDDEN refusal; integration and provider status is AFFECTED, this being the connections seam, and covered by the unit test's state assertions; approval and autonomy, Spine execution, canonical writes, Rail and receipts, chat scroll, Live Conversation, Secure Browser and Vault, durable jobs, responsive shell geometry, and accessibility are NOT AFFECTED by this data-layer hook, which adds new files and touches no shell or shared contract.
 
-INTERNAL_BUILD_IDENTITY: ddf15a2da4b4783de166ced0a74ad4af6ecf2a52; deployment=7QLWG36pyt8af9bXbxPnTaw37uAY; environment=preview; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1338
-RELEASE_CHANNEL: preview: Vercel preview build on the branch; data-layer only, not a customer release.
-RELEASE_CLASSIFICATION: internal-only: a data-layer hook with no customer-visible change in this commit.
-CUSTOMER_RELEASE_IDENTITY: none: internal data-layer slice; the customer-visible Connections surface is a later commit and an owner decision.
-RELEASE_NOTE_REQUIRED: NO: internal-only data-layer change with no customer-visible surface.
-RELEASE_TRUTH_BOUNDARY: PARTIAL: the useMcpGateway data layer binds the shipped G1a-1 contract with static and automated proof; the rendered surface is UNAVAILABLE until it ships and the authenticated runtime stays UNVERIFIED.
-RELEASE_RECOVERY: position=forward-fix; reference=reverting commit ddf15a2 on branch claude/loving-gates-d0mi47 removes the two new files, which have no dependents.
+INTERNAL_BUILD_IDENTITY: PENDING_HEAD_SHA; deployment=UNKNOWN; environment=preview; migrations=NOT_APPLICABLE; edge=NOT_APPLICABLE; evidence=https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/1338
+RELEASE_CHANNEL: preview: Vercel preview build on the branch; not a customer release.
+RELEASE_CLASSIFICATION: internal-only: a new tenant-visible section on an existing settings leaf, on a pre-launch platform with no live customers; no customer release identity is earned or claimed.
+CUSTOMER_RELEASE_IDENTITY: none: an owner decision, and not earned while the authenticated runtime proof is still owed.
+RELEASE_NOTE_REQUIRED: NO: pre-launch internal build; no customer audience exists to notify.
+RELEASE_TRUTH_BOUNDARY: PARTIAL: list, add, re-key and disconnect are bound to the shipped G1a-1 contract with static and automated proof; OAuth sign-in, per-tool discovery and single-tool revoke are UNAVAILABLE and say so on the surface; the authenticated runtime is UNVERIFIED and owed to a browser-capable session.
+RELEASE_RECOVERY: position=forward-fix; reference=the section is a single additive mount in src/solo/settings-integrations.tsx; removing that one line restores the previous Integrations surface exactly, and the gateway files have no other dependents.
 
 ## Scope and collisions
 
@@ -69,7 +71,48 @@ workspace-switch states are the surface commit's, driven and recorded there.
 
 ## Review and limitations
 
-Independent review is the exact-head Codex pass plus the Impeccable finish-review on the surface commit.
-Limitations: everything requiring the rendered or authenticated surface is `UNVERIFIED` here and owed to
-the surface commit; the write path additionally depends on the #1322 migration being applied to the
-target database.
+A §39 peer-gate read the real diff adversarially and returned BLOCK on four P1s, all of which were
+fixed in this commit and are recorded here because a green suite is exactly what hid them:
+
+1. **Every write crashed before reaching the server.** `supabase.rpc()` returns a
+   `PostgrestFilterBuilder` — a thenable with `then` and **no `.catch`** — and the write path called
+   `.catch` on it directly. An `as Promise<…>` assertion hid that from `tsc`, and test doubles
+   returning real Promises hid it from the suite, so `tsc` was clean and 81 tests were green while
+   every add, re-key and disconnect would have thrown a `TypeError` in production, left the button
+   stuck on "Adding…" with no error shown, and silently dropped every later write for the life of
+   the page. Confirmed by probing the installed `@supabase/postgrest-js` in node (`typeof catch:
+   undefined`). Fixed by adopting the builder with `Promise.resolve` first, the idiom the sibling
+   `useN8nConnection` already uses. **Proven, not assumed:** restoring the defect turns four of the
+   new tests red with `TypeError: supabase.rpc(...).catch is not a function`, and the fix turns them
+   green again. Every double in both new test files now returns the real builder shape.
+2. **Re-key silently truncated a working endpoint.** The list read returns the endpoint HOST only by
+   design, and the form rebuilt the address from it, so re-keying a tool added at a path would have
+   re-pointed it at the bare host and cleared its approvals with no way back. The address is now an
+   editable field the owner confirms.
+3. **Re-key was impossible for four auth kinds.** The writer dropped the header name and forced the
+   token to null for everything but bearer, so `header`, `url` and `none` rows were refused by the
+   server every time and `oauth` rows could never succeed at all. The form now collects exactly what
+   each kind requires, and re-key is withheld where the credential is provider-issued.
+4. **Rows owned by the shipped n8n/Zapier path rendered dead controls.** Those writers refuse a
+   projected legacy row, and the refusal copy told the owner to "disconnect it and add it again" —
+   an instruction that path cannot carry out. The message now names the card that can.
+
+Also fixed from the same pass: an open detail drawer kept painting one workspace's facts after a
+switch; the private-address check matched `10.` and `127.` anywhere in the string and refused
+legitimate public addresses like `https://api.example.com/v1.10.2/mcp`; a dropped concurrent write
+was reported as a definite failure; a refused disconnect produced no visible effect at all; the
+discard prompt fired on an untouched form while Cancel bypassed it.
+
+A §5 compliance pass ran alongside it. Fixed from it: INT-147 owner-facing copy in the hook's error
+map and the row-label fallback, and the abbreviated form in this surface's own class names and
+props — the RPC names, `_connection_id`, the `GatewayConnection` row type and the closed-set
+`MCP_*_CONNECTION_*` codes are DB contracts and are unchanged; a §50 trademark hit in tenant-visible
+tile copy; and two tiles that claimed more than the God-level Integration Capability Registry allows
+(HubSpot `UNAVAILABLE`/`prohibited` and Microsoft 365 `DEFERRED`/`prohibited`, both now stated as
+having no direct path yet).
+
+Limitations, stated rather than worked around: the rendered capture at the four Solo viewports, zoom
+reflow, and the authenticated runtime drive all need a browser this session does not have and are
+owed. The write path additionally depends on the #1322 migration being applied to the target
+database. Integration Capability Registry entries for the providers this catalogue lists are owed
+and are named above rather than invented, because each requires a dated pricing source.

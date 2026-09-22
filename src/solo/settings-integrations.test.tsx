@@ -267,12 +267,16 @@ describe("Truth boundary", () => {
   it("offers no setup for a provider with no tenant-safe contract, and says so plainly", async () => {
     world();
     const { host } = await render();
+    // Opening a card that owns no n8n seam must not read the n8n connection. Counted
+    // across the open, not against zero: the view itself legitimately reads the caller's
+    // write permission once on mount for the gateway section, and that read is not the
+    // n8n panel's. What this proves is that STRIPE mounts no seam of its own.
+    const adminReads = () => rpc.mock.calls.filter((c) => c[0] === "is_current_user_tenant_admin").length;
+    const before = adminReads();
     await openCard(host, "stripe");
     expect(host.querySelector('[role="dialog"]')?.textContent).toMatch(/not claimed|not offered here yet/i);
     expect(host.querySelector(".ig-form")).toBeNull();
-    // Opening a card that owns no n8n seam must not read the n8n connection.
-    const n8nAdminReads = rpc.mock.calls.filter((c) => c[0] === "is_current_user_tenant_admin");
-    expect(n8nAdminReads.length).toBe(0);
+    expect(adminReads()).toBe(before);
   });
 });
 

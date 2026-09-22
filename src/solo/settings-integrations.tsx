@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { KeyRound, Link2Off, Plug, RefreshCw, TriangleAlert, Workflow, X, Zap } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { SoloAutomationsView } from "./settings-automations";
+import { IntegrationsGatewaySection, type GatewayLegacyTarget } from "./settings-integrations-gateway";
 import { SocialDrawer } from "./settings-integrations-social";
 import { socialCardState } from "./settings-integrations-social-state";
 import { SOCIAL_PLATFORMS, type SocialPlatformDefinition } from "./social-platform-catalog";
@@ -827,6 +828,14 @@ export function SoloIntegrationsView() {
     const n8nRow = PROVIDERS.find((row) => row.id === "n8n");
     if (n8nRow && ["success", "cancelled", "refused", "expired", "failed"].includes(result)) setOpen({ row: n8nRow, scope: scopeKey, initialMcp: true });
   }, [location.pathname, location.search, navigate, activeTenantId, tenantLoading, scopeKey]);
+  /** A catalogue tile whose connect flow already ships on this surface opens THAT flow.
+   *  n8n and Zapier open their live provider drawers; Social has one drawer per platform,
+   *  so it reveals the shipped platform tiles instead of guessing which one was meant. */
+  const openLegacy = useCallback((which: GatewayLegacyTarget) => {
+    if (which === "social") { setCategory("social"); return; }
+    const row = PROVIDERS.find((candidate) => candidate.id === (which === "zapier" ? "mcp" : "n8n"));
+    if (row) setOpen({ row, scope: scopeKey });
+  }, [scopeKey]);
   const rows = PROVIDERS.filter(row => category === "all" || row.filter === category);
   const socialPlatforms = category === "all" || category === "social" ? SOCIAL_PLATFORMS : [];
   const tabs: ReadonlyArray<{ id: IntegrationsLeaf; label: string; Icon: typeof Workflow }> = [
@@ -835,6 +844,7 @@ export function SoloIntegrationsView() {
   return <div className="ss-integrations">
     <div className="ss-subtabs" role="tablist" aria-label="Integrations sections">{tabs.map(({ id, label, Icon }) => <button key={id} type="button" role="tab" className="ss-subtab" aria-selected={leaf === id} onClick={() => setLeaf(id)}><Icon aria-hidden size={14} />{label}</button>)}</div>
     {leaf === "automations" ? <SoloAutomationsView /> : <>
+      <IntegrationsGatewaySection onOpenLegacy={openLegacy} />
       <div className="ig-bar" role="group" aria-label="Filter integrations">{CATALOGUE_FILTERS.map(filter => <button key={filter.id} type="button" aria-pressed={category === filter.id} onClick={() => setCategory(filter.id)}>{filter.label}</button>)}</div>
       {category === "social" && <p className="ig-category-note">Connect each platform with its own secure sign-in. Add as many distinct accounts as this workspace is authorized to use. Channels that require pasted credentials are not offered here.</p>}
       {status.loading ? <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Resolving this account…</p> : <>
