@@ -326,6 +326,11 @@ functions, plus Vercel for the browser change. This candidate is **not
 deployment-inert**. `paige-stt`, `paige-dictate`, and `paige-tts` are not
 modified; the active read-aloud profile remains OpenAI.
 
+Review fix commit `c619a1cd` serializes pending minimize and restore
+transitions before renewal, and persists the provider-free unavailable state
+and failure code before the socket upgrade. The two reported P2 lifecycle
+defects have targeted failing-first regression checks.
+
 The ticket is random, valid for 45 seconds, stored only as a SHA-256 digest in
 the existing session row, and consumed with a conditional update before WSS
 upgrade. The row supplies tenant and caller-owned thread scope; no client
