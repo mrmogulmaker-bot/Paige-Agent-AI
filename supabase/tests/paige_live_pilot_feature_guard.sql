@@ -1,41 +1,35 @@
--- INT-104: tenant roles keep their normal tenant identity and feature writes,
--- but none can grant or revoke platform-controlled live-audio eligibility.
--- Synthetic fixtures only; all writes roll back.
+-- INT-104: the normal tenant-admin role cannot self-enable third-party audio.
+-- Synthetic fixture only. Every write rolls back.
 BEGIN;
-SELECT plan(7);
+SELECT plan(8);
 
-INSERT INTO auth.users(id,aud,role,email) VALUES
- ('fa100000-0000-4000-8000-000000000001','authenticated','authenticated','live-owner@tests.invalid'),
- ('fa100000-0000-4000-8000-000000000002','authenticated','authenticated','live-admin@tests.invalid'),
- ('fa100000-0000-4000-8000-000000000003','authenticated','authenticated','live-member@tests.invalid');
+SELECT ok((SELECT relrowsecurity FROM pg_class WHERE oid='public.paige_live_tenant_availability'::regclass),'platform availability has RLS');
+SELECT ok(NOT has_table_privilege('authenticated','public.paige_live_tenant_availability','SELECT'),'tenant roles cannot read pilot holder rows');
+SELECT ok(NOT has_table_privilege('authenticated','public.paige_live_tenant_availability','INSERT,UPDATE,DELETE'),'tenant roles cannot write platform availability');
+SELECT ok(has_table_privilege('service_role','public.paige_live_tenant_availability','SELECT,INSERT,UPDATE,DELETE'),'server operational role can manage availability');
 
+INSERT INTO auth.users(id,aud,role,email)
+VALUES ('fa100000-0000-4000-8000-000000000001','authenticated','authenticated','live-admin@tests.invalid');
 INSERT INTO public.tenants(id,slug,name,status,account_type,account_number_prefix,account_number,features,brand,owner_user_id)
 VALUES ('fa100000-0000-4000-8000-000000001111','live-pilot-guard-test','Live Pilot Guard Test','active','standalone','LPG',9381011,'{}','{}','fa100000-0000-4000-8000-000000000001');
-INSERT INTO public.tenant_members(tenant_id,user_id,role,status,is_owner,joined_at) VALUES
- ('fa100000-0000-4000-8000-000000001111','fa100000-0000-4000-8000-000000000001','owner','active',true,now()),
- ('fa100000-0000-4000-8000-000000001111','fa100000-0000-4000-8000-000000000002','admin','active',false,now()),
- ('fa100000-0000-4000-8000-000000001111','fa100000-0000-4000-8000-000000000003','member','active',false,now());
+INSERT INTO public.tenant_members(tenant_id,user_id,role,status,is_owner,joined_at)
+VALUES ('fa100000-0000-4000-8000-000000001111','fa100000-0000-4000-8000-000000000001','admin','active',false,now());
 
-SELECT ok(EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='public.tenants'::regclass AND tgname='trg_guard_paige_live_audio_pilot' AND NOT tgisinternal),'existing tenant feature row has the pilot-key guard');
-SELECT is((SELECT features ? 'paige_live_audio_pilot' FROM public.tenants WHERE slug='live-pilot-guard-test'),false,'pilot defaults off without tenant exceptions');
+SELECT is((SELECT count(*)::integer FROM public.paige_live_tenant_availability WHERE tenant_id='fa100000-0000-4000-8000-000000001111'),0,'new workspace is off without a platform row');
 
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-000000000001","role":"authenticated"}',true);
-SELECT lives_ok($q$UPDATE public.tenants SET features=features || '{"ordinary_setting":true}'::jsonb WHERE slug='live-pilot-guard-test'$q$,'owner retains unrelated tenant feature writes');
-SELECT throws_ok($q$UPDATE public.tenants SET features=features || '{"paige_live_audio_pilot":true}'::jsonb WHERE slug='live-pilot-guard-test'$q$,'42501','PAIGE_LIVE_PILOT_PLATFORM_ONLY','owner cannot grant live audio through REST-equivalent role');
-
-SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-000000000002","role":"authenticated"}',true);
-SELECT throws_ok($q$UPDATE public.tenants SET features=features || '{"paige_live_audio_pilot":true}'::jsonb WHERE slug='live-pilot-guard-test'$q$,'42501','PAIGE_LIVE_PILOT_PLATFORM_ONLY','admin cannot grant live audio through REST-equivalent role');
+SELECT throws_ok($q$INSERT INTO public.paige_live_tenant_availability(tenant_id,enabled) VALUES('fa100000-0000-4000-8000-000000001111',true)$q$,'42501',NULL,'active tenant admin cannot enable live audio');
 
 RESET ROLE;
 SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
-SELECT lives_ok($q$UPDATE public.tenants SET features=features || '{"paige_live_audio_pilot":true}'::jsonb WHERE slug='live-pilot-guard-test'$q$,'server-side operational role can enable the same tenant-neutral capability');
+SELECT lives_ok($q$INSERT INTO public.paige_live_tenant_availability(tenant_id,enabled) VALUES('fa100000-0000-4000-8000-000000001111',true)$q$,'platform service can enable the same generic workspace');
 
 RESET ROLE;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-000000000001","role":"authenticated"}',true);
-SELECT throws_ok($q$UPDATE public.tenants SET features=features || '{"paige_live_audio_pilot":false}'::jsonb WHERE slug='live-pilot-guard-test'$q$,'42501','PAIGE_LIVE_PILOT_PLATFORM_ONLY','owner cannot revoke platform pilot while other tenant writes remain allowed');
+SELECT throws_ok($q$UPDATE public.paige_live_tenant_availability SET enabled=false WHERE tenant_id='fa100000-0000-4000-8000-000000001111'$q$,'42501',NULL,'active tenant admin cannot rewrite platform availability');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -375,13 +375,17 @@ calls. The only deployed importers of this shared module are `paige-dictate`
 and `paige-stt`; the required redeploy set is exactly those functions.
 
 This route does **not** activate Live Conversation or send tenant audio. Stage 1
-is gated by the server-stored `paige_live_audio_pilot` capability flag. It
-defaults off for every tenant, with no committed identity exceptions. Both
-ticket issuance and relay admission check it server-side; client presentation
-cannot bypass it. Enabling it is a server-side operational action. Its current
-holders are operational database data, never committed to this repository,
-placed in a ticket or PR body, or logged. When disabled, the control remains
-visible and reports `UNAVAILABLE` with text chat still usable. Before any real
+availability is read from `paige_live_tenant_availability`, a service-role-only
+workspace row that defaults off when missing. Tenant owners/admins cannot write
+it at the database level. Both ticket issuance and relay admission check it
+server-side; client presentation cannot bypass it. The separate user entitlement
+continues to resolve from the signed-in user, active tenant membership and role,
+and that user's caller-owned Paige thread. Owners, admins and members use the
+same shell and scoped path. Enabling availability is a server-side operational
+action. Its current holders are operational database data, never committed to
+this repository, placed in a ticket or PR body, or logged. When disabled, the
+control remains visible and reports `UNAVAILABLE` with text chat still usable.
+Before any real
 tenant audio, an actual request must be observed carrying `mip_opt_out=true`
 and the account-level MIP setting must be verified. Broader enablement also
 requires the INT-100/INT-107 privacy and split-vendor decisions. No

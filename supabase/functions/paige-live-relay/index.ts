@@ -83,9 +83,9 @@ Deno.serve(async (req) => {
     if (!await markUnavailable("membership_inactive")) return new Response("relay_unavailable", { status: 503 });
     return new Response("membership_inactive", { status: 403 });
   }
-  const { data: tenantPilot, error: pilotError } = await admin.from("tenants").select("features")
-    .eq("id", session.tenant_id).maybeSingle();
-  const pilotEnabled = !pilotError && isLiveAudioPilotEnabled(tenantPilot?.features);
+  const { data: tenantPilot, error: pilotError } = await admin.from("paige_live_tenant_availability")
+    .select("enabled").eq("tenant_id", session.tenant_id).maybeSingle();
+  const pilotEnabled = !pilotError && isLiveAudioPilotEnabled(tenantPilot);
   if (!pilotEnabled) {
     if (!await markUnavailable("live_audio_not_enabled")) return new Response("relay_unavailable", { status: 503 });
     return new Response("live_audio_not_enabled", { status: 403 });

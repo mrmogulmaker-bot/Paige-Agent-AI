@@ -32,8 +32,8 @@ assert.equal(Number(first !== null) + Number(second !== null), 1, "one claim win
 assert.equal(await consumeRelayTicket(issued.value, sessionId, store, 1_000_000_001_000), null, "replay loses");
 assert.equal(isLiveAudioPilotEnabled({}), false, "pilot defaults off for every tenant");
 assert.equal(isLiveAudioPilotEnabled(null), false, "missing feature record fails closed");
-assert.equal(isLiveAudioPilotEnabled({ paige_live_audio_pilot: "true" }), false, "string truthiness never enables audio");
-assert.equal(isLiveAudioPilotEnabled({ paige_live_audio_pilot: true }), true, "only explicit server-stored boolean enables audio");
+assert.equal(isLiveAudioPilotEnabled({ enabled: "true" }), false, "string truthiness never enables audio");
+assert.equal(isLiveAudioPilotEnabled({ enabled: true }), true, "only explicit platform-stored boolean enables audio");
 
 const relay = readFileSync(new URL("../supabase/functions/paige-live-relay/index.ts", import.meta.url), "utf8");
 const session = readFileSync(new URL("../supabase/functions/paige-live-session/index.ts", import.meta.url), "utf8");
@@ -46,15 +46,16 @@ assert.match(relay, /state: "unavailable", availability: "UNAVAILABLE", failure_
 assert.ok(relay.indexOf("markUnavailable(unavailableCode)") < relay.indexOf("Deno.upgradeWebSocket(req)"), "terminal state precedes unavailable socket");
 assert.ok(session.indexOf('rpc("current_user_tenant_id")') < session.indexOf("issueRelayTicket()"));
 assert.ok(session.indexOf('from("paige_chat_threads")') < session.indexOf("issueRelayTicket()"));
-assert.ok(session.indexOf('from("tenants").select("features")') < session.indexOf("issueRelayTicket()"), "tenant pilot read precedes ticket issuance");
-assert.match(session, /isLiveAudioPilotEnabled\(tenantPilot\?\.features\)/, "session ticket requires the server-stored flag");
-assert.ok(relay.indexOf('from("tenants").select("features")') < relay.indexOf("Deno.upgradeWebSocket(req)"), "relay rechecks pilot before upgrade");
-assert.match(relay, /isLiveAudioPilotEnabled\(tenantPilot\?\.features\)/, "relay admission requires the server-stored flag");
+assert.ok(session.indexOf('from("paige_live_tenant_availability")') < session.indexOf("issueRelayTicket()"), "platform availability read precedes ticket issuance");
+assert.match(session, /isLiveAudioPilotEnabled\(tenantPilot\)/, "session ticket requires the platform-stored flag");
+assert.ok(relay.indexOf('from("paige_live_tenant_availability")') < relay.indexOf("Deno.upgradeWebSocket(req)"), "relay rechecks platform availability before upgrade");
+assert.match(relay, /isLiveAudioPilotEnabled\(tenantPilot\)/, "relay admission requires the platform-stored flag");
 assert.ok(relay.indexOf('return new Response("live_audio_not_enabled", { status: 403 })') < relay.indexOf("Deno.upgradeWebSocket(req)"), "revoked or missing pilot rejects before socket upgrade");
 assert.match(relay, /from\("tenant_members"\)[\s\S]*?\.eq\("user_id", session\.actor_user_id\)\.eq\("status", "active"\)/, "relay rechecks the signed-in user's active membership, independent of role label");
 const pilotMigration = readFileSync(new URL("../supabase/migrations/20270401000000_paige_live_pilot_feature_guard.sql", import.meta.url), "utf8");
-assert.match(pilotMigration, /BEFORE INSERT OR UPDATE OF features ON public\.tenants/, "pilot key is guarded on insert and update");
-assert.match(pilotMigration, /auth\.role\(\) IS DISTINCT FROM 'service_role'/, "tenant roles cannot change the pilot key");
+assert.match(pilotMigration, /CREATE TABLE IF NOT EXISTS public\.paige_live_tenant_availability/, "rollout decision has a platform-owned table");
+assert.match(pilotMigration, /REVOKE ALL ON TABLE public\.paige_live_tenant_availability FROM PUBLIC, anon, authenticated/, "tenant roles have no table write route");
+assert.doesNotMatch(relay + session, /from\("tenants"\)\.select\("features"\)/, "tenant-writable feature JSON never controls Live audio");
 assert.doesNotMatch(relay + session, /daily_ceiling|concurrent_session_limit|reserve_paige_voice|allowance_gate/i);
 assert.doesNotMatch(relay, /stt-router|tts-router|elevenlabs|DEEPGRAM_API_KEY|ELEVENLABS_API_KEY/);
 assert.equal(network, 0);

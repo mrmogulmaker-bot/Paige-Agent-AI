@@ -1,35 +1,20 @@
--- INT-104: keep the existing tenants.features flag, but reserve its pilot key
--- for the platform service. Tenant owners/admins retain their other feature
--- writes; no identity-specific tenant exception or parallel entitlement store.
--- Rollback (only while the pilot remains off): DROP TRIGGER IF EXISTS
--- trg_guard_paige_live_audio_pilot ON public.tenants; DROP FUNCTION IF EXISTS
--- public.guard_paige_live_audio_pilot_feature();
+-- INT-104: platform-owned workspace availability for the existing Live flow.
+-- This is not a user entitlement, role label, transcript, or usage meter.
+-- A missing row is OFF. No tenant identity is hardcoded or seeded.
+-- Rollback (only while all rows remain disabled):
+-- DROP TABLE IF EXISTS public.paige_live_tenant_availability;
 
-CREATE OR REPLACE FUNCTION public.guard_paige_live_audio_pilot_feature()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY INVOKER
-SET search_path = pg_catalog, public
-AS $$
-BEGIN
-  IF TG_OP = 'INSERT' THEN
-    IF NEW.features ? 'paige_live_audio_pilot'
-       AND auth.role() IS DISTINCT FROM 'service_role' THEN
-      RAISE EXCEPTION 'PAIGE_LIVE_PILOT_PLATFORM_ONLY' USING ERRCODE = '42501';
-    END IF;
-  ELSIF (OLD.features -> 'paige_live_audio_pilot')
-        IS DISTINCT FROM (NEW.features -> 'paige_live_audio_pilot')
-        AND auth.role() IS DISTINCT FROM 'service_role' THEN
-    RAISE EXCEPTION 'PAIGE_LIVE_PILOT_PLATFORM_ONLY' USING ERRCODE = '42501';
-  END IF;
-  RETURN NEW;
-END;
-$$;
+CREATE TABLE IF NOT EXISTS public.paige_live_tenant_availability (
+  tenant_id uuid PRIMARY KEY REFERENCES public.tenants(id) ON DELETE CASCADE,
+  enabled boolean NOT NULL DEFAULT false,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
 
-REVOKE ALL ON FUNCTION public.guard_paige_live_audio_pilot_feature()
-  FROM PUBLIC, anon, authenticated;
+ALTER TABLE public.paige_live_tenant_availability ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.paige_live_tenant_availability FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.paige_live_tenant_availability TO service_role;
 
-DROP TRIGGER IF EXISTS trg_guard_paige_live_audio_pilot ON public.tenants;
-CREATE TRIGGER trg_guard_paige_live_audio_pilot
-BEFORE INSERT OR UPDATE OF features ON public.tenants
-FOR EACH ROW EXECUTE FUNCTION public.guard_paige_live_audio_pilot_feature();
+-- Intentionally no anon/authenticated policy. A browser or tenant-admin REST
+-- request cannot read or change this platform rollout decision even if it
+-- owns the corresponding tenant row. Only the server's named service secret
+-- may read it for ticket issuance and relay admission.
