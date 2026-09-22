@@ -38,7 +38,9 @@ Excluded:
 
 ## 3. Plan period, allowance, and catalog transition
 
-The allowance period is the tenant's canonical `platform_subscriptions.current_period_start` (inclusive) through `current_period_end` (exclusive), not a calendar-month guess. If either boundary is missing or invalid, resolution fails closed to **coverage incomplete** in shadow reporting; it never invents a period or blocks a user.
+For an ordinary subscription, the allowance period is the tenant's canonical `platform_subscriptions.current_period_start` (inclusive) through `current_period_end` (exclusive), not a calendar-month guess.
+
+An active promotional grant with `metadata.no_expiry = true`, a valid `current_period_start`, and `current_period_end IS NULL` has no Stripe renewal period to copy. Its platform allowance cadence is instead a deterministic sequence of one-month UTC windows anchored to `current_period_start`: for timestamp `T`, choose the greatest non-negative integer `n` for which `anchor + n months <= T`, and resolve `[anchor + n months, anchor + (n + 1) months)`. This is a platform allowance window only; it does not invent or modify a Stripe billing, invoice, renewal, or expiry date. Reserve and coverage readback must use the same resolver. A normal subscription missing either boundary, or a no-expiry grant missing or ambiguously encoding its anchor, resolves to **coverage incomplete** in shadow reporting; it never blocks a user while enforcement is off.
 
 Plan configuration belongs on the canonical `platform_subscription_plans` lineage. A later migration will replace the deployed Solo `$149` catalog price and the `$74.50` beta offer with the owner-approved **$297/month** Solo offer, while preserving immutable invoice/subscription history. It must:
 
@@ -59,7 +61,7 @@ The future schema extends `platform_usage_events`; it does not create a parallel
 - `released` — unused reservation returned when dispatch did not incur cost;
 - `ambiguous` — dispatch may have incurred cost but no authoritative result exists; it remains reserved until reconciliation.
 
-Required typed fields (columns rather than policy-critical JSON) are: tenant, operation/idempotency key, category, source, provider, model/product, state, native quantity/unit, reserved cost USD, settled cost USD, rate-card snapshot ID, plan-period start/end, occurred/settled timestamps, and an optional source receipt/trace identifier. Metadata remains redacted descriptive context only.
+Required typed fields (columns rather than policy-critical JSON) are: tenant, operation/idempotency key, category, source, provider, model/product, state, native quantity/unit, reserved cost USD, settled cost USD, rate-card snapshot ID, plan-period start/end, funding source, optional prepaid-entitlement ID and exact entitlement quantity/unit debited, occurred/settled timestamps, and an optional source receipt/trace identifier. Metadata remains redacted descriptive context only.
 
 Rules:
 
@@ -75,7 +77,7 @@ Every platform-paid provider dispatcher, including the shared LLM/model-routing 
 
 ## 5. Versioned rate-card snapshots
 
-A rate card is platform billing configuration, not tenant data. Each immutable snapshot names provider, product/model, unit, input/output/cache distinctions where applicable, USD price, minimum/rounding rules, source URL or contract reference, effective interval, and who approved it. A reservation pins the snapshot used; later rate changes never rewrite prior usage.
+A rate card is platform billing configuration, not tenant data. Each immutable snapshot names provider, product/model, unit, input/output/cache distinctions where applicable, USD price, minimum/rounding rules, source URL or contract reference, effective interval, and who approved it. A reservation pins the snapshot used; later rate changes never rewrite prior usage. Future prepaid purchases separately snapshot their purchased quantity, unit, paid amount, and immutable receipt; a provider rate card must not be used to fabricate missing purchase provenance for a legacy entitlement.
 
 Provider-confirmed actual cost wins for settlement. If a provider supplies usage but not cost, the pinned snapshot calculates an **estimated** cost and the ledger preserves that label. If neither a confirmed cost nor a valid snapshot exists, the source is unpriced/coverage-incomplete; shadow reporting shows the gap and enforcement remains off.
 
@@ -103,21 +105,21 @@ No warning, stop, overage, or ceiling is live merely because this contract names
 
 - `platform_usage_events`: **reuse and extend** as the sole plan-usage ledger. Existing `llm_tokens` and `tts_char` rows remain historical source-unit evidence.
 - `paige_llm_trace`: **retain as LLM observability/provenance**. The shared model dispatcher writes the pre-dispatch reservation; a trace settles/reconciles it. The current hourly drain is historical/backfill repair only, never the live enforcement gate.
-- `paige_media_credit_entries` and media hold/consume/release: **migrate provider-usage lifecycle and history into the unified ledger, then retire as an allowance/balance authority only after prepaid value is preserved**. Outstanding non-expiring `grant_purchased` value moves one-for-one into a canonical Platform Billing prepaid-usage entitlement, with its historical USD conversion and source receipt retained. That entitlement is not a usage meter and the purchase itself is not provider cost. Unified reserve/settle draws the plan's included allowance first, then preserved prepaid entitlement, then separately authorized opt-in overage; each usage row records its funding source so prepaid value is neither lost nor also counted against the `$30` allowance. Media job/receipt provenance may remain.
+- `paige_media_credit_entries` and media hold/consume/release: **migrate provider-usage lifecycle and history into the unified ledger, then retire as an allowance/balance authority only after prepaid value is preserved**. Outstanding non-expiring `grant_purchased` balances move one-for-one, in their existing `media_credit` units, into canonical Platform Billing prepaid entitlements restricted to `category = media`. A non-media operation cannot select or debit them. Where a legacy row lacks an immutable paid amount or receipt, migration copies only source fields that actually exist, records `provenance_status = unknown_legacy`, and does not invent a USD conversion, price, or receipt. That entitlement is not a usage meter and the purchase itself is not provider cost. The ledger still records the media operation's independently established provider cost; it also records the exact entitlement units debited. Unified reserve/settle draws the plan's included allowance first, then—only for media—preserved media-credit units, then separately authorized opt-in overage. Funding-source fields ensure prepaid value is neither lost nor also counted against the `$30` allowance. Media job/receipt provenance may remain.
 - `paige_voice_cost_reservations`, `paige_voice_*budget*`, and voice monthly-usage tables/functions from V1a: **retire after unified reserve/settle coverage and reconciliation are proven**. They stay unused and cannot be re-enabled as a parallel voice allowance.
 - `platform_metered_events`: remains the separate Layer-3 tenant pass-through billing rail defined by Doctrine §197; it is not used to meter Paige's included plan allowance.
 - legacy token-credit presentation (`included_ai_tokens_month`, `ai_credit_token_ratio`) is migrated to category detail under the one dollar-denominated allowance and then retired as an independent entitlement.
 
-Migration is reconcile-first: map each legacy source record to one unified operation, migrate and reconcile every outstanding purchased-media entitlement before retiring its balance authority, compare per-tenant/per-period totals, quarantine duplicates/unknown rates, prove exact coverage, switch readers/writers, then disable and later remove the old balance authority. No dual enforcement window.
+Migration is reconcile-first: map each legacy source record to one unified operation, preserve and reconcile every outstanding purchased-media balance in its exact existing units and media-only scope before retiring its balance authority, explicitly mark absent legacy purchase provenance as unknown, compare per-tenant/per-period totals, quarantine duplicates/unknown rates, prove exact coverage, switch readers/writers, then disable and later remove the old balance authority. No dual enforcement window.
 
 ## 9. Coverage and activation gates
 
 Enforcement and charging remain off until a production readback proves, for **every active tenant** and every active provider-cost source:
 
-1. exactly one valid plan period and one plan allowance resolve;
+1. exactly one valid allowance period and one plan allowance resolve, including the deterministic platform allowance window for every active no-expiry promotional grant;
 2. every dispatched provider operation has one idempotent ledger lifecycle;
 3. every settled operation has a confirmed cost or a pinned, dated estimate explicitly labelled as such;
-4. legacy-versus-unified reconciliation has no unexplained delta;
+4. legacy-versus-unified reconciliation has no unexplained delta, and every purchased-media entitlement preserves its exact unit balance, media-only restriction, and honestly known-or-unknown purchase provenance;
 5. concurrency, duplicate, retry, ambiguous dispatch, rollover, tenant isolation, rate changes, and graceful Live Conversation boundaries pass;
 6. the client billing breakdown equals the ledger and exposes unknown/unpriced coverage honestly; and
 7. emergency-disable and rollback drills pass without taking already-allowed playback or conversation dark.
