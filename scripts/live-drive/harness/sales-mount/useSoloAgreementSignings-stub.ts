@@ -13,6 +13,7 @@ import { useSyncExternalStore } from "react";
 import type {
   AgreementSigning,
   DocumentUploadResult,
+  SignedCopyResult,
   SigningDraft,
   SigningLinkResult,
   SigningWriteResult,
@@ -118,6 +119,12 @@ function snapshotFor(m: SigningsMode): SigningsState {
     createSigning: async (_d: SigningDraft): Promise<SigningWriteResult> => ({ ok: false, message: NOT_WIRED }),
     issueLink: async (): Promise<SigningLinkResult> => ({ ok: false, message: NOT_WIRED }),
     voidSigning: async (): Promise<SigningWriteResult> => ({ ok: false, message: NOT_WIRED }),
+    // No private bucket behind a local harness, so this refuses rather than minting a URL that
+    // would 404 — the surface's own honest-failure path is what the frames should show.
+    signedCopyUrl: async (): Promise<SignedCopyResult> => ({
+      ok: false,
+      message: "That signed copy could not be opened just now. Nothing was changed; try again in a moment.",
+    }),
   };
   switch (m) {
     case "resolving":   return { ...base, phase: "resolving",   signings: [],   readable: false, canManage: false, authorityUnknown: false };

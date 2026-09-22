@@ -170,6 +170,7 @@ beforeEach(() => {
     createSigning: vi.fn(async () => ({ ok: true, signingId: "signing-1", signatureState: "draft" })),
     issueLink: vi.fn(async () => ({ ok: true, token: "tok-abcdef", expiresAt: "2026-10-06T12:00:00Z" })),
     voidSigning: vi.fn(async () => ({ ok: true, signatureState: "voided" })),
+    signedCopyUrl: vi.fn(async () => ({ ok: true, url: "https://storage.test/signed.pdf?token=x" })),
   };
 });
 
@@ -1015,6 +1016,65 @@ describe("Agreement documents — signature state, separate from commercial stat
     voidedAt: null, declineReason: null, signerName: null, signedPdfPath: null,
     createdAt: "2026-09-22T12:00:00Z", updatedAt: "2026-09-22T12:00:00Z",
   };
+
+  /* ── retrieving the signed copy (§70) ────────────────────────────────────────────────────
+   * An owner who can see that a client signed and cannot obtain the thing they signed has not
+   * finished the job, which is the whole §70 test. These guard the act and its honest failures. */
+  const COMPLETED = {
+    ...SIGNING, signatureState: "completed", displayState: "completed",
+    signerName: "Dana Reed", completedAt: "2026-09-22T13:00:00Z",
+    signedPdfPath: "tenant-1/signed/s1-1.pdf",
+  };
+  const openCompleted = () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme" }];
+    harness.agreements.agreements = [AGREEMENT];
+    harness.signings.signings = [COMPLETED];
+    render("terms");
+    act(() => (host.querySelector('[aria-label="Agreements and terms"] .so-row') as HTMLButtonElement).click());
+  };
+
+  it("offers the signed copy on a completed document, and opens only what the server returned", async () => {
+    const opened: string[] = [];
+    const spy = vi.spyOn(window, "open").mockImplementation(((u: string) => { opened.push(u); return null; }) as never);
+    openCompleted();
+    const button = buttonSaying("Download the signed copy") as HTMLButtonElement;
+    expect(button).toBeDefined();
+    await act(async () => { button.click(); });
+    expect(harness.signings.signedCopyUrl).toHaveBeenCalledWith("tenant-1/signed/s1-1.pdf", "tenant-1");
+    expect(opened).toEqual(["https://storage.test/signed.pdf?token=x"]);
+    spy.mockRestore();
+  });
+
+  it("opens nothing and says so when the signed copy could not be minted", async () => {
+    const opened: string[] = [];
+    const spy = vi.spyOn(window, "open").mockImplementation(((u: string) => { opened.push(u); return null; }) as never);
+    harness.signings.signedCopyUrl = vi.fn(async () => ({ ok: false, message: "That signed copy could not be opened just now." }));
+    openCompleted();
+    await act(async () => { (buttonSaying("Download the signed copy") as HTMLButtonElement).click(); });
+    // §13: a request is not a link. Nothing is opened and the refusal is what the owner is told.
+    expect(opened).toEqual([]);
+    expect(host.textContent).toContain("That signed copy could not be opened just now.");
+    spy.mockRestore();
+  });
+
+  it("says a completed document carries no sealed copy rather than offering a control that cannot work", () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme" }];
+    harness.agreements.agreements = [AGREEMENT];
+    harness.signings.signings = [{ ...COMPLETED, signedPdfPath: null }];
+    render("terms");
+    act(() => (host.querySelector('[aria-label="Agreements and terms"] .so-row') as HTMLButtonElement).click());
+    expect(buttonSaying("Download the signed copy")).toBeUndefined();
+    expect(host.textContent).toContain("no sealed copy is recorded against it");
+  });
+
+  it("lets a reader who cannot write still retrieve the signed copy", () => {
+    // Reading the document is a READ; the storage policy decides it, not the write gate. Gating
+    // this on canManage would hide a signed contract from someone entitled to read its record.
+    harness.signings.canManage = false;
+    openCompleted();
+    expect(buttonSaying("Download the signed copy")).toBeDefined();
+    expect(buttonSaying("Send for signature")).toBeUndefined();
+  });
 
   it("shows the signature state in its own column and never writes the commercial one", () => {
     harness.agreements.clients = [{ id: "c1", name: "Acme" }];

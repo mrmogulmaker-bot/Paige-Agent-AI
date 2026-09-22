@@ -1540,13 +1540,51 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
     ["Link works until", signing.expiresAt ? when(signing.expiresAt) : "No link has been issued"],
   ];
 
-  /** The acts a document offers, given the state it is actually in. A completed or declined
-   * document offers none — there is nothing left to do to it, and a control that pretends
-   * otherwise is the dead end §70 refuses. */
+  /**
+   * Fetch the sealed copy and hand it to the browser.
+   *
+   * A stored path is not an address — the bucket is private — so this asks for a short-lived
+   * signed URL first and only opens something once the server has returned one (§13: a link is a
+   * link when it exists, not when it was requested).
+   */
+  const openSignedCopy = async (signing) => {
+    setSuccess("");
+    const result = await signings.signedCopyUrl(signing.signedPdfPath, signings.tenantId);
+    if (!result.ok) { setSuccess(result.message); return; }
+    window.open(result.url, "_blank", "noopener,noreferrer");
+  };
+
+  /**
+   * The acts a document offers, given the state it is actually in.
+   *
+   * A COMPLETED document is not actionless, and an earlier revision of this treated it as one:
+   * it offered nothing at all, so an owner could see that a client had signed and had no way to
+   * obtain the thing they signed. That is the §70 failure exactly — the gate is a person
+   * finishing the job, and "the row says Completed" is not finishing it.
+   *
+   * Retrieving the copy is a READ, so it is NOT gated on `canManage`: a member who is permitted
+   * to see the record is permitted to see the document, and the storage policy is what actually
+   * decides. Sending and managing the link are writes and stay gated.
+   *
+   * A declined or unrecognised document still offers nothing, because there genuinely is nothing
+   * to do to it — and a control that pretends otherwise is the dead end §70 refuses.
+   */
   const signingAction = (signing, contactId, agreement) => {
-    if (!canSign || !signings.canManage || !signing) return null;
+    if (!canSign || !signing) return null;
     const state = signing.displayState;
-    if (state === "completed" || state === "declined" || state === "unrecognised") return null;
+    if (state === "completed") {
+      // §13: the state says signed, so the sealed copy should exist. If the record does not carry
+      // one, say that plainly rather than rendering a button that cannot do anything.
+      return signing.signedPdfPath
+        ? (
+          <button className="btn btn-p" onClick={() => { void openSignedCopy(signing); }}>
+            <Ic.doc size={13} />Download the signed copy
+          </button>
+        )
+        : <span className="so-quiet">This is signed, but no sealed copy is recorded against it.</span>;
+    }
+    if (!signings.canManage) return null;
+    if (state === "declined" || state === "unrecognised") return null;
     return (
       <button className="btn btn-p" onClick={() => openSender(signing, contactId, agreement)}>
         <Ic.send size={13} />{state === "draft" ? "Send for signature" : "Manage the link"}

@@ -125,6 +125,10 @@ export type DocumentUploadResult = {
   readonly path?: string;
 };
 
+export type SignedCopyResult =
+  | { readonly ok: true; readonly url: string }
+  | { readonly ok: false; readonly message: string };
+
 export type SigningsState = {
   readonly tenantId: string | null;
   readonly phase: "resolving" | "loading" | "ready" | "error" | "unavailable";
@@ -157,6 +161,17 @@ export type SigningsState = {
     signingId: string,
     loadedTenantId: string | null,
   ) => Promise<SigningWriteResult>;
+  /**
+   * A short-lived link to the SEALED copy of a signed document.
+   *
+   * This exists because without it an owner can see that a client signed and cannot obtain the
+   * thing they signed — the §70 test is a person finishing the job, and "it says Completed" is not
+   * finishing it.
+   */
+  readonly signedCopyUrl: (
+    path: string,
+    loadedTenantId: string | null,
+  ) => Promise<SignedCopyResult>;
 };
 
 const EMPTY = {
@@ -264,6 +279,52 @@ export function useSoloAgreementSignings(): SigningsState {
       };
     }
   }, []);
+
+  /**
+   * A signed URL for the sealed copy, minted server-side and short-lived.
+   *
+   * The bucket is PRIVATE, so a stored path is not a readable address — the browser cannot fetch
+   * one directly and must ask for a signed URL, which the storage policy grants only to a member
+   * of the workspace whose id is the path's first segment.
+   *
+   * That prefix is re-checked HERE as well, and the check is not redundant with the policy. The
+   * path reaches this from a row the surface is holding, and a row can be stale by a workspace
+   * switch; minting against the switched-to workspace would either fail confusingly or, if the
+   * caller belongs to both, hand back another workspace's document. Refusing locally keeps that
+   * from ever being attempted (the same reasoning `uploadDocument` records for its own prefix).
+   */
+  const signedCopyUrl = useCallback(async (
+    path: string,
+    loadedTenantId: string | null,
+  ): Promise<SignedCopyResult> => {
+    const expected = loadedTenantId ?? activeTenantId;
+    if (!expected) {
+      return { ok: false, message: "This workspace could not be resolved, so no copy was opened." };
+    }
+    const clean = typeof path === "string" ? path.trim() : "";
+    if (!clean || !clean.startsWith(`${expected}/`)) {
+      // One sentence for "no path recorded" and "not this workspace's path" alike.
+      return { ok: false, message: "That signed copy is not available from this workspace." };
+    }
+    const openedIdentity = identity.current;
+    try {
+      const { data, error } = await supabase.storage
+        .from("tenant-agreements")
+        .createSignedUrl(clean, 120);
+      if (identity.current !== openedIdentity) {
+        return { ok: false, message: "Your workspace changed. Reopen this document in the intended workspace." };
+      }
+      // §13: a link is only a link when the server returned one. An errored or empty answer is
+      // reported as a failure rather than handed back as an address that goes nowhere.
+      if (error || !data?.signedUrl) {
+        console.error("[signings] signed copy url failed", error);
+        return { ok: false, message: "That signed copy could not be opened just now. Nothing was changed; try again in a moment." };
+      }
+      return { ok: true, url: data.signedUrl };
+    } catch {
+      return { ok: false, message: "That signed copy could not be opened just now. Nothing was changed; try again in a moment." };
+    }
+  }, [activeTenantId]);
 
   /**
    * The original file the business drafted, kept beside the signing record.
@@ -520,5 +581,5 @@ export function useSoloAgreementSignings(): SigningsState {
       : "unavailable" as const,
     ...EMPTY,
   };
-  return { ...visible, retry, uploadDocument, createSigning, issueLink, voidSigning };
+  return { ...visible, retry, uploadDocument, createSigning, issueLink, voidSigning, signedCopyUrl };
 }
