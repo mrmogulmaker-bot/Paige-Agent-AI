@@ -15,6 +15,17 @@ function mcpRow(){
  if(!mcpRows.has(tenant))mcpRows.set(tenant,tenant.endsWith('-b')||mode()==='empty'?none():{configured:true,enabled:true,status:mode()==='connected'||mode()==='readonly'?'connected':'error',auth_kind:'bearer',transport:'http',server_url_host:'harness.example.invalid',last_probed_at:'2026-09-03T12:00:00Z',tool_count:mode()==='connected'?2:null,approved_capabilities:mode()==='connected'?['fixture_read']:[],pinned_count:mode()==='connected'?1:0});
  return mcpRows.get(tenant);
 }
+/** Gateway tool rows, keyed to the same `?data=` vocabulary the rest of this stub uses. */
+function gatewayRows(){
+ const tenant=currentHarnessTenantId();
+ if(tenant.endsWith('-b')||mode()==='empty')return [];
+ const base={provider_key:'generic-remote',transport:'http',auth_kind:'bearer',configured:true,enabled:true,visibility:'tenant',granted_scopes:[] as string[]};
+ return [
+  {...base,connection_id:'harness-tool-1',label:'Scheduling tool',status:'connected',health:'healthy',server_url_host:'scheduling.example.invalid',last_checked_at:'2026-09-20T10:00:00Z',tool_count:6,approved_count:2},
+  {...base,connection_id:'harness-tool-2',label:'Docs tool',status:'pending_verification',health:'unknown',server_url_host:'docs.example.invalid',last_checked_at:null,tool_count:0,approved_count:0},
+  {...base,connection_id:'harness-tool-3',label:'Billing tool',status:'error',health:'needs_attention',server_url_host:'billing.example.invalid',last_checked_at:'2026-09-19T08:00:00Z',tool_count:0,approved_count:0},
+ ];
+}
 const ok=(data:unknown=null)=>Promise.resolve({data,error:null});
 const fail=(message:string)=>Promise.resolve({data:null,error:{message}});
 const pending:Array<()=>void>=[];
@@ -25,6 +36,9 @@ export const supabase={
   if(name==='get_n8n_connection_readiness')return mode()==='error'||mode()==='mcp-error'?fail('fixture-read-refused'):ok({tenant_id:currentHarnessTenantId(),can_manage:mode()!=='readonly',api:{},mcp:{state:mcpRow()?.configured?'oauth_needed':'not_configured',auth_kind:mcpRow()?.auth_kind??null,oauth_readiness:'ready',approved_workflow_count:0,approved_tool_count:0,server_url:'https://harness.example.invalid/mcp-server/http'}});
   if(name==='get_tenant_n8n_api_readiness')return mode()==='error'||mode()==='api-error'?fail('fixture-read-refused'):ok(apiRow());
   if(name==='get_tenant_mcp_connections')return mode()==='error'||mode()==='mcp-error'?fail('fixture-read-refused'):ok({n8n:mcpRow(),zapier:none()});
+  // The registry-native MCP gateway read (G1b). Host + aggregates only, exactly as
+  // `get_mcp_connections_v2` projects it — no secret is representable in this shape.
+  if(name==='get_mcp_connections_v2')return mode()==='error'||mode()==='gateway-error'?fail('fixture-read-refused'):ok(gatewayRows());
   if(name==='is_current_user_tenant_admin')return ok(mode()!=='readonly');
   return ok();
  },
