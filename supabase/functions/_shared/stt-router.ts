@@ -148,16 +148,18 @@ export interface DeepgramFluxTurn {
 
 export function extractDeepgramFluxTurn(raw: string | ArrayBuffer | Uint8Array): DeepgramFluxTurn | null {
   const text = typeof raw === "string" ? raw : new TextDecoder().decode(raw instanceof Uint8Array ? raw : new Uint8Array(raw));
-  let frame: Record<string, unknown>;
-  try { frame = JSON.parse(text) as Record<string, unknown>; } catch { return null; }
-  if (frame.type !== "TurnInfo" || typeof frame.transcript !== "string" || !frame.transcript.trim() ||
-    typeof frame.event !== "string" || typeof frame.turn_index !== "number" || typeof frame.sequence_id !== "number") return null;
+  let frame: unknown;
+  try { frame = JSON.parse(text); } catch { return null; }
+  if (!frame || typeof frame !== "object" || Array.isArray(frame)) return null;
+  const turn = frame as Record<string, unknown>;
+  if (turn.type !== "TurnInfo" || typeof turn.transcript !== "string" || !turn.transcript.trim() ||
+    typeof turn.event !== "string" || typeof turn.turn_index !== "number" || typeof turn.sequence_id !== "number") return null;
   return {
-    transcript: frame.transcript,
-    isFinal: frame.event === "EndOfTurn",
-    event: frame.event,
-    turnIndex: frame.turn_index,
-    sequenceId: frame.sequence_id,
+    transcript: turn.transcript,
+    isFinal: turn.event === "EndOfTurn",
+    event: turn.event,
+    turnIndex: turn.turn_index,
+    sequenceId: turn.sequence_id,
   };
 }
 

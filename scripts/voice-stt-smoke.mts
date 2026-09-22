@@ -180,6 +180,8 @@ check("Flux Update is partial", fluxPartial?.transcript === "hello" && fluxParti
 const fluxFinal = extractDeepgramFluxTurn(JSON.stringify({ type: "TurnInfo", event: "EndOfTurn", turn_index: 2, sequence_id: 8, transcript: "hello there" }));
 check("Flux EndOfTurn is final", fluxFinal?.transcript === "hello there" && fluxFinal?.isFinal === true && fluxFinal?.sequenceId === 8);
 check("Flux control frame is ignored", extractDeepgramFluxTurn(JSON.stringify({ type: "Connected", sequence_id: 0 })) === null);
+check("Flux JSON null is ignored without throwing", extractDeepgramFluxTurn("null") === null);
+check("Flux JSON array is ignored without throwing", extractDeepgramFluxTurn("[]") === null);
 
 // ── Stream-token mint↔verify: the §9 gate ────────────────────────────────────
 console.log("stream-token (§9 gate):");
