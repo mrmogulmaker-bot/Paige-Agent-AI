@@ -105,7 +105,37 @@ face is not worth a render that can fail.
 
 ---
 
-## 3. Files this lane wrote under `supabase/` before the scope correction
+## 3. A defect in the contract itself — corrected here
+
+**This was my error, and INT-163 must not inherit it.** The contract as first written specified:
+
+```
+tas_sent_has_link_ck:
+  signature_state = 'draft' OR signature_state = 'voided'
+  OR (token_hash IS NOT NULL AND expires_at IS NOT NULL)
+```
+
+That exempts only `draft` and `voided` — while the SAME contract requires both
+`decline_agreement_signing` and the `sign-agreement` endpoint to set `token_hash := NULL`. So
+`declined` and `completed` each violate the CHECK, and **both terminal states are unreachable**: an
+agreement could be sent and then never legally finish. The constraint contradicts two writes the
+contract mandates elsewhere.
+
+**Corrected form**, which states the same intent — a row claiming to await signature must have a
+live link — without forbidding the writes:
+
+```
+tas_sent_has_link_ck:
+  signature_state NOT IN ('sent','viewed')
+  OR (token_hash IS NOT NULL AND expires_at IS NOT NULL)
+```
+
+Honest note (§13): this was found by reading, not by running. The reproduction was written but never
+executed, so it is reasoning from the text rather than a reproduced failure. It should be proven
+before it is trusted — it is cheap to prove and the consequence of being wrong about it is a
+capability that cannot complete.
+
+## 4. Files this lane wrote under `supabase/` before the scope correction
 
 Written by a crew dispatched under the earlier consolidated scope, **left in place, unmerged, and
 not to be treated as authoritative.** Reconcile deliberately against the backend lane's own work:
