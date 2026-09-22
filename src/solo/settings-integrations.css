@@ -472,6 +472,7 @@
 .ig-gw-badge::before { width: 5px; height: 5px; border-radius: 50%; background: currentColor; content: ""; }
 .ig-gw-badge[data-mode="key"] { color: var(--pg-positive); border-color: color-mix(in srgb, var(--pg-positive) 42%, var(--pg-line)); background: color-mix(in srgb, var(--pg-positive) 9%, transparent); }
 .ig-gw-badge[data-mode="connect"] { color: var(--pg-violet); border-color: color-mix(in srgb, var(--pg-violet) 42%, var(--pg-line)); background: color-mix(in srgb, var(--pg-violet) 9%, transparent); }
+.ig-gw-badge[data-mode="review"] { color: var(--pg-muted); border-color: var(--pg-line-strong); }
 .ig-gw-badge[data-mode="setup"] { color: var(--pg-warning); border-color: color-mix(in srgb, var(--pg-warning) 45%, var(--pg-line)); background: color-mix(in srgb, var(--pg-warning) 9%, transparent); }
 
 @media (prefers-reduced-motion: reduce) {

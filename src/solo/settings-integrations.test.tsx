@@ -67,6 +67,7 @@ function world(over: {
   n8n?: Record<string, unknown> | null;
   mcp?: Partial<Record<"n8n" | "zapier", Record<string, unknown>>> | null;
   zapierApi?: Record<string, unknown>;
+  gateway?: Record<string, unknown>[];
   socialConnections?: Record<string, unknown>[];
   socialAccounts?: Record<string, unknown>[];
   admin?: boolean;
@@ -77,6 +78,11 @@ function world(over: {
   rpc.mockImplementation((name: string) => {
     if (name === "get_tenant_n8n_api_readiness") return Promise.resolve({ data: api, error: null });
     if (name === "get_tenant_mcp_connections") return Promise.resolve({ data: over.mcp ?? {}, error: null });
+    // The registry-native gateway read that the MCP tools section performs on mount. Modelled
+    // explicitly, like every other read here: an unrecognised payload is a READ FAILURE to that
+    // reader, not an empty account, so leaving it to the catch-all would render an error state
+    // in this surface and put a second "Try again" on the page.
+    if (name === "get_mcp_connections_v2") return Promise.resolve({ data: over.gateway ?? [], error: null });
     if (name === "is_current_user_tenant_admin") return Promise.resolve({ data: over.admin !== false, error: null });
     if (name === "social_connection_status") return Promise.resolve({ data: over.socialConnections ?? [], error: null });
     if (name === "social_account_status") return Promise.resolve({ data: over.socialAccounts ?? [], error: null });

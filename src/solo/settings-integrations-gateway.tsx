@@ -32,7 +32,7 @@ import {
    pending; zapier = no direct path, bridge via Zapier. `legacy` routes n8n/Zapier/social tiles to
    the existing live drawers rather than the gateway add flow. `verify` is a research-only tag and is
    never rendered to a tenant. */
-type CatMode = "connect" | "key" | "setup" | "zapier";
+type CatMode = "connect" | "key" | "setup" | "zapier" | "review";
 /** The three catalogue entries whose connect flow is already shipped elsewhere on this
  *  surface. Their tiles route to the live drawers rather than reimplementing them (§58). */
 export type GatewayLegacyTarget = "n8n" | "zapier" | "social";
@@ -72,10 +72,10 @@ const CAT_CATEGORIES = [
 const CATALOGUE: ReadonlyArray<CatItem> = [
   // Social
   { n: "Meta Ads", c: "Social", m: "connect", g: "M", d: "Ads reporting + campaign management. No organic posting.", pop: true, r: 14, url: "https://mcp.facebook.com/ads" },
-  { n: "Buffer", c: "Social", m: "key", auth: "bearer", g: "B", d: "Schedule posts, drafts, analytics.", pop: true, r: 9, net: "Posts to Instagram, Facebook, LinkedIn, TikTok, YouTube, Pinterest + more.", url: "https://mcp.buffer.com/mcp" },
+  { n: "Buffer", c: "Social", m: "review", auth: "bearer", g: "B", d: "Schedule posts, drafts, analytics.", pop: true, r: 9, net: "Posts to Instagram, Facebook, LinkedIn, TikTok, YouTube, Pinterest + more.", url: "https://mcp.buffer.com/mcp" },
   { n: "Metricool", c: "Social", m: "connect", g: "Mc", d: "Multi-brand posting, analytics, inbox. Free plan works.", pop: true, r: 10, net: "Posts to Instagram, Facebook, LinkedIn, TikTok, YouTube.", url: "https://ai.metricool.com/mcp" },
   { n: "Hootsuite", c: "Social", m: "connect", g: "H", d: "Draft, schedule, analytics, inbox, listening. Paid plan.", net: "Posts to Instagram, Facebook, LinkedIn, TikTok, YouTube.", url: "https://mcp.hootsuite.com/perch" },
-  { n: "X (Twitter)", c: "Social", m: "key", auth: "bearer", g: "X", d: "Reads: search, trends, bookmarks. Posting needs X's own bridge.", url: "https://api.x.com/mcp" },
+  { n: "X (Twitter)", c: "Social", m: "review", auth: "bearer", g: "X", d: "Reads: search, trends, bookmarks. Posting needs X's own bridge.", url: "https://api.x.com/mcp" },
   { n: "Instagram · Facebook · LinkedIn · TikTok · YouTube", c: "Social", m: "zapier", g: "◎", d: "No official direct path — post through Buffer, Metricool or Hootsuite.", legacy: "social" },
   { n: "WhatsApp Business", c: "Social", m: "zapier", g: "W", d: "Business Tools MCP announced; not verified yet. Bridge via Zapier." },
   // CRM & Sales
@@ -92,9 +92,9 @@ const CATALOGUE: ReadonlyArray<CatItem> = [
   // Marketing & Email
   { n: "Klaviyo", c: "Marketing & Email", m: "connect", g: "Kl", d: "Campaign and flow analytics, segments, create campaigns.", pop: true, r: 12, url: "https://mcp.klaviyo.com/mcp" },
   { n: "Resend", c: "Marketing & Email", m: "connect", g: "R", d: "Send email, templates, contacts, broadcasts, domains.", pop: true, r: 20, url: "https://mcp.resend.com/mcp" },
-  { n: "Brevo", c: "Marketing & Email", m: "key", auth: "bearer", g: "Bv", d: "Contacts, email/SMS campaigns, templates, light CRM.", url: "https://mcp.brevo.com/v1/brevo/mcp" },
+  { n: "Brevo", c: "Marketing & Email", m: "review", auth: "bearer", g: "Bv", d: "Contacts, email/SMS campaigns, templates, light CRM.", url: "https://mcp.brevo.com/v1/brevo/mcp" },
   { n: "Kit (ConvertKit)", c: "Marketing & Email", m: "connect", g: "Kt", d: "Subscribers, tags, broadcasts, landing pages. Creator plan.", url: "https://app.kit.com/mcp" },
-  { n: "Mailchimp Transactional", c: "Marketing & Email", m: "key", auth: "bearer", g: "Mt", d: "Mandrill: templates, send diagnostics.", url: "https://mandrillapp.com/mcp" },
+  { n: "Mailchimp Transactional", c: "Marketing & Email", m: "review", auth: "bearer", g: "Mt", d: "Mandrill: templates, send diagnostics.", url: "https://mandrillapp.com/mcp" },
   { n: "Mailchimp Marketing", c: "Marketing & Email", m: "zapier", g: "Mk", d: "Not confirmed — use Transactional, or bridge via Zapier." },
   { n: "Google Ads", c: "Marketing & Email", m: "zapier", g: "GA", d: "Official server is local + read-only — bridge via Zapier." },
   // Creative
@@ -123,7 +123,7 @@ const CATALOGUE: ReadonlyArray<CatItem> = [
   { n: "Fathom", c: "Productivity", m: "zapier", g: "Fa", d: "Not confirmed — bridge via Zapier." },
   // Finance
   { n: "Stripe", c: "Finance", m: "connect", g: "S", d: "Customers, invoices, payment links, subscriptions. Refunds need your confirmation.", pop: true, r: 3, url: "https://mcp.stripe.com" },
-  { n: "PayPal", c: "Finance", m: "key", auth: "bearer", g: "PP", d: "Invoices, payments.", url: "https://mcp.paypal.com" },
+  { n: "PayPal", c: "Finance", m: "review", auth: "bearer", g: "PP", d: "Invoices, payments.", url: "https://mcp.paypal.com" },
   { n: "Mercury", c: "Finance", m: "connect", g: "Me", d: "Balances, transactions (read-only).", url: "https://mcp.mercury.com/mcp" },
   { n: "Ramp", c: "Finance", m: "connect", g: "Rp", d: "Spend and expense analysis." },
   { n: "Brex", c: "Finance", m: "connect", g: "Bx", d: "Expenses, receipts. Admin.", url: "https://api.brex.com/mcp" },
@@ -150,13 +150,13 @@ const CATALOGUE: ReadonlyArray<CatItem> = [
   { n: "Webflow", c: "Websites & E-commerce", m: "connect", g: "Wf", d: "Sites, CMS, pages.", url: "https://mcp.webflow.com/mcp" },
   { n: "Wix", c: "Websites & E-commerce", m: "connect", g: "Wx", d: "Products, orders, bookings, blog.", url: "https://mcp.wix.com/mcp" },
   { n: "WordPress.com", c: "Websites & E-commerce", m: "connect", g: "WP", d: "Sites, posts. Paid plan.", url: "https://public-api.wordpress.com/wpcom/v2/mcp/v1" },
-  { n: "WooCommerce", c: "Websites & E-commerce", m: "key", auth: "header", g: "Wo", d: "Products, orders. Your store URL + application password." },
+  { n: "WooCommerce", c: "Websites & E-commerce", m: "review", auth: "header", g: "Wo", d: "Products, orders. Your store URL + application password." },
   { n: "Shopify", c: "Websites & E-commerce", m: "zapier", g: "Sh", d: "Claude/ChatGPT-only connector — bridge via Zapier." },
   { n: "Squarespace", c: "Websites & E-commerce", m: "zapier", g: "Sq", d: "Domain search only today — full site ops via Zapier." },
   // Automation hubs
   { n: "Zapier", c: "Automation hubs", m: "key", g: "Z", d: "8,000+ app actions. The bridge for everything without a direct server.", pop: true, r: 6, legacy: "zapier" },
   { n: "n8n", c: "Automation hubs", m: "key", g: "n8", d: "Search/run/create workflows. API key today; sign-in (MCP) coming.", legacy: "n8n" },
-  { n: "Composio", c: "Automation hubs", m: "key", auth: "header", g: "Co", d: "Per-toolkit servers across many APIs.", url: "https://backend.composio.dev/v3/mcp" },
+  { n: "Composio", c: "Automation hubs", m: "review", auth: "header", g: "Co", d: "Per-toolkit servers across many APIs.", url: "https://backend.composio.dev/v3/mcp" },
   { n: "Pipedream", c: "Automation hubs", m: "setup", g: "Pd", d: "3,000+ APIs. Needs multi-header support (coming to the gateway)." },
   { n: "Make", c: "Automation hubs", m: "zapier", g: "Mk", d: "SSE transport — not supported by the gateway yet. Bridge via Zapier." },
 ];
@@ -166,6 +166,7 @@ const MODE_LABEL: Record<CatMode, string> = {
   key: "Paste key",
   setup: "Setup needed",
   zapier: "Use Zapier",
+  review: "Not cleared yet",
 };
 
 /* ── Status → owner-facing chip ───────────────────────────────────────────────
@@ -417,6 +418,7 @@ function Catalogue({
     if (p.legacy === "social") return onLegacy("social");
     if (p.m === "key") return onPick(p);
     if (p.m === "connect") return onSetup(p); // OAuth sign-in not wired yet — honest stop
+    if (p.m === "review") return onSetup(p); // no capability record yet — honest stop
     if (p.m === "setup") return onSetup(p);
     return onZapier(p);
   };
@@ -481,7 +483,6 @@ function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayCon
 
   return (
     <GatewayDrawer eyebrow="Connected MCP Gateway" title={tool.label} dirty={mode === "rekey"} onClose={onClose}>
-      {gw.writeError && <div className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} /><span>{gw.writeError}</span></div>}
       <dl className="ig-facts">
         <div><dt>Endpoint</dt><dd>{tool.serverUrlHost ?? "—"}</dd></div>
         <div><dt>Type</dt><dd>{facetName(tool)}</dd></div>
@@ -641,6 +642,9 @@ export function IntegrationsGatewaySection({ onOpenLegacy }: { onOpenLegacy?: (w
     | null
   >(null);
   const close = useCallback(() => setDrawer(null), []);
+  /** A write failure belongs to the tool it happened on. Clearing it at the drawer boundary stops
+   *  one tool's refusal reappearing as a live alert on the next tool opened. */
+  const closeDetail = useCallback(() => { gw.dismissWriteError(); setDrawer(null); }, [gw]);
   /**
    * A detail drawer holds a frozen row from ONE workspace. The hook masks the LIST on a switch,
    * but an open drawer would keep painting the previous account's name, host and timestamps on a
@@ -707,11 +711,13 @@ export function IntegrationsGatewaySection({ onOpenLegacy }: { onOpenLegacy?: (w
       {drawer?.kind === "stop" && (
         <GatewayDrawer
           eyebrow={drawer.item.n}
-          title={drawer.via === "setup" ? (drawer.item.m === "connect" ? "Sign-in coming soon" : "Setup needed") : "Not available yet"}
+          title={drawer.via === "setup" ? (drawer.item.m === "connect" ? "Sign-in coming soon" : drawer.item.m === "review" ? "Not cleared for use yet" : "Setup needed") : "Not available yet"}
           onClose={close}
-          footer={drawer.via === "zapier" ? <span>Bridge it through Zapier from the Zapier tile.</span> : <span>Paige will flag {drawer.item.n} the moment it’s ready.</span>}
+          footer={drawer.via === "zapier" ? <span>Bridge it through Zapier from the Zapier tile.</span> : drawer.item.m === "review" ? <span>You can still connect any server yourself from “Any MCP server”.</span> : <span>Paige will flag {drawer.item.n} the moment it’s ready.</span>}
         >
-          {drawer.via === "setup" ? (
+          {drawer.via === "setup" && drawer.item.m === "review" ? (
+            <div className="ig-gw-info" role="status"><span><strong>{drawer.item.n}</strong> isn’t cleared for use yet — we haven’t recorded who owns it, what it may do, or what it costs, and Paige won’t offer a tool we can’t answer that for. {drawer.item.d} Once it’s recorded it becomes a one-click add here. In the meantime you can point Paige at any server yourself from “Any MCP server”.</span></div>
+          ) : drawer.via === "setup" ? (
             <div className="ig-gw-info" role="status"><span><strong>{drawer.item.n}</strong> {drawer.item.m === "connect" ? "connects with a one-click sign-in that isn’t wired yet. " : "needs a one-time platform setup before it can connect. "}{drawer.item.d} When it’s ready it becomes a one-click add right here — nothing to paste.</span></div>
           ) : (
             <div className="ig-gw-info" role="status"><span><strong>{drawer.item.n}</strong> has no direct path Paige can use yet. {drawer.item.d} Connect Zapier once and Paige can reach it through the 8,000+ apps Zapier bridges.</span></div>
@@ -720,7 +726,7 @@ export function IntegrationsGatewaySection({ onOpenLegacy }: { onOpenLegacy?: (w
       )}
 
       {drawer?.kind === "detail" && !tenantLoading && drawer.scope === scopeKey && (
-        <ToolDetail key={`${scopeKey}:${drawer.tool.id}`} gw={gw} tool={drawer.tool} onClose={close} />
+        <ToolDetail key={`${scopeKey}:${drawer.tool.id}`} gw={gw} tool={drawer.tool} onClose={closeDetail} />
       )}
     </section>
   );

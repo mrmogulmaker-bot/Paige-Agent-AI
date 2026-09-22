@@ -181,14 +181,24 @@ function readRow(value: unknown): GatewayConnection | null {
   };
 }
 
-/** `get_mcp_connections_v2` returns a jsonb array; tolerate a `{connections:[…]}` wrapper defensively. */
-function readList(value: unknown): GatewayConnection[] {
+/**
+ * `get_mcp_connections_v2` returns a jsonb array; a `{connections:[…]}` wrapper is tolerated
+ * defensively. Returns null for a payload this reader does not recognise, or one whose entries
+ * are all unreadable — an older deployment, an RPC regression or a corrupt row must NOT be
+ * flattened into an empty list, because "no tools" is a claim about the account and this reader
+ * would be making it without evidence (§13). Only a validated empty array yields [].
+ */
+function readList(value: unknown): GatewayConnection[] | null {
   const rows = Array.isArray(value)
     ? value
     : value && typeof value === "object" && Array.isArray((value as { connections?: unknown }).connections)
       ? (value as { connections: unknown[] }).connections
-      : [];
-  return rows.map(readRow).filter((row): row is GatewayConnection => row !== null);
+      : null;
+  if (rows === null) return null;
+  const parsed = rows.map(readRow).filter((row): row is GatewayConnection => row !== null);
+  // Rows arrived but none of them parsed: the shape moved, so the account state is unknown.
+  if (rows.length > 0 && parsed.length === 0) return null;
+  return parsed;
 }
 
 export type UseMcpGateway = McpGatewayState & {
@@ -257,8 +267,21 @@ export function useMcpGateway(): UseMcpGateway {
       }));
       return;
     }
+    const parsed = readList(list.data);
+    if (parsed === null) {
+      // Same honest posture as a failed read: never render an unreadable account as an empty one.
+      setState((prev) => ({
+        ...EMPTY,
+        loading: false,
+        error: true,
+        canWrite: false,
+        saving: pendingMutation.current,
+        writeError: prev.writeError,
+      }));
+      return;
+    }
     setState((prev) => ({
-      tools: readList(list.data),
+      tools: parsed,
       loading: false,
       error: false,
       canWrite: admin && (admin as { error?: unknown }).error ? false : (admin as { data?: unknown }).data === true,
@@ -307,8 +330,11 @@ export function useMcpGateway(): UseMcpGateway {
       }))) as { data: unknown; error: unknown };
 
       if (!current()) {
-        pendingMutation.current = false;
-        return { ok: false, code: null, message: null };
+        // A stale request must NOT release a lock it no longer owns: if a write for the previous
+        // workspace resolves after the current one started, clearing the shared ref here would let
+        // a second concurrent write run and discard the live one as stale.
+        if (mutation.current === request) pendingMutation.current = false;
+        return { ok: false, code: "MCP_STALE", message: null };
       }
       pendingMutation.current = false;
 

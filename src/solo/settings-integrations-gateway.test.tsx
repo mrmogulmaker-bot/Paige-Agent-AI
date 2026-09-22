@@ -343,6 +343,78 @@ describe("Writes reach the server", () => {
   });
 });
 
+describe("Listed is never connected", () => {
+  it("stops honestly on a provider with no capability record instead of opening a prefilled form", async () => {
+    // A tile that opens a real connection form prefilled with that provider's endpoint asserts
+    // authority, ownership and cost the Integration Capability Registry has never recorded.
+    world({ rows: [] });
+    const { host } = await render();
+    await openCatalogue(host);
+    await click(tile(host, "Buffer"));
+    expect(dialog(host)?.textContent).toMatch(/isn’t cleared for use yet/i);
+    // No form, no prefilled endpoint, and nothing sent.
+    expect(fieldFor(host, "Server URL")).toBeUndefined();
+    expect(rpc.mock.calls.some((c) => String(c[0]).startsWith("create_"))).toBe(false);
+    // The neutral path stays open, so the capability is not lost.
+    expect(dialog(host)?.textContent).toMatch(/Any MCP server/);
+  });
+
+  it("still opens the real form for the provider-neutral entry", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    await openAddForm(host);
+    expect(fieldFor(host, "Server URL")).toBeTruthy();
+  });
+});
+
+describe("An unreadable account is never rendered as an empty one", () => {
+  it("treats a payload it cannot parse as a failed read, not as zero tools", async () => {
+    rpc.mockImplementation((name: string) => {
+      if (name === "get_mcp_connections_v2") return builder({ data: { unexpected: "shape" }, error: null });
+      if (name === "is_current_user_tenant_admin") return builder({ data: true, error: null });
+      return builder({ data: null, error: null });
+    });
+    const { host } = await render();
+    expect(host.textContent).toMatch(/couldn’t be read/i);
+    expect(host.textContent).not.toMatch(/no tools yet/i);
+  });
+
+  it("treats rows that all fail to parse as a failed read", async () => {
+    world({ rows: [{ nothing: "useful" }, { also: "bad" }] });
+    const { host } = await render();
+    expect(host.textContent).toMatch(/couldn’t be read/i);
+    expect(host.textContent).not.toMatch(/no tools yet/i);
+  });
+
+  it("still renders the empty state for a genuinely empty account", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    expect(host.textContent).toMatch(/no tools yet/i);
+    expect(host.textContent).not.toMatch(/couldn’t be read/i);
+  });
+});
+
+describe("A failure belongs to the tool it happened on", () => {
+  it("does not replay one tool's refusal as a live alert on the next tool opened", async () => {
+    world({
+      rows: [row(), row({ connection_id: "conn-2", label: "Docs tool" })],
+      write: { data: null, error: { code: "42501", message: "MCP_FORBIDDEN: not permitted" } },
+    });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    await click(byText(host, "Disconnect"));
+    await click(host.querySelector(".ig-gw-actions button[data-danger]"));
+    // One operation, one alert — the same refusal must not render twice in the same drawer.
+    const shown = dialog(host)!.textContent!.match(/don't have permission/gi) ?? [];
+    expect(shown.length).toBe(1);
+    await click(host.querySelector(".ig-close"));
+    await click(host.querySelector('[data-gateway-tool="conn-2"]'));
+    // The second tool has done nothing wrong; the first tool's refusal must not follow it here.
+    expect(dialog(host)?.textContent).toContain("Docs tool");
+    expect(dialog(host)?.textContent).not.toMatch(/don't have permission/i);
+  });
+});
+
 describe("Shipped flows are routed, never reimplemented", () => {
   it("sends the n8n and Zapier tiles to their existing drawers instead of the gateway form", async () => {
     world({ rows: [] });
