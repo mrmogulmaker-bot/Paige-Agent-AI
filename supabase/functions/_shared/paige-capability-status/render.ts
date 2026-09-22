@@ -59,9 +59,10 @@ export function renderCapabilityStatusBlock(capabilities: readonly CapabilitySta
       "names a specific outside app, tool, or data source — a CRM, GHL/GoHighLevel, HubSpot, " +
       "Salesforce, Zapier, n8n, Meta/Facebook, Instagram, Google Calendar, QuickBooks, or any other " +
       "named product — never imply you currently connect to it or can read, pull, or sync its data " +
-      "now unless a group below shows that connection, matching it by name OR by what the " +
-      "connection does (a generic group like \"your automations\" IS that connected lane for the " +
-      "product behind it). Discussing the tool, planning around it, or framing what you'll do once " +
+      "now unless a group below names it. If a group describes a matching kind of capability " +
+      "without naming the product (for example, \"Run one of your automations\"), describe what " +
+      "you can do in that group's own words and neither assert nor deny that it is that specific " +
+      "product. Discussing the tool, planning around it, or framing what you'll do once " +
       "it's connected is fine — just never imply it's connected now when it isn't. For anything under " +
       "NEEDS A CONNECTION, say what to connect first; for anything you CAN'T DO HERE YET, say plainly " +
       "it's not something you can do for them yet — never imply otherwise, and never claim it simply " +
