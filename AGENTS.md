@@ -7,6 +7,7 @@ These instructions apply to Codex, Claude, and every other implementation agent 
 1. Every software assignment starts by reading the installed Flow-by-Flow skill completely and following every routed reference.
 2. Before designing or implementing any visible-interface change, read `.agents/skills/paige-ui-design/SKILL.md` completely and follow every routed reference. Visible interface includes product screens, settings, modals, drawers, forms, onboarding, funnels, landing pages, dashboards, tabs, empty states, responsive/mobile layouts, interaction states, motion, and visual styling.
 3. A new or materially changed user flow also requires the installed Flow Prototype skill before production implementation. This includes forms, signup/onboarding, funnels, drawers, modals, settings, payments, connections, destructive actions, and any flow with multiple states or exits.
+4. **Impeccable is MANDATORY for every UI/UX design, redesign, visual-polish, or interaction task.** Before design or implementation, re-open/read and cite the Impeccable skill (`https://github.com/pbakaus/impeccable/blob/main/.claude/skills/impeccable/SKILL.md`); report which of its checks were applied and their results.
 
 Do not begin design or implementation until the applicable skills have been read. A wrapper, summary, checkbox, fixture, or rendered screenshot is not a substitute.
 
@@ -66,6 +67,8 @@ and a false `LIVE` never is.
 ## Interface standard
 
 Design around the user's actual job, real data contracts, permissions, and complete flow. Reuse Paige's established tokens and design system before creating replacements. Do not fabricate metrics, activity, history, health, providers, authorization, or capabilities. Do not ship generic card grids, decorative gradients, empty dashboard chrome, static-looking controls, or purposeless effects.
+
+**Owner UI principle — performance and interaction quality over wording.** Cut redundant banner and intro copy; do not repeat context the user already has from where they are. Prefer usable space for the real work over decorative headers. Motion must be purposeful and performant — animate `transform`/`opacity` only, and be reduced-motion safe (honor `prefers-reduced-motion`).
 
 The UI skill does not grant design authority. Follow `CLAUDE.md` §00: implementation agents record and faithfully port the approved Claude Design pack; they do not invent or override visual direction.
 
