@@ -227,6 +227,7 @@ Grouped by theme with the load-bearing names (not all 241 enumerated — group +
 | **Affiliate** | ~3 | `invite-affiliate`, `affiliate-monthly-statement-cron`, `track-referral-click` |
 | **Webhooks (generic in/out)** | ~14 | `handle-inbound-webhook`, `fire-outbound-webhooks`, `webhook-inbound`, per-vendor `handle-*-webhook` |
 | **DocuSign / signatures** | 2 | `docusign-send-envelope`, `handle-docusign-webhook` |
+| **Agreements (PAIGE-native e-signature, INT-163)** | 2 | `agreement-send` (authenticated), `agreement-sign` (**public, `verify_jwt=false`** — token-gated signing ceremony). Shared: `_shared/agreements/{document,token,seal,signing-guard,disclosure,notify}.ts`. Tables `paige_agreements` / `_signers` / `_events`; bucket `paige-agreements`. **Distinct from the DocuSign pair above, which is untouched**, and from `finalize-agreement` (the onboarding wizard's click-through). |
 | **Automation connectors** | ~3 | `paige-n8n`, `call-zapier-action`, `send-telegram` |
 | **Privacy / GDPR / consent** | 4 | `export-clients-csv` (data export), `request-data-deletion` + `process-data-deletion` (GLBA/CCPA right-to-erasure), `log-consent` (consent audit trail) — admin route `/admin/.../data-registry` |
 | **Content drafting (standalone copy, §19)** | 1 | `content-draft` — the ONE home for standalone marketing copy (posts, ads, email campaigns, captions, blog outlines, SMS broadcasts); Paige drafts in chat, never a Studio artifact type |

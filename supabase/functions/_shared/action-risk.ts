@@ -246,6 +246,15 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // receives it), so it is `high` and carries the rendered approval card. `calendar_link_prepare`
   // and `calendar_link_social_copy` are READS (no mutation verb) — copy-ready previews that send
   // and post nothing — so they are intentionally NOT classified here.
+  // ── INT-163 agreements (PAIGE-native e-signature) ────────────────────────────────────────────
+  // Drafting is safe and stays ordinary; every act that reaches a real person outside the platform
+  // is `high`, so it can never run unattended however the request is worded. There is no
+  // `agreement_sign` tool at any class: Paige does not sign on anyone's behalf, and the only way a
+  // signature happens is a human on the public signing page with their own token.
+  ["agreement_draft", "ordinary", "saves a DRAFT agreement nobody outside this workspace can see; it sends nothing, freezes nothing, and the document cannot be edited once it HAS been sent — sending is the separate high-risk act"],
+  ["agreement_send", "high", "emails a real person a link that lets them sign a legally binding document, and freezes the document at that moment — outward-facing, with legal weight, and not undoable by editing"],
+  ["agreement_resend", "high", "emails a real person again and issues a NEW signing link, which stops the previous one working; the document itself never changes"],
+  ["agreement_void", "high", "withdraws an agreement that is already out for signature — terminal, kills every outstanding signing link immediately, and can never be reopened"],
   ["calendar_link_send", "high", "sends a published calendar's public booking link to a real contact by email or SMS — outward-facing; the server refuses a non-public calendar and the comms seam refuses a cross-tenant, suppressed, or unconsented recipient, and it never posts to social or books a meeting"],
   ["deal_create", "ordinary", "adds an opportunity"],
   ["deal_move_stage", "ordinary", "moves a deal between stages"],

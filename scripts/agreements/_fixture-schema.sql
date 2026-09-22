@@ -23,11 +23,14 @@ CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(
 CREATE FUNCTION public.current_user_tenant_id() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.tenant', true),'')::uuid $$;
 CREATE FUNCTION public.is_platform_owner() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT coalesce(current_setting('test.owner', true)::boolean, false) $$;
 CREATE FUNCTION public.is_tenant_admin(_t uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT coalesce(current_setting('test.admin', true)::boolean, false) $$;
+CREATE FUNCTION public.is_tenant_member(_t uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT coalesce(current_setting('test.member', true)::boolean, true) $$;
 CREATE FUNCTION public.tenant_set_updated_at() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN NEW.updated_at := now(); RETURN NEW; END $$;
 
 INSERT INTO public.tenants (id,name) VALUES
   ('aaaaaaaa-0000-4000-8000-000000000001','Tenant A'),
   ('bbbbbbbb-0000-4000-8000-000000000002','Tenant B');
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS first_name text;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS last_name text;
 INSERT INTO public.clients (id,tenant_id,email) VALUES
   ('c1111111-0000-4000-8000-000000000001','aaaaaaaa-0000-4000-8000-000000000001','a-client@example.com'),
   ('c2222222-0000-4000-8000-000000000002','bbbbbbbb-0000-4000-8000-000000000002','b-client@example.com');

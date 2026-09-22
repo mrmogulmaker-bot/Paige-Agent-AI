@@ -341,6 +341,39 @@ class of lie as a fabricated metric (§13).
 
 Legend: **✓** live · **—** not built · **N/A** tier not opened yet · **403** denied at the route gate.
 
+### Agreements engine — PAIGE-native e-signature (INT-163, PR #1352, 2026-09-22)
+
+PAIGE's own signing lifecycle: a tenant sends a document to one of their own clients, that person
+signs it with no account on this platform, and the completed file is sealed and retained. No signing
+vendor is called; the DocuSign functions are untouched.
+
+**Tier availability is a §61 EXCEPTION, deliberately — `agreement_signing` in `getTierFeatureSet()`,
+shaped exactly like `customer_portal_invite` and for the same reason.** This capability acts on a
+direct CLIENT BOOK. A pure Agency manages sub-accounts rather than clients, so it has no book to
+send an agreement into; God is the platform operator, not a tenant with clients of its own. Applying
+the §61 default (God/Solo/Sub yes, Agency resell) would put the feature where it has nothing to act
+on. Recorded as an exception rather than followed silently.
+
+| Capability | God (act-as) | Agency-as-tenant | Standalone Solo | Sub-account | Client | Anonymous | Deploy state |
+|---|---|---|---|---|---|---|---|
+| `agreement_signing` tier flag | — | — | ✓ | ✓ | — | — | **flag LIVE on merge** (declared in `tierFeatures.ts`; Enterprise inherits via the Solo union) |
+| Records + integrity triggers (`paige_agreements`, `_signers`, `_events`) | ✓ (operator read) | ✓ own workspace | ✓ | ✓ | — (no policy grants it) | — (`anon` holds no grant) | **code MERGED, prod apply PENDING** — migrations `20270401000000`/`20270402000000`/`20270403000000` |
+| `agreement_draft` · `agreement_status` (Paige chat) | ✓ act-as | ✓ | ✓ | ✓ | — | 403 | edge logic LIVE on merge; RPCs deploy with the migrations |
+| `agreement_send` · `agreement_resend` · `agreement_void` (Paige chat, `high` → approval card) | ✓ act-as | ✓ | ✓ | ✓ | — | 403 | edge logic LIVE on merge |
+| Public signing ceremony (`agreement-sign`, `verify_jwt=false`) | n/a | n/a | n/a | n/a | n/a | **token-gated, not a tier** | LIVE on merge |
+| Expiry sweep (`sweep_expired_paige_agreements`, hourly `pg_cron`) | — | — | — | — | — | — | **conditional**: scheduled only where `pg_cron` is installed; the migration RAISEs a NOTICE and continues if it is not |
+
+**The signer is not a tier row, and that is the point.** An external counterparty has no Supabase
+account, so no RLS policy can describe them and none tries. Their access is a 256-bit token stored
+only as its SHA-256, scoped to one signer on one agreement, expiring and revocable, with tenant,
+agreement and signer read FROM THE TOKEN ROW — never from a request field.
+
+**Honest note (§13).** Everything above is code-complete with automated, static and local-database
+proof (36 Deno tests, a 19-negative database integrity proof including service-role probes, exit 0).
+**No endpoint has been driven against a deployed runtime**, prod migration persistence is unverified
+(this session has no database access), and the §70 owner-usability walk is owed. The tier flag ships
+LIVE; the surface behind it is `PARTIAL` until that drive happens.
+
 ### Main Paige chat — capability truth + the contact.created event (PR #1145, 2026-09-12)
 
 Paige chat tools (not nav surfaces), gated server-side to **admin / coach / super_admin** within the acting tenant. No new per-tier `getTierFeatureSet` flag — availability follows the existing chat role gate + tenant scope (RLS), so the per-tier reality is "any tenant whose chat + client book exist, plus the operator acting into a tenant."

@@ -71,8 +71,20 @@ Deno.test("an expired AGREEMENT is refused even when the token itself is still l
   );
 });
 
+Deno.test("A COMPLETED AGREEMENT STAYS READABLE BY ITS SIGNER — the retained-record rule", () => {
+  // The counterparty has no account here. If completion closed their access, the only copy they
+  // could ever reach would be the one they happened to have open at the time.
+  assertEquals(
+    decideSigningAccess({
+      signer: signer({ status: "signed" }), agreement: agreement({ status: "completed" }),
+      earlierUnsignedCount: 0, now: NOW,
+    }),
+    { allow: true, canSign: false },
+  );
+});
+
 Deno.test("a voided agreement stops answering immediately", () => {
-  for (const status of ["voided", "declined", "completed", "expired", "draft"]) {
+  for (const status of ["voided", "declined", "expired", "draft"]) {
     assertEquals(
       decideSigningAccess({ signer: signer(), agreement: agreement({ status }), earlierUnsignedCount: 0, now: NOW }),
       { allow: false, reason: "agreement_not_signable" },

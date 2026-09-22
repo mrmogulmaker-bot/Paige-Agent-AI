@@ -45,6 +45,8 @@ import { template as supportTicketReply } from './support-ticket-reply.tsx'
 import { template as supportTicketResolved } from './support-ticket-resolved.tsx'
 // INT-163 — the agreements engine's outbound messages.
 import { template as agreementSignatureRequest } from './agreement-signature-request.tsx'
+import { template as agreementActivity } from './agreement-activity.tsx'
+import { template as agreementCompleted } from './agreement-completed.tsx'
 import { template as featureRequestStatusUpdate } from './feature-request-status-update.tsx'
 import { template as brokerTeamInvitation } from './broker-team-invitation.tsx'
 import { template as betaLaunchWelcome } from './beta-launch-welcome.tsx'
@@ -108,6 +110,8 @@ const RAW_TEMPLATES: Record<string, TemplateEntry> = {
   'security-canary-regression': securityCanaryRegression,
   'security-signed-out': securitySignedOut,
   'agreement-signature-request': agreementSignatureRequest,
+  'agreement-activity': agreementActivity,
+  'agreement-completed': agreementCompleted,
 }
 
 // Resolve each entry's deliverability category once, centrally. A template may

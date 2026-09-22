@@ -80,6 +80,14 @@ export type Feature =
   // Consumer/client portal invite — THE §60 enforced lock: solo + sub_account +
   // enterprise (the HYBRID tier). A pure agency is excluded on BOTH layers.
   | "customer_portal_invite"
+  // Agreements (INT-163) — send a document to one of your OWN clients for signature.
+  // §61 EXCEPTION, and the same shape as `customer_portal_invite` for the same reason: this acts on
+  // a direct client book. A pure Agency manages sub-accounts rather than clients, so it has no book
+  // to send an agreement into; God is the platform operator, not a tenant with clients of its own.
+  // Solo + Sub-account + Enterprise (the hybrid tier), mirroring the lock already ruled for portal
+  // invites. Noting it as an exception rather than silently following the §61 default, because the
+  // default (God/Solo/Sub YES, Agency RESELL) would put it somewhere it has nothing to act on.
+  | "agreement_signing"
   // Trust Compass — the Solo Command Center's governed per-capability autonomy control
   // (its 3rd sub-tab). SOLO ONLY for now: sub-account release is DEFERRED pending an
   // explicit owner release (owner ruling 2026-09-06 under the Second Brain delivery
@@ -204,6 +212,7 @@ const SOLO_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   ...TENANT_WORKING,
   ...CREATION_SURFACES, // solo runs its own campaigns/Studio
   "customer_portal_invite", // solo owns its own client book → can invite clients
+  "agreement_signing", // and can send that client an agreement to sign
   "skills", // §61 self-use — solo runs the skills engine on its own book
   "trust_compass", // Solo governs its own per-capability autonomy (Command Center 3rd sub-tab)
 ]);
@@ -213,6 +222,7 @@ const SUB_ACCOUNT_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   ...TENANT_WORKING,
   ...CREATION_SURFACES, // a sub-account runs its own campaigns/Studio
   "customer_portal_invite", // a sub-account runs its OWN client book → can invite
+  "agreement_signing", // same book, same capability as Solo
   "skills", // §61 self-use — a sub-account runs the skills engine on its own book
   // NO "trust_compass" — sub-account release DEFERRED pending explicit owner release
   // (owner ruling 2026-09-06). The Command Center shell is universal, but this sub-tab

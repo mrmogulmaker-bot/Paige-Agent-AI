@@ -18,7 +18,8 @@
 // destroy a legal record to fix a delivery problem. Delivery is retried separately.
 
 import { sealAgreementPdf, UnrenderableNameError } from "./document.ts";
-import { sha256Hex } from "./token.ts";
+import { expiryFromNow, mintSignerToken, RETRIEVAL_TOKEN_TTL_DAYS, sha256Hex } from "./token.ts";
+import { notify, ownerNotificationEmail } from "./notify.ts";
 
 export type SealOutcome =
   | { ok: true; sealedSha256: string; sealedKey: string }
@@ -155,5 +156,89 @@ export async function sealAndComplete(db: Db, agreementId: string): Promise<Seal
     if (error) console.error("[agreements] completion event not recorded", { agreementId, eventType, error: error.message });
   }
 
+  // ── Tell both parties, and give the counterparty a way BACK to their own record ────────────────
+  // Their signing token's plaintext is gone by design, so a fresh retrieval token is minted here and
+  // emailed. That is what makes "an accurate record available to both parties" true for somebody who
+  // has no account on this platform — without it, their only copy is whatever they saved in the one
+  // moment they were on the page. It is a longer window than the signing one, and still finite.
+  await deliverCompletionNotices(db, {
+    agreementId,
+    tenantId: agreement.tenant_id,
+    title: agreement.title,
+    sealedSha256,
+    signers: (signers ?? []) as Array<Record<string, unknown>>,
+  });
+
   return { ok: true, sealedSha256, sealedKey };
+}
+
+async function deliverCompletionNotices(
+  db: Db,
+  input: {
+    agreementId: string;
+    tenantId: string;
+    title: string;
+    sealedSha256: string;
+    signers: Array<Record<string, unknown>>;
+  },
+): Promise<void> {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const partyNames = input.signers.map((s) => String(s.full_name ?? "")).filter(Boolean).join(", ");
+  const now = new Date();
+
+  for (const s of input.signers) {
+    const token = mintSignerToken();
+    const { error } = await db.from("paige_agreement_signers").update({
+      token_hash: await sha256Hex(token),
+      token_expires_at: expiryFromNow(now, RETRIEVAL_TOKEN_TTL_DAYS),
+      token_revoked_at: null,
+    }).eq("agreement_id", input.agreementId).eq("email", s.email);
+
+    if (error) {
+      // They still have their signature on the record; what they lack is a way back to it. Logged
+      // loudly, never silently, and never a reason to un-complete the agreement.
+      console.error("[agreements] retrieval link could not be issued", {
+        agreementId: input.agreementId, error: error.message,
+      });
+      continue;
+    }
+
+    await notify({
+      supabaseUrl, serviceKey,
+      templateName: "agreement-completed",
+      recipientEmail: String(s.email),
+      tenantId: input.tenantId,
+      idempotencyKey: `agreement-completed-${input.agreementId}-${String(s.email)}`,
+      templateData: {
+        recipient_name: s.full_name,
+        agreement_title: input.title,
+        document_url: `${supabaseUrl}/functions/v1/agreement-sign?token=${token}`,
+        sealed_sha256: input.sealedSha256,
+        party_names: partyNames,
+        is_signer: true,
+      },
+    });
+  }
+
+  const ownerEmail = await ownerNotificationEmail(db as never, input.tenantId);
+  if (!ownerEmail) {
+    console.warn("[agreements] no owner address resolved — completion notice not sent", {
+      tenantId: input.tenantId, agreementId: input.agreementId,
+    });
+    return;
+  }
+  await notify({
+    supabaseUrl, serviceKey,
+    templateName: "agreement-completed",
+    recipientEmail: ownerEmail,
+    tenantId: input.tenantId,
+    idempotencyKey: `agreement-completed-owner-${input.agreementId}`,
+    templateData: {
+      agreement_title: input.title,
+      sealed_sha256: input.sealedSha256,
+      party_names: partyNames,
+      is_signer: false,
+    },
+  });
 }

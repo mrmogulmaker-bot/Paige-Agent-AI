@@ -8,6 +8,7 @@ import { executeVerifiedCalendarPresetMutation, resolveCalendarPresetListContext
 // E7 — governed calendar-link sharing (prepare/send/social-copy). The send routes through the
 // canonical send-message seam (caller JWT forwarded); prepare/social-copy are reads.
 import { CALENDAR_LINK_TOOLS } from '../_shared/paige-spine/domains/calendar_link.ts';
+import { AGREEMENT_TOOLS } from '../_shared/paige-spine/domains/agreement.ts';
 import { prepareCalendarLinkShare, sendCalendarLink, calendarLinkSocialCopy, type SendMessageFn } from '../_shared/calendar-link-tenant-brain.ts';
 import { N8N_MANAGEMENT_TOOLS, runN8nManagement } from '../_shared/n8n-management.ts';
 const N8N_MANAGEMENT_TOOL_NAMES = new Set(N8N_MANAGEMENT_TOOLS.map(tool => tool.function.name));
@@ -6524,6 +6525,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           ...CAMPAIGN_BRIEF_TOOLS,
           ...CALENDAR_PRESET_TOOLS,
           ...CALENDAR_LINK_TOOLS,
+          ...AGREEMENT_TOOLS,
           {
             type: "function",
             function: {
@@ -7395,6 +7397,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       booking_preset_list: "checking your booking calendars",
       calendar_link_prepare: "preparing a booking link to share",
       calendar_link_send: "sending a booking link to a contact",
+      agreement_draft: "drafting an agreement",
+      agreement_send: "sending an agreement for signature",
+      agreement_resend: "sending the signing link again",
+      agreement_void: "withdrawing an agreement",
+      agreement_status: "checking your agreements",
       calendar_link_social_copy: "preparing social post copy for a booking link",
       update_client_data: "saving details to a client's file",
       delegate_to_subagent: "handing work to one of her specialists",
@@ -7721,6 +7728,35 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             } catch { /* fall through to "this contact" (§13 — better unnamed than wrongly named) */ }
           }
           return `Send the public booking link for ${p.label} to ${who} by ${ch}. A real person receives a link to your /book page. The server refuses a calendar that isn't public and a recipient who can't be messaged; it does not post to social or book a meeting.`;
+        }
+        // INT-163 — the card a human reads before an agreement leaves the building. It names the
+        // COUNTERPARTY and says plainly what becomes irreversible, because "send the agreement" is
+        // not enough information to consent to a legally binding outward act.
+        case "agreement_send":
+        case "agreement_resend":
+        case "agreement_void": {
+          let title = "this agreement";
+          let who = "its signers";
+          const aidForCard = typeof a?.agreementId === "string" ? a.agreementId.trim() : "";
+          const tenantForCard = personaCtx?.tenant_id ?? null;
+          if (UUIDISH.test(aidForCard) && tenantForCard) {
+            try {
+              const { data } = await supabaseClient.from("paige_agreements")
+                .select("title").eq("id", aidForCard).eq("tenant_id", tenantForCard).maybeSingle();
+              if (typeof data?.title === "string" && data.title.trim()) title = `"${data.title.trim()}"`;
+              const { data: sg } = await supabaseClient.from("paige_agreement_signers")
+                .select("full_name,email").eq("agreement_id", aidForCard).eq("tenant_id", tenantForCard).limit(3);
+              const names = (sg ?? []).map((r: { full_name?: string; email?: string }) => r.email || r.full_name).filter(Boolean);
+              if (names.length) who = names.join(", ");
+            } catch { /* §13 — better unnamed than wrongly named */ }
+          }
+          if (tc.function.name === "agreement_void") {
+            return `Withdraw ${title}. Every signing link stops working immediately and it can never be reopened — a replacement has to be drafted fresh. Anyone who has already signed keeps their record.`;
+          }
+          if (tc.function.name === "agreement_resend") {
+            return `Send the signing link for ${title} again to ${who}. They receive a NEW link by email and the previous one stops working. The document itself does not change.`;
+          }
+          return `Send ${title} to ${who} for signature. A real person receives an email with a link that lets them legally sign it, and the document is frozen at that moment — it cannot be edited afterwards.`;
         }
         case "deal_create":
           return `Add a deal "${a?.title || "Untitled"}"${typeof a?.value_cents === "number" ? ` worth ${(a.value_cents / 100).toLocaleString(undefined, { style: "currency", currency: a?.currency || "USD" })}` : ""} to the pipeline.`;
@@ -12674,6 +12710,79 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:"The booking link was not shared.", note:"No send ran and no delivery may be claimed." }) });
           }
         } else if (
+          tc.function.name === "agreement_draft" || tc.function.name === "agreement_void" ||
+          tc.function.name === "agreement_status" || tc.function.name === "agreement_send" ||
+          tc.function.name === "agreement_resend"
+        ) {
+          // INT-163 — PAIGE-native agreements. DRAFT/VOID/STATUS go to their canonical RPCs under the
+          // CALLER'S JWT, so the tenant is resolved server-side and RLS plus each function's own
+          // is_tenant_admin gate stay live — never the service role, and never a tenant from the
+          // model's arguments. SEND/RESEND forward the caller JWT to the agreement-send edge function
+          // for the same reason. The generic confirm gate above has already clamped all three
+          // outward acts by their `high` action-risk class, so nothing here re-implements approval.
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const tid = personaCtx?.tenant_id ?? null;
+            if (!tid) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:"No workspace is active. Reopen the workspace and try again." }) });
+            } else if (tc.function.name === "agreement_status") {
+              const { data, error } = await supabaseClient.rpc("paige_agreement_overview", {
+                _expected_tenant_id: tid,
+                _contact_id: args.contactId ?? null,
+                _status: args.status ?? null,
+              });
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(
+                error ? { success:false, error: error.message } : { success:true, agreements: data ?? [] },
+              ) });
+            } else if (tc.function.name === "agreement_draft") {
+              const { data, error } = await supabaseClient.rpc("save_paige_agreement", {
+                _expected_tenant_id: tid,
+                _agreement_id: args.agreementId ?? null,
+                _contact_id: args.contactId,
+                _title: args.title,
+                _body_markdown: args.bodyMarkdown,
+                _offer_id: args.offerId ?? null,
+                _commercial_terms_id: args.commercialTermsId ?? null,
+              });
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(
+                error
+                  ? { success:false, error: error.message, note:"Nothing was saved." }
+                  : { success:true, saved:true, agreement: data, note:"This is a DRAFT. Nobody has seen it and nothing has been sent." },
+              ) });
+            } else if (tc.function.name === "agreement_void") {
+              const { data, error } = await supabaseClient.rpc("void_paige_agreement", {
+                _expected_tenant_id: tid,
+                _agreement_id: args.agreementId,
+                _reason: args.reason ?? null,
+              });
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(
+                error
+                  ? { success:false, error: error.message, note:"The agreement was not withdrawn." }
+                  : { success:true, voided:true, agreement: data, note:"Every outstanding signing link stopped working." },
+              ) });
+            } else {
+              // agreement_send / agreement_resend — the confirmed outward act.
+              const resp = await fetch(`${supabaseUrl}/functions/v1/agreement-send`, {
+                method: "POST",
+                headers: { "Authorization": authHeader ?? "", "apikey": supabaseKey, "Content-Type": "application/json" },
+                body: JSON.stringify({ agreementId: args.agreementId, resend: tc.function.name === "agreement_resend" }),
+              });
+              let j: Record<string, unknown> = {};
+              try { j = await resp.json(); } catch { /* non-JSON → reported as an unknown outcome below */ }
+              // Report what actually happened. `needs_config` and a partial send are real outcomes,
+              // not failures to paper over, and neither may be described as "sent" (§13).
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(
+                j?.status === "needs_config"
+                  ? { success:false, status:"needs_config", error: j?.error, note:"Nothing was sent and the agreement is still a draft." }
+                  : resp.ok && j?.ok
+                  ? { success:true, status: j?.status, sent: j?.sent ?? [], failed: j?.failed ?? [], documentSha256: j?.documentSha256, warning: j?.warning }
+                  : { success:false, error: (j?.error as string) ?? "The agreement could not be sent.", failed: j?.failed ?? [], note:"No delivery may be claimed." },
+              ) });
+            }
+          } catch (e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:"That agreement action did not run.", note:"Nothing was sent, signed or withdrawn." }) });
+          }
+        } else if (
           tc.function.name === "plan_set_reminder" ||
           tc.function.name === "plan_create" ||
           tc.function.name === "plan_add_milestone" ||
@@ -12876,6 +12985,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         booking_preset_duplicate: "calendars", booking_preset_archive: "calendars",
         booking_preset_restore: "calendars",
         calendar_link_prepare: "calendars", calendar_link_send: "calendars", calendar_link_social_copy: "calendars",
+        agreement_draft: "clients", agreement_send: "clients", agreement_resend: "clients",
+        agreement_void: "clients", agreement_status: "clients",
         plan_create: "plans", plan_add_milestone: "plans", plan_set_reminder: "plans",
         plan_update_item: "plans", plan_remove_item: "plans",
         author_event_kind: "paige_event_kinds",

@@ -45,6 +45,8 @@ fi
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 MIGRATION="$REPO/supabase/migrations/20270401000000_agreements_engine_records.sql"
+MIGRATION2="$REPO/supabase/migrations/20270402000000_agreements_read_and_expiry.sql"
+MIGRATION3="$REPO/supabase/migrations/20270403000000_agreements_autonomy_catalogue.sql"
 WORK="$(mktemp -d)"
 PORT="${PGPORT:-55432}"
 
@@ -69,13 +71,22 @@ psql() { "$PGBIN/psql" -h "$WORK" -p "$PORT" -U proofrunner -d proof "$@"; }
 
 psql -v ON_ERROR_STOP=1 -q -f "$HERE/_fixture-schema.sql" >/dev/null
 psql -v ON_ERROR_STOP=1 -q -f "$MIGRATION" >/dev/null 2>&1
-echo "migration applied to a clean database"
+psql -v ON_ERROR_STOP=1 -q -f "$MIGRATION2" 2>&1 | grep -iE "^psql.*error" && { echo "FAIL — the read/expiry migration did not apply"; exit 1; }
+# The catalogue migration depends on tables this fixture does not stand up (tenant_tool_autonomy
+# and friends), so it is deliberately NOT applied here. Its coverage is proven by
+# `npm run lint:tool-catalogue`, which reads the SQL directly — stating that rather than pretending
+# this proof covers it.
+echo "migrations 1 and 2 applied to a clean database (3 is catalogue-only, covered by lint:tool-catalogue)"
 echo
 
 OUT="$WORK/out.txt"
 psql -q -f "$HERE/integrity-proof.sql"     2>&1 | grep -E '^(P[0-9]|C[0-9]|---)' | tee "$OUT"
 echo
 psql -q -f "$HERE/service-role-proof.sql"  2>&1 | grep -E '^(table|service_role|acting|S[0-9])' | tee -a "$OUT"
+echo
+# psql prefixes a NOTICE with "<file>:<line>: NOTICE:  ", so strip anything before the marker
+# rather than anchoring at the start of the line.
+psql -q -f "$HERE/read-and-expiry-proof.sql" 2>&1 | sed -E 's/^.*NOTICE:  //' | grep -E '^(E[0-9]|---)' | tee -a "$OUT"
 echo
 
 if grep -qE 'NO ERROR - GUARANTEE IS FALSE|UNEXPECTED|SUCCEEDED - INTEGRITY CLAIM IS FALSE' "$OUT"; then
@@ -84,6 +95,14 @@ if grep -qE 'NO ERROR - GUARANTEE IS FALSE|UNEXPECTED|SUCCEEDED - INTEGRITY CLAI
 fi
 if [ "$(grep -c 'PASS' "$OUT")" -lt 19 ]; then
   echo "FAIL — fewer negatives ran than expected; the proof itself is broken."
+  exit 1
+fi
+if ! grep -q 'E2 status = expired' "$OUT" || ! grep -q 'E3 revoked = true' "$OUT"; then
+  echo "FAIL — the expiry sweep did not expire the agreement or did not revoke its live token."
+  exit 1
+fi
+if ! grep -q 'E8 refused' "$OUT" || ! grep -q 'E9 refused' "$OUT"; then
+  echo "FAIL — the overview did not refuse a foreign workspace or a non-member."
   exit 1
 fi
 if ! grep -q 'C1 .*signed' "$OUT" || ! grep -q 'C2 .*signed' "$OUT"; then

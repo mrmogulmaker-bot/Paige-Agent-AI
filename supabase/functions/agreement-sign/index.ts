@@ -37,6 +37,7 @@ import {
 } from "../_shared/agreements/signing-guard.ts";
 import { consentEvidenceText, ESIGN_CONSENT_DISCLOSURE, renderDisclosure } from "../_shared/agreements/disclosure.ts";
 import { sealAndComplete } from "../_shared/agreements/seal.ts";
+import { notify, ownerNotificationEmail } from "../_shared/agreements/notify.ts";
 
 const FUNCTION_PATH = "/functions/v1/agreement-sign";
 const COOKIE = "paige_agreement_token";
@@ -236,7 +237,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const action = String(body.action ?? "");
     if (action === "decline") {
-      return await handleDecline(db, signer!, String(body.reason ?? ""), ip, req);
+      return await handleDecline(
+        db,
+        { ...signer!, agreement_title: agreement!.title },
+        String(body.reason ?? ""), ip, req,
+      );
     }
     if (action !== "sign") return json({ ok: false, error: "Unrecognised action." }, 400);
     if (!decision.canSign) {
@@ -252,6 +257,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .eq("id", signer!.id).eq("status", "pending");
     await db.from("paige_agreements").update({ status: "viewed" })
       .eq("id", agreement!.id).eq("status", "sent");
+    // Only on the FIRST view — the idempotency key would fold repeats anyway, but not asking is
+    // cheaper than asking and having the answer thrown away.
+    await tellOwner(db, signer!, String(agreement!.title), "viewed");
   }
 
   const others = await db.from("paige_agreement_signers")
@@ -276,6 +284,39 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if ((req.headers.get("accept") ?? "").includes("application/json")) return json(view);
   return html(renderSigningPage(view));
 });
+
+/** Tell the business what just happened on their agreement. Never blocks the signer's request:
+ *  a notification that does not go out is logged, and the workspace still shows the truth. */
+async function tellOwner(
+  db: ReturnType<typeof admin>,
+  signer: Record<string, unknown>,
+  agreementTitle: string,
+  event: "viewed" | "signed" | "declined",
+  declineReason?: string,
+): Promise<void> {
+  const to = await ownerNotificationEmail(db as never, String(signer.tenant_id));
+  if (!to) {
+    console.warn("[agreement-sign] no owner address resolved — activity notice not sent", {
+      tenantId: signer.tenant_id, event,
+    });
+    return;
+  }
+  await notify({
+    supabaseUrl: Deno.env.get("SUPABASE_URL") ?? "",
+    serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    templateName: "agreement-activity",
+    recipientEmail: to,
+    tenantId: String(signer.tenant_id),
+    // One notice per signer per event — a reloaded page does not re-mail the owner.
+    idempotencyKey: `agreement-${event}-${signer.agreement_id}-${signer.id}`,
+    templateData: {
+      event,
+      signer_name: signer.full_name,
+      agreement_title: agreementTitle,
+      decline_reason: declineReason ?? null,
+    },
+  });
+}
 
 async function recordEvent(
   db: ReturnType<typeof admin>,
@@ -330,6 +371,7 @@ async function handleDecline(
     .eq("agreement_id", signer.agreement_id).is("token_revoked_at", null);
 
   await recordEvent(db, signer, "declined", ip, req);
+  await tellOwner(db, signer, String(signer.agreement_title ?? "your agreement"), "declined", reason);
   return json({ ok: true, status: "declined" });
 }
 
@@ -389,6 +431,7 @@ async function handleSign(
 
   await recordEvent(db, signer, "consented", ip, req);
   await recordEvent(db, signer, "signed", ip, req);
+  await tellOwner(db, signer, String(agreement.title ?? "your agreement"), "signed");
 
   // Is everyone done? Sealing is triggered from here, but performed by the sealer so that this
   // endpoint owns the ceremony and not the document assembly.

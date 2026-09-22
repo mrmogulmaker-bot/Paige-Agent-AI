@@ -75,6 +75,13 @@ export function decideSigningAccess(input: {
     return { allow: false, reason: "expired" };
   }
 
+  // A COMPLETED agreement stays readable by its signers, deliberately. ESIGN requires the retained
+  // record to remain available to BOTH parties, and the counterparty has no account here — so if
+  // completion closed their access, the only copy they could ever reach would be the one moment they
+  // happened to be on the page. They can read and download; they cannot sign again.
+  if (agreement.status === "completed") {
+    return { allow: true, canSign: false };
+  }
   if (!["sent", "viewed", "partially_signed"].includes(agreement.status)) {
     return { allow: false, reason: "agreement_not_signable" };
   }
