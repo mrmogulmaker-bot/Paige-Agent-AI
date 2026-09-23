@@ -239,7 +239,8 @@ const loadConnection = (connectionId) => {
   // (a new serverUrl) yields a new hash, exactly as `get_mcp_connection_secret` does in production.
   // INT-082: surface the row's visibility (default 'tenant' for the existing tenant-visible fixtures,
   // so the runner's owner_only gate is scoped precisely; owner_only fixtures set it explicitly).
-  return { ok: true, connectionId, tenantId: c.tenantId, serverUrl: c.serverUrl, auth: c.auth, endpointHash: endpointHashOf(c.serverUrl), visibility: c.visibility ?? "tenant" };
+  // INT-152: surface config_generation (default 1) so the fake matches the ResolvedConnection contract.
+  return { ok: true, connectionId, tenantId: c.tenantId, serverUrl: c.serverUrl, auth: c.auth, endpointHash: endpointHashOf(c.serverUrl), visibility: c.visibility ?? "tenant", configGeneration: c.configGeneration ?? 1 };
 };
 const deps = { recordReceipt: (r) => { receipts.push(r); }, verifyApproval, loadConnection };
 // Points conn-1's CANONICAL stored endpoint at `serverUrl` (as if the row held it), then runs BY ID —
@@ -1067,10 +1068,12 @@ console.log("\n— slice ①: verify (runVerify) —");
 
   const probeCalls = [];
   // Fake service-role admin: get_mcp_connection_secret feeds the loader; mcp_connection_probe is captured.
-  const makeAdmin = (secretRow, probeErr = null) => ({
+  // INT-152: the probe now returns {applied, reason?}; default applied:true (a normal write). Pass
+  // probeData:{applied:false} to simulate a stale-generation no-op (a concurrent re-key mid-verify).
+  const makeAdmin = (secretRow, probeErr = null, probeData = { applied: true }) => ({
     rpc: async (fn, params) => {
       if (fn === "get_mcp_connection_secret") return { data: secretRow, error: null };
-      if (fn === "mcp_connection_probe") { probeCalls.push(params); return { data: null, error: probeErr }; }
+      if (fn === "mcp_connection_probe") { probeCalls.push(params); return { data: probeData, error: probeErr }; }
       return { data: null, error: null };
     },
   });
@@ -1083,7 +1086,7 @@ console.log("\n— slice ①: verify (runVerify) —");
       return { data: null, error: null };
     },
   });
-  const okSecret = { configured: true, enabled: true, connection_id: CONN, tenant_id: TEN, server_url: VERIFY_URL, endpoint_hash: endpointHashOf(VERIFY_URL), auth_token: "secret-token", auth_kind: "bearer", transport: "http", visibility: "tenant" };
+  const okSecret = { configured: true, enabled: true, connection_id: CONN, tenant_id: TEN, server_url: VERIFY_URL, endpoint_hash: endpointHashOf(VERIFY_URL), auth_token: "secret-token", auth_kind: "bearer", transport: "http", visibility: "tenant", config_generation: 7 };
 
   // Happy path — authorized admin, connection in v2, loader resolves, live intake → connected.
   probeCalls.length = 0;
@@ -1091,11 +1094,25 @@ console.log("\n— slice ①: verify (runVerify) —");
   check("verify happy path → 200 ok connected healthy", okRes.httpStatus === 200 && okRes.body.ok === true && okRes.body.status === "connected" && okRes.body.health === "healthy", JSON.stringify(okRes.body));
   check("verify reports the discovered tool count", okRes.body.tool_count === 6, JSON.stringify(okRes.body));
   check("verify persists via the service-role probe exactly once (connected/healthy)", probeCalls.length === 1 && probeCalls[0]._status === "connected" && probeCalls[0]._health === "healthy", JSON.stringify(probeCalls.map((p) => p._status)));
+  // INT-152: the real loader surfaced the row's config_generation (7) and verify bound the probe write to
+  // it — a compare-and-write against the exact config it read (a stale probe cannot clobber a fresh re-key).
+  check("verify passes the loaded config_generation to the probe (INT-152 compare-and-write)", probeCalls[0]._expected_generation === 7, JSON.stringify(probeCalls[0]?._expected_generation));
   check("probe receives the mapped catalog (tool_name keys, 6 tools)", Array.isArray(probeCalls[0]?._tools) && probeCalls[0]._tools.length === 6 && probeCalls[0]._tools.every((t) => typeof t.tool_name === "string" && typeof t.schema_hash === "string"), JSON.stringify(probeCalls[0]?._tools?.[0]));
   const probeJson = JSON.stringify(probeCalls[0]?._tools ?? []);
   check("no raw provider prose reaches the probe catalog (§13 — description/schema never leave mcp-client)", !probeJson.includes("RAW PROVIDER PROSE") && !probeJson.includes("description"), probeJson.slice(0, 120));
   const bodyJson = JSON.stringify(okRes.body);
   check("verify response leaks NO secret / server url / provider prose", !bodyJson.includes("secret-token") && !bodyJson.includes("public.example") && !bodyJson.includes("RAW PROVIDER PROSE"), bodyJson);
+
+  // INT-152 — a probe that no-ops because the connection was RE-KEYED mid-verify (config_generation moved)
+  // returns {applied:false}; verify must report the race honestly (409 config_changed_during_verify), NOT a
+  // fabricated connected. The fresh config was not clobbered — this is the caller-visible side of the guard.
+  probeCalls.length = 0;
+  const staleRes = await verifyMod.runVerify(
+    { userClient: makeUser(), admin: makeAdmin(okSecret, null, { applied: false, reason: "stale_generation" }) },
+    { connectionId: CONN, expectedTenantId: TEN },
+  );
+  check("verify reports a mid-verify re-key honestly (INT-152 → 409 config_changed_during_verify)", staleRes.httpStatus === 409 && staleRes.body.ok === false && staleRes.body.error_code === "config_changed_during_verify", JSON.stringify(staleRes.body));
+  check("...and the stale probe carried the loaded generation it was gated on", probeCalls.length === 1 && probeCalls[0]._expected_generation === 7, JSON.stringify(probeCalls[0]?._expected_generation));
 
   // NOTE-A hardening (§39 peer-gate) — a mixed-case uuid is normalized to the PG-canonical lowercase
   // form BEFORE the ownership compare, so it matches the lowercase v2 rows (no spurious 404) and every

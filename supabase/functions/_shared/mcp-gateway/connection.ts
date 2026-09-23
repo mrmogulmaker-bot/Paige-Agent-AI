@@ -27,7 +27,7 @@ type Admin = any;
  *  visibility (INT-082); the runner enforces `owner_only` against the caller's authority — visibility
  *  is an AUTHORITY facet, never a usability one, so it never gates `connection_unusable`. */
 export type ResolvedConnection =
-  | { ok: true; connectionId: string; tenantId: string; serverUrl: string; auth: McpAuth; endpointHash: string; visibility: "tenant" | "owner_only" }
+  | { ok: true; connectionId: string; tenantId: string; serverUrl: string; auth: McpAuth; endpointHash: string; visibility: "tenant" | "owner_only"; configGeneration: number | null }
   | { ok: false; reason: "no_connection" | "connection_disabled" | "connection_unusable" };
 
 /** What the runner calls to resolve a connection to its canonical endpoint + auth + tenant. In
@@ -82,6 +82,7 @@ export function makeRpcConnectionLoader(admin: Admin): ConnectionLoader {
         auth_header_name?: unknown;
         transport?: unknown;
         expires_at?: unknown;
+        config_generation?: unknown;
       };
       if (row.configured !== true) return { ok: false, reason: "no_connection" };
       if (row.enabled !== true) return { ok: false, reason: "connection_disabled" };
@@ -136,7 +137,12 @@ export function makeRpcConnectionLoader(admin: Admin): ConnectionLoader {
       // gate `connection_unusable` above (an owner_only connection is fully usable BY AN AUTHORIZED
       // CALLER); the runner is where the caller-authority check lives.
       const visibility: "tenant" | "owner_only" = row.visibility === "tenant" ? "tenant" : "owner_only";
-      return { ok: true, connectionId: row.connection_id, tenantId: row.tenant_id, serverUrl: row.server_url, auth, endpointHash: row.endpoint_hash, visibility };
+      // INT-152: carry the generation the RPC read so the runner/verify can bind the probe write to the
+      // exact config it loaded. Absence degrades to null → a legacy UNCONDITIONAL probe (never a security
+      // downgrade, unlike endpoint_hash: consent binding is untouched; only the probe TOCTOU guard relaxes).
+      // In prod the NOT-NULL column is always returned; only an unseeded fixture lacks it.
+      const configGeneration = typeof row.config_generation === "number" ? row.config_generation : null;
+      return { ok: true, connectionId: row.connection_id, tenantId: row.tenant_id, serverUrl: row.server_url, auth, endpointHash: row.endpoint_hash, visibility, configGeneration };
     } catch {
       return { ok: false, reason: "no_connection" };
     }
