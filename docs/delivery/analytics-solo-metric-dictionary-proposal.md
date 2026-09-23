@@ -90,8 +90,16 @@ invoice, no agreement is consulted. Under the model in §1 this is ESTIMATED dis
 The shipped Sales surface already refuses that substitution, in its own words
 (`src/solo/sales/deriveSalesCommand.ts:17-18`): *"'Actual received' is NOT derived here at all.
 There is no connected payment source and `tenant_orders` is never summed into revenue; the surface
-renders it unavailable."* Command Center and Sales currently disagree about what revenue means, and
-Sales is right.
+renders it unavailable."* Command Center and Sales currently disagree about what revenue means.
+
+**Sales is right about the discipline, and M-2 does not reverse it — but the difference is the
+owner's to rule on, not mine (D-9).** Sales refuses to *derive* received money because there is no
+connected payment source, and renders it unavailable rather than substituting an estimate. M-2 keeps
+that discipline exactly and adds one thing: where a Stripe-confirmed order does exist, that is
+received money and may be summed; where none exists the metric is `UNAVAILABLE` — never zero, never
+an estimate. That narrows the September rule's scope rather than contradicting its principle, but it
+does revise an owner build-acceptance criterion dated 2026-09-05, so it goes to the owner as a
+decision instead of being assumed.
 
 ### L-2 — "Active clients" counts cold leads, because `status` defaults to active
 
@@ -212,14 +220,16 @@ before it are in a won stage with no close date and drop out of any dated figure
 |---|---|
 | **Business definition** | What clients have actually agreed to pay, across live agreements |
 | **Class** | **COMMITTED** |
-| **Numerator** | `SUM(agreed_amount_minor)` on `status='active'` agreements, grouped by `agreed_currency` |
+| **Numerator** | `SUM(agreed_amount_minor)` on `status='active'` agreements, grouped by **`agreed_currency` AND `term_kind`** — never one figure. A monthly-equivalent recurring amount is a rate and a one-time fee is an amount; adding them is the same error this document levels at ARPC |
 | **Time basis** | Point-in-time |
 | **Source of record** | `public.tenant_client_agreements` (`20261200000000:85-86`) |
 | **Recurring convention** | **Monthly-equivalent, not annualised.** This is the already-shipped choice, documented at `src/solo/sales/deriveSalesCommand.ts:14-16`: *"Recurring is reported as a monthly-equivalent, NOT annualized into a single contracted figure it does not prove."* Adopting it rather than inventing a second convention (§18) |
 | **Actual / forecast / estimate** | Committed — a real counterparty commitment, not received money |
 
-**Honest bound:** `term_kind` spans `one_time`, `recurring`, `installment`, `deposit`. Summing
-mixed term shapes into one figure is incoherent; the metric groups by term kind.
+**Honest bound:** `term_kind` spans five values — `one_time`, `recurring`, `installment`, `deposit`
+and `custom_quote` (`20261200000000:68-69`). They are not commensurable, and `custom_quote` may carry
+no settled amount at all, so the metric reports a row per term kind per currency and refuses to emit
+a single "contracted value" total.
 
 ### M-6 · `book.contacts_by_lifecycle` — PROPOSED (replaces the L-2 trap)
 
@@ -228,17 +238,25 @@ mixed term shapes into one figure is incoherent; the metric groups by term kind.
 | **Business definition** | How many people are in the book, and where each stands |
 | **Class** | Count |
 | **Numerator** | `count(*)` grouped by `clients.lifecycle_stage` |
-| **Included / excluded** | All non-archived rows. **`clients.status` is deliberately not used** — it defaults to `'active'` and therefore measures nothing (§2, L-2) |
+| **Included / excluded** | Every row carrying a `lifecycle_stage`. **A tension D-1 must resolve:** the natural exclusion is "not archived", but `clients` has no `archived_at` — archived-ness lives only in `clients.status`, the column L-2 shows is unreliable and which this metric otherwise avoids. Either it reads `status` solely to exclude `'archived'` and says so, or archived contacts are counted. It must not silently do neither |
 | **Time basis** | Point-in-time, plus a created-in-period variant on `created_at` |
 | **Source of record** | `public.clients`, `lifecycle_stage` CHECK at `20260630200554:26-39` |
 | **Owner** | Open decision D-1 — the lead/client boundary is not declared anywhere |
 
 ### M-7 · `outcomes.by_type` — PROPOSED
 
-`pipeline_deal_outcomes` grouped by `outcome_type` over `outcome_date`
-(`20261224000001:9-12`). **Deduplicated to the latest outcome per deal** — the table is append-only
-with `reopened` a legal outcome, so a deal closed, reopened and re-closed produces three rows and a
-naive count double-counts.
+`pipeline_deal_outcomes` grouped by `outcome_type` (`20261224000001:9-12`). Three rules, each
+closing a way this metric could quietly lie:
+
+1. **Deduplicate to one row per deal.** The table is append-only with no uniqueness, so a deal
+   closed, reopened and re-closed leaves three rows and a naive count triples it.
+2. **Pick that row by `created_at`, not `outcome_date`.** `outcome_date` is caller-supplied and can
+   be backdated, so ordering by it can make an older correction outrank the newer one. `created_at`
+   is the order the records were actually written. Report *by* `outcome_date` — that is the business
+   date — but *choose* by `created_at`.
+3. **`reopened` is a transition, not an outcome.** Counting it alongside won/lost/not_fit puts a
+   "this deal came back" event in the same column as "this deal ended", which no one reading an
+   outcomes chart would expect. It is excluded from the counts and reported separately if at all.
 
 ### M-8 · `work.capability_runs` — PROPOSED (the operating-intelligence metric)
 
@@ -264,8 +282,8 @@ return; specified in the Phase 2 slice rather than asserted here.
 | `money` | **Shipped — with a caveat that matters** | M-1 is live, but it explicitly disclaims being money: `20261004000000:232` — *"Counts are records, not revenue, conversion, attribution, benchmark, or outcome claims."* The actual money metric (M-2) is unbuilt. Calling this lens "done" would repeat §2's substitution at the lens level |
 | `brief` | **Buildable** | Composable from M-1 to M-8 |
 | `profit` | **Conditionally buildable** | `public.quickbooks_financials` (`20260420201025:56-83`) carries a full P&L: `total_expenses`, `cogs`, `gross_profit`, `gross_margin_percent`, `operating_expenses`, `net_income`, plus `accounts_receivable` and `cash_runway_months`. **Two real conditions, not one:** it requires a connected QuickBooks, and — the part that needs design attention — **it has no `tenant_id`.** It is keyed on `user_id` and `business_id` (`:58-59`), a different scoping model from every other metric here, so §9 scoping has to be established before a single figure is read |
-| `ret` | **Partially buildable — over agreements, not over the contact book** | `tenant_client_agreements` carries `starts_on`, `renews_on` and `ends_on` (`20261200000000:101-103`) plus `'completed'`/`'cancelled'` states (`:114-115`) — a real cohort boundary and a real end event, on the table this document already uses for M-5. What does **not** exist is retention over the whole contact book: `clients` has no end date, and `lifecycle_stage` carries `'client_churned'` (`20260630200554:34`) as a **state, not a dated event** — you can count who is churned now, never how many churned in a period |
-| `mkt` | **Partially buildable — for form-originated contacts** | The attribution does not need copying forward, because the row holding it already points at both: `growth_form_submissions.contact_id` is an FK to `public.clients` (`20260630004505:133`), with `utm_json` at `:139` and `referrer` at `:140`, all tenant-scoped (`:132`). So UTM is one join from a contact. **Coverage is partial by construction** — only contacts that arrived through a Paige form carry it — which is exactly what the contract's `PARTIAL` state and its exclusion counts exist to express. Caveat: `deal_id` (`:134`) is a bare `uuid` with **no foreign key**, so the deal-side join is unenforced |
+| `ret` | **Partially buildable — over agreements, not over the contact book** | `tenant_client_agreements` carries `starts_on`, `renews_on` and `ends_on` (`20261200000000:101-103`) plus `'completed'`/`'cancelled'` states (`:114-115`) — a real cohort boundary and a real end event, on the table this document already uses for M-5. What does **not** exist is retention over the whole contact book: `clients` has no end date, and `lifecycle_stage` carries `'client_churned'` (`20260630200554:35`) as a **state, not a dated event** — you can count who is churned now, never how many churned in a period |
+| `mkt` | **Partially buildable — for form-originated contacts** | The attribution does not need copying forward, because the row holding it already points at both: `growth_form_submissions.contact_id` is an FK to `public.clients` (`20260630004505:134`), with `utm_json` at `:139` and `referrer` at `:140`, all tenant-scoped (`:133`). So UTM is one join from a contact. **Coverage is partial by construction** — only contacts that arrived through a Paige form carry it — which is exactly what the contract's `PARTIAL` state and its exclusion counts exist to express. Caveat: `deal_id` (`:135`) is a bare `uuid` with **no foreign key**, so the deal-side join is unenforced |
 | `dec` | **Blocked, not absent** | Needs the governed runtime binding Phase 4 waits on from the Platform Reach Lane. The lens already marks only Human/Read/Page live (`analytics2.tsx:222`) |
 
 ### Also revised: MRR/ARR is buildable
@@ -277,10 +295,14 @@ hop away: `price_id` (`:114`) references `tenant_prices`, which supplies `unit_a
 `billing_interval` and `interval_count` (`20260629182422:102-105`), and the subscription carries its
 own `billing_period` (`:116`).
 
-So MRR **is** schema-permitted. Two caveats belong in the definition rather than in a refusal:
-`tenant_prices.unit_amount` is the **list** price, not necessarily what this client pays; and
+So MRR **is** schema-permitted. Three caveats belong in the definition rather than in a refusal.
+`tenant_prices.unit_amount` is the **list** price, not necessarily what this client pays.
 `price_id` is `ON DELETE SET NULL`, so a deleted price silently orphans a subscription's amount and
-drops it from the sum.
+drops it from the sum. And **there are two cadence sources with no declared precedence** — the
+subscription's own `billing_period` (`20260702005950:116`, free text with no CHECK) and the price's
+`billing_interval` / `interval_count` (`20260629182422:104-105`, CHECK-constrained). Normalising to
+a monthly figure requires choosing one, and the constrained pair is the defensible choice; that is
+part of D-6 rather than an implementation detail.
 
 ### What genuinely remains unbuildable
 
@@ -332,16 +354,32 @@ properly:
 - **Before the tenant builds a pipeline** — a designed state that says *you have not set this up
   yet, here is the one step*. Today this is `UNAVAILABLE`, which means *cannot be measured* and
   reads as broken.
-- **The moment they create a pipeline and a first deal** — `LIVE`, immediately. No seeding, no
-  backfill, no configuration step, nothing to wait for. **This half already works**: deal count is
-  not part of the truth-state expression (`20261004000000:151-155`), so an account with a pipeline
-  and zero deals returns `LIVE` with honest zeroes rather than an error.
+- **The moment they build a pipeline WITH STAGES and a first deal** — `LIVE`, immediately. No
+  seeding, no backfill, nothing to wait for. Deal count is not part of the truth-state expression
+  (`20261004000000:151-155`), so a tenant with a staged pipeline and zero deals returns `LIVE` with
+  honest zeroes — and `'stages'` at `:228` returns their real stage labels at count 0, not a blank
+  grid.
 
-Two supporting facts verified first-hand: the lifecycle gate admits `trial|active|past_due`
-(`20261004000000:329-332`) and `tenants.status` defaults to `'trial'` (`20260629175341:32`), so a
-new account passes it; and `create_pipeline_with_stages` falls back to five coaching-generic
-`_default_stages` when handed `'[]'` (`20260710200000:66-68`), so whenever the tenant does build a
-pipeline through Setup it arrives with usable stages.
+**There is a third state between those two, and it is the one most likely to be hit.** A pipeline
+with *no stages* is a first-class, deliberate outcome of Setup:
+`20260831224500_solo_pipeline_governed_management.sql:139-148` creates a `'draft'` pipeline with
+only the stages supplied, reporting *"Blank pipeline created as a draft. Add at least one named
+stage before activation."* Because the truth-state expression fails on `_stage_definition_count = 0`
+exactly as hard as on no pipeline at all, **a tenant who has done real setup work still sees
+`UNAVAILABLE`.** That is the worst version of this problem: they did the thing, and the product
+still tells them their analytics cannot be measured.
+
+The lifecycle gate itself is fine — it admits `trial|active|past_due` (`20261004000000:329-332`)
+and `tenants.status` defaults to `'trial'` (`20260629175341:32`), so a new account passes it.
+
+> **Corrected after the peer gate (§9) — and this is the same mistake twice.** This paragraph
+> originally claimed `create_pipeline_with_stages` falls back to five default stages when handed
+> `'[]'`. That fallback was **removed** by `20260831224500:66`, under the comment *"Stop the legacy
+> creator from silently substituting a fixed sales taxonomy."* An empty array is now accepted and
+> yields a stageless draft. So for the second time in one document I cited a July migration for
+> behaviour a later one had repealed — eleven lines below a correction block about doing exactly
+> that. A rule that fails twice is not a rule, so it is now enforced by
+> `scripts/ci/doc-citation-lint.mjs` (§9) instead of by my attention.
 
 **Proposal: a fourth truth state, `UNCONFIGURED`.** `UNAVAILABLE` currently does the work of two
 different sentences — *this cannot be measured* and *you have not set this up yet* — and a new
@@ -358,10 +396,11 @@ Each is a real fork. Each has a recommendation. **None is being taken silently.*
 | **D-2** | Is `tenant_orders.created_at` the right time basis for collected money? It is session-create time, not payment time | Use it, and label the metric's time basis honestly on the surface | Needs a schema addition to capture payment time |
 | **D-3** | Sum across currencies, or refuse to? `deals.currency` exists and is currently discarded | **Never sum across currencies.** Group by currency; show one figure only when one currency is present | A mixed-currency tenant gets a meaningless number that looks precise |
 | **D-4** | Which "won" — `deals.status='won'` or `stage_type='won'`? | `stage_type`, and backfill the pre-`20261204000000` deals | Two surfaces disagree about the same deals, permanently |
-| **D-5** | Gross or net for collected revenue? `application_fee_amount` is Paige's cut | Net (what the tenant receives) as the headline; gross available beside it | The tenant's "revenue" includes money they never got |
+| **D-5** | Gross or net for collected revenue? `application_fee_amount` is Paige's cut | Net of the application fee as the headline, gross beside it — but **not labelled "what the tenant receives"**, because Stripe's own processing fee is not in this schema, so even the net figure sits above the real deposit | Gross counts money the tenant never got; a naive "net receives" label claims a precision the data does not have |
 | **D-6** | Recurring convention for committed value | Monthly-equivalent — adopt the shipped choice, do not invent a second | A second convention in the codebase, and §18 drift |
 | **D-7** | Is the at-risk threshold (21 days, hardcoded) tenant-configurable? | Yes, defaulting to 21 | Every business is assumed to have the same cadence |
-| **D-8** | Fix L-1/L-2/L-3 in Phase 2, or wait for the full dictionary? | Fix in Phase 2 — they are telling owners untrue things now | Known-false numbers stay on screen for longer |
+| **D-8** | Fix L-1 through L-4 in Phase 2, or wait for the full dictionary? | Fix in Phase 2 — they are telling owners untrue things now | Known-false numbers stay on screen for longer |
+| **D-9** | May a Stripe-confirmed order be summed as revenue at all? The shipped Sales rule (2026-09-05) says `tenant_orders` is *never* summed and the surface renders received money unavailable | Yes, narrowly: sum it **only** where a confirmed order exists, and return `UNAVAILABLE` — never zero — where none does. That keeps the rule's principle (never substitute an estimate for a receipt) while letting a real receipt count | Either the platform can never report revenue at all, or M-2 quietly overrides a dated owner ruling without anyone deciding to |
 
 ---
 
@@ -409,34 +448,55 @@ Unanswerable from this session; collected rather than guessed.
 
 ---
 
-## 9. What the peer gate changed, and why it is recorded rather than quietly fixed
+## 9. What the peer gate changed, and the check that now enforces it
 
-An independent adversarial pass read this document against the code before it was proposed, under
-the §39 peer gate. It checked 64 citations across two completed lenses and confirmed 45. Its
-verdicts were **FIX_FIRST** and **BLOCK**, and it was right on every point I re-verified myself.
+Three independent adversarial lenses read this document against the code under the §39 peer gate,
+before it was proposed. Between them they opened **90 citations and confirmed 66**. Verdicts:
+**FIX_FIRST**, **BLOCK**, **FIX_FIRST**. Every finding I re-verified against the actual lines was
+correct, and I re-verified all of the consequential ones rather than accepting them.
 
 **What survived unchanged**, which matters as much as what did not: the economic model in §1 — the
 `tenant_orders` COLLECTED anchor, its `payment_status === "paid"` gate, and the fact that it is the
-only writer of `status='complete'` — plus the absence of any cost table *on the chain*, the
-`useCommandCenter.ts:163` mislabel, the truth-state expression, and the default-stage fallback.
+only writer of `status='complete'` — plus the `useCommandCenter.ts:163` mislabel, the truth-state
+expression, and the zero-deal `LIVE` trace. The third lens independently checked
+`paige_bank_transactions` as a possible counterexample to §1 and found it is not one: it hangs off a
+connection whose `contact_id` references `clients`, so it proves a tenant's *client's* receipts, not
+the tenant's own.
 
-**What it caught:**
+**What they caught:**
 
 | Class | Count | Example |
 |---|---|---|
 | Wrong lens verdict | 4 | `mkt` marked NOT BUILDABLE; the attribution row holds an FK to `clients` |
+| Stale citation — a later migration repealed it | 2 | `create_pipeline_with_stages` default stages, removed by `20260831224500:66` |
+| Internal contradiction | 2 | L-1 endorsed a rule M-2 then broke; M-6 banned the column it needed |
 | Wrong metric identity | 1 | `funnel.` where the shipped CHECK permits only `sales_funnel.` |
-| Wrong description of a live metric | 1 | `active_clients` described as "every non-archived row" |
-| Off-by-one or wrong-range citation | 7 | `amount_total_cents` cited at `:15`, which is `memo text` |
+| Incommensurable sum | 2 | M-5 added a monthly rate to a one-time amount — ARPC's own error |
+| Off-by-one or wrong-range citation | 10 | `amount_total_cents` cited at `:15`, which is `memo text` |
 
-**The instructive pattern**, and the reason this section exists rather than a silent edit: every
-wrong lens verdict was an **absence claim** — *"no such table exists"* — and three of the four were
-refuted by tables **listed in my own grounding data**. The evidence was in hand; the generalisation
-from *this table lacks the column* to *the platform lacks the capability* is what failed. A dictionary
-whose whole purpose is to stop the product asserting things it cannot prove nearly shipped four
-assertions it could not prove.
+### The pattern, and why prose was not enough
 
-One place the gate itself overstated, verified rather than relayed: it reported the empty-funnel
-fallback renders "four invented values." It renders four invented **labels**, each showing
-*"No proved count"* under a watermark reading *"no implied volume or conversion."* No number is
-fabricated. L-4 is written to the milder, accurate version.
+Two distinct failure modes, and only one of them is carelessness.
+
+**The absence claims** — every wrong lens verdict was *"no such table exists"*, and three of four
+were refuted by tables listed in my own grounding data. The evidence was in hand; the leap from
+*this table lacks the column* to *the platform lacks the capability* is what failed.
+
+**The stale citations are worse, because they are invisible to careful reading.** Migrations are
+append-only, so a repealed `create or replace function` still greps cleanly and still reads
+correctly at the line cited. I made this exact mistake twice — the starter auto-provisioner
+(`20260711180000`, dropped by `20260915000000`) and the default-stage fallback
+(`20260710200000`, replaced by `20260831224500`) — the second time **eleven lines below a correction
+block about the first.** Attention had already failed twice.
+
+So it is now a check the build runs: **`scripts/ci/doc-citation-lint.mjs`**, wired as
+`npm run lint:doc-citations` and into `.github/workflows/ci.yml` beside the sibling guards. It
+verifies that every `file:line` claim resolves, and — the part that matters — walks back from the
+cited line to its enclosing `create function` / `create table` and **fails if any later migration
+redefines or drops that identifier.** Both real defects reproduce as failures against it; a version
+that only checked the declaration line passed on both, which is why it walks backward.
+
+One place a lens itself overstated, verified rather than relayed: the citations lens reported the
+empty-funnel fallback renders "four invented values." It renders four invented **labels**, each
+showing *"No proved count"* under a watermark reading *"no implied volume or conversion."* No number
+is fabricated, and L-4 is written to the accurate version.
