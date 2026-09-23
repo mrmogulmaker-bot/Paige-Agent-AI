@@ -70,17 +70,15 @@ export function canonicalizeCrmCommand<T extends Record<string, unknown>>(comman
       delete patch[field];
       changed = true;
     }
-    if (presentCanonicalNameFields.length === 0 || malformedCanonicalNameFields.length > 0) {
-      const normalizedName = patch.name.trim().replace(/\s+/g, " ");
-      const splitAt = normalizedName.lastIndexOf(" ");
-      const legacyFirstName = splitAt > 0 ? normalizedName.slice(0, splitAt) : normalizedName;
-      const legacyLastName = splitAt > 0 ? normalizedName.slice(splitAt + 1) : null;
-      if (typeof patch.first_name !== "string" || patch.first_name.trim().length === 0) {
-        patch.first_name = legacyFirstName;
-      }
-      if (legacyLastName && (typeof patch.last_name !== "string" || patch.last_name.trim().length === 0)) {
-        patch.last_name = legacyLastName;
-      }
+    const normalizedName = patch.name.trim().replace(/\s+/g, " ");
+    const splitAt = normalizedName.lastIndexOf(" ");
+    const legacyFirstName = splitAt > 0 ? normalizedName.slice(0, splitAt) : normalizedName;
+    const legacyLastName = splitAt > 0 ? normalizedName.slice(splitAt + 1) : null;
+    if (typeof patch.first_name !== "string" || patch.first_name.trim().length === 0) {
+      patch.first_name = legacyFirstName;
+    }
+    if (legacyLastName && (typeof patch.last_name !== "string" || patch.last_name.trim().length === 0)) {
+      patch.last_name = legacyLastName;
     }
     // A canonical value wins only when it is actually usable. Malformed canonical values are
     // removed before the decision, so a valid legacy alias can fill each rejected part instead of

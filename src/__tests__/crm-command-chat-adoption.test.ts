@@ -147,6 +147,23 @@ describe("Paige Chat canonical CRM adoption", () => {
     });
   });
 
+  it("fills an absent canonical name part from the usable legacy alias", () => {
+    expect(canonicalizeCrmCommand({
+      action: "contact.create",
+      patch: { name: "Avery Quinn", first_name: "Avery" },
+    })).toEqual({
+      action: "contact.create",
+      patch: { first_name: "Avery", last_name: "Quinn" },
+    });
+    expect(canonicalizeCrmCommand({
+      action: "contact.create",
+      patch: { name: "Avery Quinn", last_name: "Quinn" },
+    })).toEqual({
+      action: "contact.create",
+      patch: { first_name: "Avery", last_name: "Quinn" },
+    });
+  });
+
   it("does not accept tenant, actor, role, account, approval, or authority as model arguments", () => {
     const serialized = JSON.stringify(CRM_COMMAND_TOOLS);
     for (const forbidden of ["tenant_id", "actor_id", "actor_role", "account_id", "approved_fingerprint", "authority"]) {
