@@ -267,6 +267,23 @@ function readState(stored: SignatureState, expiresAt: string | null): SignatureS
   return !Number.isNaN(at) && at <= Date.now() ? "expired" : stored;
 }
 
+/**
+ * The DATA half of the state — DERIVED, never enumerated.
+ *
+ * This was `Omit<SigningsState, "retry" | "uploadDocument" | ...>`: a hand-written list of the
+ * functions to leave out. Every function added to `SigningsState` afterwards therefore became a
+ * REQUIRED field of the object held in `useState`, which is not what anyone intended and is not
+ * something a reader of the call site would notice. Adding `signingEvents` and `sendForSignature`
+ * did exactly that and put fourteen type errors in this file.
+ *
+ * Keeping only the non-function members means the list cannot go stale again: a function added to
+ * the state type is excluded by what it IS rather than by someone remembering to name it.
+ */
+type SigningsData = {
+  [K in keyof SigningsState as SigningsState[K] extends (...args: never[]) => unknown ? never : K]:
+    SigningsState[K];
+};
+
 export function useSoloAgreementSignings(): SigningsState {
   const { activeTenantId, accountContextLoading } = useTenantContext();
   // An identity epoch also invalidates a completion after A -> B -> A.
@@ -276,9 +293,7 @@ export function useSoloAgreementSignings(): SigningsState {
   }
 
   const [refreshKey, setRefreshKey] = useState(0);
-  const [state, setState] = useState<
-    Omit<SigningsState, "retry" | "uploadDocument" | "createSigning" | "issueLink" | "voidSigning">
-  >({
+  const [state, setState] = useState<SigningsData>({
     tenantId: activeTenantId ?? null,
     phase: accountContextLoading ? "resolving" : "loading",
     ...EMPTY,
@@ -411,8 +426,8 @@ export function useSoloAgreementSignings(): SigningsState {
       return { ok: false, message: "Wait for your workspace to finish loading, then try again." };
     }
     const safe = (file.name || "document")
-      .replace(/[^\w.\-]+/g, "-")
-      .replace(/^[.\-]+/, "")
+      .replace(/[^\w.-]+/g, "-")
+      .replace(/^[.-]+/, "")
       .slice(-80) || "document";
     const path = `${expected}/source/${Date.now()}-${safe}`;
     try {
@@ -447,13 +462,13 @@ export function useSoloAgreementSignings(): SigningsState {
           _document_body: draft.documentBody,
           _document_path: draft.documentPath,
         } as never,
-      ) as Promise<{ data: unknown; error: { code?: string } | null }>,
+      ) as unknown as Promise<{ data: unknown; error: { code?: string } | null }>,
       (data) => {
         const id = toText(data.signing_id);
         return id ? { id, state: narrow(data.signature_state, SIGNATURE_STATES) } : null;
       },
     );
-    if (!outcome.ok) return { ok: false, message: outcome.message };
+    if ("message" in outcome) return { ok: false, message: outcome.message };
     return {
       ok: true,
       signingId: outcome.value.id,
@@ -547,7 +562,7 @@ export function useSoloAgreementSignings(): SigningsState {
           _signing_id: signingId,
           _ttl_days: ttlDays,
         } as never,
-      ) as Promise<{ data: unknown; error: { code?: string } | null }>,
+      ) as unknown as Promise<{ data: unknown; error: { code?: string } | null }>,
       // A response without a token is NOT a link, however green it looks. Refusing it here is what
       // stops the surface telling somebody to send something that does not exist.
       (data) => {
@@ -555,7 +570,7 @@ export function useSoloAgreementSignings(): SigningsState {
         return token ? { token, expiresAt: toText(data.expires_at) } : null;
       },
     );
-    if (!outcome.ok) return { ok: false, message: outcome.message };
+    if ("message" in outcome) return { ok: false, message: outcome.message };
     return { ok: true, token: outcome.value.token, expiresAt: outcome.value.expiresAt };
   }, [runWrite, activeTenantId]);
 
@@ -571,7 +586,7 @@ export function useSoloAgreementSignings(): SigningsState {
           _expected_tenant_id: loadedTenantId ?? activeTenantId,
           _signing_id: signingId,
         } as never,
-      ) as Promise<{ data: unknown; error: { code?: string } | null }>,
+      ) as unknown as Promise<{ data: unknown; error: { code?: string } | null }>,
       (data) => {
         const state = narrow(data.signature_state, SIGNATURE_STATES);
         // The server says `voided` or this did not happen. Accepting any shape here would let a
@@ -579,7 +594,7 @@ export function useSoloAgreementSignings(): SigningsState {
         return state === "voided" ? { state } : null;
       },
     );
-    if (!outcome.ok) return { ok: false, message: outcome.message };
+    if ("message" in outcome) return { ok: false, message: outcome.message };
     return { ok: true, signatureState: outcome.value.state };
   }, [runWrite, activeTenantId]);
 
