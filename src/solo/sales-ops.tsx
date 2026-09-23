@@ -1497,7 +1497,9 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
     const client = agreements.clients.find((c) => c.id === row.contactId);
     // The filter names the ENGAGEMENT's state, so a document with no engagement matches only
     // "All". Sweeping it into "Draft" would put it under a word its record does not hold.
-    return (termStatus === "all" || row.agreement?.status === termStatus)
+    // Signature, per the approved filter — `row.signing.displayState` rather than the engagement's
+    // own `agreement.status`. A row with no document at all answers only "any".
+    return (termStatus === "all" || row.signing?.displayState === termStatus)
       && (client?.name || "").toLowerCase().includes(termSearch.trim().toLowerCase());
   });
   const shownTerms = matchingTerms.slice(termPage * 5, termPage * 5 + 5);
@@ -1886,44 +1888,45 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
         * band head. */}
       <section className="so-band so-terms">
         <div className="so-band-head">
+          {/* THE APPROVED HEAD, in the approved order. Every element below is the prototype's
+            * (claude.ai/artifact/S271qc7uGTFXbdNoTz49VC, screen 1 "Commercial Terms", §28):
+            * title, the record count as a dotted violet pill, a spacer, Open Catalog as a QUIET
+            * borderless act, then the primary. An earlier pass shipped this with the acts on the
+            * right, the count in green, the primary labelled "Record terms" and the orientation
+            * line moved to its own row below — none of which is what was approved. */}
           <h3>Agreements and terms</h3>
-          {/* "Nothing recorded yet" is a CLAIM about the book, and it is only true when both halves
-              were actually read. An agreement that carries no price exists ONLY as a document
-              record, so when that read failed the band cannot know whether the book is empty —
-              and saying it is, is the false green this pill used to state confidently. Having
-              records is still sayable either way, because the ones in hand are real. */}
-          {agreements.phase === "ready" && agreements.agreementsReadable && termRows.length > 0 && <Pill tone="ok">{termRows.length === 1 ? "1 record" : `${termRows.length} records`}</Pill>}
+          {agreements.phase === "ready" && agreements.agreementsReadable && termRows.length > 0 && (
+            <span className="so-count"><span className="so-count-dot" aria-hidden="true" />{termRows.length === 1 ? "1 record" : `${termRows.length} records`}</span>
+          )}
+          <span className="so-sp" />
+          {/* §58 — this act came off the band that was deleted. Catalog owns the offer record, and
+            * this is the one place on the desk that needs to say so. Quiet, per the approved head:
+            * it is a way OUT of this band, not one of its acts. */}
+          {onOpenCatalog ? (
+            <button className="btn btn-s btn-q" onClick={() => onOpenCatalog()}>Open Catalog</button>
+          ) : null}
           {agreements.canManage
-            ? <button className="btn btn-s btn-p" onClick={() => { setEditing(null); setEditor("agreement"); }}>Record terms</button>
+            ? <button className="btn btn-s btn-p" onClick={() => { setEditing(null); setEditor("agreement"); }}>New agreement</button>
             : agreements.phase === "ready" && agreements.agreementsReadable
               // A reader who cannot write is told WHO may — never a silently missing button (§36/§70).
               ? <span className="so-quiet">An owner or admin records this.</span>
               : null}
-          {/* §58 — this act came off the band that was deleted. Catalog owns the offer record, and
-            * this is the one place on the desk that needs to say so. */}
-          {onOpenCatalog ? (
-            <button className="btn btn-s" onClick={() => onOpenCatalog()}>Open Catalog <Ic.arrow size={12} /></button>
-          ) : null}
           {/* The two states, said apart, because the owner ruled they ARE apart (2026-09-22) and a
             * reader who assumes one word covers both will misread the column. §38 statement #1 of
-            * exactly two on this band. */}
+            * exactly two on this band. It sits INSIDE the head, to the right of the acts, which is
+            * what `flex:1 0 100%` with a 74ch cap produces — the approved layout exactly. */}
+          <small>
+            What each client agreed to, and the document they signed to agree it. This column tracks
+            the <b>signature</b>; whether the engagement is running, paused or finished is a
+            separate state that starts once it is signed. Sending an agreement bills nobody and
+            charges nothing.
+          </small>
         </div>
-        {/* OUT of the band head, where it was a flex item fighting the heading and the acts for the
-          * same row. It is an orientation line about the whole band, so it is a sibling of the head
-          * rather than a member of it — which is also the only way it can hold a readable measure:
-          * inside the head it needed `flex:0 0 100%` to claim a row, and that basis is exactly what
-          * a max-width cancels. `.so-orient` already existed for this and had no caller. */}
-        <p className="so-orient">
-          What each client agreed to, and the document they signed to agree it. This column tracks
-          the <b>signature</b>; whether the engagement is running, paused or finished is a
-          separate state that starts once it is signed. Sending an agreement bills nobody and
-          charges nothing.
-        </p>
 
         {agreements.agreementsReadable && termRows.length > 0 && <div className="so-filters">
-          <label className="so-search"><span>Find client terms</span><input type="search" value={termSearch} placeholder="Search client name…" onChange={(e) => { setTermSearch(e.target.value); setTermPage(0); }} /></label>
-          <label className="so-search"><span>Engagement</span><select aria-label="Terms status" value={termStatus} onChange={(e) => { setTermStatus(e.target.value); setTermPage(0); }}><option value="all">All statuses</option>{Object.entries(AGREEMENT_STATE).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}</select></label>
-          <small>Searches the latest {termRows.length} loaded records (up to 200).</small>
+          <label className="so-search"><span>Find a client</span><input type="search" value={termSearch} placeholder="Search client name…" onChange={(e) => { setTermSearch(e.target.value); setTermPage(0); }} /></label>
+          <label className="so-search"><span>Signature</span><select aria-label="Signature state" value={termStatus} onChange={(e) => { setTermStatus(e.target.value); setTermPage(0); }}><option value="all">Any signature state</option>{Object.entries(SIGNATURE_STATE).filter(([key]) => key !== "none" && key !== "unrecognised").map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}</select></label>
+          <small className="so-filters-note">Searches the latest {termRows.length} loaded records (up to 200).</small>
         </div>}
         {["loading", "resolving"].includes(agreements.phase) ? <p role="status">Loading commercial terms…</p> : agreements.phase === "error" ? (
           <p className="so-absent">
@@ -1971,7 +1974,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
               ? (onOpenClients ? <div className="so-blank-acts"><button className="btn btn-p" onClick={() => onOpenClients()}>Go to Clients <Ic.arrow size={13} /></button></div> : null)
               : agreements.canManage ? (
                 <div className="so-blank-acts">
-                  <button className="btn btn-p" onClick={() => { setEditing(null); setEditor("agreement"); }}>Record terms</button>
+                  <button className="btn btn-p" onClick={() => { setEditing(null); setEditor("agreement"); }}>New agreement</button>
                   {onOpenCatalog ? <button className="btn btn-s" onClick={() => onOpenCatalog()}>Open Catalog <Ic.arrow size={12} /></button> : null}
                 </div>
               ) : null}
@@ -2010,11 +2013,12 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
                       * an em-dash that would read as "no client". */}
                     {client?.name || (agreements.clientsReadable ? "Not recorded" : "Not readable here")}
                   </span>
-                  <span role="cell" className="so-quiet">
-                    {signing ? signing.documentTitle : signingsReadable ? "None" : "Not readable"}
+                  <span role="cell" className="so-doc" data-none={signing ? undefined : "1"}>
+                    <Ic.doc size={14} />
+                    <span>{signing ? signing.documentTitle : signingsReadable ? "No document — terms only" : "Not readable"}</span>
                   </span>
                   <span role="cell"><SignaturePill state={signatureState} /></span>
-                  <span role="cell" className={`so-num${state ? ` so-num--${state.tone}` : ""}`}>
+                  <span role="cell" className="so-num">
                     {!row ? "—"
                       : row.agreedAmountMinor === null
                         ? (row.priceBasis === "quote_pending" ? "To be quoted" : "—")
@@ -2039,7 +2043,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
             })}
           </div>
         )}
-        {termRows.length > 0 && agreements.agreementsReadable && <div className="so-page-controls"><span>{matchingTerms.length === 0 ? "No matching terms" : "Page " + (termPage + 1) + " · " + matchingTerms.length + " matching loaded records"}</span><button className="btn btn-s" disabled={termPage === 0} onClick={() => setTermPage((p) => p - 1)}>Previous terms</button><button className="btn btn-s" disabled={(termPage + 1) * 5 >= matchingTerms.length} onClick={() => setTermPage((p) => p + 1)}>Next terms</button></div>}
+        {termRows.length > 0 && agreements.agreementsReadable && <div className="so-page-controls"><span>{matchingTerms.length === 0 ? "No matching terms" : "Page " + (termPage + 1) + " · " + matchingTerms.length + " matching loaded records"}</span><button className="btn btn-s" disabled={termPage === 0} onClick={() => setTermPage((p) => p - 1)}>Previous</button><button className="btn btn-s" disabled={(termPage + 1) * 5 >= matchingTerms.length} onClick={() => setTermPage((p) => p + 1)}>Next</button></div>}
         {signings.phase === "error" && <p className="so-absent" role="alert">Your documents could not be read, so the Signature column is unknown rather than empty. Your commercial terms above are unaffected. <button className="btn btn-s" onClick={signings.retry}><Ic.arrow size={13} />Retry documents</button></p>}
       </section>
       </>)}

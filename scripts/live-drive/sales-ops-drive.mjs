@@ -360,7 +360,10 @@ async function main() {
         // — Terms · editor OPEN then CANCEL (abandon path).
         await clickData(page, "agreements", "populated");
         await settle(page);
-        await page.click("button:has-text('Record terms')").catch(() => {});
+        // "New agreement" per the approved head (§28 screen 1). The silent .catch() is why this
+        // mattered: the click failing left the editor closed and the assertion below reported the
+        // MODAL as broken rather than the selector as stale.
+        await page.click("button:has-text('New agreement')").catch(() => {});
         await page.waitForTimeout(140);
         const dlgOpen = await page.evaluate(() => Boolean(document.querySelector('[role="dialog"][aria-modal="true"]')));
         check(dlgOpen, `${tag}: the terms editor opens as a modal dialog`);
