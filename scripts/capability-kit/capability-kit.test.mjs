@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
@@ -256,6 +257,50 @@ test("an unclassified key is refused on policy membership, whatever its verb rea
       governance: { ...candidate.governance, actionRiskKey },
     }), /must exist in the canonical action-risk policy/, actionRiskKey);
   }
+});
+
+// The veto that replaced the verb precondition. Removing a check obliges the remaining ones to be
+// stronger, so `read_only` is refused outright for anything that writes or reaches outside the
+// platform. `ActionRisk` cannot even express `read_only` and no entry classifies one, so the risk
+// comparison below happens to reject it today — but that is the table's present composition doing
+// the work, not a rule, and this asserts the rule.
+test("mutation and external-effect capabilities cannot declare read_only risk", () => {
+  const candidate = definitionFromFixture(mutationFixture);
+  for (const effect of ["mutation", "external_effect"]) {
+    assert.throws(() => defineCapability({
+      ...candidate,
+      effect,
+      governance: { ...candidate.governance, risk: "read_only", approval: "none" },
+    }), /read_only/, effect);
+  }
+});
+
+// The premise the most-restrictive fold in `action-risk.ts` rests on: with the array deduplicated,
+// folding is a no-op. `RISK` is hand-maintained and both its maps were last-wins, so a second tuple
+// for an existing key silently re-classified it — `crm_update_task` carried two until the INT-003
+// follow-up. The fold means a duplicate can now only RAISE a class, but a policy that quietly
+// contradicts itself is still a policy nobody can read, so the array is asserted unique here.
+// The tidier home for this is `action-risk-lint`, which rejects no duplicates today; that guard is
+// outside this change and is routed rather than widened into.
+// SYNCHRONOUS deliberately: `test()` above calls `body()` without awaiting it, so an async body
+// prints "ok" and increments the pass count before it can possibly fail, and the failure surfaces
+// only as an unhandled rejection. Node exits non-zero on one today, so it would not have gone
+// unnoticed — but a test whose green depends on that is the shape this whole change exists to fix.
+test("the canonical action-risk policy declares each key exactly once", () => {
+  const policy = readFileSync(
+    join(HERE, "..", "..", "supabase", "functions", "_shared", "action-risk.ts"),
+    "utf8",
+  );
+  const region = policy.slice(
+    policy.indexOf("const RISK: ReadonlyArray"),
+    policy.indexOf("const RISK_RANK"),
+  );
+  const keys = [...region.matchAll(/\[\s*"([a-z0-9_]+)"\s*,\s*"(?:ordinary|high|owner_only)"/g)]
+    .map((match) => match[1]);
+  assert.ok(keys.length > 0, "the RISK array parsed to at least one tuple");
+  const repeated = [...new Set(keys.filter((key, index) => keys.indexOf(key) !== index))];
+  assert.deepEqual(repeated, [], `RISK declares these keys more than once: ${repeated.join(", ")}`);
+  assert.equal(keys.length, mutatingTools().size, "every parsed tuple survives into the fold");
 });
 
 test("external effects require the canonical high-risk class", () => {
