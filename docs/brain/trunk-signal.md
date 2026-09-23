@@ -129,9 +129,19 @@ difference, not because they are doubted.
 
 - **`⚠ ATTRIBUTED` — the cause of `github-advanced-security`.** It is described as GitHub's own agent
   failing inside its own runtime. That explanation came from the program coordinator; what was
-  independently observed here is only the *behaviour* — it fails on every PR head regardless of diff
-  content, including docs-only diffs, and does not appear on `main` commits. The behaviour is enough
-  to treat it as not-a-gate. The cause is not confirmed from this side.
+  independently observed here is only the *behaviour*, and the behaviour is enough to treat it as
+  not-a-gate. The cause is not confirmed from this side.
+
+  The behavioural half is cited, not asserted. The strongest single data point: it failed on
+  `1268f0a49`, a head whose entire diff was two Markdown files under `docs/brain/` — no code, no
+  schema, no workflow. A security scanner that fails on a commit containing no code is not reporting
+  on the commit. It failed identically on four other heads across two other PRs the same day
+  (`b1c6db230` and `f496701f3` on #1383; `12432f246` and `6525ffa8c` on #1380), and it does not appear
+  in the check list of any `main` commit — it runs on PRs only.
+
+  Those five are heads whose check results were observed directly. Other heads that day almost
+  certainly failed it too, but they are not listed, because "almost certainly" is the thing this file
+  is built to keep out.
 - **`⚠ ATTRIBUTED` — that `verify` is not a required check.** Taken from an earlier lane's delivery-log
   row describing it that way. Branch-protection settings were not read directly. It has never blocked
   a merge in practice, but if that matters to a decision, check the setting rather than this line.
