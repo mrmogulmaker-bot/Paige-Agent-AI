@@ -145,11 +145,11 @@ const edge = readFileSync(new URL("../supabase/functions/paige-live-relay/index.
 // Execute the production admission body with a database double: the master
 // transport switch must stop adapter opening even when tenant standing is valid.
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-const admissionBody = edge.slice(edge.indexOf('const checkCurrentAdmission = async (): Promise<Response | null> => {') +
-  'const checkCurrentAdmission = async (): Promise<Response | null> => {'.length,
-  edge.indexOf('  };\n  const admissionFailure')).replace(': string | null', '');
+const admissionBody = edge.slice(edge.indexOf('const checkCurrentAdmission = async (recheckProvider = true): Promise<Response | null> => {') +
+  'const checkCurrentAdmission = async (recheckProvider = true): Promise<Response | null> => {'.length,
+  edge.indexOf('  };\n  // Initial identity')).replace(': string | null', '');
 const resolveAdmission = new AsyncFunction('admin', 'session', 'markUnavailable',
-  'hasLiveWorkspaceStanding', 'isLiveWorkspaceCurrent', 'isLiveAudioPilotEnabled', 'readProviderAdmission', admissionBody);
+  'hasLiveWorkspaceStanding', 'isLiveWorkspaceCurrent', 'isLiveAudioPilotEnabled', 'readProviderAdmission', 'recheckProvider = true', admissionBody);
 const approvedVoice = 'g6xIsTj2HwM6VR4iXFCw';
 let providerRows: Record<string, Record<string, unknown>>;
 const resetProviderRows = () => { providerRows = {
@@ -224,6 +224,27 @@ for (const [table, field, bad] of [
 resetProviderRows(); providerReadError = true;
 check('provider approval read failure is closed', !await masterCheck());
 providerReadError = false;
+resetProviderRows();
+providerRows.paige_voice_profiles.approved = false;
+const initialStart = edge.indexOf('  const admissionFailure = await checkCurrentAdmission');
+const initialEnd = edge.indexOf('\n  const { socket, response } = Deno.upgradeWebSocket(req);\n  const markLive', initialStart);
+const initialBody = edge.slice(initialStart, initialEnd).replace('new Promise<void>', 'new Promise');
+const initialFrames: string[] = [];
+let initialUpgrades = 0;
+const initialSocket = { onopen: null as (() => void) | null, onclose: null as (() => void) | null,
+  onmessage: null as (() => void) | null, send: (frame: string) => initialFrames.push(frame), close() {} };
+const initialResponse = await new AsyncFunction('checkCurrentAdmission', 'readProviderAdmission', 'markUnavailable',
+  'Deno', 'req', 'waitUntil', 'setTimeout', initialBody)(
+    (...args: unknown[]) => resolveAdmission(admissionDb,
+      { id: base.sessionId, tenant_id: base.tenantId, actor_user_id: base.actorId },
+      async () => true, () => true, () => true, () => true, readProviderAdmission, ...args),
+    readProviderAdmission, async () => true,
+    { upgradeWebSocket() { initialUpgrades++; return { socket: initialSocket, response: 'upgraded' }; } },
+    {}, () => {}, () => {});
+initialSocket.onopen?.();
+check('initial provider refusal upgrades only to deliver the honest unavailable frame',
+  initialResponse === 'upgraded' && initialUpgrades === 1 && initialFrames.length === 1 &&
+  JSON.parse(initialFrames[0]).type === 'unavailable' && JSON.parse(initialFrames[0]).code === 'approved_voice_unavailable');
 resetProviderRows();
 check('held final transcript can issue its authenticated runtime challenge',
   /\.eq\("availability", "LIVE"\)\.in\("state", \[[^\]]*"held"/.test(edge));

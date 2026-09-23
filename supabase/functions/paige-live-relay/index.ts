@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
     return { voice, runtimeSigningKey, unavailableCode };
   };
 
-  const checkCurrentAdmission = async (): Promise<Response | null> => {
+  const checkCurrentAdmission = async (recheckProvider = true): Promise<Response | null> => {
   // The platform's canonical transport switch is independent of tenant pilot
   // rollout and provider proof. Re-read it on the existing admission monitor,
   // so disabling live audio also stops an already-connected relay.
@@ -226,14 +226,19 @@ Deno.serve(async (req) => {
   }
   // Provider approval is revocable just like workspace authority. Reuse the
   // same canonical proof on every monitor decision and before further speech.
-  const { unavailableCode: providerFailure } = await readProviderAdmission();
-  if (providerFailure) {
-    if (!await markUnavailable(providerFailure)) return new Response("relay_unavailable", { status: 503 });
-    return new Response(providerFailure, { status: 403 });
+  if (recheckProvider) {
+    const { unavailableCode: providerFailure } = await readProviderAdmission();
+    if (providerFailure) {
+      if (!await markUnavailable(providerFailure)) return new Response("relay_unavailable", { status: 503 });
+      return new Response(providerFailure, { status: 403 });
+    }
   }
   return null;
   };
-  const admissionFailure = await checkCurrentAdmission();
+  // Initial identity/standing checks still precede upgrade. A provider refusal
+  // uses the structured unavailable socket below (browser WS cannot read a
+  // failed handshake body). Recurring checks always include provider approval.
+  const admissionFailure = await checkCurrentAdmission(false);
   if (admissionFailure) return admissionFailure;
   const { voice, runtimeSigningKey, unavailableCode } = await readProviderAdmission();
   if (unavailableCode) {

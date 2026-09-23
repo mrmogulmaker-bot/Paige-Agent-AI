@@ -31,6 +31,16 @@ grants or RLS. Existing deterministic relay smoke plus pgTAP receive regression
 coverage; network/provider calls remain zero. No activation before real account
 privacy proof and the actual human conversation check.
 
+Review P2 repair: initial provider refusal must reach the browser as the existing
+structured unavailable WebSocket frame, not an unreadable HTTP handshake body.
+Initial identity/standing validation still precedes upgrade; only its duplicate
+provider check is deferred to the immediately following existing unavailable
+frame branch. Every recurring check and pre-mouth check includes provider proof.
+The production-prefix test failed first (82 passed, 1 failed), then passed
+(83 passed, 0 failed; network/provider calls=0). Deno relay check exited 0.
+The ten transition pgTAP assertions passed in isolated CI run 35932532737,
+job 107422176882. No production audio or account approval is claimed by that run.
+
 UI_DELIVERY_EVIDENCE_VERSION: 1
 FLOW_BY_FLOW: PASS: Flow-by-Flow 2.0.2 Existing Project R3 Deep; Hold/Resume and revocation traced through existing UI, RPC, relay and runtime; independent review required
 PAIGE_UI_DESIGN: PASS: Existing approved Solo stage, Presence and controls retained; project UI references read, no layout or new control
