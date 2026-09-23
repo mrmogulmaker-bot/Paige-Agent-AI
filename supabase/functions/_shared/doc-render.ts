@@ -648,7 +648,10 @@ async function renderPdf(title: string | undefined, blocks: Block[], _style: Rec
 
 // pdf-lib's StandardFonts encode WinAnsi (CP1252) only — normalize a few smart-punctuation runs to ASCII
 // and drop any codepoint WinAnsi genuinely can't encode, so an emoji never throws mid-render (§13 defensive).
-function sanitizeWinAnsi(text: string): string {
+// Exported for the agreements engine (INT-163), which stamps signer-supplied names onto a pdf-lib
+// page with the same WinAnsi StandardFonts and needs the identical normalisation. Additive: no
+// existing caller changes.
+export function sanitizeWinAnsi(text: string): string {
   return String(text)
     .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
     .replace(/[\u201C\u201D\u201E\u201F]/g, '"')

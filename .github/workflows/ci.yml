@@ -605,6 +605,31 @@ jobs:
           # is why the sibling `_business-context-readiness.test.ts` was written and never wired in.
           deno test --no-check --allow-import=esm.sh,deno.land --deny-net --deny-env --deny-read --deny-write --deny-run --deny-ffi --deny-sys supabase/functions/_shared/systems-check-runners/revenue_tracking_configured.test.ts
 
+      - name: Agreements engine — token contract, PDF seal, and database integrity (INT-163)
+        if: ${{ !cancelled() }}
+        run: |
+          # These run under Deno, not vitest: vitest globs src/** only, so an edge-function test
+          # placed beside its module executes NOWHERE unless it is named here.
+          #
+          # --node-modules-dir=none is LOAD-BEARING, not tidiness. Because the repo has a
+          # package.json, Deno otherwise materialises its own npm layout under node_modules/.deno —
+          # measured at 682 packages — which shadows the npm-installed `vite` and breaks `npm run
+          # test` in the LATER step. `none` makes Deno resolve `npm:pdf-lib` from its own cache and
+          # leave node_modules completely untouched. Do not "fix" a resolution error by switching
+          # this back to auto; add the dependency or vendor it instead.
+          deno test --allow-import --node-modules-dir=none --deny-net --deny-env --deny-run --deny-ffi --deny-sys \
+            supabase/functions/_shared/agreements/token.test.ts \
+            supabase/functions/_shared/agreements/document.test.ts \
+            supabase/functions/_shared/agreements/signing-guard.test.ts
+          # The edge functions must at least TYPE-check; none is exercised by the tests above.
+          deno check --allow-import --node-modules-dir=none \
+            supabase/functions/sign-agreement/index.ts \
+            supabase/functions/agreement-document/index.ts \
+            supabase/functions/agreement-send/index.ts
+          # The integrity proof stands up its own throwaway Postgres cluster and asserts the exact
+          # SQLSTATE of every refusal, plus positive controls. It needs no credentials.
+          ./scripts/agreements/run-integrity-proof.sh
+
       - name: Test
         if: ${{ !cancelled() }}
         run: npm run test

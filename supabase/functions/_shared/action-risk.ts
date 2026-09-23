@@ -246,6 +246,26 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // receives it), so it is `high` and carries the rendered approval card. `calendar_link_prepare`
   // and `calendar_link_social_copy` are READS (no mutation verb) — copy-ready previews that send
   // and post nothing — so they are intentionally NOT classified here.
+  // ── INT-163 agreements (PAIGE-native e-signature) — CLASSIFICATIONS WITHHELD, and why ─────────
+  // The intended entries are: agreement_draft + agreement_add_signer `ordinary` (a draft nobody
+  // outside the workspace can see), and agreement_send / agreement_resend / agreement_void `high`,
+  // so an act that reaches a real person outside the platform can never run unattended however the
+  // request is worded. There is deliberately no `agreement_sign` key at any class: Paige does not
+  // sign on anyone's behalf, and a signature only ever happens when a human uses their own token.
+  //
+  // They are NOT here yet because the INT-003 capability-kit guard makes a new mutating tool
+  // unlandable, and the two halves contradict each other — measured, not inferred:
+  //   • `capability-kit-lint` reports `direct-risk-entry` for any symbol in this array that is not
+  //     in its shrink-only baseline, and its own message forbids expanding that baseline.
+  //   • Its stated remedy — declare the capability through `defineCapability()` — REQUIRES the
+  //     entry it just forbade: `defineCapability` calls `classifyAction(actionRiskKey)` and throws
+  //     "Mutation action-risk keys must exist in the canonical action-risk policy" when it is
+  //     absent. Probed directly: `classifyAction('agreement_send_unlisted') = unclassified` and the
+  //     declaration is refused.
+  // So a new mutating Paige tool cannot be classified AND cannot be declared. That blocks every new
+  // mutating tool on the platform, not only these, and it is INT-003's to resolve. The agreements
+  // engine ships its RPC seams (§10 — Paige-callable), and this classification plus the chat tools
+  // land in a follow-up the moment the guard admits a new key.
   ["calendar_link_send", "high", "sends a published calendar's public booking link to a real contact by email or SMS — outward-facing; the server refuses a non-public calendar and the comms seam refuses a cross-tenant, suppressed, or unconsented recipient, and it never posts to social or books a meeting"],
   ["deal_create", "ordinary", "adds an opportunity"],
   ["deal_move_stage", "ordinary", "moves a deal between stages"],

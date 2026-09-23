@@ -7722,6 +7722,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           }
           return `Send the public booking link for ${p.label} to ${who} by ${ch}. A real person receives a link to your /book page. The server refuses a calendar that isn't public and a recipient who can't be messaged; it does not post to social or book a meeting.`;
         }
+        // INT-163 — the card a human reads before an agreement leaves the building. It names the
+        // COUNTERPARTY and says plainly what becomes irreversible, because "send the agreement" is
+        // not enough information to consent to a legally binding outward act.
         case "deal_create":
           return `Add a deal "${a?.title || "Untitled"}"${typeof a?.value_cents === "number" ? ` worth ${(a.value_cents / 100).toLocaleString(undefined, { style: "currency", currency: a?.currency || "USD" })}` : ""} to the pipeline.`;
         case "deal_move_stage":

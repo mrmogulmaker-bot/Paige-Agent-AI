@@ -281,6 +281,13 @@ if (chatSrc.includes('...CALENDAR_LINK_TOOLS')) {
   if (!linkTools.length) throw new Error('Calendar Link catalog could not be parsed');
   importedTools.push(...linkTools);
 }
+if (chatSrc.includes('...AGREEMENT_TOOLS')) {
+  if (!/import\s*\{[^}]*AGREEMENT_TOOLS[^}]*\}\s*from\s*['"]\.\.\/_shared\/paige-spine\/domains\/agreement\.ts['"]/.test(chatSrc)) throw new Error('Unresolved Agreement catalog import');
+  const source = fs.readFileSync('supabase/functions/_shared/paige-spine/domains/agreement.ts', 'utf8');
+  const agreementTools = [...source.matchAll(/\bname:\s*"(agreement_[a-z_]+)"/g)].map(m => m[1]);
+  if (!agreementTools.length) throw new Error('Agreement catalog could not be parsed');
+  importedTools.push(...agreementTools);
+}
 if (chatSrc.includes('...CRM_COMMAND_TOOLS')) {
   if (!/import\s*\{[^}]*CRM_COMMAND_TOOLS[^}]*\}\s*from\s*['"]\.\.\/_shared\/crm-command\/catalog\.ts['"]/.test(chatSrc)) throw new Error('Unresolved CRM command catalog import');
   const source = fs.readFileSync(CRM_CATALOG, 'utf8');
