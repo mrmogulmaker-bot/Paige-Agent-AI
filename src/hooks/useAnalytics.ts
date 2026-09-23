@@ -134,8 +134,11 @@ function safeDecode(raw: string): string {
  * somebody remembered to add, and it fails OPEN on the next one — which is not hypothetical here:
  * the list shipped with "sign" alone while `/join/:token` and `/u/:token` were already live. The
  * shape rule needs no registration, so a token-bearing route added next quarter is covered the day
- * it ships. The route list stays as well, because it catches what shape cannot: a LOW-entropy
- * token, and a standard-base64 token containing `/`, which splits across path segments.
+ * it ships. The route list stays as well, because it is CERTAIN on the routes it names while this
+ * is a heuristic — and because it catches what shape cannot: a LOW-entropy token, a value under
+ * the length floor, and anything minted in an alphabet nobody told this function about.
+ * (A standard-base64 token split by its own `/` used to belong on that list too; it is now handled
+ * by `looksLikeSplitCredential`, which rejoins the run before judging it.)
  *
  * Calibrated against the shapes this platform actually mints, not a guess:
  *   · signing + unsubscribe — `mintSignerToken()` is 32 CSPRNG bytes as hex => 64 chars [0-9a-f].
