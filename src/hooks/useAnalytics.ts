@@ -200,7 +200,7 @@ function looksLikeCredential(value: string): boolean {
  *     `/clients/people`, `/signup` — verified against all 79 `path=` entries in `src/App.tsx`,
  *     none of which this predicate touches.
  *   · A 32-character token drawn from the 64-symbol base64 alphabet contains an uppercase letter
- *     with probability 1 - (38/64)^32 ≈ 1 - 2.6e-7. That rounds to certainty at this width.
+ *     with probability 1 - (38/64)^32 ≈ 1 - 5.7e-8. That rounds to certainty at this width.
  *
  * So requiring BOTH cases costs essentially no coverage against a real token and buys back every
  * lowercase route. Drop the uppercase requirement and the rule immediately starts eating ordinary
