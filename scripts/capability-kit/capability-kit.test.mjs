@@ -16,6 +16,7 @@ import {
   PER_CAPABILITY_AVAILABILITY_STATES,
 } from "../../supabase/functions/_shared/paige-capability-status/resolver.ts";
 import { classifyAction, mutatingTools } from "../../supabase/functions/_shared/action-risk.ts";
+import { parsePolicy } from "../ci/action-risk-lint.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, "..", "fixtures", "capability-kit");
@@ -201,9 +202,15 @@ test("the provider-safe subset accepts one valid instance of every keyword", () 
 
 test("mutations must match the canonical action-risk policy", () => {
   const candidate = definitionFromFixture(mutationFixture);
+  // The class-mismatch vehicle is a genuinely wrong class for a classified key: the fixture's
+  // `crm_create_contact` is `ordinary`, so declaring `high` must be refused. It used to be
+  // `read_only`, which no longer reaches this check — the dedicated read_only veto fires first and
+  // is asserted on its own below. That made this assertion's green depend on a phrase inside a
+  // DIFFERENT error message, so retargeting it tests the property it names rather than a wording
+  // coincidence. Coverage is unchanged: read_only is still asserted, by its own test.
   assert.throws(() => defineCapability({
     ...candidate,
-    governance: { ...candidate.governance, risk: "read_only", approval: "none" },
+    governance: { ...candidate.governance, risk: "high", approval: "confirm" },
   }), /canonical action-risk policy/);
   assert.throws(() => defineCapability({
     ...candidate,
@@ -280,8 +287,10 @@ test("mutation and external-effect capabilities cannot declare read_only risk", 
 // for an existing key silently re-classified it — `crm_update_task` carried two until the INT-003
 // follow-up. The fold means a duplicate can now only RAISE a class, but a policy that quietly
 // contradicts itself is still a policy nobody can read, so the array is asserted unique here.
-// The tidier home for this is `action-risk-lint`, which rejects no duplicates today; that guard is
-// outside this change and is routed rather than widened into.
+// The tidier home for this is `action-risk-lint`, which rejects no duplicates today and already
+// exports the `parsePolicy()` used below. That guard is outside this change, so the assertion sits
+// here for now. NOT filed as a tracked task — the task tool was unavailable when this shipped — so
+// it is recorded here and in the PR body rather than described as routed.
 // SYNCHRONOUS deliberately: `test()` above calls `body()` without awaiting it, so an async body
 // prints "ok" and increments the pass count before it can possibly fail, and the failure surfaces
 // only as an unhandled rejection. Node exits non-zero on one today, so it would not have gone
@@ -291,12 +300,10 @@ test("the canonical action-risk policy declares each key exactly once", () => {
     join(HERE, "..", "..", "supabase", "functions", "_shared", "action-risk.ts"),
     "utf8",
   );
-  const region = policy.slice(
-    policy.indexOf("const RISK: ReadonlyArray"),
-    policy.indexOf("const RISK_RANK"),
-  );
-  const keys = [...region.matchAll(/\[\s*"([a-z0-9_]+)"\s*,\s*"(?:ordinary|high|owner_only)"/g)]
-    .map((match) => match[1]);
+  // `parsePolicy()` is the policy guard's own reader and the one home for parsing this table
+  // (§18). The first draft of this test hand-rolled a third parser that sliced on `RISK_RANK` —
+  // a symbol this same change introduced — so renaming it would have silently emptied the test.
+  const keys = parsePolicy(policy).map((entry) => entry.tool);
   assert.ok(keys.length > 0, "the RISK array parsed to at least one tuple");
   const repeated = [...new Set(keys.filter((key, index) => keys.indexOf(key) !== index))];
   assert.deepEqual(repeated, [], `RISK declares these keys more than once: ${repeated.join(", ")}`);

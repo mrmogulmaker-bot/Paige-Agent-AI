@@ -252,12 +252,15 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // request is worded. There is deliberately no `agreement_sign` key at any class: Paige does not
   // sign on anyone's behalf, and a signature only ever happens when a human uses their own token.
   //
-  // INT-003 IS RESOLVED (2026-09-23) — the guard no longer blocks a new mutating tool, so this
-  // block is a note about sequencing, NOT about a deadlock. It is rewritten here rather than left
-  // standing because this file auto-loads and an uncorrected note asserting a fixed defect is the
-  // §13 failure it would otherwise cause in the next session.
+  // INT-003 IS RESOLVED (2026-09-23, completed in #1383) — the guard no longer blocks a new
+  // mutating tool, so this block is a note about sequencing, NOT about a deadlock. It is corrected
+  // in place rather than left standing because this file auto-loads and an uncorrected note
+  // asserting a fixed defect is the §13 failure it would otherwise cause in the next session. That
+  // standard applied to this note itself: as first written it claimed resolution while the third
+  // lock below still rejected `agreement_resend` and `agreement_void` — the two keys named four
+  // lines above it — so it promised a contract while pointing at the keys that disproved it.
   //
-  // What the deadlock WAS, and it had two locks, both measured:
+  // What the deadlock WAS, and it had THREE locks, all measured:
   //   • `capability-kit-lint` reported `direct-risk-entry` for any symbol in this array that was
   //     not in its shrink-only baseline, and its own message forbade expanding that baseline.
   //   • Its stated remedy — declare the capability through `defineCapability()` — REQUIRED the
@@ -267,12 +270,25 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   //   • And even with both of those satisfied, `direct-tool-definition` then fired on the chat
   //     tool schema itself — `{name, description, parameters}` is the shape of every Paige tool —
   //     so resolving the risk rule alone would have left the deadlock half-standing.
+  //   • And even with the entry, the declaration AND the schema all present, `defineCapability()`
+  //     required `MUTATION_VERB.test(actionRiskKey)` in ADDITION to `classifyAction()`. So 32 of
+  //     the 156 curated keys — 15 of them `high`, `agreement_resend` and `agreement_void` among
+  //     them — were classified here and still threw on import, while CI reported the tool as
+  //     complete and valid (Codex P1 on #1367; its self-test used `widget_send`, whose verb happens
+  //     to pass, which is what masked it). Removed in #1383: this policy is the one gate on what
+  //     may be declared, and the verb pattern keeps only its fail-safe floors over keys nobody
+  //     classified.
   //
-  // How it resolved: the LINT relaxed. A RISK entry is the capability kit's PRECONDITION, not a
-  // bypass of it, so neither rule fires any more for a key that carries a governed
-  // `defineCapability()` declaration; both still fire for one that does not. The contract for a new
-  // mutating tool is now simply: classify it here, declare it through `defineCapability()`, and
-  // ship its tool schema — in the same change.
+  // How it resolved: the LINT relaxed, and then the constructor's redundant verb precondition was
+  // removed. A RISK entry is the capability kit's PRECONDITION, not a bypass of it, so neither rule
+  // fires any more for a key that carries a governed `defineCapability()` declaration; both still
+  // fire for one that does not. The contract for a new mutating tool is: classify it here, declare
+  // it through `defineCapability()`, and ship its tool schema — in the same change. One caveat the
+  // first version of this note lacked: a green `capability-kit-lint` means the declaration is
+  // PRESENT and well-formed to the scanner, not that `defineCapability()` will accept it. The lint
+  // still reads no `governance.risk`, so a declaration whose class contradicts the tuple here
+  // passes CI and throws on import. Not filed as a tracked task; recorded at
+  // `scripts/ci/capability-kit-lint.mjs`'s `direct-risk-entry` comment with its falsifying input.
   //
   // So the entries below are landable whenever the agreements chat-tool work is sequenced. They are
   // still absent because that wiring is its own slice, not because anything blocks it. The

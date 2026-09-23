@@ -131,7 +131,7 @@ export function defineCapability(definition: CapabilityDefinition): DefinedCapab
     nonEmpty(governance.actionRiskKey, "governance.actionRiskKey");
     if (governance.risk === "read_only") {
       throw new TypeError(
-        "Mutation and external-effect capabilities cannot declare read_only risk under the canonical action-risk policy.",
+        "Mutation and external-effect capabilities cannot declare read_only risk.",
       );
     }
     const canonicalRisk = classifyAction(governance.actionRiskKey);
