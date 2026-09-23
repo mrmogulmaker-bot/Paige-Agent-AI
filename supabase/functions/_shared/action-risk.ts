@@ -246,6 +246,38 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // receives it), so it is `high` and carries the rendered approval card. `calendar_link_prepare`
   // and `calendar_link_social_copy` are READS (no mutation verb) — copy-ready previews that send
   // and post nothing — so they are intentionally NOT classified here.
+  // ── INT-163 agreements (PAIGE-native e-signature) — CLASSIFICATIONS WITHHELD, and why ─────────
+  // The intended entries are: agreement_draft + agreement_add_signer `ordinary` (a draft nobody
+  // outside the workspace can see), and agreement_send / agreement_resend / agreement_void `high`,
+  // so an act that reaches a real person outside the platform can never run unattended however the
+  // request is worded. There is deliberately no `agreement_sign` key at any class: Paige does not
+  // sign on anyone's behalf, and a signature only ever happens when a human uses their own token.
+  //
+  // INT-003 IS RESOLVED (2026-09-23) — the guard no longer blocks a new mutating tool, so this
+  // block is a note about sequencing, NOT about a deadlock. It is rewritten here rather than left
+  // standing because this file auto-loads and an uncorrected note asserting a fixed defect is the
+  // §13 failure it would otherwise cause in the next session.
+  //
+  // What the deadlock WAS, and it had two locks, both measured:
+  //   • `capability-kit-lint` reported `direct-risk-entry` for any symbol in this array that was
+  //     not in its shrink-only baseline, and its own message forbade expanding that baseline.
+  //   • Its stated remedy — declare the capability through `defineCapability()` — REQUIRED the
+  //     entry it just forbade: `defineCapability` calls `classifyAction(actionRiskKey)` and throws
+  //     "Mutation action-risk keys must exist in the canonical action-risk policy" when it is
+  //     absent.
+  //   • And even with both of those satisfied, `direct-tool-definition` then fired on the chat
+  //     tool schema itself — `{name, description, parameters}` is the shape of every Paige tool —
+  //     so resolving the risk rule alone would have left the deadlock half-standing.
+  //
+  // How it resolved: the LINT relaxed. A RISK entry is the capability kit's PRECONDITION, not a
+  // bypass of it, so neither rule fires any more for a key that carries a governed
+  // `defineCapability()` declaration; both still fire for one that does not. The contract for a new
+  // mutating tool is now simply: classify it here, declare it through `defineCapability()`, and
+  // ship its tool schema — in the same change.
+  //
+  // So the entries below are landable whenever the agreements chat-tool work is sequenced. They are
+  // still absent because that wiring is its own slice, not because anything blocks it. The
+  // agreements engine already ships its RPC seams (§10 — Paige-callable).
   ["calendar_link_send", "high", "sends a published calendar's public booking link to a real contact by email or SMS — outward-facing; the server refuses a non-public calendar and the comms seam refuses a cross-tenant, suppressed, or unconsented recipient, and it never posts to social or books a meeting"],
   ["deal_create", "ordinary", "adds an opportunity"],
   ["deal_move_stage", "ordinary", "moves a deal between stages"],

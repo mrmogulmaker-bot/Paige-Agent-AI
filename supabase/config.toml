@@ -20,6 +20,20 @@ project_id = "xygzykjyynhzqytbqnzu"
   # Without verify_jwt=false the gateway 401s every callback before verification.
   [functions.paige-media-webhook]
     verify_jwt = false
+  # INT-163 — the signing act for an EXTERNAL counterparty. That person has no account on this
+  # platform and never will, so there is no JWT to verify: the control is a 256-bit token, stored
+  # only as its SHA-256, scoped to exactly one signer on one agreement, expiring and revocable,
+  # checked on every single request. Tenant, agreement and signer are read FROM THE TOKEN ROW — no
+  # path segment, query parameter or body field names or steers any of them. The signer's PAGE is
+  # the React route /sign/:token; this function serves no markup, only the work that needs the
+  # service role (sealing, the certificate, notifications, audit).
+  [functions.sign-agreement]
+    verify_jwt = false
+  # The sealed copy, fetched with the long-lived RETRIEVAL token minted at completion. Same posture
+  # and the same reason: the counterparty has no account, and a completed record they can re-read is
+  # an ESIGN requirement, not a convenience.
+  [functions.agreement-document]
+    verify_jwt = false
   # Public front-door signup — creates a pre-confirmed account via the service
   # role (email verification not wired yet). Must be reachable pre-auth.
   [functions.tenant-signup]
@@ -584,3 +598,20 @@ verify_jwt = false
 # Authenticated Paige CRM/Pipeline action door. The gateway verifies the caller JWT;
 # the function verifies it again and resolves tenant, membership, role and autonomy server-side.
 verify_jwt = true
+
+[functions.mcp-gateway]
+# Connected MCP Gateway runtime door. Caller JWT is verified by the gateway and again in-function
+# (getUser). Tenant is resolved server-side from the JWT (current_user_tenant_id) and every action
+# is admin-gated + connection-visibility-scoped; the body tenant is a refusal-only cross-check.
+verify_jwt = true
+
+[functions.mcp-oauth-callback]
+# Connected MCP Gateway OAuth redirect target. The provider redirects the host's browser straight here
+# with a top-level GET carrying ?code=&state= and NO Supabase JWT — so verify_jwt=false (the same
+# posture and the same reason as zoom-oauth-callback / tenant-n8n-oauth / paige-social-callback). The
+# single-use, PKCE-bound `state` is the authenticator: it can only have been minted by begin_mcp_oauth,
+# reachable ONLY through the JWT-gated, admin-gated mcp-gateway `oauth_begin` action. The connection and
+# tenant are read FROM the consumed state row, never a body/query field; complete_mcp_oauth_grant then
+# re-verifies in-body that the connection is in that tenant (§9/§59). Answers only with a 302 to a clean
+# app URL — code/state never enter an analytics-instrumented React surface (the #1355 structural fix).
+verify_jwt = false

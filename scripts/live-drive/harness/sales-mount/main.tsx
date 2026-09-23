@@ -6,6 +6,7 @@ import { GrowthHub } from "@/solo/growth2";
 import { setSalesHarnessMode, type Mode } from "./useSoloSalesOps-stub";
 import { setAgreementsHarnessMode, type AgreementsMode } from "./useSoloAgreements-stub";
 import { setCampaignsHarnessMode, type CampaignsMode } from "./useSoloCampaigns-stub";
+import { setSigningsHarnessMode, type SigningsMode } from "./useSoloAgreementSignings-stub";
 import "@/index.css";
 import "@/solo/solo-tokens.css";
 
@@ -13,7 +14,7 @@ import "@/solo/solo-tokens.css";
 (globalThis as { __React?: typeof React }).__React = React;
 
 const AGREEMENT_MODES: readonly AgreementsMode[] =
-  ["none", "no-clients", "populated", "unreadable", "readonly", "error"];
+  ["none", "no-clients", "empty", "populated", "unreadable", "readonly", "error"];
 
 const MODES: readonly Mode[] = [
   "first-use", "declared", "not-yet", "unrecognised-processor", "populated",
@@ -22,6 +23,12 @@ const MODES: readonly Mode[] = [
 ];
 
 const CAMPAIGN_MODES: readonly CampaignsMode[] = ["evidence", "sparse"];
+
+/* The signings stub has always carried these and NOTHING ever called its setter, so every document
+ * state — the sender, the sealed-copy act, the "could not be read" alert, the derived Expired —
+ * was unreachable in the harness and could not be driven or seen. */
+const SIGNING_MODES: readonly SigningsMode[] =
+  ["none", "populated", "unreadable", "readonly", "error", "loading", "resolving", "unavailable"];
 
 function Harness() {
   const [theme, setTheme] = React.useState<"light" | "dark">("light");
@@ -54,6 +61,11 @@ function Harness() {
         {AGREEMENT_MODES.map((mode) => (
           <button key={mode} data-agreements={mode} onClick={() => setAgreementsHarnessMode(mode)}>
             terms:{mode}
+          </button>
+        ))}
+        {SIGNING_MODES.map((mode) => (
+          <button key={mode} data-signings={mode} onClick={() => setSigningsHarnessMode(mode)}>
+            docs:{mode}
           </button>
         ))}
         {MODES.map((mode) => (

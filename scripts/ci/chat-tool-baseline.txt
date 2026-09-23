@@ -70,6 +70,45 @@ growth_list
 growth_page_generate
 growth_page_publish
 growth_page_save
+# GROWN A SECOND TIME, 2026-09-23, and again the reason is recorded here rather than in a commit
+# message nobody will read again. These five shipped into the handler without this list being
+# updated in the same PR, so the guard has been RED ON MAIN ever since — which is how a ratchet
+# stops being read at all. They are recorded, not migrated, and the difference matters:
+#
+#   integrations_list   READ  → supabaseClient.rpc("list_integration_surface")   (measured)
+#   inbox_list          READ  → supabaseClient.rpc("list_inbox_messages", {...}) (measured)
+#   improvement_list    READ  → .from("paige_improvement_proposals").select      (measured)
+#   improvement_propose WRITE → .from("paige_improvement_proposals").insert      (measured)
+#   improvement_decide  WRITE → .from("paige_improvement_proposals").update      (measured)
+#
+# The first two are RPC-backed and ARE already registered in the Spine
+# (`integrations.list`, `comms.messages_read`), both at `chatBinding: "PARTIAL"`. They are the two
+# that can actually migrate: move them into their domain `*_TOOLS` spread and flip the binding to
+# LIVE. That is a Chat/Spine-lane change with a runtime assertion attached, not a trunk-health
+# edit, so it is left to that lane rather than asserted here on inference (§13).
+#
+# The three `improvement_*` cannot migrate yet and this list is NOT pretending otherwise. The Spine
+# validator requires `action.executor` to match /^public\.[a-z][a-z0-9_]*$/, and no such RPC
+# exists: `20270114000000_improvement_proposals.sql` creates the table and its only function is
+# `evaluator_invocation_health`. So they reach the table straight from the handler.
+#
+# What that IS and IS NOT, measured rather than assumed, because an overstated note here would send
+# the next reader hunting a security hole that is not there. They are NOT unauthorized: the handler
+# builds `supabaseClient` from SUPABASE_ANON_KEY plus the caller's forwarded JWT (index.ts:703-705),
+# so RLS applies as the caller, and the table enables RLS with `pip_owner_read`/`pip_owner_write`
+# (tenant_id = current_user_tenant_id() AND admin/super_admin/coach) and `pip_owner_update`
+# (tenant + admin/super_admin), with a further inline admin-only gate on `improvement_decide`.
+# What they LACK is a Spine capability declaration, the Chat adapter seam, and a canonical RPC —
+# architecture debt (§10/§14), not an authorization hole. Recording them here is a sequencing
+# decision, and it governs nothing on its own.
+#
+# The direction this list is allowed to move is still DOWN. It shrinks by two when the reads
+# migrate, and by three more when the improvement RPCs are authored.
+improvement_decide
+improvement_list
+improvement_propose
+inbox_list
+integrations_list
 list_event_kinds
 list_subagents
 marketplace_browse

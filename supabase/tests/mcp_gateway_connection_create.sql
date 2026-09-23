@@ -92,7 +92,9 @@ BEGIN
   PERFORM set_config('request.jwt.claims', '{"sub":"c1a00000-0000-0000-0000-000000000002","role":"authenticated"}', true);
 
   -- header
-  _r := public.create_mcp_connection('generic-remote','acc-header','https://acc-header.example.com/rpc','header','tok-h','X-Api-Key');
+  -- INT-153 (20270332000000): the writer floor rejects a bearer/header token < 12 chars, so accept-case
+  -- tokens must be >= 12 (the value is arbitrary; the row-shape asserts below do not check the token).
+  _r := public.create_mcp_connection('generic-remote','acc-header','https://acc-header.example.com/rpc','header','tok-header-key-1','X-Api-Key');
   IF (SELECT count(*) FROM jsonb_object_keys(_r)) <> 4
      OR (_r->>'status') <> 'pending_verification'
      OR (_r->>'endpoint_hash') IS DISTINCT FROM public._mcp_endpoint_hash('https://acc-header.example.com/rpc')
@@ -220,8 +222,8 @@ BEGIN
     BEGIN
       CASE _kind
         WHEN 'oauth'   THEN PERFORM public.create_mcp_connection('generic-remote','f4-oauth','https://f4-oauth.example.com/rpc','oauth','tok',NULL,NULL,'https://iss.example.com','cid');
-        WHEN 'bearer'  THEN PERFORM public.create_mcp_connection('generic-remote','f4-bearer','https://f4-bearer.example.com/rpc','bearer','tok');
-        WHEN 'header'  THEN PERFORM public.create_mcp_connection('generic-remote','f4-header','https://f4-header.example.com/rpc','header','tok','X-Api-Key');
+        WHEN 'bearer'  THEN PERFORM public.create_mcp_connection('generic-remote','f4-bearer','https://f4-bearer.example.com/rpc','bearer','f4-bearer-tok-1');
+        WHEN 'header'  THEN PERFORM public.create_mcp_connection('generic-remote','f4-header','https://f4-header.example.com/rpc','header','f4-header-tok-1','X-Api-Key');
         WHEN 'api_key' THEN PERFORM public.create_mcp_connection('n8n','f4-apikey','https://f4-apikey.example.com/rpc','api_key','tok');
         WHEN 'url'     THEN PERFORM public.create_mcp_connection('zapier','f4-url','https://f4-url.example.com/rpc','url');
         WHEN 'none'    THEN PERFORM public.create_mcp_connection('generic-remote','f4-none','https://f4-none.example.com/rpc','none');

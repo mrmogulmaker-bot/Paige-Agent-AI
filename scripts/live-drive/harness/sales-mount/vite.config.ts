@@ -12,8 +12,11 @@ export default defineConfig({
     alias: [
       { find: "./useSoloSalesOps", replacement: path.join(import.meta.dirname, "useSoloSalesOps-stub.ts") },
       { find: "./useSoloAgreements", replacement: path.join(import.meta.dirname, "useSoloAgreements-stub.ts") },
+      { find: "./useSoloAgreementSignings", replacement: path.join(import.meta.dirname, "useSoloAgreementSignings-stub.ts") },
       { find: "./useCatalogOffers", replacement: path.join(import.meta.dirname, "useCatalogOffers-stub.ts") },
       { find: "./useSoloCampaigns", replacement: path.join(import.meta.dirname, "useSoloCampaigns-stub.ts") },
+      // MORE SPECIFIC THAN "@" AND THEREFORE ABOVE IT — Vite takes the first matching alias.
+      { find: "@/hooks/useTierFeatures", replacement: path.join(import.meta.dirname, "useTierFeatures-stub.ts") },
       { find: "@", replacement: path.join(repo, "src") },
     ],
   },

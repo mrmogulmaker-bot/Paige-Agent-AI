@@ -607,6 +607,17 @@ Deno.serve(async (req) => {
   // as send-message), record the REAL outcome, and retire the Lovable worker (#79).
   const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 
+  // IDEMPOTENCY — PERSISTED, DELIBERATELY NOT ACTED ON, and that is the §37 answer rather than a
+  // half-measure. The first version of this short-circuited on a prior `sent` row with the same key.
+  // The producer inventory then found the key is not unique per intended send for callers that
+  // already exist: `notify-team-event` falls back to `contact-${contact}-${coach}` with no event id,
+  // so re-assigning a contact back to a coach suppresses the notice forever; `invite-affiliate` uses
+  // `affiliate-invite-${affiliateId}` and deliberately REUSES the profile row, so re-inviting — the
+  // normal repair path, which mints a fresh recovery link — silently drops the email and still
+  // reports success. Scoping by recipient and template does not save the second one. A suppressed
+  // legitimate email is far worse than a duplicate, so the key is stored for observability and the
+  // dedup lands only when those callers carry keys that identify the send. Callers must not describe
+  // this parameter as a guarantee.
   // Log the attempt up front so there's always a record.
   await supabase.from('email_send_log').insert({
     message_id: messageId,
@@ -614,6 +625,7 @@ Deno.serve(async (req) => {
     recipient_email: effectiveRecipient,
     status: 'pending',
     tenant_id: tenantId,
+    idempotency_key: idempotencyKey,
     metadata: { from: resolvedFrom, reply_to: resolvedReplyTo },
   })
 

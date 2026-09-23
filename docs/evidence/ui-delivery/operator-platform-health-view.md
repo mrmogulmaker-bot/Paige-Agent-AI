@@ -34,7 +34,7 @@ RELEASE_CLASSIFICATION: internal-only: internal Platform Operator console slice;
 CUSTOMER_RELEASE_IDENTITY: none: internal Platform Operator surface; no tenant-visible change.
 RELEASE_NOTE_REQUIRED: no: internal operator tooling; no customer-visible behavior change.
 RELEASE_TRUTH_BOUNDARY: PARTIAL: the view's figures are real reads where the substrate exists (sweep run record, findings, firings, acknowledgements); LLM error rate UNAVAILABLE (no series substrate — stated on the surface); authenticated-runtime presentation PROOF OWED (no operator session drove the guarded route); the Command Center whole is PARTIAL (Phase 2 first view; remainder owed per the slice ledger).
-RELEASE_RECOVERY: position=client-only revert of this PR restores the prior stopgap mount (FleetTeamPulseSurface at the address — one-line viewSources change); reference=this record + the §58 displacement note in viewSources.ts.
+RELEASE_RECOVERY: position=client-only revert of this PR restores the view to its prior state; reference=this record + the §58 displacement note in viewSources.ts. SUPERSEDED 2026-09-23: the one-line-viewSources route back to the `FleetTeamPulseSurface` stopgap no longer exists — that component was STRIPPED (§30) once the unmount left it unreachable AND dead-pack, the one cell `lint:pack-lineage` exists to fail and the reason that guard was red on main. Recovering the stopgap now means restoring the component from git history first; the roster read it consumed is unaffected and still present at `src/operator/data/useTeamPulse.ts`.
 
 ## Scope and collisions
 

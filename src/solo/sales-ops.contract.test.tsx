@@ -28,7 +28,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GrowthHub } from "./growth2";
 
@@ -54,6 +54,8 @@ const harness = vi.hoisted(() => ({
   offers: {} as Record<string, unknown>,
   sales: {} as Record<string, unknown>,
   agreements: {} as Record<string, unknown>,
+  signings: {} as Record<string, unknown>,
+  features: [] as string[],
 }));
 
 vi.mock("./useSocialCommand", () => ({
@@ -93,12 +95,40 @@ vi.mock("./useSoloAgreements", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./useSoloAgreements")>();
   return { ...actual, useSoloAgreements: () => harness.agreements };
 });
+// Same split as the sales adapter above: this file proves the SURFACE. What the signings adapter
+// sends — the tenant filter, the refusal-only expected tenant, the "a promise without a token is
+// not a link" rule — belongs to its own adapter proof, and mocking it in both places would prove
+// nothing about either.
+vi.mock("./useSoloAgreementSignings", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./useSoloAgreementSignings")>();
+  return { ...actual, useSoloAgreementSignings: () => harness.signings };
+});
+// §60 — the surface asks the ONE tier home whether this account type gets documents. The real hook
+// reads `useTenantContext`, which throws outside a provider, so the answer is supplied here and the
+// feature list is a test fixture rather than an inline account-type compare.
+vi.mock("@/hooks/useTierFeatures", () => ({
+  useTierFeatures: () => ({
+    has: (feature: string) => harness.features.includes(feature),
+    tierKey: "solo", soloStandalone: true, loading: false,
+  }),
+}));
 
 let host: HTMLDivElement;
 let root: Root | null = null;
 
+/* Where the app actually went. The router here is in-memory, so a navigation leaves no trace a
+ * test can read — and asserting on a spied callback would only prove the handler was called, not
+ * that it routed anywhere real. This records the live location instead. */
+let lastLocation = "";
+function LocationProbe() {
+  const loc = useLocation();
+  lastLocation = loc.pathname + loc.search;
+  return null;
+}
+
 const appAt = (path: string) => (
   <MemoryRouter initialEntries={[path]}>
+    <LocationProbe />
     <Routes><Route path="/solo/:account/*" element={<GrowthHub />} /></Routes>
   </MemoryRouter>
 );
@@ -143,6 +173,21 @@ beforeEach(() => {
     saveAgreement: vi.fn(async () => ({ ok: true, result: {} })),
     setAgreementStatus: vi.fn(async () => ({ ok: true, result: {} })),
   };
+  harness.features = ["growth"];
+  harness.signings = {
+    tenantId: "tenant-1", phase: "ready", signings: [], readable: true, canManage: true,
+    authorityUnknown: false, retry: vi.fn(),
+    uploadDocument: vi.fn(async () => ({ ok: true, path: "tenant-1/source/1-agreement.pdf" })),
+    createSigning: vi.fn(async () => ({ ok: true, signingId: "signing-1", signatureState: "draft" })),
+    sendForSignature: vi.fn(async () => ({ ok: true, sent: ["acme@example.com"], notDelivered: [] })),
+    signingEvents: vi.fn(async () => ({ ok: true, events: [
+      { id: "e2", type: "completed", actorKind: "signer", actorEmail: "dana@example.com", ip: "203.0.113.42", userAgent: "Safari on iPhone", at: "2026-09-22T16:12:00Z" },
+      { id: "e1", type: "sent", actorKind: "owner", actorEmail: null, ip: null, userAgent: null, at: "2026-09-22T15:51:00Z" },
+    ] })),
+    issueLink: vi.fn(async () => ({ ok: true, token: "tok-abcdef", expiresAt: "2026-10-06T12:00:00Z" })),
+    voidSigning: vi.fn(async () => ({ ok: true, signatureState: "voided" })),
+    signedCopyUrl: vi.fn(async () => ({ ok: true, url: "https://storage.test/signed.pdf?token=x" })),
+  };
 });
 
 afterEach(() => {
@@ -153,6 +198,23 @@ afterEach(() => {
 
 const buttonSaying = (text: string) =>
   [...host.querySelectorAll("button")].find((b) => b.textContent?.includes(text)) as HTMLButtonElement | undefined;
+
+/**
+ * §58 RE-POINT — "Quick offer" moved, it did not go.
+ *
+ * It used to sit in the head of a "Find an offer" band on Commercial Terms. The owner deleted that
+ * band (2026-09-22) and the act moved INSIDE the agreement editor, into the empty state of the
+ * offer picker — the one moment a workspace with no catalog is actually blocked by not having one.
+ * That is also its ONLY call site in the repo, so had it been dropped rather than moved, the whole
+ * QuickOffer component would have become unreachable dead code and a new Solo workspace could no
+ * longer create its first offer from Sales at all. Every test below that used to click it from the
+ * band now walks this path instead; none of them was deleted.
+ */
+function openQuickOffer() {
+  render("terms");
+  act(() => (buttonSaying("New agreement") as HTMLButtonElement).click());
+  act(() => (buttonSaying("Quick offer") as HTMLButtonElement).click());
+}
 
 describe("§58 — behaviour that shipped on Sales and must survive the command-desk rebuild", () => {
   it("keeps the owner-placed client-billing boundary, verbatim (Revenue view)", () => {
@@ -319,7 +381,7 @@ describe("Sales Command — the operating desk (new)", () => {
     const toTerms = [...host.querySelectorAll('.so-subnav [role="tab"]')].find((b) => b.textContent === "Commercial Terms") as HTMLButtonElement;
     expect(toTerms).not.toBeUndefined();
     act(() => toTerms.click());
-    expect(host.textContent).toContain("Commercial terms and retainers");
+    expect(host.textContent).toContain("Agreements and terms");
   });
 });
 
@@ -406,8 +468,7 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
   });
 
   it("creates a quick offer through the canonical Catalog seam, and never a second record (Terms)", async () => {
-    render("terms");
-    act(() => (buttonSaying("Quick offer") as HTMLButtonElement).click());
+    openQuickOffer();
     const dialog = document.querySelector('[role="dialog"]');
     expect(dialog?.textContent).toContain("saves as a draft in Catalog");
     const nameInput = document.querySelector('[role="dialog"] input') as HTMLInputElement;
@@ -435,8 +496,7 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
   });
 
   it("converts a typed price to minor units using the currency's own exponent (Terms)", async () => {
-    render("terms");
-    act(() => (buttonSaying("Quick offer") as HTMLButtonElement).click());
+    openQuickOffer();
     const inputs = [...document.querySelectorAll('[role="dialog"] input')] as HTMLInputElement[];
     const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
     const type = (el: HTMLInputElement, value: string) => act(() => {
@@ -459,8 +519,7 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
       ok: true,
       result: { id: "offer-1", price_note: "This price is connected to checkout, so it was left as it is." },
     }));
-    render("terms");
-    act(() => (buttonSaying("Quick offer") as HTMLButtonElement).click());
+    openQuickOffer();
     const nameInput = document.querySelector('[role="dialog"] input') as HTMLInputElement;
     const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
     act(() => {
@@ -477,8 +536,7 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
   });
 
   it("creates nothing when a quick offer is abandoned (Terms)", () => {
-    render("terms");
-    act(() => (buttonSaying("Quick offer") as HTMLButtonElement).click());
+    openQuickOffer();
     const cancel = [...document.querySelectorAll('[role="dialog"] button')]
       .find((b) => b.textContent === "Cancel") as HTMLButtonElement;
     act(() => cancel.click());
@@ -486,7 +544,14 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
     expect(harness.offers.saveOffer).not.toHaveBeenCalled();
   });
 
-  it("shows recorded offers with their real state and price, and opens the Catalog-owned record (Terms)", () => {
+  /**
+   * §58 RE-POINT — the offer SEARCH, its PAGER and its PRICE READING moved into the agreement
+   * editor with the band; the offer DETAIL drawer was removed by owner ruling (2026-09-22) and is
+   * deliberately NOT asserted here. What that drawer was actually needed for — seeing what an offer
+   * costs while attaching it to somebody's agreement — now travels with the name in the picker, so
+   * this test proves the price and the cadence are still readable at the moment they matter.
+   */
+  it("carries each offer's price and cadence into the picker, with its pager (Terms)", () => {
     harness.offers.offers = [{
       id: "offer-1", name: "Twelve-week program", summary: null, description: null,
       availability: "active", billingCadence: "recurring", kind: "service", deliveryShape: "program",
@@ -496,16 +561,72 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
                  billingInterval: "month", kind: "recurring", installmentsTotal: null, active: true }],
     }];
     render("terms");
-    const text = host.textContent ?? "";
+    act(() => (buttonSaying("New agreement") as HTMLButtonElement).click());
+    const dialog = document.querySelector('[role="dialog"]');
+    const text = dialog?.textContent ?? "";
+    expect(text).toContain("Search your Catalog");
     expect(text).toContain("Twelve-week program");
     expect(text).toContain("$2,400");
-    expect(text).toContain("Monthly");
-    expect(text).toContain("Live");
-    expect(text).toContain("Page 1 · up to 5 offers");
-    act(() => (host.querySelector("button.so-row") as HTMLButtonElement).click());
-    const drawer = document.querySelector('[role="dialog"]');
-    expect(drawer?.textContent).toContain("Catalog owns this record");
-    expect(drawer?.textContent).toContain("never keeps a second copy of the price");
+    expect(text).toContain("monthly");
+    // The deleted band's own search input came with it.
+    expect(dialog?.querySelector('input[placeholder="Search your Catalog…"]')).not.toBeNull();
+
+    // The offer is a real ATTACH ROW now, not an <option> in a dropdown — §11 bans the native
+    // control, and a dropdown hid every price behind a click at the one moment they matter.
+    const rows = [...dialog!.querySelectorAll(".so-res")];
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining("No offer"),
+      expect.stringContaining("Twelve-week program"),
+    ]);
+    // Exactly one thing is attached at a time, and the price sits in its own column beside it.
+    expect(rows.filter((r) => r.getAttribute("aria-pressed") === "true")).toHaveLength(1);
+    expect(rows[1].querySelector(".so-res-price")!.textContent).toBe("$2,400 · monthly");
+
+    // §58 — THE PAGER SURVIVED the dropdown it used to sit under. It now renders only when it can
+    // do something, so a single-page catalog correctly shows none: asserting its LABEL on one
+    // offer, as this test used to, proved the label existed and never that paging worked.
+    expect(text).not.toContain("Offer page");
+    expect(buttonSaying("Next")).toBeUndefined();
+  });
+
+  it("shows the offer pager, and pages, once there is more than one page (Terms)", () => {
+    harness.offers.offers = [{
+      id: "offer-1", name: "Twelve-week program", availability: "active",
+      prices: [{ id: "price-1", unitAmount: 240000, currency: "usd", billingInterval: "month", active: true }],
+    }];
+    harness.offers.hasMore = true;
+    render("terms");
+    act(() => (buttonSaying("New agreement") as HTMLButtonElement).click());
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Offer page 1 · up to 5 offers");
+    const next = buttonSaying("Next") as HTMLButtonElement;
+    expect(next).toBeDefined();
+    expect(next.disabled).toBe(false);
+    act(() => next.click());
+    // Paging is a real read against a new page, not a local slice of what was already fetched.
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Offer page 2 · up to 5 offers");
+  });
+
+  /** §58 RE-POINT — the two smaller things the deleted band also did. */
+  it("keeps the no-matching-offers reading and the unknown-offer-authority notice (Terms)", () => {
+    harness.offers.authorityUnknown = true;
+    render("terms");
+    act(() => (buttonSaying("New agreement") as HTMLButtonElement).click());
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain("Offer editing access could not be confirmed");
+    expect(buttonSaying("Retry offer access")).toBeDefined();
+    const search = dialog.querySelector('input[placeholder="Search your Catalog…"]') as HTMLInputElement;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(search, "nothing like this");
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const after = document.querySelector('[role="dialog"]')!;
+    expect(after.textContent).toContain("Nothing in your Catalog matches that.");
+    // The two states stay DISTINCT: "nothing matches that word" must never render as "you have no
+    // offers at all", or a reader goes looking in Catalog for something that was never there.
+    expect(after.textContent).not.toContain("Nothing in your catalog yet");
+    // The no-match state carries the two acts that resolve it, per the approved pack.
+    expect(buttonSaying("Quick offer")).toBeDefined();
+    expect(buttonSaying("Open Catalog")).toBeDefined();
   });
 
   it("renders recorded payments as recorded, and no total (Revenue)", () => {
@@ -540,9 +661,25 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
     expect(buttonSaying("Record it")).toBeUndefined();
     render("terms");
     expect(buttonSaying("Quick offer")).toBeUndefined();
-    expect(buttonSaying("Record terms")).toBeUndefined();
+    expect(buttonSaying("New agreement")).toBeUndefined();
     // §58/§36: a read-only reader is told WHO may record, never left with a silently missing button.
     expect(host.textContent).toContain("An owner or admin records this");
+  });
+
+  /**
+   * §58 RE-POINT of the same rule at its new home. The band that used to hide "Quick offer" from a
+   * non-manager is gone, so the authority check moved with the act: someone who may record terms
+   * but may NOT write the catalog opens the editor, finds it empty, and is offered Catalog — never
+   * a create control their role cannot use.
+   */
+  it("hides Quick offer inside the editor from someone who may not write the catalog (Terms)", () => {
+    harness.offers.canManage = false;
+    render("terms");
+    act(() => (buttonSaying("New agreement") as HTMLButtonElement).click());
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain("Nothing in your catalog yet");
+    expect([...dialog.querySelectorAll("button")].some((b) => b.textContent === "Quick offer")).toBe(false);
+    expect([...dialog.querySelectorAll("button")].some((b) => b.textContent?.includes("Go to Catalog"))).toBe(true);
   });
 
   it("says the authority read failed rather than asserting a refusal it did not prove (Revenue)", () => {
@@ -570,10 +707,15 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
   it("now reads client terms, and still refuses to count retainers Command Center owns (Terms)", () => {
     render("terms");
     const text = host.textContent ?? "";
-    expect(text).toContain("Commercial terms and retainers");
+    expect(text).toContain("Agreements and terms");
     expect(text).not.toContain("This tab does not hold a per-client agreement record yet");
     expect(text).not.toContain("Not here");
-    expect(text).toContain("Nothing recorded yet");
+    // RE-POINTED, and the reason is the defect this slice fixed. The old assertion passed on the
+    // head PILL's "Nothing recorded yet" while the paragraph beside it simultaneously said "Add one
+    // under Clients first" — two different answers to the same question, inches apart. This harness
+    // has zero clients, so exactly one thing is true and the surface now says only that.
+    expect(text).toContain("Add a client first");
+    expect(text).not.toContain("Nothing recorded yet");
     expect(text).not.toMatch(/\d+\s+(active\s+)?retainers?/i);
   });
 
@@ -585,15 +727,28 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
     const text = host.textContent ?? "";
     expect(text).toContain("not readable at your access level");
     expect(text).toContain("That is different from there being none");
-    expect(text).not.toMatch(/Commercial terms and retainers[\s\S]{0,80}Nothing recorded yet/);
+    expect(text).not.toMatch(/Agreements and terms[\s\S]{0,80}Nothing recorded yet/);
   });
 
   it("keeps the money boundary on the terms band, and promises no billing (Terms)", () => {
     render("terms");
     const text = host.textContent ?? "";
-    expect(text).toContain("Recording it bills nobody and sends nothing");
-    expect(text).toContain("No legal document is generated, stored or signed here");
+    // §58 with an owner-ruled CHANGE, recorded rather than silently dropped: the band used to
+    // promise "No legal document is generated, stored or signed here", which this slice makes
+    // false — documents are exactly what it now records. The §38 promise underneath it is
+    // unchanged and is what this asserts: sending one still moves no money.
+    expect(text).toContain("Sending an agreement bills nobody and charges nothing");
+    expect(text).not.toContain("No legal document is generated, stored or signed here");
     expect(text).not.toMatch(/\b(invoiced|charged|collected|paid in full)\b/i);
+  });
+
+  it("keeps the signature state and the engagement state apart (Terms)", () => {
+    // The two states answer different questions and the owner ruled they stay separate.
+    render("terms");
+    const text = host.textContent ?? "";
+    expect(text).toContain("This column tracks the");
+    expect(text).toContain("signature");
+    expect(text).toContain("separate state that starts once it is signed");
   });
 
   it("gives every view real headings, not bold text", () => {
@@ -604,8 +759,15 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
     expect(headings).toContain("Open Commercial Work");
     render("terms");
     headings = [...host.querySelectorAll("h1,h2,h3")].map((h) => h.textContent?.trim());
-    expect(headings).toContain("Commercial terms and retainers");
-    expect(headings).toContain("Find an offer");
+    expect(headings).toContain("Agreements and terms");
+    // §58 RE-POINT: "Find an offer" was the deleted band's heading. It is now the labelled search
+    // step inside the editor, and the editor's own steps are real headings rather than bold text.
+    act(() => (buttonSaying("New agreement") as HTMLButtonElement).click());
+    const editorHeadings = [...document.querySelectorAll('[role="dialog"] h2, [role="dialog"] h3')]
+      .map((h) => h.textContent?.trim());
+    expect(editorHeadings).toContain("Where the document comes from");
+    expect(editorHeadings).toContain("Who it is for");
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Search your Catalog");
     render("revenue");
     headings = [...host.querySelectorAll("h1,h2,h3")].map((h) => h.textContent?.trim());
     expect(headings).toContain("Actual received");
@@ -662,16 +824,22 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
     }
     render();
     expect(host.querySelector(".pg-hd")).toBeNull();
-    // The truth label rides the command header; the legend stays in the shell tab row.
-    expect(host.querySelector(".so-cmd-eyebrow .campaigns-truth")).not.toBeNull();
-    expect(host.querySelector(".campaigns-nav .campaigns-truth-key")).not.toBeNull();
+    // Owner ruling 2026-09-23: the capability truth labels come OFF the tenant surface entirely.
+    // Asserted absent rather than deleted, so nothing quietly puts internal release vocabulary back
+    // in front of a customer.
+    expect(host.querySelector(".campaigns-truth")).toBeNull();
+    expect(host.querySelector(".campaigns-truth-key")).toBeNull();
+    expect(host.textContent ?? "").not.toMatch(/\b(PARTIAL|PROPOSED|UNAVAILABLE)\b/);
   });
 
   it("spends colour on meaning, not decoration", () => {
     // Empty terms read as an OPPORTUNITY (violet), never dead grey (§23); the act is the primary.
+    // The violet now carries on the composed first-use mark instead of a pill that said in a badge
+    // what the heading beside it already said in words.
     render("terms");
-    expect(host.querySelector(".pill-v")).not.toBeNull();
-    const act1 = [...host.querySelectorAll("button")].find((b) => b.textContent === "Quick offer");
+    expect(host.querySelector(".so-blank-mark")).not.toBeNull();
+    expect(host.querySelector(".so-blank h4")).not.toBeNull();
+    const act1 = [...host.querySelectorAll("button")].find((b) => b.textContent === "New agreement");
     expect(act1?.className).toContain("btn-p");
     // Money awaiting carries its own state colour so the figure and its pill cannot disagree.
     harness.sales.orders = [
@@ -688,7 +856,17 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
     expect(sheet).toMatch(/\.so-tr\s*>\s*span\.so-num\b/);
     expect(sheet).toMatch(/\.so-tr\.so-th\s*>\s*span/);
     // Evidence chips never spend gold — gold stays on the act (§11).
-    expect(sheet).not.toMatch(/\.so-ec[\s\S]*?var\(--gold/);
+    //
+    // This used to read `/\.so-ec[\s\S]*?var\(--gold/`, which is not that rule: the lazy span runs
+    // from the first `.so-ec` to the next `var(--gold` ANYWHERE later in the file, so it passed only
+    // while no gold rule happened to be declared below the chips, and failed the moment one was —
+    // on a surface that has nothing to do with chips. It now reads the chips' own declaration
+    // blocks, which is what it always claimed to check.
+    const chipBlocks = [...sheet.matchAll(/([^{}]*)\{([^{}]*)\}/g)]
+      .filter(([, selector]) => /\.so-ec\b/.test(selector))
+      .map(([, , body]) => body);
+    expect(chipBlocks.length).toBeGreaterThan(5);
+    for (const body of chipBlocks) expect(body).not.toMatch(/var\(--gold/);
   });
 });
 
@@ -790,7 +968,7 @@ describe('agreement schedule detail', () => {
       startsOn: '2026-09-15', renewsOn, endsOn: '2026-11-15',
     }];
     render('terms');
-    const row = host.querySelector('[aria-label="Commercial terms and retainers"] button') as HTMLButtonElement;
+    const row = host.querySelector('[aria-label="Agreements and terms"] button') as HTMLButtonElement;
     act(() => row.click());
     const text = document.querySelector('[role="dialog"]')?.textContent ?? '';
     expect(text).toContain('Sep 15, 2026');
@@ -810,7 +988,7 @@ describe("Sales usability repair", () => {
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   // Each control lives in the view that owns it: Record it → Revenue; Quick offer / Record terms → Terms.
-  it.each([["Record it", "revenue"], ["Quick offer", "terms"], ["Record terms", "terms"]] as const)(
+  it.each([["Record it", "revenue"], ["New agreement", "terms"]] as const)(
     "keeps %s outside inert content and Cancel restores focus", (name, view) => {
       render(view);
       const opener = buttonSaying(name) as HTMLButtonElement;
@@ -822,9 +1000,26 @@ describe("Sales usability repair", () => {
       expect(document.querySelector('[role="dialog"]')).toBeNull();
       expect(document.activeElement).toBe(opener);
     });
+  /**
+   * §58 RE-POINT of the dropped it.each row. "Quick offer" keeps its focus-trap proof; it loses the
+   * focus-RESTORE assertion for a structural reason worth writing down rather than hiding: the two
+   * drawers cannot coexist, so opening Quick offer unmounts the agreement editor along with the
+   * button that opened it. `useModalDialog` checks `isConnected` before restoring, so there is
+   * nothing to restore to — and inventing somewhere for focus to land would be a worse answer than
+   * this one.
+   */
+  it("opens Quick offer outside inert content from inside the editor, and Cancel closes it (Terms)", () => {
+    openQuickOffer();
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain("saves as a draft in Catalog");
+    expect(dialog.closest('[inert]')).toBeNull();
+    const cancel = [...dialog.querySelectorAll('button')].find(b => b.textContent === 'Cancel')!;
+    act(() => cancel.click());
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(harness.offers.saveOffer).not.toHaveBeenCalled();
+  });
   it("protects dirty Quick Offer on Cancel and Escape without native confirm (Terms)", () => {
-    render("terms");
-    act(() => (buttonSaying("Quick offer") as HTMLButtonElement).click());
+    openQuickOffer();
     const input = document.querySelector('[role="dialog"] input') as HTMLInputElement;
     type(input, "Keep this draft");
     act(() => (buttonSaying("Cancel") as HTMLButtonElement).click());
@@ -841,7 +1036,7 @@ describe("Sales usability repair", () => {
     harness.offers.offers = [{ id: "o1", name: "Offer", prices: [], availability: "active" }];
     harness.agreements.agreements = [{ id: "a1", contactId: "c1", offerId: "o1", status: "active", termKind: "recurring", priceBasis: "catalog", agreedAmountMinor: 12500, agreedCurrency: "usd", catalogSnapshotMinor: 12500, catalogSnapshotAt: "2026-09-01", billingInterval: "month", intervalCount: 3, paymentSchedule: "custom", title: "Keep title", notes: "Original", updatedAt: "version-1" }];
     render("terms");
-    act(() => (host.querySelector('[aria-label="Commercial terms and retainers"] button') as HTMLButtonElement).click());
+    act(() => (host.querySelector('[aria-label="Agreements and terms"] button') as HTMLButtonElement).click());
     act(() => (buttonSaying("Edit commercial terms") as HTMLButtonElement).click());
     const input = document.querySelector('input[placeholder="Anything you want to remember about this arrangement"]') as HTMLInputElement;
     act(() => (buttonSaying("What we agreed") as HTMLButtonElement).click());
@@ -860,17 +1055,469 @@ describe("Commercial quote transitions (Terms)", () => {
     harness.offers.offers = [{ id: "o1", name: "Offer", prices: [{ id: "p1", unitAmount: 20000, currency: "usd", active: true }], availability: "active" }];
     if (existing) harness.agreements.agreements = [{ id: "a1", contactId: "c1", offerId: "o1", status: "draft", termKind: "one_time", priceBasis: "negotiated", agreedAmountMinor: 12500, agreedCurrency: "usd", catalogSnapshotMinor: null, catalogSnapshotAt: null, updatedAt: "v1" }];
     render("terms");
-    if (existing) { act(() => (host.querySelector('[aria-label="Commercial terms and retainers"] button') as HTMLButtonElement).click()); act(() => (buttonSaying("Edit commercial terms") as HTMLButtonElement).click()); expect(buttonSaying("Your catalog price")).toBeUndefined(); }
+    if (existing) { act(() => (host.querySelector('[aria-label="Agreements and terms"] button') as HTMLButtonElement).click()); act(() => (buttonSaying("Edit commercial terms") as HTMLButtonElement).click()); expect(buttonSaying("Your catalog price")).toBeUndefined(); }
     else {
-      act(() => (buttonSaying("Record terms") as HTMLButtonElement).click());
-      const selects = document.querySelectorAll('.so-editor select');
-      act(() => { (selects[0] as HTMLSelectElement).value = "c1"; selects[0].dispatchEvent(new Event('change', { bubbles: true })); (selects[1] as HTMLSelectElement).value = "o1"; selects[1].dispatchEvent(new Event('change', { bubbles: true })); });
+      act(() => (buttonSaying("New agreement") as HTMLButtonElement).click());
+      // The client is still a select; the offer is now an attach row, so it is CLICKED rather
+      // than assigned. Reaching it by its name and not by index keeps this test honest if the
+      // list ever reorders.
+      const clientSelect = document.querySelector('.so-editor select') as HTMLSelectElement;
+      act(() => { clientSelect.value = "c1"; clientSelect.dispatchEvent(new Event('change', { bubbles: true })); });
+      const offerRow = [...document.querySelectorAll('.so-editor .so-res')]
+        .find((r) => r.textContent?.includes("Offer")) as HTMLButtonElement;
+      act(() => offerRow.click());
+      expect(offerRow.getAttribute("aria-pressed")).toBe("true");
       const input = document.querySelector('input[placeholder="Amount"]') as HTMLInputElement;
       act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '125'); input.dispatchEvent(new Event('input', { bubbles: true })); });
     }
     act(() => (buttonSaying("Not quoted yet") as HTMLButtonElement).click());
-    const save = [...document.querySelectorAll('.so-editor button')].find(b => b.textContent === (existing ? 'Save changes' : 'Record terms')) as HTMLButtonElement;
+    const save = [...document.querySelectorAll('.so-editor button')].find(b => b.textContent === (existing ? 'Save changes' : 'Save as draft')) as HTMLButtonElement;
     await act(async () => save.click());
     expect(harness.agreements.saveAgreement).toHaveBeenCalledWith(expect.objectContaining({ priceBasis: 'quote_pending', termKind: 'custom_quote', agreedAmountMinor: null, agreedCurrency: null }));
+  });
+});
+
+/**
+ * The DOCUMENT half — what an owner can actually do with it (§70.1).
+ *
+ * Every test below drives the real control and asserts what was SENT, because "the handler is
+ * bound" is not evidence that a person can finish the job.
+ */
+describe("Agreement documents — signature state, separate from commercial state", () => {
+  const AGREEMENT = {
+    id: "a1", contactId: "c1", offerId: "o1", status: "active", termKind: "one_time",
+    priceBasis: "negotiated", agreedAmountMinor: 120000, agreedCurrency: "usd",
+    catalogSnapshotMinor: null, catalogSnapshotAt: null, startsOn: null, renewsOn: null,
+    endsOn: null, updatedAt: "v1",
+  };
+  const SIGNING = {
+    id: "s1", contactId: "c1", agreementId: "a1", documentTitle: "Coaching agreement",
+    documentSource: "tenant_upload", documentPath: "tenant-1/source/1-x.pdf",
+    signatureState: "sent", displayState: "sent", expiresAt: "2026-10-06T12:00:00Z",
+    sentAt: "2026-09-22T12:00:00Z", viewedAt: null, completedAt: null, declinedAt: null,
+    voidedAt: null, declineReason: null, signerName: null, hasSealedCopy: false,
+    createdAt: "2026-09-22T12:00:00Z", updatedAt: "2026-09-22T12:00:00Z",
+  };
+
+  /* ── retrieving the signed copy (§70) ────────────────────────────────────────────────────
+   * An owner who can see that a client signed and cannot obtain the thing they signed has not
+   * finished the job, which is the whole §70 test. These guard the act and its honest failures. */
+  const COMPLETED = {
+    ...SIGNING, signatureState: "completed", displayState: "completed",
+    signerName: "Dana Reed", completedAt: "2026-09-22T13:00:00Z",
+    hasSealedCopy: true,
+  };
+  const openCompleted = () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme" }];
+    harness.agreements.agreements = [AGREEMENT];
+    harness.signings.signings = [COMPLETED];
+    render("terms");
+    act(() => (host.querySelector('[aria-label="Agreements and terms"] .so-row') as HTMLButtonElement).click());
+    act(() => (buttonSaying("View the signed record") as HTMLButtonElement).click());
+  };
+
+  it("offers the signed copy on a completed document, and opens only what the server returned", async () => {
+    const opened: string[] = [];
+    const spy = vi.spyOn(window, "open").mockImplementation(((u: string) => { opened.push(u); return null; }) as never);
+    openCompleted();
+    const button = buttonSaying("Download the signed PDF") as HTMLButtonElement;
+    expect(button).toBeDefined();
+    await act(async () => { button.click(); });
+    // RE-POINTED, not rewritten away: the sealed copy is now streamed by `agreement-document`,
+    // which resolves the record itself, so the surface hands it the SIGNING ID and never an
+    // object key. Passing the storage path here would be passing the thing the engine lane
+    // refused to expose — the key discloses the tenant and agreement ids and keeps resolving
+    // after a void.
+    expect(harness.signings.signedCopyUrl).toHaveBeenCalledWith("s1", "tenant-1");
+    expect(opened).toEqual(["https://storage.test/signed.pdf?token=x"]);
+    spy.mockRestore();
+  });
+
+  it("opens nothing and says so when the signed copy could not be minted", async () => {
+    const opened: string[] = [];
+    const spy = vi.spyOn(window, "open").mockImplementation(((u: string) => { opened.push(u); return null; }) as never);
+    harness.signings.signedCopyUrl = vi.fn(async () => ({ ok: false, message: "That signed copy could not be opened just now." }));
+    openCompleted();
+    await act(async () => { (buttonSaying("Download the signed PDF") as HTMLButtonElement).click(); });
+    // §13: a request is not a link. Nothing is opened and the refusal is what the owner is told.
+    expect(opened).toEqual([]);
+    expect(host.textContent).toContain("That signed copy could not be opened just now.");
+    spy.mockRestore();
+  });
+
+  it("says a completed document carries no sealed copy rather than offering a control that cannot work", () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme" }];
+    harness.agreements.agreements = [AGREEMENT];
+    harness.signings.signings = [{ ...COMPLETED, hasSealedCopy: false }];
+    render("terms");
+    act(() => (host.querySelector('[aria-label="Agreements and terms"] .so-row') as HTMLButtonElement).click());
+    // The record still opens — it is signed, and the trail of how it got there is the point of the
+    // surface. What is absent is the DOWNLOAD, and the footer says why instead of offering a
+    // control that cannot work (§70.1).
+    act(() => (buttonSaying("View the signed record") as HTMLButtonElement).click());
+    expect(buttonSaying("Download the signed PDF")).toBeUndefined();
+    // Targeted by its OWN label: the grounded-detail drawer is also role="dialog", so a bare
+    // querySelector returns whichever is first in the DOM rather than the one under test.
+    expect(document.querySelector('[aria-labelledby="so-done-title"]')!.textContent).toContain("no sealed copy is recorded against it");
+  });
+
+  it("claims only what it knows about a completed agreement", async () => {
+    // Two assertions in one sentence were not the surface's to make.
+    openCompleted();
+    await act(async () => {});
+    const panel = document.querySelector('[aria-labelledby="so-done-title"]')!;
+    const text = panel.textContent ?? "";
+
+    // Signing completion does not touch the commercial row, and create-and-sign saves it DRAFT,
+    // so the common case made this false — and it contradicted the closing note in the same dialog.
+    expect(text).not.toContain("now active against their record");
+    // The closing note, which states the distinction correctly, is still there.
+    expect(text).toContain("is a separate state you control from here on");
+    // With a sealed copy, the sentence may describe it.
+    expect(text).toContain("The sealed PDF carries their signature");
+  });
+
+  it("does not describe a sealed PDF that is not recorded", async () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme" }];
+    harness.agreements.agreements = [AGREEMENT];
+    harness.signings.signings = [{ ...COMPLETED, hasSealedCopy: false }];
+    render("terms");
+    act(() => (host.querySelector('[aria-label="Agreements and terms"] .so-row') as HTMLButtonElement).click());
+    act(() => (buttonSaying("View the signed record") as HTMLButtonElement).click());
+    await act(async () => {});
+    const panel = document.querySelector('[aria-labelledby="so-done-title"]')!;
+    // The footer already said no sealed copy is recorded; the summary must not argue with it.
+    expect(panel.textContent).not.toContain("The sealed PDF carries their signature");
+    expect(panel.textContent).toContain("No sealed copy is recorded against it yet");
+    expect(buttonSaying("Download the signed PDF")).toBeUndefined();
+  });
+
+  it("says a successfully-read empty trail is empty, not unreadable", async () => {
+    harness.signings.signingEvents = vi.fn(async () => ({ ok: true, events: [], truncated: false }));
+    openCompleted();
+    await act(async () => {});
+    const panel = document.querySelector('[aria-labelledby="so-done-title"]')!;
+    // `ready` PROVES the read completed, so offering "could not be read" collapsed the very
+    // distinction this surface exists to draw.
+    expect(panel.textContent).not.toContain("could not be read or was never written");
+    expect(panel.textContent).toContain("read successfully and came back empty");
+  });
+
+  it("discloses a truncated audit trail instead of presenting it as the whole history", async () => {
+    harness.signings.signingEvents = vi.fn(async () => ({
+      ok: true, truncated: true,
+      events: [{ id: "e1", type: "completed", actorKind: "signer", actorEmail: null, ip: null, userAgent: null, at: "2026-09-18T09:31:00Z" }],
+    }));
+    openCompleted();
+    await act(async () => {});
+    const panel = document.querySelector('[aria-labelledby="so-done-title"]')!;
+    // The order is seq DESC, so a cap drops the OLDEST — creation and the original send. A panel
+    // headed "What happened, and when" must not present that as complete.
+    expect(panel.textContent).toContain("most recent events");
+    expect(panel.textContent).toContain("recorded but not shown here");
+  });
+
+  it("opens the named client's record, not the general list", async () => {
+    openCompleted();
+    await act(async () => {});
+    act(() => (buttonSaying("Open Acme\u2019s record") as HTMLButtonElement).click());
+    // The clients workspace already reads `?person=` as its deep link; the control just never
+    // sent one, so a button naming a person landed on everyone.
+    // The clients workspace reads `?person=` as its deep link (TenantRelationshipsClientsWorkspace),
+    // so this asserts the real destination rather than that a handler fired.
+    expect(lastLocation).toContain("/clients/people");
+    expect(lastLocation).toContain("person=c1");
+  });
+
+  it("never asks the database for a storage key or a document path", () => {
+    // The sealed key is shaped `${tenant_id}/${agreement_id}/...`, so selecting it puts both ids
+    // into every browser that opens this band. This lane removed that disclosure from the
+    // RETRIEVAL path (adopting `agreement-document` over a signed URL) and left it standing in the
+    // LIST path — the same leak arriving by a different door. The surface only ever asked "is
+    // there a sealed copy?", and a CHECK in the engine's own schema
+    // (20270401000000:124) makes `sealed_sha256` answer that identically while disclosing nothing.
+    const hook = readFileSync(resolve(process.cwd(), "src/solo/useSoloAgreementSignings.ts"), "utf8");
+    const selected = [...hook.matchAll(/"([a-z_,()]*(?:id|at|status|source|sha256|key|path)[a-z_,()]*)" \+/g)]
+      .map(([, chunk]) => chunk).join(",");
+    expect(selected).toContain("sealed_sha256");
+    expect(selected).not.toContain("sealed_storage_key");
+    expect(selected).not.toContain("document_path");
+  });
+
+  it("shows the recorded trail — what the engine logged, at minute resolution, in its order", async () => {
+    openCompleted();
+    // The trail is fetched, not derived from the row's four timestamps: those can say a document
+    // was viewed, they cannot say by which address, from which device, or in what order.
+    await act(async () => {});
+    expect(harness.signings.signingEvents).toHaveBeenCalledWith("s1", "tenant-1");
+
+    const panel = document.querySelector('[aria-labelledby="so-done-title"]')!;
+    const rows = [...panel.querySelectorAll(".so-ev")];
+    expect(rows).toHaveLength(2);
+
+    // Newest first, exactly as the read returned it — never re-sorted into a guess.
+    expect(rows[0].textContent).toContain("Signed and completed");
+    expect(rows[1].textContent).toContain("Sent");
+    // The recorded actor, address and device, and nothing invented to fill the gaps: the `sent`
+    // event carries none of the three, so it falls back to who did it rather than a blank.
+    expect(rows[0].textContent).toContain("dana@example.com");
+    expect(rows[0].textContent).toContain("203.0.113.42");
+    expect(rows[0].textContent).toContain("Safari on iPhone");
+    expect(rows[1].textContent).toContain("by owner");
+    // MINUTE resolution. Both events fall on the same day, so a date-only stamp would render them
+    // identically and the ordering this surface exists to prove would be invisible.
+    expect(rows[0].querySelector(".so-ev-when")!.textContent)
+      .not.toEqual(rows[1].querySelector(".so-ev-when")!.textContent);
+    // The event that CLOSES the ceremony carries the settled mark; the one in flight does not.
+    expect(rows[0].className).toContain("is-done");
+    expect(rows[1].className).not.toContain("is-done");
+
+    // ONE title. The approved screen leads with the seal and says "Signed and completed" once;
+    // a head row repeating it directly above is a stutter, and this is what keeps it gone.
+    const headings = [...panel.querySelectorAll("h1, h2, h3")].map((h) => h.textContent);
+    expect(headings).toEqual(["Signed and completed"]);
+  });
+
+  it("says so when the trail cannot be read, rather than showing an empty history", async () => {
+    harness.signings.signingEvents = vi.fn(async () => ({ ok: false, message: "This document's history could not be read." }));
+    openCompleted();
+    await act(async () => {});
+    const panel = document.querySelector('[aria-labelledby="so-done-title"]')!;
+    // A failed READ and a document with no recorded history are not the same fact, and a trail
+    // that renders empty for both tells the owner the wrong one (§13).
+    expect(panel.textContent).toContain("This document's history could not be read.");
+    expect(panel.querySelectorAll(".so-ev")).toHaveLength(0);
+    // The rest of the record still stands: the seal and the sealed copy do not depend on the trail.
+    expect(buttonSaying("Download the signed PDF")).toBeDefined();
+  });
+
+  it("lets a reader who cannot write still retrieve the signed copy", () => {
+    // Reading the document is a READ; the storage policy decides it, not the write gate. Gating
+    // this on canManage would hide a signed contract from someone entitled to read its record.
+    harness.signings.canManage = false;
+    openCompleted();
+    expect(buttonSaying("Download the signed PDF")).toBeDefined();
+    expect(buttonSaying("Send for signature")).toBeUndefined();
+  });
+
+  it("shows the signature state in its own column and never writes the commercial one", () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme" }];
+    harness.agreements.agreements = [AGREEMENT];
+    harness.signings.signings = [SIGNING];
+    render("terms");
+    const table = host.querySelector('[aria-label="Agreements and terms"]');
+    const text = table?.textContent ?? "";
+    expect(text).toContain("Coaching agreement");
+    expect(text).toContain("Sent");
+    // The engagement's own word is still readable at a glance — it moved, it did not go (§58).
+    expect(text).toContain("Active");
+    expect(harness.agreements.setAgreementStatus).not.toHaveBeenCalled();
+  });
+
+  it("calls a sent link whose clock has run out expired, rather than claiming it still works", () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme" }];
+    harness.agreements.agreements = [AGREEMENT];
+    harness.signings.signings = [{ ...SIGNING, displayState: "expired" }];
+    render("terms");
+    expect(host.querySelector('[aria-label="Agreements and terms"]')?.textContent).toContain("Link expired");
+  });
+
+  it("says the signature column is unknown, not empty, when documents cannot be read", () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme" }];
+    harness.agreements.agreements = [AGREEMENT];
+    harness.signings.phase = "error";
+    harness.signings.readable = false;
+    harness.signings.signings = [];
+    render("terms");
+    const text = host.textContent ?? "";
+    expect(text).toContain("Not readable");
+    expect(text).not.toContain("No document");
+    expect(text).toContain("could not be read, so the Signature column is unknown rather than empty");
+  });
+
+  it("shows a document with no offer and no price as a row of its own (owner ruling 3)", () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme" }];
+    harness.agreements.agreements = [];
+    harness.signings.signings = [{ ...SIGNING, id: "s2", agreementId: null, documentTitle: "Mutual NDA" }];
+    render("terms");
+    const text = host.querySelector('[aria-label="Agreements and terms"]')?.textContent ?? "";
+    expect(text).toContain("Mutual NDA");
+    expect(text).toContain("No offer or price on this document");
+  });
+
+  it("records an uploaded contract and sends what the server needs, with no offer attached", async () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme" }];
+    render("terms");
+    act(() => (buttonSaying("New agreement") as HTMLButtonElement).click());
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const pick = (label: string) =>
+      [...dialog.querySelectorAll('.so-src-card')].find((b) => b.textContent?.includes(label)) as HTMLButtonElement;
+    act(() => pick("Upload a contract").click());
+
+    const selects = dialog.querySelectorAll("select");
+    act(() => {
+      (selects[0] as HTMLSelectElement).value = "c1";
+      selects[0].dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const fileInput = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["contract"], "coaching.pdf", { type: "application/pdf" });
+    Object.defineProperty(fileInput, "files", { value: [file], configurable: true });
+    act(() => { fileInput.dispatchEvent(new Event("change", { bubbles: true })); });
+
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+    const body = dialog.querySelector("textarea") as HTMLTextAreaElement;
+    act(() => { setter.call(body, "These are the terms."); body.dispatchEvent(new Event("input", { bubbles: true })); });
+
+    const save = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Review and send \u2192") as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    await act(async () => { save.click(); });
+
+    // No offer chosen, so NO commercial row is written — that is ruling 3, not an oversight.
+    expect(harness.agreements.saveAgreement).not.toHaveBeenCalled();
+    expect(harness.signings.uploadDocument).toHaveBeenCalledTimes(1);
+    const sent = (harness.signings.createSigning as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sent).toMatchObject({
+      tenantId: "tenant-1", contactId: "c1", agreementId: null,
+      documentTitle: "coaching", documentSource: "tenant_upload",
+      documentBody: "These are the terms.", documentPath: "tenant-1/source/1-agreement.pdf",
+    });
+    // Straight into the send step rather than stopping at "saved".
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Send for signature");
+  });
+
+  it("issues a link only on a real acknowledgement, and says it is shown once", async () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme" }];
+    harness.agreements.agreements = [AGREEMENT];
+    harness.signings.signings = [{ ...SIGNING, signatureState: "draft", displayState: "draft", sentAt: null, expiresAt: null }];
+    render("terms");
+    act(() => (host.querySelector('[aria-label="Agreements and terms"] button') as HTMLButtonElement).click());
+    act(() => (buttonSaying("Send for signature") as HTMLButtonElement).click());
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain("Acme");
+    expect(dialog.textContent).toContain("Coaching agreement");
+    expect(dialog.textContent).toContain("$1,200");
+    // RE-POINTED to the approved words (§28 screen 3). The §38 promise is not weakened — it is
+    // stated more plainly, in the gold box the approved screen carries, and is still guarded here.
+    expect(dialog.textContent).toContain("No money moves");
+    expect(dialog.textContent).toContain("Nothing is charged, invoiced or collected at signature");
+    // The approved primary act is the real SEND. Copying a link survives as a secondary route
+    // (§58) and is now reached deliberately rather than being the only way through.
+    const reveal = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Or copy a link to send yourself") as HTMLButtonElement;
+    expect(reveal).toBeDefined();
+    act(() => { reveal.click(); });
+    const make = [...document.querySelector('[role="dialog"]')!.querySelectorAll("button")].find((b) => b.textContent === "Make the link") as HTMLButtonElement;
+    await act(async () => { make.click(); });
+    expect(harness.signings.issueLink).toHaveBeenCalledWith("s1", 14, "tenant-1");
+    const after = document.querySelector('[role="dialog"]')!;
+    expect((after.querySelector('input[aria-label="The signing link"]') as HTMLInputElement).value)
+      .toContain("/sign/tok-abcdef");
+    expect(after.textContent).toContain("This is the only time you will see it");
+  });
+
+  /* ── the approved act: a real send (§28 screen 3) ───────────────────────────────────────── */
+
+  const openSender = () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme Consulting" }];
+    harness.agreements.agreements = [AGREEMENT];
+    harness.signings.signings = [{ ...SIGNING, signatureState: "draft", displayState: "draft", sentAt: null, expiresAt: null }];
+    render("terms");
+    act(() => (host.querySelector('[aria-label="Agreements and terms"] button') as HTMLButtonElement).click());
+    act(() => (buttonSaying("Send for signature") as HTMLButtonElement).click());
+    return document.querySelector('[role="dialog"]')!;
+  };
+
+  it("commits on a real send, named for the person receiving it, and spends gold on it", async () => {
+    const dialog = openSender();
+    // The recap the approved screen carries — who, what, and the life of the link.
+    expect(dialog.textContent).toContain("Acme Consulting");
+    expect(dialog.textContent).toContain("Coaching agreement");
+    expect(dialog.textContent).toContain("30 days after it is sent");
+
+    const act1 = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Send it to Acme") as HTMLButtonElement;
+    expect(act1).toBeDefined();
+    // Gold is spent on exactly the acts that COMMIT (§11). This is one of them.
+    expect(act1.className).toContain("btn-g");
+    await act(async () => { act1.click(); });
+    expect(harness.signings.sendForSignature).toHaveBeenCalledWith("s1", "tenant-1", false);
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Sent.");
+  });
+
+  it("reports a refused send as a refusal, never as delivery (§13)", async () => {
+    harness.signings.sendForSignature = vi.fn(async () => ({ ok: false, message: "No mail provider is configured, so nothing was sent." }));
+    const dialog = openSender();
+    const act1 = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Send it to Acme") as HTMLButtonElement;
+    await act(async () => { act1.click(); });
+    const after = document.querySelector('[role="dialog"]')!;
+    expect(after.textContent).toContain("No mail provider is configured");
+    expect(after.textContent).not.toContain("Sent.");
+  });
+
+  it("says plainly when an address did not receive it — a 200 is not a delivery", async () => {
+    harness.signings.sendForSignature = vi.fn(async () => ({ ok: true, sent: [], notDelivered: ["bounced@example.com"] }));
+    const dialog = openSender();
+    const act1 = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Send it to Acme") as HTMLButtonElement;
+    await act(async () => { act1.click(); });
+    const after = document.querySelector('[role="dialog"]')!;
+    expect(after.textContent).toContain("Nothing went out");
+    expect(after.textContent).toContain("did not receive it");
+  });
+
+  it("refuses to claim a link when the server returned none (§13)", async () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme" }];
+    harness.agreements.agreements = [AGREEMENT];
+    harness.signings.signings = [{ ...SIGNING, signatureState: "draft", displayState: "draft", sentAt: null, expiresAt: null }];
+    harness.signings.issueLink = vi.fn(async () => ({ ok: false, message: "Documents are not available on this workspace yet, so nothing was recorded." }));
+    render("terms");
+    act(() => (host.querySelector('[aria-label="Agreements and terms"] button') as HTMLButtonElement).click());
+    act(() => (buttonSaying("Send for signature") as HTMLButtonElement).click());
+    // The copy-a-link route is secondary to the approved SEND now; reveal it, then drive it.
+    act(() => ([...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent === "Or copy a link to send yourself") as HTMLButtonElement).click());
+    const make = [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent === "Make the link") as HTMLButtonElement;
+    await act(async () => { make.click(); });
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.querySelector('input[aria-label="The signing link"]')).toBeNull();
+    expect(dialog.textContent).toContain("not available on this workspace yet");
+  });
+
+  it("offers no act on a document that is finished, and never a dead control (§70)", () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme" }];
+    harness.agreements.agreements = [AGREEMENT];
+    harness.signings.signings = [{ ...SIGNING, signatureState: "completed", displayState: "completed", completedAt: "2026-09-23T09:00:00Z", signerName: "A Client", hasSealedCopy: true }];
+    render("terms");
+    act(() => (host.querySelector('[aria-label="Agreements and terms"] button') as HTMLButtonElement).click());
+    expect(buttonSaying("Send for signature")).toBeUndefined();
+    expect(buttonSaying("Manage the link")).toBeUndefined();
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("A Client");
+  });
+
+  it("tells the truth about Paige drafting, and keeps the other two sources working (§70.1)", () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme" }];
+    render("terms");
+    act(() => (buttonSaying("New agreement") as HTMLButtonElement).click());
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const card = [...dialog.querySelectorAll(".so-src-card")]
+      .find((b) => b.textContent?.includes("Paige drafts it")) as HTMLButtonElement;
+    // Not a disabled "coming soon" control — it is operable and it explains itself.
+    expect(card.hasAttribute("disabled")).toBe(false);
+    act(() => card.click());
+    const text = dialog.textContent ?? "";
+    expect(text).toContain("Paige cannot draft a contract yet");
+    expect(text).toContain("Upload a contract");
+    expect(text).toContain("No document");
+    expect(harness.signings.createSigning).not.toHaveBeenCalled();
+  });
+});
+
+describe("No DocuSign vocabulary anywhere in the Sales document path", () => {
+  const at = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
+  it.each([
+    "src/solo/sales-ops.tsx",
+    "src/solo/useSoloAgreementSignings.ts",
+    "src/solo/sales-ops.css",
+  ])("keeps the banned product nouns out of %s", (path) => {
+    const text = at(path).toLowerCase();
+    for (const word of ["docusign", "envelope", "recipient", "anchor tag", "certificate of completion"]) {
+      expect(text).not.toContain(word);
+    }
   });
 });

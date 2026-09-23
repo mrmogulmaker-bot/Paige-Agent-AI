@@ -605,6 +605,31 @@ jobs:
           # is why the sibling `_business-context-readiness.test.ts` was written and never wired in.
           deno test --no-check --allow-import=esm.sh,deno.land --deny-net --deny-env --deny-read --deny-write --deny-run --deny-ffi --deny-sys supabase/functions/_shared/systems-check-runners/revenue_tracking_configured.test.ts
 
+      - name: Agreements engine — token contract, PDF seal, and database integrity (INT-163)
+        if: ${{ !cancelled() }}
+        run: |
+          # These run under Deno, not vitest: vitest globs src/** only, so an edge-function test
+          # placed beside its module executes NOWHERE unless it is named here.
+          #
+          # --node-modules-dir=none is LOAD-BEARING, not tidiness. Because the repo has a
+          # package.json, Deno otherwise materialises its own npm layout under node_modules/.deno —
+          # measured at 682 packages — which shadows the npm-installed `vite` and breaks `npm run
+          # test` in the LATER step. `none` makes Deno resolve `npm:pdf-lib` from its own cache and
+          # leave node_modules completely untouched. Do not "fix" a resolution error by switching
+          # this back to auto; add the dependency or vendor it instead.
+          deno test --allow-import --node-modules-dir=none --deny-net --deny-env --deny-run --deny-ffi --deny-sys \
+            supabase/functions/_shared/agreements/token.test.ts \
+            supabase/functions/_shared/agreements/document.test.ts \
+            supabase/functions/_shared/agreements/signing-guard.test.ts
+          # The edge functions must at least TYPE-check; none is exercised by the tests above.
+          deno check --allow-import --node-modules-dir=none \
+            supabase/functions/sign-agreement/index.ts \
+            supabase/functions/agreement-document/index.ts \
+            supabase/functions/agreement-send/index.ts
+          # The integrity proof stands up its own throwaway Postgres cluster and asserts the exact
+          # SQLSTATE of every refusal, plus positive controls. It needs no credentials.
+          ./scripts/agreements/run-integrity-proof.sh
+
       - name: Test
         if: ${{ !cancelled() }}
         run: npm run test
@@ -696,6 +721,19 @@ jobs:
       - name: Smoke — MCP OAuth (S256 only, issuer verified, state single-use, tokens rotate)
         if: ${{ !cancelled() }}
         run: npm run smoke:mcp-oauth
+
+      - name: Type-check — connected MCP gateway edge function (Deno)
+        if: ${{ !cancelled() }}
+        # The gateway's actions (verify + create + oauth_begin, and the slices to come) are Deno, so tsc
+        # never sees them and the smoke below esbuild-strips types away. This deno check makes the
+        # gateway's type safety CI-enforced — the same pattern the agreements functions use above (§32: a
+        # green build must be a real check). The import closure pulls in every _shared/mcp-gateway/*
+        # module (incl. oauth.ts). mcp-oauth-callback is the JWT-less OAuth redirect target — a SEPARATE
+        # entry not imported by the gateway door, so it is checked explicitly (its closure pulls in
+        # _shared/mcp-gateway/oauth-callback.ts).
+        run: |
+          deno check --allow-import --node-modules-dir=none supabase/functions/mcp-gateway/index.ts
+          deno check --allow-import --node-modules-dir=none supabase/functions/mcp-oauth-callback/index.ts
 
       - name: Smoke — connected MCP gateway (intake read-only, model-safe summary, runner approval gate)
         if: ${{ !cancelled() }}

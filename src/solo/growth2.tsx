@@ -46,16 +46,27 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? "Not recorded" : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
+/* The four capability states, said the way a business owner would say them rather than the way a
+ * release record does. Owner ruling 2026-09-23 took LIVE / PARTIAL / PROPOSED / UNAVAILABLE off the
+ * tenant surface entirely; the underlying statement is honest and stays, because Performance
+ * coverage exists precisely to say what can and cannot be reported (§13/§58). Only the words move. */
+const PLAIN_STATE = {
+  LIVE: "Available",
+  PARTIAL: "Partly available",
+  PROPOSED: "Planned",
+  UNAVAILABLE: "Not available",
+};
+
 function TruthTag({ state }) {
-  const label = state || "UNAVAILABLE";
-  return <span className={`campaigns-truth campaigns-truth--${label.toLowerCase()}`}>{label}</span>;
+  const key = state || "UNAVAILABLE";
+  return <span className={`campaigns-truth campaigns-truth--${key.toLowerCase()}`}>{PLAIN_STATE[key] || PLAIN_STATE.UNAVAILABLE}</span>;
 }
 
 function StateFrame({ phase, retry, noun, children }) {
   if (phase === "resolving") return <div className="campaigns-state" role="status"><span className="campaigns-spinner"/>Resolving this account’s Campaigns workspace…</div>;
   if (phase === "loading") return <div className="campaigns-skeleton" role="status" aria-label={`Loading ${noun}`}><span/><span/><span/></div>;
-  if (phase === "unavailable") return <div className="campaigns-state"><TruthTag state="UNAVAILABLE"/><h2>Campaigns needs a resolved workspace</h2><p>No tenant data is read until your account context is confirmed.</p></div>;
-  if (phase === "error") return <div className="campaigns-state" role="alert"><TruthTag state="UNAVAILABLE"/><h2>Campaigns could not load</h2><p>Your records were not changed. Try the tenant-scoped read again.</p><button className="btn btn-s" onClick={retry}><Ic.arrow size={13}/>Retry</button></div>;
+  if (phase === "unavailable") return <div className="campaigns-state"><h2>Campaigns needs a resolved workspace</h2><p>No tenant data is read until your account context is confirmed.</p></div>;
+  if (phase === "error") return <div className="campaigns-state" role="alert"><h2>Campaigns could not load</h2><p>Your records were not changed. Try the tenant-scoped read again.</p><button className="btn btn-s" onClick={retry}><Ic.arrow size={13}/>Retry</button></div>;
   return children;
 }
 
@@ -64,8 +75,8 @@ function Empty({ title, detail }) {
 }
 
 function SurfaceHead({ truthKey, title, description, action }) {
-  const [state, note] = TRUTH[truthKey];
-  return <div className="campaigns-surface-head"><div><div className="campaigns-heading-line"><h2>{title}</h2><TruthTag state={state}/></div><p>{description}</p><small>{note}</small></div>{action}</div>;
+  const [, note] = TRUTH[truthKey];
+  return <div className="campaigns-surface-head"><div><div className="campaigns-heading-line"><h2>{title}</h2></div><p>{description}</p><small>{note}</small></div>{action}</div>;
 }
 
 function DetailDrawer({ detail, onClose }) {
@@ -348,7 +359,7 @@ function CampaignTabs({ tabs, current, setCurrent }) {
     pendingCampaignTabFocus=nextKey;
     setCurrent(nextKey);
   };
-  return <div className="campaigns-nav"><div className="campaigns-tabs" role="tablist" aria-label="Campaigns views">{tabs.map((tab,index)=><button id={`campaigns-tab-${tab[0]}`} aria-controls="campaigns-tabpanel" key={tab[0]} role="tab" aria-selected={current===tab[0]} tabIndex={current===tab[0]?0:-1} onClick={()=>setCurrent(tab[0])} onKeyDown={(event)=>onKeyDown(event,index)}>{tab[2]()}<span>{tab[1]}</span></button>)}</div><div className="campaigns-truth-key" aria-label="Capability truth labels"><TruthTag state="LIVE"/><TruthTag state="PARTIAL"/><TruthTag state="PROPOSED"/><TruthTag state="UNAVAILABLE"/></div><button className="btn btn-s btn-p campaigns-studio" data-solo-vibe-studio-launcher onClick={openStudio}><Ic.spark size={13}/>Vibe Studio</button></div>;
+  return <div className="campaigns-nav"><div className="campaigns-tabs" role="tablist" aria-label="Campaigns views">{tabs.map((tab,index)=><button id={`campaigns-tab-${tab[0]}`} aria-controls="campaigns-tabpanel" key={tab[0]} role="tab" aria-selected={current===tab[0]} tabIndex={current===tab[0]?0:-1} onClick={()=>setCurrent(tab[0])} onKeyDown={(event)=>onKeyDown(event,index)}>{tab[2]()}<span>{tab[1]}</span></button>)}</div><button className="btn btn-s btn-p campaigns-studio" data-solo-vibe-studio-launcher onClick={openStudio}><Ic.spark size={13}/>Vibe Studio</button></div>;
 }
 
 // Retained for the existing hidden Clients compatibility mount. It performs no
@@ -390,8 +401,12 @@ export const GrowthHub=()=>{
   const openPipeline=React.useCallback(()=>{
     navigate(subtabPath("solo",params.account,"growth","pipeline"));
   },[navigate,params.account]);
-  const openClients=React.useCallback(()=>{
-    navigate(`${subtabPath("solo",params.account,"clients","people")}?origin=sales`);
+  // `?person=` is NOT a new contract — TenantRelationshipsClientsWorkspace already reads it as
+  // `deepLinkedContactId`. A control labelled "Open <client>'s record" that landed on the general
+  // list was not missing a route; it was declining to use one that already existed (§18).
+  const openClients=React.useCallback((contactId)=>{
+    const base=`${subtabPath("solo",params.account,"clients","people")}?origin=sales`;
+    navigate(typeof contactId==="string"&&contactId ? `${base}&person=${encodeURIComponent(contactId)}` : base);
   },[navigate,params.account]);
   // The Command Desk's single router. Overview coordinates; each target opens the subtab that OWNS
   // that stage of the loop (Vibe Studio opens through the existing handoff). Overview never does

@@ -130,7 +130,7 @@ function mcpServer(opts = {}) {
       (opts.sessions ||= new Set()).add(req.headers["mcp-session-id"]);
       if (body.method === "tools/list") {
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { tools: TOOLS } }));
+        res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { tools: opts.tools ?? TOOLS } }));
         return;
       }
       if (body.method === "tools/call") {
@@ -239,7 +239,8 @@ const loadConnection = (connectionId) => {
   // (a new serverUrl) yields a new hash, exactly as `get_mcp_connection_secret` does in production.
   // INT-082: surface the row's visibility (default 'tenant' for the existing tenant-visible fixtures,
   // so the runner's owner_only gate is scoped precisely; owner_only fixtures set it explicitly).
-  return { ok: true, connectionId, tenantId: c.tenantId, serverUrl: c.serverUrl, auth: c.auth, endpointHash: endpointHashOf(c.serverUrl), visibility: c.visibility ?? "tenant" };
+  // INT-152: surface config_generation (default 1) so the fake matches the ResolvedConnection contract.
+  return { ok: true, connectionId, tenantId: c.tenantId, serverUrl: c.serverUrl, auth: c.auth, endpointHash: endpointHashOf(c.serverUrl), visibility: c.visibility ?? "tenant", configGeneration: c.configGeneration ?? 1 };
 };
 const deps = { recordReceipt: (r) => { receipts.push(r); }, verifyApproval, loadConnection };
 // Points conn-1's CANONICAL stored endpoint at `serverUrl` (as if the row held it), then runs BY ID —
@@ -1052,6 +1053,704 @@ console.log("\n— G1a-1: create_mcp_rest_connection's api_key shape is non-MCP-
   const restRes = await connMod.makeRpcConnectionLoader(adminReturning(restRow))("conn-rest-g1a1");
   check("G1a-1: the api_key row create_mcp_rest_connection stores loads connection_unusable (writable-as-REST, non-MCP-executable — disjoint lanes; G2-2's REST adapter consumes this shape)",
     restRes.ok === false && restRes.reason === "connection_unusable", JSON.stringify(restRes));
+}
+
+// ── Slice ① — VERIFY (runVerify: the probe's first live caller — authority gates + mapping) ──────
+// Drives the REAL runVerify against the REAL loader + REAL read-only intake over a genuine socket.
+// Fake clients supply the §9 gate answers; the fake service-role admin captures the probe write.
+console.log("\n— slice ①: verify (runVerify) —");
+{
+  const verifyMod = await bundle("supabase/functions/_shared/mcp-gateway/verify.ts", "verify.mjs");
+  const TEN = "ten-verify-1";
+  const CONN = "11111111-1111-4111-8111-111111111111";
+  const VERIFY_URL = "https://public.example/mcp-verify";
+  routes.set("/mcp-verify", mcpServer({}));
+
+  const probeCalls = [];
+  // Fake service-role admin: get_mcp_connection_secret feeds the loader; mcp_connection_probe is captured.
+  // INT-152: the probe now returns {applied, reason?}; default applied:true (a normal write). Pass
+  // probeData:{applied:false} to simulate a stale-generation no-op (a concurrent re-key mid-verify).
+  const makeAdmin = (secretRow, probeErr = null, probeData = { applied: true }) => ({
+    rpc: async (fn, params) => {
+      if (fn === "get_mcp_connection_secret") return { data: secretRow, error: null };
+      if (fn === "mcp_connection_probe") { probeCalls.push(params); return { data: probeData, error: probeErr }; }
+      return { data: null, error: null };
+    },
+  });
+  // Fake caller (RLS-scoped) client: the three §9 authority gates.
+  const makeUser = (o = {}) => ({
+    rpc: async (fn) => {
+      if (fn === "current_user_tenant_id") return { data: o.tenant === undefined ? TEN : o.tenant, error: o.tenantErr ?? null };
+      if (fn === "is_current_user_tenant_admin") return { data: o.admin === undefined ? true : o.admin, error: null };
+      if (fn === "get_mcp_connections_v2") return { data: o.v2 === undefined ? [{ connection_id: CONN }] : o.v2, error: o.v2Err ?? null };
+      return { data: null, error: null };
+    },
+  });
+  const okSecret = { configured: true, enabled: true, connection_id: CONN, tenant_id: TEN, server_url: VERIFY_URL, endpoint_hash: endpointHashOf(VERIFY_URL), auth_token: "secret-token", auth_kind: "bearer", transport: "http", visibility: "tenant", config_generation: 7 };
+
+  // Happy path — authorized admin, connection in v2, loader resolves, live intake → connected.
+  probeCalls.length = 0;
+  const okRes = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin(okSecret) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify happy path → 200 ok connected healthy", okRes.httpStatus === 200 && okRes.body.ok === true && okRes.body.status === "connected" && okRes.body.health === "healthy", JSON.stringify(okRes.body));
+  check("verify reports the discovered tool count", okRes.body.tool_count === 6, JSON.stringify(okRes.body));
+  check("verify persists via the service-role probe exactly once (connected/healthy)", probeCalls.length === 1 && probeCalls[0]._status === "connected" && probeCalls[0]._health === "healthy", JSON.stringify(probeCalls.map((p) => p._status)));
+  // INT-152: the real loader surfaced the row's config_generation (7) and verify bound the probe write to
+  // it — a compare-and-write against the exact config it read (a stale probe cannot clobber a fresh re-key).
+  check("verify passes the loaded config_generation to the probe (INT-152 compare-and-write)", probeCalls[0]._expected_generation === 7, JSON.stringify(probeCalls[0]?._expected_generation));
+  check("probe receives the mapped catalog (tool_name keys, 6 tools)", Array.isArray(probeCalls[0]?._tools) && probeCalls[0]._tools.length === 6 && probeCalls[0]._tools.every((t) => typeof t.tool_name === "string" && typeof t.schema_hash === "string"), JSON.stringify(probeCalls[0]?._tools?.[0]));
+  const probeJson = JSON.stringify(probeCalls[0]?._tools ?? []);
+  check("no raw provider prose reaches the probe catalog (§13 — description/schema never leave mcp-client)", !probeJson.includes("RAW PROVIDER PROSE") && !probeJson.includes("description"), probeJson.slice(0, 120));
+  const bodyJson = JSON.stringify(okRes.body);
+  check("verify response leaks NO secret / server url / provider prose", !bodyJson.includes("secret-token") && !bodyJson.includes("public.example") && !bodyJson.includes("RAW PROVIDER PROSE"), bodyJson);
+
+  // INT-152 — a probe that no-ops because the connection was RE-KEYED mid-verify (config_generation moved)
+  // returns {applied:false}; verify must report the race honestly (409 config_changed_during_verify), NOT a
+  // fabricated connected. The fresh config was not clobbered — this is the caller-visible side of the guard.
+  probeCalls.length = 0;
+  const staleRes = await verifyMod.runVerify(
+    { userClient: makeUser(), admin: makeAdmin(okSecret, null, { applied: false, reason: "stale_generation" }) },
+    { connectionId: CONN, expectedTenantId: TEN },
+  );
+  check("verify reports a mid-verify re-key honestly (INT-152 → 409 config_changed_during_verify)", staleRes.httpStatus === 409 && staleRes.body.ok === false && staleRes.body.error_code === "config_changed_during_verify", JSON.stringify(staleRes.body));
+  check("...and the stale probe carried the loaded generation it was gated on", probeCalls.length === 1 && probeCalls[0]._expected_generation === 7, JSON.stringify(probeCalls[0]?._expected_generation));
+
+  // NOTE-A hardening (§39 peer-gate) — a mixed-case uuid is normalized to the PG-canonical lowercase
+  // form BEFORE the ownership compare, so it matches the lowercase v2 rows (no spurious 404) and every
+  // downstream write (the probe) keys the canonical id. Fail-closed either way; this proves the fix.
+  {
+    const CANON = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeffff0000";
+    const MIXED = "AAAAAAAA-BBBB-4CCC-8DDD-EEEEFFFF0000";
+    probeCalls.length = 0;
+    const mixedRes = await verifyMod.runVerify(
+      { userClient: makeUser({ v2: [{ connection_id: CANON }] }), admin: makeAdmin({ ...okSecret, connection_id: CANON }) },
+      { connectionId: MIXED, expectedTenantId: TEN },
+    );
+    check("verify normalizes a mixed-case uuid → owned, 200 connected (no spurious 404)", mixedRes.httpStatus === 200 && mixedRes.body.ok === true && mixedRes.body.status === "connected", JSON.stringify(mixedRes.body));
+    check("...and the probe is keyed by the canonical lowercase id", probeCalls.length === 1 && probeCalls[0]._connection_id === CANON, JSON.stringify(probeCalls[0]?._connection_id));
+  }
+
+  // §9 authority refusals.
+  const badId = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin(okSecret) }, { connectionId: "not-a-uuid", expectedTenantId: TEN });
+  check("verify refuses a malformed connection_id (400)", badId.httpStatus === 400 && badId.body.error === "bad_connection_id");
+  const noTen = await verifyMod.runVerify({ userClient: makeUser({ tenant: null }), admin: makeAdmin(okSecret) }, { connectionId: CONN, expectedTenantId: null });
+  check("verify refuses when the caller has no tenant (400)", noTen.httpStatus === 400 && noTen.body.error === "no_tenant");
+  const mism = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin(okSecret) }, { connectionId: CONN, expectedTenantId: "ten-OTHER" });
+  check("verify refuses a workspace-switch tenant mismatch (409)", mism.httpStatus === 409 && mism.body.error === "tenant_mismatch");
+  const nonAdmin = await verifyMod.runVerify({ userClient: makeUser({ admin: false }), admin: makeAdmin(okSecret) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify refuses a non-admin caller — the manage gate (403)", nonAdmin.httpStatus === 403 && nonAdmin.body.error === "forbidden");
+  const notMine = await verifyMod.runVerify({ userClient: makeUser({ v2: [] }), admin: makeAdmin(okSecret) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify refuses a connection not visible to the caller — §9 (404, no info leak)", notMine.httpStatus === 404 && notMine.body.error === "not_found");
+  probeCalls.length = 0;
+  const crossTenant = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, tenant_id: "ten-ELSEWHERE" }) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify refuses when the loaded row's tenant ≠ the caller's (defense in depth, 403)", crossTenant.httpStatus === 403 && crossTenant.body.error === "forbidden");
+  check("...and writes NO probe on that refusal (no cross-tenant side effect)", probeCalls.length === 0);
+
+  // Honest degrade — a disabled row: the loader refuses; verify records an honest error, never a fake connected.
+  probeCalls.length = 0;
+  const disabled = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, enabled: false }) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify on a disabled connection → 200 ok:false, honest error status", disabled.httpStatus === 200 && disabled.body.ok === false && disabled.body.status === "error", JSON.stringify(disabled.body));
+  check("...records an error probe (never a fabricated connected), catalog untouched (_tools=null)", probeCalls.length === 1 && probeCalls[0]._status === "error" && probeCalls[0]._tools === null, JSON.stringify(probeCalls[0]));
+
+  // Codex P2 — a loader-failure whose OWN probe write fails must surface probe_write_failed, not a
+  // successful error-state body (else an already-connected row silently stays connected/healthy).
+  probeCalls.length = 0;
+  const loaderFailProbeErr = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, enabled: false }, { message: "probe write boom" }) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify surfaces probe_write_failed (500) when recording a loader-failure state itself fails (§13/§32)", loaderFailProbeErr.httpStatus === 500 && loaderFailProbeErr.body.error === "probe_write_failed", JSON.stringify(loaderFailProbeErr.body));
+
+  // Codex P1 — credential reflection: a reachable, handshake-clean server that echoes our bearer
+  // token inside a tool NAME must be rejected wholesale; the poisoned catalog is never persisted and
+  // the token never appears in the response (§13 — no service-role secret downgraded to catalog data).
+  routes.set("/mcp-reflect", mcpServer({ tools: [
+    { name: "echo_secret-token", description: "reflects the credential we sent",
+      inputSchema: { type: "object", properties: { x: {} } }, _meta: { effects: ["read"], connected_app: "demo", action_type: "search" } },
+  ] }));
+  probeCalls.length = 0;
+  const REFL = "https://public.example/mcp-reflect";
+  const reflected = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, server_url: REFL, endpoint_hash: endpointHashOf(REFL) }) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify REJECTS a server that reflects our credential into a tool field (§13 — provider_reflected_credential)", reflected.httpStatus === 200 && reflected.body.ok === false && reflected.body.error_code === "provider_reflected_credential", JSON.stringify(reflected.body));
+  check("...records an error probe with NO catalog (a reflected-credential tool set is never stored)", probeCalls.length === 1 && probeCalls[0]._status === "error" && probeCalls[0]._tools === null, JSON.stringify(probeCalls[0]));
+  check("...and the reflected token never appears in the response body", !JSON.stringify(reflected.body).includes("secret-token"), JSON.stringify(reflected.body));
+  // Codex round 3 — the reflection matching policy, unit-tested directly on the exported helper.
+  // A credential is substring-matched only once it clears the collision floor; the `none` kind is
+  // scanned RAW and percent-DECODED (writer-side minimum length is the sound completion — Slice ②/INT-153).
+  const mkTool = (name, app = "", actionType = "", effects = []) => ({ name, app, actionType, effects, schemaHash: "h", authorityHash: "h", pin: "h" });
+  const bearerAuth = (t) => ({ kind: "bearer", token: t });
+  check("reflection helper catches a long bearer token echoed into a tool name",
+    verifyMod.intakeReflectsCredential([mkTool("echo_supersecrettoken12")], bearerAuth("supersecrettoken12"), "https://public.example/x") === true);
+  check("reflection helper does NOT false-positive a short token against ordinary tool names (Codex P2 — no collision DoS)",
+    verifyMod.intakeReflectsCredential([mkTool("search"), mkTool("read_records")], bearerAuth("a"), "https://public.example/x") === false);
+  check("reflection helper catches a percent-DECODED URL-path secret echoed into a tool name (Codex P1)",
+    verifyMod.intakeReflectsCredential([mkTool("route_supersecretlongvalue")], { kind: "none" }, "https://public.example/mcp/%73upersecretlongvalue") === true);
+  check("reflection helper catches the RAW percent-encoded URL-path secret too",
+    verifyMod.intakeReflectsCredential([mkTool("route_%73upersecretlongvalue")], { kind: "none" }, "https://public.example/mcp/%73upersecretlongvalue") === true);
+  check("reflection helper ignores short/common URL parts (no false-positive on api/mcp/v1)",
+    verifyMod.intakeReflectsCredential([mkTool("mcp_list"), mkTool("api_call")], { kind: "none" }, "https://public.example/api/mcp/v1") === false);
+
+  // Honest degrade — a reachable server that REJECTS the credential (401): needs_attention, catalog NOT wiped.
+  routes.set("/mcp-verify-401", (req, res) => { if (req.method === "DELETE") { res.writeHead(204).end(); return; } res.writeHead(401).end("bad token"); });
+  probeCalls.length = 0;
+  const V401 = "https://public.example/mcp-verify-401";
+  const badCred = await verifyMod.runVerify({ userClient: makeUser(), admin: makeAdmin({ ...okSecret, server_url: V401, endpoint_hash: endpointHashOf(V401) }) }, { connectionId: CONN, expectedTenantId: TEN });
+  check("verify on a rejected credential → 200 ok:false needs_attention (honest, never connected)", badCred.httpStatus === 200 && badCred.body.ok === false && badCred.body.health === "needs_attention", JSON.stringify(badCred.body));
+  check("...does NOT wipe the tool catalog (a failed probe passes _tools=null)", probeCalls.length === 1 && probeCalls[0]._status === "error" && probeCalls[0]._tools === null, JSON.stringify(probeCalls[0]));
+}
+
+// ── Slice ② — CREATE (runCreate: the gateway's create door — thin JWT-scoped pass-through) ─────────
+// Drives the REAL runCreate. The writer RPCs (create_mcp_connection / create_mcp_rest_connection) are
+// SECURITY DEFINER and own all §9 authority + credential/SSRF/length validation in-body; the fake
+// caller client stands in for them, so this proves the EDGE's contract: the facet gate, the tenant
+// pre-gates, the coded-error mapping, that _tenant_id is never forwarded, and that no service-role
+// client is ever touched (§59).
+console.log("\n— slice ②: create (runCreate) —");
+{
+  const createMod = await bundle("supabase/functions/_shared/mcp-gateway/create.ts", "create.mjs");
+  const CTEN = "ten-create-1";
+  const NEWID = "22222222-2222-4222-8222-222222222222";
+  const createCalls = [];
+  // Fake caller (RLS-scoped) client: the current_user_tenant_id gate + capture the writer call.
+  // `mcpResult`/`restResult` are the {data,error} the writer returns (default: a happy create).
+  const makeCreateUser = (o = {}) => ({
+    rpc: async (fn, params) => {
+      if (fn === "current_user_tenant_id") return { data: o.tenant === undefined ? CTEN : o.tenant, error: o.tenantErr ?? null };
+      if (fn === "create_mcp_connection") { createCalls.push({ fn, params }); return o.mcpResult ?? { data: { connection_id: NEWID, status: "pending_verification", endpoint_hash: "abc123", auth_token_last4: "ken2" }, error: null }; }
+      if (fn === "create_mcp_rest_connection") { createCalls.push({ fn, params }); return o.restResult ?? { data: { connection_id: NEWID, status: "pending_verification", endpoint_hash: "def456", auth_token_last4: null }, error: null }; }
+      return { data: null, error: null };
+    },
+  });
+  // A PostgREST-shaped error: `.code` carries the SQLSTATE, `.message` the RAISEd exception text.
+  const pgErr = (message, code) => ({ message, code, details: null, hint: null });
+  const inMcp = (over = {}) => ({ facet: "mcp", expectedTenantId: CTEN, providerKey: "generic-remote", label: "My tool", visibility: "tenant", serverUrl: "https://public.example/mcp", authKind: "bearer", authToken: "supersecrettoken12", authHeaderName: null, refreshToken: null, oauthIssuer: null, oauthClientId: null, oauthClientSecret: null, oauthScopes: null, accessTokenExpiresAt: null, baseUrl: null, apiKey: null, ...over });
+  const inRest = (over = {}) => ({ facet: "rest", expectedTenantId: CTEN, providerKey: "n8n", label: "n8n", visibility: "tenant", serverUrl: null, authKind: null, authToken: null, authHeaderName: null, refreshToken: null, oauthIssuer: null, oauthClientId: null, oauthClientSecret: null, oauthScopes: null, accessTokenExpiresAt: null, baseUrl: "https://public.example/n8n", apiKey: "n8n-api-key-value", ...over });
+
+  // Happy path — MCP facet → 200, the writer's secret-free return passed straight through.
+  createCalls.length = 0;
+  const okMcp = await createMod.runCreate({ userClient: makeCreateUser() }, inMcp());
+  check("create MCP happy path → 200 pending_verification", okMcp.httpStatus === 200 && okMcp.body.connection_id === NEWID && okMcp.body.status === "pending_verification", JSON.stringify(okMcp.body));
+  check("create called create_mcp_connection exactly once (MCP facet)", createCalls.length === 1 && createCalls[0].fn === "create_mcp_connection", JSON.stringify(createCalls.map((c) => c.fn)));
+  // MAJOR-3: the edge NEVER forwards _tenant_id — the writer derives the tenant from auth.uid().
+  check("create does NOT forward _tenant_id to the writer (auth.uid() derives it — §9/MAJOR-3)", !("_tenant_id" in createCalls[0].params), JSON.stringify(Object.keys(createCalls[0].params)));
+  check("create forwards the credential under the named _auth_token param, endpoint under _server_url", createCalls[0].params._auth_token === "supersecrettoken12" && createCalls[0].params._server_url === "https://public.example/mcp");
+  check("create response leaks NO secret (only the writer's host-safe fields)", !JSON.stringify(okMcp.body).includes("supersecrettoken12"), JSON.stringify(okMcp.body));
+
+  // §59 / MAJOR-1 — create NEVER touches a service-role client. Hand it a throwing `admin`; create
+  // must still succeed, because it uses only { userClient } and never reads a secret or writes a probe.
+  const poisonAdmin = { rpc: () => { throw new Error("create must not touch the service-role client (§59)"); } };
+  const poisonRes = await createMod.runCreate({ userClient: makeCreateUser(), admin: poisonAdmin }, inMcp());
+  check("create NEVER touches a service-role client — a throwing admin is handed in and create still succeeds (§59/MAJOR-1)", poisonRes.httpStatus === 200 && poisonRes.body.connection_id === NEWID, JSON.stringify(poisonRes.body));
+
+  // Happy path — REST facet → the REST writer, with NAMED params (never positional).
+  createCalls.length = 0;
+  const okRest = await createMod.runCreate({ userClient: makeCreateUser() }, inRest());
+  check("create REST facet → 200, calls create_mcp_rest_connection", okRest.httpStatus === 200 && createCalls.length === 1 && createCalls[0].fn === "create_mcp_rest_connection", JSON.stringify(createCalls.map((c) => c.fn)));
+  check("REST writer receives NAMED params (_base_url/_api_key), no _tenant_id, _provider_key='n8n'", createCalls[0].params._base_url === "https://public.example/n8n" && createCalls[0].params._api_key === "n8n-api-key-value" && !("_tenant_id" in createCalls[0].params) && createCalls[0].params._provider_key === "n8n", JSON.stringify(Object.keys(createCalls[0].params)));
+
+  // Facet gate — an unknown/absent facet is a defined reject, never a default guess (MAJOR-4).
+  const badFacet = await createMod.runCreate({ userClient: makeCreateUser() }, inMcp({ facet: "page" }));
+  check("create rejects an unknown facet (400 unsupported_facet)", badFacet.httpStatus === 400 && badFacet.body.error === "unsupported_facet", JSON.stringify(badFacet.body));
+
+  // §9 pre-gates.
+  const noTenant = await createMod.runCreate({ userClient: makeCreateUser({ tenant: null }) }, inMcp());
+  check("create refuses when the caller has no tenant (400 no_tenant)", noTenant.httpStatus === 400 && noTenant.body.error === "no_tenant", JSON.stringify(noTenant.body));
+  const switchRace = await createMod.runCreate({ userClient: makeCreateUser() }, inMcp({ expectedTenantId: "ten-OTHER" }));
+  check("create refuses a workspace-switch race (409 tenant_mismatch)", switchRace.httpStatus === 409 && switchRace.body.error === "tenant_mismatch", JSON.stringify(switchRace.body));
+
+  // Coded-error mapping (MAJOR-2). 42501 (any of the 4 forbidden reasons) → UNIFORM 403 MCP_FORBIDDEN;
+  // the message SUFFIX (which gate) is never echoed — no which-gate / cross-tenant oracle.
+  const forbidden = await createMod.runCreate({ userClient: makeCreateUser({ mcpResult: { data: null, error: pgErr("MCP_FORBIDDEN: mcp.connections.manage capability required", "42501") } }) }, inMcp());
+  check("create maps a writer 42501 → uniform 403 MCP_FORBIDDEN", forbidden.httpStatus === 403 && forbidden.body.error === "MCP_FORBIDDEN", JSON.stringify(forbidden.body));
+  check("...and NEVER echoes the which-gate suffix (no oracle)", forbidden.body.error === "MCP_FORBIDDEN" && !JSON.stringify(forbidden.body).includes("capability required"), JSON.stringify(forbidden.body));
+
+  const badLabel = await createMod.runCreate({ userClient: makeCreateUser({ mcpResult: { data: null, error: pgErr("MCP_BAD_LABEL: a name is required", "22023") } }) }, inMcp());
+  check("create maps a writer 22023 validation error → 400 with the specific MCP_* code", badLabel.httpStatus === 400 && badLabel.body.error === "MCP_BAD_LABEL", JSON.stringify(badLabel.body));
+
+  // INT-153 surfaced through the edge: a <12-char bearer token → MCP_CREDENTIAL_TOO_SHORT → 400.
+  const tooShort = await createMod.runCreate({ userClient: makeCreateUser({ mcpResult: { data: null, error: pgErr("MCP_CREDENTIAL_TOO_SHORT", "22023") } }) }, inMcp({ authToken: "short" }));
+  check("create surfaces the INT-153 credential floor (MCP_CREDENTIAL_TOO_SHORT → 400)", tooShort.httpStatus === 400 && tooShort.body.error === "MCP_CREDENTIAL_TOO_SHORT", JSON.stringify(tooShort.body));
+
+  // No auto-reroute (MAJOR-4): api_key on the MCP facet calls create_mcp_connection and lets ITS inline
+  // MCP_AUTH_KIND_NOT_EXECUTABLE fire — the edge never silently redirects to the REST writer.
+  createCalls.length = 0;
+  const apiKeyOnMcp = await createMod.runCreate({ userClient: makeCreateUser({ mcpResult: { data: null, error: pgErr("MCP_AUTH_KIND_NOT_EXECUTABLE: use create_mcp_rest_connection", "22023") } }) }, inMcp({ authKind: "api_key" }));
+  check("create does NOT auto-reroute api_key — it calls create_mcp_connection and surfaces its inline reject", createCalls.length === 1 && createCalls[0].fn === "create_mcp_connection" && apiKeyOnMcp.body.error === "MCP_AUTH_KIND_NOT_EXECUTABLE", JSON.stringify({ called: createCalls.map((c) => c.fn), body: apiKeyOnMcp.body }));
+
+  // Uncoded / internal failure → 500 create_failed, never the raw PG message (§13).
+  const internal = await createMod.runCreate({ userClient: makeCreateUser({ mcpResult: { data: null, error: pgErr('null value in column "tenant_id" violates not-null constraint', "23502") } }) }, inMcp());
+  check("create maps an uncoded internal error → 500 create_failed", internal.httpStatus === 500 && internal.body.error === "create_failed", JSON.stringify(internal.body));
+  check("...and never leaks the raw PG message (§13)", !JSON.stringify(internal.body).includes("not-null constraint"), JSON.stringify(internal.body));
+
+  // A writer "success" with NO connection_id is not a real create (§13 — never claim a row that was not made).
+  const noId = await createMod.runCreate({ userClient: makeCreateUser({ mcpResult: { data: { status: "pending_verification" }, error: null } }) }, inMcp());
+  check("create treats a writer success with NO connection_id as a failure (500, never a fake create)", noId.httpStatus === 500 && noId.body.error === "create_failed", JSON.stringify(noId.body));
+
+  // readCreateInput — untrusted body → typed input; empty/wrong-typed → null; non-strings filtered from arrays.
+  const parsed = createMod.readCreateInput({ facet: "mcp", provider_key: "generic-remote", label: "T", server_url: "https://public.example/mcp", auth_kind: "bearer", auth_token: "supersecrettoken12", oauth_scopes: ["a", 3, "b"], visibility: "" }, "ten-x");
+  check("readCreateInput maps snake_case body → typed input", parsed.facet === "mcp" && parsed.providerKey === "generic-remote" && parsed.serverUrl === "https://public.example/mcp" && parsed.authToken === "supersecrettoken12" && parsed.expectedTenantId === "ten-x", JSON.stringify(parsed));
+  check("readCreateInput coerces an empty string to null and filters a non-string out of oauth_scopes", parsed.visibility === null && Array.isArray(parsed.oauthScopes) && parsed.oauthScopes.length === 2 && parsed.oauthScopes.every((s) => typeof s === "string"), JSON.stringify(parsed.oauthScopes));
+  const parsedEmpty = createMod.readCreateInput({}, null);
+  check("readCreateInput on an empty body → facet '' (→ unsupported_facet), all fields null", parsedEmpty.facet === "" && parsedEmpty.label === null && parsedEmpty.apiKey === null && parsedEmpty.expectedTenantId === null, JSON.stringify(parsedEmpty));
+}
+
+// ── Slice ② — OAUTH BEGIN (runOauthBegin: start an authorization-code flow for one connection) ──────
+// Drives the REAL runOauthBegin against the REAL OAuth 2.1 spine (_shared/mcp-oauth.ts → safeFetch) and
+// a minimal, spec-shaped local authorization server (RFC 9728 protected-resource + RFC 8414 AS metadata
+// + RFC 7591 DCR), reachable through the same fetch shim + SSRF guard as every other test. The §9 gates
+// are fed by fake caller/admin clients; the flow store (begin_mcp_oauth) is captured.
+console.log("\n— slice ②: oauth_begin (runOauthBegin) —");
+{
+  const oauthMod = await bundle("supabase/functions/_shared/mcp-gateway/oauth.ts", "oauth-begin.mjs");
+  const OTEN = "ten-oauth-1";
+  const OCONN = "33333333-3333-4333-8333-333333333333";
+  const OSRV = "https://public.example/mcp-oauth-srv";
+  const REDIRECT = "https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/mcp-oauth-callback";
+  const ISSUER = "https://public.example"; // origin == every endpoint's origin (RFC 8414 requires it)
+
+  routes.set("/.well-known/oauth-protected-resource/mcp-oauth-srv", (_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ resource: OSRV, authorization_servers: [ISSUER] }));
+  });
+  routes.set("/.well-known/oauth-authorization-server", (_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      issuer: ISSUER,
+      authorization_endpoint: `${ISSUER}/oauth/authorize`,
+      token_endpoint: `${ISSUER}/oauth/token`,
+      registration_endpoint: `${ISSUER}/oauth/register`,
+      revocation_endpoint: `${ISSUER}/oauth/revoke`,
+      code_challenge_methods_supported: ["S256"],
+      scopes_supported: ["mcp.read", "mcp.write"],
+    }));
+  });
+  const regCalls = [];
+  routes.set("/oauth/register", (req, res) => {
+    let raw = ""; req.on("data", (c) => { raw += c; });
+    req.on("end", () => {
+      regCalls.push(raw ? JSON.parse(raw) : {});
+      res.writeHead(201, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ client_id: "client-xyz" })); // public client — no secret issued
+    });
+  });
+
+  const beginCalls = [];
+  const makeAdmin = (o = {}) => ({
+    rpc: async (fn, params) => {
+      if (fn === "get_mcp_connection_secret") {
+        return { data: o.secret === undefined ? { configured: true, enabled: true, server_url: OSRV, tenant_id: OTEN } : o.secret, error: o.secretErr ?? null };
+      }
+      if (fn === "begin_mcp_oauth") { beginCalls.push(params); return { data: null, error: o.beginErr ?? null }; }
+      return { data: null, error: null };
+    },
+  });
+  const makeUser = (o = {}) => ({
+    rpc: async (fn) => {
+      if (fn === "current_user_tenant_id") return { data: o.tenant === undefined ? OTEN : o.tenant, error: o.tenantErr ?? null };
+      if (fn === "is_current_user_tenant_admin") return { data: o.admin === undefined ? true : o.admin, error: null };
+      if (fn === "get_mcp_connections_v2") return { data: o.v2 === undefined ? [{ connection_id: OCONN }] : o.v2, error: o.v2Err ?? null };
+      return { data: null, error: null };
+    },
+  });
+  const beginInput = (over = {}) => ({ connectionId: OCONN, expectedTenantId: OTEN, actor: "user-1", redirectUri: REDIRECT, ...over });
+
+  // Happy path — gates pass, real discovery + DCR run, the flow is stored, an authorize URL returns.
+  beginCalls.length = 0; regCalls.length = 0;
+  const okBegin = await oauthMod.runOauthBegin({ userClient: makeUser(), admin: makeAdmin() }, beginInput());
+  check("oauth_begin happy path → 200 with an authorize_url", okBegin.httpStatus === 200 && okBegin.body.ok === true && typeof okBegin.body.authorize_url === "string", JSON.stringify(okBegin.body));
+  {
+    const u = new URL(okBegin.body.authorize_url);
+    check("authorize_url points at the DISCOVERED authorization endpoint", `${u.origin}${u.pathname}` === `${ISSUER}/oauth/authorize`, okBegin.body.authorize_url);
+    check("authorize_url carries S256 PKCE challenge + state + the registered client + resource + OUR callback redirect",
+      u.searchParams.get("code_challenge_method") === "S256" && !!u.searchParams.get("code_challenge") && !!u.searchParams.get("state") &&
+      u.searchParams.get("client_id") === "client-xyz" && u.searchParams.get("resource") === OSRV && u.searchParams.get("redirect_uri") === REDIRECT,
+      okBegin.body.authorize_url);
+    check("authorize_url NEVER carries the PKCE verifier (only the challenge)", !!beginCalls[0]?._verifier && !okBegin.body.authorize_url.includes(beginCalls[0]._verifier));
+  }
+  check("oauth_begin registered a PUBLIC client (auth_method=none) whose redirect is OUR callback",
+    regCalls.length === 1 && regCalls[0].token_endpoint_auth_method === "none" && Array.isArray(regCalls[0].redirect_uris) && regCalls[0].redirect_uris[0] === REDIRECT, JSON.stringify(regCalls[0]));
+  check("oauth_begin stored the flow BEFORE returning (verifier+issuer+resource+client_id; tenant+connection from the gates, actor recorded)",
+    beginCalls.length === 1 && beginCalls[0]._connection_id === OCONN && beginCalls[0]._tenant_id === OTEN && !!beginCalls[0]._verifier &&
+    beginCalls[0]._issuer === ISSUER && beginCalls[0]._resource === OSRV && beginCalls[0]._client_id === "client-xyz" &&
+    beginCalls[0]._redirect_uri === REDIRECT && beginCalls[0]._actor === "user-1", JSON.stringify(Object.keys(beginCalls[0] ?? {})));
+  check("oauth_begin response leaks NO verifier", !JSON.stringify(okBegin.body).includes(beginCalls[0]._verifier));
+
+  // §9 authority refusals — every one returns BEFORE any network/discovery (the security-critical gates).
+  const badId = await oauthMod.runOauthBegin({ userClient: makeUser(), admin: makeAdmin() }, beginInput({ connectionId: "nope" }));
+  check("oauth_begin refuses a malformed connection_id (400)", badId.httpStatus === 400 && badId.body.error === "bad_connection_id");
+  const noCb = await oauthMod.runOauthBegin({ userClient: makeUser(), admin: makeAdmin() }, beginInput({ redirectUri: "" }));
+  check("oauth_begin refuses when the callback URL is unconfigured (500 callback_not_configured)", noCb.httpStatus === 500 && noCb.body.error === "callback_not_configured");
+  const noTen = await oauthMod.runOauthBegin({ userClient: makeUser({ tenant: null }), admin: makeAdmin() }, beginInput());
+  check("oauth_begin refuses when the caller has no tenant (400)", noTen.httpStatus === 400 && noTen.body.error === "no_tenant");
+  const mism = await oauthMod.runOauthBegin({ userClient: makeUser(), admin: makeAdmin() }, beginInput({ expectedTenantId: "ten-OTHER" }));
+  check("oauth_begin refuses a workspace-switch tenant mismatch (409)", mism.httpStatus === 409 && mism.body.error === "tenant_mismatch");
+  const nonAdmin = await oauthMod.runOauthBegin({ userClient: makeUser({ admin: false }), admin: makeAdmin() }, beginInput());
+  check("oauth_begin refuses a non-admin caller — the manage gate (403)", nonAdmin.httpStatus === 403 && nonAdmin.body.error === "forbidden");
+  const notMine = await oauthMod.runOauthBegin({ userClient: makeUser({ v2: [] }), admin: makeAdmin() }, beginInput());
+  check("oauth_begin refuses a connection not visible to the caller — §9 (404, no info leak)", notMine.httpStatus === 404 && notMine.body.error === "not_found");
+  const unconf = await oauthMod.runOauthBegin({ userClient: makeUser(), admin: makeAdmin({ secret: { configured: false } }) }, beginInput());
+  check("oauth_begin refuses a connection with no server URL (409 connection_unconfigured)", unconf.httpStatus === 409 && unconf.body.error === "connection_unconfigured");
+  const disabledB = await oauthMod.runOauthBegin({ userClient: makeUser(), admin: makeAdmin({ secret: { configured: true, enabled: false } }) }, beginInput());
+  check("oauth_begin refuses a disabled connection (409 connection_disabled)", disabledB.httpStatus === 409 && disabledB.body.error === "connection_disabled");
+  const crossB = await oauthMod.runOauthBegin({ userClient: makeUser(), admin: makeAdmin({ secret: { configured: true, enabled: true, server_url: OSRV, tenant_id: "ten-ELSE" } }) }, beginInput());
+  check("oauth_begin refuses when the loaded row's tenant ≠ the caller's (defense in depth, 403)", crossB.httpStatus === 403 && crossB.body.error === "forbidden");
+
+  // A begin_mcp_oauth store failure → 500 (never a consent that can complete against nothing).
+  const storeFail = await oauthMod.runOauthBegin({ userClient: makeUser(), admin: makeAdmin({ beginErr: { message: "store boom" } }) }, beginInput());
+  check("oauth_begin surfaces a store failure as 500 oauth_begin_failed (never returns a URL with no stored flow)", storeFail.httpStatus === 500 && storeFail.body.error === "oauth_begin_failed", JSON.stringify(storeFail.body));
+}
+
+// ── Slice ② — OAUTH CALLBACK (runOauthCallback: the JWT-less provider redirect target, #1355-structural) ──
+// Drives the REAL runOauthCallback. consume_mcp_oauth_state + complete_mcp_oauth_grant are captured by a
+// fake service-role admin; the two OAuth network ops are injected (their REAL behaviour is proven by the
+// oauth_begin block above). THE INVARIANT UNDER TEST: every branch answers with a 302 whose Location
+// carries NO `code` and NO `state` — the #1355 structural guarantee, MEASURED with code/state present in
+// the input and absent from the output (not read off the source).
+console.log("\n— slice ②: oauth_callback (runOauthCallback — #1355 structural) —");
+{
+  const cbMod = await bundle("supabase/functions/_shared/mcp-gateway/oauth-callback.ts", "oauth-callback.mjs");
+  const APP = "https://app.paigeagent.ai";
+  const CBTEN = "ten-cb-1";
+  const CBCONN = "44444444-4444-4444-8444-444444444444";
+  const CODE = "AUTHCODE-super-secret-xyz";
+  const STATE = "STATE-super-secret-abc";
+  const validPending = {
+    found: true, state: STATE, tenant_id: CBTEN, connection_id: CBCONN,
+    issuer: "https://public.example", client_id: "client-xyz",
+    redirect_uri: "https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/mcp-oauth-callback",
+    resource: "https://public.example/mcp-oauth-srv", code_verifier: "verifier-xyz", client_secret: null,
+  };
+  const grantCalls = [];
+  const makeAdmin = (o = {}) => ({
+    rpc: async (fn, params) => {
+      if (fn === "consume_mcp_oauth_state") return { data: o.pending === undefined ? validPending : o.pending, error: o.consumeErr ?? null };
+      if (fn === "complete_mcp_oauth_grant") {
+        grantCalls.push(params);
+        return { data: o.grant === undefined ? { connection_id: CBCONN, status: "pending_verification", account_type: "solo", account_number: 3855 } : o.grant, error: o.grantErr ?? null };
+      }
+      return { data: null, error: null };
+    },
+  });
+  // Injected OAuth ops (the real ones are proven by the oauth_begin block); here they let the callback's
+  // own logic + the #1355 redirect invariant be measured without the network.
+  const okOps = {
+    discoverAuthorizationServer: async (issuer) => ({ issuer, authorizationEndpoint: `${issuer}/a`, tokenEndpoint: `${issuer}/t`, registrationEndpoint: null, revocationEndpoint: null, scopesSupported: ["mcp.read"] }),
+    exchangeCode: async (opts) => { okOps._lastExchange = opts; return { accessToken: "provider-access-xyz", refreshToken: "provider-refresh-xyz", expiresAt: new Date(Date.now() + 3600e3).toISOString(), scopes: ["mcp.read"] }; },
+  };
+  // THE #1355 assertion: code/state never appear in a redirect Location.
+  const noCodeState = (loc) => { const u = new URL(loc); return u.searchParams.get("code") === null && u.searchParams.get("state") === null && !loc.includes(CODE) && !loc.includes(STATE); };
+
+  // Happy path — state consumed, code exchanged, grant persisted, land on the tenant's OWN connections page.
+  grantCalls.length = 0;
+  const okCb = await cbMod.runOauthCallback({ admin: makeAdmin(), ops: okOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+  check("callback happy path → 302 connected", okCb.status === 302 && okCb.outcome === "connected", JSON.stringify(okCb));
+  check("callback lands on the tenant's OWN canonical connections page (solo/3855, from the grant writer's routing facts)",
+    okCb.location === `${APP}/solo/3855/settings/connections?mcp=connected&connection=${CBCONN}`, okCb.location);
+  check("#1355: the SUCCESS redirect carries NO code and NO state", noCodeState(okCb.location), okCb.location);
+  check("callback persisted the grant with tenant+connection FROM THE CONSUMED STATE, tokens from the exchange, actor null",
+    grantCalls.length === 1 && grantCalls[0]._connection_id === CBCONN && grantCalls[0]._tenant_id === CBTEN &&
+    grantCalls[0]._access_token === "provider-access-xyz" && grantCalls[0]._actor === null, JSON.stringify(Object.keys(grantCalls[0] ?? {})));
+  check("callback bound the exchange to the STORED verifier + resource + redirect_uri (only the code came from the browser)",
+    okOps._lastExchange.verifier === "verifier-xyz" && okOps._lastExchange.resource === "https://public.example/mcp-oauth-srv" &&
+    okOps._lastExchange.redirectUri === validPending.redirect_uri && okOps._lastExchange.code === CODE, JSON.stringify(okOps._lastExchange));
+  check("callback redirect leaks NO provider token / verifier", !okCb.location.includes("provider-access-xyz") && !okCb.location.includes("verifier-xyz"), okCb.location);
+
+  // #1355 MEASURED across EVERY reject path — code/state present in the INPUT, absent from the redirect.
+  const denied = await cbMod.runOauthCallback({ admin: makeAdmin(), ops: okOps }, { code: CODE, state: STATE, error: "access_denied" }, { appOrigin: APP });
+  check("callback on provider denial → 302 error, #1355: no code/state in the redirect", denied.status === 302 && denied.outcome === "access_denied" && noCodeState(denied.location), denied.location);
+  check("...and NO grant is written on a denial (nothing consumed)", grantCalls.length === 1, String(grantCalls.length));
+  const missing = await cbMod.runOauthCallback({ admin: makeAdmin(), ops: okOps }, { code: CODE, state: null, error: null }, { appOrigin: APP });
+  check("callback with missing params → 302 error, no code/state leak", missing.outcome === "missing_params" && noCodeState(missing.location), missing.location);
+  const noState = await cbMod.runOauthCallback({ admin: makeAdmin({ pending: { found: false } }), ops: okOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+  check("callback on an unknown/expired/replayed state → state_invalid, no code/state leak", noState.outcome === "state_invalid" && noCodeState(noState.location), noState.location);
+  const mismatchCb = await cbMod.runOauthCallback({ admin: makeAdmin({ pending: { ...validPending, state: "A-DIFFERENT-STATE" } }), ops: okOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+  check("callback on a state that fails the constant-time compare → state_invalid, no code/state leak", mismatchCb.outcome === "state_invalid" && noCodeState(mismatchCb.location), mismatchCb.location);
+  const consumeErr = await cbMod.runOauthCallback({ admin: makeAdmin({ consumeErr: { message: "db boom" } }), ops: okOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+  check("callback on a state-store error → internal state_error, no code/state leak", consumeErr.outcome === "state_error" && noCodeState(consumeErr.location), consumeErr.location);
+
+  // INDISTINGUISHABLE REFUSAL (coordinator condition), MEASURED on the actual redirect detail: an
+  // unknown/replayed state, a tampered state, AND an un-redeemable (store-error) state present ONE
+  // identical browser outcome — the browser can never tell whether the state existed. (The internal
+  // `outcome` tag stays precise for telemetry; the BROWSER-facing mcp_detail is uniform.)
+  const detailOf = (loc) => new URL(loc).searchParams.get("mcp_detail");
+  check("refusal is INDISTINGUISHABLE: unknown, tampered, and store-error states emit the SAME browser detail (state_invalid)",
+    detailOf(noState.location) === "state_invalid" && detailOf(mismatchCb.location) === "state_invalid" && detailOf(consumeErr.location) === "state_invalid" &&
+    detailOf(noState.location) === detailOf(consumeErr.location) && detailOf(noState.location) === detailOf(mismatchCb.location),
+    JSON.stringify([detailOf(noState.location), detailOf(mismatchCb.location), detailOf(consumeErr.location)]));
+  check("...and no refusal detail is operator text / a PG message (closed codes only)",
+    /^[a-z_]+$/.test(detailOf(noState.location)) && /^[a-z_]+$/.test(detailOf(consumeErr.location)), detailOf(consumeErr.location));
+
+  // REPLAY SAFETY (ordering: consume-FIRST, atomic single-use). A stateful admin redeems the state ONCE
+  // (found:true), then finds nothing (found:false) — the DB's atomic single-use consume. The FIRST
+  // callback exchanges + writes the grant + lands connected; the REPLAY writes NO second grant and
+  // refuses state_invalid. (The SQL atomicity itself is proven by the pgTAP oauth-state test; this proves
+  // the callback wiring honours it.)
+  {
+    const replayGrants = [];
+    let consumed = false;
+    const replayAdmin = {
+      rpc: async (fn, params) => {
+        if (fn === "consume_mcp_oauth_state") {
+          if (consumed) return { data: { found: false }, error: null };
+          consumed = true; return { data: validPending, error: null };
+        }
+        if (fn === "complete_mcp_oauth_grant") { replayGrants.push(params); return { data: { connection_id: CBCONN, status: "pending_verification", account_type: "solo", account_number: 3855 }, error: null }; }
+        return { data: null, error: null };
+      },
+    };
+    const first = await cbMod.runOauthCallback({ admin: replayAdmin, ops: okOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+    const replay = await cbMod.runOauthCallback({ admin: replayAdmin, ops: okOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+    check("replay safety: the FIRST callback connects and writes EXACTLY ONE grant", first.outcome === "connected" && replayGrants.length === 1, JSON.stringify({ first: first.outcome, grants: replayGrants.length }));
+    check("replay safety: the REPLAYED callback (state already consumed) writes NO second grant and refuses state_invalid",
+      replay.outcome === "state_invalid" && replayGrants.length === 1 && noCodeState(replay.location), JSON.stringify({ replay: replay.outcome, grants: replayGrants.length }));
+  }
+  const throwOps = { ...okOps, exchangeCode: async () => { throw new Error("boom"); } };
+  const exchFail = await cbMod.runOauthCallback({ admin: makeAdmin(), ops: throwOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+  check("callback on a failed token exchange → 302 error (exchange_failed), no code/state leak", exchFail.status === 302 && exchFail.outcome === "exchange_failed" && noCodeState(exchFail.location), exchFail.location);
+  const persistFail = await cbMod.runOauthCallback({ admin: makeAdmin({ grantErr: { message: "grant boom" } }), ops: okOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+  check("callback on a grant-write failure → 302 error persist_failed, no code/state leak", persistFail.outcome === "persist_failed" && noCodeState(persistFail.location), persistFail.location);
+
+  // Landing falls CLOSED to /auth when the tenant route is unresolvable (e.g. enterprise/unmounted) —
+  // never a guessed or shared address; still no code/state.
+  const unmounted = await cbMod.runOauthCallback({ admin: makeAdmin({ grant: { connection_id: CBCONN, status: "pending_verification", account_type: "enterprise", account_number: null } }), ops: okOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+  check("callback lands closed to /auth when the tenant route is unresolvable, still no code/state", unmounted.outcome === "connected" && unmounted.location.startsWith(`${APP}/auth?mode=login`) && noCodeState(unmounted.location), unmounted.location);
+}
+
+// ── Slice ③ — APPROVE (runApprove: the operator's per-tool durable consent writer) ─────────────────
+// Drives the REAL runApprove. `set_mcp_connection_approval` is SECURITY DEFINER and owns the FOR UPDATE
+// lock + reviewed-endpoint guard + pin/shape validation in-body; a fake caller client stands in for it,
+// so this proves the EDGE contract: the §9 pre-gates, the server-side pin + endpoint-hash reads (neither
+// is client-visible via get_mcp_connections_v2), the Slice ④ forward-seam client-supplied hash, and the
+// coded-error mapping (incl. the distinct MCP_ENDPOINT_CHANGED → 409 signal).
+console.log("\n— slice ③: approve (runApprove) —");
+{
+  const approveMod = await bundle("supabase/functions/_shared/mcp-gateway/approve.ts", "approve.mjs");
+  const ATEN = "ten-approve-1";
+  const ACONN = "33333333-3333-4333-8333-333333333333";
+  const AURL = "https://public.example/mcp-approve";
+  const APIN = "a".repeat(64);
+  const AEHASH = endpointHashOf(AURL);
+  const setCalls = [];
+  const pgErr = (message, code) => ({ message, code, details: null, hint: null });
+  // Fake caller (RLS-scoped) client: the §9 gates + capture the writer call.
+  const makeApproveUser = (o = {}) => ({
+    rpc: async (fn, params) => {
+      if (fn === "current_user_tenant_id") return { data: o.tenant === undefined ? ATEN : o.tenant, error: o.tenantErr ?? null };
+      if (fn === "is_current_user_tenant_admin") return { data: o.admin === undefined ? true : o.admin, error: null };
+      if (fn === "get_mcp_connections_v2") return { data: o.v2 === undefined ? [{ connection_id: ACONN }] : o.v2, error: o.v2Err ?? null };
+      if (fn === "set_mcp_connection_approval") { setCalls.push({ fn, params }); return o.setResult ?? { data: null, error: null }; }
+      return { data: null, error: null };
+    },
+  });
+  // Fake service-role admin: get_mcp_connection_secret feeds the endpoint-hash read (server-read path).
+  const makeApproveAdmin = (o = {}) => ({
+    rpc: async (fn) => {
+      if (fn === "get_mcp_connection_secret") return { data: o.secret === undefined ? { configured: true, enabled: true, tenant_id: ATEN, endpoint_hash: AEHASH } : o.secret, error: o.secretErr ?? null };
+      return { data: null, error: null };
+    },
+  });
+  const readToolPinOk = async () => APIN;
+  const readToolPinMissing = async () => null;
+  const inApprove = (over = {}) => ({ connectionId: ACONN, toolName: "send_message", expectedTenantId: ATEN, expectedEndpointHash: null, argsShapeHash: null, expiresAt: null, ...over });
+
+  // Happy path — server-read pin + endpoint hash → 200 approved, writer called with all named params.
+  setCalls.length = 0;
+  const okApprove = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());
+  check("approve happy path → 200 approved:true", okApprove.httpStatus === 200 && okApprove.body.ok === true && okApprove.body.approved === true, JSON.stringify(okApprove.body));
+  check("approve calls set_mcp_connection_approval once with the server-read pin + endpoint hash + tenant + tool",
+    setCalls.length === 1 && setCalls[0].params._pin === APIN && setCalls[0].params._expected_endpoint_hash === AEHASH && setCalls[0].params._tenant_id === ATEN && setCalls[0].params._tool_name === "send_message",
+    JSON.stringify(Object.keys(setCalls[0]?.params ?? {})));
+  check("approve response leaks no pin/endpoint hash to the caller", !JSON.stringify(okApprove.body).includes(APIN) && !JSON.stringify(okApprove.body).includes(AEHASH), JSON.stringify(okApprove.body));
+
+  // Forward seam — a client-supplied reviewed endpoint hash is passed through (the writer compares it
+  // against the locked endpoint; it can only fail the write, never widen it), and NO server secret is read.
+  setCalls.length = 0;
+  const suppliedHash = "b".repeat(64);
+  const okSupplied = await approveMod.runApprove(
+    { userClient: makeApproveUser(), admin: { rpc: () => { throw new Error("approve must not read the secret when the caller supplied the endpoint hash"); } }, readToolPin: readToolPinOk },
+    inApprove({ expectedEndpointHash: suppliedHash }),
+  );
+  check("approve honors a client-supplied reviewed endpoint hash without reading the secret (Slice ④ forward seam)",
+    okSupplied.httpStatus === 200 && setCalls[0].params._expected_endpoint_hash === suppliedHash, JSON.stringify(okSupplied.body));
+
+  // §9 pre-gates + shape validation.
+  check("approve rejects a malformed connection_id (400)", (await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ connectionId: "nope" }))).body.error === "bad_connection_id");
+  check("approve rejects a malformed tool name (400)", (await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ toolName: "bad tool!" }))).body.error === "bad_tool_name");
+  check("approve rejects a malformed client-supplied endpoint hash (400)", (await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ expectedEndpointHash: "xyz" }))).body.error === "bad_expected_endpoint");
+  check("approve refuses when the caller has no tenant (400)", (await approveMod.runApprove({ userClient: makeApproveUser({ tenant: null }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove())).body.error === "no_tenant");
+  check("approve refuses a workspace-switch race (409 tenant_mismatch)", (await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ expectedTenantId: "ten-OTHER" }))).body.error === "tenant_mismatch");
+  check("approve refuses a non-admin caller (403 forbidden)", (await approveMod.runApprove({ userClient: makeApproveUser({ admin: false }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove())).body.error === "forbidden");
+  check("approve refuses a connection not visible to the caller (404 not_found, no IDOR)", (await approveMod.runApprove({ userClient: makeApproveUser({ v2: [] }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove())).body.error === "not_found");
+
+  // Tool absent from the verified catalog → 409 tool_not_verified (the pin cannot be resolved).
+  const notVerified = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinMissing }, inApprove());
+  check("approve refuses a tool absent from the verified catalog (409 tool_not_verified)", notVerified.httpStatus === 409 && notVerified.body.error === "tool_not_verified", JSON.stringify(notVerified.body));
+
+  // §9 defense in depth — the server-read secret's tenant must be the caller's.
+  const crossTenant = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin({ secret: { configured: true, enabled: true, tenant_id: "ten-ELSE", endpoint_hash: AEHASH } }), readToolPin: readToolPinOk }, inApprove());
+  check("approve refuses when the loaded secret's tenant ≠ the caller's (403 forbidden, defense in depth)", crossTenant.httpStatus === 403 && crossTenant.body.error === "forbidden", JSON.stringify(crossTenant.body));
+
+  // Unconfigured connection (no endpoint) → 409.
+  const unconf = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin({ secret: { configured: false } }), readToolPin: readToolPinOk }, inApprove());
+  check("approve refuses an unconfigured connection (409 connection_unconfigured)", unconf.httpStatus === 409 && unconf.body.error === "connection_unconfigured", JSON.stringify(unconf.body));
+
+  // A DISABLED (but owned — v2 confirmed it) connection reports its true state, not a misleading
+  // `forbidden` (peer-gate #2). The disabled row may omit tenant_id, so this must fire before that compare.
+  const disabledApprove = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin({ secret: { configured: true, enabled: false } }), readToolPin: readToolPinOk }, inApprove());
+  check("approve reports a disabled owned connection honestly (409 connection_disabled, never a misleading 403 forbidden)", disabledApprove.httpStatus === 409 && disabledApprove.body.error === "connection_disabled", JSON.stringify(disabledApprove.body));
+
+  // Coded writer errors → mapWriterError. 42501 forbidden → uniform 403 (no which-gate suffix).
+  const wForbidden = await approveMod.runApprove({ userClient: makeApproveUser({ setResult: { data: null, error: pgErr("MCP_FORBIDDEN: connection not in tenant", "42501") } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());
+  check("approve maps a writer 42501 → uniform 403 MCP_FORBIDDEN (no suffix)", wForbidden.httpStatus === 403 && wForbidden.body.error === "MCP_FORBIDDEN" && !JSON.stringify(wForbidden.body).includes("not in tenant"), JSON.stringify(wForbidden.body));
+  // MCP_ENDPOINT_CHANGED (also 42501) → DISTINCT 409 (actionable re-review signal, not collapsed).
+  const wEndpoint = await approveMod.runApprove({ userClient: makeApproveUser({ setResult: { data: null, error: pgErr("MCP_ENDPOINT_CHANGED: connection endpoint changed since the approval was reviewed", "42501") } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());
+  check("approve surfaces MCP_ENDPOINT_CHANGED distinctly (409), not collapsed into the uniform MCP_FORBIDDEN", wEndpoint.httpStatus === 409 && wEndpoint.body.error === "MCP_ENDPOINT_CHANGED", JSON.stringify(wEndpoint.body));
+  // A 22023 validation token → 400 with the specific code.
+  const wBadPin = await approveMod.runApprove({ userClient: makeApproveUser({ setResult: { data: null, error: pgErr("MCP_BAD_PIN", "22023") } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());
+  check("approve maps a writer 22023 → 400 with the specific MCP_* code", wBadPin.httpStatus === 400 && wBadPin.body.error === "MCP_BAD_PIN", JSON.stringify(wBadPin.body));
+  // Codex P2 (atomic TOCTOU close): the future-expiry TRIGGER raises MCP_EXPIRY_IN_PAST (22023) — the
+  // token path maps it to a closed 400 (so a slightly-future expiry that lapsed before the write, which
+  // the edge pre-check could not catch, is still refused honestly, never a lying approved:true).
+  const wExpiry = await approveMod.runApprove({ userClient: makeApproveUser({ setResult: { data: null, error: pgErr("MCP_EXPIRY_IN_PAST: approval expiry must be in the future", "22023") } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());
+  check("approve maps the writer's MCP_EXPIRY_IN_PAST trigger (22023) → 400 (TOCTOU closed atomically)", wExpiry.httpStatus === 400 && wExpiry.body.error === "MCP_EXPIRY_IN_PAST", JSON.stringify(wExpiry.body));
+  // Codex P2 (calendar-invalid): a timestamptz cast error (22008 datetime_field_overflow, e.g. Feb 30)
+  // surfaces as a closed 400 bad_timestamp, never the generic 500.
+  const wBadTs = await approveMod.runApprove({ userClient: makeApproveUser({ setResult: { data: null, error: pgErr('date/time field value out of range', "22008") } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());
+  check("approve maps a datetime cast error (22008) → 400 bad_timestamp (never a generic 500)", wBadTs.httpStatus === 400 && wBadTs.body.error === "bad_timestamp" && !JSON.stringify(wBadTs.body).includes("out of range"), JSON.stringify(wBadTs.body));
+
+  // Remaining input-validation + lookup-failure branches (compliance coverage).
+  check("approve rejects a malformed args_shape_hash (400 bad_args_shape)", (await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ argsShapeHash: "xyz" }))).body.error === "bad_args_shape");
+  // §13 (Codex P2) — an already-past or malformed `expires_at` must be REJECTED, not stored with a lying
+  // `approved: true` (verify_mcp_connection_approval would instantly reject the stored row as expired).
+  const pastExpiry = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ expiresAt: "2000-01-01T00:00:00Z" }));
+  check("approve rejects an already-past expires_at (400 expiry_in_past — never a lying approved:true)", pastExpiry.httpStatus === 400 && pastExpiry.body.error === "expiry_in_past", JSON.stringify(pastExpiry.body));
+  check("approve rejects a malformed expires_at (400 bad_expiry)", (await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ expiresAt: "not-a-date" }))).body.error === "bad_expiry");
+  const futureExpiry = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ expiresAt: "2099-01-01T00:00:00Z" }));
+  check("approve accepts a FUTURE expires_at → 200 approved, forwarded to the writer", futureExpiry.httpStatus === 200 && futureExpiry.body.approved === true, JSON.stringify(futureExpiry.body));
+  const noEndpoint = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin({ secret: { configured: true, enabled: true, tenant_id: ATEN, endpoint_hash: "not-a-hash" } }), readToolPin: readToolPinOk }, inApprove());
+  check("approve refuses a configured connection whose endpoint hash is unusable (409 no_endpoint)", noEndpoint.httpStatus === 409 && noEndpoint.body.error === "no_endpoint", JSON.stringify(noEndpoint.body));
+  const v2Fail = await approveMod.runApprove({ userClient: makeApproveUser({ v2Err: { message: "v2 boom" } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());
+  check("approve surfaces a v2 lookup error as 500 lookup_failed (never leaks the PG message)", v2Fail.httpStatus === 500 && v2Fail.body.error === "lookup_failed" && !JSON.stringify(v2Fail.body).includes("boom"), JSON.stringify(v2Fail.body));
+  const secretFail = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin({ secretErr: { message: "secret boom" } }), readToolPin: readToolPinOk }, inApprove());
+  check("approve surfaces a secret-read error as 500 lookup_failed (never leaks the PG message)", secretFail.httpStatus === 500 && secretFail.body.error === "lookup_failed" && !JSON.stringify(secretFail.body).includes("boom"), JSON.stringify(secretFail.body));
+
+  // readApproveInput — untrusted body → typed input; empty/wrong-typed → null.
+  const parsed = approveMod.readApproveInput({ connection_id: ACONN, tool_name: "send_message", expected_endpoint_hash: AEHASH, args_shape_hash: "c".repeat(64), expires_at: "2030-01-01T00:00:00Z" }, ATEN);
+  check("readApproveInput maps snake_case body → typed input", parsed.connectionId === ACONN && parsed.toolName === "send_message" && parsed.expectedEndpointHash === AEHASH && parsed.argsShapeHash === "c".repeat(64) && parsed.expiresAt === "2030-01-01T00:00:00Z" && parsed.expectedTenantId === ATEN, JSON.stringify(parsed));
+  const parsedEmpty = approveMod.readApproveInput({}, null);
+  check("readApproveInput on an empty body → empty connection/tool, all optionals null", parsedEmpty.connectionId === "" && parsedEmpty.toolName === "" && parsedEmpty.expectedEndpointHash === null && parsedEmpty.argsShapeHash === null && parsedEmpty.expiresAt === null, JSON.stringify(parsedEmpty));
+}
+
+// ── Slice ③ — EXECUTE (runExecute: the runtime dispatch door) ───────────────────────────────────────
+// Drives the REAL runExecute, which builds the REAL runner deps (canonical loader, consent verifier,
+// capability resolver, Rail receipt) from the fake admin and dispatches to a REAL MCP server over the
+// socket. This proves the EDGE contract on top of the already-proven runner: the "owner go" flag gate,
+// the workspace guard, tenant/authority resolution, and the outcome→HTTP mapping.
+console.log("\n— slice ③: execute (runExecute) —");
+{
+  const executeMod = await bundle("supabase/functions/_shared/mcp-gateway/execute.ts", "execute.mjs");
+  const XTEN = "ten-exec-1";
+  const XCONN = "44444444-4444-4444-4444-444444444444";
+  const XURL = "https://public.example/mcp-exec";
+  const XEURL = "https://public.example/mcp-exec-err";
+  const XDOWN = "https://public.example/mcp-exec-down";
+  const execSrv = {}; routes.set("/mcp-exec", mcpServer(execSrv));
+  const execErrSrv = { callResponse: { content: [], isError: true } }; routes.set("/mcp-exec-err", mcpServer(execErrSrv));
+  routes.set("/mcp-exec-down", (req, res) => { if (req.method === "DELETE") { res.writeHead(204).end(); return; } res.writeHead(503, { "Content-Type": "text/plain" }).end("unavailable"); });
+  const secretFor = (url, over = {}) => ({ configured: true, enabled: true, connection_id: XCONN, tenant_id: XTEN, server_url: url, endpoint_hash: endpointHashOf(url), auth_token: "secret-token", auth_kind: "bearer", transport: "http", visibility: "tenant", config_generation: 1, ...over });
+  const recordCalls = [];
+  // Fake service-role admin serving EVERY rpc the runner's production deps call.
+  const makeExecuteAdmin = (o = {}) => ({
+    rpc: async (fn) => {
+      if (fn === "_mcp_caller_capabilities") return { data: o.caps === undefined ? [] : o.caps, error: o.capsErr ?? null };
+      if (fn === "get_mcp_connection_secret") return { data: o.secret === undefined ? secretFor(XURL) : o.secret, error: o.secretErr ?? null };
+      if (fn === "verify_mcp_connection_approval") return { data: o.approval === undefined ? { authorized: false, reason: "approval_required" } : o.approval, error: null };
+      if (fn === "record_capability_run") { recordCalls.push(fn); return { error: o.recordErr ?? null }; }
+      return { data: null, error: null };
+    },
+  });
+  const makeExecuteUser = (o = {}) => ({
+    rpc: async (fn) => {
+      if (fn === "current_user_tenant_id") return { data: o.tenant === undefined ? XTEN : o.tenant, error: o.tenantErr ?? null };
+      return { data: null, error: null };
+    },
+  });
+  const inExec = (over = {}) => ({ connectionId: XCONN, toolName: "list_records", args: {}, mode: "execute", expectedTenantId: XTEN, actor: "user-x", executeEnabled: true, ...over });
+
+  // THE "OWNER GO" GATE — mode:"execute" with the flag OFF short-circuits BEFORE any client/provider
+  // contact. Hand throwing clients; it must still return execute_not_enabled untouched.
+  const throwUser = { rpc: () => { throw new Error("execute_not_enabled must short-circuit before any client call"); } };
+  const throwAdmin = { rpc: () => { throw new Error("execute_not_enabled must not build deps"); } };
+  const gated = await executeMod.runExecute({ userClient: throwUser, admin: throwAdmin }, inExec({ executeEnabled: false }));
+  check("execute with the owner flag OFF refuses execute_not_enabled BEFORE any client/provider contact", gated.httpStatus === 403 && gated.body.error === "execute_not_enabled", JSON.stringify(gated.body));
+
+  // prepare is ALWAYS allowed (contacts no provider) even with the flag OFF.
+  execSrv.methods = [];
+  const prep = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin() }, inExec({ mode: "prepare", executeEnabled: false }));
+  check("execute mode:prepare is allowed even with the flag OFF → 200 prepared", prep.httpStatus === 200 && prep.body.outcome === "prepared", JSON.stringify(prep.body));
+  check("...and prepare contacts NO provider (runner.ts stages intent only)", !(execSrv.methods?.length), JSON.stringify(execSrv.methods ?? []));
+
+  // A read tool in execute mode dispatches → read_observed → 200.
+  const readRun = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin() }, inExec({ toolName: "list_records", args: { q: "x" } }));
+  check("execute a read tool → 200 read_observed", readRun.httpStatus === 200 && readRun.body.outcome === "read_observed", JSON.stringify(readRun.body));
+
+  // A mutation without a durable approval → refused approval_required → 403.
+  const noApp = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin() }, inExec({ toolName: "send_message", args: { to: "a" } }));
+  check("execute a mutation without approval → 403 refused approval_required", noApp.httpStatus === 403 && noApp.body.outcome === "refused" && noApp.body.code === "approval_required", JSON.stringify(noApp.body));
+
+  // A mutation WITH a durable, authorized approval → executed → 200, receipt recorded.
+  recordCalls.length = 0;
+  const okExec = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ approval: { authorized: true, reason: "authorized" } }) }, inExec({ toolName: "send_message", args: { to: "a" } }));
+  check("execute a mutation with durable approval → 200 executed", okExec.httpStatus === 200 && okExec.body.outcome === "executed", JSON.stringify(okExec.body));
+  check("...and the canonical Rail receipt persisted (recorded:true)", okExec.body.recorded === true && recordCalls.length === 1, JSON.stringify({ recorded: okExec.body.recorded, calls: recordCalls.length }));
+
+  // A mutation that dispatches then reports isError → outcome_unknown → 200 (NEVER a 5xx that invites a
+  // duplicating retry). The body.outcome is the authoritative "check before running again" signal.
+  const unknownExec = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XEURL), approval: { authorized: true, reason: "authorized" } }) }, inExec({ toolName: "send_message", args: { to: "a" } }));
+  check("execute a mutation that dispatched then errored → 200 outcome_unknown (never a retry-inviting 5xx)", unknownExec.httpStatus === 200 && unknownExec.body.outcome === "outcome_unknown", JSON.stringify(unknownExec.body));
+
+  // A READ that dispatches then reports isError → tool_error → 502 (no side effect to be unknown about).
+  const readErr = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XEURL) }) }, inExec({ toolName: "list_records" }));
+  check("execute a read tool that dispatched then errored → 502 tool_error", readErr.httpStatus === 502 && readErr.body.outcome === "tool_error", JSON.stringify(readErr.body));
+
+  // Provider unreachable before dispatch → provider_unavailable → 502.
+  const down = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XDOWN) }) }, inExec({ toolName: "list_records" }));
+  check("execute against an unreachable provider → 502 provider_unavailable", down.httpStatus === 502 && down.body.outcome === "provider_unavailable", JSON.stringify(down.body));
+
+  // §9 (peer-gate #1) — a "cannot prove you own this connection" refusal is collapsed to a UNIFORM
+  // not_found so execute is not a cross-tenant STATE oracle. A foreign-tenant connection (the runner
+  // refuses foreign_tenant internally) surfaces as 404 not_found, NOT the distinguishing code.
+  const foreign = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XURL, { tenant_id: "ten-EVIL" }) }) }, inExec({ toolName: "list_records" }));
+  check("execute a foreign-tenant connection collapses to a uniform 404 not_found (§9 — no cross-tenant oracle)", foreign.httpStatus === 404 && foreign.body.outcome === "refused" && foreign.body.code === "not_found", JSON.stringify(foreign.body));
+  // ORACLE-CLOSURE: four distinct connection STATES a caller must not distinguish for a UUID they don't
+  // own — nonexistent, disabled, non-executable facet, and foreign-tenant — all return the SAME body.
+  const oracleNonexistent = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: { configured: false } }) }, inExec({ toolName: "list_records" }));
+  const oracleDisabled = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XURL, { enabled: false }) }) }, inExec({ toolName: "list_records" }));
+  const oracleUnusable = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XURL, { auth_kind: "api_key" }) }) }, inExec({ toolName: "list_records" }));
+  const oracleBodies = [oracleNonexistent, oracleDisabled, oracleUnusable, foreign].map((r) => JSON.stringify({ s: r.httpStatus, o: r.body.outcome, c: r.body.code }));
+  check("execute closes the cross-tenant STATE oracle — nonexistent / disabled / unusable / foreign all return an identical 404 not_found", oracleBodies.every((b) => b === oracleBodies[0]) && oracleNonexistent.httpStatus === 404 && oracleNonexistent.body.code === "not_found", JSON.stringify(oracleBodies));
+
+  // INT-082 — an owner_only connection needs the restricted capability; without it the runner refuses
+  // owner_only_forbidden, which is ALSO collapsed to not_found so an ordinary member never learns the
+  // owner_only connection exists (mirroring get_mcp_connections_v2's hiding).
+  const ownerOnlyNoCap = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XURL, { visibility: "owner_only" }), caps: [] }) }, inExec({ toolName: "list_records" }));
+  check("execute an owner_only connection without the restricted capability → 404 not_found (existence hidden, INT-082)", ownerOnlyNoCap.httpStatus === 404 && ownerOnlyNoCap.body.code === "not_found", JSON.stringify(ownerOnlyNoCap.body));
+  const ownerOnlyCap = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XURL, { visibility: "owner_only" }), caps: ["mcp.connections.use_restricted"] }) }, inExec({ toolName: "list_records" }));
+  check("...and WITH the tenant-bound restricted capability an owner_only read executes (read_observed)", ownerOnlyCap.httpStatus === 200 && ownerOnlyCap.body.outcome === "read_observed", JSON.stringify(ownerOnlyCap.body));
+
+  // Edge pre-gates.
+  const badId = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin() }, inExec({ connectionId: "nope" }));
+  check("execute rejects a malformed connection_id (400)", badId.httpStatus === 400 && badId.body.error === "bad_connection_id");
+  const badTool = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin() }, inExec({ toolName: "bad tool!" }));
+  check("execute rejects a malformed tool name (400)", badTool.httpStatus === 400 && badTool.body.error === "bad_tool_name");
+  const noTen = await executeMod.runExecute({ userClient: makeExecuteUser({ tenant: null }), admin: makeExecuteAdmin() }, inExec({ toolName: "list_records" }));
+  check("execute refuses when the caller has no tenant (400 no_tenant)", noTen.httpStatus === 400 && noTen.body.error === "no_tenant");
+  const switchRace = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin() }, inExec({ toolName: "list_records", expectedTenantId: "ten-OTHER" }));
+  check("execute refuses a workspace-switch race (409 tenant_mismatch)", switchRace.httpStatus === 409 && switchRace.body.error === "tenant_mismatch");
+
+  // readExecuteInput — untrusted body → typed input; mode defaults to prepare (fail-safe); args → {}.
+  const parsed = executeMod.readExecuteInput({ connection_id: XCONN, tool_name: "send_message", mode: "execute", args: { to: "a" }, timeout_ms: 5000 }, XTEN, "actor-1", true);
+  check("readExecuteInput maps snake_case body → typed input", parsed.connectionId === XCONN && parsed.toolName === "send_message" && parsed.mode === "execute" && parsed.args.to === "a" && parsed.timeoutMs === 5000 && parsed.actor === "actor-1" && parsed.executeEnabled === true, JSON.stringify(parsed));
+  const parsedDefault = executeMod.readExecuteInput({ connection_id: XCONN, tool_name: "x", mode: "banana", args: [1, 2] }, null, "actor-1", false);
+  check("readExecuteInput defaults an unknown mode to prepare (fail-safe) and a non-object args to {}", parsedDefault.mode === "prepare" && typeof parsedDefault.args === "object" && !Array.isArray(parsedDefault.args) && Object.keys(parsedDefault.args).length === 0, JSON.stringify(parsedDefault));
+  const parsedClamp = executeMod.readExecuteInput({ connection_id: XCONN, tool_name: "x", timeout_ms: 999999 }, null, "actor-1", true);
+  check("readExecuteInput clamps an oversized caller timeout_ms to the 30s ceiling (untrusted callers cannot hold the invocation open)", parsedClamp.timeoutMs === 30000, JSON.stringify(parsedClamp.timeoutMs));
 }
 
 server.close();

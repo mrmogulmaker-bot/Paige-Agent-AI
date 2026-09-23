@@ -37,6 +37,18 @@
 .so {
   display: block;
   padding: 12px 14px 18px;
+  /* Local desk vocabulary — the extra elevation/glow steps the base scale does not name, every
+     value derived from a base token so both themes are authored at once. Same block
+     `social-command.css` declares at `.social-page`, and the same one the approved prototype
+     carries; it is repeated here rather than widened to `:root` because that file scopes it to a
+     surface and widening a shared declaration to unblock one band is how a token set stops
+     meaning anything. */
+  --sd-line-strong: color-mix(in srgb, var(--line), var(--ink) 15%);
+  --sd-panel: linear-gradient(180deg, var(--surface-2), var(--surface));
+  --sd-raise: color-mix(in srgb, var(--surface-2), var(--ink) 4%);
+  --sd-ring-v: 0 0 0 1px color-mix(in srgb, var(--violet) 40%, transparent);
+  --sd-ring-g: 0 0 0 1px color-mix(in srgb, var(--gold) 42%, transparent);
+  --sd-cast: 0 10px 26px -10px color-mix(in srgb, var(--ink) 30%, transparent);
   background:
     repeating-linear-gradient(
       135deg,
@@ -50,17 +62,28 @@
 
 /* Each band is a raised plate on that field. Same width, same radius, same padding — the symmetry
  * the instruction asked to keep — with the elevation doing the separating instead of a rule. */
+/* THE APPROVED PLATE (§28 — prototype screen 1). Two corner radials rather than a flat top wash:
+ * violet from the top-left, a warmer gold breath from the top-right, over the panel gradient. The
+ * lit inset top edge and the deeper cast are what make it read as raised rather than drawn on. */
 .so-band {
   position: relative;
-  margin-bottom: 10px;
-  padding: 13px 16px 6px;
+  margin-bottom: 12px;
+  padding: 15px 17px 9px;
   border: 1px solid var(--violet-line);
-  border-radius: var(--r-m);
+  border-radius: var(--r-l);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--violet-tint) 55%, var(--surface)) 0%, var(--surface) 78px),
-    var(--surface);
-  box-shadow: var(--sh-1);
+    radial-gradient(88% 66% at 6% 0%, color-mix(in srgb, var(--violet-tint) 92%, transparent) 0%, transparent 56%),
+    radial-gradient(66% 56% at 97% 2%, color-mix(in srgb, var(--gold-tint) 62%, transparent) 0%, transparent 50%),
+    var(--sd-panel);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 50%, transparent), var(--sh-2);
+  overflow: hidden;
   animation: so-rise .34s cubic-bezier(.22,.61,.36,1) both;
+}
+/* The desk's ONE warm signal: a gold hairline sweeping the top edge and fading out by two-thirds.
+ * Inset from the corners so it reads as a highlight on the plate, never as a border. */
+.so-band::after {
+  content: ""; position: absolute; left: 22px; right: 22px; top: 0; height: 2px;
+  background: linear-gradient(90deg, var(--gold-bright), var(--gold-line) 30%, transparent 62%);
 }
 .so-band:nth-of-type(2) { animation-delay: .05s; }
 .so-band:nth-of-type(3) { animation-delay: .1s; }
@@ -75,6 +98,75 @@
 
 
 
+/* ── THE APPROVED BUTTON SYSTEM, scoped to this desk ───────────────────────────────────────────
+ *
+ * The prototype (§28, screen 1-3) spends colour in a specific way that the shared Solo variants do
+ * not: the PRIMARY is a violet gradient in BOTH themes, where `.paige-solo .btn-p` is near-black
+ * `--ink` in light; and the COMMIT act is FILLED gold-bright with dark ink on it, where
+ * `.paige-solo .btn-g` is a pale gold tint with gold text. `.btn-q`, the quiet borderless act the
+ * approved head uses for Open Catalog, has no shared definition at all.
+ *
+ * Scoped to `.so` rather than widened: those shared variants are correct for the surfaces that
+ * approved them, and rewriting a platform-wide button to match one desk is exactly the §58 risk
+ * this avoids. */
+.so .btn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  height: 34px; padding: 0 14px; border-radius: 10px; font-size: 13px; font-weight: 500;
+  border: 1px solid var(--line); background: var(--sd-panel);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 55%, transparent), var(--sh-1);
+  transition: transform .18s cubic-bezier(.22,.61,.36,1), box-shadow .18s, border-color .18s, background .18s;
+  white-space: nowrap; flex: none;
+}
+.so .btn-s { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 8px; }
+
+/* PRIMARY — violet, the brand's interactive colour: a lit top edge and a coloured cast beneath.
+ * It carries weight without spending gold, which this desk owes to the two acts that COMMIT. */
+.so .btn-p {
+  background: linear-gradient(180deg, var(--violet-2), var(--violet)); color: #fff;
+  border-color: color-mix(in srgb, var(--violet) 62%, var(--ink));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.26),
+              0 1px 2px color-mix(in srgb, var(--violet) 40%, transparent),
+              0 10px 22px -12px color-mix(in srgb, var(--violet) 78%, transparent);
+}
+
+/* GOLD — spent ONLY on the two acts that commit: sending it, and signing it. Filled and bright
+ * with dark ink on it, the way the Marketplace hero act is filled (§11). */
+.so .btn-g {
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold)); color: #2a1c00; font-weight: 600;
+  border-color: color-mix(in srgb, var(--gold) 76%, var(--ink));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.45),
+              0 1px 2px color-mix(in srgb, var(--gold) 40%, transparent),
+              0 8px 18px -10px color-mix(in srgb, var(--gold) 62%, transparent);
+}
+
+/* QUIET — a way OUT of a surface rather than one of its acts. No border, no ground, until hover. */
+.so .btn-q {
+  border-color: transparent; background: transparent; box-shadow: none; color: var(--ink-3);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .so .btn:hover {
+    transform: translateY(-2px); border-color: var(--sd-line-strong);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 60%, transparent), var(--sd-cast);
+  }
+  .so .btn-p:hover {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--violet-2) 88%, #fff), var(--violet-2));
+    border-color: var(--violet-2);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.34), var(--sd-ring-v),
+                0 14px 30px -12px color-mix(in srgb, var(--violet) 88%, transparent);
+  }
+  .so .btn-g:hover {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--gold-bright) 82%, #fff), var(--gold-bright));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.55), var(--sd-ring-g),
+                0 12px 26px -10px color-mix(in srgb, var(--gold) 78%, transparent);
+  }
+  .so .btn-q:hover {
+    background: var(--surface-sunk); color: var(--ink); box-shadow: none; transform: translateY(-1px);
+  }
+}
+.so .btn:active { transform: translateY(0); }
+.so .btn:disabled { opacity: .45; cursor: not-allowed; }
+
 /* ── bands ──────────────────────────────────────────────────────────────────────────────────── */
 
 
@@ -86,9 +178,33 @@
  * a screen-reader heading list showed one entry for the whole tab. The rendered weight and
  * size are unchanged; only the element is. */
 .so-band-head h3 {
-  margin: 0; font: 500 13.5px/1.3 var(--font); letter-spacing: -.006em; color: var(--ink);
+  margin: 0; font: 600 14.5px/1.3 var(--font); letter-spacing: -.018em; color: var(--ink);
 }
-.so-band-head small { font-size: 11.5px; color: var(--ink-3); text-wrap: pretty; }
+/* The approved measure. `flex:1 0 100%` with a 74ch cap is deliberately BOTH: the basis lets it
+ * claim the width it needs, the cap holds it to a readable line, and together they place it to the
+ * right of the acts exactly as the approved head does. Neither value works alone. */
+.so-band-head small {
+  flex: 1 0 100%; max-width: 74ch;
+  font-size: 11.8px; line-height: 1.55; color: var(--ink-3); text-wrap: pretty;
+}
+.so-band-head small b { color: var(--ink-2); font-weight: 600; }
+/* The flex spacer that pushes the acts away from the title, per the approved head. */
+.so-sp { flex: 1; }
+/* The record count, as approved: a dotted violet pill, immediately after the title — never a green
+ * "ok" badge, which reads as a health signal rather than a count. */
+.so-count {
+  display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px;
+  border-radius: 99px; font-size: 11px; font-weight: 600; letter-spacing: .02em;
+  white-space: nowrap; flex: none;
+  background: var(--violet-tint); color: var(--violet);
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 32%, transparent);
+}
+.so-count-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 18%, transparent),
+              0 0 7px color-mix(in srgb, currentColor 80%, transparent);
+}
 
 /* ── readiness ──────────────────────────────────────────────────────────────────────────────── */
 
@@ -163,15 +279,19 @@
 
 /* The heading carries a violet mark. It is what makes each band read as its own thing at a glance
  * now that the masthead above them is gone. */
-.so-band-head h3 { position: relative; padding-left: 11px; }
+.so-band-head h3 { position: relative; padding-left: 12px; }
+/* Lit rather than flat — a violet gradient with a glow, which is what separates the approved
+ * plate from a rule drawn beside a heading. */
 .so-band-head h3::before {
   content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-  width: 3px; height: 13px; border-radius: 2px; background: var(--violet);
+  width: 3px; height: 14px; border-radius: 2px;
+  background: linear-gradient(180deg, var(--violet-2), var(--violet));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--violet) 55%, transparent);
 }
 
 /* The orientation line the removed masthead used to carry. */
 .so-orient {
-  margin: -4px 0 12px; max-width: 82ch;
+  margin: -4px 0 12px; max-width: 74ch;
   font-size: 11.5px; line-height: 1.55; color: var(--ink-3); text-wrap: pretty;
 }
 
@@ -210,7 +330,7 @@
 .so-tr-4 { grid-template-columns: minmax(0, 2.2fr) auto minmax(0, .8fr) minmax(0, .9fr); }
 .so-tr:last-child { border-bottom: 0; }
 .so-th {
-  font: 600 10.5px/1 var(--font); letter-spacing: .08em; text-transform: uppercase;
+  font: 600 11px/1 var(--font); letter-spacing: .05em; text-transform: uppercase;
   padding-bottom: 7px;
 }
 .so-tr > span { min-width: 0; font-size: 12px; color: var(--ink-2); overflow-wrap: anywhere; }
@@ -225,7 +345,9 @@
   font-weight: 500; color: var(--ink);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.so-tr.so-th > span { color: var(--violet); }
+/* Quiet, per the approved table — a violet header row competes with the rows beneath it for the
+ * same attention, and the headers are the part nobody needs to read twice. */
+.so-tr.so-th > span { color: var(--ink-3); }
 .so-tr > span.so-num { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 500; }
 .so-tr > span.so-num--ok   { color: var(--ok); }
 .so-tr > span.so-num--warn { color: var(--warn); }
@@ -254,38 +376,111 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 }
 .so-field select:disabled { opacity: .55; cursor: not-allowed; }
 
+/* ── first use ──────────────────────────────────────────────────────────────────────────────── */
+
+/* The band's empty state is COMPOSED rather than stated. What stood here before was a single grey
+ * sentence at the top of an otherwise blank frame, and an empty frame reads as a page that failed
+ * rather than one waiting to be used. The vertical room is deliberate: it is what stops the surface
+ * collapsing to a strip with the viewport dead beneath it.
+ *
+ * Not a card (the craft floor is explicit that a card is the lazy container, and this one would sit
+ * inside the band that already is one). It is a centred composition on the band's own ground. */
+.so-blank {
+  display: grid; justify-items: center; text-align: center;
+  gap: 9px; padding: 40px 20px 44px; max-width: 46ch; margin: 0 auto;
+}
+
+/* A drawn mark from the shared icon set — never a glyph or an emoji standing in for one. The plate
+ * carries the violet tint the band's own head uses, so first use reads as part of this surface. */
+.so-blank-mark {
+  display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 2px;
+  border-radius: 13px; color: var(--violet);
+  background: color-mix(in srgb, var(--violet-tint) 70%, var(--surface));
+  border: 1px solid var(--violet-line);
+}
+
+.so-blank h4 {
+  margin: 0; font: 600 15px/1.25 var(--font); letter-spacing: -.012em; color: var(--ink);
+}
+
+/* Measured, not the band's 74ch — a centred paragraph reads short or it does not get read. */
+.so-blank p {
+  margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--ink-2); text-wrap: pretty;
+}
+
+.so-blank-acts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 7px; }
+
+@media (max-width: 560px) {
+  .so-blank { padding: 30px 14px 34px; }
+  .so-blank-acts { width: 100%; }
+  .so-blank-acts .btn { flex: 1 1 auto; justify-content: center; }
+}
+
 .so-absent {
   margin: 0 0 14px; max-width: 74ch;
   font-size: 12px; line-height: 1.6; color: var(--ink-3); text-wrap: pretty;
 }
 
-/* ── the editor slide-over ──────────────────────────────────────────────────────────────────── */
+/* ── the editor sheet ───────────────────────────────────────────────────────────────────────── */
 
+/* THE APPROVED SHEET (§28 screen 2). It was a right-anchored slide-over pinned to the full height
+ * of the window; the approved surface is a CENTRED sheet with a wide radius and a gradient hairline
+ * across its top edge, sized to its content rather than to the viewport. It remains a real modal
+ * dialog — scrim, focus trap, Escape and inert are unchanged — only its shape and placement move. */
 .so-editor-scrim {
   position: fixed; inset: 0; z-index: 96;
-  background: var(--ink); opacity: .28; border: 0; padding: 0;
+  background: var(--ink); opacity: .32; border: 0; padding: 0;
 }
 .so-editor {
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 97;
-  width: min(460px, 100vw);
+  position: fixed; z-index: 97;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(760px, calc(100vw - 28px));
+  max-height: min(88vh, 940px);
   display: flex; flex-direction: column;
-  background: var(--canvas); border-left: 1px solid var(--line); box-shadow: var(--sh-3);
-  animation: so-slide 180ms ease-out;
+  overflow: hidden;
+  border: 1px solid var(--line); border-radius: var(--r-xl);
+  background: var(--sd-panel);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 55%, transparent), var(--sh-3);
+  animation: so-sheet 220ms cubic-bezier(.22,.61,.36,1);
 }
-@keyframes so-slide { from { transform: translateX(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+/* The sheet's own accent: violet running into gold, the two colours this flow spends — the second
+ * of which is the act at the END of it. A hairline, never a bar. */
+.so-editor::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--violet-2) 22%, var(--gold-bright) 72%, transparent);
+}
+@keyframes so-sheet {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)); }
+  to   { opacity: 1; transform: translate(-50%, -50%); }
+}
+@media (prefers-reduced-motion: reduce) { .so-editor { animation: none; } }
+
+/* Narrow: a full-height sheet again, because a centred card with 14px of gutter is worse than one
+   that simply owns the screen. */
+@media (max-width: 560px) {
+  .so-editor {
+    top: 0; left: 0; transform: none;
+    width: 100vw; max-height: 100vh; height: 100%;
+    border-radius: 0; animation: none;
+  }
+}
 
 .so-editor-head {
   display: flex; align-items: flex-start; gap: 12px;
-  padding: 16px 18px 12px; border-bottom: 1px solid var(--line-soft);
+  padding: 15px 20px; border-bottom: 1px solid var(--line-soft); background: var(--surface-2);
 }
-.so-editor-head h2 { margin: 0; font: 500 15px/1.3 var(--font); letter-spacing: -.008em; color: var(--ink); }
+.so-editor-head h2 { margin: 0; font: 600 14.5px/1.3 var(--font); letter-spacing: -.02em; color: var(--ink); }
 .so-editor-head p {
-  margin: 4px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); text-wrap: pretty;
+  margin: 2px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink-3); text-wrap: pretty;
 }
 
 .so-editor-body {
-  flex: 1; min-height: 0; overflow: auto; padding: 14px 18px; display: grid; gap: 14px;
+  flex: 1; min-height: 0; overflow: auto; padding: 18px 20px 20px; display: grid; gap: 14px;
   scrollbar-gutter: stable;
+  /* A raised card whose first pixel sits on the scroll boundary gets its top edge shaved. The
+     padding above is the room it needs; this keeps that room when the body is scrolled to a
+     heading rather than to its very top. */
+  scroll-padding-top: 8px;
 }
 
 .so-field { display: grid; gap: 6px; border: 0; padding: 0; margin: 0; min-width: 0; }
@@ -300,6 +495,45 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 .so-field input:focus-visible, .so-field textarea:focus-visible, .so-field select:focus-visible {
   outline: 2px solid var(--violet); outline-offset: 1px; border-color: var(--violet);
 }
+/* The document cell, as approved: a violet mark beside the name, dimmed to neutral when the row
+   carries no document at all, so the two cases are told apart at a glance rather than by reading. */
+.so-tr > span.so-doc {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  font-size: 12.5px; color: var(--ink-2);
+}
+.so-doc svg { flex: none; color: var(--violet); opacity: .82; }
+.so-doc[data-none] svg { color: var(--ink-3); opacity: .6; }
+.so-doc[data-none] > span { color: var(--ink-3); }
+.so-doc > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The honest marker on a source that is described but not yet built. Small, lowercase and beside
+   the name rather than replacing the description — the description says what it will do, this says
+   it cannot do it yet, and a reader needs both to decide what to pick instead (§13/§70.1). */
+.so-src-soon {
+  display: inline-block; margin-left: 7px; padding: 1px 7px; border-radius: 99px;
+  font: 500 10px/1.6 var(--font); font-style: normal; letter-spacing: .02em;
+  color: var(--warn); background: var(--warn-tint);
+  border: 1px solid color-mix(in srgb, var(--warn) 24%, transparent);
+  vertical-align: 1px;
+}
+
+/* The approved RECAP (§28 screen 3) — the last thing read before a legal document leaves the
+   building, so it is a table of labelled facts rather than prose: a fixed label column the eye can
+   run down, and the value beside it. */
+.so-recap { border: 1px solid var(--line); border-radius: var(--r-m); overflow: hidden; }
+.so-rrow {
+  display: flex; gap: 14px; align-items: baseline;
+  padding: 11px 14px; border-bottom: 1px solid var(--line-soft); font-size: 13px;
+}
+.so-rrow:last-child { border-bottom: 0; }
+.so-rrow > span:first-child { flex: none; width: 112px; font-size: 12px; color: var(--ink-3); }
+.so-rrow > span:last-child { flex: 1; min-width: 0; color: var(--ink); }
+.so-rrow .so-num { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 500; }
+@media (max-width: 560px) {
+  .so-rrow { flex-direction: column; gap: 3px; }
+  .so-rrow > span:first-child { width: auto; }
+}
+
 .so-money { display: flex; gap: 8px; }
 
 .so-pick { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -355,16 +589,55 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 
 /* Sales-owned working controls: stronger selected, focus and primary action contrast. */
 .solo-campaigns[data-campaigns-view="sales"] .so-editor { background: var(--canvas); }
-.so-editor .btn-p, .so .btn-p, .so-discard .btn-p {
-  background: #6d28d9; border-color: #6d28d9; color: #fff;
+/* THE APPROVED TREATMENT, carried into the PORTAL. Two things were wrong here at once.
+ *
+ * First, these were hardcoded hex — `#6d28d9` and `#5b21b6` — which §11 forbids outright and which
+ * silently flattened the approved violet GRADIENT into a solid fill wherever this rule reached.
+ *
+ * Second, and the reason it showed up at all: the editor and the sender render through
+ * `SalesDialogPortal`, OUTSIDE `.so`, so the approved block further up this file never applied to
+ * them. The commit act came out in the shared pale gold tint instead of the approved filled gold,
+ * and the quiet variant did not apply at all. Every variant now names its `.so-editor` twin. */
+.so-editor .btn.btn-p, .so .btn.btn-p, .so-discard .btn.btn-p {
+  background: linear-gradient(180deg, var(--violet-2), var(--violet)); color: #fff;
+  border-color: color-mix(in srgb, var(--violet) 62%, var(--ink));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.26),
+              0 1px 2px color-mix(in srgb, var(--violet) 40%, transparent),
+              0 10px 22px -12px color-mix(in srgb, var(--violet) 78%, transparent);
 }
-.so-editor .btn-p:hover:not(:disabled), .so .btn-p:hover:not(:disabled) { background: #5b21b6; }
+.so-editor .btn.btn-p:hover:not(:disabled), .so .btn.btn-p:hover:not(:disabled) {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--violet-2) 88%, #fff), var(--violet-2));
+  border-color: var(--violet-2);
+}
+/* GOLD — the act that COMMITS. Filled and bright with dark ink on it (§11), never the pale tint. */
+.so-editor .btn.btn-g, .so .btn.btn-g {
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold)); color: #2a1c00; font-weight: 600;
+  border-color: color-mix(in srgb, var(--gold) 76%, var(--ink));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.45),
+              0 1px 2px color-mix(in srgb, var(--gold) 40%, transparent),
+              0 8px 18px -10px color-mix(in srgb, var(--gold) 62%, transparent);
+}
+.so-editor .btn.btn-g:hover:not(:disabled), .so .btn.btn-g:hover:not(:disabled) {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--gold-bright) 82%, #fff), var(--gold-bright));
+}
+/* QUIET — a way out, not an act: no border and no ground until it is hovered. */
+.so-editor .btn.btn-q, .so .btn.btn-q {
+  border-color: transparent; background: transparent; box-shadow: none; color: var(--ink-3);
+}
+.so-editor .btn.btn-q:hover:not(:disabled), .so .btn.btn-q:hover:not(:disabled) {
+  background: var(--surface-sunk); color: var(--ink); box-shadow: none;
+}
+/* An inline choice inside the sheet body, not a block control spanning its width. */
+.so-editor-body > .btn-q { justify-self: start; }
 .so-editor button:focus-visible, .so button:focus-visible {
   outline: 3px solid var(--violet); outline-offset: 3px;
 }
 .so-pick button { min-height: 36px; border-radius: 8px; font-size: 12px; }
 .so-pick button:hover { border-color: var(--violet); background: var(--violet-tint); }
-.so-pick button[aria-pressed="true"] { background: #6d28d9; color: #fff; border-color: #6d28d9; }
+/* Tokenised. The same hardcoded violet as the block above, and the same §11 problem: a literal
+   hex does not follow the dark palette, so a selected choice carried a light-theme colour into a
+   dark-theme sheet. */
+.so-pick button[aria-pressed="true"] { background: var(--violet); color: #fff; border-color: var(--violet); }
 .so-field input, .so-field select, .so-field textarea { min-height: 40px; border-color: var(--ink-3); }
 .so-field input:disabled { opacity: .7; cursor: not-allowed; }
 .so-editor-body { align-content: start; }
@@ -393,8 +666,11 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 .so .so-terms { border-top:3px solid var(--violet); box-shadow:0 4px 18px color-mix(in srgb,var(--violet) 8%,transparent); }
 .so .so-band-head { align-items:center; gap:8px 12px; }
 .so .so-band-head h3 { font-size:15px; font-weight:650; }
-.so .so-terms .so-band-head h3 { flex:1; }
-.so .so-terms .so-band-head small { flex:0 0 100%; max-width:none; }
+/* REMOVED, both of them, because each cancelled a rule of the approved head (§28 screen 1):
+ * `h3{flex:1}` stretched the title across the row so the record count could never sit beside it,
+ * and the `small` override re-cancelled the 74ch measure with `max-width:none`. The approved
+ * behaviour is the base rule: title at its natural width, then the count, then a spacer, then the
+ * acts, with the line measured and placed to their right. */
 .so .so-band-head small { color:var(--ink-2); }
 .so .so-absent { margin:12px 0 2px; max-width:85ch; }
 .so-search { display:flex; flex-direction:column; gap:6px; min-width:0; }
@@ -403,7 +679,13 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 .so-search input::placeholder { color:var(--ink-3); }
 .so-search input:focus-visible,.so-search select:focus-visible { outline:2px solid var(--violet); outline-offset:2px; border-color:var(--violet); }
 .so-offers > .so-search { margin-bottom:12px; }
-.so-filters { display:grid; grid-template-columns:minmax(0,1fr) 160px; gap:8px 12px; margin:12px 0; }
+/* Approved: a flex row baseline-aligned at the bottom, with the search on a 320px BASIS rather
+ * than stretched across the plate. A full-width search beside a 160px select reads as a form; the
+ * approved pair reads as two filters. */
+.so-filters { display:flex; flex-wrap:wrap; gap:10px; align-items:end; margin:12px 0; }
+.so-filters > .so-search:first-child { flex:0 1 320px; min-width:170px; }
+/* Under the pair, on its own line — it qualifies the search, and inline it read as a third filter. */
+.so-filters-note { flex:1 0 100%; font-size:11.5px; color:var(--ink-3); }
 .so-filters small { grid-column:1/-1; color:var(--ink-2); font-size:11px; }
 .so-page-controls { display:flex; align-items:center; justify-content:flex-end; gap:7px; flex-wrap:wrap; padding-top:10px; }
 .so-page-controls > span { margin-right:auto; color:var(--ink-2); font-size:11px; }
@@ -655,3 +937,316 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
   .so-ec { border:1px solid CanvasText; }
   .so-subnav button[aria-selected="true"] { outline:2px solid Highlight; }
 }
+
+/* ─── THE DOCUMENT HALF OF AN AGREEMENT ────────────────────────────────────────────────────────
+ *
+ * The counterparty's signing page (`src/pages/sign/agreement-signing.css`) is APPROVED-FROZEN and
+ * is not touched here. What IS taken from it is the visual LANGUAGE, so the two halves of one
+ * transaction read as one product (§6): a panel that is a gradient rather than a flat fill, one
+ * hairline sweep across its top edge, a lift with a coloured ring on hover, and a lit dot on the
+ * state. Gold stays where §11 puts it — on the act that commits, which on this side of the seam is
+ * not here: the business is preparing a document, the CLIENT is the one who commits. So nothing in
+ * this block spends gold, and the sweep is violet.
+ */
+
+/* A five-column row. The Signature column is `auto` so its pill sets its own width and the four
+ * text columns are never squeezed by the longest state word. */
+.so-tr-5 {
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.3fr) auto minmax(0, .8fr) minmax(0, 1.1fr);
+}
+@media (max-width: 720px) {
+  .so-tr-5 { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; }
+  .so-tr-5 > span:nth-child(n+4) { display: none; }
+  .so-tr-5.so-row > span:nth-child(n+4) { display: block; grid-column: 1 / -1; }
+}
+
+/* The lit dot rides INSIDE the shared `.pill` (already inline-flex with its own gap), taking the
+ * pill's colour through `currentColor` — so the dot and the word can never disagree, and no second
+ * pill primitive is forked (§11/§18). */
+.so-sigdot {
+  width: 6px; height: 6px; border-radius: 50%; flex: none; background: currentColor;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, currentColor 18%, transparent),
+    0 0 7px color-mix(in srgb, currentColor 62%, transparent);
+}
+/* The engagement's state, quiet, beside the arrangement — present at a glance without competing
+ * with the signature column that now carries the row's headline state. */
+.so-engage { color: var(--ink-3); }
+
+/* ── the document step in the editor ───────────────────────────────────────────────────────── */
+.so-step {
+  margin: 4px 0 -4px; font: 600 10.5px/1 var(--font); letter-spacing: .1em; text-transform: uppercase;
+  color: var(--violet);
+}
+.so-src { display: grid; gap: 8px; }
+.so-src-card {
+  position: relative; overflow: hidden; display: grid; gap: 3px;
+  grid-template-columns: 26px minmax(0, 1fr); align-items: start;
+  padding: 11px 13px; text-align: left; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--r-m);
+  background: linear-gradient(180deg, var(--surface), var(--surface-2));
+  box-shadow: var(--sh-1);
+  transition: transform .18s cubic-bezier(.22,.61,.36,1), box-shadow .18s, border-color .18s;
+}
+/* The hairline sweep, one per panel, lit only on the chosen one — the same device the signing page
+ * uses to mark the panel that is live. */
+.so-src-card::after {
+  content: ""; position: absolute; left: 13px; right: 13px; top: 0; height: 2px; opacity: 0;
+  background: linear-gradient(90deg, var(--violet), color-mix(in srgb, var(--violet-2) 70%, transparent) 58%, transparent);
+  transition: opacity .18s;
+}
+.so-src-card > b { grid-column: 2; font: 600 12.5px/1.35 var(--font); color: var(--ink); }
+.so-src-card > small { grid-column: 2; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); text-wrap: pretty; }
+.so-src-ic {
+  grid-row: 1 / span 2; display: grid; place-items: center; width: 26px; height: 26px;
+  border-radius: 8px; border: 1px solid var(--line); background: var(--surface-sunk); color: var(--ink-3);
+}
+/* Three DIFFERENT answers, so three different plates rather than one plate drawn three times. */
+.so-src-ic-none   { background: var(--surface-sunk); color: var(--ink-3); }
+.so-src-ic-upload { background: var(--violet-tint); border-color: var(--violet-line); color: var(--violet); }
+.so-src-ic-paige  { background: var(--warn-tint); border-color: color-mix(in srgb, var(--warn) 30%, transparent); color: var(--warn); }
+@media (hover: hover) and (pointer: fine) {
+  .so-src-card:hover {
+    transform: translateY(-2px); border-color: var(--violet-line);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--violet) 26%, transparent), var(--sh-2);
+  }
+}
+.so-src-card:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+.so-src-card[aria-checked="true"] {
+  border-color: var(--violet);
+  background: linear-gradient(180deg, var(--violet-tint), var(--surface) 62px);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--violet) 34%, transparent), var(--sh-1);
+}
+.so-src-card[aria-checked="true"]::after { opacity: 1; }
+.so-src-card[aria-checked="true"] > small { color: var(--ink-2); }
+
+.so-prereq-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ── the send step ─────────────────────────────────────────────────────────────────────────── */
+.so-send-facts {
+  display: grid; gap: 11px; margin: 0; padding: 13px 15px;
+  border: 1px solid var(--violet-line); border-radius: var(--r-m);
+  background: linear-gradient(180deg, var(--violet-tint), var(--surface) 78px);
+  box-shadow: var(--sh-1);
+}
+.so-send-facts > div { min-width: 0; }
+.so-send-facts dt {
+  font: 600 10px/1 var(--font); letter-spacing: .11em; text-transform: uppercase;
+  color: var(--violet); margin-bottom: 4px;
+}
+.so-send-facts dd {
+  margin: 0; font: 500 13px/1.4 var(--font); color: var(--ink); overflow-wrap: anywhere;
+}
+.so-send-acts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .so-src-card { transition: none; }
+  .so-src-card:hover { transform: none; }
+}
+@media (forced-colors: active) {
+  .so-src-card { border: 1px solid CanvasText; }
+  .so-src-card[aria-checked="true"] { outline: 2px solid Highlight; }
+  .so-sigdot { background: CanvasText; box-shadow: none; }
+}
+
+/* ── screen 5: signed and completed ─────────────────────────────────────────────────────────────
+ *
+ * The approved completion surface (§28 screen 5), ported rule for rule rather than reinterpreted.
+ * Its composition is deliberate: the seal is the HEADING of this sheet, not an ornament above one,
+ * so the sheet carries no head row and the body starts flush at the top.
+ */
+.so-editor.so-done .so-editor-body { padding-top: 20px; }
+.so-editor.so-done:focus-visible { outline: none; }
+/* The sheet's own violet-to-gold hairline is suppressed here and ONLY here. With no head row, it
+   lands 20px above the seal's green-to-gold one and the two read as a doubled rule; the approved
+   screen draws exactly one, and it is the seal's, because the seal is this sheet's heading. */
+.so-editor.so-done::after { content: none; }
+
+/* The completion plate. Green is the settled state and gold is the act that produced it, meeting
+ * once, here — the only place on this flow the two share a surface. */
+.so-seal {
+  position: relative; overflow: hidden;
+  display: flex; gap: 20px; align-items: center;
+  padding: 24px 26px;
+  border: 1px solid color-mix(in srgb, var(--ok) 40%, var(--line));
+  border-radius: var(--r-xl);
+  background:
+    radial-gradient(74% 100% at 8% 50%, color-mix(in srgb, var(--ok-tint) 96%, transparent), transparent 64%),
+    radial-gradient(60% 90% at 96% 8%, color-mix(in srgb, var(--gold-tint) 58%, transparent), transparent 56%),
+    var(--sd-panel);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 50%, transparent), var(--sh-2);
+}
+.so-seal::after {
+  content: ""; position: absolute; left: 24px; right: 24px; top: 0; height: 2px; pointer-events: none;
+  background: linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--gold-bright) 70%, transparent) 55%, transparent);
+}
+.so-seal h2 {
+  margin: 0 0 6px; font: 600 19px/1.2 var(--font); letter-spacing: -.03em; color: var(--ok);
+}
+.so-seal p { margin: 0; font-size: 13px; line-height: 1.62; color: var(--ink-2); text-wrap: pretty; }
+
+/* A token-built orb: halo, body, a travelling gold corona, the mark at centre. The corona SWEEPS
+ * rather than pulses — a pulse reads as live traffic, and this document is finished. */
+.so-orb {
+  position: relative; width: 76px; height: 76px; flex: none; display: grid; place-items: center;
+  animation: so-pop .55s cubic-bezier(.34,1.56,.64,1) both;
+}
+.so-orb i { position: absolute; inset: 0; border-radius: 50%; }
+.so-orb .so-orb-halo {
+  inset: -8%;
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--ok) 26%, transparent), transparent 66%);
+}
+.so-orb .so-orb-body {
+  inset: 9%;
+  border: 1px solid color-mix(in srgb, var(--ok) 34%, var(--line));
+  background: radial-gradient(circle at 34% 26%, var(--surface), var(--surface-sunk) 62%, var(--canvas));
+  box-shadow: var(--sh-2);
+}
+.so-orb .so-orb-ring {
+  inset: 4%;
+  background: conic-gradient(from 208deg, transparent 0deg, var(--gold) 44deg, var(--gold-bright) 76deg, transparent 126deg, transparent 360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--gold) 60%, transparent));
+  animation: so-orbturn 22s linear infinite;
+}
+.so-orb svg {
+  position: relative; z-index: 1; color: var(--ok);
+  filter: drop-shadow(0 2px 3px color-mix(in srgb, var(--ink) 34%, transparent));
+}
+@keyframes so-orbturn { to { transform: rotate(360deg); } }
+@keyframes so-pop { from { transform: scale(.55); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+/* Motion-safety is NOT missing here: the sheet-wide `prefers-reduced-motion` guard further up this
+   file already zeroes every animation under `.so-editor *`, which is where the orb lives. A third
+   copy of that rule would only be a third thing to keep in sync. */
+@media (max-width: 560px) {
+  .so-seal { flex-direction: column; align-items: flex-start; gap: 14px; padding: 20px; }
+}
+
+/* The audit trail. Real recorded events, newest first — never a reconstruction from timestamps. */
+.so-trail {
+  border: 1px solid var(--line); border-radius: var(--r-l); overflow: hidden;
+  background: var(--sd-panel);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 50%, transparent), var(--sh-1);
+}
+.so-trail-hd {
+  padding: 13px 17px; border-bottom: 1px solid var(--line-soft); background: var(--surface-2);
+  font: 600 12.5px/1.3 var(--font); color: var(--ink);
+}
+/* The trail's own empty/refusal lines sit inside the panel, so they keep its padding rather than
+   the body's block margin. */
+.so-trail .so-absent { margin: 0; padding: 13px 17px; }
+
+.so-ev {
+  position: relative; display: flex; gap: 14px; align-items: flex-start;
+  padding: 12px 17px; border-bottom: 1px solid var(--line-soft);
+}
+.so-ev:last-child { border-bottom: 0; }
+.so-ev-mark {
+  flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%;
+  background: var(--violet);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--violet) 14%, transparent),
+              0 0 8px color-mix(in srgb, var(--violet) 70%, transparent);
+}
+/* The events that CLOSE the ceremony carry the settled colour; everything else stays in-flight. */
+.so-ev.is-done .so-ev-mark {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 16%, transparent),
+              0 0 8px color-mix(in srgb, var(--ok) 75%, transparent);
+}
+.so-ev-when {
+  flex: none; width: 112px; font-size: 11.5px; line-height: 1.5; color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.so-ev-what { flex: 1; min-width: 0; font-size: 13px; line-height: 1.45; }
+.so-ev-what b { font-weight: 600; color: var(--ink); }
+.so-ev-what > span {
+  display: block; margin-top: 2px; font-size: 11.5px; line-height: 1.5;
+  color: var(--ink-3); word-break: break-word;
+}
+@media (max-width: 560px) {
+  .so-ev { flex-wrap: wrap; }
+  .so-ev-when { width: auto; }
+}
+
+.so-done-note { margin: 0; }
+.so-done-note b { color: var(--ink-2); font-weight: 600; }
+
+/* ── the offer attach list (approved screen 2) ──────────────────────────────────────────────────
+ *
+ * This was a native <select> under a pager. §11 bans the control outright, and the reason the
+ * approved pack does not use one is plainer than the rule: a dropdown shows one offer at a time,
+ * so every price stayed hidden behind a click at exactly the moment a person is deciding which
+ * plan goes onto somebody's contract. The list shows all of them at once.
+ */
+.so-results {
+  border: 1px solid var(--line); border-radius: var(--r-m); overflow: hidden;
+  background: var(--surface);
+}
+/* NO TRANSITION on the hover grounds below. AGENTS.md's interface standard says motion animates
+ * `transform`/`opacity` only, and `background`, `color` and `border-color` are paint-triggering.
+ * The state change stays — it is instant instead of eased, which costs a hover almost nothing and
+ * keeps the rule intact. (Honest note: 19 other stylesheets in src/ still carry paint transitions;
+ * those are pre-existing and not this change's to sweep.) */
+.so-res {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 10px 13px; text-align: left;
+  border: 0; border-bottom: 1px solid var(--line-soft);
+  background: var(--surface); color: var(--ink); cursor: pointer;
+  font: 400 13px/1.4 var(--font);
+}
+.so-res:last-child { border-bottom: 0; }
+.so-res > strong {
+  font-weight: 500; letter-spacing: -.01em; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.so-res-sp { flex: 1; min-width: 8px; }
+.so-res-price {
+  flex: none; font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: 12px; color: var(--ink-3);
+}
+@media (hover: hover) and (pointer: fine) {
+  .so-res:not(:disabled):hover { background: var(--violet-tint); }
+}
+.so-res:focus-visible { outline: 2px solid var(--violet); outline-offset: -2px; }
+/* The attached row keeps a standing violet ground — this is the one row whose state you must be
+   able to find without reading, and it is a SELECTION, never an act, so it spends no gold (§11). */
+.so-res[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--violet-tint) 70%, var(--surface));
+}
+.so-res[aria-pressed="true"] > strong { color: var(--violet); }
+.so-res:disabled { cursor: default; opacity: .62; }
+
+/* "Attached" — the state. A violet pill, the same one the band's own counts use. */
+.so-res-on {
+  flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 9px;
+  border-radius: 99px; font: 600 11px/1 var(--font); letter-spacing: .02em; white-space: nowrap;
+  color: var(--violet); background: var(--violet-tint);
+  border: 1px solid color-mix(in srgb, var(--violet) 24%, transparent);
+}
+/* "Attach" — the affordance. Reads as a control and is deliberately quiet until the row is
+   hovered, because eight shouting buttons down a list is noise, not an invitation. It is
+   aria-hidden in the markup: the row itself is the button and already carries the offer's name,
+   so announcing "Attach" again would read the control twice. */
+.so-res-act {
+  flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px;
+  border-radius: 8px; font: 500 11.5px/1 var(--font); white-space: nowrap;
+  color: var(--ink-3); background: var(--surface-2); border: 1px solid var(--line);
+}
+@media (hover: hover) and (pointer: fine) {
+  .so-res:not(:disabled):hover .so-res-act {
+    color: var(--violet); border-color: var(--violet-line); background: var(--surface);
+  }
+}
+.so-res:disabled .so-res-act { visibility: hidden; }
+
+/* Nothing matched the search. DISTINCT from `.so-prerequisite` below it, which says the catalog is
+   empty — two different facts, and a reader who cannot tell them apart goes hunting in Catalog for
+   something that was never there. */
+.so-nomatch {
+  padding: 13px; border: 1px solid var(--line); border-radius: var(--r-m);
+  background: var(--surface-2);
+}
+.so-nomatch > p { margin: 0; font-size: 12.5px; color: var(--ink-2); }
+.so-nomatch-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+.so-nomatch > small { display: block; margin-top: 8px; }
