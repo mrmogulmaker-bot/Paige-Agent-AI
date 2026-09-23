@@ -2,6 +2,7 @@ import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatRailApi } from "./PaigeAIChat";
+import type { LiveVoiceSink } from "@/components/paige/live/PaigeLiveConversation";
 
 const harness = vi.hoisted(() => ({
   tenantId: "tenant-a" as string | null,
@@ -11,6 +12,8 @@ const harness = vi.hoisted(() => ({
   rail: null as ChatRailApi | null,
   micCallbacks: [] as Array<{ onText: (text: string, at?: number | null) => void; disabled?: boolean }>,
   liveEnsureThread: null as (() => Promise<string>) | null,
+  liveVoiceTurn: null as ((text: string, sink: LiveVoiceSink) => Promise<void>) | null,
+  liveInterrupt: null as (() => void) | null,
   ensureThread: vi.fn(async () => "thread-created"),
   loadTurns: vi.fn(async () => [] as Array<{ role: string; content: string }>),
 }));
@@ -61,8 +64,10 @@ vi.mock("@/hooks/usePaigeThreads", () => ({
   }),
 }));
 vi.mock("@/components/paige/live/PaigeLiveConversation", () => ({
-  PaigeLiveConversation: (props: { ensureThread: () => Promise<string> }) => {
+  PaigeLiveConversation: (props: { ensureThread: () => Promise<string>; onVoiceTurn: (text: string, sink: LiveVoiceSink) => Promise<void>; onVoiceInterrupt: () => void }) => {
     harness.liveEnsureThread = props.ensureThread;
+    harness.liveVoiceTurn = props.onVoiceTurn;
+    harness.liveInterrupt = props.onVoiceInterrupt;
     return null;
   },
 }));
@@ -111,6 +116,7 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     harness.rail = null;
     harness.micCallbacks = [];
     harness.liveEnsureThread = null;
+    harness.liveVoiceTurn = null;
     harness.ensureThread.mockReset();
     harness.ensureThread.mockResolvedValue(`thread-created-${testNumber}`);
     harness.loadTurns.mockReset();
@@ -153,6 +159,50 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     }
     expect(textarea().disabled).toBe(false);
   };
+
+  it.each(["explicit-error", "eof", "rejection", "interrupt", "done"] as const)(
+    "keeps the same visible Live transcript and settles the sink on %s",
+    async (ending) => {
+      let upstream!: ReadableStreamDefaultController<Uint8Array>;
+      const response = new Response(new ReadableStream<Uint8Array>({ start(c) { upstream = c; } }));
+      vi.mocked(fetch).mockResolvedValueOnce(response);
+      await render();
+      await waitForWritable();
+      const sink = { challenge: "test-challenge", proof: vi.fn(), done: vi.fn(), failed: vi.fn() };
+      let turn!: Promise<void>;
+      const enc = new TextEncoder();
+      await act(async () => {
+        turn = harness.liveVoiceTurn!("My spoken question", sink);
+        await settle();
+        upstream.enqueue(enc.encode('data: {"paige_live_output":"signed-first-chunk"}\n\ndata: {"choices":[{"delta":{"content":"First sentence."}}]}\n\n'));
+        await settle();
+      });
+      expect(host.textContent).toContain("My spoken question");
+      expect(host.textContent).toContain("First sentence.");
+      await act(async () => {
+        if (ending === "interrupt") harness.liveInterrupt!();
+        if (ending === "rejection") upstream.error(new Error("upstream interrupted"));
+        else {
+          if (ending === "explicit-error") upstream.enqueue(enc.encode('data: {"paige_live_error":"answer_interrupted"}\n\ndata: [DONE]\n\n'));
+          if (ending === "done") upstream.enqueue(enc.encode('data: [DONE]\n\n'));
+          upstream.close();
+        }
+        await turn;
+        await settle();
+      });
+      expect(host.textContent).toContain("My spoken question");
+      expect(host.textContent).toContain("First sentence.");
+      expect(sink.proof).toHaveBeenCalledWith("signed-first-chunk");
+      expect(sink.done).toHaveBeenCalledTimes(ending === "done" ? 1 : 0);
+      expect(sink.failed).toHaveBeenCalledTimes(ending === "done" ? 0 : 1);
+      if (ending !== "done" && ending !== "interrupt") {
+        expect(host.textContent).toContain("Paige's answer was interrupted");
+        expect(host.textContent).not.toContain("Your message wasn't sent");
+        expect(Array.from(host.querySelectorAll("button")).some((b) => b.textContent === "Retry")).toBe(false);
+      }
+      expect(textarea().disabled).toBe(false);
+    },
+  );
 
   it.each(["tenant", "effective-user", "client", "mission", "clear-focus"] as const)(
     "does not adopt a Live thread when the %s scope changes while thread creation is pending",

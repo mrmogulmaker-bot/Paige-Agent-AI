@@ -18,12 +18,14 @@ Impeccable 4.3.1 interaction review (installed `C:/Users/tonig/.agents/skills/im
 ## Pre-edit discovery and attachment map (2026-09-23)
 
 S4 merged as PR #1387 (`6bd8849d4b9bad7c8d331458cab03c00c61b87aa`, reviewed
-head `d0a8ff81e35ed8d431c66b5f5f1eedc42c965485`). S5 is spoken delivery only:
+head `d0a8ff81e35ed8d431c66b5f5f1eedc42c965485`). S5 is spoken delivery and its failure-path continuity:
 Flow-by-Flow 2.0.2, Existing Project, R3 Deep; the approved Live stage is unchanged.
 Reuse `_shared/paige-voice.ts` as the voice-instruction home and the existing
 `paige-ai-chat` message assembly. Its only deployed importer is `paige-ai-chat`,
-which is therefore the entire S5 redeploy set. No browser, schema, provider
-selection, secret, readiness, memory or usage change is needed.
+which is therefore the entire Edge redeploy set. The review repair also extends
+the existing PaigeAIChat stream consumer and its composerScope integration tests,
+so Vercel redeploys. No schema, provider selection, secret, readiness, memory or
+usage policy change is needed. No second conversation store or SSE consumer.
 
 The signed, atomically claimed `liveRuntimeScope` already proves actor, tenant,
 thread and transcript. Only that server-resolved scope enables spoken delivery.
@@ -48,16 +50,16 @@ VISIBLE_FLOW_IMPACT: YES: Authenticated Live replies receive a spoken delivery r
 MATERIAL_FLOW_CHANGE: NO: The existing approved conversation flow, states, authority, controls and exits are unchanged; this is delivery wording in the same runtime
 FLOW_PROTOTYPE: NOT_REQUIRED: No new interaction, layout, state or action; the already approved Live conversation stage remains the surface
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: An authorized user in an enabled workspace speaks with Paige in their own tenant-scoped thread and receives a short natural reply
-VISUAL_DIRECTION: PASS: Existing Solo layout and tokens unchanged; no browser source edited
-AUTOMATED_EVIDENCE: PASS: Prompt-denylist and persona-core suites 29/29; relay bridge 47/47 with zero network/provider calls; Live-only injection mutation fails for ordinary text
+VISUAL_DIRECTION: PASS: Existing Solo layout and tokens unchanged; the existing alert shows truthful interrupted-answer copy and suppresses replay of a possibly executed turn
+AUTOMATED_EVIDENCE: PASS: Prompt-denylist, persona-core, rendered composerScope and honesty suites 69/69; interruption, EOF, rejection and explicit failure keep delivered text without false success; no network/provider calls
 STATIC_EVIDENCE: PASS: git diff --check passes; only deployed importer of paige-voice.ts is paige-ai-chat; canonical text voice block unchanged
-RENDERED_EVIDENCE: UNVERIFIED: No authenticated production live-audio render captured; browser layout is unchanged
+RENDERED_EVIDENCE: PASS: Local rendered React integration keeps the user's utterance and received first sentence through explicit error, EOF, reader rejection and barge-in; authenticated production audio remains UNVERIFIED
 BEHAVIORAL_EVIDENCE: UNVERIFIED: Actual spoken take-5 character and turn latency require enabled provider readiness and the owner's listening check
 AUTHENTICATED_RUNTIME: UNVERIFIED: Provider privacy/account readiness and signing-key setup have not been confirmed; no real audio call made
 KEYBOARD_FOCUS: PASS: No keyboard or focus code changed; existing Talk live and Live controls remain the route
 ZOOM_REFLOW: UNVERIFIED: No fresh authenticated viewport exercise; no layout code changed
 REDUCED_MOTION: PASS: No motion or preference code changed
-STATE_COVERAGE: PASS: Local tests distinguish verified Live scope from ordinary text; existing bridge tests cover interruption, completion, denial and disconnect
+STATE_COVERAGE: PASS: Verified Live versus ordinary text; partial answer failure, no-DONE EOF, reader rejection, explicit error followed by DONE, normal completion and barge-in are exercised; existing bridge covers denial/disconnect
 TRUTHFUL_STATE_LABELS: PASS: No availability state changed or activated; provider/account proof remains required and text chat remains available
 SOLO_UI: YES: Existing Solo Paige Live conversation is the affected spoken surface
 SOLO_1536X770_PAIGE_CLOSED: UNVERIFIED: No fresh authenticated production render; no visual change
@@ -82,7 +84,7 @@ RELEASE_CLASSIFICATION: internal-only: no customer capability claim while provid
 CUSTOMER_RELEASE_IDENTITY: none: this does not claim end-to-end Live delivery
 RELEASE_NOTE_REQUIRED: NO: not a general-availability release
 RELEASE_TRUTH_BOUNDARY: PARTIAL: prompt wiring and deterministic behavior proven locally; real voice and human production acceptance UNVERIFIED
-RELEASE_RECOVERY: position=revert this prompt-only commit and redeploy paige-ai-chat if delivery regresses, retaining the existing transport and text chat; reference=PR #1405
+RELEASE_RECOVERY: position=revert this delivery PR and redeploy paige-ai-chat plus Vercel if delivery regresses, retaining the existing transport and text chat; reference=PR #1405
 
 ## Test-first and mutation receipt
 
@@ -116,3 +118,17 @@ if scope still validates, and send a neutral error without DONE; the signed
 wrapper therefore cannot claim successful completion. Ordinary text fallback
 behavior is unchanged. Runtime failure and persistence failure are logged
 without raw provider text. Human recovery remains an authenticated check.
+
+The cross-layer review found the existing browser rollback would erase that
+released text. Failing-first rendered tests: 3 failures (explicit error could
+still earn DONE; EOF/rejection erased the user's utterance), 1 normal-completion
+pass. A separate barge-in regression also failed before its repair. The existing
+consumer now preserves the displayed transcript on incomplete Live responses,
+calls the idempotent failed sink, and ignores any DONE after an error. Barge-in
+uses the same cancel fence without rolling back already received Live text.
+Ordinary text rollback is unchanged. The visible alert reads exactly:
+"Paige's answer was interrupted. What arrived is still shown here. You can continue in text chat."
+No Retry is offered for that partially executed turn. This preserves what arrived;
+it does not assert that a failed server persistence write succeeded. Scope-change
+fences still reject stale updates. Flow prototype is not required for this
+same-surface false-error/continuity repair; no new workflow or layout is added.
