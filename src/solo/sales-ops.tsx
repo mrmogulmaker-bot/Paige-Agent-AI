@@ -178,6 +178,32 @@ function when(value, calendarDate = false) {
     : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", ...(calendarDate ? { timeZone: "UTC" } : {}) }).format(date);
 }
 
+/* The audit trail needs the MINUTE, not the day. `when()` above prints a date, so three events
+ * nine minutes apart would render identically and the order the trail exists to prove would be
+ * invisible. Approved format: "22 Sep \u00b7 4:12 PM". */
+function stamp(value) {
+  if (!value) return "Time not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Time not recorded";
+  const day = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(date);
+  const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
+  return `${day} \u00b7 ${time}`;
+}
+
+/* The same moment in prose rather than in a column: "18 Sep 2026 at 9:31 AM". The seal states when
+ * the counterparty signed, and a date alone under-reports a fact the trail below already carries to
+ * the minute — the two must not disagree about how precisely this is known. */
+function momentOf(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  // Joined explicitly rather than by `dateStyle`+`timeStyle` together, which in several locales
+  // renders "Sep 18, 2026, 9:31 AM" — a second comma where the sentence wants a preposition.
+  const day = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
+  const time = new Intl.DateTimeFormat(undefined, { timeStyle: "short" }).format(date);
+  return `${day} at ${time}`;
+}
+
 /**
  * The SHARED pill, not a local one. The first version of this file declared `.so-pill` with its own
  * height, size, tracking and ground — a fork of `solo-tokens.css`'s live `.pill`, whose three
@@ -537,14 +563,16 @@ function QuickOffer({ offers, tenantId, onClose, onCreated }) {
  * The lead plan is the first active priced plan — the same reading the Catalog table takes, not a
  * "from" figure this surface computed for itself (§18: one opinion about an offer's price).
  */
-function offerOptionLabel(offer) {
+/* The price and cadence ALONE, for the attach list's own column. The label this replaced fused
+ * them onto the name because a native <option> can only render one string; separating them lets a
+ * reader run their eye down the prices instead of re-reading every name to find them. */
+function offerPriceLabel(offer) {
   const lead = (offer.prices || []).filter((p) => p.active && typeof p.unitAmount === "number")[0] || null;
-  const name = offer.name || "Untitled offer";
-  if (!lead) return `${name} — no price recorded`;
+  if (!lead) return "No price recorded";
   const cadence = lead.billingInterval && lead.billingInterval !== "one_time"
     ? CADENCE_LABEL[lead.billingInterval] || lead.billingInterval
     : "once";
-  return `${name} — ${money(lead.unitAmount, lead.currency) ?? "no amount"} · ${cadence}`;
+  return `${money(lead.unitAmount, lead.currency) ?? "No amount"} · ${cadence}`;
 }
 
 /**
@@ -572,6 +600,9 @@ function AgreementEditor({ agreements, signings, offers, tenantId, existing, exi
   const [pickerSearch, setPickerSearch] = React.useState("");
   const [pickerPage, setPickerPage] = React.useState(0);
   const picker = useCatalogOffers({ search: pickerSearch, page: pickerPage, pageSize: 5, referenceIds: offerId ? [offerId] : [] });
+  /* Named once rather than re-deriving Boolean(existing?.catalogSnapshotAt) at five call sites, so
+   * the lock cannot drift apart between the search, the list and the pager. */
+  const offerLocked = Boolean(existing?.catalogSnapshotAt);
   const pickerOffers = [...picker.offers, ...(picker.referencedOffers || [])].filter((offer, index, rows) => rows.findIndex((o) => o.id === offer.id) === index);
   const [term, setTerm] = React.useState(existing?.termKind ?? "one_time");
   const [basis, setBasis] = React.useState(existing?.priceBasis ?? "negotiated");
@@ -880,20 +911,76 @@ function AgreementEditor({ agreements, signings, offers, tenantId, existing, exi
             * unreachable and left a new workspace unable to create its first offer from Sales),
             * and Open Catalog now sits in the band head on the surface behind this drawer. */}
           <h3 className="so-step">Which offer this is for</h3>
-          <label className="so-field"><span>Search your Catalog</span><input type="search" disabled={Boolean(existing?.catalogSnapshotAt)} value={pickerSearch} onChange={(e) => { setPickerSearch(e.target.value); setPickerPage(0); }} placeholder="Search your Catalog…" /></label>
-          <div className="so-page-controls"><span role="status">{picker.phase === "ready" ? "Offer page " + (pickerPage + 1) + " · up to 5 offers" : picker.phase === "error" ? "Could not load offers" : "Loading offers…"}</span>{picker.phase === "error" && <button className="btn btn-s" onClick={picker.retry}>Retry offers</button>}<button className="btn btn-s" disabled={!pickerPage || picker.phase !== "ready" || Boolean(existing?.catalogSnapshotAt)} onClick={() => setPickerPage((p) => p - 1)}>Previous</button><button className="btn btn-s" disabled={!picker.hasMore || picker.phase !== "ready" || Boolean(existing?.catalogSnapshotAt)} onClick={() => setPickerPage((p) => p + 1)}>Next</button></div>
-          <label className="so-field">
-            <span>Offer</span>
-            <select aria-label="Offer" disabled={Boolean(existing?.catalogSnapshotAt)} value={offerId} onChange={(e) => setOfferId(e.target.value)}>
-              <option value="">No offer — this document carries no price</option>
-              {pickerOffers.map((offer) => (
-                // The price and cadence travel WITH the name. The band this replaced showed them in
-                // a table and a drawer; an offer chosen blind, by name alone, is how the wrong plan
-                // gets attached to somebody's contract.
-                <option key={offer.id} value={offer.id}>{offerOptionLabel(offer)}</option>
-              ))}
-            </select>
-          </label>
+          <label className="so-field"><span>Search your Catalog</span><input type="search" disabled={offerLocked} value={pickerSearch} onChange={(e) => { setPickerSearch(e.target.value); setPickerPage(0); }} placeholder="Search your Catalog…" /></label>
+
+          {/* THE SNAPSHOT LOCK, SAID OUT LOUD. When an offer's list price has been snapshotted the
+            * choice is fixed, and until now the controls simply went dead with no reason given —
+            * a disabled control that explains nothing is exactly what §70.1 refuses to count as
+            * delivered. The lock itself is unchanged; what is new is that it says why. */}
+          {offerLocked && (
+            <p className="so-absent" role="status">
+              This agreement&rsquo;s price was snapshotted when it was saved, so the offer is fixed.
+              That snapshot is what keeps the terms provable after you reprice the offer in Catalog.
+            </p>
+          )}
+
+          {/* THE APPROVED ATTACH LIST (§28 screen 2). This was a native &lt;select&gt; under a pager —
+            * banned outright by §11, and the reason the approved pack does not use one is plainer
+            * than the rule: a dropdown shows one offer at a time, so choosing meant opening it,
+            * reading down, and closing it again, with the prices invisible until you did. The list
+            * shows every offer and its price at once, which is how you notice you are about to
+            * attach the wrong plan to somebody's contract. */}
+          <div className="so-results" role="group" aria-label="Offer">
+            {/* Always first, always reachable: an agreement with no price is a real thing (an NDA,
+              * a scope letter), not the absence of a choice. It was the first <option>; it is the
+              * first row. */}
+            <button
+              type="button" className="so-res" aria-pressed={!offerId} disabled={offerLocked}
+              onClick={() => setOfferId("")}
+            >
+              <strong>No offer &mdash; this document carries no price</strong>
+              <span className="so-res-sp" />
+              {!offerId
+                ? <span className="so-res-on">Attached</span>
+                : <span className="so-res-act" aria-hidden="true">Attach</span>}
+            </button>
+            {pickerOffers.map((offer) => (
+              <button
+                key={offer.id} type="button" className="so-res"
+                aria-pressed={offerId === offer.id} disabled={offerLocked}
+                onClick={() => setOfferId(offer.id)}
+              >
+                <strong>{offer.name || "Untitled offer"}</strong>
+                <span className="so-res-sp" />
+                {/* The price travels beside the name rather than inside it. An offer chosen blind,
+                  * by name alone, is how the wrong plan gets attached to somebody's contract. */}
+                <span className="so-res-price">{offerPriceLabel(offer)}</span>
+                {offerId === offer.id
+                  ? <span className="so-res-on">Attached</span>
+                  : <span className="so-res-act" aria-hidden="true">Attach</span>}
+              </button>
+            ))}
+          </div>
+
+          {/* §58 — the pager is PRESERVED, not dropped with the dropdown. The approved pack shows
+            * three fixture offers and needs no pager; a real catalog has hundreds, and removing the
+            * only way past the first five would be a regression dressed as fidelity. It renders
+            * only when it can actually do something. */}
+          {picker.phase === "error" && (
+            <p className="so-absent" role="alert">
+              Your Catalog could not be read, so these offers may be incomplete.{" "}
+              <button className="btn btn-s" onClick={picker.retry}>Retry offers</button>
+            </p>
+          )}
+          {picker.phase !== "error" && (pickerPage > 0 || picker.hasMore) && (
+            <div className="so-page-controls">
+              <span role="status">
+                {picker.phase === "ready" ? `Offer page ${pickerPage + 1} · up to 5 offers` : "Loading offers…"}
+              </span>
+              <button className="btn btn-s" disabled={!pickerPage || picker.phase !== "ready" || offerLocked} onClick={() => setPickerPage((p) => p - 1)}>Previous</button>
+              <button className="btn btn-s" disabled={!picker.hasMore || picker.phase !== "ready" || offerLocked} onClick={() => setPickerPage((p) => p + 1)}>Next</button>
+            </div>
+          )}
           {/* §58 — both of these came off the deleted band with the search. A search that matches
             * nothing said so there and must say so here, or the picker silently offers one option
             * and the person cannot tell an empty catalog from an unlucky word. And an offer
@@ -904,7 +991,23 @@ function AgreementEditor({ agreements, signings, offers, tenantId, existing, exi
             * every first open of this editor. It reads as junk output, which is exactly how it
             * looked on the desk. */}
           {(Boolean(pickerSearch) || pickerPage > 0) && picker.phase === "ready" && !pickerOffers.length && (
-            <p className="so-absent">No offers match this view. Clear your search or go back a page.</p>
+            /* KEPT DISTINCT from the empty-catalog state below. "Nothing matches that word" and
+             * "you have no offers at all" are different facts, and a reader who cannot tell them
+             * apart will go looking in Catalog for something that was never there. The approved
+             * pack shows only this one because its fixtures are never empty — so its two acts are
+             * adopted here, and the other state stays. */
+            <div className="so-nomatch">
+              <p>Nothing in your Catalog matches that.</p>
+              <div className="so-nomatch-acts">
+                {offers.canManage && !offerLocked && (
+                  <button className="btn btn-s btn-p" onClick={() => request(onQuickOffer)}>Quick offer</button>
+                )}
+                <button className="btn btn-s" onClick={() => request(() => onOpenCatalog(true))}>Open Catalog</button>
+              </div>
+              {offers.canManage && !offerLocked && (
+                <small className="so-quiet">Quick offer writes it straight into your Catalog. It opens on its own, so anything typed here is not kept.</small>
+              )}
+            </div>
           )}
           {!pickerSearch && !pickerPage && picker.phase === "ready" && !pickerOffers.length && (
             <div className="so-prerequisite">
@@ -1289,6 +1392,150 @@ const SALES_VIEWS = [
 ];
 const EC_LABEL = { actual: "Actual", contracted: "Contracted", dated: "Dated", open: "Open", modeled: "Modeled", unknown: "Unknown" };
 // The evidence class of a FIGURE — separate from the surface TRUTH label. Never gold (§11).
+/* ── 5 · COMPLETED ────────────────────────────────────────────────────────────────────────────
+ *
+ * The approved completion surface (§28 screen 5). A signed agreement is the one record on this
+ * desk that has to be provable later, so this says three things: that it is sealed, WHAT happened
+ * and when, and where to get the document.
+ *
+ * The trail is the engine's own append-only `paige_agreement_events`, read on demand — not
+ * reconstructed from the row's timestamps. That distinction is the whole point of an audit trail:
+ * four timestamps can say a document was viewed, they cannot say by which address, from which
+ * device, in what order. Nothing here is invented; an event the engine did not record is simply
+ * not shown. */
+const EVENT_LABEL = {
+  created: "Created",
+  edited: "Edited",
+  sent: "Sent",
+  delivered: "Delivered",
+  viewed: "Viewed",
+  consented: "Consent recorded",
+  signed: "Signed",
+  declined: "Declined",
+  completed: "Signed and completed",
+  voided: "Stopped",
+  expired: "Link expired",
+  sealed: "Sealed",
+  downloaded: "Copy downloaded",
+  resent: "Sent again",
+};
+/* The events that CLOSE the ceremony carry the settled mark; everything else is in-flight. */
+const EVENT_DONE = new Set(["completed", "signed", "sealed", "consented"]);
+
+function AgreementCompletion({ signings, signing, clientName, tenantId, onClose, onOpenClients }) {
+  const panelRef = useModalDialog();
+  const [trail, setTrail] = React.useState({ phase: "loading", events: [], message: "" });
+  const [notice, setNotice] = React.useState("");
+  const alive = React.useRef(true);
+  React.useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  /* With no head row there is no first control to take focus, so the panel takes it: a screen
+   * reader then reads the dialog and its name rather than starting mid-surface. */
+  React.useEffect(() => { panelRef.current?.focus({ preventScroll: true }); }, [panelRef]);
+
+  React.useEffect(() => {
+    let current = true;
+    (async () => {
+      const outcome = await signings.signingEvents(signing.id, tenantId)
+        .catch(() => ({ ok: false, message: "This document's history could not be read." }));
+      if (!current || !alive.current) return;
+      setTrail(outcome.ok
+        ? { phase: "ready", events: outcome.events, message: "" }
+        : { phase: "error", events: [], message: outcome.message });
+    })();
+    return () => { current = false; };
+  }, [signings, signing.id, tenantId]);
+
+  const download = async () => {
+    setNotice("");
+    const outcome = await signings.signedCopyUrl(signing.id, tenantId)
+      .catch(() => ({ ok: false, message: "That signed copy could not be opened just now." }));
+    if (!outcome.ok) { setNotice(outcome.message); return; }
+    window.open(outcome.url, "_blank", "noopener,noreferrer");
+  };
+
+  const who = signing.signerName || clientName || "The counterparty";
+
+  /* Escape closes. This surface is READ-ONLY — there is no save to interrupt — so the caller-owned
+   * dismissal `useModalDialog` deliberately leaves open is unambiguous here. */
+  React.useEffect(() => {
+    const onKey = (event) => { if (event.key === "Escape") { event.preventDefault(); onClose(); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <SalesDialogPortal>
+      <button className="so-editor-scrim" tabIndex={-1} aria-label="Close" onClick={onClose} />
+      {/* No head row. The approved screen has ONE title and the seal carries it; a header repeating
+        * "Signed and completed" immediately above the seal that says it again is a stutter, not a
+        * frame. The dialog takes its accessible name from that heading, and its exits are the
+        * footer's labelled Back, the scrim, and Escape. */}
+      <aside
+        ref={panelRef} tabIndex={-1}
+        className="so-editor so-done" role="dialog" aria-modal="true" aria-labelledby="so-done-title"
+      >
+        <div className="so-editor-body">
+          <div className="so-seal">
+            <span className="so-orb" aria-hidden="true">
+              <i className="so-orb-halo" /><i className="so-orb-body" /><i className="so-orb-ring" />
+              <Ic.check size={30} />
+            </span>
+            <div>
+              <h2 id="so-done-title">Signed and completed</h2>
+              <p>
+                {who} signed this{momentOf(signing.completedAt) ? ` on ${momentOf(signing.completedAt)}` : ""}. The sealed
+                PDF carries their signature, the exact wording they read, and the time they signed it.
+                These terms are now active against their record.
+              </p>
+            </div>
+          </div>
+
+          <div className="so-trail">
+            <div className="so-trail-hd">What happened, and when</div>
+            {trail.phase === "loading" && <p className="so-absent" role="status">Reading this document's history…</p>}
+            {trail.phase === "error" && <p className="so-absent" role="alert">{trail.message}</p>}
+            {trail.phase === "ready" && trail.events.length === 0 && (
+              <p className="so-absent">
+                No history is recorded against this document. That is not the same as nothing having
+                happened — it means the trail could not be read or was never written.
+              </p>
+            )}
+            {trail.phase === "ready" && trail.events.map((event) => (
+              <div key={event.id} className={`so-ev${EVENT_DONE.has(event.type) ? " is-done" : ""}`}>
+                <span className="so-ev-mark" aria-hidden="true" />
+                <span className="so-ev-when">{stamp(event.at)}</span>
+                <span className="so-ev-what">
+                  <b>{EVENT_LABEL[event.type] || event.type}</b>
+                  {/* Only what the engine actually recorded. A missing address or device is left
+                    * out rather than filled with a plausible-looking blank. */}
+                  <span>{[event.actorEmail, event.ip, event.userAgent].filter(Boolean).join(" · ") || `by ${event.actorKind}`}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <p className="so-absent so-done-note">
+            The <b>signature</b> state finishes at Completed. What the agreement is worth commercially
+            &mdash; active, paused, finished, cancelled &mdash; is a separate state you control from here
+            on, because a signed agreement can be paused and a cancelled one is still signed.
+          </p>
+
+          {notice && <p className="so-absent" role="alert">{notice}</p>}
+        </div>
+
+        <footer className="so-editor-foot">
+          {signing.hasSealedCopy
+            ? <button className="btn btn-s btn-p" onClick={() => { void download(); }}><Ic.doc size={13} />Download the signed PDF</button>
+            : <span className="so-quiet">This is signed, but no sealed copy is recorded against it.</span>}
+          {onOpenClients && <button className="btn btn-s" onClick={() => onOpenClients()}>Open {clientName || "the client"}&rsquo;s record</button>}
+          <span style={{ flex: 1 }} />
+          <button className="btn btn-s btn-q" onClick={onClose}>Back to Commercial Terms</button>
+        </footer>
+      </aside>
+    </SalesDialogPortal>
+  );
+}
+
 function EcChip({ e }) {
   return <span className={`so-ec so-ec-${e}`}>{EC_LABEL[e] || e}</span>;
 }
@@ -1466,6 +1713,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
   const [editor, setEditor] = React.useState(null);
   const [editing, setEditing] = React.useState(null);
   const [sending, setSending] = React.useState(null);
+  const [completed, setCompleted] = React.useState(null);
   const [success, setSuccess] = React.useState("");
   const location = useLocation();
   const navigate = useNavigate();
@@ -1495,7 +1743,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
   // workspace stays on screen under the next one. Both tenant ids are watched because each hook
   // guards its own synchronously, and the agreements drawer holds the more sensitive draft — a
   // client name bound to a negotiated amount.
-  React.useEffect(() => { setEditor(null); setEditing(null); setSending(null); setSuccess(""); setTermSearch(""); setTermStatus("all"); setTermPage(0); }, [sales.tenantId, agreements.tenantId, signings.tenantId]);
+  React.useEffect(() => { setEditor(null); setEditing(null); setSending(null); setCompleted(null); setSuccess(""); setTermSearch(""); setTermStatus("all"); setTermPage(0); }, [sales.tenantId, agreements.tenantId, signings.tenantId]);
 
   // Hooks must run in the same order while the production adapters advance from loading to ready.
   // Keeping this memo above every phase return prevents React from aborting the Sales route on the
@@ -1656,13 +1904,14 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
     if (state === "completed") {
       // §13: the state says signed, so the sealed copy should exist. If the record does not carry
       // one, say that plainly rather than rendering a button that cannot do anything.
-      return signing.signedPdfPath
-        ? (
-          <button className="btn btn-p" onClick={() => { void openSignedCopy(signing); }}>
-            <Ic.doc size={13} />Download the signed copy
-          </button>
-        )
-        : <span className="so-quiet">This is signed, but no sealed copy is recorded against it.</span>;
+      // setDetail(null) first, the way openSender does: leaving the grounded-detail drawer open
+      // underneath stacks two modal dialogs, and the one a screen reader lands in is then an
+      // accident of DOM order rather than the one just opened.
+      return (
+        <button className="btn btn-p" onClick={() => { setDetail(null); setCompleted({ ...signing, contactId }); }}>
+          <Ic.doc size={13} />View the signed record
+        </button>
+      );
     }
     if (!signings.canManage) return null;
     if (state === "declined" || state === "unrecognised") return null;
@@ -1811,6 +2060,16 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
           clientName={agreements.clients.find((c) => c.id === sending.contactId)?.name || ""}
           agreedLabel={sending.agreedLabel}
           onClose={() => setSending(null)}
+        />
+      ) : null}
+      {completed ? (
+        <AgreementCompletion
+          signings={signings}
+          signing={completed}
+          tenantId={signings.tenantId}
+          clientName={agreements.clients.find((c) => c.id === completed.contactId)?.name || ""}
+          onClose={() => setCompleted(null)}
+          onOpenClients={onOpenClients}
         />
       ) : null}
 

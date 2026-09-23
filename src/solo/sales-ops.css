@@ -1048,3 +1048,202 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
   .so-src-card[aria-checked="true"] { outline: 2px solid Highlight; }
   .so-sigdot { background: CanvasText; box-shadow: none; }
 }
+
+/* ── screen 5: signed and completed ─────────────────────────────────────────────────────────────
+ *
+ * The approved completion surface (§28 screen 5), ported rule for rule rather than reinterpreted.
+ * Its composition is deliberate: the seal is the HEADING of this sheet, not an ornament above one,
+ * so the sheet carries no head row and the body starts flush at the top.
+ */
+.so-editor.so-done .so-editor-body { padding-top: 20px; }
+.so-editor.so-done:focus-visible { outline: none; }
+/* The sheet's own violet-to-gold hairline is suppressed here and ONLY here. With no head row, it
+   lands 20px above the seal's green-to-gold one and the two read as a doubled rule; the approved
+   screen draws exactly one, and it is the seal's, because the seal is this sheet's heading. */
+.so-editor.so-done::after { content: none; }
+
+/* The completion plate. Green is the settled state and gold is the act that produced it, meeting
+ * once, here — the only place on this flow the two share a surface. */
+.so-seal {
+  position: relative; overflow: hidden;
+  display: flex; gap: 20px; align-items: center;
+  padding: 24px 26px;
+  border: 1px solid color-mix(in srgb, var(--ok) 40%, var(--line));
+  border-radius: var(--r-xl);
+  background:
+    radial-gradient(74% 100% at 8% 50%, color-mix(in srgb, var(--ok-tint) 96%, transparent), transparent 64%),
+    radial-gradient(60% 90% at 96% 8%, color-mix(in srgb, var(--gold-tint) 58%, transparent), transparent 56%),
+    var(--sd-panel);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 50%, transparent), var(--sh-2);
+}
+.so-seal::after {
+  content: ""; position: absolute; left: 24px; right: 24px; top: 0; height: 2px; pointer-events: none;
+  background: linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--gold-bright) 70%, transparent) 55%, transparent);
+}
+.so-seal h2 {
+  margin: 0 0 6px; font: 600 19px/1.2 var(--font); letter-spacing: -.03em; color: var(--ok);
+}
+.so-seal p { margin: 0; font-size: 13px; line-height: 1.62; color: var(--ink-2); text-wrap: pretty; }
+
+/* A token-built orb: halo, body, a travelling gold corona, the mark at centre. The corona SWEEPS
+ * rather than pulses — a pulse reads as live traffic, and this document is finished. */
+.so-orb {
+  position: relative; width: 76px; height: 76px; flex: none; display: grid; place-items: center;
+  animation: so-pop .55s cubic-bezier(.34,1.56,.64,1) both;
+}
+.so-orb i { position: absolute; inset: 0; border-radius: 50%; }
+.so-orb .so-orb-halo {
+  inset: -8%;
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--ok) 26%, transparent), transparent 66%);
+}
+.so-orb .so-orb-body {
+  inset: 9%;
+  border: 1px solid color-mix(in srgb, var(--ok) 34%, var(--line));
+  background: radial-gradient(circle at 34% 26%, var(--surface), var(--surface-sunk) 62%, var(--canvas));
+  box-shadow: var(--sh-2);
+}
+.so-orb .so-orb-ring {
+  inset: 4%;
+  background: conic-gradient(from 208deg, transparent 0deg, var(--gold) 44deg, var(--gold-bright) 76deg, transparent 126deg, transparent 360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--gold) 60%, transparent));
+  animation: so-orbturn 22s linear infinite;
+}
+.so-orb svg {
+  position: relative; z-index: 1; color: var(--ok);
+  filter: drop-shadow(0 2px 3px color-mix(in srgb, var(--ink) 34%, transparent));
+}
+@keyframes so-orbturn { to { transform: rotate(360deg); } }
+@keyframes so-pop { from { transform: scale(.55); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+/* Motion-safety is NOT missing here: the sheet-wide `prefers-reduced-motion` guard further up this
+   file already zeroes every animation under `.so-editor *`, which is where the orb lives. A third
+   copy of that rule would only be a third thing to keep in sync. */
+@media (max-width: 560px) {
+  .so-seal { flex-direction: column; align-items: flex-start; gap: 14px; padding: 20px; }
+}
+
+/* The audit trail. Real recorded events, newest first — never a reconstruction from timestamps. */
+.so-trail {
+  border: 1px solid var(--line); border-radius: var(--r-l); overflow: hidden;
+  background: var(--sd-panel);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 50%, transparent), var(--sh-1);
+}
+.so-trail-hd {
+  padding: 13px 17px; border-bottom: 1px solid var(--line-soft); background: var(--surface-2);
+  font: 600 12.5px/1.3 var(--font); color: var(--ink);
+}
+/* The trail's own empty/refusal lines sit inside the panel, so they keep its padding rather than
+   the body's block margin. */
+.so-trail .so-absent { margin: 0; padding: 13px 17px; }
+
+.so-ev {
+  position: relative; display: flex; gap: 14px; align-items: flex-start;
+  padding: 12px 17px; border-bottom: 1px solid var(--line-soft);
+}
+.so-ev:last-child { border-bottom: 0; }
+.so-ev-mark {
+  flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%;
+  background: var(--violet);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--violet) 14%, transparent),
+              0 0 8px color-mix(in srgb, var(--violet) 70%, transparent);
+}
+/* The events that CLOSE the ceremony carry the settled colour; everything else stays in-flight. */
+.so-ev.is-done .so-ev-mark {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 16%, transparent),
+              0 0 8px color-mix(in srgb, var(--ok) 75%, transparent);
+}
+.so-ev-when {
+  flex: none; width: 112px; font-size: 11.5px; line-height: 1.5; color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.so-ev-what { flex: 1; min-width: 0; font-size: 13px; line-height: 1.45; }
+.so-ev-what b { font-weight: 600; color: var(--ink); }
+.so-ev-what > span {
+  display: block; margin-top: 2px; font-size: 11.5px; line-height: 1.5;
+  color: var(--ink-3); word-break: break-word;
+}
+@media (max-width: 560px) {
+  .so-ev { flex-wrap: wrap; }
+  .so-ev-when { width: auto; }
+}
+
+.so-done-note { margin: 0; }
+.so-done-note b { color: var(--ink-2); font-weight: 600; }
+
+/* ── the offer attach list (approved screen 2) ──────────────────────────────────────────────────
+ *
+ * This was a native <select> under a pager. §11 bans the control outright, and the reason the
+ * approved pack does not use one is plainer than the rule: a dropdown shows one offer at a time,
+ * so every price stayed hidden behind a click at exactly the moment a person is deciding which
+ * plan goes onto somebody's contract. The list shows all of them at once.
+ */
+.so-results {
+  border: 1px solid var(--line); border-radius: var(--r-m); overflow: hidden;
+  background: var(--surface);
+}
+.so-res {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 10px 13px; text-align: left;
+  border: 0; border-bottom: 1px solid var(--line-soft);
+  background: var(--surface); color: var(--ink); cursor: pointer;
+  font: 400 13px/1.4 var(--font);
+  transition: background .14s;
+}
+.so-res:last-child { border-bottom: 0; }
+.so-res > strong {
+  font-weight: 500; letter-spacing: -.01em; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.so-res-sp { flex: 1; min-width: 8px; }
+.so-res-price {
+  flex: none; font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: 12px; color: var(--ink-3);
+}
+@media (hover: hover) and (pointer: fine) {
+  .so-res:not(:disabled):hover { background: var(--violet-tint); }
+}
+.so-res:focus-visible { outline: 2px solid var(--violet); outline-offset: -2px; }
+/* The attached row keeps a standing violet ground — this is the one row whose state you must be
+   able to find without reading, and it is a SELECTION, never an act, so it spends no gold (§11). */
+.so-res[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--violet-tint) 70%, var(--surface));
+}
+.so-res[aria-pressed="true"] > strong { color: var(--violet); }
+.so-res:disabled { cursor: default; opacity: .62; }
+
+/* "Attached" — the state. A violet pill, the same one the band's own counts use. */
+.so-res-on {
+  flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 9px;
+  border-radius: 99px; font: 600 11px/1 var(--font); letter-spacing: .02em; white-space: nowrap;
+  color: var(--violet); background: var(--violet-tint);
+  border: 1px solid color-mix(in srgb, var(--violet) 24%, transparent);
+}
+/* "Attach" — the affordance. Reads as a control and is deliberately quiet until the row is
+   hovered, because eight shouting buttons down a list is noise, not an invitation. It is
+   aria-hidden in the markup: the row itself is the button and already carries the offer's name,
+   so announcing "Attach" again would read the control twice. */
+.so-res-act {
+  flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px;
+  border-radius: 8px; font: 500 11.5px/1 var(--font); white-space: nowrap;
+  color: var(--ink-3); background: var(--surface-2); border: 1px solid var(--line);
+  transition: color .14s, border-color .14s, background .14s;
+}
+@media (hover: hover) and (pointer: fine) {
+  .so-res:not(:disabled):hover .so-res-act {
+    color: var(--violet); border-color: var(--violet-line); background: var(--surface);
+  }
+}
+.so-res:disabled .so-res-act { visibility: hidden; }
+
+/* Nothing matched the search. DISTINCT from `.so-prerequisite` below it, which says the catalog is
+   empty — two different facts, and a reader who cannot tell them apart goes hunting in Catalog for
+   something that was never there. */
+.so-nomatch {
+  padding: 13px; border: 1px solid var(--line); border-radius: var(--r-m);
+  background: var(--surface-2);
+}
+.so-nomatch > p { margin: 0; font-size: 12.5px; color: var(--ink-2); }
+.so-nomatch-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+.so-nomatch > small { display: block; margin-top: 8px; }

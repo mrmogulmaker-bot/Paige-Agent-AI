@@ -169,6 +169,10 @@ beforeEach(() => {
     uploadDocument: vi.fn(async () => ({ ok: true, path: "tenant-1/source/1-agreement.pdf" })),
     createSigning: vi.fn(async () => ({ ok: true, signingId: "signing-1", signatureState: "draft" })),
     sendForSignature: vi.fn(async () => ({ ok: true, sent: ["acme@example.com"], notDelivered: [] })),
+    signingEvents: vi.fn(async () => ({ ok: true, events: [
+      { id: "e2", type: "completed", actorKind: "signer", actorEmail: "dana@example.com", ip: "203.0.113.42", userAgent: "Safari on iPhone", at: "2026-09-22T16:12:00Z" },
+      { id: "e1", type: "sent", actorKind: "owner", actorEmail: null, ip: null, userAgent: null, at: "2026-09-22T15:51:00Z" },
+    ] })),
     issueLink: vi.fn(async () => ({ ok: true, token: "tok-abcdef", expiresAt: "2026-10-06T12:00:00Z" })),
     voidSigning: vi.fn(async () => ({ ok: true, signatureState: "voided" })),
     signedCopyUrl: vi.fn(async () => ({ ok: true, url: "https://storage.test/signed.pdf?token=x" })),
@@ -553,9 +557,42 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
     expect(text).toContain("Twelve-week program");
     expect(text).toContain("$2,400");
     expect(text).toContain("monthly");
-    expect(text).toContain("Offer page 1 · up to 5 offers");
     // The deleted band's own search input came with it.
     expect(dialog?.querySelector('input[placeholder="Search your Catalog…"]')).not.toBeNull();
+
+    // The offer is a real ATTACH ROW now, not an <option> in a dropdown — §11 bans the native
+    // control, and a dropdown hid every price behind a click at the one moment they matter.
+    const rows = [...dialog!.querySelectorAll(".so-res")];
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining("No offer"),
+      expect.stringContaining("Twelve-week program"),
+    ]);
+    // Exactly one thing is attached at a time, and the price sits in its own column beside it.
+    expect(rows.filter((r) => r.getAttribute("aria-pressed") === "true")).toHaveLength(1);
+    expect(rows[1].querySelector(".so-res-price")!.textContent).toBe("$2,400 · monthly");
+
+    // §58 — THE PAGER SURVIVED the dropdown it used to sit under. It now renders only when it can
+    // do something, so a single-page catalog correctly shows none: asserting its LABEL on one
+    // offer, as this test used to, proved the label existed and never that paging worked.
+    expect(text).not.toContain("Offer page");
+    expect(buttonSaying("Next")).toBeUndefined();
+  });
+
+  it("shows the offer pager, and pages, once there is more than one page (Terms)", () => {
+    harness.offers.offers = [{
+      id: "offer-1", name: "Twelve-week program", availability: "active",
+      prices: [{ id: "price-1", unitAmount: 240000, currency: "usd", billingInterval: "month", active: true }],
+    }];
+    harness.offers.hasMore = true;
+    render("terms");
+    act(() => (buttonSaying("New agreement") as HTMLButtonElement).click());
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Offer page 1 · up to 5 offers");
+    const next = buttonSaying("Next") as HTMLButtonElement;
+    expect(next).toBeDefined();
+    expect(next.disabled).toBe(false);
+    act(() => next.click());
+    // Paging is a real read against a new page, not a local slice of what was already fetched.
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Offer page 2 · up to 5 offers");
   });
 
   /** §58 RE-POINT — the two smaller things the deleted band also did. */
@@ -572,8 +609,13 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
       search.dispatchEvent(new Event("input", { bubbles: true }));
     });
     const after = document.querySelector('[role="dialog"]')!;
-    expect(after.textContent).toContain("No offers match this view");
+    expect(after.textContent).toContain("Nothing in your Catalog matches that.");
+    // The two states stay DISTINCT: "nothing matches that word" must never render as "you have no
+    // offers at all", or a reader goes looking in Catalog for something that was never there.
     expect(after.textContent).not.toContain("Nothing in your catalog yet");
+    // The no-match state carries the two acts that resolve it, per the approved pack.
+    expect(buttonSaying("Quick offer")).toBeDefined();
+    expect(buttonSaying("Open Catalog")).toBeDefined();
   });
 
   it("renders recorded payments as recorded, and no total (Revenue)", () => {
@@ -803,7 +845,17 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
     expect(sheet).toMatch(/\.so-tr\s*>\s*span\.so-num\b/);
     expect(sheet).toMatch(/\.so-tr\.so-th\s*>\s*span/);
     // Evidence chips never spend gold — gold stays on the act (§11).
-    expect(sheet).not.toMatch(/\.so-ec[\s\S]*?var\(--gold/);
+    //
+    // This used to read `/\.so-ec[\s\S]*?var\(--gold/`, which is not that rule: the lazy span runs
+    // from the first `.so-ec` to the next `var(--gold` ANYWHERE later in the file, so it passed only
+    // while no gold rule happened to be declared below the chips, and failed the moment one was —
+    // on a surface that has nothing to do with chips. It now reads the chips' own declaration
+    // blocks, which is what it always claimed to check.
+    const chipBlocks = [...sheet.matchAll(/([^{}]*)\{([^{}]*)\}/g)]
+      .filter(([, selector]) => /\.so-ec\b/.test(selector))
+      .map(([, , body]) => body);
+    expect(chipBlocks.length).toBeGreaterThan(5);
+    for (const body of chipBlocks) expect(body).not.toMatch(/var\(--gold/);
   });
 });
 
@@ -995,8 +1047,15 @@ describe("Commercial quote transitions (Terms)", () => {
     if (existing) { act(() => (host.querySelector('[aria-label="Agreements and terms"] button') as HTMLButtonElement).click()); act(() => (buttonSaying("Edit commercial terms") as HTMLButtonElement).click()); expect(buttonSaying("Your catalog price")).toBeUndefined(); }
     else {
       act(() => (buttonSaying("New agreement") as HTMLButtonElement).click());
-      const selects = document.querySelectorAll('.so-editor select');
-      act(() => { (selects[0] as HTMLSelectElement).value = "c1"; selects[0].dispatchEvent(new Event('change', { bubbles: true })); (selects[1] as HTMLSelectElement).value = "o1"; selects[1].dispatchEvent(new Event('change', { bubbles: true })); });
+      // The client is still a select; the offer is now an attach row, so it is CLICKED rather
+      // than assigned. Reaching it by its name and not by index keeps this test honest if the
+      // list ever reorders.
+      const clientSelect = document.querySelector('.so-editor select') as HTMLSelectElement;
+      act(() => { clientSelect.value = "c1"; clientSelect.dispatchEvent(new Event('change', { bubbles: true })); });
+      const offerRow = [...document.querySelectorAll('.so-editor .so-res')]
+        .find((r) => r.textContent?.includes("Offer")) as HTMLButtonElement;
+      act(() => offerRow.click());
+      expect(offerRow.getAttribute("aria-pressed")).toBe("true");
       const input = document.querySelector('input[placeholder="Amount"]') as HTMLInputElement;
       act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '125'); input.dispatchEvent(new Event('input', { bubbles: true })); });
     }
@@ -1025,7 +1084,7 @@ describe("Agreement documents — signature state, separate from commercial stat
     documentSource: "tenant_upload", documentPath: "tenant-1/source/1-x.pdf",
     signatureState: "sent", displayState: "sent", expiresAt: "2026-10-06T12:00:00Z",
     sentAt: "2026-09-22T12:00:00Z", viewedAt: null, completedAt: null, declinedAt: null,
-    voidedAt: null, declineReason: null, signerName: null, signedPdfPath: null,
+    voidedAt: null, declineReason: null, signerName: null, hasSealedCopy: false,
     createdAt: "2026-09-22T12:00:00Z", updatedAt: "2026-09-22T12:00:00Z",
   };
 
@@ -1035,7 +1094,7 @@ describe("Agreement documents — signature state, separate from commercial stat
   const COMPLETED = {
     ...SIGNING, signatureState: "completed", displayState: "completed",
     signerName: "Dana Reed", completedAt: "2026-09-22T13:00:00Z",
-    signedPdfPath: "tenant-1/signed/s1-1.pdf",
+    hasSealedCopy: true,
   };
   const openCompleted = () => {
     harness.agreements.clients = [{ id: "c1", name: "Acme" }];
@@ -1043,13 +1102,14 @@ describe("Agreement documents — signature state, separate from commercial stat
     harness.signings.signings = [COMPLETED];
     render("terms");
     act(() => (host.querySelector('[aria-label="Agreements and terms"] .so-row') as HTMLButtonElement).click());
+    act(() => (buttonSaying("View the signed record") as HTMLButtonElement).click());
   };
 
   it("offers the signed copy on a completed document, and opens only what the server returned", async () => {
     const opened: string[] = [];
     const spy = vi.spyOn(window, "open").mockImplementation(((u: string) => { opened.push(u); return null; }) as never);
     openCompleted();
-    const button = buttonSaying("Download the signed copy") as HTMLButtonElement;
+    const button = buttonSaying("Download the signed PDF") as HTMLButtonElement;
     expect(button).toBeDefined();
     await act(async () => { button.click(); });
     // RE-POINTED, not rewritten away: the sealed copy is now streamed by `agreement-document`,
@@ -1067,7 +1127,7 @@ describe("Agreement documents — signature state, separate from commercial stat
     const spy = vi.spyOn(window, "open").mockImplementation(((u: string) => { opened.push(u); return null; }) as never);
     harness.signings.signedCopyUrl = vi.fn(async () => ({ ok: false, message: "That signed copy could not be opened just now." }));
     openCompleted();
-    await act(async () => { (buttonSaying("Download the signed copy") as HTMLButtonElement).click(); });
+    await act(async () => { (buttonSaying("Download the signed PDF") as HTMLButtonElement).click(); });
     // §13: a request is not a link. Nothing is opened and the refusal is what the owner is told.
     expect(opened).toEqual([]);
     expect(host.textContent).toContain("That signed copy could not be opened just now.");
@@ -1077,11 +1137,79 @@ describe("Agreement documents — signature state, separate from commercial stat
   it("says a completed document carries no sealed copy rather than offering a control that cannot work", () => {
     harness.agreements.clients = [{ id: "c1", name: "Acme" }];
     harness.agreements.agreements = [AGREEMENT];
-    harness.signings.signings = [{ ...COMPLETED, signedPdfPath: null }];
+    harness.signings.signings = [{ ...COMPLETED, hasSealedCopy: false }];
     render("terms");
     act(() => (host.querySelector('[aria-label="Agreements and terms"] .so-row') as HTMLButtonElement).click());
-    expect(buttonSaying("Download the signed copy")).toBeUndefined();
-    expect(host.textContent).toContain("no sealed copy is recorded against it");
+    // The record still opens — it is signed, and the trail of how it got there is the point of the
+    // surface. What is absent is the DOWNLOAD, and the footer says why instead of offering a
+    // control that cannot work (§70.1).
+    act(() => (buttonSaying("View the signed record") as HTMLButtonElement).click());
+    expect(buttonSaying("Download the signed PDF")).toBeUndefined();
+    // Targeted by its OWN label: the grounded-detail drawer is also role="dialog", so a bare
+    // querySelector returns whichever is first in the DOM rather than the one under test.
+    expect(document.querySelector('[aria-labelledby="so-done-title"]')!.textContent).toContain("no sealed copy is recorded against it");
+  });
+
+  it("never asks the database for a storage key or a document path", () => {
+    // The sealed key is shaped `${tenant_id}/${agreement_id}/...`, so selecting it puts both ids
+    // into every browser that opens this band. This lane removed that disclosure from the
+    // RETRIEVAL path (adopting `agreement-document` over a signed URL) and left it standing in the
+    // LIST path — the same leak arriving by a different door. The surface only ever asked "is
+    // there a sealed copy?", and a CHECK in the engine's own schema
+    // (20270401000000:124) makes `sealed_sha256` answer that identically while disclosing nothing.
+    const hook = readFileSync(resolve(process.cwd(), "src/solo/useSoloAgreementSignings.ts"), "utf8");
+    const selected = [...hook.matchAll(/"([a-z_,()]*(?:id|at|status|source|sha256|key|path)[a-z_,()]*)" \+/g)]
+      .map(([, chunk]) => chunk).join(",");
+    expect(selected).toContain("sealed_sha256");
+    expect(selected).not.toContain("sealed_storage_key");
+    expect(selected).not.toContain("document_path");
+  });
+
+  it("shows the recorded trail — what the engine logged, at minute resolution, in its order", async () => {
+    openCompleted();
+    // The trail is fetched, not derived from the row's four timestamps: those can say a document
+    // was viewed, they cannot say by which address, from which device, or in what order.
+    await act(async () => {});
+    expect(harness.signings.signingEvents).toHaveBeenCalledWith("s1", "tenant-1");
+
+    const panel = document.querySelector('[aria-labelledby="so-done-title"]')!;
+    const rows = [...panel.querySelectorAll(".so-ev")];
+    expect(rows).toHaveLength(2);
+
+    // Newest first, exactly as the read returned it — never re-sorted into a guess.
+    expect(rows[0].textContent).toContain("Signed and completed");
+    expect(rows[1].textContent).toContain("Sent");
+    // The recorded actor, address and device, and nothing invented to fill the gaps: the `sent`
+    // event carries none of the three, so it falls back to who did it rather than a blank.
+    expect(rows[0].textContent).toContain("dana@example.com");
+    expect(rows[0].textContent).toContain("203.0.113.42");
+    expect(rows[0].textContent).toContain("Safari on iPhone");
+    expect(rows[1].textContent).toContain("by owner");
+    // MINUTE resolution. Both events fall on the same day, so a date-only stamp would render them
+    // identically and the ordering this surface exists to prove would be invisible.
+    expect(rows[0].querySelector(".so-ev-when")!.textContent)
+      .not.toEqual(rows[1].querySelector(".so-ev-when")!.textContent);
+    // The event that CLOSES the ceremony carries the settled mark; the one in flight does not.
+    expect(rows[0].className).toContain("is-done");
+    expect(rows[1].className).not.toContain("is-done");
+
+    // ONE title. The approved screen leads with the seal and says "Signed and completed" once;
+    // a head row repeating it directly above is a stutter, and this is what keeps it gone.
+    const headings = [...panel.querySelectorAll("h1, h2, h3")].map((h) => h.textContent);
+    expect(headings).toEqual(["Signed and completed"]);
+  });
+
+  it("says so when the trail cannot be read, rather than showing an empty history", async () => {
+    harness.signings.signingEvents = vi.fn(async () => ({ ok: false, message: "This document's history could not be read." }));
+    openCompleted();
+    await act(async () => {});
+    const panel = document.querySelector('[aria-labelledby="so-done-title"]')!;
+    // A failed READ and a document with no recorded history are not the same fact, and a trail
+    // that renders empty for both tells the owner the wrong one (§13).
+    expect(panel.textContent).toContain("This document's history could not be read.");
+    expect(panel.querySelectorAll(".so-ev")).toHaveLength(0);
+    // The rest of the record still stands: the seal and the sealed copy do not depend on the trail.
+    expect(buttonSaying("Download the signed PDF")).toBeDefined();
   });
 
   it("lets a reader who cannot write still retrieve the signed copy", () => {
@@ -1089,7 +1217,7 @@ describe("Agreement documents — signature state, separate from commercial stat
     // this on canManage would hide a signed contract from someone entitled to read its record.
     harness.signings.canManage = false;
     openCompleted();
-    expect(buttonSaying("Download the signed copy")).toBeDefined();
+    expect(buttonSaying("Download the signed PDF")).toBeDefined();
     expect(buttonSaying("Send for signature")).toBeUndefined();
   });
 
@@ -1275,7 +1403,7 @@ describe("Agreement documents — signature state, separate from commercial stat
   it("offers no act on a document that is finished, and never a dead control (§70)", () => {
     harness.agreements.clients = [{ id: "c1", name: "Acme" }];
     harness.agreements.agreements = [AGREEMENT];
-    harness.signings.signings = [{ ...SIGNING, signatureState: "completed", displayState: "completed", completedAt: "2026-09-23T09:00:00Z", signerName: "A Client", signedPdfPath: "tenant-1/signed/s1.pdf" }];
+    harness.signings.signings = [{ ...SIGNING, signatureState: "completed", displayState: "completed", completedAt: "2026-09-23T09:00:00Z", signerName: "A Client", hasSealedCopy: true }];
     render("terms");
     act(() => (host.querySelector('[aria-label="Agreements and terms"] button') as HTMLButtonElement).click());
     expect(buttonSaying("Send for signature")).toBeUndefined();
