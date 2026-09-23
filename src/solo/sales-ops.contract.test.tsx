@@ -548,7 +548,7 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
     act(() => (buttonSaying("New agreement") as HTMLButtonElement).click());
     const dialog = document.querySelector('[role="dialog"]');
     const text = dialog?.textContent ?? "";
-    expect(text).toContain("Find an offer");
+    expect(text).toContain("Search your Catalog");
     expect(text).toContain("Twelve-week program");
     expect(text).toContain("$2,400");
     expect(text).toContain("monthly");
@@ -711,9 +711,9 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
     act(() => (buttonSaying("New agreement") as HTMLButtonElement).click());
     const editorHeadings = [...document.querySelectorAll('[role="dialog"] h2, [role="dialog"] h3')]
       .map((h) => h.textContent?.trim());
-    expect(editorHeadings).toContain("The document");
-    expect(editorHeadings).toContain("Who, and what for");
-    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Find an offer");
+    expect(editorHeadings).toContain("Where the document comes from");
+    expect(editorHeadings).toContain("Who it is for");
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Search your Catalog");
     render("revenue");
     headings = [...host.querySelectorAll("h1,h2,h3")].map((h) => h.textContent?.trim());
     expect(headings).toContain("Actual received");
@@ -1000,7 +1000,7 @@ describe("Commercial quote transitions (Terms)", () => {
       act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '125'); input.dispatchEvent(new Event('input', { bubbles: true })); });
     }
     act(() => (buttonSaying("Not quoted yet") as HTMLButtonElement).click());
-    const save = [...document.querySelectorAll('.so-editor button')].find(b => b.textContent === (existing ? 'Save changes' : 'Record terms')) as HTMLButtonElement;
+    const save = [...document.querySelectorAll('.so-editor button')].find(b => b.textContent === (existing ? 'Save changes' : 'Save as draft')) as HTMLButtonElement;
     await act(async () => save.click());
     expect(harness.agreements.saveAgreement).toHaveBeenCalledWith(expect.objectContaining({ priceBasis: 'quote_pending', termKind: 'custom_quote', agreedAmountMinor: null, agreedCurrency: null }));
   });
@@ -1160,7 +1160,7 @@ describe("Agreement documents — signature state, separate from commercial stat
     const body = dialog.querySelector("textarea") as HTMLTextAreaElement;
     act(() => { setter.call(body, "These are the terms."); body.dispatchEvent(new Event("input", { bubbles: true })); });
 
-    const save = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Save and continue") as HTMLButtonElement;
+    const save = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Review and send \u2192") as HTMLButtonElement;
     expect(save.disabled).toBe(false);
     await act(async () => { save.click(); });
 

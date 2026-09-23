@@ -752,15 +752,10 @@ function AgreementEditor({ agreements, signings, offers, tenantId, existing, exi
       <aside ref={panelRef} className="so-editor" role="dialog" aria-modal="true" aria-labelledby="so-agr-title">
         <header className="so-editor-head">
           <div style={{ flex: 1 }}>
-            <h2 id="so-agr-title">{existing ? "Change these terms" : "Record what a client agreed to"}</h2>
-            <p>
-              The document they sign, and the terms it commits. Recording either one bills nobody,
-              and the money still runs on your own processor.
-            </p>
+            <h2 id="so-agr-title">{existing ? "Change these terms" : "New agreement"}</h2>
+            <p>Nothing is sent until you choose to send it.</p>
           </div>
-          <button className="btn btn-s" onClick={close} disabled={busy} aria-label="Close">
-            <Ic.x size={14} />
-          </button>
+          <button className="btn btn-s btn-q" onClick={close} disabled={busy}>Cancel</button>
         </header>
 
         <div className="so-editor-body" inert={busy ? "" : undefined}>
@@ -772,7 +767,7 @@ function AgreementEditor({ agreements, signings, offers, tenantId, existing, exi
             * contract you already have, one is honestly unavailable, and one records no document
             * at all — which is exactly what this editor did before documents existed, and stays
             * the default so nobody has to opt out of something to keep the old behaviour (§58). */}
-          <h3 className="so-step">The document</h3>
+          <h3 className="so-step">Where the document comes from</h3>
           {existingSigning ? (
             <p className="so-absent">
               <b>{existingSigning.documentTitle}</b> is already on this record
@@ -791,23 +786,31 @@ function AgreementEditor({ agreements, signings, offers, tenantId, existing, exi
             </p>
           ) : (<>
             <div className="so-src" role="radiogroup" aria-label="The document">
-              <button type="button" role="radio" aria-checked={source === "none"} className="so-src-card"
-                      onClick={() => setSource("none")}>
-                <span className="so-src-ic so-src-ic-none"><Ic.doc size={16} /></span>
-                <b>No document — record the terms only</b>
-                <small>What was agreed goes on the record. Nothing is sent and nobody signs anything.</small>
-              </button>
+              {/* The APPROVED order (§28 screen 2): the contract you already have, then Paige
+                * writing one, then no document at all — which the prototype's own note calls
+                * "today's behaviour preserved", and which stays the DEFAULT so nobody has to opt
+                * out of something to keep what this editor did before documents existed (§58). */}
               <button type="button" role="radio" aria-checked={source === "tenant_upload"} className="so-src-card"
                       onClick={() => setSource("tenant_upload")}>
                 <span className="so-src-ic so-src-ic-upload"><Ic.plus size={16} /></span>
                 <b>Upload a contract</b>
-                <small>Your own contract, kept on this record and sent to the client to sign.</small>
+                <small>You already have the wording. Kept on this record and sent to the client to sign.</small>
               </button>
               <button type="button" role="radio" aria-checked={source === "paige_draft"} className="so-src-card"
                       onClick={() => setSource("paige_draft")}>
                 <span className="so-src-ic so-src-ic-paige"><Ic.spark size={16} /></span>
-                <b>Paige drafts it</b>
-                <small>Not available yet — see what to do instead.</small>
+                <b>Paige drafts it <em className="so-src-soon">not available yet</em></b>
+                {/* The approved card describes what this WILL do. The marker beside the name is
+                  * what keeps it honest (§13/§70.1): nothing in this workspace writes contract
+                  * wording today, so the description alone would be a promise the product cannot
+                  * keep, and a bare "not available" would not say what is being waited for. */}
+                <small>Tell her the scope and she writes it from your terms. You read and edit it before anyone else sees it.</small>
+              </button>
+              <button type="button" role="radio" aria-checked={source === "none"} className="so-src-card"
+                      onClick={() => setSource("none")}>
+                <span className="so-src-ic so-src-ic-none"><Ic.doc size={16} /></span>
+                <b>No document — record the terms only</b>
+                <small>You agreed it elsewhere and just want it written down. Nothing gets sent and nothing gets signed.</small>
               </button>
             </div>
 
@@ -852,7 +855,7 @@ function AgreementEditor({ agreements, signings, offers, tenantId, existing, exi
             </>)}
           </>)}
 
-          <h3 className="so-step">Who, and what for</h3>
+          <h3 className="so-step">Who it is for</h3>
           <label className="so-field">
             <span>Client</span>
             <select aria-label="Client" ref={firstRef} value={contactId} onChange={(e) => setContactId(e.target.value)}>
@@ -871,7 +874,8 @@ function AgreementEditor({ agreements, signings, offers, tenantId, existing, exi
             * (this is its only call site in the repo, so losing it would have made the component
             * unreachable and left a new workspace unable to create its first offer from Sales),
             * and Open Catalog now sits in the band head on the surface behind this drawer. */}
-          <label className="so-field"><span>Find an offer</span><input type="search" disabled={Boolean(existing?.catalogSnapshotAt)} value={pickerSearch} onChange={(e) => { setPickerSearch(e.target.value); setPickerPage(0); }} placeholder="Search your Catalog…" /></label>
+          <h3 className="so-step">Which offer this is for</h3>
+          <label className="so-field"><span>Search your Catalog</span><input type="search" disabled={Boolean(existing?.catalogSnapshotAt)} value={pickerSearch} onChange={(e) => { setPickerSearch(e.target.value); setPickerPage(0); }} placeholder="Search your Catalog…" /></label>
           <div className="so-page-controls"><span role="status">{picker.phase === "ready" ? "Offer page " + (pickerPage + 1) + " · up to 5 offers" : picker.phase === "error" ? "Could not load offers" : "Loading offers…"}</span>{picker.phase === "error" && <button className="btn btn-s" onClick={picker.retry}>Retry offers</button>}<button className="btn btn-s" disabled={!pickerPage || picker.phase !== "ready" || Boolean(existing?.catalogSnapshotAt)} onClick={() => setPickerPage((p) => p - 1)}>Previous</button><button className="btn btn-s" disabled={!picker.hasMore || picker.phase !== "ready" || Boolean(existing?.catalogSnapshotAt)} onClick={() => setPickerPage((p) => p + 1)}>Next</button></div>
           <label className="so-field">
             <span>Offer</span>
@@ -890,7 +894,11 @@ function AgreementEditor({ agreements, signings, offers, tenantId, existing, exi
             * and the person cannot tell an empty catalog from an unlucky word. And an offer
             * AUTHORITY that could not be read is still "I could not look", never "you may not". */}
           {offers.authorityUnknown && <p className="so-absent" role="alert">Offer editing access could not be confirmed. <button className="btn btn-s" onClick={offers.retry}>Retry offer access</button></p>}
-          {(pickerSearch || pickerPage) && picker.phase === "ready" && !pickerOffers.length && (
+          {/* Boolean(), not the bare values. `("" || 0)` is `0`, and React renders a numeric 0 as
+            * text — so an empty search on page one printed a stray "0" under the Offer field on
+            * every first open of this editor. It reads as junk output, which is exactly how it
+            * looked on the desk. */}
+          {(Boolean(pickerSearch) || pickerPage > 0) && picker.phase === "ready" && !pickerOffers.length && (
             <p className="so-absent">No offers match this view. Clear your search or go back a page.</p>
           )}
           {!pickerSearch && !pickerPage && picker.phase === "ready" && !pickerOffers.length && (
@@ -914,6 +922,7 @@ function AgreementEditor({ agreements, signings, offers, tenantId, existing, exi
               a scope letter looks like. Choose one of your offers to put a price on the record.
             </p>
           ) : (<>
+          <h3 className="so-step">What they agreed to pay</h3>
           <fieldset className="so-field">
             <legend>Arrangement</legend>
             <div className="so-pick">
@@ -1031,9 +1040,8 @@ function AgreementEditor({ agreements, signings, offers, tenantId, existing, exi
                     : "Say what they agreed to pay.")}
           </span>
           <span style={{ flex: 1 }} />
-          <button className="btn btn-s" onClick={close} disabled={busy}>Cancel</button>
           <button className="btn btn-s btn-p" onClick={save} disabled={busy || !ready}>
-            {busy ? "Saving…" : existing ? "Save changes" : uploading ? "Save and continue" : "Record terms"}
+            {busy ? "Saving…" : existing ? "Save changes" : uploading ? "Review and send →" : "Save as draft"}
           </button>
         </footer>
         {confirmation}

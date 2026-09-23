@@ -421,33 +421,66 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
   font-size: 12px; line-height: 1.6; color: var(--ink-3); text-wrap: pretty;
 }
 
-/* ── the editor slide-over ──────────────────────────────────────────────────────────────────── */
+/* ── the editor sheet ───────────────────────────────────────────────────────────────────────── */
 
+/* THE APPROVED SHEET (§28 screen 2). It was a right-anchored slide-over pinned to the full height
+ * of the window; the approved surface is a CENTRED sheet with a wide radius and a gradient hairline
+ * across its top edge, sized to its content rather than to the viewport. It remains a real modal
+ * dialog — scrim, focus trap, Escape and inert are unchanged — only its shape and placement move. */
 .so-editor-scrim {
   position: fixed; inset: 0; z-index: 96;
-  background: var(--ink); opacity: .28; border: 0; padding: 0;
+  background: var(--ink); opacity: .32; border: 0; padding: 0;
 }
 .so-editor {
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 97;
-  width: min(460px, 100vw);
+  position: fixed; z-index: 97;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(760px, calc(100vw - 28px));
+  max-height: min(88vh, 940px);
   display: flex; flex-direction: column;
-  background: var(--canvas); border-left: 1px solid var(--line); box-shadow: var(--sh-3);
-  animation: so-slide 180ms ease-out;
+  overflow: hidden;
+  border: 1px solid var(--line); border-radius: var(--r-xl);
+  background: var(--sd-panel);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 55%, transparent), var(--sh-3);
+  animation: so-sheet 220ms cubic-bezier(.22,.61,.36,1);
 }
-@keyframes so-slide { from { transform: translateX(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+/* The sheet's own accent: violet running into gold, the two colours this flow spends — the second
+ * of which is the act at the END of it. A hairline, never a bar. */
+.so-editor::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--violet-2) 22%, var(--gold-bright) 72%, transparent);
+}
+@keyframes so-sheet {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)); }
+  to   { opacity: 1; transform: translate(-50%, -50%); }
+}
+@media (prefers-reduced-motion: reduce) { .so-editor { animation: none; } }
+
+/* Narrow: a full-height sheet again, because a centred card with 14px of gutter is worse than one
+   that simply owns the screen. */
+@media (max-width: 560px) {
+  .so-editor {
+    top: 0; left: 0; transform: none;
+    width: 100vw; max-height: 100vh; height: 100%;
+    border-radius: 0; animation: none;
+  }
+}
 
 .so-editor-head {
   display: flex; align-items: flex-start; gap: 12px;
-  padding: 16px 18px 12px; border-bottom: 1px solid var(--line-soft);
+  padding: 15px 20px; border-bottom: 1px solid var(--line-soft); background: var(--surface-2);
 }
-.so-editor-head h2 { margin: 0; font: 500 15px/1.3 var(--font); letter-spacing: -.008em; color: var(--ink); }
+.so-editor-head h2 { margin: 0; font: 600 14.5px/1.3 var(--font); letter-spacing: -.02em; color: var(--ink); }
 .so-editor-head p {
-  margin: 4px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); text-wrap: pretty;
+  margin: 2px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink-3); text-wrap: pretty;
 }
 
 .so-editor-body {
-  flex: 1; min-height: 0; overflow: auto; padding: 14px 18px; display: grid; gap: 14px;
+  flex: 1; min-height: 0; overflow: auto; padding: 18px 20px 20px; display: grid; gap: 14px;
   scrollbar-gutter: stable;
+  /* A raised card whose first pixel sits on the scroll boundary gets its top edge shaved. The
+     padding above is the room it needs; this keeps that room when the body is scrolled to a
+     heading rather than to its very top. */
+  scroll-padding-top: 8px;
 }
 
 .so-field { display: grid; gap: 6px; border: 0; padding: 0; margin: 0; min-width: 0; }
@@ -472,6 +505,17 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 .so-doc[data-none] svg { color: var(--ink-3); opacity: .6; }
 .so-doc[data-none] > span { color: var(--ink-3); }
 .so-doc > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The honest marker on a source that is described but not yet built. Small, lowercase and beside
+   the name rather than replacing the description — the description says what it will do, this says
+   it cannot do it yet, and a reader needs both to decide what to pick instead (§13/§70.1). */
+.so-src-soon {
+  display: inline-block; margin-left: 7px; padding: 1px 7px; border-radius: 99px;
+  font: 500 10px/1.6 var(--font); font-style: normal; letter-spacing: .02em;
+  color: var(--warn); background: var(--warn-tint);
+  border: 1px solid color-mix(in srgb, var(--warn) 24%, transparent);
+  vertical-align: 1px;
+}
 
 .so-money { display: flex; gap: 8px; }
 
