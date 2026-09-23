@@ -275,8 +275,14 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
         if (mounted.current && generation === requestGeneration.current) connectResult(renewed, generation);
       } catch {
         if (mounted.current && generation === requestGeneration.current) {
+          stopPlayback.current();
+          relayRef.current?.stop();
+          relayRef.current = null;
+          relayReadyRef.current = false;
           setState("unavailable");
+          setAvailability("UNAVAILABLE");
           setExplanation("Paige could not reconnect live audio. You can continue in chat.");
+          setAnnouncement("Live audio unavailable. Paige could not reconnect live audio. You can continue in chat.");
         }
       }
       return;
@@ -315,7 +321,17 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   };
 
   const connectResult = (result: PaigeLiveStartResult, generation: number) => {
-    if (!result.sessionId || !result.ticket) return;
+    if (!result.ok || !result.sessionId || !result.ticket) {
+      stopPlayback.current();
+      relayRef.current?.stop();
+      relayRef.current = null;
+      relayReadyRef.current = false;
+      setState("unavailable");
+      setAvailability("UNAVAILABLE");
+      setExplanation(result.explanation);
+      setAnnouncement(`UNAVAILABLE. ${result.explanation}`);
+      return;
+    }
     relayRef.current?.stop();
     relayReadyRef.current = false;
     setState("checking");

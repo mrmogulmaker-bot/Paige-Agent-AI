@@ -7,6 +7,56 @@
  */
 export const RELAY_TICKET_TTL_MS = 45_000;
 
+/** The composer now serializes its tenant/user/focus scope as a JSON tuple.
+ * Legacy deployed clients still send a pipe-delimited epoch. This only extracts
+ * a comparison value; the control plane resolves authority from the JWT. */
+export function liveContextEpochTenant(epoch: string): string | null {
+  if (epoch.startsWith("[")) {
+    try {
+      const scope: unknown = JSON.parse(epoch);
+      if (!Array.isArray(scope) || scope.length !== 4 ||
+        !scope.every((part) => typeof part === "string")) return null;
+      return scope[0].length > 0 ? scope[0] : null;
+    } catch {
+      return null;
+    }
+  }
+  return epoch.split("|", 1)[0] || null;
+}
+
+/** Platform-owned workspace availability; never a client-supplied scope or role. */
+export function isLiveAudioPilotEnabled(row: unknown): boolean {
+  return !!row && typeof row === "object" && !Array.isArray(row) &&
+    (row as Record<string, unknown>).enabled === true;
+}
+
+/** Matches the standing alternatives in current_user_tenant_id(); it never
+ * grants access without the separately checked caller-owned thread and pilot. */
+export function hasLiveWorkspaceStanding(
+  directMember: boolean,
+  agencyChildAccess: unknown,
+  agencyRole: unknown,
+  platformStanding: unknown,
+): boolean {
+  return directMember || agencyChildAccess === true ||
+    (typeof agencyRole === "string" && agencyRole.length > 0) ||
+    platformStanding === true;
+}
+
+/** Mirrors current_user_tenant_id(): a profile workspace counts only while its
+ * standing is valid; otherwise use the first active direct membership. */
+export function isLiveWorkspaceCurrent(
+  sessionTenantId: string,
+  activeTenantId: unknown,
+  activeTenantHasStanding: boolean,
+  fallbackTenantId: unknown,
+): boolean {
+  const resolved = activeTenantHasStanding && typeof activeTenantId === "string" && activeTenantId.length > 0
+    ? activeTenantId
+    : fallbackTenantId;
+  return typeof resolved === "string" && resolved === sessionTenantId;
+}
+
 export interface RelayTicket {
   value: string;
   storedDigest: string;

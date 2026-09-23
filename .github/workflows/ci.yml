@@ -640,6 +640,11 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run smoke:live-relay && npm run smoke:live-ticket
 
+      # Mock socket: falsifies either absent or false mip_opt_out before any provider contact.
+      - name: Smoke — Deepgram Flux route and mandatory MIP opt-out (no network)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:voice-stt
+
       # Independent source guard for the v3 Fleet Directory. Component states run under Vitest;
       # this gate pins the authored lineage and prevents the retired orbit modules from returning.
       - name: Smoke — Fleet v3 Directory (lineage and retired-surface guard)
