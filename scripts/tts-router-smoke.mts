@@ -12,9 +12,10 @@ ok("unapproved profile fails closed", resolveProfileVoice({ provider: "openai", 
 ok("inactive profile fails closed", resolveProfileVoice({ provider: "openai", provider_voice_ref: "nova", revision: "r1", approved: true, active: false }) === null);
 ok("unknown OpenAI voice fails closed", resolveProfileVoice({ provider: "openai", provider_voice_ref: "invented", revision: "r1", approved: true, active: true }) === null);
 const openaiProfile = resolveProfileVoice({ provider: "openai", provider_voice_ref: "nova", revision: "r1", approved: true, active: true });
-const elevenProfile = resolveProfileVoice({ provider: "elevenlabs", provider_voice_ref: "providerRefA123", revision: "r2", approved: true, active: true });
+const elevenProfile = resolveProfileVoice({ provider: "elevenlabs", provider_voice_ref: "g6xIsTj2HwM6VR4iXFCw", revision: "r2", approved: true, active: true });
 ok("approved OpenAI profile resolves", eq(openaiProfile, { provider: "openai", id: "nova", profileRevision: "r1" }));
-ok("approved provider reference resolves without a catalog literal", eq(elevenProfile, { provider: "elevenlabs", id: "providerRefA123", profileRevision: "r2" }));
+ok("approved Jessica profile resolves", eq(elevenProfile, { provider: "elevenlabs", id: "g6xIsTj2HwM6VR4iXFCw", profileRevision: "r2" }));
+ok("a stale approved profile cannot select a stranger's voice", resolveProfileVoice({ provider: "elevenlabs", provider_voice_ref: "cgSgspJ2msm6clMCkdW9", revision: "stale", approved: true, active: true }) === null);
 
 delete env.OPENAI_API_KEY;
 delete env.ELEVENLABS_API_KEY;
@@ -23,14 +24,45 @@ env.OPENAI_API_KEY = "presence-only";
 ok("selected OpenAI profile creates exactly one attempt", !!openaiProfile && eq(planTtsSynthesis(openaiProfile), { ok: true, attempts: [{ provider: "openai", model: "gpt-4o-mini-tts", voice: "nova", profileRevision: "r1" }] }));
 delete env.OPENAI_API_KEY;
 env.ELEVENLABS_API_KEY = "presence-only";
-ok("selected ElevenLabs profile creates exactly one attempt", !!elevenProfile && eq(planTtsSynthesis(elevenProfile), { ok: true, attempts: [{ provider: "elevenlabs", model: "eleven_multilingual_v2", voiceId: "providerRefA123", profileRevision: "r2" }] }));
+ok("selected ElevenLabs profile defaults to realtime conversational v3", !!elevenProfile && eq(planTtsSynthesis(elevenProfile), { ok: true, attempts: [{ provider: "elevenlabs", model: "eleven_v3_conversational", voiceId: "g6xIsTj2HwM6VR4iXFCw", profileRevision: "r2" }] }));
+env.ELEVENLABS_MODEL = "eleven_v3";
+ok("owner can switch to expressive v3 with server config", !!elevenProfile && eq(planTtsSynthesis(elevenProfile), { ok: true, attempts: [{ provider: "elevenlabs", model: "eleven_v3", voiceId: "g6xIsTj2HwM6VR4iXFCw", profileRevision: "r2" }] }));
+env.ELEVENLABS_MODEL = "eleven_multilingual_v2";
+ok("legacy model cannot silently return", !!elevenProfile && !planTtsSynthesis(elevenProfile).ok);
+delete env.ELEVENLABS_MODEL;
 ok("a configured alternate provider is not an implicit fallback", !!openaiProfile && !planTtsSynthesis(openaiProfile).ok);
 
 const keyA = await ttsCacheKey("hello", "openai", "nova", "gpt-4o-mini-tts");
 const keyB = await ttsCacheKey("hello", "openai", "nova", "gpt-4o-mini-tts");
-const keyC = await ttsCacheKey("hello", "elevenlabs", "providerRefA123", "eleven_multilingual_v2");
+const keyC = await ttsCacheKey("hello", "elevenlabs", "g6xIsTj2HwM6VR4iXFCw", "eleven_v3_conversational");
 ok("cache key is deterministic", keyA === keyB && /^[0-9a-f]{64}$/.test(keyA));
 ok("provider identity separates cache entries", keyA !== keyC);
+
+const { elevenlabsTts, elevenlabsSpeechStream } = await import("../supabase/functions/_shared/elevenlabs.ts");
+const priorFetch = globalThis.fetch;
+let observedUrl = "";
+let observedModel = "";
+let observedVoice = "";
+let observedSignal: AbortSignal | null | undefined;
+env.ELEVENLABS_API_KEY = "local-presence-only";
+globalThis.fetch = async (input, init) => {
+  observedUrl = String(input);
+  observedModel = String(JSON.parse(String(init?.body)).model_id);
+  observedVoice = String(init?.headers && (init.headers as Record<string, string>)["xi-api-key"]);
+  observedSignal = init?.signal;
+  return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+};
+try {
+  await elevenlabsTts({ text: "A local test sentence.", voiceId: "g6xIsTj2HwM6VR4iXFCw" });
+  ok("TTS transport requires no-retention mode and exact voice", observedUrl.includes("/g6xIsTj2HwM6VR4iXFCw?enable_logging=false") && observedVoice === "local-presence-only");
+  ok("TTS transport defaults to conversational v3", observedModel === "eleven_v3_conversational");
+  const cancel = new AbortController();
+  const audio = await elevenlabsSpeechStream({ text: "A first sentence.", voiceId: "g6xIsTj2HwM6VR4iXFCw" }, cancel.signal);
+  ok("live mouth uses the existing transport with a cancellable stream", observedUrl.includes("/g6xIsTj2HwM6VR4iXFCw/stream?enable_logging=false") && observedSignal === cancel.signal && audio.body !== null);
+} finally {
+  globalThis.fetch = priorFetch;
+  delete env.ELEVENLABS_API_KEY;
+}
 
 if (failures) process.exit(1);
 console.log("All server-profile TTS checks passed.");
