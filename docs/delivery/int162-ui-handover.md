@@ -174,3 +174,89 @@ owns that file must add it.
 Two §9 defects found while grounding this work are filed and are **not** in either lane's scope:
 [#1353](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/1353) and
 [#1354](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/1354).
+
+---
+
+## 5. RECONCILIATION — the two halves do not currently meet
+
+Added 2026-09-23 by the UI lane, read from **both branches' real code**, not from either PR body.
+Backend lane = PR #1352, branch `claude/optimistic-meitner-95a0gl`, head `2a0011d8`. Neither PR has
+merged; `origin/main` is `7abd5f66` and carries neither half.
+
+This is recorded rather than unilaterally fixed, because the coordinator's standing instruction on
+cross-lane overlap is that it be *"reconciled against the backend lane's work deliberately rather
+than by whoever merges first."* Rewriting this lane's adapter against an unmerged draft whose head
+moved this morning is the speculative half of that, and the naming decision is not one lane's to
+take alone.
+
+### What already meets
+
+The backend read this document: `20270401000000_agreements_engine_records.sql` cites it by path and
+preserves this lane's `body_source` vocabulary (`paige_draft` · `tenant_template` · `tenant_upload`)
+verbatim. All three owner rulings of 2026-09-22 survive in its schema:
+
+| Ruling | Honoured how |
+|---|---|
+| Signature state is separate from commercial state | `paige_agreements.status` is the document machine; the commercial state stays on `tenant_client_agreements` behind `commercial_terms_id` |
+| `Signed` collapses into `Completed` | the status set contains no `signed` |
+| An agreement may exist with no offer and no price | `offer_id` is nullable |
+
+The **five RPC names match exactly** — `create_agreement_signing`, `issue_agreement_signing_link`,
+`peek_agreement_signing`, `decline_agreement_signing`, `void_agreement_signing` — as does the
+`sign-agreement` edge function this page POSTs to. `add_agreement_signer` exists backend-side and
+this page never calls it, which is correct: `trg_agreement_seed_counterparty` seeds the counterparty
+on every create path, including the one this lane uses.
+
+### Divergence 1 — the record this surface reads does not exist
+
+`src/solo/useSoloAgreementSignings.ts:476` selects from `public.tenant_agreement_signings`. The
+backend branch creates `paige_agreements`, `paige_agreement_signers` and `paige_agreement_events`,
+and has **zero occurrences** of `tenant_agreement_signings` anywhere under `supabase/`. On merge
+this band reads a relation that is not there — every row disappears and the surface renders its
+failed-read state permanently. Column mapping, mine → theirs:
+
+| This lane selects | Backend ships | Note |
+|---|---|---|
+| `id`, `contact_id`, `document_path`, `expires_at`, `sent_at`, `completed_at`, `declined_at`, `voided_at`, `created_at`, `updated_at` | same names | no change |
+| `agreement_id` | `commercial_terms_id` | renamed |
+| `document_title` | `title` | renamed |
+| `document_source` | `body_source` | renamed; the three values are identical |
+| `signature_state` | `status` | renamed |
+| `signed_pdf_path` | `sealed_storage_key` | renamed |
+| `signer_name`, `decline_reason` | on `paige_agreement_signers` | now a join, not a column |
+| `viewed_at` | added by `20270407000000_agreement_view_tracking.sql` | confirm before relying on it |
+
+### Divergence 2 — the storage bucket
+
+This lane uploads the source document to, and mints its sealed-copy URL from, `tenant-agreements`
+(`useSoloAgreementSignings.ts:312,359`). That bucket is real and already on `main` from
+`20260630190349`. The backend creates a **different** bucket, `paige-agreements` — private, 25 MB,
+`application/pdf` only — and seals into it.
+
+### Divergence 3 — the sealed copy is retrieved by a mechanism the backend deliberately rejected
+
+This lane mints a 120-second Supabase signed URL. The backend's PR states it refuses that pattern on
+purpose: the object path is literally `${tenant_id}/${agreement_id}/`, which leaks tenant internals
+to an external party and keeps working after a void. It streams the sealed record through the
+`agreement-document` edge function instead, whose two doors are the signer's 365-day retrieval token
+and **the workspace's own admin session** — which is exactly this surface's caller.
+
+**On the merits the backend is right here, and this lane should move.** The §70 retrieval closed in
+`d82b2a67` is the correct *capability* and the wrong *mechanism*.
+
+### Divergence 4 — multi-party, which is a gap rather than a conflict
+
+The backend supports several signers (`partially_signed`, per-signer signing order). This surface
+represents a single counterparty. That is a superset on their side, not a contradiction, but this
+lane has no representation for a partially-signed document and would show it as merely `sent`.
+
+### Recommendation
+
+The backend's schema is authoritative by the coordinator's own ruling that this lane builds on the
+backend's deployed schema and that the backend merges first. So the UI lane moves on all four:
+re-point the read to `paige_agreements` joined to `paige_agreement_signers`, drop the direct bucket
+access in favour of `agreement-document`, and add a `partially_signed` state.
+
+That is a real slice of work, not a rename, and it cannot be verified until the contract is
+deployed. **Until it is done, this surface must not be described as meeting the backend contract,
+and PR #1356 must not be marked ready.** Both are now stated in its body and in its evidence record.
