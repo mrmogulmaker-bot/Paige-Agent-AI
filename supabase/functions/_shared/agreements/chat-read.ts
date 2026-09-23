@@ -200,16 +200,27 @@ const count = (value: unknown): number => {
  * column is dropped rather than forwarded, which is what makes a later widening of the RPC safe by
  * default rather than safe only if someone remembers.
  */
+/**
+ * States in which no further signature can or should arrive. The RPC computes `outstanding_names`
+ * as every signer whose status is not `signed` (migration 20270402000000:76-78) — which is the
+ * right query for a live agreement and the wrong one for a dead one. A declined signer stays
+ * `declined`, and the remaining links are revoked when the agreement ends, so on a declined, voided
+ * or expired agreement those names are not people we are waiting on. Reporting them as outstanding
+ * would have PAIGE tell the owner to chase someone who cannot sign.
+ */
+const TERMINAL_STATUSES = new Set(["declined", "voided", "expired"]);
+
 function project(row: Record<string, unknown>): AgreementSummary {
-  const outstanding = Array.isArray(row.outstanding_names)
-    ? row.outstanding_names.map(text).filter((name): name is string => name !== null)
-    : [];
+  const status = text(row.status) ?? "unknown";
+  const outstanding = TERMINAL_STATUSES.has(status) || !Array.isArray(row.outstanding_names)
+    ? []
+    : row.outstanding_names.map(text).filter((name): name is string => name !== null);
   return {
     id: String(row.id),
     title: text(row.title) ?? "Untitled agreement",
     // A status this build does not recognise is REPORTED, never coerced into one that it does.
     // Renaming a state in a later migration must read as unfamiliar, not as the wrong state.
-    status: text(row.status) ?? "unknown",
+    status,
     contactId: text(row.contact_id),
     contactName: text(row.contact_name),
     signersTotal: count(row.signers_total),
@@ -244,6 +255,18 @@ export async function readAgreements(input: {
 }): Promise<AgreementReadResult> {
   if (!input.expectedTenantId) return { success: false, error: NO_WORKSPACE, reason: "no_workspace" };
 
+  // A NON-STRING FILTER MUST REFUSE, NOT VANISH. `text()` answers null for a number, an object or
+  // an array, so a model that sent `status: 42` would have had its filter silently dropped and been
+  // handed the ENTIRE workspace book as though it had asked for one. That is the same widening the
+  // contact id guard below prevents, and the tool schema does not stop it: JSON-Schema `enum` is
+  // advisory, and nothing between the model and here enforces it.
+  if (input.status !== undefined && input.status !== null && typeof input.status !== "string") {
+    return {
+      success: false,
+      error: `A status filter has to be one of: ${AGREEMENT_STATUSES.join(", ")}.`,
+      reason: "unknown_status",
+    };
+  }
   // An unrecognised status would otherwise reach the RPC, match no row, and return an empty list
   // that reads exactly like "you have no agreements" — a false negative stated confidently. It is
   // refused here instead, naming the states that exist.
@@ -338,8 +361,16 @@ export async function readAgreements(input: {
     // refuses the write, so it can never hold an agreement. The read still succeeds and returns
     // zero rows — so without this, PAIGE tells an agency owner "you have no agreements" when the
     // truth is that this account type does not have a client book to hold them.
+    // ONLY WHEN NOTHING WAS FILTERED. A tenant converted to a top-level agency after drafting KEEPS
+    // its existing agreements — migration 20270405000000:71-74 says so in terms, blocking later
+    // writes while preserving the rows. So on a FILTERED read, zero rows means "none matched this
+    // filter", and answering "this account holds no agreements of its own" would be false for an
+    // agency that is holding some. The structural explanation is only true of the whole book.
+    const filtered = contactId !== null || status !== null;
     let agency: boolean | null = null;
-    try { agency = (await input.diagnostics.isAgencyWithoutClientBook?.()) ?? null; } catch { agency = null; }
+    if (!filtered) {
+      try { agency = (await input.diagnostics.isAgencyWithoutClientBook?.()) ?? null; } catch { agency = null; }
+    }
     if (agency === true) {
       return {
         success: true,

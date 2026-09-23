@@ -418,3 +418,77 @@ describe("INT-178 · the four findings from the exact-head review", () => {
     expect(missing.success && missing.emptyReason).toBe("contact_not_found");
   });
 });
+
+/** Round two of the exact-head review. Three real findings; the fourth is declined on the thread. */
+describe("INT-178 · the second review round", () => {
+  it("refuses a non-string status instead of silently dropping the filter", async () => {
+    // `text()` answers null for a number or an object, so without this guard `status: 42` became
+    // "no filter" and handed back the ENTIRE workspace book to a caller who asked for one slice.
+    for (const bad of [42, {}, [], true]) {
+      const rpc = port({ data: [ROW], error: null });
+      const result = await readAgreements({
+        caller: rpc,
+        expectedTenantId: TENANT,
+        status: bad as unknown as string,
+      });
+      expect(result, `status=${JSON.stringify(bad)}`).toMatchObject({ success: false, reason: "unknown_status" });
+      expect(rpc.calls).toEqual([]);
+    }
+  });
+
+  it("does not call anyone outstanding on a declined, voided or expired agreement", async () => {
+    // The RPC computes outstanding_names as "every signer not signed", which is right for a live
+    // agreement and wrong for a dead one: a declined signer stays `declined` forever, and nothing
+    // further can arrive. Reporting them would have PAIGE tell the owner to chase someone.
+    for (const status of ["declined", "voided", "expired"]) {
+      const result = await readAgreements({
+        caller: port({ data: [{ ...ROW, status, outstanding_names: ["Jordan Reyes", "Dana Whitfield"] }], error: null }),
+        expectedTenantId: TENANT,
+      });
+      expect(result.success && result.agreements[0].outstandingNames, status).toEqual([]);
+      // The state itself still travels — this suppresses a wrong inference, not the fact.
+      expect(result.success && result.agreements[0].status).toBe(status);
+    }
+  });
+
+  it("still reports outstanding signers on a live agreement", async () => {
+    for (const status of ["sent", "viewed", "partially_signed", "draft"]) {
+      const result = await readAgreements({
+        caller: port({ data: [{ ...ROW, status }], error: null }),
+        expectedTenantId: TENANT,
+      });
+      expect(result.success && result.agreements[0].outstandingNames, status).toEqual(["Jordan Reyes"]);
+    }
+  });
+
+  it("never tells a FILTERED empty read that the agency holds no agreements", async () => {
+    // A tenant converted to a top-level agency KEEPS its drafted agreements (20270405000000:71-74).
+    // On a filtered read, zero rows means "none matched" — claiming the account holds none of its
+    // own would be false for an agency that is holding some outside the filter.
+    const agencyYes = { isAgencyWithoutClientBook: async () => true, contactExists: async () => true };
+    const byStatus = await readAgreements({
+      caller: port({ data: [], error: null }),
+      expectedTenantId: TENANT,
+      status: "completed",
+      diagnostics: agencyYes,
+    });
+    expect(byStatus).toEqual({ success: true, agreements: [], count: 0 });
+
+    const byContact = await readAgreements({
+      caller: port({ data: [], error: null }),
+      expectedTenantId: TENANT,
+      contactId: "c1000000-0000-4000-8000-000000000002",
+      requireContact: true,
+      diagnostics: agencyYes,
+    });
+    expect(byContact).toEqual({ success: true, agreements: [], count: 0 });
+
+    // Unfiltered, the structural explanation is true of the whole book and is still given.
+    const whole = await readAgreements({
+      caller: port({ data: [], error: null }),
+      expectedTenantId: TENANT,
+      diagnostics: agencyYes,
+    });
+    expect(whole).toMatchObject({ emptyReason: "agency_has_no_client_book" });
+  });
+});
