@@ -111,6 +111,11 @@ const SIGNATURE_STATE = {
   unrecognised: { label: "Not readable", tone: "n" },
 };
 
+/** The life `agreement-send` gives a signing token, mirrored from `SIGNING_TOKEN_TTL_DAYS` in
+ * `_shared/agreements/token.ts`. Stated rather than chosen: the send endpoint takes no duration,
+ * so offering one here would be a control the server does not honour. */
+const SEND_TTL_DAYS = 30;
+
 /** How long a signing link stays alive. Real choices, all of them finishable — never a free text
  * field that would let somebody type a link that outlives the arrangement it commits. */
 const LINK_DAYS = [7, 14, 30];
@@ -1071,15 +1076,32 @@ function SignatureSender({ signings, signing, clientName, agreedLabel, tenantId,
   const [notice, setNotice] = React.useState("");
   const [link, setLink] = React.useState(null);
   const [copied, setCopied] = React.useState(false);
+  const [sent, setSent] = React.useState(null);
+  const [showLink, setShowLink] = React.useState(false);
   const alive = React.useRef(true);
   React.useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   React.useEffect(() => { firstRef.current?.focus(); }, []);
 
+  // The approved act names the person. A single-word first name where there is one, the whole
+  // label where there is not, and never an empty string in the middle of a button.
+  const firstName = (clientName || "").trim().split(/\s+/)[0] || "your client";
   const state = signing.displayState || signing.signatureState || "draft";
   const reissue = state === "sent" || state === "viewed" || state === "expired";
   // The public route this build actually registers. Derived from the running origin rather than a
   // configured base, so a preview deployment hands out a preview link instead of a dead one.
   const url = link ? `${window.location.origin}/sign/${link.token}` : "";
+
+  /** The approved act. A real email to the counterparty, not a link for the owner to paste. */
+  const send = async () => {
+    setBusy(true);
+    setNotice("");
+    const outcome = await signings.sendForSignature(signing.id, tenantId, reissue)
+      .catch(() => ({ ok: false, message: "That could not be confirmed, so nothing is being reported as sent." }));
+    if (!alive.current) return;
+    setBusy(false);
+    if (!outcome.ok) { setNotice(outcome.message); return; }
+    setSent(outcome);
+  };
 
   const issue = async () => {
     setBusy(true);
@@ -1127,40 +1149,80 @@ function SignatureSender({ signings, signing, clientName, agreedLabel, tenantId,
         <header className="so-editor-head">
           <div style={{ flex: 1 }}>
             <h2 id="so-send-title">Send for signature</h2>
-            <p>
-              A link to this document, for one client to read and sign. Sending it bills nobody and
-              charges nothing — the money still runs on your own processor.
-            </p>
+            <p>{sent ? "This has been sent." : "Nothing has been sent yet."}</p>
           </div>
-          <button className="btn btn-s" onClick={onClose} disabled={busy} aria-label="Close">
-            <Ic.x size={14} />
-          </button>
+          <button className="btn btn-s btn-q" onClick={onClose} disabled={busy}>{sent ? "Done" : "Back"}</button>
         </header>
 
         <div className="so-editor-body" inert={busy ? "" : undefined}>
-          <dl className="so-send-facts">
-            <div><dt>Who it is for</dt><dd>{clientName || "This client"}</dd></div>
-            <div><dt>What they get</dt><dd>{signing.documentTitle}</dd></div>
-            <div><dt>What it says was agreed</dt><dd>{agreedLabel || "No price is stated on this document"}</dd></div>
-          </dl>
+          {/* THE APPROVED RECAP (§28 screen 3): the last screen before anything leaves the
+            * building, saying plainly WHO receives it, WHAT they get and WHAT HAPPENS when they
+            * sign. Only rows this surface can fill TRUTHFULLY are here — the approved screen also
+            * shows the offer name and a start date, which this component is not handed, and a row
+            * invented to match a picture is the opposite of a recap. */}
+          <div className="so-recap">
+            <div className="so-rrow"><span>To</span><span><b>{clientName || "This client"}</b></span></div>
+            <div className="so-rrow"><span>Document</span><span>{signing.documentTitle}</span></div>
+            <div className="so-rrow"><span>They agree to</span><span className="so-num">{agreedLabel || "No price is stated on this document"}</span></div>
+            <div className="so-rrow"><span>Link expires</span><span>{SEND_TTL_DAYS} days after it is sent</span></div>
+          </div>
 
-          {!link ? (<>
-            <fieldset className="so-field">
-              <legend>How long the link works</legend>
-              <div className="so-pick">
-                {LINK_DAYS.map((value, index) => (
-                  <button key={value} type="button" ref={index === 1 ? firstRef : undefined}
-                          aria-pressed={days === value} onClick={() => setDays(value)}>
-                    {value} days
-                  </button>
-                ))}
+          {sent ? (<>
+            {/* §13 — a 200 is not a delivery, so this reports who was actually reached and, just
+              * as plainly, who was not. A suppressed address is a real outcome, not a rounding. */}
+            <p className="so-banner"><Ic.shield size={15} /><span>
+              {sent.sent.length
+                ? <><b>Sent.</b> {clientName || "Your client"} has a private link to this exact document{sent.sent.length > 1 ? `, as do ${sent.sent.length - 1} other signer(s)` : ""}. You will see it move to Opened and then Completed on Commercial Terms.</>
+                : <><b>Nothing went out.</b> No message reached anybody, so this document is unchanged.</>}
+            </span></p>
+            {sent.notDelivered.length > 0 && (
+              <p className="so-banner so-banner-warn" role="alert"><Ic.shield size={15} /><span>
+                <b>{sent.notDelivered.length} address did not receive it.</b> That address is
+                suppressed or was refused by the mail provider, so no link reached it. Fixing the
+                address and sending again is what puts that right.
+              </span></p>
+            )}
+          </>) : !link ? (<>
+            {/* The gold statement the approved screen carries, in the approved words: what the
+              * counterparty gets, what is sealed, and that no money moves (§38). */}
+            <p className="so-banner so-banner-warn"><Ic.shield size={15} /><span>
+              {clientName || "Your client"} gets a private link to this exact document. When they
+              sign it, Paige seals a PDF with their signature, the wording they actually saw, and
+              the time they signed it — and files it against their record. <b>No money moves.</b>{" "}
+              Nothing is charged, invoiced or collected at signature.
+            </span></p>
+            {reissue && (
+              <p className="so-absent">
+                Sending again replaces the link already out there — the old one stops working the
+                moment the new message goes out, and the deadline starts over.
+              </p>
+            )}
+            {/* §58 — the copy-a-link route is a SHIPPED capability and survives the approved
+              * flow becoming the primary one. It is the way through when the client's mail is
+              * bouncing, and it is secondary rather than gone. */}
+            {!showLink && (
+              <button className="btn btn-s btn-q" ref={firstRef} onClick={() => setShowLink(true)}>
+                Or copy a link to send yourself
+              </button>
+            )}
+            {showLink && (<>
+              <fieldset className="so-field">
+                <legend>How long the link works</legend>
+                <div className="so-pick">
+                  {LINK_DAYS.map((value) => (
+                    <button key={value} type="button"
+                            aria-pressed={days === value} onClick={() => setDays(value)}>
+                      {value} days
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+              <div className="so-send-acts">
+                <button className="btn btn-s" onClick={issue} disabled={busy}>
+                  {busy ? "Making the link…" : reissue ? "Make a new link" : "Make the link"}
+                </button>
               </div>
-            </fieldset>
-            <p className="so-absent">
-              {reissue
-                ? "Issuing a new link replaces the one already out there — the old link stops working the moment this one is made."
-                : "After that the link stops working. You can issue another one at any time."}
-            </p>
+            </>)}
           </>) : (<>
             <label className="so-field">
               <span>The link — copy it now</span>
@@ -1186,16 +1248,24 @@ function SignatureSender({ signings, signing, clientName, agreedLabel, tenantId,
 
         <footer className="so-editor-foot">
           <span role={notice ? "alert" : "status"} className="so-editor-note" data-tone={notice ? "bad" : "plain"}>
-            {notice || (link ? "The record now shows this document as sent." : "Nothing is sent until you make the link.")}
+            {notice || (sent
+              ? "The record now shows this document as sent."
+              : link
+                ? "The record now shows this document as sent."
+                : "Nothing leaves the building until you send it.")}
           </span>
           <span style={{ flex: 1 }} />
-          {reissue && !link && (
+          {reissue && !link && !sent && (
             <button className="btn btn-s" onClick={stop} disabled={busy}>Stop the current link</button>
           )}
-          <button className="btn btn-s" onClick={onClose} disabled={busy}>{link ? "Done" : "Not now"}</button>
-          {!link && (
-            <button className="btn btn-s btn-p" onClick={issue} disabled={busy}>
-              {busy ? "Making the link…" : reissue ? "Make a new link" : "Make the link"}
+          <button className="btn btn-s" onClick={onClose} disabled={busy}>{link || sent ? "Done" : "Not yet"}</button>
+          {/* GOLD, and only here. This is one of exactly two acts on this whole flow that COMMIT —
+            * sending it, and signing it — which is the entire gold budget the approved pack spends
+            * (§11). Naming the person is the approved wording and is also the honest one: it says
+            * who is about to receive a legal document. */}
+          {!link && !sent && (
+            <button className="btn btn-s btn-g" onClick={send} disabled={busy}>
+              {busy ? "Sending…" : `Send it to ${firstName}`}
             </button>
           )}
         </footer>

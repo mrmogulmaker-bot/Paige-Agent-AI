@@ -52,6 +52,22 @@ const TENANT = "11111111-1111-4111-8111-111111111111";
 // Every state the column can show, so a frame proves the vocabulary renders rather than one row.
 const ROWS: readonly AgreementSigning[] = [
   {
+    // DRAFT — written, not yet sent. This is the approved pre-send state (screen 3) and the only
+    // one whose row offers "Send for signature", and the fixtures carried no draft at all, so that
+    // whole screen was unreachable in the harness.
+    // agreementId null: an ORPHAN row, which is how a document with no commercial terms behind it
+    // reaches the band at all (owner ruling 3 — an NDA or a scope letter). With a non-null id that
+    // matches no agreement the row joins nothing and never renders.
+    id: "s0", contactId: "c1", agreementId: null,
+    documentTitle: "Coaching agreement — Avery & Co.", documentSource: "tenant_upload",
+    documentPath: `${TENANT}/source/coaching.pdf`,
+    signatureState: "draft", displayState: "draft",
+    expiresAt: null, sentAt: null,
+    viewedAt: null, completedAt: null, declinedAt: null, voidedAt: null,
+    declineReason: null, signerName: null, signedPdfPath: null,
+    createdAt: "2026-09-22T15:40:00.000Z", updatedAt: "2026-09-22T15:40:00.000Z",
+  },
+  {
     id: "s1", contactId: "c1", agreementId: "a1",
     documentTitle: "Retainer agreement — Avery & Co.", documentSource: "tenant_upload",
     documentPath: `${TENANT}/source/retainer.pdf`,
@@ -117,6 +133,10 @@ function snapshotFor(m: SigningsMode): SigningsState {
     retry: () => {},
     uploadDocument: async (): Promise<DocumentUploadResult> => ({ ok: false, message: NOT_WIRED }),
     createSigning: async (_d: SigningDraft): Promise<SigningWriteResult> => ({ ok: false, message: NOT_WIRED }),
+    // The approved primary act. Refuses like every other write here: the harness proves the
+    // SURFACE, and a stub that reported a delivery would be the exact false green these refusals
+    // exist to avoid.
+    sendForSignature: async () => ({ ok: false as const, message: NOT_WIRED }),
     issueLink: async (): Promise<SigningLinkResult> => ({ ok: false, message: NOT_WIRED }),
     voidSigning: async (): Promise<SigningWriteResult> => ({ ok: false, message: NOT_WIRED }),
     // No private bucket behind a local harness, so this refuses rather than minting a URL that
