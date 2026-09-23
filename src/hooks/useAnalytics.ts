@@ -309,6 +309,18 @@ export function redactSecretPath(pathname: string): string {
   return out.join("/");
 }
 
+/** How deep a URL may nest inside a URL before the value is simply removed. */
+const NESTED_MAX_DEPTH = 3;
+
+/**
+ * The one run scanner the nested redactors share. `_` and `-` are IN the alphabet, or a base64url
+ * token is chopped into sub-20 fragments and never tested; `=` is OUT, or the run absorbs the
+ * `param=` in front of a token and comes out too wide for the exact-width match.
+ */
+function runScan(text: string): string {
+  return text.replace(/[A-Za-z0-9+/_-]{20,}/g, (run) => (looksLikeCredential(run) ? REDACTED : run));
+}
+
 /**
  * Redact a URL or path that is sitting INSIDE a query-parameter value.
  *
@@ -325,9 +337,11 @@ export function redactSecretPath(pathname: string): string {
  * is not a path — a nested query string, free prose — still gets the run scan, over the union
  * alphabet so base64url is visible to it.
  */
-function redactNestedLocation(decoded: string): string {
-  const runScan = (text: string) =>
-    text.replace(/[A-Za-z0-9+/_-]{20,}/g, (run) => (looksLikeCredential(run) ? REDACTED : run));
+function redactNestedLocation(decoded: string, depth: number): string {
+  // FAIL CLOSED AT THE CAP, the same way the payload scrub does. Past this depth the value is no
+  // longer being parsed, and handing back something unexamined is what every round of this bug has
+  // had in common.
+  if (depth >= NESTED_MAX_DEPTH) return REDACTED;
 
   const isUrl = /^[a-z][a-z0-9+.-]*:\/\//i.test(decoded);
   const isPath = decoded.startsWith("/");
@@ -337,11 +351,60 @@ function redactNestedLocation(decoded: string): string {
   const head = cut < 0 ? decoded : decoded.slice(0, cut);
   const tail = cut < 0 ? "" : decoded.slice(cut);
 
-  if (!isUrl) return redactSecretPath(head) + runScan(tail);
-  // Keep scheme://host intact so the destination still reads; redact only the path after it.
-  const parts = head.match(/^([a-z][a-z0-9+.-]*:\/\/[^/]*)(\/.*)?$/i);
+  if (!isUrl) return redactSecretPath(head) + redactNestedTail(tail, depth);
+
+  const parts = head.match(/^([a-z][a-z0-9+.-]*:\/\/)([^/]*)(\/.*)?$/i);
   if (!parts) return runScan(decoded);
-  return parts[1] + (parts[2] ? redactSecretPath(parts[2]) : "") + runScan(tail);
+  const [, scheme, authority, path] = parts;
+  return (
+    scheme +
+    redactAuthority(authority) +
+    (path ? redactSecretPath(path) : "") +
+    redactNestedTail(tail, depth)
+  );
+}
+
+/**
+ * The AUTHORITY can carry a credential in two places, and preserving it verbatim to keep the
+ * destination readable handed both of them straight through.
+ *
+ *   · USERINFO — `https://<invite>@example.com/path` is a valid URL, and everything before the `@`
+ *     is by definition a credential. It is removed outright rather than shape-tested: there is no
+ *     analytics value in a username or password, so there is nothing to weigh against the risk.
+ *   · A HOST LABEL — `https://<invite>.example.com/path`. `.` is not in the run alphabet, so each
+ *     label is already its own run and the scan sees it whole.
+ */
+function redactAuthority(authority: string): string {
+  if (!authority) return authority;
+  const at = authority.lastIndexOf("@");
+  if (at < 0) return runScan(authority);
+  return `${REDACTED}@${runScan(authority.slice(at + 1))}`;
+}
+
+/**
+ * A nested URL's OWN query string and fragment, parsed rather than scanned.
+ *
+ * This is the finding that made the whole approach structural. `?next=<https://outer/p?continue=
+ * https://app/join/<invite>>` put the credential two levels down, and a flat run scan over the
+ * outer tail collapses `app.example/join/<invite>` into one run — not the 32 characters the mint is
+ * pinned to, so the predicate rejects it and the invite ships. Parsing the tail as what it actually
+ * is, and recursing with a bounded depth, is the thing that terminates this class of bug instead of
+ * moving it one level deeper each round.
+ */
+function redactNestedTail(tail: string, depth: number): string {
+  if (!tail) return tail;
+  const hash = tail.indexOf("#");
+  const query = hash < 0 ? tail : tail.slice(0, hash);
+  const fragment = hash < 0 ? "" : tail.slice(hash);
+
+  const redactedQuery = query.length > 1 ? redactSecretSearch(query, depth + 1) : query;
+  // A fragment carries credentials in the same key=value shape — a Supabase implicit-flow recovery
+  // link arrives as `#access_token=…` — so it is parsed with the same rules.
+  const redactedFragment =
+    fragment.length > 1
+      ? `#${redactSecretSearch(`?${fragment.slice(1)}`, depth + 1).slice(1)}`
+      : fragment;
+  return redactedQuery + redactedFragment;
 }
 
 /**
@@ -351,7 +414,7 @@ function redactNestedLocation(decoded: string): string {
  * `?ct=<t>` are both documented, live surfaces (see `src/pages/Unsubscribe.tsx`), and `search` was
  * being recorded verbatim. Redacted by param NAME and by value SHAPE, because either alone misses.
  */
-export function redactSecretSearch(search: string): string {
+export function redactSecretSearch(search: string, depth = 0): string {
   if (!search) return search;
   const query = search.startsWith("?") ? search.slice(1) : search;
   if (!query) return search;
@@ -369,7 +432,7 @@ export function redactSecretSearch(search: string): string {
     // disqualify it and the credential in its path rides through. Measured on the referral sink —
     // `?utm_campaign=https%3A%2F%2Fapp%2Fsign%2F<64 hex>` reached `landing_path` intact while the
     // very same token was being redacted out of the `utm_campaign` field beside it.
-    const scrubbed = redactNestedLocation(decoded);
+    const scrubbed = redactNestedLocation(decoded, depth);
     if (scrubbed !== decoded) return `${key}=${encodeURIComponent(scrubbed)}`;
     return pair;
   });

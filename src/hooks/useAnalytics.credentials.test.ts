@@ -434,3 +434,66 @@ describe("a nested URL inside a query parameter", () => {
     );
   });
 });
+
+/**
+ * NESTING, AND THE AUTHORITY — round three, both found by review on the round-two fix.
+ *
+ * The first fix redacted a nested URL's PATH structurally but left its own query string on the
+ * flat run scan, so a URL inside a URL put the credential one level below the guard:
+ * `?next=<https://outer/p?continue=https://app/join/<invite>>`. The run scan collapses
+ * `app/join/<invite>` into a single run, which is not the 32 characters the mint is pinned to, so
+ * the predicate rejects it and the invite ships. The tail is now parsed as what it is, with a
+ * bounded depth, rather than scanned as text.
+ *
+ * The second is the URL authority. Keeping `scheme://host` intact so the destination stays
+ * readable also kept `https://<invite>@example.com` intact — userinfo is a credential by
+ * definition — and a token used as a host label with it.
+ *
+ * The last two cases are the counterweight, and they are why this is not simply "redact more":
+ * an ordinary campaign parameter must still arrive byte-for-byte, and an ordinary destination URL
+ * must still be readable as a destination.
+ */
+describe("nested URLs and URL authorities", () => {
+  const INVITE = "kJ8vQ2mZ-xR7bN4wT1yH_cL6pA3dS9eQ";
+
+  it("redacts a credential two levels down — a URL inside a URL's query", () => {
+    const inner = `https://outer.example/p?continue=https://app.example/join/${INVITE}`;
+    expect(redactSecretSearch(`?next=${encodeURIComponent(inner)}`)).not.toContain(INVITE);
+  });
+
+  it("redacts a token in the USERINFO of a nested URL", () => {
+    const out = redactSecretSearch(`?next=${encodeURIComponent(`https://${INVITE}@example.com/p`)}`);
+    expect(out).not.toContain(INVITE);
+  });
+
+  it("redacts a token used as a HOST LABEL", () => {
+    const out = redactSecretSearch(
+      `?next=${encodeURIComponent(`https://${INVITE}.example.com/p`)}`,
+    );
+    expect(out).not.toContain(INVITE);
+  });
+
+  it("redacts a token in a nested FRAGMENT — the implicit-flow recovery shape", () => {
+    const inner = `https://app.example/landing#access_token=${INVITE}`;
+    expect(redactSecretSearch(`?next=${encodeURIComponent(inner)}`)).not.toContain(INVITE);
+  });
+
+  it("fails CLOSED past the nesting cap rather than handing back something unparsed", () => {
+    // Four levels of URL-in-URL; the cap is three.
+    let nested = `https://app.example/join/${INVITE}`;
+    for (let i = 0; i < 4; i++) nested = `https://h${i}.example/p?next=${encodeURIComponent(nested)}`;
+    expect(redactSecretSearch(`?next=${encodeURIComponent(nested)}`)).not.toContain(INVITE);
+  });
+
+  it("still carries an ordinary campaign parameter byte-for-byte", () => {
+    expect(redactSecretSearch("?utm_campaign=black_friday_2026_launch&ref=PARTNER1")).toBe(
+      "?utm_campaign=black_friday_2026_launch&ref=PARTNER1",
+    );
+  });
+
+  it("still leaves an ordinary destination URL readable as a destination", () => {
+    const out = redactSecretSearch(`?next=${encodeURIComponent("https://app.example.com/pricing")}`);
+    expect(decodeURIComponent(out)).toContain("app.example.com");
+    expect(decodeURIComponent(out)).toContain("pricing");
+  });
+});
