@@ -82,7 +82,9 @@ function nonEmptyString(v: unknown): string | null {
 /**
  * Authorize (identical gates to runVerify), resolve the pin + endpoint hash server-side, then record
  * the durable approval through the caller's userClient (its in-body admin+tenant gate is the authority).
- * Returns an HTTP status + a safe body; never throws through.
+ * Returns an HTTP status + a safe body for every handled path; a client transport-layer rpc REJECTION
+ * (distinct from a Postgres error, which arrives in `.error`) falls through to the wrapper's fail-closed
+ * platform 500 — no body, no secret — the same posture as the sibling verify/oauth handlers.
  */
 export async function runApprove(deps: ApproveDeps, input: ApproveInput): Promise<ApproveResult> {
   const { userClient, admin, readToolPin } = deps;
@@ -140,8 +142,11 @@ export async function runApprove(deps: ApproveDeps, input: ApproveInput): Promis
   if (!endpointHash) {
     const { data: sec, error: sErr } = await admin.rpc("get_mcp_connection_secret", { _connection_id: id });
     if (sErr) return { httpStatus: 500, body: { error: "lookup_failed" } };
-    const row = (sec ?? {}) as { configured?: unknown; tenant_id?: unknown; endpoint_hash?: unknown };
+    const row = (sec ?? {}) as { configured?: unknown; enabled?: unknown; tenant_id?: unknown; endpoint_hash?: unknown };
     if (row.configured !== true) return { httpStatus: 409, body: { error: "connection_unconfigured" } };
+    // A disabled connection is owned (v2 confirmed it above) — report its true state, not a misleading
+    // `forbidden` (peer-gate #2). Checked before the tenant compare, which a disabled row may not satisfy.
+    if (row.enabled === false) return { httpStatus: 409, body: { error: "connection_disabled" } };
     // §9 defense in depth: the tenant-agnostic read loaded SOME row; it must be the caller's own.
     if (typeof row.tenant_id !== "string" || row.tenant_id !== tenantId) {
       return { httpStatus: 403, body: { error: "forbidden" } };

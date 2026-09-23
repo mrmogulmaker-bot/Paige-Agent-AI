@@ -1590,6 +1590,11 @@ console.log("\n— slice ③: approve (runApprove) —");
   const unconf = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin({ secret: { configured: false } }), readToolPin: readToolPinOk }, inApprove());
   check("approve refuses an unconfigured connection (409 connection_unconfigured)", unconf.httpStatus === 409 && unconf.body.error === "connection_unconfigured", JSON.stringify(unconf.body));
 
+  // A DISABLED (but owned — v2 confirmed it) connection reports its true state, not a misleading
+  // `forbidden` (peer-gate #2). The disabled row may omit tenant_id, so this must fire before that compare.
+  const disabledApprove = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin({ secret: { configured: true, enabled: false } }), readToolPin: readToolPinOk }, inApprove());
+  check("approve reports a disabled owned connection honestly (409 connection_disabled, never a misleading 403 forbidden)", disabledApprove.httpStatus === 409 && disabledApprove.body.error === "connection_disabled", JSON.stringify(disabledApprove.body));
+
   // Coded writer errors → mapWriterError. 42501 forbidden → uniform 403 (no which-gate suffix).
   const wForbidden = await approveMod.runApprove({ userClient: makeApproveUser({ setResult: { data: null, error: pgErr("MCP_FORBIDDEN: connection not in tenant", "42501") } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());
   check("approve maps a writer 42501 → uniform 403 MCP_FORBIDDEN (no suffix)", wForbidden.httpStatus === 403 && wForbidden.body.error === "MCP_FORBIDDEN" && !JSON.stringify(wForbidden.body).includes("not in tenant"), JSON.stringify(wForbidden.body));
@@ -1692,13 +1697,24 @@ console.log("\n— slice ③: execute (runExecute) —");
   const down = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XDOWN) }) }, inExec({ toolName: "list_records" }));
   check("execute against an unreachable provider → 502 provider_unavailable", down.httpStatus === 502 && down.body.outcome === "provider_unavailable", JSON.stringify(down.body));
 
-  // §9 — a connection whose row tenant ≠ the caller's server-derived tenant is refused foreign_tenant → 403.
+  // §9 (peer-gate #1) — a "cannot prove you own this connection" refusal is collapsed to a UNIFORM
+  // not_found so execute is not a cross-tenant STATE oracle. A foreign-tenant connection (the runner
+  // refuses foreign_tenant internally) surfaces as 404 not_found, NOT the distinguishing code.
   const foreign = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XURL, { tenant_id: "ten-EVIL" }) }) }, inExec({ toolName: "list_records" }));
-  check("execute a foreign-tenant connection is refused foreign_tenant (§9, 403)", foreign.httpStatus === 403 && foreign.body.outcome === "refused" && foreign.body.code === "foreign_tenant", JSON.stringify(foreign.body));
+  check("execute a foreign-tenant connection collapses to a uniform 404 not_found (§9 — no cross-tenant oracle)", foreign.httpStatus === 404 && foreign.body.outcome === "refused" && foreign.body.code === "not_found", JSON.stringify(foreign.body));
+  // ORACLE-CLOSURE: four distinct connection STATES a caller must not distinguish for a UUID they don't
+  // own — nonexistent, disabled, non-executable facet, and foreign-tenant — all return the SAME body.
+  const oracleNonexistent = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: { configured: false } }) }, inExec({ toolName: "list_records" }));
+  const oracleDisabled = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XURL, { enabled: false }) }) }, inExec({ toolName: "list_records" }));
+  const oracleUnusable = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XURL, { auth_kind: "api_key" }) }) }, inExec({ toolName: "list_records" }));
+  const oracleBodies = [oracleNonexistent, oracleDisabled, oracleUnusable, foreign].map((r) => JSON.stringify({ s: r.httpStatus, o: r.body.outcome, c: r.body.code }));
+  check("execute closes the cross-tenant STATE oracle — nonexistent / disabled / unusable / foreign all return an identical 404 not_found", oracleBodies.every((b) => b === oracleBodies[0]) && oracleNonexistent.httpStatus === 404 && oracleNonexistent.body.code === "not_found", JSON.stringify(oracleBodies));
 
-  // INT-082 — an owner_only connection needs the restricted capability; without it → owner_only_forbidden.
+  // INT-082 — an owner_only connection needs the restricted capability; without it the runner refuses
+  // owner_only_forbidden, which is ALSO collapsed to not_found so an ordinary member never learns the
+  // owner_only connection exists (mirroring get_mcp_connections_v2's hiding).
   const ownerOnlyNoCap = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XURL, { visibility: "owner_only" }), caps: [] }) }, inExec({ toolName: "list_records" }));
-  check("execute an owner_only connection without the restricted capability → 403 owner_only_forbidden (INT-082)", ownerOnlyNoCap.httpStatus === 403 && ownerOnlyNoCap.body.code === "owner_only_forbidden", JSON.stringify(ownerOnlyNoCap.body));
+  check("execute an owner_only connection without the restricted capability → 404 not_found (existence hidden, INT-082)", ownerOnlyNoCap.httpStatus === 404 && ownerOnlyNoCap.body.code === "not_found", JSON.stringify(ownerOnlyNoCap.body));
   const ownerOnlyCap = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XURL, { visibility: "owner_only" }), caps: ["mcp.connections.use_restricted"] }) }, inExec({ toolName: "list_records" }));
   check("...and WITH the tenant-bound restricted capability an owner_only read executes (read_observed)", ownerOnlyCap.httpStatus === 200 && ownerOnlyCap.body.outcome === "read_observed", JSON.stringify(ownerOnlyCap.body));
 

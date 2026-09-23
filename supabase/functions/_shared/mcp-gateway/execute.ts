@@ -88,6 +88,23 @@ const TOOL_NAME_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
 // (still generous vs the 15s default); an absent/non-positive value falls through to the runner default.
 const MAX_EXECUTE_TIMEOUT_MS = 30_000;
 
+// §9 (peer-gate #1) — the runner's loader/tenant refusal codes reveal, for a connection the caller may
+// NOT own, whether it exists (`no_connection`), is disabled (`connection_disabled`), is a non-executable
+// facet (`connection_unusable`), or is in another tenant (`foreign_tenant`) — a cross-tenant STATE oracle
+// keyed on a guessed connection UUID. It is reachable even without the owner-go flag via `mode:"prepare"`,
+// which still loads the connection and runs these checks before the prepared short-circuit. execute is the
+// first deployed HTTP caller to surface them, so it collapses every "you cannot prove you own this
+// connection" refusal to ONE uniform `not_found` in the body — matching approve's discipline (a
+// foreign/invisible connection is uniformly not_found). `owner_only_forbidden` is included so an ordinary
+// member never learns an owner_only connection exists, mirroring `get_mcp_connections_v2`'s hiding. The
+// runner's precise code still rides the canonical Rail receipt / internal logs — only the CLIENT view is
+// collapsed. Every other refusal (approval_required, contract_changed, no_longer_offered, …) concerns an
+// OWNED, authorized connection's tool/consent state and is safe to surface unchanged.
+const CONNECTION_OPAQUE_CODES = new Set([
+  "no_connection", "connection_disabled", "connection_unusable", "connection_mismatch",
+  "foreign_tenant", "owner_only_forbidden",
+]);
+
 /** Map the runner's closed outcome to an HTTP status. The JSON body's `outcome`/`code` are the
  *  AUTHORITATIVE result; the status reflects the class only.
  *   - clean success (`executed`/`read_observed`/`prepared`) → 200;
@@ -113,8 +130,11 @@ function httpForOutcome(outcome: RunnerOutcome): number {
 
 /**
  * Resolve tenant + authority, then run one connection capability through the hardened runner. Returns
- * an HTTP status + a closed, secret-free body. Never throws through (the runner never throws; the
- * pre-runner resolution failures are closed 4xx codes).
+ * an HTTP status + a closed, secret-free body for every handled path (the runner never throws; the
+ * pre-runner resolution failures are closed 4xx codes). A client transport-layer REJECTION from a
+ * pre-runner `rpc` call (distinct from a Postgres error, which arrives in `.error`) is not caught here
+ * and falls through to the wrapper's fail-closed platform 500 — no body, no stack, no secret — the same
+ * posture as the sibling verify/create/oauth handlers.
  */
 export async function runExecute(deps: ExecuteDeps, input: ExecuteInput): Promise<ExecuteResult> {
   const { userClient, admin } = deps;
@@ -157,16 +177,20 @@ export async function runExecute(deps: ExecuteDeps, input: ExecuteInput): Promis
     },
   );
 
+  // Honest receipt truth (Codex R3): true only if the Rail row persisted; false → the outcome is real
+  // but its Rail row is owed; null → no filing claim. Never dressed as fully-recorded.
+  const recorded = result.receipt ? result.receipt.filed : null;
+
+  // §9 (peer-gate #1): collapse a "cannot prove you own this connection" refusal to a uniform not_found
+  // so execute reveals nothing about a foreign/unauthorized connection. The outcome stays `refused`; only
+  // the leaky code is replaced.
+  if (result.outcome === "refused" && result.code && CONNECTION_OPAQUE_CODES.has(result.code)) {
+    return { httpStatus: 404, body: { outcome: "refused", code: "not_found", run_id: result.runId, recorded } };
+  }
+
   return {
     httpStatus: httpForOutcome(result.outcome),
-    body: {
-      outcome: result.outcome,
-      code: result.code,
-      run_id: result.runId,
-      // Honest receipt truth (Codex R3): true only if the Rail row persisted; false → the outcome is
-      // real but its Rail row is owed; null → no filing claim. Never dressed as fully-recorded.
-      recorded: result.receipt ? result.receipt.filed : null,
-    },
+    body: { outcome: result.outcome, code: result.code, run_id: result.runId, recorded },
   };
 }
 
