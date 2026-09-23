@@ -511,8 +511,31 @@ function SignInFlow({ gw, item, onCancel }: { gw: UseMcpGateway; item: CatItem; 
         Paige will send you to {item.n} to sign in. You approve what she may do there, and she never sees your password.
       </p>
       {message && <div className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} /><span>{message}</span></div>}
+      {/* LOCKED once the shell row exists, because from that moment this control cannot do
+          anything. A retry re-keys the SAVED row through `set_mcp_connection_endpoint`, whose
+          twelve arguments are an endpoint and a credential bundle and NOT a label — and no
+          relabel door exists anywhere: searched `rename`, `set_label`, `connection_label`,
+          `p_label` and `update_label` across every migration and the whole `_shared/mcp-gateway`
+          module, and enumerated all 51 mcp-named public functions; the only one that ever accepts
+          a label is `create_mcp_connection`, at creation. Left editable it would take the owner's
+          correction, accept it, and silently discard it — the same class of defect as a save that
+          reports success and writes nothing (§70.1). The note says what to do instead. Caught in
+          review. */}
       <label className={`ig-field${bad.label ? " ig-field-bad" : ""}`}><span>Name</span>
-        <input type="text" autoComplete="off" value={label} onChange={(e) => setLabel(e.target.value)} aria-invalid={bad.label || undefined} />
+        <input
+          type="text"
+          autoComplete="off"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          disabled={shellId !== null}
+          aria-invalid={bad.label || undefined}
+          aria-describedby={shellId !== null ? "ig-gw-signin-label-note" : undefined}
+        />
+        {shellId !== null && (
+          <small id="ig-gw-signin-label-note">
+            Saved under this name. To use a different one, remove it from Connections and start again.
+          </small>
+        )}
         {bad.label && <small className="ig-gw-err">Enter a name.</small>}
       </label>
       <label className={`ig-field${bad.url ? " ig-field-bad" : ""}`}><span>Server address</span>

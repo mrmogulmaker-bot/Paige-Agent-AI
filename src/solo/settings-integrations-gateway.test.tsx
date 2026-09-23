@@ -213,6 +213,41 @@ describe("Sign-in retry after a failed start", () => {
     // Still exactly one row ever created.
     expect(edgeCalls("create").length).toBe(1);
   });
+
+  /** REGRESSION (Codex P2 round 3, 2026-09-23). The address became correctable on retry; the NAME
+   *  did not, and stayed editable anyway. `set_mcp_connection_endpoint` takes an endpoint and a
+   *  credential bundle and no label, and no relabel door exists in the schema at all, so an owner
+   *  who corrected the name on retry would have their edit accepted into the field and then
+   *  silently dropped — a control that looks like it saves and does not (§70.1). It locks once
+   *  the shell row exists, and says what to do instead. */
+  it("locks the name once the shell row exists rather than accepting an edit it cannot apply", async () => {
+    world();
+    invoke.mockImplementation((_fn: string, opts: { body?: Record<string, unknown> }) => {
+      const action = opts?.body?.action;
+      if (action === "create") return Promise.resolve({ data: { connection_id: "shell-1" }, error: null });
+      if (action === "oauth_begin") return Promise.resolve(edgeRefusal("discovery_failed"));
+      return Promise.resolve({ data: {}, error: null });
+    });
+
+    const { host } = await render();
+    await openCatalogue(host);
+    await click(tile(host, "Close"));
+    await type(fieldFor(host, "Name"), "My Close");
+    await type(fieldFor(host, "Server address"), "https://mcp.close.com/mcp");
+
+    // Editable before anything is saved.
+    expect((fieldFor(host, "Name") as HTMLInputElement).disabled).toBe(false);
+
+    await click(byText(host, "Sign in to Close"));
+
+    // The row now exists, so the name is fixed — and the surface says so instead of pretending.
+    const name = fieldFor(host, "Name") as HTMLInputElement;
+    expect(name.disabled).toBe(true);
+    expect(name.value).toBe("My Close");
+    expect(host.textContent).toContain("remove it from Connections and start again");
+    // The create carried the name the owner actually typed.
+    expect((edgeCalls("create")[0][1]?.body as Record<string, unknown>).label).toBe("My Close");
+  });
 });
 
 describe("Truth boundary", () => {

@@ -245,11 +245,24 @@ begin
                'inbound_address', null,
                -- Legacy carries no `health` column, so health is derived from
                -- what a probe actually established. Never invented.
+               -- CONFIGURED, WITH THE url/none EXEMPTION THE LEGACY READER LACKS (§13).
+               -- get_tenant_mcp_connections computes `configured` from the TOKEN columns
+               -- alone, but a URL-auth connection (set_tenant_zapier_mcp_url_connection)
+               -- carries its credential inside server_url_ct and is FORBIDDEN from holding
+               -- a token at all — tenant_mcp_connections_url_kind_chk (20261016000000:51)
+               -- requires auth_token_ct IS NULL for auth_kind='url'. So its `configured`
+               -- is false forever, and reading it literally reported a probe-confirmed,
+               -- working connection as 'unconfigured'. get_mcp_connections_v2 already
+               -- carries exactly this exemption (20270331000000:1065); the legacy reader
+               -- does not, and mirroring the wrong one of the two is what caused this.
+               -- Caught in review.
                'health', case
-                 when (v->>'enabled')::boolean is not true    then 'disconnected'
-                 when (v->>'configured')::boolean is not true then 'unconfigured'
-                 when v->>'status' = 'error'                  then 'degraded'
-                 when v->>'status' = 'connected'              then 'healthy'
+                 when (v->>'enabled')::boolean is not true then 'disconnected'
+                 when not ((v->>'configured')::boolean
+                           or (v->>'auth_kind' in ('url','none') and v->>'server_url_host' is not null))
+                                                           then 'unconfigured'
+                 when v->>'status' = 'error'               then 'degraded'
+                 when v->>'status' = 'connected'           then 'healthy'
                  else 'unknown'
                end,
                'last_updated',    v->>'last_probed_at',

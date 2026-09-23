@@ -597,11 +597,17 @@ restated, not a new one.
 
 `public.list_integration_surface()` — the executor behind the live `integrations_list` chat tool — read
 **only** `public.channel_connectors`, so every MCP connection a tenant owned was **invisible** to Paige.
-It now appends two MCP halves: the gateway registry first (§57 source of truth), then `get_tenant_mcp_connections`
-filling **only** a provider the gateway has no row for. The gap-fill is not optional politeness — the gateway
-registry came from a ONE-TIME backfill with no sync trigger while the legacy writers stay live, so
-gateway-only would give Paige a list with a hole in it, and a hole reads as an absence: a confident
-*"no, you aren't connected"* about a working connection (§13).
+It now appends THREE MCP reads, **partitioned by LINEAGE so they cannot overlap**: the gateway registry's
+NATIVE rows only (`mcp_connections.legacy_source IS NULL`), then every live row from
+`get_tenant_mcp_connections`, then the n8n API-key facet from `get_tenant_n8n_connection`. Reading legacy
+at all is not optional politeness — the gateway registry came from a ONE-TIME backfill with no sync
+trigger while the legacy writers stay live, so gateway-only would give Paige a list with a hole in it, and
+a hole reads as an absence: a confident *"no, you aren't connected"* about a working connection (§13).
+**The partition key is lineage, NOT the provider name**, and that correction came from the §39 peer-gate:
+preferring the gateway wherever a provider string matched let a FROZEN backfill snapshot outrank the live
+record it was copied from, so a connection the owner disconnected an hour ago still read as connected. A
+projection is suppressed because it IS a projection (`legacy_source`/`legacy_provider`,
+`20270319000000:129-131`); its live original answers in its place.
 
 | Tier | Sees MCP connections via `integrations_list` | Sees an `owner_only` MCP connection | Why |
 |---|---|---|---|
