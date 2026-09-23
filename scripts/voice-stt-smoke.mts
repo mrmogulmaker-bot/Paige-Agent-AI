@@ -304,7 +304,7 @@ if (openedFlux.ok) {
   openedFlux.ears.close();
   check("clean end sends Flux CloseStream without treating it as a provider failure", fakeFlux.sent.some((value) => value === '{"type":"CloseStream"}') && !seenFlux.includes("unavailable"));
   fakeFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 1, sequence_id: 4, transcript: "Trailing thought" });
-  fakeFlux.close();
+  fakeFlux.close(1005, true);
   check("CloseStream flush Update becomes one final utterance on close", seenFlux.at(-1) === "final:Trailing thought");
 }
 const cancelledFlux = new FakeFluxSocket();
@@ -361,6 +361,19 @@ if (uncleanFlushResult.ok) {
   uncleanFlushSocket.close(1006, false);
 }
 check("unclean upstream close never promotes interim text", uncleanFlushSeen.length === 0);
+const errorCodeFlux = new FakeFluxSocket();
+const errorCodeSeen: string[] = [];
+const errorCodeOpening = openFluxEars({
+  startOfTurn() {}, partial() {}, final(text) { errorCodeSeen.push(`final:${text}`); },
+  unavailable() { errorCodeSeen.push("unavailable"); },
+}, { opener() { queueMicrotask(() => errorCodeFlux.onopen?.()); return errorCodeFlux as unknown as WebSocket; } });
+const errorCodeResult = await errorCodeOpening;
+if (errorCodeResult.ok) {
+  errorCodeResult.ears.close();
+  errorCodeFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 1, transcript: "Not confirmed" });
+  errorCodeFlux.close(1011, true);
+}
+check("clean handshake with provider error code fails instead of finalizing", errorCodeSeen.join("|") === "unavailable");
 const timedOutFlux = new FakeFluxSocket();
 const timedOutSeen: string[] = [];
 const timedOutOpening = openFluxEars({

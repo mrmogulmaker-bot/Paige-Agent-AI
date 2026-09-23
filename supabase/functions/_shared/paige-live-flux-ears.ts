@@ -71,12 +71,16 @@ export async function openFluxEars(
     };
     socket.onclose = (event) => {
       if (closeTimer) clearTimeout(closeTimer);
+      // Flux documents a normal CloseStream shutdown with no status code
+      // (the browser reports reserved code 1005). Also tolerate an explicit
+      // normal 1000; 1008/1011 are errors even if the handshake was clean.
+      const providerClosedNormally = event.wasClean && (event.code === 1005 || event.code === 1000);
       // CloseStream's last transcript is an Update, not an EndOfTurn. It is
       // final only when we deliberately asked Flux to flush and then closed.
-      if (finishing && event.wasClean && !forcedClose && !cancelled && !failed &&
+      if (finishing && providerClosedNormally && !forcedClose && !cancelled && !failed &&
         flushedUpdate && flushedUpdate.turnIndex !== finalTurnIndex) {
         events.final(flushedUpdate.text, flushedUpdate.turnIndex);
-      } else if (!finishing) failOnce();
+      } else if (!finishing || (finishing && !providerClosedNormally)) failOnce();
       settle(false);
     };
     socket.onmessage = (message) => {
