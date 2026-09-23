@@ -52,7 +52,7 @@ assert.ok(relay.indexOf('from("paige_live_tenant_availability")') < relay.indexO
 assert.match(relay, /isLiveAudioPilotEnabled\(tenantPilot\)/, "relay admission requires the platform-stored flag");
 assert.ok(relay.indexOf('return new Response("live_audio_not_enabled", { status: 403 })') < relay.indexOf("Deno.upgradeWebSocket(req)"), "revoked or missing pilot rejects before socket upgrade");
 assert.match(relay, /from\("tenant_members"\)[\s\S]*?\.eq\("user_id", session\.actor_user_id\)\.eq\("status", "active"\)/, "relay rechecks the signed-in user's active membership, independent of role label");
-const pilotMigration = readFileSync(new URL("../supabase/migrations/20270401000000_paige_live_pilot_feature_guard.sql", import.meta.url), "utf8");
+const pilotMigration = readFileSync(new URL("../supabase/migrations/20270408000000_paige_live_pilot_feature_guard.sql", import.meta.url), "utf8");
 assert.match(pilotMigration, /CREATE TABLE IF NOT EXISTS public\.paige_live_tenant_availability/, "rollout decision has a platform-owned table");
 assert.match(pilotMigration, /REVOKE ALL ON TABLE public\.paige_live_tenant_availability FROM PUBLIC, anon, authenticated/, "tenant roles have no table write route");
 assert.doesNotMatch(relay + session, /from\("tenants"\)\.select\("features"\)/, "tenant-writable feature JSON never controls Live audio");
