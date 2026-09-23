@@ -8,9 +8,10 @@ caused.
 prioritise them — and every lane pays for them in wasted investigation. The facts were already
 *recorded*: forty-plus per-ship evidence records and delivery notes each restate "this red is
 inherited" in their own words, at their own moment. But a per-ship snapshot is history, correct for
-audit and useless for *what is true right now*. Until this file, the live `npm run test` baseline
-existed in exactly one place, written the day it was measured. A lane hitting it the next morning had
-nothing to find.
+audit and useless for *what is true right now*. Until this file, the live `npm run test` baseline was
+named in exactly two files on `main` — a master-doc aggregate row and one ship's evidence record —
+and neither is somewhere a lane looks when a check goes red, nor is either maintained when the
+baseline moves. A lane hitting it the next morning had nothing to find.
 
 **Owner.** The platform-health look-back function. When any row here changes — a baseline shrinks, a
 check starts passing, a new inherited red appears — this file is updated in the same change that
