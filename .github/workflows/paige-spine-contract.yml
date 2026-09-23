@@ -19,6 +19,7 @@ on:
       - "supabase/tests/mcp_gateway_owner_only_visibility.sql"
       - "supabase/tests/mcp_gateway_endpoint_setter.sql"
       - "supabase/tests/mcp_gateway_connection_create.sql"
+      - "supabase/tests/mcp_gateway_oauth_state_and_hardenings.sql"
       - "scripts/proof/mcp-gateway-endpoint-consent-race.mjs"
       - "supabase/functions/_shared/mcp-gateway/**"
       - "supabase/functions/paige-tts/**"
@@ -75,6 +76,7 @@ on:
       - "supabase/tests/mcp_gateway_owner_only_visibility.sql"
       - "supabase/tests/mcp_gateway_endpoint_setter.sql"
       - "supabase/tests/mcp_gateway_connection_create.sql"
+      - "supabase/tests/mcp_gateway_oauth_state_and_hardenings.sql"
       - "scripts/proof/mcp-gateway-endpoint-consent-race.mjs"
       - "supabase/functions/_shared/mcp-gateway/**"
       - "supabase/functions/paige-tts/**"
@@ -260,6 +262,13 @@ jobs:
       # re-key = reconnect (enabled restored), get_mcp_connections_v2.configured honest for url/none, and the
       # §51 per-tier write matrix + A1/A3 no-leak. Rides this replayed DB for the same §24 reason as above.
       - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_connection_create.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      # Connected MCP Gateway — Slice ② foundation (migration 20270332000000): the OAuth-state store
+      # (begin/consume single-use + encrypted verifier + expiry + §9 cross-tenant refusal), INT-152
+      # (config_generation trigger bump on endpoint/credential/status-reset — never on a probe result;
+      # get_mcp_connection_secret surfaces it; mcp_connection_probe compare-and-write no-ops a stale probe
+      # without clobbering the fresh config/catalog), and INT-153 (the writer bearer/header min-length floor
+      # through create_mcp_connection, oauth exempt). Rides this replayed DB for the same §24 reason as above.
+      - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_oauth_state_and_hardenings.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       # PAIGE Voice V1a — capability-gated zero/disabled configuration, tenant + platform
       # monthly caps, idempotency, rollover, ambiguity settlement, provider parity, and a
       # true two-session exact-cap race. No provider request is made by either proof.

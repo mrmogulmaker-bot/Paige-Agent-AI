@@ -194,6 +194,14 @@ export async function runVerify(deps: VerifyDeps, input: VerifyInput): Promise<V
     return { httpStatus: 403, body: { error: "forbidden" } };
   }
 
+  // INT-152: bind the probe write to the generation the loader read (compare-and-write). The parameter is
+  // included ONLY when a numeric generation was actually loaded — so during the deploy window where this
+  // edge is live but the migration's 6-arg probe is not yet applied (the loader then returns no
+  // config_generation → null), the call omits the key and resolves to the still-live 5-arg probe rather
+  // than erroring on an unknown argument (§37 deploy-ordering safety). Post-migration it is always a number.
+  const genParam: { _expected_generation?: number } =
+    typeof resolved.configGeneration === "number" ? { _expected_generation: resolved.configGeneration } : {};
+
   // Read-only handshake: initialize + tools/list via the SSRF-guarded client. Never a tools/call.
   const intake = await runReadOnlyIntake({ serverUrl: resolved.serverUrl, auth: resolved.auth });
 
@@ -203,28 +211,41 @@ export async function runVerify(deps: VerifyDeps, input: VerifyInput): Promise<V
   // and record an honest error — never store a poisoned tool set. Only meaningful on a successful
   // read (a failed intake carries no catalog to persist).
   if (intake.ok && intakeReflectsCredential(intake.tools, resolved.auth, resolved.serverUrl)) {
-    const { error: rpErr } = await admin.rpc("mcp_connection_probe", {
+    const { data: rProbeRes, error: rpErr } = await admin.rpc("mcp_connection_probe", {
       _connection_id: id,
       _status: "error",
       _health: "needs_attention",
       _last_error_code: "provider_reflected_credential",
       _tools: null,
+      ...genParam,   // INT-152: bind the error write to the loaded config (see genParam note above)
     });
     if (rpErr) return { httpStatus: 500, body: { error: "probe_write_failed" } };
+    // INT-152: the connection was re-keyed while this verify was in flight — the error write was a no-op
+    // against the fresh config, so report the race honestly rather than a stale "error" state (§13).
+    if (rProbeRes && (rProbeRes as { applied?: unknown }).applied === false) {
+      return { httpStatus: 409, body: { ok: false, status: "pending_verification", tool_count: 0, error_code: "config_changed_during_verify" } };
+    }
     return { httpStatus: 200, body: { ok: false, status: "error", health: "needs_attention", tool_count: 0, error_code: "provider_reflected_credential" } };
   }
 
   // Persist through the service-role probe — the ONLY writer of status='connected'/health='healthy'
   // and of mcp_connection_tools. Replace the catalog only on a successful read (a failed probe must
   // not wipe a previously-good catalog to empty).
-  const { error: pErr } = await admin.rpc("mcp_connection_probe", {
+  const { data: probeRes, error: pErr } = await admin.rpc("mcp_connection_probe", {
     _connection_id: id,
     _status: intake.status,
     _health: intake.health,
     _last_error_code: intake.errorCode,
     _tools: intake.ok ? mapFingerprintsToProbeTools(intake) : null,
+    ...genParam,   // INT-152: compare-and-write against the loaded config (see genParam note above)
   });
   if (pErr) return { httpStatus: 500, body: { error: "probe_write_failed" } };
+  // INT-152: a stale generation means the connection was re-keyed while this verify was in flight — the
+  // probe did NOT clobber the fresh config or catalog. Report the race honestly (§13); do not claim a
+  // connection this verify never actually persisted.
+  if (probeRes && (probeRes as { applied?: unknown }).applied === false) {
+    return { httpStatus: 409, body: { ok: false, status: "pending_verification", tool_count: 0, error_code: "config_changed_during_verify" } };
+  }
 
   return {
     httpStatus: 200,

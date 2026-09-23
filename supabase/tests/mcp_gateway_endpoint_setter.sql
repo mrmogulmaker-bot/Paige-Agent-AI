@@ -455,16 +455,17 @@ BEGIN
   IF public.platform_decrypt(_row.server_url_ct) = BAD THEN RAISE EXCEPTION '(bundle) a rejected call changed the endpoint'; END IF;
 
   -- ===== ACCEPT cases (parity: SQL accepts ⇒ runtime-USABLE) =====
-  -- accept_header (a runtime-usable custom name + token).
-  PERFORM public.set_mcp_connection_endpoint(C, 'https://cred-header.example.com/rpc', 'header', 'tok-h', 'X-Api-Key');
+  -- accept_header (a runtime-usable custom name + token). INT-153 (20270332000000): the token must be
+  -- >= 12 chars (the writer floor); the value is otherwise arbitrary.
+  PERFORM public.set_mcp_connection_endpoint(C, 'https://cred-header.example.com/rpc', 'header', 'tok-header-12c', 'X-Api-Key');
   SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
   IF _row.auth_kind <> 'header' OR _row.auth_header_name <> 'X-Api-Key'
-     OR public.platform_decrypt(_row.auth_token_ct) <> 'tok-h' THEN RAISE EXCEPTION 'accept_header did not store the bundle'; END IF;
+     OR public.platform_decrypt(_row.auth_token_ct) <> 'tok-header-12c' THEN RAISE EXCEPTION 'accept_header did not store the bundle'; END IF;
 
-  -- accept_bearer.
-  PERFORM public.set_mcp_connection_endpoint(C, 'https://cred-bearer.example.com/rpc', 'bearer', 'tok-b');
+  -- accept_bearer (INT-153: token >= 12 chars).
+  PERFORM public.set_mcp_connection_endpoint(C, 'https://cred-bearer.example.com/rpc', 'bearer', 'tok-bearer-12c');
   SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
-  IF _row.auth_kind <> 'bearer' OR public.platform_decrypt(_row.auth_token_ct) <> 'tok-b' THEN RAISE EXCEPTION 'accept_bearer did not store the token'; END IF;
+  IF _row.auth_kind <> 'bearer' OR public.platform_decrypt(_row.auth_token_ct) <> 'tok-bearer-12c' THEN RAISE EXCEPTION 'accept_bearer did not store the token'; END IF;
 
   -- accept_oauth (F3: token REQUIRED + issuer + client_id; refresh optional-additional). A FUTURE
   -- access_token_expires_at is accepted (round-4: only an already-expired token is rejected).
@@ -508,8 +509,8 @@ BEGIN
     BEGIN
       CASE _kind
         WHEN 'oauth'   THEN PERFORM public.set_mcp_connection_endpoint(C, 'https://f4-oauth.example.com/rpc',  'oauth',  'tok', NULL, NULL, 'https://iss.example.com', 'cid');
-        WHEN 'bearer'  THEN PERFORM public.set_mcp_connection_endpoint(C, 'https://f4-bearer.example.com/rpc', 'bearer', 'tok');
-        WHEN 'header'  THEN PERFORM public.set_mcp_connection_endpoint(C, 'https://f4-header.example.com/rpc', 'header', 'tok', 'X-Api-Key');
+        WHEN 'bearer'  THEN PERFORM public.set_mcp_connection_endpoint(C, 'https://f4-bearer.example.com/rpc', 'bearer', 'f4-bearer-12c');
+        WHEN 'header'  THEN PERFORM public.set_mcp_connection_endpoint(C, 'https://f4-header.example.com/rpc', 'header', 'f4-header-12c', 'X-Api-Key');
         WHEN 'api_key' THEN PERFORM public.set_mcp_connection_endpoint(C, 'https://f4-apikey.example.com/rpc', 'api_key', 'tok');
         WHEN 'url'     THEN PERFORM public.set_mcp_connection_endpoint(C, 'https://f4-url.example.com/rpc',    'url');
         WHEN 'none'    THEN PERFORM public.set_mcp_connection_endpoint(C, 'https://f4-none.example.com/rpc',   'none');
@@ -533,16 +534,17 @@ BEGIN
   END IF;
 END $$;
 
--- ── (round-6 secret-exposure fix) auth_token_last4 redaction. right(_auth_token,4) returns the WHOLE
---    token when it is <= 4 chars (and 4 of 5 for a 5-char token), so a short custom-server token would land
---    in paige_audit_log and the RPC return in plaintext. The setter now emits last4 ONLY for a token >= 12
---    chars (a negligible non-secret suffix) and NULL below that — in the row column, the audit after-hint,
---    AND the return (one _new_last4 value feeds all three). Assert: length {1,4,5,11} → last4 NULL in row +
---    audit payload + return AND the full short token appears NOWHERE in the audit payload for that write;
---    length {12,40} → last4 = right(token,4). (INT-111 tracks the repo-wide last4 convention at other call
---    sites — out of this PR's scope.) Each token uses a UNIQUE endpoint so its audit row is identifiable. ─
+-- ── (round-6 + INT-153) auth_token_last4 redaction AND the writer minimum-length floor. Historically the
+--    setter STORED a short token but redacted its last4 (right(token,4) leaks a <=4-char token whole). As of
+--    20270332000000 (INT-153) the setter REJECTS a bearer/header token < 12 chars outright — the strictly
+--    stronger fix — so a short token can no longer be stored via the writer at all; the last4 redaction
+--    survives only as defense-in-depth for a legacy / directly-inserted short token (exercised by the
+--    before-hint block below, which rebinds a legacy c3 row whose stored last4 is a whole 4-char token).
+--    Assert here: length {1,4,5,11} → the setter RAISES MCP_CREDENTIAL_TOO_SHORT and writes NOTHING (the
+--    endpoint is unchanged); length {12,40} → accepted, last4 = right(token,4) in the row column, the audit
+--    after-hint, AND the return. Each accepted token uses a UNIQUE endpoint so its audit row is identifiable. ─
 DO $$
-DECLARE _r jsonb; _row public.mcp_connections%ROWTYPE; _p jsonb; _c record; _exp text;
+DECLARE _r jsonb; _row public.mcp_connections%ROWTYPE; _p jsonb; _c record; _exp text; _msg text; _url_before text; _url_after text;
   C uuid := '0e900000-0000-0000-0000-0000000000c1';
 BEGIN
   PERFORM set_config('request.jwt.claims', '{"sub":"0e900000-0000-0000-0000-000000000002","role":"authenticated"}', true);
@@ -556,26 +558,26 @@ BEGIN
       ('len40', 'QRSTUVWXYZqrstuvwxyzQRSTUVWXYZqrstuvwXYZ', 'https://last4-40.example.com/rpc')
     ) AS v(name, tok, url)
   LOOP
-    _r := public.set_mcp_connection_endpoint(C, _c.url, 'bearer', _c.tok);
-    SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
-    -- new_endpoint_hash is unique per token's URL, so this identifies THIS write's audit row exactly.
-    SELECT payload INTO _p FROM public.paige_audit_log
-      WHERE action = 'mcp_connection.endpoint_changed' AND target_id = C
-        AND (payload->>'new_endpoint_hash') = public._mcp_endpoint_hash(_c.url)
-      LIMIT 1;
-    IF _p IS NULL THEN RAISE EXCEPTION '(round-6 last4) %: no audit row for the write', _c.name; END IF;
-
     IF length(_c.tok) < 12 THEN
-      IF _row.auth_token_last4 IS NOT NULL THEN
-        RAISE EXCEPTION '(round-6 last4) %: row last4 must be NULL for a <12-char token (leak), got %', _c.name, _row.auth_token_last4; END IF;
-      IF (_r ? 'auth_token_last4') IS NOT TRUE OR (_r->>'auth_token_last4') IS NOT NULL THEN
-        RAISE EXCEPTION '(round-6 last4) %: return last4 must be present and NULL', _c.name; END IF;
-      IF (_p ? 'auth_token_last4_after') IS NOT TRUE OR (_p->>'auth_token_last4_after') IS NOT NULL THEN
-        RAISE EXCEPTION '(round-6 last4) %: audit after-hint must be present and NULL', _c.name; END IF;
-      -- the full short token must appear NOWHERE in the audit payload for this write.
-      IF position(_c.tok IN _p::text) > 0 THEN
-        RAISE EXCEPTION '(round-6 last4) %: the full short token leaked into the audit payload: %', _c.name, _p; END IF;
+      -- INT-153: the write is REJECTED and the endpoint is left unchanged (validation precedes any write).
+      SELECT public.platform_decrypt(server_url_ct) INTO _url_before FROM public.mcp_connections WHERE connection_id = C;
+      _msg := NULL;
+      BEGIN PERFORM public.set_mcp_connection_endpoint(C, _c.url, 'bearer', _c.tok);
+      EXCEPTION WHEN OTHERS THEN _msg := SQLERRM; END;
+      IF _msg IS NULL OR _msg NOT LIKE '%MCP_CREDENTIAL_TOO_SHORT%' THEN
+        RAISE EXCEPTION '(round-6/INT-153) %: a <12 token was not rejected as too short: %', _c.name, _msg; END IF;
+      SELECT public.platform_decrypt(server_url_ct) INTO _url_after FROM public.mcp_connections WHERE connection_id = C;
+      IF _url_after IS DISTINCT FROM _url_before THEN
+        RAISE EXCEPTION '(round-6/INT-153) %: a rejected short-token write changed the endpoint', _c.name; END IF;
     ELSE
+      _r := public.set_mcp_connection_endpoint(C, _c.url, 'bearer', _c.tok);
+      SELECT * INTO _row FROM public.mcp_connections WHERE connection_id = C;
+      -- new_endpoint_hash is unique per token's URL, so this identifies THIS write's audit row exactly.
+      SELECT payload INTO _p FROM public.paige_audit_log
+        WHERE action = 'mcp_connection.endpoint_changed' AND target_id = C
+          AND (payload->>'new_endpoint_hash') = public._mcp_endpoint_hash(_c.url)
+        LIMIT 1;
+      IF _p IS NULL THEN RAISE EXCEPTION '(round-6 last4) %: no audit row for the write', _c.name; END IF;
       _exp := right(_c.tok, 4);
       IF _row.auth_token_last4 IS DISTINCT FROM _exp THEN
         RAISE EXCEPTION '(round-6 last4) %: row last4 must be right(token,4)=%, got %', _c.name, _exp, _row.auth_token_last4; END IF;
@@ -634,10 +636,10 @@ DO $$
 DECLARE _p jsonb; C uuid := '0e900000-0000-0000-0000-0000000000c1'; U text := 'https://cred-f4.example.com/rpc';
 BEGIN
   PERFORM set_config('request.jwt.claims', '{"sub":"0e900000-0000-0000-0000-000000000002","role":"authenticated"}', true);
-  -- baseline: header at U with X-Api-Key + tok-f4.
-  PERFORM public.set_mcp_connection_endpoint(C, U, 'header', 'tok-f4', 'X-Api-Key');
+  -- baseline: header at U with X-Api-Key + a >=12 token (INT-153). SAME token both writes so only the name changes.
+  PERFORM public.set_mcp_connection_endpoint(C, U, 'header', 'tok-f4-header-12', 'X-Api-Key');
   -- same URL, SAME token, DIFFERENT header name.
-  PERFORM public.set_mcp_connection_endpoint(C, U, 'header', 'tok-f4', 'X-Other-Key');
+  PERFORM public.set_mcp_connection_endpoint(C, U, 'header', 'tok-f4-header-12', 'X-Other-Key');
   -- filter by the UNIQUE new_endpoint_hash (created_at is transaction-time, so it cannot order rows here).
   SELECT payload INTO _p FROM public.paige_audit_log
     WHERE action = 'mcp_connection.endpoint_changed' AND target_id = C
@@ -659,16 +661,16 @@ DECLARE _appr int; _tools int; _p jsonb; _msg text;
 BEGIN
   PERFORM set_config('request.jwt.claims', '{"sub":"0e900000-0000-0000-0000-000000000002","role":"authenticated"}', true);
 
-  -- Baseline: bind to U with a first token (this rebind clears any prior approvals/tools).
-  PERFORM public.set_mcp_connection_endpoint(C, U, 'bearer', 'tok-rev-1');
+  -- Baseline: bind to U with a first token (this rebind clears any prior approvals/tools). INT-153: >=12.
+  PERFORM public.set_mcp_connection_endpoint(C, U, 'bearer', 'tok-rev-1-12c');
   -- Seed an approval + a tool bound to U (endpoint unchanged on the next call).
   INSERT INTO public.mcp_connection_approvals (connection_id, tool_name, pin, approved_by, endpoint_hash)
   VALUES (C, 'rev.tool', repeat('c',64), '0e900000-0000-0000-0000-000000000001', public._mcp_endpoint_hash(U));
   INSERT INTO public.mcp_connection_tools (connection_id, tool_name, schema_hash)
   VALUES (C, 'rev.tool', repeat('c',64));
 
-  -- SAME URL, DIFFERENT token — a pure credential rotation. The URL-change trigger will NOT fire.
-  PERFORM public.set_mcp_connection_endpoint(C, U, 'bearer', 'tok-rev-2');
+  -- SAME URL, DIFFERENT token — a pure credential rotation. The URL-change trigger will NOT fire. INT-153: >=12.
+  PERFORM public.set_mcp_connection_endpoint(C, U, 'bearer', 'tok-rev-2-12c');
 
   SELECT count(*) INTO _appr  FROM public.mcp_connection_approvals WHERE connection_id = C;
   SELECT count(*) INTO _tools FROM public.mcp_connection_tools     WHERE connection_id = C;
