@@ -2756,7 +2756,16 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      grep the whole document for every place that claim is restated, including headers and framing
      sentences — do not patch the one location a reviewer names.** A summary that contradicts its own
      detail is worse than either alone.
-     **THREE successive rounds landed here, each one layer up.** Round 5 fixed the procedure; round 6
+     **AND THE GREP ITSELF HAS A FAILURE MODE, which is how a fourth round happened after I claimed the
+     class was closed.** I swept for the phrasing I had just written — `proves it is yours`, `is not
+     yours` — and missed a superseded paragraph saying `proves the failure is yours`. Worse, that
+     paragraph was a rewritten *duplicate* of the section I had replaced, left in place instead of
+     deleted, so the document contained two passages contradicting each other and I had read only the
+     new one. **Grep for the SUBJECT of the claim (the thing being reasoned about), not the sentence you
+     remember writing — and when you replace a passage, DELETE the old one rather than leaving a
+     superseded version above or below it.** A stale duplicate is not a harmless leftover; it is a
+     second, competing rule.
+     **FOUR successive rounds landed here, each one layer up.** Round 5 fixed the procedure; round 6
      fixed its scope; round 7 fixed the framing line, the column header and the row; round 8 found the
      **Verdict column** still printing "Inherited" — assigning the reader's run the verdict the rest of
      the table had stopped assigning. A table column is a claim too. The fix that finally held was

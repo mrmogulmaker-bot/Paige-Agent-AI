@@ -135,20 +135,9 @@ clear your run and they cannot convict it.
 
 </details>
 
-**What the list can and cannot do, stated precisely, because two earlier versions of this paragraph
-overclaimed:**
-
-- **A name NOT on the list proves the failure is yours.** That direction is sound.
-- **Matching names prove nothing on their own.** A change can alter one of those twenty failures *in
-  place*, keeping its name, its file and both counts.
-
-So the list is a **fast path that can only ever add suspicion, never clear it.** The only check that
-clears a run is **base versus head**: run `npm run test` on your merge-base and on your head and diff
-the failure output — names *and* messages.
-
-**Do not try to decide from the paths in your diff whether that is necessary.** An earlier version of
-this section tried, and named two directories (`src/solo/`, `src/components/tenant-shell/`) as the
-trees to watch. That was wrong, and wrong in an instructive way: **a test can import or read anything.**
+**Why the paths in your diff decide nothing either.** An earlier version of this section tried, and
+named two directories (`src/solo/`, `src/components/tenant-shell/`) as the trees to watch. That was
+wrong, and wrong in an instructive way: **a test can import or read anything.**
 `src/solo/resend-receipt-handler.test.ts` imports
 `../../supabase/functions/handle-resend-webhook/handler` and `readFileSync`s that function's
 `index.ts` — so an **edge-function** change, in neither named tree, can alter a listed failure while
@@ -370,9 +359,10 @@ Update this file in the same change that changes what it says. Specifically:
 - A new inherited red appears → add it with its cause, or with `⚠ ATTRIBUTED` if the cause is a
   handed-down explanation rather than something measured.
 - An attributed row gets independently confirmed → promote it and cite the check that did it.
-- **A failing test is fixed, added, or renamed → update the twenty names.** That list is the signature
-  a lane diffs against; a stale name there sends someone hunting a regression that does not exist, and
-  a missing one lets a real regression read as inherited. Counts alone are not a substitute — that was
-  this file's own mistake, corrected in review.
+- **A failing test is fixed, added, or renamed → update the twenty names, and re-record the commit they
+  were measured at.** They are ORIENTATION, not evidence — nobody should be deciding attribution from
+  them — but stale orientation still misleads: a name that is no longer failing sends a reader looking
+  for a regression that does not exist. Resist any urge to restore an inference here. Five review rounds
+  killed five of them, and the fifth killed the one this file kept insisting was sound.
 - **The security check starts failing a DIFFERENT way → say so.** Its row is conditional on the
   `CAPIError: 400` signature. A new failure mode wearing the same red X is a new row, not this one.
