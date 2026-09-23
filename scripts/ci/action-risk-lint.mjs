@@ -24,6 +24,13 @@
  * MCP door work. The rule itself is unchanged in spirit: a classified key that NO surface points
  * at is still a line nobody reads.
  *
+ * ONE KEY, ONE LINE — added 2026-09-23. `RISK` is a hand-maintained array and every map derived from
+ * it folds repeats, so a second tuple for a key already present is a classification settled by fold
+ * order rather than by a person. `crm_update_task` carried two until #1383. That fold now keeps the
+ * MOST RESTRICTIVE class, so a repeat can only raise authority and never lower it — which means this
+ * check is the WARNING that the table contradicts itself, not the thing that makes it safe. It says
+ * whether the repeated classes agree, because "duplicate key" alone leaves the reader to go and look.
+ *
  *   node scripts/ci/action-risk-lint.mjs
  *   node scripts/ci/action-risk-lint.mjs --self-test
  */
@@ -152,6 +159,26 @@ export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanon
   //    the runtime then refuses.
   if (!verbSourceMatches) out.push(`the MUTATION_VERB pattern in this guard no longer matches the one in ${POLICY} — they must be identical or CI and the runtime will disagree about what counts as a write.`);
 
+  // 6. One key, one line. Two tuples for the same key is a classification the fold picks, not a
+  //    person — and the reader of a bare "duplicate key" cannot tell whether they just created a
+  //    downgrade or restated something harmlessly, so the classes are named. Agreeing repeats are
+  //    the case that actually happened; disagreeing ones are a policy arguing with itself.
+  const classesByTool = new Map();
+  for (const { tool, risk } of policy) {
+    const held = classesByTool.get(tool);
+    if (held) held.push(risk);
+    else classesByTool.set(tool, [risk]);
+  }
+  for (const [tool, classes] of classesByTool) {
+    if (classes.length < 2) continue;
+    out.push(
+      `${tool} is classified ${classes.length} times in ${POLICY} — as ${classes.join(", ")}. ` +
+      (new Set(classes).size === 1
+        ? `The classes agree, so nothing is mis-classified today, but one key on two lines means the next edit to either can disagree with the other. Keep exactly one.`
+        : `The classes DISAGREE, so the table contradicts itself and the fold picks the winner instead of a person. Keep exactly one, and make it the class you mean.`),
+    );
+  }
+
   return out;
 }
 
@@ -218,6 +245,17 @@ function selfTest() {
     findings({ ...base, policy: [] }).some((f) => f.includes("reading nothing")));
   bad += ok("a diverged verb pattern is caught",
     findings({ ...base, verbSourceMatches: false }).some((f) => f.includes("disagree about what counts")));
+  // The duplicate rule, both directions. The clean fixture declares 60 distinct keys, so its silence
+  // is the no-false-positive half; the two repeats below are the real defect (`crm_update_task` held
+  // two `ordinary` tuples until #1383) and the worse hypothetical (classes that disagree).
+  bad += ok("a repeated key whose classes DISAGREE is caught, naming both classes",
+    findings({ ...base, policy: [...base.policy, { tool: "t_create_0", risk: "high", reason: "a sufficiently long reason" }] })
+      .some((f) => f.includes("t_create_0 is classified 2 times") && f.includes("as ordinary, high") && f.includes("DISAGREE")));
+  bad += ok("a repeated key whose classes AGREE is caught too, named as a restatement",
+    findings({ ...base, policy: [...base.policy, { tool: "t_create_0", risk: "ordinary", reason: "a sufficiently long reason" }] })
+      .some((f) => f.includes("t_create_0 is classified 2 times") && f.includes("as ordinary, ordinary") && f.includes("classes agree")));
+  bad += ok("a policy that declares each key exactly once reports no duplicate",
+    !findings(base).some((f) => /is classified \d+ times/.test(f)));
   // 2026-09-12 regression: `decide` must read as a mutation verb, so an unclassified `*_decide`
   // write (the `improvement_decide` bypass) is caught as a write rather than sailing through as a
   // query. Guards the lint's own copy of MUTATION_VERB; `checkVerbParity` guards it against the policy.
