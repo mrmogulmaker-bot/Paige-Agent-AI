@@ -84,6 +84,13 @@ assert.match(pilotMigration, /CREATE TABLE IF NOT EXISTS public\.paige_live_tena
 assert.match(pilotMigration, /REVOKE ALL ON TABLE public\.paige_live_tenant_availability FROM PUBLIC, anon, authenticated/, "tenant roles have no table write route");
 assert.doesNotMatch(relay + session, /from\("tenants"\)\.select\("features"\)/, "tenant-writable feature JSON never controls Live audio");
 assert.doesNotMatch(relay + session, /daily_ceiling|concurrent_session_limit|reserve_paige_voice|allowance_gate/i);
-assert.doesNotMatch(relay, /stt-router|tts-router|elevenlabs|DEEPGRAM_API_KEY|ELEVENLABS_API_KEY/);
+// S4 intentionally joins real adapters. Admission still precedes ANY adapter
+// open, and canonical privacy proof is independent of pilot availability.
+assert.ok(relay.indexOf('if (unavailableCode)') < relay.indexOf('openEars: (events) => openFluxEars(events)'), 'provider readiness refuses before ears open');
+assert.match(relay, /voice\.approved === true && voice\.status === "approved"/, 'an unapproved candidate cannot activate');
+assert.match(relay, /readiness\?\.provider_verification_id === voice\?\.provider_verification_id/, 'readiness binds the exact candidate verification');
+assert.match(relay, /row\.voice_authorized === true && row\.retention_policy_approved === true && row\.zero_retention_confirmed === true/, 'canonical privacy fields must all be true');
+assert.match(relay, /envKey\("DEEPGRAM_MIP_ACCOUNT_VERIFIED"\) === "true"/, 'account opt-out is not inferred from per-request flag');
+assert.doesNotMatch(session, /elevenlabsSpeechStream|openFluxEars/, 'ticket issuance never opens providers');
 assert.equal(network, 0);
 console.log("✅ relay ticket smoke: expiry, tamper, concurrent one-use, replay, server-scope, pre-upgrade gate, zero network/provider calls");

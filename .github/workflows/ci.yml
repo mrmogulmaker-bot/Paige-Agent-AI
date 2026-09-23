@@ -660,6 +660,9 @@ jobs:
       - name: Smoke — Live Conversation relay contract and ticket (deterministic, provider-neutral)
         if: ${{ !cancelled() }}
         run: npm run smoke:live-relay && npm run smoke:live-ticket
+      - name: Smoke — Live Conversation relay interpreter (fake ears/runtime/mouth, no network)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:live-relay-bridge
 
       # Mock socket: falsifies either absent or false mip_opt_out before any provider contact.
       - name: Smoke — Deepgram Flux route and mandatory MIP opt-out (no network)
