@@ -97,32 +97,27 @@ BEGIN
   IF _sqlstate <> '22023' THEN RAISE EXCEPTION '(5) expected SQLSTATE 22023 on the update path, got %', _sqlstate; END IF;
 END $$;
 
--- ── (6) An UNRELATED update to an ALREADY-LAPSED row is ALLOWED (the invariant is "never INTRODUCE a
---        past expiry", not "never touch a lapsed row") ─────────────────────────────────────────────
--- Fabricate a lapsed row the way elapsed time would (a stored FUTURE value that later passed), which
--- the guard cannot reproduce at write time — so disable it for that one fixture write only. Then an
--- update that leaves expires_at unchanged (here a pin rotation) must NOT be refused, even though the
--- row's expiry is now in the past.
+-- ── (6) The guard is UNCONDITIONAL — an update that LEAVES a past expiry is refused even when only an
+--        "unrelated" column changes (Codex P2 #3: no inference from which columns changed) ────────────
+-- Fabricate a lapsed row the way elapsed time would (guard disabled for that one fixture write). Then a
+-- real update leaving expires_at in the past is refused: a lapsed approval row is not re-writable except
+-- by a re-approval carrying a FRESH future expiry (case 9b) — there is no maintenance path that keeps a
+-- dead expiry, so no legitimate write is blocked.
 ALTER TABLE public.mcp_connection_approvals DISABLE TRIGGER trg_mcp_reject_past_approval_expiry;
 UPDATE public.mcp_connection_approvals
    SET expires_at = now() - interval '2 hours'
  WHERE connection_id = 'eafe0000-0000-0000-0000-0000000000a2' AND tool_name = 'list_records';
 ALTER TABLE public.mcp_connection_approvals ENABLE TRIGGER trg_mcp_reject_past_approval_expiry;
 DO $$
-DECLARE _raised boolean := false; n int;
+DECLARE _raised boolean := false; _sqlstate text;
 BEGIN
   BEGIN
     UPDATE public.mcp_connection_approvals
-       SET pin = repeat('c',64)   -- unrelated column; expires_at left unchanged (still past)
+       SET pin = repeat('c',64)   -- an "unrelated" column; expires_at left in the past
      WHERE connection_id = 'eafe0000-0000-0000-0000-0000000000a2' AND tool_name = 'list_records';
-  EXCEPTION WHEN others THEN
-    _raised := true;
-  END;
-  IF _raised THEN RAISE EXCEPTION '(6) an unrelated update to a since-lapsed row must NOT be refused'; END IF;
-  SELECT count(*) INTO n FROM public.mcp_connection_approvals
-   WHERE connection_id = 'eafe0000-0000-0000-0000-0000000000a2' AND tool_name = 'list_records'
-     AND pin = repeat('c',64) AND expires_at IS NOT NULL AND expires_at <= now();
-  IF n <> 1 THEN RAISE EXCEPTION '(6) the unrelated update should have persisted on the lapsed row: %', n; END IF;
+  EXCEPTION WHEN others THEN _raised := true; _sqlstate := SQLSTATE; END;
+  IF NOT _raised THEN RAISE EXCEPTION '(6) an update leaving a past expiry must be refused, unconditionally'; END IF;
+  IF _sqlstate <> '22023' THEN RAISE EXCEPTION '(6) expected SQLSTATE 22023, got %', _sqlstate; END IF;
 END $$;
 
 -- ── (7) WALL-CLOCK closure (Codex P2) — an expiry future vs FROZEN now() but PAST vs the real wall clock
@@ -146,11 +141,10 @@ BEGIN
   IF _sqlstate <> '22023' THEN RAISE EXCEPTION '(7) expected SQLSTATE 22023 from the clock_timestamp guard, got %', _sqlstate; END IF;
 END $$;
 
--- ── (8) A RE-APPROVAL carrying an UNCHANGED but already-lapsed expiry is REFUSED (Codex P2 #2) ───────
--- set_mcp_connection_approval upserts the same expires_at while refreshing approved_at; keying the guard
--- off the approved_at renewal catches it even though expires_at is unchanged (an expiry-only guard would
--- skip and let approve lie). Fabricate the pre-existing lapsed approval (elapsed-time sim) with the guard
--- disabled, then re-approve it through the writer with the SAME (lapsed) expiry.
+-- ── (8) A RE-APPROVAL carrying an already-lapsed expiry is REFUSED end-to-end through the writer ──────
+-- The writer's ON CONFLICT DO UPDATE writes the passed (lapsed) expires_at; the unconditional guard
+-- refuses it regardless of whether the value or approved_at changed. Fabricate the pre-existing lapsed
+-- approval (elapsed-time sim) with the guard disabled, then re-approve with the SAME (lapsed) expiry.
 ALTER TABLE public.mcp_connection_approvals DISABLE TRIGGER trg_mcp_reject_past_approval_expiry;
 INSERT INTO public.mcp_connection_approvals (connection_id, tool_name, pin, approved_by, endpoint_hash, expires_at, approved_at)
 VALUES ('eafe0000-0000-0000-0000-0000000000a2','renew_probe', repeat('a',64), NULL,
@@ -164,19 +158,39 @@ BEGIN
     PERFORM public.set_mcp_connection_approval(
       'eafe0000-0000-0000-0000-0000000000a2','renew_probe', repeat('a',64),
       'eafe0000-0000-0000-0000-0000000000a1', NULL, timestamptz '2020-01-01 00:00:00+00',
-      public._mcp_endpoint_hash('https://mcp-exp.example/rpc'));  -- same lapsed expiry; refreshes approved_at
+      public._mcp_endpoint_hash('https://mcp-exp.example/rpc'));  -- same lapsed expiry
   EXCEPTION WHEN others THEN _raised := true; _sqlstate := SQLSTATE; END;
-  IF NOT _raised THEN RAISE EXCEPTION '(8) a re-approval with an unchanged-but-lapsed expiry must be refused'; END IF;
+  IF NOT _raised THEN RAISE EXCEPTION '(8) a re-approval with an already-lapsed expiry must be refused'; END IF;
   IF _sqlstate <> '22023' THEN RAISE EXCEPTION '(8) expected SQLSTATE 22023 on the re-approval, got %', _sqlstate; END IF;
 END $$;
 
--- ── (8b) POSITIVE CONTROL: a re-approval that refreshes approved_at but keeps a FUTURE expiry succeeds ─
--- (proves the approved_at clause does not over-reject a legitimate renewal).
+-- ── (9) The DELAYED same-expiry re-approval — the exact fragile case (Codex P2 #3), end-to-end through
+--        the writer, in ONE transaction. Store a soon-future expiry (accepted), let the WALL CLOCK pass
+--        it (pg_sleep), then re-approve with the SAME value. now() is frozen for the whole transaction,
+--        so approved_at is IDENTICAL between the two writer calls AND expires_at is unchanged — an
+--        inference-based guard (expires_at/approved_at changed) would slip through; the unconditional
+--        clock_timestamp() guard refuses it.
+DO $$
+DECLARE _exp timestamptz := clock_timestamp() + interval '2 seconds'; _raised boolean := false; _sqlstate text;
+BEGIN
+  PERFORM public.set_mcp_connection_approval(
+    'eafe0000-0000-0000-0000-0000000000a2','delayed_renew', repeat('a',64),
+    'eafe0000-0000-0000-0000-0000000000a1', NULL, _exp,
+    public._mcp_endpoint_hash('https://mcp-exp.example/rpc'));   -- stored while _exp is FUTURE
+  PERFORM pg_sleep(3);                                            -- wall clock passes _exp; now() frozen
+  BEGIN
+    PERFORM public.set_mcp_connection_approval(
+      'eafe0000-0000-0000-0000-0000000000a2','delayed_renew', repeat('a',64),
+      'eafe0000-0000-0000-0000-0000000000a1', NULL, _exp,         -- SAME value, now lapsed
+      public._mcp_endpoint_hash('https://mcp-exp.example/rpc'));
+  EXCEPTION WHEN others THEN _raised := true; _sqlstate := SQLSTATE; END;
+  IF NOT _raised THEN RAISE EXCEPTION '(9) a delayed same-expiry re-approval must be refused'; END IF;
+  IF _sqlstate <> '22023' THEN RAISE EXCEPTION '(9) expected SQLSTATE 22023, got %', _sqlstate; END IF;
+END $$;
+
+-- ── (9b) POSITIVE CONTROL — a re-approval carrying a FUTURE expiry succeeds (the guard does not
+--         over-reject a legitimate renewal). ────────────────────────────────────────────────────────
 SELECT public.set_mcp_connection_approval(
-  'eafe0000-0000-0000-0000-0000000000a2','renew_ok', repeat('a',64),
-  'eafe0000-0000-0000-0000-0000000000a1', NULL, now() + interval '1 day',
-  public._mcp_endpoint_hash('https://mcp-exp.example/rpc'));
-SELECT public.set_mcp_connection_approval(   -- re-approve: approved_at refreshed, same future expiry
   'eafe0000-0000-0000-0000-0000000000a2','renew_ok', repeat('a',64),
   'eafe0000-0000-0000-0000-0000000000a1', NULL, now() + interval '1 day',
   public._mcp_endpoint_hash('https://mcp-exp.example/rpc'));
@@ -186,7 +200,7 @@ BEGIN
   SELECT count(*) INTO n FROM public.mcp_connection_approvals
    WHERE connection_id = 'eafe0000-0000-0000-0000-0000000000a2' AND tool_name = 'renew_ok'
      AND expires_at IS NOT NULL AND expires_at > now();
-  IF n <> 1 THEN RAISE EXCEPTION '(8b) a re-approval keeping a FUTURE expiry should have succeeded: %', n; END IF;
+  IF n <> 1 THEN RAISE EXCEPTION '(9b) a re-approval with a FUTURE expiry should have succeeded: %', n; END IF;
 END $$;
 
 DO $$ BEGIN RAISE NOTICE 'MCP_GW_APPROVAL_FUTURE_EXPIRY_PROVEN'; END $$;
