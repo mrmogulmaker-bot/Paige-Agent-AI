@@ -876,6 +876,16 @@
   },
   {
     "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/agreement.ts",
+    "symbol": "agreement_list"
+  },
+  {
+    "rule": "direct-tool-definition",
+    "path": "supabase/functions/_shared/paige-spine/domains/agreement.ts",
+    "symbol": "agreement_status"
+  },
+  {
+    "rule": "direct-tool-definition",
     "path": "supabase/functions/_shared/paige-spine/domains/business_mission.ts",
     "symbol": "mission_create"
   },

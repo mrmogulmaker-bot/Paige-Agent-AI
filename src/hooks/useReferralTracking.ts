@@ -9,7 +9,7 @@
 
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client"; // ADJUST-IF-NEEDED
-import { redactSecretPath } from "./useAnalytics";
+import { redactSecretPath, redactSecretSearch } from "./useAnalytics";
 import {
   saveReferral,
   loadReferral,
@@ -32,11 +32,16 @@ function readUrlParams(): {
   const code = url.searchParams.get("ref");
   return {
     code: code ? code.trim().toUpperCase() : null,
-    // `referral_clicks` RLS lets the OWNING AFFILIATE select this row, so a credential in the
-    // path would reach an ordinary tenant-tier user, not just a platform operator. Redact the
-    // path and keep the attribution — suppressing the click outright would cost this lane its
-    // landing data to fix a problem the signing route introduced.
-    landingPath: redactSecretPath(url.pathname) + url.search,
+    // `referral_clicks` RLS lets the OWNING AFFILIATE select this row, so a credential here
+    // reaches an ordinary tenant-tier user, not just a platform operator. Redact and keep the
+    // attribution — suppressing the click outright would cost this lane its landing data to fix
+    // a problem the signing route introduced.
+    //
+    // The SEARCH half was being appended RAW after the path had been redacted, so `?token=` /
+    // `?ct=` (live unsubscribe surfaces) sailed straight through into the most widely-readable
+    // of the three sinks. The wiring test did not catch it, because it asserted against SOURCE
+    // TEXT: it looked for the fully-unredacted spelling, which this line never had.
+    landingPath: redactSecretPath(url.pathname) + redactSecretSearch(url.search),
     utmSource: url.searchParams.get("utm_source") ?? undefined,
     utmMedium: url.searchParams.get("utm_medium") ?? undefined,
     utmCampaign: url.searchParams.get("utm_campaign") ?? undefined,
