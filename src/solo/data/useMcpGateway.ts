@@ -111,6 +111,7 @@ const ERR: Record<string, string> = {
   MCP_BAD_ENDPOINT:
     "That address can't be used. Enter a public https:// address — local, private, or non-HTTPS addresses aren't allowed.",
   MCP_BAD_CREDENTIAL_BUNDLE: "Those credentials are incomplete for this sign-in type.",
+  MCP_CREDENTIAL_TOO_SHORT: "That token is too short — paste the full token (at least 12 characters).",
   MCP_OAUTH_TOKEN_EXPIRED: "That access token has already expired. Get a fresh one and try again.",
   MCP_DUPLICATE_LABEL: "You already have a tool with that name — pick a different name.",
   MCP_NOT_A_REST_CONNECTION: "This isn't an API-key tool, so it can't be re-keyed this way.",

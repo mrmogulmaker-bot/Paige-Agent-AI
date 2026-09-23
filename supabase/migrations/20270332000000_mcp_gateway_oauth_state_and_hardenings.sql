@@ -223,6 +223,7 @@ COMMENT ON COLUMN public.mcp_connections.config_generation IS
 CREATE OR REPLACE FUNCTION public._mcp_bump_config_generation()
 RETURNS trigger
 LANGUAGE plpgsql
+SET search_path TO 'public'
 AS $$
 BEGIN
   IF NEW.server_url_ct           IS DISTINCT FROM OLD.server_url_ct
