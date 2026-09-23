@@ -259,5 +259,53 @@ const inWithout = buildInboundTwiml([`${T}.${U}`]);
 check("inbound WITH stream contains the fork before <Dial>", inWith.includes("<Start><Stream") && inWith.indexOf("<Start>") < inWith.indexOf("<Dial"));
 check("inbound WITHOUT stream has NO <Start> (OFF = unchanged)", !inWithout.includes("<Start>"));
 
+// Live Conversation attaches to the same Flux router. The opener below is fake:
+// these checks must never create a provider socket or send real audio.
+console.log("live Flux ears adapter:");
+const { openFluxEars } = await import("../supabase/functions/_shared/paige-live-flux-ears.ts");
+const missingEars = await openFluxEars({ startOfTurn() {}, partial() {}, final() {}, unavailable() {} });
+check("live ears fail closed without the server key", !missingEars.ok && missingEars.code === "stt_not_configured");
+env.DEEPGRAM_API_KEY = "local-presence-only";
+const previousWebSocket = globalThis.WebSocket;
+class FakeFluxSocket {
+  static readonly OPEN = 1;
+  static readonly CLOSED = 3;
+  readyState = FakeFluxSocket.OPEN;
+  onopen: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onclose: (() => void) | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  readonly sent: Array<string | ArrayBuffer> = [];
+  send(value: string | ArrayBuffer) { this.sent.push(value); }
+  close() { this.readyState = FakeFluxSocket.CLOSED; this.onclose?.(); }
+  receive(value: unknown) { this.onmessage?.({ data: JSON.stringify(value) }); }
+}
+(globalThis as unknown as { WebSocket: unknown }).WebSocket = FakeFluxSocket;
+const fakeFlux = new FakeFluxSocket();
+const seenFlux: string[] = [];
+let plannedFluxUrl = "";
+const opening = openFluxEars({
+  startOfTurn(text) { seenFlux.push(`start:${text}`); },
+  partial(text) { seenFlux.push(`partial:${text}`); },
+  final(text) { seenFlux.push(`final:${text}`); },
+  unavailable() { seenFlux.push("unavailable"); },
+}, { opener(url) { plannedFluxUrl = url; queueMicrotask(() => fakeFlux.onopen?.()); return fakeFlux as unknown as WebSocket; } });
+const openedFlux = await opening;
+check("live ears reuse Flux /v2 with mandatory MIP opt-out", openedFlux.ok && new URL(plannedFluxUrl).pathname === "/v2/listen" && new URL(plannedFluxUrl).searchParams.get("mip_opt_out") === "true");
+if (openedFlux.ok) {
+  check("live ears send 80 ms PCM and meter only observed audio", openedFlux.ears.sendPcm(new ArrayBuffer(2560)) === 80 && fakeFlux.sent[0] instanceof ArrayBuffer);
+  check("live ears reject malformed PCM before provider send", openedFlux.ears.sendPcm(new ArrayBuffer(3)) === null && fakeFlux.sent.length === 1);
+  fakeFlux.receive({ type: "TurnInfo", event: "StartOfTurn", turn_index: 0, sequence_id: 1, transcript: "Hello" });
+  fakeFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 2, transcript: "Hello Paige" });
+  fakeFlux.receive({ type: "TurnInfo", event: "EndOfTurn", turn_index: 0, sequence_id: 3, transcript: "Hello Paige." });
+  fakeFlux.receive({ type: "TurnInfo", event: "EndOfTurn", turn_index: 0, sequence_id: 3, transcript: "duplicate" });
+  check("Flux start, partial and final preserve ordering without duplicate turns", seenFlux.join("|") === "start:Hello|partial:Hello Paige|final:Hello Paige.");
+  openedFlux.ears.close();
+  check("clean end sends Flux CloseStream without treating it as a provider failure", fakeFlux.sent.some((value) => value === '{"type":"CloseStream"}') && !seenFlux.includes("unavailable"));
+  fakeFlux.close();
+}
+(globalThis as unknown as { WebSocket: unknown }).WebSocket = previousWebSocket;
+delete env.DEEPGRAM_API_KEY;
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
