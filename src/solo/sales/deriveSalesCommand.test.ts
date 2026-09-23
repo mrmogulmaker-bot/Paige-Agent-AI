@@ -94,7 +94,7 @@ describe("deriveSalesCommand — Commercial Pulse truth", () => {
 
   it("Open-work rows use Pill-compatible tones ('opportunity', never 'v') so emphasis is not silently dropped", () => {
     const m = deriveSalesCommand(base({
-      clients: [{ id: "c1", name: "Jordan" }],
+      clients: [{ id: "c1", name: "Jordan", email: "jordan@example.com" }],
       agreements: [agreement({ id: "a1", contactId: "c1", status: "draft" })], // proposed
     }), NOW);
     const row = m.openWork.find((r) => r.id === "agr-a1")!;
@@ -212,7 +212,7 @@ describe("deriveSalesCommand — Moves and Open Work", () => {
     const m = deriveSalesCommand(base({
       processor: "not_yet",
       agreements: [agreement({ id: "a1", status: "active" }), agreement({ id: "a2", status: "completed" })],
-      clients: [{ id: "c1", name: "Acme Co" }],
+      clients: [{ id: "c1", name: "Acme Co", email: null }],
     }), NOW);
     expect(m.openWork[0].stateLabel).toBe("Payment path missing");
     expect(m.openWork[0].client).toBe("Acme Co");

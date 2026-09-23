@@ -1048,3 +1048,14 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
   .so-src-card[aria-checked="true"] { outline: 2px solid Highlight; }
   .so-sigdot { background: CanvasText; box-shadow: none; }
 }
+
+/* The add-a-signer repair path inside the send panel's blocking banner. Laid out as its own row so
+   the two fields and the act read as one control rather than as prose with inputs loose in it. */
+.so-signer-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+.so-signer-add .so-field { flex: 1 1 180px; margin: 0; }
