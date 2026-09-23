@@ -517,6 +517,23 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
   vertical-align: 1px;
 }
 
+/* The approved RECAP (§28 screen 3) — the last thing read before a legal document leaves the
+   building, so it is a table of labelled facts rather than prose: a fixed label column the eye can
+   run down, and the value beside it. */
+.so-recap { border: 1px solid var(--line); border-radius: var(--r-m); overflow: hidden; }
+.so-rrow {
+  display: flex; gap: 14px; align-items: baseline;
+  padding: 11px 14px; border-bottom: 1px solid var(--line-soft); font-size: 13px;
+}
+.so-rrow:last-child { border-bottom: 0; }
+.so-rrow > span:first-child { flex: none; width: 112px; font-size: 12px; color: var(--ink-3); }
+.so-rrow > span:last-child { flex: 1; min-width: 0; color: var(--ink); }
+.so-rrow .so-num { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 500; }
+@media (max-width: 560px) {
+  .so-rrow { flex-direction: column; gap: 3px; }
+  .so-rrow > span:first-child { width: auto; }
+}
+
 .so-money { display: flex; gap: 8px; }
 
 .so-pick { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -572,16 +589,55 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 
 /* Sales-owned working controls: stronger selected, focus and primary action contrast. */
 .solo-campaigns[data-campaigns-view="sales"] .so-editor { background: var(--canvas); }
-.so-editor .btn-p, .so .btn-p, .so-discard .btn-p {
-  background: #6d28d9; border-color: #6d28d9; color: #fff;
+/* THE APPROVED TREATMENT, carried into the PORTAL. Two things were wrong here at once.
+ *
+ * First, these were hardcoded hex — `#6d28d9` and `#5b21b6` — which §11 forbids outright and which
+ * silently flattened the approved violet GRADIENT into a solid fill wherever this rule reached.
+ *
+ * Second, and the reason it showed up at all: the editor and the sender render through
+ * `SalesDialogPortal`, OUTSIDE `.so`, so the approved block further up this file never applied to
+ * them. The commit act came out in the shared pale gold tint instead of the approved filled gold,
+ * and the quiet variant did not apply at all. Every variant now names its `.so-editor` twin. */
+.so-editor .btn.btn-p, .so .btn.btn-p, .so-discard .btn.btn-p {
+  background: linear-gradient(180deg, var(--violet-2), var(--violet)); color: #fff;
+  border-color: color-mix(in srgb, var(--violet) 62%, var(--ink));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.26),
+              0 1px 2px color-mix(in srgb, var(--violet) 40%, transparent),
+              0 10px 22px -12px color-mix(in srgb, var(--violet) 78%, transparent);
 }
-.so-editor .btn-p:hover:not(:disabled), .so .btn-p:hover:not(:disabled) { background: #5b21b6; }
+.so-editor .btn.btn-p:hover:not(:disabled), .so .btn.btn-p:hover:not(:disabled) {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--violet-2) 88%, #fff), var(--violet-2));
+  border-color: var(--violet-2);
+}
+/* GOLD — the act that COMMITS. Filled and bright with dark ink on it (§11), never the pale tint. */
+.so-editor .btn.btn-g, .so .btn.btn-g {
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold)); color: #2a1c00; font-weight: 600;
+  border-color: color-mix(in srgb, var(--gold) 76%, var(--ink));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.45),
+              0 1px 2px color-mix(in srgb, var(--gold) 40%, transparent),
+              0 8px 18px -10px color-mix(in srgb, var(--gold) 62%, transparent);
+}
+.so-editor .btn.btn-g:hover:not(:disabled), .so .btn.btn-g:hover:not(:disabled) {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--gold-bright) 82%, #fff), var(--gold-bright));
+}
+/* QUIET — a way out, not an act: no border and no ground until it is hovered. */
+.so-editor .btn.btn-q, .so .btn.btn-q {
+  border-color: transparent; background: transparent; box-shadow: none; color: var(--ink-3);
+}
+.so-editor .btn.btn-q:hover:not(:disabled), .so .btn.btn-q:hover:not(:disabled) {
+  background: var(--surface-sunk); color: var(--ink); box-shadow: none;
+}
+/* An inline choice inside the sheet body, not a block control spanning its width. */
+.so-editor-body > .btn-q { justify-self: start; }
 .so-editor button:focus-visible, .so button:focus-visible {
   outline: 3px solid var(--violet); outline-offset: 3px;
 }
 .so-pick button { min-height: 36px; border-radius: 8px; font-size: 12px; }
 .so-pick button:hover { border-color: var(--violet); background: var(--violet-tint); }
-.so-pick button[aria-pressed="true"] { background: #6d28d9; color: #fff; border-color: #6d28d9; }
+/* Tokenised. The same hardcoded violet as the block above, and the same §11 problem: a literal
+   hex does not follow the dark palette, so a selected choice carried a light-theme colour into a
+   dark-theme sheet. */
+.so-pick button[aria-pressed="true"] { background: var(--violet); color: #fff; border-color: var(--violet); }
 .so-field input, .so-field select, .so-field textarea { min-height: 40px; border-color: var(--ink-3); }
 .so-field input:disabled { opacity: .7; cursor: not-allowed; }
 .so-editor-body { align-content: start; }

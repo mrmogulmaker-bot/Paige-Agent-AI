@@ -117,6 +117,11 @@ export type SigningWriteResult = {
  * (§13): a resolved promise carrying no token is not a link, and saying otherwise would send
  * somebody away believing they had one.
  */
+/** What the send endpoint actually reports: who it reached, and who it did not. */
+export type SigningSendResult =
+  | { readonly ok: true; readonly sent: readonly string[]; readonly notDelivered: readonly string[] }
+  | { readonly ok: false; readonly message: string };
+
 export type SigningLinkResult = {
   readonly ok: boolean;
   readonly message?: string;
@@ -158,6 +163,19 @@ export type SigningsState = {
     loadedTenantId: string | null,
   ) => Promise<DocumentUploadResult>;
   readonly createSigning: (draft: SigningDraft) => Promise<SigningWriteResult>;
+  /**
+   * SEND IT — the act the approved flow commits on, and a real email rather than a link to paste.
+   *
+   * This calls `agreement-send`, which freezes the document, mints a token per signer, emails each
+   * one and moves the record to `sent`. The token's life is the ENDPOINT's, not the caller's: it is
+   * a fixed 30 days, which is why this takes no duration. A surface offering a choice the server
+   * does not honour is worse than one that states the real number.
+   */
+  readonly sendForSignature: (
+    signingId: string,
+    loadedTenantId: string | null,
+    resend?: boolean,
+  ) => Promise<SigningSendResult>;
   readonly issueLink: (
     signingId: string,
     ttlDays: number,
@@ -418,6 +436,38 @@ export function useSoloAgreementSignings(): SigningsState {
     };
   }, [runWrite]);
 
+  const sendForSignature = useCallback(async (
+    signingId: string,
+    loadedTenantId: string | null,
+    resend = false,
+  ): Promise<SigningSendResult> => {
+    const expected = loadedTenantId ?? activeTenantId;
+    if (!expected) return { ok: false, message: "This workspace could not be resolved, so nothing was sent." };
+    const openedIdentity = identity.current;
+    try {
+      const { data, error } = await supabase.functions.invoke("agreement-send", {
+        body: { agreementId: signingId, resend },
+      });
+      if (identity.current !== openedIdentity) {
+        return { ok: false, message: "Your workspace changed, so nothing was sent." };
+      }
+      const payload = (data ?? {}) as { ok?: boolean; error?: unknown; sent?: unknown; notDelivered?: unknown };
+      // §13: a 200 is not a delivery. The endpoint reports who it actually reached, and an answer
+      // that is not an explicit ok is a failure however green the transport was.
+      if (error || payload.ok !== true) {
+        console.error("[signings] send failed", error ?? payload.error);
+        const said = toText(payload.error);
+        return { ok: false, message: said || "That could not be sent. Nothing was delivered; check the record before trying again." };
+      }
+      const list = (value: unknown): string[] =>
+        Array.isArray(value) ? value.map((x) => toText(x)).filter((x): x is string => Boolean(x)) : [];
+      setRefreshKey((key) => key + 1);
+      return { ok: true, sent: list(payload.sent), notDelivered: list(payload.notDelivered) };
+    } catch {
+      return { ok: false, message: "That could not be sent. Nothing was delivered; check the record before trying again." };
+    }
+  }, [activeTenantId]);
+
   const issueLink = useCallback(async (
     signingId: string,
     ttlDays: number,
@@ -623,5 +673,5 @@ export function useSoloAgreementSignings(): SigningsState {
       : "unavailable" as const,
     ...EMPTY,
   };
-  return { ...visible, retry, uploadDocument, createSigning, issueLink, voidSigning, signedCopyUrl };
+  return { ...visible, retry, uploadDocument, createSigning, sendForSignature, issueLink, voidSigning, signedCopyUrl };
 }

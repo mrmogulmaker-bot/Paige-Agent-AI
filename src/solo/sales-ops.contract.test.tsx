@@ -168,6 +168,7 @@ beforeEach(() => {
     authorityUnknown: false, retry: vi.fn(),
     uploadDocument: vi.fn(async () => ({ ok: true, path: "tenant-1/source/1-agreement.pdf" })),
     createSigning: vi.fn(async () => ({ ok: true, signingId: "signing-1", signatureState: "draft" })),
+    sendForSignature: vi.fn(async () => ({ ok: true, sent: ["acme@example.com"], notDelivered: [] })),
     issueLink: vi.fn(async () => ({ ok: true, token: "tok-abcdef", expiresAt: "2026-10-06T12:00:00Z" })),
     voidSigning: vi.fn(async () => ({ ok: true, signatureState: "voided" })),
     signedCopyUrl: vi.fn(async () => ({ ok: true, url: "https://storage.test/signed.pdf?token=x" })),
@@ -1188,14 +1189,70 @@ describe("Agreement documents — signature state, separate from commercial stat
     expect(dialog.textContent).toContain("Acme");
     expect(dialog.textContent).toContain("Coaching agreement");
     expect(dialog.textContent).toContain("$1,200");
-    expect(dialog.textContent).toContain("bills nobody and charges nothing");
-    const make = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Make the link") as HTMLButtonElement;
+    // RE-POINTED to the approved words (§28 screen 3). The §38 promise is not weakened — it is
+    // stated more plainly, in the gold box the approved screen carries, and is still guarded here.
+    expect(dialog.textContent).toContain("No money moves");
+    expect(dialog.textContent).toContain("Nothing is charged, invoiced or collected at signature");
+    // The approved primary act is the real SEND. Copying a link survives as a secondary route
+    // (§58) and is now reached deliberately rather than being the only way through.
+    const reveal = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Or copy a link to send yourself") as HTMLButtonElement;
+    expect(reveal).toBeDefined();
+    act(() => { reveal.click(); });
+    const make = [...document.querySelector('[role="dialog"]')!.querySelectorAll("button")].find((b) => b.textContent === "Make the link") as HTMLButtonElement;
     await act(async () => { make.click(); });
     expect(harness.signings.issueLink).toHaveBeenCalledWith("s1", 14, "tenant-1");
     const after = document.querySelector('[role="dialog"]')!;
     expect((after.querySelector('input[aria-label="The signing link"]') as HTMLInputElement).value)
       .toContain("/sign/tok-abcdef");
     expect(after.textContent).toContain("This is the only time you will see it");
+  });
+
+  /* ── the approved act: a real send (§28 screen 3) ───────────────────────────────────────── */
+
+  const openSender = () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme Consulting" }];
+    harness.agreements.agreements = [AGREEMENT];
+    harness.signings.signings = [{ ...SIGNING, signatureState: "draft", displayState: "draft", sentAt: null, expiresAt: null }];
+    render("terms");
+    act(() => (host.querySelector('[aria-label="Agreements and terms"] button') as HTMLButtonElement).click());
+    act(() => (buttonSaying("Send for signature") as HTMLButtonElement).click());
+    return document.querySelector('[role="dialog"]')!;
+  };
+
+  it("commits on a real send, named for the person receiving it, and spends gold on it", async () => {
+    const dialog = openSender();
+    // The recap the approved screen carries — who, what, and the life of the link.
+    expect(dialog.textContent).toContain("Acme Consulting");
+    expect(dialog.textContent).toContain("Coaching agreement");
+    expect(dialog.textContent).toContain("30 days after it is sent");
+
+    const act1 = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Send it to Acme") as HTMLButtonElement;
+    expect(act1).toBeDefined();
+    // Gold is spent on exactly the acts that COMMIT (§11). This is one of them.
+    expect(act1.className).toContain("btn-g");
+    await act(async () => { act1.click(); });
+    expect(harness.signings.sendForSignature).toHaveBeenCalledWith("s1", "tenant-1", false);
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Sent.");
+  });
+
+  it("reports a refused send as a refusal, never as delivery (§13)", async () => {
+    harness.signings.sendForSignature = vi.fn(async () => ({ ok: false, message: "No mail provider is configured, so nothing was sent." }));
+    const dialog = openSender();
+    const act1 = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Send it to Acme") as HTMLButtonElement;
+    await act(async () => { act1.click(); });
+    const after = document.querySelector('[role="dialog"]')!;
+    expect(after.textContent).toContain("No mail provider is configured");
+    expect(after.textContent).not.toContain("Sent.");
+  });
+
+  it("says plainly when an address did not receive it — a 200 is not a delivery", async () => {
+    harness.signings.sendForSignature = vi.fn(async () => ({ ok: true, sent: [], notDelivered: ["bounced@example.com"] }));
+    const dialog = openSender();
+    const act1 = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Send it to Acme") as HTMLButtonElement;
+    await act(async () => { act1.click(); });
+    const after = document.querySelector('[role="dialog"]')!;
+    expect(after.textContent).toContain("Nothing went out");
+    expect(after.textContent).toContain("did not receive it");
   });
 
   it("refuses to claim a link when the server returned none (§13)", async () => {
@@ -1206,6 +1263,8 @@ describe("Agreement documents — signature state, separate from commercial stat
     render("terms");
     act(() => (host.querySelector('[aria-label="Agreements and terms"] button') as HTMLButtonElement).click());
     act(() => (buttonSaying("Send for signature") as HTMLButtonElement).click());
+    // The copy-a-link route is secondary to the approved SEND now; reveal it, then drive it.
+    act(() => ([...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent === "Or copy a link to send yourself") as HTMLButtonElement).click());
     const make = [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent === "Make the link") as HTMLButtonElement;
     await act(async () => { make.click(); });
     const dialog = document.querySelector('[role="dialog"]')!;
