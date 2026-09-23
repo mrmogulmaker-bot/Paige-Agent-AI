@@ -139,6 +139,7 @@
     <button data-go="detail" aria-pressed="false">4 · Check now</button>
     <button data-go="checked-bad" aria-pressed="false">5 · Check found a problem</button>
     <button data-go="shortkey" aria-pressed="false">6 · Key too short</button>
+    <button data-go="off" aria-pressed="false">7 · Turned off</button>
   </nav>
 
   <!-- 1 ── The catalogue tile that used to be an honest stop -->
@@ -206,7 +207,7 @@
       <span class="eyebrow">Calendly</span>
       <h2>Sign in to Calendly</h2>
       <div class="ig-error" role="alert"><span>⚠</span><span>That provider didn’t offer a sign-in Paige can use.
-        The tool was saved — open it and add a key instead.</span></div>
+        Check the address and try again, or remove it.</span></div>
       <label class="ig-field"><span>Name</span><input value="Calendly"></label>
       <label class="ig-field"><span>Server address</span><input value="https://mcp.calendly.com"></label>
       <div class="ig-actions">
@@ -215,10 +216,13 @@
       </div>
     </div>
     <div class="legend">
-      <h3>The half-made row is named, not hidden</h3>
+      <h3>The half-made row is named, not hidden — and the advice has to be true</h3>
       <p>Step 1 succeeded and step 2 failed, so a real tool now exists. Saying “that didn’t work” would be false
-        and would leave the owner with a row they did not know about. The copy states what happened and points at
-        the thing they can still do with it.</p>
+        and would leave the owner with a row they did not know about.</p>
+      <p>This copy said <em>“open it and add a key instead”</em> until an adversarial review caught it. The row was
+        created with <strong>no credential</strong>, Re-key shows no key field for a credential-less tool, and
+        re-keying cannot change a tool’s sign-in type — so the instruction named a control that does not exist.
+        It now points at the two things that are actually there.</p>
     </div>
   </section>
 
@@ -300,6 +304,34 @@
         applied to an OAuth token (provider-minted, and the server deliberately does not gate it) nor to an n8n API
         key (which never reaches that check). Guarding either would be the client inventing a rule the backend
         does not have.</p>
+    </div>
+  </section>
+
+  <!-- 7 ── A turned-off tool, where the recovery depends on the row -->
+  <section class="scene" id="off">
+    <div class="panel">
+      <span class="eyebrow">Connected MCP Gateway</span>
+      <h2>Calendly</h2>
+      <dl class="ig-facts">
+        <div><dt>Endpoint</dt><dd>mcp.calendly.com</dd></div>
+        <div><dt>Type</dt><dd>Remote MCP · oauth</dd></div>
+        <div><dt>Status</dt><dd><span class="chip">Turned off</span></dd></div>
+      </dl>
+      <div class="ig-gw-info" role="status"><span>ℹ</span><span>This tool is turned off, and its sign-in was
+        cleared when you turned it off — switching it back on means removing it and adding it again.</span></div>
+      <div class="ig-actions">
+        <button class="ig-btn" data-danger>Disconnect</button>
+      </div>
+    </div>
+    <div class="legend">
+      <h3>One sentence could not be honest for both kinds of tool</h3>
+      <p>Turning a tool off clears its key but leaves its sign-in <em>type</em> alone. For a tool you signed into,
+        that means Re-key never appears — there is nothing left to re-key with. For a tool you pasted a key into,
+        Re-key is exactly how you switch it back on.</p>
+      <p>So the advice moved out of the shared error message and into the panel, which is the only place that knows
+        which tool it is holding. <strong>Check now</strong> and <strong>Sign in again</strong> are gone from this
+        screen too: on a turned-off tool the server can only refuse them, and a button whose one outcome is a
+        refusal is worse than no button.</p>
     </div>
   </section>
 
