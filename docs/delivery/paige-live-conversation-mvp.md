@@ -360,3 +360,34 @@ session, daily allowance, lease, pricing, reserve, or counter gate. The
 `UsageSink` remains neutral non-blocking measurement for the Budget lane.
 Deepgram Flux, mandatory `mip_opt_out=true`, ElevenLabs voice/model correction,
 and provider activation remain separately gated later work.
+
+## INT-104 Flux ears route — Stage 1 candidate, 2026-09-22
+
+The one STT home, `_shared/stt-router.ts`, now has an additive `flux-realtime`
+route to Deepgram `/v2/listen` alongside the existing Nova-3 `/v1/listen`
+route. Both still use the same server-side `openDeepgramSocket` and the same
+`DEEPGRAM_API_KEY`; there is no second provider client. The opener forces
+`mip_opt_out=true` on every streaming URL, even if a caller omitted or negated
+it, and rejects non-Deepgram destinations before attaching the key. The Flux
+parser distinguishes interim `TurnInfo` from committed `EndOfTurn`. A mock
+WebSocket smoke test falsifies an absent or false MIP flag with zero network
+calls. The only deployed importers of this shared module are `paige-dictate`
+and `paige-stt`; the required redeploy set is exactly those functions.
+
+This route does **not** activate Live Conversation or send tenant audio. Stage 1
+availability is read from `paige_live_tenant_availability`, a service-role-only
+workspace row that defaults off when missing. Tenant owners/admins cannot write
+it at the database level. Both ticket issuance and relay admission check it
+server-side; client presentation cannot bypass it. The separate user entitlement
+continues to resolve from the signed-in user, active tenant membership and role,
+and that user's caller-owned Paige thread. Owners, admins and members use the
+same shell and scoped path. Enabling availability is a server-side operational
+action. Its current holders are operational database data, never committed to
+this repository, placed in a ticket or PR body, or logged. When disabled, the
+control remains visible and reports `UNAVAILABLE` with text chat still usable.
+Before any real
+tenant audio, an actual request must be observed carrying `mip_opt_out=true`
+and the account-level MIP setting must be verified. Broader enablement also
+requires the INT-100/INT-107 privacy and split-vendor decisions. No
+provider-call, voice-quality, browser-latency, or authenticated-conversation
+proof is claimed here.

@@ -3,7 +3,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
-import { issueRelayTicket } from "../_shared/paige-live-ticket.ts";
+import { isLiveAudioPilotEnabled, issueRelayTicket, liveContextEpochTenant } from "../_shared/paige-live-ticket.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,7 +69,7 @@ serve(async (req: Request) => {
   const { data: tenantValue, error: tenantError } = await asCaller.rpc("current_user_tenant_id");
   if (tenantError || !tenantValue) return (await endStaleSession()) ?? json({ code: "workspace_unresolved" }, 409);
   const tenantId = String(tenantValue);
-  const epochTenant = parsed.data.context_epoch.split("|", 1)[0];
+  const epochTenant = liveContextEpochTenant(parsed.data.context_epoch);
   if (epochTenant !== tenantId) return (await endStaleSession()) ?? json({ code: "stale_context" }, 409);
 
   const { data: thread, error: threadError } = await asCaller
@@ -86,6 +86,14 @@ serve(async (req: Request) => {
   if (!thread) return (await endStaleSession()) ?? json({ code: "thread_scope_mismatch" }, 403);
 
   if (parsed.data.action === "relay") {
+    const { data: tenantPilot, error: pilotError } = await admin.from("paige_live_tenant_availability")
+      .select("enabled").eq("tenant_id", tenantId).maybeSingle();
+    if (pilotError || !isLiveAudioPilotEnabled(tenantPilot)) {
+      return json({
+        ok: false, session_id: null, availability: "UNAVAILABLE", code: "live_audio_not_enabled",
+        explanation: "Live audio isn't available for this workspace yet. You can keep working with Paige in chat.",
+      });
+    }
     // This is a first-party ticket, not a provider token. Existing sessions
     // supply a fresh ticket on reconnect; replacing a pending digest revokes it.
     const ticket = await issueRelayTicket();

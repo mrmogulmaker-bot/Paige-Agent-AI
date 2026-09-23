@@ -11,7 +11,7 @@
 // voice is sent to a vendor or recorded by this function.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { createRelayState, reduceRelay } from "../_shared/paige-live-relay-contract.ts";
-import { consumeRelayTicket } from "../_shared/paige-live-ticket.ts";
+import { consumeRelayTicket, hasLiveWorkspaceStanding, isLiveAudioPilotEnabled, isLiveWorkspaceCurrent } from "../_shared/paige-live-ticket.ts";
 
 const waitUntil = (promise: Promise<unknown>): void => {
   const runtime = (globalThis as unknown as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
@@ -73,7 +73,87 @@ Deno.serve(async (req) => {
     if (!await markUnavailable("thread_scope_mismatch")) return new Response("relay_unavailable", { status: 503 });
     return new Response("thread_scope_mismatch", { status: 403 });
   }
-  if (!await markUnavailable("adapters_not_connected")) return new Response("relay_unavailable", { status: 503 });
+  // A ticket binds the original user, tenant and thread. Recheck the current
+  // workspace and the same standing alternatives as current_user_tenant_id()
+  // before upgrade; an agency user need not have a child tenant_members row.
+  // No role label changes the caller-owned thread or grants tenant writes.
+  const { data: profile, error: profileError } = await admin.from("profiles")
+    .select("active_tenant_id").eq("user_id", session.actor_user_id).maybeSingle();
+  if (profileError) {
+    if (!await markUnavailable("workspace_unresolved")) return new Response("relay_unavailable", { status: 503 });
+    return new Response("workspace_unresolved", { status: 503 });
+  }
+  let activeTenantHasStanding = false;
+  if (profile?.active_tenant_id) {
+    const { data: activeMembership, error: activeMembershipError } = await admin.from("tenant_members")
+      .select("id").eq("tenant_id", profile.active_tenant_id)
+      .eq("user_id", session.actor_user_id).eq("status", "active").maybeSingle();
+    if (activeMembershipError) {
+      if (!await markUnavailable("workspace_unresolved")) return new Response("relay_unavailable", { status: 503 });
+      return new Response("workspace_unresolved", { status: 503 });
+    }
+    activeTenantHasStanding = !!activeMembership;
+    if (!activeTenantHasStanding) {
+      const [activeChildAccess, activeAgencyRole, activePlatformRole] = await Promise.all([
+        admin.rpc("agency_can_manage_child", { _child: profile.active_tenant_id, _actor: session.actor_user_id }),
+        admin.rpc("agency_team_role", { _agency: profile.active_tenant_id, _actor: session.actor_user_id }),
+        admin.rpc("is_platform_admin", { _actor: session.actor_user_id }),
+      ]);
+      if (activeChildAccess.error || activeAgencyRole.error || activePlatformRole.error) {
+        if (!await markUnavailable("workspace_unresolved")) return new Response("relay_unavailable", { status: 503 });
+        return new Response("workspace_unresolved", { status: 503 });
+      }
+      activeTenantHasStanding = hasLiveWorkspaceStanding(false, activeChildAccess.data, activeAgencyRole.data, activePlatformRole.data);
+    }
+  }
+  let fallbackTenantId: string | null = null;
+  if (!activeTenantHasStanding) {
+    const { data: fallback, error: fallbackError } = await admin.from("tenant_members")
+      .select("tenant_id").eq("user_id", session.actor_user_id).eq("status", "active")
+      .order("joined_at", { ascending: true }).limit(1).maybeSingle();
+    if (fallbackError) {
+      if (!await markUnavailable("workspace_unresolved")) return new Response("relay_unavailable", { status: 503 });
+      return new Response("workspace_unresolved", { status: 503 });
+    }
+    fallbackTenantId = fallback?.tenant_id ?? null;
+  }
+  if (!isLiveWorkspaceCurrent(session.tenant_id, profile?.active_tenant_id, activeTenantHasStanding, fallbackTenantId)) {
+    if (!await markUnavailable("stale_context")) return new Response("relay_unavailable", { status: 503 });
+    return new Response("stale_context", { status: 403 });
+  }
+  const { data: membership, error: membershipError } = await admin.from("tenant_members")
+    .select("id").eq("tenant_id", session.tenant_id)
+    .eq("user_id", session.actor_user_id).eq("status", "active").maybeSingle();
+  if (membershipError) {
+    if (!await markUnavailable("workspace_unresolved")) return new Response("relay_unavailable", { status: 503 });
+    return new Response("workspace_unresolved", { status: 503 });
+  }
+  let hasStanding = !!membership;
+  if (!hasStanding) {
+    const [childAccess, agencyRole, platformRole] = await Promise.all([
+      admin.rpc("agency_can_manage_child", { _child: session.tenant_id, _actor: session.actor_user_id }),
+      admin.rpc("agency_team_role", { _agency: session.tenant_id, _actor: session.actor_user_id }),
+      admin.rpc("is_platform_admin", { _actor: session.actor_user_id }),
+    ]);
+    if (childAccess.error || agencyRole.error || platformRole.error) {
+      if (!await markUnavailable("workspace_unresolved")) return new Response("relay_unavailable", { status: 503 });
+      return new Response("workspace_unresolved", { status: 503 });
+    }
+    hasStanding = hasLiveWorkspaceStanding(false, childAccess.data, agencyRole.data, platformRole.data);
+  }
+  if (!hasStanding) {
+    if (!await markUnavailable("membership_inactive")) return new Response("relay_unavailable", { status: 503 });
+    return new Response("membership_inactive", { status: 403 });
+  }
+  const { data: tenantPilot, error: pilotError } = await admin.from("paige_live_tenant_availability")
+    .select("enabled").eq("tenant_id", session.tenant_id).maybeSingle();
+  const pilotEnabled = !pilotError && isLiveAudioPilotEnabled(tenantPilot);
+  if (!pilotEnabled) {
+    if (!await markUnavailable("live_audio_not_enabled")) return new Response("relay_unavailable", { status: 503 });
+    return new Response("live_audio_not_enabled", { status: 403 });
+  }
+  const unavailableCode = "adapters_not_connected";
+  if (!await markUnavailable(unavailableCode)) return new Response("relay_unavailable", { status: 503 });
 
   const { socket, response } = Deno.upgradeWebSocket(req);
   let relay = createRelayState({
@@ -90,12 +170,12 @@ Deno.serve(async (req) => {
   waitUntil(closed);
   socket.onopen = () => {
     socket.send(JSON.stringify({
-      type: "unavailable", code: "adapters_not_connected",
+      type: "unavailable", code: unavailableCode,
       message: "Live audio is not connected yet. You can keep working with Paige in chat.",
     }));
     // The provider-free server never sends ready and never accepts microphone
     // frames. Give the terminal frame a task turn before closing.
-    setTimeout(() => socket.close(1013, "adapters_not_connected"), 0);
+    setTimeout(() => socket.close(1013, unavailableCode), 0);
   };
   socket.onmessage = () => {
     // A client that sends audio before an explicit ready frame violates the
