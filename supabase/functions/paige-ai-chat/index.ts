@@ -8178,6 +8178,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       }
     }
 
+    // Live uses the SAME governed tool loop, then the existing tools-free
+    // answer stream. Never speak speculative content from a tool-capable round.
+    const liveDecisionMessages = (messages: any[]) => liveRuntimeScope && !attachedDocument
+      ? [...messages, { role: "system", content: "This is the internal tool-decision phase of a Live turn. Select the tools needed under the existing authority rules. Do not draft the user-facing answer here. When no further tool is needed, reply only with Ready. The same runtime will then request the final spoken answer in a tools-free phase." }]
+      : messages;
     const response = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
@@ -8188,7 +8193,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         // extended thinking is a real reasoning model, never Haiku; the doc-attach path already did.
         // #34 — substantiveTurn adds the reasoning tier for approval/creation intents (see above).
         model: (studioSessionId || attachedDocument || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash",
-        messages: aiMessages,
+        messages: liveDecisionMessages(aiMessages),
         tools: toolDefs,
         tool_choice: "auto",
         stream: true,
@@ -13335,6 +13340,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       let totalToolCalls = 0;
       const seenSignatures = new Set<string>();
       let finalChunks: Uint8Array[] | null = null;
+      let liveAnswerPending = false;
       let forcedTermination = false;
       let tenantKnowledgeScopeInvalidated = false;
       // Accumulates Paige's final reply text so we can persist the turn (#94).
@@ -13408,7 +13414,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               forcedTermination = true;
               break;
             }
-            if (!hasToolCall) { finalChunks = allChunks; finalAssistantText = content; break; }
+            if (!hasToolCall) {
+              if (liveRuntimeScope) liveAnswerPending = true;
+              else { finalChunks = allChunks; finalAssistantText = content; }
+              break;
+            }
             const realCalls = toolCalls.filter((tc: any) => tc && tc.function?.name);
             // #292 — ask_choices is a TURN-ENDER, not a backend call: the design agent is asking the
             // customer a clickable decision. Emit the chips as a paige_choices frame, persist the
@@ -13542,25 +13552,26 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             currentResponse = await gatewayCompat("anthropic", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, tools: toolDefs, tool_choice: "auto", stream: true }),
+              body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: liveDecisionMessages(convo), tools: toolDefs, tool_choice: "auto", stream: true }),
             }, traceFor("chat-tool-loop"));
             if (!currentResponse.ok) { forcedTermination = true; break; }
           }
 
-          // Hybrid final stream: replay a natural tool-less round verbatim, or issue a
-          // tools-less closing call when we terminated mid-flight.
+          // Text keeps its natural-round replay. Live streams the final answer
+          // only from this tools-free call, AFTER the governed tool decision.
+          // Protected turns still use emitContent's hold and final scope check.
           let finalStreamResponse: Response | null = null;
-          if (!finalChunks && forcedTermination && !tenantKnowledgeScopeInvalidated) {
+          if (!finalChunks && (forcedTermination || liveAnswerPending) && !tenantKnowledgeScopeInvalidated) {
             if (!(await revalidateTenantKnowledgeScope())) {
               tenantKnowledgeScopeInvalidated = true;
             }
           }
-          if (!finalChunks && forcedTermination && !tenantKnowledgeScopeInvalidated) {
+          if (!finalChunks && (forcedTermination || liveAnswerPending) && !tenantKnowledgeScopeInvalidated) {
             finalStreamResponse = await gatewayCompat("anthropic", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, stream: true }),
-            }, traceFor("chat-close"));
+            }, traceFor(liveAnswerPending ? "chat-live-answer" : "chat-close"));
           }
           // §13 — the wording matters here, and the previous wording was FALSE. Since the tool
           // dispatch guard became per-tool, a round can abort with earlier tools in the SAME

@@ -1,5 +1,20 @@
 # INT-104 S5: spoken delivery through the existing voice home
 
+## Review repair discovery — canonical final-answer streaming
+
+The review correctly found that `consumeRound` buffers a tool-capable round:
+text may precede a late tool call, so releasing it early would speak backstage
+or unapproved content. Reuse the existing tools-free closing call and its
+`emitContent` / protected-content hold / final scope check / persistence /
+signed-output path. Verified Live turns first complete the existing tool-decision
+loop, then use that final answer stream even when no tools were selected. The
+decision round is instructed not to draft an answer; its text is not spoken.
+No second brain, classifier, tool catalogue or approval path is added. This
+adds a model round, so it does not prove sub-second end-to-end latency. Protected
+Knowledge/memory/document turns must still wait for the final access check.
+
+Impeccable 4.3.1 interaction review (installed `C:/Users/tonig/.agents/skills/impeccable/SKILL.md`): static clarity, conversational rhythm, cognitive load, feedback and continuity checks applied. Results: one useful first sentence, brief turns, no stock filler or unproved post-call promise, tenant persona/distress precedence retained, same thread and existing interruption controls. No new visual design. Acoustic and rendered interaction checks remain UNVERIFIED until provider readiness and the owner's listening check.
+
 ## Pre-edit discovery and attachment map (2026-09-23)
 
 S4 merged as PR #1387 (`6bd8849d4b9bad7c8d331458cab03c00c61b87aa`, reviewed
@@ -83,3 +98,12 @@ injection expression; it does not call a model. Relay smoke: 47 passed,
 The initial record update passed direct validateEvidenceText but did not satisfy
 the full routing gate, which requires a NEW per-PR record. This S5-specific record
 corrects that documentation failure without altering the runtime or validator.
+
+Review repair proof: before the Live final-answer branch, the production-branch
+test failed with decision prose in `finalChunks` instead of a pending answer;
+the other three streaming tests passed. They execute the production
+`consumeRound`, `emitContent` and final-stream pump extracted with TypeScript's
+AST: a late tool call remains buffered, an unprotected answer emits a sentence
+before upstream completion, a protected answer emits nothing, and captured
+assistant text equals the completed stream. The same signed-output wrapper and
+final protected-scope validation remain unchanged. No model/provider call.

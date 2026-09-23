@@ -25,6 +25,73 @@ import {
 import { PAIGE_VOICE_BLOCK } from "../../supabase/functions/_shared/paige-voice.ts";
 import * as voice from "../../supabase/functions/_shared/paige-voice.ts";
 import { readFileSync } from "node:fs";
+import ts from "typescript";
+
+describe("INT-104 Live final-answer streaming preserves the canonical tool gate", () => {
+  const code = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
+  const source = ts.createSourceFile("chat.ts", code, ts.ScriptTarget.Latest, true);
+  const find = (predicate: (node: ts.Node) => boolean): ts.Node => {
+    let found: ts.Node | undefined;
+    const visit = (node: ts.Node) => { if (found) return; if (predicate(node)) found = node; else ts.forEachChild(node, visit); };
+    visit(source); if (!found) throw new Error("Production seam not found"); return found;
+  };
+  const js = (body: string) => ts.transpileModule(body, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
+  const initializer = (name: string) => (find((n) => ts.isVariableDeclaration(n) && n.name.getText(source) === name) as ts.VariableDeclaration).initializer!.getText(source);
+  it("uses a private decision instruction only on verified non-document Live rounds", () => {
+    const messages = [{ role: "user", content: "Hello" }];
+    const make = new Function("liveRuntimeScope", "attachedDocument", js(`return ${initializer("liveDecisionMessages")};`));
+    expect(make(null, null)(messages)).toBe(messages);
+    expect(make({}, {})(messages)).toBe(messages);
+    const decision = make({}, null)(messages);
+    expect(decision).toHaveLength(2);
+    expect(decision[1].content).toContain("Do not draft the user-facing answer here");
+    expect(messages).toHaveLength(1);
+    const start = code.indexOf('finalStreamResponse = await gatewayCompat');
+    const closing = code.slice(start, code.indexOf('traceFor(', start));
+    expect(closing.includes('messages: convo, stream: true')).toBe(true);
+    expect(/tools:|tool_choice:/.test(closing)).toBe(false);
+  });
+  it("does not replay decision-round prose for a verified Live turn", () => {
+    const gate = find((n) => ts.isIfStatement(n) && n.expression.getText(source) === "!hasToolCall").getText(source);
+    const run = new Function("liveRuntimeScope", js(`let finalChunks=null,finalAssistantText='',liveAnswerPending=false;const hasToolCall=false,allChunks=['decision'],content='not an answer';for(let i=0;i<1;i++){${gate}}return {finalChunks,finalAssistantText,liveAnswerPending};`));
+    expect(run({})).toEqual({ finalChunks: null, finalAssistantText: "", liveAnswerPending: true });
+    expect(run(null)).toEqual({ finalChunks: ["decision"], finalAssistantText: "not an answer", liveAnswerPending: false });
+    expect(code.match(/!finalChunks && \(forcedTermination \|\| liveAnswerPending\) && !tenantKnowledgeScopeInvalidated/g)).toHaveLength(2);
+  });
+  it("does not mistake early prose followed by a late tool call for an answer", async () => {
+    const consume = new Function(js(`return ${initializer("consumeRound")};`))();
+    let upstream!: ReadableStreamDefaultController<Uint8Array>;
+    const stream = new ReadableStream<Uint8Array>({ start(c) { upstream = c; } });
+    let completed = false;
+    const result = consume(new Response(stream)).then((r: { hasToolCall: boolean }) => { completed = true; return r; });
+    const enc = new TextEncoder();
+    upstream.enqueue(enc.encode('data: {"choices":[{"delta":{"content":"Done."}}]}\n\n'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(completed).toBe(false);
+    upstream.enqueue(enc.encode('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call","function":{"name":"governed_write","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n\n'));
+    upstream.close();
+    expect((await result).hasToolCall).toBe(true);
+  });
+  it.each([false, true])("streams only the tools-free final answer, preserving protected hold=%s", async (protectedTurn) => {
+    const branch = find((n) => ts.isIfStatement(n) && n.expression.getText(source) === "finalStreamResponse?.ok && finalStreamResponse.body") as ts.IfStatement;
+    const body = (branch.thenStatement as ts.Block).statements.map((n) => n.getText(source)).join("\n");
+    const heldContent: Uint8Array[] = [], emitted: Uint8Array[] = [];
+    const emit = new Function("turnCarriesProtectedContent", "heldContent", js(`return ${initializer("emitContent")};`))(() => protectedTurn, heldContent);
+    let upstream!: ReadableStreamDefaultController<Uint8Array>;
+    const response = new Response(new ReadableStream<Uint8Array>({ start(c) { upstream = c; } }));
+    const run = new Function("finalStreamResponse", "controller", "emitContent", js(`return (async()=>{let finalAssistantText='';${body};return finalAssistantText;})();`));
+    const answer = run(response, { enqueue(c: Uint8Array) { emitted.push(c); } }, emit);
+    const enc = new TextEncoder();
+    upstream.enqueue(enc.encode('data: {"choices":[{"delta":{"content":"First sentence."}}]}\n\n'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(emitted.length).toBe(protectedTurn ? 0 : 1);
+    expect(heldContent.length).toBe(protectedTurn ? 1 : 0);
+    upstream.enqueue(enc.encode('data: {"choices":[{"delta":{"content":" Next sentence."}}]}\n\ndata: [DONE]\n\n'));
+    upstream.close();
+    expect(await answer).toBe("First sentence. Next sentence.");
+    if (protectedTurn) expect(emitted).toEqual([]);
+  });
+});
 
 describe("INT-104 S5 — authenticated Live delivery uses the existing voice home", () => {
   const chat = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
