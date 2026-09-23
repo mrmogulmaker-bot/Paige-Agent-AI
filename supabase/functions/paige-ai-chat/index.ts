@@ -1,7 +1,7 @@
 import { BUSINESS_MISSION_TOOLS } from '../_shared/paige-spine/domains/business_mission.ts';
 import { executeVerifiedMissionMutation, resolveBusinessMissionThreadContext, resolveSelectedBusinessMissionContext } from '../_shared/business-mission-tenant-brain.ts';
 import { CAMPAIGN_BRIEF_TOOLS } from '../_shared/paige-spine/domains/campaigns.ts';
-import { CRM_COMMAND_TOOLS, CRM_COMMAND_TOOL_NAMES, CRM_TOOL_TO_ACTION, canonicalizeCrmCommand, crmApprovalSubject } from '../_shared/crm-command/catalog.ts';
+import { CRM_COMMAND_TOOLS, CRM_COMMAND_TOOL_NAMES, CRM_TOOL_TO_ACTION, canonicalizeCrmCommand, crmApprovalSubject, crmCommandFingerprintArgs } from '../_shared/crm-command/catalog.ts';
 import { executeVerifiedCampaignBriefMutation, resolveCampaignBriefListContext } from '../_shared/campaign-brief-tenant-brain.ts';
 import { CALENDAR_PRESET_TOOLS } from '../_shared/paige-spine/domains/calendar_preset.ts';
 import { executeVerifiedCalendarPresetMutation, resolveCalendarPresetListContext, type CalendarPresetMutationTool } from '../_shared/calendar-preset-tenant-brain.ts';
@@ -8252,9 +8252,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           delete crmArgs.idempotency_key;
           delete crmArgs.confirm;
           const canonicalCrmCommand = canonicalizeCrmCommand({ action, ...crmArgs });
-          const canonicalCrmArgs = Object.fromEntries(
-            Object.entries(canonicalCrmCommand).filter(([key]) => key !== "action"),
-          );
+          const canonicalCrmArgs = crmCommandFingerprintArgs(canonicalCrmCommand);
           const idempotencyKey = suppliedKey || await confirmFingerprint("crm_command_idempotency", {
             thread_id: payloadThreadId ?? null,
             user_turn_ordinal: userTurns.length,

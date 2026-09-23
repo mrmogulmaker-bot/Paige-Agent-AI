@@ -6,6 +6,7 @@ import {
   CRM_TOOL_TO_ACTION,
   canonicalizeCrmCommand,
   crmApprovalSubject,
+  crmCommandFingerprintArgs,
 } from "../../supabase/functions/_shared/crm-command/catalog.ts";
 import { confirmFingerprint } from "../../supabase/functions/_shared/confirm-fingerprint.ts";
 
@@ -207,12 +208,14 @@ describe("Paige Chat canonical CRM adoption", () => {
 
   it("canonicalizes equivalent CRM retries before both hashing and invocation", async () => {
     const canonicalizeAt = chat.indexOf("const canonicalCrmCommand = canonicalizeCrmCommand({ action, ...crmArgs })");
+    const identityAt = chat.indexOf("const canonicalCrmArgs = crmCommandFingerprintArgs(canonicalCrmCommand)", canonicalizeAt);
     const hashAt = chat.indexOf('confirmFingerprint("crm_command_idempotency"', canonicalizeAt);
     const invokeAt = chat.indexOf('functions.invoke("crm-command"', canonicalizeAt);
 
     expect(chat).toContain("canonicalizeCrmCommand");
     expect(canonicalizeAt).toBeGreaterThan(-1);
-    expect(hashAt).toBeGreaterThan(canonicalizeAt);
+    expect(identityAt).toBeGreaterThan(canonicalizeAt);
+    expect(hashAt).toBeGreaterThan(identityAt);
     expect(invokeAt).toBeGreaterThan(hashAt);
     expect(chat).toContain("arguments: canonicalCrmArgs");
     expect(chat).toContain("body: { command: canonicalCrmCommand, idempotency_key: idempotencyKey");
@@ -242,19 +245,34 @@ describe("Paige Chat canonical CRM adoption", () => {
     expect(await fallbackKey(legacy)).toBe(await fallbackKey(canonical));
   });
 
-  it("trims canonical contact names before hashing equivalent retries", async () => {
-    const spaced = canonicalizeCrmCommand({
-      action: "contact.create",
-      patch: { first_name: " Avery ", last_name: " Quinn  " },
-    });
-    const trimmed = canonicalizeCrmCommand({
-      action: "contact.create",
-      patch: { first_name: "Avery", last_name: "Quinn" },
-    });
+  it("gives every equivalent contact-name spelling one retry key", async () => {
+    const variants = [
+      { label: "canonical", patch: { first_name: "José", last_name: "Quinn", lifecycle_stage: "new_lead" } },
+      { label: "leading space", patch: { first_name: "  José", last_name: "Quinn", lifecycle_stage: "new_lead" } },
+      { label: "trailing space", patch: { first_name: "José  ", last_name: "Quinn   ", lifecycle_stage: "new_lead" } },
+      { label: "mixed case", patch: { first_name: "jOsÉ", last_name: "QUINN", lifecycle_stage: "new_lead" } },
+      { label: "non-breaking space alias", patch: { name: "José Quinn", lifecycle_stage: "lead" } },
+      { label: "zero-width characters", patch: { first_name: "Jo​s﻿é", last_name: "Qu⁠inn", lifecycle_stage: "new_lead" } },
+      { label: "decomposed unicode", patch: { first_name: "José", last_name: "Quinn", lifecycle_stage: "new_lead" } },
+      { label: "lifecycle alias", patch: { first_name: "José", last_name: "Quinn", lifecycle_stage: "lead" } },
+      { label: "legacy alias", patch: { name: "  José   Quinn  ", lifecycle_stage: "lead" } },
+    ] as const;
+    const keys = await Promise.all(variants.map(async ({ patch }) => {
+      const command = canonicalizeCrmCommand({ action: "contact.create", patch });
+      return await confirmFingerprint("crm_command_idempotency", {
+        thread_id: "test-thread",
+        user_turn_ordinal: 1,
+        user_turn: "Add José Quinn as a lead",
+        tool_name: "crm_create_contact",
+        arguments: crmCommandFingerprintArgs(command),
+      });
+    }));
 
-    expect(spaced).toEqual(trimmed);
-    expect(await confirmFingerprint("crm_command_idempotency", spaced)).toBe(
-      await confirmFingerprint("crm_command_idempotency", trimmed),
-    );
+    const keysByVariant = Object.fromEntries(variants.map(({ label }, index) => [label, keys[index]]));
+    expect(new Set(keys), JSON.stringify(keysByVariant)).toEqual(new Set([keys[0]]));
+    expect(() => crmCommandFingerprintArgs({
+      action: "contact.create",
+      patch: { first_name: "José", last_name: "Quinn" },
+    } as never)).toThrow("CRM_COMMAND_NOT_CANONICAL");
   });
 });

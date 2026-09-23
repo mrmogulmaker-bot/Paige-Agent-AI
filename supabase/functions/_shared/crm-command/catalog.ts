@@ -1,5 +1,6 @@
 import { confirmFingerprint } from "../confirm-fingerprint.ts";
 import { classifyAction } from "../action-risk.ts";
+import { canonicalizePersonName } from "../canonical-person-name.ts";
 
 export const CRM_ACTION_CAPABILITY = {
   "contact.create": "crm_create_contact", "contact.update": "crm_update_contact",
@@ -22,10 +23,47 @@ export const CRM_ACTION_CAPABILITY = {
 
 export type CrmAction = keyof typeof CRM_ACTION_CAPABILITY;
 export type CrmCapability = typeof CRM_ACTION_CAPABILITY[CrmAction];
+declare const canonicalCrmCommandBrand: unique symbol;
+export type CanonicalCrmCommand<T extends Record<string, unknown> = Record<string, unknown>> =
+  T & { readonly [canonicalCrmCommandBrand]: true };
 export const CRM_TOOL_TO_ACTION = Object.freeze(Object.fromEntries(
   Object.entries(CRM_ACTION_CAPABILITY).map(([action, capability]) => [capability, action]),
 )) as Readonly<Record<CrmCapability, CrmAction>>;
 export const CRM_COMMAND_TOOL_NAMES = new Set<CrmCapability>(Object.keys(CRM_TOOL_TO_ACTION) as CrmCapability[]);
+
+const CONTACT_NAME_FIELDS = ["first_name", "last_name"] as const;
+const fingerprintArgsByCanonicalCommand = new WeakMap<object, Record<string, unknown>>();
+
+function buildCrmCommandFingerprintArgs(command: Record<string, unknown>): Record<string, unknown> {
+  const args = Object.fromEntries(Object.entries(command).filter(([key]) => key !== "action"));
+  if (command.action !== "contact.create") return Object.freeze(args);
+  const sourcePatch = args.patch;
+  if (!sourcePatch || typeof sourcePatch !== "object" || Array.isArray(sourcePatch)) {
+    return Object.freeze(args);
+  }
+  const patch = { ...sourcePatch as Record<string, unknown> };
+  for (const field of CONTACT_NAME_FIELDS) {
+    const canonicalName = canonicalizePersonName(patch[field]);
+    if (canonicalName) patch[field] = canonicalName.identity;
+  }
+  return Object.freeze({ ...args, patch: Object.freeze(patch) });
+}
+
+function markCanonicalCrmCommand<T extends Record<string, unknown>>(command: T): CanonicalCrmCommand<T> {
+  fingerprintArgsByCanonicalCommand.set(command, buildCrmCommandFingerprintArgs(command));
+  return command as CanonicalCrmCommand<T>;
+}
+
+/**
+ * Returns the precomputed hash projection for a command issued by the
+ * canonical command boundary. Raw/model arguments are rejected at runtime,
+ * and the branded parameter prevents an uncanonicalized call at compile time.
+ */
+export function crmCommandFingerprintArgs(command: CanonicalCrmCommand): Record<string, unknown> {
+  const args = fingerprintArgsByCanonicalCommand.get(command);
+  if (!args) throw new TypeError("CRM_COMMAND_NOT_CANONICAL");
+  return args;
+}
 
 function stableCommandValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableCommandValue);
@@ -51,59 +89,44 @@ const LEGACY_CONTACT_LIFECYCLE: Readonly<Record<string, string>> = Object.freeze
 // model turns can therefore still carry the historical display-name field and pre-V3 lifecycle
 // values. Normalize only those proven aliases; every other unknown or malformed field remains in
 // place so the canonical executor rejects it rather than silently guessing.
-export function canonicalizeCrmCommand<T extends Record<string, unknown>>(command: T): T {
-  if (command.action !== "contact.create") return command;
+export function canonicalizeCrmCommand<T extends Record<string, unknown>>(command: T): CanonicalCrmCommand<T> {
+  if (command.action !== "contact.create") return markCanonicalCrmCommand({ ...command } as T);
   const sourcePatch = command.patch;
-  if (!sourcePatch || typeof sourcePatch !== "object" || Array.isArray(sourcePatch)) return command;
+  if (!sourcePatch || typeof sourcePatch !== "object" || Array.isArray(sourcePatch)) {
+    return markCanonicalCrmCommand({ ...command } as T);
+  }
 
   const patch = { ...sourcePatch as Record<string, unknown> };
-  let changed = false;
-  const canonicalNameFields = ["first_name", "last_name"] as const;
-  for (const field of canonicalNameFields) {
-    if (typeof patch[field] !== "string") continue;
-    const trimmed = patch[field].trim();
-    if (trimmed.length > 0 && trimmed !== patch[field]) {
-      patch[field] = trimmed;
-      changed = true;
-    }
+  for (const field of CONTACT_NAME_FIELDS) {
+    const canonicalName = canonicalizePersonName(patch[field]);
+    if (canonicalName) patch[field] = canonicalName.display;
   }
-  if (typeof patch.name === "string" && patch.name.trim().length > 0) {
-    const presentCanonicalNameFields = canonicalNameFields.filter((field) =>
+  const legacyName = canonicalizePersonName(patch.name);
+  if (legacyName) {
+    const presentCanonicalNameFields = CONTACT_NAME_FIELDS.filter((field) =>
       Object.prototype.hasOwnProperty.call(patch, field)
     );
     const malformedCanonicalNameFields = presentCanonicalNameFields.filter((field) =>
-      typeof patch[field] !== "string" || patch[field].trim().length === 0
+      canonicalizePersonName(patch[field]) === null
     );
-    for (const field of malformedCanonicalNameFields) {
-      delete patch[field];
-      changed = true;
-    }
-    const normalizedName = patch.name.trim().replace(/\s+/g, " ");
-    const splitAt = normalizedName.lastIndexOf(" ");
-    const legacyFirstName = splitAt > 0 ? normalizedName.slice(0, splitAt) : normalizedName;
-    const legacyLastName = splitAt > 0 ? normalizedName.slice(splitAt + 1) : null;
-    if (typeof patch.first_name !== "string" || patch.first_name.trim().length === 0) {
-      patch.first_name = legacyFirstName;
-    }
-    if (legacyLastName && (typeof patch.last_name !== "string" || patch.last_name.trim().length === 0)) {
-      patch.last_name = legacyLastName;
-    }
+    for (const field of malformedCanonicalNameFields) delete patch[field];
+    const splitAt = legacyName.display.lastIndexOf(" ");
+    const legacyFirstName = splitAt > 0 ? legacyName.display.slice(0, splitAt) : legacyName.display;
+    const legacyLastName = splitAt > 0 ? legacyName.display.slice(splitAt + 1) : null;
+    if (!canonicalizePersonName(patch.first_name)) patch.first_name = legacyFirstName;
+    if (legacyLastName && !canonicalizePersonName(patch.last_name)) patch.last_name = legacyLastName;
     // A canonical value wins only when it is actually usable. Malformed canonical values are
     // removed before the decision, so a valid legacy alias can fill each rejected part instead of
     // being discarded merely because a canonical key existed.
     delete patch.name;
-    changed = true;
   }
 
   if (typeof patch.lifecycle_stage === "string") {
     const canonicalStage = LEGACY_CONTACT_LIFECYCLE[patch.lifecycle_stage];
-    if (canonicalStage) {
-      patch.lifecycle_stage = canonicalStage;
-      changed = true;
-    }
+    if (canonicalStage) patch.lifecycle_stage = canonicalStage;
   }
 
-  return changed ? { ...command, patch } as T : command;
+  return markCanonicalCrmCommand({ ...command, patch } as T);
 }
 
 // Canonical stable subject used only to disambiguate one command inside the operator's already-
@@ -129,7 +152,7 @@ export async function crmApprovalSubject(action: CrmAction, command: Record<stri
   } else if (action.startsWith("deal.") && action !== "deal.create") {
     identity = canonicalCommand.deal_id ?? null;
   } else {
-    identity = stableCommandValue({ ...canonicalCommand, action });
+    identity = stableCommandValue({ action, ...crmCommandFingerprintArgs(canonicalCommand) });
   }
   return await confirmFingerprint(`crm_approval_subject:${action}`, { identity });
 }
