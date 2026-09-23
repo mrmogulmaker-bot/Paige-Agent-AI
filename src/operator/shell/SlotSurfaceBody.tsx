@@ -54,9 +54,11 @@ const FleetConsole = lazy(() => import("@/operator/surfaces/FleetConsole"));
 const SystemsCheckSurface = lazy(() => import("@/operator/surfaces/SystemsCheckSurface"));
 const FleetHistorySurface = lazy(() => import("@/operator/surfaces/FleetHistorySurface"));
 const FleetAlertRulesSurface = lazy(() => import("@/operator/surfaces/FleetAlertRulesSurface"));
-// FleetTeamPulseSurface is deliberately NOT dispatched anymore: the v3 pack draws Team Pulse
-// nowhere, and analytics/platform-health now renders the pack's own Platform health surface
-// (§58 record in viewSources.ts — the component stays on disk, owed to the Settings → Team port).
+// FleetTeamPulseSurface is gone, not merely undispatched: the v3 pack draws Team Pulse nowhere,
+// analytics/platform-health renders the pack's own Platform health surface, and the retired-pack
+// component was stripped on 2026-09-23 (§30). What is owed to the v3 Settings → Team port is the
+// roster READ, which survives at @/operator/data/useTeamPulse.ts — see the §58 record in
+// viewSources.ts.
 const PlatformHealthSurface = lazy(() => import("@/operator/surfaces/PlatformHealthSurface"));
 const TrustCompass = lazy(() => import("@/operator/surfaces/TrustCompass"));
 const KnowledgeSurface = lazy(() => import("@/operator/surfaces/KnowledgeSurface"));

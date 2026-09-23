@@ -770,7 +770,7 @@ blank. No row below is ticked for addressability.
 | `/operator/analytics/relationships` | 3 ported panels: `analytics/comms`, `analytics/support`, `analytics/retention` | **structure-only** | `viewSources.ts:93–96` · `moneySpecs.ts:802, 522, 586` |
 | `/operator/analytics/campaigns` | 1 ported panel: `analytics/product` | **structure-only** | `viewSources.ts:97` · `moneySpecs.ts:625` |
 | `/operator/analytics/autonomy` | `TrustCompass` (READ-ONLY — no `onCommit`) | **wired** | `viewSources.ts:98–101` · `SlotSurfaceBody.tsx:62–66` · `useCompass.ts:44–50` (`paige_departments`, `paige_action_kinds`) |
-| `/operator/analytics/platform-health` | `FleetTeamPulseSurface` | **wired** | `viewSources.ts:102` · `SlotSurfaceBody.tsx:61` · `FleetTeamPulseSurface.tsx:27` → `useTeamPulse.ts:39` (`list_platform_staff()`) |
+| `/operator/analytics/platform-health` | `PlatformHealthSurface` | **wired** | `viewSources.ts` (`bespoke: "PlatformHealthSurface"`, `carries: ["fleet/team-pulse"]`) · `SlotSurfaceBody.tsx` |
 | `/operator/settings/setup` | **`SetupVals` ported whole (Layer 3d)** — 29-step catalogue in 7 groups, the current step with its fields/picks/drop, the ceiling-aware act row, `Lands in …` destinations, and the grouped rail. The §38 money boundary is carried verbatim in CD's own words. | **`ported`** | `viewSources.ts` · `surfaces/settings/setupContract.ts` · `SetupSurface.tsx` · driven: `ported-surfaces-drive.mjs` |
 | `/operator/settings/platform` | 2 ported panels: `settings/setup/feature-flags`, `api-mcp` | **structure-only** | `viewSources.ts:109–112` · `platformSpecs.ts:751, 769` |
 | `/operator/settings/integrations` | 3 ported panels: `connected`, `health`, `available` | **structure-only** | `viewSources.ts:113–116` · `platformSpecs.ts:793, 839, 863` |
@@ -1177,7 +1177,7 @@ port.
 
 ### `/operator/analytics/platform-health` — Analytics · Platform health
 
-*Re-addressed by PR #571 (`24482d15`): was `/operator/fleet/team-pulse`, Fleet Console sub-tab 5. Same `FleetTeamPulseSurface` (`viewSources.ts:102`).*
+*Re-addressed by PR #571 (`24482d15`): was `/operator/fleet/team-pulse`, Fleet Console sub-tab 5, then `FleetTeamPulseSurface`. That component was a retired-pack port; it was unmounted in favour of `PlatformHealthSurface` and STRIPPED on 2026-09-23 (§30). The roster read it used survives at `src/operator/data/useTeamPulse.ts` (`list_platform_staff()`), owed to the v3 Settings → Team port; `carries: ["fleet/team-pulse"]` is the drop-nothing ledger entry.*
 
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
 |---|---|---|---|---|---|---|---|
