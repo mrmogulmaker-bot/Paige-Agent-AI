@@ -20,6 +20,7 @@
 import { renderPresentedPdf, sealAgreementPdf, UnrenderableDocumentError, UnrenderableNameError } from "./document.ts";
 import { expiryFromNow, mintSignerToken, RETRIEVAL_TOKEN_TTL_DAYS, sha256Hex } from "./token.ts";
 import { notify, ownerNotificationEmail } from "./notify.ts";
+import { recordCompletedAgreementToKnowledge } from "./knowledge.ts";
 
 export type SealOutcome =
   | { ok: true; sealedSha256: string; sealedKey: string }
@@ -238,6 +239,30 @@ export async function sealAndComplete(db: Db, agreementId: string): Promise<Seal
     sealedSha256,
     signers: (signers ?? []) as Array<Record<string, unknown>>,
   });
+
+  // ── Remember it, so Paige can answer what this client agreed to ────────────────────────────────
+  // LAST, and guarded twice. It runs after the parties have been told because a slow or failing
+  // ingest must never delay the counterparty's retrieval link — that link is the only copy somebody
+  // with no account on this platform gets. The module returns rather than throws, and this catches
+  // anyway: `sign-agreement` has no top-level catch, so an escape here would hand a signer a 500
+  // for an agreement that is completed, sealed and emailed. A knowledge miss is not a seal failure,
+  // and `SealOutcome` deliberately has no way to say it was one.
+  try {
+    const learned = await recordCompletedAgreementToKnowledge(db as never, {
+      agreementId,
+      tenantId: agreement.tenant_id,
+      title: agreement.title,
+      completedAt,
+      signers: (signers ?? []) as Array<Record<string, unknown>>,
+    });
+    if (!learned.ingested) {
+      // Loud, never silent (§32): a write that quietly never happens is indistinguishable from one
+      // that was never wired.
+      console.warn("[agreements] completed agreement not written to knowledge", { agreementId, reason: learned.reason });
+    }
+  } catch (e) {
+    console.error("[agreements] knowledge ingest threw after completion", { agreementId, error: String(e) });
+  }
 
   return { ok: true, sealedSha256, sealedKey };
 }
