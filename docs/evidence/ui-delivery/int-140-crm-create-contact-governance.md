@@ -34,7 +34,7 @@ ACCEPTANCE_CRITERIA: crm_create_contact advertises only canonical patch fields; 
 MOTION_PURPOSE: NONE: no motion was added or changed
 PROTECTED_SEAMS: affected and tested = shared CRM tool manifest, create-contact legacy compatibility, approval-subject stability, crm-command pre-authority normalization, confirm/auto routing, executor readback and receipt contract; explicitly unaffected = tenant/account/user authorization, role policy, Trust Compass persistence and aggregate rendering, UI components, navigation, billing/entitlements, providers, migrations, Mind/Memory, outbound communications, document extraction and responsive geometry
 
-INTERNAL_BUILD_IDENTITY: 9651615ccd881e82f7820237c7734c8fd0cba22e; deployment=none-pre-merge; environment=development; migrations=NOT_APPLICABLE; edge=PROOF_OWED(crm-command and paige-ai-chat automated deployment/source match after merge); evidence=INT-140-focused-and-regression-suites
+INTERNAL_BUILD_IDENTITY: 47d2566a7914ec1183c3adadb49ad3e85c24418f; deployment=none-pre-merge; environment=development; migrations=NOT_APPLICABLE; edge=PROOF_OWED(crm-command and paige-ai-chat automated deployment/source match after merge); evidence=INT-140-focused-and-regression-suites
 RELEASE_CHANNEL: development: exact product-code head on the draft INT-140 branch; production promotion remains merge automation only
 RELEASE_CLASSIFICATION: patch: MVP-blocking governed CRM reliability repair restoring an approved capability without a new workflow or interface
 CUSTOMER_RELEASE_IDENTITY: none: no owner-approved customer release identity was assigned to this bounded repair
@@ -64,7 +64,7 @@ existing route locator. Account changes and malformed fields continue to fail cl
 
 ## Evidence index
 
-- Product-code head: `9651615ccd881e82f7820237c7734c8fd0cba22e`.
+- Product-code head after the conflict-free current-main merge: `47d2566a7914ec1183c3adadb49ad3e85c24418f`.
 - Failing-first: 4 failures / 12 passes on untouched product code, identifying the free-form create patch, missing canonicalizer and absent pre-authority transform.
 - Load-bearing mutation: replacing the canonicalizer with an immediate return failed 2/8 adoption tests on the exact legacy name/lifecycle shape; restoration passed 8/8.
 - Focused proof: CRM adoption 8/8, action-door contract 8/8, canonical executor/readback/Rail contract 8/8 = 24/24.
