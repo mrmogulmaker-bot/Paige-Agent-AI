@@ -44,5 +44,17 @@ Deno.serve(async (req) => {
     { appOrigin: APP_ORIGIN },
   );
 
-  return new Response(null, { status: result.status, headers: { Location: result.location } });
+  // Belt-and-suspenders on the #1355 guarantee, matching the sibling callbacks this convention cites
+  // (tenant-n8n-oauth, paige-social-callback): `Referrer-Policy: no-referrer` so the code/state-bearing
+  // request URL is never sent as `document.referrer` to the clean landing page's analytics (closing the
+  // one residual a non-default/embedded-webview referrer policy could open), and `Cache-Control: no-store`
+  // so that URL is not retained by any caching layer. The Location itself already carries no code/state.
+  return new Response(null, {
+    status: result.status,
+    headers: {
+      Location: result.location,
+      "Referrer-Policy": "no-referrer",
+      "Cache-Control": "no-store",
+    },
+  });
 });

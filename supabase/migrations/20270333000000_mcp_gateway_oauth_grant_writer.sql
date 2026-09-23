@@ -109,8 +109,13 @@ BEGIN
     oauth_client_id         = _oauth_client_id,
     oauth_client_secret_ct  = CASE WHEN _oauth_client_secret IS NULL OR btrim(_oauth_client_secret) = '' THEN NULL
                                    ELSE public.platform_encrypt(_oauth_client_secret) END,
-    oauth_scopes            = _oauth_scopes,
-    granted_scopes          = _oauth_scopes,
+    -- granted_scopes is NOT NULL (20270319000000: text[] NOT NULL DEFAULT '{}'); oauth_scopes is
+    -- nullable. COALESCE both to '{}' so a grant whose response omitted `scope` (tokens.scopes = [], or
+    -- a caller passing NULL) records an empty set rather than violating the NOT NULL constraint — and the
+    -- two stay consistent ("both record the granted set"). The callback always passes an array, so this
+    -- is defense the pgTAP exercises directly via a NULL-scopes call.
+    oauth_scopes            = COALESCE(_oauth_scopes, '{}'),
+    granted_scopes          = COALESCE(_oauth_scopes, '{}'),
     access_token_expires_at = _access_token_expires_at,
     auth_header_name        = NULL,
     status                  = 'pending_verification',

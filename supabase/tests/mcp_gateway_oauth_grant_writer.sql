@@ -123,11 +123,16 @@ BEGIN
 
   -- (c) a legitimate member _actor (the T admin) is accepted — the guard rejects only a MISMATCH, never a
   -- real member (proves it is not just refusing every non-null actor).
+  -- This call also passes NULL scopes, so it doubles as the COALESCE proof: granted_scopes is NOT NULL
+  -- (20270319000000), so a NULL _oauth_scopes must land as '{}', never a NOT NULL violation.
   _r := public.complete_mcp_oauth_grant(_cid, T, 'tok-member-123456', NULL,
           'https://iss.example.com', 'client-123', NULL, NULL, NULL,
           'c3a00000-0000-0000-0000-000000000002'::uuid);  -- the real T admin (member of T)
   IF (_r->>'status') <> 'pending_verification' THEN
     RAISE EXCEPTION '(grant §59) a grant with a legitimate member _actor was wrongly refused: %', _r; END IF;
+  IF (SELECT granted_scopes FROM public.mcp_connections WHERE connection_id=_cid) IS DISTINCT FROM '{}'::text[]
+     OR (SELECT oauth_scopes FROM public.mcp_connections WHERE connection_id=_cid) IS DISTINCT FROM '{}'::text[] THEN
+    RAISE EXCEPTION '(grant) a NULL-scopes grant did not COALESCE oauth_scopes/granted_scopes to {} (NOT NULL guard)'; END IF;
 
   -- ── 3. VALIDATION REUSE — an unusable oauth bundle can never persist ───────────────────────────────
   -- empty access token
