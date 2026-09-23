@@ -1,4 +1,4 @@
--- INT-140: one canonical identity projection for governed CRM replay hashing.
+-- INT-140 (20270410000000): one canonical identity projection for governed CRM replay hashing.
 --
 -- The authenticated Edge action door constructs __paige_canonical_identity_v1 only after its
 -- strict request parser and canonical command boundary. The executable command keeps the display
