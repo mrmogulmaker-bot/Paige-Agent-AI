@@ -211,7 +211,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
     return json({ ok: false, error: "That signature could not be recorded. Please reload and try again." }, 409);
   }
-  if (!committed || committed.length === 0) return refuse();
+  if (!committed || committed.length === 0) {
+    // A ZERO-ROW UPDATE IS NOT ALWAYS A REFUSAL. The conditional write is what makes a double-submit
+    // safe at the row — and it matches nothing the second time precisely BECAUSE the first one
+    // worked. Answering that with "this signing link is not valid" tells somebody who has just
+    // legally bound themselves that nothing happened. Re-read before refusing: if they are signed,
+    // say so idempotently; only a genuinely ineligible row gets the refusal.
+    const { data: already } = await db.from("paige_agreement_signers")
+      .select("status").eq("id", signer.id).maybeSingle();
+    if (already?.status !== "signed") return refuse();
+    const { data: nowAgreement } = await db.from("paige_agreements")
+      .select("status").eq("id", signer.agreement_id).maybeSingle();
+    return json({
+      ok: true,
+      signing_id: agreement.id,
+      signed_pdf_path: null,
+      completed: nowAgreement?.status === "completed",
+      note: "Your signature was already recorded. Nothing was signed twice.",
+    });
+  }
 
   for (const eventType of ["consented", "signed"]) {
     const { error } = await db.from("paige_agreement_events").insert({
@@ -259,7 +277,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  return json({ ok: true, signing_id: agreement.id, signed_pdf_path: sealed.sealedKey, completed: true });
+  // `signed_pdf_path` is deliberately NULL rather than the storage key. That key is
+  // `${tenant_id}/${agreement_id}/sealed-<uuid>.pdf` — the tenant's UUID and our storage layout,
+  // handed to an anonymous token holder. The bucket is private so the key grants nothing, but it is
+  // exactly the identifier every other surface in this engine withholds, and the page never reads it.
+  // The completed copy reaches the signer through their emailed retrieval token instead.
+  return json({ ok: true, signing_id: agreement.id, signed_pdf_path: null, completed: true });
 });
 
 /** Tell the business what happened. Never blocks the signer's request. */

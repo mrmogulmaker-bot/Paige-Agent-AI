@@ -129,3 +129,30 @@ BEGIN
   RAISE NOTICE 'N6 token_hash readable=% full_name readable=% %',
     _hash, _name, CASE WHEN _hash = false AND _name = true THEN 'PASS' ELSE 'UNEXPECTED' END;
 END $$;
+
+-- ── N7 — the VIEW is recorded once, by the act of opening the page ───────────────────────────────
+-- This existed, was deleted with the HTML endpoint, and for a whole round nothing in the repository
+-- wrote `first_viewed_at` or moved anything to `viewed` — while the columns, the status machine and
+-- the audit event type all still declared the capability. The assertion drives `peek` twice: the
+-- first open must move both rows and file exactly one event, the second must change nothing.
+DO $$
+DECLARE _a jsonb; _id uuid; _t jsonb; _ss text; _as text; _n int;
+BEGIN
+  _a := public.create_agreement_signing('aaaaaaaa-0000-4000-8000-000000000001',
+        'c1111111-0000-4000-8000-000000000001', NULL, 'Viewed once', 'paige_draft', 'Body.', NULL);
+  _id := (_a ->> 'signing_id')::uuid;
+  _t := public.issue_agreement_signing_link('aaaaaaaa-0000-4000-8000-000000000001', _id, 30);
+
+  PERFORM public.peek_agreement_signing(_t ->> 'token');
+  SELECT status INTO _ss FROM public.paige_agreement_signers WHERE agreement_id = _id;
+  SELECT status INTO _as FROM public.paige_agreements WHERE id = _id;
+  SELECT count(*) INTO _n FROM public.paige_agreement_events
+   WHERE agreement_id = _id AND event_type = 'viewed';
+  RAISE NOTICE 'N7 first view: signer=% agreement=% events=% %', _ss, _as, _n,
+    CASE WHEN _ss = 'viewed' AND _as = 'viewed' AND _n = 1 THEN 'PASS' ELSE 'UNEXPECTED' END;
+
+  PERFORM public.peek_agreement_signing(_t ->> 'token');
+  SELECT count(*) INTO _n FROM public.paige_agreement_events
+   WHERE agreement_id = _id AND event_type = 'viewed';
+  RAISE NOTICE 'N7 reload: events=% %', _n, CASE WHEN _n = 1 THEN 'PASS' ELSE 'UNEXPECTED' END;
+END $$;

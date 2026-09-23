@@ -16,6 +16,7 @@ interface NotifyInput {
   templateName: string;
   recipientEmail: string;
   tenantId: string;
+  /** Recorded on the send log for observability. The shared sender does NOT dedupe on it. */
   idempotencyKey: string;
   templateData: Record<string, unknown>;
 }
@@ -46,12 +47,19 @@ export async function notify(input: NotifyInput): Promise<NotifyOutcome> {
         templateData: input.templateData,
       }),
     });
-    if (!res.ok) {
-      const detail = (await res.text().catch(() => "")).slice(0, 300);
-      console.error("[agreements] notification rejected by the sender", {
-        template: input.templateName, status: res.status, detail,
+    // A 200 IS NOT A DELIVERY. `send-transactional-email` answers a suppressed recipient with HTTP
+    // 200 and `{success:false, reason:'email_suppressed'}` — so testing the status code alone
+    // reported a completion notice as sent when nothing left the building. A notification that
+    // claims to have gone out and did not is the §13 failure this whole file is built around.
+    let body: Record<string, unknown> = {};
+    try { body = await res.json(); } catch { /* non-JSON → not a delivery */ }
+    if (!res.ok || body?.success !== true) {
+      console.error("[agreements] notification not delivered", {
+        template: input.templateName,
+        status: res.status,
+        reason: String(body?.reason ?? body?.error ?? "unknown").slice(0, 120),
       });
-      return { sent: false, reason: `sender_${res.status}` };
+      return { sent: false, reason: String(body?.reason ?? `sender_${res.status}`) };
     }
     return { sent: true };
   } catch (e) {

@@ -362,7 +362,9 @@ on. Recorded as an exception rather than followed silently.
 | Agreement RPC seams (`save_paige_agreement` · `add_agreement_signer` · `create_agreement_signing` · `issue_agreement_signing_link` · `void_paige_agreement` · `paige_agreement_overview`) | ✓ act-as | **refused at the database** | ✓ | ✓ | — | 403 | **LIVE on merge** — these are the §10 callable seams |
 | Agreement PAIGE CHAT TOOLS (draft · add_signer · send · resend · void · status) | — | — | — | — | — | — | **WITHHELD — not shipped in this PR.** The INT-003 capability-kit guard cannot admit a new mutating tool: `capability-kit-lint` rejects a new `RISK` entry, and its stated remedy (`defineCapability()`) requires that same entry via `classifyAction`. Measured, not inferred. Lands when INT-003 resolves it. |
 | Token-gated signing act (`sign-agreement`, `verify_jwt=false`) | n/a | n/a | n/a | n/a | n/a | **token-gated, not a tier** | LIVE on merge |
-| Sealed-record retrieval (`agreement-document`, `verify_jwt=false`) | n/a | n/a | ✓ own session (admin) | ✓ own session (admin) | **signer via retrieval token** | — | LIVE on merge |
+| Document retrieval (`agreement-document`, `verify_jwt=false`) | n/a | n/a | endpoint LIVE, **no UI caller yet** | endpoint LIVE, **no UI caller yet** | **signer: presented doc via a live signing token, sealed copy via the retrieval token** | — | endpoint LIVE on merge; the tenant-side surface that calls it with a session is OWED |
+| Signer VIEW recorded (`peek_agreement_signing` writes `first_viewed_at` + `viewed`) | ✓ act-as read | — | ✓ | ✓ | — | — | **LIVE on merge** — `20270407000000`. The owner's *email* notice for viewed/declined is OWED (a database function cannot send mail); both states show on their own surface. |
+| Expiry sweep (`sweep_expired_paige_agreements`, hourly `pg_cron`) | — | — | — | — | — | — | **conditional**: scheduled only where `pg_cron` is installed; the migration RAISEs a NOTICE and continues if it is not |
 
 **§13 CORRECTION, recorded rather than quietly fixed (2026-09-22).** The two rows above previously
 read `—` for Agency in the flag row and `✓` for Agency in all four tool rows — two different answers
@@ -372,7 +374,6 @@ code, so an Agency could in fact draft, send and void through Paige chat. §66 s
 records what is LIVE, so both halves are corrected together: the enforcement is now a database
 trigger (`trg_agreement_tier`, migration `20270405000000`) that binds every write path including the
 service role, the edge function keeps its own 403 for the better message, and the rows now agree.
-| Expiry sweep (`sweep_expired_paige_agreements`, hourly `pg_cron`) | — | — | — | — | — | — | **conditional**: scheduled only where `pg_cron` is installed; the migration RAISEs a NOTICE and continues if it is not |
 
 **The signer is not a tier row, and that is the point.** An external counterparty has no Supabase
 account, so no RLS policy can describe them and none tries. Their access is a 256-bit token stored

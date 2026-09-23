@@ -10,11 +10,13 @@ import { EmailFooter } from './email-footer.tsx'
 // inventory across every template that uses it. The link is personal and expiring, which is also the
 // safer thing to put in an inbox than the document itself.
 //
-// THE TWO LINKS ARE DIFFERENT DOORS, and this copy used to be wrong about the second one. The
-// signer's link carries their 365-day retrieval token, because they have no account. The owner's
-// link is the same `agreement-document` endpoint reached with THEIR OWN SESSION. The earlier version
-// gave the owner no link at all and told them the document was "in your workspace" — a place that
-// did not exist, which left the business half of the retention obligation with no delivery path.
+// ONLY THE SIGNER GETS A LINK, and the copy says so plainly rather than implying otherwise. Their
+// link carries the 365-day retrieval token minted at completion, because they have no account here.
+// The owner gets none: `agreement-document`'s tenant door authenticates with the caller's SESSION,
+// and a browser following a link out of an inbox sends no Authorization header — so a button there
+// would answer the owner's own contract with a refusal. An earlier version said the document was
+// "in your workspace", a place that does not exist yet; this one states what is true and hands over
+// the fingerprint. The tenant-side retrieval surface is owed, and is declared owed in the PR.
 export function AgreementCompleted({
   signer_name,
   agreement_title,
@@ -52,7 +54,7 @@ export function AgreementCompleted({
       <p style={{ color: '#5a5a66', fontSize: '14px' }}>
         {is_signer
           ? 'Please download and keep your own copy. This link is personal to you — don’t forward it.'
-          : 'Open it with the button above while signed in to this workspace. Download and keep a copy for your records.'}
+          : 'Your signed copy is stored with this agreement. Retrieving it from your workspace is not available yet, so keep this fingerprint — it identifies the exact completed document.'}
       </p>
       {sealed_sha256 ? (
         <p style={{ color: '#8a8a96', fontSize: '12px', fontFamily: 'ui-monospace, monospace', wordBreak: 'break-all' }}>

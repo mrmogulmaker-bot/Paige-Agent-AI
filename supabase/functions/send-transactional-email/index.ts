@@ -607,28 +607,17 @@ Deno.serve(async (req) => {
   // as send-message), record the REAL outcome, and retire the Lovable worker (#79).
   const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 
-  // IDEMPOTENCY, which this function accepted and ignored until now. Callers pass a key and several
-  // of them carry comments promising it deduplicates; nothing read it, and every row was keyed on a
-  // fresh message_id. A parameter that reads as a control and is not one is worse than no parameter,
-  // because the next caller relies on it for something less forgiving than a duplicate email.
-  //
-  // Only fires when the caller actually supplied a key: with none, `idempotencyKey` defaults to this
-  // request's fresh messageId, which can never match a prior row. So no existing caller's behaviour
-  // changes (§37). Best-effort under a true race — see the migration for why that is deliberate.
-  if (idempotencyKey !== messageId) {
-    const { data: alreadySent } = await supabase.from('email_send_log')
-      .select('message_id')
-      .eq('idempotency_key', idempotencyKey)
-      .eq('status', 'sent')
-      .maybeSingle()
-    if (alreadySent) {
-      return new Response(
-        JSON.stringify({ success: true, sent: true, duplicate: true, messageId: alreadySent.message_id }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
-    }
-  }
-
+  // IDEMPOTENCY — PERSISTED, DELIBERATELY NOT ACTED ON, and that is the §37 answer rather than a
+  // half-measure. The first version of this short-circuited on a prior `sent` row with the same key.
+  // The producer inventory then found the key is not unique per intended send for callers that
+  // already exist: `notify-team-event` falls back to `contact-${contact}-${coach}` with no event id,
+  // so re-assigning a contact back to a coach suppresses the notice forever; `invite-affiliate` uses
+  // `affiliate-invite-${affiliateId}` and deliberately REUSES the profile row, so re-inviting — the
+  // normal repair path, which mints a fresh recovery link — silently drops the email and still
+  // reports success. Scoping by recipient and template does not save the second one. A suppressed
+  // legitimate email is far worse than a duplicate, so the key is stored for observability and the
+  // dedup lands only when those callers carry keys that identify the send. Callers must not describe
+  // this parameter as a guarantee.
   // Log the attempt up front so there's always a record.
   await supabase.from('email_send_log').insert({
     message_id: messageId,

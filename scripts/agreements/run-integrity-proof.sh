@@ -51,6 +51,7 @@ MIGRATION="$REPO/supabase/migrations/20270401000000_agreements_engine_records.sq
 MIGRATION2="$REPO/supabase/migrations/20270402000000_agreements_read_and_expiry.sql"
 MIGRATION4="$REPO/supabase/migrations/20270404000000_agreement_signing_contract.sql"
 MIGRATION5="$REPO/supabase/migrations/20270405000000_agreement_signer_seam.sql"
+MIGRATION6="$REPO/supabase/migrations/20270407000000_agreement_view_tracking.sql"
 WORK="$(mktemp -d)"
 PORT="${PGPORT:-55432}"
 
@@ -81,7 +82,8 @@ psql -v ON_ERROR_STOP=1 -q -f "$MIGRATION2" 2>&1 | grep -iE "^psql.*error" && { 
 # `_shared/action-risk.ts`). With no governed tool there is nothing for `list_tool_autonomy` to show.
 psql -v ON_ERROR_STOP=1 -q -f "$MIGRATION4" 2>&1 | grep -iE "^psql.*error" && { echo "FAIL — the signing-contract migration did not apply"; exit 1; }
 psql -v ON_ERROR_STOP=1 -q -f "$MIGRATION5" 2>&1 | grep -iE "^psql.*error" && { echo "FAIL — the signer-seam migration did not apply"; exit 1; }
-echo "migrations 20270401/02/04/05 applied to a clean database"
+psql -v ON_ERROR_STOP=1 -q -f "$MIGRATION6" 2>&1 | grep -iE "^psql.*error" && { echo "FAIL — the view-tracking migration did not apply"; exit 1; }
+echo "migrations 20270401/02/04/05/07 applied to a clean database"
 echo
 
 OUT="$WORK/out.txt"
@@ -158,6 +160,14 @@ if ! grep -q 'N2 agency refused 42501 PASS' "$OUT"; then
 fi
 if ! grep -q 'N6 token_hash readable=f full_name readable=t PASS' "$OUT"; then
   echo "FAIL — authenticated can read token_hash, or can no longer read the columns it needs."; exit 1
+fi
+# Opening the page IS the view. Nothing wrote it for a whole round, which made "sent and ignored"
+# and "opened and being read" the same thing on the owner's surface.
+if ! grep -q 'N7 first view: signer=viewed agreement=viewed events=1 PASS' "$OUT"; then
+  echo "FAIL — opening the signing page did not record the view."; exit 1
+fi
+if ! grep -q 'N7 reload: events=1 PASS' "$OUT"; then
+  echo "FAIL — a reload recorded a second view; the trail counts page loads, not openings."; exit 1
 fi
 if ! grep -q 'C1 .*signed' "$OUT" || ! grep -q 'C2 .*signed' "$OUT"; then
   echo "FAIL — positive controls did not succeed, so the negatives prove nothing."

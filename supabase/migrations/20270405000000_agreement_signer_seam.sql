@@ -68,9 +68,13 @@ BEGIN
 END;
 $$;
 
+-- INSERT **and** UPDATE. INSERT-only left a hole with a real path into it: a tenant that drafts
+-- agreements and is later converted to a top-level agency keeps every existing draft, and every
+-- write against those rows — sending, freezing, sealing — would still have been permitted by a gate
+-- that only ever looked at creation.
 DROP TRIGGER IF EXISTS trg_agreement_tier ON public.paige_agreements;
 CREATE TRIGGER trg_agreement_tier
-  BEFORE INSERT ON public.paige_agreements
+  BEFORE INSERT OR UPDATE ON public.paige_agreements
   FOR EACH ROW EXECUTE FUNCTION public.enforce_agreement_tier();
 
 -- ── 2) The counterparty signer, derived from the client the agreement is with ────────────────────

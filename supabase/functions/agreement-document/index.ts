@@ -3,8 +3,10 @@
 // ESIGN's retention requirement is that the completed record stays ACCESSIBLE TO BOTH PARTIES, and
 // the two parties reach it by different doors because they are different kinds of person:
 //
-//   • THE SIGNER has no account on this platform and never will. Their door is the 365-day retrieval
-//     token minted at completion and emailed to them. That is why this function cannot demand a JWT.
+//   • THE SIGNER has no account on this platform and never will. Their door is their token — the
+//     signing token while the agreement is open, which opens the PRESENTED document, and the
+//     365-day retrieval token minted at completion, which opens the SEALED one. That is why this
+//     function cannot demand a JWT.
 //   • THE BUSINESS has an account. Their door is their own session, admin-gated and tenant-scoped,
 //     exactly like every other authenticated read in the engine.
 //
@@ -82,9 +84,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     // The agreement is read FROM THE TOKEN ROW. No query parameter names or steers it.
     const { data: agreement } = await db.from("paige_agreements")
-      .select("id,title,status,sealed_storage_key").eq("id", signer.agreement_id).maybeSingle();
-    if (!agreement || agreement.status !== "completed" || !agreement.sealed_storage_key) return refuse();
-    sealedKey = String(agreement.sealed_storage_key);
+      .select("id,title,status,content_storage_key,sealed_storage_key")
+      .eq("id", signer.agreement_id).maybeSingle();
+    if (!agreement) return refuse();
+
+    // ── ONE TOKEN, TWO DOCUMENTS, decided by the agreement's state — not by the caller ────────────
+    // BEFORE completion the signing token opens the PRESENTED document: the exact frozen bytes the
+    // signing record will later swear by. That capability existed, was deleted with the HTML page,
+    // and its absence made the sealed record dishonest — it prints "SHA-256 of the file" over a file
+    // the signer had no way to read. AFTER completion the retrieval token opens the SEALED copy.
+    // The signer never names which; the row does.
+    if (agreement.status === "completed") {
+      if (!agreement.sealed_storage_key) return refuse();
+      sealedKey = String(agreement.sealed_storage_key);
+    } else if (["sent", "viewed", "partially_signed"].includes(String(agreement.status))) {
+      if (!agreement.content_storage_key) return refuse();
+      sealedKey = String(agreement.content_storage_key);
+    } else {
+      return refuse();
+    }
     filename = safeFilename(String(agreement.title));
   } else {
     // ── DOOR TWO: the workspace's own session ────────────────────────────────────────────────────

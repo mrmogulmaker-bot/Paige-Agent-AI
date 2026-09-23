@@ -309,10 +309,13 @@ async function deliverCompletionNotices(
       sealed_sha256: input.sealedSha256,
       party_names: partyNames,
       is_signer: false,
-      // The workspace's own door: no token, because the owner has a session. `agreement-document`
-      // refuses it unless that session resolves to THIS tenant and holds admin, so the link is
-      // useless to anybody else who reads the inbox.
-      document_url: `${supabaseUrl}/functions/v1/agreement-document?agreementId=${input.agreementId}`,
+      // NO LINK FOR THE OWNER, and that is honest rather than lazy. `agreement-document`'s tenant
+      // door authenticates with the caller's session — a browser following a link out of an inbox
+      // sends no Authorization header, so the button would have answered the owner's own signed
+      // contract with the generic refusal. There is no tenant-side surface to point at yet either.
+      // So the notice states the fact and the fingerprint, and the retrieval endpoint waits for the
+      // surface that can call it with a session. A dead button is worse than no button.
+      document_url: null,
     },
   });
 }

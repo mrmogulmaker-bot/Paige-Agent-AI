@@ -53,9 +53,27 @@ export class UnrenderableNameError extends Error {
   }
 }
 
-/** Would stamping this string lose characters to `?` — i.e. is the paper record about to lie? */
+/**
+ * Would stamping this string lose characters to `?` — i.e. is the paper record about to lie?
+ *
+ * Line endings and zero-width formatting are normalised FIRST, because they are not the question.
+ * `sanitizeWinAnsi`'s allow-list has no `\r`, so a body pasted from Windows — or carrying a
+ * zero-width space or a narrow no-break space from a word processor — was refused at send with
+ * "uses characters the PDF exporter cannot reproduce yet (Latin characters only)", which was true of
+ * neither the document nor the author. The exporter drops these harmlessly; only real content loss
+ * should stop a send.
+ */
+function normaliseFormatting(text: string): string {
+  return String(text ?? "")
+    .replace(/\r\n?/g, "\n")
+    // Zero-width space, ZWNJ, ZWJ, word joiner and the BOM carry no meaning on a printed page.
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "")
+    // Narrow and figure spaces render as ordinary spaces.
+    .replace(/[\u202F\u2007\u00A0]/g, " ");
+}
+
 export function wouldLoseCharacters(text: string): boolean {
-  const raw = String(text ?? "");
+  const raw = normaliseFormatting(text);
   const before = (raw.match(/\?/g) ?? []).length;
   const after = (sanitizeWinAnsi(raw).match(/\?/g) ?? []).length;
   return after > before;

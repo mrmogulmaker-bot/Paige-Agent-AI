@@ -26,6 +26,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const PUBLIC_BASE = (Deno.env.get("PUBLIC_SITE_URL") ?? "https://paigeagent.ai").replace(/\/$/, "");
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -239,14 +241,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const token = mintSignerToken();
     const tokenHash = await sha256Hex(token);
-    const link = `${supabaseUrl}/functions/v1/sign-agreement?token=${token}`;
+    // THE APP ROUTE, NOT THIS ENGINE. `sign-agreement` is POST-only JSON and serves no markup, so
+    // the link that pointed at it answered a signer's click with `405 {"error":"POST only"}` — the
+    // email reached them and there was no path from it to a signable surface. The signer's page is
+    // the React route `/sign/:token`, which calls `peek_agreement_signing` to read and this engine
+    // to sign. Same `PUBLIC_SITE_URL` primitive every other outbound link in this repo uses.
+    const link = `${PUBLIC_BASE}/sign/${token}`;
     const res = await fetch(`${supabaseUrl}/functions/v1/send-transactional-email`, {
       method: "POST",
       headers: { Authorization: authHeader, "Content-Type": "application/json" },
       // The sender's real contract — templateName / recipientEmail / tenantId / templateData —
-      // read off an existing caller rather than assumed. `idempotencyKey` folds a retried send into
-      // one message instead of mailing the signer twice; it includes the token hash so a deliberate
-      // re-mint is a genuinely different message.
+      // read off an existing caller rather than assumed. `idempotencyKey` is RECORDED, not enforced —
+      // the shared sender stores it and deliberately does not dedupe on it (see its own note), so
+      // this is a label on the send, never a promise that a retry cannot mail the signer twice.
       body: JSON.stringify({
         templateName: "agreement-signature-request",
         recipientEmail: s.email,
@@ -261,12 +268,26 @@ Deno.serve(async (req: Request): Promise<Response> => {
         },
       }),
     });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      console.error("[agreement-send] signer email failed", { signerId: s.id, status: res.status, detail: detail.slice(0, 300) });
+    // `res.ok` IS NOT DELIVERY. `send-transactional-email` answers a suppressed recipient — anyone
+    // carrying a bounce or complaint row — with HTTP 200 and `{success:false, reason:'suppressed'}`.
+    // Reading only the status code therefore wrote a live token nobody holds, pushed the signer into
+    // `sent`, moved the agreement one-way out of draft, and reported delivery to a named person who
+    // received nothing. The body is the truth; the status code is not.
+    let sendResult: Record<string, unknown> = {};
+    try { sendResult = await res.json(); } catch { /* non-JSON → treated as undelivered below */ }
+    if (!res.ok || sendResult?.success !== true) {
+      console.error("[agreement-send] signer email not delivered", {
+        signerId: s.id, status: res.status,
+        reason: String(sendResult?.reason ?? sendResult?.error ?? "unknown").slice(0, 120),
+      });
       // The token was never written, so the next attempt mints a fresh one and delivers it rather
       // than finding a "live" link nobody holds.
-      failed.push({ email: String(s.email), reason: "the email could not be delivered" });
+      failed.push({
+        email: String(s.email),
+        reason: sendResult?.reason === "email_suppressed"
+          ? "this address is on the suppression list (a previous email bounced or was reported), so nothing was sent"
+          : "the email could not be delivered",
+      });
       continue;
     }
 
@@ -312,7 +333,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     sent_at: new Date().toISOString(),
     content_storage_key: contentKey,
     content_sha256: contentHash,
-    expires_at: agreement.expires_at ?? expiryFromNow(now, SIGNING_TOKEN_TTL_DAYS),
+    // An explicit resend EXTENDS the deadline. The new token carries a fresh 30 days, but
+    // `decideSigningAccess` also refuses on the AGREEMENT's `expires_at` — so a resend on day 29 of a
+    // 30-day window handed the signer a link that died the next day while the owner was told it had
+    // been resent. The resend they performed to buy time bought none.
+    expires_at: resend
+      ? expiryFromNow(now, SIGNING_TOKEN_TTL_DAYS)
+      : (agreement.expires_at ?? expiryFromNow(now, SIGNING_TOKEN_TTL_DAYS)),
   };
   if (agreement.status === "draft") statusPatch.status = "sent";
 
