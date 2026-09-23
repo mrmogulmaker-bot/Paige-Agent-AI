@@ -13,7 +13,7 @@ const pgBin = process.env.PG_PROOF_BIN
 const executable = (name) => join(pgBin, process.platform === "win32" ? `${name}.exe` : name);
 const cluster = join(tmpdir(), `paige-durable-work-${randomUUID()}`);
 const migration = readFileSync(
-  join(root, "supabase/migrations/20270411000000_paige_durable_work_envelope.sql"),
+  join(root, "supabase/migrations/20270412000000_paige_durable_work_envelope.sql"),
   "utf8",
 );
 const rollbackProof = readFileSync(

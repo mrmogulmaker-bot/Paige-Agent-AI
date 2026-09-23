@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { DURABLE_JOB_STATES } from "../../supabase/functions/_shared/durable-job/mod.ts";
 
 const sql = readFileSync(
-  resolve(process.cwd(), "supabase/migrations/20270411000000_paige_durable_work_envelope.sql"),
+  resolve(process.cwd(), "supabase/migrations/20270412000000_paige_durable_work_envelope.sql"),
   "utf8",
 ).toLowerCase();
 
