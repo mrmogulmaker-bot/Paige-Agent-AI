@@ -9,8 +9,12 @@ export interface FluxEarsEvents {
 }
 
 export interface FluxEars {
+  /** Milliseconds of audio actually handed to the socket (may be fractional). */
   sendPcm(bytes: ArrayBuffer): number | null;
+  /** Ask Flux to flush its last Update before closing. */
   close(): void;
+  /** Discard an interrupted turn without delivering buffered text. */
+  cancel(): void;
 }
 
 export type FluxEarsOpenResult =
@@ -28,15 +32,20 @@ export async function openFluxEars(
 ): Promise<FluxEarsOpenResult> {
   const plan = planSttStream("flux-realtime", { encoding: "linear16", sampleRate: 16_000 });
   if (!plan.ok) return { ok: false, code: "stt_not_configured" };
-  const socket = (options.opener ?? openDeepgramSocket)(plan.url);
+  let socket: WebSocket | null;
+  try { socket = (options.opener ?? openDeepgramSocket)(plan.url); }
+  catch { return { ok: false, code: "stt_open_failed" }; }
   if (!socket) return { ok: false, code: "stt_not_configured" };
 
-  let closedByRelay = false;
+  let cancelled = false;
+  let finishing = false;
   let failed = false;
   let lastSequence = -1;
+  let finalTurnIndex = -1;
+  let bufferedUpdate: { text: string; turnIndex: number } | null = null;
   let closeTimer: ReturnType<typeof setTimeout> | null = null;
   const failOnce = () => {
-    if (failed || closedByRelay) return;
+    if (failed || cancelled) return;
     failed = true;
     events.unavailable();
   };
@@ -54,16 +63,34 @@ export async function openFluxEars(
       settle(false);
     }, options.openTimeoutMs ?? 5000);
     socket.onopen = () => settle(true);
-    socket.onerror = () => { failOnce(); settle(false); };
-    socket.onclose = () => { if (closeTimer) clearTimeout(closeTimer); failOnce(); settle(false); };
+    socket.onerror = () => {
+      failOnce();
+      try { socket.close(1011, "stt_error"); } catch { /* already closed */ }
+      settle(false);
+    };
+    socket.onclose = () => {
+      if (closeTimer) clearTimeout(closeTimer);
+      // CloseStream's last transcript is an Update, not an EndOfTurn. It is
+      // final only when we deliberately asked Flux to flush and then closed.
+      if (finishing && !failed && bufferedUpdate && bufferedUpdate.turnIndex !== finalTurnIndex) {
+        events.final(bufferedUpdate.text, bufferedUpdate.turnIndex);
+      } else if (!finishing) failOnce();
+      settle(false);
+    };
     socket.onmessage = (message) => {
-      if (failed || closedByRelay) return;
+      if (failed || cancelled) return;
       const turn = extractDeepgramFluxTurn(message.data);
       if (!turn || turn.sequenceId <= lastSequence) return;
       lastSequence = turn.sequenceId;
       if (turn.event === "StartOfTurn") events.startOfTurn(turn.transcript, turn.turnIndex);
-      else if (turn.isFinal) events.final(turn.transcript, turn.turnIndex);
-      else if (turn.event === "Update") events.partial(turn.transcript, turn.turnIndex);
+      else if (turn.isFinal) {
+        finalTurnIndex = turn.turnIndex;
+        bufferedUpdate = null;
+        events.final(turn.transcript, turn.turnIndex);
+      } else if (turn.event === "Update") {
+        bufferedUpdate = { text: turn.transcript, turnIndex: turn.turnIndex };
+        events.partial(turn.transcript, turn.turnIndex);
+      }
     };
   });
   if (!opened) return { ok: false, code: "stt_open_failed" };
@@ -72,26 +99,34 @@ export async function openFluxEars(
     ok: true,
     ears: {
       sendPcm(bytes) {
-        if (failed || closedByRelay || socket.readyState !== WebSocket.OPEN ||
+        if (failed || cancelled || finishing || socket.readyState !== WebSocket.OPEN ||
           bytes.byteLength < 2 || bytes.byteLength > 32_000 || bytes.byteLength % 2 !== 0) return null;
         try {
           socket.send(bytes);
-          return Math.round(bytes.byteLength / 2 / 16_000 * 1000);
+          return bytes.byteLength / 2 / 16;
         } catch {
           failOnce();
           return null;
         }
       },
       close() {
-        if (closedByRelay) return;
-        closedByRelay = true;
+        if (finishing || cancelled) return;
+        finishing = true;
         if (socket.readyState === WebSocket.OPEN) {
           try { socket.send(JSON.stringify({ type: "CloseStream" })); } catch { /* best effort */ }
           closeTimer = setTimeout(() => {
             if (socket.readyState !== WebSocket.CLOSED) socket.close(1000, "relay_end");
-          }, 1000);
+          }, 3000);
         } else if (socket.readyState !== WebSocket.CLOSED) {
           try { socket.close(1000, "relay_end"); } catch { /* already closed */ }
+        }
+      },
+      cancel() {
+        if (cancelled) return;
+        cancelled = true;
+        if (closeTimer) clearTimeout(closeTimer);
+        if (socket.readyState !== WebSocket.CLOSED) {
+          try { socket.close(1000, "relay_cancel"); } catch { /* already closed */ }
         }
       },
     },

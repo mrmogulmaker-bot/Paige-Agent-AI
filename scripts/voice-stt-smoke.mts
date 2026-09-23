@@ -294,7 +294,8 @@ const openedFlux = await opening;
 check("live ears reuse Flux /v2 with mandatory MIP opt-out", openedFlux.ok && new URL(plannedFluxUrl).pathname === "/v2/listen" && new URL(plannedFluxUrl).searchParams.get("mip_opt_out") === "true");
 if (openedFlux.ok) {
   check("live ears send 80 ms PCM and meter only observed audio", openedFlux.ears.sendPcm(new ArrayBuffer(2560)) === 80 && fakeFlux.sent[0] instanceof ArrayBuffer);
-  check("live ears reject malformed PCM before provider send", openedFlux.ears.sendPcm(new ArrayBuffer(3)) === null && fakeFlux.sent.length === 1);
+  check("a tiny accepted PCM frame never reports zero duration", openedFlux.ears.sendPcm(new ArrayBuffer(2))! > 0);
+  check("live ears reject malformed PCM before provider send", openedFlux.ears.sendPcm(new ArrayBuffer(3)) === null && fakeFlux.sent.length === 2);
   fakeFlux.receive({ type: "TurnInfo", event: "StartOfTurn", turn_index: 0, sequence_id: 1, transcript: "Hello" });
   fakeFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 2, transcript: "Hello Paige" });
   fakeFlux.receive({ type: "TurnInfo", event: "EndOfTurn", turn_index: 0, sequence_id: 3, transcript: "Hello Paige." });
@@ -302,8 +303,35 @@ if (openedFlux.ok) {
   check("Flux start, partial and final preserve ordering without duplicate turns", seenFlux.join("|") === "start:Hello|partial:Hello Paige|final:Hello Paige.");
   openedFlux.ears.close();
   check("clean end sends Flux CloseStream without treating it as a provider failure", fakeFlux.sent.some((value) => value === '{"type":"CloseStream"}') && !seenFlux.includes("unavailable"));
+  fakeFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 1, sequence_id: 4, transcript: "Trailing thought" });
   fakeFlux.close();
+  check("CloseStream flush Update becomes one final utterance on close", seenFlux.at(-1) === "final:Trailing thought");
 }
+const cancelledFlux = new FakeFluxSocket();
+const cancelledSeen: string[] = [];
+const cancelledOpening = openFluxEars({
+  startOfTurn() {}, partial(text) { cancelledSeen.push(`partial:${text}`); },
+  final(text) { cancelledSeen.push(`final:${text}`); }, unavailable() {},
+}, { opener() { queueMicrotask(() => cancelledFlux.onopen?.()); return cancelledFlux as unknown as WebSocket; } });
+const cancelledResult = await cancelledOpening;
+if (cancelledResult.ok) {
+  cancelledFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 1, transcript: "Interrupted" });
+  cancelledResult.ears.cancel();
+  cancelledFlux.close();
+}
+check("cancel discards buffered partial instead of finalizing it", !cancelledSeen.some((item) => item.startsWith("final:")));
+const thrownOpening = await openFluxEars(
+  { startOfTurn() {}, partial() {}, final() {}, unavailable() {} },
+  { opener() { throw new Error("fake constructor failure"); } },
+);
+check("socket constructor failure returns typed open failure", !thrownOpening.ok && thrownOpening.code === "stt_open_failed");
+const errorFlux = new FakeFluxSocket();
+const errorOpening = openFluxEars(
+  { startOfTurn() {}, partial() {}, final() {}, unavailable() {} },
+  { opener() { queueMicrotask(() => errorFlux.onerror?.()); return errorFlux as unknown as WebSocket; } },
+);
+const errorResult = await errorOpening;
+check("open-time socket error closes its provider resource", !errorResult.ok && errorFlux.readyState === FakeFluxSocket.CLOSED);
 (globalThis as unknown as { WebSocket: unknown }).WebSocket = previousWebSocket;
 delete env.DEEPGRAM_API_KEY;
 
