@@ -131,6 +131,7 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     await act(async () => root.unmount());
     host.remove();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   const render = async (extra: Record<string, unknown> = {}) => {
@@ -160,11 +161,17 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     expect(textarea().disabled).toBe(false);
   };
 
-  it.each(["explicit-error", "eof", "rejection", "interrupt", "done"] as const)(
+  it.each(["explicit-error", "eof", "rejection", "interrupt", "timeout", "done"] as const)(
     "keeps the same visible Live transcript and settles the sink on %s",
     async (ending) => {
       let upstream!: ReadableStreamDefaultController<Uint8Array>;
       const response = new Response(new ReadableStream<Uint8Array>({ start(c) { upstream = c; } }));
+      let expireTurn: (() => void) | undefined;
+      const realSetTimeout = window.setTimeout.bind(window);
+      vi.spyOn(window, "setTimeout").mockImplementation(((fn: TimerHandler, delay?: number, ...args: unknown[]) => {
+        if (delay === 45_000) expireTurn = fn as () => void;
+        return realSetTimeout(fn, delay, ...args);
+      }) as typeof window.setTimeout);
       vi.mocked(fetch).mockResolvedValueOnce(response);
       await render();
       await waitForWritable();
@@ -181,6 +188,7 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
       expect(host.textContent).toContain("First sentence.");
       await act(async () => {
         if (ending === "interrupt") harness.liveInterrupt!();
+        if (ending === "timeout") { expect(expireTurn).toBeDefined(); expireTurn!(); }
         if (ending === "rejection") upstream.error(new Error("upstream interrupted"));
         else {
           if (ending === "explicit-error") upstream.enqueue(enc.encode('data: {"paige_live_error":"answer_interrupted"}\n\ndata: [DONE]\n\n'));

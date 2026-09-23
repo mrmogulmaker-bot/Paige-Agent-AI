@@ -13734,8 +13734,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 const parsed = JSON.parse(line.slice(6));
                 if (liveRuntimeScope && parsed.error) throw new Error("live_answer_failed");
                 const c = parsed?.choices?.[0]?.delta?.content;
-                if (c) finalAssistantText += c;
                 if (liveRuntimeScope) emitContent(controller, new TextEncoder().encode(`${line}\n\n`));
+                if (c) finalAssistantText += c;
               } catch (error) { if (liveRuntimeScope) throw error; }
             };
             try {
@@ -13748,10 +13748,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 while ((nl = capBuf.indexOf("\n")) !== -1) { capLine(capBuf.slice(0, nl)); capBuf = capBuf.slice(nl + 1); }
               }
             } finally {
-              capBuf += dec.decode();
-              if (capBuf) capLine(capBuf);
+              if (!liveRuntimeScope) {
+                capBuf += dec.decode();
+                if (capBuf) capLine(capBuf);
+              }
             }
             if (liveRuntimeScope) {
+              capBuf += dec.decode();
+              if (capBuf) capLine(capBuf);
               if (!finalStreamDone) throw new Error("live_answer_incomplete");
               void up.cancel().catch(() => {});
               emitContent(controller, new TextEncoder().encode("data: [DONE]\n\n"));

@@ -91,19 +91,20 @@ describe("INT-104 Live final-answer streaming preserves the canonical tool gate"
     expect(await answer).toBe("First sentence. Next sentence.");
     if (protectedTurn) expect(emitted).toEqual([]);
   });
-  it.each([false, true].flatMap((protectedTurn) => ["reject", "eof", "error-frame", "non-ok", "bodyless"].map((ending) => ({ protectedTurn, ending }))))("settles an interrupted Live stream without success or transcript loss, %j", async ({ protectedTurn, ending }) => {
+  it.each([false, true].flatMap((protectedTurn) => ["reject", "eof", "error-frame", "enqueue-reject", "non-ok", "bodyless"].map((ending) => ({ protectedTurn, ending }))))("settles an interrupted Live stream without success or transcript loss, %j", async ({ protectedTurn, ending }) => {
     const branch = find((n) => ts.isIfStatement(n) && n.expression.getText(source) === "finalStreamResponse?.ok && finalStreamResponse.body") as ts.IfStatement;
     const body = branch.getText(source);
     const caught = find((n) => ts.isCatchClause(n) && n.getText(source).includes('[paige] live reasoning stream failed:')) as ts.CatchClause;
     const heldContent: Uint8Array[] = [], emitted: Uint8Array[] = [], persisted: string[] = [];
     const emit = new Function("turnCarriesProtectedContent", "heldContent", js(`return ${initializer("emitContent")};`))(() => protectedTurn, heldContent);
     let upstream!: ReadableStreamDefaultController<Uint8Array>;
-    const hasStream = ending === "reject" || ending === "eof" || ending === "error-frame";
+    const hasStream = !["non-ok", "bodyless"].includes(ending);
     const response = hasStream ? new Response(new ReadableStream<Uint8Array>({ start(c) { upstream = c; } }))
       : new Response(null, { status: ending === "non-ok" ? 503 : 200 });
     const run = new Function("finalStreamResponse", "controller", "emitContent", "turnCarriesProtectedContent", "discardContent", "persistAssistantTurn", "revalidateTenantKnowledgeScope", "console",
       js(`return (async()=>{let finalAssistantText='';const liveRuntimeScope={},payloadThreadId='thread',enc=new TextEncoder();try{${body}}catch(e)${caught.block.getText(source)}})();`));
-    const settled = run(response, { enqueue(c: Uint8Array) { emitted.push(c); } }, emit, () => protectedTurn,
+    const settled = run(response, { enqueue(c: Uint8Array) { emitted.push(c); } },
+      ending === "enqueue-reject" ? () => { throw new Error("fixture-enqueue-rejected"); } : emit, () => protectedTurn,
       () => { heldContent.length = 0; }, async (text: string) => { persisted.push(text); }, async () => true, { error() {} });
     if (hasStream) {
       upstream.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"First sentence."}}]}\n\n'));
@@ -117,7 +118,7 @@ describe("INT-104 Live final-answer streaming preserves the canonical tool gate"
     await settled;
     const wire = emitted.map((c) => new TextDecoder().decode(c)).join("");
     expect(wire.includes('[DONE]')).toBe(false);
-    expect(persisted).toEqual(protectedTurn || !hasStream ? [] : ["First sentence."]);
+    expect(persisted).toEqual(protectedTurn || !hasStream || ending === "enqueue-reject" ? [] : ["First sentence."]);
     expect(heldContent).toEqual([]);
     expect(wire.includes('paige_live_error')).toBe(true);
   });

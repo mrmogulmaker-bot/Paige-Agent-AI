@@ -964,7 +964,11 @@ const PaigeAIChatInner = ({
     const timeoutId = soloTenantSafety ? window.setTimeout(() => {
       if (!ticketAccepted(requestTicket)) return;
       abortActiveRequest();
-      setConnectionIssue("timeout");
+      if (voiceSink) {
+        voiceSink.failed();
+        retryTurnRef.current = null;
+      }
+      setConnectionIssue(voiceSink ? "live-interrupted" : "timeout");
     }, 45_000) : null;
     const assistantId = safeUuid();
     const assistantTs = Date.now();
@@ -1474,6 +1478,7 @@ const PaigeAIChatInner = ({
     const retry = retryTurnRef.current;
     if (
       !retry
+      || retry.live
       || !retry.draftHandle
       || !composerScope.writable
       || !composerDraftHandlesMatch(retry.draftHandle, composerScope.writableHandle)

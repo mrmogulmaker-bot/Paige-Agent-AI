@@ -141,3 +141,10 @@ protected and unprotected turns. The Live pump now parses complete SSE records,
 accepts one terminal DONE, ignores trailing data and routes all incomplete paths
 through the same interruption settlement. Text-mode fallback remains unchanged.
 The existing protected scope check still precedes buffer release. No real call.
+
+Timeout/replay repair: the mounted 45-second Live timeout first failed because it
+offered ordinary Retry after possible tool execution. It now settles failed,
+clears the replay record, and uses the same interrupted-answer state; the shared
+retry handler also refuses any Live record. Output-write repair: a throwing
+emitter first persisted an undelivered delta; Live now records a delta only after
+enqueue succeeds and never retries a rejected record from a finally block.
