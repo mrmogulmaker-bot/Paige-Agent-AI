@@ -104,7 +104,7 @@ BEGIN
 
   -- probe with a STALE expected generation (1, but the row is at 2) → applied:false, NO clobber.
   _r := public.mcp_connection_probe(_cid, 'connected', 'healthy', NULL,
-        '[{"tool_name":"t.stale","pin":"' || repeat('a',64) || '"}]'::jsonb, 1);
+        ('[{"tool_name":"t.stale","pin":"' || repeat('a',64) || '"}]')::jsonb, 1);
   IF (_r->>'applied') <> 'false' OR (_r->>'reason') <> 'stale_generation' THEN
     RAISE EXCEPTION '(INT-152) a stale-generation probe must be applied:false/stale_generation, got %', _r; END IF;
   SELECT status INTO _status FROM public.mcp_connections WHERE connection_id = _cid;
@@ -115,7 +115,7 @@ BEGIN
 
   -- probe with the CURRENT generation (2) → applied:true, status→connected, catalog written.
   _r := public.mcp_connection_probe(_cid, 'connected', 'healthy', NULL,
-        '[{"tool_name":"t.ok","pin":"' || repeat('b',64) || '"}]'::jsonb, 2);
+        ('[{"tool_name":"t.ok","pin":"' || repeat('b',64) || '"}]')::jsonb, 2);
   IF (_r->>'applied') <> 'true' THEN RAISE EXCEPTION '(INT-152) a current-generation probe must apply, got %', _r; END IF;
   SELECT status INTO _status FROM public.mcp_connections WHERE connection_id = _cid;
   IF _status <> 'connected' THEN RAISE EXCEPTION '(INT-152) current probe did not set connected, got %', _status; END IF;
