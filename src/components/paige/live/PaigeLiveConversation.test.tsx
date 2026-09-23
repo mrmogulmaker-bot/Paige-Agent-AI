@@ -268,6 +268,44 @@ describe("Paige Live Conversation owner surface", () => {
     expect(document.querySelector(".plc-controls")?.textContent).toContain("Unmute");
   });
 
+  it("applies the latest unmute choice when a pending renewal finally connects", async () => {
+    let finishRenew!: (value: unknown) => void;
+    control.start.mockResolvedValueOnce({
+      ok: true, sessionId: "22222222-2222-4222-8222-222222222222",
+      ticket: "first-ticket", availability: "PROOF OWED", code: "relay_ticket_issued",
+    });
+    control.renew.mockReturnValueOnce(new Promise((resolve) => { finishRenew = resolve; }));
+    await render(null, "tenant-a||", false, "thread-a");
+    await act(async () => clickText("Talk live with Paige"));
+    await act(async () => relay.connect.mock.calls[0][0].onState({ kind: "ready" }));
+    await act(async () => clickText("Mute"));
+    await act(async () => clickText("Minimize"));
+    await act(async () => { clickText("Talk live with Paige"); });
+    await flush();
+    await act(async () => clickText("Unmute"));
+    relay.setMuted.mockClear();
+    await act(async () => finishRenew({
+      ok: true, sessionId: "22222222-2222-4222-8222-222222222222",
+      ticket: "renewed-ticket", availability: "PROOF OWED", code: "relay_ticket_issued",
+    }));
+    expect(relay.connect).toHaveBeenLastCalledWith(expect.objectContaining({ ticket: "renewed-ticket" }));
+    expect(relay.setMuted).toHaveBeenLastCalledWith(false);
+    expect(document.querySelector(".plc-controls")?.textContent).toContain("Mute");
+  });
+
+  it("shows listening Presence after the relay is genuinely ready", async () => {
+    control.start.mockResolvedValueOnce({
+      ok: true, sessionId: "22222222-2222-4222-8222-222222222222",
+      ticket: "first-ticket", availability: "PROOF OWED", code: "relay_ticket_issued",
+    });
+    await render();
+    await act(async () => clickText("Talk live with Paige"));
+    await act(async () => relay.connect.mock.calls[0][0].onState({ kind: "ready" }));
+    expect(document.querySelector(".plc-state")?.textContent).toContain("Listening");
+    expect(document.querySelector('[data-presence-state="listening"]')).not.toBeNull();
+    expect(document.querySelector('[data-presence-state="unavailable"]')).toBeNull();
+  });
+
   it("keeps listening controls available after a ready relay is interrupted", async () => {
     control.start.mockResolvedValueOnce({
       ok: true, sessionId: "22222222-2222-4222-8222-222222222222",
