@@ -36,7 +36,7 @@ import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingInd
 import { PaigeArtifactCard, type PaigeArtifact } from "@/components/paige/chat/PaigeArtifactCard";
 import { ExtractionProposalCard, type ExtractionProposal } from "@/components/chat/ExtractionProposalCard";
 import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/chat/PaigeCompactingCard";
-import { PaigeLiveConversation } from "@/components/paige/live/PaigeLiveConversation";
+import { PaigeLiveConversation, type LiveVoiceSink } from "@/components/paige/live/PaigeLiveConversation";
 import { parseLiveConversationCard, type LiveConversationCard } from "@/lib/paigeLiveConversation/contract";
 import { createAnchoredTranscriptScroll, messageScrollAnchorKey } from "@/components/chat/anchoredTranscriptScroll";
 import {
@@ -935,6 +935,7 @@ const PaigeAIChatInner = ({
     originDraft: ComposerDraftHandle | null = null,
     approvedFingerprints?: string[],
     declinedFingerprints?: string[],
+    voiceSink?: LiveVoiceSink,
   ) => {
     if (soloTenantSafety && !activeTenantId) return;
     const requestHandle = originDraft ?? composerScopeRef.current.writableHandle;
@@ -1038,7 +1039,8 @@ const PaigeAIChatInner = ({
             Authorization: `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
-            messages: newMessages,
+            messages: voiceSink ? [{ role: "user", content: userText }] : newMessages,
+            ...(voiceSink ? { liveRuntimeChallenge: voiceSink.challenge } : {}),
             ...(threadId ? { threadId } : {}),
             ...(clientId ? { clientId } : {}),
             ...(clientContext ? { clientContext } : {}),
@@ -1103,6 +1105,8 @@ const PaigeAIChatInner = ({
         if (response.status >= 500) setConnectionIssue("server");
         return;
       }
+      // This is the canonical PAIGE runtime request, under the same caller JWT,
+      // thread, tenant context and governed approval path as text chat.
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -1142,12 +1146,17 @@ const PaigeAIChatInner = ({
           const jsonStr = line.slice(6).trim();
           if (jsonStr === "[DONE]") {
             streamDone = true;
+            voiceSink?.done();
             break;
           }
 
           try {
             const parsed = JSON.parse(jsonStr);
             if (!ticketAccepted(requestTicket)) return;
+            if (typeof parsed.paige_live_output === "string") {
+              voiceSink?.proof(parsed.paige_live_output);
+              continue;
+            }
             // Structured event: a "watch her work" step (#95). Upsert by id, sorted by seq.
             if (parsed.paige_step) {
               setSteps((prev) => upsertStep(prev, parsed.paige_step as PaigeStep));
@@ -1373,14 +1382,21 @@ const PaigeAIChatInner = ({
   /** `approvedFingerprints` carries the exact calls a person ticked on a confirm card. The server's
    *  gate requires the call it is about to run to be one of them; a `confirm:true` flag alone no
    *  longer opens it. Absent on every ordinary turn. */
-  const handleSend = async (overrideText?: string, approvedFingerprints?: string[], declinedFingerprints?: string[]) => {
+  const handleSend = async (overrideText?: string, approvedFingerprints?: string[], declinedFingerprints?: string[], voiceSink?: LiveVoiceSink) => {
     const originDraft = composerScope.writableHandle;
-    if (dictationActive || !originDraft) return;
+    if (dictationActive || !originDraft) { voiceSink?.failed(); return; }
     const text = (overrideText ?? input).trim();
     // Allow a send with text OR an attachment alone (#480). An override (confirm
     // card Approve/Deny) never carries a doc, so snapshot only on a real compose.
     const currentDoc = overrideText === undefined ? attachedDoc : null;
-    if ((!text && !currentDoc) || !composerScope.writable) return;
+    if ((!text && !currentDoc) || !composerScope.writable) { voiceSink?.failed(); return; }
+    let voiceSettled = false;
+    const trackedVoiceSink: LiveVoiceSink | undefined = voiceSink && {
+      challenge: voiceSink.challenge,
+      proof: (token) => voiceSink.proof(token),
+      done: () => { voiceSettled = true; voiceSink.done(); },
+      failed: () => { if (!voiceSettled) { voiceSettled = true; voiceSink.failed(); } },
+    };
     // An accepted send closes the current dictation generation before clearing
     // the composer. A delayed provider final can never become the next draft.
     dictationGenerationRef.current += 1;
@@ -1405,7 +1421,9 @@ const PaigeAIChatInner = ({
       originDraft,
       approvedFingerprints,
       declinedFingerprints,
+      trackedVoiceSink,
     );
+    if (trackedVoiceSink && !voiceSettled) trackedVoiceSink.failed();
   };
 
   // Regenerate an assistant turn: re-run the nearest preceding user turn and REPLACE
@@ -1643,6 +1661,8 @@ const PaigeAIChatInner = ({
       onAnswer={(answer) => void handleSend(answer)}
       onApprove={(fingerprints) => void handleSend("Approved — run it.", fingerprints)}
       onDecline={(fingerprints) => void handleSend("Hold off — skip that one.", undefined, fingerprints)}
+      onVoiceTurn={(text, sink) => handleSend(text, undefined, undefined, sink)}
+      onVoiceInterrupt={cancelSoloRequest}
     />
   ) : null;
 
