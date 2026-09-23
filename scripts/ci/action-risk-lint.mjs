@@ -156,6 +156,16 @@ export function parseExemptions(src) {
 /** Kept in step with `MUTATION_VERB` in the policy by `checkVerbParity` below. */
 const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|install|uninstall|grant|revoke|run|assign|enroll|book|set|draft|generate|file|advance|forge|archive|activate|deactivate|move|add|build|log|author|enable|disable|invite|upload|apply|approve|reject|decide|import|export|sync|write|post|schedule|cancel|start|stop|trigger|fire|configure|buy|purchase|pull|name|rename|propose|provision|claim|release)(_|$)/;
 
+/**
+ * The three classes `ActionRisk` permits. The regex parser encoded this inside its pattern, so moving
+ * to the AST silently DROPPED it: a typo (`"ordnary"`) or an unsupported class (`"read_only"`) parsed
+ * as a perfectly good string literal, `classified` accepted the tool, and the guard exited 0 while its
+ * own summary line quietly counted one fewer `ordinary`. Found by review, on the commit that was
+ * supposed to be the careful one. Validation a parser used to do implicitly must be made explicit when
+ * the parser is replaced, or it leaves with it.
+ */
+const RISK_CLASSES = new Set(["ordinary", "high", "owner_only"]);
+
 /** The rule: destroys, changes permissions, or goes public ⇒ never `ordinary`. */
 const IRREVERSIBLE_OR_OUTWARD = /(^|_)(delete|remove|revoke|publish|uninstall|install)(_|$)|(^|_)grant(_|$)/;
 
@@ -195,6 +205,9 @@ export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanon
   // 3. The membership rule, not a hand-list: anything that destroys, changes who may do what, or
   //    goes public is at least `high`. `owner_only` is stronger, so it satisfies this too.
   for (const { tool, risk } of policy) {
+    // An unreadable key is reported by rule 7; skipping it explicitly beats relying on
+    // `test(null)` coercing to the string "null" and happening not to match.
+    if (tool === null) continue;
     if (IRREVERSIBLE_OR_OUTWARD.test(tool) && risk === "ordinary") {
       out.push(`${tool} is classified ordinary, but its name says it destroys, changes permissions, or goes public. That needs the approval card at minimum.`);
     }
@@ -249,6 +262,7 @@ export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanon
     }
     if (entry.tool === null) out.push(`${POLICY} holds a tuple whose TOOL KEY is not a plain string literal, so it cannot be classified or checked for duplication. Write the key as a literal.`);
     else if (entry.risk === null) out.push(`${entry.tool} has a class that is not a plain string literal in ${POLICY} — write \`ordinary\`, \`high\` or \`owner_only\` literally, so the class is greppable.`);
+    else if (!RISK_CLASSES.has(entry.risk)) out.push(`${entry.tool} is classified \`${entry.risk}\` in ${POLICY}, which is not one of ordinary | high | owner_only. A class outside the enum is not a classification — \`classifyAction()\` will not honour it, and a typo here reads as "classified" while the clamp has nothing to clamp on.`);
     else if (entry.reason === null) out.push(`${entry.tool} has a reason that is not a single string literal in ${POLICY} (a concatenation or an interpolated template). Write it as one literal — a reason assembled at runtime cannot be read by a reviewer scanning the table.`);
   }
 
@@ -356,6 +370,17 @@ function selfTest() {
   bad += ok("an entry that is not a tuple at all is reported, not dropped",
     findings({ ...base, policy: [...base.policy, { tool: null, risk: null, reason: null, unreadable: "...spread" }] })
       .some((f) => f.includes("cannot read as a tuple")));
+  // The enum the AST move silently dropped. A parser that validated implicitly took its validation
+  // with it when it was replaced, and the guard exited 0 with its own summary counting one fewer.
+  bad += ok("a typo'd class is reported, not accepted as a classification",
+    findings({ ...base, policy: [...base.policy, { tool: "t_create_98", risk: "ordnary", reason: "a sufficiently long reason", unreadable: null }], chat: { ...base.chat, declared: [...base.chat.declared, "t_create_98"] } })
+      .some((f) => f.includes("is classified `ordnary`") && f.includes("not one of ordinary | high | owner_only")));
+  bad += ok("`read_only` is rejected as a class (it is not an ActionRisk — see #1383)",
+    findings({ ...base, policy: [...base.policy, { tool: "t_create_97", risk: "read_only", reason: "a sufficiently long reason", unreadable: null }], chat: { ...base.chat, declared: [...base.chat.declared, "t_create_97"] } })
+      .some((f) => f.includes("is classified `read_only`")));
+  bad += ok("a correctly-cased valid class stays silent",
+    findings({ ...base, policy: [...base.policy, { tool: "t_create_96", risk: "owner_only", reason: "a sufficiently long reason", unreadable: null }], chat: { ...base.chat, declared: [...base.chat.declared, "t_create_96"] } })
+      .every((f) => !f.includes("not one of ordinary")));
   bad += ok("a non-literal KEY is reported (it cannot be duplicate-checked)",
     findings({ ...base, policy: [...base.policy, { tool: null, risk: "ordinary", reason: "a sufficiently long reason", unreadable: null }] })
       .some((f) => f.includes("TOOL KEY is not a plain string literal")));
