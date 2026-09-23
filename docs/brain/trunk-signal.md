@@ -121,8 +121,16 @@ an earlier step has already failed*. That is deliberate — its result should al
 means the tail of a failed `verify` log shows a passing step and looks clean. The GitHub log API
 returns only the tail, so the step that actually failed is usually invisible there.
 
-**Reproduce locally instead of reading the tail.** This cost real time twice in one session, once to a
-lane and once to the coordinator.
+**Read the STEPS, not the log.** A workflow job's API record carries a `steps` array with a per-step
+`conclusion`, so one call tells you exactly which step failed and which were skipped — no log parsing,
+no local repro, no guessing. In GitHub MCP terms that is `actions_get` with `method: "get_workflow_job"`
+and the job id; the job id is the `check_run_id` the PR's check-run listing gives you for `verify`.
+Measured on this branch: the array showed steps 1–74 `success` or `skipped`, step 75 `Test`
+`in_progress`, steps 76–104 `pending` — an unambiguous answer while the log tail showed nothing useful
+at all.
+
+**Reproduce locally when you need the failing test names**, not to find out which step failed. Reading
+the tail for that cost real time twice in one session, once to a lane and once to the coordinator.
 
 **A background-task wrapper's exit code is not the command's.** A harness notification saying
 "completed (exit code 0)" reports the *wrapper*. Echo and read the command's own `EXIT=$?`. This is not
@@ -145,9 +153,9 @@ command you would use to check this file's own numbers.
 
 ## Where this file's confidence ends
 
-One row below rests on someone else's word, and one row is a correction of this file's own earlier
-mistake. Both are here so a future session knows the difference between what was measured and what
-was believed.
+One row below rests on someone else's word; the other was believed, then measured, and the measurement
+contradicted the belief. Both are here so a future session knows the difference between what was
+measured and what was merely handed down — including when this file was the one doing the handing.
 
 - **`github-advanced-security` — measured, and NOT what this file first claimed.** It is
   **flapping**, not constantly red. Counted from its own run history (workflow `325162554`,
@@ -168,9 +176,29 @@ was believed.
   so a red is *not* proof the check is simply broken either. Do not let it block you. **Do not let it
   reassure you.** If you need a real security signal on a change, get one from something else.
 
-  **The `⚠ ATTRIBUTED` part is only the cause.** It is described as GitHub's own agent failing inside
-  its own runtime; that came from the program coordinator and is not confirmable from here. The
-  intermittency is consistent with it, but consistent-with is not evidence-for.
+  **The cause is now MEASURED, not attributed — and it is worse than "flaky".** Read from the failed
+  job's own log on head `676aa27da`:
+
+  ```
+  qt [SessionModelError]: Execution failed: CAPIError: 400 The requested model is not supported.
+  COPILOT_AGENT_MODEL: sweagent-capi:claude-opus-5[ReasoningEffort=medium]
+  ```
+
+  GitHub's code-scanning agent asks its own API for a model, the API answers **HTTP 400 "The requested
+  model is not supported"**, and the job exits 1. Corroborating, and also measured: the **check run's
+  output is entirely empty** — no title, no summary, no text — on both heads checked (`221d16669` and
+  `676aa27da`). That is not what a check that found something looks like. *Inference, flagged as one:*
+  model availability flipping minute to minute would produce exactly the flapping measured above — but
+  that is a hypothesis the error is consistent with, not a second measurement.
+
+  **So a red here does not mean "a scan that failed" — it means NO SCAN COMPLETED.** It produced no
+  findings and no output, so there is no security signal on that head in either direction. That is the
+  honest reading, and it is a reason to want the check fixed, not a reason to relax about it.
+
+  **You probably cannot re-run it.** `rerun-failed-jobs` on that workflow run returns **403 "This
+  workflow run cannot be retried"** — measured, not assumed. The one re-run the drive-to-green posture
+  allows is unavailable here, so the correct move is to say so once on the PR and keep watching, never
+  to treat the red as cleared.
 
   **How this file got it wrong, recorded because the method is the point.** The first version of this
   row said "RED on every PR head" and "fails identically regardless of diff content", and told every
