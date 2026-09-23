@@ -95,6 +95,26 @@ const SECRET_ROUTE_SEGMENTS = new Set(["sign", "join", "u"]);
 const SECRET_PARAM_RE =
   /^(token|ct|invite|invite_token|code|key|secret|jwt|access_token|refresh_token|api_key|apikey|password|signature|sig)$/i;
 
+/**
+ * The same rule for OBJECT KEYS, deliberately narrower.
+ *
+ * `?code=` in a URL is an authorization code; a PROPERTY named `code` is a discount code, an error
+ * code or a country code, and blanking it is silent analytics loss. The generic names are kept for
+ * query strings, where they are unambiguous, and dropped here, where they are not.
+ */
+const SECRET_PROPERTY_RE =
+  /^(token|invite_token|access_token|refresh_token|jwt|secret|api_key|apikey|password)$/i;
+
+/** Attribution fields the scrub must never touch — they are the reason the payload exists. */
+const ATTRIBUTION_KEYS = new Set([
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "referral_code",
+]);
+
 /** An identifier, not a secret. Paths carry these everywhere; redacting them would blind analytics. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -130,13 +150,28 @@ function looksLikeCredential(value: string): boolean {
   if (UUID_RE.test(value)) return false;
   // Long unbroken hex — the signing/unsubscribe mint shape.
   if (/^[0-9a-fA-F]{32,}$/.test(value)) return true;
-  // base64 / base64url — the invite mint shape.
-  if (!/^[A-Za-z0-9+/=_-]+$/.test(value)) return false;
+  // `_` and `-` are WORD SEPARATORS, not entropy, and treating them as a character class was a
+  // real regression: `black_friday_2026_launch` scored lowercase+digit+underscore and was redacted
+  // out of `utm_campaign`, which `track-event` writes to its own column — campaign attribution
+  // destroyed platform-wide by a guard meant for credentials. A separator therefore DISQUALIFIES a
+  // value instead of scoring for it. This is safe against what this platform actually mints: the
+  // signing and unsubscribe tokens are hex (caught above) and invites are STANDARD base64, whose
+  // alphabet has no `_` or `-` at all. It would miss a base64URL token — we mint none, and if one
+  // is ever added, the route belt and the param-name rule still cover it.
+  if (/[_-]/.test(value)) return false;
+  if (!/^[A-Za-z0-9+/=]+$/.test(value)) return false;
+  // LENGTH ALONE IS SUFFICIENT AT THE MINT WIDTH. An adversarial review Monte-Carlo'd 2,000,000
+  // tokens of the real invite shape and measured 1 in 786 scoring only two character classes —
+  // all letters, no digit and no `+` or `/`. A class count alone therefore leaks roughly one
+  // invite in every 786 on any route the belt does not cover. Invites are exactly 32 characters,
+  // so anything this long with no separator and a strict base64 alphabet is treated as a secret
+  // regardless of what it scores. A human-authored slug of that width has separators.
+  if (value.length >= 32) return true;
   const classes =
     (/[a-z]/.test(value) ? 1 : 0) +
     (/[A-Z]/.test(value) ? 1 : 0) +
     (/[0-9]/.test(value) ? 1 : 0) +
-    (/[+/=_]/.test(value) ? 1 : 0);
+    (/[+/=]/.test(value) ? 1 : 0);
   return classes >= 3;
 }
 
@@ -148,10 +183,22 @@ export function redactSecretPath(pathname: string): string {
   // BELT: on a known credential route the whole tail goes, so a sub-path cannot smuggle it back
   // and a token split across segments by a literal `/` cannot survive in pieces.
   if (SECRET_ROUTE_SEGMENTS.has(head)) return `/${head}/${REDACTED}`;
-  // BRACES: anywhere else, redact per segment on shape alone.
-  return segments
-    .map((seg, i) => (i === 0 ? seg : looksLikeCredential(safeDecode(seg)) ? REDACTED : seg))
-    .join("/");
+  // BRACES: anywhere else, redact per segment on shape alone. EVERY segment is inspected —
+  // skipping index 0 assumed the input always begins with `/`, which is true of a pathname and
+  // false of the bare strings this is also reached with.
+  const out: string[] = [];
+  for (const seg of segments) {
+    if (!looksLikeCredential(safeDecode(seg))) {
+      out.push(seg);
+      continue;
+    }
+    // A STANDARD-base64 token contains `/`, so it arrives already split across segments. Once one
+    // piece is a credential the rest belongs to the same secret — and the trailing piece is often
+    // under the length floor, so inspecting it alone would let a fragment through. Collapse.
+    out.push(REDACTED);
+    return out.join("/");
+  }
+  return out.join("/");
 }
 
 /**
@@ -185,6 +232,12 @@ export function redactSecretUrl(url: string): string {
     const parsed = new URL(url);
     parsed.pathname = redactSecretPath(parsed.pathname);
     parsed.search = redactSecretSearch(parsed.search);
+    // The FRAGMENT carries credentials too: a Supabase implicit-flow recovery link arrives as
+    // `#access_token=…&refresh_token=…`. It is parsed with the same rules as a query string.
+    if (parsed.hash.length > 1) {
+      const redactedHash = redactSecretSearch(`?${parsed.hash.slice(1)}`);
+      parsed.hash = `#${redactedHash.slice(1)}`;
+    }
     return parsed.toString();
   } catch {
     // Not a parseable absolute URL. Never hand back something unredacted on a guess.
@@ -203,18 +256,41 @@ export function redactSecretUrl(url: string): string {
  * site passing a URL, an error message quoting one — is still removed. Strings are redacted as
  * URL-ish when they contain a `/` or `?`, and by bare shape otherwise.
  */
+function scrubString(value: string): string {
+  if (!value) return value;
+  // WHOLE-VALUE FIRST. A bare standard-base64 token contains `/`, so routing on "has a slash"
+  // sent it down the URL path, where it split across segments and the head was skipped — the one
+  // token in the set that needs no hash-break was passing through byte-for-byte.
+  if (looksLikeCredential(value)) return REDACTED;
+  // A real URL or path: redact structurally so the shape survives for analytics.
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value) || value.startsWith("/")) return redactSecretUrl(value);
+  // FREE TEXT: redact credential-shaped runs in place. Rewriting the whole string as a path would
+  // turn "visited /join/x earlier" into "/join/<redacted>", destroying the sentence around it.
+  return value.replace(/[A-Za-z0-9+/=]{20,}/g, (run) => (looksLikeCredential(run) ? REDACTED : run));
+}
+
 function scrubDeep(value: unknown, depth = 0): unknown {
-  if (depth > 8) return value;
-  if (typeof value === "string") {
-    if (!value) return value;
-    if (value.includes("/") || value.includes("?")) return redactSecretUrl(value);
-    return looksLikeCredential(value) ? REDACTED : value;
+  // FAIL CLOSED AT THE CAP. This returned the value unscrubbed, so a credential nested past the
+  // limit was handed straight to `JSON.stringify` — the exact thing this function exists to stop,
+  // at its own boundary. Redacting only STRINGS here is not enough either: at the cap the value is
+  // usually the next OBJECT down, and handing that back carries everything inside it out intact.
+  // Only primitives, which cannot hide a credential, survive the cap.
+  if (depth > 8) {
+    if (value === null || value === undefined) return value;
+    return typeof value === "number" || typeof value === "boolean" ? value : REDACTED;
   }
+  if (typeof value === "string") return scrubString(value);
   if (Array.isArray(value)) return value.map((v) => scrubDeep(v, depth + 1));
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = SECRET_PARAM_RE.test(k) ? REDACTED : scrubDeep(v, depth + 1);
+      // Attribution values are never credentials and ARE load-bearing — `track-event` writes
+      // utm_source/utm_medium/utm_campaign into their own columns, sized for long campaign names.
+      // Exempting them by key means a future shape-rule change can never quietly cost the business
+      // its campaign reporting again.
+      if (ATTRIBUTION_KEYS.has(k)) out[k] = v;
+      else if (SECRET_PROPERTY_RE.test(k)) out[k] = REDACTED;
+      else out[k] = scrubDeep(v, depth + 1);
     }
     return out;
   }

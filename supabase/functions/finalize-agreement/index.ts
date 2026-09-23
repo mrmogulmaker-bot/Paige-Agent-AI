@@ -186,7 +186,12 @@ Deno.serve(async (req) => {
   //
   // LINKING IS NOT THIS FUNCTION'S JOB. It belongs to `public.accept_tenant_invite`, by owner
   // ruling recorded in 20260803160000_hotfix_612_clients_linking_integrity.sql:20-22:
-  // "linkage to the auth user happens ONLY through the existing invite-accept path". That same
+  // "linkage to the auth user happens ONLY through the existing invite-accept path". Precisely:
+  // one other linker exists, in the BROWSER (`useOnboardingClient.ts`, match-by-email then bind),
+  // but it runs as the USER rather than as service-role, and the only permissive SELECT a consumer
+  // satisfies on `clients` is `clients_linked_self_read` (`linked_user_id = auth.uid()`), which by
+  // definition cannot return an unlinked row — so it cannot claim one. This function was the only
+  // path that could, because it reads with service-role and RLS never ran. That same
   // note records WHY a gate on tenant membership is the wrong repair here: an earlier draft
   // added a linking RPC validating "target is an active tenant_members row of the caller's
   // tenant", and the adversarial §9 verifier proved that oracle is itself admin-forgeable. A

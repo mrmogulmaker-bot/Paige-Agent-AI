@@ -232,7 +232,11 @@ export async function sealAgreementPdf(input: {
   // pdf-lib's StandardFonts THROW on an unencodable codepoint, so an un-sanitised signer name would
   // take down the seal — at the one moment the record matters most.
   const text = (s: string, size: number, f: unknown, color = ink, indent = 0) => {
-    const line = sanitizeWinAnsi(s);
+    // This helper draws ONE line and advances `y` by exactly one line. `sanitizeWinAnsi` now
+    // normalises CR to `\n` instead of mapping it to `?`, and pdf-lib's drawText renders an
+    // embedded newline as two lines — which would silently overlap the line that follows. A name
+    // or a heading is a single line by definition, so flatten it.
+    const line = sanitizeWinAnsi(s).replace(/\n+/g, " ").trim();
     room(size * 1.5);
     page.drawText(line, { x: MARGIN + indent, y: y - size, size, font: f, color });
     y -= size * 1.5;

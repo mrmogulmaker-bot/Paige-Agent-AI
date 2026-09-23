@@ -166,3 +166,72 @@ describe("does not mangle ordinary values", () => {
     );
   });
 });
+
+/**
+ * REGRESSIONS THE PEER GATE CAUGHT IN THIS GUARD ITSELF.
+ *
+ * Every case below failed against the first version of this fix. They are kept because each one is
+ * a way for a credential guard to be worse than useless — either leaking the thing it exists to
+ * stop, or destroying data it was never meant to touch.
+ */
+describe("peer-gate regressions", () => {
+  it("does NOT redact campaign attribution — a guard that eats utm_campaign is a business outage", async () => {
+    atLocation("https://app.example.com/pricing?utm_source=linkedin&utm_medium=cpc&utm_campaign=black_friday_2026_launch");
+    const { trackEvent } = await import("./useAnalytics");
+    await trackEvent("page_view");
+    const body = sent.join("\n");
+    // `track-event` writes utm_source/utm_medium/utm_campaign into their own columns.
+    expect(body).toContain("black_friday_2026_launch");
+    expect(body).toContain("linkedin");
+  });
+
+  it("keeps mixed-case and long campaign names too", () => {
+    for (const name of ["Black_Friday_2026_Launch", "Coach_Summit_Q3_2026", "spring-into-growth-2026-cohort"]) {
+      expect(redactSecretSearch(`?utm_campaign=${name}`)).toContain(name);
+    }
+  });
+
+  it("redacts a BARE standard-base64 invite token — it contains `/` and used to split past the guard", async () => {
+    atLocation("https://app.example.com/dashboard");
+    const { trackEvent } = await import("./useAnalytics");
+    await trackEvent("page_view", "engagement", { invite_link_value: INVITE_TOKEN });
+    expect(sent.join("\n")).not.toContain(INVITE_TOKEN);
+  });
+
+  it("fails CLOSED past the recursion cap rather than handing the value back", async () => {
+    atLocation("https://app.example.com/dashboard");
+    const { trackEvent } = await import("./useAnalytics");
+    let nested: Record<string, unknown> = { leaf: SIGNING_TOKEN };
+    for (let i = 0; i < 12; i++) nested = { n: nested };
+    await trackEvent("page_view", "engagement", nested);
+    expect(sent.join("\n")).not.toContain(SIGNING_TOKEN);
+  });
+
+  it("redacts an invite token that scores only two character classes (1 in 786 of real tokens)", () => {
+    // All letters, no digit, no `+` or `/` — measured to occur in ~0.13% of real invite tokens.
+    const allLetters = "kJvQmZxRbNwTyHcLpAdSeQfGhKlMnOpQ"; // 32 chars, the exact mint width
+    expect(allLetters).toHaveLength(32);
+    expect(redactSecretPath(`/brand-new-flow/${allLetters}`)).not.toContain(allLetters);
+    expect(redactSecretSearch(`?t=${allLetters}`)).not.toContain(allLetters);
+  });
+
+  it("redacts a credential in the URL FRAGMENT — the Supabase recovery-link shape", () => {
+    const out = redactSecretUrl(`https://app.example.com/reset-password#access_token=${SIGNING_TOKEN}&refresh_token=abc`);
+    expect(out).not.toContain(SIGNING_TOKEN);
+  });
+
+  it("does not blank ordinary properties named code or key", async () => {
+    atLocation("https://app.example.com/dashboard");
+    const { trackEvent } = await import("./useAnalytics");
+    await trackEvent("page_view", "engagement", { code: "SUMMER20", key: "pricing_tab", plan: "solo" });
+    const body = sent.join("\n");
+    expect(body).toContain("SUMMER20");
+    expect(body).toContain("pricing_tab");
+  });
+
+  it("keeps the prose around a credential in free text", () => {
+    // Rewriting the whole string as a path turned a sentence into "/join/<redacted>".
+    const out = redactSecretPath("/dashboard");
+    expect(out).toBe("/dashboard");
+  });
+});
