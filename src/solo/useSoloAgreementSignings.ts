@@ -288,6 +288,27 @@ type SigningsData = {
     SigningsState[K];
 };
 
+/**
+ * The error sentence an edge function actually sent, dug out of the thrown transport error.
+ *
+ * `supabase.functions.invoke` rejects on any non-2xx and hands back `{ data: null, error }`, with
+ * the original `Response` on `error.context`. Without this, every deliberate refusal a function
+ * writes is discarded and the human gets a generic sentence instead of the one that tells them
+ * what to do.
+ */
+async function refusalMessage(error: unknown): Promise<string | null> {
+  const context = (error as { context?: unknown } | null | undefined)?.context;
+  const response = context as Response | undefined;
+  if (!response || typeof response.clone !== "function") return null;
+  try {
+    // Cloned so this never consumes a body another caller may still read.
+    const body = await response.clone().json() as { error?: unknown } | null;
+    return toText(body?.error);
+  } catch {
+    return null;
+  }
+}
+
 export function useSoloAgreementSignings(): SigningsState {
   const { activeTenantId, accountContextLoading } = useTenantContext();
   // An identity epoch also invalidates a completion after A -> B -> A.
@@ -544,11 +565,25 @@ export function useSoloAgreementSignings(): SigningsState {
       // that is not an explicit ok is a failure however green the transport was.
       if (error || payload.ok !== true) {
         console.error("[signings] send failed", error ?? payload.error);
-        const said = toText(payload.error);
+        // THE SERVER'S OWN SENTENCE, WHICH NEVER USED TO ARRIVE. supabase-js throws
+        // FunctionsHttpError on any non-2xx BEFORE it parses the body, so `data` is null and
+        // `payload.error` is undefined — every refusal the function writes ("that PDF is
+        // password-protected", "add a contact email", "this agreement is already sent") was
+        // replaced by the generic fallback below. The operator was told to "check the record"
+        // when the function had already told them exactly what to do.
+        const said = toText(payload.error) ?? await refusalMessage(error);
         return { ok: false, message: said || "That could not be sent. Nothing was delivered; check the record before trying again." };
       }
+      // The function reports the people it emailed as OBJECTS — `{ email }` and `{ email, reason }`
+      // (agreement-send/index.ts:281-282, :367). Reading them as strings filtered every one of
+      // them out, so a completely successful send arrived here as an empty list and the panel
+      // announced "Nothing went out. No message reached anybody" over a delivered agreement.
       const list = (value: unknown): string[] =>
-        Array.isArray(value) ? value.map((x) => toText(x)).filter((x): x is string => Boolean(x)) : [];
+        Array.isArray(value)
+          ? value
+              .map((x) => toText(x) ?? toText((x as { email?: unknown } | null)?.email))
+              .filter((x): x is string => Boolean(x))
+          : [];
       setRefreshKey((key) => key + 1);
       return { ok: true, sent: list(payload.sent), notDelivered: list(payload.notDelivered) };
     } catch {

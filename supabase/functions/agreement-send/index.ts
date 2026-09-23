@@ -17,7 +17,7 @@
 // comes from `current_user_tenant_id()` under the CALLER'S OWN JWT, every query is scoped to it, and
 // the database re-proves each link by trigger even for the service role.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { renderPresentedPdf, hashDocument, assertDocumentIsRenderable, assertNamesAreStampable, UnrenderableDocumentError, UnrenderableNameError } from "../_shared/agreements/document.ts";
+import { renderPresentedPdf, hashDocument, assertDocumentIsRenderable, assertNamesAreStampable, inspectUploadedPdf, planPresentedDocument, UnrenderableDocumentError, UnrenderableNameError } from "../_shared/agreements/document.ts";
 import { expiryFromNow, mintSignerToken, sha256Hex, SIGNING_TOKEN_TTL_DAYS } from "../_shared/agreements/token.ts";
 import { tenantContactForDisclosure } from "../_shared/agreements/notify.ts";
 
@@ -98,7 +98,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // Scoped by the caller's tenant, never by an id from the body alone.
   const { data: agreement } = await admin.from("paige_agreements")
-    .select("id,tenant_id,title,body_source,body_markdown,status,expires_at,content_storage_key,content_sha256")
+    .select("id,tenant_id,title,body_source,body_markdown,document_path,status,expires_at,content_storage_key,content_sha256")
     .eq("id", agreementId).eq("tenant_id", tenantId).maybeSingle();
   if (!agreement) return json({ ok: false, error: "That agreement is not in this workspace." }, 404);
 
@@ -164,12 +164,72 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   if (!contentKey || !contentHash) {
     let bytes: Uint8Array;
-    try {
-      bytes = await renderPresentedPdf({ title: agreement.title, bodyMarkdown: agreement.body_markdown });
-    } catch (e) {
-      console.error("[agreement-send] render failed", { agreementId, error: String(e) });
-      if (e instanceof UnrenderableDocumentError) return json({ ok: false, error: e.message }, 422);
-      return json({ ok: false, error: "This agreement could not be turned into a document. Nothing was sent." }, 422);
+
+    const plan = planPresentedDocument(agreement.body_source as string | null, agreement.document_path as string | null);
+
+    if (plan.kind !== "render") {
+      // THE TENANT'S OWN FILE *IS* THE AGREEMENT, and this branch exists because rendering here
+      // presented a document nobody wrote. `paige_agreements` CHECKs that a tenant_upload has
+      // `body_markdown IS NULL` (20270401000000:132) and `save_paige_agreement` nulls it on every
+      // write (:838), so the render below received null; `assertDocumentIsRenderable` let it pass,
+      // because `String(null ?? "")` is empty and an empty string loses no characters — that assert
+      // tests character fidelity, not whether there is anything to sign; and `doc-render` turns a
+      // null body with a title into ZERO blocks rather than throwing. The result was a title-only
+      // PDF, uploaded, hashed into `content_sha256` as the integrity record, and emailed for
+      // signature, while the file the tenant uploaded was never read. The SELECT above did not even
+      // ask for `document_path`.
+      //
+      // The uploaded file lives in a DIFFERENT bucket from the presented one: the browser writes to
+      // `tenant-agreements` (useSoloAgreementSignings.ts:439), the frozen presentation lives in
+      // `paige-agreements`. Crossing that seam is deliberate, and the presented copy is still
+      // written to `paige-agreements` below so everything downstream — freeze, re-read, seal — is
+      // unchanged.
+      if (plan.kind === "refuse") {
+        console.error("[agreement-send] tenant_upload with no document_path", { agreementId });
+        return json({ ok: false, error: "This agreement has no uploaded document, so nothing was sent. Re-upload the file and try again." }, 422);
+      }
+      const documentPath = plan.path;
+
+      // The title still goes through the character check: it is rendered into the signing record
+      // even when the body is the tenant's own file. The body is not ours to validate.
+      try {
+        assertDocumentIsRenderable(agreement.title, null);
+      } catch (e) {
+        if (e instanceof UnrenderableDocumentError) return json({ ok: false, error: e.message }, 422);
+        throw e;
+      }
+
+      const source = await admin.storage.from("tenant-agreements").download(documentPath);
+      if (source.error || !source.data) {
+        console.error("[agreement-send] uploaded document could not be read", { agreementId, error: source.error?.message });
+        return json({ ok: false, error: "The uploaded document could not be read, so nothing was sent." }, 502);
+      }
+      bytes = new Uint8Array(await source.data.arrayBuffer());
+
+      // REFUSE RATHER THAN PRESENT SOMETHING WE CANNOT SHOW OR SEAL. The upload control accepts
+      // .doc/.docx/.rtf/.txt/.md as well as PDF, the presented bucket accepts application/pdf only,
+      // and the seal stamps signatures INTO the document, which needs a PDF. Sending a file we
+      // cannot present is the same failure as sending a blank one; refusing is the honest outcome,
+      // and it is what makes converting-or-restricting a decision we can take later rather than a
+      // prerequisite for stopping the leak.
+      const inspected = await inspectUploadedPdf(bytes);
+      if (!inspected.ok) {
+        console.error("[agreement-send] uploaded document cannot be presented", { agreementId, documentPath, reason: inspected.reason });
+        const message = inspected.reason === "not_pdf"
+          ? "That document is not a PDF, so it cannot be sent for signature yet. Upload a PDF and send it again."
+          : inspected.reason === "empty"
+          ? "That PDF has no pages, so there is nothing to sign. Upload the document again."
+          : "That PDF could not be opened — it may be password-protected or damaged. Save an unprotected copy and upload it again.";
+        return json({ ok: false, error: message }, 422);
+      }
+    } else {
+      try {
+        bytes = await renderPresentedPdf({ title: agreement.title, bodyMarkdown: agreement.body_markdown });
+      } catch (e) {
+        console.error("[agreement-send] render failed", { agreementId, error: String(e) });
+        if (e instanceof UnrenderableDocumentError) return json({ ok: false, error: e.message }, 422);
+        return json({ ok: false, error: "This agreement could not be turned into a document. Nothing was sent." }, 422);
+      }
     }
 
     const key = `${tenantId}/${agreementId}/presented-${crypto.randomUUID()}.pdf`;

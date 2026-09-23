@@ -14,8 +14,11 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
+  assertDocumentIsRenderable,
   assertNamesAreStampable,
   hashDocument,
+  looksLikePdf,
+  planPresentedDocument,
   renderPresentedPdf,
   sealAgreementPdf,
   UnrenderableDocumentError,
@@ -315,4 +318,100 @@ Deno.test("ordinary Latin names are stamped verbatim", () => {
     assertEquals(sanitizeWinAnsi(name), name);
     assertEquals(wouldLoseCharacters(name), false);
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WHICH DOCUMENT GETS SIGNED (#1395)
+//
+// Every send rendered the presented PDF from `body_markdown`. For `body_source = 'tenant_upload'`
+// that column is NULL by CHECK, so the render produced a title and no content; those bytes were
+// uploaded, hashed into `content_sha256` as the integrity record, and emailed for signature, while
+// the file the tenant uploaded was never read — the send path did not even SELECT `document_path`.
+//
+// Nothing caught it because the edge function is only type-checked in CI, never exercised. The
+// decision now lives in a pure function so these tests can reach it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+Deno.test("a tenant's uploaded document is presented, never rendered", () => {
+  assertEquals(planPresentedDocument("tenant_upload", "tenant/source/1700000000-nda.pdf"), {
+    kind: "uploaded",
+    path: "tenant/source/1700000000-nda.pdf",
+  });
+});
+
+Deno.test("a drafted or templated agreement is still rendered", () => {
+  assertEquals(planPresentedDocument("paige_draft", null), { kind: "render" });
+  assertEquals(planPresentedDocument("tenant_template", null), { kind: "render" });
+  // An unknown or absent source renders, which is the pre-existing behaviour for everything that
+  // is not an upload. Only `tenant_upload` carries a file.
+  assertEquals(planPresentedDocument(null, null), { kind: "render" });
+});
+
+Deno.test("an upload with no file is REFUSED, never quietly rendered", () => {
+  // This is the exact substitution that produced the defect: absent document, render anyway.
+  assertEquals(planPresentedDocument("tenant_upload", null), {
+    kind: "refuse",
+    reason: "missing_document",
+  });
+  assertEquals(planPresentedDocument("tenant_upload", "   "), {
+    kind: "refuse",
+    reason: "missing_document",
+  });
+});
+
+Deno.test("the renderability assert CANNOT catch an absent body — it never could", () => {
+  // Documented as a test rather than a comment because the whole defect rests on it. The guard
+  // tests whether characters survive the exporter, not whether there is anything to sign, and
+  // `String(null ?? "")` is empty — an empty string loses no characters. Anyone who assumes this
+  // assert protects against a missing document is making the mistake that shipped #1395.
+  assertDocumentIsRenderable("Mutual NDA", null);
+  assertDocumentIsRenderable("Mutual NDA", "");
+});
+
+Deno.test("rendering a null body really does produce a document with no body — the defect, reproduced", async () => {
+  const bytes = await renderPresentedPdf({
+    title: "Mutual NDA",
+    // The exact value the send path passed for every tenant_upload.
+    bodyMarkdown: null as unknown as string,
+  });
+  // It does not throw, and it does produce a real PDF. That is precisely why this shipped: every
+  // signal downstream — upload, hash, freeze, email — looked healthy.
+  assert(bytes.length > 0, "expected a PDF to be produced");
+  assert(looksLikePdf(bytes), "expected the rendered bytes to be a PDF");
+
+  // And it is SMALL — a title page and nothing else. Compared against the same title with a real
+  // body, because an absolute byte count would be a brittle assertion about pdf-lib's output.
+  // The gap is the missing agreement.
+  const withBody = await renderPresentedPdf({
+    title: "Mutual NDA",
+    bodyMarkdown: "## Terms\n\nThe parties agree as follows. ".repeat(40),
+  });
+  assert(
+    withBody.length > bytes.length,
+    `expected a real body to produce a larger document than a null one (null=${bytes.length}, body=${withBody.length})`,
+  );
+});
+
+Deno.test("looksLikePdf accepts a PDF and refuses what the upload control also allows", () => {
+  const pdf = new TextEncoder().encode("%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n");
+  assert(looksLikePdf(pdf));
+
+  // .docx and .xlsx are ZIP containers — "PK\x03\x04".
+  assert(!looksLikePdf(new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00])));
+  // .rtf
+  assert(!looksLikePdf(new TextEncoder().encode("{\\rtf1\\ansi\\deff0")));
+  // legacy .doc (OLE compound file)
+  assert(!looksLikePdf(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])));
+  // .txt / .md
+  assert(!looksLikePdf(new TextEncoder().encode("# Mutual NDA\n\nThis agreement...")));
+  // nothing at all
+  assert(!looksLikePdf(new Uint8Array()));
+  assert(!looksLikePdf(new Uint8Array([0x25, 0x50])));
+});
+
+Deno.test("looksLikePdf requires the header at offset 0, not merely somewhere", () => {
+  // A file with bytes before the header is a damaged PDF. Presenting one for signature on the
+  // strength of "the magic appears somewhere" is a guess, and this is not a place to guess.
+  const withPreamble = new TextEncoder().encode("junk-prefix%PDF-1.7\n");
+  assert(!looksLikePdf(withPreamble));
 });
