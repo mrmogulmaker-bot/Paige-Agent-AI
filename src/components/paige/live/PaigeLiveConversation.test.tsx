@@ -191,6 +191,28 @@ describe("Paige Live Conversation owner surface", () => {
     expect(relay.connect).toHaveBeenLastCalledWith(expect.objectContaining({ ticket: "renewed-ticket" }));
   });
 
+  it("shows unavailable and does not reconnect when a minimized workspace loses Live availability", async () => {
+    control.start.mockResolvedValueOnce({
+      ok: true, sessionId: "22222222-2222-4222-8222-222222222222",
+      ticket: "first-ticket", availability: "PROOF OWED", code: "relay_ticket_issued",
+    });
+    control.renew.mockResolvedValueOnce({
+      ok: false, sessionId: null, availability: "UNAVAILABLE", code: "live_audio_not_enabled",
+      explanation: "Live audio isn't available for this workspace yet. You can keep working with Paige in chat.",
+    });
+    await render(null, "tenant-a||", false, "thread-a");
+    await act(async () => clickText("Talk live with Paige"));
+    await act(async () => relay.connect.mock.calls[0][0].onState({ kind: "ready" }));
+    await act(async () => clickText("Minimize"));
+    await act(async () => clickText("Talk live with Paige"));
+    await flush();
+    expect(relay.connect).toHaveBeenCalledTimes(1);
+    expect(document.querySelector(".plc-notice")?.textContent).toContain("UNAVAILABLE");
+    expect(document.querySelector(".plc-notice")?.textContent).toContain("isn't available for this workspace yet");
+    expect(document.querySelector('[data-presence-state="unavailable"]')).not.toBeNull();
+    expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
   it("returns to listening with usable controls after holding a ready relay", async () => {
     control.start.mockResolvedValueOnce({
       ok: true, sessionId: "22222222-2222-4222-8222-222222222222",
