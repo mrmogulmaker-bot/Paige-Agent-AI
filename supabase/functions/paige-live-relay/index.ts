@@ -11,7 +11,7 @@
 // voice is sent to a vendor or recorded by this function.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { createRelayState, reduceRelay } from "../_shared/paige-live-relay-contract.ts";
-import { consumeRelayTicket, hasLiveWorkspaceStanding, isLiveAudioPilotEnabled } from "../_shared/paige-live-ticket.ts";
+import { consumeRelayTicket, hasLiveWorkspaceStanding, isLiveAudioPilotEnabled, isLiveWorkspaceCurrent } from "../_shared/paige-live-ticket.ts";
 
 const waitUntil = (promise: Promise<unknown>): void => {
   const runtime = (globalThis as unknown as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
@@ -83,7 +83,18 @@ Deno.serve(async (req) => {
     if (!await markUnavailable("workspace_unresolved")) return new Response("relay_unavailable", { status: 503 });
     return new Response("workspace_unresolved", { status: 503 });
   }
-  if (profile?.active_tenant_id && profile.active_tenant_id !== session.tenant_id) {
+  let fallbackTenantId: string | null = null;
+  if (!profile?.active_tenant_id) {
+    const { data: fallback, error: fallbackError } = await admin.from("tenant_members")
+      .select("tenant_id").eq("user_id", session.actor_user_id).eq("status", "active")
+      .order("joined_at", { ascending: true }).limit(1).maybeSingle();
+    if (fallbackError) {
+      if (!await markUnavailable("workspace_unresolved")) return new Response("relay_unavailable", { status: 503 });
+      return new Response("workspace_unresolved", { status: 503 });
+    }
+    fallbackTenantId = fallback?.tenant_id ?? null;
+  }
+  if (!isLiveWorkspaceCurrent(session.tenant_id, profile?.active_tenant_id, fallbackTenantId)) {
     if (!await markUnavailable("stale_context")) return new Response("relay_unavailable", { status: 503 });
     return new Response("stale_context", { status: 403 });
   }
