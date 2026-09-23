@@ -25,11 +25,17 @@
 -- an implicit default grant is invisible to it. And name-level auditing reports this function as
 -- ACL'd, because the NAME is — only a signature-level check surfaces it.
 --
--- AS OF THIS COMMIT THAT GUARD IS STILL BLIND. An earlier draft of this header said the guard "is
--- widened in the same change that lands this migration", which was a promise, not a fact, and a
--- promise has no business inside a migration whose whole subject is a claim that stopped being
--- true. Widening it is the next commit on this branch; until that lands, `definer-fn-lint` would
--- not catch a second overload shipped the same way.
+-- THAT BLIND SPOT IS NOW CLOSED, in `scripts/ci/definer-signature-acl.mjs`, which runs behind the
+-- same `npm run lint:definer-fns` command. It is cross-file and signature-level: it fails any public
+-- non-trigger SECURITY DEFINER function created after the last blanket sweep (20260629200234) that
+-- carries no GRANT and no REVOKE anywhere in the corpus. Proven to bite on this exact defect —
+-- remove this migration and the guard names `record_capability_run(uuid,uuid,text,text,uuid,text,
+-- text,uuid,text,jsonb)` and exits 1. Its self-test covers the overload case specifically: granting
+-- `f(uuid)` does not clear `f(uuid,text)`.
+--
+-- (An earlier draft of this header claimed the widening had already landed when it had not. That was
+-- a promise stated as a fact, inside a migration whose whole subject is a claim that stopped being
+-- true. Recorded rather than quietly overwritten.)
 --
 -- THE REPO ALREADY KNEW. 20261201000800:542-543, thirty-seven days earlier, on the sibling writer:
 --   "LOAD-BEARING. DROP FUNCTION above discarded the ACL and the recreated function defaults to
