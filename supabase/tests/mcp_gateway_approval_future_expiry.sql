@@ -97,6 +97,34 @@ BEGIN
   IF _sqlstate <> '22023' THEN RAISE EXCEPTION '(5) expected SQLSTATE 22023 on the update path, got %', _sqlstate; END IF;
 END $$;
 
+-- ── (6) An UNRELATED update to an ALREADY-LAPSED row is ALLOWED (the invariant is "never INTRODUCE a
+--        past expiry", not "never touch a lapsed row") ─────────────────────────────────────────────
+-- Fabricate a lapsed row the way elapsed time would (a stored FUTURE value that later passed), which
+-- the guard cannot reproduce at write time — so disable it for that one fixture write only. Then an
+-- update that leaves expires_at unchanged (here a pin rotation) must NOT be refused, even though the
+-- row's expiry is now in the past.
+ALTER TABLE public.mcp_connection_approvals DISABLE TRIGGER trg_mcp_reject_past_approval_expiry;
+UPDATE public.mcp_connection_approvals
+   SET expires_at = now() - interval '2 hours'
+ WHERE connection_id = 'eafe0000-0000-0000-0000-0000000000a2' AND tool_name = 'list_records';
+ALTER TABLE public.mcp_connection_approvals ENABLE TRIGGER trg_mcp_reject_past_approval_expiry;
+DO $$
+DECLARE _raised boolean := false; n int;
+BEGIN
+  BEGIN
+    UPDATE public.mcp_connection_approvals
+       SET pin = repeat('c',64)   -- unrelated column; expires_at left unchanged (still past)
+     WHERE connection_id = 'eafe0000-0000-0000-0000-0000000000a2' AND tool_name = 'list_records';
+  EXCEPTION WHEN others THEN
+    _raised := true;
+  END;
+  IF _raised THEN RAISE EXCEPTION '(6) an unrelated update to a since-lapsed row must NOT be refused'; END IF;
+  SELECT count(*) INTO n FROM public.mcp_connection_approvals
+   WHERE connection_id = 'eafe0000-0000-0000-0000-0000000000a2' AND tool_name = 'list_records'
+     AND pin = repeat('c',64) AND expires_at IS NOT NULL AND expires_at <= now();
+  IF n <> 1 THEN RAISE EXCEPTION '(6) the unrelated update should have persisted on the lapsed row: %', n; END IF;
+END $$;
+
 DO $$ BEGIN RAISE NOTICE 'MCP_GW_APPROVAL_FUTURE_EXPIRY_PROVEN'; END $$;
 
 ROLLBACK;
