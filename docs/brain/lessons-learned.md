@@ -18,13 +18,25 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
   the reviewer that the flip just summoned. Nobody decided to skip the review — the sequence discarded
   it. This is the **second occurrence in the program**; the first cost a lane six real findings it
   nearly missed.
-- **Rule.** A draft flip is a review trigger, so never flip and merge in the same breath. Pick one:
-  **flip and wait** for the review to land, or **merge and immediately request the review on the merge
-  commit** (`@codex review`, which does fire on a closed PR — measured: 👀 reaction plus the summary
-  flipping to `Manual request`). Findings then become follow-up PRs off current `main`; merged history
-  is never edited. And never let a `Running` badge stand as approval — say plainly that the review is
-  *absent*, not clean. Note the badge will name the PR head commit, not the squash commit; same tree,
-  different SHA, and worth stating precisely rather than claiming the merge commit was reviewed.
+  **And the rule was already written down.** `AGENTS.md` § *Merge gate* states it outright: marking
+  Ready auto-triggers a review on the exact head, you wait for it to complete before merging, and
+  *"never merge ahead of either"* the requested or the auto-triggered review — a gate that exists, in
+  its own words, *"because a PR marked Ready and merged seconds later has had real defects — including
+  a P1 — surfaced by the auto review only after merge."* Both the lane and the coordinator reasoned out
+  a standing rule the repo already carried, and the reasoned version came out **weaker** than the
+  in-tree one. That is the §BRAIN.2 trap in process clothing: answering *"what is our rule?"* from
+  reasoning instead of from the source. The first move on a rule you think you just discovered is to
+  grep for it.
+- **Rule.** There is **one** valid sequence, and `AGENTS.md` § *Merge gate* is its authority: **flip →
+  wait for the exact-head review → disposition every finding → merge.** A fix pushed for a finding
+  changes the head, so the wait repeats once; a second round means escalate rather than merge.
+  Requesting `@codex review` after the fact is **forensic recovery from a gate already missed**, never
+  a second acceptable path — it does fire on a closed PR (measured: 👀 reaction plus the summary
+  flipping to `Manual request`) and it is exactly what you owe once a review has been lost, but it
+  cannot un-merge an unreviewed change. Its findings become follow-up PRs off current `main`; merged
+  history is never edited. Such a review names the PR **head** commit, not the squash commit — same
+  tree, different SHA, worth stating precisely rather than claiming the merge commit was reviewed. And
+  never let a `Running` badge stand as approval: say the review is *absent*, not clean.
 
 ## Two pacing rules, from the same lane (2026-09-23)
 
