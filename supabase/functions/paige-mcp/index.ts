@@ -2071,11 +2071,48 @@ mcp.tool("list_signed_agreements", {
   }),
   handler: async (args) => {
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 200);
+
+    // §9 TENANT SCOPE. This tool returned EVERY tenant's executed agreements (#1353): the
+    // description below has always claimed "in the caller's tenant" and the query never
+    // implemented it. Two things have to be true at once for that to be a leak, and both were:
+    //
+    //   1. `admin` is the SERVICE-ROLE client, so `paige_signed_agreements`' own RLS
+    //      (`is_program_client_owner(client_id) OR can_access_contact(auth.uid(), client_id)`)
+    //      never runs. RLS is not a backstop here; it is bypassed by construction.
+    //   2. The governed door does not catch it either — capability-policy classifies this tool
+    //      `effect: "read"`, and governed-adapter refuses only `"mutate"`, so a read is
+    //      dispatched straight to this handler.
+    //
+    // So the scope has to be written HERE, explicitly, or there is none. It is derived from the
+    // verified bearer via `actorTenantId()` — never from a request argument (`contact_id` is
+    // caller-supplied and is a filter, never a scope).
+    //
+    // WHY THE JOIN: `paige_signed_agreements` carries no `tenant_id` column of its own. Its
+    // tenancy IS the tenancy of the client it is keyed to, so the predicate has to travel the
+    // `client_id -> clients.id` foreign key. `!inner` + a filter on the embedded column is the
+    // shape already proven in this runtime by `dispatch-queued-workflow-runs` and
+    // `paige-ai-chat`, not a new technique.
+    const tenantId = await actorTenantId();
+    const isGod = await actorIsPlatformOwner();
+    if (!isGod && !tenantId) return err("tenant_not_resolved");
+
+    // A NAMED contact is validated through the same seam every other client-keyed tool uses, so
+    // a foreign UUID is refused by name (`cross_tenant_forbidden`) rather than quietly returning
+    // an empty list that reads like "this client has signed nothing".
+    if (args.contact_id) {
+      const scope = await tenantScopedClient(args.contact_id);
+      if (!scope.ok) return err(scope.reason ?? "cross_tenant_forbidden");
+    }
+
     let q = admin
       .from("paige_signed_agreements")
-      .select("id, client_id, agreement_template_key, agreement_version, signed_pdf_path, signature_data, signed_at, created_at")
+      .select("id, client_id, agreement_template_key, agreement_version, signed_pdf_path, signature_data, signed_at, created_at, clients!inner(tenant_id)")
       .order("signed_at", { ascending: false })
       .limit(limit);
+    // The platform OWNER reaches across tenants; everyone else is hard-scoped to their own. An
+    // agency does NOT gain cross-tenant reach here — that is the parentage-checked agency tool
+    // set, never this read (the posture `tenantScopedClient` already documents).
+    if (!isGod) q = q.eq("clients.tenant_id", tenantId);
     if (args.contact_id) q = q.eq("client_id", args.contact_id);
     if (args.since) q = q.gte("signed_at", args.since);
     const { data, error } = await q;

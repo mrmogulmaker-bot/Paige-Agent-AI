@@ -23,7 +23,7 @@
 // structured-content→PDF home. Stamping is pdf-lib directly, the same technique `finalize-agreement`
 // already proves in this runtime. There is no third PDF path.
 
-import { renderDoc, sanitizeWinAnsi } from "../doc-render.ts";
+import { normaliseFormatting, renderDoc, sanitizeWinAnsi } from "../doc-render.ts";
 import { sha256Hex } from "./token.ts";
 
 const PDFLIB_SPEC = "npm:pdf-lib@1.17.1";
@@ -57,21 +57,15 @@ export class UnrenderableNameError extends Error {
  * Would stamping this string lose characters to `?` — i.e. is the paper record about to lie?
  *
  * Line endings and zero-width formatting are normalised FIRST, because they are not the question.
+ * That normalisation now lives inside `sanitizeWinAnsi` itself (`../doc-render.ts`), so the string
+ * this check inspects and the string the renderer stamps are the same string. While the two were
+ * separate, a name carrying U+202F or a zero-width character passed HERE and rendered as `?`.
  * `sanitizeWinAnsi`'s allow-list has no `\r`, so a body pasted from Windows — or carrying a
  * zero-width space or a narrow no-break space from a word processor — was refused at send with
  * "uses characters the PDF exporter cannot reproduce yet (Latin characters only)", which was true of
  * neither the document nor the author. The exporter drops these harmlessly; only real content loss
  * should stop a send.
  */
-function normaliseFormatting(text: string): string {
-  return String(text ?? "")
-    .replace(/\r\n?/g, "\n")
-    // Zero-width space, ZWNJ, ZWJ, word joiner and the BOM carry no meaning on a printed page.
-    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "")
-    // Narrow and figure spaces render as ordinary spaces.
-    .replace(/[\u202F\u2007\u00A0]/g, " ");
-}
-
 export function wouldLoseCharacters(text: string): boolean {
   const raw = normaliseFormatting(text);
   const before = (raw.match(/\?/g) ?? []).length;

@@ -11,6 +11,7 @@ import {
   assertEquals,
   assertNotEquals,
   assertRejects,
+  assertThrows,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
   assertNamesAreStampable,
@@ -21,6 +22,7 @@ import {
   UnrenderableNameError,
   wouldLoseCharacters,
 } from "./document.ts";
+import { sanitizeWinAnsi } from "../doc-render.ts";
 
 const PDF_MAGIC = "%PDF";
 
@@ -245,4 +247,56 @@ Deno.test("the certificate names WHICH medium the frozen hash covers", async () 
   // pdf-lib writes text as glyph runs, so assert on the artifacts differing rather than on a
   // substring: identical inputs but for the label must not produce identical bytes.
   assertNotEquals(await hashDocument(asFile), await hashDocument(asText));
+});
+
+/**
+ * RENDER WHAT YOU VALIDATED — the name on the signature block.
+ *
+ * `normaliseFormatting` used to be private to this module and was reached only from
+ * `wouldLoseCharacters`, i.e. from the VALIDATION. The RENDER called `sanitizeWinAnsi` on the raw
+ * original. Every codepoint below is handled by the former and absent from the latter's allow-list,
+ * so a name carrying one PASSED the check at send and was then stamped into the executed PDF as
+ * `?` — a legally executed document asserting that someone whose name is not the signer's signed
+ * it. These characters arrive from ordinary copy-paste (a narrow no-break space out of a word
+ * processor, a zero-width joiner out of a web page), so this was not an exotic path.
+ *
+ * The normalisation now lives inside `sanitizeWinAnsi`, which means the validated string and the
+ * rendered string are the same string by construction. These tests hold that property down.
+ */
+Deno.test("a name that passes validation renders faithfully — no `?` in the signature block", () => {
+  const divergent: Array<[string, string]> = [
+    ["U+202F narrow no-break space", " "],
+    ["U+2007 figure space", " "],
+    ["U+200B zero-width space", "​"],
+    ["U+200C zero-width non-joiner", "‌"],
+    ["U+200D zero-width joiner", "‍"],
+    ["U+2060 word joiner", "⁠"],
+    ["U+FEFF byte-order mark", "﻿"],
+    ["CR from a Windows paste", "\r"],
+  ];
+  for (const [label, ch] of divergent) {
+    const name = `Antonia${ch}Daniels`;
+    // The validation accepts it — it always did, which is why the defect was silent.
+    assertEquals(wouldLoseCharacters(name), false, `${label}: validation should accept`);
+    assertNamesAreStampable([name]);
+    // ...and the render must now agree rather than substituting `?`.
+    assert(
+      !sanitizeWinAnsi(name).includes("?"),
+      `${label}: rendered as "${sanitizeWinAnsi(name)}" — the PDF would carry a name that is not the signer's`,
+    );
+  }
+});
+
+Deno.test("a name the exporter genuinely cannot stamp is still refused at send", () => {
+  for (const name of ["Пётр Ильич", "山田太郎", "محمد عبد", "Dan 🎉 Smith"]) {
+    assertEquals(wouldLoseCharacters(name), true, `${name} should still be refused`);
+    assertThrows(() => assertNamesAreStampable([name]), UnrenderableNameError);
+  }
+});
+
+Deno.test("ordinary Latin names are stamped verbatim", () => {
+  for (const name of ["Antonio Daniel", "Zoë Müller", "Jean-Luc O'Brien", "José Álvarez"]) {
+    assertEquals(sanitizeWinAnsi(name), name);
+    assertEquals(wouldLoseCharacters(name), false);
+  }
 });
