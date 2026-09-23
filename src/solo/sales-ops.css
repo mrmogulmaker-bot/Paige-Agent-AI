@@ -655,3 +655,114 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
   .so-ec { border:1px solid CanvasText; }
   .so-subnav button[aria-selected="true"] { outline:2px solid Highlight; }
 }
+
+/* ─── THE DOCUMENT HALF OF AN AGREEMENT ────────────────────────────────────────────────────────
+ *
+ * The counterparty's signing page (`src/pages/sign/agreement-signing.css`) is APPROVED-FROZEN and
+ * is not touched here. What IS taken from it is the visual LANGUAGE, so the two halves of one
+ * transaction read as one product (§6): a panel that is a gradient rather than a flat fill, one
+ * hairline sweep across its top edge, a lift with a coloured ring on hover, and a lit dot on the
+ * state. Gold stays where §11 puts it — on the act that commits, which on this side of the seam is
+ * not here: the business is preparing a document, the CLIENT is the one who commits. So nothing in
+ * this block spends gold, and the sweep is violet.
+ */
+
+/* A five-column row. The Signature column is `auto` so its pill sets its own width and the four
+ * text columns are never squeezed by the longest state word. */
+.so-tr-5 {
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.3fr) auto minmax(0, .8fr) minmax(0, 1.1fr);
+}
+@media (max-width: 720px) {
+  .so-tr-5 { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; }
+  .so-tr-5 > span:nth-child(n+4) { display: none; }
+  .so-tr-5.so-row > span:nth-child(n+4) { display: block; grid-column: 1 / -1; }
+}
+
+/* The lit dot rides INSIDE the shared `.pill` (already inline-flex with its own gap), taking the
+ * pill's colour through `currentColor` — so the dot and the word can never disagree, and no second
+ * pill primitive is forked (§11/§18). */
+.so-sigdot {
+  width: 6px; height: 6px; border-radius: 50%; flex: none; background: currentColor;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, currentColor 18%, transparent),
+    0 0 7px color-mix(in srgb, currentColor 62%, transparent);
+}
+/* The engagement's state, quiet, beside the arrangement — present at a glance without competing
+ * with the signature column that now carries the row's headline state. */
+.so-engage { color: var(--ink-3); }
+
+/* ── the document step in the editor ───────────────────────────────────────────────────────── */
+.so-step {
+  margin: 4px 0 -4px; font: 600 10.5px/1 var(--font); letter-spacing: .1em; text-transform: uppercase;
+  color: var(--violet);
+}
+.so-src { display: grid; gap: 8px; }
+.so-src-card {
+  position: relative; overflow: hidden; display: grid; gap: 3px;
+  grid-template-columns: 26px minmax(0, 1fr); align-items: start;
+  padding: 11px 13px; text-align: left; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--r-m);
+  background: linear-gradient(180deg, var(--surface), var(--surface-2));
+  box-shadow: var(--sh-1);
+  transition: transform .18s cubic-bezier(.22,.61,.36,1), box-shadow .18s, border-color .18s;
+}
+/* The hairline sweep, one per panel, lit only on the chosen one — the same device the signing page
+ * uses to mark the panel that is live. */
+.so-src-card::after {
+  content: ""; position: absolute; left: 13px; right: 13px; top: 0; height: 2px; opacity: 0;
+  background: linear-gradient(90deg, var(--violet), color-mix(in srgb, var(--violet-2) 70%, transparent) 58%, transparent);
+  transition: opacity .18s;
+}
+.so-src-card > b { grid-column: 2; font: 600 12.5px/1.35 var(--font); color: var(--ink); }
+.so-src-card > small { grid-column: 2; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); text-wrap: pretty; }
+.so-src-ic {
+  grid-row: 1 / span 2; display: grid; place-items: center; width: 26px; height: 26px;
+  border-radius: 8px; border: 1px solid var(--line); background: var(--surface-sunk); color: var(--ink-3);
+}
+/* Three DIFFERENT answers, so three different plates rather than one plate drawn three times. */
+.so-src-ic-none   { background: var(--surface-sunk); color: var(--ink-3); }
+.so-src-ic-upload { background: var(--violet-tint); border-color: var(--violet-line); color: var(--violet); }
+.so-src-ic-paige  { background: var(--warn-tint); border-color: color-mix(in srgb, var(--warn) 30%, transparent); color: var(--warn); }
+@media (hover: hover) and (pointer: fine) {
+  .so-src-card:hover {
+    transform: translateY(-2px); border-color: var(--violet-line);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--violet) 26%, transparent), var(--sh-2);
+  }
+}
+.so-src-card:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+.so-src-card[aria-checked="true"] {
+  border-color: var(--violet);
+  background: linear-gradient(180deg, var(--violet-tint), var(--surface) 62px);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--violet) 34%, transparent), var(--sh-1);
+}
+.so-src-card[aria-checked="true"]::after { opacity: 1; }
+.so-src-card[aria-checked="true"] > small { color: var(--ink-2); }
+
+.so-prereq-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ── the send step ─────────────────────────────────────────────────────────────────────────── */
+.so-send-facts {
+  display: grid; gap: 11px; margin: 0; padding: 13px 15px;
+  border: 1px solid var(--violet-line); border-radius: var(--r-m);
+  background: linear-gradient(180deg, var(--violet-tint), var(--surface) 78px);
+  box-shadow: var(--sh-1);
+}
+.so-send-facts > div { min-width: 0; }
+.so-send-facts dt {
+  font: 600 10px/1 var(--font); letter-spacing: .11em; text-transform: uppercase;
+  color: var(--violet); margin-bottom: 4px;
+}
+.so-send-facts dd {
+  margin: 0; font: 500 13px/1.4 var(--font); color: var(--ink); overflow-wrap: anywhere;
+}
+.so-send-acts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .so-src-card { transition: none; }
+  .so-src-card:hover { transform: none; }
+}
+@media (forced-colors: active) {
+  .so-src-card { border: 1px solid CanvasText; }
+  .so-src-card[aria-checked="true"] { outline: 2px solid Highlight; }
+  .so-sigdot { background: CanvasText; box-shadow: none; }
+}

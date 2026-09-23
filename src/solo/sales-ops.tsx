@@ -39,6 +39,8 @@ import {
   DECLARED_METHODS,
 } from "./useSoloSalesOps";
 import { useSoloAgreements } from "./useSoloAgreements";
+import { useSoloAgreementSignings } from "./useSoloAgreementSignings";
+import { useTierFeatures } from "@/hooks/useTierFeatures";
 import "./sales-ops.css";
 import { SalesDialogPortal, useSalesDraftExit } from "./sales-dialog";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -69,6 +71,10 @@ const CADENCE_LABEL = {
 /**
  * Five states and a sixth READING. There is no `paid`, `invoiced` or `delivered`, because this
  * record can observe none of them — it holds what was agreed, never what happened afterwards.
+ *
+ * This is the ENGAGEMENT's state: whether the work is running, paused or finished. It is NOT the
+ * signature's state, and since the owner's 2026-09-22 ruling the two are kept apart on purpose —
+ * see `SIGNATURE_STATE` below.
  */
 const AGREEMENT_STATE = {
   draft: { label: "Draft", tone: "opportunity" },
@@ -78,6 +84,48 @@ const AGREEMENT_STATE = {
   cancelled: { label: "Cancelled", tone: "n" },
   unrecognised: { label: "Not readable", tone: "n" },
 };
+
+/**
+ * The SIGNATURE's state — a different fact from the engagement's, and the owner ruled they must
+ * never be merged: a document can be signed while the work has not started, and the work can be
+ * running under a document nobody ever countersigned.
+ *
+ * There is no `Signed` separate from `Completed`. With one signer the two cannot be told apart, so
+ * carrying both would put a word on the screen that nothing in the record could distinguish (§13).
+ * `Expired` is DERIVED by the adapter from the state plus the clock, because nothing in this build
+ * walks the table to flip it — see `useSoloAgreementSignings.displayState`.
+ *
+ * `none` is not a stored value either: it is what a commercial record with no document says, and
+ * saying "Draft" there would claim a document exists.
+ */
+const SIGNATURE_STATE = {
+  none: { label: "No document", tone: "n" },
+  draft: { label: "Not sent", tone: "opportunity" },
+  sent: { label: "Sent", tone: "warn" },
+  viewed: { label: "Opened", tone: "warn" },
+  partially_signed: { label: "Partly signed", tone: "warn" },
+  completed: { label: "Completed", tone: "ok" },
+  declined: { label: "Declined", tone: "bad" },
+  voided: { label: "Stopped", tone: "n" },
+  expired: { label: "Link expired", tone: "bad" },
+  unrecognised: { label: "Not readable", tone: "n" },
+};
+
+/** How long a signing link stays alive. Real choices, all of them finishable — never a free text
+ * field that would let somebody type a link that outlives the arrangement it commits. */
+const LINK_DAYS = [7, 14, 30];
+
+/** The signature state with its lit dot. The dot lives INSIDE the shared `.pill` rather than in a
+ * second pill primitive, so its colour is the pill's own and the two can never disagree (§11/§18). */
+function SignaturePill({ state }) {
+  const read = SIGNATURE_STATE[state] || SIGNATURE_STATE.unrecognised;
+  return (
+    <Pill tone={read.tone}>
+      <span className="so-sigdot" aria-hidden="true" />
+      {read.label}
+    </Pill>
+  );
+}
 
 /** The workspace's own words for each declared processor. Stripe is one of seven, never the assumed one. */
 const PROCESSOR_LABEL = {
@@ -111,21 +159,11 @@ const ORDER_STATUS = {
   unrecognised: { label: "State not recognised", tone: "none" },
 };
 
-const OFFER_STATE = {
-  draft: { label: "Draft", tone: "none" },
-  active: { label: "Live", tone: "ok" },
-  paused: { label: "Paused", tone: "warn" },
-  archived: { label: "Archived", tone: "none" },
-  unrecognised: { label: "State not recognised", tone: "none" },
-};
-
-const CADENCE = {
-  one_time: "Once",
-  day: "Daily",
-  week: "Weekly",
-  month: "Monthly",
-  year: "Yearly",
-};
+/* `OFFER_STATE` and `CADENCE` were read only by the offer table and its detail drawer, both of
+ * which were removed with the Find-an-offer band (owner ruling, 2026-09-22). `CADENCE_LABEL` above
+ * is the one cadence vocabulary that survives, and it is the one the agreement rows already used —
+ * keeping a second, differently-capitalised copy of the same five words would be the fork §18
+ * exists to stop. */
 
 function when(value, calendarDate = false) {
   if (!value) return "Not recorded";
@@ -489,6 +527,22 @@ function QuickOffer({ offers, tenantId, onClose, onCreated }) {
 }
 
 /**
+ * An offer's name WITH what it costs, for the picker.
+ *
+ * The lead plan is the first active priced plan — the same reading the Catalog table takes, not a
+ * "from" figure this surface computed for itself (§18: one opinion about an offer's price).
+ */
+function offerOptionLabel(offer) {
+  const lead = (offer.prices || []).filter((p) => p.active && typeof p.unitAmount === "number")[0] || null;
+  const name = offer.name || "Untitled offer";
+  if (!lead) return `${name} — no price recorded`;
+  const cadence = lead.billingInterval && lead.billingInterval !== "one_time"
+    ? CADENCE_LABEL[lead.billingInterval] || lead.billingInterval
+    : "once";
+  return `${name} — ${money(lead.unitAmount, lead.currency) ?? "no amount"} · ${cadence}`;
+}
+
+/**
  * What one client agreed to. The same right-side drawer the payment and offer editors use, for the
  * same reason: a focused task that must not lose the list behind it.
  *
@@ -498,11 +552,18 @@ function QuickOffer({ offers, tenantId, onClose, onCreated }) {
  * OPENED against, not the current one: sending the current tenant would make the server's refusal
  * guard unable to fire, because the caller would keep agreeing with itself.
  */
-function AgreementEditor({ agreements, offers, tenantId, existing, onClose, onOpenClients, onOpenCatalog }) {
+function AgreementEditor({ agreements, signings, offers, tenantId, existing, existingSigning, canSign, onClose, onOpenClients, onOpenCatalog, onQuickOffer, onSigningCreated }) {
   const panelRef = useModalDialog();
   const firstRef = React.useRef(null);
   const [contactId, setContactId] = React.useState(existing?.contactId ?? "");
   const [offerId, setOfferId] = React.useState(existing?.offerId ?? "");
+  // The document step. `none` is what this editor did before documents existed, and it stays the
+  // honest default: a workspace that only wants the commercial record on file should not have to
+  // say no to anything to get it.
+  const [source, setSource] = React.useState("none");
+  const [file, setFile] = React.useState(null);
+  const [docTitle, setDocTitle] = React.useState("");
+  const [docBody, setDocBody] = React.useState("");
   const [pickerSearch, setPickerSearch] = React.useState("");
   const [pickerPage, setPickerPage] = React.useState(0);
   const picker = useCatalogOffers({ search: pickerSearch, page: pickerPage, pageSize: 5, referenceIds: offerId ? [offerId] : [] });
@@ -549,22 +610,98 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose, onOp
   // while `ready` ignored the term entirely, so choosing "Not quoted yet" from the empty state
   // enabled a Save that could only ever fail, two clicks in.
   const quoting = basis === "quote_pending";
-  const ready = contactId !== "" && offerId !== "" && (Boolean(existing) || (picker.phase === "ready" && Boolean(chosenOffer)))
+  // An offer is now OPTIONAL (owner ruling 3, 2026-09-22): an NDA or a scope letter names no offer
+  // and carries no price, and `tenant_client_agreements.offer_id` is NOT NULL — so with no offer
+  // chosen there is simply no commercial row to write, and the document stands on its own. The
+  // commercial terms below are therefore only required when an offer IS chosen.
+  const termsReady = offerId !== "" && (Boolean(existing) || (picker.phase === "ready" && Boolean(chosenOffer)))
     && (quoting ? term === "custom_quote" : (basis === "catalog" ? (Boolean(existing) || planId !== "") : priced));
-  const { close, request, confirmation, alive } = useSalesDraftExit({ contactId, offerId, term, basis, planId, amount, currency, cadence, instalments, startsOn, renewsOn, endsOn, notes }, busy, onClose);
+  const uploading = source === "tenant_upload";
+  // The wording is not optional on an uploaded document, and the reason is the counterparty's page
+  // rather than this one: the signer reads the TEXT and the countersigned PDF is built from it, so
+  // a file with no wording produces a page that tells them to ask for it again. Shipping a control
+  // whose successful path dead-ends on somebody else's screen is the §70 failure, not a shortcut.
+  const docReady = uploading && Boolean(file) && docTitle.trim() !== "" && docBody.trim() !== "";
+  const ready = contactId !== ""
+    && (offerId ? termsReady : true)
+    && (uploading ? docReady : true)
+    // Something has to be recorded. With no offer and no document there is nothing to save, and a
+    // Save that could only ever be a no-op is the control this guard refuses to enable.
+    && (offerId !== "" || docReady);
+  const { close, request, confirmation, alive } = useSalesDraftExit({ contactId, offerId, source, docTitle, docBody, fileName: file?.name ?? "", term, basis, planId, amount, currency, cadence, instalments, startsOn, renewsOn, endsOn, notes }, busy, onClose);
 
   const save = async () => {
     setBusy(true);
     setNotice("");
     const digits = minorUnitDigits(currency);
     const major = basis === "negotiated" && priced ? Number(amount) : null;
-    if (major !== null && (!Number.isFinite(major) || major < 0)) {
+    if (offerId && major !== null && (!Number.isFinite(major) || major < 0)) {
       setBusy(false);
       setNotice("Enter an amount of zero or more.");
       return;
     }
-    if (term === "installment" && (!Number.isInteger(Number(instalments)) || Number(instalments) < 2)) { setBusy(false); setNotice("Enter a whole number of instalments, two or more."); return; }
-    if ((endsOn && startsOn && endsOn < startsOn) || (term === "recurring" && renewsOn && startsOn && renewsOn < startsOn)) { setBusy(false); setNotice("End and renewal dates must be on or after the start date."); return; }
+    if (offerId && term === "installment" && (!Number.isInteger(Number(instalments)) || Number(instalments) < 2)) { setBusy(false); setNotice("Enter a whole number of instalments, two or more."); return; }
+    if (offerId && ((endsOn && startsOn && endsOn < startsOn) || (term === "recurring" && renewsOn && startsOn && renewsOn < startsOn))) { setBusy(false); setNotice("End and renewal dates must be on or after the start date."); return; }
+
+    // TWO RECORDS, WRITTEN IN ORDER, AND REPORTED SEPARATELY.
+    //
+    // The commercial row goes first because the document points AT it. If the second write fails
+    // the first is already saved, and the footer says exactly that rather than implying the whole
+    // form was lost — telling somebody nothing was saved when their terms were is the same class of
+    // lie as the reverse (§13). Nothing here rolls the first write back: a signature record failing
+    // is not a reason to delete terms a person had already agreed.
+    let agreementId = existing?.id ?? null;
+    if (offerId) {
+      const saved = await saveTerms(digits, major);
+      if (!alive.current) return;
+      if (!saved.ok) { setBusy(false); setNotice(saved.message); return; }
+      agreementId = saved.id ?? agreementId;
+      if (!uploading) { setBusy(false); onClose(); return; }
+    }
+
+    if (uploading) {
+      const uploaded = await signings.uploadDocument(file, tenantId);
+      if (!alive.current) return;
+      if (!uploaded.ok) {
+        setBusy(false);
+        setNotice(`${uploaded.message || "That file could not be uploaded."}${offerId ? " Your commercial terms were saved." : ""}`);
+        return;
+      }
+      const created = await signings.createSigning({
+        // THE WORKSPACE THIS FORM WAS OPENED IN. Not the current one — see the docstring.
+        tenantId,
+        contactId,
+        // Null is legal and is what an NDA or a scope letter looks like (ruling 3).
+        agreementId,
+        documentTitle: docTitle.trim(),
+        documentSource: "tenant_upload",
+        documentBody: docBody.trim(),
+        documentPath: uploaded.path,
+      });
+      if (!alive.current) return;
+      setBusy(false);
+      if (!created.ok) {
+        setNotice(`${created.message || "That document could not be recorded."}${offerId ? " Your commercial terms were saved." : ""}`);
+        return;
+      }
+      // Straight into the send step. The person came here to get a document in front of a client,
+      // and stopping at "saved" would leave them hunting for how (§36).
+      onSigningCreated({
+        id: created.signingId,
+        documentTitle: docTitle.trim(),
+        contactId,
+        signatureState: created.signatureState,
+      });
+      return;
+    }
+
+    setBusy(false);
+    onClose();
+  };
+
+  /** The commercial half, unchanged in what it sends. Split out only so the two writes above read
+   * in the order they happen. */
+  const saveTerms = async (digits, major) => {
     const outcome = await agreements.saveAgreement({
       // THE WORKSPACE THIS FORM WAS OPENED IN. Not the current one — see the docstring.
       tenantId,
@@ -596,13 +733,17 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose, onOp
       notes: notes.trim() || null,
       expectedUpdatedAt: existing?.updatedAt ?? null,
     }).catch(() => ({ ok: false, message: "We could not confirm the save. Refresh the records before retrying." }));
-    if (!alive.current) return;
-    setBusy(false);
-    if (outcome.ok) { onClose(); return; }
+    if (outcome.ok) {
+      const id = outcome.result && typeof outcome.result.id === "string" ? outcome.result.id : null;
+      return { ok: true, id };
+    }
     // A stale write is NOT a retry — retrying would overwrite whoever else saved. Say so.
-    setNotice(outcome.stale
-      ? "Someone else changed this while you had it open. Close and reopen it to see their version."
-      : outcome.message || "That could not be saved. Nothing was changed.");
+    return {
+      ok: false,
+      message: outcome.stale
+        ? "Someone else changed this while you had it open. Close and reopen it to see their version."
+        : outcome.message || "That could not be saved. Nothing was changed.",
+    };
   };
 
   return (
@@ -613,8 +754,8 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose, onOp
           <div style={{ flex: 1 }}>
             <h2 id="so-agr-title">{existing ? "Change these terms" : "Record what a client agreed to"}</h2>
             <p>
-              One client, one of your offers, and the terms they actually agreed to. This records
-              them — it bills nobody, and the money still runs on your own processor.
+              The document they sign, and the terms it commits. Recording either one bills nobody,
+              and the money still runs on your own processor.
             </p>
           </div>
           <button className="btn btn-s" onClick={close} disabled={busy} aria-label="Close">
@@ -624,7 +765,94 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose, onOp
 
         <div className="so-editor-body" inert={busy ? "" : undefined}>
           {!agreements.clients.length && <div className="so-prerequisite"><strong>Add a client first</strong><p>Create a contact in Clients, then return here to record their terms.</p><button className="btn btn-p" onClick={() => request(onOpenClients)}>Go to Clients</button></div>}
-          {!pickerSearch && !pickerPage && picker.phase === "ready" && !pickerOffers.length && <div className="so-prerequisite"><strong>Add an offer first</strong><p>Catalog keeps the canonical products and services you sell.</p><button className="btn btn-p" onClick={() => request(() => onOpenCatalog(true))}>Go to Catalog</button></div>}
+
+          {/* ── THE DOCUMENT ──────────────────────────────────────────────────────────────────
+            * First, because it is what the client actually receives. The three sources are three
+            * different answers rather than three ways of saying the same thing: one attaches a
+            * contract you already have, one is honestly unavailable, and one records no document
+            * at all — which is exactly what this editor did before documents existed, and stays
+            * the default so nobody has to opt out of something to keep the old behaviour (§58). */}
+          <h3 className="so-step">The document</h3>
+          {existingSigning ? (
+            <p className="so-absent">
+              <b>{existingSigning.documentTitle}</b> is already on this record
+              {" — "}{(SIGNATURE_STATE[existingSigning.displayState] || SIGNATURE_STATE.unrecognised).label.toLowerCase()}.
+              Send it, or stop its link, from the row on Commercial Terms. Editing here changes the
+              terms only; it does not alter a document somebody may already have read.
+            </p>
+          ) : !canSign ? (
+            // Declared through the one §60 home, never an inline account-type compare.
+            <p className="so-absent">Documents are not part of this account type. The commercial terms below still record what was agreed.</p>
+          ) : signings.phase === "error" ? (
+            <p className="so-absent" role="alert">
+              Your documents could not be read, so this is unknown rather than empty and nothing can
+              be sent right now. The commercial terms below still save.{" "}
+              <button className="btn btn-s" onClick={signings.retry}><Ic.arrow size={13} />Retry documents</button>
+            </p>
+          ) : (<>
+            <div className="so-src" role="radiogroup" aria-label="The document">
+              <button type="button" role="radio" aria-checked={source === "none"} className="so-src-card"
+                      onClick={() => setSource("none")}>
+                <span className="so-src-ic so-src-ic-none"><Ic.doc size={16} /></span>
+                <b>No document — record the terms only</b>
+                <small>What was agreed goes on the record. Nothing is sent and nobody signs anything.</small>
+              </button>
+              <button type="button" role="radio" aria-checked={source === "tenant_upload"} className="so-src-card"
+                      onClick={() => setSource("tenant_upload")}>
+                <span className="so-src-ic so-src-ic-upload"><Ic.plus size={16} /></span>
+                <b>Upload a contract</b>
+                <small>Your own contract, kept on this record and sent to the client to sign.</small>
+              </button>
+              <button type="button" role="radio" aria-checked={source === "paige_draft"} className="so-src-card"
+                      onClick={() => setSource("paige_draft")}>
+                <span className="so-src-ic so-src-ic-paige"><Ic.spark size={16} /></span>
+                <b>Paige drafts it</b>
+                <small>Not available yet — see what to do instead.</small>
+              </button>
+            </div>
+
+            {source === "paige_draft" && (
+              // UNAVAILABLE with a reason and a way through, never a disabled control that tells
+              // somebody nothing (§70.1). One missing piece does not make the rest of this form
+              // read-only — the two other sources still work and are named here.
+              <p className="so-banner so-banner-warn"><Ic.shield size={15} /><span>
+                <b>Paige cannot draft a contract yet.</b> Nothing in this workspace writes contract
+                wording, and offering you a draft that was never written would be a lie about what
+                happened. Choose <b>Upload a contract</b> to send one you already have, or{" "}
+                <b>No document</b> to record the terms now and attach a document later — neither
+                loses what you have typed here.
+              </span></p>
+            )}
+
+            {uploading && (<>
+              <label className="so-field">
+                <span>The contract file</span>
+                <input type="file" aria-label="The contract file"
+                       accept=".pdf,.doc,.docx,.rtf,.txt,.md,application/pdf,text/plain"
+                       onChange={(e) => {
+                         const picked = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+                         setFile(picked);
+                         if (picked && !docTitle.trim()) setDocTitle(picked.name.replace(/\.[^.]+$/, ""));
+                       }} />
+              </label>
+              <label className="so-field">
+                <span>What to call it</span>
+                <input value={docTitle} onChange={(e) => setDocTitle(e.target.value)}
+                       placeholder="Coaching agreement" />
+              </label>
+              <label className="so-field">
+                <span>The wording they sign</span>
+                <textarea rows={7} value={docBody} onChange={(e) => setDocBody(e.target.value)}
+                          placeholder="Paste the text of your contract here." />
+              </label>
+              <p className="so-absent">
+                The person signing reads this wording on the page and the countersigned PDF is built
+                from it, so it is what they are agreeing to. Your file is kept on the record beside it.
+              </p>
+            </>)}
+          </>)}
+
+          <h3 className="so-step">Who, and what for</h3>
           <label className="so-field">
             <span>Client</span>
             <select aria-label="Client" ref={firstRef} value={contactId} onChange={(e) => setContactId(e.target.value)}>
@@ -635,18 +863,57 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose, onOp
             </select>
           </label>
 
-          <label className="so-field"><span>Search offers by name</span><input type="search" disabled={Boolean(existing?.catalogSnapshotAt)} value={pickerSearch} onChange={(e) => { setPickerSearch(e.target.value); setPickerPage(0); }} placeholder="Search your Catalog…" /></label>
-          <div className="so-page-controls"><span role="status">{picker.phase === "ready" ? "Offer page " + (pickerPage + 1) : picker.phase === "error" ? "Could not load offers" : "Loading offers…"}</span>{picker.phase === "error" && <button className="btn btn-s" onClick={picker.retry}>Retry offers</button>}<button className="btn btn-s" disabled={!pickerPage || picker.phase !== "ready" || Boolean(existing?.catalogSnapshotAt)} onClick={() => setPickerPage((p) => p - 1)}>Previous</button><button className="btn btn-s" disabled={!picker.hasMore || picker.phase !== "ready" || Boolean(existing?.catalogSnapshotAt)} onClick={() => setPickerPage((p) => p + 1)}>Next</button></div>
+          {/* ── FIND AN OFFER ─────────────────────────────────────────────────────────────────
+            * This search used to be a band of its own on Commercial Terms, browsing the catalog
+            * beside a table it had nothing to do with. The owner removed it (2026-09-22); the
+            * capability did not go with it, it moved HERE, to the one moment an offer is actually
+            * being chosen. Its two acts came with it: Quick offer lives in the empty state below
+            * (this is its only call site in the repo, so losing it would have made the component
+            * unreachable and left a new workspace unable to create its first offer from Sales),
+            * and Open Catalog now sits in the band head on the surface behind this drawer. */}
+          <label className="so-field"><span>Find an offer</span><input type="search" disabled={Boolean(existing?.catalogSnapshotAt)} value={pickerSearch} onChange={(e) => { setPickerSearch(e.target.value); setPickerPage(0); }} placeholder="Search your Catalog…" /></label>
+          <div className="so-page-controls"><span role="status">{picker.phase === "ready" ? "Offer page " + (pickerPage + 1) + " · up to 5 offers" : picker.phase === "error" ? "Could not load offers" : "Loading offers…"}</span>{picker.phase === "error" && <button className="btn btn-s" onClick={picker.retry}>Retry offers</button>}<button className="btn btn-s" disabled={!pickerPage || picker.phase !== "ready" || Boolean(existing?.catalogSnapshotAt)} onClick={() => setPickerPage((p) => p - 1)}>Previous</button><button className="btn btn-s" disabled={!picker.hasMore || picker.phase !== "ready" || Boolean(existing?.catalogSnapshotAt)} onClick={() => setPickerPage((p) => p + 1)}>Next</button></div>
           <label className="so-field">
             <span>Offer</span>
             <select aria-label="Offer" disabled={Boolean(existing?.catalogSnapshotAt)} value={offerId} onChange={(e) => setOfferId(e.target.value)}>
-              <option value="">Choose one of your offers…</option>
+              <option value="">No offer — this document carries no price</option>
               {pickerOffers.map((offer) => (
-                <option key={offer.id} value={offer.id}>{offer.name}</option>
+                // The price and cadence travel WITH the name. The band this replaced showed them in
+                // a table and a drawer; an offer chosen blind, by name alone, is how the wrong plan
+                // gets attached to somebody's contract.
+                <option key={offer.id} value={offer.id}>{offerOptionLabel(offer)}</option>
               ))}
             </select>
           </label>
+          {/* §58 — both of these came off the deleted band with the search. A search that matches
+            * nothing said so there and must say so here, or the picker silently offers one option
+            * and the person cannot tell an empty catalog from an unlucky word. And an offer
+            * AUTHORITY that could not be read is still "I could not look", never "you may not". */}
+          {offers.authorityUnknown && <p className="so-absent" role="alert">Offer editing access could not be confirmed. <button className="btn btn-s" onClick={offers.retry}>Retry offer access</button></p>}
+          {(pickerSearch || pickerPage) && picker.phase === "ready" && !pickerOffers.length && (
+            <p className="so-absent">No offers match this view. Clear your search or go back a page.</p>
+          )}
+          {!pickerSearch && !pickerPage && picker.phase === "ready" && !pickerOffers.length && (
+            <div className="so-prerequisite">
+              <strong>Nothing in your catalog yet</strong>
+              <p>
+                Catalog keeps the canonical products and services you sell. Create one now, or leave
+                the offer blank and send a document that carries no price.
+              </p>
+              <div className="so-prereq-acts">
+                {offers.canManage && <button className="btn btn-p" onClick={() => request(onQuickOffer)}>Quick offer</button>}
+                <button className="btn" onClick={() => request(() => onOpenCatalog(true))}>Go to Catalog</button>
+              </div>
+              {offers.canManage && <small className="so-quiet">Quick offer opens on its own, so anything typed here is not kept.</small>}
+            </div>
+          )}
 
+          {!offerId ? (
+            <p className="so-absent">
+              No offer chosen, so no amount, cadence or dates are recorded — which is what an NDA or
+              a scope letter looks like. Choose one of your offers to put a price on the record.
+            </p>
+          ) : (<>
           <fieldset className="so-field">
             <legend>Arrangement</legend>
             <div className="so-pick">
@@ -746,21 +1013,184 @@ function AgreementEditor({ agreements, offers, tenantId, existing, onClose, onOp
             <input value={notes} onChange={(e) => setNotes(e.target.value)}
                    placeholder="Anything you want to remember about this arrangement" />
           </label>
+          </>)}
         </div>
 
         <footer className="so-editor-foot">
           <span role={notice ? "alert" : "status"} className="so-editor-note" data-tone={notice ? "bad" : "plain"}>
             {notice || (ready
-              ? (existing ? "Saves these commercial terms. Nothing is charged, invoiced or sent." : "It saves as a draft. Nothing is charged, invoiced or sent.")
-              : "Pick a client and an offer, and say what they agreed to pay.")}
+              ? (uploading
+                  ? "Saves the record, then shows you how to send it. Nothing is charged, invoiced or sent until you do."
+                  : existing ? "Saves these commercial terms. Nothing is charged, invoiced or sent." : "It saves as a draft. Nothing is charged, invoiced or sent.")
+              : contactId === ""
+                ? "Pick the client this is for."
+                : uploading && !docReady
+                  ? "A document needs a file, a name, and the wording they sign."
+                  : offerId === ""
+                    ? "Choose one of your offers, or upload a document to record instead."
+                    : "Say what they agreed to pay.")}
           </span>
           <span style={{ flex: 1 }} />
           <button className="btn btn-s" onClick={close} disabled={busy}>Cancel</button>
           <button className="btn btn-s btn-p" onClick={save} disabled={busy || !ready}>
-            {busy ? "Saving…" : existing ? "Save changes" : "Record terms"}
+            {busy ? "Saving…" : existing ? "Save changes" : uploading ? "Save and continue" : "Record terms"}
           </button>
         </footer>
         {confirmation}
+      </aside>
+    </SalesDialogPortal>
+  );
+}
+
+/**
+ * SEND FOR SIGNATURE — the step between "a document exists" and "a client has it".
+ *
+ * ONE LINK, SHOWN ONCE. `issue_agreement_signing_link` generates the token server-side and stores
+ * only its sha256, so the raw link exists in exactly one place for exactly one moment: this panel.
+ * There is no "show it again", and pretending otherwise would send somebody away with nothing. The
+ * link is rendered into a read-only field they can select as well as behind a copy button, because
+ * the clipboard API is not available on every browser and a control that silently does nothing is
+ * how a person loses the only copy of their link (§70).
+ *
+ * §38: issuing this charges nobody and authorises no payment. The figure travels with the document
+ * because it is what was agreed; it is a sentence, not an instrument.
+ */
+function SignatureSender({ signings, signing, clientName, agreedLabel, tenantId, onClose, onVoided }) {
+  const panelRef = useModalDialog();
+  const firstRef = React.useRef(null);
+  const [days, setDays] = React.useState(14);
+  const [busy, setBusy] = React.useState(false);
+  const [notice, setNotice] = React.useState("");
+  const [link, setLink] = React.useState(null);
+  const [copied, setCopied] = React.useState(false);
+  const alive = React.useRef(true);
+  React.useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  React.useEffect(() => { firstRef.current?.focus(); }, []);
+
+  const state = signing.displayState || signing.signatureState || "draft";
+  const reissue = state === "sent" || state === "viewed" || state === "expired";
+  // The public route this build actually registers. Derived from the running origin rather than a
+  // configured base, so a preview deployment hands out a preview link instead of a dead one.
+  const url = link ? `${window.location.origin}/sign/${link.token}` : "";
+
+  const issue = async () => {
+    setBusy(true);
+    setNotice("");
+    const outcome = await signings.issueLink(signing.id, days, tenantId)
+      .catch(() => ({ ok: false, message: "That could not be confirmed, so no link is being shown." }));
+    if (!alive.current) return;
+    setBusy(false);
+    // §13 — a link exists because the server handed one back, never because a promise resolved.
+    if (!outcome.ok || !outcome.token) {
+      setNotice(outcome.message || "No link was issued, so nothing has been sent.");
+      return;
+    }
+    setLink({ token: outcome.token, expiresAt: outcome.expiresAt ?? null });
+  };
+
+  const stop = async () => {
+    setBusy(true);
+    setNotice("");
+    const outcome = await signings.voidSigning(signing.id, tenantId)
+      .catch(() => ({ ok: false, message: "That could not be confirmed. Check the record before trying again." }));
+    if (!alive.current) return;
+    setBusy(false);
+    if (!outcome.ok) { setNotice(outcome.message || "The link was not stopped. Nothing was changed."); return; }
+    onVoided?.();
+    onClose();
+  };
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      if (!alive.current) return;
+      setCopied(true);
+    } catch {
+      if (!alive.current) return;
+      // Honest, and it points at the field that is right there — never a silent no-op.
+      setNotice("Your browser would not let this page copy. Select the link above and copy it yourself.");
+    }
+  };
+
+  return (
+    <SalesDialogPortal>
+      <button className="so-editor-scrim" tabIndex={-1} aria-label="Close" onClick={onClose} />
+      <aside ref={panelRef} className="so-editor" role="dialog" aria-modal="true" aria-labelledby="so-send-title">
+        <header className="so-editor-head">
+          <div style={{ flex: 1 }}>
+            <h2 id="so-send-title">Send for signature</h2>
+            <p>
+              A link to this document, for one client to read and sign. Sending it bills nobody and
+              charges nothing — the money still runs on your own processor.
+            </p>
+          </div>
+          <button className="btn btn-s" onClick={onClose} disabled={busy} aria-label="Close">
+            <Ic.x size={14} />
+          </button>
+        </header>
+
+        <div className="so-editor-body" inert={busy ? "" : undefined}>
+          <dl className="so-send-facts">
+            <div><dt>Who it is for</dt><dd>{clientName || "This client"}</dd></div>
+            <div><dt>What they get</dt><dd>{signing.documentTitle}</dd></div>
+            <div><dt>What it says was agreed</dt><dd>{agreedLabel || "No price is stated on this document"}</dd></div>
+          </dl>
+
+          {!link ? (<>
+            <fieldset className="so-field">
+              <legend>How long the link works</legend>
+              <div className="so-pick">
+                {LINK_DAYS.map((value, index) => (
+                  <button key={value} type="button" ref={index === 1 ? firstRef : undefined}
+                          aria-pressed={days === value} onClick={() => setDays(value)}>
+                    {value} days
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <p className="so-absent">
+              {reissue
+                ? "Issuing a new link replaces the one already out there — the old link stops working the moment this one is made."
+                : "After that the link stops working. You can issue another one at any time."}
+            </p>
+          </>) : (<>
+            <label className="so-field">
+              <span>The link — copy it now</span>
+              <input readOnly value={url} aria-label="The signing link"
+                     onFocus={(e) => e.target.select()} />
+            </label>
+            <div className="so-send-acts">
+              <button className="btn btn-s btn-p" onClick={copy}><Ic.doc size={13} />Copy link</button>
+              <span role="status" className="so-quiet">{copied ? "Copied." : ""}</span>
+            </div>
+            <p className="so-banner so-banner-warn"><Ic.shield size={15} /><span>
+              <b>This is the only time you will see it.</b> Paige keeps a one-way fingerprint of this
+              link and not the link itself, so it cannot be shown again. Send it to{" "}
+              {clientName || "your client"} now — by email, by message, however you already talk.
+              {link.expiresAt ? ` It stops working on ${when(link.expiresAt)}.` : ""}
+            </span></p>
+            <p className="so-absent">
+              You will see it move to Opened and then Completed on Commercial Terms as they read and
+              sign it. Nothing is charged at any point.
+            </p>
+          </>)}
+        </div>
+
+        <footer className="so-editor-foot">
+          <span role={notice ? "alert" : "status"} className="so-editor-note" data-tone={notice ? "bad" : "plain"}>
+            {notice || (link ? "The record now shows this document as sent." : "Nothing is sent until you make the link.")}
+          </span>
+          <span style={{ flex: 1 }} />
+          {reissue && !link && (
+            <button className="btn btn-s" onClick={stop} disabled={busy}>Stop the current link</button>
+          )}
+          <button className="btn btn-s" onClick={onClose} disabled={busy}>{link ? "Done" : "Not now"}</button>
+          {!link && (
+            <button className="btn btn-s btn-p" onClick={issue} disabled={busy}>
+              {busy ? "Making the link…" : reissue ? "Make a new link" : "Make the link"}
+            </button>
+          )}
+        </footer>
       </aside>
     </SalesDialogPortal>
   );
@@ -940,14 +1370,24 @@ function ScenarioLab({ offers, deals, stages, onAskPaige }) {
 export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages = [], submissions = [], submissionsPhase = "ready", submissionsRetry, onOpenCatalog, onOpenClients, onOpenPipeline, truth }) {
   const sales = useSoloSalesOps();
   const agreements = useSoloAgreements();
-  const [offerSearch, setOfferSearch] = React.useState("");
-  const [offerPage, setOfferPage] = React.useState(0);
+  const signings = useSoloAgreementSignings();
+  // §60 — the feature DECLARES its tiers in the one home and this reads the answer, never an inline
+  // `account_type` compare. The Growth hub around this surface already requires `growth`, so this
+  // gate is the capability's own declaration rather than its only defence; it is here so that
+  // changing who gets documents is a one-line edit in `tierFeatures.ts` and not a hunt.
+  const { has: hasTierFeature } = useTierFeatures();
+  const canSign = hasTierFeature("growth");
   const [termSearch, setTermSearch] = React.useState("");
   const [termStatus, setTermStatus] = React.useState("all");
   const [termPage, setTermPage] = React.useState(0);
-  const offers = useCatalogOffers({ search: offerSearch, page: offerPage, pageSize: 5, referenceIds: agreements.agreements.map((a) => a.offerId) });
+  // The catalog read the WHOLE surface shares: the terms table's offer-name lookup, the command
+  // derivation, the Scenario Lab and Revenue. The search and paging that used to drive it belonged
+  // to a band that no longer exists — the picker inside the agreement editor runs its own instance
+  // with its own search, which is where choosing an offer actually happens.
+  const offers = useCatalogOffers({ search: "", page: 0, pageSize: 5, referenceIds: agreements.agreements.map((a) => a.offerId) });
   const [editor, setEditor] = React.useState(null);
   const [editing, setEditing] = React.useState(null);
+  const [sending, setSending] = React.useState(null);
   const [success, setSuccess] = React.useState("");
   const location = useLocation();
   const navigate = useNavigate();
@@ -977,7 +1417,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
   // workspace stays on screen under the next one. Both tenant ids are watched because each hook
   // guards its own synchronously, and the agreements drawer holds the more sensitive draft — a
   // client name bound to a negotiated amount.
-  React.useEffect(() => { setEditor(null); setEditing(null); setSuccess(""); setOfferSearch(""); setOfferPage(0); setTermSearch(""); setTermStatus("all"); setTermPage(0); }, [sales.tenantId, agreements.tenantId]);
+  React.useEffect(() => { setEditor(null); setEditing(null); setSending(null); setSuccess(""); setTermSearch(""); setTermStatus("all"); setTermPage(0); }, [sales.tenantId, agreements.tenantId, signings.tenantId]);
 
   // Hooks must run in the same order while the production adapters advance from loading to ready.
   // Keeping this memo above every phase return prevents React from aborting the Sales route on the
@@ -1032,9 +1472,32 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
     );
   }
 
-  const matchingTerms = agreements.agreements.filter((row) => {
+  // The DOCUMENT half of the desk, keyed to the commercial half it commits.
+  //
+  // `signings` arrives newest-first, so the first match is the current document for that agreement —
+  // a re-issued or replaced one is the later row and wins, which is what somebody reading the
+  // Signature column expects to see.
+  const signingsReadable = signings.phase === "ready" && signings.readable;
+  const signingFor = (agreementId) =>
+    signings.signings.find((row) => row.agreementId === agreementId) || null;
+
+  // ONE BAND, TWO RECORDS. A signing may carry no agreement at all (owner ruling 3, 2026-09-22):
+  // an NDA or a scope letter names no offer and states no price. Building this list as a column
+  // bolted onto the agreements table would have made those documents invisible — so the rows are
+  // the UNION, and a document standing on its own is a row in its own right.
+  const termRows = [
+    ...agreements.agreements.map((row) => ({
+      id: `agreement-${row.id}`, contactId: row.contactId, agreement: row, signing: signingFor(row.id),
+    })),
+    ...signings.signings.filter((row) => !row.agreementId).map((row) => ({
+      id: `signing-${row.id}`, contactId: row.contactId, agreement: null, signing: row,
+    })),
+  ];
+  const matchingTerms = termRows.filter((row) => {
     const client = agreements.clients.find((c) => c.id === row.contactId);
-    return (termStatus === "all" || row.status === termStatus)
+    // The filter names the ENGAGEMENT's state, so a document with no engagement matches only
+    // "All". Sweeping it into "Draft" would put it under a word its record does not hold.
+    return (termStatus === "all" || row.agreement?.status === termStatus)
       && (client?.name || "").toLowerCase().includes(termSearch.trim().toLowerCase());
   });
   const shownTerms = matchingTerms.slice(termPage * 5, termPage * 5 + 5);
@@ -1044,12 +1507,120 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
   // whole snapshot exists for: what this client agreed, beside what the catalog listed when it was
   // recorded. Labelled so the two can never be mistaken for each other, and dated, because a
   // snapshot without its date is not evidence.
-  const openAgreement = (row, client, offer) => setDetail({
+  /** What the document says was agreed, in one sentence, for the send step. */
+  const agreedLabelFor = (row) => !row ? null
+    : row.agreedAmountMinor === null
+      ? (row.priceBasis === "quote_pending" ? "Still to be quoted" : "No amount recorded")
+      : `${money(row.agreedAmountMinor, row.agreedCurrency) ?? "No amount recorded"}${
+          row.termKind === "recurring" && row.billingInterval
+            ? ` · ${CADENCE_LABEL[row.billingInterval] || row.billingInterval}`
+            : ""}`;
+
+  /** Open the send step for a document, from wherever it was reached. */
+  const openSender = (signing, contactId, agreement) => {
+    setDetail(null);
+    setSending({ ...signing, contactId, agreedLabel: agreedLabelFor(agreement) });
+  };
+
+  /** The document's own rows in the shared drawer. A record with no document says so plainly
+   * rather than leaving the reader to infer it from an absence. */
+  const signingRows = (signing) => !signing ? [
+    ["Document", signingsReadable
+      ? "None on this record"
+      : signings.phase === "error" ? "Not readable — your documents could not be read" : "Not readable here"],
+  ] : [
+    ["Document", signing.documentTitle],
+    ["Signature", (SIGNATURE_STATE[signing.displayState] || SIGNATURE_STATE.unrecognised).label],
+    ["Sent", signing.sentAt ? when(signing.sentAt) : "Not sent"],
+    ["Opened", signing.viewedAt ? when(signing.viewedAt) : "Not opened"],
+    ["Signed", signing.completedAt
+      ? `${when(signing.completedAt)}${signing.signerName ? ` · ${signing.signerName}` : ""}`
+      : "Not signed"],
+    ...(signing.declinedAt ? [["Declined", `${when(signing.declinedAt)}${signing.declineReason ? ` · ${signing.declineReason}` : ""}`]] : []),
+    ...(signing.voidedAt ? [["Stopped", when(signing.voidedAt)]] : []),
+    ["Link works until", signing.expiresAt ? when(signing.expiresAt) : "No link has been issued"],
+  ];
+
+  /**
+   * Fetch the sealed copy and hand it to the browser.
+   *
+   * A stored path is not an address — the bucket is private — so this asks for a short-lived
+   * signed URL first and only opens something once the server has returned one (§13: a link is a
+   * link when it exists, not when it was requested).
+   */
+  const openSignedCopy = async (signing) => {
+    setSuccess("");
+    const result = await signings.signedCopyUrl(signing.id, signings.tenantId);
+    if (!result.ok) { setSuccess(result.message); return; }
+    window.open(result.url, "_blank", "noopener,noreferrer");
+  };
+
+  /**
+   * The acts a document offers, given the state it is actually in.
+   *
+   * A COMPLETED document is not actionless, and an earlier revision of this treated it as one:
+   * it offered nothing at all, so an owner could see that a client had signed and had no way to
+   * obtain the thing they signed. That is the §70 failure exactly — the gate is a person
+   * finishing the job, and "the row says Completed" is not finishing it.
+   *
+   * Retrieving the copy is a READ, so it is NOT gated on `canManage`: a member who is permitted
+   * to see the record is permitted to see the document, and the storage policy is what actually
+   * decides. Sending and managing the link are writes and stay gated.
+   *
+   * A declined or unrecognised document still offers nothing, because there genuinely is nothing
+   * to do to it — and a control that pretends otherwise is the dead end §70 refuses.
+   */
+  const signingAction = (signing, contactId, agreement) => {
+    if (!canSign || !signing) return null;
+    const state = signing.displayState;
+    if (state === "completed") {
+      // §13: the state says signed, so the sealed copy should exist. If the record does not carry
+      // one, say that plainly rather than rendering a button that cannot do anything.
+      return signing.signedPdfPath
+        ? (
+          <button className="btn btn-p" onClick={() => { void openSignedCopy(signing); }}>
+            <Ic.doc size={13} />Download the signed copy
+          </button>
+        )
+        : <span className="so-quiet">This is signed, but no sealed copy is recorded against it.</span>;
+    }
+    if (!signings.canManage) return null;
+    if (state === "declined" || state === "unrecognised") return null;
+    return (
+      <button className="btn btn-p" onClick={() => openSender(signing, contactId, agreement)}>
+        <Ic.send size={13} />{state === "draft" ? "Send for signature" : "Manage the link"}
+      </button>
+    );
+  };
+
+  /** A document that stands on its own — no offer, no price (owner ruling 3). It gets the same
+   * drawer, minus the commercial rows it genuinely does not have. */
+  const openSigning = (signing, client) => setDetail({
+    title: client?.name || "Signed document",
+    actions: signingAction(signing, signing.contactId, null),
+    rows: [
+      ...signingRows(signing),
+      ["Offer", "None — this document names no offer"],
+      ["They agreed to pay", "No amount is stated on this document"],
+    ],
+    note: "A document with no commercial terms attached — an NDA or a scope letter looks like this. "
+      + "It records agreement, not money: nothing here is an invoice, a charge, or a payment record.",
+  });
+
+  const openAgreement = (row, client, offer, signing) => setDetail({
     title: client?.name || "Client terms",
-    actions: agreements.canManage ? <button className="btn btn-p" onClick={() => { setDetail(null); setEditing(row); setEditor("agreement"); }}>Edit commercial terms</button> : null,
+    actions: (
+      <>
+        {signingAction(signing, row.contactId, row)}
+        {agreements.canManage ? <button className="btn btn-p" onClick={() => { setDetail(null); setEditing(row); setEditor("agreement"); }}>Edit commercial terms</button> : null}
+      </>
+    ),
     rows: [
       ["Offer", offer?.name || "Not readable here"],
-      ["State", (AGREEMENT_STATE[row.status] || AGREEMENT_STATE.unrecognised).label],
+      // The ENGAGEMENT's state, kept here rather than in the table's Signature column, because the
+      // two answer different questions and the owner ruled they stay apart (2026-09-22).
+      ["Engagement", (AGREEMENT_STATE[row.status] || AGREEMENT_STATE.unrecognised).label],
+      ...signingRows(signing),
       ["Arrangement", TERM_LABEL[row.termKind] || "Not stated"],
       ["They agreed to pay", row.agreedAmountMinor === null
         ? (row.priceBasis === "quote_pending" ? "Still to be quoted" : "Not stated")
@@ -1073,26 +1644,11 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
       + "the offer's price never changes it.",
   });
 
-  const openOffer = (offer) => setDetail({
-    title: offer.name || "Untitled offer",
-    rows: [
-      ["Kind", offer.kind === "service" ? "Service" : offer.kind === "product" ? "Product" : "Not stated"],
-      ["Availability", (OFFER_STATE[offer.availability] || OFFER_STATE.unrecognised).label],
-      ["Recorded plans", offer.prices.length
-        ? offer.prices.map((p) => {
-            const amount = money(p.unitAmount, p.currency);
-            const period = p.billingInterval && p.billingInterval !== "one_time"
-              ? ` / ${p.billingInterval}` : "";
-            const count = p.kind === "installment" && p.installmentsTotal
-              ? ` × ${p.installmentsTotal}` : "";
-            return `${p.nickname || "Plan"} — ${amount ?? "no amount"}${count}${period}${p.active ? "" : " (inactive)"}`;
-          }).join("\n")
-        : "None recorded"],
-      ["Category", offer.category || "Not stated"],
-      ["Last changed", when(offer.updatedAt)],
-    ],
-    note: "Catalog owns this record. Sales reads it and never keeps a second copy of the price.",
-  });
+  /* The offer DETAIL drawer that used to live here was removed with its band (owner ruling,
+   * 2026-09-22). Catalog owns the offer record and is one click away from the band head; the one
+   * thing this surface genuinely needed from it — what an offer costs, while you are attaching it
+   * to somebody's agreement — travels with the name in the editor's picker instead (§58: the
+   * capability moved, it was not dropped). */
 
 
   // Route a move / open-work / ladder target to the REAL surface. No dead ends (§70).
@@ -1148,12 +1704,33 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
       {editor === "agreement" && agreements.canManage ? (
         <AgreementEditor
           agreements={agreements}
+          signings={signings}
           offers={offers}
           tenantId={agreements.tenantId}
           existing={editing}
+          existingSigning={editing ? signingFor(editing.id) : null}
+          canSign={canSign && signings.canManage}
           onOpenClients={onOpenClients}
           onOpenCatalog={onOpenCatalog}
+          onQuickOffer={() => { setEditing(null); setEditor("offer"); }}
+          onSigningCreated={(created) => {
+            setEditor(null);
+            setEditing(null);
+            // Straight into the send step, carrying the client it is for so nobody has to
+            // re-identify the person they just chose.
+            setSending({ ...created, displayState: created.signatureState || "draft" });
+          }}
           onClose={() => { setEditor(null); setEditing(null); }}
+        />
+      ) : null}
+      {sending ? (
+        <SignatureSender
+          signings={signings}
+          signing={sending}
+          tenantId={signings.tenantId}
+          clientName={agreements.clients.find((c) => c.id === sending.contactId)?.name || ""}
+          agreedLabel={sending.agreedLabel}
+          onClose={() => setSending(null)}
         />
       ) : null}
 
@@ -1301,11 +1878,21 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
       )}
 
       {view === "terms" && (<>
-      {/* ── what each client pays ─────────────────────────────────────────────────────────── */}
+      {/* ── ONE BAND: what each client agreed, and the document they signed to agree it ─────
+        * There were two bands here. The second browsed the Catalog beside a table that had
+        * nothing to do with browsing, and the owner removed it (2026-09-22). Its capabilities did
+        * not go with it: the offer search, its paging and its price reading moved INTO the
+        * agreement editor, where an offer is actually being chosen, and Open Catalog is in this
+        * band head. */}
       <section className="so-band so-terms">
         <div className="so-band-head">
-          <h3>Commercial terms and retainers</h3>
-          {agreements.phase === "ready" && agreements.agreementsReadable && <Pill tone={agreements.agreements.length ? "ok" : "opportunity"}>{agreements.agreements.length ? "Records available" : "Nothing recorded yet"}</Pill>}
+          <h3>Agreements and terms</h3>
+          {/* "Nothing recorded yet" is a CLAIM about the book, and it is only true when both halves
+              were actually read. An agreement that carries no price exists ONLY as a document
+              record, so when that read failed the band cannot know whether the book is empty —
+              and saying it is, is the false green this pill used to state confidently. Having
+              records is still sayable either way, because the ones in hand are real. */}
+          {agreements.phase === "ready" && agreements.agreementsReadable && (termRows.length > 0 || signingsReadable) && <Pill tone={termRows.length ? "ok" : "opportunity"}>{termRows.length ? "Records available" : "Nothing recorded yet"}</Pill>}
           {truth && <span className={`campaigns-truth campaigns-truth--${String(truth[0]).toLowerCase()}`}>{truth[0]}</span>}
           {agreements.canManage
             ? <button className="btn btn-s btn-p" onClick={() => { setEditing(null); setEditor("agreement"); }}>Record terms</button>
@@ -1313,21 +1900,26 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
               // A reader who cannot write is told WHO may — never a silently missing button (§36/§70).
               ? <span className="so-quiet">An owner or admin records this.</span>
               : null}
-          {/* Disambiguated in place rather than renamed. "Agreement" already means a SIGNED
-            * DOCUMENT everywhere else in this product — including `clients.agreement_signed_at`
-            * on the very table this reads, and an "Agreements" card on the same client's portal
-            * panel. This sentence is what stops an owner opening this expecting to send a PDF.
-            * It is also §38 statement #1 of exactly two on this band. */}
+          {/* §58 — this act came off the band that was deleted. Catalog owns the offer record, and
+            * this is the one place on the desk that needs to say so. */}
+          {onOpenCatalog ? (
+            <button className="btn btn-s" onClick={() => onOpenCatalog()}>Open Catalog <Ic.arrow size={12} /></button>
+          ) : null}
+          {/* The two states, said apart, because the owner ruled they ARE apart (2026-09-22) and a
+            * reader who assumes one word covers both will misread the column. §38 statement #1 of
+            * exactly two on this band. */}
           <small>
-            What each client agreed to pay for one of your offers. Recording it bills nobody and
-            sends nothing. No legal document is generated, stored or signed here.
+            What each client agreed to, and the document they signed to agree it. This column tracks
+            the <b>signature</b>; whether the engagement is running, paused or finished is a
+            separate state that starts once it is signed. Sending an agreement bills nobody and
+            charges nothing.
           </small>
         </div>
 
-        {agreements.agreementsReadable && agreements.agreements.length > 0 && <div className="so-filters">
+        {agreements.agreementsReadable && termRows.length > 0 && <div className="so-filters">
           <label className="so-search"><span>Find client terms</span><input type="search" value={termSearch} placeholder="Search client name…" onChange={(e) => { setTermSearch(e.target.value); setTermPage(0); }} /></label>
-          <label className="so-search"><span>Status</span><select aria-label="Terms status" value={termStatus} onChange={(e) => { setTermStatus(e.target.value); setTermPage(0); }}><option value="all">All statuses</option>{Object.entries(AGREEMENT_STATE).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}</select></label>
-          <small>Searches the latest {agreements.agreements.length} loaded records (up to 200).</small>
+          <label className="so-search"><span>Engagement</span><select aria-label="Terms status" value={termStatus} onChange={(e) => { setTermStatus(e.target.value); setTermPage(0); }}><option value="all">All statuses</option>{Object.entries(AGREEMENT_STATE).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}</select></label>
+          <small>Searches the latest {termRows.length} loaded records (up to 200).</small>
         </div>}
         {["loading", "resolving"].includes(agreements.phase) ? <p role="status">Loading commercial terms…</p> : agreements.phase === "error" ? (
           <p className="so-absent">
@@ -1342,114 +1934,96 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
             Client terms are not readable at your access level. That is different from there being
             none, so nothing is shown rather than an empty list that would read as zero.
           </p>
-        ) : agreements.agreements.length === 0 ? (
+        ) : termRows.length === 0 && signings.phase === "error" ? (
+          // BEFORE the empty copy, deliberately. Every branch below this one is keyed on
+          // `agreements.*` alone, so a healthy-and-empty client-terms read used to reach the
+          // "Nothing recorded yet" copy even when the DOCUMENT read had failed outright. An
+          // agreement with no offer and no price (owner ruling 3 — an NDA, a scope letter) has no
+          // commercial row at all and lives only in that record, so exactly the rows this band
+          // could not see are the ones it was telling the owner did not exist.
+          <p className="so-absent" role="alert">
+            Your client terms read fine and none are recorded — but your documents could not be
+            read, so this is unknown rather than empty. An agreement that carries no price lives
+            only in that record, and one may be there.{" "}
+            <button className="btn btn-s" onClick={signings.retry}><Ic.arrow size={13} />Retry documents</button>
+          </p>
+        ) : termRows.length === 0 ? (
           // The prerequisites are named plainly, and each points at the surface that fixes it —
           // never a control that does nothing (§70.1).
           <p className="so-absent">
             {agreements.clients.length === 0
               ? "These terms attach a client to one of your offers, and no clients are recorded in this workspace yet. Add one under Clients first."
-              : (!offerSearch && offerPage === 0 && offers.phase === "ready" && offers.offers.length === 0)
-                ? "These terms attach a client to one of your offers, and nothing is recorded in your catalog yet. Add what you sell above first."
-                : "Nothing recorded yet. Pick a client and one of your offers, then write down what they actually agreed to pay — the amount, how often, and when it starts."}
+              : (offers.phase === "ready" && offers.offers.length === 0)
+                // The old wording said "above", pointing at a band that no longer exists. It now
+                // points at where creating an offer actually lives.
+                ? "These terms name one of your offers, and nothing is recorded in your catalog yet. Record terms opens with a Quick offer inside it, or add what you sell in Catalog — or send a document that carries no price at all."
+                : "Nothing recorded yet. Pick a client, then either write down what they agreed to pay or upload the document you want them to sign."}
           </p>
         ) : (
-          <div className="so-table" role="table" aria-label="Commercial terms and retainers">
-            <div className="so-tr so-th so-tr-4" role="row">
+          <div className="so-table" role="table" aria-label="Agreements and terms">
+            <div className="so-tr so-th so-tr-5" role="row">
               <span role="columnheader">Client</span>
-              <span role="columnheader">State</span>
+              <span role="columnheader">Document</span>
+              <span role="columnheader">Signature</span>
               <span role="columnheader">Agreed</span>
               <span role="columnheader">Terms</span>
             </div>
-            {shownTerms.map((row) => {
-              const state = AGREEMENT_STATE[row.status] || AGREEMENT_STATE.unrecognised;
-              const client = agreements.clients.find((c) => c.id === row.contactId);
-              const offer = [...offers.offers, ...(offers.referencedOffers || [])].find((o) => o.id === row.offerId);
+            {shownTerms.map((entry) => {
+              const row = entry.agreement;
+              const signing = entry.signing;
+              const state = row ? (AGREEMENT_STATE[row.status] || AGREEMENT_STATE.unrecognised) : null;
+              const client = agreements.clients.find((c) => c.id === entry.contactId);
+              const offer = row ? [...offers.offers, ...(offers.referencedOffers || [])].find((o) => o.id === row.offerId) : null;
+              // "No document" is a claim about the record, so it is only made when the record was
+              // actually readable. Otherwise the cell says it could not look (§13).
+              const signatureState = signing ? signing.displayState
+                : signingsReadable ? "none"
+                : "unrecognised";
               return (
                 <button
-                  className="so-tr so-tr-4 so-row"
+                  className="so-tr so-tr-5 so-row"
                   role="row"
-                  key={row.id}
-                  onClick={() => openAgreement(row, client, offer)}
+                  key={entry.id}
+                  onClick={() => row
+                    ? openAgreement(row, client, offer, signing)
+                    : openSigning(signing, client)}
                 >
                   <span role="cell" className="so-cell-name">
                     {/* A client the caller cannot read is NAMED as unreadable, never blanked into
                       * an em-dash that would read as "no client". */}
                     {client?.name || (agreements.clientsReadable ? "Not recorded" : "Not readable here")}
                   </span>
-                  <span role="cell"><Pill tone={state.tone}>{state.label}</Pill></span>
-                  <span role="cell" className={`so-num so-num--${state.tone}`}>
-                    {row.agreedAmountMinor === null
-                      ? (row.priceBasis === "quote_pending" ? "To be quoted" : "—")
-                      : money(row.agreedAmountMinor, row.agreedCurrency) ?? "—"}
+                  <span role="cell" className="so-quiet">
+                    {signing ? signing.documentTitle : signingsReadable ? "None" : "Not readable"}
+                  </span>
+                  <span role="cell"><SignaturePill state={signatureState} /></span>
+                  <span role="cell" className={`so-num${state ? ` so-num--${state.tone}` : ""}`}>
+                    {!row ? "—"
+                      : row.agreedAmountMinor === null
+                        ? (row.priceBasis === "quote_pending" ? "To be quoted" : "—")
+                        : money(row.agreedAmountMinor, row.agreedCurrency) ?? "—"}
                   </span>
                   <span role="cell" className="so-quiet">
-                    {(TERM_LABEL[row.termKind] || "Not stated")}
-                    {row.termKind === "recurring" && row.billingInterval
-                      ? ` · ${CADENCE_LABEL[row.billingInterval] || row.billingInterval}`
-                      : ""}
-                    {row.termKind === "installment" && row.installmentsTotal
-                      ? ` · ${row.installmentsTotal}×`
-                      : ""}
+                    {!row ? "No offer or price on this document" : (<>
+                      {(TERM_LABEL[row.termKind] || "Not stated")}
+                      {row.termKind === "recurring" && row.billingInterval
+                        ? ` · ${CADENCE_LABEL[row.billingInterval] || row.billingInterval}`
+                        : ""}
+                      {row.termKind === "installment" && row.installmentsTotal
+                        ? ` · ${row.installmentsTotal}×`
+                        : ""}
+                      {/* The engagement's own state rides here rather than taking the Signature
+                        * column, so nothing that shipped stopped being visible at a glance (§58). */}
+                      <span className="so-engage"> · {state.label}</span>
+                    </>)}
                   </span>
                 </button>
               );
             })}
           </div>
         )}
-        {agreements.agreements.length > 0 && agreements.agreementsReadable && <div className="so-page-controls"><span>{matchingTerms.length === 0 ? "No matching terms" : "Page " + (termPage + 1) + " · " + matchingTerms.length + " matching loaded records"}</span><button className="btn btn-s" disabled={termPage === 0} onClick={() => setTermPage((p) => p - 1)}>Previous terms</button><button className="btn btn-s" disabled={(termPage + 1) * 5 >= matchingTerms.length} onClick={() => setTermPage((p) => p + 1)}>Next terms</button></div>}
-      </section>
-
-      {/* ── what this business sells ──────────────────────────────────────────────────────── */}
-      <section className="so-band so-offers" aria-label="Find an offer">
-        <div className="so-band-head">
-          <h3>Find an offer</h3>
-          <small>What you sell lives in Catalog. Search by name or browse five at a time.</small>
-          <span style={{ flex: 1 }} />
-          {offers.canManage && <button className="btn btn-s btn-p" onClick={() => setEditor("offer")}>Quick offer</button>}
-          {onOpenCatalog ? (
-            <button className="btn btn-s" onClick={() => onOpenCatalog()}>Open Catalog <Ic.arrow size={12} /></button>
-          ) : null}
-        </div>
-
-        {offers.authorityUnknown && <p className="so-absent" role="alert">Offer editing access could not be confirmed. <button className="btn btn-s" onClick={offers.retry}>Retry offer access</button></p>}
-        <label className="so-search"><span>Search Catalog offers</span><input type="search" value={offerSearch} placeholder="Find a product or service…" onChange={(e) => { setOfferSearch(e.target.value); setOfferPage(0); }} /></label>
-        {["loading", "resolving"].includes(offers.phase) ? <p role="status">Loading Catalog offers…</p> : offers.phase === "error" ? (
-          <p className="so-absent" role="alert">
-            Your offers could not be read. Your records were not changed. <button className="btn btn-s" onClick={offers.retry}>Retry offers</button>
-          </p>
-        ) : offers.phase === "unavailable" ? <p className="so-absent">Catalog needs a resolved workspace.</p> : offers.offers.length === 0 ? (
-          <p className="so-absent">
-            {offerSearch || offerPage ? "No offers match this view. Clear your search or go back a page." : "Add your first product or service with Quick offer. Finish its setup in Catalog."}
-          </p>
-        ) : (
-          <div className="so-table" role="table" aria-label="Offers">
-            <div className="so-tr so-th" role="row">
-              <span role="columnheader">Offer</span>
-              <span role="columnheader">Kind</span>
-              <span role="columnheader">State</span>
-              <span role="columnheader">Price</span>
-              <span role="columnheader">Price cadence</span>
-            </div>
-            {offers.offers.map((offer) => {
-              const lead = offer.prices.filter((p) => p.active && typeof p.unitAmount === "number")[0] || null;
-              const state = OFFER_STATE[offer.availability] || OFFER_STATE.unrecognised;
-              return (
-                <button className="so-tr so-row" role="row" key={offer.id} onClick={() => openOffer(offer)}>
-                  <span role="cell" className="so-cell-name">{offer.name || "Untitled offer"}</span>
-                  <span role="cell">{offer.kind === "service" ? "Service" : offer.kind === "product" ? "Product" : "—"}</span>
-                  <span role="cell"><Pill tone={state.tone}>{state.label}</Pill></span>
-                  <span role="cell" className="so-num">
-                    {lead ? (money(lead.unitAmount, lead.currency) ?? "—") : "—"}
-                  </span>
-                  <span role="cell">
-                    {lead && lead.billingInterval ? (CADENCE[lead.billingInterval] || lead.billingInterval) : "—"}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-        <div className="so-page-controls"><span>Page {offerPage + 1} · up to 5 offers</span><button className="btn btn-s" disabled={offerPage === 0 || offers.phase !== "ready"} onClick={() => setOfferPage((p) => p - 1)}>Previous offers</button><button className="btn btn-s" disabled={!offers.hasMore || offers.phase !== "ready"} onClick={() => setOfferPage((p) => p + 1)}>Next offers</button></div>
+        {termRows.length > 0 && agreements.agreementsReadable && <div className="so-page-controls"><span>{matchingTerms.length === 0 ? "No matching terms" : "Page " + (termPage + 1) + " · " + matchingTerms.length + " matching loaded records"}</span><button className="btn btn-s" disabled={termPage === 0} onClick={() => setTermPage((p) => p - 1)}>Previous terms</button><button className="btn btn-s" disabled={(termPage + 1) * 5 >= matchingTerms.length} onClick={() => setTermPage((p) => p + 1)}>Next terms</button></div>}
+        {signings.phase === "error" && <p className="so-absent" role="alert">Your documents could not be read, so the Signature column is unknown rather than empty. Your commercial terms above are unaffected. <button className="btn btn-s" onClick={signings.retry}><Ic.arrow size={13} />Retry documents</button></p>}
       </section>
       </>)}
 

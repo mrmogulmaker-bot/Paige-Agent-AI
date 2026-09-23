@@ -62,6 +62,7 @@ const PaigeHome = lazyWithReload(() => import("./pages/PaigeHome"));
 const Onboarding = lazyWithReload(() => import("./pages/Onboarding"));
 const McpAuthorize = lazyWithReload(() => import("./pages/McpAuthorize"));
 const JoinWorkspace = lazyWithReload(() => import("./pages/JoinWorkspace"));
+const AgreementSigning = lazyWithReload(() => import("./pages/sign/AgreementSigning"));
 const PortalGateway = lazyWithReload(() => import("./pages/PortalGateway"));
 const TenantStorefront = lazyWithReload(() => import("./pages/public/TenantStorefront"));
 const GrowthPageRenderer = lazyWithReload(() => import("./pages/public/GrowthPageRenderer"));
@@ -246,6 +247,10 @@ const App = () => (
             <Route path="/reset-password" element={<PageSuspense><ResetPassword /></PageSuspense>} />
             <Route path="/accept-invite" element={<PageSuspense><AcceptInvite /></PageSuspense>} />
             <Route path="/join/:token" element={<PageSuspense><JoinWorkspace /></PageSuspense>} />
+            {/* Public and unauthenticated by design: the counterparty signing an agreement has no
+              * account and will never make one. The token in the path IS the authorisation, and the
+              * server derives every id from it (§9). */}
+            <Route path="/sign/:token" element={<PageSuspense><AgreementSigning /></PageSuspense>} />
             <Route path="/portal/:tenantSlug" element={<PageSuspense><PortalGateway /></PageSuspense>} />
             <Route path="/mcp/authorize" element={<PageSuspense><McpAuthorize /></PageSuspense>} />
             <Route path="/auth/google-calendar/callback" element={<PageSuspense><GoogleCalendarCallback /></PageSuspense>} />
