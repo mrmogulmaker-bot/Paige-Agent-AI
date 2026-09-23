@@ -6,11 +6,16 @@
 // atomic conditional UPDATE before upgrade; tenant/thread identity is resolved
 // only from that verified database row, never from query/body tenantId.
 //
-// This provider-free slice does not open ears, runtime, or mouth. It refuses
-// audio honestly until separately approved adapters are available; no client
-// voice is sent to a vendor or recorded by this function.
+// Pilot availability defaults off in the platform-owned table. Only after a
+// consumed ticket, current caller-owned thread, standing, and pilot gate do
+// server-side ears/mouth adapters open. The canonical paige-ai-chat stream
+// remains the sole runtime; this relay never executes a spoken approval.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
-import { createRelayState, reduceRelay } from "../_shared/paige-live-relay-contract.ts";
+import { APPROVED_PAIGE_ELEVENLABS_VOICE_ID, elevenlabsSpeechStream, resolveElevenLabsModel } from "../_shared/elevenlabs.ts";
+import { envKey } from "../_shared/env-key.ts";
+import { openFluxEars } from "../_shared/paige-live-flux-ears.ts";
+import { LiveRelayAdmission, PaigeLiveRelayBridge } from "../_shared/paige-live-relay-bridge.ts";
+import { createLiveRuntimeProof, liveRuntimeDigest } from "../_shared/paige-live-runtime-proof.ts";
 import { consumeRelayTicket, hasLiveWorkspaceStanding, isLiveAudioPilotEnabled, isLiveWorkspaceCurrent } from "../_shared/paige-live-ticket.ts";
 
 const waitUntil = (promise: Promise<unknown>): void => {
@@ -55,7 +60,8 @@ Deno.serve(async (req) => {
         updated_at: new Date().toISOString(),
       })
       .eq("id", session.id).eq("tenant_id", session.tenant_id)
-      .eq("actor_user_id", session.actor_user_id).eq("state", "connecting")
+      .eq("actor_user_id", session.actor_user_id)
+      .in("state", ["connecting", "listening", "thinking", "speaking", "interrupted", "held"])
       .select("id").maybeSingle();
     if (error || !data) {
       console.error("[paige-live-relay] terminal state write failed", { code: error?.code });
@@ -64,6 +70,25 @@ Deno.serve(async (req) => {
     return true;
   };
 
+  const checkCurrentAdmission = async (): Promise<Response | null> => {
+  // The platform's canonical transport switch is independent of tenant pilot
+  // rollout and provider proof. Re-read it on the existing admission monitor,
+  // so disabling live audio also stops an already-connected relay.
+  const { data: transport, error: transportError } = await admin.from("paige_voice_readiness")
+    .select("transport_enabled").eq("singleton", true).maybeSingle();
+  if (transportError || transport?.transport_enabled !== true) {
+    if (!await markUnavailable("live_audio_not_enabled")) return new Response("relay_unavailable", { status: 503 });
+    return new Response("live_audio_not_enabled", { status: 403 });
+  }
+  const { data: currentSession, error: currentSessionError } = await admin.from("paige_live_sessions")
+    .select("id").eq("id", session.id).eq("tenant_id", session.tenant_id)
+    .eq("actor_user_id", session.actor_user_id).eq("thread_id", session.thread_id)
+    .eq("context_epoch", session.context_epoch)
+    .in("state", ["connecting", "listening", "thinking", "speaking", "interrupted", "held"])
+    .maybeSingle();
+  if (currentSessionError || !currentSession) return new Response("live_admission_changed", { status: 403 });
+  // The same resolution is reused before provider open, before ready and
+  // throughout capture. Admission is never a once-per-socket privacy decision.
   // Recheck the original caller-owned thread after the atomic claim. The
   // ticket only identifies a server-owned session; it grants no tenant choice.
   const { data: thread, error: threadError } = await admin.from("paige_chat_threads")
@@ -152,35 +177,183 @@ Deno.serve(async (req) => {
     if (!await markUnavailable("live_audio_not_enabled")) return new Response("relay_unavailable", { status: 503 });
     return new Response("live_audio_not_enabled", { status: 403 });
   }
-  const unavailableCode = "adapters_not_connected";
-  if (!await markUnavailable(unavailableCode)) return new Response("relay_unavailable", { status: 503 });
+  return null;
+  };
+  const admissionFailure = await checkCurrentAdmission();
+  if (admissionFailure) return admissionFailure;
+  // Read back the one corrected Jessica candidate. Active read-aloud stays on
+  // OpenAI; neither a browser value nor a tenant preference selects a voice.
+  const { data: voice, error: voiceError } = await admin.from("paige_voice_profiles")
+    .select("provider,provider_voice_ref,revision,active,approved,status,provider_verification_id,provider_verification_receipt_ref,approved_at")
+    .eq("slot", "candidate").maybeSingle();
+  const voiceReady = !voiceError && voice?.provider === "elevenlabs" &&
+    voice.provider_voice_ref === APPROVED_PAIGE_ELEVENLABS_VOICE_ID &&
+    voice.revision === "elevenlabs-jessica-take5-r1" && voice.active === false &&
+    voice.approved === true && voice.status === "approved" && !!voice.approved_at &&
+    !!voice.provider_verification_id && !!voice.provider_verification_receipt_ref;
+  const { data: readiness, error: readinessError } = await admin.from("paige_voice_readiness")
+    .select("key_scope_verified,voice_authorized,retention_policy_approved,zero_retention_confirmed,provider_verification_id,account_verification_receipt_ref,account_verified_at")
+    .eq("singleton", true).maybeSingle();
+  const { data: verification, error: verificationError } = voice?.provider_verification_id
+    ? await admin.from("paige_voice_provider_verifications")
+      .select("provider,provider_voice_ref,evidence_ref,key_scope_verified,voice_authorized,retention_policy_approved,zero_retention_confirmed")
+      .eq("id", voice.provider_verification_id).maybeSingle()
+    : { data: null, error: null };
+  // Pilot rollout is not provider/privacy approval. Reuse the canonical proof
+  // records; never infer entitlement or retention from a present API key. No
+  // legacy quota/rate/ceiling fields participate: costs belong to the Budget lane.
+  const privacyReady = !readinessError && !verificationError &&
+    readiness?.provider_verification_id === voice?.provider_verification_id &&
+    !!readiness?.account_verification_receipt_ref && !!readiness?.account_verified_at &&
+    verification?.provider === "elevenlabs" &&
+    verification?.provider_voice_ref === APPROVED_PAIGE_ELEVENLABS_VOICE_ID &&
+    verification?.evidence_ref === voice?.provider_verification_receipt_ref &&
+    [readiness, verification].every((row) => row?.key_scope_verified === true &&
+      row.voice_authorized === true && row.retention_policy_approved === true && row.zero_retention_confirmed === true);
+  const modelReady = resolveElevenLabsModel() !== null;
+  // Account-level Deepgram training opt-out is an operational fact, not
+  // inferred from the per-request flag. This server-side switch stays OFF
+  // until the owner has checked the account setting; no tenant can set it.
+  const mipAccountVerified = envKey("DEEPGRAM_MIP_ACCOUNT_VERIFIED") === "true";
+  const runtimeSigningKey = envKey("PAIGE_LIVE_STREAM_SIGNING_KEY") ?? "";
+  const unavailableCode = !voiceReady ? "approved_voice_unavailable"
+    : !privacyReady ? "audio_privacy_not_verified"
+    : !modelReady || !envKey("ELEVENLABS_API_KEY") ? "mouth_not_configured"
+    : !envKey("DEEPGRAM_API_KEY") ? "ears_not_configured"
+    : !mipAccountVerified ? "audio_privacy_not_verified"
+    : runtimeSigningKey.length < 32 ? "runtime_not_configured"
+    : null;
+  if (unavailableCode) {
+    if (!await markUnavailable(unavailableCode)) return new Response("relay_unavailable", { status: 503 });
+    const { socket, response } = Deno.upgradeWebSocket(req);
+    const closed = new Promise<void>((resolve) => { socket.onclose = () => resolve(); });
+    waitUntil(closed);
+    socket.onopen = () => {
+      socket.send(JSON.stringify({
+        type: "unavailable", code: unavailableCode,
+        message: "Live audio isn't ready for this workspace yet. You can keep working with Paige in chat.",
+      }));
+      setTimeout(() => socket.close(1013, "live_audio_unavailable"), 0);
+    };
+    socket.onmessage = () => { try { socket.close(1008, "audio_not_ready"); } catch { /* closed */ } };
+    return response;
+  }
 
   const { socket, response } = Deno.upgradeWebSocket(req);
-  let relay = createRelayState({
-    sessionId: session.id, epoch: session.context_epoch, ticketId: "consumed",
-    ticketExpiresAt: Date.now(),
+  const markLive = async (): Promise<boolean> => {
+    const { data, error } = await admin.from("paige_live_sessions")
+      .update({
+        state: "listening", availability: "LIVE", failure_code: null,
+        profile_provider: "elevenlabs",
+        profile_provider_voice_ref: APPROVED_PAIGE_ELEVENLABS_VOICE_ID,
+        profile_revision: voice?.revision,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", session.id).eq("tenant_id", session.tenant_id)
+      .eq("actor_user_id", session.actor_user_id).eq("state", "connecting")
+      .select("id").maybeSingle();
+    if (error || !data) {
+      console.error("[paige-live-relay] ready state write failed", { code: error?.code });
+      return false;
+    }
+    return true;
+  };
+  const markFailed = async (code: string): Promise<void> => {
+    const { error } = await admin.from("paige_live_sessions")
+      .update({
+        state: "unavailable", availability: "UNAVAILABLE",
+        failure_code: code, updated_at: new Date().toISOString(),
+      })
+      .eq("id", session.id).eq("tenant_id", session.tenant_id)
+      .eq("actor_user_id", session.actor_user_id)
+      .in("state", ["connecting", "listening", "thinking", "speaking", "interrupted", "held"]);
+    if (error) console.error("[paige-live-relay] failure state write failed", { code: error.code });
+  };
+  let failureWrite: Promise<void> | null = null;
+  let admissionTimer: ReturnType<typeof setInterval> | undefined;
+  const admission = new LiveRelayAdmission(
+    async () => (await checkCurrentAdmission()) === null,
+    () => bridge.unavailable("live_admission_changed"),
+  );
+  const runtimeProof = createLiveRuntimeProof(runtimeSigningKey);
+  const bridge = new PaigeLiveRelayBridge({
+    sessionId: session.id, epoch: session.context_epoch,
+    send(frame) { if (socket.readyState === WebSocket.OPEN) socket.send(frame); },
+    close(code, reason) {
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+        try { socket.close(code, reason); } catch { /* already closed */ }
+      }
+    },
+    openEars: (events) => openFluxEars(events),
+    async openMouth(text, signal) {
+      if (!await admission.check()) throw new Error("live_admission_changed");
+      const response = await elevenlabsSpeechStream({
+        text, voiceId: APPROVED_PAIGE_ELEVENLABS_VOICE_ID,
+        modelId: resolveElevenLabsModel() ?? "",
+      }, signal);
+      if (!response.body) throw new Error("mouth_stream_missing");
+      return response.body;
+    },
+    usage: { emit() { /* Neutral UsageSink seam. Budget lane supplies persistence later. */ } },
+    authorize: (force) => admission.check(force),
+    runtimeProof: {
+      readOutput: async (token) => await admission.check() ? runtimeProof.readOutput(token) : null,
+      async issue(turnId, transcript) {
+        if (!await admission.check()) throw new Error("live_admission_changed");
+        const challenge = await runtimeProof.issue({
+          sessionId: session.id, tenantId: session.tenant_id, actorId: session.actor_user_id,
+          threadId: session.thread_id, epoch: session.context_epoch, turnId,
+        }, transcript);
+        // Reuse the service-only one-use slot AFTER the connection ticket was
+        // consumed. Renewal returns to connecting and invalidates this challenge.
+        const { data, error } = await admin.from("paige_live_sessions")
+          .update({ provider_session_ref: `runtime:${await liveRuntimeDigest(challenge.token)}` })
+          .eq("id", session.id).eq("tenant_id", session.tenant_id)
+          .eq("actor_user_id", session.actor_user_id).eq("context_epoch", session.context_epoch)
+          .eq("availability", "LIVE").in("state", ["listening", "thinking", "speaking", "interrupted"])
+          .select("id").maybeSingle();
+        if (error || !data) throw new Error("live_runtime_admission_changed");
+        return challenge;
+      },
+    },
+    onFailure(code) {
+      failureWrite = markFailed(code);
+      waitUntil(failureWrite);
+    },
   });
   const closed = new Promise<void>((resolve) => {
     socket.onclose = () => {
-      relay = reduceRelay(relay, { kind: "session.cancel", at: Date.now(), reason: "socket_closed" }).state;
-      resolve();
+      clearInterval(admissionTimer);
+      admission.stop();
+      bridge.end();
+      // A socket ending is not the user ending their logical conversation:
+      // Minimize, hidden windows and reconnect all close the audio transport.
+      // The existing authenticated control plane owns durable minimize/end.
+      // Never overwrite it (or a renewed socket) from a delayed close callback.
+      void Promise.resolve(failureWrite).finally(resolve);
     };
     socket.onerror = () => { try { socket.close(1011, "relay_unavailable"); } catch { resolve(); } };
   });
   waitUntil(closed);
   socket.onopen = () => {
-    socket.send(JSON.stringify({
-      type: "unavailable", code: unavailableCode,
-      message: "Live audio is not connected yet. You can keep working with Paige in chat.",
-    }));
-    // The provider-free server never sends ready and never accepts microphone
-    // frames. Give the terminal frame a task turn before closing.
-    setTimeout(() => socket.close(1013, unavailableCode), 0);
+    waitUntil((async () => {
+      if (!await bridge.open()) return;
+      if (!await admission.check(true)) return;
+      if (!await markLive()) {
+        bridge.unavailable("live_admission_changed");
+        return;
+      }
+      if (!await admission.check(true)) return;
+      bridge.ready();
+      admissionTimer = setInterval(() => { waitUntil(admission.check(true)); }, 500);
+    })());
   };
-  socket.onmessage = () => {
-    // A client that sends audio before an explicit ready frame violates the
-    // contract. Do not parse, log, persist, or relay those bytes.
-    try { socket.close(1008, "audio_not_ready"); } catch { /* socket already closed */ }
+  socket.onmessage = (event) => {
+    if (typeof event.data === "string" || event.data instanceof ArrayBuffer) {
+      bridge.receive(event.data);
+    } else {
+      try { socket.close(1008, "invalid_audio_frame"); } catch { /* socket already closed */ }
+    }
   };
   return response;
 });
