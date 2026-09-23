@@ -621,7 +621,7 @@ export function CatalogOffers({ setDetail }) {
   if (data.phase === "unavailable") {
     return (
       <div className="campaigns-state">
-        <span className="campaigns-truth campaigns-truth--unavailable">UNAVAILABLE</span>
+        
         <h2>Campaigns needs a resolved workspace</h2>
         <p>No tenant data is read until your account context is confirmed.</p>
       </div>
@@ -630,7 +630,7 @@ export function CatalogOffers({ setDetail }) {
   if (data.phase === "error") {
     return (
       <div className="campaigns-state" role="alert">
-        <span className="campaigns-truth campaigns-truth--unavailable">UNAVAILABLE</span>
+        
         <h2>Offers could not load</h2>
         <p>Your records were not changed. Try the tenant-scoped read again.</p>
         <button className="btn btn-s" onClick={data.retry}><Ic.arrow size={13} />Retry</button>

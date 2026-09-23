@@ -67,7 +67,12 @@ describe("Solo Campaigns approved contract", () => {
     expect(source).not.toContain("DATA.campaigns");
     expect(source).not.toContain("DATA.pipeline");
     expect(source).not.toContain("$8,400");
-    for (const label of ["LIVE", "PARTIAL", "UNAVAILABLE", "PROPOSED"]) expect(source).toContain(label);
+    // Owner ruling 2026-09-23. The four capability states still exist and are still stated —
+    // Performance coverage is built on saying what can and cannot be reported — but in the
+    // customer's words. RE-POINTED to guard the translation, so the release vocabulary cannot
+    // drift back onto a surface a coach uses.
+    for (const plain of ["Available", "Partly available", "Planned", "Not available"]) expect(source).toContain(plain);
+    for (const internal of [">LIVE<", ">PARTIAL<", ">PROPOSED<", ">UNAVAILABLE<"]) expect(source).not.toContain(internal);
   });
 
   it("fails closed on tenant identity and contains read-only tenant filters", () => {
