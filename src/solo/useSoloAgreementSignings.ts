@@ -1,6 +1,11 @@
 // The tenant's AGREEMENT SIGNINGS read — Campaigns → Sales, the DOCUMENT half of a client agreement.
 //
-// WHAT THIS IS, AND WHY IT IS NOT PART OF `useSoloAgreements`.
+// LANE: AGREEMENTS. This hook writes `paige_agreements` and its signers, never
+// `tenant_client_agreements` — that table belongs to `useSoloCommercialTerms` and the Sales lane.
+// It CONSUMES the commercial-terms id as `commercial_terms_id`; null is legal, because an NDA or a
+// scope letter has no offer behind it.
+//
+// WHAT THIS IS, AND WHY IT IS NOT PART OF `useSoloCommercialTerms`.
 // `tenant_client_agreements` records what one client agreed to PAY. This table records the DOCUMENT
 // they signed to agree it, and the owner ruled (2026-09-22) that the two states stay SEPARATE: a
 // signature runs draft → sent → viewed → completed, while the engagement it commits runs draft →
@@ -166,7 +171,7 @@ export type SigningsState = {
   /**
    * FALSE when the caller cannot read this table at all.
    *
-   * This CANNOT be derived from `!error`, for the reason `useSoloAgreements.agreementsReadable`
+   * This CANNOT be derived from `!error`, for the reason `useSoloCommercialTerms.agreementsReadable`
    * records at length: `tenant_agreement_signings` GRANTs SELECT to `authenticated` and gates on
    * RLS, and RLS is a ROW FILTER — a caller matching no permissive policy gets HTTP 200, an EMPTY
    * array and NO error. Modelling authorization as an error channel here would make this flag

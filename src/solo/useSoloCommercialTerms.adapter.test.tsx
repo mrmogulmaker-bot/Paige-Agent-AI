@@ -52,15 +52,15 @@ vi.mock("@/integrations/supabase/client", () => ({
 
 vi.mock("@/hooks/useTenantContext", () => ({ useTenantContext: () => tenant }));
 
-const { useSoloAgreements } = await import("./useSoloAgreements");
+const { useSoloCommercialTerms } = await import("./useSoloCommercialTerms");
 
 let host: HTMLDivElement;
 let root: Root;
-let latest: ReturnType<typeof useSoloAgreements> | null = null;
-const renders: Array<ReturnType<typeof useSoloAgreements>> = [];
+let latest: ReturnType<typeof useSoloCommercialTerms> | null = null;
+const renders: Array<ReturnType<typeof useSoloCommercialTerms>> = [];
 
 function Probe() {
-  latest = useSoloAgreements();
+  latest = useSoloCommercialTerms();
   renders.push(latest);
   return null;
 }
@@ -125,7 +125,7 @@ afterEach(() => {
   host?.remove();
 });
 
-describe("useSoloAgreements — what it actually asks the database for", () => {
+describe("useSoloCommercialTerms — what it actually asks the database for", () => {
   it("scopes EVERY read to the active tenant", async () => {
     await run();
     // Not one of these is redundant with RLS. `is_platform_owner()` is a disjunct in both the

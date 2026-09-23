@@ -1,5 +1,12 @@
 // The tenant's CLIENT AGREEMENTS read — Campaigns → Sales, Slice 2.
 //
+// LANE: SALES. Renamed from `useSoloAgreements` on 2026-09-23 because that name pointed at the
+// SALES hook while `useSoloAgreementSignings` pointed at the AGREEMENTS one, so whichever lane a
+// person was told they owned, the obvious file was the other lane's. This hook writes
+// `tenant_client_agreements` through `save_client_agreement` and writes nothing else. The single
+// contract across the seam is the commercial-terms id: this side produces it, the signings side
+// consumes it as `commercial_terms_id` and never writes this table.
+//
 // WHAT THIS IS. Catalog says what the business SELLS. An agreement is the different fact: what ONE
 // named client agreed to, on terms that may not be the list terms. This hook reads the agreements,
 // the minimum client identity needed to choose one, and whether the caller may write any of it.
@@ -199,7 +206,7 @@ function safeWriteMessage(code?: string): string {
   return "The save could not be confirmed. Refresh and check your records before trying again.";
 }
 
-export function useSoloAgreements(): AgreementsState {
+export function useSoloCommercialTerms(): AgreementsState {
   const { activeTenantId, accountContextLoading } = useTenantContext();
   // An identity epoch also invalidates a completion after A -> B -> A.
   const identity = useRef({ tenantId: activeTenantId, resolving: accountContextLoading });

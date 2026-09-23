@@ -1423,7 +1423,7 @@ The negotiated figure belongs to this client-specific commercial record. The Cat
 is captured when terms are recorded and is immutable; repricing the offer cannot rewrite it.
 Editing negotiated terms never writes back to Catalog, and recording terms is not signing a document. Writes go through `save_client_agreement` and `set_client_agreement_status`,
 both `SECURITY DEFINER`, both gated on `is_tenant_admin` of the resolved tenant, both
-`authenticated`-only with `anon` revoked. The tenant surface reads it via `src/solo/useSoloAgreements.ts`.
+`authenticated`-only with `anon` revoked. The tenant surface reads it via `src/solo/useSoloCommercialTerms.ts`.
 
 **§38 posture.** This is **not** a billing store. PAIGE is not merchant of record for tenant→client
 revenue; nothing here is collected, settled, metered or reconciled by the platform, and no row has
