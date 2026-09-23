@@ -41,6 +41,8 @@ index what you have not checked.
   `../delivery/harness-completion-map.md`, and per-capability ship-time completion in
   `paige-brain-wiring-standard.md` §3. Do not copy portfolio records into the Brain — cite them.
 - **Hit a weird recurring bug?** → `lessons-learned.md` (symptom → root cause → rule).
+- **CI red and unsure whether you caused it?** → `trunk-signal.md` **first**, before investigating.
+  Several reds on `main` are known-bad and owned; re-deriving that costs an hour and has cost several.
 - **Opening/closing a PR, merging, deploying, versioning, or drafting a customer update?** →
   `../doctrine/release-governance-and-customer-update-policy.md`.
 - **Checking what shipped, or preparing/closing a merge to `main`?** →
@@ -74,6 +76,7 @@ worse than none — it lies with authority.
 | `roles-permissions.md` | How roles actually work: the three stores, the owner→global-admin amplifier, which helper to use, live counts, what's not built | 2026-08-18 |
 | `decision-log.md` | Chronological one-liners: PRs #375+, dated rulings, wave decisions | "What changed / what did we decide?" |
 | `lessons-learned.md` | Recurring traps: symptom → root cause → rule | Before a class of work that's bitten us before |
+| `trunk-signal.md` | **Is this red CI check mine or inherited?** Every known-bad baseline on `main` with its cause, verdict and how to tell it from a failure you caused — plus the reading traps (a green log tail under `!cancelled()`, a bare `tsc --noEmit` that checks nothing, a wrapper exit code that is not the command's) | **The moment any CI check is red and you are not certain it is yours** |
 | `paige-brain-wiring-standard.md` | **The Second Brain versus Runtime Harness distinction, one-runtime/many-capability-domains rule, Self-Knowledge & Migration Advisor consumption boundary, and six-part checklist every capability must satisfy** — knowledge record + callable seam + context feed + tool registration + tier availability + modality-neutral acceptance. Includes the running coverage ledger while routing current Harness authority to the Master decision | **Before department/domain, capability answer, comparison/migration, model, agent, skill, voice, browser, proactive-job, or external-tool work; and when shipping ANY capability** |
 | `cd-pack-port-playbook.md` | How to port a Claude Design pack surface to a live tier: the 7-step procedure + the 6 traps that have actually cost us. Written from the operator port so Agency/Sub-account/Solo/Enterprise don't re-learn them | Before porting any pack surface to any tier |
 | `design-system.md` | Palette · gold discipline · type · depth · motion · layout · taste — and where each source lives | ANY design work, or "what is our design system?" |
