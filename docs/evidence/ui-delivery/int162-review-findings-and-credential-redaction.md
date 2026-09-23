@@ -43,4 +43,47 @@ MUST_NOT_HAPPEN: never write a bearer credential into an analytics store, a log 
 MUST_PRESERVE: every control and state from the merged delivery. Nothing was removed — the sealed-copy act, the three exits, the trail, the attach list, the pager, the snapshot lock and the approved closing note all stand. Two CSS transitions were removed; the states they eased remain and are now instant.
 ACCEPTANCE_CRITERIA: on the real platform, a completed agreement's summary matches what the database actually holds; a trail longer than the cap says so; the client-record button opens the named client; and opening a signing link leaves no token in analytics_events. The first three are proven against the harness and the contract; the fourth is proven by code trace and unit test, and becomes observable only once tokens are minted.
 MOTION_PURPOSE: less of it, deliberately. The two hover transitions removed were paint-triggering and forbidden by the interface standard; the hover state still changes, instantly. No motion was added.
-PROTECTED_SEAMS: the sales-mount harness is an impacted seam and was TESTED — and it caught what the suite did not. Exporting TRAIL_LIMIT changed a module contract the harness stub stands in for, and the stub did not re-export it, so the harness failed to mount at all while 90 tests passed. Repaired in the stub, which also now returns `truncated` from its signingEvents fixture. src/hooks/useAnalytics.ts is a shared seam: every caller passes through the same trackEvent, and the redaction is applied at the two points where a path enters the payload, so no caller can bypass it. Unaffected and named: the Catalog surface, Revenue, Scenarios, the signing page's own reads, and every other live-drive harness. Full drive 536/536 EXIT 0 after the change.
+PROTECTED_SEAMS: the sales-mount harness is an impacted seam and was TESTED — and it caught what the suite did not. Exporting TRAIL_LIMIT changed a module contract the harness stub stands in for, and the stub did not re-export it, so the harness failed to mount at all while 90 tests passed. Repaired in the stub, which also now returns `truncated` from its signingEvents fixture. src/hooks/useAnalytics.ts is a shared seam. CORRECTED 2026-09-23 — the sentence previously here read "the redaction is applied at the two points where a path enters the payload, so no caller can bypass it." Both halves were wrong. There were FOUR sinks, not two, and the guard did not cover the wiring at all. See CORRECTION below. Unaffected and named: the Catalog surface, Revenue, Scenarios, the signing page's own reads, and every other live-drive harness. Full drive 536/536 EXIT 0 after the change.
+
+---
+
+## CORRECTION (2026-09-23) — four sinks, not two, and a guard that proved nothing
+
+Codex review raised two P1s against the redaction this record describes. Both premises were checked
+before any code moved, and checking them found a third and fourth sink neither of us had named.
+
+**What the earlier claim got wrong.** It said two points, and it said no caller could bypass them.
+Four sinks record the URL, and the guard asserted only that the pure functions worked — stripping all
+three call sites out of the payload left every test green, EXIT 0. A guard that passes while the
+credential ships is worse than no guard, because it reports safety.
+
+| # | Sink | Who can read it | Status when found |
+|---|---|---|---|
+| 1 | `page_path` -> `analytics_events` | `is_platform_owner()` | redacted in the prior commit |
+| 2 | `properties.path` -> `analytics_events` | `is_platform_owner()` | redacted in the prior commit |
+| 3 | `referrer` -> `analytics_events.referrer` | `is_platform_owner()` | MISSED — one line below sink 1 |
+| 4 | `landing_path` -> `referral_clicks` | **the owning affiliate** | MISSED — raised by review |
+
+**Sink 4 is the worst of the four and was not the one flagged loudest.** `referral_clicks` RLS is
+`affiliate_id in (select id from affiliate_profiles where user_id = auth.uid())`, so the credential
+would reach an ordinary tenant-tier user rather than a platform operator — a cross-principal
+disclosure, where the party who can read the row is the same party who controls whether `?ref=` is
+appended to create it.
+
+**Sink 3 is armed, not firing.** `AgreementSigning.tsx` performs no full-page navigation and an SPA
+route change does not update `document.referrer`; `Referrer-Policy` is `strict-origin-when-cross-origin`,
+which strips the path cross-origin but not same-origin. Closed anyway — it begins firing the moment
+someone adds a same-origin link or a post-sign redirect, with nobody watching.
+
+**Premise verdicts, stated separately from the fixes.** The case-insensitivity half of P1 #1 is TRUE:
+`matchPath({path:"/sign/:token"}, "/SIGN/TOK")` matches against the installed react-router-dom 6.30.4
+and yields `token=TOK`, so `startsWith("/sign/")` waved a rendering signing page straight through. The
+percent-encoding half is FALSE on its stated grounds — `/%73ign/TOK` does not match the route and never
+renders. The underlying concern survives independently: these sinks log whatever is in the URL
+regardless of what matched, so the guard is now deliberately wider than the router.
+
+**Non-vacuity, each defect restored and the suite re-run:** case-sensitive prefix restored -> 2 fail ·
+referrer un-redacted -> 2 fail · `page_path` un-redacted -> 2 fail · affiliate landing path
+un-redacted -> 1 fail · all restored -> 12 pass, EXIT 0.
+
+AUTHENTICATED_RUNTIME is still UNVERIFIED — credentials unset, backend undeployed.

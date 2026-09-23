@@ -53,23 +53,59 @@ if (typeof window !== "undefined") {
  * Redact path segments that ARE credentials before anything records them.
  *
  * `/sign/:token` carries a 256-bit bearer token as a path SEGMENT — it is the whole of a
- * counterparty's authority to open and sign a legal agreement. Every page view is posted to
- * `track-event`, which inserts `page_path` and `properties.path` into `analytics_events`. So each
- * signing link a counterparty opened would be written, in plaintext and indefinitely, into a table
- * a platform operator can read — and anyone holding that row could open and sign someone else's
- * contract. Analytics wants to know a signing page was viewed; it has no business knowing which
- * token did it.
+ * counterparty's authority to open and sign a legal agreement. Three globally-mounted sinks
+ * record the URL, and every one of them had to be closed:
+ *
+ *   - `page_path` and `properties.path` -> `analytics_events`, readable by `is_platform_owner()`.
+ *   - `referrer` -> `analytics_events.referrer`, same table. `Referrer-Policy` is
+ *     `strict-origin-when-cross-origin`, so a cross-origin referrer carries no path — but a
+ *     SAME-origin full-page navigation away from the signing route carries the whole URL. No such
+ *     navigation exists on that page today, so this one is armed rather than firing; it is closed
+ *     anyway, because it begins firing the moment someone adds one and nobody is watching.
+ *   - `landing_path` -> `referral_clicks`, which is the worst of the three: its RLS lets the
+ *     OWNING AFFILIATE select the row, so the credential would reach an ordinary tenant-tier user
+ *     rather than a platform operator. See `useReferralTracking`, which calls this.
  *
  * Keyed on the ROUTE, not on the shape of the value, so a token that happens to look ordinary is
  * still redacted and a harmless id is not mangled.
+ *
+ * Matched the way the ROUTER matches, not by a case-sensitive string prefix. React Router
+ * registers `/sign/:token` case-insensitively, so `/SIGN/<token>` and `/Sign/<token>` render the
+ * signing page for real; a `startsWith("/sign/")` check waved both straight through. The first
+ * segment is also percent-decoded before comparison: `/%73ign/<token>` does NOT match the route
+ * and so never renders, but these sinks log whatever is in the URL regardless of what matched, so
+ * the guard is deliberately WIDER than the router. Redact more, never less.
  */
-const SECRET_PATH_PREFIXES = ["/sign/"] as const;
+const SECRET_ROUTE_SEGMENTS = new Set(["sign"]);
 
-export function redactSecretPath(pathname: string): string {
-  for (const prefix of SECRET_PATH_PREFIXES) {
-    if (pathname.startsWith(prefix)) return `${prefix}<redacted>`;
+function firstSegment(pathname: string): string {
+  const raw = pathname.split("/")[1] ?? "";
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // Malformed escape (a lone `%`). Compare the raw form rather than throwing.
+    return raw;
   }
-  return pathname;
+}
+
+/** Redact a credential-bearing PATHNAME. Returns a stable shape so analytics can still group it. */
+export function redactSecretPath(pathname: string): string {
+  const head = firstSegment(pathname);
+  if (!SECRET_ROUTE_SEGMENTS.has(head.toLowerCase())) return pathname;
+  return `/${head.toLowerCase()}/<redacted>`;
+}
+
+/** Redact a credential-bearing ABSOLUTE URL, for sinks that record a whole href (the referrer). */
+export function redactSecretUrl(url: string): string {
+  if (!url) return url;
+  try {
+    const parsed = new URL(url);
+    parsed.pathname = redactSecretPath(parsed.pathname);
+    return parsed.toString();
+  } catch {
+    // Not a parseable absolute URL. Never hand back something unredacted on a guess.
+    return redactSecretPath(url);
+  }
 }
 
 export async function trackEvent(
@@ -102,7 +138,7 @@ export async function trackEvent(
       session_id,
       properties,
       page_path: redactSecretPath(window.location.pathname),
-      referrer: document.referrer || null,
+      referrer: redactSecretUrl(document.referrer) || null,
       utm_source: utm.utm_source,
       utm_medium: utm.utm_medium,
       utm_campaign: utm.utm_campaign,
