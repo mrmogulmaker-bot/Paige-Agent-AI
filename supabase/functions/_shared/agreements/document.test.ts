@@ -458,3 +458,50 @@ Deno.test("an absent path or absent tenant is refused", () => {
   assert(!isOwnedByTenant("", "11111111-1111-1111-1111-111111111111"));
   assert(!isOwnedByTenant("11111111-1111-1111-1111-111111111111/source/x.pdf", null));
 });
+
+/**
+ * THE BYPASS THAT DEFEATED THE FIRST VERSION OF THIS PREDICATE.
+ *
+ * Checking that the first segment equals the tenant is not enough, because the path is
+ * interpolated into a request URL and a URL parser resolves dot segments — including
+ * percent-encoded ones — before the request is made. Demonstrated, not assumed:
+ *
+ *   new URL("aaa/%2e%2e/bbb/source/x.pdf", "https://h/storage/v1/object/").pathname
+ *     === "/storage/v1/object/bbb/source/x.pdf"
+ *
+ * The validated prefix is gone by the time the service role fetches.
+ */
+Deno.test("percent-encoded dot segments are refused — the prefix would be erased in transit", () => {
+  const me = "11111111-1111-1111-1111-111111111111";
+  const victim = "22222222-2222-2222-2222-222222222222";
+  assert(!isOwnedByTenant(`${me}/%2e%2e/${victim}/source/x.pdf`, me));
+  assert(!isOwnedByTenant(`${me}/%2E%2E/${victim}/source/x.pdf`, me));
+  assert(!isOwnedByTenant(`${me}/%2e%2E/${victim}/source/x.pdf`, me));
+  // And the encoded separator that would rebuild a segment boundary.
+  assert(!isOwnedByTenant(`${me}%2f${victim}/source/x.pdf`, me));
+});
+
+Deno.test("any percent-encoding at all is refused rather than decoded and re-checked", () => {
+  const me = "11111111-1111-1111-1111-111111111111";
+  // Even innocuous encoding: decoding invites the same question one layer down, and a key this
+  // system mints never needs it.
+  assert(!isOwnedByTenant(`${me}/source/my%20file.pdf`, me));
+});
+
+Deno.test("control characters are refused", () => {
+  const me = "11111111-1111-1111-1111-111111111111";
+  assert(!isOwnedByTenant(`${me}/source/x\u0000.pdf`, me));
+  assert(!isOwnedByTenant(`${me}/source/x\u000a.pdf`, me));
+});
+
+Deno.test("a literal dot segment is refused even with the right prefix", () => {
+  const me = "11111111-1111-1111-1111-111111111111";
+  assert(!isOwnedByTenant(`${me}/./source/x.pdf`, me));
+  assert(!isOwnedByTenant(`${me}/../${me}/source/x.pdf`, me));
+});
+
+Deno.test("the key shape the upload side actually mints is accepted", () => {
+  const me = "11111111-1111-1111-1111-111111111111";
+  // `${tenantId}/source/${Date.now()}-${safe}` with safe stripped to [\w.-]
+  assert(isOwnedByTenant(`${me}/source/1758662400000-Mutual_NDA-v2.final.pdf`, me));
+});

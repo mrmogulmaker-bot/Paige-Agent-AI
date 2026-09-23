@@ -146,18 +146,33 @@ export async function inspectUploadedPdf(
 }
 
 /**
- * Does this storage path belong to this workspace?
+ * Does this storage path belong to this workspace, canonically?
  *
- * The same predicate the bucket's own SELECT policy applies — the first path segment is the owning
- * tenant — restated in code because the download that follows runs as the service role and so
- * never reaches that policy. Traversal and absolute forms are refused rather than normalised: a
- * path that needs normalising to look owned is not a path this should be reading.
+ * CHECKING THE FIRST SEGMENT IS NOT ENOUGH, and the reason is demonstrable rather than theoretical.
+ * The path is interpolated into a request URL, and a URL parser resolves dot segments BEFORE the
+ * request is made — including percent-encoded ones:
+ *
+ *   new URL("aaa/%2e%2e/bbb/source/x.pdf", "https://h/storage/v1/object/").pathname
+ *     => "/storage/v1/object/bbb/source/x.pdf"
+ *
+ * The `aaa/` prefix a naive check validates is simply gone by the time the service role fetches.
+ * So the predicate validates the path as WRITTEN and refuses anything that could be rewritten in
+ * transit: every segment must be literally canonical. Percent-encoding is rejected outright rather
+ * than decoded and re-checked — decoding invites the same question one layer down, and a key this
+ * system produces never needs it. Legitimate keys are built as
+ * `${tenantId}/source/${Date.now()}-${safe}` with `safe` already stripped to `[\w.-]`
+ * (useSoloAgreementSignings.ts:432-436), so this accepts exactly what we mint and nothing else.
  */
 export function isOwnedByTenant(path: string, tenantId: string | null): boolean {
   if (!path || !tenantId) return false;
-  if (path.startsWith("/") || path.includes("..") || path.includes("\\")) return false;
+  // No percent-encoding, no backslashes, no control characters — nothing a parser could rewrite.
+  if (/[%\\]/.test(path) || /[\u0000-\u001f\u007f]/.test(path)) return false;
   const segments = path.split("/");
-  return segments.length >= 2 && segments[0] === tenantId && segments.every((segment) => segment.length > 0);
+  if (segments.length < 2) return false;
+  if (segments[0] !== tenantId) return false;
+  // Every segment literally canonical: non-empty, not a dot segment, and drawn from the alphabet
+  // the upload side can actually produce.
+  return segments.every((segment) => segment !== "." && segment !== ".." && /^[A-Za-z0-9._-]+$/.test(segment));
 }
 
 /**

@@ -253,7 +253,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    const key = `${tenantId}/${agreementId}/presented-${crypto.randomUUID()}.pdf`;
+    // PROVENANCE IN THE KEY. A legacy blank has to be identifiable later WITHOUT consulting the
+    // uploaded source, because that object stays mutable — the bucket's tenant-admin UPDATE/DELETE
+    // policies let it be replaced or removed while `content_storage_key` remains valid and
+    // immutable. Re-hashing the source to spot a legacy row therefore punishes a perfectly intact
+    // agreement whose source was tidied up, blocking a legitimate resend. The marker is written
+    // once, by the code that actually presented the tenant's bytes, and answers the question on
+    // its own.
+    const marker = plan.kind === "uploaded" ? "presented-source" : "presented";
+    const key = `${tenantId}/${agreementId}/${marker}-${crypto.randomUUID()}.pdf`;
     const up = await admin.storage.from("paige-agreements")
       .upload(key, bytes, { contentType: "application/pdf", upsert: false });
     if (up.error) {
@@ -290,41 +298,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // ── 4b) AN AGREEMENT FROZEN BY THE OLD CODE STILL HOLDS THE BLANK.
   //
-  // The freeze above is guarded on `content_storage_key`/`content_sha256` being absent, and those
-  // were written BEFORE email delivery (see the note below) — so they survive a send that failed,
-  // and they survive every send that succeeded. Every `tenant_upload` that was sent, or merely
-  // attempted, before this fix therefore carries a title-only render and the SHA-256 of that
-  // render as its integrity record, and a resend would keep mailing links to it. Correcting the
-  // render alone would have left exactly the agreements that already went out uncorrected.
+  // The freeze above is guarded on the content columns being absent, and those are written BEFORE
+  // email delivery — so they survive a failed send and every successful one. Every tenant_upload
+  // sent, or merely attempted, before this fix therefore carries a title-only render and that
+  // render's hash as its integrity record, and a resend would keep mailing links to it.
   //
   // Those columns are write-once by `enforce_agreement_seal_immutable` (20270401000000:529-533),
   // and rightly so: an integrity record a resend can quietly rewrite is not one. So this does not
-  // repair the row — it REFUSES to keep presenting it. Repairing the affected rows is a deliberate
-  // data decision (which rows are safely repairable, and what happens to any already signed
-  // against the blank), and it is named as owed rather than taken here.
+  // repair the row — it REFUSES to keep presenting it. Repairing affected rows is a deliberate data
+  // decision (which rows are safely repairable, and what happens to any already signed against a
+  // blank) and is named as owed rather than taken here.
   //
-  // The test is exact rather than heuristic: for a tenant_upload the presented bytes ARE the
-  // uploaded bytes, so the frozen hash must equal the hash of the file at `document_path`. It also
-  // catches a second case worth catching — a file replaced at the same path after freezing.
-  if (alreadyFrozen && agreement.body_source === "tenant_upload") {
-    const documentPath = agreement.document_path as string | null;
-    if (!documentPath || !isOwnedByTenant(documentPath, tenantId)) {
-      console.error("[agreement-send] frozen upload has no usable document_path", { agreementId });
-      return json({ ok: false, error: "This agreement's document cannot be verified, so nothing was sent." }, 409);
-    }
-    const current = await admin.storage.from("tenant-agreements").download(documentPath);
-    if (current.error || !current.data) {
-      console.error("[agreement-send] frozen upload could not be re-read", { agreementId, error: current.error?.message });
-      return json({ ok: false, error: "The uploaded document could not be read, so nothing was sent." }, 502);
-    }
-    const currentHash = await hashDocument(new Uint8Array(await current.data.arrayBuffer()));
-    if (currentHash !== contentHash) {
-      console.error("[agreement-send] frozen document is not the uploaded file", { agreementId, contentKey });
-      return json({
-        ok: false,
-        error: "This agreement was prepared before a defect was fixed, so the document on file is not the one you uploaded. Nothing was sent. Create a new agreement from the same document and send that instead.",
-      }, 409);
-    }
+  // Identified by PROVENANCE, not by re-hashing the uploaded source. The source object remains
+  // mutable through the bucket's own tenant-admin policies, so a source that was later replaced or
+  // deleted would make an intact agreement look defective and block a legitimate resend. The key
+  // written by the code that presented the tenant's bytes carries its own marker.
+  if (alreadyFrozen && agreement.body_source === "tenant_upload" && !String(contentKey).includes("/presented-source-")) {
+    console.error("[agreement-send] frozen document predates the uploaded-document fix", { agreementId, contentKey });
+    return json({
+      ok: false,
+      error: "This agreement was prepared before a defect was fixed, so the document on file is not the one you uploaded. Nothing was sent. Create a new agreement from the same document and send that instead.",
+    }, 409);
   }
 
   // ── 5) Tokens. A signer already holding a LIVE link keeps it: a double-submitted send must not
