@@ -26,11 +26,15 @@ independently confirmed. Do not promote an attributed row to fact without runnin
 
 Find your red check. If it is here and your symptom matches, it is not yours.
 
+Every row below is a real **check-run name** as GitHub reports it, with one deliberate exception: `ci:tsc`
+is a *step* inside the `verify` job, listed here because people look for it by name. There is no check run
+called `ci:tsc`, and there is none called plain `Vercel` either.
+
 | Check | State on `main` | Verdict | How to confirm it is not yours |
 |---|---|---|---|
 | **`verify`** | RED — fails on exactly one step, `npm run test` | **Inherited.** Tracked as **#1372**. | The five failing files are all under `src/` (listed below). If your diff touches none of them and none of their imports, it is not yours. |
-| **`github-advanced-security`** | **FLAPPING** — 29 failure / 11 success across the last 40 runs (~27% green) | **Not diagnostic, and NOT a licence to ignore it.** | You cannot conclude anything from it either way — see the section below before you dismiss one. |
-| **`ci:tsc`** | GREEN — *"no new type errors (baseline 12, current 12)"* | **Passing.** It is a ratchet, not a zero-error gate. | If it goes red, it is yours: it only fails when the count **rises** above 12. |
+| **`github-advanced-security`** | **FLAPPING** — mostly red, green perhaps a quarter of the time. Re-count rather than trust this line; the number moves within hours. | **Not diagnostic, and NOT a licence to ignore it.** | You cannot conclude anything from it either way — see the section below before you dismiss one. |
+| `ci:tsc` — **a step inside `verify`, not a check of its own** | GREEN — *"no new type errors (baseline 12, current 12)"* | **Passing.** It is a ratchet, not a zero-error gate. | If it goes red, `verify` goes red and it is yours. Note the mechanism before you read the number — see below. |
 | **`audit`** | GREEN | — | A red here is yours. |
 | **`Validate UI delivery evidence`** | GREEN | — | Red means a recognised UI source changed without an evidence record. Usually yours. |
 | **`web-fetch-hardening-smoke`** | GREEN | — | A red here is yours. |
@@ -41,13 +45,18 @@ Find your red check. If it is here and your symptom matches, it is not yours.
 
 ## #1372 — the `npm run test` baseline
 
-Measured on `main` at `a96e37a70`, full output captured:
+Measured twice, full output captured both times:
 
-```
-Test Files  5 failed | 371 passed (376)
-Tests      20 failed | 5253 passed (5273)
-exit 1
-```
+| measured at | Test Files | Tests | exit |
+|---|---|---|---|
+| `main` @ `a96e37a70` | 5 failed \| 371 passed (376) | 20 failed \| 5253 passed (5273) | **1** |
+| `main` @ `7ebdd9fea` (+ this branch, which touches no `src/`) | 5 failed \| **375** passed (**380**) | 20 failed \| **5314** passed (**5334**) | **1** |
+
+**Compare the FAILING numbers, not the totals.** Across those two measurements the failing set is
+identical — the same 5 files, the same 20 tests — while the passing totals moved by +4 files and +61
+tests, because `main` merged new test files in between. A lane that matches on "376 files" will
+conclude something is wrong the first time anyone adds a test. The invariant is **5 failed / 20
+failed**, and the five file paths below.
 
 The five files:
 
@@ -60,9 +69,9 @@ The five files:
 One of the twenty asserts on the **text of** `src/solo/SoloApp.tsx` rather than on behaviour; the run
 also carries an undici/WebSocket `Uncaught Exception` in the harness. Both are inside those files.
 
-**To confirm a failure is inherited rather than yours:** run `npm run test`, compare the counts, and
-grep the full output for any file your diff touches. If the counts match and your files are absent,
-it is #1372.
+**To confirm a failure is inherited rather than yours:** run `npm run test`, check that the failing
+counts are still 5 and 20, and grep the full output for any file your diff touches. If the failing
+counts match and your files are absent, it is #1372.
 
 **Do not pipe the run through `tail`.** The summary line is at the end, so a tail looks authoritative
 while hiding the other failures — that mistake was made twice in one session. Redirect the whole run
@@ -115,7 +124,10 @@ returns only the tail, so the step that actually failed is usually invisible the
 lane and once to the coordinator.
 
 **A background-task wrapper's exit code is not the command's.** A harness notification saying
-"completed (exit code 0)" reports the *wrapper*. Echo and read the command's own `EXIT=$?`.
+"completed (exit code 0)" reports the *wrapper*. Echo and read the command's own `EXIT=$?`. This is not
+hypothetical: the `main` @ `7ebdd9fea` row above was measured by a backgrounded `npm run test` whose
+completion notice read **"exit code 0"** while the run's own `$?` was **1**. The trap fires on the very
+command you would use to check this file's own numbers.
 
 ---
 
@@ -138,10 +150,16 @@ was believed.
 
 - **`github-advanced-security` — measured, and NOT what this file first claimed.** It is
   **flapping**, not constantly red. Counted from its own run history (workflow `325162554`,
-  `dynamic/agents/github-advanced-security`) over the last 40 runs: **29 failure, 11 success** —
-  roughly one green in four. It flips on the same branch within minutes: `claude/agreements-blank-pdf`
-  ran **success at 21:06:32Z**, then failure at 21:12, 21:17 and 21:31 on 2026-09-23. It was green
-  three times in the half hour before this very file's first commit went red.
+  `dynamic/agents/github-advanced-security`), last 40 runs, twice on 2026-09-23 about forty minutes
+  apart: **29 failure / 11 success**, then **31 failure / 9 success** — roughly one green in four,
+  drifting between two readings of the same window length. It flips on the same branch within
+  minutes: `claude/agreements-blank-pdf` ran **success at 21:06:32Z**, then failure at 21:12, 21:17
+  and 21:31. It was green three times in the half hour before this very file's first commit went red.
+
+  **Re-count rather than cite these numbers.** They are two samples of a moving thing, kept here as
+  evidence that it moves. The count is the last 40 runs of that workflow, conclusions tallied; any
+  run-history listing for it gives you a current one in a single call. A rate this file states is
+  stale the moment a batch of runs lands, which is exactly why the table's row says *re-count*.
 
   **What you may conclude from a red here: nothing, in either direction.** It fails on commits
   containing no code at all — `1268f0a49` was two Markdown files, `399756150` was one paragraph of
