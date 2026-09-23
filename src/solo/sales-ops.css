@@ -171,7 +171,7 @@
 
 /* The orientation line the removed masthead used to carry. */
 .so-orient {
-  margin: -4px 0 12px; max-width: 82ch;
+  margin: -4px 0 12px; max-width: 74ch;
   font-size: 11.5px; line-height: 1.55; color: var(--ink-3); text-wrap: pretty;
 }
 
@@ -253,6 +253,46 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
   cursor: pointer;
 }
 .so-field select:disabled { opacity: .55; cursor: not-allowed; }
+
+/* ── first use ──────────────────────────────────────────────────────────────────────────────── */
+
+/* The band's empty state is COMPOSED rather than stated. What stood here before was a single grey
+ * sentence at the top of an otherwise blank frame, and an empty frame reads as a page that failed
+ * rather than one waiting to be used. The vertical room is deliberate: it is what stops the surface
+ * collapsing to a strip with the viewport dead beneath it.
+ *
+ * Not a card (the craft floor is explicit that a card is the lazy container, and this one would sit
+ * inside the band that already is one). It is a centred composition on the band's own ground. */
+.so-blank {
+  display: grid; justify-items: center; text-align: center;
+  gap: 9px; padding: 40px 20px 44px; max-width: 46ch; margin: 0 auto;
+}
+
+/* A drawn mark from the shared icon set — never a glyph or an emoji standing in for one. The plate
+ * carries the violet tint the band's own head uses, so first use reads as part of this surface. */
+.so-blank-mark {
+  display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 2px;
+  border-radius: 13px; color: var(--violet);
+  background: color-mix(in srgb, var(--violet-tint) 70%, var(--surface));
+  border: 1px solid var(--violet-line);
+}
+
+.so-blank h4 {
+  margin: 0; font: 600 15px/1.25 var(--font); letter-spacing: -.012em; color: var(--ink);
+}
+
+/* Measured, not the band's 74ch — a centred paragraph reads short or it does not get read. */
+.so-blank p {
+  margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--ink-2); text-wrap: pretty;
+}
+
+.so-blank-acts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 7px; }
+
+@media (max-width: 560px) {
+  .so-blank { padding: 30px 14px 34px; }
+  .so-blank-acts { width: 100%; }
+  .so-blank-acts .btn { flex: 1 1 auto; justify-content: center; }
+}
 
 .so-absent {
   margin: 0 0 14px; max-width: 74ch;

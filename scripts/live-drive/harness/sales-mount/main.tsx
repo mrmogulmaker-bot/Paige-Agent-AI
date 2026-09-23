@@ -13,7 +13,7 @@ import "@/solo/solo-tokens.css";
 (globalThis as { __React?: typeof React }).__React = React;
 
 const AGREEMENT_MODES: readonly AgreementsMode[] =
-  ["none", "no-clients", "populated", "unreadable", "readonly", "error"];
+  ["none", "no-clients", "empty", "populated", "unreadable", "readonly", "error"];
 
 const MODES: readonly Mode[] = [
   "first-use", "declared", "not-yet", "unrecognised-processor", "populated",

@@ -1455,7 +1455,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
   if (sales.phase === "unavailable") {
     return (
       <div className="campaigns-state">
-        <span className="campaigns-truth campaigns-truth--unavailable">UNAVAILABLE</span>
+        
         <h2>Sales needs a resolved workspace</h2>
         <p>No tenant data is read until your account context is confirmed.</p>
       </div>
@@ -1464,7 +1464,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
   if (sales.phase === "error") {
     return (
       <div className="campaigns-state" role="alert">
-        <span className="campaigns-truth campaigns-truth--unavailable">UNAVAILABLE</span>
+        
         <h2>Sales operations could not load</h2>
         <p>Your records were not changed. Try loading this again.</p>
         <button className="btn btn-s" onClick={sales.retry}><Ic.arrow size={13} />Retry</button>
@@ -1741,7 +1741,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
         <div className="so-cmd">
           <header className="so-cmd-head">
             <div className="so-cmd-lead">
-              <div className="so-cmd-eyebrow"><span className="so-eyebrow">Sales Command</span>{truth && <span className={`campaigns-truth campaigns-truth--${String(truth[0]).toLowerCase()}`}>{truth[0]}</span>}</div>
+              <div className="so-cmd-eyebrow"><span className="so-eyebrow">Sales Command</span></div>
               <h2>Turn agreed value into received value.</h2>
               <p className="so-cmd-brief">{brief}</p>
             </div>
@@ -1856,9 +1856,9 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
               ) : submissionsPhase === "loading" ? (
                 <div className="campaigns-skeleton" role="status" aria-label="Loading routed capture activity"><span /><span /><span /></div>
               ) : submissionsPhase === "unavailable" ? (
-                <div className="campaigns-state"><span className="campaigns-truth campaigns-truth--unavailable">UNAVAILABLE</span><h2>Campaigns needs a resolved workspace</h2><p>No tenant data is read until your account context is confirmed.</p></div>
+                <div className="campaigns-state"><h2>Campaigns needs a resolved workspace</h2><p>No tenant data is read until your account context is confirmed.</p></div>
               ) : submissionsPhase === "error" ? (
-                <div className="campaigns-state" role="alert"><span className="campaigns-truth campaigns-truth--unavailable">UNAVAILABLE</span><h2>Campaigns could not load</h2><p>Your records were not changed. Try the tenant-scoped read again.</p>{submissionsRetry && <button className="btn btn-s" onClick={submissionsRetry}><Ic.arrow size={13} />Retry</button>}</div>
+                <div className="campaigns-state" role="alert"><h2>Campaigns could not load</h2><p>Your records were not changed. Try the tenant-scoped read again.</p>{submissionsRetry && <button className="btn btn-s" onClick={submissionsRetry}><Ic.arrow size={13} />Retry</button>}</div>
               ) : routed.length === 0 ? (
                 <p className="so-absent">No routed form activity. Recorded contact and deal references only — never estimated revenue or campaign attribution; a submission is not a sale.</p>
               ) : (
@@ -1892,8 +1892,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
               record, so when that read failed the band cannot know whether the book is empty —
               and saying it is, is the false green this pill used to state confidently. Having
               records is still sayable either way, because the ones in hand are real. */}
-          {agreements.phase === "ready" && agreements.agreementsReadable && (termRows.length > 0 || signingsReadable) && <Pill tone={termRows.length ? "ok" : "opportunity"}>{termRows.length ? "Records available" : "Nothing recorded yet"}</Pill>}
-          {truth && <span className={`campaigns-truth campaigns-truth--${String(truth[0]).toLowerCase()}`}>{truth[0]}</span>}
+          {agreements.phase === "ready" && agreements.agreementsReadable && termRows.length > 0 && <Pill tone="ok">{termRows.length === 1 ? "1 record" : `${termRows.length} records`}</Pill>}
           {agreements.canManage
             ? <button className="btn btn-s btn-p" onClick={() => { setEditing(null); setEditor("agreement"); }}>Record terms</button>
             : agreements.phase === "ready" && agreements.agreementsReadable
@@ -1908,13 +1907,18 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
           {/* The two states, said apart, because the owner ruled they ARE apart (2026-09-22) and a
             * reader who assumes one word covers both will misread the column. §38 statement #1 of
             * exactly two on this band. */}
-          <small>
-            What each client agreed to, and the document they signed to agree it. This column tracks
-            the <b>signature</b>; whether the engagement is running, paused or finished is a
-            separate state that starts once it is signed. Sending an agreement bills nobody and
-            charges nothing.
-          </small>
         </div>
+        {/* OUT of the band head, where it was a flex item fighting the heading and the acts for the
+          * same row. It is an orientation line about the whole band, so it is a sibling of the head
+          * rather than a member of it — which is also the only way it can hold a readable measure:
+          * inside the head it needed `flex:0 0 100%` to claim a row, and that basis is exactly what
+          * a max-width cancels. `.so-orient` already existed for this and had no caller. */}
+        <p className="so-orient">
+          What each client agreed to, and the document they signed to agree it. This column tracks
+          the <b>signature</b>; whether the engagement is running, paused or finished is a
+          separate state that starts once it is signed. Sending an agreement bills nobody and
+          charges nothing.
+        </p>
 
         {agreements.agreementsReadable && termRows.length > 0 && <div className="so-filters">
           <label className="so-search"><span>Find client terms</span><input type="search" value={termSearch} placeholder="Search client name…" onChange={(e) => { setTermSearch(e.target.value); setTermPage(0); }} /></label>
@@ -1948,17 +1952,30 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
             <button className="btn btn-s" onClick={signings.retry}><Ic.arrow size={13} />Retry documents</button>
           </p>
         ) : termRows.length === 0 ? (
-          // The prerequisites are named plainly, and each points at the surface that fixes it —
-          // never a control that does nothing (§70.1).
-          <p className="so-absent">
+          // A COMPOSED first-use state, not a grey sentence in an empty frame. The band used to
+          // render one paragraph and leave the rest of the viewport blank, which reads as a page
+          // that failed to load rather than one waiting to be used. The prerequisite is still named
+          // plainly and still points at the surface that fixes it — never a control that does
+          // nothing (§70.1) — but the ACT is the thing the eye lands on.
+          <div className="so-blank">
+            <span className="so-blank-mark" aria-hidden="true"><Ic.doc size={22} /></span>
+            <h4>{agreements.clients.length === 0 ? "Add a client first" : "Nothing agreed yet"}</h4>
+            <p>
+              {agreements.clients.length === 0
+                ? "Terms attach a client to what they agreed to pay. No clients are recorded in this workspace yet."
+                : (offers.phase === "ready" && offers.offers.length === 0)
+                  ? "Write down what a client agreed to pay, or send them a document to sign. Recording terms opens with a quick offer inside it, so nothing has to exist in your catalog first."
+                  : "Write down what a client agreed to pay, or send them a document to sign. An agreement can carry no price at all — an NDA or a scope letter is a row of its own."}
+            </p>
             {agreements.clients.length === 0
-              ? "These terms attach a client to one of your offers, and no clients are recorded in this workspace yet. Add one under Clients first."
-              : (offers.phase === "ready" && offers.offers.length === 0)
-                // The old wording said "above", pointing at a band that no longer exists. It now
-                // points at where creating an offer actually lives.
-                ? "These terms name one of your offers, and nothing is recorded in your catalog yet. Record terms opens with a Quick offer inside it, or add what you sell in Catalog — or send a document that carries no price at all."
-                : "Nothing recorded yet. Pick a client, then either write down what they agreed to pay or upload the document you want them to sign."}
-          </p>
+              ? (onOpenClients ? <div className="so-blank-acts"><button className="btn btn-p" onClick={() => onOpenClients()}>Go to Clients <Ic.arrow size={13} /></button></div> : null)
+              : agreements.canManage ? (
+                <div className="so-blank-acts">
+                  <button className="btn btn-p" onClick={() => { setEditing(null); setEditor("agreement"); }}>Record terms</button>
+                  {onOpenCatalog ? <button className="btn btn-s" onClick={() => onOpenCatalog()}>Open Catalog <Ic.arrow size={12} /></button> : null}
+                </div>
+              ) : null}
+          </div>
         ) : (
           <div className="so-table" role="table" aria-label="Agreements and terms">
             <div className="so-tr so-th so-tr-5" role="row">

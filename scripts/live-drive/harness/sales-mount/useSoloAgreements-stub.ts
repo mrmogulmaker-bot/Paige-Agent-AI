@@ -8,6 +8,9 @@
 export type AgreementsMode =
   | "none"
   | "no-clients"
+  // Clients on the book, nothing agreed yet — the state a real workspace actually opens in, and
+  // the one the composed first-use block was built for. It had no mode, so it could not be driven.
+  | "empty"
   | "populated"
   | "unreadable"
   | "readonly"
@@ -148,6 +151,7 @@ function snapshot() {
   };
   switch (mode) {
     case "no-clients": return { ...base, clients: [], agreements: [] };
+    case "empty": return { ...base, agreements: [] };
     case "unreadable": return { ...base, agreements: [], clients: [], clientsReadable: false, agreementsReadable: false, canManage: false };
     case "readonly": return { ...base, canManage: false };
     case "error": return { ...base, phase: "error" as const, agreements: [], clients: [], canManage: false };

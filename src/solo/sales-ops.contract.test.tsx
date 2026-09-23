@@ -656,7 +656,12 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
     expect(text).toContain("Agreements and terms");
     expect(text).not.toContain("This tab does not hold a per-client agreement record yet");
     expect(text).not.toContain("Not here");
-    expect(text).toContain("Nothing recorded yet");
+    // RE-POINTED, and the reason is the defect this slice fixed. The old assertion passed on the
+    // head PILL's "Nothing recorded yet" while the paragraph beside it simultaneously said "Add one
+    // under Clients first" — two different answers to the same question, inches apart. This harness
+    // has zero clients, so exactly one thing is true and the surface now says only that.
+    expect(text).toContain("Add a client first");
+    expect(text).not.toContain("Nothing recorded yet");
     expect(text).not.toMatch(/\d+\s+(active\s+)?retainers?/i);
   });
 
@@ -765,15 +770,21 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
     }
     render();
     expect(host.querySelector(".pg-hd")).toBeNull();
-    // The truth label rides the command header; the legend stays in the shell tab row.
-    expect(host.querySelector(".so-cmd-eyebrow .campaigns-truth")).not.toBeNull();
-    expect(host.querySelector(".campaigns-nav .campaigns-truth-key")).not.toBeNull();
+    // Owner ruling 2026-09-23: the capability truth labels come OFF the tenant surface entirely.
+    // Asserted absent rather than deleted, so nothing quietly puts internal release vocabulary back
+    // in front of a customer.
+    expect(host.querySelector(".campaigns-truth")).toBeNull();
+    expect(host.querySelector(".campaigns-truth-key")).toBeNull();
+    expect(host.textContent ?? "").not.toMatch(/\b(PARTIAL|PROPOSED|UNAVAILABLE)\b/);
   });
 
   it("spends colour on meaning, not decoration", () => {
     // Empty terms read as an OPPORTUNITY (violet), never dead grey (§23); the act is the primary.
+    // The violet now carries on the composed first-use mark instead of a pill that said in a badge
+    // what the heading beside it already said in words.
     render("terms");
-    expect(host.querySelector(".pill-v")).not.toBeNull();
+    expect(host.querySelector(".so-blank-mark")).not.toBeNull();
+    expect(host.querySelector(".so-blank h4")).not.toBeNull();
     const act1 = [...host.querySelectorAll("button")].find((b) => b.textContent === "Record terms");
     expect(act1?.className).toContain("btn-p");
     // Money awaiting carries its own state colour so the figure and its pill cannot disagree.
