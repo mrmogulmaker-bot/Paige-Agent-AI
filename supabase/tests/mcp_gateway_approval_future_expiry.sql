@@ -146,6 +146,49 @@ BEGIN
   IF _sqlstate <> '22023' THEN RAISE EXCEPTION '(7) expected SQLSTATE 22023 from the clock_timestamp guard, got %', _sqlstate; END IF;
 END $$;
 
+-- ── (8) A RE-APPROVAL carrying an UNCHANGED but already-lapsed expiry is REFUSED (Codex P2 #2) ───────
+-- set_mcp_connection_approval upserts the same expires_at while refreshing approved_at; keying the guard
+-- off the approved_at renewal catches it even though expires_at is unchanged (an expiry-only guard would
+-- skip and let approve lie). Fabricate the pre-existing lapsed approval (elapsed-time sim) with the guard
+-- disabled, then re-approve it through the writer with the SAME (lapsed) expiry.
+ALTER TABLE public.mcp_connection_approvals DISABLE TRIGGER trg_mcp_reject_past_approval_expiry;
+INSERT INTO public.mcp_connection_approvals (connection_id, tool_name, pin, approved_by, endpoint_hash, expires_at, approved_at)
+VALUES ('eafe0000-0000-0000-0000-0000000000a2','renew_probe', repeat('a',64), NULL,
+        public._mcp_endpoint_hash('https://mcp-exp.example/rpc'),
+        timestamptz '2020-01-01 00:00:00+00', timestamptz '2019-01-01 00:00:00+00');
+ALTER TABLE public.mcp_connection_approvals ENABLE TRIGGER trg_mcp_reject_past_approval_expiry;
+DO $$
+DECLARE _raised boolean := false; _sqlstate text;
+BEGIN
+  BEGIN
+    PERFORM public.set_mcp_connection_approval(
+      'eafe0000-0000-0000-0000-0000000000a2','renew_probe', repeat('a',64),
+      'eafe0000-0000-0000-0000-0000000000a1', NULL, timestamptz '2020-01-01 00:00:00+00',
+      public._mcp_endpoint_hash('https://mcp-exp.example/rpc'));  -- same lapsed expiry; refreshes approved_at
+  EXCEPTION WHEN others THEN _raised := true; _sqlstate := SQLSTATE; END;
+  IF NOT _raised THEN RAISE EXCEPTION '(8) a re-approval with an unchanged-but-lapsed expiry must be refused'; END IF;
+  IF _sqlstate <> '22023' THEN RAISE EXCEPTION '(8) expected SQLSTATE 22023 on the re-approval, got %', _sqlstate; END IF;
+END $$;
+
+-- ── (8b) POSITIVE CONTROL: a re-approval that refreshes approved_at but keeps a FUTURE expiry succeeds ─
+-- (proves the approved_at clause does not over-reject a legitimate renewal).
+SELECT public.set_mcp_connection_approval(
+  'eafe0000-0000-0000-0000-0000000000a2','renew_ok', repeat('a',64),
+  'eafe0000-0000-0000-0000-0000000000a1', NULL, now() + interval '1 day',
+  public._mcp_endpoint_hash('https://mcp-exp.example/rpc'));
+SELECT public.set_mcp_connection_approval(   -- re-approve: approved_at refreshed, same future expiry
+  'eafe0000-0000-0000-0000-0000000000a2','renew_ok', repeat('a',64),
+  'eafe0000-0000-0000-0000-0000000000a1', NULL, now() + interval '1 day',
+  public._mcp_endpoint_hash('https://mcp-exp.example/rpc'));
+DO $$
+DECLARE n int;
+BEGIN
+  SELECT count(*) INTO n FROM public.mcp_connection_approvals
+   WHERE connection_id = 'eafe0000-0000-0000-0000-0000000000a2' AND tool_name = 'renew_ok'
+     AND expires_at IS NOT NULL AND expires_at > now();
+  IF n <> 1 THEN RAISE EXCEPTION '(8b) a re-approval keeping a FUTURE expiry should have succeeded: %', n; END IF;
+END $$;
+
 DO $$ BEGIN RAISE NOTICE 'MCP_GW_APPROVAL_FUTURE_EXPIRY_PROVEN'; END $$;
 
 ROLLBACK;
