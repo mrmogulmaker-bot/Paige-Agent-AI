@@ -235,3 +235,146 @@ describe("peer-gate regressions", () => {
     expect(out).toBe("/dashboard");
   });
 });
+
+/**
+ * THE ATTRIBUTION EXEMPTION — the hole the whole-payload scrub had in it.
+ *
+ * `scrubDeep` exempted every attribution key outright, on the stated reasoning that "attribution
+ * values are never credentials". They are read from a user-controlled query string and from
+ * caller-supplied `properties`, so that was an assertion about intent, not a property of the data.
+ * Three ways through, all measured against the emitted body before the fix:
+ *
+ *   A. `?utm_campaign=<invite token>` — arrived in its own dedicated column, in full. That column
+ *      is indexed (`idx_analytics_events_utm_campaign`), so a leaked token is an equality lookup.
+ *   B. `properties.utm_campaign = "https://app/sign/<token>"` — the exemption skipped `scrubString`,
+ *      so the URL was never structurally redacted.
+ *   C. `properties.utm_campaign = { nested: { deeper: <token> } }` — `out[k] = v` copied the OBJECT
+ *      whole and skipped recursion, the same defect already fixed at the depth cap below it.
+ *
+ * The last test is the counterweight: the general credential rule redacts EIGHT of twenty realistic
+ * campaign names, and that cost is what motivated the exemption. The narrow mint-shape rule has to
+ * keep those readable, or the exemption grows back.
+ */
+describe("attribution keys are scrubbed, not exempted", () => {
+  it("A — an invite token in ?utm_campaign= never reaches its column", async () => {
+    atLocation(`https://app.example.com/?utm_campaign=${encodeURIComponent(INVITE_TOKEN)}`);
+    const { trackEvent } = await import("./useAnalytics");
+    await trackEvent("page_view");
+    expect(sent.length).toBeGreaterThan(0);
+    expect(sent.join("\n")).not.toContain(INVITE_TOKEN);
+  });
+
+  it("B — a signing URL passed as properties.utm_campaign is redacted", async () => {
+    atLocation("https://app.example.com/dashboard");
+    const { trackEvent } = await import("./useAnalytics");
+    await trackEvent("cta_click", "engagement", {
+      utm_campaign: `https://app.example.com/sign/${SIGNING_TOKEN}`,
+    });
+    expect(sent.join("\n")).not.toContain(SIGNING_TOKEN);
+  });
+
+  it("C — an OBJECT under an attribution key is recursed, not copied whole", async () => {
+    atLocation("https://app.example.com/dashboard");
+    const { trackEvent } = await import("./useAnalytics");
+    await trackEvent("cta_click", "engagement", {
+      utm_campaign: { nested: { deeper: SIGNING_TOKEN } },
+    });
+    expect(sent.join("\n")).not.toContain(SIGNING_TOKEN);
+  });
+
+  it("utm_term and utm_content are reachable ONLY through properties — cover them too", async () => {
+    atLocation("https://app.example.com/dashboard");
+    const { trackEvent } = await import("./useAnalytics");
+    await trackEvent("cta_click", "engagement", {
+      utm_term: INVITE_TOKEN,
+      utm_content: SIGNING_TOKEN,
+    });
+    const body = sent.join("\n");
+    expect(body).not.toContain(INVITE_TOKEN);
+    expect(body).not.toContain(SIGNING_TOKEN);
+  });
+
+  it("still carries the campaign names the columns exist for", async () => {
+    atLocation("https://app.example.com/pricing?utm_campaign=BlackFridayPromo2026&utm_source=newsletter");
+    const { trackEvent } = await import("./useAnalytics");
+    await trackEvent("page_view");
+    const body = sent.join("\n");
+    expect(body).toContain("BlackFridayPromo2026");
+    expect(body).toContain("newsletter");
+  });
+});
+
+/**
+ * A credential-bearing URL NESTED INSIDE a query parameter. `looksLikeCredential` is a whole-value
+ * test over a strict base64 alphabet, so a URL's `:` and `.` disqualify it and the token in its
+ * path survived. This was live in the shipped redactor, on `page_path`'s search and on the
+ * referral sink's `landing_path` alike.
+ */
+describe("a credential nested inside a parameter value", () => {
+  it("redacts a signing URL carried in ?next=", () => {
+    const out = redactSecretSearch(
+      `?next=${encodeURIComponent(`https://app.example.com/sign/${SIGNING_TOKEN}`)}`,
+    );
+    expect(out).not.toContain(SIGNING_TOKEN);
+  });
+
+  it("redacts an invite URL carried in ?utm_campaign=", () => {
+    const out = redactSecretSearch(
+      `?utm_campaign=${encodeURIComponent(`https://app.example.com/join/${INVITE_TOKEN}`)}`,
+    );
+    expect(out).not.toContain(INVITE_TOKEN);
+  });
+
+  it("leaves an ordinary parameter alone", () => {
+    expect(redactSecretSearch("?utm_campaign=black_friday_2026_launch&ref=PARTNER1")).toBe(
+      "?utm_campaign=black_friday_2026_launch&ref=PARTNER1",
+    );
+  });
+});
+
+/**
+ * THE REAL INVITE SHAPE, and why the fixture above is not it.
+ *
+ * `INVITE_TOKEN` was written as standard base64 with `=` padding. A real invite is
+ * `encode(gen_random_bytes(24),'base64')` with `+`->`-`, `/`->`_` and `=` stripped — BASE64URL,
+ * never padded, minted at four migration sites into the unhashed `tenant_invite_tokens.token`.
+ * The fixture being wrong by exactly the characters that mattered is why the base64url gap
+ * survived a suite that looked like it covered invites.
+ *
+ * The second case is the other half: `URLSearchParams.get()` form-decodes `+` to a space, so a
+ * token pasted into a URL without percent-encoding reaches the scrubber space-mangled. Every
+ * earlier test used `encodeURIComponent`, which exercises only the half that was already safe.
+ */
+describe("the real minted invite shape, end to end", () => {
+  const REAL_INVITE = "kJ8vQ2mZ-xR7bN4wT1yH_cL6pA3dS9eQ"; // 32 chars, base64url, unpadded
+
+  it("never reaches the wire from ?utm_campaign=", async () => {
+    atLocation(`https://app.example.com/?utm_campaign=${REAL_INVITE}`);
+    const { trackEvent } = await import("./useAnalytics");
+    await trackEvent("page_view");
+    expect(sent.length).toBeGreaterThan(0);
+    expect(sent.join("\n")).not.toContain(REAL_INVITE);
+  });
+
+  it("never reaches the wire from an UNREGISTERED route", async () => {
+    atLocation(`https://app.example.com/some-future-flow/${REAL_INVITE}`);
+    const { trackEvent } = await import("./useAnalytics");
+    await trackEvent("page_view");
+    expect(sent.join("\n")).not.toContain(REAL_INVITE);
+  });
+
+  it("never reaches the wire from an unrecognised query parameter", async () => {
+    atLocation(`https://app.example.com/landing?handoff=${REAL_INVITE}`);
+    const { trackEvent } = await import("./useAnalytics");
+    await trackEvent("page_view", "engagement", { search: window.location.search });
+    expect(sent.join("\n")).not.toContain(REAL_INVITE);
+  });
+
+  it("survives the +-became-a-space form of a standard-base64 token", async () => {
+    const spaced = "kJ8vQ2mZ xR7bN4wT1yH/cL6pA3dS9eQ"; // what URLSearchParams.get() hands back
+    atLocation("https://app.example.com/dashboard");
+    const { trackEvent } = await import("./useAnalytics");
+    await trackEvent("cta_click", "engagement", { utm_campaign: spaced });
+    expect(sent.join("\n")).not.toContain(spaced);
+  });
+});

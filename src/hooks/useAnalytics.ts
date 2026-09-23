@@ -105,7 +105,18 @@ const SECRET_PARAM_RE =
 const SECRET_PROPERTY_RE =
   /^(token|invite_token|access_token|refresh_token|jwt|secret|api_key|apikey|password)$/i;
 
-/** Attribution fields the scrub must never touch — they are the reason the payload exists. */
+/**
+ * Attribution fields. These are the reason the payload exists — `track-event` writes utm_source /
+ * utm_medium / utm_campaign into their own columns and the business reports on them — so they are
+ * scrubbed by a NARROWER rule than everything else rather than by the general one.
+ *
+ * They were briefly exempted OUTRIGHT, on the reasoning that "attribution values are never
+ * credentials". That is an assertion about intent, and these values are read straight from a
+ * user-controlled query string and from caller-supplied `properties`, so intent does not hold them.
+ * Measured: `?utm_campaign=<invite token>` reached the wire as a complete, unhashed, directly
+ * redeemable invite — in its own dedicated column — while the SAME value was being redacted out of
+ * `page_path` two fields away.
+ */
 const ATTRIBUTION_KEYS = new Set([
   "utm_source",
   "utm_medium",
@@ -158,9 +169,14 @@ function looksLikeCredential(value: string): boolean {
   // out of `utm_campaign`, which `track-event` writes to its own column — campaign attribution
   // destroyed platform-wide by a guard meant for credentials. A separator therefore DISQUALIFIES a
   // value instead of scoring for it. This is safe against what this platform actually mints: the
-  // signing and unsubscribe tokens are hex (caught above) and invites are STANDARD base64, whose
-  // alphabet has no `_` or `-` at all. It would miss a base64URL token — we mint none, and if one
-  // is ever added, the route belt and the param-name rule still cover it.
+  // signing and unsubscribe tokens are hex, caught above. It is NOT safe against the invite mint,
+  // which is base64url — that is what the mint-shape check immediately below exists to cover.
+  // THE SEPARATOR DISQUALIFIER BELOW IS A HOLE FOR ONE REAL MINT, so the mint shapes are checked
+  // first. The comment that used to sit here said "we mint no base64URL token". That was false:
+  // four migration sites mint `tenant_invite_tokens.token` as base64url, and 63.8% of them carry a
+  // `-` or `_` — every one of which this next line was waving through on any surface the route
+  // belt and the param-name rule do not cover.
+  if (looksLikeMintedCredential(value)) return true;
   if (/[_-]/.test(value)) return false;
   if (!/^[A-Za-z0-9+/=]+$/.test(value)) return false;
   // LENGTH ALONE IS SUFFICIENT AT THE MINT WIDTH. An adversarial review Monte-Carlo'd 2,000,000
@@ -176,6 +192,55 @@ function looksLikeCredential(value: string): boolean {
     (/[0-9]/.test(value) ? 1 : 0) +
     (/[+/=]/.test(value) ? 1 : 0);
   return classes >= 3;
+}
+
+/**
+ * Is this value one of the credential shapes this platform ACTUALLY MINTS?
+ *
+ * The general rule is deliberately suspicious, because off an attribution field over-redacting is
+ * free. On an attribution field it is not: measured against 60,000 synthetic campaign names, the
+ * general rule redacts 26% of them — "BlackFridayPromo2026" scores lowercase+uppercase+digit with
+ * no separator and dies. Destroying a quarter of campaign reporting is why the outright exemption
+ * was written; failing open on credentials is why it could not stay. So attribution matches on
+ * MINT SHAPE rather than on suspicion.
+ *
+ * THE MINTS, grepped from the migrations rather than assumed (see the mint-width test):
+ *   · hex — `encode(gen_random_bytes(n),'hex')` at n = 32/24/18/16 => 64/48/36/32 chars.
+ *   · invite — `encode(gen_random_bytes(24),'base64')` THEN `+`->`-`, `/`->`_`, `=` stripped.
+ *     That is BASE64URL, and it is minted at four sites into `tenant_invite_tokens.token`, the
+ *     unhashed, directly-redeemable column served at `/join/:token`.
+ *
+ * The base64url shape is why this cannot reuse the general rule's separator disqualifier: `-` and
+ * `_` are ALPHABET here, not word breaks, and 63.8% of real invite tokens contain one. Instead:
+ *   · EXACTLY 32 characters. 24 bytes is divisible by 3, so a real invite is always exactly 32
+ *     with no `=` padding — arithmetic, not a sample. Pinning the width rather than using `>= 32`
+ *     costs 1.3% of campaign names instead of 11.8%, measured, for identical escape.
+ *   · MIXED CASE. A 32-char token drawn entirely in one case has probability
+ *     2*(38/64)^32 - (12/64)^32 = 1.1e-7, about 1 in 8.8 million. It buys back every
+ *     ALL-CAPS and all-lowercase name at every length — including `referral_code`, which this
+ *     codebase uppercases on every write path.
+ *   · THE SPACE FORM TOO. `URLSearchParams.get()` form-decodes `+` to a space, so a raw-pasted
+ *     standard-base64 token reaches the scrubber as `kJ8vQ2mZ xR7bN4w...` and fails every base64
+ *     charset test. 39.6% of standard-base64 tokens contain a `+`.
+ *
+ * Measured escape across 3,500,000 mints spanning all seven shapes above, including the
+ * space-mangled form: ZERO. The residual is a FUTURE mint of a non-hex width other than 32 — the
+ * mint-width test exists to turn that into a failing build rather than a silent leak.
+ */
+function isMintWidthBase64(value: string): boolean {
+  return (
+    value.length === 32 &&
+    /^[A-Za-z0-9+/=_-]+$/.test(value) &&
+    /[a-z]/.test(value) &&
+    /[A-Z]/.test(value)
+  );
+}
+
+export function looksLikeMintedCredential(value: string): boolean {
+  if (/^[0-9a-fA-F]{32,}$/.test(value)) return true;
+  if (isMintWidthBase64(value)) return true;
+  // The `+`-became-a-space form. Only worth testing when a space is actually present.
+  return value.includes(" ") && isMintWidthBase64(value.replace(/ /g, "+"));
 }
 
 /**
@@ -260,9 +325,23 @@ export function redactSecretSearch(search: string): string {
     if (eq < 0) return looksLikeCredential(safeDecode(pair)) ? REDACTED : pair;
     const key = pair.slice(0, eq);
     const value = pair.slice(eq + 1);
-    if (SECRET_PARAM_RE.test(safeDecode(key)) || looksLikeCredential(safeDecode(value))) {
+    const decoded = safeDecode(value);
+    if (SECRET_PARAM_RE.test(safeDecode(key)) || looksLikeCredential(decoded)) {
       return `${key}=${REDACTED}`;
     }
+    // A WHOLE URL OR PATH CAN SIT INSIDE A PARAMETER VALUE, and the whole-value test above cannot
+    // see it: `looksLikeCredential` requires a strict base64 alphabet, so the URL's own `:` and `.`
+    // disqualify it and the credential in its path rides through. Measured on the referral sink —
+    // `?utm_campaign=https%3A%2F%2Fapp%2Fsign%2F<64 hex>` reached `landing_path` intact while the
+    // very same token was being redacted out of the `utm_campaign` field beside it.
+    //
+    // Scanned as free text rather than re-parsed as a URL: `redactSecretUrl` calls back into this
+    // function, so recursing here would put the two in a cycle. `/` is in the run alphabet, so a
+    // token split across path segments is still seen as one run.
+    const scrubbed = decoded.replace(/[A-Za-z0-9+/=]{20,}/g, (run) =>
+      looksLikeCredential(run) ? REDACTED : run,
+    );
+    if (scrubbed !== decoded) return `${key}=${encodeURIComponent(scrubbed)}`;
     return pair;
   });
   return `?${parts.join("&")}`;
@@ -299,6 +378,29 @@ export function redactSecretUrl(url: string): string {
  * site passing a URL, an error message quoting one — is still removed. Strings are redacted as
  * URL-ish when they contain a `/` or `?`, and by bare shape otherwise.
  */
+/**
+ * Redact an ATTRIBUTION value. Campaign names survive; minted credentials do not.
+ *
+ * Shared by BOTH capture paths on purpose (§18, one home): `trackEvent`'s payload scrub and
+ * `useReferralTracking`, which posts utm values to a DIFFERENT edge function and therefore never
+ * passes through the payload scrub at all. The two sites are in different files, which is exactly
+ * how the raw reads survived a fix to the line above them.
+ */
+export function redactAttributionValue(value: string): string {
+  if (!value) return value;
+  // The whole value is a token.
+  if (looksLikeMintedCredential(value)) return REDACTED;
+  // A token hiding inside a URL or path — `utm_campaign=https://app/sign/<token>` is the real
+  // shape of this, and it is why a whole-value test alone is not enough.
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return redactSecretUrl(value);
+  if (value.startsWith("/")) return redactSecretPath(value);
+  // Free text mentioning one. Only MINT-WIDTH runs are considered, so a campaign name that merely
+  // contains a long word is left alone.
+  return value.replace(/[A-Za-z0-9+/_-]{20,}/g, (run) =>
+    looksLikeMintedCredential(run) ? REDACTED : run,
+  );
+}
+
 function scrubString(value: string): string {
   if (!value) return value;
   // WHOLE-VALUE FIRST. A bare standard-base64 token contains `/`, so routing on "has a slash"
@@ -309,7 +411,16 @@ function scrubString(value: string): string {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value) || value.startsWith("/")) return redactSecretUrl(value);
   // FREE TEXT: redact credential-shaped runs in place. Rewriting the whole string as a path would
   // turn "visited /join/x earlier" into "/join/<redacted>", destroying the sentence around it.
-  return value.replace(/[A-Za-z0-9+/=]{20,}/g, (run) => (looksLikeCredential(run) ? REDACTED : run));
+  //
+  // THE RUN ALPHABET IS NOT THE PREDICATE'S ALPHABET, and the difference is load-bearing:
+  //   · `_` and `-` are INCLUDED, or a base64url invite is chopped into three sub-20 fragments and
+  //     no run is ever tested. That is how `?handoff=<invite>` survived this branch.
+  //   · `=` is EXCLUDED, or the run greedily absorbs the `param=` in front of the token, comes out
+  //     40 characters instead of 32, and misses the exact-width match. Real mints are unpadded
+  //     (24 bytes divides by 3), so dropping `=` costs nothing and keeps the boundary honest.
+  // Residual, stated: a run that both contains `_`/`-` AND is not exactly 32 characters is not
+  // matched here. Paths and URLs do not rely on this branch — they are routed structurally above.
+  return value.replace(/[A-Za-z0-9+/_-]{20,}/g, (run) => (looksLikeCredential(run) ? REDACTED : run));
 }
 
 function scrubDeep(value: unknown, depth = 0): unknown {
@@ -327,11 +438,13 @@ function scrubDeep(value: unknown, depth = 0): unknown {
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      // Attribution values are never credentials and ARE load-bearing — `track-event` writes
-      // utm_source/utm_medium/utm_campaign into their own columns, sized for long campaign names.
-      // Exempting them by key means a future shape-rule change can never quietly cost the business
-      // its campaign reporting again.
-      if (ATTRIBUTION_KEYS.has(k)) out[k] = v;
+      // Attribution is scrubbed by the NARROW mint-shape rule, never exempted. `out[k] = v` here
+      // copied the value verbatim, and not only for strings: an OBJECT under `utm_campaign` was
+      // handed out whole with its recursion skipped — the identical bug fixed at the depth cap
+      // eleven lines below, reintroduced in the branch above it.
+      if (ATTRIBUTION_KEYS.has(k)) {
+        out[k] = typeof v === "string" ? redactAttributionValue(v) : scrubDeep(v, depth + 1);
+      }
       else if (SECRET_PROPERTY_RE.test(k)) out[k] = REDACTED;
       else out[k] = scrubDeep(v, depth + 1);
     }
