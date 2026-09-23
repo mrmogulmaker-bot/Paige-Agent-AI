@@ -43,7 +43,7 @@ MUST_PRESERVE: The platform-owned default-off rollout gate, per-user/tenant/thre
 ACCEPTANCE_CRITERIA: Owner taps Talk live, speaks, sees the real transcript, hears Paige answer in Jessica's voice, interrupts immediately, ends cleanly, and sees the intact same-thread chat in production.
 PROTECTED_SEAMS: AFFECTED — first-party relay, Flux ears, streaming mouth and existing Solo Live/chat bridge. PRESERVED — PAIGE governance, tenant/user identity, Rail, Mind, Memory, Knowledge, permission selector and active read-aloud playback.
 
-INTERNAL_BUILD_IDENTITY: merge_sha=PROOF_OWED; pr=1387; reviewed_head=PROOF_OWED; deployment=PROOF_OWED; environment=development; migrations=NOT_APPLICABLE; edge=PROOF_OWED(paige-ai-chat,paige-live-relay); evidence=scripts/paige-live-relay-bridge-smoke.mts and src/lib/paigeLiveConversation/relayTransport.test.ts
+INTERNAL_BUILD_IDENTITY: merge_sha=PROOF_OWED; pr=1387; reviewed_head=PROOF_OWED; supporting_code_history=25ff663b7b323840e9feaf12f134765d09392c9f (not post-squash build identity); deployment=PROOF_OWED; environment=development; migrations=NOT_APPLICABLE; edge=PROOF_OWED(paige-ai-chat,paige-live-relay); evidence=scripts/paige-live-relay-bridge-smoke.mts and src/lib/paigeLiveConversation/relayTransport.test.ts
 RELEASE_CHANNEL: development: staged Live audio join; platform pilot stays off pending provider/privacy and human production proof
 RELEASE_CLASSIFICATION: internal-only: no customer-facing release is claimed while the platform pilot is default off
 CUSTOMER_RELEASE_IDENTITY: none: Live Conversation is not yet delivered end to end

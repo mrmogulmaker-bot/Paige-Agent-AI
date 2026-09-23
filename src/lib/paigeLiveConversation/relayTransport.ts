@@ -72,7 +72,7 @@ export function connectPaigeLiveRelay(input: Readonly<{
   let spectrum = new Uint8Array(0);
   const outputListeners = new Set<() => void>();
   const notifyOutput = () => outputListeners.forEach((listener) => listener());
-  const outputPlaying = () => speaking && !held && !stopped && !terminal;
+  const outputPlaying = () => speaking && !held && !stopped && !terminal && context?.state === "running";
 
   const clearPlayback = () => {
     playbackEpoch++;
@@ -95,7 +95,7 @@ export function connectPaigeLiveRelay(input: Readonly<{
     if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close(1000, "owner_end");
   };
   const maybePlaybackDone = () => {
-    if (runtimeDone && !pendingPlayback && !activeSources.size && socket.readyState === WebSocket.OPEN) {
+    if (runtimeDone && !held && !pendingPlayback && !activeSources.size && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: "playback.complete" }));
       runtimeDone = false;
       speaking = false;
@@ -219,7 +219,7 @@ export function connectPaigeLiveRelay(input: Readonly<{
       return { amplitude: Math.min(1, Math.sqrt(sum / samples.length) * 3), brightness: Math.min(1, high / (spectrum.length / 2 * 255)) };
     },
     pauseOutput() { held = true; notifyOutput(); void context?.suspend().catch(() => { stop(); input.onState({ kind: "disconnected" }); }); },
-    resumeOutput() { held = false; void context?.resume().then(notifyOutput).catch(() => { stop(); input.onState({ kind: "disconnected" }); }); },
+    resumeOutput() { held = false; maybePlaybackDone(); void context?.resume().then(notifyOutput).catch(() => { stop(); input.onState({ kind: "disconnected" }); }); },
     clearOutput: clearPlayback,
     setMuted(value) { muted = value; },
     runtimeProof(turnId, proof) {
@@ -231,6 +231,7 @@ export function connectPaigeLiveRelay(input: Readonly<{
         socket.send(JSON.stringify({ type: "runtime.failed", turn_id: turnId }));
     },
     interrupt() {
+      held = false;
       clearPlayback();
       if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "interrupt" }));
     },
