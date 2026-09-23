@@ -189,10 +189,24 @@ function looksLikeCredential(value: string): boolean {
  * 1 in 786 that made a class count insufficient in the first place.
  *
  * Rejoining is therefore necessary, but it cannot use the ordinary predicate: `/solo/3855/growth/
- * sales` rejoins to 22 characters of `[A-Za-z0-9/]` and would score three classes. The
- * discriminator is CASE. This platform's routes are lowercase slugs; a 32-character base64 token
- * contains an uppercase letter with probability 1 - (38/64)^32, which rounds to certainty. So a
- * rejoined run is a credential only when it is long, strictly base64, and MIXED case.
+ * sales` rejoins to 22 characters of `[A-Za-z0-9/]` and would score three classes, so the ordinary
+ * rule would redact half the product's routes.
+ *
+ * THE MIXED-CASE REQUIREMENT IS THE WHOLE DISCRIMINATOR. DO NOT RELAX IT — it is not incidental
+ * tidying, and removing it is not a loosening, it is a removal. Two facts make it work, and they
+ * are the only two:
+ *
+ *   · This platform's routes are LOWERCASE SLUGS. `/solo/3855/growth/sales`,
+ *     `/clients/people`, `/signup` — verified against all 79 `path=` entries in `src/App.tsx`,
+ *     none of which this predicate touches.
+ *   · A 32-character token drawn from the 64-symbol base64 alphabet contains an uppercase letter
+ *     with probability 1 - (38/64)^32 ≈ 1 - 2.6e-7. That rounds to certainty at this width.
+ *
+ * So requiring BOTH cases costs essentially no coverage against a real token and buys back every
+ * lowercase route. Drop the uppercase requirement and the rule immediately starts eating ordinary
+ * paths; drop the lowercase one and it stops distinguishing anything. If a future token scheme
+ * mints in a single case, this predicate is blind to it — widen it then, deliberately, with a
+ * fresh measurement, rather than by loosening this clause in passing.
  */
 function looksLikeSplitCredential(rejoined: string): boolean {
   if (rejoined.length < 28) return false;
