@@ -6,6 +6,44 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## `git fetch --tags` does NOT move a tag that moved — a drift report built on it is fiction (2026-09-23)
+
+- **Symptom.** The INT-178 lane reported **"13 edge functions undeployed — 4 mine, 9 other lanes'"** and
+  concluded the platform had a deploy backlog: work merging green and never reaching production. The
+  owner reasonably treated that as a serious finding. **There was no backlog.** Other lanes' work had
+  deployed normally and `edge-live` was exactly where it should have been.
+- **Root cause.** `edge-live` and `db-live` are *moved*, not created. `git fetch --tags` **silently keeps
+  an existing local tag at its old value** — updating a moved tag requires `--force`. Every
+  `git fetch origin --tags` that session returned a stale `edge-live` of `186a978f` while the remote was
+  at `2a190b71`. Measured:
+
+  ```
+  $ git rev-parse --short edge-live            # local, after plain --tags fetch
+  186a978fe
+  $ git ls-remote --tags origin edge-live      # the truth
+  2a190b71a...
+  $ git fetch origin --tags --force && git rev-parse --short edge-live
+  2a190b71a
+  ```
+
+- **Why it is worse than it looks.** Here it failed in the *alarming* direction and invented a backlog,
+  which is embarrassing but self-correcting. The same mechanism fails in the *dangerous* direction just
+  as easily: a session that force-fetched once and then reads the cached ref later reports drift as
+  **ZERO when it is not** — the §32.a false-green this evidence standard exists to prevent, produced by
+  the very command that is supposed to establish it.
+- **Rule.** **Resolve a deploy tag from the REMOTE, never from a local ref.** Use
+  `git ls-remote --tags origin db-live edge-live`, or `git fetch --tags --force` immediately before
+  reading. A drift number obtained from a plain `git fetch --tags` is not evidence and must not be
+  reported as one. And **distinguish "tag behind" from "work undeployed"** — `db-live` legitimately lags
+  `main` whenever no migrations have landed, because the tag only moves when migrations actually run; a
+  lagging tag with zero migration drift is healthy, not a backlog.
+- **Corollary, same day, same seam.** A merge is not a ship. PR #1388 merged green at `7ebdd9fe` and its
+  `deploy-edge-functions` run then FAILED on a GHCR rate limit, so `Record deployed commit` was skipped
+  and `edge-live` did not move — merged, closed, **not live**, with nothing on the PR surface saying so.
+  Confirm the tag moved before calling anything shipped (#1391, #1393).
+
+---
+
 ## Flipping a draft STARTS a review; merging in the same breath KILLS it (2026-09-23)
 
 - **Symptom.** PR #1367 was flipped out of draft and merged ~15 seconds later. The draft flip triggered
