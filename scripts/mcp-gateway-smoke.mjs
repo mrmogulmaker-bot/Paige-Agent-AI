@@ -1195,6 +1195,101 @@ console.log("\n— slice ①: verify (runVerify) —");
   check("...does NOT wipe the tool catalog (a failed probe passes _tools=null)", probeCalls.length === 1 && probeCalls[0]._status === "error" && probeCalls[0]._tools === null, JSON.stringify(probeCalls[0]));
 }
 
+// ── Slice ② — CREATE (runCreate: the gateway's create door — thin JWT-scoped pass-through) ─────────
+// Drives the REAL runCreate. The writer RPCs (create_mcp_connection / create_mcp_rest_connection) are
+// SECURITY DEFINER and own all §9 authority + credential/SSRF/length validation in-body; the fake
+// caller client stands in for them, so this proves the EDGE's contract: the facet gate, the tenant
+// pre-gates, the coded-error mapping, that _tenant_id is never forwarded, and that no service-role
+// client is ever touched (§59).
+console.log("\n— slice ②: create (runCreate) —");
+{
+  const createMod = await bundle("supabase/functions/_shared/mcp-gateway/create.ts", "create.mjs");
+  const CTEN = "ten-create-1";
+  const NEWID = "22222222-2222-4222-8222-222222222222";
+  const createCalls = [];
+  // Fake caller (RLS-scoped) client: the current_user_tenant_id gate + capture the writer call.
+  // `mcpResult`/`restResult` are the {data,error} the writer returns (default: a happy create).
+  const makeCreateUser = (o = {}) => ({
+    rpc: async (fn, params) => {
+      if (fn === "current_user_tenant_id") return { data: o.tenant === undefined ? CTEN : o.tenant, error: o.tenantErr ?? null };
+      if (fn === "create_mcp_connection") { createCalls.push({ fn, params }); return o.mcpResult ?? { data: { connection_id: NEWID, status: "pending_verification", endpoint_hash: "abc123", auth_token_last4: "ken2" }, error: null }; }
+      if (fn === "create_mcp_rest_connection") { createCalls.push({ fn, params }); return o.restResult ?? { data: { connection_id: NEWID, status: "pending_verification", endpoint_hash: "def456", auth_token_last4: null }, error: null }; }
+      return { data: null, error: null };
+    },
+  });
+  // A PostgREST-shaped error: `.code` carries the SQLSTATE, `.message` the RAISEd exception text.
+  const pgErr = (message, code) => ({ message, code, details: null, hint: null });
+  const inMcp = (over = {}) => ({ facet: "mcp", expectedTenantId: CTEN, providerKey: "generic-remote", label: "My tool", visibility: "tenant", serverUrl: "https://public.example/mcp", authKind: "bearer", authToken: "supersecrettoken12", authHeaderName: null, refreshToken: null, oauthIssuer: null, oauthClientId: null, oauthClientSecret: null, oauthScopes: null, accessTokenExpiresAt: null, baseUrl: null, apiKey: null, ...over });
+  const inRest = (over = {}) => ({ facet: "rest", expectedTenantId: CTEN, providerKey: "n8n", label: "n8n", visibility: "tenant", serverUrl: null, authKind: null, authToken: null, authHeaderName: null, refreshToken: null, oauthIssuer: null, oauthClientId: null, oauthClientSecret: null, oauthScopes: null, accessTokenExpiresAt: null, baseUrl: "https://public.example/n8n", apiKey: "n8n-api-key-value", ...over });
+
+  // Happy path — MCP facet → 200, the writer's secret-free return passed straight through.
+  createCalls.length = 0;
+  const okMcp = await createMod.runCreate({ userClient: makeCreateUser() }, inMcp());
+  check("create MCP happy path → 200 pending_verification", okMcp.httpStatus === 200 && okMcp.body.connection_id === NEWID && okMcp.body.status === "pending_verification", JSON.stringify(okMcp.body));
+  check("create called create_mcp_connection exactly once (MCP facet)", createCalls.length === 1 && createCalls[0].fn === "create_mcp_connection", JSON.stringify(createCalls.map((c) => c.fn)));
+  // MAJOR-3: the edge NEVER forwards _tenant_id — the writer derives the tenant from auth.uid().
+  check("create does NOT forward _tenant_id to the writer (auth.uid() derives it — §9/MAJOR-3)", !("_tenant_id" in createCalls[0].params), JSON.stringify(Object.keys(createCalls[0].params)));
+  check("create forwards the credential under the named _auth_token param, endpoint under _server_url", createCalls[0].params._auth_token === "supersecrettoken12" && createCalls[0].params._server_url === "https://public.example/mcp");
+  check("create response leaks NO secret (only the writer's host-safe fields)", !JSON.stringify(okMcp.body).includes("supersecrettoken12"), JSON.stringify(okMcp.body));
+
+  // §59 / MAJOR-1 — create NEVER touches a service-role client. Hand it a throwing `admin`; create
+  // must still succeed, because it uses only { userClient } and never reads a secret or writes a probe.
+  const poisonAdmin = { rpc: () => { throw new Error("create must not touch the service-role client (§59)"); } };
+  const poisonRes = await createMod.runCreate({ userClient: makeCreateUser(), admin: poisonAdmin }, inMcp());
+  check("create NEVER touches a service-role client — a throwing admin is handed in and create still succeeds (§59/MAJOR-1)", poisonRes.httpStatus === 200 && poisonRes.body.connection_id === NEWID, JSON.stringify(poisonRes.body));
+
+  // Happy path — REST facet → the REST writer, with NAMED params (never positional).
+  createCalls.length = 0;
+  const okRest = await createMod.runCreate({ userClient: makeCreateUser() }, inRest());
+  check("create REST facet → 200, calls create_mcp_rest_connection", okRest.httpStatus === 200 && createCalls.length === 1 && createCalls[0].fn === "create_mcp_rest_connection", JSON.stringify(createCalls.map((c) => c.fn)));
+  check("REST writer receives NAMED params (_base_url/_api_key), no _tenant_id, _provider_key='n8n'", createCalls[0].params._base_url === "https://public.example/n8n" && createCalls[0].params._api_key === "n8n-api-key-value" && !("_tenant_id" in createCalls[0].params) && createCalls[0].params._provider_key === "n8n", JSON.stringify(Object.keys(createCalls[0].params)));
+
+  // Facet gate — an unknown/absent facet is a defined reject, never a default guess (MAJOR-4).
+  const badFacet = await createMod.runCreate({ userClient: makeCreateUser() }, inMcp({ facet: "page" }));
+  check("create rejects an unknown facet (400 unsupported_facet)", badFacet.httpStatus === 400 && badFacet.body.error === "unsupported_facet", JSON.stringify(badFacet.body));
+
+  // §9 pre-gates.
+  const noTenant = await createMod.runCreate({ userClient: makeCreateUser({ tenant: null }) }, inMcp());
+  check("create refuses when the caller has no tenant (400 no_tenant)", noTenant.httpStatus === 400 && noTenant.body.error === "no_tenant", JSON.stringify(noTenant.body));
+  const switchRace = await createMod.runCreate({ userClient: makeCreateUser() }, inMcp({ expectedTenantId: "ten-OTHER" }));
+  check("create refuses a workspace-switch race (409 tenant_mismatch)", switchRace.httpStatus === 409 && switchRace.body.error === "tenant_mismatch", JSON.stringify(switchRace.body));
+
+  // Coded-error mapping (MAJOR-2). 42501 (any of the 4 forbidden reasons) → UNIFORM 403 MCP_FORBIDDEN;
+  // the message SUFFIX (which gate) is never echoed — no which-gate / cross-tenant oracle.
+  const forbidden = await createMod.runCreate({ userClient: makeCreateUser({ mcpResult: { data: null, error: pgErr("MCP_FORBIDDEN: mcp.connections.manage capability required", "42501") } }) }, inMcp());
+  check("create maps a writer 42501 → uniform 403 MCP_FORBIDDEN", forbidden.httpStatus === 403 && forbidden.body.error === "MCP_FORBIDDEN", JSON.stringify(forbidden.body));
+  check("...and NEVER echoes the which-gate suffix (no oracle)", forbidden.body.error === "MCP_FORBIDDEN" && !JSON.stringify(forbidden.body).includes("capability required"), JSON.stringify(forbidden.body));
+
+  const badLabel = await createMod.runCreate({ userClient: makeCreateUser({ mcpResult: { data: null, error: pgErr("MCP_BAD_LABEL: a name is required", "22023") } }) }, inMcp());
+  check("create maps a writer 22023 validation error → 400 with the specific MCP_* code", badLabel.httpStatus === 400 && badLabel.body.error === "MCP_BAD_LABEL", JSON.stringify(badLabel.body));
+
+  // INT-153 surfaced through the edge: a <12-char bearer token → MCP_CREDENTIAL_TOO_SHORT → 400.
+  const tooShort = await createMod.runCreate({ userClient: makeCreateUser({ mcpResult: { data: null, error: pgErr("MCP_CREDENTIAL_TOO_SHORT", "22023") } }) }, inMcp({ authToken: "short" }));
+  check("create surfaces the INT-153 credential floor (MCP_CREDENTIAL_TOO_SHORT → 400)", tooShort.httpStatus === 400 && tooShort.body.error === "MCP_CREDENTIAL_TOO_SHORT", JSON.stringify(tooShort.body));
+
+  // No auto-reroute (MAJOR-4): api_key on the MCP facet calls create_mcp_connection and lets ITS inline
+  // MCP_AUTH_KIND_NOT_EXECUTABLE fire — the edge never silently redirects to the REST writer.
+  createCalls.length = 0;
+  const apiKeyOnMcp = await createMod.runCreate({ userClient: makeCreateUser({ mcpResult: { data: null, error: pgErr("MCP_AUTH_KIND_NOT_EXECUTABLE: use create_mcp_rest_connection", "22023") } }) }, inMcp({ authKind: "api_key" }));
+  check("create does NOT auto-reroute api_key — it calls create_mcp_connection and surfaces its inline reject", createCalls.length === 1 && createCalls[0].fn === "create_mcp_connection" && apiKeyOnMcp.body.error === "MCP_AUTH_KIND_NOT_EXECUTABLE", JSON.stringify({ called: createCalls.map((c) => c.fn), body: apiKeyOnMcp.body }));
+
+  // Uncoded / internal failure → 500 create_failed, never the raw PG message (§13).
+  const internal = await createMod.runCreate({ userClient: makeCreateUser({ mcpResult: { data: null, error: pgErr('null value in column "tenant_id" violates not-null constraint', "23502") } }) }, inMcp());
+  check("create maps an uncoded internal error → 500 create_failed", internal.httpStatus === 500 && internal.body.error === "create_failed", JSON.stringify(internal.body));
+  check("...and never leaks the raw PG message (§13)", !JSON.stringify(internal.body).includes("not-null constraint"), JSON.stringify(internal.body));
+
+  // A writer "success" with NO connection_id is not a real create (§13 — never claim a row that was not made).
+  const noId = await createMod.runCreate({ userClient: makeCreateUser({ mcpResult: { data: { status: "pending_verification" }, error: null } }) }, inMcp());
+  check("create treats a writer success with NO connection_id as a failure (500, never a fake create)", noId.httpStatus === 500 && noId.body.error === "create_failed", JSON.stringify(noId.body));
+
+  // readCreateInput — untrusted body → typed input; empty/wrong-typed → null; non-strings filtered from arrays.
+  const parsed = createMod.readCreateInput({ facet: "mcp", provider_key: "generic-remote", label: "T", server_url: "https://public.example/mcp", auth_kind: "bearer", auth_token: "supersecrettoken12", oauth_scopes: ["a", 3, "b"], visibility: "" }, "ten-x");
+  check("readCreateInput maps snake_case body → typed input", parsed.facet === "mcp" && parsed.providerKey === "generic-remote" && parsed.serverUrl === "https://public.example/mcp" && parsed.authToken === "supersecrettoken12" && parsed.expectedTenantId === "ten-x", JSON.stringify(parsed));
+  check("readCreateInput coerces an empty string to null and filters a non-string out of oauth_scopes", parsed.visibility === null && Array.isArray(parsed.oauthScopes) && parsed.oauthScopes.length === 2 && parsed.oauthScopes.every((s) => typeof s === "string"), JSON.stringify(parsed.oauthScopes));
+  const parsedEmpty = createMod.readCreateInput({}, null);
+  check("readCreateInput on an empty body → facet '' (→ unsupported_facet), all fields null", parsedEmpty.facet === "" && parsedEmpty.label === null && parsedEmpty.apiKey === null && parsedEmpty.expectedTenantId === null, JSON.stringify(parsedEmpty));
+}
+
 server.close();
 console.log(`\n${passed} assertions passed.`);
 if (failures.length) { console.error(`\n${failures.length} FAILURE(S):\n- ${failures.join("\n- ")}`); process.exit(1); }
