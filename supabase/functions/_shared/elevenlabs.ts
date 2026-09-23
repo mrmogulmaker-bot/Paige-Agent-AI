@@ -51,11 +51,12 @@ async function speechResponse(opts: ElevenLabsTtsInput, stream: boolean, signal?
   // The server-resolved reference is still encoded so no unexpected provider value can reshape
   // the request path (§13 secure-by-construction).
   const suffix = stream ? "/stream" : "";
-  const resp = await fetch(`${ELEVENLABS_BASE}/text-to-speech/${encodeURIComponent(voiceId)}${suffix}?enable_logging=false`, {
+  const query = stream ? "enable_logging=false&output_format=pcm_16000" : "enable_logging=false";
+  const resp = await fetch(`${ELEVENLABS_BASE}/text-to-speech/${encodeURIComponent(voiceId)}${suffix}?${query}`, {
     method: "POST",
     // Key in the xi-api-key header only — never the URL — so a network-level fetch reject
     // (which echoes the request URL into a TypeError) can never leak the secret.
-    headers: { "xi-api-key": key, "content-type": "application/json", accept: "audio/mpeg" },
+    headers: { "xi-api-key": key, "content-type": "application/json", accept: stream ? "audio/pcm" : "audio/mpeg" },
     body: JSON.stringify({ text: opts.text, model_id: modelId }),
     signal,
   });
@@ -67,7 +68,7 @@ async function speechResponse(opts: ElevenLabsTtsInput, stream: boolean, signal?
   return { response: resp, modelId };
 }
 
-/** A cancellable MP3 stream for the relay; it never buffers the full utterance. */
+/** A cancellable 16 kHz PCM stream for the existing relay player; it never buffers the full utterance. */
 export async function elevenlabsSpeechStream(opts: ElevenLabsTtsInput, signal: AbortSignal): Promise<Response> {
   const { response } = await speechResponse(opts, true, signal);
   if (!response.body) throw new Error("ElevenLabs: missing audio stream");

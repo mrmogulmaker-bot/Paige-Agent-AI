@@ -58,7 +58,7 @@ try {
   ok("TTS transport defaults to conversational v3", observedModel === "eleven_v3_conversational");
   const cancel = new AbortController();
   const audio = await elevenlabsSpeechStream({ text: "A first sentence.", voiceId: "g6xIsTj2HwM6VR4iXFCw" }, cancel.signal);
-  ok("live mouth uses the existing transport with a cancellable stream", observedUrl.includes("/g6xIsTj2HwM6VR4iXFCw/stream?enable_logging=false") && observedSignal === cancel.signal && audio.body !== null);
+  ok("live mouth uses cancellable PCM compatible with the existing browser player", observedUrl.includes("/g6xIsTj2HwM6VR4iXFCw/stream?enable_logging=false&output_format=pcm_16000") && observedSignal === cancel.signal && audio.body !== null);
 } finally {
   globalThis.fetch = priorFetch;
   delete env.ELEVENLABS_API_KEY;
