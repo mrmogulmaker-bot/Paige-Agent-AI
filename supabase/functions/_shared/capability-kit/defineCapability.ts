@@ -2,7 +2,7 @@ import { isOwnerGrantablePermissionKey, snapshotOwnerGrantablePermission } from 
 import { isCapabilityInputSchema, snapshotCapabilityInputSchema } from "./schema.ts";
 import { snapshotPlainData } from "./snapshot.ts";
 import { CAPABILITY_SEAM_IDS } from "./seams.ts";
-import { classifyAction, MUTATION_VERB } from "../action-risk.ts";
+import { classifyAction } from "../action-risk.ts";
 import {
   CAPABILITY_AVAILABILITY_STATES,
   EVIDENCE_STATES,
@@ -107,13 +107,38 @@ export function defineCapability(definition: CapabilityDefinition): DefinedCapab
       throw new TypeError("Read capabilities must declare no action-risk key, read_only risk, and no approval.");
     }
   } else {
+    /**
+     * THE CANONICAL ACTION-RISK POLICY DECIDES WHAT IS AN ACTION HERE — NOT A VERB PATTERN.
+     * `classifyAction()` is a lookup into a hand-curated table in which every entry carries a written
+     * rationale, so any verdict other than "unclassified" means a person has already decided that this
+     * key names an action and how dangerous it is. `MUTATION_VERB` infers the same thing from spelling,
+     * and it is a FAIL-SAFE FLOOR for the keys that table does NOT cover: `unclassifiedWriteReason()`
+     * consults it only after `RISK_BY_TOOL` misses, the MCP gateway's `server_name_floor` uses it to
+     * RAISE approval on an unclassified provider tool, and `lint:action-risk` uses it to demand a class
+     * for a write-shaped name in CI. Every one of those raises the floor under a key nobody classified.
+     * Requiring it HERE inverted that — the weaker proxy vetoing the stronger authority — and refused
+     * curated actions the vocabulary happens not to spell: `crm_merge_contacts`, `crm_close_deal` and
+     * `booking_preset_revise` are all classified `high` and match no verb, so a declaration CI reported
+     * as complete threw the moment its module was imported. Do not re-add the test, and do not widen the
+     * vocabulary to compensate; either way a spelling check ends up standing in front of a decision that
+     * has already been made, and the vocabulary has genuinely missed real verbs twice in production.
+     *
+     * `read_only` is refused outright rather than left to the risk comparison below. `ActionRisk` cannot
+     * express it and no entry classifies one, so that comparison happens to reject it today — but that
+     * is the table's present composition doing the work rather than a rule, and an effect that writes or
+     * reaches outside the platform must never be able to declare itself unapproved.
+     */
     nonEmpty(governance.actionRiskKey, "governance.actionRiskKey");
-    if (!MUTATION_VERB.test(governance.actionRiskKey)) {
-      throw new TypeError("Mutation action-risk keys must identify a canonical mutation action.");
+    if (governance.risk === "read_only") {
+      throw new TypeError(
+        "Mutation and external-effect capabilities cannot declare read_only risk.",
+      );
     }
     const canonicalRisk = classifyAction(governance.actionRiskKey);
     if (canonicalRisk === "unclassified") {
-      throw new TypeError("Mutation action-risk keys must exist in the canonical action-risk policy.");
+      throw new TypeError(
+        "Mutation action-risk keys must exist in the canonical action-risk policy: classify this key there first, with its rationale, then declare the capability.",
+      );
     }
     if (governance.risk !== canonicalRisk) {
       throw new TypeError("Capability risk must match the canonical action-risk policy.");
