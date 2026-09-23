@@ -58,8 +58,16 @@ export function canonicalizeCrmCommand<T extends Record<string, unknown>>(comman
 
   const patch = { ...sourcePatch as Record<string, unknown> };
   let changed = false;
+  const canonicalNameFields = ["first_name", "last_name"] as const;
+  for (const field of canonicalNameFields) {
+    if (typeof patch[field] !== "string") continue;
+    const trimmed = patch[field].trim();
+    if (trimmed.length > 0 && trimmed !== patch[field]) {
+      patch[field] = trimmed;
+      changed = true;
+    }
+  }
   if (typeof patch.name === "string" && patch.name.trim().length > 0) {
-    const canonicalNameFields = ["first_name", "last_name"] as const;
     const presentCanonicalNameFields = canonicalNameFields.filter((field) =>
       Object.prototype.hasOwnProperty.call(patch, field)
     );

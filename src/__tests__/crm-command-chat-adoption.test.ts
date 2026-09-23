@@ -241,4 +241,20 @@ describe("Paige Chat canonical CRM adoption", () => {
     };
     expect(await fallbackKey(legacy)).toBe(await fallbackKey(canonical));
   });
+
+  it("trims canonical contact names before hashing equivalent retries", async () => {
+    const spaced = canonicalizeCrmCommand({
+      action: "contact.create",
+      patch: { first_name: " Avery ", last_name: " Quinn  " },
+    });
+    const trimmed = canonicalizeCrmCommand({
+      action: "contact.create",
+      patch: { first_name: "Avery", last_name: "Quinn" },
+    });
+
+    expect(spaced).toEqual(trimmed);
+    expect(await confirmFingerprint("crm_command_idempotency", spaced)).toBe(
+      await confirmFingerprint("crm_command_idempotency", trimmed),
+    );
+  });
 });
