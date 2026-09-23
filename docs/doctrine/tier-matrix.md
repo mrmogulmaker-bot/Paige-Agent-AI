@@ -592,6 +592,38 @@ restated, not a new one.
 | **Client** | — never reaches the executors | **403** — reader raises `RAIL_FORBIDDEN` for a non-staff seat, and the rows are `visibility: owner_internal` | **403** |
 | **Anonymous** | — | **403** — `REVOKE ALL … FROM PUBLIC, anon` | **403** |
 
+### Paige's MCP connection VISIBILITY — `integrations_list` now includes MCP (migration `20270410214500`, 2026-09-23)
+
+`public.list_integration_surface()` — the executor behind the live `integrations_list` chat tool — read
+**only** `public.channel_connectors`, so every MCP connection a tenant owned was **invisible** to Paige.
+It now appends two MCP halves: the gateway registry first (§57 source of truth), then `get_tenant_mcp_connections`
+filling **only** a provider the gateway has no row for. The gap-fill is not optional politeness — the gateway
+registry came from a ONE-TIME backfill with no sync trigger while the legacy writers stay live, so
+gateway-only would give Paige a list with a hole in it, and a hole reads as an absence: a confident
+*"no, you aren't connected"* about a working connection (§13).
+
+| Tier | Sees MCP connections via `integrations_list` | Sees an `owner_only` MCP connection | Why |
+|---|---|---|---|
+| **God / Super Admin** | — (tenant-less) | — | `current_user_tenant_id()` is NULL, so `WHERE tenant_id = NULL` matches nothing. `is_platform_owner()` keeps `_mcp_resolve_tenant` from raising, so it is an honest empty list, **not** an error |
+| **Agency** (agency-as-tenant) | ✓ its own tenant only | ✓ if `is_tenant_admin` | both halves resolve `current_user_tenant_id()`; no tenant value is ever accepted from the wire |
+| **Standalone Solo** | ✓ | ✓ if `is_tenant_admin` | same |
+| **Sub-account** | ✓ its own only, never the parent's | ✓ if `is_tenant_admin` | same resolver; a sub-account cannot reach the parent aggregate |
+| **Solo/Sub member (non-admin)** | ✓ ordinary connections | **✗ hidden** | `get_mcp_connections_v2`'s `_full` gate, which still evaluates against the REAL caller through the nested SECURITY DEFINER call — `auth.uid()` is preserved (measured, not assumed) |
+| **Client** | **— nothing** | — | not an active `tenant_members` row, so `_mcp_resolve_tenant` raises `MCP_FORBIDDEN`; the exception guard turns that into an empty MCP half. **Fail-closed** |
+| **Anonymous** | **— 403** | — | `REVOKE ALL … FROM PUBLIC, anon` on the function |
+
+**Two things recorded honestly rather than smoothed over (§13).** (1) The **channel_connectors** half is
+unchanged by this migration and its own Client exposure — whether a client seat resolves a tenant and sees
+channel connectors — is a **pre-existing** question this change neither introduces nor fixes; it is flagged
+here because the audit that produced this table is where it surfaced, and it is out of this slice's scope.
+(2) **Tool INVOCATION is NOT repointed** — `call-zapier-action:98` still resolves through the legacy
+registry. Four independent blockers, each sufficient: `MCP_GATEWAY_EXECUTE_ENABLED` is default OFF (an owner
+cloud-side flag); the gateway's loader does not refresh OAuth tokens and says so itself
+(`_shared/mcp-gateway/connection.ts:112-113`) while the refresher writes to the legacy table only, so a
+projected row goes stale in ~an hour and throws inside Paige's chat turn; no gateway discovery action exists,
+so `zapier_list_actions` would degrade a tool-NAME list to a count; and the gateway's response shares no
+field with what `projectOutcomeForModel` reads, so a SUCCESSFUL run would project to the model as a failure.
+
 **Recorded honestly (§13):** eleven capabilities are wired — `n8n_*` writes, `zapier_run_action`,
 and (2026-09-05) the four Communications write acts. The other ~43 classified actions still write
 only `paige_audit_log`; each migration wave adds its own copy. An unmapped capability renders a
