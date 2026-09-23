@@ -2747,7 +2747,16 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
   5. **"The guard exited 1" is not "the guard caught what I meant."** One bite proof in this sequence
      dropped a comma between two planted tuples, so it tested a *syntax error* and nearly got recorded
      as a pass. Read the message, not the exit code.
-  6. **The meta-pattern, and the one actually worth carrying: four of the six findings were an
+  6. **A document with a fast-path SUMMARY and a careful DETAIL section will have them disagree, and
+     the summary wins.** Two successive findings landed on the same conceptual mistake in
+     `trunk-signal.md` because the fix went into the detailed procedure while the lookup table kept the
+     old shortcut — and the table is what a reader hits first, so it decides. The table's framing line
+     ("if your symptom matches, it is not yours"), its column header ("How to confirm it is not yours")
+     and the row itself all still granted clearance from the diff's paths. **When you correct a claim,
+     grep the whole document for every place that claim is restated, including headers and framing
+     sentences — do not patch the one location a reviewer names.** A summary that contradicts its own
+     detail is worse than either alone.
+  7. **The meta-pattern, and the one actually worth carrying: four of the seven findings were an
      ENUMERATION offered where a general RULE was needed.** Widen the regex to cover single quotes
      (enumerate the quote styles). Add a line counter (enumerate the layouts). Name two directories as
      the trees a baseline test reads from (enumerate the dependency roots — defeated by

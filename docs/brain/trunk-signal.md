@@ -25,15 +25,17 @@ independently confirmed. Do not promote an attributed row to fact without runnin
 
 ## The lookup table
 
-Find your red check. If it is here and your symptom matches, it is not yours.
+Find your red check. **A row here tells you what a check is known to do — it never clears YOUR run.**
+Each row says what would establish attribution; several require evidence you have to go and get.
+Stopping at this table is how a regression gets filed as inherited.
 
 Every row below is a real **check-run name** as GitHub reports it, with one deliberate exception: `ci:tsc`
 is a *step* inside the `verify` job, listed here because people look for it by name. There is no check run
 called `ci:tsc`, and there is none called plain `Vercel` either.
 
-| Check | State on `main` | Verdict | How to confirm it is not yours |
+| Check | State on `main` | Verdict | What would establish attribution |
 |---|---|---|---|
-| **`verify`** | RED — fails on exactly one step, `npm run test` | **Inherited.** Tracked as **#1372**. | The five failing files are all under `src/` (listed below). If your diff touches none of them and none of their imports, it is not yours. |
+| **`verify`** | RED — fails on exactly one step, `npm run test` | **Inherited.** Tracked as **#1372**. | **Nothing in your diff's paths can clear this.** A failing test name not among the twenty below proves it is yours; matching names prove nothing, because a change can alter a listed failure in place. Only a base-vs-head diff of the failure output clears a run — see below. |
 | **`github-advanced-security`** | **FLAPPING** — mostly red, green perhaps a quarter of the time. Re-count rather than trust this line; the number moves within hours. | **Not diagnostic, and NOT a licence to ignore it.** | **Match the failure SIGNATURE in the job log before dismissing it** — see the section below. A red whose signature you have not checked is an uninvestigated failure, not an inherited one. |
 | `ci:tsc` — **a step inside `verify`, not a check of its own** | GREEN — *"no new type errors (baseline 12, current 12)"* | **Passing.** It is a ratchet, not a zero-error gate. | If it goes red, `verify` goes red and it is yours. Note the mechanism before you read the number — see below. |
 | **`audit`** | GREEN | — | A red here is yours. |
@@ -272,11 +274,12 @@ measured and what was merely handed down — including when this file was the on
   model is not supported`, the job exiting before any scan, and an empty `output` on the check run. If
   it matches, it is the vendor fault above and there is nothing to port.
 
-  **SEARCH the log for that string — do not tail it.** Found by following this very rule: a 12-line
-  tail lands in the runner's cleanup block and shows *none* of the signature, so a small tail reads as
-  "does not match" on a red that matches perfectly. The error sits roughly 25–55 lines from the end,
-  above the cleanup group. A rule whose own instructions produce false negatives sends people chasing a
-  vendor fault. **If it does NOT match, you
+  **SEARCH the log for that string — do not tail it, and do not trust a line count.** Found by following
+  this rule twice: a 12-line tail lands in the runner's cleanup block and shows *none* of the signature;
+  a 55-line tail caught the error on one head and a 40-line tail missed it on the next. The distance
+  varies per run, so any range this file quotes is wrong on some future run — which is why the
+  instruction is *search*, with no number attached. A rule whose own instructions produce false
+  negatives sends people chasing a vendor fault. **If it does NOT match, you
   have an uninvestigated failure — including possibly a real one — and the rest of this row does not
   apply to it.**
 
