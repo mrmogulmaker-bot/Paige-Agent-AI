@@ -23,8 +23,13 @@
 -- (20270107000000:23-24) — true of the existing grants, and irrelevant to the new function. The
 -- §9/§37 guard `scripts/ci/definer-fn-lint.mjs` matches an EXPLICIT `GRANT ... TO anon|public`;
 -- an implicit default grant is invisible to it. And name-level auditing reports this function as
--- ACL'd, because the NAME is — only a signature-level check surfaces it. The guard is widened in
--- the same change that lands this migration.
+-- ACL'd, because the NAME is — only a signature-level check surfaces it.
+--
+-- AS OF THIS COMMIT THAT GUARD IS STILL BLIND. An earlier draft of this header said the guard "is
+-- widened in the same change that lands this migration", which was a promise, not a fact, and a
+-- promise has no business inside a migration whose whole subject is a claim that stopped being
+-- true. Widening it is the next commit on this branch; until that lands, `definer-fn-lint` would
+-- not catch a second overload shipped the same way.
 --
 -- THE REPO ALREADY KNEW. 20261201000800:542-543, thirty-seven days earlier, on the sibling writer:
 --   "LOAD-BEARING. DROP FUNCTION above discarded the ACL and the recreated function defaults to

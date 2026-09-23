@@ -356,6 +356,16 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ## 0a. A service_role-only RPC called from the anon+JWT seam writes NOTHING, and every gate stays green (2026-09-05)
 
+> **AMENDED 2027-04-11 — the lesson stands; the fact it rests on does not.** This entry was true
+> when written. On 2027-01-07, `20270107000000:94` added a TEN-argument overload of
+> `record_capability_run` with no GRANT and no REVOKE, so that signature defaults to `EXECUTE TO
+> PUBLIC`, and its body never calls `auth.uid()`. On that path the anon+JWT client does not get
+> `permission denied` — it WRITES THE ROW. The failure described below is loud only while the
+> signature actually invoked is locked. `20270411000000` restores the lock on both (in the repo;
+> prod apply owed). That makes the generalisation SHARPER, not weaker: check the grant against the
+> client **and against the exact signature the caller binds** — an overload is a new `pg_proc`
+> entry and inherits nothing.
+
 - **Symptom (caught in design, before it shipped).** The obvious way to make PAIGE's acts visible was
   to record once at `paige-ai-chat`'s single tool-dispatch seam, which every executed tool result
   already passes through. A crew took the design apart and found it would have produced a feature

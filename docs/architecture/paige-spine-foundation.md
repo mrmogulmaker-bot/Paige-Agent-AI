@@ -93,8 +93,14 @@ a role granted, an automation run, a marketplace item installed — had **nowher
   each gains a wider overload that carries the body, and the existing narrower signature becomes a
   thin delegate. Nothing that exists today was retyped, so the "rebuilt from the wrong ancestor"
   regression cannot occur.
-- `record_capability_run` is service-role only and re-enforces caller scope in-body (§59): the
-  actor must be an ACTIVE member of the tenant the row is written for. It deliberately does not
+- `record_capability_run` is service-role only on its 6-argument signature. Its in-body check
+  requires the actor to be an ACTIVE member of the tenant the row is written for — that
+  constrains the SUBJECT named in the arguments, NOT the caller, so it is not a §59 caller-scope
+  guard and never carried the boundary alone. **The grant IS the boundary here**, which is why
+  the 10-argument overload at `20270107000000:94` shipping with no ACL (default `EXECUTE TO
+  PUBLIC`, body never calls `auth.uid()`) was a real hole. `20270411000000` re-asserts both
+  signatures; prod apply is owed. An earlier version of this line claimed §59 caller-scope
+  compliance, and a reader auditing §59 coverage would have ticked it off and moved on. It deliberately does not
   re-check role — that is the tool gate's decision, and duplicating it would silently drop the
   record of a legitimately approved run.
 

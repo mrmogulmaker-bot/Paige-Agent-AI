@@ -9929,6 +9929,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // than throwing, so the feature would ship with every gate green and not one
           // row ever written. That is the whole reason this is wired at the executor.
           //
+          // THAT GUARANTEE IS SIGNATURE-SCOPED. The paragraph above is true of the
+          // 6-argument signature. The 10-arg overload (`20270107000000:94`, bound
+          // whenever correlation or detail is passed) shipped with NO GRANT and NO
+          // REVOKE, so it defaults to `EXECUTE TO PUBLIC`, and its body never calls
+          // `auth.uid()` — it checks the ARGUMENT actor against the ARGUMENT tenant,
+          // which constrains the subject, not the caller. On that path the wrong client
+          // would succeed SILENTLY instead of failing loudly. `20270411000000` revokes
+          // it; in the repo, prod apply owed. Do not read the paragraph above as a
+          // guarantee until that is confirmed applied.
+          //
           // NO `agentSlug`. `_record_workspace_rail_event` resolves it against
           // `paige_subagents` for a label, and no subagent owns these four acts today.
           // Named-agent attribution is the owner's next layer; inventing a slug now
@@ -12717,7 +12727,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // service role `auth.uid()` is NULL, so `supabase` here would not read MORE — it would
           // read NOTHING and refuse. `supabaseClient` (anon key + caller JWT) is both the correct
           // and the only working choice. The admin client appears below for the receipt alone,
-          // because `record_capability_run` is granted to service_role only.
+          // because `record_capability_run` is granted to service_role only ON ITS 6-ARGUMENT
+          // SIGNATURE. The 10-arg overload (`20270107000000:94`, bound whenever correlation or
+          // detail is passed) shipped with NO ACL and defaults to PUBLIC EXECUTE; it never calls
+          // `auth.uid()`. `20270411000000` revokes it — in the repo, prod apply owed.
           //
           // NO CONFIRM GATE, DELIBERATELY. These are reads: unclassified in action-risk.ts on
           // purpose, and their names carry no MUTATION_VERB segment, so `unclassifiedWriteReason`

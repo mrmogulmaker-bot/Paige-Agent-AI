@@ -36,6 +36,10 @@ empty for a reason that looked like absence and was actually vocabulary.
 `20261212000000_paige_can_show_her_work.sql` adds that shape: `source_kind='capability_run'`,
 a `capability_key` column, five outcomes (`capability_succeeded` · `_failed` · `_refused` ·
 `_unreachable` · `_outcome_unknown`), and `record_capability_run(...)` for service-role callers.
+**That lock covers the 6-argument signature only.** The 10-argument overload at `20270107000000:94`
+is a separate `pg_proc` entry, was given no GRANT and no REVOKE, and so defaults to `EXECUTE TO
+PUBLIC`; its body never calls `auth.uid()`. `20270411000000` revokes it and re-asserts the 6-arg
+posture — in the repo; a `pg_proc.proacl` readback on prod is still owed.
 
 `20261220000000_an_act_that_landed_but_was_not_recorded.sql` adds a **sixth**,
 `capability_completed_unrecorded`, and the four Communications capability keys. The sixth exists
