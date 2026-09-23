@@ -61,7 +61,7 @@ MUST_PRESERVE: Tenant persona, global distress precedence, governed receipts, te
 ACCEPTANCE_CRITERIA: After account readiness is verified, the owner hears natural Jessica replies, interrupts, ends cleanly and keeps the same chat thread; acoustic acceptance is by ear.
 PROTECTED_SEAMS: AFFECTED: authenticated Live prompt assembly. PRESERVED: existing Spine, Rail, Mind, Memory, Knowledge, Harness, runtime proof, provider routing and UI state.
 
-INTERNAL_BUILD_IDENTITY: merge_sha=PROOF_OWED; pr=1405; reviewed_head=PROOF_OWED; deployment=PROOF_OWED; environment=development; migrations=NOT_APPLICABLE; edge=PROOF_OWED(paige-ai-chat); evidence=src/__tests__/n5-client-prompt-denylist.test.ts
+INTERNAL_BUILD_IDENTITY: merge_sha=PROOF_OWED; pr=1405; reviewed_head=PROOF_OWED; base_merge_sha=6bd8849d4b9bad7c8d331458cab03c00c61b87aa (proven base, not S5 release identity); deployment=PROOF_OWED; environment=development; migrations=NOT_APPLICABLE; edge=PROOF_OWED(paige-ai-chat); evidence=src/__tests__/n5-client-prompt-denylist.test.ts
 RELEASE_CHANNEL: development: delivery-only slice; no pilot activation or provider call
 RELEASE_CLASSIFICATION: internal-only: no customer capability claim while provider readiness remains unverified
 CUSTOMER_RELEASE_IDENTITY: none: this does not claim end-to-end Live delivery
