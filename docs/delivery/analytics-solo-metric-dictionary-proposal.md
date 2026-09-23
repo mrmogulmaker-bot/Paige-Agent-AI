@@ -77,7 +77,7 @@ ratifying them.
 
 `src/solo/data/useCommandCenter.ts:163` renders `won_value_cents` under the label
 **"Revenue this period"**. `won_value_cents` is computed at
-`supabase/migrations/20260713152601_tier_dashboard_metrics.sql:38-40` as `SUM(deals.value_cents)`
+`supabase/migrations/20260713152601_tier_dashboard_metrics.sql:38-40` as `sum(d.value_cents)`
 for deals whose stage has `stage_type='won'`, filtered
 `AND d.actual_close_date IS NOT NULL AND d.actual_close_date >= since_date`.
 
@@ -116,7 +116,7 @@ and is not consulted by this metric.
 
 ### L-3 — ARPC divides a period figure by a point-in-time count, over an inflated denominator
 
-`arpc_cents` (`20260713152601:55`) is `round(v_won_alltime / v_active)` — **all-time** won value
+`arpc_cents` (`20260713152601:55`) is `round(v_won_alltime::numeric / v_active)::bigint` — **all-time** won value
 over the **current** active-client count. Two different time bases in one division, and the
 denominator is L-2's inflated count. The number is not wrong by a little; it has no coherent
 meaning.
@@ -208,7 +208,7 @@ Same shape as M-3, filtered to `stage_type='won'` and dated by `actual_close_dat
 **Class: ESTIMATED.** Proposed surface label: *"Won (estimated value)"*, never *"Revenue."*
 
 **Open decision D-4:** two definitions of "won" coexist and can disagree —
-`deals.status='won'` (used by `contact_deal_rollup`, `20260627024041:34`) versus
+`d.status = 'won'` (used by `contact_deal_rollup`, `20260627024041:34`) versus
 `pipeline_stages.stage_type='won'` (used by `practice_dashboard_metrics`). Migration
 `20261204000000_closing_a_deal_on_the_solo_board_records_it.sql` records that the governed Solo
 board historically set **neither** `status` nor `actual_close_date` on a won move, so deals closed

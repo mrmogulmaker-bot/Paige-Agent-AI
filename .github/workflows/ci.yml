@@ -185,6 +185,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:doc-citations
 
+      - name: Doc-citation guard self-test
+        if: ${{ !cancelled() }}
+        run: npm run lint:doc-citations:test
+
       - name: Legacy-mark guard (2026-09-06 — retired orbital PaigeMark must not return; use PaigeCommandMark)
         if: ${{ !cancelled() }}
         run: npm run lint:legacy-mark

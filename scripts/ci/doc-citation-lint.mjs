@@ -28,9 +28,10 @@ import { join } from "node:path";
 
 const ROOT = process.cwd();
 const MIGRATIONS = join(ROOT, "supabase/migrations");
-const docs = process.argv.slice(2);
-if (!docs.length) {
-  console.error("usage: doc-citation-lint.mjs <doc.md> [doc.md...]");
+const SELF_TEST = process.argv.includes("--self-test");
+const docs = process.argv.slice(2).filter((a) => a !== "--self-test");
+if (!docs.length && !SELF_TEST) {
+  console.error("usage: doc-citation-lint.mjs <doc.md> [doc.md...] | --self-test");
   process.exit(2);
 }
 
@@ -63,6 +64,7 @@ function lines(path) {
   return fileCache.get(path);
 }
 
+const reported = new Set();
 let failures = 0;
 let warnings = 0;
 let checked = 0;
@@ -75,6 +77,19 @@ for (const doc of docs) {
   }
   const text = readFileSync(doc, "utf8");
   const docLines = text.split("\n");
+
+  // A doc line often carries several citations. A snippet quoted correctly from one of them would
+  // be flagged against its neighbour if each citation were judged alone, so resolve every path on
+  // a line up front and let a snippet satisfy ANY of them.
+  const pathsByDocLine = new Map();
+  for (const m of text.matchAll(CITATION)) {
+    const ln = text.slice(0, m.index).split("\n").length;
+    const ref = m[1];
+    const resolved = /^\d{14}$/.test(ref) ? resolveMigration(ref) : ref;
+    if (!resolved || !existsSync(resolved)) continue;
+    if (!pathsByDocLine.has(ln)) pathsByDocLine.set(ln, []);
+    pathsByDocLine.get(ln).push(resolved);
+  }
 
   for (const m of text.matchAll(CITATION)) {
     const [raw, ref, startStr, endStr] = m;
@@ -158,23 +173,107 @@ for (const doc of docs) {
       }
     }
 
-    // (3) QUOTED — a backticked snippet on the same doc line should appear near the cited line
+    // (3) QUOTED — a backticked snippet beside a citation should exist in the cited FILE.
+    //
+    // An earlier version demanded the snippet appear within ±3 lines of the citation, and warned 35
+    // times on a document with zero real problems: prose legitimately backticks a route, a column
+    // name, or a symbol declared elsewhere in the same file. A warning channel that cries wolf 35
+    // times is one people learn to skip, which would defeat the point of having it. So the check is
+    // now the narrow, high-signal one: does this quoted text exist in that file AT ALL? That still
+    // catches a fabricated quote — the failure worth catching — without punishing prose.
     const docLineText = docLines[docLine - 1] ?? "";
-    const snippets = [...docLineText.matchAll(/`([^`]{12,})`/g)]
-      .map((s) => s[1])
-      .filter((s) => s !== raw.slice(1, -1) && !s.includes(":") && /[a-z_]/.test(s));
+    const snippets = [...docLineText.matchAll(/`([^`]{16,})`/g)]
+      .map((x) => x[1])
+      .filter((x) => x !== raw.slice(1, -1))
+      // Only things that read like code lifted from a file: an operator, a call, or a declaration.
+      .filter((x) => /[=(){};]|::|->/.test(x))
+      // Not a bare path/citation, and not a prose sentence that happens to be in backticks.
+      .filter((x) => !/^[\w./-]+:\d/.test(x) && x.split(" ").length < 14)
+      // A line with an odd number of backticks makes the pair-matcher straddle two inline spans and
+      // emit fragments like ", all tenant-scoped (". Real quoted code starts with a word or a slash.
+      .filter((x) => /^[\w/]/.test(x))
+      // Route notation the doc writes itself — `/agency/{n}/analytics` is a description of a URL
+      // shape, not text lifted from a file, so it has no business being checked against one.
+      .filter((x) => !/\{[a-z]\}/i.test(x));
     if (snippets.length) {
-      const windowText = body.slice(Math.max(0, start - 4), end + 3).join("\n");
+      const candidates = pathsByDocLine.get(docLine) ?? [path];
+      const haystacks = candidates.map((c) => (lines(c) ?? []).join("\n").replace(/\s+/g, " "));
       for (const snip of snippets) {
         const needle = snip.replace(/\s+/g, " ").trim();
-        const hay = windowText.replace(/\s+/g, " ");
-        if (needle.length >= 12 && !hay.includes(needle)) {
-          console.warn(`⚠ QUOTED ${doc}:${docLine}  ${raw} — \`${needle.slice(0, 60)}\` not found within ±3 lines`);
+        const key = `${doc}:${docLine}:${needle}`;
+        if (reported.has(key)) continue; // several citations share a doc line; report once
+        if (!haystacks.some((h) => h.includes(needle))) {
+          reported.add(key);
+          console.warn(
+            `⚠ QUOTED ${doc}:${docLine}  \`${needle.slice(0, 70)}\` appears in none of: ${candidates.join(", ")}`,
+          );
           warnings++;
         }
       }
     }
   }
+}
+
+// ── SELF-TEST ─────────────────────────────────────────────────────────────────────────────────
+// A guard with no test can stop guarding silently — not hypothetical here: the first version of the
+// STALE check fired only on a definition's own declaration line and so PASSED on both real defects,
+// and the check has since been refactored twice.
+//
+// The test RUNS THIS SCRIPT against a fixture rather than re-implementing its logic. An earlier
+// draft asserted the underlying facts directly, which would have stayed green while the linter
+// itself was broken — a self-test that cannot fail is decoration.
+if (SELF_TEST) {
+  const { spawnSync } = await import("node:child_process");
+  const { writeFileSync, mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "doc-citation-selftest-"));
+  const self = new URL(import.meta.url).pathname;
+
+  const cases = [
+    {
+      label: "a definition DROPPED by a later migration (the starter auto-provisioner)",
+      body: "Seeded on tenant insert by `20260711180000:311`.\n",
+      expect: "fail",
+    },
+    {
+      label: "a definition REPLACED by a later migration (the default-stage fallback)",
+      body: "Falls back to default stages at `20260710200000:67`.\n",
+      expect: "fail",
+    },
+    {
+      // Deliberately a NON-migration file: migrations are append-only, so any function chosen here
+      // may be superseded later and turn this case red for a reason that is not a regression. The
+      // first draft used `20260831224500:139` and the self-test correctly failed it —
+      // `configure_tenant_pipeline` is itself redefined twice more.
+      label: "a citation into a normal source file is not flagged as stale",
+      body: "This lint lives at `scripts/ci/doc-citation-lint.mjs:1`.\n",
+      expect: "pass",
+    },
+    {
+      label: "a line number past the end of the file is caught",
+      body: "See `20261004000000:999999`.\n",
+      expect: "fail",
+    },
+  ];
+
+  let bad = 0;
+  for (const [i, c] of cases.entries()) {
+    const fixture = join(dir, `case${i}.md`);
+    writeFileSync(fixture, c.body);
+    const run = spawnSync(process.execPath, [self, fixture], { encoding: "utf8" });
+    const failed = run.status !== 0;
+    const want = c.expect === "fail";
+    if (failed !== want) {
+      console.error(`✗ self-test: expected ${c.expect.toUpperCase()} for ${c.label}; exit was ${run.status}`);
+      console.error((run.stdout || "") + (run.stderr || ""));
+      bad++;
+    } else {
+      console.log(`  ok   ${c.label}`);
+    }
+  }
+  console.log(`\ndoc-citation-lint self-test: ${bad ? "FAIL" : "PASS"} — ${cases.length} case(s).`);
+  if (bad) process.exit(1);
+  if (!docs.length) process.exit(0);
 }
 
 const verdict = failures ? "FAIL" : "PASS";

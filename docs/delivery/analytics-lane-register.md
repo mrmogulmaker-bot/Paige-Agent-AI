@@ -92,8 +92,8 @@ The Read banner where Paige speaks the numbers carries no disclosure of its own.
 **Reachability — verified in code, not assumed.** Two live tiers route to this component:
 
 1. `/agency/{n}/analytics` — `src/agency/AgencyEntry.tsx:44-96` resolves authority server-side via
-   `supabase.rpc("agency_switch_context")` and mounts `AgencyApp mode="agency"` only when
-   `is_agency_manager === true` (`AgencyEntry.tsx:88-96`). `src/agency/AgencyApp.tsx:697` renders
+   `supabase.rpc("agency_switch_context")` and mounts `AgencyApp mode="agency"` only after refusing
+   every caller for whom `context?.is_agency_manager !== true` (`src/agency/AgencyEntry.tsx:88-96`). `src/agency/AgencyApp.tsx:697` renders
    `<Analytics2 …>` for the `analytics` branch.
 2. `/business/{n}/analytics` — `src/business/BusinessEntry.tsx:86-90` mounts the same
    `AgencyApp mode="subaccount"`, which renders the same `Analytics2` at `AgencyApp.tsx:697`.
@@ -127,7 +127,7 @@ const accountResolved = account.accountName !== "Your workspace" && account.acco
 and `:360` returns the `anr-account-blocked` state when it is false.
 
 The account type it tests is itself overridden upstream:
-`src/components/tenant-shell/tenantShellRoutes.ts:85-98` forces `accountType = "sub_account"` for
+`src/components/tenant-shell/tenantShellRoutes.ts:85-98` forces `? "sub_account"` for
 any tenant with a `parentTenantId`, regardless of its stored type — so a sub-account can never
 satisfy the gate. The **server has no equivalent restriction**: the evidence RPC is tenant-scoped,
 not account-type scoped. Parked with the rest of the sub-account work.
