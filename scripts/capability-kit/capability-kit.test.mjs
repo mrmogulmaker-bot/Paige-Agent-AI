@@ -14,6 +14,7 @@ import {
 import {
   PER_CAPABILITY_AVAILABILITY_STATES,
 } from "../../supabase/functions/_shared/paige-capability-status/resolver.ts";
+import { classifyAction, mutatingTools } from "../../supabase/functions/_shared/action-risk.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, "..", "fixtures", "capability-kit");
@@ -72,6 +73,10 @@ function test(name, body) {
 const readFixture = await readJson("valid-read.json");
 const mutationFixture = await readJson("valid-mutation.json");
 const invalidCases = await readJson("invalid-cases.json");
+
+// Every action the canonical policy classifies — the real RISK-derived set, not a fixture list.
+// `mutatingTools()` is `RISK_BY_TOOL.keys()`, so membership here IS "a hand-curated RISK entry".
+const CLASSIFIED_ACTION_KEYS = [...mutatingTools()].sort();
 
 test("valid read and mutation declarations are branded and recursively immutable", () => {
   for (const fixture of [readFixture, mutationFixture]) {
@@ -205,6 +210,54 @@ test("mutations must match the canonical action-risk policy", () => {
   }), /canonical action-risk policy/);
 });
 
+// THE INVARIANT THIS PAIR EXISTS FOR. If the canonical policy says a key is an action, the kit
+// must accept it; if the policy does not, the kit must refuse it. Both directions are asserted
+// against the REAL policy rather than one hand-picked key, because a suite that exercised only
+// `crm_create_contact` is precisely what let a second, redundant precondition ship in front of
+// `classifyAction()` and veto 32 already-curated actions (INT-003 follow-up).
+test("every action key the canonical policy classifies is declarable through the kit", () => {
+  assert.ok(CLASSIFIED_ACTION_KEYS.length > 0, "the canonical policy classifies at least one action");
+  const candidate = definitionFromFixture(mutationFixture);
+  const refused = [];
+  for (const actionRiskKey of CLASSIFIED_ACTION_KEYS) {
+    const risk = classifyAction(actionRiskKey);
+    const approval = risk === "owner_only" ? "owner_only" : "confirm";
+    let capability;
+    try {
+      capability = defineCapability({
+        ...candidate,
+        governance: { ...candidate.governance, actionRiskKey, risk, approval },
+      });
+    } catch (error) {
+      refused.push(`${actionRiskKey} — ${error.message}`);
+      continue;
+    }
+    assert.equal(isDefinedCapability(capability), true, actionRiskKey);
+    assert.equal(capability.governance.actionRiskKey, actionRiskKey);
+    assert.equal(capability.governance.risk, risk);
+    assert.equal(capability.governance.approval, approval);
+  }
+  if (refused.length > 0) {
+    assert.fail(
+      `the kit refused ${refused.length}/${CLASSIFIED_ACTION_KEYS.length} classified action keys:\n  ` +
+      refused.join("\n  "),
+    );
+  }
+});
+
+test("an unclassified key is refused on policy membership, whatever its verb reads like", () => {
+  const candidate = definitionFromFixture(mutationFixture);
+  // `revise` and `purge` are absent from MUTATION_VERB; `create` is present. All three must be
+  // refused, and refused by the POLICY branch — so acceptance is gated by curation, not by a regex.
+  for (const actionRiskKey of ["crm_create_unclassified_thing", "widget_revise", "widget_purge"]) {
+    assert.equal(classifyAction(actionRiskKey), "unclassified", actionRiskKey);
+    assert.throws(() => defineCapability({
+      ...candidate,
+      governance: { ...candidate.governance, actionRiskKey },
+    }), /must exist in the canonical action-risk policy/, actionRiskKey);
+  }
+});
+
 test("external effects require the canonical high-risk class", () => {
   const candidate = definitionFromFixture(mutationFixture);
   assert.throws(() => defineCapability({ ...candidate, effect: "external_effect" }), /external_effect.*high/);
@@ -289,4 +342,7 @@ for (const fixture of invalidCases) {
   });
 }
 
-console.log(`\n✓ capability-kit focused tests passed — ${passed} cases.`);
+console.log(
+  `\n✓ capability-kit focused tests passed — ${passed} cases; ` +
+  `${CLASSIFIED_ACTION_KEYS.length} classified action keys proven declarable.`,
+);
