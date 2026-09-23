@@ -398,6 +398,22 @@ describe("Paige Live Conversation owner surface", () => {
     expect(clickText("Hold").disabled).toBe(false);
   });
 
+  it.each([false, true])("interrupting Hold restores the selected mute state (%s)", async (muted) => {
+    control.start.mockResolvedValueOnce({
+      ok: true, sessionId: "22222222-2222-4222-8222-222222222222",
+      ticket: "first-ticket", availability: "PROOF OWED", code: "relay_ticket_issued",
+    });
+    await render();
+    await act(async () => clickText("Talk live with Paige"));
+    await act(async () => relay.connect.mock.calls[0][0].onState({ kind: "ready" }));
+    if (muted) await act(async () => clickText("Mute"));
+    await act(async () => clickText("Hold"));
+    expect(relay.setMuted).toHaveBeenLastCalledWith(true);
+    await act(async () => clickText("Interrupt"));
+    expect(relay.setMuted).toHaveBeenLastCalledWith(muted);
+    expect(document.querySelector(".plc-state")?.textContent).toContain(muted ? "Muted" : "Listening");
+  });
+
   it("ends a minimized session on workspace or thread switch", async () => {
     await render(null, "tenant-a||", false, "thread-a");
     await act(async () => clickText("Talk live with Paige"));

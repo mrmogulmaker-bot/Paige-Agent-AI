@@ -16,8 +16,8 @@ MATERIAL_FLOW_CHANGE: YES: Live audio is newly joined to the existing signed-in 
 FLOW_PROTOTYPE: PASS: Owner-approved 2026-09-08 Organic Paige Presence + Real Audio Recovery pack in docs/evidence/ui-delivery/paige-live-conversation-mvp.md; this join uses its existing stage, controls, interruption and recovery paths
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: Any authorized signed-in user in a platform-enabled workspace talks to Paige in that user's existing tenant-scoped thread; the platform pilot is default off until operational proof
 VISUAL_DIRECTION: PASS: Existing Solo Live layout, typography, tokens, transcript and card region remain intact; no parallel screen or second assistant is added
-AUTOMATED_EVIDENCE: PASS: 2026-09-23 relay-bridge harness 29/29 with real WebCrypto and fake adapters, zero network/provider calls; focused Live/transport/output tests 40/40. Failing-first unsigned-runtime check recorded 15 pass / 1 fail before repair. PostgreSQL one-use claim test added for CI; its execution is not claimed by the local harness.
-STATIC_EVIDENCE: PASS: The bridge imports the existing provider-neutral reducer, Flux adapter and ElevenLabs streaming transport; the browser invokes the existing paige-ai-chat runtime with no approval fingerprints for a spoken turn
+AUTOMATED_EVIDENCE: PASS: 2026-09-23 relay-bridge harness 29/29 with real WebCrypto and fake adapters, zero network/provider calls; focused Live/transport/output tests include Hold-to-Interrupt mute restoration. Failing-first unsigned-runtime check recorded 15 pass / 1 fail before repair; Hold-to-Interrupt recorded 1 pass / 1 fail (expected false, received true). PostgreSQL one-use claim test added for CI; its execution is not claimed by the local harness.
+STATIC_EVIDENCE: PASS: The relay joins the existing provider-neutral reducer, Flux adapter and ElevenLabs streaming transport through the bridge; the browser invokes the existing paige-ai-chat runtime with no approval fingerprints for a spoken turn
 RENDERED_EVIDENCE: UNVERIFIED: Focused DOM tests exercise the existing stage, but no authenticated production live-audio render has been captured yet
 BEHAVIORAL_EVIDENCE: UNVERIFIED: An owner speaking, hearing Jessica, interrupting, ending and retaining the same chat thread in production is still required
 AUTHENTICATED_RUNTIME: UNVERIFIED: The platform pilot defaults off; account-level privacy settings, provider readiness and an owner production live check remain unproven
@@ -49,7 +49,7 @@ RELEASE_CLASSIFICATION: internal-only: no customer-facing release is claimed whi
 CUSTOMER_RELEASE_IDENTITY: none: Live Conversation is not yet delivered end to end
 RELEASE_NOTE_REQUIRED: NO: this staged slice is not general availability
 RELEASE_TRUTH_BOUNDARY: PARTIAL: local fakes and browser tests prove wiring; real provider behavior and authenticated production acceptance are UNVERIFIED
-RELEASE_RECOVERY: position=disable the platform-owned Live pilot and roll back the exact Vercel and paige-live-relay versions if the joined path regresses; reference=INT-104 Live Conversation
+RELEASE_RECOVERY: position=disable the platform-owned Live pilot and roll back the exact Vercel, paige-ai-chat and paige-live-relay versions if the joined path regresses; reference=INT-104 Live Conversation
 
 ## Flow and proof boundary
 
