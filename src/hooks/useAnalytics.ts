@@ -49,6 +49,29 @@ if (typeof window !== "undefined") {
 /**
  * Fire-and-forget event tracker. Never throws, never blocks UI.
  */
+/**
+ * Redact path segments that ARE credentials before anything records them.
+ *
+ * `/sign/:token` carries a 256-bit bearer token as a path SEGMENT — it is the whole of a
+ * counterparty's authority to open and sign a legal agreement. Every page view is posted to
+ * `track-event`, which inserts `page_path` and `properties.path` into `analytics_events`. So each
+ * signing link a counterparty opened would be written, in plaintext and indefinitely, into a table
+ * a platform operator can read — and anyone holding that row could open and sign someone else's
+ * contract. Analytics wants to know a signing page was viewed; it has no business knowing which
+ * token did it.
+ *
+ * Keyed on the ROUTE, not on the shape of the value, so a token that happens to look ordinary is
+ * still redacted and a harmless id is not mangled.
+ */
+const SECRET_PATH_PREFIXES = ["/sign/"] as const;
+
+export function redactSecretPath(pathname: string): string {
+  for (const prefix of SECRET_PATH_PREFIXES) {
+    if (pathname.startsWith(prefix)) return `${prefix}<redacted>`;
+  }
+  return pathname;
+}
+
 export async function trackEvent(
   event_name: string,
   optionsOrCategory: EventCategory | TrackOptions = "engagement",
@@ -78,7 +101,7 @@ export async function trackEvent(
       user_id,
       session_id,
       properties,
-      page_path: window.location.pathname,
+      page_path: redactSecretPath(window.location.pathname),
       referrer: document.referrer || null,
       utm_source: utm.utm_source,
       utm_medium: utm.utm_medium,
@@ -126,7 +149,7 @@ export function usePageView(): void {
     if (lastPathRef.current === path) return;
     lastPathRef.current = path;
     void trackEvent("page_view", "engagement", {
-      path: location.pathname,
+      path: redactSecretPath(location.pathname),
       search: location.search || null,
     });
   }, [location.pathname, location.search]);
