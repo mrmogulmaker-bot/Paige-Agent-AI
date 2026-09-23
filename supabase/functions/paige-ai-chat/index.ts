@@ -13855,6 +13855,24 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             } catch (e) { console.error("[paige] persist assistant turn failed:", (e as Error)?.message); }
           }
          } catch (e) {
+           if (liveRuntimeScope) {
+             // A partly spoken answer is not a successful turn. Keep exactly
+             // the released, unprotected text in this same thread; never save
+             // protected text that the caller has not received. No DONE means
+             // the signed-output wrapper cannot mint a success receipt.
+             console.error("[paige] Live answer interrupted");
+             discardContent();
+             if (!turnCarriesProtectedContent() && payloadThreadId && finalAssistantText.trim()
+               && await revalidateTenantKnowledgeScope()) {
+               try {
+                 await persistAssistantTurn(finalAssistantText, { surfaces: [], bundleRef: null });
+               } catch { console.error("[paige] partial Live answer persistence failed"); }
+             }
+             try {
+               controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_live_error: "answer_interrupted" })}\n\n`));
+             } catch { /* caller already left */ }
+             return;
+           }
            // The live loop or final stream failed mid-flight. Never leave the client
            // with a truncated stream — emit a clean fallback reply and a [DONE].
            console.error("[paige] live reasoning stream failed:", (e as Error)?.message);

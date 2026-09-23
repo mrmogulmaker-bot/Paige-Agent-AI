@@ -107,3 +107,12 @@ AST: a late tool call remains buffered, an unprotected answer emits a sentence
 before upstream completion, a protected answer emits nothing, and captured
 assistant text equals the completed stream. The same signed-output wrapper and
 final protected-scope validation remain unchanged. No model/provider call.
+
+Independent review then found the old stream-error catch would persist only a
+fallback after a partly spoken Live answer and issue DONE. Two failing-first
+tests reproduced that false completion (unprotected and protected). Live errors
+now discard withheld content, persist only the exact released unprotected text
+if scope still validates, and send a neutral error without DONE; the signed
+wrapper therefore cannot claim successful completion. Ordinary text fallback
+behavior is unchanged. Runtime failure and persistence failure are logged
+without raw provider text. Human recovery remains an authenticated check.

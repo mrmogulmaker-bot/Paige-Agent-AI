@@ -91,6 +91,28 @@ describe("INT-104 Live final-answer streaming preserves the canonical tool gate"
     expect(await answer).toBe("First sentence. Next sentence.");
     if (protectedTurn) expect(emitted).toEqual([]);
   });
+  it.each([false, true])("settles an interrupted Live stream without success or transcript loss, protected=%s", async (protectedTurn) => {
+    const branch = find((n) => ts.isIfStatement(n) && n.expression.getText(source) === "finalStreamResponse?.ok && finalStreamResponse.body") as ts.IfStatement;
+    const body = (branch.thenStatement as ts.Block).statements.map((n) => n.getText(source)).join("\n");
+    const caught = find((n) => ts.isCatchClause(n) && n.getText(source).includes('[paige] live reasoning stream failed:')) as ts.CatchClause;
+    const heldContent: Uint8Array[] = [], emitted: Uint8Array[] = [], persisted: string[] = [];
+    const emit = new Function("turnCarriesProtectedContent", "heldContent", js(`return ${initializer("emitContent")};`))(() => protectedTurn, heldContent);
+    let upstream!: ReadableStreamDefaultController<Uint8Array>;
+    const response = new Response(new ReadableStream<Uint8Array>({ start(c) { upstream = c; } }));
+    const run = new Function("finalStreamResponse", "controller", "emitContent", "turnCarriesProtectedContent", "discardContent", "persistAssistantTurn", "revalidateTenantKnowledgeScope", "console",
+      js(`return (async()=>{let finalAssistantText='';const liveRuntimeScope={},payloadThreadId='thread',enc=new TextEncoder();try{${body}}catch(e)${caught.block.getText(source)}})();`));
+    const settled = run(response, { enqueue(c: Uint8Array) { emitted.push(c); } }, emit, () => protectedTurn,
+      () => { heldContent.length = 0; }, async (text: string) => { persisted.push(text); }, async () => true, { error() {} });
+    upstream.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"First sentence."}}]}\n\n'));
+    await new Promise((r) => setTimeout(r, 0));
+    upstream.error(new Error("fixture-stream-interrupted"));
+    await settled;
+    const wire = emitted.map((c) => new TextDecoder().decode(c)).join("");
+    expect(wire.includes('[DONE]')).toBe(false);
+    expect(persisted).toEqual(protectedTurn ? [] : ["First sentence."]);
+    expect(heldContent).toEqual([]);
+    expect(wire.includes('paige_live_error')).toBe(true);
+  });
 });
 
 describe("INT-104 S5 — authenticated Live delivery uses the existing voice home", () => {
