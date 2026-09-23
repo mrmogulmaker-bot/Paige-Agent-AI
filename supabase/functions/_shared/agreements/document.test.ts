@@ -353,3 +353,33 @@ Deno.test("a genuine PDF is accepted, and it is the same parser the seal will us
   // No throw: if this parses here it parses at seal, because the call is byte-for-byte the same.
   await assertUploadedPdfIsSealable(real);
 });
+
+Deno.test("a page tree whose declared /Count disagrees with its real pages is refused", async () => {
+  // THE CASE THAT DEFEATED THE PREVIOUS VERSION OF THIS CHECK. `getPageCount()` counts real page
+  // leaves by traversal; `addPage()` gates on the DECLARED `/Count`. A file where the two disagree
+  // passed a count-based check and threw at the seal — after the signature, after the freeze.
+  //
+  // Built by pdf-lib and then patched in place, length-preserving, so every xref offset stays
+  // valid: this is a genuine PDF that miscounts, not a corrupt one.
+  const { PDFDocument } = await import("npm:pdf-lib@1.17.1");
+  const src = await PDFDocument.create();
+  src.addPage([612, 792]);
+  src.addPage([612, 792]);
+  // `useObjectStreams: false` keeps the page tree in plain text so it can be patched; with the
+  // default compressed layout the dictionary is inside an object stream and `/Count` is not
+  // literal. The defect being reproduced is the same either way.
+  const good = await src.save({ useObjectStreams: false });
+
+  const text = new TextDecoder("latin1").decode(good);
+  const idx = text.indexOf("/Count 2");
+  assert(idx > 0, "expected a declared /Count 2 to patch");
+  // Same byte length, so no offset in the xref table moves.
+  const patched = new Uint8Array(good);
+  patched[idx + "/Count ".length] = "1".charCodeAt(0);
+
+  // It still loads, and still reports two real pages...
+  const reloaded = await PDFDocument.load(patched);
+  assertEquals(reloaded.getPageCount(), 2, "the real leaves are still there");
+  // ...and must be refused anyway, because the seal's addPage will not survive it.
+  await assertRejects(() => assertUploadedPdfIsSealable(patched), UnsealablePdfError);
+});

@@ -216,24 +216,35 @@ export class UnsealablePdfError extends Error {
  */
 export async function assertUploadedPdfIsSealable(bytes: Uint8Array): Promise<void> {
   const { PDFDocument } = await import(PDFLIB_SPEC);
-  // MEASURED, not assumed. `PDFDocument.load` alone is NOT the whole question: given a file that is
-  // nothing but the eight bytes `%PDF-1.7` it returns without throwing, and the document only
-  // objects later, when something reads its structure. It throws promptly on prose and on a
-  // truncated body. So the check walks one step further and counts the pages — which is both the
-  // first thing the seal does to the document and the thing that separates "a PDF" from "a file
-  // that begins like one".
-  let pages: number;
+
+  // THE CHECK PERFORMS THE SEAL, IT DOES NOT APPROXIMATE IT — on a throwaway copy.
+  //
+  // Two weaker versions of this were tried and both let through a file the seal then refused, which
+  // is the worst possible outcome here: the send has frozen the document under
+  // `pa_sent_is_frozen_ck` and the counterparty has signed, and both are one-way, so the agreement
+  // is left permanently signed and permanently unable to complete.
+  //
+  //   `load` alone — measured: it returns happily for a file that is nothing but the eight bytes
+  //   `%PDF-1.7`, which is a zero-page document.
+  //
+  //   `load` + `getPageCount()` — measured: `getPageCount` COUNTS the real page leaves by
+  //   traversal, while `addPage` gates on the page tree's DECLARED `/Count`
+  //   (pdf-lib `core/structures/PDFPageTree.js`). A file with two real pages and `/Count 1`, or
+  //   with no `/Count` at all, passes the count and throws at the seal — and a wrong or missing
+  //   `/Count` is one of the commonest real defects from naive merge tools and scanner firmware.
+  //
+  // So the only honest question is "will the seal succeed on these bytes", and the only reliable
+  // way to ask it is to do what the seal does. `sealAgreementPdf` reloads from the original bytes,
+  // so mutating this copy affects nothing.
   try {
-    const pdf = await PDFDocument.load(bytes);
-    pages = pdf.getPageCount();
-  } catch {
+    const probe = await PDFDocument.load(bytes);
+    if (probe.getPageCount() < 1) throw new UnsealablePdfError("no_pages");
+    probe.addPage([612, 792]);
+    await probe.save();
+  } catch (e) {
+    if (e instanceof UnsealablePdfError) throw e;
     throw new UnsealablePdfError("unreadable");
   }
-  // A document that parses and holds no pages would seal successfully and produce a record whose
-  // only page is the signing record — a counterparty who provably signed nothing. That is the blank
-  // document defect arriving by a different door, so it is refused here rather than discovered
-  // after a signature that cannot be taken back.
-  if (pages < 1) throw new UnsealablePdfError("no_pages");
 }
 
 /**

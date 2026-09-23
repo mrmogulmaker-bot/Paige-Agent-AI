@@ -18,6 +18,7 @@
 // the database re-proves each link by trigger even for the service role.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { renderPresentedPdf, hashDocument, assertDocumentIsRenderable, assertNamesAreStampable, assertUploadedPdfIsSealable, UnrenderableDocumentError, UnrenderableNameError, UnsealablePdfError } from "../_shared/agreements/document.ts";
+import { assertDocumentPathIsInTenant, UnsafeDocumentPathError } from "../_shared/agreements/storage-path.ts";
 import { expiryFromNow, mintSignerToken, sha256Hex, SIGNING_TOKEN_TTL_DAYS } from "../_shared/agreements/token.ts";
 import { tenantContactForDisclosure } from "../_shared/agreements/notify.ts";
 
@@ -201,23 +202,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
         }, 422);
       }
       // §9. THE PATH IS CALLER-SUPPLIED AND THIS READ IS SERVICE-ROLE, SO THE PATH IS UNTRUSTED.
-      //
-      // `tenant-agreements` is protected by FOLDER-based RLS — every policy on it tests
-      // `(storage.foldername(name))[1]` against the caller's `tenant_members` rows — and the admin
-      // client below bypasses all of it. `save_paige_agreement` only requires `_document_path` to be
-      // non-empty, so a tenant admin can persist an object key belonging to ANOTHER workspace, and
-      // without this check those bytes would be downloaded, copied into this tenant's
-      // `paige-agreements` folder, hashed, frozen and emailed under this tenant's agreement. That is
-      // a caller-supplied identifier resolved with elevated credentials and no tenant filter — the
-      // exact shape of the `docusign-send-envelope` defect this engine exists not to repeat.
-      //
-      // The server-derived `tenantId` is the authority here; nothing from the request body is.
-      const firstFolder = path.split("/", 1)[0];
-      if (firstFolder !== tenantId) {
-        console.error("[agreement-send] refused a document path outside the caller's workspace", { agreementId, tenantId });
+      // `assertDocumentPathIsInTenant` carries the reasoning and the measured escapes; the short
+      // version is that comparing the first segment is NOT a check, because storage-js does not
+      // encode the object key and `<own>/../<victim>/…` normalises at the URL before the request
+      // leaves. Structural validation against the server-derived tenant is the guard.
+      try {
+        assertDocumentPathIsInTenant(path, tenantId);
+      } catch (e) {
+        console.error("[agreement-send] refused an unsafe document path", {
+          agreementId,
+          reason: e instanceof UnsafeDocumentPathError ? e.reason : "unknown",
+        });
         return json({
           ok: false,
-          error: "That agreement points at a file outside this workspace, so nothing was sent. Re-upload the document and try again.",
+          error: "That agreement points at a file this workspace cannot read, so nothing was sent. Re-upload the document and try again.",
         }, 422);
       }
       const src = await admin.storage.from(UPLOAD_BUCKET).download(path);

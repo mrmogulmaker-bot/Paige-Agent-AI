@@ -11,12 +11,19 @@
 -- control keeps its existing classification and its existing default, and the full prior body is
 -- retained below as each predecessor in this chain retains its own.
 --
--- KNOWN MISMATCH, RECORDED RATHER THAN PAPERED OVER: this catalogue reports an unset control as
--- 'confirm', because `COALESCE(t.mode, 'confirm')` is the same for every key. The consumer of THIS
--- key treats only an explicit 'off' as blocking, since the write is unattended and a confirmation
--- nobody can answer would mean it never runs. So an unset row displays 'confirm' while behaving as
--- allowed. Giving the catalogue per-key defaults is a change to a shared function used by 153 other
--- controls and is not made here; it is filed as its own item.
+-- THE CATALOGUE AND THE CONSUMER NOW AGREE. This header previously recorded the opposite: that the
+-- consumer treated only an explicit 'off' as blocking, so an unset row displayed 'confirm' while
+-- behaving as allowed. That was the shipped behaviour and it was wrong — `resolve_tool_autonomy`
+-- returns 'confirm' for a key with no row and `trust_effective_rung` clamps 'auto' down to it, so
+-- "allowed unless off" gave every workspace an unrequested automatic write into knowledge Paige can
+-- retrieve in chat. The consumer is now opt-in: only an explicit 'auto' proceeds. An unset row
+-- displays 'confirm' AND behaves as 'confirm', which is what the catalogue always claimed.
+--
+-- Corrected rather than deleted (§13/§66), because this file is what a later session reads when it
+-- asks what this key does. Note for whoever turns it on: `resolve_tool_autonomy` also clamps 'auto'
+-- to 'confirm' at trust rung 1 and to 'off' at rung 0, so setting this key to 'auto' has no effect
+-- until the workspace's trust ceiling is at rung 2 or above (§67/§68 arithmetic, working as
+-- designed).
 
 CREATE OR REPLACE FUNCTION public.list_tool_autonomy(_tenant_id uuid DEFAULT NULL)
 RETURNS TABLE (

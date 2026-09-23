@@ -23,12 +23,23 @@ import { notify, ownerNotificationEmail } from "./notify.ts";
 import { recordCompletedAgreementToKnowledge } from "./knowledge.ts";
 
 /**
- * How long the completed-agreement knowledge write may hold the signer's response.
+ * How long the completed-agreement knowledge write may hold the signer's response, when there is no
+ * way to hand it off instead.
  *
- * Generous enough that a healthy embed finishes well inside it, short enough that a hung provider
- * cannot push this request into an edge timeout. On expiry the seal returns successfully and the
- * miss is logged like any other — the race resolves, it does not cancel, so a late embed that
- * still lands is harmless.
+ * ABANDONING THIS WORK IS NOT FREE, which an earlier version of this comment got wrong by claiming
+ * "a late embed that still lands is harmless". It is not: `kb-ingest-core.ts` COMMITS the
+ * `tenant_knowledge_docs` row before it calls the embedding provider, inserts the chunks after, and
+ * deletes the orphan row only at the very end if nothing embedded. Every one of those repair lines
+ * is downstream of the await that hangs, so a race that walks away mid-ingest can leave a durable
+ * row carrying a `chunk_count` it never produced — listed in the tenant's knowledge base, never
+ * retrievable, and lying about its own size.
+ *
+ * So the timeout is the FALLBACK, not the plan. Where the runtime can keep the isolate alive past
+ * the response (`EdgeRuntime.waitUntil`, as `paige-tts` and `generate-image` already use), the
+ * ingest is handed to it and allowed to finish and clean up after itself, off the signer's request
+ * entirely. The bound below only applies where that hand-off is unavailable, and there it is the
+ * lesser of two bad outcomes: a possible orphan row beats showing a signer a failed signing for an
+ * agreement that is completed, sealed and emailed.
  */
 const KNOWLEDGE_INGEST_TIMEOUT_MS = 8_000;
 
@@ -269,24 +280,45 @@ export async function sealAndComplete(db: Db, agreementId: string): Promise<Seal
   // for an agreement that is completed, sealed and emailed. A knowledge miss is not a seal failure,
   // and `SealOutcome` deliberately has no way to say it was one.
   try {
-    // BOUNDED, because this is the signer's own request and the embedding is a network call.
-    // `ingestDoc` reaches Voyage with no timeout of its own, so a provider that hangs would hold
-    // this response open until the edge runtime kills it — and the signer, whose agreement is by
-    // this point completed, sealed and emailed, would be shown a failed signing. The whole reason
-    // this block is last and swallowed is that a knowledge miss must never be reported as a seal
-    // failure; an unbounded wait hands back exactly that failure by another route.
-    const learned = await Promise.race([
+    const ingest = () =>
       recordCompletedAgreementToKnowledge(db as never, {
         agreementId,
         tenantId: agreement.tenant_id,
         title: agreement.title,
         completedAt,
         signers: (signers ?? []) as Array<Record<string, unknown>>,
+      });
+
+    // PREFERRED PATH: hand the work off, so it finishes and cleans up after itself rather than
+    // being abandoned half-written. The signer's response does not wait for it at all.
+    const waitUntil = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } })
+      .EdgeRuntime?.waitUntil;
+    if (typeof waitUntil === "function") {
+      waitUntil(
+        ingest().then(
+          (r) => {
+            if (!r.ingested) {
+              console.warn("[agreements] completed agreement not written to knowledge", { agreementId, reason: r.reason });
+            }
+          },
+          (e) => console.error("[agreements] knowledge ingest threw after completion", { agreementId, error: String(e) }),
+        ),
+      );
+      return { ok: true, sealedSha256, sealedKey };
+    }
+
+    // FALLBACK, where no hand-off exists: bound it, for the reason on the constant above.
+    // `ReturnType<typeof setTimeout>` rather than `number`: under the Node-shaped typings this
+    // bundle resolves, `setTimeout` returns a `Timeout` object, not a numeric handle.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const learned = await Promise.race([
+      ingest(),
+      new Promise<{ ingested: false; reason: string }>((resolve) => {
+        timer = setTimeout(() => resolve({ ingested: false, reason: "ingest_timed_out" }), KNOWLEDGE_INGEST_TIMEOUT_MS);
       }),
-      new Promise<{ ingested: false; reason: string }>((resolve) =>
-        setTimeout(() => resolve({ ingested: false, reason: "ingest_timed_out" }), KNOWLEDGE_INGEST_TIMEOUT_MS)
-      ),
     ]);
+    // Do not leave a pending 8s timer behind on the happy path.
+    if (timer !== undefined) clearTimeout(timer);
     if (!learned.ingested) {
       // Loud in the log, never silent (§32): a write that quietly never happens is
       // indistinguishable from one that was never wired.

@@ -158,10 +158,21 @@ export async function recordCompletedAgreementToKnowledge(
   // agreement is sealed, delivered and recorded exactly as before — nothing else changes.
   let mode: string | null = null;
   try {
-    const { data } = await db.rpc("resolve_tool_autonomy", {
+    // READ `error`, not just `data`. supabase-js does not throw on a Postgres error, a permission
+    // denial or a network failure — it resolves `{data: null, error}` — so a `catch` alone never
+    // sees the realistic resolver failures, and an outage would have been reported identically to a
+    // workspace that simply never opted in. Both withhold the write; only one is worth an alert.
+    const { data, error } = await db.rpc("resolve_tool_autonomy", {
       _tenant_id: input.tenantId,
       _tool_key: AGREEMENT_LEARN_TOOL_KEY,
     });
+    if (error) {
+      console.warn("[agreements] autonomy resolver returned an error; not remembering this agreement", {
+        agreementId: input.agreementId,
+        error: String((error as { message?: unknown }).message ?? error),
+      });
+      return { ingested: false, reason: "autonomy_unresolved" };
+    }
     mode = text(data) ?? null;
   } catch (e) {
     // FAIL CLOSED. A resolver that will not answer has not granted anything, and treating its
