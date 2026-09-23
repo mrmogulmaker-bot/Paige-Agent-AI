@@ -967,8 +967,8 @@ const PaigeAIChatInner = ({
       if (voiceSink) {
         voiceSink.failed();
         retryTurnRef.current = null;
-      }
-      setConnectionIssue(voiceSink ? "live-interrupted" : "timeout");
+        setConnectionIssue("live-interrupted");
+      } else setConnectionIssue("timeout");
     }, 45_000) : null;
     const assistantId = safeUuid();
     const assistantTs = Date.now();
