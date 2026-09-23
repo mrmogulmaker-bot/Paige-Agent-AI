@@ -71,6 +71,15 @@ Deno.serve(async (req) => {
   };
 
   const checkCurrentAdmission = async (): Promise<Response | null> => {
+  // The platform's canonical transport switch is independent of tenant pilot
+  // rollout and provider proof. Re-read it on the existing admission monitor,
+  // so disabling live audio also stops an already-connected relay.
+  const { data: transport, error: transportError } = await admin.from("paige_voice_readiness")
+    .select("transport_enabled").eq("singleton", true).maybeSingle();
+  if (transportError || transport?.transport_enabled !== true) {
+    if (!await markUnavailable("live_audio_not_enabled")) return new Response("relay_unavailable", { status: 503 });
+    return new Response("live_audio_not_enabled", { status: 403 });
+  }
   const { data: currentSession, error: currentSessionError } = await admin.from("paige_live_sessions")
     .select("id").eq("id", session.id).eq("tenant_id", session.tenant_id)
     .eq("actor_user_id", session.actor_user_id).eq("thread_id", session.thread_id)
@@ -317,13 +326,11 @@ Deno.serve(async (req) => {
       clearInterval(admissionTimer);
       admission.stop();
       bridge.end();
-      void (async () => {
-        if (failureWrite) await failureWrite;
-        await admin.from("paige_live_sessions")
-        .update({ state: "ended", ended_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq("id", session.id).eq("tenant_id", session.tenant_id)
-        .eq("actor_user_id", session.actor_user_id).neq("state", "unavailable");
-      })().finally(resolve);
+      // A socket ending is not the user ending their logical conversation:
+      // Minimize, hidden windows and reconnect all close the audio transport.
+      // The existing authenticated control plane owns durable minimize/end.
+      // Never overwrite it (or a renewed socket) from a delayed close callback.
+      void Promise.resolve(failureWrite).finally(resolve);
     };
     socket.onerror = () => { try { socket.close(1011, "relay_unavailable"); } catch { resolve(); } };
   });

@@ -141,7 +141,66 @@ const midOpen = new PaigeLiveRelayBridge({
 const opened = await midOpen.open(); midOpen.ready();
 check("revoked during ears open never earns ready and cancels ears", !opened && cancelledEars === 1 &&
   !midOpenFrames.some((frame) => typeof frame === "string" && JSON.parse(frame).type === "ready"));
-const edge = readFileSync(new URL("../supabase/functions/paige-live-relay/index.ts", import.meta.url), "utf8");
+const edge = readFileSync(new URL("../supabase/functions/paige-live-relay/index.ts", import.meta.url), "utf8").replace(/\r/g, '');
+// Execute the production admission body with a database double: the master
+// transport switch must stop adapter opening even when tenant standing is valid.
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+const admissionBody = edge.slice(edge.indexOf('const checkCurrentAdmission = async (): Promise<Response | null> => {') +
+  'const checkCurrentAdmission = async (): Promise<Response | null> => {'.length,
+  edge.indexOf('  };\n  const admissionFailure')).replace(': string | null', '');
+const resolveAdmission = new AsyncFunction('admin', 'session', 'markUnavailable',
+  'hasLiveWorkspaceStanding', 'isLiveWorkspaceCurrent', 'isLiveAudioPilotEnabled', admissionBody);
+let transportEnabled: boolean | undefined = false;
+const admissionDb = { from(table: string) {
+  const query = { select: () => query, eq: () => query, in: () => query, order: () => query, limit: () => query,
+    maybeSingle: async () => ({ error: null, data: table === 'paige_voice_readiness'
+      ? { transport_enabled: transportEnabled } : table === 'profiles'
+      ? { active_tenant_id: base.tenantId } : { id: 'valid', enabled: true } }) };
+  return query;
+} };
+let masterDenied = 0;
+const masterCheck = async () => (await resolveAdmission(admissionDb,
+  { id: base.sessionId, tenant_id: base.tenantId, actor_user_id: base.actorId },
+  async () => { masterDenied++; return true; }, () => true, () => true, () => true)) === null;
+for (const value of [false, undefined]) {
+  transportEnabled = value;
+  check(`master transport ${String(value)} refuses admission`, !await masterCheck());
+}
+transportEnabled = true;
+check('master transport explicitly enabled admits an otherwise valid session', await masterCheck());
+transportEnabled = false;
+let blockedOpens = 0;
+const disabledBridge = new PaigeLiveRelayBridge({
+  sessionId: base.sessionId, epoch: base.epoch, authorize: masterCheck, send() {}, close() {},
+  openEars: async () => { blockedOpens++; return { ok: false, code: 'must_not_open' }; },
+  openMouth: async () => { blockedOpens++; throw new Error('must_not_open'); }, usage: { emit() {} },
+  runtimeProof: { issue: (turnId, text) => proof.issue({ ...base, turnId }, text), readOutput: proof.readOutput },
+});
+await disabledBridge.open();
+check('disabled master switch opens neither provider adapter', blockedOpens === 0 && masterDenied === 3);
+
+// Run the actual socket close callback. Durable minimize/restore/end belongs to
+// the existing authenticated control plane, independent of close delivery order.
+const closeBody = edge.slice(edge.indexOf('socket.onclose = () => {', edge.indexOf('const bridge =')) +
+  'socket.onclose = () => {'.length, edge.indexOf('    socket.onerror =', edge.indexOf('const bridge =')))
+  .replace(/\r/g, '').replace(/\s*};\s*$/, '');
+for (const minimizeFirst of [false, true]) {
+  let state = minimizeFirst ? 'minimized' : 'listening';
+  let durableWrites = 0, cleaned = 0, finished!: () => void;
+  const finishedClose = new Promise<void>((resolve) => { finished = resolve; });
+  const closeDb = { from() {
+    const query = { update(value: { state: string }) { state = value.state; durableWrites++; return query; },
+      eq: () => query, neq: () => query };
+    return query;
+  } };
+  new Function('admin', 'session', 'admissionTimer', 'admission', 'bridge', 'failureWrite', 'resolve', closeBody)
+    (closeDb, {}, undefined, { stop() { cleaned++; } }, { end() { cleaned++; } }, null, finished);
+  await finishedClose;
+  // The existing control-plane transition refuses ended sessions.
+  if (!minimizeFirst && state !== 'ended') state = 'minimized';
+  check(`minimize ${minimizeFirst ? 'before' : 'after'} socket close remains resumable`,
+    state === 'minimized' && durableWrites === 0 && cleaned === 2);
+}
 check("production reuses admission resolver before ready and throughout capture", edge.includes('async () => (await checkCurrentAdmission()) === null') &&
   edge.includes('authorize: (force) => admission.check(force)') && edge.includes('setInterval(() => { waitUntil(admission.check(true)); }, 500)'));
 check("no real network or provider call occurred", networkCalls === 0);

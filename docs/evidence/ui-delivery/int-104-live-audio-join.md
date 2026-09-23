@@ -16,7 +16,7 @@ MATERIAL_FLOW_CHANGE: YES: Live audio is newly joined to the existing signed-in 
 FLOW_PROTOTYPE: PASS: Owner-approved 2026-09-08 Organic Paige Presence + Real Audio Recovery pack in docs/evidence/ui-delivery/paige-live-conversation-mvp.md; this join uses its existing stage, controls, interruption and recovery paths
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: Any authorized signed-in user in a platform-enabled workspace talks to Paige in that user's existing tenant-scoped thread; the platform pilot is default off until operational proof
 VISUAL_DIRECTION: PASS: Existing Solo Live layout, typography, tokens, transcript and card region remain intact; no parallel screen or second assistant is added
-AUTOMATED_EVIDENCE: PASS: 2026-09-23 relay-bridge harness 41/41 with real WebCrypto and fake adapters, zero network/provider calls; focused Live/transport/output tests 43/43. Failing-first unsigned-runtime check: 15 pass / 1 fail; Hold-to-Interrupt: 1 pass / 1 fail (expected false, received true); Hold-before-first-PCM: expected suspended, received running. Removing the authority rejection yields 40 pass / 1 fail; restored guard passes. PostgreSQL pilot and one-use claim tests passed in CI run 35920820810; local harness does not claim database execution.
+AUTOMATED_EVIDENCE: PASS: 2026-09-23 relay-bridge harness 47/47 with real WebCrypto and fake adapters, zero network/provider calls; focused Live/transport/output tests 43/43. Failing-first master-switch and Minimize-close regressions: 42 pass / 5 fail, restored fixes 47 pass / 0 fail; the harness executes the production admission body and close callback with a database double, not a production database. Earlier unsigned-runtime check: 15 pass / 1 fail; Hold-to-Interrupt: 1 pass / 1 fail (expected false, received true); Hold-before-first-PCM: expected suspended, received running. Removing the authority rejection yields 40 pass / 1 fail; restored guard passes. PostgreSQL pilot and one-use claim tests passed in CI run 35920820810; local harness does not claim database execution.
 STATIC_EVIDENCE: PASS: The relay joins the existing provider-neutral reducer, Flux adapter and ElevenLabs streaming transport through the bridge; the browser invokes the existing paige-ai-chat runtime with no approval fingerprints for a spoken turn
 RENDERED_EVIDENCE: UNVERIFIED: Focused DOM tests exercise the existing stage, but no authenticated production live-audio render has been captured yet
 BEHAVIORAL_EVIDENCE: UNVERIFIED: An owner speaking, hearing Jessica, interrupting, ending and retaining the same chat thread in production is still required
@@ -59,3 +59,19 @@ RELEASE_RECOVERY: position=disable the platform-owned Live pilot and roll back t
 - The platform pilot is operational data outside tenant-admin write authority. Real audio requires a later account-level privacy readback and owner production check; tests never call a vendor.
 - Ongoing authority reuses the initial caller/thread/workspace/pilot resolver. It is rechecked after ears open and before ready, refreshed every 500 ms, and PCM waits while a check runs; check failure or a 1-second timeout closes the session honestly. This is bounded revocation detection, not an instantaneous database-to-socket notification. Transport buffering is bounded; no usage allowance, pricing or spend gate is added.
 - Hold applies even before the first audio chunk arrives; Interrupt restores the selected microphone mute state. Database history trims an incomplete leading assistant exchange and reuses canonical message validation.
+- The canonical platform transport switch must be explicitly on, separately from tenant rollout and privacy evidence; the ongoing admission check also observes its revocation. No pricing or allowance logic is attached to this switch.
+- Physical socket closure cleans up audio only. Durable Minimize, Restore and End remain owned by the existing authenticated control plane; a delayed close cannot overwrite a minimized or renewed session. The existing visible disconnect state remains honest when a transport closes unexpectedly.
+
+## 2026-09-23 review repair: preserved failing-first output
+
+```text
+FAIL master transport false refuses admission
+FAIL master transport undefined refuses admission
+FAIL disabled master switch opens neither provider adapter
+FAIL minimize after socket close remains resumable
+FAIL minimize before socket close remains resumable
+42 passed, 5 failed; network/provider calls=0
+```
+
+After the fixes: `47 passed, 0 failed; network/provider calls=0` (exit 0).
+Relay Deno check: exit 0. Three focused Vitest files: 43 passed, exit 0.
