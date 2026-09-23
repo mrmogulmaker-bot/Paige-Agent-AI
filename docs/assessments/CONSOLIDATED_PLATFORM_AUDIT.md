@@ -176,6 +176,15 @@ Each finding records exact source evidence, reachable boundary, current ownershi
 - **Smallest next step / proof:** repository owner supplies the private handoff to an authorized repairer; any rotation, containment and verification sequence remains an owner decision. Public closeout reveals no secret or sensitive reproduction detail.
 - **Lesson/control:** separate disclosed metadata from withheld security facts; a private credential finding never authorizes guessed scope or automatic rotation.
 
+### Routed findings after the pinned reconciliation
+
+#### PH-EVIDENCE-18 — Paige scroll-stability drive dies before its interaction (`VERIFIED` locally; Platform Health)
+
+- **Evidence / boundary:** on branch head `6303012b0cf552540f68fc5d4ce775011966d922`, `node scripts/live-drive/paige-scroll-stability-react-drive.mjs` timed out after 30 seconds at `openTenant` line 112 while waiting for at least 40 hydrated transcript message nodes. The run reached 0/1 checks and never exercised the chat timeout interaction. Evidence harness → every lane relying on this rendered-flow signal.
+- **Status / owner / collision:** routed to Platform Health under its trunk-signal trustworthiness charge. The Long-Form lane records the failure and does not repair the shared harness under park-and-route.
+- **Smallest next step / proof:** reproduce from current `main`, identify why tenant hydration no longer reaches the script's fixed transcript precondition, and prove the repaired drive reaches its intended interaction at every declared viewport. Do not weaken the assertion merely to make the script green.
+- **Lesson/control:** a rendered-evidence script that fails before the affected interaction is a harness defect, not evidence that the product change failed or passed.
+
 ### Proposed or local remediation — non-shipped
 
 No runtime, schema, credential, provider, deployment or production change was made. This documentation PR can make the reconciliation canonical, but it does not ship any security repair or change the health claims above. Any local/proposed security patch remains explicitly non-shipped until separately merged and verified; this PR contains no such patch. Candidate repairs remain open; active PR #1173 is not absorbed. Merged #1175 is incorporated as current doctrine.
