@@ -27,9 +27,23 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
   in-tree one. That is the §BRAIN.2 trap in process clothing: answering *"what is our rule?"* from
   reasoning instead of from the source. The first move on a rule you think you just discovered is to
   grep for it.
-- **Rule.** There is **one** valid sequence, and `AGENTS.md` § *Merge gate* is its authority: **flip →
-  wait for the exact-head review → disposition every finding → merge.** A fix pushed for a finding
-  changes the head, so the wait repeats once; a second round means escalate rather than merge.
+  **And then this entry got it wrong twice more, which is the part worth carrying.** Draft one offered
+  a post-merge review as an equal path; a review caught it. Draft two removed that but still said
+  "wait for the exact-head review" — singular — which lets an agent wait for the auto review and merge
+  without the requested one; a second review caught that. Between those two drafts the lane **merged
+  PR #1383 on the auto-triggered review alone**, having read the gate an hour earlier and corrected
+  someone else's reading of it. So: reading the authority is not the same as applying it, a rule you
+  are actively writing down is exactly when you are most confident and least careful, and a gate
+  stated as "wait for the review" will be read as one review by whoever is in a hurry — which is
+  always. Name both.
+- **Rule.** There is one valid sequence, `AGENTS.md` § *Merge gate* is its authority, and it requires
+  **TWO reviews, not one**: **flip (which auto-triggers a review on the exact head) → also REQUEST one
+  (`@codex review`) → wait for BOTH to complete → disposition every finding → merge.** The gate's own
+  words: *"'Exactly one review' means one REQUESTED review plus the auto-triggered exact-head review.
+  Never merge ahead of either."* Waiting for the auto review alone and merging is a weaker gate than
+  the one written down — and it is the mistake this entry itself made twice before it said so (below).
+  A fix pushed for a finding changes the head, so the wait repeats once; a second round means escalate
+  rather than merge.
   Requesting `@codex review` after the fact is **forensic recovery from a gate already missed**, never
   a second acceptable path — it does fire on a closed PR (measured: 👀 reaction plus the summary
   flipping to `Manual request`) and it is exactly what you owe once a review has been lost, but it
