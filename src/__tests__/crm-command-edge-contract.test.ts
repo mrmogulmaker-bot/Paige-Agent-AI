@@ -1,8 +1,10 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const edge = readFileSync("supabase/functions/crm-command/index.ts", "utf8");
 const catalog = readFileSync("supabase/functions/_shared/crm-command/catalog.ts", "utf8");
+const identityMigrationPath = "supabase/migrations/20270409000000_crm_contact_name_idempotency.sql";
+const originalCrmMigration = readFileSync("supabase/migrations/20270204000000_governed_crm_contact_company_commands.sql", "utf8");
 
 describe("canonical CRM action door", () => {
   it("accepts no tenant, actor, role, or account identity from the request", () => {
@@ -23,7 +25,7 @@ describe("canonical CRM action door", () => {
   it("canonicalizes a create-contact command before any readback, policy, approval, or write seam", () => {
     expect(edge).toContain("canonicalizeCrmCommand");
     const parsedAt = edge.indexOf("bodySchema.parse(await req.json())");
-    const canonicalizedAt = edge.indexOf("body.command = canonicalizeCrmCommand(body.command)");
+    const canonicalizedAt = edge.indexOf("command: canonicalizeCrmCommand(parsedBody.command)");
     const tenantAt = edge.indexOf('caller.rpc("current_user_tenant_id")');
     const readbackAt = edge.indexOf('admin.rpc("read_crm_command_result"');
     const laneAt = edge.indexOf('caller.rpc("resolve_tool_autonomy"');
@@ -83,7 +85,8 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain("_tenant_id: tenantId");
     expect(edge).toContain("_actor_id: user.id");
     expect(edge).toContain("record_locator");
-    expect(edge).toContain("const executionCommand = {");
+    expect(edge).toContain("const canonicalExecutionCommand = canonicalizeCrmCommand({");
+    expect(edge).toContain("const executionCommand = crmCommandExecutionPayload(canonicalExecutionCommand)");
     expect(edge).toContain('approval_channel: decision.audit.laneEffective');
     expect(edge).not.toContain('decidedCommand.action.startsWith("deal.")');
     expect(edge).toContain("readback");
@@ -115,5 +118,22 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain('action: "crm.governed_decision"');
     expect(edge).toContain("command_action");
     expect(edge).not.toMatch(/auditPayload\s*=\s*\{[^}]*patch/s);
+  });
+
+  it("uses one canonical identity projection for Edge readback and database replay hashing", () => {
+    expect(catalog).toContain("crmCommandExecutionPayload");
+    expect(edge).toContain("crmCommandExecutionPayload");
+    expect(edge).toContain("_command: readbackCommand");
+    expect(edge).toContain("_command: executionCommand");
+    expect(edge).not.toMatch(/__paige_canonical_identity_v1\s*:\s*z\./);
+    expect(existsSync(identityMigrationPath)).toBe(true);
+    if (!existsSync(identityMigrationPath)) return;
+    const migration = readFileSync(identityMigrationPath, "utf8");
+    expect(migration).toContain("__paige_canonical_identity_v1");
+    expect(migration).toContain("public.crm_effective_command(_command)::text");
+    const predecessor = "v_hash := encode(extensions.digest(convert_to(_command::text, 'UTF8'), 'sha256'), 'hex');";
+    expect(originalCrmMigration.split(predecessor)).toHaveLength(2);
+    expect(migration).toContain("CRM_IDEMPOTENCY_HASH_PATCH_DRIFT");
+    expect(migration).toContain("else _command-'__paige_canonical_identity_v1'");
   });
 });

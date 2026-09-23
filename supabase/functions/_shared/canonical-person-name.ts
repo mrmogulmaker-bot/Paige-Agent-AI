@@ -1,8 +1,8 @@
 export type CanonicalPersonName = Readonly<{
   /**
-   * Safe human-facing/storage form: Unicode-composed, invisible format
-   * characters removed, and all Unicode whitespace collapsed to one space.
-   * Letter case is preserved because it is part of a person's display name.
+   * Safe human-facing/storage form: Unicode-composed and all Unicode
+   * whitespace collapsed to one space. Letter case and format controls are
+   * preserved because join controls can be meaningful name orthography.
    */
   display: string;
   /**
@@ -13,10 +13,12 @@ export type CanonicalPersonName = Readonly<{
   identity: string;
 }>;
 
-// These characters are invisible separators/format controls, not meaningful
-// name content. They are not all covered by ECMAScript WhiteSpace.
-const INVISIBLE_NAME_FORMAT = /[\u180e\u200b-\u200d\u2060\ufeff]/gu;
+// These three controls do not alter name orthography. Remove them only from
+// the identity/hash projection. U+180E, U+200C and U+200D are intentionally
+// preserved: Mongolian and joining scripts use them meaningfully.
+const HASH_IGNORABLE_NAME_FORMAT = /[\u200b\u2060\ufeff]/gu;
 const UNICODE_WHITESPACE = /\p{White_Space}+/gu;
+const UNICODE_FORMAT = /\p{Cf}/gu;
 
 /**
  * The one canonical person-name boundary for validation, rendering/storage,
@@ -28,12 +30,19 @@ export function canonicalizePersonName(value: unknown): CanonicalPersonName | nu
   if (typeof value !== "string") return null;
   const display = value
     .normalize("NFC")
-    .replace(INVISIBLE_NAME_FORMAT, "")
     .replace(UNICODE_WHITESPACE, " ")
     .trim();
-  if (!display) return null;
+  const visibleContent = display.replace(UNICODE_FORMAT, "").replace(UNICODE_WHITESPACE, "");
+  if (!visibleContent) return null;
+  const identity = display
+    .normalize("NFKC")
+    .replace(HASH_IGNORABLE_NAME_FORMAT, "")
+    .replace(UNICODE_WHITESPACE, " ")
+    .trim()
+    .toLowerCase();
+  if (!identity) return null;
   return Object.freeze({
     display,
-    identity: display.normalize("NFKC").toLowerCase(),
+    identity,
   });
 }

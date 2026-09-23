@@ -7,6 +7,8 @@ import {
   CRM_ACTION_CAPABILITY as ACTION_CAPABILITY,
   canonicalizeCrmCommand,
   crmApprovalSubject,
+  crmCommandExecutionPayload,
+  type CanonicalCrmCommand,
   type CrmAction,
 } from "../_shared/crm-command/catalog.ts";
 import { canonicalAppUrl, type CanonicalTier } from "../_shared/canonical-app-url.ts";
@@ -208,10 +210,14 @@ serve(async (req) => {
   const { data: { user }, error: authError } = await caller.auth.getUser();
   if (authError || !user) return response(401, { ok: false, code: "CRM_AUTH_INVALID" });
 
-  let body: z.infer<typeof bodySchema>;
+  type ParsedBody = z.infer<typeof bodySchema>;
+  type CanonicalBody = Omit<ParsedBody, "command"> & {
+    command: CanonicalCrmCommand<ParsedBody["command"]>;
+  };
+  let body: CanonicalBody;
   try {
-    body = bodySchema.parse(await req.json());
-    body.command = canonicalizeCrmCommand(body.command);
+    const parsedBody = bodySchema.parse(await req.json());
+    body = { ...parsedBody, command: canonicalizeCrmCommand(parsedBody.command) };
   } catch (error) {
     return response(400, {
       ok: false,
@@ -245,6 +251,7 @@ serve(async (req) => {
     .eq("id", tenantId).maybeSingle();
   const capability = ACTION_CAPABILITY[body.command.action];
   const requestArgs = { command: body.command, idempotency_key: body.idempotency_key };
+  const readbackCommand = crmCommandExecutionPayload(body.command);
   const successfulResultResponse = (resultObject: JsonObject, action: string): Response => {
     const readback = object(resultObject.readback);
     const destination = action.startsWith("deal.") ? "pipeline" : action.startsWith("task.") ? "tasks" : "contacts";
@@ -282,7 +289,7 @@ serve(async (req) => {
     const { data: cachedData, error: cachedError } = await admin.rpc("read_crm_command_result", {
       _tenant_id: tenantId,
       _actor_id: user.id,
-      _command: body.command,
+      _command: readbackCommand,
       _idempotency_key: body.idempotency_key,
     });
     const cachedResult = object(cachedData);
@@ -516,10 +523,11 @@ serve(async (req) => {
   if (!(await activeTenantStillMatches())) {
     return response(409, { ok: false, outcome: "refused", code: "CRM_ACTIVE_ACCOUNT_CHANGED", message: "The active workspace changed. Nothing was executed; reopen the record in the current workspace." });
   }
-  const executionCommand = {
+  const canonicalExecutionCommand = canonicalizeCrmCommand({
     ...decidedCommand,
     approval_channel: decision.audit.laneEffective === "confirm" ? "operator_card" : "standing_autonomy_setting",
-  };
+  });
+  const executionCommand = crmCommandExecutionPayload(canonicalExecutionCommand);
   const { data: result, error: commandError } = await admin.rpc("execute_crm_command", {
     _tenant_id: tenantId,
     _actor_id: user.id,

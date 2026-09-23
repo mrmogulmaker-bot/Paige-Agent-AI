@@ -2,12 +2,15 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   CRM_ACTION_CAPABILITY,
+  CRM_COMMAND_CANONICAL_IDENTITY_FIELD,
   CRM_COMMAND_TOOLS,
   CRM_TOOL_TO_ACTION,
   canonicalizeCrmCommand,
   crmApprovalSubject,
+  crmCommandExecutionPayload,
   crmCommandFingerprintArgs,
 } from "../../supabase/functions/_shared/crm-command/catalog.ts";
+import { canonicalizePersonName } from "../../supabase/functions/_shared/canonical-person-name.ts";
 import { confirmFingerprint } from "../../supabase/functions/_shared/confirm-fingerprint.ts";
 
 const chat = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
@@ -274,5 +277,93 @@ describe("Paige Chat canonical CRM adoption", () => {
       action: "contact.create",
       patch: { first_name: "José", last_name: "Quinn" },
     } as never)).toThrow("CRM_COMMAND_NOT_CANONICAL");
+  });
+
+  it("defines one complete display and identity form for person names", () => {
+    const cases = [
+      { input: "  José   Quinn  ", display: "José Quinn", identity: "josé quinn" },
+      { input: "JOSÉ QUINN", display: "JOSÉ QUINN", identity: "josé quinn" },
+      { input: "José Quinn", display: "José Quinn", identity: "josé quinn" },
+      { input: "Jo​s​é Qu⁠i\ufeffnn", display: "Jo​s​é Qu⁠i\ufeffnn", identity: "josé quinn" },
+      { input: "می‌ر क्‍ष᠎ᠠ", display: "می‌ر क्‍ष᠎ᠠ", identity: "می‌ر क्‍ष᠎ᠠ" },
+    ] as const;
+    for (const value of cases) expect(canonicalizePersonName(value.input)).toEqual({
+      display: value.display,
+      identity: value.identity,
+    });
+    for (const malformed of [null, 42, "   ", "\u200b\u2060\ufeff", "\u200c\u200d\u180e"]) {
+      expect(canonicalizePersonName(malformed)).toBeNull();
+    }
+  });
+
+  it("keeps the database replay projection aligned with every equivalent retry spelling", async () => {
+    const commands = [
+      canonicalizeCrmCommand({
+        action: "contact.create",
+        patch: { first_name: "José", last_name: "Quinn", lifecycle_stage: "new_lead" },
+      }),
+      canonicalizeCrmCommand({
+        action: "contact.create",
+        patch: { first_name: "  jOsÉ  ", last_name: "QUINN", lifecycle_stage: "lead" },
+      }),
+      canonicalizeCrmCommand({
+        action: "contact.create",
+        patch: { name: "José Quinn", lifecycle_stage: "lead" },
+      }),
+    ];
+
+    const databaseHashInputs = await Promise.all(commands.map(async (command) => {
+      const payload = crmCommandExecutionPayload(command);
+      return await confirmFingerprint("crm_database_replay", {
+        command: payload[CRM_COMMAND_CANONICAL_IDENTITY_FIELD] as Record<string, unknown>,
+        approval_channel: "standing_autonomy_setting",
+      });
+    }));
+    expect(new Set(databaseHashInputs)).toHaveLength(1);
+    expect(() => crmCommandExecutionPayload({
+      action: "contact.create",
+      patch: { first_name: "José", last_name: "Quinn" },
+    } as never)).toThrow("CRM_COMMAND_NOT_CANONICAL");
+
+    const previewCommand = canonicalizeCrmCommand({
+      action: "contact.hard_delete",
+      contact_id: "00000000-0000-4000-8000-000000000001",
+      expected_updated_at: "2026-09-23T12:00:00.000Z",
+    });
+    expect(crmCommandExecutionPayload(previewCommand)).toBe(previewCommand);
+    expect(crmCommandExecutionPayload(previewCommand)).not.toHaveProperty(CRM_COMMAND_CANONICAL_IDENTITY_FIELD);
+  });
+
+  it("preserves meaningful orthographic join controls in the stored display form", () => {
+    const command = canonicalizeCrmCommand({
+      action: "contact.create",
+      patch: {
+        first_name: "می‌ر",
+        last_name: "क्‍ष᠎ᠠ",
+      },
+    });
+    expect(command).toEqual({
+      action: "contact.create",
+      patch: {
+        first_name: "می‌ر",
+        last_name: "क्‍ष᠎ᠠ",
+      },
+    });
+    const identityPatch = crmCommandFingerprintArgs(command).patch as Record<string, unknown>;
+    expect(identityPatch.first_name).toBe("می‌ر");
+    expect(identityPatch.last_name).toBe("क्‍ष᠎ᠠ");
+  });
+
+  it("does not resolve inherited object keys as lifecycle aliases", () => {
+    for (const lifecycleStage of ["constructor", "toString", "__proto__"]) {
+      const command = canonicalizeCrmCommand({
+        action: "contact.create",
+        patch: { first_name: "Avery", lifecycle_stage: lifecycleStage },
+      });
+      expect(command).toEqual({
+        action: "contact.create",
+        patch: { first_name: "Avery", lifecycle_stage: lifecycleStage },
+      });
+    }
   });
 });

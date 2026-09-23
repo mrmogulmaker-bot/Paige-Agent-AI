@@ -26,6 +26,7 @@ export type CrmCapability = typeof CRM_ACTION_CAPABILITY[CrmAction];
 declare const canonicalCrmCommandBrand: unique symbol;
 export type CanonicalCrmCommand<T extends Record<string, unknown> = Record<string, unknown>> =
   T & { readonly [canonicalCrmCommandBrand]: true };
+export const CRM_COMMAND_CANONICAL_IDENTITY_FIELD = "__paige_canonical_identity_v1" as const;
 export const CRM_TOOL_TO_ACTION = Object.freeze(Object.fromEntries(
   Object.entries(CRM_ACTION_CAPABILITY).map(([action, capability]) => [capability, action]),
 )) as Readonly<Record<CrmCapability, CrmAction>>;
@@ -50,8 +51,9 @@ function buildCrmCommandFingerprintArgs(command: Record<string, unknown>): Recor
 }
 
 function markCanonicalCrmCommand<T extends Record<string, unknown>>(command: T): CanonicalCrmCommand<T> {
-  fingerprintArgsByCanonicalCommand.set(command, buildCrmCommandFingerprintArgs(command));
-  return command as CanonicalCrmCommand<T>;
+  const frozen = Object.freeze(command);
+  fingerprintArgsByCanonicalCommand.set(frozen, buildCrmCommandFingerprintArgs(frozen));
+  return frozen as CanonicalCrmCommand<T>;
 }
 
 /**
@@ -63,6 +65,22 @@ export function crmCommandFingerprintArgs(command: CanonicalCrmCommand): Record<
   const args = fingerprintArgsByCanonicalCommand.get(command);
   if (!args) throw new TypeError("CRM_COMMAND_NOT_CANONICAL");
   return args;
+}
+
+/**
+ * Adds the server-derived identity projection consumed only by the database
+ * replay hash. The executable command remains the canonical display form.
+ * Raw/model commands fail here because only canonicalizeCrmCommand registers
+ * the WeakMap marker used by crmCommandFingerprintArgs.
+ */
+export function crmCommandExecutionPayload(command: CanonicalCrmCommand): Record<string, unknown> {
+  const fingerprintArgs = crmCommandFingerprintArgs(command);
+  // Contact creation is the only command whose executable display spelling intentionally differs
+  // from its retry identity. Leaving every other action byte-for-byte unchanged also preserves the
+  // existing preview hashes used by destructive commands.
+  if (command.action !== "contact.create") return command;
+  const identity = Object.freeze({ action: command.action, ...fingerprintArgs });
+  return Object.freeze({ ...command, [CRM_COMMAND_CANONICAL_IDENTITY_FIELD]: identity });
 }
 
 function stableCommandValue(value: unknown): unknown {
@@ -121,12 +139,13 @@ export function canonicalizeCrmCommand<T extends Record<string, unknown>>(comman
     delete patch.name;
   }
 
-  if (typeof patch.lifecycle_stage === "string") {
+  if (typeof patch.lifecycle_stage === "string"
+    && Object.prototype.hasOwnProperty.call(LEGACY_CONTACT_LIFECYCLE, patch.lifecycle_stage)) {
     const canonicalStage = LEGACY_CONTACT_LIFECYCLE[patch.lifecycle_stage];
     if (canonicalStage) patch.lifecycle_stage = canonicalStage;
   }
 
-  return markCanonicalCrmCommand({ ...command, patch } as T);
+  return markCanonicalCrmCommand({ ...command, patch: Object.freeze(patch) } as T);
 }
 
 // Canonical stable subject used only to disambiguate one command inside the operator's already-
