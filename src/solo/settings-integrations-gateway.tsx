@@ -650,6 +650,17 @@ function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayCon
           )}
           {signInMessage && <div className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} /><span>{signInMessage}</span></div>}
 
+          {/* A turned-off row has exactly one honest recovery, and WHICH one depends on the row.
+              Re-key restores enabled=true, so for a re-keyable tool that is the path. An OAuth tool
+              is not re-keyable, and turning it off nulled its credential, so there is nothing to
+              re-key with — the only way back is to add it again. A single sentence in the error map
+              could not be true for both, which is exactly how the first fix here went wrong. */}
+          {!tool.enabled && (
+            <div className="ig-gw-info" role="status"><span>{rekeyable
+              ? "This tool is turned off. Re-key it to switch it back on."
+              : "This tool is turned off, and its sign-in was cleared when you turned it off — switching it back on means removing it and adding it again."}</span></div>
+          )}
+
           {tool.status === "pending_verification" ? (
             <div className="ig-gw-info" role="status"><span>This tool hasn’t been checked yet. Paige can’t use it until she has reached it and you’ve approved what it may do.</span></div>
           ) : tool.status === "error" ? (
@@ -673,9 +684,17 @@ function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayCon
             </div>
           )}
 
+          {/* Check now and Sign in again are gated on `enabled` because on a turned-off row they can
+              ONLY refuse: the server answers connection_disabled to both. Rendering a control whose
+              single outcome is a refusal is the §70.1 failure, not a safety net.
+              Re-key is deliberately NOT gated — it is the enable path. A successful re-key restores
+              enabled=true (P1(a) in the endpoint setter), so it must stay on screen for a turned-off
+              row that has one. An OAuth row does not: `rekeyable` is false for it, and soft-disable
+              nulls its credential without changing its auth_kind, so it can never be re-keyed back
+              on. That asymmetry is why the banner above names a different path for each. */}
           <div className="ig-actions ig-gw-actions">
-            {gw.canWrite && <button type="button" className="ig-btn" disabled={gw.saving} onClick={() => void check()}>{gw.saving ? "Checking…" : "Check now"}</button>}
-            {gw.canWrite && isOAuth && <button type="button" className="ig-btn" disabled={gw.saving} onClick={() => void signInAgain()}>Sign in again</button>}
+            {gw.canWrite && tool.enabled && <button type="button" className="ig-btn" disabled={gw.saving} onClick={() => void check()}>{gw.saving ? "Checking…" : "Check now"}</button>}
+            {gw.canWrite && tool.enabled && isOAuth && <button type="button" className="ig-btn" disabled={gw.saving} onClick={() => void signInAgain()}>Sign in again</button>}
             {gw.canWrite && rekeyable && <button type="button" className="ig-btn" onClick={() => setMode("rekey")}>Re-key</button>}
             {gw.canWrite && <button type="button" className="ig-btn" data-danger onClick={() => setMode("disconnect")}>Disconnect</button>}
           </div>

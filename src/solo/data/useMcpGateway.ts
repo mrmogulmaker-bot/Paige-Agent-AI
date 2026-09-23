@@ -360,11 +360,12 @@ const ERR: Record<string, string> = {
   unreachable: "Paige couldn't reach that address. Check it, then try again.",
   // oauth_begin
   connection_unconfigured: "This tool has no address or key yet, so there's nothing to sign in to.",
-  // No control on THIS surface turns a tool back on; re-keying it is what re-enables it, and a
-  // credential-less tool cannot be re-keyed at all. Name the true recovery rather than an
-  // imperative with nothing behind it (§70.1).
-  connection_disabled:
-    "This tool is turned off, so Paige can't sign in to it. Re-key it to switch it back on, or remove it and add it again.",
+  // Deliberately names NO control. This one entry serves two routes with opposite truths — on a
+  // turned-off non-OAuth row "Re-key it" is correct, on a turned-off OAuth row Re-key does not
+  // render at all — so any imperative here is wrong half the time. That is how the first fix for
+  // this string failed: it swapped one absent control for another. The drawer carries the specific
+  // recovery, because it is the only place that knows which row this is.
+  connection_disabled: "This tool is turned off, so Paige can't reach it right now.",
   // Raised when the redirect URI cannot be derived server-side — a configuration state that waiting
   // never clears, so "try again shortly" was advice that could not work (§13).
   callback_not_configured:

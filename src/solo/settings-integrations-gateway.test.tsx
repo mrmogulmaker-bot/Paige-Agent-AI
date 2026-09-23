@@ -524,6 +524,40 @@ describe("The open drawer tells one story", () => {
   });
 });
 
+describe("A turned-off tool offers only the recovery it actually has", () => {
+  it("hides Check now and Sign in again, which could only refuse", async () => {
+    world({ rows: [row({ enabled: false, status: "unconfigured", auth_kind: "oauth" })] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    // Both actions answer connection_disabled on a turned-off row. A control whose only outcome is
+    // a refusal is the §70.1 failure, not a safety net.
+    expect(byText(host, "Check now")).toBeUndefined();
+    expect(byText(host, "Sign in again")).toBeUndefined();
+    expect(byText(host, "Disconnect")).toBeTruthy();
+  });
+
+  it("tells an OAuth tool the truth: it cannot be re-keyed back on", async () => {
+    // Soft-disable nulls the credential and never changes auth_kind, so an OAuth row stays OAuth,
+    // `rekeyable` stays false, and Re-key never renders. Naming it would be an instruction with
+    // nothing behind it — the exact defect the first fix for this string introduced.
+    world({ rows: [row({ enabled: false, status: "unconfigured", auth_kind: "oauth" })] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(byText(host, "Re-key")).toBeUndefined();
+    expect(dialog(host)?.textContent).toMatch(/removing it and adding it again/i);
+    expect(dialog(host)?.textContent).not.toMatch(/Re-key it to switch it back on/i);
+  });
+
+  it("names Re-key for a turned-off tool that genuinely has it", async () => {
+    // A successful re-key restores enabled=true, so for a re-keyable row this really is the path.
+    world({ rows: [row({ enabled: false, status: "unconfigured", auth_kind: "bearer" })] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(byText(host, "Re-key")).toBeTruthy();
+    expect(dialog(host)?.textContent).toMatch(/Re-key it to switch it back on/i);
+  });
+});
+
 describe("Listed is never connected", () => {
   it("stops honestly on a provider with no capability record instead of opening a prefilled form", async () => {
     // A tile that opens a real connection form prefilled with that provider's endpoint asserts
