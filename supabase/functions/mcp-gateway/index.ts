@@ -4,9 +4,10 @@
 // affected-set (INT-105 / edge-affected.py import closure) — until now those modules shipped to
 // nothing.
 //
-// ACTIONS: `verify` (Slice ①) + `create` (Slice ②). `oauth_begin`/`oauth_callback`, `approve` and
-// `execute` land in the following slices and extend this same function (§18: one gateway door, many
-// actions).
+// ACTIONS: `verify` (Slice ①) + `create` + `oauth_begin` (Slice ②). The OAuth flow COMPLETES out of
+// band in the JWT-less `mcp-oauth-callback` edge fn (the provider redirect target — a top-level GET with
+// no JWT cannot be an action on this JWT-gated door; see that function). `approve` and `execute` land in
+// the following slices and extend this same function (§18: one gateway door, many actions).
 //
 // AUTHORITY / SECRETS / SSRF: see `_shared/mcp-gateway/verify.ts` and `create.ts`. This wrapper does
 // the minimum a Deno edge entry must — CORS, authenticate the caller, dispatch on the action — then
@@ -17,6 +18,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/adminAuth.ts";
 import { runVerify } from "../_shared/mcp-gateway/verify.ts";
 import { readCreateInput, runCreate } from "../_shared/mcp-gateway/create.ts";
+import { runOauthBegin } from "../_shared/mcp-gateway/oauth.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -51,6 +53,24 @@ Deno.serve(async (req) => {
     // Thin JWT-scoped pass-through onto the G1a-1 writer RPCs — { userClient } only (§59); the RPC's
     // in-body §9 authority + credential/SSRF validation is the authority.
     const result = await runCreate({ userClient }, readCreateInput(body, expectedTenantId));
+    return jsonResponse(result.body, result.httpStatus);
+  }
+
+  if (action === "oauth_begin") {
+    const connectionId = typeof body.connection_id === "string" ? body.connection_id : "";
+    // service-role client: reads the decrypted server URL and stores the in-flight flow (verifier +
+    // client secret encrypted). Built HERE, inside the branch, so it is never in scope for `create`
+    // (§59), exactly like verify. The authority is runOauthBegin's gates (mirroring runVerify), not
+    // this grant.
+    const admin = createClient(supabaseUrl, serviceKey);
+    // The provider redirect target — the JWT-less mcp-oauth-callback edge fn, derived from config,
+    // NEVER the request. A redirect the caller can influence is an open redirect and an
+    // authorization-code interception at once.
+    const redirectUri = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/mcp-oauth-callback`;
+    const result = await runOauthBegin(
+      { userClient, admin },
+      { connectionId, expectedTenantId, actor: user.id, redirectUri },
+    );
     return jsonResponse(result.body, result.httpStatus);
   }
 
