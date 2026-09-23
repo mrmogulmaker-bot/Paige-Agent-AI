@@ -46,15 +46,48 @@ const CONTACT_SCOPED_EDGE_HANDLERS = [
 ];
 const CRM_CATALOG = "supabase/functions/_shared/crm-command/catalog.ts";
 
-/** Every classified action, as `[tool, class, reason]`, read from the policy's own table. */
-export function parsePolicy(src) {
+/** The RISK array's source text, or null if the table's declaration has moved. */
+function policyBlock(src) {
   const at = src.indexOf("const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [");
   if (at < 0) return null;
   const end = src.indexOf("\n];", at);
   if (end < 0) return null;
-  return [...src.slice(at, end).matchAll(
-    /\[\s*"([a-z0-9_]+)"\s*,\s*"(ordinary|high|owner_only)"\s*,\s*"((?:[^"\\]|\\.)*)"\s*\]/g,
-  )].map((m) => ({ tool: m[1], risk: m[2], reason: m[3] }));
+  return src.slice(at, end);
+}
+
+/**
+ * A tuple in any quoting style TypeScript accepts. The delimiter is captured and back-referenced
+ * per position, so `'x'` and `"x"` both parse while `"x'` does not. This started life
+ * double-quote-only, and a reviewer proved that mattered: a duplicate written with a single-quoted
+ * reason was invisible to the duplicate check below, AND to the parse-vs-runtime cross-check in
+ * `capability-kit.test.mjs`, because the skipped tuple and the collapsed duplicate each removed one
+ * from their respective counts and the equality survived. Two blind spots cancelling is worse than
+ * either alone, because the guard reports success.
+ */
+const POLICY_TUPLE = /\[\s*(['"`])([a-z0-9_]+)\1\s*,\s*(['"`])(ordinary|high|owner_only)\3\s*,\s*(['"`])((?:\\.|(?!\5)[^\\])*)\5\s*\]/g;
+
+/** Every classified action, as `[tool, class, reason]`, read from the policy's own table. */
+export function parsePolicy(src) {
+  const block = policyBlock(src);
+  if (block === null) return null;
+  return [...block.matchAll(POLICY_TUPLE)].map((m) => ({ tool: m[2], risk: m[4], reason: m[6] }));
+}
+
+/**
+ * How many tuples the table CONTAINS, counted without understanding any of them — one per line that
+ * opens with a bracket and a quote. This exists to be compared against `parsePolicy()`'s output so
+ * that a tuple the parser cannot read fails LOUDLY instead of vanishing.
+ *
+ * Widening the parser above fixes the shapes we know about. This fixes the ones we do not: every
+ * check in this guard is built on `parsePolicy()`, so a silently dropped tuple under-reports the
+ * duplicate check, the unclassified-write check and the reason check at once, and each of them
+ * still prints a tick. Measured when written: 156 tuples, 156 tuple-opening lines, zero anchored
+ * lines the strict regex missed, and no reason containing a `["` sequence that could inflate it.
+ */
+export function countPolicyTupleLines(src) {
+  const block = policyBlock(src);
+  if (block === null) return null;
+  return block.split("\n").filter((line) => /^\s*\[\s*['"`]/.test(line)).length;
 }
 
 /** The tools the handler declares to the model, with the exempt list it honours. */
@@ -105,7 +138,7 @@ const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|insta
 /** The rule: destroys, changes permissions, or goes public ⇒ never `ordinary`. */
 const IRREVERSIBLE_OR_OUTWARD = /(^|_)(delete|remove|revoke|publish|uninstall|install)(_|$)|(^|_)grant(_|$)/;
 
-export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanonicals = [], governedEdgeActions = [] }) {
+export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanonicals = [], governedEdgeActions = [], policyTupleLines = null }) {
   const out = [];
   const classified = new Map(policy.map((p) => [p.tool, p.risk]));
   const exempt = new Set(exemptions.map((e) => e.tool));
@@ -176,6 +209,22 @@ export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanon
       (new Set(classes).size === 1
         ? `The classes agree, so nothing is mis-classified today, but one key on two lines means the next edit to either can disagree with the other. Keep exactly one.`
         : `The classes DISAGREE, so the table contradicts itself and the fold picks the winner instead of a person. Keep exactly one, and make it the class you mean.`),
+    );
+  }
+
+  // 7. The parser must have read the WHOLE table. Every check above is built on `policy`, so a tuple
+  //    `parsePolicy()` cannot match does not merely go ungraded — it silently shrinks the input to
+  //    the duplicate check, the unclassified-write check and the reason check at once, and all three
+  //    then print a tick. A reviewer proved this was not theoretical: a duplicate whose reason used
+  //    single quotes was invisible here AND to the parse-vs-runtime cross-check, because the dropped
+  //    tuple and the folded duplicate each removed one from their counts and the equality held.
+  //
+  //    Both directions fail, and they mean different things, so they say different things.
+  if (policyTupleLines !== null && policyTupleLines !== policy.length) {
+    out.push(
+      policyTupleLines > policy.length
+        ? `${POLICY} contains ${policyTupleLines} tuples but this guard could only parse ${policy.length} — ${policyTupleLines - policy.length} tuple(s) use a shape the parser does not read, so every check in this guard is grading an incomplete table and reporting success. Fix the parser or the tuple; do not leave them disagreeing.`
+        : `this guard parsed ${policy.length} tuples from ${POLICY} but only ${policyTupleLines} line(s) open one — the table's shape changed (a tuple spanning lines, most likely), so the tuple counter no longer sees what the parser does and can no longer back it up. Update the counter.`,
     );
   }
 
@@ -254,6 +303,34 @@ function selfTest() {
   bad += ok("a repeated key whose classes AGREE is caught too, named as a restatement",
     findings({ ...base, policy: [...base.policy, { tool: "t_create_0", risk: "ordinary", reason: "a sufficiently long reason" }] })
       .some((f) => f.includes("t_create_0 is classified 2 times") && f.includes("as ordinary, ordinary") && f.includes("classes agree")));
+
+  // The parser's own reach, and the backstop for where it does not reach. A reviewer showed that a
+  // duplicate with a single-quoted reason was invisible to BOTH the rule above and the cross-check
+  // in capability-kit.test.mjs — the dropped tuple and the folded duplicate cancelled, so the
+  // guard reported success. These four cases are that defect, restored.
+  const BLOCK = (...tuples) =>
+    `const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [\n${tuples.map((t) => `  ${t},`).join("\n")}\n];\n`;
+  bad += ok("a single-quoted tuple parses (it did not, and a duplicate hid in the gap)",
+    parsePolicy(BLOCK(`['a_create_x', 'ordinary', 'a sufficiently long reason']`))?.[0]?.tool === "a_create_x");
+  bad += ok("a backtick tuple parses",
+    parsePolicy(BLOCK("[`a_create_x`, `high`, `a sufficiently long reason`]"))?.[0]?.risk === "high");
+  // Delimiters may differ BETWEEN positions — `["a", 'b', "c"]` is legal TypeScript — but each
+  // string's own pair must match. The first version of this case asserted the opposite and failed;
+  // the regex was right and the test was wrong.
+  bad += ok("delimiters that differ between positions parse, because that is valid source",
+    parsePolicy(BLOCK(`["a_create_x", 'ordinary', "a sufficiently long reason"]`))?.length === 1);
+  bad += ok("a string whose own quotes do not match does NOT parse (widened is not loose)",
+    parsePolicy(BLOCK(`["a_create_x", "ordinary', "a sufficiently long reason"]`))?.length === 0);
+  bad += ok("the tuple counter counts shapes the parser cannot read",
+    countPolicyTupleLines(BLOCK(`["a_create_x", "ordinary", "a sufficiently long reason"]`, `["aCreateX", "ordinary", "an unreadable key"]`)) === 2);
+  bad += ok("a tuple the parser silently skipped is caught, not passed",
+    findings({ ...base, policyTupleLines: base.policy.length + 1 })
+      .some((f) => f.includes("could only parse") && f.includes("grading an incomplete table")));
+  bad += ok("a counter that has fallen behind the parser is caught too, and says so differently",
+    findings({ ...base, policyTupleLines: base.policy.length - 1 })
+      .some((f) => f.includes("Update the counter")));
+  bad += ok("a table whose counts agree stays silent",
+    findings({ ...base, policyTupleLines: base.policy.length }).length === 0);
   bad += ok("a policy that declares each key exactly once reports no duplicate",
     !findings(base).some((f) => /is classified \d+ times/.test(f)));
   // 2026-09-12 regression: `decide` must read as a mutation verb, so an unclassified `*_decide`
@@ -351,6 +428,7 @@ const problems = findings({
   verbSourceMatches,
   mcpCanonicals,
   governedEdgeActions,
+  policyTupleLines: countPolicyTupleLines(policySrc),
 });
 
 if (problems.length) {

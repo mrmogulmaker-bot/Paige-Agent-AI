@@ -140,6 +140,32 @@ command you would use to check this file's own numbers.
 
 ---
 
+## The review gate has a trap of its own: a push CANCELS a running review
+
+Measured on this file's own PR, 2026-09-23. The Codex summary is **one comment edited in place**, so
+its history is readable:
+
+| observed | the summary table held |
+|---|---|
+| 22:08:41Z | Running · head `676aa27d` · trigger **Draft marked ready** |
+| 22:09:19Z | the above, plus Running · `676aa27d` · **Manual request** |
+| after a push, 22:15:01Z | **one row only** · `2c456b6` · Manual request |
+
+Both rows for the old head disappeared and neither ever reported. **A push during a running review
+does not queue behind it and does not complete against the old head — it cancels it.**
+
+**Why that costs more than a cycle.** The auto-triggered review fires on exactly one event, *Draft
+marked ready*; a `@codex review` comment produces a *Manual request*. `AGENTS.md` § *Merge gate*
+item 3 requires a requested review **plus** the auto-triggered exact-head one. So a push while the
+auto review is in flight destroys the one pass you cannot ask for again, and the head is left holding
+a half-gate — which is exactly the state that let a P1 through once already.
+
+**What to do instead:** finish the review before you push. If a hook or a deadline forces a commit,
+commit **without pushing**, or accept that the round is spent and say so on the PR rather than
+claiming the in-flight findings still apply. They do not; they were never delivered.
+
+---
+
 ## Deploy-state truth
 
 | Question | Command | Meaning |

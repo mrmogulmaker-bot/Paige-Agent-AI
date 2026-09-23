@@ -293,18 +293,28 @@ test("mutation and external-effect capabilities cannot declare read_only risk", 
 // parsed is what the runtime actually holds. This process can: it runs under the TypeScript register
 // hook, so both representations are in scope here and nowhere else.
 //
-// Why that is worth a test rather than an assumption — and these shapes were MEASURED against
-// `parsePolicy` rather than guessed, because the first version of this comment guessed and was wrong.
-// The pattern is skipped by: a single-quoted reason, a template-literal reason, a camelCase or
-// hyphenated key (it wants `[a-z0-9_]`), and an inline comment between the tuple's elements. It
-// handles fine: a tuple wrapped across lines (its `\s*` matches newlines — this comment previously
-// claimed the opposite) and a reason containing an escaped quote.
-// The consequence of any skipped shape is the part that matters: the lint under-counts, its duplicate
-// check goes blind on exactly that key, and nothing notices, because the count it prints is
-// self-consistent with the subset it managed to read. A camelCase key is the likeliest real version —
-// a new action named `dealCreate` instead of `deal_create` would simply not be governed by that guard,
-// silently. Same failure shape as the `MUTATION_VERB` blind spot removed in #1383: a guard
-// confidently reporting on less than it thinks it sees.
+// Why that is worth a test rather than an assumption — MEASURED against `parsePolicy`, because an
+// earlier version of this comment guessed and was wrong, and a later one was incomplete in a way
+// that mattered.
+//
+// THE HOLE A REVIEWER FOUND, and it is the reason this comment is worth reading: this cross-check
+// used to pass on the exact defect it exists to catch. A duplicate key whose reason used single
+// quotes was skipped by the parser, so `parsed.length` lost one — and the runtime map folded the
+// duplicate into one key, so `mutatingTools().size` lost one as well. The two losses cancelled, the
+// equality held, and BOTH this test and `action-risk-lint` exited 0 on a table containing a silent
+// duplicate. Two blind spots that cancel are worse than either alone, because the result is a tick.
+// Reproduced with a second `crm_create_contact` tuple before being fixed.
+//
+// What changed: `parsePolicy` now accepts any quoting style TypeScript does (matched per position
+// by back-reference, so `"x'` still does not parse), and `action-risk-lint` carries a
+// shape-agnostic tuple counter whose disagreement with the parser is itself a failure. So a shape
+// the parser cannot read — a camelCase or hyphenated key, an inline comment between elements —
+// no longer vanishes; it fails loudly and names itself. A tuple wrapped across lines parses fine
+// (`\s*` matches newlines).
+//
+// This test remains the only place the two REPRESENTATIONS meet. `action-risk-lint` is plain `.mjs`
+// over source text and can compare its parse against a count of the same text; only this process,
+// under the register hook, can compare it against what the runtime module actually holds.
 test("every tuple in the policy source survives into the runtime map", () => {
   const source = readFileSync(
     join(HERE, "..", "..", "supabase", "functions", "_shared", "action-risk.ts"),
