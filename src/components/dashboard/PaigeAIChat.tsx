@@ -61,6 +61,10 @@ import {
   type ComposerRequestTicket,
 } from "@/lib/paigeComposerScopeState";
 
+// Phase 1a / INT-180 relief: keep this exactly symmetric with paige-ai-chat's
+// server budget. The durable-work envelope remains the real disconnect/retry fix.
+const PAIGE_INTERACTIVE_TURN_BUDGET_MS = 360_000;
+
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
 type QueuedApproval = { id: string; summary: string; category: string; contact_id: string | null };
 // REMOVED 2026-09-02 with the channel they described: `PipelineConfirmedAction` and
@@ -963,7 +967,7 @@ const PaigeAIChatInner = ({
       if (!ticketAccepted(requestTicket)) return;
       abortActiveRequest();
       setConnectionIssue("timeout");
-    }, 45_000) : null;
+    }, PAIGE_INTERACTIVE_TURN_BUDGET_MS) : null;
     const assistantId = safeUuid();
     const assistantTs = Date.now();
 

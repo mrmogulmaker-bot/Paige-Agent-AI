@@ -115,6 +115,11 @@ import { resolveActiveMarketplaceTenant, retainActiveMarketplaceTenant } from ".
 // so the Studio funnel tools (growth_funnel_generate/build/publish) never went live. This
 // no-op comment forces a re-detect so the already-merged tool code deploys. Safe to remove.
 
+// Phase 1a / INT-180 relief: the production project is on the paid 400s
+// wall-clock tier. Keep 40s of platform headroom and keep this exactly symmetric
+// with PaigeAIChat's local fence. Durable work still needs the envelope.
+const PAIGE_INTERACTIVE_TURN_BUDGET_MS = 360_000;
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -12960,7 +12965,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // Bounded multi-round agentic loop. Round 0 reuses the first call already
       // issued above; each later round re-asks WITH tools so Paige can chain
       // actions, stopping on a natural (tool-less) reply or a safety bound.
-      const MAX_ROUNDS = 5, MAX_TOTAL_TOOL_CALLS = 12, WALL_CLOCK_MS = 45_000;
+      const MAX_ROUNDS = 5, MAX_TOTAL_TOOL_CALLS = 12;
+      const WALL_CLOCK_MS = PAIGE_INTERACTIVE_TURN_BUDGET_MS;
       // deep_research runs a full multi-hop investigation (its own ~60s clock) inside a
       // single tool call, so it counts as 3 against the turn's call budget — this keeps
       // two heavy deep runs from stacking in one turn while quick calls stay cheap.
