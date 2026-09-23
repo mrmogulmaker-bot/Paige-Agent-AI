@@ -2727,6 +2727,14 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
   2. **A cross-check between two derived counts can cancel.** Before trusting "these two numbers agree",
      ask what makes each number *smaller* and whether one defect can do both. Prefer comparing against
      something that cannot shrink for the same reason.
+     **This rule earned a second instance in the same PR, which is why it is stated generally.** The
+     `trunk-signal.md` procedure for "is this failing test run inherited?" said to compare the failing
+     COUNTS (5 files / 20 tests) and check that no file in your diff appears. Review showed that
+     misattributes a regression two ways: Vitest reports the test FILE, not the source files it reads
+     (`settings.rendered-copy.test.tsx` reads `SoloApp.tsx` directly, so a `SoloApp` change alters that
+     failure while the file list and the aggregate are unchanged), and one fixed baseline assertion plus
+     one newly broken one preserves both numbers. Same shape as the lint bug, in prose instead of code,
+     written by the same author in the same change. **Compare the twenty failing test NAMES.**
   3. **A backstop written to cure a disease can carry it.** The line counter was added *because* the
      parser had a blind spot, and it had the same blind spot. Ask of any backstop: does this fail
      independently of the thing it is backing up?

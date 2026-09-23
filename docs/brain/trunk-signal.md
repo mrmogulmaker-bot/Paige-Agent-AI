@@ -34,7 +34,7 @@ called `ci:tsc`, and there is none called plain `Vercel` either.
 | Check | State on `main` | Verdict | How to confirm it is not yours |
 |---|---|---|---|
 | **`verify`** | RED — fails on exactly one step, `npm run test` | **Inherited.** Tracked as **#1372**. | The five failing files are all under `src/` (listed below). If your diff touches none of them and none of their imports, it is not yours. |
-| **`github-advanced-security`** | **FLAPPING** — mostly red, green perhaps a quarter of the time. Re-count rather than trust this line; the number moves within hours. | **Not diagnostic, and NOT a licence to ignore it.** | You cannot conclude anything from it either way — see the section below before you dismiss one. |
+| **`github-advanced-security`** | **FLAPPING** — mostly red, green perhaps a quarter of the time. Re-count rather than trust this line; the number moves within hours. | **Not diagnostic, and NOT a licence to ignore it.** | **Match the failure SIGNATURE in the job log before dismissing it** — see the section below. A red whose signature you have not checked is an uninvestigated failure, not an inherited one. |
 | `ci:tsc` — **a step inside `verify`, not a check of its own** | GREEN — *"no new type errors (baseline 12, current 12)"* | **Passing.** It is a ratchet, not a zero-error gate. | If it goes red, `verify` goes red and it is yours. Note the mechanism before you read the number — see below. |
 | **`audit`** | GREEN | — | A red here is yours. |
 | **`Validate UI delivery evidence`** | GREEN | — | Red means a recognised UI source changed without an evidence record. Usually yours. |
@@ -70,9 +70,59 @@ The five files:
 One of the twenty asserts on the **text of** `src/solo/SoloApp.tsx` rather than on behaviour; the run
 also carries an undici/WebSocket `Uncaught Exception` in the harness. Both are inside those files.
 
-**To confirm a failure is inherited rather than yours:** run `npm run test`, check that the failing
-counts are still 5 and 20, and grep the full output for any file your diff touches. If the failing
-counts match and your files are absent, it is #1372.
+**To confirm a failure is inherited rather than yours: compare the failing TEST NAMES, not the
+counts.** Run `npm run test` and diff the `FAIL` lines against the twenty below. Matching counts are
+not proof, for two reasons that both come down to the same thing — a count is a derived number and two
+changes can cancel inside it:
+
+1. **Vitest reports the test FILE, not the source files it reads.** `settings.rendered-copy.test.tsx`
+   reads `src/solo/SoloApp.tsx` directly, so a change to `SoloApp.tsx` can alter that failure while the
+   output still names the same test file, your diff's paths are still absent, and the aggregate is
+   still 5/20.
+2. **One fixed baseline assertion plus one newly broken one preserves both numbers.**
+
+So "5 and 20, and none of my files appear" can be true of a run containing your regression. The
+twenty names are the signature; the counts are a smoke test on the signature.
+
+<details>
+<summary><b>The twenty failing tests</b> — measured on <code>main</code> @ <code>7ebdd9fea</code> (14 · 1 · 3 · 1 · 1)</summary>
+
+`src/solo/SoloGamePlanWorkspace.test.tsx` › *Business Game Plan owner-complete vertical* ›
+- preserves Set your plan and replaces generic system/activity material with Plan in Motion
+- opens the plan editor and persists all owner-direction fields
+- opens the one Paige workspace with tenant-stamped Business Game Plan context
+- shows only truthful card fields and a blocker only for a blocked play
+- fails closed when Mission reads are forbidden
+- reviews and revises a canonical Strategic Play
+- approves a Paige-proposed draft through an explicit owner action
+- declines a Paige proposal with a preserved reason
+- runs the Pause action only after the owner supplies its truthful reason
+- runs the Blocked action only after the owner supplies its truthful reason
+- runs the Complete action only after the owner supplies its truthful reason
+- resumes a paused play
+- archives a completed play without erasing its verified outcome
+- contains the drawer, closes on Escape, and restores the opener focus
+
+`src/solo/resend-receipt-handler.test.ts` › *verified shared receipt boundary* ›
+- fails closed when signing is unconfigured
+
+`src/solo/settings.connections-actions.test.tsx` › *Sending domains can be operated, not only listed* ›
+- re-reads DNS for a listed domain
+- offers 'make default' only for a VERIFIED domain
+- surfaces a rejected domain write instead of a generic success
+
+`src/solo/settings.rendered-copy.test.tsx` › *Solo Settings rendered customer copy* ›
+- opens Calendars when the entry says the link came from Calendar
+
+`src/components/tenant-shell/TenantCommandCenterShell.ownership.test.tsx` › *tenant shell owns one PAIGE surface* ›
+- derives the Solo workspace claim from server-resolved tenant ownership
+
+</details>
+
+**If a name appears that is not on that list, it is yours — whatever the counts say.** And if you
+changed anything under `src/solo/` or `src/components/tenant-shell/`, do not rely on this list at all:
+run the suite on your merge-base and on your head and diff the two, because those are the trees these
+files read from.
 
 **Do not pipe the run through `tail`.** The summary line is at the end, so a tail looks authoritative
 while hiding the other failures — that mistake was made twice in one session. Redirect the whole run
@@ -196,11 +246,22 @@ measured and what was merely handed down — including when this file was the on
   run-history listing for it gives you a current one in a single call. A rate this file states is
   stale the moment a batch of runs lands, which is exactly why the table's row says *re-count*.
 
-  **What you may conclude from a red here: nothing, in either direction.** It fails on commits
-  containing no code at all — `1268f0a49` was two Markdown files, `399756150` was one paragraph of
-  one Markdown file — so a red is not about your diff. But it succeeds about a quarter of the time,
-  so a red is *not* proof the check is simply broken either. Do not let it block you. **Do not let it
-  reassure you.** If you need a real security signal on a change, get one from something else.
+  **What you may conclude from a red here, and the condition on it.** The measured failure — agent
+  dies at model acquisition, empty check-run output — is not about your diff: it fired on commits
+  containing no code at all (`1268f0a49` was two Markdown files, `399756150` was one paragraph of
+  one Markdown file). But that conclusion is **conditional on the signature matching**, and this file
+  previously stated it unconditionally, which was wrong in a way worth naming: *"a red here is not
+  yours"* would misclassify a genuine finding, or any other failure mode, as inherited.
+
+  **So the check is: open the failed job's log and confirm it matches.** `CAPIError: 400 The requested
+  model is not supported`, the job exiting before any scan, and an empty `output` on the check run. If
+  it matches, it is the vendor fault above and there is nothing to port. **If it does NOT match, you
+  have an uninvestigated failure — including possibly a real one — and the rest of this row does not
+  apply to it.**
+
+  It also succeeds about a quarter of the time, so a red is not proof the check is simply broken.
+  Do not let it block you. **Do not let it reassure you.** If you need a real security signal on a
+  change, get one from something else.
 
   **The cause is now MEASURED, not attributed — and it is worse than "flaky".** Read from the failed
   job's own log on head `676aa27da`:
@@ -256,3 +317,9 @@ Update this file in the same change that changes what it says. Specifically:
 - A new inherited red appears → add it with its cause, or with `⚠ ATTRIBUTED` if the cause is a
   handed-down explanation rather than something measured.
 - An attributed row gets independently confirmed → promote it and cite the check that did it.
+- **A failing test is fixed, added, or renamed → update the twenty names.** That list is the signature
+  a lane diffs against; a stale name there sends someone hunting a regression that does not exist, and
+  a missing one lets a real regression read as inherited. Counts alone are not a substitute — that was
+  this file's own mistake, corrected in review.
+- **The security check starts failing a DIFFERENT way → say so.** Its row is conditional on the
+  `CAPIError: 400` signature. A new failure mode wearing the same red X is a new row, not this one.
