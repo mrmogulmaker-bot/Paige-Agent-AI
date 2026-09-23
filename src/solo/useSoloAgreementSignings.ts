@@ -25,21 +25,27 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
- * Mirrors `tenant_agreement_signings_signature_state_check`, plus `unrecognised` for a value this
- * build has no reading for. The eighth member is not a state anything can record: it is what the
- * surface SAYS when a later migration widens the CHECK and this deployment has not caught up.
- * Coercing it to `draft` would assert that nothing has been sent when something may have been —
- * the same rule `AgreementStatus` and `OrderStatus` already follow.
+ * Mirrors `paige_agreements.status`'s CHECK, plus `unrecognised` for a value this build has no
+ * reading for. That last member is not a state anything can record: it is what the surface SAYS
+ * when a later migration widens the CHECK and this deployment has not caught up. Coercing it to
+ * `draft` would assert that nothing has been sent when something may have been — the same rule
+ * `AgreementStatus` and `OrderStatus` already follow.
+ *
+ * `partially_signed` is the engine's, not this lane's invention: the record supports several
+ * signers with an explicit signing order, so a document can genuinely be part-way. Reading it as
+ * `sent` — which this surface did before the records were reconciled — would tell an owner nobody
+ * had signed when somebody had.
  *
  * There is deliberately no `signed` (owner ruling 2), and no `paid`, `invoiced` or `delivered`
  * (§38) — a signature observes none of those.
  */
 export type SignatureState =
-  | "draft" | "sent" | "viewed" | "completed" | "declined" | "voided" | "expired" | "unrecognised";
+  | "draft" | "sent" | "viewed" | "partially_signed"
+  | "completed" | "declined" | "voided" | "expired" | "unrecognised";
 const SIGNATURE_STATES: readonly SignatureState[] =
-  ["draft", "sent", "viewed", "completed", "declined", "voided", "expired"];
+  ["draft", "sent", "viewed", "partially_signed", "completed", "declined", "voided", "expired"];
 
-/** Mirrors `tenant_agreement_signings_document_source_check`. */
+/** Mirrors `paige_agreements.body_source`'s CHECK. */
 export type DocumentSource = "tenant_upload" | "paige_draft" | "tenant_template";
 export const DOCUMENT_SOURCES: readonly DocumentSource[] =
   ["tenant_upload", "paige_draft", "tenant_template"];
@@ -162,14 +168,18 @@ export type SigningsState = {
     loadedTenantId: string | null,
   ) => Promise<SigningWriteResult>;
   /**
-   * A short-lived link to the SEALED copy of a signed document.
+   * An openable address for the SEALED copy of a signed document.
    *
    * This exists because without it an owner can see that a client signed and cannot obtain the
    * thing they signed — the §70 test is a person finishing the job, and "it says Completed" is not
    * finishing it.
+   *
+   * It takes the SIGNING ID, not a storage path: the bytes are streamed by `agreement-document`,
+   * which resolves the record itself, so the caller never handles an object key. The returned url
+   * is an object URL over the fetched bytes and is local to this browser.
    */
   readonly signedCopyUrl: (
-    path: string,
+    signingId: string,
     loadedTenantId: string | null,
   ) => Promise<SignedCopyResult>;
 };
@@ -281,46 +291,54 @@ export function useSoloAgreementSignings(): SigningsState {
   }, []);
 
   /**
-   * A signed URL for the sealed copy, minted server-side and short-lived.
+   * The sealed copy, STREAMED through the engine's own endpoint rather than addressed directly.
    *
-   * The bucket is PRIVATE, so a stored path is not a readable address — the browser cannot fetch
-   * one directly and must ask for a signed URL, which the storage policy grants only to a member
-   * of the workspace whose id is the path's first segment.
+   * This lane originally minted a 120-second Supabase signed URL against the storage object. The
+   * engine lane refused that mechanism and was right to: the object key is literally
+   * `${tenant_id}/${agreement_id}/...`, so the URL discloses both ids to whoever receives it, and
+   * — the part that actually matters on a legal document — a minted URL keeps resolving after the
+   * agreement is VOIDED, because storage knows nothing about the record's state. A voided
+   * agreement whose sealed copy still downloads is the fact a dispute turns on.
    *
-   * That prefix is re-checked HERE as well, and the check is not redundant with the policy. The
-   * path reaches this from a row the surface is holding, and a row can be stale by a workspace
-   * switch; minting against the switched-to workspace would either fail confusingly or, if the
-   * caller belongs to both, hand back another workspace's document. Refusing locally keeps that
-   * from ever being attempted (the same reasoning `uploadDocument` records for its own prefix).
+   * So the bytes come through `agreement-document`, which re-resolves the agreement, applies the
+   * workspace's own session as its authority, and stops serving when the record says stop. The
+   * §70 capability is unchanged — an owner can still obtain what their client signed — only the
+   * route to it is.
+   *
+   * The WORKSPACE-SWITCH guard survives the change and is still ours, because the endpoint cannot
+   * see it: the id reaches this from a row the surface is holding, and that row can be stale by a
+   * switch. Re-checking identity across the await keeps a document from opening under a workspace
+   * the person is no longer looking at.
    */
   const signedCopyUrl = useCallback(async (
-    path: string,
+    signingId: string,
     loadedTenantId: string | null,
   ): Promise<SignedCopyResult> => {
     const expected = loadedTenantId ?? activeTenantId;
     if (!expected) {
       return { ok: false, message: "This workspace could not be resolved, so no copy was opened." };
     }
-    const clean = typeof path === "string" ? path.trim() : "";
-    if (!clean || !clean.startsWith(`${expected}/`)) {
-      // One sentence for "no path recorded" and "not this workspace's path" alike.
+    const id = typeof signingId === "string" ? signingId.trim() : "";
+    if (!id) {
       return { ok: false, message: "That signed copy is not available from this workspace." };
     }
     const openedIdentity = identity.current;
     try {
-      const { data, error } = await supabase.storage
-        .from("tenant-agreements")
-        .createSignedUrl(clean, 120);
+      const { data, error } = await supabase.functions.invoke(
+        `agreement-document?agreementId=${encodeURIComponent(id)}`,
+        { method: "GET" },
+      );
       if (identity.current !== openedIdentity) {
         return { ok: false, message: "Your workspace changed. Reopen this document in the intended workspace." };
       }
-      // §13: a link is only a link when the server returned one. An errored or empty answer is
-      // reported as a failure rather than handed back as an address that goes nowhere.
-      if (error || !data?.signedUrl) {
-        console.error("[signings] signed copy url failed", error);
+      // §13: a document is only a document when bytes actually arrived. The endpoint answers a
+      // refusal as JSON with the same shape for every reason it declines, so anything that is not
+      // a non-empty Blob is reported as a failure rather than opened as an empty tab.
+      if (error || !(data instanceof Blob) || data.size === 0) {
+        console.error("[signings] sealed copy fetch failed", error);
         return { ok: false, message: "That signed copy could not be opened just now. Nothing was changed; try again in a moment." };
       }
-      return { ok: true, url: data.signedUrl };
+      return { ok: true, url: URL.createObjectURL(data) };
     } catch {
       return { ok: false, message: "That signed copy could not be opened just now. Nothing was changed; try again in a moment." };
     }
@@ -473,11 +491,20 @@ export function useSoloAgreementSignings(): SigningsState {
 
         const [signingResponse, roleResponse] = await Promise.all([
           supabase
-            .from("tenant_agreement_signings" as never)
+            .from("paige_agreements" as never)
+            // The engine's column names, not this lane's. `commercial_terms_id` is the link to the
+            // engagement on `tenant_client_agreements`, which is what keeps owner ruling 1 true:
+            // the signature state below is this row's `status`, and the COMMERCIAL state stays over
+            // there, unread by this select and unchanged by anything on this surface.
+            //
+            // The signer is EMBEDDED rather than fetched separately. `authenticated` holds SELECT
+            // on both tables and `token_hash` is column-revoked, so the join returns what a
+            // workspace may see and nothing that would let it forge a link.
             .select(
-              "id,contact_id,agreement_id,document_title,document_source,document_path," +
-              "signature_state,expires_at,sent_at,viewed_at,completed_at,declined_at,voided_at," +
-              "decline_reason,signer_name,signed_pdf_path,created_at,updated_at",
+              "id,contact_id,commercial_terms_id,title,body_source,document_path,status," +
+              "expires_at,sent_at,completed_at,declined_at,voided_at,sealed_storage_key," +
+              "created_at,updated_at," +
+              "paige_agreement_signers(full_name,decline_reason,first_viewed_at,signing_order)",
             )
             // NOT redundant with RLS. `is_platform_owner()` is a disjunct in the isolation policy,
             // so a platform operator acting inside a tenant would otherwise see every signing on the
@@ -514,26 +541,41 @@ export function useSoloAgreementSignings(): SigningsState {
         const rows = (signingResponse.data ?? []) as unknown as Record<string, unknown>[];
         const signings: AgreementSigning[] = rows.map((row) => {
           // A value this build cannot read is NAMED, never coerced into a state it might not be.
-          const stored = narrow(row.signature_state, SIGNATURE_STATES) ?? "unrecognised";
+          const stored = narrow(row.status, SIGNATURE_STATES) ?? "unrecognised";
           const expiresAt = toText(row.expires_at);
+          // The counterparty. The engine supports several signers in an explicit order, so the one
+          // this single-counterparty surface speaks for is the FIRST by that order — not whichever
+          // row the database happened to return. `decline_reason` is taken from whoever actually
+          // declined rather than from the first signer, because on a multi-party document those
+          // need not be the same person, and attributing one signer's reason to another is a lie
+          // the surface would state confidently. `viewed` is the EARLIEST view: the question the
+          // column answers is "has anybody opened this yet", not "did signer one open it".
+          const signers = Array.isArray(row.paige_agreement_signers)
+            ? [...(row.paige_agreement_signers as Record<string, unknown>[])]
+                .sort((a, b) => Number(a?.signing_order ?? 0) - Number(b?.signing_order ?? 0))
+            : [];
+          const firstViewed = signers
+            .map((x) => toText(x?.first_viewed_at))
+            .filter((x): x is string => Boolean(x))
+            .sort()[0] ?? null;
           return {
             id: String(row.id),
             contactId: String(row.contact_id),
-            agreementId: toText(row.agreement_id),
-            documentTitle: toText(row.document_title) ?? "Untitled document",
-            documentSource: narrow(row.document_source, DOCUMENT_SOURCES),
+            agreementId: toText(row.commercial_terms_id),
+            documentTitle: toText(row.title) ?? "Untitled document",
+            documentSource: narrow(row.body_source, DOCUMENT_SOURCES),
             documentPath: toText(row.document_path),
             signatureState: stored,
             displayState: readState(stored, expiresAt),
             expiresAt,
             sentAt: toText(row.sent_at),
-            viewedAt: toText(row.viewed_at),
+            viewedAt: firstViewed,
             completedAt: toText(row.completed_at),
             declinedAt: toText(row.declined_at),
             voidedAt: toText(row.voided_at),
-            declineReason: toText(row.decline_reason),
-            signerName: toText(row.signer_name),
-            signedPdfPath: toText(row.signed_pdf_path),
+            declineReason: signers.map((x) => toText(x?.decline_reason)).find(Boolean) ?? null,
+            signerName: toText(signers[0]?.full_name),
+            signedPdfPath: toText(row.sealed_storage_key),
             createdAt: toText(row.created_at),
             updatedAt: toText(row.updated_at),
           };

@@ -103,6 +103,7 @@ const SIGNATURE_STATE = {
   draft: { label: "Not sent", tone: "opportunity" },
   sent: { label: "Sent", tone: "warn" },
   viewed: { label: "Opened", tone: "warn" },
+  partially_signed: { label: "Partly signed", tone: "warn" },
   completed: { label: "Completed", tone: "ok" },
   declined: { label: "Declined", tone: "bad" },
   voided: { label: "Stopped", tone: "n" },
@@ -1549,7 +1550,7 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
    */
   const openSignedCopy = async (signing) => {
     setSuccess("");
-    const result = await signings.signedCopyUrl(signing.signedPdfPath, signings.tenantId);
+    const result = await signings.signedCopyUrl(signing.id, signings.tenantId);
     if (!result.ok) { setSuccess(result.message); return; }
     window.open(result.url, "_blank", "noopener,noreferrer");
   };
@@ -1886,7 +1887,12 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
       <section className="so-band so-terms">
         <div className="so-band-head">
           <h3>Agreements and terms</h3>
-          {agreements.phase === "ready" && agreements.agreementsReadable && <Pill tone={termRows.length ? "ok" : "opportunity"}>{termRows.length ? "Records available" : "Nothing recorded yet"}</Pill>}
+          {/* "Nothing recorded yet" is a CLAIM about the book, and it is only true when both halves
+              were actually read. An agreement that carries no price exists ONLY as a document
+              record, so when that read failed the band cannot know whether the book is empty —
+              and saying it is, is the false green this pill used to state confidently. Having
+              records is still sayable either way, because the ones in hand are real. */}
+          {agreements.phase === "ready" && agreements.agreementsReadable && (termRows.length > 0 || signingsReadable) && <Pill tone={termRows.length ? "ok" : "opportunity"}>{termRows.length ? "Records available" : "Nothing recorded yet"}</Pill>}
           {truth && <span className={`campaigns-truth campaigns-truth--${String(truth[0]).toLowerCase()}`}>{truth[0]}</span>}
           {agreements.canManage
             ? <button className="btn btn-s btn-p" onClick={() => { setEditing(null); setEditor("agreement"); }}>Record terms</button>
@@ -1927,6 +1933,19 @@ export function SalesOps({ setDetail, deals = [], dealsPhase = "ready", stages =
           <p className="so-absent">
             Client terms are not readable at your access level. That is different from there being
             none, so nothing is shown rather than an empty list that would read as zero.
+          </p>
+        ) : termRows.length === 0 && signings.phase === "error" ? (
+          // BEFORE the empty copy, deliberately. Every branch below this one is keyed on
+          // `agreements.*` alone, so a healthy-and-empty client-terms read used to reach the
+          // "Nothing recorded yet" copy even when the DOCUMENT read had failed outright. An
+          // agreement with no offer and no price (owner ruling 3 — an NDA, a scope letter) has no
+          // commercial row at all and lives only in that record, so exactly the rows this band
+          // could not see are the ones it was telling the owner did not exist.
+          <p className="so-absent" role="alert">
+            Your client terms read fine and none are recorded — but your documents could not be
+            read, so this is unknown rather than empty. An agreement that carries no price lives
+            only in that record, and one may be there.{" "}
+            <button className="btn btn-s" onClick={signings.retry}><Ic.arrow size={13} />Retry documents</button>
           </p>
         ) : termRows.length === 0 ? (
           // The prerequisites are named plainly, and each points at the surface that fixes it —

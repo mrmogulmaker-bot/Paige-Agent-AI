@@ -1040,7 +1040,12 @@ describe("Agreement documents — signature state, separate from commercial stat
     const button = buttonSaying("Download the signed copy") as HTMLButtonElement;
     expect(button).toBeDefined();
     await act(async () => { button.click(); });
-    expect(harness.signings.signedCopyUrl).toHaveBeenCalledWith("tenant-1/signed/s1-1.pdf", "tenant-1");
+    // RE-POINTED, not rewritten away: the sealed copy is now streamed by `agreement-document`,
+    // which resolves the record itself, so the surface hands it the SIGNING ID and never an
+    // object key. Passing the storage path here would be passing the thing the engine lane
+    // refused to expose — the key discloses the tenant and agreement ids and keeps resolving
+    // after a void.
+    expect(harness.signings.signedCopyUrl).toHaveBeenCalledWith("s1", "tenant-1");
     expect(opened).toEqual(["https://storage.test/signed.pdf?token=x"]);
     spy.mockRestore();
   });
