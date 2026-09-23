@@ -62,8 +62,11 @@ INSERT INTO public.mcp_connections (connection_id, tenant_id, provider_key, labe
 -- LEGACY registry: the SAME zapier (must be deduped, gateway wins) and an n8n the backfill never
 -- projected (must still appear — this is the anti-lie case).
 INSERT INTO public.tenant_mcp_connections (tenant_id, provider, label, server_url_ct, auth_token_ct, auth_token_last4, transport, auth_kind, enabled, status) VALUES
+  -- auth_kind MUST be 'oauth' (or 'url') for zapier — tenant_mcp_connections_provider_auth_chk
+  -- (20261201000000:12). A first draft used 'bearer' here, which the schema forbids, and CI is
+  -- where that surfaced; the fixture now models a shape the platform can actually hold.
   ('f1a00000-0000-0000-0000-0000000000b1', 'zapier', 'Zapier (legacy, stale)',
-     public.platform_encrypt('https://old.zapier.example/rpc'), public.platform_encrypt('tok-zapier-legacy'), 'gacy', 'http', 'bearer', true, 'connected'),
+     public.platform_encrypt('https://old.zapier.example/rpc'), public.platform_encrypt('tok-zapier-legacy'), 'gacy', 'http', 'oauth', true, 'connected'),
   ('f1a00000-0000-0000-0000-0000000000b1', 'n8n', 'My n8n',
      public.platform_encrypt('https://n8n.isurf.test/mcp'),     public.platform_encrypt('tok-n8n-unprojected'), 'cted', 'http', 'bearer', true, 'connected');
 
