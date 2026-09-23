@@ -29,13 +29,13 @@ Find your red check. If it is here and your symptom matches, it is not yours.
 | Check | State on `main` | Verdict | How to confirm it is not yours |
 |---|---|---|---|
 | **`verify`** | RED — fails on exactly one step, `npm run test` | **Inherited.** Tracked as **#1372**. | The five failing files are all under `src/` (listed below). If your diff touches none of them and none of their imports, it is not yours. |
-| **`github-advanced-security`** | RED on every PR head | **Not a gate.** | Fails identically regardless of diff content, including on docs-only changes. Absent from `main` commits entirely — it runs on PRs only. |
+| **`github-advanced-security`** | **FLAPPING** — 29 failure / 11 success across the last 40 runs (~27% green) | **Not diagnostic, and NOT a licence to ignore it.** | You cannot conclude anything from it either way — see the section below before you dismiss one. |
 | **`ci:tsc`** | GREEN — *"no new type errors (baseline 12, current 12)"* | **Passing.** It is a ratchet, not a zero-error gate. | If it goes red, it is yours: it only fails when the count **rises** above 12. |
 | **`audit`** | GREEN | — | A red here is yours. |
 | **`Validate UI delivery evidence`** | GREEN | — | Red means a recognised UI source changed without an evidence record. Usually yours. |
 | **`web-fetch-hardening-smoke`** | GREEN | — | A red here is yours. |
 | **`Supabase Preview`** | SKIPPED | — | Expected. Not a signal. |
-| **`Vercel` / `Vercel Preview Comments`** | GREEN | — | A red here is yours. |
+| **`Vercel Preview Comments`** | GREEN | — | A red here is yours. Note Vercel also reports through commit STATUSES, which the check-runs API does not return — so a Vercel signal you can see in the UI may not appear in a check-run listing. |
 
 ---
 
@@ -76,9 +76,17 @@ Both are correct; they measure different things.
 
 | Command | Exit | Meaning |
 |---|---|---|
-| `npm run ci:tsc` | **0** | The ratchet CI gates on. Compares the current error count against a recorded baseline of **12**. Passes while the count does not rise. |
+| `npm run ci:tsc` | **0** | The ratchet CI gates on. Compares a **per-signature multiset** against `scripts/ci/tsc-baseline.txt` — not a total. Baseline currently sums to **12**. |
 | `npx tsc --noEmit -p tsconfig.app.json` | **2** | The raw compiler. Reports the 12 baseline errors themselves, across 10 files, **all under `src/`**. |
 | `npx tsc --noEmit` (no `-p`) | **0**, zero output | **Checks nothing. Never use it to prove a typecheck.** |
+
+**"If it goes red, it is yours" is correct — but not for the reason a total-count reading suggests.**
+`tsc-ratchet.mjs` normalises each error to a line/column-independent signature and compares
+signature counts (`scripts/ci/tsc-ratchet.mjs:74`, `if (curCount > baseCount)`). So a change that
+**fixes one baseline error and introduces a different one holds the total at 12 and still fails** —
+which is the behaviour you want, and is not what "the count must not rise" would predict. The
+baseline file may only shrink, guarded in `ci.yml`, so a PR cannot whitelist a new error by appending
+to it.
 
 That last row is the trap, and here is the mechanism so nobody has to take it on faith: root
 `tsconfig.json` has `"files": []` and carries only project **references** to `tsconfig.app.json` and
@@ -122,26 +130,44 @@ lane and once to the coordinator.
 
 ---
 
-## Attributed, not independently verified
+## Where this file's confidence ends
 
-Two rows above rest on someone else's word. They are recorded so a future session knows the
-difference, not because they are doubted.
+One row below rests on someone else's word, and one row is a correction of this file's own earlier
+mistake. Both are here so a future session knows the difference between what was measured and what
+was believed.
 
-- **`⚠ ATTRIBUTED` — the cause of `github-advanced-security`.** It is described as GitHub's own agent
-  failing inside its own runtime. That explanation came from the program coordinator; what was
-  independently observed here is only the *behaviour*, and the behaviour is enough to treat it as
-  not-a-gate. The cause is not confirmed from this side.
+- **`github-advanced-security` — measured, and NOT what this file first claimed.** It is
+  **flapping**, not constantly red. Counted from its own run history (workflow `325162554`,
+  `dynamic/agents/github-advanced-security`) over the last 40 runs: **29 failure, 11 success** —
+  roughly one green in four. It flips on the same branch within minutes: `claude/agreements-blank-pdf`
+  ran **success at 21:06:32Z**, then failure at 21:12, 21:17 and 21:31 on 2026-09-23. It was green
+  three times in the half hour before this very file's first commit went red.
 
-  The behavioural half is cited, not asserted. The strongest single data point: it failed on
-  `1268f0a49`, a head whose entire diff was two Markdown files under `docs/brain/` — no code, no
-  schema, no workflow. A security scanner that fails on a commit containing no code is not reporting
-  on the commit. It failed identically on four other heads across two other PRs the same day
-  (`b1c6db230` and `f496701f3` on #1383; `12432f246` and `6525ffa8c` on #1380), and it does not appear
-  in the check list of any `main` commit — it runs on PRs only.
+  **What you may conclude from a red here: nothing, in either direction.** It fails on commits
+  containing no code at all — `1268f0a49` was two Markdown files, `399756150` was one paragraph of
+  one Markdown file — so a red is not about your diff. But it succeeds about a quarter of the time,
+  so a red is *not* proof the check is simply broken either. Do not let it block you. **Do not let it
+  reassure you.** If you need a real security signal on a change, get one from something else.
 
-  Those five are heads whose check results were observed directly. Other heads that day almost
-  certainly failed it too, but they are not listed, because "almost certainly" is the thing this file
-  is built to keep out.
+  **The `⚠ ATTRIBUTED` part is only the cause.** It is described as GitHub's own agent failing inside
+  its own runtime; that came from the program coordinator and is not confirmable from here. The
+  intermittency is consistent with it, but consistent-with is not evidence-for.
+
+  **How this file got it wrong, recorded because the method is the point.** The first version of this
+  row said "RED on every PR head" and "fails identically regardless of diff content", and told every
+  future lane that a red here is never theirs. Five consecutive observed failures were generalised
+  into a rate. At a ~73% failure rate, five consecutive failures happens about a quarter of the time
+  by chance — so the sample was honest and the inference was not. Worse, the commit that was supposed
+  to fix this was titled *"cite the behaviour instead of asserting it"*, and hedged only the **cause**
+  while leaving both wrong behavioural claims standing in the table. An independent fact-check caught
+  it before merge.
+
+  **The rule that follows, for anyone maintaining this file: consecutive observations are not a rate.**
+  If you are about to write "always" or "every" about a check, count its runs. And the specific damage
+  this row would have done is the damage worth remembering — `tsc-ratchet.mjs`'s own header names it
+  from the other direction: *"a plain `tsc` gate would be red on every PR and everyone would learn to
+  ignore it — the exact failure a gate is meant to prevent."* A lookup table that says "a red here is
+  never yours" manufactures that outcome deliberately.
 - **`⚠ ATTRIBUTED` — that `verify` is not a required check.** Taken from an earlier lane's delivery-log
   row describing it that way. Branch-protection settings were not read directly. It has never blocked
   a merge in practice, but if that matters to a decision, check the setting rather than this line.
