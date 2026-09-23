@@ -1607,6 +1607,13 @@ console.log("\n— slice ③: approve (runApprove) —");
 
   // Remaining input-validation + lookup-failure branches (compliance coverage).
   check("approve rejects a malformed args_shape_hash (400 bad_args_shape)", (await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ argsShapeHash: "xyz" }))).body.error === "bad_args_shape");
+  // §13 (Codex P2) — an already-past or malformed `expires_at` must be REJECTED, not stored with a lying
+  // `approved: true` (verify_mcp_connection_approval would instantly reject the stored row as expired).
+  const pastExpiry = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ expiresAt: "2000-01-01T00:00:00Z" }));
+  check("approve rejects an already-past expires_at (400 expiry_in_past — never a lying approved:true)", pastExpiry.httpStatus === 400 && pastExpiry.body.error === "expiry_in_past", JSON.stringify(pastExpiry.body));
+  check("approve rejects a malformed expires_at (400 bad_expiry)", (await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ expiresAt: "not-a-date" }))).body.error === "bad_expiry");
+  const futureExpiry = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ expiresAt: "2099-01-01T00:00:00Z" }));
+  check("approve accepts a FUTURE expires_at → 200 approved, forwarded to the writer", futureExpiry.httpStatus === 200 && futureExpiry.body.approved === true, JSON.stringify(futureExpiry.body));
   const noEndpoint = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin({ secret: { configured: true, enabled: true, tenant_id: ATEN, endpoint_hash: "not-a-hash" } }), readToolPin: readToolPinOk }, inApprove());
   check("approve refuses a configured connection whose endpoint hash is unusable (409 no_endpoint)", noEndpoint.httpStatus === 409 && noEndpoint.body.error === "no_endpoint", JSON.stringify(noEndpoint.body));
   const v2Fail = await approveMod.runApprove({ userClient: makeApproveUser({ v2Err: { message: "v2 boom" } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());

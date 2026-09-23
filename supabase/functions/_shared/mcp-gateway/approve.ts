@@ -101,6 +101,15 @@ export async function runApprove(deps: ApproveDeps, input: ApproveInput): Promis
   if (argsShapeHash !== null && !HEX64_RE.test(argsShapeHash)) {
     return { httpStatus: 400, body: { error: "bad_args_shape" } };
   }
+  // §13 (Codex P2): an already-past `expires_at` is STORED by `set_mcp_connection_approval` (which has
+  // no future-check) but INSTANTLY rejected by `verify_mcp_connection_approval` as `approval_expired` —
+  // so approve would return `approved: true` for a consent that can never authorize a run (a lie the
+  // operator acts on). Reject a malformed or non-future expiry up front, so success is always truthful.
+  if (expiresAt !== null) {
+    const expiryMs = Date.parse(expiresAt);
+    if (!Number.isFinite(expiryMs)) return { httpStatus: 400, body: { error: "bad_expiry" } };
+    if (expiryMs <= Date.now()) return { httpStatus: 400, body: { error: "expiry_in_past" } };
+  }
 
   // 1. Tenant from the caller's JWT — never the body (§9).
   const { data: tenantId, error: tErr } = await userClient.rpc("current_user_tenant_id");
