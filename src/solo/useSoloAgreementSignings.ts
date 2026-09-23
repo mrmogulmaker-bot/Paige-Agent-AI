@@ -258,6 +258,11 @@ function safeWriteMessage(code?: string): string {
   // what the person just typed.
   if (code === "PGRST202" || code === "42883") return "Documents are not available on this workspace yet, so nothing was recorded. Your commercial terms are unaffected.";
   if (code === "42501") return "Your permission or workspace changed. Reopen this form with owner or admin access.";
+  // The one refusal on this surface that a retry can never clear: the stored document is not the
+  // uploaded file, and the columns holding it are write-once. Answering it with the generic
+  // "try again" below would be an instruction to loop forever, so the engine raises its own
+  // SQLSTATE for it and the copy names the only move that works.
+  if (code === "PA001") return "The document stored for this agreement is not the file that was uploaded, so no link was issued. Create a new agreement from that document and send that instead.";
   if (code === "22023" || code === "23514" || code === "22P02") return "Check the client, the document and the wording, then try again.";
   return "That could not be confirmed. Refresh and check your records before trying again.";
 }

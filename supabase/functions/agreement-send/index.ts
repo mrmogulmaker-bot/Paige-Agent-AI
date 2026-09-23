@@ -317,7 +317,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     console.error("[agreement-send] frozen document predates the uploaded-document fix", { agreementId, contentKey });
     return json({
       ok: false,
-      error: "This agreement was prepared before a defect was fixed, so the document on file is not the one you uploaded. Nothing was sent. Create a new agreement from the same document and send that instead.",
+      error: "The document stored for this agreement is not the file that was uploaded, so nothing was sent. Create a new agreement from that document and send that instead.",
     }, 409);
   }
 
