@@ -177,7 +177,6 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   ["crm_archive_company", "ordinary", "archives a company while preserving it for restoration"],
   ["crm_restore_company", "ordinary", "restores an archived company"],
   ["crm_update_deal", "ordinary", "edits reversible opportunity fields"],
-  ["crm_update_task", "ordinary", "edits reversible task fields"],
   ["crm_reschedule_task", "ordinary", "changes when a task is due"],
   ["crm_complete_task", "ordinary", "marks a task complete while retaining its history"],
   ["crm_reopen_task", "ordinary", "returns a completed task to active work"],
@@ -495,8 +494,47 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
  * invented tool name as classified. A Map has no prototype to walk, so an unknown key is genuinely
  * unknown — which is the whole basis of rule 1.
  */
-const RISK_BY_TOOL: ReadonlyMap<string, ActionRisk> = new Map(RISK.map(([t, r]) => [t, r]));
-const REASON_BY_TOOL: ReadonlyMap<string, string> = new Map(RISK.map(([t, , why]) => [t, why]));
+/**
+ * A DUPLICATE KEY CAN RAISE A CLASS, NEVER LOWER ONE.
+ *
+ * `RISK` is a hand-maintained array and `new Map(...)` let the LAST tuple for a key win in silence,
+ * so appending a second tuple for a key already present re-classified it with nothing to see. That
+ * was not theoretical: `crm_update_task` carried two tuples until this change. Both said `ordinary`,
+ * so nothing was actually mis-classified — but the crack was real, and it now sits under more weight
+ * than it used to. `classifyAction()` decides what may be declared through the capability kit, and it
+ * feeds `clampLaneByRisk()`, which forces `confirm` on an `auto` grant ONLY for `high`/`owner_only`.
+ * A silent `high` -> `ordinary` downgrade would therefore leave a high-risk action running unattended
+ * (§67/§68) while `direct-risk-entry` skipped the added tuple as already-declared and
+ * `action-risk-lint` said nothing, because neither rejected duplicates.
+ *
+ * So the fold keeps the most restrictive class for a repeated key instead of the last one. With the
+ * array deduplicated this is a no-op — it can only differ from `new Map(...)` when a duplicate
+ * exists, and `capability-kit-lint` fails the build on one first. Deliberately fail-safe rather than
+ * a load-time throw: this module is bundled into every governed edge function, so a throw would take
+ * all of them down on a typo that CI already catches (§37).
+ *
+ * The reason string follows the winning tuple rather than the last one, so a person never reads a
+ * rationale that belongs to a class the policy did not resolve.
+ */
+const RISK_RANK: ReadonlyArray<ActionRisk> = ["ordinary", "high", "owner_only"];
+
+const RISK_FOLD: ReadonlyMap<string, readonly [ActionRisk, string]> = RISK.reduce(
+  (folded, [tool, risk, why]) => {
+    const held = folded.get(tool);
+    if (held === undefined || RISK_RANK.indexOf(risk) > RISK_RANK.indexOf(held[0])) {
+      folded.set(tool, [risk, why]);
+    }
+    return folded;
+  },
+  new Map<string, readonly [ActionRisk, string]>(),
+);
+
+const RISK_BY_TOOL: ReadonlyMap<string, ActionRisk> = new Map(
+  [...RISK_FOLD].map(([tool, [risk]]) => [tool, risk]),
+);
+const REASON_BY_TOOL: ReadonlyMap<string, string> = new Map(
+  [...RISK_FOLD].map(([tool, [, why]]) => [tool, why]),
+);
 
 /**
  * Tools whose names read like a mutation but which persist nothing. Each needs a reason, so that
