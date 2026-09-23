@@ -160,6 +160,57 @@ tree. Deleting them shrinks the surface before anything moves.
 
 ---
 
+## 4a. A finding that unifies this with the Capability Kit's missing runtime
+
+Scoping this turned up something neither item was looking for.
+
+**All seven seam call sites build the same object literal.** Every one of them constructs
+`{caller, capability, approval, requestArgs}` by hand, and the variation between them is a handful
+of per-door constants:
+
+| Call site | `door` | `outcomeChannel` | `access` |
+|---|---|---|---|
+| `crm-command/index.ts:342` | `other` | `record_capability_run` | a real role verdict |
+| `_shared/social-provider/governance.ts:97` | `other` | `record_capability_run` | passed in |
+| `_shared/paige-orchestration/engine.ts:293` | `automation` | `paige_act_executions` | `{allowed:true}`, justified upstream |
+| `_shared/paige-orchestration/approve-executor.ts:212` | `automation` | `paige_act_executions` | as above |
+| `_shared/paige-mcp/governed-adapter.ts:242` | `mcp` | `paige_audit_log` | passed in |
+| `_shared/paige-skill/governed-adapter.ts:150` | `skill` | its own constant | passed in |
+| `_shared/paige-write-back/governed-adapter.ts:318` | `other` | its own constant | resolved |
+
+Everything else is identical, down to the verbatim conditional spread
+`...(effect === "mutate" ? { outcomeChannel } : {})`, which appears twice character-for-character.
+
+**One door already extracted it.** `buildGovernedInputs` (`engine.ts:89`) is exactly this mapping as
+a pure, documented helper — but door-specific: it hard-codes `door: "automation"`,
+`principal: "person"`, `access: { allowed: true }` and the `paige_act_executions` default. Six
+doors re-derive by hand what one door extracted.
+
+**Why this matters beyond tidiness.** The Capability Kit's `defineCapability()` produces a frozen
+declaration that *nothing reads* — the census's finding that it has zero adopters and, worse,
+nothing for an adopter to gain. A declaration already carries `governance.actionRiskKey` (the
+capability id), `effect`, `receipt.recorder` (the outcome channel) and `availability.states`.
+Those are precisely the fields this mapping fills in seven times by hand.
+
+So the Kit's missing runtime and this duplicated mapping are **the same gap seen from two sides**,
+and one primitive closes both: a pure `governedInputsFor(capability, ctx)` that generalises
+`buildGovernedInputs` — parameterising `door`, `principal` and `access`, taking the capability
+fields from a declaration where one exists and a plain object where one does not, and bridging the
+Kit's three-value effect vocabulary (`read | mutation | external_effect`) onto the seam's two
+(`read | mutate`).
+
+**It is Phase 0's natural first primitive**, because Phase 1's parity call needs exactly this
+mapping for chat, and building it for chat alone would make an eighth copy.
+
+**Stated honestly: this is not small.** Generalising a helper that seven production governance call
+sites would adopt is a §37 producer inventory across seven edge functions, each with its own
+justified constants and its own reasons — `paige-mcp` derives `principal` from the actor kind;
+`engine.ts` asserts `access: {allowed:true}` on the strength of an upstream membership check. None
+of that survives a careless merge into one signature. The primitive is right; the migration to it
+is a piece of work in its own right, and it belongs in a phase, not in a cleanup.
+
+---
+
 ## 5. The plan
 
 The shape is set by one principle: **prove the two implementations agree before letting either one's
@@ -169,6 +220,9 @@ guards (`solo-parity-guard.mjs` plus a snapshot) to model it on.
 
 ### Phase 0 — subtract, and make the inputs exist. No behaviour change.
 
+0. Build `governedInputsFor` (§4a) — the one home for a mapping seven call sites hand-roll
+   today, and the primitive Phase 1's parity call needs. This also closes the Capability Kit's
+   missing runtime, so items 3 and 4 share one decision rather than two.
 1. Delete the 14 dead dispatch branches. Smaller surface, zero risk.
 2. Declare the outcome channel per tool (R1). Chat already writes `paige_audit_log` for every
    executed tool; this names what already happens.
