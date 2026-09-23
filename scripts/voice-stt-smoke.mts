@@ -361,6 +361,19 @@ if (uncleanFlushResult.ok) {
   uncleanFlushSocket.close(1006, false);
 }
 check("unclean upstream close never promotes interim text", uncleanFlushSeen.length === 0);
+const timedOutFlux = new FakeFluxSocket();
+const timedOutSeen: string[] = [];
+const timedOutOpening = openFluxEars({
+  startOfTurn() {}, partial() {}, final(text) { timedOutSeen.push(`final:${text}`); },
+  unavailable() { timedOutSeen.push("unavailable"); },
+}, { opener() { queueMicrotask(() => timedOutFlux.onopen?.()); return timedOutFlux as unknown as WebSocket; }, closeTimeoutMs: 1 });
+const timedOutResult = await timedOutOpening;
+if (timedOutResult.ok) {
+  timedOutResult.ears.close();
+  timedOutFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 1, transcript: "Partial flush" });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+check("local forced close cannot impersonate Deepgram's clean settlement", timedOutSeen.join("|") === "unavailable" && timedOutFlux.readyState === FakeFluxSocket.CLOSED);
 const thrownOpening = await openFluxEars(
   { startOfTurn() {}, partial() {}, final() {}, unavailable() {} },
   { opener() { throw new Error("fake constructor failure"); } },

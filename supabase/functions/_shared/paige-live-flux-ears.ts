@@ -28,7 +28,7 @@ export type FluxEarsOpenResult =
  */
 export async function openFluxEars(
   events: FluxEarsEvents,
-  options: { opener?: (url: string) => WebSocket | null; openTimeoutMs?: number } = {},
+  options: { opener?: (url: string) => WebSocket | null; openTimeoutMs?: number; closeTimeoutMs?: number } = {},
 ): Promise<FluxEarsOpenResult> {
   const plan = planSttStream("flux-realtime", { encoding: "linear16", sampleRate: 16_000 });
   if (!plan.ok) return { ok: false, code: "stt_not_configured" };
@@ -39,6 +39,7 @@ export async function openFluxEars(
 
   let cancelled = false;
   let finishing = false;
+  let forcedClose = false;
   let failed = false;
   let lastSequence = -1;
   let finalTurnIndex = -1;
@@ -72,7 +73,7 @@ export async function openFluxEars(
       if (closeTimer) clearTimeout(closeTimer);
       // CloseStream's last transcript is an Update, not an EndOfTurn. It is
       // final only when we deliberately asked Flux to flush and then closed.
-      if (finishing && event.wasClean && !cancelled && !failed &&
+      if (finishing && event.wasClean && !forcedClose && !cancelled && !failed &&
         flushedUpdate && flushedUpdate.turnIndex !== finalTurnIndex) {
         events.final(flushedUpdate.text, flushedUpdate.turnIndex);
       } else if (!finishing) failOnce();
@@ -123,8 +124,12 @@ export async function openFluxEars(
             return;
           }
           closeTimer = setTimeout(() => {
-            if (socket.readyState !== WebSocket.CLOSED) socket.close(1000, "relay_end");
-          }, 3000);
+            if (socket.readyState !== WebSocket.CLOSED) {
+              forcedClose = true;
+              failOnce();
+              socket.close(1000, "relay_end");
+            }
+          }, options.closeTimeoutMs ?? 3000);
         } else if (socket.readyState !== WebSocket.CLOSED) {
           failOnce();
           try { socket.close(1000, "relay_end"); } catch { /* already closed */ }
