@@ -1,5 +1,39 @@
 # INT-104 Live audio join: existing stage, canonical Paige thread
 
+## S5 pre-edit discovery and attachment map (2026-09-23)
+
+S4 merged as PR #1387 (`6bd8849d4b9bad7c8d331458cab03c00c61b87aa`, reviewed
+head `d0a8ff81e35ed8d431c66b5f5f1eedc42c965485`). S5 is spoken delivery only:
+Flow-by-Flow 2.0.2, Existing Project, R3 Deep; the approved Live stage is unchanged.
+Reuse `_shared/paige-voice.ts` as the voice-instruction home and the existing
+`paige-ai-chat` message assembly. Its only deployed importer is `paige-ai-chat`,
+which is therefore the entire S5 redeploy set. No browser, schema, provider
+selection, secret, readiness, memory or usage change is needed.
+
+The signed, atomically claimed `liveRuntimeScope` already proves actor, tenant,
+thread and transcript. Only that server-resolved scope enables spoken delivery.
+The existing persona/core, tenant-relative knowledge and memory, Spine tool gate,
+Rail receipts and Harness invocation remain the same canonical runtime. Agent
+access continues through those governed tools; the style block invokes nothing
+and cannot capture a microphone. Reuse the relay's first-sentence dispatch,
+signed-output proof, barge-in and output owner; add no second chunker or store.
+
+The old funding-only VOICE SESSION RULES carry unproved post-call summary and
+extraction promises and use a text marker to imply modality. Replace that old
+instruction block with the one authenticated Live style attachment, preserving
+tenant-authored persona and the shared distress precedence. The voice module's
+normal text block stays byte-for-byte unchanged. Existing prompt-denylist tests
+will cover the added block and its Live-only assembly; actual take-5 sound is
+still UNVERIFIED until the owner hears the production voice.
+
+S5 local proof: failing-first focused tests exited 1 with 3 failures (missing
+Live style, missing authenticated assembly, old post-call promises still present).
+The full prompt-denylist suite then passed 16/16. Mutation replacing the verified
+scope condition with `true` exited 1: `expected [ { role: 'system', ... } ] to
+deeply equal []` for an ordinary text turn. Restoring the condition restores the
+pass. The test executes the actual injection expression; it does not call a
+model or claim that prompt text proves acoustic character or model compliance.
+
 ## Grounded repair attachment map (2026-09-23)
 
 The retired `startVoiceSession.ts` at #297's parent used a hosted ElevenLabs agent, not the approved cascaded runtime. It is historical input only; no retired endpoint or screen is restored. Reuse the existing `PaigeLiveConversation` stage, `relayTransport`, `VoiceAudio`, `PaigeAIChat.streamTurn`, JWT-authenticated `paige-ai-chat`, caller-owned `paige_chat_threads` / `paige_chat_turns`, and `paige_live_sessions`. The existing runtime continues to own Spine tool execution, Rail receipts, Mind, Memory, tenant Knowledge and Harness access. Voice does not add an invocation or approval path.

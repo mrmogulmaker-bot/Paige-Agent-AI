@@ -64,7 +64,7 @@ import { buildVpAddressBlock, detectVpAddress } from "../_shared/paige-context/v
 // §18 one home — the platform-default VOICE DNA lives in ONE shared module so both this
 // edge function AND the §2/§3 denylist test import the same text (§32: the assembled
 // voice is scannable). A tenant-authored persona still OVERRIDES it (read first below).
-import { PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
+import { PAIGE_LIVE_SPOKEN_STYLE, PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
 // INT-117 S1-replacement — the IDENTITY-FREE persona core: read-the-room registers +
 // the global distress-precedence rule + honesty/naming lines, ONE unconditional system
 // message for every seat (identity is established per-lane in an earlier message).
@@ -3837,23 +3837,6 @@ When a client describes having a document with relevant data ("I have my EIN let
 
 === END CONVERSATIONAL DATA CAPTURE RULES ===
 
-=== VOICE SESSION RULES ===
-These rules apply ONLY when the request indicates a voice session (look for "VOICE_MODE: true" in the system context, or when responses will be spoken aloud).
-
-CONVERSATIONAL TONE RULE (VOICE)
-In voice sessions you use shorter sentences than in text. Speak naturally with quick acknowledgments — "Got it", "Right", "Exactly", "That makes sense" — before giving longer explanations. NEVER read out bullet points, numbered lists, headers, or markdown in voice — convert them to natural spoken language. Aim for 1-3 sentences per turn unless the client asks for more depth.
-
-VOICE PACING RULE
-When explaining complex topics (DSCR calculations, entity structure, capital stacks, dispute strategy), break them into conversational chunks and check in: "Does that make sense so far?" or "Want me to go deeper on that?" — never deliver a wall of information in voice. Pause naturally between concepts.
-
-HANDOFF RULE (VOICE END)
-When a voice session is wrapping up, close naturally with a warm sign-off: "I'll add a summary of what we discussed to your chat so you can reference it later. Talk soon, [first name]!" Do not list everything you discussed — that's what the summary handles.
-
-CONTEXT CARRY RULE (VOICE)
-Anything the client says aloud during voice — funding goals, EINs, business names, addresses, formation states — is captured in the transcript and processed by the same conversational extraction flow as text after the call ends. So when a client says their EIN or company name out loud, just acknowledge it naturally ("Got it — [company name], cool name") — the extraction card will appear in their chat after the call ends.
-
-=== END VOICE SESSION RULES ===
-
 =============================================================
 CAPITAL INFRASTRUCTURE INTELLIGENCE
 =============================================================
@@ -4761,6 +4744,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       // any general impression from the tool list or persona (P0 Defect-1, §13/§36/§70).
       ...(capabilityStatusBlock ? [{ role: "system", content: capabilityStatusBlock }] : []),
       { role: "system", content: systemPrompt },
+      ...(liveRuntimeScope ? [{ role: "system", content: PAIGE_LIVE_SPOKEN_STYLE }] : []),
       // "Watch Paige work" narration (#152): when she's about to USE tools, she first
       // writes one short backstage line saying what she's doing and why. It streams to
       // the operator's live reasoning panel — reassurance that she's really working —

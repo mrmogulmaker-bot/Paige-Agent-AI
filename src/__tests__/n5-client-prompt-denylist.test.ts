@@ -23,6 +23,41 @@ import {
 // denylists. It lives in its own shared module (extracted from paige-ai-chat/index.ts)
 // so this test scans the exact string the edge function sends (§32: green build ≠ proof).
 import { PAIGE_VOICE_BLOCK } from "../../supabase/functions/_shared/paige-voice.ts";
+import * as voice from "../../supabase/functions/_shared/paige-voice.ts";
+import { readFileSync } from "node:fs";
+
+describe("INT-104 S5 — authenticated Live delivery uses the existing voice home", () => {
+  const chat = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
+  it("adds spoken delivery only for the server-verified Live scope, never ordinary text", () => {
+    const line = chat.split(/\r?\n/).find((line) => line.includes('content: PAIGE_LIVE_SPOKEN_STYLE'));
+    expect(line).toBeDefined();
+    const assemble = new Function("liveRuntimeScope", "PAIGE_LIVE_SPOKEN_STYLE", `return [${line}]`);
+    expect(assemble(null, voice.PAIGE_LIVE_SPOKEN_STYLE)).toEqual([]);
+    expect(assemble({ turnId: "verified-turn" }, voice.PAIGE_LIVE_SPOKEN_STYLE))
+      .toEqual([{ role: "system", content: voice.PAIGE_LIVE_SPOKEN_STYLE }]);
+    expect(chat.indexOf("liveRuntimeScope = scope;")).toBeGreaterThan(chat.indexOf("if (claimError || !claimed)"));
+  });
+
+  it("keeps the spoken register tenant-neutral, short, expressive and authority-preserving", () => {
+    const style = voice.PAIGE_LIVE_SPOKEN_STYLE;
+    expect(typeof style).toBe("string");
+    expect(style).toContain("first complete sentence");
+    expect(style).toContain("1-3 sentences");
+    expect(style).toContain("tenant-authored persona");
+    expect(style).toContain("distress");
+    expect(style).toContain('A spoken "yes" is review input, never approval');
+    expect(style).toContain("Never claim a save, summary, sent message or completed action without its receipt");
+    expect(CREDIT_DENYLIST.test(style)).toBe(false);
+    expect(CREDIT_PROGRAM_DENYLIST.test(style)).toBe(false);
+  });
+
+  it("retires the old text-marker trigger and unsupported post-call promises", () => {
+    expect(chat.includes('look for "VOICE_MODE: true"')).toBe(false);
+    expect(chat.includes("I'll add a summary of what we discussed to your chat")).toBe(false);
+    expect(chat.includes("the extraction card will appear in their chat after the call ends")).toBe(false);
+    expect(chat.match(/content: PAIGE_LIVE_SPOKEN_STYLE/g)).toHaveLength(1);
+  });
+});
 
 // --- Chainable Supabase mock. Every builder method returns `this`; `this` is
 // thenable (resolves to {data: list, count}); `.maybeSingle()` resolves to
