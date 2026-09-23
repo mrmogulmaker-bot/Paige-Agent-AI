@@ -459,7 +459,36 @@ describe("Adding a tool", () => {
     // change a tool's sign-in type — so "add a key instead" was an instruction with nothing behind
     // it (§70.1). The peer-gate caught it; this pins the fix.
     expect(dialog(host)?.textContent).not.toMatch(/add a key/i);
-    expect(dialog(host)?.textContent).toMatch(/check the address and try again, or remove it/i);
+    // The advice moved from the shared map to the call site, and names the control that exists:
+    // the Sign in button the owner is looking at, not a vague "try again".
+    expect(dialog(host)?.textContent).toMatch(/correct the address and press Sign in again, or remove it/i);
+    // REGRESSION (found by a rendered frame, 2026-09-23). The comment above has always claimed
+    // "the copy must not imply nothing happened" — and never checked it. It didn't: the
+    // row-exists sentence was the `??` fallback, so any refusal the map ANSWERED (this one
+    // included) replaced it entirely, leaving a banner that said the write failed above a Name
+    // field that said the row was saved. Now unconditional, and pinned on both paths.
+    expect(dialog(host)?.textContent).toMatch(/is saved under that name/i);
+  });
+
+  /** REGRESSION (rendered frame, 2026-09-23) — the OTHER path into the same contradiction. When
+   *  the edge answers with a code the map has nothing for, the message is the generic
+   *  "That didn't go through", which on this path is simply false: the connection was written and
+   *  only the sign-in failed. The generic must be swapped for the step's own reason, and the
+   *  row-exists sentence must still arrive. */
+  it("never tells the owner nothing happened when the refusal code is unmapped", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    await openCatalogue(host);
+    await click(host.querySelector<HTMLButtonElement>('.ig-gw-tile[data-mode="connect"]'));
+    invoke
+      .mockResolvedValueOnce({ data: { connection_id: "conn-oauth", status: "pending_verification" }, error: null })
+      .mockResolvedValueOnce(edgeRefusal("a_code_the_map_has_never_heard_of", 502));
+    await click(host.querySelector(".ig-gw-actions button[data-primary]"));
+
+    const text = dialog(host)?.textContent ?? "";
+    expect(text).not.toMatch(/That didn't go through/i);
+    expect(text).toMatch(/didn.t offer a sign-in/i);
+    expect(text).toMatch(/is saved under that name/i);
   });
 
   it("narrows the catalogue by search and still leaves a way to finish", async () => {

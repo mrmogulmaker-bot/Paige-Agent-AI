@@ -377,8 +377,12 @@ const ERR: Record<string, string> = {
   // (`rekeyable = authKind !== "oauth"`). So the instruction named a control that exists on
   // neither path (§70.1). Caught by the peer-gate, then caught AGAIN — in the right place — by the
   // regression test written for the first fix.
-  oauth_begin_failed:
-    "That provider didn't offer a sign-in Paige can use. Check the address and try again, or remove it.",
+  // REASON ONLY, deliberately — the advice moved to the call site (`SignInFlow`), which is the
+  // only place that knows a connection row now EXISTS and can therefore say "it is saved under
+  // that name" in the same breath. Leaving the advice here produced it twice, and leaving it here
+  // ALONE produced a banner that read "nothing happened" directly above a locked Name field
+  // reading "Saved under this name." A render caught that contradiction; no unit test did.
+  oauth_begin_failed: "That provider didn't offer a sign-in Paige can use.",
   // approve
   bad_tool_name: "We couldn't tell which action you meant. Reload and try again.",
   bad_expected_endpoint: "We couldn't confirm the address you reviewed. Reload and try again.",
@@ -399,10 +403,21 @@ const ERR: Record<string, string> = {
   expiry_below_floor: `An approval needs to last at least ${APPROVAL_MIN_LIFETIME_MINUTES} minutes. Pick a longer window.`,
 };
 
+/**
+ * The line a caller gets when the map has NOTHING for the code that came back.
+ *
+ * Named and exported because "the map answered" and "the map had nothing" are different facts and
+ * a caller sometimes has to act on the difference. `SignInFlow` is the case: by the time it reads
+ * a refusal a connection row EXISTS, so "That didn't go through" is flatly false there and has to
+ * be swapped for a line about the step that actually failed. Comparing against a string literal
+ * spelled out at the call site would drift the moment this one is reworded.
+ */
+export const MCP_GATEWAY_GENERIC_REFUSAL = "That didn't go through. Check the details and try again.";
+
 /** Owner-facing copy for a gateway code. Exported so the hook and its callers map identically. */
 export function mcpGatewayMessage(code: string | null): string {
   if (code && ERR[code]) return ERR[code];
-  return "That didn't go through. Check the details and try again.";
+  return MCP_GATEWAY_GENERIC_REFUSAL;
 }
 
 /** Pull the closed-set MCP_* token out of a Postgres error (raised as the exception MESSAGE).

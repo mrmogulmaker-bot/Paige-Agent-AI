@@ -20,7 +20,9 @@ import { Plus, RefreshCw, Search, TriangleAlert, X } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import {
   MCP_CREDENTIAL_MIN_LENGTH,
+  MCP_GATEWAY_GENERIC_REFUSAL,
   credentialTooShort,
+  mcpGatewayMessage,
   type GatewayConnection,
   type GatewayAuthKind,
   type UseMcpGateway,
@@ -483,9 +485,25 @@ function SignInFlow({ gw, item, onCancel }: { gw: UseMcpGateway; item: CatItem; 
       // renders no key field for a credential-less tool (its `needsKey` is false) and cannot
       // change a tool's sign-in type at all. Telling the owner to "add a key instead" was an
       // instruction with nothing behind it (§70.1) — caught by the peer-gate before it shipped.
+      //
+      // THE ROW-EXISTS CLAUSE IS UNCONDITIONAL, and that is the whole point. It used to be the
+      // `??` FALLBACK, reached only when the edge supplied no message — so for every refusal that
+      // DID map, including the ones this retry path exists for, the owner was told "That didn't
+      // go through" while the Name field directly below read "Saved under this name." Two
+      // statements, opposite meanings, one panel. The banner was the one that was wrong: the
+      // connection was written, only the sign-in failed, and an owner who believed the banner
+      // would later find a tool in their list that they were told was never created.
+      // Every unit test passed straight through this; a rendered frame is what caught it.
+      //
+      // The shared map cannot fix it, because it serves callers for whom a refusal genuinely
+      // means no write occurred. So the reason comes from the map and the consequence comes from
+      // here — and its generic line is swapped out, being false on this path by construction.
+      const why =
+        !flow.message || flow.message === MCP_GATEWAY_GENERIC_REFUSAL
+          ? mcpGatewayMessage("oauth_begin_failed")
+          : flow.message;
       setMessage(
-        flow.message ??
-          `That provider didn't offer a sign-in Paige can use. ${label.trim() || item.n} is saved under that name — correct the address and press Sign in again, or remove it.`,
+        `${why} ${label.trim() || item.n} is saved under that name — correct the address and press Sign in again, or remove it.`,
       );
       return;
     }
