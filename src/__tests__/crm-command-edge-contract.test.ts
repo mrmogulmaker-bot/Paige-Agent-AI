@@ -25,7 +25,7 @@ describe("canonical CRM action door", () => {
   it("canonicalizes a create-contact command before any readback, policy, approval, or write seam", () => {
     expect(edge).toContain("canonicalizeCrmCommand");
     const parsedAt = edge.indexOf("bodySchema.parse(await req.json())");
-    const canonicalizedAt = edge.indexOf("command: canonicalizeCrmCommand(parsedBody.command)");
+    const canonicalizedAt = edge.indexOf("const canonicalCommand = canonicalizeCrmCommand(parsedBody.command)");
     const tenantAt = edge.indexOf('caller.rpc("current_user_tenant_id")');
     const readbackAt = edge.indexOf('admin.rpc("read_crm_command_result"');
     const laneAt = edge.indexOf('caller.rpc("resolve_tool_autonomy"');
@@ -36,6 +36,17 @@ describe("canonical CRM action door", () => {
     expect(canonicalizedAt).toBeLessThan(readbackAt);
     expect(canonicalizedAt).toBeLessThan(laneAt);
     expect(canonicalizedAt).toBeLessThan(executeAt);
+  });
+
+  it("refuses an incomplete person name before tenant resolution or service-role work", () => {
+    expect(catalog).toContain("export function crmContactCreateNameIssue");
+    const canonicalizedAt = edge.indexOf("const canonicalCommand = canonicalizeCrmCommand(parsedBody.command)");
+    const nameGuardAt = edge.indexOf("crmContactCreateNameIssue(canonicalCommand)");
+    const tenantAt = edge.indexOf('caller.rpc("current_user_tenant_id")');
+    expect(canonicalizedAt).toBeGreaterThan(-1);
+    expect(nameGuardAt).toBeGreaterThan(canonicalizedAt);
+    expect(nameGuardAt).toBeLessThan(tenantAt);
+    expect(edge).toContain("CRM_CONTACT_NAME_INCOMPLETE");
   });
 
   it("binds each command to an existing classified capability", () => {
@@ -131,6 +142,13 @@ describe("canonical CRM action door", () => {
     const migration = readFileSync(identityMigrationPath, "utf8");
     expect(migration).toContain("__paige_canonical_identity_v1");
     expect(migration).toContain("public.crm_effective_command(_command)::text");
+    expect(migration).toContain("create or replace function public.crm_command_hash_matches");
+    expect(migration).toMatch(
+      /_command->>'action'='contact\.create'[\s\S]*_stored_hash=pg_catalog\.encode\([\s\S]*\(_command-'__paige_canonical_identity_v1'\)::text/,
+    );
+    expect(migration.match(/public\.crm_command_hash_matches\(v_cached\.command_hash/g)).toHaveLength(4);
+    expect(migration).toContain("CRM_CONTACT_NAME_INCOMPLETE");
+    expect(migration).toMatch(/new_contact_create constant text := 'if .*CRM_CONTACT_NAME_INCOMPLETE.*public\.create_contact_v2/s);
     const predecessor = "v_hash := encode(extensions.digest(convert_to(_command::text, 'UTF8'), 'sha256'), 'hex');";
     expect(originalCrmMigration.split(predecessor)).toHaveLength(2);
     expect(migration).toContain("CRM_IDEMPOTENCY_HASH_PATCH_DRIFT");

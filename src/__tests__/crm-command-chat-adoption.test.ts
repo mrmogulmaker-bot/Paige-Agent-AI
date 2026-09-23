@@ -6,6 +6,7 @@ import {
   CRM_COMMAND_TOOLS,
   CRM_TOOL_TO_ACTION,
   canonicalizeCrmCommand,
+  crmContactCreateNameIssue,
   crmApprovalSubject,
   crmCommandExecutionPayload,
   crmCommandFingerprintArgs,
@@ -56,6 +57,7 @@ describe("Paige Chat canonical CRM adoption", () => {
     expect(patch).toMatchObject({
       type: "object",
       additionalProperties: false,
+      required: ["first_name", "last_name"],
       properties: {
         first_name: expect.any(Object),
         last_name: expect.any(Object),
@@ -166,6 +168,26 @@ describe("Paige Chat canonical CRM adoption", () => {
       action: "contact.create",
       patch: { first_name: "Avery", last_name: "Quinn" },
     });
+  });
+
+  it("refuses a mononym instead of allowing the executor to invent a surname", () => {
+    const legacyMononym = canonicalizeCrmCommand({
+      action: "contact.create",
+      patch: { name: "Prince" },
+    });
+    const canonicalMononym = canonicalizeCrmCommand({
+      action: "contact.create",
+      patch: { first_name: "Prince" },
+    });
+    const completeName = canonicalizeCrmCommand({
+      action: "contact.create",
+      patch: { first_name: "Avery", last_name: "Quinn" },
+    });
+
+    expect(crmContactCreateNameIssue(legacyMononym)).toBe("last_name");
+    expect(crmContactCreateNameIssue(canonicalMononym)).toBe("last_name");
+    expect(crmContactCreateNameIssue(completeName)).toBeNull();
+    expect(crmContactCreateNameIssue({ action: "contact.update" })).toBeNull();
   });
 
   it("does not accept tenant, actor, role, account, approval, or authority as model arguments", () => {
@@ -281,6 +303,14 @@ describe("Paige Chat canonical CRM adoption", () => {
 
   it("defines one complete display and identity form for person names", () => {
     const cases = [
+      { input: "Straße", display: "Straße", identity: "strasse" },
+      { input: "STRASSE", display: "STRASSE", identity: "strasse" },
+      { input: "ΟΣ", display: "ΟΣ", identity: "οσ" },
+      { input: "ος", display: "ος", identity: "οσ" },
+      { input: "οσ", display: "οσ", identity: "οσ" },
+      { input: "Ꭰ", display: "Ꭰ", identity: "Ꭰ" },
+      { input: "ꭰ", display: "ꭰ", identity: "Ꭰ" },
+      { input: "ı", display: "ı", identity: "ı" },
       { input: "  José   Quinn  ", display: "José Quinn", identity: "josé quinn" },
       { input: "JOSÉ QUINN", display: "JOSÉ QUINN", identity: "josé quinn" },
       { input: "José Quinn", display: "José Quinn", identity: "josé quinn" },
@@ -293,6 +323,31 @@ describe("Paige Chat canonical CRM adoption", () => {
     });
     for (const malformed of [null, 42, "   ", "\u200b\u2060\ufeff", "\u200c\u200d\u180e"]) {
       expect(canonicalizePersonName(malformed)).toBeNull();
+    }
+  });
+
+  it("gives every full-Unicode caseless spelling in a logical name class one retry key", async () => {
+    const equivalentNameClasses = [
+      ["Straße", "STRASSE"],
+      ["ΟΣ", "ος", "οσ"],
+      ["Ꭰ", "ꭰ"],
+    ] as const;
+
+    for (const lastNames of equivalentNameClasses) {
+      const keys = await Promise.all(lastNames.map(async (lastName) => {
+        const command = canonicalizeCrmCommand({
+          action: "contact.create",
+          patch: { first_name: "Avery", last_name: lastName, lifecycle_stage: "new_lead" },
+        });
+        return await confirmFingerprint("crm_command_idempotency", {
+          thread_id: "test-thread",
+          user_turn_ordinal: 1,
+          user_turn: "Add this contact",
+          tool_name: "crm_create_contact",
+          arguments: crmCommandFingerprintArgs(command),
+        });
+      }));
+      expect(new Set(keys), JSON.stringify({ lastNames, keys })).toHaveLength(1);
     }
   });
 

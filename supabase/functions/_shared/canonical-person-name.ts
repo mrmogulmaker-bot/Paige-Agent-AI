@@ -21,6 +21,30 @@ const UNICODE_WHITESPACE = /\p{White_Space}+/gu;
 const UNICODE_FORMAT = /\p{Cf}/gu;
 
 /**
+ * ECMAScript has Unicode case conversion but no full case-fold operation.
+ * Per-code-point upper-then-lower matches the Unicode default full fold except
+ * for the explicit mappings below: dotless i, sharp s, and Cherokee (whose
+ * case-fold identity is uppercase). Keeping that finite gap here makes the
+ * comparison form complete without changing the human-facing spelling.
+ */
+function unicodeDefaultCaseFold(value: string): string {
+  return Array.from(value, (character) => {
+    const codePoint = character.codePointAt(0)!;
+    if (codePoint === 0x0131) return character;
+    if (codePoint === 0x00df || codePoint === 0x1e9e) return "ss";
+    if ((codePoint >= 0x13a0 && codePoint <= 0x13ef)
+      || (codePoint >= 0x13f0 && codePoint <= 0x13f5)) return character;
+    if (codePoint >= 0xab70 && codePoint <= 0xabbf) {
+      return String.fromCodePoint(codePoint - 0x97d0);
+    }
+    if (codePoint >= 0x13f8 && codePoint <= 0x13fd) {
+      return String.fromCodePoint(codePoint - 0x8);
+    }
+    return character.toUpperCase().toLowerCase();
+  }).join("").normalize("NFKC");
+}
+
+/**
  * The one canonical person-name boundary for validation, rendering/storage,
  * and comparison/hash consumers.
  *
@@ -38,11 +62,11 @@ export function canonicalizePersonName(value: unknown): CanonicalPersonName | nu
     .normalize("NFKC")
     .replace(HASH_IGNORABLE_NAME_FORMAT, "")
     .replace(UNICODE_WHITESPACE, " ")
-    .trim()
-    .toLowerCase();
-  if (!identity) return null;
+    .trim();
+  const foldedIdentity = unicodeDefaultCaseFold(identity);
+  if (!foldedIdentity) return null;
   return Object.freeze({
     display,
-    identity,
+    identity: foldedIdentity,
   });
 }

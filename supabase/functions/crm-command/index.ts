@@ -6,6 +6,7 @@ import { decideGovernedExecution } from "../_shared/paige-spine/governedExecutio
 import {
   CRM_ACTION_CAPABILITY as ACTION_CAPABILITY,
   canonicalizeCrmCommand,
+  crmContactCreateNameIssue,
   crmApprovalSubject,
   crmCommandExecutionPayload,
   type CanonicalCrmCommand,
@@ -217,7 +218,16 @@ serve(async (req) => {
   let body: CanonicalBody;
   try {
     const parsedBody = bodySchema.parse(await req.json());
-    body = { ...parsedBody, command: canonicalizeCrmCommand(parsedBody.command) };
+    const canonicalCommand = canonicalizeCrmCommand(parsedBody.command);
+    const contactNameIssue = crmContactCreateNameIssue(canonicalCommand);
+    if (contactNameIssue) {
+      throw new z.ZodError([{
+        code: z.ZodIssueCode.custom,
+        path: ["command", "patch", contactNameIssue],
+        message: `CRM_CONTACT_NAME_INCOMPLETE:${contactNameIssue}`,
+      }]);
+    }
+    body = { ...parsedBody, command: canonicalCommand };
   } catch (error) {
     return response(400, {
       ok: false,

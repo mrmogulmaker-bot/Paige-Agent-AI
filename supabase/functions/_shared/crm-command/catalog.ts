@@ -148,6 +148,18 @@ export function canonicalizeCrmCommand<T extends Record<string, unknown>>(comman
   return markCanonicalCrmCommand({ ...command, patch: Object.freeze(patch) } as T);
 }
 
+export function crmContactCreateNameIssue(
+  command: Record<string, unknown>,
+): "first_name" | "last_name" | null {
+  if (command.action !== "contact.create") return null;
+  const patch = command.patch;
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) return "first_name";
+  const namePatch = patch as Record<string, unknown>;
+  if (!canonicalizePersonName(namePatch.first_name)) return "first_name";
+  if (!canonicalizePersonName(namePatch.last_name)) return "last_name";
+  return null;
+}
+
 // Canonical stable subject used only to disambiguate one command inside the operator's already-
 // approved same-tool set. The subject is always a required opaque record id (or the exact bulk set)
 // when the action has one. Consequential argument drift is safe because the stored proposal executes;
@@ -183,11 +195,12 @@ const CONTACT_LIFECYCLE_STAGES = [
 
 const contactCreatePatch = {
   type: "object",
-  description: "Canonical fields for the new contact. Omit fields the operator did not provide.",
+  description: "Canonical fields for the new contact. The current contact record requires both a first and last name; ask the operator for the missing part before calling this tool.",
   additionalProperties: false,
+  required: ["first_name", "last_name"],
   properties: {
-    first_name: { type: "string", description: "First or single name. Split a full person name into first_name and last_name." },
-    last_name: { type: "string", description: "Last name when the operator supplied one." },
+    first_name: { type: "string", description: "First name. Split a supplied full person name into first_name and last_name." },
+    last_name: { type: "string", description: "Last name. Ask the operator when it was not supplied; never invent a placeholder." },
     email: { type: "string" },
     phone: { type: "string" },
     entity_name: { type: "string", description: "Company or business name." },
