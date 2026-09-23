@@ -6,6 +6,42 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## Flipping a draft STARTS a review; merging in the same breath KILLS it (2026-09-23)
+
+- **Symptom.** PR #1367 was flipped out of draft and merged ~15 seconds later. The draft flip triggered
+  the Codex review, which was still `Running` when the merge closed the PR. It posted **zero reviews and
+  zero inline comments**, so the change — which included a §9 tenant-isolation fix *and* a deliberate
+  relaxation of two CI guards — landed on `main` carrying **no review pass at all**. The `Running` badge
+  sitting on the merged PR reads, at a glance, exactly like a review that found nothing.
+- **Root cause.** Two correct instructions composed into a wrong outcome. "Merge on the standard, don't
+  wait to be told" is right; "flip the draft to mark it ready" is right; doing both in one breath races
+  the reviewer that the flip just summoned. Nobody decided to skip the review — the sequence discarded
+  it. This is the **second occurrence in the program**; the first cost a lane six real findings it
+  nearly missed.
+- **Rule.** A draft flip is a review trigger, so never flip and merge in the same breath. Pick one:
+  **flip and wait** for the review to land, or **merge and immediately request the review on the merge
+  commit** (`@codex review`, which does fire on a closed PR — measured: 👀 reaction plus the summary
+  flipping to `Manual request`). Findings then become follow-up PRs off current `main`; merged history
+  is never edited. And never let a `Running` badge stand as approval — say plainly that the review is
+  *absent*, not clean. Note the badge will name the PR head commit, not the squash commit; same tree,
+  different SHA, and worth stating precisely rather than claiming the merge commit was reviewed.
+
+## Two pacing rules, from the same lane (2026-09-23)
+
+- **Symptom.** (a) A complete, merge-ready branch sat for seven hours because the assignment never named
+  the finish line, so the lane kept watch instead of finishing. (b) Over those hours it fired seven
+  hourly check-ins that each reported "nothing changed" — seven wake-ups, zero information.
+- **Root cause.** (a) Treating "return to coordinator" as "wait for permission to merge" when the merge
+  standard was already met. (b) Confusing *watching* with *polling*: arming a fixed hourly tick for a
+  thing that only changes on an event, so the cadence was paid whether or not anything could have moved.
+- **Rule.** (a) **A lane that meets the merge standard merges, and reports afterwards.** Coming back
+  first is only required for a change made under a coordinator-granted exception, or at one of the
+  material boundaries §69 lists. (b) **If you have nothing to report and nothing to do, do not wake up
+  to say so.** Wait on the event itself, or arm a single long-interval fallback. A quiet check-in only
+  earns its cost when the thing you are waiting for could plausibly have moved — so pace the interval
+  off *that*, never off a habit.
+
+
 ## A proof that stands up its own preconditions proves the RULES, never the REACHABILITY (2026-09-22)
 
 - **Symptom.** INT-163's agreements engine shipped with a 19-negative database integrity proof
