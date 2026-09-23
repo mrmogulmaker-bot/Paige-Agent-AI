@@ -13,6 +13,10 @@ const relay = vi.hoisted(() => ({
   stop: vi.fn(),
   interrupt: vi.fn(),
   setMuted: vi.fn(),
+  runtimeDispatched: vi.fn(),
+  runtimeChunk: vi.fn(),
+  runtimeDone: vi.fn(),
+  runtimeFailed: vi.fn(),
 }));
 vi.mock("@/lib/paigeLiveConversation/client", () => ({
   startPaigeLiveConversation: control.start,
@@ -57,7 +61,15 @@ describe("Paige Live Conversation owner surface", () => {
     relay.stop.mockClear();
     relay.interrupt.mockClear();
     relay.setMuted.mockClear();
-    relay.connect.mockReturnValue({ stop: relay.stop, interrupt: relay.interrupt, setMuted: relay.setMuted });
+    relay.runtimeDispatched.mockClear();
+    relay.runtimeChunk.mockClear();
+    relay.runtimeDone.mockClear();
+    relay.runtimeFailed.mockClear();
+    relay.connect.mockReturnValue({
+      stop: relay.stop, interrupt: relay.interrupt, setMuted: relay.setMuted,
+      runtimeDispatched: relay.runtimeDispatched, runtimeChunk: relay.runtimeChunk,
+      runtimeDone: relay.runtimeDone, runtimeFailed: relay.runtimeFailed,
+    });
     ensureThread.mockClear();
     onAnswer.mockClear();
     onApprove.mockClear();
@@ -129,6 +141,30 @@ describe("Paige Live Conversation owner surface", () => {
     expect(getUserMedia).not.toHaveBeenCalled();
     await act(async () => clickText("End"));
     expect(relay.stop).toHaveBeenCalledOnce();
+  });
+
+  it("routes spoken input to the same Paige turn without approving it, and cancels a barge-in", async () => {
+    control.start.mockResolvedValueOnce({
+      ok: true, sessionId: "22222222-2222-4222-8222-222222222222",
+      ticket: "first-ticket", availability: "PROOF OWED", code: "relay_ticket_issued",
+    });
+    await render();
+    await act(async () => clickText("Talk live with Paige"));
+    const live = relay.connect.mock.calls[0][0];
+    await act(async () => live.onState({ kind: "ready" }));
+    await act(async () => live.onVoiceTurn("yes", "turn-1"));
+    expect(onVoiceTurn).toHaveBeenCalledWith("yes", expect.objectContaining({
+      dispatched: expect.any(Function), chunk: expect.any(Function),
+    }));
+    expect(onApprove).not.toHaveBeenCalled();
+    const sink = onVoiceTurn.mock.calls[0][1];
+    await act(async () => { sink.dispatched(); sink.chunk("I can help."); });
+    expect(relay.runtimeDispatched).toHaveBeenCalledWith("turn-1");
+    expect(relay.runtimeChunk).toHaveBeenCalledWith("turn-1", "I can help.");
+    await act(async () => live.onRuntimeCancel("turn-1"));
+    expect(onVoiceInterrupt).toHaveBeenCalledOnce();
+    await act(async () => sink.done());
+    expect(relay.runtimeDone).not.toHaveBeenCalled();
   });
 
   it("keeps audio unavailable during genuine text work and clears working Presence afterwards", async () => {
