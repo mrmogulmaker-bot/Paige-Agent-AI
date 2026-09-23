@@ -58,7 +58,6 @@ export type AgreementSigning = {
   readonly documentTitle: string;
   readonly documentSource: DocumentSource | null;
   /** The ORIGINAL file the business uploaded, if there is one. Not the signed result. */
-  readonly documentPath: string | null;
   /** What the record itself says. */
   readonly signatureState: SignatureState;
   /**
@@ -81,7 +80,8 @@ export type AgreementSigning = {
   readonly signerName: string | null;
   /** The countersigned PDF. Present only once the signing genuinely completed — the table's own
    * `tas_completed_is_evidenced_ck` refuses `completed` without it, so this is evidence, not a hope. */
-  readonly signedPdfPath: string | null;
+  /** Whether a sealed copy exists. Never its storage key — the key discloses tenant and agreement. */
+  readonly hasSealedCopy: boolean;
   readonly createdAt: string | null;
   readonly updatedAt: string | null;
 };
@@ -118,6 +118,25 @@ export type SigningWriteResult = {
  * somebody away believing they had one.
  */
 /** What the send endpoint actually reports: who it reached, and who it did not. */
+/** One line of the engine's append-only trail, as the completion surface reads it. */
+export type SigningEvent = {
+  readonly id: string;
+  readonly type: string;
+  readonly actorKind: string;
+  readonly actorEmail: string | null;
+  readonly ip: string | null;
+  readonly userAgent: string | null;
+  readonly at: string | null;
+};
+
+/** How many trail events the surface shows. One more is READ, to detect truncation. */
+export const TRAIL_LIMIT = 50;
+
+export type SigningEventsResult =
+  /** `truncated` means OLDER events exist that are not in `events` — the surface must say so. */
+  | { readonly ok: true; readonly events: readonly SigningEvent[]; readonly truncated: boolean }
+  | { readonly ok: false; readonly message: string };
+
 export type SigningSendResult =
   | { readonly ok: true; readonly sent: readonly string[]; readonly notDelivered: readonly string[] }
   | { readonly ok: false; readonly message: string };
@@ -171,6 +190,16 @@ export type SigningsState = {
    * a fixed 30 days, which is why this takes no duration. A surface offering a choice the server
    * does not honour is worse than one that states the real number.
    */
+  /**
+   * The engine's own append-only trail for one agreement — what happened, when, and who caused it.
+   *
+   * Read on demand rather than with the band, because it is one agreement's detail and loading it
+   * for every row would be a query per row for a surface nobody has opened yet.
+   */
+  readonly signingEvents: (
+    signingId: string,
+    loadedTenantId: string | null,
+  ) => Promise<SigningEventsResult>;
   readonly sendForSignature: (
     signingId: string,
     loadedTenantId: string | null,
@@ -252,6 +281,23 @@ function readState(stored: SignatureState, expiresAt: string | null): SignatureS
   return !Number.isNaN(at) && at <= Date.now() ? "expired" : stored;
 }
 
+/**
+ * The DATA half of the state — DERIVED, never enumerated.
+ *
+ * This was `Omit<SigningsState, "retry" | "uploadDocument" | ...>`: a hand-written list of the
+ * functions to leave out. Every function added to `SigningsState` afterwards therefore became a
+ * REQUIRED field of the object held in `useState`, which is not what anyone intended and is not
+ * something a reader of the call site would notice. Adding `signingEvents` and `sendForSignature`
+ * did exactly that and put fourteen type errors in this file.
+ *
+ * Keeping only the non-function members means the list cannot go stale again: a function added to
+ * the state type is excluded by what it IS rather than by someone remembering to name it.
+ */
+type SigningsData = {
+  [K in keyof SigningsState as SigningsState[K] extends (...args: never[]) => unknown ? never : K]:
+    SigningsState[K];
+};
+
 export function useSoloAgreementSignings(): SigningsState {
   const { activeTenantId, accountContextLoading } = useTenantContext();
   // An identity epoch also invalidates a completion after A -> B -> A.
@@ -261,13 +307,7 @@ export function useSoloAgreementSignings(): SigningsState {
   }
 
   const [refreshKey, setRefreshKey] = useState(0);
-  const [state, setState] = useState<
-    // `addSigner` joins the omitted writers. Only the writers this state object does not carry are
-    // listed; `sendForSignature` and `signedCopyUrl` are absent from this list and present on
-    // `SigningsState`, which is what the 13 pre-existing TS2345s in this file are. Left alone
-    // deliberately — that is another lane's in-flight change and not this pass's to reduce.
-    Omit<SigningsState, "retry" | "uploadDocument" | "createSigning" | "issueLink" | "addSigner" | "voidSigning">
-  >({
+  const [state, setState] = useState<SigningsData>({
     tenantId: activeTenantId ?? null,
     phase: accountContextLoading ? "resolving" : "loading",
     ...EMPTY,
@@ -400,8 +440,8 @@ export function useSoloAgreementSignings(): SigningsState {
       return { ok: false, message: "Wait for your workspace to finish loading, then try again." };
     }
     const safe = (file.name || "document")
-      .replace(/[^\w.\-]+/g, "-")
-      .replace(/^[.\-]+/, "")
+      .replace(/[^\w.-]+/g, "-")
+      .replace(/^[.-]+/, "")
       .slice(-80) || "document";
     const path = `${expected}/source/${Date.now()}-${safe}`;
     try {
@@ -436,19 +476,63 @@ export function useSoloAgreementSignings(): SigningsState {
           _document_body: draft.documentBody,
           _document_path: draft.documentPath,
         } as never,
-      ) as Promise<{ data: unknown; error: { code?: string } | null }>,
+      ) as unknown as Promise<{ data: unknown; error: { code?: string } | null }>,
       (data) => {
         const id = toText(data.signing_id);
         return id ? { id, state: narrow(data.signature_state, SIGNATURE_STATES) } : null;
       },
     );
-    if (!outcome.ok) return { ok: false, message: outcome.message };
+    if ("message" in outcome) return { ok: false, message: outcome.message };
     return {
       ok: true,
       signingId: outcome.value.id,
       signatureState: outcome.value.state ?? "unrecognised",
     };
   }, [runWrite]);
+
+  const signingEvents = useCallback(async (
+    signingId: string,
+    loadedTenantId: string | null,
+  ): Promise<SigningEventsResult> => {
+    const expected = loadedTenantId ?? activeTenantId;
+    if (!expected) return { ok: false, message: "This workspace could not be resolved, so no history was read." };
+    try {
+      const { data, error } = await supabase
+        .from("paige_agreement_events" as never)
+        // `seq` is the engine's monotonic order and the ONLY safe sort: two events written in the
+        // same millisecond render in a stable order rather than swapping between reads, which on a
+        // legal trail would look like the history changing.
+        .select("id,event_type,actor_kind,actor_email,ip,user_agent,created_at,seq")
+        .eq("tenant_id", expected)
+        .eq("agreement_id", signingId)
+        .order("seq", { ascending: false })
+        // ONE MORE THAN WE SHOW, so truncation is a FACT rather than a guess. The order is
+        // `seq` DESC, so the rows dropped by a cap are the OLDEST — creation and the original
+        // send: precisely the end of a chain of custody you cannot afford to lose silently
+        // while a panel headed "What happened, and when" implies it is the whole story.
+        .limit(TRAIL_LIMIT + 1) as unknown as { data: Record<string, unknown>[] | null; error: unknown };
+      if (error) {
+        console.error("[signings] trail read failed", error);
+        return { ok: false, message: "This document's history could not be read, so none is shown rather than a partial one." };
+      }
+      const all = data ?? [];
+      return {
+        ok: true,
+        truncated: all.length > TRAIL_LIMIT,
+        events: all.slice(0, TRAIL_LIMIT).map((row) => ({
+          id: String(row.id),
+          type: toText(row.event_type) ?? "unrecognised",
+          actorKind: toText(row.actor_kind) ?? "system",
+          actorEmail: toText(row.actor_email),
+          ip: toText(row.ip),
+          userAgent: toText(row.user_agent),
+          at: toText(row.created_at),
+        })),
+      };
+    } catch {
+      return { ok: false, message: "This document's history could not be read, so none is shown rather than a partial one." };
+    }
+  }, [activeTenantId]);
 
   const sendForSignature = useCallback(async (
     signingId: string,
@@ -498,7 +582,7 @@ export function useSoloAgreementSignings(): SigningsState {
           _signing_id: signingId,
           _ttl_days: ttlDays,
         } as never,
-      ) as Promise<{ data: unknown; error: { code?: string } | null }>,
+      ) as unknown as Promise<{ data: unknown; error: { code?: string } | null }>,
       // A response without a token is NOT a link, however green it looks. Refusing it here is what
       // stops the surface telling somebody to send something that does not exist.
       (data) => {
@@ -506,7 +590,7 @@ export function useSoloAgreementSignings(): SigningsState {
         return token ? { token, expiresAt: toText(data.expires_at) } : null;
       },
     );
-    if (!outcome.ok) return { ok: false, message: outcome.message };
+    if ("message" in outcome) return { ok: false, message: outcome.message };
     return { ok: true, token: outcome.value.token, expiresAt: outcome.value.expiresAt };
   }, [runWrite, activeTenantId]);
 
@@ -567,7 +651,7 @@ export function useSoloAgreementSignings(): SigningsState {
           _expected_tenant_id: loadedTenantId ?? activeTenantId,
           _signing_id: signingId,
         } as never,
-      ) as Promise<{ data: unknown; error: { code?: string } | null }>,
+      ) as unknown as Promise<{ data: unknown; error: { code?: string } | null }>,
       (data) => {
         const state = narrow(data.signature_state, SIGNATURE_STATES);
         // The server says `voided` or this did not happen. Accepting any shape here would let a
@@ -575,7 +659,7 @@ export function useSoloAgreementSignings(): SigningsState {
         return state === "voided" ? { state } : null;
       },
     );
-    if (!outcome.ok) return { ok: false, message: outcome.message };
+    if ("message" in outcome) return { ok: false, message: outcome.message };
     return { ok: true, signatureState: outcome.value.state };
   }, [runWrite, activeTenantId]);
 
@@ -610,8 +694,16 @@ export function useSoloAgreementSignings(): SigningsState {
             // on both tables and `token_hash` is column-revoked, so the join returns what a
             // workspace may see and nothing that would let it forge a link.
             .select(
-              "id,contact_id,commercial_terms_id,title,body_source,document_path,status," +
-              "expires_at,sent_at,completed_at,declined_at,voided_at,sealed_storage_key," +
+              // `sealed_sha256`, NOT `sealed_storage_key`, and `document_path` is gone entirely.
+              // The key is shaped `${tenant_id}/${agreement_id}/...`, so selecting it put both ids
+              // into every browser that opens this band — the exact disclosure this lane removed
+              // from the RETRIEVAL path when it adopted `agreement-document` over a signed URL, left
+              // standing in the LIST path. The surface only ever asked "is there a sealed copy?", and
+              // the CHECK at 20270401000000:124 makes the hash answer that identically
+              // (`status <> 'completed' OR (sealed_sha256 IS NOT NULL AND sealed_storage_key IS NOT NULL)`)
+              // while disclosing no path. `document_path` had no read-side consumer at all.
+              "id,contact_id,commercial_terms_id,title,body_source,status," +
+              "expires_at,sent_at,completed_at,declined_at,voided_at,sealed_sha256," +
               "created_at,updated_at," +
               "paige_agreement_signers(full_name,decline_reason,first_viewed_at,signing_order)",
             )
@@ -673,7 +765,6 @@ export function useSoloAgreementSignings(): SigningsState {
             agreementId: toText(row.commercial_terms_id),
             documentTitle: toText(row.title) ?? "Untitled document",
             documentSource: narrow(row.body_source, DOCUMENT_SOURCES),
-            documentPath: toText(row.document_path),
             signatureState: stored,
             displayState: readState(stored, expiresAt),
             expiresAt,
@@ -684,7 +775,7 @@ export function useSoloAgreementSignings(): SigningsState {
             voidedAt: toText(row.voided_at),
             declineReason: signers.map((x) => toText(x?.decline_reason)).find(Boolean) ?? null,
             signerName: toText(signers[0]?.full_name),
-            signedPdfPath: toText(row.sealed_storage_key),
+            hasSealedCopy: Boolean(toText(row.sealed_sha256)),
             createdAt: toText(row.created_at),
             updatedAt: toText(row.updated_at),
           };
@@ -732,5 +823,5 @@ export function useSoloAgreementSignings(): SigningsState {
       : "unavailable" as const,
     ...EMPTY,
   };
-  return { ...visible, retry, uploadDocument, createSigning, sendForSignature, issueLink, addSigner, voidSigning, signedCopyUrl };
+  return { ...visible, retry, uploadDocument, createSigning, sendForSignature, signingEvents, issueLink, addSigner, voidSigning, signedCopyUrl };
 }

@@ -44,8 +44,11 @@ const ENTRIES = ["src/operator/OperatorEntry.tsx", "src/App.tsx"];
  * thing the ruling forbids — so an addition here needs a reason in the same commit.
  */
 const STALE_CITATION_BUT_LIVE = new Set([
-  "FleetConsole.tsx", "FleetHistorySurface.tsx", "FleetTeamPulseSurface.tsx",
-  "FleetTenantsRail.tsx", "KnowledgeSurface.tsx",
+  // `FleetTeamPulseSurface.tsx` and `FleetTenantsRail.tsx` left this list on 2026-09-23: the first
+  // was stripped (§30) once the §58 unmount left it unreachable and dead-pack — the cell this guard
+  // exists to fail — and the second was already gone, which the guard had been reporting as
+  // "safe to drop from the list" on every run. This list SHRANK, which is the direction allowed.
+  "FleetConsole.tsx", "FleetHistorySurface.tsx", "KnowledgeSurface.tsx",
   "TrustCompass.tsx", "OperatorPanel.tsx", "panelSpecs.ts",
 
   /**

@@ -21,7 +21,7 @@ import type {
 } from "@/solo/useSoloAgreementSignings";
 
 export type { AgreementSigning, SigningDraft, SigningsState };
-export { DOCUMENT_SOURCES } from "@/solo/useSoloAgreementSignings";
+export { DOCUMENT_SOURCES, TRAIL_LIMIT } from "@/solo/useSoloAgreementSignings";
 export type { DocumentSource, SignatureState } from "@/solo/useSoloAgreementSignings";
 
 export type SigningsMode =
@@ -60,42 +60,38 @@ const ROWS: readonly AgreementSigning[] = [
     // matches no agreement the row joins nothing and never renders.
     id: "s0", contactId: "c1", agreementId: null,
     documentTitle: "Coaching agreement — Avery & Co.", documentSource: "tenant_upload",
-    documentPath: `${TENANT}/source/coaching.pdf`,
     signatureState: "draft", displayState: "draft",
     expiresAt: null, sentAt: null,
     viewedAt: null, completedAt: null, declinedAt: null, voidedAt: null,
-    declineReason: null, signerName: null, signedPdfPath: null,
+    declineReason: null, signerName: null, hasSealedCopy: false,
     createdAt: "2026-09-22T15:40:00.000Z", updatedAt: "2026-09-22T15:40:00.000Z",
   },
   {
     id: "s1", contactId: "c1", agreementId: "a1",
     documentTitle: "Retainer agreement — Avery & Co.", documentSource: "tenant_upload",
-    documentPath: `${TENANT}/source/retainer.pdf`,
     signatureState: "sent", displayState: "sent",
     expiresAt: "2099-10-22T00:00:00.000Z", sentAt: "2026-09-22T15:51:00.000Z",
     viewedAt: null, completedAt: null, declinedAt: null, voidedAt: null,
-    declineReason: null, signerName: null, signedPdfPath: null,
+    declineReason: null, signerName: null, hasSealedCopy: false,
     createdAt: "2026-09-22T15:49:00.000Z", updatedAt: "2026-09-22T15:51:00.000Z",
   },
   {
     id: "s2", contactId: "c2", agreementId: null,
     documentTitle: "Mutual NDA", documentSource: "tenant_upload",
-    documentPath: `${TENANT}/source/nda.pdf`,
     signatureState: "viewed", displayState: "viewed",
     expiresAt: "2099-10-30T00:00:00.000Z", sentAt: "2026-09-21T10:00:00.000Z",
     viewedAt: "2026-09-21T11:04:00.000Z", completedAt: null, declinedAt: null, voidedAt: null,
-    declineReason: null, signerName: null, signedPdfPath: null,
+    declineReason: null, signerName: null, hasSealedCopy: false,
     createdAt: "2026-09-21T09:58:00.000Z", updatedAt: "2026-09-21T11:04:00.000Z",
   },
   {
     id: "s3", contactId: "c3", agreementId: "a3",
     documentTitle: "Coaching agreement 2026", documentSource: "tenant_upload",
-    documentPath: `${TENANT}/source/coaching.pdf`,
     signatureState: "completed", displayState: "completed",
     expiresAt: "2026-09-30T00:00:00.000Z", sentAt: "2026-09-18T09:00:00.000Z",
     viewedAt: "2026-09-18T09:20:00.000Z", completedAt: "2026-09-18T09:31:00.000Z",
     declinedAt: null, voidedAt: null, declineReason: null, signerName: "Delaney Okafor",
-    signedPdfPath: `${TENANT}/signed/s3-1.pdf`,
+    hasSealedCopy: true,
     createdAt: "2026-09-18T08:58:00.000Z", updatedAt: "2026-09-18T09:31:00.000Z",
   },
   {
@@ -103,24 +99,40 @@ const ROWS: readonly AgreementSigning[] = [
     // wait for a writer that does not exist. A frame of this row is the proof it does.
     id: "s4", contactId: "c4", agreementId: null,
     documentTitle: "Scope letter — Q4", documentSource: "tenant_upload",
-    documentPath: `${TENANT}/source/scope.pdf`,
     signatureState: "sent", displayState: "expired",
     expiresAt: "2026-09-01T00:00:00.000Z", sentAt: "2026-08-18T09:00:00.000Z",
     viewedAt: null, completedAt: null, declinedAt: null, voidedAt: null,
-    declineReason: null, signerName: null, signedPdfPath: null,
+    declineReason: null, signerName: null, hasSealedCopy: false,
     createdAt: "2026-08-18T08:58:00.000Z", updatedAt: "2026-08-18T09:00:00.000Z",
   },
   {
     id: "s5", contactId: "c1", agreementId: null,
     documentTitle: "Pilot terms", documentSource: "tenant_upload",
-    documentPath: `${TENANT}/source/pilot.pdf`,
     signatureState: "declined", displayState: "declined",
     expiresAt: "2026-10-02T00:00:00.000Z", sentAt: "2026-09-10T09:00:00.000Z",
     viewedAt: "2026-09-10T12:00:00.000Z", completedAt: null,
     declinedAt: "2026-09-10T12:40:00.000Z", voidedAt: null,
-    declineReason: "Scope is wider than we discussed.", signerName: null, signedPdfPath: null,
+    declineReason: "Scope is wider than we discussed.", signerName: null, hasSealedCopy: false,
     createdAt: "2026-09-10T08:58:00.000Z", updatedAt: "2026-09-10T12:40:00.000Z",
   },
+];
+
+/* The recorded trail behind the completed row. Unlike the WRITES below, this is a READ, and a read
+ * CAN be answered honestly from a local fixture: these are shaped exactly as `paige_agreement_events`
+ * returns them (newest first, by `seq`), with the same gaps a real trail has — the owner's own `sent`
+ * event carries no address or device, because the engine does not record one for an act taken from
+ * inside the app. Nothing here is a timestamp reconstructed from the row. */
+const EVENTS = [
+  { id: "e5", type: "completed", actorKind: "signer", actorEmail: "delaney@okaforgroup.com",
+    ip: "203.0.113.42", userAgent: "Safari on iPhone", at: "2026-09-18T09:31:00.000Z" },
+  { id: "e4", type: "consented", actorKind: "signer", actorEmail: "delaney@okaforgroup.com",
+    ip: "203.0.113.42", userAgent: "Safari on iPhone", at: "2026-09-18T09:29:00.000Z" },
+  { id: "e3", type: "viewed", actorKind: "signer", actorEmail: null,
+    ip: "203.0.113.42", userAgent: "Safari on iPhone", at: "2026-09-18T09:20:00.000Z" },
+  { id: "e2", type: "delivered", actorKind: "system", actorEmail: "delaney@okaforgroup.com",
+    ip: null, userAgent: null, at: "2026-09-18T09:00:12.000Z" },
+  { id: "e1", type: "sent", actorKind: "owner", actorEmail: null, ip: null, userAgent: null,
+    at: "2026-09-18T09:00:00.000Z" },
 ];
 
 // The writes answer honestly rather than pretending. A harness that fakes a success teaches the
@@ -145,6 +157,11 @@ function snapshotFor(m: SigningsMode): SigningsState {
       ok: false,
       message: "That signed copy could not be opened just now. Nothing was changed; try again in a moment.",
     }),
+    // A READ of recorded history, answerable locally — see EVENTS above. Only the completed
+    // fixture has a trail; everything else answers the way a document with no history does.
+    signingEvents: async (id: string) => (id === "s3"
+      ? { ok: true as const, events: EVENTS, truncated: false }
+      : { ok: true as const, events: [], truncated: false }),
   };
   switch (m) {
     case "resolving":   return { ...base, phase: "resolving",   signings: [],   readable: false, canManage: false, authorityUnknown: false };

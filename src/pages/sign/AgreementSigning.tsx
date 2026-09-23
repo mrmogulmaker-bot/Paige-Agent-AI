@@ -186,7 +186,8 @@ export default function AgreementSigning() {
         setPhase("error");
         return;
       }
-      const first = (Array.isArray(data) ? data[0] : data) as PeekRow | undefined;
+      const payload: unknown = data;
+      const first = (Array.isArray(payload) ? payload[0] : payload) as PeekRow | undefined;
       if (!first || first.is_valid === false) { setPhase("refused"); return; }
       setRow(first);
       setTyped(first.signer_display_name ?? "");

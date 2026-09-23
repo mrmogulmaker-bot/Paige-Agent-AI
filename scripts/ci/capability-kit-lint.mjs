@@ -7,6 +7,14 @@
  * unlisted path+symbol may appear. The MCP gateway path is temporarily exempt by the
  * coordinator's PR-1 ruling and must be removed only in a separately authorized PR.
  *
+ * INT-003, RESOLVED — the `direct-risk-entry` rule no longer treats the canonical action-risk
+ * policy as a bypass. It previously flagged EVERY entry of the `RISK` array while its own remedy,
+ * `defineCapability()`, threw unless that same entry existed, so a new mutating tool could be
+ * neither classified nor declared and the ledger could never legitimately shrink. The rule now
+ * fires only for an action-risk key with NO `defineCapability()` declaration in the scanned tree:
+ * classify it AND govern it, in the same change, and the entry clears. See the rule body for the
+ * full reasoning and for why no mutation-verb filter is applied.
+ *
  * HEURISTIC LIMITS
  * Threat model: accidental bypass in our own edits, not adversarial evasion.
  * This static AST pass does not promise to resolve computed or bracket member access,
@@ -36,6 +44,61 @@ const KIT_FILES = [
   "scripts/fixtures/capability-kit/type-contract.fixture.ts",
 ];
 
+/**
+ * Every `actionRiskKey` declared through `defineCapability()` in the scanned tree. A key here has a
+ * governed declaration, so its `RISK` entry is the declaration's dependency rather than debt.
+ */
+function collectDeclaredCapabilityNames(files, resolver) {
+  const riskKeys = new Set();
+  const toolNames = new Set();
+  for (const file of files) {
+    const sourceFile = resolver.sourceFile(file);
+    if (!sourceFile) continue;
+    const visit = (node) => {
+      if (ts.isCallExpression(node) && calledMember(node, sourceFile) === "defineCapability") {
+        // Same unwrap the strict completeness rule uses — deliberately the SAME helper, so a cast
+        // can never hide a declaration from one reader while registering it with the other.
+        // A declaration passed by variable reference is outside this pass's supported boundary
+        // (see HEURISTIC LIMITS at the top) and will read as undeclared — which fails CLOSED.
+        const argument = unwrapExpression(node.arguments[0]);
+        if (argument && ts.isObjectLiteralExpression(argument)) {
+          for (const property of argument.properties) {
+            if (!ts.isPropertyAssignment(property)) continue;
+            const section = propertyName(property.name, sourceFile);
+            if (section !== "governance") continue;
+            if (!ts.isObjectLiteralExpression(property.initializer)) continue;
+            for (const field of property.initializer.properties) {
+              if (!ts.isPropertyAssignment(field)) continue;
+              const name = propertyName(field.name, sourceFile);
+              if (!ts.isStringLiteralLike(field.initializer)) continue;
+              // ONLY `governance.actionRiskKey` counts, and `identity.id` deliberately does NOT.
+              //
+              // Letting `identity.id` clear the tool schema was tried and REJECTED: it opened a
+              // real hole, reproduced before it shipped. A destructive tool named `widget_purge`
+              // could declare itself a READ capability (`effect: "read"` requires
+              // `actionRiskKey: null` by contract) and clear this guard — while `purge` is absent
+              // from `MUTATION_VERB`, so `unclassifiedWriteReason()` reads it as a query,
+              // `action-risk-lint` never sees a write, and `mutatingTools()` does not contain it.
+              // The per-tool rule below is the ONLY catch for a write whose verb that regex misses,
+              // and `MUTATION_VERB` has genuinely missed one twice already in production (`decide`
+              // and `configure` — see the notes in action-risk.ts). So the only thing that clears a
+              // tool schema is a key classified as a mutation in the canonical policy, which forces
+              // it through `classifyAction()` and into the runtime gate.
+              if (section === "governance" && name === "actionRiskKey") {
+                riskKeys.add(field.initializer.text);
+                toolNames.add(field.initializer.text);
+              }
+            }
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+  return { riskKeys, toolNames };
+}
+
 function relative(file) {
   return path.relative(ROOT, file).replaceAll(path.sep, "/");
 }
@@ -57,6 +120,24 @@ function propertyName(node, sourceFile) {
   if (ts.isIdentifier(node) || ts.isStringLiteralLike(node) || ts.isNumericLiteral(node)) return node.text;
   if (ts.isComputedPropertyName(node) && ts.isStringLiteralLike(node.expression)) return node.expression.text;
   return node.getText(sourceFile);
+}
+
+/**
+ * Strip `as T`, `<T>x` and parentheses off an expression.
+ *
+ * It exists because the two places that read a `defineCapability()` argument MUST agree. They did
+ * not: the strict completeness rule required a bare object literal while the declaration collector
+ * unwrapped casts, so `defineCapability({ ... } as any)` escaped `incomplete-capability` AND still
+ * registered its name as governed — two lines that together minted clearance for any tool. The
+ * `as any` escape from the strict rule pre-dates the collector; the collector is what made it
+ * grant something. One helper, used by both, is why they cannot drift apart again.
+ */
+function unwrapExpression(node) {
+  let current = node;
+  while (current && (ts.isAsExpression(current) || ts.isTypeAssertionExpression(current) || ts.isParenthesizedExpression(current))) {
+    current = current.expression;
+  }
+  return current;
 }
 
 function stringArgument(call) {
@@ -380,6 +461,8 @@ function violation(rule, file, symbol) {
 export function scanSource(source, file = "fixture.ts", options = {}) {
   const normalized = file.replaceAll("\\", "/");
   const strictOnly = options.strictOnly === true;
+  const declaredRiskKeys = options.declaredRiskKeys ?? new Set();
+  const declaredToolNames = options.declaredToolNames ?? new Set();
   const sourceFile = options.sourceFile ?? ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const resolver = options.resolver;
   const findings = [];
@@ -407,8 +490,9 @@ export function scanSource(source, file = "fixture.ts", options = {}) {
           findings.push(violation("permission-literal", normalized, key));
         }
       }
-      if ((member === "objectInputSchema" || member === "defineCapability") && node.arguments[0] && ts.isObjectLiteralExpression(node.arguments[0])) {
-        const props = objectProperties(node.arguments[0], sourceFile);
+      const unwrappedArgument = unwrapExpression(node.arguments[0]);
+      if ((member === "objectInputSchema" || member === "defineCapability") && unwrappedArgument && ts.isObjectLiteralExpression(unwrappedArgument)) {
+        const props = objectProperties(unwrappedArgument, sourceFile);
         if (member === "objectInputSchema") {
           for (const keyword of ["anyOf", "oneOf", "allOf", "not"]) {
             if (props.has(keyword)) findings.push(violation("root-schema-combinator", normalized, keyword));
@@ -436,7 +520,22 @@ export function scanSource(source, file = "fixture.ts", options = {}) {
     if (ts.isObjectLiteralExpression(node)) {
       const props = objectProperties(node, sourceFile);
       if (!strictOnly && props.has("name") && props.has("description") && (props.has("parameters") || props.has("input_schema"))) {
-        findings.push(violation("direct-tool-definition", normalized, literalProperty(props, "name") ?? "<dynamic>"));
+        // INT-003, SECOND LOCK — the same category error as `direct-risk-entry`, one rule over.
+        // `{name, description, parameters}` is the shape of EVERY Paige tool, so flagging it
+        // unconditionally made the tool schema unlandable even after its action was classified and
+        // its capability declared. Measured: with the RISK entry AND a `defineCapability()`
+        // declaration both present, adding the tool schema still failed CI here — so fixing only
+        // the risk rule left the deadlock half-standing. A tool whose name carries a governed
+        // declaration is declared, not hand-rolled; one without a declaration still fails.
+        //
+        // HONEST LIMIT: only a MUTATION clears this, because only `governance.actionRiskKey` is
+        // admitted (see the collector). A brand-new READ tool schema therefore still lands on this
+        // ledger and needs a baseline entry. That is deliberate — INT-003 was a deadlock on new
+        // MUTATING tools, and widening the escape to reads reopened a destructive-write hole.
+        const toolName = literalProperty(props, "name") ?? "<dynamic>";
+        if (!declaredToolNames.has(toolName)) {
+          findings.push(violation("direct-tool-definition", normalized, toolName));
+        }
       }
     }
     ts.forEachChild(node, visitFirst);
@@ -449,6 +548,34 @@ export function scanSource(source, file = "fixture.ts", options = {}) {
     }
   }
 
+  // INT-003 — a RISK entry is the kit's DEPENDENCY, never a bypass of it.
+  //
+  // This rule used to flag EVERY element of the canonical `RISK` array. That was mis-targeted, and
+  // the two halves of the contract contradicted each other outright:
+  //   • the rule reported `direct-risk-entry` for any key not already in the shrink-only baseline,
+  //     and its own message forbade expanding that baseline;
+  //   • its stated remedy — `defineCapability()` — calls `classifyAction(actionRiskKey)` and throws
+  //     "Mutation action-risk keys must exist in the canonical action-risk policy" when the key is
+  //     absent from that SAME array.
+  // So a new mutating tool could be neither classified nor declared, and the baseline could never
+  // legitimately shrink either: migrating a tool to `defineCapability()` does not remove its RISK
+  // entry, because the declaration requires it. A shrink-only ledger whose entries can never shrink
+  // is not a ratchet, it is a freeze — and it froze the one table that classifies risk, so its net
+  // effect was to force new mutating actions to ship UNCLASSIFIED. That inverts the safety property
+  // it was written to defend.
+  //
+  // The guard now fires on the defect that actually matters: an action-risk key with no
+  // `defineCapability()` declaration anywhere in the scanned tree. Classifying an action and
+  // governing it are both required, and neither substitutes for the other.
+  //
+  // EVERY key in RISK is flagged, with NO mutation-verb filter, and that is deliberate. `RISK`
+  // holds only actions — measured, not assumed: its 150 entries are 75 `high`, 72 `ordinary` and
+  // 3 `owner_only`, and zero `read_only`. Filtering on `MUTATION_VERB` was tried and REJECTED
+  // because it silently dropped 32 genuinely mutating actions whose verbs that regex does not
+  // list — `booking_preset_revise`, `crm_merge_contacts`, `crm_close_deal`, `delegate_to_subagent`
+  // and 28 more — which would have blinded this guard to 32 live capabilities while appearing to
+  // narrow it. (That regex gap is real but separate: it is the runtime fallback for UNCLASSIFIED
+  // tools only, and these 32 are classified, so `unclassifiedWriteReason` still governs them.)
   if (!strictOnly && normalized === "supabase/functions/_shared/action-risk.ts") {
     for (const statement of sourceFile.statements) {
       if (!ts.isVariableStatement(statement)) continue;
@@ -458,7 +585,9 @@ export function scanSource(source, file = "fixture.ts", options = {}) {
         if (!ts.isArrayLiteralExpression(initializer)) continue;
         for (const entry of initializer.elements) {
           if (!ts.isArrayLiteralExpression(entry) || !entry.elements[0] || !ts.isStringLiteralLike(entry.elements[0])) continue;
-          findings.push(violation("direct-risk-entry", normalized, entry.elements[0].text));
+          const key = entry.elements[0].text;
+          if (declaredRiskKeys.has(key)) continue;
+          findings.push(violation("direct-risk-entry", normalized, key));
         }
       }
     }
@@ -493,12 +622,13 @@ function scanRepository() {
   const files = SCAN_ROOTS.flatMap((root) => walk(path.join(ROOT, root)))
     .filter((file) => !relative(file).startsWith(MCP_GATEWAY_EXEMPT));
   const resolver = createAstResolver(files);
+  const { riskKeys: declaredRiskKeys, toolNames: declaredToolNames } = collectDeclaredCapabilityNames(files, resolver);
   for (const file of files) {
     const rel = relative(file);
     const sourceFile = resolver.sourceFile(file);
     if (!sourceFile) throw new Error(`TypeScript did not load ${rel}.`);
     if (!rel.startsWith(KIT_DIR)) {
-      const shared = { sourceFile, resolver };
+      const shared = { sourceFile, resolver, declaredRiskKeys, declaredToolNames };
       strictFindings.push(...scanSource(sourceFile.text, rel, { ...shared, strictOnly: true }));
       debtFindings.push(...scanSource(sourceFile.text, rel, shared));
     }
@@ -575,6 +705,37 @@ function runSelfTest() {
       console.error(`  FAIL AST ${name}: expected ${expected} governed calls, got ${aliasFindings.length}`);
     } else console.log(`  ok   AST resolves ${name}`);
   }
+  // INT-003 — the guard must still BITE on an undeclared mutating key, must NOT fire once the key is
+  // declared, and must ignore a read key. A guard that stopped catching anything would be a worse
+  // outcome than the deadlock it replaced, so all three directions are asserted.
+  const riskFixture = 'const RISK = [["widget_send","high","x"],["widget_revise","ordinary","x"]] as const;';
+  const riskPath = "supabase/functions/_shared/action-risk.ts";
+  const undeclared = scanSource(riskFixture, riskPath).filter((item) => item.rule === "direct-risk-entry");
+  if (undeclared.length !== 2) {
+    failed += 1;
+    console.error(`  FAIL direct-risk-entry bites undeclared keys: got ${JSON.stringify(undeclared.map((i) => i.symbol))}`);
+  } else console.log("  ok   direct-risk-entry bites an undeclared action-risk key");
+  // `widget_revise` carries a verb MUTATION_VERB does not list. It must STILL be flagged: the
+  // guard reads the RISK table, which holds only actions, and never the verb regex.
+  if (!undeclared.some((item) => item.symbol === "widget_revise")) {
+    failed += 1;
+    console.error("  FAIL direct-risk-entry skipped an action whose verb is absent from MUTATION_VERB");
+  } else console.log("  ok   direct-risk-entry does not depend on the MUTATION_VERB vocabulary");
+  const declaredFindings = scanSource(riskFixture, riskPath, { declaredRiskKeys: new Set(["widget_send", "widget_revise"]) })
+    .filter((item) => item.rule === "direct-risk-entry");
+  if (declaredFindings.length !== 0) {
+    failed += 1;
+    console.error("  FAIL direct-risk-entry still fired for a key declared through defineCapability()");
+  } else console.log("  ok   direct-risk-entry clears once the key is declared (INT-003 unblocked)");
+  // A cast must not hide an incomplete declaration from the strict rule. Before the shared
+  // unwrap, `as any` escaped this check entirely — and once a collector read through casts, that
+  // escape also minted governance clearance for the tool name.
+  const castHidden = scanSource('defineCapability({idempotency:{},outcome:{}} as any)', "fixture.ts", { strictOnly: true })
+    .filter((item) => item.rule === "incomplete-capability");
+  if (castHidden.length === 0) {
+    failed += 1;
+    console.error("  FAIL a cast hid an incomplete capability declaration from the strict rule");
+  } else console.log("  ok   a cast cannot hide an incomplete capability declaration");
   const exempt = "supabase/functions/_shared/mcp-gateway/temporary.ts".startsWith(MCP_GATEWAY_EXEMPT);
   if (!exempt) {
     failed += 1;
@@ -596,7 +757,7 @@ function runSelfTest() {
     console.error("  FAIL shrink-only baseline admitted a duplicate occurrence");
   } else console.log("  ok   shrink-only baseline preserves occurrence counts");
   if (failed) process.exit(1);
-  console.log(`\n✓ capability-kit lint self-test passed — ${cases.length + aliasCases.length + 4} cases.`);
+  console.log(`\n✓ capability-kit lint self-test passed — ${cases.length + aliasCases.length + 8} cases.`);
 }
 
 if (process.argv.includes("--self-test")) {
@@ -632,6 +793,16 @@ if (additions.length) {
   console.error("✗ capability-kit anti-bypass debt grew:");
   for (const item of additions) console.error(`  ${item.rule} | ${item.path} | ${item.symbol}`);
   console.error("\nRoute the declaration through defineCapability(); never expand the baseline to clear CI.");
+  if (additions.some((item) => item.rule === "direct-risk-entry")) {
+    console.error(
+      "\nFor direct-risk-entry specifically: a mutating action needs BOTH halves, in the same change.\n" +
+      "  1. classify it — add its entry to RISK in supabase/functions/_shared/action-risk.ts\n" +
+      "  2. govern it  — declare defineCapability({ governance: { actionRiskKey: \"<key>\", ... } })\n" +
+      "     under supabase/functions/ or src/.\n" +
+      "Step 1 alone is what this reports. Step 2 clears it, and step 2 REQUIRES step 1 — classifyAction()\n" +
+      "reads the same RISK array, so the entry is the declaration's dependency, not debt to be avoided."
+    );
+  }
   process.exit(1);
 }
 

@@ -44,7 +44,29 @@ check(/actorUserId = await deps\.authenticate\(presented\)[\s\S]*resolveContactT
 check(/invocationKind = "mcp"/.test(authority) && /invocationKind = platformOwner \? "platform_owner" : directAdmin \? "admin" : "agency"/.test(authority), "invocation channel is separate from verified owner, admin, or agency authority");
 check(/secureBrowserNeedsAdminConfirmation/.test(runner), "first-N confirmation uses truthful browser invocation provenance");
 check(/isTenantAdmin:[\s\S]*is_tenant_admin_as/.test(runner) && /canAgencyManage:[\s\S]*agency_can_manage_child/.test(runner), "internal browser caller actor is re-authorized");
-check(runner.indexOf("resolveBrowserAuthority(req, body, admin)") < runner.indexOf('.from("paige_skill_runs")'), "browser authority resolves before any run row is written");
+// ORDERING IS AN EXECUTION CLAIM, SO IT IS MEASURED INSIDE THE REQUEST HANDLER.
+//
+// This assertion used to compare `indexOf` across the WHOLE FILE, and that cannot express what it
+// claims: helpers are DECLARED above `Deno.serve` and CALLED from inside it, so a file-wide compare
+// puts a declaration site against a call site. `runDraftAndEmailDocument` is declared at L354 and
+// writes its run rows at L495 and L561 — textually before the authority call at L644 — but it is
+// INVOKED at L679, which is after it. The source ordering was correct the whole time; the check was
+// reading the file, not the flow, and it went red the moment that helper was hoisted above the
+// handler. Scoping to the handler body is what makes this an ordering proof rather than a layout one.
+//
+// It also now fails CLOSED. Every landmark must be FOUND: a rename previously made `indexOf` return
+// -1, and `-1 < n` is true, so the check would have passed while proving nothing.
+const handlerStart = runner.indexOf("Deno.serve(");
+const handlerBody = handlerStart === -1 ? "" : runner.slice(handlerStart);
+const authorityAt = handlerBody.indexOf("resolveBrowserAuthority(req, body, admin)");
+const directRunRowAt = handlerBody.indexOf('.from("paige_skill_runs")');
+// The run-row-writing helper is a second way a row could land early, so its INVOCATION is ordered too.
+const runRowHelperAt = handlerBody.indexOf("runDraftAndEmailDocument(body");
+check(
+  handlerStart !== -1 && authorityAt !== -1 && directRunRowAt !== -1 && runRowHelperAt !== -1 &&
+    authorityAt < directRunRowAt && authorityAt < runRowHelperAt,
+  "browser authority resolves before any run row is written",
+);
 check(/const hasBrowserStep = browserToolAllowed\(skill as SkillRow\)/.test(runner), "browser authority gate uses the interpreter canonical tool normalizer");
 
 const generatedTypes = read("src/integrations/supabase/types.ts");

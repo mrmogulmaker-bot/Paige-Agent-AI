@@ -22,12 +22,15 @@ import { CALENDAR_PRESET_CAPABILITIES } from "./domains/calendar_preset.ts";
 // _shared/action-risk.ts + the inline confirm gate, NOT this manifest (see calendar_link.ts).
 import { CALENDAR_LINK_CAPABILITIES } from "./domains/calendar_link.ts";
 import { AGREEMENT_CAPABILITIES } from "./domains/agreement.ts";
-// INT-163 — agreements. ONLY the overview READ registers, and the mutating acts do not: a mutation
-// must carry a LIVE chat binding and an exact chat tool name, and no new mutating chat tool can be
-// landed while the INT-003 capability-kit deadlock stands. See domains/agreement.ts for the full
-// trace. This comment previously claimed DRAFT, VOID and STATUS registered here; they did not, and
-// the array below was unchanged beneath it — a description of an intended state written as a
-// shipped one, directly above the line that would have disproved it.
+// INT-163 — agreements. ONLY the overview READ registers. The mutating acts do not, because a
+// mutation must carry a LIVE chat binding and an exact chat tool name and those tools have not been
+// written — sequencing, not a blockage: the INT-003 deadlock that once made them unlandable was
+// resolved on 2026-09-23 (PR #1367). See domains/agreement.ts for the measured trace.
+//
+// Twice now this comment has claimed something the code did not do. It first said DRAFT, VOID and
+// STATUS registered here while the array below was unchanged; then it said a deadlock stood after
+// that deadlock had been resolved. Both were corrected on discovery rather than left, because a
+// comment in a manifest is read as a statement about the manifest.
 
 export const PAIGE_SPINE_CAPABILITIES = [PIPELINE_DEAL_STAGE_EVIDENCE, BUSINESS_CONTEXT_READINESS, TEAM_AUTHORITY, SOCIAL_PRESENCE, N8N_CONNECTION_READINESS, ...N8N_MANAGEMENT_CAPABILITIES, ...BUSINESS_MISSION_CAPABILITIES, ...CAMPAIGN_BRIEF_CAPABILITIES, ...CALENDAR_PRESET_CAPABILITIES, ...CALENDAR_LINK_CAPABILITIES, ...AGREEMENT_CAPABILITIES, COMMS_MESSAGES_READ, INTEGRATIONS_LIST, INTEGRATIONS_HEALTH, CONTACT_EVENT_STATUS, ...PIPELINE_CRM_ACTIONS, ...CONTACT_CRM_ACTIONS] as const;
 

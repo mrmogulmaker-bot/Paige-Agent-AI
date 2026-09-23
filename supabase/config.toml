@@ -604,3 +604,14 @@ verify_jwt = true
 # (getUser). Tenant is resolved server-side from the JWT (current_user_tenant_id) and every action
 # is admin-gated + connection-visibility-scoped; the body tenant is a refusal-only cross-check.
 verify_jwt = true
+
+[functions.mcp-oauth-callback]
+# Connected MCP Gateway OAuth redirect target. The provider redirects the host's browser straight here
+# with a top-level GET carrying ?code=&state= and NO Supabase JWT — so verify_jwt=false (the same
+# posture and the same reason as zoom-oauth-callback / tenant-n8n-oauth / paige-social-callback). The
+# single-use, PKCE-bound `state` is the authenticator: it can only have been minted by begin_mcp_oauth,
+# reachable ONLY through the JWT-gated, admin-gated mcp-gateway `oauth_begin` action. The connection and
+# tenant are read FROM the consumed state row, never a body/query field; complete_mcp_oauth_grant then
+# re-verifies in-body that the connection is in that tenant (§9/§59). Answers only with a 302 to a clean
+# app URL — code/state never enter an analytics-instrumented React surface (the #1355 structural fix).
+verify_jwt = false

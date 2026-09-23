@@ -5,20 +5,23 @@ import type { SpineCapability } from "../contracts.ts";
  * gives about what a client has agreed to.
  *
  * WHY ONLY THE READ IS HERE, stated plainly so the next reader does not go looking for the rest.
- * The engine's mutating acts — draft, send, resend, void, add a signer — are NOT registered, and
- * that is a blockage rather than a decision. A mutating capability must carry a LIVE chat binding
- * and an exact chat tool name (`registry.ts`, the MUTATING branch), and a new mutating chat tool
- * cannot currently be landed at all: `classifyAction` returns `unclassified` for a key absent from
- * the canonical action-risk policy, `defineCapability()` refuses to declare a mutation whose key is
- * absent from that same policy, and `capability-kit-lint` reports `direct-risk-entry` for adding
- * one. The remedy each gate names is the thing the next gate forbids. That deadlock is INT-003's to
- * resolve and is recorded at `_shared/action-risk.ts` ("CLASSIFICATIONS WITHHELD, and why"); it is
- * not worked around here, because widening a contract this lane does not own to get past a gate is
- * how a second system starts.
+ * The engine's mutating acts — draft, send, resend, void, add a signer — are NOT registered. A
+ * mutating capability must carry a LIVE chat binding and an exact chat tool name (`registry.ts`,
+ * the MUTATING branch), and those tools have not been written yet.
  *
- * The read has no such problem. A `read` capability needs no chat tool — the validator's
- * LIVE-binding and tool-name requirements sit inside the mutating branch — so the list PAIGE and
- * the tenant both depend on registers today rather than waiting on a deadlock it is not part of.
+ * THIS IS SEQUENCING, NOT A BLOCKAGE — and that is a correction to what this comment said when it
+ * was written. It described the INT-003 capability-kit deadlock, which was real then: a RISK entry
+ * was rejected as `direct-risk-entry`, and the remedy that rejection named — `defineCapability()` —
+ * required the entry it had just forbidden. **INT-003 was resolved on 2026-09-23 (PR #1367)**, so
+ * nothing now stops the agreement tools being landed; they simply have not been. Measured rather
+ * than assumed: `classifyAction("agreement_send")` still returns `unclassified` because the keys
+ * are still absent, and `_shared/action-risk.ts` now carries its own rewritten note explaining that
+ * their absence is a sequencing choice. Landing them is its own piece of work, not a side effect of
+ * registering this read, and it is routed rather than absorbed here.
+ *
+ * The read never had that problem in either era. A `read` capability needs no chat tool — the
+ * validator's LIVE-binding and tool-name requirements sit inside the mutating branch — so the list
+ * PAIGE and the tenant both depend on registers on its own terms.
  *
  * `public.paige_agreement_overview` is §59-clean by construction: it is SECURITY DEFINER, and its
  * body re-derives the tenant from `current_user_tenant_id()` and requires `is_tenant_member`. The
