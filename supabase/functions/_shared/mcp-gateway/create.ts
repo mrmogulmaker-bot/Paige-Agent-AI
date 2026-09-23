@@ -22,6 +22,8 @@
 // status, an endpoint hash, and the last4 of a token (only for tokens ≥12). Nothing here returns the
 // server URL, a credential, or raw provider text; the edge passes that safe shape straight through.
 
+import { mapWriterError } from "./writer-errors.ts";
+
 // The one thing runCreate needs from a Supabase client: an awaitable `rpc`. The real
 // `SupabaseClient.rpc()` returns a PostgrestFilterBuilder — a thenable (`PromiseLike`), NOT a full
 // `Promise` — so the seam is typed `PromiseLike` (matching verify.ts, so the real client satisfies
@@ -108,51 +110,6 @@ export function readCreateInput(
   };
 }
 
-/** Pull the closed-set MCP_* token out of a Postgres error the writer RAISEd (it surfaces in the
- *  message/details/hint). The `/MCP_[A-Z_]+/` match stops at the first non-`[A-Z_]` char, so it
- *  extracts `MCP_FORBIDDEN` from `MCP_FORBIDDEN: tenant mismatch` WITHOUT the suffix — the same
- *  regex the frontend consumer uses (useMcpGateway.ts), so the vocabulary is identical end-to-end. */
-function mcpToken(error: unknown): string | null {
-  if (!error || typeof error !== "object") return null;
-  const e = error as { message?: unknown; details?: unknown; hint?: unknown };
-  for (const field of [e.message, e.details, e.hint]) {
-    if (typeof field === "string") {
-      const m = field.match(/MCP_[A-Z_]+/);
-      if (m) return m[0];
-    }
-  }
-  return null;
-}
-
-/**
- * Map a coded writer error to an HTTP status + a closed, secret-free body.
- *
- * `create_mcp_connection` RAISEs `MCP_FORBIDDEN` (SQLSTATE 42501) for FOUR distinct reasons — a
- * tenant mismatch, a non-admin caller, a non-member, or the missing `manage` capability — each with a
- * DIFFERENT message suffix. Echoing the suffix would be a which-gate / cross-tenant oracle, so every
- * 42501 collapses to ONE uniform `403 { error: "MCP_FORBIDDEN" }` (the token, never the suffix).
- * Validation failures (22023) carry their specific `MCP_*` token so the consumer's copy map resolves.
- * Anything uncoded is an internal fault → `500 create_failed`, never the raw PG message (§13).
- */
-function mapCreateError(error: unknown): CreateResult {
-  const sqlstate = typeof (error as { code?: unknown } | null)?.code === "string"
-    ? (error as { code: string }).code
-    : "";
-  const token = mcpToken(error);
-
-  // Authority — uniform, suffix stripped (no which-gate oracle). Keyed on SQLSTATE OR the token so a
-  // future message-format change on either signal still collapses to the uniform forbidden.
-  if (sqlstate === "42501" || token === "MCP_FORBIDDEN") {
-    return { httpStatus: 403, body: { error: "MCP_FORBIDDEN" } };
-  }
-  // Validation — surface the specific closed code the caller's copy map understands.
-  if (sqlstate === "22023" || token) {
-    return { httpStatus: 400, body: { error: token ?? "MCP_BAD_REQUEST" } };
-  }
-  // Uncoded / internal (a bug, a NOT NULL violation, a transport error) — never leak the raw message.
-  return { httpStatus: 500, body: { error: "create_failed" } };
-}
-
 /**
  * Authorize (via the writer RPC's in-body gate) and create one registry connection. Returns an HTTP
  * status + a safe body. The caller is already authenticated by the wrapper; this resolves tenant scope
@@ -214,7 +171,10 @@ export async function runCreate(deps: CreateDeps, input: CreateInput): Promise<C
     });
 
   const { data, error } = await rpc;
-  if (error) return mapCreateError(error);
+  if (error) {
+    const mapped = mapWriterError(error, "create_failed");
+    return { httpStatus: mapped.httpStatus, body: mapped.body };
+  }
 
   // Success — the writer returns { connection_id, status, endpoint_hash, auth_token_last4 } (secret-free).
   // A response with no connection_id is not a real create (§13 — never claim a row that was not made).
