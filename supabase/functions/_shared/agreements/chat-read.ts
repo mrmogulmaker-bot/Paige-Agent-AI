@@ -107,9 +107,52 @@ export type AgreementReadFailure =
   | "refused"
   | "unavailable";
 
+/**
+ * Why an EMPTY read was empty, when the adapter could establish it. An empty list is the answer
+ * most likely to be reported as a confident falsehood, because it looks like an answer rather than
+ * an absence — so each case it can distinguish is named, and the caller renders the distinction
+ * rather than flattening it to "none".
+ */
+export type AgreementEmptyReason = "agency_has_no_client_book" | "contact_not_found";
+
 export type AgreementReadResult =
-  | { success: true; agreements: AgreementSummary[]; count: number; note?: string }
+  | {
+      success: true;
+      agreements: AgreementSummary[];
+      count: number;
+      note?: string;
+      /** Present only on an empty read the adapter could explain. */
+      emptyReason?: AgreementEmptyReason;
+    }
   | { success: false; error: string; reason: AgreementReadFailure; note?: string };
+
+/**
+ * Workspace questions the adapter cannot answer from the overview RPC, asked ONLY when the answer
+ * changes what PAIGE should say. Every one is optional, and every one may return `null` for "could
+ * not tell" — an unanswerable diagnostic degrades to the plain result, never to a guess (§13).
+ *
+ * They are a port rather than inline queries so this module stays drivable from vitest without a
+ * Supabase client, exactly as the RPC port is.
+ */
+export type AgreementReadDiagnostics = {
+  /**
+   * Does the caller hold a DIRECT `tenant_members` row in this workspace? Asked only on a 42501.
+   *
+   * WHY IT MATTERS, AND IT IS NOT A HYPOTHETICAL. `current_user_tenant_id()` accepts FOUR paths —
+   * direct membership, `agency_can_manage_child`, `agency_team_role`, and `is_platform_admin`
+   * (migration 20260714144656) — while `paige_agreement_overview`'s third gate accepts only
+   * `is_tenant_member()`, which reads `tenant_members` alone (migration 20260629175341:132-142).
+   * So an agency owner switched into a managed sub-account, an agency team member, and a platform
+   * operator acting-as all RESOLVE the workspace and are then refused. Without this, PAIGE tells
+   * them "this account is not a member of it", which is not what happened and sends them to fix
+   * the wrong thing.
+   */
+  isDirectMember?: () => Promise<boolean | null>;
+  /** Is this workspace a top-level agency, which structurally holds no client book? Empty reads only. */
+  isAgencyWithoutClientBook?: () => Promise<boolean | null>;
+  /** Does this contact exist in this workspace at all? Empty reads that named a contact only. */
+  contactExists?: (contactId: string) => Promise<boolean | null>;
+};
 
 /**
  * Why a read failed, in caller-safe language. `42501` is the SQLSTATE every one of the RPC's three
@@ -119,6 +162,14 @@ export type AgreementReadResult =
  */
 const REFUSED =
   "That workspace's agreements could not be read — the active workspace may have changed, or this account is not a member of it. Reopen the workspace and try again.";
+/**
+ * The refusal for a caller who reached the workspace by DELEGATED access rather than membership.
+ * It names the real boundary instead of denying their access, because they do have access to the
+ * workspace — just not, today, to its agreements. Widening the RPC's gate to honour the agency rail
+ * is a deliberate §53 decision for the backend lane, not something this read may assume.
+ */
+const NOT_A_DIRECT_MEMBER =
+  "Agreements can only be read by someone with their own membership in this workspace. Access you hold by managing this account from a parent agency, or as a platform operator, does not extend to its agreements — so nothing can be shown here, and this is a limit rather than an error.";
 const UNAVAILABLE =
   "The agreements could not be read just now. Nothing was changed. Try again, and if it keeps failing the agreements engine may need attention.";
 const NO_WORKSPACE = "No workspace is active. Open a workspace and try again.";
@@ -188,13 +239,8 @@ export async function readAgreements(input: {
   status?: string | null;
   /** `agreement_status` sets this: a read for ONE client may not silently become a read for all. */
   requireContact?: boolean;
-  /**
-   * Called ONLY when the read succeeded and returned nothing, to tell "this workspace has no
-   * agreements" apart from "this workspace cannot have agreements". See the empty-result note below
-   * for why that distinction is load-bearing. Optional, and a thrown or absent resolver degrades to
-   * the plain empty answer rather than to a guess.
-   */
-  resolveEmptyReason?: () => Promise<"agency_has_no_client_book" | null>;
+  /** Workspace questions asked only where the answer changes what PAIGE should say. */
+  diagnostics?: AgreementReadDiagnostics;
 }): Promise<AgreementReadResult> {
   if (!input.expectedTenantId) return { success: false, error: NO_WORKSPACE, reason: "no_workspace" };
 
@@ -242,9 +288,18 @@ export async function readAgreements(input: {
       code: payload.error.code ?? null,
       reason: payload.error.message ?? "unknown",
     });
-    return payload.error.code === "42501"
-      ? { success: false, error: REFUSED, reason: "refused" }
-      : { success: false, error: UNAVAILABLE, reason: "unavailable" };
+    if (payload.error.code !== "42501") {
+      return { success: false, error: UNAVAILABLE, reason: "unavailable" };
+    }
+    // All three of the RPC's in-body refusals raise 42501, so the code alone cannot tell them
+    // apart — and the difference matters to the person reading the answer. A caller who reached
+    // this workspace by delegated access is not "not a member of it"; they are a member of the
+    // parent, or the operator, and agreements simply do not travel down that rail today.
+    let direct: boolean | null = null;
+    try { direct = (await input.diagnostics?.isDirectMember?.()) ?? null; } catch { direct = null; }
+    return direct === false
+      ? { success: false, error: NOT_A_DIRECT_MEMBER, reason: "refused" }
+      : { success: false, error: REFUSED, reason: "refused" };
   }
 
   const rows = Array.isArray(payload.data) ? (payload.data as Record<string, unknown>[]) : [];
@@ -258,14 +313,39 @@ export async function readAgreements(input: {
   // to the sub-account that holds the client relationship." That is the same false negative this
   // module already refuses for an unknown status filter, and it would be worse here because it
   // sounds like an answer rather than an error.
-  if (agreements.length === 0 && input.resolveEmptyReason) {
-    let why: "agency_has_no_client_book" | null = null;
-    try { why = await input.resolveEmptyReason(); } catch { why = null; }
-    if (why === "agency_has_no_client_book") {
+  if (agreements.length === 0 && input.diagnostics) {
+    // A CONTACT THAT DOES NOT EXIST IS NOT A CONTACT WITH NO AGREEMENTS. A syntactically valid
+    // UUID the model invented, or one left over from an earlier turn, filters to zero rows — and
+    // `paige_agreement_overview` filters agreements, so it can never say "no such contact". Told
+    // only "count: 0", PAIGE reports that the client has nothing outstanding, which is a confident
+    // statement about a person the workspace may not even have. Checked first because it is the
+    // more specific claim: on an agency, a bad contact id is still a bad contact id.
+    if (contactId !== null) {
+      let exists: boolean | null = null;
+      try { exists = (await input.diagnostics.contactExists?.(contactId)) ?? null; } catch { exists = null; }
+      if (exists === false) {
+        return {
+          success: true,
+          agreements,
+          count: 0,
+          emptyReason: "contact_not_found",
+          note: "No contact with that id exists in this workspace, so this is NOT 'that client has no agreements' — the client could not be found at all. Look the contact up by name and try again with the id that returns.",
+        };
+      }
+    }
+    // AN AGENCY'S EMPTY BOOK IS STRUCTURAL, NOT INCIDENTAL. A top-level agency manages
+    // sub-accounts rather than clients, and `trg_agreement_tier` (migration 20270405000000)
+    // refuses the write, so it can never hold an agreement. The read still succeeds and returns
+    // zero rows — so without this, PAIGE tells an agency owner "you have no agreements" when the
+    // truth is that this account type does not have a client book to hold them.
+    let agency: boolean | null = null;
+    try { agency = (await input.diagnostics.isAgencyWithoutClientBook?.()) ?? null; } catch { agency = null; }
+    if (agency === true) {
       return {
         success: true,
         agreements,
         count: 0,
+        emptyReason: "agency_has_no_client_book",
         note: "This account is an agency, which manages sub-accounts rather than a client book, so it holds no agreements of its own. Agreements live in the sub-account that holds the client relationship — switch into it to see them. Do NOT report this as 'no agreements'.",
       };
     }

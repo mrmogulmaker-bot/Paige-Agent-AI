@@ -266,11 +266,24 @@ function describeStep(
     case "agreement_status": {
       if (failed) return { label: "Couldn't read your agreements", group: "owner" };
       const n = typeof out?.count === "number" ? out.count : null;
-      return {
-        label: name === "agreement_list" ? "Checked where your agreements stand" : "Checked a client's agreement",
-        group: "owner",
-        detail: n === null ? undefined : n === 0 ? "none matched" : `${n} agreement${n === 1 ? "" : "s"} · nothing sent`,
-      };
+      const label = name === "agreement_list" ? "Checked where your agreements stand" : "Checked a client's agreement";
+      // An EMPTY read is where this chip can contradict the result it is describing. The adapter
+      // distinguishes "this account type holds no client book" and "that contact does not exist"
+      // from a genuine empty book — rendering all three as "none matched" would state, in the
+      // owner's own activity trail, the exact falsehood the tool result tells PAIGE not to state.
+      if (n === 0) {
+        const why = out?.emptyReason;
+        return {
+          label,
+          group: "owner",
+          detail: why === "agency_has_no_client_book"
+            ? "agency account — agreements live in the sub-account"
+            : why === "contact_not_found"
+              ? "that contact wasn't found in this workspace"
+              : "none matched",
+        };
+      }
+      return { label, group: "owner", detail: n === null ? undefined : `${n} agreement${n === 1 ? "" : "s"} · nothing sent` };
     }
     case "calendar_link_send": {
       const oc = out?.outcome;
@@ -12721,15 +12734,36 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               contactId: tc.function.name === "agreement_status" ? (args.contactId ?? null) : null,
               status: args.status ?? null,
               requireContact: tc.function.name === "agreement_status",
-              // Resolved ONLY on an empty result, so the ordinary path pays for no extra query.
-              // The same §51 invariant `agreement-send` gates on (parentage decides first: a child
-              // is never a manager tier), read with the admin client exactly as that function does.
-              resolveEmptyReason: async () => {
-                const { data: row } = await supabase.from("tenants")
-                  .select("account_type,parent_tenant_id").eq("id", tid).maybeSingle();
-                return !row?.parent_tenant_id && row?.account_type === "agency"
-                  ? "agency_has_no_client_book"
-                  : null;
+              // Each of these runs ONLY on the branch that needs it — never on the ordinary
+              // happy path — so an answered read still costs exactly one RPC. Each returns null
+              // rather than a guess when it cannot tell.
+              diagnostics: {
+                // Asked only on a 42501. Under the CALLER's client, so it answers about THEM:
+                // `is_tenant_member` is SECURITY DEFINER keyed on auth.uid(). A `false` here means
+                // the caller reached this workspace by delegated access (agency-manages-child,
+                // agency team role, or operator act-as — the three extra paths
+                // `current_user_tenant_id()` accepts and the overview RPC does not).
+                isDirectMember: async () => {
+                  const { data, error } = await supabaseClient.rpc("is_tenant_member", { _tenant: tid });
+                  return error ? null : data === true;
+                },
+                // The same §51 invariant `agreement-send` gates on (parentage decides first: a
+                // child is never a manager tier), read with the admin client exactly as it does.
+                isAgencyWithoutClientBook: async () => {
+                  const { data: row, error } = await supabase.from("tenants")
+                    .select("account_type,parent_tenant_id").eq("id", tid).maybeSingle();
+                  if (error) return null;
+                  return !row?.parent_tenant_id && row?.account_type === "agency";
+                },
+                // Caller's client, so RLS decides what they may see: a contact in ANOTHER tenant
+                // reads as absent here, which is the correct answer to give this caller and
+                // discloses nothing about the other workspace.
+                contactExists: async (contactId: string) => {
+                  const { data, error } = await supabaseClient.from("clients")
+                    .select("id").eq("id", contactId).eq("tenant_id", tid).maybeSingle();
+                  if (error) return null;
+                  return Boolean(data);
+                },
               },
             });
             // The receipt records what ACTUALLY happened, not that the tool was called: a refusal

@@ -290,25 +290,25 @@ describe("INT-178 · the defects the peer-gate caught", () => {
     const result = await readAgreements({
       caller: port({ data: [], error: null }),
       expectedTenantId: TENANT,
-      resolveEmptyReason: async () => "agency_has_no_client_book",
+      diagnostics: { isAgencyWithoutClientBook: async () => true },
     });
-    expect(result).toMatchObject({ success: true, count: 0 });
+    expect(result).toMatchObject({ success: true, count: 0, emptyReason: "agency_has_no_client_book" });
     expect(result.success && result.note).toMatch(/manages sub-accounts/);
     // The confident falsehood this prevents.
     expect(result.success && result.note).toMatch(/Do NOT report this as 'no agreements'/);
   });
 
-  it("degrades to the plain empty answer when the tier cannot be resolved — never a guess", async () => {
+  it("degrades to the plain empty answer when a diagnostic cannot answer — never a guess", async () => {
     const thrown = await readAgreements({
       caller: port({ data: [], error: null }),
       expectedTenantId: TENANT,
-      resolveEmptyReason: async () => { throw new Error("tenants read failed"); },
+      diagnostics: { isAgencyWithoutClientBook: async () => { throw new Error("tenants read failed"); } },
     });
     expect(thrown).toEqual({ success: true, agreements: [], count: 0 });
     const solo = await readAgreements({
       caller: port({ data: [], error: null }),
       expectedTenantId: TENANT,
-      resolveEmptyReason: async () => null,
+      diagnostics: { isAgencyWithoutClientBook: async () => null },
     });
     expect(solo).toEqual({ success: true, agreements: [], count: 0 });
   });
@@ -320,5 +320,101 @@ describe("INT-178 · the defects the peer-gate caught", () => {
     // note must assert neither. "not the complete list" would have been a guess at the boundary.
     expect(result.success && result.note).toMatch(/Only the 200 most recently updated/);
     expect(result.success && result.note).not.toMatch(/not the complete list/);
+  });
+});
+
+/**
+ * The Codex review's four findings on the pushed diff, each kept as a test. Three of the four are
+ * the same failure mode in different clothes: an answer that is technically derived from a real
+ * query and is nonetheless false, because nobody established what the empty result MEANT.
+ */
+describe("INT-178 · the four findings from the exact-head review", () => {
+  it("P1 — a delegated-access caller is told the real boundary, not that they are not a member", async () => {
+    const refusal = port({ data: null, error: { code: "42501", message: "you are not a member of this workspace" } });
+    const result = await readAgreements({
+      caller: refusal,
+      expectedTenantId: TENANT,
+      // An agency owner switched into a managed sub-account: `current_user_tenant_id()` accepts
+      // them via `agency_can_manage_child`, `is_tenant_member` does not.
+      diagnostics: { isDirectMember: async () => false },
+    });
+    expect(result).toMatchObject({ success: false, reason: "refused" });
+    expect(result.success === false && result.error).toMatch(/own membership in this workspace/);
+    expect(result.success === false && result.error).toMatch(/parent agency, or as a platform operator/);
+    // The wrong answer this replaces — it sent the caller to fix an access problem they do not have.
+    expect(result.success === false && result.error).not.toMatch(/may have changed/);
+  });
+
+  it("P1 — a direct member who hit the same 42501 still gets the workspace-changed reading", async () => {
+    const refusal = port({ data: null, error: { code: "42501", message: "your active workspace changed" } });
+    const result = await readAgreements({
+      caller: refusal,
+      expectedTenantId: TENANT,
+      diagnostics: { isDirectMember: async () => true },
+    });
+    expect(result.success === false && result.error).toMatch(/may have changed/);
+    // And an unanswerable diagnostic must not upgrade to the more specific claim.
+    const unknown = await readAgreements({
+      caller: port({ data: null, error: { code: "42501", message: "refused" } }),
+      expectedTenantId: TENANT,
+      diagnostics: { isDirectMember: async () => null },
+    });
+    expect(unknown.success === false && unknown.error).toMatch(/may have changed/);
+  });
+
+  it("P2 — a contact that does not exist is never reported as a client with no agreements", async () => {
+    const contact = "c1000000-0000-4000-8000-00000000dead";
+    const result = await readAgreements({
+      caller: port({ data: [], error: null }),
+      expectedTenantId: TENANT,
+      contactId: contact,
+      requireContact: true,
+      diagnostics: { contactExists: async () => false },
+    });
+    expect(result).toMatchObject({ success: true, count: 0, emptyReason: "contact_not_found" });
+    expect(result.success && result.note).toMatch(/could not be found at all/);
+  });
+
+  it("P2 — a contact that DOES exist with no agreements stays a plain empty answer", async () => {
+    const contact = "c1000000-0000-4000-8000-000000000002";
+    const result = await readAgreements({
+      caller: port({ data: [], error: null }),
+      expectedTenantId: TENANT,
+      contactId: contact,
+      requireContact: true,
+      diagnostics: { contactExists: async () => true, isAgencyWithoutClientBook: async () => false },
+    });
+    expect(result).toEqual({ success: true, agreements: [], count: 0 });
+  });
+
+  it("the contact check outranks the agency check, because it is the more specific claim", async () => {
+    const result = await readAgreements({
+      caller: port({ data: [], error: null }),
+      expectedTenantId: TENANT,
+      contactId: "c1000000-0000-4000-8000-00000000dead",
+      requireContact: true,
+      diagnostics: { contactExists: async () => false, isAgencyWithoutClientBook: async () => true },
+    });
+    // On an agency a bad contact id is still a bad contact id; saying "agency" first would hide it.
+    expect(result).toMatchObject({ emptyReason: "contact_not_found" });
+  });
+
+  it("every explained-empty result carries a machine-readable reason the chip can branch on", async () => {
+    // The P2 action-chip finding: the renderer must not flatten these to "none matched", and it
+    // can only avoid that if the reason travels as data rather than only inside the prose note.
+    const agency = await readAgreements({
+      caller: port({ data: [], error: null }),
+      expectedTenantId: TENANT,
+      diagnostics: { isAgencyWithoutClientBook: async () => true },
+    });
+    const missing = await readAgreements({
+      caller: port({ data: [], error: null }),
+      expectedTenantId: TENANT,
+      contactId: "c1000000-0000-4000-8000-00000000dead",
+      requireContact: true,
+      diagnostics: { contactExists: async () => false },
+    });
+    expect(agency.success && agency.emptyReason).toBe("agency_has_no_client_book");
+    expect(missing.success && missing.emptyReason).toBe("contact_not_found");
   });
 });
