@@ -35,7 +35,7 @@ called `ci:tsc`, and there is none called plain `Vercel` either.
 
 | Check | Known state on `main` | What `main`'s red is, when it is red | What would establish attribution for YOUR run |
 |---|---|---|---|
-| **`verify`** | RED — fails on exactly one step, `npm run test` | `main`'s own failure is tracked as **#1372**. That is a fact about `main`, not a verdict on your run. | **One procedure only: run the suite on your merge-base and on your head and diff the failure output, names and messages.** No count, no path, and no comparison against the recorded list can clear or convict a run — the section below says why each of those five shortcuts fails. |
+| **`verify`** | RED — fails on exactly one step, `npm run test` | `main`'s own failure is tracked as **#1372**. That is a fact about `main`, not a verdict on your run. | **One procedure only: compare `main`'s current tip against `main`-merged-with-your-head — the tree CI actually runs — and diff the failure output, names and messages.** No count, no path, no comparison against the recorded list, and not merge-base-versus-head either can clear or convict a run. The section below says why each of those six shortcuts fails. |
 | **`github-advanced-security`** | **FLAPPING** — mostly red, green perhaps a quarter of the time. Re-count rather than trust this line; the number moves within hours. | When red, `main`'s failure is a vendor fault with a specific signature — **not diagnostic, and NOT a licence to ignore it.** | **Match the failure SIGNATURE in the job log before dismissing it** — see the section below. A red whose signature you have not checked is an uninvestigated failure, not an inherited one. |
 | `ci:tsc` — **a step inside `verify`, not a check of its own** | GREEN — *"no new type errors (baseline 12, current 12)"* | Not red on `main`. It is a ratchet, not a zero-error gate. | Red means a NEW error signature appeared. Read the diagnostic — the program is wider than `src/`, so do not rule yourself out by path. See below. |
 | **`audit`** | GREEN | Not red on `main`. | Read the failure. |
@@ -75,9 +75,22 @@ also carries an undici/WebSocket `Uncaught Exception` in the harness. Both are i
 
 ## Attributing a failing run: there is ONE procedure, and the list below is not it
 
-**Run `npm run test` on your merge-base and on your head, and diff the failure output — names AND
-messages. That is the whole procedure.** Everything above is context for reading the result; none of
-it is a shortcut around it.
+**Compare `main`'s CURRENT tip against `main`-merged-with-your-head, and diff the failure output —
+names AND messages. That is the whole procedure.** Everything above is context for reading the result;
+none of it is a shortcut around it.
+
+**Those two states, and not the obvious ones, because of what CI actually checks out.** `ci.yml` runs
+`on: pull_request` with a bare `actions/checkout@v4`, which checks out the **synthetic merge ref** —
+the base tip merged with your head. Verified on run `35933689151`: `"event": "pull_request"`. So:
+
+- **Your branch head is not what CI tested.** The `head_sha` in a check-run event names your commit;
+  the tree that ran is the merge.
+- **Neither the merge-base nor your standalone head is either.** A failure introduced by current `main`,
+  or by the *combination* of `main` and your branch, shows up in CI while appearing in neither — so
+  matching those two would clear a run that CI is legitimately failing. An earlier version of this
+  procedure named exactly that wrong pair.
+- **Locally, produce the tested tree the same way CI does:** merge `origin/main` into your branch (never
+  rebase) and run the suite there; compare against a run on `origin/main` alone.
 
 **Why nothing else works, stated once so it does not have to be rediscovered a sixth time.** Five
 successive review rounds each killed one shortcut this section had offered, and the fifth killed the
@@ -90,11 +103,13 @@ last one:
 | none of **my diff's paths** appear | Vitest names the test FILE, not what it reads; and a test can import anything, including across `src/` ↔ `supabase/functions/` |
 | the failing **names** all match the twenty | a change can alter a listed failure *in place*, keeping its name |
 | a failing **name is missing** from the twenty | **the list is pinned to `7ebdd9fea` and `main` moves.** A failure `main` acquired afterwards is absent from the list and is still not yours |
+| **merge-base versus head** match | neither is the tree CI ran. CI tests the base tip MERGED with your head, so a failure from current `main` or from the combination appears in CI and in neither of those two |
 
 **The last row is the one that generalises, and it is this file's own opening mistake wearing a
 different hat: a measurement pinned to a commit cannot answer a question about the present.** That is
-why the totals went stale, and it is equally why the name list cannot convict. Base-versus-head is the
-only comparison whose two sides are both current.
+why the totals went stale, why the name list cannot convict, and — a sixth round found — why "merge-base
+versus head" was itself the wrong pair: the merge-base is a pinned point too. The only sound comparison
+has both sides current AND has one of them be the tree CI actually ran.
 
 **So the twenty names below are ORIENTATION, not evidence** — they tell you what `main`'s failure
 looked like when it was measured, which is useful for recognising the shape of a run. They cannot

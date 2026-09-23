@@ -2784,6 +2784,14 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      The only sound comparison is one whose two sides are BOTH current — here, base versus head. When
      you catch yourself reaching for a recorded value to decide something about the present, that is
      the trap, and the fix is never a fresher snapshot.
+     **A sixth round found the rule applying to the REPAIR itself: "merge-base versus head" is also a
+     pinned pair, and neither side is the tree CI ran.** `ci.yml` runs `on: pull_request` with a bare
+     `actions/checkout@v4`, so CI checks out the synthetic MERGE ref — base tip merged with head
+     (verified: run `35933689151`, `"event": "pull_request"`). A failure introduced by current `main`, or
+     by the combination of `main` and the branch, therefore appears in CI and in neither the merge-base
+     nor the standalone head. **Know what your CI actually checks out before you design a comparison
+     against it** — and note that the `head_sha` in a check-run event names your commit, not the tree
+     that ran.
   8. **The meta-pattern, and the one actually worth carrying: four of the nine findings were an
      ENUMERATION offered where a general RULE was needed.** Widen the regex to cover single quotes
      (enumerate the quote styles). Add a line counter (enumerate the layouts). Name two directories as
