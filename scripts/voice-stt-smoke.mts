@@ -259,5 +259,148 @@ const inWithout = buildInboundTwiml([`${T}.${U}`]);
 check("inbound WITH stream contains the fork before <Dial>", inWith.includes("<Start><Stream") && inWith.indexOf("<Start>") < inWith.indexOf("<Dial"));
 check("inbound WITHOUT stream has NO <Start> (OFF = unchanged)", !inWithout.includes("<Start>"));
 
+// Live Conversation attaches to the same Flux router. The opener below is fake:
+// these checks must never create a provider socket or send real audio.
+console.log("live Flux ears adapter:");
+const { openFluxEars } = await import("../supabase/functions/_shared/paige-live-flux-ears.ts");
+const missingEars = await openFluxEars({ startOfTurn() {}, partial() {}, final() {}, unavailable() {} });
+check("live ears fail closed without the server key", !missingEars.ok && missingEars.code === "stt_not_configured");
+env.DEEPGRAM_API_KEY = "local-presence-only";
+const previousWebSocket = globalThis.WebSocket;
+class FakeFluxSocket {
+  static readonly OPEN = 1;
+  static readonly CLOSED = 3;
+  readyState = FakeFluxSocket.OPEN;
+  onopen: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onclose: ((event: { code: number; wasClean: boolean }) => void) | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  readonly sent: Array<string | ArrayBuffer> = [];
+  send(value: string | ArrayBuffer) { this.sent.push(value); }
+  close(code = 1000, wasClean = true) { this.readyState = FakeFluxSocket.CLOSED; this.onclose?.({ code, wasClean }); }
+  receive(value: unknown) { this.onmessage?.({ data: JSON.stringify(value) }); }
+}
+(globalThis as unknown as { WebSocket: unknown }).WebSocket = FakeFluxSocket;
+const fakeFlux = new FakeFluxSocket();
+const seenFlux: string[] = [];
+let plannedFluxUrl = "";
+const opening = openFluxEars({
+  startOfTurn(text) { seenFlux.push(`start:${text}`); },
+  partial(text) { seenFlux.push(`partial:${text}`); },
+  final(text) { seenFlux.push(`final:${text}`); },
+  unavailable() { seenFlux.push("unavailable"); },
+}, { opener(url) { plannedFluxUrl = url; queueMicrotask(() => fakeFlux.onopen?.()); return fakeFlux as unknown as WebSocket; } });
+const openedFlux = await opening;
+check("live ears reuse Flux /v2 with mandatory MIP opt-out", openedFlux.ok && new URL(plannedFluxUrl).pathname === "/v2/listen" && new URL(plannedFluxUrl).searchParams.get("mip_opt_out") === "true");
+if (openedFlux.ok) {
+  check("live ears send 80 ms PCM and meter only observed audio", openedFlux.ears.sendPcm(new ArrayBuffer(2560)) === 80 && fakeFlux.sent[0] instanceof ArrayBuffer);
+  check("a tiny accepted PCM frame never reports zero duration", openedFlux.ears.sendPcm(new ArrayBuffer(2))! > 0);
+  check("live ears reject malformed PCM before provider send", openedFlux.ears.sendPcm(new ArrayBuffer(3)) === null && fakeFlux.sent.length === 2);
+  fakeFlux.receive({ type: "TurnInfo", event: "StartOfTurn", turn_index: 0, sequence_id: 1, transcript: "Hello" });
+  fakeFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 2, transcript: "Hello Paige" });
+  fakeFlux.receive({ type: "TurnInfo", event: "EndOfTurn", turn_index: 0, sequence_id: 3, transcript: "Hello Paige." });
+  fakeFlux.receive({ type: "TurnInfo", event: "EndOfTurn", turn_index: 0, sequence_id: 3, transcript: "duplicate" });
+  check("Flux start, partial and final preserve ordering without duplicate turns", seenFlux.join("|") === "start:Hello|partial:Hello Paige|final:Hello Paige.");
+  openedFlux.ears.close();
+  check("clean end sends Flux CloseStream without treating it as a provider failure", fakeFlux.sent.some((value) => value === '{"type":"CloseStream"}') && !seenFlux.includes("unavailable"));
+  fakeFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 1, sequence_id: 4, transcript: "Trailing thought" });
+  fakeFlux.close(1005, true);
+  check("CloseStream flush Update becomes one final utterance on close", seenFlux.at(-1) === "final:Trailing thought");
+}
+const cancelledFlux = new FakeFluxSocket();
+const cancelledSeen: string[] = [];
+const cancelledOpening = openFluxEars({
+  startOfTurn() {}, partial(text) { cancelledSeen.push(`partial:${text}`); },
+  final(text) { cancelledSeen.push(`final:${text}`); }, unavailable() {},
+}, { opener() { queueMicrotask(() => cancelledFlux.onopen?.()); return cancelledFlux as unknown as WebSocket; } });
+const cancelledResult = await cancelledOpening;
+if (cancelledResult.ok) {
+  cancelledFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 1, transcript: "Interrupted" });
+  cancelledResult.ears.close();
+  cancelledResult.ears.cancel();
+  cancelledFlux.close();
+}
+check("cancel after CloseStream discards buffered partial instead of finalizing it", !cancelledSeen.some((item) => item.startsWith("final:")));
+const droppedFlux = new FakeFluxSocket();
+const droppedSeen: string[] = [];
+const droppedOpening = openFluxEars({
+  startOfTurn() {}, partial() {}, final(text) { droppedSeen.push(text); }, unavailable() {},
+}, { opener() { queueMicrotask(() => droppedFlux.onopen?.()); return droppedFlux as unknown as WebSocket; } });
+const droppedResult = await droppedOpening;
+if (droppedResult.ok) {
+  droppedFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 1, transcript: "Unflushed" });
+  droppedResult.ears.close();
+  droppedFlux.close(1006, false);
+}
+check("close without a post-CloseStream Update never invents a final", droppedSeen.length === 0);
+const failedCloseFlux = new FakeFluxSocket();
+const failedCloseSeen: string[] = [];
+const failedCloseOpening = openFluxEars({
+  startOfTurn() {}, partial() {}, final(text) { failedCloseSeen.push(text); }, unavailable() {},
+}, { opener() { queueMicrotask(() => failedCloseFlux.onopen?.()); return failedCloseFlux as unknown as WebSocket; } });
+const failedCloseResult = await failedCloseOpening;
+if (failedCloseResult.ok) {
+  const originalSend = failedCloseFlux.send.bind(failedCloseFlux);
+  failedCloseFlux.send = (value) => {
+    if (value === '{"type":"CloseStream"}') throw new Error("fake send failure");
+    originalSend(value);
+  };
+  failedCloseResult.ears.close();
+  failedCloseFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 1, transcript: "Never flushed" });
+}
+check("failed CloseStream send cannot earn final text", failedCloseSeen.length === 0 && failedCloseFlux.readyState === FakeFluxSocket.CLOSED);
+const uncleanFlushSocket = new FakeFluxSocket();
+const uncleanFlushSeen: string[] = [];
+const uncleanFlushOpening = openFluxEars({
+  startOfTurn() {}, partial() {}, final(text) { uncleanFlushSeen.push(text); }, unavailable() {},
+}, { opener() { queueMicrotask(() => uncleanFlushSocket.onopen?.()); return uncleanFlushSocket as unknown as WebSocket; } });
+const uncleanFlushResult = await uncleanFlushOpening;
+if (uncleanFlushResult.ok) {
+  uncleanFlushResult.ears.close();
+  uncleanFlushSocket.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 1, transcript: "Dropped after flush" });
+  uncleanFlushSocket.close(1006, false);
+}
+check("unclean upstream close never promotes interim text", uncleanFlushSeen.length === 0);
+const errorCodeFlux = new FakeFluxSocket();
+const errorCodeSeen: string[] = [];
+const errorCodeOpening = openFluxEars({
+  startOfTurn() {}, partial() {}, final(text) { errorCodeSeen.push(`final:${text}`); },
+  unavailable() { errorCodeSeen.push("unavailable"); },
+}, { opener() { queueMicrotask(() => errorCodeFlux.onopen?.()); return errorCodeFlux as unknown as WebSocket; } });
+const errorCodeResult = await errorCodeOpening;
+if (errorCodeResult.ok) {
+  errorCodeResult.ears.close();
+  errorCodeFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 1, transcript: "Not confirmed" });
+  errorCodeFlux.close(1011, true);
+}
+check("clean handshake with provider error code fails instead of finalizing", errorCodeSeen.join("|") === "unavailable");
+const timedOutFlux = new FakeFluxSocket();
+const timedOutSeen: string[] = [];
+const timedOutOpening = openFluxEars({
+  startOfTurn() {}, partial() {}, final(text) { timedOutSeen.push(`final:${text}`); },
+  unavailable() { timedOutSeen.push("unavailable"); },
+}, { opener() { queueMicrotask(() => timedOutFlux.onopen?.()); return timedOutFlux as unknown as WebSocket; }, closeTimeoutMs: 1 });
+const timedOutResult = await timedOutOpening;
+if (timedOutResult.ok) {
+  timedOutResult.ears.close();
+  timedOutFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 1, transcript: "Partial flush" });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+check("local forced close cannot impersonate Deepgram's clean settlement", timedOutSeen.join("|") === "unavailable" && timedOutFlux.readyState === FakeFluxSocket.CLOSED);
+const thrownOpening = await openFluxEars(
+  { startOfTurn() {}, partial() {}, final() {}, unavailable() {} },
+  { opener() { throw new Error("fake constructor failure"); } },
+);
+check("socket constructor failure returns typed open failure", !thrownOpening.ok && thrownOpening.code === "stt_open_failed");
+const errorFlux = new FakeFluxSocket();
+const errorOpening = openFluxEars(
+  { startOfTurn() {}, partial() {}, final() {}, unavailable() {} },
+  { opener() { queueMicrotask(() => errorFlux.onerror?.()); return errorFlux as unknown as WebSocket; } },
+);
+const errorResult = await errorOpening;
+check("open-time socket error closes its provider resource", !errorResult.ok && errorFlux.readyState === FakeFluxSocket.CLOSED);
+(globalThis as unknown as { WebSocket: unknown }).WebSocket = previousWebSocket;
+delete env.DEEPGRAM_API_KEY;
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
