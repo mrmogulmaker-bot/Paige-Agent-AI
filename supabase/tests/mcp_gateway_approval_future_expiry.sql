@@ -125,6 +125,27 @@ BEGIN
   IF n <> 1 THEN RAISE EXCEPTION '(6) the unrelated update should have persisted on the lapsed row: %', n; END IF;
 END $$;
 
+-- ── (7) WALL-CLOCK closure (Codex P2) — an expiry future vs FROZEN now() but PAST vs the real wall clock
+--        (as it would be after the writer's FOR UPDATE lock wait) is REFUSED, because the guard compares
+--        against clock_timestamp(), not now(). The whole test runs in one transaction, so now() is frozen
+--        at its start; pin _exp 1s ahead of the REAL clock, then pg_sleep(2) so the wall clock passes it
+--        while now() stays behind — a frozen-now() guard would wrongly ACCEPT, clock_timestamp() rejects.
+DO $$
+DECLARE _exp timestamptz := clock_timestamp() + interval '1 second'; _sqlstate text; _raised boolean := false;
+BEGIN
+  PERFORM pg_sleep(2);                    -- real time advances past _exp; now() (txn start) stays behind it
+  IF _exp <= now() THEN                   -- sanity: prove a frozen-now() compare would NOT have caught this
+    RAISE EXCEPTION '(7) precondition failed: _exp must still be FUTURE vs frozen now()';
+  END IF;
+  BEGIN
+    INSERT INTO public.mcp_connection_approvals (connection_id, tool_name, pin, approved_by, endpoint_hash, expires_at)
+    VALUES ('eafe0000-0000-0000-0000-0000000000a2','wall_clock_probe', repeat('d',64), NULL,
+            public._mcp_endpoint_hash('https://mcp-exp.example/rpc'), _exp);
+  EXCEPTION WHEN others THEN _raised := true; _sqlstate := SQLSTATE; END;
+  IF NOT _raised THEN RAISE EXCEPTION '(7) an expiry past the WALL CLOCK (future vs frozen now()) must be refused'; END IF;
+  IF _sqlstate <> '22023' THEN RAISE EXCEPTION '(7) expected SQLSTATE 22023 from the clock_timestamp guard, got %', _sqlstate; END IF;
+END $$;
+
 DO $$ BEGIN RAISE NOTICE 'MCP_GW_APPROVAL_FUTURE_EXPIRY_PROVEN'; END $$;
 
 ROLLBACK;

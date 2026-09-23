@@ -23,6 +23,14 @@
 -- `approval_expired`), not a writer stamping a dead value, and blocking it would wrongly break any
 -- unrelated update (e.g. a future usage/health touch) to an already-expired approval row. On INSERT
 -- `OLD` is NULL, so a non-NULL past `NEW` is always DISTINCT and refused — the TOCTOU stays closed.
+--
+-- WALL CLOCK, NOT `now()` (Codex P2). `now()` is `transaction_timestamp()` — frozen at the transaction's
+-- START. `set_mcp_connection_approval` takes a `SELECT ... FOR UPDATE` lock on the connection BEFORE the
+-- INSERT, so a value that was future when that transaction began can LAPSE while the lock is contended,
+-- yet still satisfy a frozen-`now()` compare — the row lands, and a fresh verify transaction instantly
+-- rejects it `approval_expired` while approve already answered `approved: true`. That is the very TOCTOU
+-- this guard exists to close, so it compares against `clock_timestamp()` (the ACTUAL wall clock at the
+-- moment the trigger fires, after any lock wait), which advances within the transaction.
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION public._mcp_reject_past_approval_expiry()
@@ -33,7 +41,7 @@ AS $$
 BEGIN
   IF NEW.expires_at IS NOT NULL
      AND NEW.expires_at IS DISTINCT FROM OLD.expires_at
-     AND NEW.expires_at <= now() THEN
+     AND NEW.expires_at <= clock_timestamp() THEN
     RAISE EXCEPTION 'MCP_EXPIRY_IN_PAST: approval expiry must be in the future' USING ERRCODE = '22023';
   END IF;
   RETURN NEW;
@@ -42,10 +50,12 @@ $$;
 
 COMMENT ON FUNCTION public._mcp_reject_past_approval_expiry() IS
   'BEFORE INSERT/UPDATE guard on mcp_connection_approvals: refuses a write that INTRODUCES or CHANGES '
-  'expires_at to a non-future instant (NEW.expires_at IS DISTINCT FROM OLD), atomically with the write, '
-  'closing the approve-edge TOCTOU so an approval verify would instantly reject as expired can never be '
-  'stored while approve reports approved:true (Codex P2, PR #1375). An unrelated update to a row whose '
-  'FUTURE expiry has since lapsed by elapsed time is left alone — that is real expiry, not a bad write.';
+  'expires_at to a non-future instant (NEW.expires_at IS DISTINCT FROM OLD), compared against '
+  'clock_timestamp() (the real wall clock, NOT frozen now()) so a value that lapses during the writer''s '
+  'FOR UPDATE lock wait is still caught, atomically with the write — closing the approve TOCTOU so an '
+  'approval verify would instantly reject as expired can never be stored while approve reports '
+  'approved:true (Codex P2, PR #1375). An unrelated update to a row whose FUTURE expiry has since lapsed '
+  'by elapsed time is left alone — that is real expiry, not a bad write.';
 
 DROP TRIGGER IF EXISTS trg_mcp_reject_past_approval_expiry ON public.mcp_connection_approvals;
 CREATE TRIGGER trg_mcp_reject_past_approval_expiry
