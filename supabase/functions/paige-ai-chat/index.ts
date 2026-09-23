@@ -13726,15 +13726,23 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // Buffer across reads so a `data:` record split over two reads still
             // contributes its delta to the persisted text (#94 integrity).
             let capBuf = "";
+            let finalStreamDone = false;
             const capLine = (line: string) => {
-              if (!line.startsWith("data: ") || line.includes("[DONE]")) return;
-              try { const c = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content; if (c) finalAssistantText += c; } catch { /* skip */ }
+              if (!line.startsWith("data: ") || (liveRuntimeScope && finalStreamDone)) return;
+              if (line.slice(6).trim() === "[DONE]") { finalStreamDone = true; return; }
+              try {
+                const parsed = JSON.parse(line.slice(6));
+                if (liveRuntimeScope && parsed.error) throw new Error("live_answer_failed");
+                const c = parsed?.choices?.[0]?.delta?.content;
+                if (c) finalAssistantText += c;
+                if (liveRuntimeScope) emitContent(controller, new TextEncoder().encode(`${line}\n\n`));
+              } catch (error) { if (liveRuntimeScope) throw error; }
             };
             try {
-              while (true) {
+              while (!liveRuntimeScope || !finalStreamDone) {
                 const { done, value } = await up.read();
                 if (done) break;
-                emitContent(controller, value);
+                if (!liveRuntimeScope) emitContent(controller, value);
                 capBuf += dec.decode(value, { stream: true });
                 let nl: number;
                 while ((nl = capBuf.indexOf("\n")) !== -1) { capLine(capBuf.slice(0, nl)); capBuf = capBuf.slice(nl + 1); }
@@ -13743,7 +13751,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               capBuf += dec.decode();
               if (capBuf) capLine(capBuf);
             }
+            if (liveRuntimeScope) {
+              if (!finalStreamDone) throw new Error("live_answer_incomplete");
+              void up.cancel().catch(() => {});
+              emitContent(controller, new TextEncoder().encode("data: [DONE]\n\n"));
+            }
           } else {
+            if (liveRuntimeScope) throw new Error("live_answer_unavailable");
             // Couldn't finish. Show the fallback AND persist it, so a reload
             // shows the same thing the user saw (not a question with no reply).
             const fallback = "I gathered what I could but couldn't finish that — mind trying again?";

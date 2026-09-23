@@ -132,3 +132,12 @@ No Retry is offered for that partially executed turn. This preserves what arrive
 it does not assert that a failed server persistence write succeeded. Scope-change
 fences still reject stale updates. Flow prototype is not required for this
 same-surface false-error/continuity repair; no new workflow or layout is added.
+
+Completion-class repair: a final model response that is non-OK, has no body,
+throws while reading, sends an error frame, or reaches EOF without the exact
+DONE sentinel is an interrupted Live answer, never a successful retry invitation.
+Six additional failing-first cases exposed EOF/non-OK/bodyless behavior for
+protected and unprotected turns. The Live pump now parses complete SSE records,
+accepts one terminal DONE, ignores trailing data and routes all incomplete paths
+through the same interruption settlement. Text-mode fallback remains unchanged.
+The existing protected scope check still precedes buffer release. No real call.
