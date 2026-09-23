@@ -316,10 +316,23 @@ const cancelledOpening = openFluxEars({
 const cancelledResult = await cancelledOpening;
 if (cancelledResult.ok) {
   cancelledFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 1, transcript: "Interrupted" });
+  cancelledResult.ears.close();
   cancelledResult.ears.cancel();
   cancelledFlux.close();
 }
-check("cancel discards buffered partial instead of finalizing it", !cancelledSeen.some((item) => item.startsWith("final:")));
+check("cancel after CloseStream discards buffered partial instead of finalizing it", !cancelledSeen.some((item) => item.startsWith("final:")));
+const droppedFlux = new FakeFluxSocket();
+const droppedSeen: string[] = [];
+const droppedOpening = openFluxEars({
+  startOfTurn() {}, partial() {}, final(text) { droppedSeen.push(text); }, unavailable() {},
+}, { opener() { queueMicrotask(() => droppedFlux.onopen?.()); return droppedFlux as unknown as WebSocket; } });
+const droppedResult = await droppedOpening;
+if (droppedResult.ok) {
+  droppedFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 1, transcript: "Unflushed" });
+  droppedResult.ears.close();
+  droppedFlux.close();
+}
+check("close without a post-CloseStream Update never invents a final", droppedSeen.length === 0);
 const thrownOpening = await openFluxEars(
   { startOfTurn() {}, partial() {}, final() {}, unavailable() {} },
   { opener() { throw new Error("fake constructor failure"); } },

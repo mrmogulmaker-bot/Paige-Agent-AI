@@ -42,7 +42,7 @@ export async function openFluxEars(
   let failed = false;
   let lastSequence = -1;
   let finalTurnIndex = -1;
-  let bufferedUpdate: { text: string; turnIndex: number } | null = null;
+  let flushedUpdate: { text: string; turnIndex: number } | null = null;
   let closeTimer: ReturnType<typeof setTimeout> | null = null;
   const failOnce = () => {
     if (failed || cancelled) return;
@@ -72,8 +72,8 @@ export async function openFluxEars(
       if (closeTimer) clearTimeout(closeTimer);
       // CloseStream's last transcript is an Update, not an EndOfTurn. It is
       // final only when we deliberately asked Flux to flush and then closed.
-      if (finishing && !failed && bufferedUpdate && bufferedUpdate.turnIndex !== finalTurnIndex) {
-        events.final(bufferedUpdate.text, bufferedUpdate.turnIndex);
+      if (finishing && !cancelled && !failed && flushedUpdate && flushedUpdate.turnIndex !== finalTurnIndex) {
+        events.final(flushedUpdate.text, flushedUpdate.turnIndex);
       } else if (!finishing) failOnce();
       settle(false);
     };
@@ -85,10 +85,10 @@ export async function openFluxEars(
       if (turn.event === "StartOfTurn") events.startOfTurn(turn.transcript, turn.turnIndex);
       else if (turn.isFinal) {
         finalTurnIndex = turn.turnIndex;
-        bufferedUpdate = null;
+        flushedUpdate = null;
         events.final(turn.transcript, turn.turnIndex);
       } else if (turn.event === "Update") {
-        bufferedUpdate = { text: turn.transcript, turnIndex: turn.turnIndex };
+        if (finishing) flushedUpdate = { text: turn.transcript, turnIndex: turn.turnIndex };
         events.partial(turn.transcript, turn.turnIndex);
       }
     };
@@ -112,6 +112,7 @@ export async function openFluxEars(
       close() {
         if (finishing || cancelled) return;
         finishing = true;
+        flushedUpdate = null;
         if (socket.readyState === WebSocket.OPEN) {
           try { socket.send(JSON.stringify({ type: "CloseStream" })); } catch { /* best effort */ }
           closeTimer = setTimeout(() => {
