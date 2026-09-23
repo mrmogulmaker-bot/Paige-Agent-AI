@@ -378,3 +378,59 @@ describe("the real minted invite shape, end to end", () => {
     expect(sent.join("\n")).not.toContain(spaced);
   });
 });
+
+/**
+ * A BASE64URL INVITE INSIDE A NESTED URL IN A QUERY PARAMETER.
+ *
+ * Found by review on the very commit that added the nested-parameter scan. The scan was a free-text
+ * run match, and `/` is in the base64 alphabet, so `https://app/join/<invite>` collapsed into the
+ * run `app/join/<invite>` — 41 characters, not the 32 the mint is pinned to — and the exact-width
+ * test missed. Widening the run alphabet does not fix it: the joined run then carries the `-`/`_`
+ * of a base64url token and the separator disqualifier rejects it.
+ *
+ * The path is therefore redacted structurally, segment by segment, where the token is a whole
+ * segment. The last two cases are the guard on that change: hex must stay covered, and an ordinary
+ * campaign parameter must come through byte-for-byte.
+ */
+describe("a nested URL inside a query parameter", () => {
+  const REAL_INVITE = "kJ8vQ2mZ-xR7bN4wT1yH_cL6pA3dS9eQ";
+
+  it("redacts a /join URL parked in utm_campaign", () => {
+    const out = redactSecretSearch(
+      `?utm_campaign=${encodeURIComponent(`https://app.example.com/join/${REAL_INVITE}`)}`,
+    );
+    expect(out).not.toContain(REAL_INVITE);
+  });
+
+  it("redacts a /join URL parked in an unrecognised parameter", () => {
+    const out = redactSecretSearch(
+      `?next=${encodeURIComponent(`https://app.example.com/join/${REAL_INVITE}`)}`,
+    );
+    expect(out).not.toContain(REAL_INVITE);
+  });
+
+  it("redacts a bare nested PATH, not just an absolute URL", () => {
+    const out = redactSecretSearch(`?next=${encodeURIComponent(`/join/${REAL_INVITE}`)}`);
+    expect(out).not.toContain(REAL_INVITE);
+  });
+
+  it("redacts a token in the nested URL's OWN query string", () => {
+    const out = redactSecretSearch(
+      `?next=${encodeURIComponent(`https://app.example.com/landing?handoff=${REAL_INVITE}`)}`,
+    );
+    expect(out).not.toContain(REAL_INVITE);
+  });
+
+  it("still covers the hex mint through the same path", () => {
+    const out = redactSecretSearch(
+      `?next=${encodeURIComponent(`https://app.example.com/sign/${SIGNING_TOKEN}`)}`,
+    );
+    expect(out).not.toContain(SIGNING_TOKEN);
+  });
+
+  it("leaves an ordinary campaign parameter byte-for-byte", () => {
+    expect(redactSecretSearch("?utm_campaign=black_friday_2026_launch&ref=PARTNER1")).toBe(
+      "?utm_campaign=black_friday_2026_launch&ref=PARTNER1",
+    );
+  });
+});

@@ -310,6 +310,41 @@ export function redactSecretPath(pathname: string): string {
 }
 
 /**
+ * Redact a URL or path that is sitting INSIDE a query-parameter value.
+ *
+ * A FREE-TEXT SCAN IS NOT ENOUGH HERE, and the reason is worth keeping. `/` belongs to the base64
+ * alphabet, so a run scan over `https://app/join/<invite>` greedily produces `app/join/<invite>` —
+ * 41 characters, not the 32 the invite mint is pinned to — and the exact-width match then misses.
+ * Widening the run alphabet does not rescue it either: the joined run carries the `-`/`_` of a
+ * base64url token, so the separator disqualifier rejects it and the credential ships intact. That
+ * was a real P1 on this function, in the same change that added it.
+ *
+ * So the path is redacted STRUCTURALLY instead, segment by segment, where a 32-character token is
+ * a whole segment and matches cleanly. `redactSecretPath` never calls back into this function, so
+ * unlike `redactSecretUrl` it can be used here without putting the two in a cycle. Anything that
+ * is not a path — a nested query string, free prose — still gets the run scan, over the union
+ * alphabet so base64url is visible to it.
+ */
+function redactNestedLocation(decoded: string): string {
+  const runScan = (text: string) =>
+    text.replace(/[A-Za-z0-9+/_-]{20,}/g, (run) => (looksLikeCredential(run) ? REDACTED : run));
+
+  const isUrl = /^[a-z][a-z0-9+.-]*:\/\//i.test(decoded);
+  const isPath = decoded.startsWith("/");
+  if (!isUrl && !isPath) return runScan(decoded);
+
+  const cut = decoded.search(/[?#]/);
+  const head = cut < 0 ? decoded : decoded.slice(0, cut);
+  const tail = cut < 0 ? "" : decoded.slice(cut);
+
+  if (!isUrl) return redactSecretPath(head) + runScan(tail);
+  // Keep scheme://host intact so the destination still reads; redact only the path after it.
+  const parts = head.match(/^([a-z][a-z0-9+.-]*:\/\/[^/]*)(\/.*)?$/i);
+  if (!parts) return runScan(decoded);
+  return parts[1] + (parts[2] ? redactSecretPath(parts[2]) : "") + runScan(tail);
+}
+
+/**
  * Redact a credential-bearing QUERY STRING.
  *
  * A query string is not somewhere credentials merely might appear — `/unsubscribe?token=<t>` and
@@ -334,13 +369,7 @@ export function redactSecretSearch(search: string): string {
     // disqualify it and the credential in its path rides through. Measured on the referral sink —
     // `?utm_campaign=https%3A%2F%2Fapp%2Fsign%2F<64 hex>` reached `landing_path` intact while the
     // very same token was being redacted out of the `utm_campaign` field beside it.
-    //
-    // Scanned as free text rather than re-parsed as a URL: `redactSecretUrl` calls back into this
-    // function, so recursing here would put the two in a cycle. `/` is in the run alphabet, so a
-    // token split across path segments is still seen as one run.
-    const scrubbed = decoded.replace(/[A-Za-z0-9+/=]{20,}/g, (run) =>
-      looksLikeCredential(run) ? REDACTED : run,
-    );
+    const scrubbed = redactNestedLocation(decoded);
     if (scrubbed !== decoded) return `${key}=${encodeURIComponent(scrubbed)}`;
     return pair;
   });

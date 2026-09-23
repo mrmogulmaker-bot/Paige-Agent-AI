@@ -187,3 +187,28 @@ describe("attribution values are scrubbed on the referral sink too", () => {
     expect(posted).toContain("BlackFridayPromo2026");
   });
 });
+
+/**
+ * The nested-URL case on THIS sink specifically, because this is the one that matters most for it:
+ * `landing_path` is built from the whole query string and lands in `referral_clicks`, which
+ * `clicks_self` exposes to an ordinary authenticated affiliate. A unit test on the redactor does
+ * not prove what this hook actually posts.
+ */
+describe("a nested invite URL never reaches landing_path", () => {
+  const REAL_INVITE = "kJ8vQ2mZ-xR7bN4wT1yH_cL6pA3dS9eQ";
+
+  it("redacts a /join URL carried in utm_campaign", async () => {
+    atLocation(
+      `https://app.example.com/?ref=PARTNER1&utm_campaign=${encodeURIComponent(
+        `https://app.example.com/join/${REAL_INVITE}`,
+      )}`,
+    );
+    const posted = await driveHook();
+    expect(invokeCalls.length).toBeGreaterThan(0);
+    expect(invokeCalls[0].fn).toBe("track-referral-click");
+    expect(String((invokeCalls[0].body as Record<string, unknown>).landing_path)).not.toContain(
+      REAL_INVITE,
+    );
+    expect(posted).not.toContain(REAL_INVITE);
+  });
+});
