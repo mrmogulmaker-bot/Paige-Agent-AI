@@ -9,6 +9,10 @@ import { executeVerifiedCalendarPresetMutation, resolveCalendarPresetListContext
 // canonical send-message seam (caller JWT forwarded); prepare/social-copy are reads.
 import { CALENDAR_LINK_TOOLS } from '../_shared/paige-spine/domains/calendar_link.ts';
 import { prepareCalendarLinkShare, sendCalendarLink, calendarLinkSocialCopy, type SendMessageFn } from '../_shared/calendar-link-tenant-brain.ts';
+// INT-178 — agreements, the READ half. Two reads over the one governed seam
+// (`public.paige_agreement_overview`); the send stays on `agreement-send` behind the confirm gate.
+import { AGREEMENT_TOOLS } from '../_shared/paige-spine/domains/agreement.ts';
+import { readAgreements } from '../_shared/agreements/chat-read.ts';
 import { N8N_MANAGEMENT_TOOLS, runN8nManagement } from '../_shared/n8n-management.ts';
 const N8N_MANAGEMENT_TOOL_NAMES = new Set(N8N_MANAGEMENT_TOOLS.map(tool => tool.function.name));
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -256,6 +260,31 @@ function describeStep(
     // TRUE outcome — a queued send is NOT "sent", and a refused/failed send is never a success (§13).
     case "calendar_link_prepare": return { label: "Prepared a booking link to share", group: "owner", detail: out?.shareable === false ? "calendar isn't public yet" : undefined };
     case "calendar_link_social_copy": return { label: "Prepared social post copy", group: "owner", detail: "copy-ready · nothing posted" };
+    // Agreements (INT-178) — both are READS, so neither can report a send. The detail says how many
+    // were read, never that anything was delivered or signed.
+    case "agreement_list":
+    case "agreement_status": {
+      if (failed) return { label: "Couldn't read your agreements", group: "owner" };
+      const n = typeof out?.count === "number" ? out.count : null;
+      const label = name === "agreement_list" ? "Checked where your agreements stand" : "Checked a client's agreement";
+      // An EMPTY read is where this chip can contradict the result it is describing. The adapter
+      // distinguishes "this account type holds no client book" and "that contact does not exist"
+      // from a genuine empty book — rendering all three as "none matched" would state, in the
+      // owner's own activity trail, the exact falsehood the tool result tells PAIGE not to state.
+      if (n === 0) {
+        const why = out?.emptyReason;
+        return {
+          label,
+          group: "owner",
+          detail: why === "agency_has_no_client_book"
+            ? "agency account — agreements live in the sub-account"
+            : why === "contact_not_found"
+              ? "that contact wasn't found in this workspace"
+              : "none matched",
+        };
+      }
+      return { label, group: "owner", detail: n === null ? undefined : `${n} agreement${n === 1 ? "" : "s"} · nothing sent` };
+    }
     case "calendar_link_send": {
       const oc = out?.outcome;
       if (oc === "sent") return { label: "Sent your booking link", group: "owner", detail: `by ${out?.channel === "sms" ? "text" : "email"}` };
@@ -6524,6 +6553,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           ...CAMPAIGN_BRIEF_TOOLS,
           ...CALENDAR_PRESET_TOOLS,
           ...CALENDAR_LINK_TOOLS,
+          ...AGREEMENT_TOOLS,
           {
             type: "function",
             function: {
@@ -7396,6 +7426,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       calendar_link_prepare: "preparing a booking link to share",
       calendar_link_send: "sending a booking link to a contact",
       calendar_link_social_copy: "preparing social post copy for a booking link",
+      agreement_list: "checking where your agreements stand",
+      agreement_status: "checking a client's agreement",
       update_client_data: "saving details to a client's file",
       delegate_to_subagent: "handing work to one of her specialists",
       comms_buy_number: "buying a phone number",
@@ -12675,6 +12707,98 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             }
           } catch (e) {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:"The booking link was not shared.", note:"No send ran and no delivery may be claimed." }) });
+          }
+        } else if (tc.function.name === "agreement_list" || tc.function.name === "agreement_status") {
+          // INT-178 — AGREEMENTS, the READ half. Both tools execute the ONE governed seam
+          // (`public.paige_agreement_overview`) through `_shared/agreements/chat-read.ts`.
+          //
+          // THE CALLER'S CLIENT, NOT THE ADMIN ONE. That RPC is SECURITY DEFINER and re-proves the
+          // caller's tenant and membership from `auth.uid()` in its own body (§59). Under the
+          // service role `auth.uid()` is NULL, so `supabase` here would not read MORE — it would
+          // read NOTHING and refuse. `supabaseClient` (anon key + caller JWT) is both the correct
+          // and the only working choice. The admin client appears below for the receipt alone,
+          // because `record_capability_run` is granted to service_role only.
+          //
+          // NO CONFIRM GATE, DELIBERATELY. These are reads: unclassified in action-risk.ts on
+          // purpose, and their names carry no MUTATION_VERB segment, so `unclassifiedWriteReason`
+          // correctly reads them as queries. Neither can draft, send, resend, void or remind — the
+          // send stays on `agreement-send` behind its own admin check and the confirm gate.
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const tid = personaCtx?.tenant_id ?? null;
+            const r = await readAgreements({
+              caller: supabaseClient,
+              expectedTenantId: tid,
+              // `agreement_list` declares no contactId; reading one off its args anyway would let
+              // the model narrow a list it was never given the parameter for.
+              contactId: tc.function.name === "agreement_status" ? (args.contactId ?? null) : null,
+              status: args.status ?? null,
+              requireContact: tc.function.name === "agreement_status",
+              // Each of these runs ONLY on the branch that needs it — never on the ordinary
+              // happy path — so an answered read still costs exactly one RPC. Each returns null
+              // rather than a guess when it cannot tell.
+              diagnostics: {
+                // Asked only on a 42501. Under the CALLER's client, so it answers about THEM:
+                // `is_tenant_member` is SECURITY DEFINER keyed on auth.uid(). A `false` here means
+                // the caller reached this workspace by delegated access (agency-manages-child,
+                // agency team role, or operator act-as — the three extra paths
+                // `current_user_tenant_id()` accepts and the overview RPC does not).
+                isDirectMember: async () => {
+                  const { data, error } = await supabaseClient.rpc("is_tenant_member", { _tenant: tid });
+                  return error ? null : data === true;
+                },
+                // The same §51 invariant `agreement-send` gates on (parentage decides first: a
+                // child is never a manager tier), read with the admin client exactly as it does.
+                isAgencyWithoutClientBook: async () => {
+                  const { data: row, error } = await supabase.from("tenants")
+                    .select("account_type,parent_tenant_id").eq("id", tid).maybeSingle();
+                  if (error) return null;
+                  return !row?.parent_tenant_id && row?.account_type === "agency";
+                },
+                // Caller's client, so RLS decides what they may see: a contact in ANOTHER tenant
+                // reads as absent here, which is the correct answer to give this caller and
+                // discloses nothing about the other workspace.
+                contactExists: async (contactId: string) => {
+                  const { data, error } = await supabaseClient.from("clients")
+                    .select("id").eq("id", contactId).eq("tenant_id", tid).maybeSingle();
+                  if (error) return null;
+                  return Boolean(data);
+                },
+              },
+            });
+            // The receipt records what ACTUALLY happened, not that the tool was called: a refusal
+            // is `capability_refused`, an outage is `capability_failed`. `recordCapabilityRun`
+            // never throws and returns false rather than failing the read, so a Rail that is down
+            // cannot turn a successful read into an error the owner sees.
+            await recordCapabilityRun(supabase, {
+              tenantId: tid,
+              actorId: user.id,
+              capabilityKey: tc.function.name,
+              // EXHAUSTIVE over `AgreementReadFailure`, not a ternary chain with a positional
+              // fallback. A fifth failure mode added later must be a compile error here rather than
+              // silently inheriting "refused" — which is how a genuine outage gets written to the
+              // owner's Rail as a refusal, a falsehood in the one artifact whose job is truth.
+              outcome: !r.success
+                ? ((): "capability_refused" | "capability_failed" => {
+                    switch (r.reason) {
+                      case "unavailable": return "capability_failed";
+                      case "refused":
+                      case "no_workspace":
+                      case "unknown_status":
+                      case "bad_contact_id": return "capability_refused";
+                      default: { const _never: never = r.reason; return "capability_refused"; }
+                    }
+                  })()
+                : "capability_succeeded",
+              // Deliberately NO `detail`. `redactDetail` scrubs on KEY NAME only, so it would not
+              // catch a signer name or a date passed under an innocuous key — the safety net does
+              // not cover this shape, so nothing of the read's content is offered to it. That the
+              // capability ran, and how it turned out, is the whole of what this receipt owes.
+            });
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(r) });
+          } catch (e) {
+            console.error("[agreements] read dispatch threw", { tool: tc.function.name, reason: e instanceof Error ? e.message : "unknown" });
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:"Your agreements could not be read just now. Nothing was changed, and nothing was sent." }) });
           }
         } else if (
           tc.function.name === "plan_set_reminder" ||
