@@ -497,3 +497,36 @@ describe("nested URLs and URL authorities", () => {
     expect(decodeURIComponent(out)).toContain("pricing");
   });
 });
+
+/**
+ * Round four, both found by review on the round-three fix. Two ways a URL avoided being read as a
+ * URL, which is the shape this whole sequence keeps taking.
+ *
+ *   · A SCHEME-RELATIVE reference — `//host/path` — was classified as a path because it starts with
+ *     `/`, so the authority was never parsed and `//<invite>@example.com/p` came back whole. That
+ *     is precisely the form a redirect parameter takes.
+ *   · A KEYLESS component — `?https%3A%2F%2F…` with no `=` at all — got only the whole-value shape
+ *     test, which a URL's own punctuation always fails.
+ */
+describe("URLs that avoided being read as URLs", () => {
+  const INVITE = "kJ8vQ2mZ-xR7bN4wT1yH_cL6pA3dS9eQ";
+
+  it("treats a scheme-relative reference as an authority, not a path", () => {
+    const out = redactSecretSearch(`?next=${encodeURIComponent(`//${INVITE}@example.com/p`)}`);
+    expect(out).not.toContain(INVITE);
+  });
+
+  it("redacts a token in a scheme-relative HOST label too", () => {
+    const out = redactSecretSearch(`?next=${encodeURIComponent(`//${INVITE}.example.com/p`)}`);
+    expect(out).not.toContain(INVITE);
+  });
+
+  it("scrubs a query component that has no key at all", () => {
+    const out = redactSecretSearch(`?${encodeURIComponent(`https://app.example/join/${INVITE}`)}`);
+    expect(out).not.toContain(INVITE);
+  });
+
+  it("still leaves an ordinary keyless flag alone", () => {
+    expect(redactSecretSearch("?debug&utm_campaign=spring_sale")).toBe("?debug&utm_campaign=spring_sale");
+  });
+});

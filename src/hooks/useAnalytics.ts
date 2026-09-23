@@ -343,8 +343,13 @@ function redactNestedLocation(decoded: string, depth: number): string {
   // had in common.
   if (depth >= NESTED_MAX_DEPTH) return REDACTED;
 
-  const isUrl = /^[a-z][a-z0-9+.-]*:\/\//i.test(decoded);
-  const isPath = decoded.startsWith("/");
+  // `//host/path` IS A URL, not a path, and reading it as one skipped the authority entirely:
+  // `//<invite>@example.com/p` went down the path branch, where `<invite>@example.com` is a single
+  // segment that the credential predicate rejects because of the `@`. A scheme-relative reference
+  // is exactly the form a redirect parameter takes, so it has to reach the authority branch.
+  const isSchemeRelative = decoded.startsWith("//");
+  const isUrl = isSchemeRelative || /^[a-z][a-z0-9+.-]*:\/\//i.test(decoded);
+  const isPath = !isSchemeRelative && decoded.startsWith("/");
   if (!isUrl && !isPath) return runScan(decoded);
 
   const cut = decoded.search(/[?#]/);
@@ -353,7 +358,7 @@ function redactNestedLocation(decoded: string, depth: number): string {
 
   if (!isUrl) return redactSecretPath(head) + redactNestedTail(tail, depth);
 
-  const parts = head.match(/^([a-z][a-z0-9+.-]*:\/\/)([^/]*)(\/.*)?$/i);
+  const parts = head.match(/^([a-z][a-z0-9+.-]*:\/\/|\/\/)([^/]*)(\/.*)?$/i);
   if (!parts) return runScan(decoded);
   const [, scheme, authority, path] = parts;
   return (
@@ -420,7 +425,16 @@ export function redactSecretSearch(search: string, depth = 0): string {
   if (!query) return search;
   const parts = query.split("&").map((pair) => {
     const eq = pair.indexOf("=");
-    if (eq < 0) return looksLikeCredential(safeDecode(pair)) ? REDACTED : pair;
+    if (eq < 0) {
+      // A COMPONENT WITH NO `=` IS STILL A VALUE. `?https%3A%2F%2Fapp%2Fjoin%2F<invite>` has no
+      // key, and the whole-value test alone cannot see into it — the URL's own punctuation fails
+      // the strict-alphabet check, exactly as it did for keyed values. It gets the same structural
+      // scrub rather than only the shape test.
+      const decodedPair = safeDecode(pair);
+      if (looksLikeCredential(decodedPair)) return REDACTED;
+      const scrubbedPair = redactNestedLocation(decodedPair, depth);
+      return scrubbedPair !== decodedPair ? encodeURIComponent(scrubbedPair) : pair;
+    }
     const key = pair.slice(0, eq);
     const value = pair.slice(eq + 1);
     const decoded = safeDecode(value);
