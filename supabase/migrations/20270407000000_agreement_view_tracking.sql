@@ -26,9 +26,27 @@
 -- quietly absent: the owner sees `viewed` and `declined` on their own authenticated surface through
 -- `paige_agreement_overview`, and the email notices return with the seam that can send them.
 --
--- ROLLBACK (forward-only production procedure): replaces one function. Reverse by restoring the
--- previous definition from `20270404000000` in a forward migration.
+-- WHY THE AGREEMENT GETS ITS OWN `viewed_at` AND NOT JUST A STATUS. The agreement row already
+-- carries `sent_at`, `completed_at`, `declined_at` and `voided_at` — one timestamp per lifecycle
+-- transition — and `viewed` was the single transition with a status and no time. That asymmetry is
+-- mine and predates anyone asking about it: every consumer wanting "when was this first opened"
+-- would have had to aggregate `min(first_viewed_at)` across the signer rows to recover something
+-- its four siblings state directly. So the two are recorded at two grains, in one statement:
+--   • `paige_agreement_signers.first_viewed_at` — WHICH party opened it and WHEN, per signer.
+--   • `paige_agreements.viewed_at`              — when it was first opened BY ANYONE, set once.
+-- `coalesce(viewed_at, now())` is what makes the second one "first", not "latest": a second signer
+-- opening the document later never rewrites the moment the first one did.
+--
+-- ROLLBACK (forward-only production procedure): adds one nullable column and replaces one function.
+-- Reverse by dropping the column and restoring the previous definition from `20270404000000` in a
+-- forward migration.
 -- ============================================================================
+
+ALTER TABLE public.paige_agreements
+  ADD COLUMN IF NOT EXISTS viewed_at timestamptz;
+
+COMMENT ON COLUMN public.paige_agreements.viewed_at IS
+  'When this agreement was first opened by any signer. Set once, never rewritten by a later opening. Per-signer detail is paige_agreement_signers.first_viewed_at.';
 
 CREATE OR REPLACE FUNCTION public.peek_agreement_signing(_token text)
 RETURNS TABLE (
@@ -104,9 +122,13 @@ BEGIN
     VALUES (_a.id, _a.tenant_id, _s.id, 'viewed', 'signer', _s.email);
 
     -- Forward only, and only from `sent`: a partially-signed agreement does not fall back to viewed.
+    -- `viewed_at` is set outside that status guard and coalesced, so the FIRST open is recorded even
+    -- when the agreement has already moved on — and is never overwritten by a later one.
     UPDATE public.paige_agreements
-       SET status = 'viewed', updated_at = now()
-     WHERE id = _a.id AND status = 'sent';
+       SET status = CASE WHEN status = 'sent' THEN 'viewed' ELSE status END,
+           viewed_at = coalesce(viewed_at, now()),
+           updated_at = now()
+     WHERE id = _a.id AND status IN ('sent','viewed','partially_signed');
 
     -- Reflect what we just wrote rather than the row read a moment ago.
     _s.status := 'viewed';

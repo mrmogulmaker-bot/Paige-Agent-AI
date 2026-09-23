@@ -169,6 +169,12 @@ fi
 if ! grep -q 'N7 reload: events=1 PASS' "$OUT"; then
   echo "FAIL — a reload recorded a second view; the trail counts page loads, not openings."; exit 1
 fi
+if ! grep -q 'N7 agreement viewed_at set = PASS' "$OUT"; then
+  echo "FAIL — the agreement row carries no viewed_at; a per-agreement reader would have to aggregate signers."; exit 1
+fi
+if ! grep -q 'N7 viewed_at is FIRST not latest = PASS' "$OUT"; then
+  echo "FAIL — a later opening rewrote viewed_at; it records the FIRST open."; exit 1
+fi
 if ! grep -q 'C1 .*signed' "$OUT" || ! grep -q 'C2 .*signed' "$OUT"; then
   echo "FAIL — positive controls did not succeed, so the negatives prove nothing."
   exit 1

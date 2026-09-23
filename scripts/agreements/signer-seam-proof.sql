@@ -151,8 +151,24 @@ BEGIN
   RAISE NOTICE 'N7 first view: signer=% agreement=% events=% %', _ss, _as, _n,
     CASE WHEN _ss = 'viewed' AND _as = 'viewed' AND _n = 1 THEN 'PASS' ELSE 'UNEXPECTED' END;
 
+  -- Both grains, because a consumer reading per-agreement must not have to aggregate the signers.
+  SELECT count(*) INTO _n FROM public.paige_agreements
+   WHERE id = _id AND viewed_at IS NOT NULL;
+  RAISE NOTICE 'N7 agreement viewed_at set = %', CASE WHEN _n = 1 THEN 'PASS' ELSE 'UNEXPECTED' END;
+
   PERFORM public.peek_agreement_signing(_t ->> 'token');
   SELECT count(*) INTO _n FROM public.paige_agreement_events
    WHERE agreement_id = _id AND event_type = 'viewed';
   RAISE NOTICE 'N7 reload: events=% %', _n, CASE WHEN _n = 1 THEN 'PASS' ELSE 'UNEXPECTED' END;
+
+  -- The FIRST open, not the latest: a reload must not move the timestamp.
+  DECLARE _first timestamptz; _again timestamptz;
+  BEGIN
+    SELECT viewed_at INTO _first FROM public.paige_agreements WHERE id = _id;
+    PERFORM pg_sleep(0.01);
+    PERFORM public.peek_agreement_signing(_t ->> 'token');
+    SELECT viewed_at INTO _again FROM public.paige_agreements WHERE id = _id;
+    RAISE NOTICE 'N7 viewed_at is FIRST not latest = %',
+      CASE WHEN _first = _again THEN 'PASS' ELSE 'UNEXPECTED' END;
+  END;
 END $$;
