@@ -49,7 +49,7 @@ MATERIAL_FLOW_CHANGE: NO: Repairs existing promised controls and fail-closed tra
 FLOW_PROTOTYPE: NOT_REQUIRED: Existing approved Hold and unavailable flows are corrected without design changes
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: Authorized users pause and resume the same live conversation; revoked provider access stops safely
 VISUAL_DIRECTION: PASS: Existing Solo tokens, stage and controls unchanged
-AUTOMATED_EVIDENCE: PASS: Relay smoke 82 passed, zero network/provider calls; failing-first 63 pass/19 fail; removed revocation guard mutation 65 pass/17 fail, restored guard passes; pgTAP coverage added for CI execution
+AUTOMATED_EVIDENCE: PASS: Current relay smoke 83 passed, zero network/provider calls; initial failing-first 63 pass/19 fail; removed revocation guard mutation 65 pass/17 fail, restored guard passes; ten pgTAP transition assertions passed in CI run 35932532737 job 107422176882
 STATIC_EVIDENCE: PASS: Deno check of paige-live-relay exits 0; git diff --check passes; same RPC signature, service-role guard, row lock and grants retained
 RENDERED_EVIDENCE: UNVERIFIED: No authenticated production audio render while account readiness remains unverified
 BEHAVIORAL_EVIDENCE: UNVERIFIED: Human Hold/Resume, live revocation and spoken reply require verified provider configuration
@@ -68,7 +68,7 @@ SOLO_1024X768_PAIGE_CLOSED: UNVERIFIED: No authenticated render; no browser chan
 SOLO_1024X768_PAIGE_OPEN: UNVERIFIED: Real audio requires account readiness
 SOLO_900X1000_PAIGE_CLOSED: UNVERIFIED: No authenticated render; no browser changes
 SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: Real audio requires account readiness
-UNVERIFIED: pgTAP execution awaits isolated CI database; actual provider privacy, human speech, latency and owner acceptance not claimed
+UNVERIFIED: Actual provider privacy, human speech, latency and owner acceptance not claimed; pgTAP execution is proven in the isolated CI database, not by production synthetic traffic
 
 Impeccable 4.3.1 interaction review (installed `C:/Users/tonig/.agents/skills/impeccable/SKILL.md`): static clarity, feedback, continuity and recovery checks applied. Results: existing Hold/Resume wording matches preserved-session behavior; revoked approval uses the existing unavailable state; no provider jargon, extra screen or action added. Acoustic/rendered audit remains UNVERIFIED rather than inferred from source.
 
