@@ -7,6 +7,7 @@ import {
   canonicalizeCrmCommand,
   crmApprovalSubject,
 } from "../../supabase/functions/_shared/crm-command/catalog.ts";
+import { confirmFingerprint } from "../../supabase/functions/_shared/confirm-fingerprint.ts";
 
 const chat = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
 
@@ -109,6 +110,43 @@ describe("Paige Chat canonical CRM adoption", () => {
       patch: { name: 42, nickname: "A.Q." },
     });
   });
+
+  it("keeps a usable legacy name when a present canonical name is malformed", () => {
+    for (const malformedCanonicalName of [
+      { first_name: null },
+      { first_name: "   " },
+      { last_name: 42 },
+    ]) {
+      const command = {
+        action: "contact.create",
+        patch: { name: "Avery Quinn", ...malformedCanonicalName, email: "avery@example.test" },
+      };
+      expect(canonicalizeCrmCommand(command)).toEqual({
+        action: "contact.create",
+        patch: {
+          first_name: "Avery",
+          last_name: "Quinn",
+          email: "avery@example.test",
+        },
+      });
+    }
+
+    expect(canonicalizeCrmCommand({
+      action: "contact.create",
+      patch: { name: "Avery Quinn", first_name: null, last_name: "Existing" },
+    })).toEqual({
+      action: "contact.create",
+      patch: { first_name: "Avery", last_name: "Existing" },
+    });
+    expect(canonicalizeCrmCommand({
+      action: "contact.create",
+      patch: { name: "Avery Quinn", first_name: "Existing", last_name: 42 },
+    })).toEqual({
+      action: "contact.create",
+      patch: { first_name: "Existing", last_name: "Quinn" },
+    });
+  });
+
   it("does not accept tenant, actor, role, account, approval, or authority as model arguments", () => {
     const serialized = JSON.stringify(CRM_COMMAND_TOOLS);
     for (const forbidden of ["tenant_id", "actor_id", "actor_role", "account_id", "approved_fingerprint", "authority"]) {
@@ -148,5 +186,42 @@ describe("Paige Chat canonical CRM adoption", () => {
     expect(chat).toContain('.filter("args->>approval_subject", "eq", approvalSubject)');
     expect(chat).toContain("approvedRows?.length === 1");
     expect(chat).not.toContain("const idempotencyKey = suppliedKey || crypto.randomUUID()");
+  });
+
+  it("canonicalizes equivalent CRM retries before both hashing and invocation", async () => {
+    const canonicalizeAt = chat.indexOf("const canonicalCrmCommand = canonicalizeCrmCommand({ action, ...crmArgs })");
+    const hashAt = chat.indexOf('confirmFingerprint("crm_command_idempotency"', canonicalizeAt);
+    const invokeAt = chat.indexOf('functions.invoke("crm-command"', canonicalizeAt);
+
+    expect(chat).toContain("canonicalizeCrmCommand");
+    expect(canonicalizeAt).toBeGreaterThan(-1);
+    expect(hashAt).toBeGreaterThan(canonicalizeAt);
+    expect(invokeAt).toBeGreaterThan(hashAt);
+    expect(chat).toContain("arguments: canonicalCrmArgs");
+    expect(chat).toContain("body: { command: canonicalCrmCommand, idempotency_key: idempotencyKey");
+    expect(chat).not.toContain("body: { command: { action, ...crmArgs }, idempotency_key: idempotencyKey");
+
+    const legacy = canonicalizeCrmCommand({
+      action: "contact.create",
+      patch: { name: "Avery Quinn", lifecycle_stage: "lead" },
+    });
+    const canonical = canonicalizeCrmCommand({
+      action: "contact.create",
+      patch: { first_name: "Avery", last_name: "Quinn", lifecycle_stage: "new_lead" },
+    });
+    expect(legacy).toEqual(canonical);
+
+    const fallbackKey = async (command: Record<string, unknown>) => {
+      const normalized = canonicalizeCrmCommand(command);
+      const args = Object.fromEntries(Object.entries(normalized).filter(([key]) => key !== "action"));
+      return await confirmFingerprint("crm_command_idempotency", {
+        thread_id: "test-thread",
+        user_turn_ordinal: 1,
+        user_turn: "Add Avery Quinn as a lead",
+        tool_name: "crm_create_contact",
+        arguments: args,
+      });
+    };
+    expect(await fallbackKey(legacy)).toBe(await fallbackKey(canonical));
   });
 });

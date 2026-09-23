@@ -59,14 +59,32 @@ export function canonicalizeCrmCommand<T extends Record<string, unknown>>(comman
   const patch = { ...sourcePatch as Record<string, unknown> };
   let changed = false;
   if (typeof patch.name === "string" && patch.name.trim().length > 0) {
-    const hasCanonicalName = Object.prototype.hasOwnProperty.call(patch, "first_name")
-      || Object.prototype.hasOwnProperty.call(patch, "last_name");
-    if (!hasCanonicalName) {
+    const canonicalNameFields = ["first_name", "last_name"] as const;
+    const presentCanonicalNameFields = canonicalNameFields.filter((field) =>
+      Object.prototype.hasOwnProperty.call(patch, field)
+    );
+    const malformedCanonicalNameFields = presentCanonicalNameFields.filter((field) =>
+      typeof patch[field] !== "string" || patch[field].trim().length === 0
+    );
+    for (const field of malformedCanonicalNameFields) {
+      delete patch[field];
+      changed = true;
+    }
+    if (presentCanonicalNameFields.length === 0 || malformedCanonicalNameFields.length > 0) {
       const normalizedName = patch.name.trim().replace(/\s+/g, " ");
       const splitAt = normalizedName.lastIndexOf(" ");
-      patch.first_name = splitAt > 0 ? normalizedName.slice(0, splitAt) : normalizedName;
-      if (splitAt > 0) patch.last_name = normalizedName.slice(splitAt + 1);
+      const legacyFirstName = splitAt > 0 ? normalizedName.slice(0, splitAt) : normalizedName;
+      const legacyLastName = splitAt > 0 ? normalizedName.slice(splitAt + 1) : null;
+      if (typeof patch.first_name !== "string" || patch.first_name.trim().length === 0) {
+        patch.first_name = legacyFirstName;
+      }
+      if (legacyLastName && (typeof patch.last_name !== "string" || patch.last_name.trim().length === 0)) {
+        patch.last_name = legacyLastName;
+      }
     }
+    // A canonical value wins only when it is actually usable. Malformed canonical values are
+    // removed before the decision, so a valid legacy alias can fill each rejected part instead of
+    // being discarded merely because a canonical key existed.
     delete patch.name;
     changed = true;
   }
