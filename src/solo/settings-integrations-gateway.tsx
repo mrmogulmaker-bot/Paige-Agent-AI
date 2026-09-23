@@ -669,7 +669,16 @@ function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayCon
             <div className="ig-gw-info" role="status"><span>{tool.approvedCount === null || tool.toolCount === null ? "How many actions this tool offers hasn’t been read yet." : `${tool.approvedCount} of ${tool.toolCount} actions approved.`}</span></div>
           )}
 
-          {/* The per-action list is NOT buildable yet, and this says so rather than showing an empty
+          {/* Two earlier versions of the sentence below were each false, in opposite directions.
+              "approvals are all-or-nothing" named a bulk approval that exists nowhere (the door is
+              per-tool-name). "she won't act with this tool — nothing runs without your approval"
+              then over-corrected: resolveEffectApproval returns requiresApproval:false for a tool
+              that is neither mutation-verb-named nor provider-declared-mutating nor
+              effects-undeclared, and the runner skips the consent check for it outright. So a
+              declared READ genuinely does run unapproved. The wording is now scoped to the three
+              branches that actually gate — which is the true statement, and the narrowest one.
+
+              The per-action list is NOT buildable yet, and this says so rather than showing an empty
               list that reads as "this tool offers nothing". The missing piece is exact: no
               client-readable door onto the tool catalogue exists. `mcp_connection_tools` carries an
               is_platform_owner()-only RLS policy, no RPC reads it, and the verify action returns
@@ -679,7 +688,8 @@ function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayCon
             <div className="ig-gw-info" role="status">
               <span>
                 Choosing which of these actions Paige may use needs a change on Paige’s side that hasn’t shipped
-                yet. Until it does, she won’t act with this tool — nothing runs without your approval.
+                yet. Until it does, anything that would send or change something stays blocked — you’ll approve
+                those one at a time when it lands.
               </span>
             </div>
           )}

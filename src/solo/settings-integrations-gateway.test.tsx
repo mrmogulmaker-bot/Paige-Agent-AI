@@ -524,6 +524,29 @@ describe("The open drawer tells one story", () => {
   });
 });
 
+describe("What the surface claims about approvals is true of the runner", () => {
+  it("claims neither a bulk approval nor a blanket block — both are false, in opposite directions", async () => {
+    world({ rows: [row({ status: "connected", health: "healthy", tool_count: 11, approved_count: 3 })] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    const text = dialog(host)!.textContent!;
+
+    // There is no bulk approval anywhere: the approve door takes ONE tool_name, and approved_count
+    // is one row per approved action. "All-or-nothing" also contradicted the line directly above it,
+    // which reads "3 of 11 actions approved".
+    expect(text).not.toMatch(/all-or-nothing/i);
+    expect(text).toMatch(/3 of 11 actions approved/);
+
+    // And the opposite over-correction is false too: resolveEffectApproval returns
+    // requiresApproval:false for a declared read, and the runner skips the consent check for it — so
+    // a blanket "nothing runs without your approval" would be its own §13 defect.
+    expect(text).not.toMatch(/nothing runs without your approval/i);
+
+    // What IS true is scoped to the three branches that actually gate.
+    expect(text).toMatch(/send or change something stays blocked/i);
+  });
+});
+
 describe("A turned-off tool offers only the recovery it actually has", () => {
   it("hides Check now and Sign in again, which could only refuse", async () => {
     world({ rows: [row({ enabled: false, status: "unconfigured", auth_kind: "oauth" })] });
