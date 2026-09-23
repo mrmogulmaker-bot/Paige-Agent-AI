@@ -232,13 +232,15 @@ describe("Paige Chat canonical CRM adoption", () => {
   });
 
   it("canonicalizes equivalent CRM retries before both hashing and invocation", async () => {
-    const canonicalizeAt = chat.indexOf("const canonicalCrmCommand = canonicalizeCrmCommand({ action, ...crmArgs })");
+    const sourceAt = chat.indexOf("const sourceCrmCommand = { action, ...crmArgs }");
+    const canonicalizeAt = chat.indexOf("const canonicalCrmCommand = canonicalizeCrmCommand(sourceCrmCommand)");
     const identityAt = chat.indexOf("const canonicalCrmArgs = crmCommandFingerprintArgs(canonicalCrmCommand)", canonicalizeAt);
     const hashAt = chat.indexOf('confirmFingerprint("crm_command_idempotency"', canonicalizeAt);
     const invokeAt = chat.indexOf('functions.invoke("crm-command"', canonicalizeAt);
 
     expect(chat).toContain("canonicalizeCrmCommand");
-    expect(canonicalizeAt).toBeGreaterThan(-1);
+    expect(sourceAt).toBeGreaterThan(-1);
+    expect(canonicalizeAt).toBeGreaterThan(sourceAt);
     expect(identityAt).toBeGreaterThan(canonicalizeAt);
     expect(hashAt).toBeGreaterThan(identityAt);
     expect(invokeAt).toBeGreaterThan(hashAt);
@@ -387,6 +389,34 @@ describe("Paige Chat canonical CRM adoption", () => {
     });
     expect(crmCommandExecutionPayload(previewCommand)).toBe(previewCommand);
     expect(crmCommandExecutionPayload(previewCommand)).not.toHaveProperty(CRM_COMMAND_CANONICAL_IDENTITY_FIELD);
+  });
+
+  it("preserves the exact pre-normalization display command for a cross-deploy replay", () => {
+    const preMigrationCommand = {
+      action: "contact.create",
+      patch: {
+        first_name: "  Jose\u0301 ",
+        last_name: " Quinn ",
+        lifecycle_stage: "new_lead",
+      },
+    };
+    const canonicalCommand = canonicalizeCrmCommand(preMigrationCommand);
+    const replayPayload = crmCommandExecutionPayload(canonicalCommand, preMigrationCommand);
+
+    expect(replayPayload).toMatchObject({
+      action: "contact.create",
+      patch: { first_name: "José", last_name: "Quinn", lifecycle_stage: "new_lead" },
+      [CRM_COMMAND_CANONICAL_IDENTITY_FIELD]: expect.any(Object),
+      __paige_legacy_display_v1: preMigrationCommand,
+    });
+    expect(preMigrationCommand.patch.first_name).toBe("  Jose\u0301 ");
+    expect(() => crmCommandExecutionPayload(canonicalCommand, {
+      action: "contact.create",
+      patch: { first_name: "Different", last_name: "Person", lifecycle_stage: "new_lead" },
+    })).toThrow("CRM_COMMAND_LEGACY_REPLAY_MISMATCH");
+    expect(chat).toContain("const sourceCrmCommand = { action, ...crmArgs }");
+    expect(chat).toContain("crmCommandLegacyReplaySource(canonicalCrmCommand, sourceCrmCommand)");
+    expect(chat).toContain("legacy_command: legacyCrmCommand");
   });
 
   it("preserves meaningful orthographic join controls in the stored display form", () => {

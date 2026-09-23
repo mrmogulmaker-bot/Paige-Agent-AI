@@ -9,6 +9,7 @@ import {
   crmContactCreateNameIssue,
   crmApprovalSubject,
   crmCommandExecutionPayload,
+  crmCommandLegacyReplaySource,
   type CanonicalCrmCommand,
   type CrmAction,
 } from "../_shared/crm-command/catalog.ts";
@@ -123,6 +124,7 @@ const commandSchema = z.object({
 
 const bodySchema = z.object({
   command: commandSchema,
+  legacy_command: commandSchema.optional(),
   idempotency_key: z.string().trim().min(1).max(192),
   approved_fingerprint: z.string().regex(/^[0-9a-f]{16}$/).optional(),
 }).strict();
@@ -212,13 +214,18 @@ serve(async (req) => {
   if (authError || !user) return response(401, { ok: false, code: "CRM_AUTH_INVALID" });
 
   type ParsedBody = z.infer<typeof bodySchema>;
-  type CanonicalBody = Omit<ParsedBody, "command"> & {
+  type CanonicalBody = Omit<ParsedBody, "command" | "legacy_command"> & {
     command: CanonicalCrmCommand<ParsedBody["command"]>;
+    legacyCommand: Readonly<Record<string, unknown>> | null;
   };
   let body: CanonicalBody;
   try {
     const parsedBody = bodySchema.parse(await req.json());
     const canonicalCommand = canonicalizeCrmCommand(parsedBody.command);
+    const legacyCommand = parsedBody.legacy_command
+      ? crmCommandLegacyReplaySource(canonicalCommand, parsedBody.legacy_command)
+      : null;
+    if (parsedBody.legacy_command && !legacyCommand) throw new TypeError("CRM_COMMAND_LEGACY_REPLAY_UNSUPPORTED");
     const contactNameIssue = crmContactCreateNameIssue(canonicalCommand);
     if (contactNameIssue) {
       throw new z.ZodError([{
@@ -227,7 +234,12 @@ serve(async (req) => {
         message: `CRM_CONTACT_NAME_INCOMPLETE:${contactNameIssue}`,
       }]);
     }
-    body = { ...parsedBody, command: canonicalCommand };
+    body = {
+      command: canonicalCommand,
+      idempotency_key: parsedBody.idempotency_key,
+      ...(parsedBody.approved_fingerprint ? { approved_fingerprint: parsedBody.approved_fingerprint } : {}),
+      legacyCommand,
+    };
   } catch (error) {
     return response(400, {
       ok: false,
@@ -261,7 +273,7 @@ serve(async (req) => {
     .eq("id", tenantId).maybeSingle();
   const capability = ACTION_CAPABILITY[body.command.action];
   const requestArgs = { command: body.command, idempotency_key: body.idempotency_key };
-  const readbackCommand = crmCommandExecutionPayload(body.command);
+  const readbackCommand = crmCommandExecutionPayload(body.command, body.legacyCommand);
   const successfulResultResponse = (resultObject: JsonObject, action: string): Response => {
     const readback = object(resultObject.readback);
     const destination = action.startsWith("deal.") ? "pipeline" : action.startsWith("task.") ? "tasks" : "contacts";
@@ -537,7 +549,7 @@ serve(async (req) => {
     ...decidedCommand,
     approval_channel: decision.audit.laneEffective === "confirm" ? "operator_card" : "standing_autonomy_setting",
   });
-  const executionCommand = crmCommandExecutionPayload(canonicalExecutionCommand);
+  const executionCommand = crmCommandExecutionPayload(canonicalExecutionCommand, body.legacyCommand);
   const { data: result, error: commandError } = await admin.rpc("execute_crm_command", {
     _tenant_id: tenantId,
     _actor_id: user.id,

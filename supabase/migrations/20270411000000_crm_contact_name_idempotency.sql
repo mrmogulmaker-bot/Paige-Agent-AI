@@ -15,7 +15,7 @@ returns jsonb language sql immutable set search_path='' as $$
         || case when _command ? 'approval_channel'
           then pg_catalog.jsonb_build_object('approval_channel',_command->'approval_channel')
           else '{}'::jsonb end
-      else _command-'__paige_canonical_identity_v1'
+      else _command-'__paige_canonical_identity_v1'-'__paige_legacy_display_v1'
     end as command
   )
   select case when command->>'action' in ('deal.assign_owner','deal.assign_contact') then
@@ -45,12 +45,33 @@ create or replace function public.crm_command_hash_matches(
       _command->>'action'='contact.create'
       and pg_catalog.jsonb_typeof(_command->'__paige_canonical_identity_v1')='object'
       and _command->'__paige_canonical_identity_v1'->>'action'=_command->>'action'
-      and _stored_hash=pg_catalog.encode(
-        extensions.digest(
-          pg_catalog.convert_to((_command-'__paige_canonical_identity_v1')::text,'UTF8'),
-          'sha256'
-        ),
-        'hex'
+      and (
+        _stored_hash=pg_catalog.encode(
+          extensions.digest(
+            pg_catalog.convert_to((_command-'__paige_canonical_identity_v1'-'__paige_legacy_display_v1')::text,'UTF8'),
+            'sha256'
+          ),
+          'hex'
+        )
+        or (
+          pg_catalog.jsonb_typeof(_command->'__paige_legacy_display_v1')='object'
+          and _command->'__paige_legacy_display_v1'->>'action'=_command->>'action'
+          and _stored_hash=pg_catalog.encode(
+            extensions.digest(
+              pg_catalog.convert_to(
+                (
+                  (_command->'__paige_legacy_display_v1')
+                  || case when _command ? 'approval_channel'
+                    then pg_catalog.jsonb_build_object('approval_channel',_command->'approval_channel')
+                    else '{}'::jsonb end
+                )::text,
+                'UTF8'
+              ),
+              'sha256'
+            ),
+            'hex'
+          )
+        )
       )
     ),
     false
@@ -119,4 +140,4 @@ $migration$;
 comment on function public.crm_effective_command(jsonb) is
   'Server-only effective CRM command projection used by readback and execution idempotency hashes. Preserves executable display values while hashing the action-door-derived canonical identity.';
 comment on function public.crm_command_hash_matches(text,text,jsonb) is
-  'Server-only exact hash matcher with a narrow pre-20270411000000 contact-create replay fallback. It never broadens write identity or accepts a caller-supplied envelope.';
+  'Server-only exact hash matcher with a narrow pre-20270411000000 contact-create replay fallback. The authenticated action door admits a legacy display projection only after proving it canonicalizes to the same command identity.';

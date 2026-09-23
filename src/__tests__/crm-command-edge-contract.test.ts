@@ -97,7 +97,7 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain("_actor_id: user.id");
     expect(edge).toContain("record_locator");
     expect(edge).toContain("const canonicalExecutionCommand = canonicalizeCrmCommand({");
-    expect(edge).toContain("const executionCommand = crmCommandExecutionPayload(canonicalExecutionCommand)");
+    expect(edge).toContain("const executionCommand = crmCommandExecutionPayload(canonicalExecutionCommand, body.legacyCommand)");
     expect(edge).toContain('approval_channel: decision.audit.laneEffective');
     expect(edge).not.toContain('decidedCommand.action.startsWith("deal.")');
     expect(edge).toContain("readback");
@@ -144,7 +144,7 @@ describe("canonical CRM action door", () => {
     expect(migration).toContain("public.crm_effective_command(_command)::text");
     expect(migration).toContain("create or replace function public.crm_command_hash_matches");
     expect(migration).toMatch(
-      /_command->>'action'='contact\.create'[\s\S]*_stored_hash=pg_catalog\.encode\([\s\S]*\(_command-'__paige_canonical_identity_v1'\)::text/,
+      /_command->>'action'='contact\.create'[\s\S]*_stored_hash=pg_catalog\.encode\([\s\S]*\(_command-'__paige_canonical_identity_v1'-'__paige_legacy_display_v1'\)::text/,
     );
     expect(migration.match(/public\.crm_command_hash_matches\(v_cached\.command_hash/g)).toHaveLength(4);
     expect(migration).toContain("CRM_CONTACT_NAME_INCOMPLETE");
@@ -152,6 +152,21 @@ describe("canonical CRM action door", () => {
     const predecessor = "v_hash := encode(extensions.digest(convert_to(_command::text, 'UTF8'), 'sha256'), 'hex');";
     expect(originalCrmMigration.split(predecessor)).toHaveLength(2);
     expect(migration).toContain("CRM_IDEMPOTENCY_HASH_PATCH_DRIFT");
-    expect(migration).toContain("else _command-'__paige_canonical_identity_v1'");
+    expect(migration).toContain("else _command-'__paige_canonical_identity_v1'-'__paige_legacy_display_v1'");
+  });
+
+  it("carries an equivalent raw display command through the authenticated action door for legacy replay", () => {
+    const migration = readFileSync(identityMigrationPath, "utf8");
+    const parsedAt = edge.indexOf("bodySchema.parse(await req.json())");
+    const legacyValidationAt = edge.indexOf("crmCommandLegacyReplaySource(canonicalCommand, parsedBody.legacy_command)");
+    const tenantAt = edge.indexOf('caller.rpc("current_user_tenant_id")');
+
+    expect(edge).toContain("legacy_command: commandSchema.optional()");
+    expect(legacyValidationAt).toBeGreaterThan(parsedAt);
+    expect(legacyValidationAt).toBeLessThan(tenantAt);
+    expect(edge).toContain("crmCommandExecutionPayload(body.command, body.legacyCommand)");
+    expect(edge).toContain("crmCommandExecutionPayload(canonicalExecutionCommand, body.legacyCommand)");
+    expect(migration).toContain("__paige_legacy_display_v1");
+    expect(migration).toMatch(/_stored_hash=pg_catalog\.encode\([\s\S]*_command->'__paige_legacy_display_v1'/);
   });
 });

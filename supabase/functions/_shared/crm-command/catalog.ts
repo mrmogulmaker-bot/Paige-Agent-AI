@@ -27,6 +27,7 @@ declare const canonicalCrmCommandBrand: unique symbol;
 export type CanonicalCrmCommand<T extends Record<string, unknown> = Record<string, unknown>> =
   T & { readonly [canonicalCrmCommandBrand]: true };
 export const CRM_COMMAND_CANONICAL_IDENTITY_FIELD = "__paige_canonical_identity_v1" as const;
+export const CRM_COMMAND_LEGACY_DISPLAY_FIELD = "__paige_legacy_display_v1" as const;
 export const CRM_TOOL_TO_ACTION = Object.freeze(Object.fromEntries(
   Object.entries(CRM_ACTION_CAPABILITY).map(([action, capability]) => [capability, action]),
 )) as Readonly<Record<CrmCapability, CrmAction>>;
@@ -73,14 +74,45 @@ export function crmCommandFingerprintArgs(command: CanonicalCrmCommand): Record<
  * Raw/model commands fail here because only canonicalizeCrmCommand registers
  * the WeakMap marker used by crmCommandFingerprintArgs.
  */
-export function crmCommandExecutionPayload(command: CanonicalCrmCommand): Record<string, unknown> {
+export function crmCommandLegacyReplaySource(
+  command: CanonicalCrmCommand,
+  source: Record<string, unknown> | null | undefined,
+): Readonly<Record<string, unknown>> | null {
+  if (command.action !== "contact.create" || !source) return null;
+  const contextualSource = command.approval_channel === undefined
+    ? source
+    : { ...source, approval_channel: command.approval_channel };
+  const canonicalSource = canonicalizeCrmCommand(contextualSource);
+  const expectedIdentity = stableCommandValue({
+    action: command.action,
+    ...crmCommandFingerprintArgs(command),
+  });
+  const sourceIdentity = stableCommandValue({
+    action: canonicalSource.action,
+    ...crmCommandFingerprintArgs(canonicalSource),
+  });
+  if (JSON.stringify(sourceIdentity) !== JSON.stringify(expectedIdentity)) {
+    throw new TypeError("CRM_COMMAND_LEGACY_REPLAY_MISMATCH");
+  }
+  return Object.freeze(stableCommandValue(contextualSource) as Record<string, unknown>);
+}
+
+export function crmCommandExecutionPayload(
+  command: CanonicalCrmCommand,
+  legacySource?: Record<string, unknown> | null,
+): Record<string, unknown> {
   const fingerprintArgs = crmCommandFingerprintArgs(command);
   // Contact creation is the only command whose executable display spelling intentionally differs
   // from its retry identity. Leaving every other action byte-for-byte unchanged also preserves the
   // existing preview hashes used by destructive commands.
   if (command.action !== "contact.create") return command;
   const identity = Object.freeze({ action: command.action, ...fingerprintArgs });
-  return Object.freeze({ ...command, [CRM_COMMAND_CANONICAL_IDENTITY_FIELD]: identity });
+  const legacyDisplay = crmCommandLegacyReplaySource(command, legacySource);
+  return Object.freeze({
+    ...command,
+    [CRM_COMMAND_CANONICAL_IDENTITY_FIELD]: identity,
+    ...(legacyDisplay ? { [CRM_COMMAND_LEGACY_DISPLAY_FIELD]: legacyDisplay } : {}),
+  });
 }
 
 function stableCommandValue(value: unknown): unknown {
