@@ -111,10 +111,17 @@ BEGIN
 END $$;
 
 -- ── (5) An expired approval → approval_expired ────────────────────────────────
+-- Fabricate an ALREADY-EXPIRED row. In production a row reaches this state by elapsed time — a value
+-- that was in the FUTURE when stored later lapses — which the write-time guard (20270334000000,
+-- trg_mcp_reject_past_approval_expiry) correctly does NOT block (it refuses only a write that
+-- introduces a past expiry, never a since-lapsed row). This test can't wait for the clock, so it
+-- disables that guard for the one setup write that stamps a past instant directly, then re-enables it.
+ALTER TABLE public.mcp_connection_approvals DISABLE TRIGGER trg_mcp_reject_past_approval_expiry;
 UPDATE public.mcp_connection_approvals
    SET endpoint_hash = public._mcp_endpoint_hash('https://mcp-a.example/rpc'),
        expires_at    = now() - interval '1 hour'
  WHERE connection_id = 'e9c00000-0000-0000-0000-0000000000d2' AND tool_name = 'send_message';
+ALTER TABLE public.mcp_connection_approvals ENABLE TRIGGER trg_mcp_reject_past_approval_expiry;
 DO $$
 DECLARE _r jsonb;
 BEGIN

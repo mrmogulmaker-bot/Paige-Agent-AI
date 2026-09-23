@@ -1604,9 +1604,25 @@ console.log("\n— slice ③: approve (runApprove) —");
   // A 22023 validation token → 400 with the specific code.
   const wBadPin = await approveMod.runApprove({ userClient: makeApproveUser({ setResult: { data: null, error: pgErr("MCP_BAD_PIN", "22023") } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());
   check("approve maps a writer 22023 → 400 with the specific MCP_* code", wBadPin.httpStatus === 400 && wBadPin.body.error === "MCP_BAD_PIN", JSON.stringify(wBadPin.body));
+  // Codex P2 (atomic TOCTOU close): the future-expiry TRIGGER raises MCP_EXPIRY_IN_PAST (22023) — the
+  // token path maps it to a closed 400 (so a slightly-future expiry that lapsed before the write, which
+  // the edge pre-check could not catch, is still refused honestly, never a lying approved:true).
+  const wExpiry = await approveMod.runApprove({ userClient: makeApproveUser({ setResult: { data: null, error: pgErr("MCP_EXPIRY_IN_PAST: approval expiry must be in the future", "22023") } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());
+  check("approve maps the writer's MCP_EXPIRY_IN_PAST trigger (22023) → 400 (TOCTOU closed atomically)", wExpiry.httpStatus === 400 && wExpiry.body.error === "MCP_EXPIRY_IN_PAST", JSON.stringify(wExpiry.body));
+  // Codex P2 (calendar-invalid): a timestamptz cast error (22008 datetime_field_overflow, e.g. Feb 30)
+  // surfaces as a closed 400 bad_timestamp, never the generic 500.
+  const wBadTs = await approveMod.runApprove({ userClient: makeApproveUser({ setResult: { data: null, error: pgErr('date/time field value out of range', "22008") } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());
+  check("approve maps a datetime cast error (22008) → 400 bad_timestamp (never a generic 500)", wBadTs.httpStatus === 400 && wBadTs.body.error === "bad_timestamp" && !JSON.stringify(wBadTs.body).includes("out of range"), JSON.stringify(wBadTs.body));
 
   // Remaining input-validation + lookup-failure branches (compliance coverage).
   check("approve rejects a malformed args_shape_hash (400 bad_args_shape)", (await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ argsShapeHash: "xyz" }))).body.error === "bad_args_shape");
+  // §13 (Codex P2) — an already-past or malformed `expires_at` must be REJECTED, not stored with a lying
+  // `approved: true` (verify_mcp_connection_approval would instantly reject the stored row as expired).
+  const pastExpiry = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ expiresAt: "2000-01-01T00:00:00Z" }));
+  check("approve rejects an already-past expires_at (400 expiry_in_past — never a lying approved:true)", pastExpiry.httpStatus === 400 && pastExpiry.body.error === "expiry_in_past", JSON.stringify(pastExpiry.body));
+  check("approve rejects a malformed expires_at (400 bad_expiry)", (await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ expiresAt: "not-a-date" }))).body.error === "bad_expiry");
+  const futureExpiry = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ expiresAt: "2099-01-01T00:00:00Z" }));
+  check("approve accepts a FUTURE expires_at → 200 approved, forwarded to the writer", futureExpiry.httpStatus === 200 && futureExpiry.body.approved === true, JSON.stringify(futureExpiry.body));
   const noEndpoint = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin({ secret: { configured: true, enabled: true, tenant_id: ATEN, endpoint_hash: "not-a-hash" } }), readToolPin: readToolPinOk }, inApprove());
   check("approve refuses a configured connection whose endpoint hash is unusable (409 no_endpoint)", noEndpoint.httpStatus === 409 && noEndpoint.body.error === "no_endpoint", JSON.stringify(noEndpoint.body));
   const v2Fail = await approveMod.runApprove({ userClient: makeApproveUser({ v2Err: { message: "v2 boom" } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());

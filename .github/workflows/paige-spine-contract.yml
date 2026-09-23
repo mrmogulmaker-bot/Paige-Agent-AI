@@ -21,6 +21,7 @@ on:
       - "supabase/tests/mcp_gateway_connection_create.sql"
       - "supabase/tests/mcp_gateway_oauth_state_and_hardenings.sql"
       - "supabase/tests/mcp_gateway_oauth_grant_writer.sql"
+      - "supabase/tests/mcp_gateway_approval_future_expiry.sql"
       - "scripts/proof/mcp-gateway-endpoint-consent-race.mjs"
       - "supabase/functions/_shared/mcp-gateway/**"
       - "supabase/functions/paige-tts/**"
@@ -79,6 +80,7 @@ on:
       - "supabase/tests/mcp_gateway_connection_create.sql"
       - "supabase/tests/mcp_gateway_oauth_state_and_hardenings.sql"
       - "supabase/tests/mcp_gateway_oauth_grant_writer.sql"
+      - "supabase/tests/mcp_gateway_approval_future_expiry.sql"
       - "scripts/proof/mcp-gateway-endpoint-consent-race.mjs"
       - "supabase/functions/_shared/mcp-gateway/**"
       - "supabase/functions/paige-tts/**"
@@ -278,6 +280,11 @@ jobs:
       # one _mcp_assert_credential_bundle home so an empty token / missing issuer / missing client_id / expired
       # token can never persist an unusable grant. Rides this replayed DB for the same §24 reason as above.
       - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_oauth_grant_writer.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      # Connected MCP Gateway — the approval future-expiry TRIGGER (migration 20270334000000, Codex P2).
+      # Proves trg_mcp_reject_past_approval_expiry refuses a non-future expires_at atomically at write
+      # time — on a direct insert AND end-to-end through set_mcp_connection_approval (the approve TOCTOU),
+      # incl. the ON CONFLICT UPDATE path — while a future and a NULL expiry are stored.
+      - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_gateway_approval_future_expiry.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       # PAIGE Voice V1a — capability-gated zero/disabled configuration, tenant + platform
       # monthly caps, idempotency, rollover, ambiguity settlement, provider parity, and a
       # true two-session exact-cap race. No provider request is made by either proof.
