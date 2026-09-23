@@ -14,7 +14,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { APPROVED_PAIGE_ELEVENLABS_VOICE_ID, elevenlabsSpeechStream, resolveElevenLabsModel } from "../_shared/elevenlabs.ts";
 import { envKey } from "../_shared/env-key.ts";
 import { openFluxEars } from "../_shared/paige-live-flux-ears.ts";
-import { PaigeLiveRelayBridge } from "../_shared/paige-live-relay-bridge.ts";
+import { LiveRelayAdmission, PaigeLiveRelayBridge } from "../_shared/paige-live-relay-bridge.ts";
 import { createLiveRuntimeProof, liveRuntimeDigest } from "../_shared/paige-live-runtime-proof.ts";
 import { consumeRelayTicket, hasLiveWorkspaceStanding, isLiveAudioPilotEnabled, isLiveWorkspaceCurrent } from "../_shared/paige-live-ticket.ts";
 
@@ -60,7 +60,8 @@ Deno.serve(async (req) => {
         updated_at: new Date().toISOString(),
       })
       .eq("id", session.id).eq("tenant_id", session.tenant_id)
-      .eq("actor_user_id", session.actor_user_id).eq("state", "connecting")
+      .eq("actor_user_id", session.actor_user_id)
+      .in("state", ["connecting", "listening", "thinking", "speaking", "interrupted", "held"])
       .select("id").maybeSingle();
     if (error || !data) {
       console.error("[paige-live-relay] terminal state write failed", { code: error?.code });
@@ -69,6 +70,16 @@ Deno.serve(async (req) => {
     return true;
   };
 
+  const checkCurrentAdmission = async (): Promise<Response | null> => {
+  const { data: currentSession, error: currentSessionError } = await admin.from("paige_live_sessions")
+    .select("id").eq("id", session.id).eq("tenant_id", session.tenant_id)
+    .eq("actor_user_id", session.actor_user_id).eq("thread_id", session.thread_id)
+    .eq("context_epoch", session.context_epoch)
+    .in("state", ["connecting", "listening", "thinking", "speaking", "interrupted", "held"])
+    .maybeSingle();
+  if (currentSessionError || !currentSession) return new Response("live_admission_changed", { status: 403 });
+  // The same resolution is reused before provider open, before ready and
+  // throughout capture. Admission is never a once-per-socket privacy decision.
   // Recheck the original caller-owned thread after the atomic claim. The
   // ticket only identifies a server-owned session; it grants no tenant choice.
   const { data: thread, error: threadError } = await admin.from("paige_chat_threads")
@@ -157,6 +168,10 @@ Deno.serve(async (req) => {
     if (!await markUnavailable("live_audio_not_enabled")) return new Response("relay_unavailable", { status: 503 });
     return new Response("live_audio_not_enabled", { status: 403 });
   }
+  return null;
+  };
+  const admissionFailure = await checkCurrentAdmission();
+  if (admissionFailure) return admissionFailure;
   // Read back the one corrected Jessica candidate. Active read-aloud stays on
   // OpenAI; neither a browser value nor a tenant preference selects a voice.
   const { data: voice, error: voiceError } = await admin.from("paige_voice_profiles")
@@ -246,6 +261,11 @@ Deno.serve(async (req) => {
     if (error) console.error("[paige-live-relay] failure state write failed", { code: error.code });
   };
   let failureWrite: Promise<void> | null = null;
+  let admissionTimer: ReturnType<typeof setInterval> | undefined;
+  const admission = new LiveRelayAdmission(
+    async () => (await checkCurrentAdmission()) === null,
+    () => bridge.unavailable("live_admission_changed"),
+  );
   const runtimeProof = createLiveRuntimeProof(runtimeSigningKey);
   const bridge = new PaigeLiveRelayBridge({
     sessionId: session.id, epoch: session.context_epoch,
@@ -257,6 +277,7 @@ Deno.serve(async (req) => {
     },
     openEars: (events) => openFluxEars(events),
     async openMouth(text, signal) {
+      if (!await admission.check()) throw new Error("live_admission_changed");
       const response = await elevenlabsSpeechStream({
         text, voiceId: APPROVED_PAIGE_ELEVENLABS_VOICE_ID,
         modelId: resolveElevenLabsModel() ?? "",
@@ -265,9 +286,11 @@ Deno.serve(async (req) => {
       return response.body;
     },
     usage: { emit() { /* Neutral UsageSink seam. Budget lane supplies persistence later. */ } },
+    authorize: (force) => admission.check(force),
     runtimeProof: {
-      readOutput: runtimeProof.readOutput,
+      readOutput: async (token) => await admission.check() ? runtimeProof.readOutput(token) : null,
       async issue(turnId, transcript) {
+        if (!await admission.check()) throw new Error("live_admission_changed");
         const challenge = await runtimeProof.issue({
           sessionId: session.id, tenantId: session.tenant_id, actorId: session.actor_user_id,
           threadId: session.thread_id, epoch: session.context_epoch, turnId,
@@ -291,6 +314,8 @@ Deno.serve(async (req) => {
   });
   const closed = new Promise<void>((resolve) => {
     socket.onclose = () => {
+      clearInterval(admissionTimer);
+      admission.stop();
       bridge.end();
       void (async () => {
         if (failureWrite) await failureWrite;
@@ -306,11 +331,14 @@ Deno.serve(async (req) => {
   socket.onopen = () => {
     waitUntil((async () => {
       if (!await bridge.open()) return;
+      if (!await admission.check(true)) return;
       if (!await markLive()) {
         bridge.unavailable("live_admission_changed");
         return;
       }
+      if (!await admission.check(true)) return;
       bridge.ready();
+      admissionTimer = setInterval(() => { waitUntil(admission.check(true)); }, 500);
     })());
   };
   socket.onmessage = (event) => {

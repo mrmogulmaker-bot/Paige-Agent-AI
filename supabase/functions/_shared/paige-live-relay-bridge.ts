@@ -25,6 +25,41 @@ export type LiveEarsOpener = (events: LiveEarsEvents) => Promise<
 >;
 export type LiveMouthOpener = (text: string, signal: AbortSignal) => Promise<ReadableStream<Uint8Array>>;
 
+/** Bounded authorization freshness, not a usage lease or spend limit. The
+ * existing Edge resolver supplies the decision. No stale-while-revalidate:
+ * PCM waits during a check, and a missing/failed check closes the adapters. */
+export class LiveRelayAdmission {
+  private validUntil = 0;
+  private pending: Promise<boolean> | null = null;
+  private closed = false;
+  constructor(private readonly read: () => Promise<boolean>, private readonly deny: () => void,
+    private readonly now: () => number = Date.now) {}
+
+  check(force = false): Promise<boolean> {
+    if (this.closed) return Promise.resolve(false);
+    if (this.pending) return this.pending;
+    if (!force && this.now() < this.validUntil) return Promise.resolve(true);
+    const began = this.now();
+    let timeout: ReturnType<typeof setTimeout>;
+    this.pending = Promise.race([
+      Promise.resolve().then(this.read).catch(() => false),
+      new Promise<boolean>((resolve) => { timeout = setTimeout(() => resolve(false), 1_000); }),
+    ]).then((allowed) => {
+      if (this.closed) return false;
+      if (!allowed || this.now() - began >= 1_000) {
+        this.closed = true;
+        this.deny();
+        return false;
+      }
+      this.validUntil = began + 500;
+      return true;
+    }).finally(() => { clearTimeout(timeout); this.pending = null; });
+    return this.pending;
+  }
+
+  stop(): void { this.closed = true; this.validUntil = 0; }
+}
+
 export interface LiveBridgeOptions {
   sessionId: string;
   epoch: string;
@@ -33,6 +68,7 @@ export interface LiveBridgeOptions {
   openEars: LiveEarsOpener;
   openMouth: LiveMouthOpener;
   usage: UsageSink;
+  authorize: (force?: boolean) => Promise<boolean>;
   runtimeProof: {
     issue(turnId: string, transcript: string): Promise<{ token: string; scope: LiveRuntimeScope }>;
     readOutput(token: string): Promise<LiveRuntimeOutput | null>;
@@ -69,6 +105,7 @@ export class PaigeLiveRelayBridge {
   private proofQueue: Promise<void> = Promise.resolve();
   private issueQueue: Promise<void> = Promise.resolve();
   private readonly now: () => number;
+  private pendingAudioBytes = 0;
 
   constructor(private readonly options: LiveBridgeOptions) {
     this.now = options.now ?? Date.now;
@@ -86,6 +123,8 @@ export class PaigeLiveRelayBridge {
     if (this.ended) return false;
     let result: Awaited<ReturnType<LiveEarsOpener>>;
     try {
+      if (!await this.options.authorize(true)) { this.fail("live_admission_changed"); return false; }
+      if (this.ended) return false;
       result = await this.options.openEars({
         startOfTurn: (text, index) => this.onStartOfTurn(text, index),
         partial: (text, index) => this.onTranscript(text, index, false),
@@ -105,6 +144,10 @@ export class PaigeLiveRelayBridge {
       return false;
     }
     this.ears = result.ears;
+    try {
+      if (!await this.options.authorize(true)) { this.fail("live_admission_changed"); return false; }
+    } catch { this.fail("live_admission_unavailable"); return false; }
+    if (this.ended) return false;
     return true;
   }
 
@@ -118,8 +161,7 @@ export class PaigeLiveRelayBridge {
   receive(data: string | ArrayBuffer): void | Promise<void> {
     if (this.ended) return;
     if (data instanceof ArrayBuffer) {
-      this.receiveAudio(data);
-      return;
+      return this.receiveAudio(data);
     }
     if (typeof data !== "string" || data.length > MAX_CONTROL_FRAME) {
       this.fail("invalid_live_frame");
@@ -260,12 +302,25 @@ export class PaigeLiveRelayBridge {
     this.send({ type: "transcript", turn_id: turn.id, text, is_final: final });
   }
 
-  private receiveAudio(data: ArrayBuffer): void {
+  private async receiveAudio(data: ArrayBuffer): Promise<void> {
     if (!this.started || !this.ears || data.byteLength < 2 ||
       data.byteLength > MAX_AUDIO_FRAME || data.byteLength % 2 !== 0) {
       this.fail("invalid_audio_frame");
       return;
     }
+    // Bound only the in-flight transport buffer; this is not a usage allowance.
+    this.pendingAudioBytes += data.byteLength;
+    if (this.pendingAudioBytes > MAX_AUDIO_FRAME) {
+      this.pendingAudioBytes -= data.byteLength;
+      this.fail("live_admission_unavailable");
+      return;
+    }
+    let authorized = false;
+    try { authorized = await this.options.authorize(); }
+    catch { this.fail("live_admission_unavailable"); }
+    finally { this.pendingAudioBytes -= data.byteLength; }
+    if (this.ended) return;
+    if (!authorized) { this.fail("live_admission_changed"); return; }
     if (this.state.currentTurn?.playbackComplete) this.startTurn();
     const durationMs = this.ears.sendPcm(data);
     if (durationMs === null) { this.fail("ears_unavailable"); return; }

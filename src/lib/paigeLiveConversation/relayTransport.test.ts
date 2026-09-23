@@ -142,6 +142,39 @@ describe("first-party Live relay transport", () => {
     transport.stop();
   });
 
+  it("Hold before first PCM suspends the new context before scheduling sound", async () => {
+    const starts: string[] = [];
+    const sources: Array<{ onended: (() => void) | null }> = [];
+    vi.stubGlobal("AudioContext", class {
+      state = "running"; currentTime = 0; destination = {};
+      async suspend() { this.state = "suspended"; }
+      async resume() { this.state = "running"; }
+      async close() { this.state = "closed"; }
+      createBuffer(_n: number, length: number) { return { duration: length / 16000, getChannelData: () => new Float32Array(length) }; }
+      createBufferSource() {
+        const source = { buffer: null, onended: null as (() => void) | null, connect() {}, start: () => starts.push(this.state), stop() {} };
+        sources.push(source);
+        return source;
+      }
+    });
+    const transport = connectPaigeLiveRelay({ sessionId: "hold-before-speech", ticket: "opaque", onState() {} });
+    const socket = FakeSocket.instances[0];
+    transport.pauseOutput();
+    socket.receive(new Int16Array([100, 200]).buffer);
+    socket.receive(JSON.stringify({ type: "runtime.done" }));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(starts).toEqual(["suspended"]);
+    expect(transport.outputPlaying()).toBe(false);
+    expect(socket.sent).not.toContain(JSON.stringify({ type: "playback.complete" }));
+    transport.resumeOutput();
+    await Promise.resolve();
+    expect(transport.outputPlaying()).toBe(true);
+    sources[0].onended?.();
+    expect(socket.sent).toContain(JSON.stringify({ type: "playback.complete" }));
+    transport.stop();
+  });
+
   it("never reports ready when the socket closes during microphone startup", async () => {
     let finishStart!: () => void;
     recorder.start.mockImplementationOnce(() => new Promise<void>((resolve) => { finishStart = resolve; }));

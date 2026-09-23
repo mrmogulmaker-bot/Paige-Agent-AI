@@ -109,7 +109,9 @@ export function connectPaigeLiveRelay(input: Readonly<{
     pendingPlayback++;
     try {
       const playbackContext = context ??= new AudioContext();
+      if (held) await playbackContext.suspend();
       if (playbackContext.state === "suspended" && !held) await playbackContext.resume();
+      if (held && playbackContext.state === "running") await playbackContext.suspend();
       if (stopped || terminal || epoch !== playbackEpoch || socket.readyState !== WebSocket.OPEN) return;
       const values = new Int16Array(data);
       const buffer = playbackContext.createBuffer(1, values.length, 16_000);

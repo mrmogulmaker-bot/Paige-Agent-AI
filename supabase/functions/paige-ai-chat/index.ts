@@ -887,11 +887,15 @@ serve(async (req) => {
       const { data: history, error: historyError } = await supabaseClient.from("paige_chat_turns")
         .select("role,content").eq("thread_id", scope.threadId).order("seq", { ascending: false }).limit(49);
       if (historyError) return refuseLive();
-      validatedData.messages = [
-        ...(history ?? []).reverse().filter((m: { role: string; content: string }) =>
-          (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.length),
+      const liveHistory = (history ?? []).reverse().filter((m: { role: string; content: string }) =>
+        (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.length);
+      // A database window can begin halfway through an exchange. Trim that
+      // incomplete assistant prefix, then reuse canonical message validation.
+      const firstUser = liveHistory.findIndex((m: { role: string }) => m.role === "user");
+      validatedData.messages = messageSchema.shape.messages.parse([
+        ...liveHistory.slice(firstUser < 0 ? liveHistory.length : firstUser),
         input[0],
-      ];
+      ]);
       // Context comes from the verified thread and existing runtime resolvers,
       // never from browser-authored prompt blocks or canvas/mission overrides.
       validatedData.clientId = thread.contact_id ?? null;
