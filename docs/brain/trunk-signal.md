@@ -35,7 +35,7 @@ called `ci:tsc`, and there is none called plain `Vercel` either.
 
 | Check | Known state on `main` | What `main`'s red is, when it is red | What would establish attribution for YOUR run |
 |---|---|---|---|
-| **`verify`** | RED — fails on exactly one step, `npm run test` | `main`'s own failure is tracked as **#1372**. That is a fact about `main`, not a verdict on your run. | **Nothing in your diff's paths can clear this.** A failing test name not among the twenty below proves it is yours; matching names prove nothing, because a change can alter a listed failure in place. Only a base-vs-head diff of the failure output clears a run — see below. |
+| **`verify`** | RED — fails on exactly one step, `npm run test` | `main`'s own failure is tracked as **#1372**. That is a fact about `main`, not a verdict on your run. | **One procedure only: run the suite on your merge-base and on your head and diff the failure output, names and messages.** No count, no path, and no comparison against the recorded list can clear or convict a run — the section below says why each of those five shortcuts fails. |
 | **`github-advanced-security`** | **FLAPPING** — mostly red, green perhaps a quarter of the time. Re-count rather than trust this line; the number moves within hours. | When red, `main`'s failure is a vendor fault with a specific signature — **not diagnostic, and NOT a licence to ignore it.** | **Match the failure SIGNATURE in the job log before dismissing it** — see the section below. A red whose signature you have not checked is an uninvestigated failure, not an inherited one. |
 | `ci:tsc` — **a step inside `verify`, not a check of its own** | GREEN — *"no new type errors (baseline 12, current 12)"* | Not red on `main`. It is a ratchet, not a zero-error gate. | Red means a NEW error signature appeared. Read the diagnostic — the program is wider than `src/`, so do not rule yourself out by path. See below. |
 | **`audit`** | GREEN | Not red on `main`. | Read the failure. |
@@ -58,8 +58,9 @@ Measured twice, full output captured both times:
 **Compare the FAILING numbers, not the totals.** Across those two measurements the failing set is
 identical — the same 5 files, the same 20 tests — while the passing totals moved by +4 files and +61
 tests, because `main` merged new test files in between. A lane that matches on "376 files" will
-conclude something is wrong the first time anyone adds a test. The invariant is **5 failed / 20
-failed**, and the five file paths below.
+conclude something is wrong the first time anyone adds a test. **Neither pair of numbers is an
+invariant; both are snapshots of a branch that keeps moving** — see the procedure below, which is the
+only thing that attributes a failure.
 
 The five files:
 
@@ -72,19 +73,32 @@ The five files:
 One of the twenty asserts on the **text of** `src/solo/SoloApp.tsx` rather than on behaviour; the run
 also carries an undici/WebSocket `Uncaught Exception` in the harness. Both are inside those files.
 
-**To confirm a failure is inherited rather than yours: compare the failing TEST NAMES, not the
-counts.** Run `npm run test` and diff the `FAIL` lines against the twenty below. Matching counts are
-not proof, for two reasons that both come down to the same thing — a count is a derived number and two
-changes can cancel inside it:
+## Attributing a failing run: there is ONE procedure, and the list below is not it
 
-1. **Vitest reports the test FILE, not the source files it reads.** `settings.rendered-copy.test.tsx`
-   reads `src/solo/SoloApp.tsx` directly, so a change to `SoloApp.tsx` can alter that failure while the
-   output still names the same test file, your diff's paths are still absent, and the aggregate is
-   still 5/20.
-2. **One fixed baseline assertion plus one newly broken one preserves both numbers.**
+**Run `npm run test` on your merge-base and on your head, and diff the failure output — names AND
+messages. That is the whole procedure.** Everything above is context for reading the result; none of
+it is a shortcut around it.
 
-So "5 and 20, and none of my files appear" can be true of a run containing your regression. The
-twenty names are the signature; the counts are a smoke test on the signature.
+**Why nothing else works, stated once so it does not have to be rediscovered a sixth time.** Five
+successive review rounds each killed one shortcut this section had offered, and the fifth killed the
+last one:
+
+| shortcut | why it fails |
+|---|---|
+| the passing **totals** match | a count is derived; `main` adds tests, so the totals move on their own |
+| the failing **counts** (5 / 20) match | two changes cancel — one fixed baseline assertion plus one newly broken one holds both numbers |
+| none of **my diff's paths** appear | Vitest names the test FILE, not what it reads; and a test can import anything, including across `src/` ↔ `supabase/functions/` |
+| the failing **names** all match the twenty | a change can alter a listed failure *in place*, keeping its name |
+| a failing **name is missing** from the twenty | **the list is pinned to `7ebdd9fea` and `main` moves.** A failure `main` acquired afterwards is absent from the list and is still not yours |
+
+**The last row is the one that generalises, and it is this file's own opening mistake wearing a
+different hat: a measurement pinned to a commit cannot answer a question about the present.** That is
+why the totals went stale, and it is equally why the name list cannot convict. Base-versus-head is the
+only comparison whose two sides are both current.
+
+**So the twenty names below are ORIENTATION, not evidence** — they tell you what `main`'s failure
+looked like when it was measured, which is useful for recognising the shape of a run. They cannot
+clear your run and they cannot convict it.
 
 <details>
 <summary><b>The twenty failing tests</b> — measured on <code>main</code> @ <code>7ebdd9fea</code> (14 · 1 · 3 · 1 · 1)</summary>

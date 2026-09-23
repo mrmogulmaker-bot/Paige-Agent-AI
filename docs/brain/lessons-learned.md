@@ -2764,7 +2764,18 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      (*"what `main`'s red is, when it is red"*) and a separate column carries what would establish
      attribution for the reader's run. **Separate the two subjects rather than wording the shared one
      more carefully** — the recurrence was a sign the structure conflated them.
-  7. **The meta-pattern, and the one actually worth carrying: four of the seven findings were an
+  7. **A measurement pinned to a commit cannot answer a question about the present — and that single
+     sentence unifies the first and last findings in this entry.** The document's opening error was
+     stale COUNTS (376 files / 5273 tests, true at one commit, wrong as soon as `main` added a test).
+     Its final error was the repaired version of the same thing: a list of twenty failing test NAMES,
+     measured at `7ebdd9fea` and then used to convict — *"a name not on the list proves it is yours"* —
+     which fails the moment `main` acquires a failure of its own after the measurement. Five review
+     rounds each killed one shortcut (totals · failing counts · diff paths · matching names · a missing
+     name) before the shape became visible: **every one was a pinned snapshot being asked about now.**
+     The only sound comparison is one whose two sides are BOTH current — here, base versus head. When
+     you catch yourself reaching for a recorded value to decide something about the present, that is
+     the trap, and the fix is never a fresher snapshot.
+  8. **The meta-pattern, and the one actually worth carrying: four of the nine findings were an
      ENUMERATION offered where a general RULE was needed.** Widen the regex to cover single quotes
      (enumerate the quote styles). Add a line counter (enumerate the layouts). Name two directories as
      the trees a baseline test reads from (enumerate the dependency roots — defeated by
