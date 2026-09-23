@@ -65,7 +65,12 @@ INSERT INTO public.mcp_connections (connection_id, tenant_id, provider_key, labe
      public.platform_encrypt('https://restricted.example/rpc'), 'none', 'owner_only', true, 'connected', 'healthy',
      NULL, NULL);
 
--- LEGACY registry: the SAME zapier (must be deduped, gateway wins) and an n8n the backfill never
+-- LEGACY registry: the SAME zapier — listed exactly ONCE, and the LIVE row is the one that must
+-- win, NOT the projection above it. Precedence keys on lineage, never on the provider name: the
+-- projection carries legacy_source='tenant_mcp_connections' and is therefore excluded from the
+-- gateway half, while this row answers in its place. (An earlier draft had the gateway win on a
+-- matching provider string, which let the frozen snapshot outrank the live record it was copied
+-- FROM — assertion B below is what fails if that ever comes back.) Plus an n8n the backfill never
 -- projected (must still appear — this is the anti-lie case).
 INSERT INTO public.tenant_mcp_connections (tenant_id, provider, label, server_url_ct, auth_token_ct, auth_token_last4, transport, auth_kind, enabled, status) VALUES
   -- auth_kind MUST be 'oauth' (or 'url') for zapier — tenant_mcp_connections_provider_auth_chk

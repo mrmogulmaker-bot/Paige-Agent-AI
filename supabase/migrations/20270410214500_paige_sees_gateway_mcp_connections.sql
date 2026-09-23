@@ -274,7 +274,7 @@ begin
       into _legacy
       from jsonb_each(public.get_tenant_mcp_connections()) as kv(provider_key, v);
   exception when others then
-    raise warning 'list_integration_surface: legacy MCP gap-fill unavailable (%): %', sqlstate, sqlerrm;
+    raise warning 'list_integration_surface: legacy MCP half unavailable (%): %', sqlstate, sqlerrm;
     _legacy := '[]'::jsonb;
   end;
 

@@ -286,12 +286,16 @@ jobs:
       # Paige can SEE her MCP connections (migration 20270410214500). list_integration_surface read
       # ONLY channel_connectors, so every MCP connection a tenant owned was invisible to her — absent,
       # not stale. Proves: the channel_connectors half is untouched (§58, incl. from_address/
-      # inbound_address); a gateway connection now appears with the gateway's own label winning over a
-      # stale legacy duplicate (§57); a LIVE legacy connection the one-time backfill never projected is
-      # STILL listed — without it Paige answers "you are not connected" about a working connection; the
-      # owner_only gate survives being reached through a nested SECURITY DEFINER call (§9, proven from
-      # both the admin and the ordinary-member side); and no credential material crosses. Rides this
-      # replayed DB for the same §24 reason as above.
+      # inbound_address); a LIVE legacy row BEATS its own frozen projection and is listed exactly ONCE
+      # — precedence keys on the lineage columns the one-time backfill writes, NEVER on a provider
+      # name, because a projection is a stale snapshot OF the live row and letting it win reports a
+      # connection the owner just disconnected as still live; a NATIVE gateway row (legacy_source NULL)
+      # survives that suppression; the live n8n API-key facet likewise beats its projection, host-only;
+      # a LIVE legacy connection the backfill never projected is STILL listed — without it Paige
+      # answers "you are not connected" about a working connection; the owner_only gate survives being
+      # reached through a nested SECURITY DEFINER call (§9, proven from both the admin and the
+      # ordinary-member side); and no credential material crosses. Rides this replayed DB for the same
+      # §24 reason as above.
       - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/integrations_surface_sees_mcp.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       # Connected MCP Gateway — Slice ② OAuth GRANT WRITER (migration 20270333000000): complete_mcp_oauth_grant
       # re-keys a 'none' shell to oauth (tokens ENCRYPTED, granted scopes recorded, status→pending_verification,
