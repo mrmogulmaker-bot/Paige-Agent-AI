@@ -68,11 +68,12 @@ export async function openFluxEars(
       try { socket.close(1011, "stt_error"); } catch { /* already closed */ }
       settle(false);
     };
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (closeTimer) clearTimeout(closeTimer);
       // CloseStream's last transcript is an Update, not an EndOfTurn. It is
       // final only when we deliberately asked Flux to flush and then closed.
-      if (finishing && !cancelled && !failed && flushedUpdate && flushedUpdate.turnIndex !== finalTurnIndex) {
+      if (finishing && event.wasClean && !cancelled && !failed &&
+        flushedUpdate && flushedUpdate.turnIndex !== finalTurnIndex) {
         events.final(flushedUpdate.text, flushedUpdate.turnIndex);
       } else if (!finishing) failOnce();
       settle(false);
@@ -111,14 +112,21 @@ export async function openFluxEars(
       },
       close() {
         if (finishing || cancelled) return;
-        finishing = true;
         flushedUpdate = null;
         if (socket.readyState === WebSocket.OPEN) {
-          try { socket.send(JSON.stringify({ type: "CloseStream" })); } catch { /* best effort */ }
+          try {
+            socket.send(JSON.stringify({ type: "CloseStream" }));
+            finishing = true;
+          } catch {
+            failOnce();
+            try { socket.close(1011, "stt_close_failed"); } catch { /* already closed */ }
+            return;
+          }
           closeTimer = setTimeout(() => {
             if (socket.readyState !== WebSocket.CLOSED) socket.close(1000, "relay_end");
           }, 3000);
         } else if (socket.readyState !== WebSocket.CLOSED) {
+          failOnce();
           try { socket.close(1000, "relay_end"); } catch { /* already closed */ }
         }
       },

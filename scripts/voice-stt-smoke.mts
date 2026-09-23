@@ -273,11 +273,11 @@ class FakeFluxSocket {
   readyState = FakeFluxSocket.OPEN;
   onopen: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((event: { code: number; wasClean: boolean }) => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
   readonly sent: Array<string | ArrayBuffer> = [];
   send(value: string | ArrayBuffer) { this.sent.push(value); }
-  close() { this.readyState = FakeFluxSocket.CLOSED; this.onclose?.(); }
+  close(code = 1000, wasClean = true) { this.readyState = FakeFluxSocket.CLOSED; this.onclose?.({ code, wasClean }); }
   receive(value: unknown) { this.onmessage?.({ data: JSON.stringify(value) }); }
 }
 (globalThis as unknown as { WebSocket: unknown }).WebSocket = FakeFluxSocket;
@@ -330,9 +330,37 @@ const droppedResult = await droppedOpening;
 if (droppedResult.ok) {
   droppedFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 1, transcript: "Unflushed" });
   droppedResult.ears.close();
-  droppedFlux.close();
+  droppedFlux.close(1006, false);
 }
 check("close without a post-CloseStream Update never invents a final", droppedSeen.length === 0);
+const failedCloseFlux = new FakeFluxSocket();
+const failedCloseSeen: string[] = [];
+const failedCloseOpening = openFluxEars({
+  startOfTurn() {}, partial() {}, final(text) { failedCloseSeen.push(text); }, unavailable() {},
+}, { opener() { queueMicrotask(() => failedCloseFlux.onopen?.()); return failedCloseFlux as unknown as WebSocket; } });
+const failedCloseResult = await failedCloseOpening;
+if (failedCloseResult.ok) {
+  const originalSend = failedCloseFlux.send.bind(failedCloseFlux);
+  failedCloseFlux.send = (value) => {
+    if (value === '{"type":"CloseStream"}') throw new Error("fake send failure");
+    originalSend(value);
+  };
+  failedCloseResult.ears.close();
+  failedCloseFlux.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 1, transcript: "Never flushed" });
+}
+check("failed CloseStream send cannot earn final text", failedCloseSeen.length === 0 && failedCloseFlux.readyState === FakeFluxSocket.CLOSED);
+const uncleanFlushSocket = new FakeFluxSocket();
+const uncleanFlushSeen: string[] = [];
+const uncleanFlushOpening = openFluxEars({
+  startOfTurn() {}, partial() {}, final(text) { uncleanFlushSeen.push(text); }, unavailable() {},
+}, { opener() { queueMicrotask(() => uncleanFlushSocket.onopen?.()); return uncleanFlushSocket as unknown as WebSocket; } });
+const uncleanFlushResult = await uncleanFlushOpening;
+if (uncleanFlushResult.ok) {
+  uncleanFlushResult.ears.close();
+  uncleanFlushSocket.receive({ type: "TurnInfo", event: "Update", turn_index: 0, sequence_id: 1, transcript: "Dropped after flush" });
+  uncleanFlushSocket.close(1006, false);
+}
+check("unclean upstream close never promotes interim text", uncleanFlushSeen.length === 0);
 const thrownOpening = await openFluxEars(
   { startOfTurn() {}, partial() {}, final() {}, unavailable() {} },
   { opener() { throw new Error("fake constructor failure"); } },
