@@ -282,32 +282,45 @@ test("mutation and external-effect capabilities cannot declare read_only risk", 
   }
 });
 
-// The premise the most-restrictive fold in `action-risk.ts` rests on: with the array deduplicated,
-// folding is a no-op. `RISK` is hand-maintained and both its maps were last-wins, so a second tuple
-// for an existing key silently re-classified it — `crm_update_task` carried two until the INT-003
-// follow-up. The fold means a duplicate can now only RAISE a class, but a policy that quietly
-// contradicts itself is still a policy nobody can read, so the array is asserted unique here.
-// The tidier home for this is `action-risk-lint`, which rejects no duplicates today and already
-// exports the `parsePolicy()` used below. That guard is outside this change, so the assertion sits
-// here for now. NOT filed as a tracked task — the task tool was unavailable when this shipped — so
-// it is recorded here and in the PR body rather than described as routed.
-// SYNCHRONOUS deliberately: `test()` above calls `body()` without awaiting it, so an async body
-// prints "ok" and increments the pass count before it can possibly fail, and the failure surfaces
-// only as an unhandled rejection. Node exits non-zero on one today, so it would not have gone
-// unnoticed — but a test whose green depends on that is the shape this whole change exists to fix.
-test("the canonical action-risk policy declares each key exactly once", () => {
-  const policy = readFileSync(
+// RISK-array UNIQUENESS moved to `scripts/ci/action-risk-lint.mjs` on 2026-09-23 — the tidier home
+// the comment that used to sit here named. That guard reads the same table through the same
+// `parsePolicy()` and now names the repeated key AND the classes involved, so a reader can tell a
+// downgrade from a restatement. Do not re-add uniqueness here; one home, not two.
+//
+// What did NOT move, and must not, is the cross-check below. The test that moved asserted TWO things,
+// and only uniqueness belongs in a text-reading guard. `action-risk-lint` is plain `.mjs` over the
+// policy's SOURCE — it never imports the runtime module, so it cannot know whether what its regex
+// parsed is what the runtime actually holds. This process can: it runs under the TypeScript register
+// hook, so both representations are in scope here and nowhere else.
+//
+// Why that is worth a test rather than an assumption — and these shapes were MEASURED against
+// `parsePolicy` rather than guessed, because the first version of this comment guessed and was wrong.
+// The pattern is skipped by: a single-quoted reason, a template-literal reason, a camelCase or
+// hyphenated key (it wants `[a-z0-9_]`), and an inline comment between the tuple's elements. It
+// handles fine: a tuple wrapped across lines (its `\s*` matches newlines — this comment previously
+// claimed the opposite) and a reason containing an escaped quote.
+// The consequence of any skipped shape is the part that matters: the lint under-counts, its duplicate
+// check goes blind on exactly that key, and nothing notices, because the count it prints is
+// self-consistent with the subset it managed to read. A camelCase key is the likeliest real version —
+// a new action named `dealCreate` instead of `deal_create` would simply not be governed by that guard,
+// silently. Same failure shape as the `MUTATION_VERB` blind spot removed in #1383: a guard
+// confidently reporting on less than it thinks it sees.
+test("every tuple in the policy source survives into the runtime map", () => {
+  const source = readFileSync(
     join(HERE, "..", "..", "supabase", "functions", "_shared", "action-risk.ts"),
     "utf8",
   );
-  // `parsePolicy()` is the policy guard's own reader and the one home for parsing this table
-  // (§18). The first draft of this test hand-rolled a third parser that sliced on `RISK_RANK` —
-  // a symbol this same change introduced — so renaming it would have silently emptied the test.
-  const keys = parsePolicy(policy).map((entry) => entry.tool);
-  assert.ok(keys.length > 0, "the RISK array parsed to at least one tuple");
-  const repeated = [...new Set(keys.filter((key, index) => keys.indexOf(key) !== index))];
-  assert.deepEqual(repeated, [], `RISK declares these keys more than once: ${repeated.join(", ")}`);
-  assert.equal(keys.length, mutatingTools().size, "every parsed tuple survives into the fold");
+  const parsed = parsePolicy(source);
+  assert.ok(parsed !== null, "parsePolicy found the RISK table at all");
+  assert.ok(parsed.length > 0, "the RISK table parsed to at least one tuple");
+  assert.equal(
+    parsed.length,
+    mutatingTools().size,
+    `the policy guard's parser reads ${parsed.length} tuples but the runtime map holds ` +
+    `${mutatingTools().size} keys. Either a tuple is shaped so the parser skips it — in which case ` +
+    `action-risk-lint is silently blind to that key — or the table now holds a duplicate, which ` +
+    `action-risk-lint reports separately.`,
+  );
 });
 
 test("external effects require the canonical high-risk class", () => {
