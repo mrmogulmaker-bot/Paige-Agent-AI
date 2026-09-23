@@ -13,9 +13,7 @@ const relay = vi.hoisted(() => ({
   stop: vi.fn(),
   interrupt: vi.fn(),
   setMuted: vi.fn(),
-  runtimeDispatched: vi.fn(),
-  runtimeChunk: vi.fn(),
-  runtimeDone: vi.fn(),
+  runtimeProof: vi.fn(),
   runtimeFailed: vi.fn(),
 }));
 vi.mock("@/lib/paigeLiveConversation/client", () => ({
@@ -61,14 +59,14 @@ describe("Paige Live Conversation owner surface", () => {
     relay.stop.mockClear();
     relay.interrupt.mockClear();
     relay.setMuted.mockClear();
-    relay.runtimeDispatched.mockClear();
-    relay.runtimeChunk.mockClear();
-    relay.runtimeDone.mockClear();
+    relay.runtimeProof.mockClear();
     relay.runtimeFailed.mockClear();
     relay.connect.mockReturnValue({
       stop: relay.stop, interrupt: relay.interrupt, setMuted: relay.setMuted,
-      runtimeDispatched: relay.runtimeDispatched, runtimeChunk: relay.runtimeChunk,
-      runtimeDone: relay.runtimeDone, runtimeFailed: relay.runtimeFailed,
+      runtimeProof: relay.runtimeProof, runtimeFailed: relay.runtimeFailed,
+      subscribeOutput: () => () => {}, outputPlaying: () => false,
+      readEnergy: () => ({ amplitude: 0, brightness: 0 }),
+      pauseOutput: vi.fn(), resumeOutput: vi.fn(), clearOutput: vi.fn(),
     });
     ensureThread.mockClear();
     onAnswer.mockClear();
@@ -89,7 +87,7 @@ describe("Paige Live Conversation owner surface", () => {
     document.body.querySelectorAll(".plc-stage").forEach((node) => node.remove());
   });
 
-  const render = async (card: LiveConversationCard | null = null, epoch = "tenant-a||", working = false, threadId: string | null = null, disabled = false) => {
+  const render = async (card: LiveConversationCard | null = null, epoch = "tenant-a||", working = false, threadId: string | null = null, disabled = false, voiceTurn = onVoiceTurn) => {
     await act(async () => root.render(
       <PaigeLiveConversation
         contextEpoch={epoch}
@@ -103,11 +101,42 @@ describe("Paige Live Conversation owner surface", () => {
         onAnswer={onAnswer}
         onApprove={onApprove}
         onDecline={onDecline}
-        onVoiceTurn={onVoiceTurn}
+        onVoiceTurn={voiceTurn}
         onVoiceInterrupt={onVoiceInterrupt}
       />,
     ));
   };
+
+  it("uses the latest chat callback after lazy thread creation and later renders", async () => {
+    control.start.mockResolvedValueOnce({ ok: true, sessionId: "session", ticket: "ticket", availability: "PROOF OWED", code: "relay_ticket_issued" });
+    await render();
+    await act(async () => clickText("Talk live with Paige"));
+    const socket = relay.connect.mock.calls[0][0];
+    const latest = vi.fn();
+    await render(null, "tenant-a||", false, "11111111-1111-4111-8111-111111111111", false, latest);
+    await act(async () => socket.onVoiceTurn("next turn", "turn", "challenge"));
+    expect(latest).toHaveBeenCalledOnce();
+    expect(onVoiceTurn).not.toHaveBeenCalled();
+  });
+
+  it.each(["offline", "hidden", "disconnected", "unavailable"])("cancels an active voice runtime once on %s, then fences late proof", async (exit) => {
+    control.start.mockResolvedValueOnce({ ok: true, sessionId: "session", ticket: "ticket", availability: "PROOF OWED", code: "relay_ticket_issued" });
+    await render();
+    await act(async () => clickText("Talk live with Paige"));
+    const socket = relay.connect.mock.calls[0][0];
+    await act(async () => { socket.onState({ kind: "ready" }); socket.onVoiceTurn("hello", "turn", "challenge"); });
+    const sink = onVoiceTurn.mock.calls[0][1];
+    await act(async () => {
+      if (exit === "offline") window.dispatchEvent(new Event("offline"));
+      else if (exit === "hidden") {
+        vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+        document.dispatchEvent(new Event("visibilitychange"));
+      } else socket.onState({ kind: exit, message: "Stopped" });
+    });
+    await act(async () => { sink.proof("late"); sink.done(); });
+    expect(onVoiceInterrupt).toHaveBeenCalledOnce();
+    expect(relay.runtimeProof).not.toHaveBeenCalled();
+  });
 
   it("opens the same-thread immersive stage and fails closed without requesting a microphone", async () => {
     await render();
@@ -152,19 +181,18 @@ describe("Paige Live Conversation owner surface", () => {
     await act(async () => clickText("Talk live with Paige"));
     const live = relay.connect.mock.calls[0][0];
     await act(async () => live.onState({ kind: "ready" }));
-    await act(async () => live.onVoiceTurn("yes", "turn-1"));
+    await act(async () => live.onVoiceTurn("yes", "turn-1", "signed-challenge"));
     expect(onVoiceTurn).toHaveBeenCalledWith("yes", expect.objectContaining({
-      dispatched: expect.any(Function), chunk: expect.any(Function),
+      challenge: "signed-challenge", proof: expect.any(Function),
     }));
     expect(onApprove).not.toHaveBeenCalled();
     const sink = onVoiceTurn.mock.calls[0][1];
-    await act(async () => { sink.dispatched(); sink.chunk("I can help."); });
-    expect(relay.runtimeDispatched).toHaveBeenCalledWith("turn-1");
-    expect(relay.runtimeChunk).toHaveBeenCalledWith("turn-1", "I can help.");
+    await act(async () => sink.proof("signed-output"));
+    expect(relay.runtimeProof).toHaveBeenCalledWith("turn-1", "signed-output");
     await act(async () => live.onRuntimeCancel("turn-1"));
     expect(onVoiceInterrupt).toHaveBeenCalledOnce();
-    await act(async () => sink.done());
-    expect(relay.runtimeDone).not.toHaveBeenCalled();
+    await act(async () => { sink.proof("late-output"); sink.done(); });
+    expect(relay.runtimeProof).toHaveBeenCalledTimes(1);
   });
 
   it("keeps audio unavailable during genuine text work and clears working Presence afterwards", async () => {

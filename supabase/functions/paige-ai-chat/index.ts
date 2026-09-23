@@ -378,9 +378,12 @@ const railKindLabel = (k: string): string =>
 // byte-untouched, so no producer breaks (§37). No downstream code assumes content <= 50000
 // (index.ts:575/3660/3673/3678 pass `msg.content` straight through), and model-context management
 // happens downstream regardless.
+import { createLiveRuntimeProof, liveRuntimeDigest, type LiveRuntimeScope } from "../_shared/paige-live-runtime-proof.ts";
+
 const MAX_MESSAGE_CONTENT = 200_000;
 
 const messageSchema = z.object({
+  liveRuntimeChallenge: z.string().max(12_000).optional(),
   messages: z.array(
     z.object({
       role: z.enum(['user', 'assistant', 'system']),
@@ -815,6 +818,62 @@ serve(async (req) => {
       throw error;
     }
 
+    let liveRuntimeScope: LiveRuntimeScope | null = null;
+    let liveProof: ReturnType<typeof createLiveRuntimeProof> | null = null;
+    if (validatedData.liveRuntimeChallenge) {
+      const signingKey = Deno.env.get("PAIGE_LIVE_STREAM_SIGNING_KEY") ?? "";
+      const refuseLive = () => new Response(JSON.stringify({ error: "live_runtime_unavailable" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+      if (signingKey.length < 32) return refuseLive();
+      liveProof = createLiveRuntimeProof(signingKey);
+      const scope = await liveProof.readChallenge(validatedData.liveRuntimeChallenge);
+      const input = validatedData.messages;
+      // Only the observed final utterance enters this mode. Speech cannot carry
+      // confirmation fingerprints, invented history, attachments or a summary job.
+      if (!scope || scope.actorId !== user.id || scope.threadId !== validatedData.threadId ||
+        input.length !== 1 || input[0].role !== "user" ||
+        await liveRuntimeDigest(input[0].content) !== scope.transcriptHash ||
+        validatedData.approvedConfirmations?.length || validatedData.declinedConfirmations?.length ||
+        validatedData.document || validatedData.attachments?.length || validatedData.generateSessionSummary ||
+        validatedData.sessionMessages || validatedData.sessionDocumentContext) return refuseLive();
+      const [{ data: tenant, error: tenantError }, { data: thread, error: threadError }, { data: pilot, error: pilotError }] = await Promise.all([
+        supabaseClient.rpc("current_user_tenant_id"),
+        supabaseClient.from("paige_chat_threads").select("id,contact_id")
+          .eq("id", scope.threadId).eq("tenant_id", scope.tenantId).eq("caller_user_id", user.id).maybeSingle(),
+        supabase.from("paige_live_tenant_availability").select("enabled").eq("tenant_id", scope.tenantId).maybeSingle(),
+      ]);
+      if (tenantError || tenant !== scope.tenantId || threadError || !thread || pilotError || pilot?.enabled !== true) return refuseLive();
+      // Atomic consume BEFORE history writes, tools or model calls. The slot is
+      // service-only; concurrent replays cannot both obtain a row. A reconnect or
+      // newer turn replaces the digest, making the old challenge unusable.
+      const { data: claimed, error: claimError } = await supabase.from("paige_live_sessions")
+        .update({ provider_session_ref: null })
+        .eq("id", scope.sessionId).eq("tenant_id", scope.tenantId).eq("actor_user_id", user.id)
+        .eq("thread_id", scope.threadId).eq("context_epoch", scope.epoch)
+        .eq("provider_session_ref", `runtime:${await liveRuntimeDigest(validatedData.liveRuntimeChallenge)}`)
+        .eq("availability", "LIVE").in("state", ["listening", "thinking", "speaking", "interrupted"])
+        .select("id").maybeSingle();
+      if (claimError || !claimed) return refuseLive();
+      const { data: history, error: historyError } = await supabaseClient.from("paige_chat_turns")
+        .select("role,content").eq("thread_id", scope.threadId).order("seq", { ascending: false }).limit(49);
+      if (historyError) return refuseLive();
+      validatedData.messages = [
+        ...(history ?? []).reverse().filter((m: { role: string; content: string }) =>
+          (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.length),
+        input[0],
+      ];
+      // Context comes from the verified thread and existing runtime resolvers,
+      // never from browser-authored prompt blocks or canvas/mission overrides.
+      validatedData.clientId = thread.contact_id ?? null;
+      validatedData.clientContext = undefined;
+      validatedData.canvasArtifact = undefined;
+      validatedData.businessMissionId = undefined;
+      validatedData.surfaceContext = undefined;
+      liveRuntimeScope = scope;
+    }
+    const liveOutput = (stream: ReadableStream<Uint8Array>) => liveProof && liveRuntimeScope
+      ? liveProof.outputStream(stream, liveRuntimeScope) : stream;
     const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, businessMissionId: payloadBusinessMissionId, threadId: payloadThreadId, clientContext: rawClientContext, surfaceContext, userTime, userTimezone, userTimeFormatted } = validatedData;
     // canvasArtifact is a CLIENT request field, meaningful ONLY in a server-resolved Studio session.
     // Declared `let` so it can be neutralized for a dedicated (non-Studio) chat once studio_session_id
@@ -993,7 +1052,7 @@ serve(async (req) => {
           controller.close();
         },
       });
-      return new Response(refusalStream, {
+      return new Response(liveOutput(refusalStream), {
         headers: { ...corsHeaders, "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
       });
     }
@@ -13695,7 +13754,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
          }
         },
       });
-      return new Response(finalStream, { headers: { ...corsHeaders, "Content-Type": "text/event-stream" } });
+      return new Response(liveOutput(finalStream), { headers: { ...corsHeaders, "Content-Type": "text/event-stream" } });
     }
 
     // With document: intercept stream to accumulate response, then trigger background sync
@@ -14034,7 +14093,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       },
     });
 
-    return new Response(stream, {
+    return new Response(liveOutput(stream), {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (error) {

@@ -7,6 +7,7 @@ import {
   createRelayState, reduceRelay, type RelayEffect, type RelayEvent,
   type RelayFramePayload, type RelayState, type UsageSink,
 } from "./paige-live-relay-contract.ts";
+import { sameLiveRuntimeScope, type LiveRuntimeScope, type LiveRuntimeOutput } from "./paige-live-runtime-proof.ts";
 
 export interface LiveEars {
   sendPcm(bytes: ArrayBuffer): number | null;
@@ -32,6 +33,10 @@ export interface LiveBridgeOptions {
   openEars: LiveEarsOpener;
   openMouth: LiveMouthOpener;
   usage: UsageSink;
+  runtimeProof: {
+    issue(turnId: string, transcript: string): Promise<{ token: string; scope: LiveRuntimeScope }>;
+    readOutput(token: string): Promise<LiveRuntimeOutput | null>;
+  };
   onFailure?: (code: string) => void;
   now?: () => number;
 }
@@ -39,7 +44,7 @@ export interface LiveBridgeOptions {
 const MAX_RUNTIME_CHUNK = 4_096;
 const MAX_RUNTIME_TURN = 32_000;
 const MAX_AUDIO_FRAME = 32_000;
-const MAX_CONTROL_FRAME = 8_192;
+const MAX_CONTROL_FRAME = 16_384;
 
 export class PaigeLiveRelayBridge {
   private state: RelayState;
@@ -58,6 +63,11 @@ export class PaigeLiveRelayBridge {
   private runtimeEndRequested = false;
   private runtimeEndSent = false;
   private runtimeCharacters = 0;
+  private runtimeScope: LiveRuntimeScope | null = null;
+  private runtimeStreamId: string | null = null;
+  private runtimeProofSeq = -1;
+  private proofQueue: Promise<void> = Promise.resolve();
+  private issueQueue: Promise<void> = Promise.resolve();
   private readonly now: () => number;
 
   constructor(private readonly options: LiveBridgeOptions) {
@@ -105,7 +115,7 @@ export class PaigeLiveRelayBridge {
     this.send({ type: "ready" });
   }
 
-  receive(data: string | ArrayBuffer): void {
+  receive(data: string | ArrayBuffer): void | Promise<void> {
     if (this.ended) return;
     if (data instanceof ArrayBuffer) {
       this.receiveAudio(data);
@@ -140,23 +150,43 @@ export class PaigeLiveRelayBridge {
     }
     const turn = this.state.currentTurn;
     if (!turn || typeof frame.turn_id !== "string" || frame.turn_id !== turn.id || turn.interrupted) return;
-    if (frame.type === "runtime.dispatched") {
-      this.apply({ kind: "runtime.dispatched", at: this.now(), turnId: turn.id });
-    } else if (frame.type === "runtime.chunk" && turn.runtimeDispatched && !turn.runtimeDone &&
-      typeof frame.text === "string" &&
-      frame.text.length > 0 && frame.text.length <= MAX_RUNTIME_CHUNK &&
-      this.runtimeCharacters + frame.text.length <= MAX_RUNTIME_TURN) {
-      this.runtimeCharacters += frame.text.length;
-      this.frame("runtime", ++this.runtimeSeq, { kind: "runtime.chunk", text: frame.text });
-    } else if (frame.type === "runtime.done" && turn.runtimeDispatched && !turn.runtimeDone) {
-      this.frame("runtime", ++this.runtimeSeq, { kind: "runtime.done" });
-      this.runtimeEndRequested = true;
-      this.maybeSendRuntimeDone();
+    if (frame.type === "runtime.proof" && typeof frame.proof === "string") {
+      const turnId = turn.id;
+      const proof = frame.proof;
+      this.proofQueue = this.proofQueue.then(() => this.acceptRuntimeProof(turnId, proof))
+        .catch(() => this.fail("runtime_proof_invalid"));
+      return this.proofQueue;
     } else if (frame.type === "runtime.failed") {
       this.fail("runtime_unavailable");
     } else {
       this.fail("invalid_live_frame");
     }
+  }
+
+  private async acceptRuntimeProof(turnId: string, token: string): Promise<void> {
+    const output = await this.options.runtimeProof.readOutput(token);
+    const turn = this.state.currentTurn;
+    // Cancellation and barge-in remain immediate while verification is pending.
+    if (this.ended || !turn || turn.id !== turnId || turn.interrupted) return;
+    if (!output || !this.runtimeScope || !sameLiveRuntimeScope(output.scope, this.runtimeScope) ||
+      output.seq !== this.runtimeProofSeq + 1 || turn.runtimeDone) {
+      this.fail("runtime_proof_invalid"); return;
+    }
+    if (output.kind === "start" && output.seq === 0 && !turn.runtimeDispatched) {
+      this.runtimeStreamId = output.streamId;
+      this.apply({ kind: "runtime.dispatched", at: this.now(), turnId });
+    } else if (output.streamId !== this.runtimeStreamId || !turn.runtimeDispatched) {
+      this.fail("runtime_proof_invalid"); return;
+    } else if (output.kind === "chunk" && output.text && output.text.length <= MAX_RUNTIME_CHUNK &&
+      this.runtimeCharacters + output.text.length <= MAX_RUNTIME_TURN) {
+      this.runtimeCharacters += output.text.length;
+      this.frame("runtime", ++this.runtimeSeq, { kind: "runtime.chunk", text: output.text });
+    } else if (output.kind === "done") {
+      this.frame("runtime", ++this.runtimeSeq, { kind: "runtime.done" });
+      this.runtimeEndRequested = true;
+      this.maybeSendRuntimeDone();
+    } else { this.fail("runtime_proof_invalid"); return; }
+    this.runtimeProofSeq = output.seq;
   }
 
   end(): void {
@@ -196,6 +226,9 @@ export class PaigeLiveRelayBridge {
     this.mouthSeq = 0;
     this.audioRemainderMs = 0;
     this.runtimeCharacters = 0;
+    this.runtimeScope = null;
+    this.runtimeStreamId = null;
+    this.runtimeProofSeq = -1;
     this.runtimeEndRequested = false;
     this.runtimeEndSent = false;
     this.send({ type: "turn.start", turn_id: turnId });
@@ -273,7 +306,13 @@ export class PaigeLiveRelayBridge {
         // fences the old turn; closing this socket would drop the new utterance.
         break;
       case "runtime.dispatch":
-        this.send({ type: "runtime.dispatch", turn_id: effect.turnId, text: effect.transcript });
+        this.issueQueue = this.issueQueue.then(async () => {
+          if (this.ended || this.state.currentTurn?.id !== effect.turnId || this.state.currentTurn.interrupted) return;
+          const { token, scope } = await this.options.runtimeProof.issue(effect.turnId, effect.transcript);
+          if (this.ended || this.state.currentTurn?.id !== effect.turnId || this.state.currentTurn.interrupted) return;
+          this.runtimeScope = scope;
+          this.send({ type: "runtime.dispatch", turn_id: effect.turnId, text: effect.transcript, challenge: token });
+        }).catch(() => this.fail("runtime_unavailable"));
         break;
       case "runtime.cancel":
         this.send({ type: "runtime.cancel", turn_id: effect.turnId });
@@ -324,12 +363,12 @@ export class PaigeLiveRelayBridge {
           if (this.ended || controller.signal.aborted || generation !== this.speechGeneration ||
             this.state.currentTurn?.id !== turnId) return;
           if (!value?.byteLength) continue;
-          const bytes = carry === null ? value : new Uint8Array(value.byteLength + 1);
+          const bytes: Uint8Array = carry === null ? value : new Uint8Array(value.byteLength + 1);
           if (carry !== null) {
             bytes[0] = carry;
             bytes.set(value, 1);
           }
-          const even = bytes.byteLength - (bytes.byteLength % 2);
+          const even: number = bytes.byteLength - (bytes.byteLength % 2);
           carry = even < bytes.byteLength ? bytes[even] : null;
           if (!even) continue;
           this.options.send(bytes.slice(0, even).buffer);

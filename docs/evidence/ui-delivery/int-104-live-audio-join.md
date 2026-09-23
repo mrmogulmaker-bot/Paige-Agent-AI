@@ -1,5 +1,13 @@
 # INT-104 Live audio join: existing stage, canonical Paige thread
 
+## Grounded repair attachment map (2026-09-23)
+
+The retired `startVoiceSession.ts` at #297's parent used a hosted ElevenLabs agent, not the approved cascaded runtime. It is historical input only; no retired endpoint or screen is restored. Reuse the existing `PaigeLiveConversation` stage, `relayTransport`, `VoiceAudio`, `PaigeAIChat.streamTurn`, JWT-authenticated `paige-ai-chat`, caller-owned `paige_chat_threads` / `paige_chat_turns`, and `paige_live_sessions`. The existing runtime continues to own Spine tool execution, Rail receipts, Mind, Memory, tenant Knowledge and Harness access. Voice does not add an invocation or approval path.
+
+The P1 repair adds one purpose-bound runtime-output proof helper, not another runtime: a short-lived relay challenge binds the server-resolved actor/tenant/thread/session/turn and exact final transcript; the existing service-only `provider_session_ref` slot holds its digest after the handshake ticket is consumed. Canonical chat atomically consumes that digest before effects, reads the existing caller-owned thread history, and signs only released SSE answer content. The browser transports opaque signed proofs; raw runtime text cannot reach the mouth. The proof helper has exactly two deployed importers: `paige-ai-chat` and `paige-live-relay`. Both functions plus Vercel are the authorized redeploy set for this repair. Existing STT/TTS shared modules remain untouched. No schema, alternative memory or billing control is added.
+
+Protected repair seam: forged/replayed/wrong-scope/expired/reordered output, substituted transcript, spoken approval fields, post-cancel output and withheld protected runtime content must not synthesize speech. Text chat and the current stage layout remain unchanged. Named signing key is server-only `PAIGE_LIVE_STREAM_SIGNING_KEY`; no key value is committed, sent to the client, or logged.
+
 UI_DELIVERY_EVIDENCE_VERSION: 1
 FLOW_BY_FLOW: PASS: Flow-by-Flow 2.0.2, Existing Project / R3 Deep; Talk live on the existing Solo Paige stage, speak, hear the same-thread answer, interrupt, mute, and end
 PAIGE_UI_DESIGN: PASS: The approved Live stage, transcript, cards, Presence, control bar, copy and focus behavior are reused rather than recreated
@@ -8,7 +16,7 @@ MATERIAL_FLOW_CHANGE: YES: Live audio is newly joined to the existing signed-in 
 FLOW_PROTOTYPE: PASS: Owner-approved 2026-09-08 Organic Paige Presence + Real Audio Recovery pack in docs/evidence/ui-delivery/paige-live-conversation-mvp.md; this join uses its existing stage, controls, interruption and recovery paths
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: Any authorized signed-in user in a platform-enabled workspace talks to Paige in that user's existing tenant-scoped thread; the platform pilot is default off until operational proof
 VISUAL_DIRECTION: PASS: Existing Solo Live layout, typography, tokens, transcript and card region remain intact; no parallel screen or second assistant is added
-AUTOMATED_EVIDENCE: PASS: Provider-free relay-bridge harness covers observed STT/LLM/TTS units, ordered final transcript, sentence-early mouth, playback settlement, interruption and honest failure; focused browser tests cover runtime frames and existing stage controls
+AUTOMATED_EVIDENCE: PASS: 2026-09-23 relay-bridge harness 29/29 with real WebCrypto and fake adapters, zero network/provider calls; focused Live/transport/output tests 40/40. Failing-first unsigned-runtime check recorded 15 pass / 1 fail before repair. PostgreSQL one-use claim test added for CI; its execution is not claimed by the local harness.
 STATIC_EVIDENCE: PASS: The bridge imports the existing provider-neutral reducer, Flux adapter and ElevenLabs streaming transport; the browser invokes the existing paige-ai-chat runtime with no approval fingerprints for a spoken turn
 RENDERED_EVIDENCE: UNVERIFIED: Focused DOM tests exercise the existing stage, but no authenticated production live-audio render has been captured yet
 BEHAVIORAL_EVIDENCE: UNVERIFIED: An owner speaking, hearing Jessica, interrupting, ending and retaining the same chat thread in production is still required
@@ -35,7 +43,7 @@ MUST_PRESERVE: The platform-owned default-off rollout gate, per-user/tenant/thre
 ACCEPTANCE_CRITERIA: Owner taps Talk live, speaks, sees the real transcript, hears Paige answer in Jessica's voice, interrupts immediately, ends cleanly, and sees the intact same-thread chat in production.
 PROTECTED_SEAMS: AFFECTED — first-party relay, Flux ears, streaming mouth and existing Solo Live/chat bridge. PRESERVED — PAIGE governance, tenant/user identity, Rail, Mind, Memory, Knowledge, permission selector and active read-aloud playback.
 
-INTERNAL_BUILD_IDENTITY: merge_sha=PROOF_OWED; branch_code_commit=eae28017b330c1fd2f8cc867f3134453afff4777; deployment=PROOF_OWED; environment=development; migrations=NOT_APPLICABLE; edge=PROOF_OWED(paige-live-relay); evidence=scripts/paige-live-relay-bridge-smoke.mts and src/lib/paigeLiveConversation/relayTransport.test.ts
+INTERNAL_BUILD_IDENTITY: merge_sha=PROOF_OWED; pr=1387; reviewed_head=PROOF_OWED; deployment=PROOF_OWED; environment=development; migrations=NOT_APPLICABLE; edge=PROOF_OWED(paige-ai-chat,paige-live-relay); evidence=scripts/paige-live-relay-bridge-smoke.mts and src/lib/paigeLiveConversation/relayTransport.test.ts
 RELEASE_CHANNEL: development: staged Live audio join; platform pilot stays off pending provider/privacy and human production proof
 RELEASE_CLASSIFICATION: internal-only: no customer-facing release is claimed while the platform pilot is default off
 CUSTOMER_RELEASE_IDENTITY: none: Live Conversation is not yet delivered end to end

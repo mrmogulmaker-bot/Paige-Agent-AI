@@ -15,6 +15,7 @@ import { APPROVED_PAIGE_ELEVENLABS_VOICE_ID, elevenlabsSpeechStream, resolveElev
 import { envKey } from "../_shared/env-key.ts";
 import { openFluxEars } from "../_shared/paige-live-flux-ears.ts";
 import { PaigeLiveRelayBridge } from "../_shared/paige-live-relay-bridge.ts";
+import { createLiveRuntimeProof, liveRuntimeDigest } from "../_shared/paige-live-runtime-proof.ts";
 import { consumeRelayTicket, hasLiveWorkspaceStanding, isLiveAudioPilotEnabled, isLiveWorkspaceCurrent } from "../_shared/paige-live-ticket.ts";
 
 const waitUntil = (promise: Promise<unknown>): void => {
@@ -159,20 +160,44 @@ Deno.serve(async (req) => {
   // Read back the one corrected Jessica candidate. Active read-aloud stays on
   // OpenAI; neither a browser value nor a tenant preference selects a voice.
   const { data: voice, error: voiceError } = await admin.from("paige_voice_profiles")
-    .select("provider,provider_voice_ref,revision,active")
+    .select("provider,provider_voice_ref,revision,active,approved,status,provider_verification_id,provider_verification_receipt_ref,approved_at")
     .eq("slot", "candidate").maybeSingle();
   const voiceReady = !voiceError && voice?.provider === "elevenlabs" &&
     voice.provider_voice_ref === APPROVED_PAIGE_ELEVENLABS_VOICE_ID &&
-    voice.revision === "elevenlabs-jessica-take5-r1" && voice.active === false;
+    voice.revision === "elevenlabs-jessica-take5-r1" && voice.active === false &&
+    voice.approved === true && voice.status === "approved" && !!voice.approved_at &&
+    !!voice.provider_verification_id && !!voice.provider_verification_receipt_ref;
+  const { data: readiness, error: readinessError } = await admin.from("paige_voice_readiness")
+    .select("key_scope_verified,voice_authorized,retention_policy_approved,zero_retention_confirmed,provider_verification_id,account_verification_receipt_ref,account_verified_at")
+    .eq("singleton", true).maybeSingle();
+  const { data: verification, error: verificationError } = voice?.provider_verification_id
+    ? await admin.from("paige_voice_provider_verifications")
+      .select("provider,provider_voice_ref,evidence_ref,key_scope_verified,voice_authorized,retention_policy_approved,zero_retention_confirmed")
+      .eq("id", voice.provider_verification_id).maybeSingle()
+    : { data: null, error: null };
+  // Pilot rollout is not provider/privacy approval. Reuse the canonical proof
+  // records; never infer entitlement or retention from a present API key. No
+  // legacy quota/rate/ceiling fields participate: costs belong to the Budget lane.
+  const privacyReady = !readinessError && !verificationError &&
+    readiness?.provider_verification_id === voice?.provider_verification_id &&
+    !!readiness?.account_verification_receipt_ref && !!readiness?.account_verified_at &&
+    verification?.provider === "elevenlabs" &&
+    verification?.provider_voice_ref === APPROVED_PAIGE_ELEVENLABS_VOICE_ID &&
+    verification?.evidence_ref === voice?.provider_verification_receipt_ref &&
+    [readiness, verification].every((row) => row?.key_scope_verified === true &&
+      row.voice_authorized === true && row.retention_policy_approved === true && row.zero_retention_confirmed === true);
   const modelReady = resolveElevenLabsModel() !== null;
   // Account-level Deepgram training opt-out is an operational fact, not
   // inferred from the per-request flag. This server-side switch stays OFF
   // until the owner has checked the account setting; no tenant can set it.
   const mipAccountVerified = envKey("DEEPGRAM_MIP_ACCOUNT_VERIFIED") === "true";
+  const runtimeSigningKey = envKey("PAIGE_LIVE_STREAM_SIGNING_KEY") ?? "";
   const unavailableCode = !voiceReady ? "approved_voice_unavailable"
+    : !privacyReady ? "audio_privacy_not_verified"
     : !modelReady || !envKey("ELEVENLABS_API_KEY") ? "mouth_not_configured"
     : !envKey("DEEPGRAM_API_KEY") ? "ears_not_configured"
     : !mipAccountVerified ? "audio_privacy_not_verified"
+    : runtimeSigningKey.length < 32 ? "runtime_not_configured"
     : null;
   if (unavailableCode) {
     if (!await markUnavailable(unavailableCode)) return new Response("relay_unavailable", { status: 503 });
@@ -197,7 +222,7 @@ Deno.serve(async (req) => {
         state: "listening", availability: "LIVE", failure_code: null,
         profile_provider: "elevenlabs",
         profile_provider_voice_ref: APPROVED_PAIGE_ELEVENLABS_VOICE_ID,
-        profile_revision: voice.revision,
+        profile_revision: voice?.revision,
         updated_at: new Date().toISOString(),
       })
       .eq("id", session.id).eq("tenant_id", session.tenant_id)
@@ -221,6 +246,7 @@ Deno.serve(async (req) => {
     if (error) console.error("[paige-live-relay] failure state write failed", { code: error.code });
   };
   let failureWrite: Promise<void> | null = null;
+  const runtimeProof = createLiveRuntimeProof(runtimeSigningKey);
   const bridge = new PaigeLiveRelayBridge({
     sessionId: session.id, epoch: session.context_epoch,
     send(frame) { if (socket.readyState === WebSocket.OPEN) socket.send(frame); },
@@ -239,6 +265,25 @@ Deno.serve(async (req) => {
       return response.body;
     },
     usage: { emit() { /* Neutral UsageSink seam. Budget lane supplies persistence later. */ } },
+    runtimeProof: {
+      readOutput: runtimeProof.readOutput,
+      async issue(turnId, transcript) {
+        const challenge = await runtimeProof.issue({
+          sessionId: session.id, tenantId: session.tenant_id, actorId: session.actor_user_id,
+          threadId: session.thread_id, epoch: session.context_epoch, turnId,
+        }, transcript);
+        // Reuse the service-only one-use slot AFTER the connection ticket was
+        // consumed. Renewal returns to connecting and invalidates this challenge.
+        const { data, error } = await admin.from("paige_live_sessions")
+          .update({ provider_session_ref: `runtime:${await liveRuntimeDigest(challenge.token)}` })
+          .eq("id", session.id).eq("tenant_id", session.tenant_id)
+          .eq("actor_user_id", session.actor_user_id).eq("context_epoch", session.context_epoch)
+          .eq("availability", "LIVE").in("state", ["listening", "thinking", "speaking", "interrupted"])
+          .select("id").maybeSingle();
+        if (error || !data) throw new Error("live_runtime_admission_changed");
+        return challenge;
+      },
+    },
     onFailure(code) {
       failureWrite = markFailed(code);
       waitUntil(failureWrite);

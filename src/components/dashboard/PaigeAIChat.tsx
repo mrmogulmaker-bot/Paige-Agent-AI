@@ -1039,7 +1039,8 @@ const PaigeAIChatInner = ({
             Authorization: `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
-            messages: newMessages,
+            messages: voiceSink ? [{ role: "user", content: userText }] : newMessages,
+            ...(voiceSink ? { liveRuntimeChallenge: voiceSink.challenge } : {}),
             ...(threadId ? { threadId } : {}),
             ...(clientId ? { clientId } : {}),
             ...(clientContext ? { clientContext } : {}),
@@ -1106,7 +1107,6 @@ const PaigeAIChatInner = ({
       }
       // This is the canonical PAIGE runtime request, under the same caller JWT,
       // thread, tenant context and governed approval path as text chat.
-      voiceSink?.dispatched();
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -1153,6 +1153,10 @@ const PaigeAIChatInner = ({
           try {
             const parsed = JSON.parse(jsonStr);
             if (!ticketAccepted(requestTicket)) return;
+            if (typeof parsed.paige_live_output === "string") {
+              voiceSink?.proof(parsed.paige_live_output);
+              continue;
+            }
             // Structured event: a "watch her work" step (#95). Upsert by id, sorted by seq.
             if (parsed.paige_step) {
               setSteps((prev) => upsertStep(prev, parsed.paige_step as PaigeStep));
@@ -1264,7 +1268,6 @@ const PaigeAIChatInner = ({
             }
             const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) {
-              voiceSink?.chunk(content);
               if (!assistantMessage) setWritingPhase(true); // #11 — first token → "Writing…"
               assistantMessage += content;
               setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined, crmResults: crmResultsThisTurn.length ? [...crmResultsThisTurn] : undefined, artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined, extractionProposal: proposalThisTurn ?? undefined }]);
@@ -1389,12 +1392,8 @@ const PaigeAIChatInner = ({
     if ((!text && !currentDoc) || !composerScope.writable) { voiceSink?.failed(); return; }
     let voiceSettled = false;
     const trackedVoiceSink: LiveVoiceSink | undefined = voiceSink && {
-      dispatched: () => voiceSink.dispatched(),
-      chunk: (value) => {
-        // The relay accepts bounded control frames; split an SSE delta without
-        // changing the authored text or the canonical chat transcript.
-        for (let i = 0; i < value.length; i += 2048) voiceSink.chunk(value.slice(i, i + 2048));
-      },
+      challenge: voiceSink.challenge,
+      proof: (token) => voiceSink.proof(token),
       done: () => { voiceSettled = true; voiceSink.done(); },
       failed: () => { if (!voiceSettled) { voiceSettled = true; voiceSink.failed(); } },
     };

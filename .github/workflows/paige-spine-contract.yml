@@ -27,6 +27,7 @@ on:
       - "supabase/functions/paige-tts/**"
       - "supabase/tests/paige_voice_budget_control.sql"
       - "supabase/tests/paige_live_pilot_feature_guard.sql"
+      - "supabase/tests/paige_live_runtime_claim.sql"
       - "scripts/proof/paige-voice-budget-concurrency.mjs"
       - "supabase/tests/paige_spine_foundation.sql"
       - "supabase/tests/governed_crm_commands.sql"
@@ -87,6 +88,7 @@ on:
       - "supabase/functions/paige-tts/**"
       - "supabase/tests/paige_voice_budget_control.sql"
       - "supabase/tests/paige_live_pilot_feature_guard.sql"
+      - "supabase/tests/paige_live_runtime_claim.sql"
       - "scripts/proof/paige-voice-budget-concurrency.mjs"
       - "supabase/tests/paige_spine_foundation.sql"
       - "supabase/tests/governed_crm_commands.sql"
@@ -162,6 +164,7 @@ jobs:
       # Third-party speech availability is platform-owned, distinct from the
       # caller's existing tenant membership/role and Paige thread entitlement.
       - run: supabase test db supabase/tests/paige_live_pilot_feature_guard.sql
+      - run: supabase test db supabase/tests/paige_live_runtime_claim.sql
       # Governed CRM/Pipeline: tenant, authority, idempotency, destructive preview, readback, and Rail proof.
       - run: supabase test db supabase/tests/governed_crm_commands.sql
       - run: supabase test db supabase/tests/paige_spine_foundation.sql

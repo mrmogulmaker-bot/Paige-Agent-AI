@@ -70,12 +70,11 @@ describe("first-party Live relay transport", () => {
       onRuntimeCancel: (turnId) => cancelled.push(turnId),
     });
     const socket = FakeSocket.instances[0];
-    socket.receive(JSON.stringify({ type: "runtime.dispatch", text: "What next?", turn_id: "turn-1" }));
+    socket.receive(JSON.stringify({ type: "runtime.dispatch", text: "What next?", turn_id: "turn-1", challenge: "signed-challenge" }));
     expect(turns).toEqual([{ text: "What next?", turnId: "turn-1" }]);
-    transport.runtimeDispatched("turn-1");
-    transport.runtimeChunk("turn-1", "One sentence.");
-    expect(socket.sent).toContain(JSON.stringify({ type: "runtime.dispatched", turn_id: "turn-1" }));
-    expect(socket.sent).toContain(JSON.stringify({ type: "runtime.chunk", turn_id: "turn-1", text: "One sentence." }));
+    transport.runtimeProof("turn-1", "signed-output");
+    expect(socket.sent).toContain(JSON.stringify({ type: "runtime.proof", turn_id: "turn-1", proof: "signed-output" }));
+    expect(socket.sent.some((frame) => typeof frame === "string" && frame.includes('"runtime.chunk"'))).toBe(false);
     socket.receive(JSON.stringify({ type: "runtime.cancel", turn_id: "turn-1" }));
     expect(cancelled).toEqual(["turn-1"]);
     transport.interrupt();
@@ -117,6 +116,32 @@ describe("first-party Live relay transport", () => {
     transport.stop();
   });
 
+  it("Hold pauses actual PCM, Resume continues it, and microphone Mute does not stop output", async () => {
+    const suspend = vi.fn(async () => undefined), resume = vi.fn(async () => undefined);
+    vi.stubGlobal("AudioContext", class {
+      state = "running"; currentTime = 0; destination = {};
+      suspend = suspend; resume = resume; close = vi.fn(async () => undefined);
+      createBuffer(_n: number, length: number) { return { duration: length / 16000, getChannelData: () => new Float32Array(length) }; }
+      createBufferSource() { return { buffer: null, onended: null, connect() {}, start() {}, stop() {} }; }
+    });
+    const transport = connectPaigeLiveRelay({ sessionId: "session-hold", ticket: "opaque", onState() {} });
+    FakeSocket.instances[0].receive(new Int16Array([100, 200]).buffer);
+    await Promise.resolve();
+    expect(transport.outputPlaying()).toBe(true);
+    transport.setMuted(true);
+    expect(transport.outputPlaying()).toBe(true);
+    transport.pauseOutput();
+    expect(suspend).toHaveBeenCalledOnce();
+    expect(transport.outputPlaying()).toBe(false);
+    transport.resumeOutput();
+    await Promise.resolve();
+    expect(resume).toHaveBeenCalledOnce();
+    expect(transport.outputPlaying()).toBe(true);
+    transport.interrupt();
+    expect(transport.outputPlaying()).toBe(false);
+    transport.stop();
+  });
+
   it("never reports ready when the socket closes during microphone startup", async () => {
     let finishStart!: () => void;
     recorder.start.mockImplementationOnce(() => new Promise<void>((resolve) => { finishStart = resolve; }));
@@ -130,6 +155,21 @@ describe("first-party Live relay transport", () => {
     await Promise.resolve();
     expect(states).toEqual([{ kind: "disconnected" }]);
     expect(socket.sent).not.toContain(JSON.stringify({ type: "start", sampleRate: 16_000 }));
+    expect(recorder.stop).toHaveBeenCalled();
+  });
+
+  it("reports a later audio failure as stopped, while keeping the chat available", async () => {
+    const states: Array<{ kind: string; message?: string }> = [];
+    connectPaigeLiveRelay({ sessionId: "session-late-failure", ticket: "opaque-late", onState: (state) => states.push(state) });
+    const socket = FakeSocket.instances[0];
+    socket.receive(JSON.stringify({ type: "ready" }));
+    await Promise.resolve();
+    await Promise.resolve();
+    socket.receive(JSON.stringify({ type: "unavailable", code: "mouth_unavailable" }));
+    expect(states.at(-1)).toEqual({
+      kind: "unavailable",
+      message: "Live audio stopped. Your conversation is still here, and you can continue in chat.",
+    });
     expect(recorder.stop).toHaveBeenCalled();
   });
 });
