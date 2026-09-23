@@ -2685,3 +2685,58 @@ never the scope of what it points at.
 ### CRM mutation reach must be counted from the real command door, not tool names
 
 A Chat tool name, human CRUD screen, direct service-role branch or draft PR can all make an operation look present while bypassing tenant authority, risk, idempotency, readback or Rail. The recurrence guard is a shared action-to-tool catalogue plus contract tests proving every exposed CRM tool dispatches to the single authenticated `crm-command` door. Consequential operations need a server preview that binds exact targets, versions and dependency counts; a model `confirm` argument is never approval. Result UI must render server readback and router-owned links, not reconstructed model prose. Source-complete still is not LIVE until database/RLS, authenticated account-switch and deployment proof pass.
+
+---
+
+## A text-matching guard fails THREE times the same way: the parse silently shrinks, and every check built on it reports a tick (2026-09-23, #1400)
+
+- **Symptom.** A new `action-risk-lint` rule — "one key, one line" — was written, bite-proofed, and
+  reviewed. Review then defeated it three times in a row, each time with a legal TypeScript shape, and
+  each time the guard **exited 0** rather than erring:
+  1. A duplicate whose reason used **single quotes**. The pattern was double-quote-only, so the tuple
+     was skipped entirely.
+  2. After widening the pattern and adding a line-anchored tuple counter as a backstop: **two tuples on
+     one line** with a **concatenated** reason (`"a" + "b"`). The counter counts lines, so it saw one;
+     the parser wanted a single literal, so it read one.
+  3. After replacing both with an AST read: a **class outside the enum** (`"ordnary"`, `"read_only"`,
+     `"ORDINARY"`) parsed as a perfectly good string literal and the tool read as classified.
+- **Root cause, and it is three faces of one thing.**
+  - **(1) and (2): a regex has no grammar.** Each fix bought exactly one shape and left the class open,
+    because a pattern cannot know what a tuple *is*. The correct move was available from the start —
+    `typescript` was already a dependency and already imported by the sibling guard
+    `capability-kit-lint.mjs` — and was not reached for until the second failure.
+  - **The cancellation that made all of it invisible.** A cross-check in `capability-kit.test.mjs`
+    asserted `parsePolicy(source).length === mutatingTools().size` — source tuples equal runtime keys —
+    specifically to catch parser blind spots. But a **skipped** tuple removes one from the left side and
+    a **folded** duplicate removes one from the right, so the two defects cancelled and the equality
+    held. Measured: **157 tuples in source, 156 keys at runtime, both counts reporting 156.** The
+    backstop added in fix (2) then inherited the same disease one level up.
+  - **(3): validation a parser did IMPLICITLY leaves with the parser.** The regex encoded
+    `ordinary|high|owner_only` inside its own pattern. Replacing it with an AST read dropped that
+    constraint, and **no deleted line looked like a removed check** — which is exactly why neither the
+    author nor the author's own bite proofs noticed. The tell was in the guard's own summary: `70
+    ordinary` where it had always said `71`, printed directly above a green tick.
+- **Why the accidental net hid the severity.** `capability-kit-lint` *did* fail on several of these, via
+  its anti-bypass debt count — but only because **zero** capabilities are currently declared through
+  `defineCapability()`. That rule skips declared keys, so the first real declaration removes the net.
+  Latent, not live, and the latency was doing the reassuring.
+- **The rules.**
+  1. **Parsing a language? Use its parser.** If a guard reads source structure — tuples, calls, object
+     literals — reach for the AST on the first version, not the third. Check whether the repo already
+     has the parser; here it did.
+  2. **A cross-check between two derived counts can cancel.** Before trusting "these two numbers agree",
+     ask what makes each number *smaller* and whether one defect can do both. Prefer comparing against
+     something that cannot shrink for the same reason.
+  3. **A backstop written to cure a disease can carry it.** The line counter was added *because* the
+     parser had a blind spot, and it had the same blind spot. Ask of any backstop: does this fail
+     independently of the thing it is backing up?
+  4. **When you replace a parser, enumerate what the old one validated implicitly** — enums baked into
+     patterns, shapes excluded by construction, fields a regex could not match. Those constraints are
+     invisible in the diff and vanish silently.
+  5. **"The guard exited 1" is not "the guard caught what I meant."** One bite proof in this sequence
+     dropped a comma between two planted tuples, so it tested a *syntax error* and nearly got recorded
+     as a pass. Read the message, not the exit code.
+- **Cross-references.** §13 (honest reporting), §32 (a green result is not a working one — this is its
+  guard-shaped twin), §39 (peer-gate: all three were found by an independent read, none by the author),
+  §18 (one home — the parser the sibling guard already used), #1383 (`read_only` is not an `ActionRisk`,
+  which is what made face (3) dangerous rather than cosmetic).
