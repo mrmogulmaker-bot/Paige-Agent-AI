@@ -23,6 +23,16 @@ import { notify, ownerNotificationEmail } from "./notify.ts";
 import { recordCompletedAgreementToKnowledge } from "./knowledge.ts";
 
 /**
+ * How long the completed-agreement knowledge write may hold the signer's response.
+ *
+ * Generous enough that a healthy embed finishes well inside it, short enough that a hung provider
+ * cannot push this request into an edge timeout. On expiry the seal returns successfully and the
+ * miss is logged like any other — the race resolves, it does not cancel, so a late embed that
+ * still lands is harmless.
+ */
+const KNOWLEDGE_INGEST_TIMEOUT_MS = 8_000;
+
+/**
  * DO NOT ADD AN INGEST OR NOTIFICATION REASON TO THIS UNION. The omission is the design, and the
  * distinction it encodes is easy to lose: a SEALING failure means the agreement has no executed
  * document, which decides whether it is validly executed at all. A knowledge-ingest or notification
@@ -259,13 +269,24 @@ export async function sealAndComplete(db: Db, agreementId: string): Promise<Seal
   // for an agreement that is completed, sealed and emailed. A knowledge miss is not a seal failure,
   // and `SealOutcome` deliberately has no way to say it was one.
   try {
-    const learned = await recordCompletedAgreementToKnowledge(db as never, {
-      agreementId,
-      tenantId: agreement.tenant_id,
-      title: agreement.title,
-      completedAt,
-      signers: (signers ?? []) as Array<Record<string, unknown>>,
-    });
+    // BOUNDED, because this is the signer's own request and the embedding is a network call.
+    // `ingestDoc` reaches Voyage with no timeout of its own, so a provider that hangs would hold
+    // this response open until the edge runtime kills it — and the signer, whose agreement is by
+    // this point completed, sealed and emailed, would be shown a failed signing. The whole reason
+    // this block is last and swallowed is that a knowledge miss must never be reported as a seal
+    // failure; an unbounded wait hands back exactly that failure by another route.
+    const learned = await Promise.race([
+      recordCompletedAgreementToKnowledge(db as never, {
+        agreementId,
+        tenantId: agreement.tenant_id,
+        title: agreement.title,
+        completedAt,
+        signers: (signers ?? []) as Array<Record<string, unknown>>,
+      }),
+      new Promise<{ ingested: false; reason: string }>((resolve) =>
+        setTimeout(() => resolve({ ingested: false, reason: "ingest_timed_out" }), KNOWLEDGE_INGEST_TIMEOUT_MS)
+      ),
+    ]);
     if (!learned.ingested) {
       // Loud in the log, never silent (§32): a write that quietly never happens is
       // indistinguishable from one that was never wired.

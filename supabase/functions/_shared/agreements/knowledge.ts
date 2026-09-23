@@ -141,30 +141,38 @@ export async function recordCompletedAgreementToKnowledge(
     readonly signers: ReadonlyArray<Record<string, unknown>>;
   },
 ): Promise<KnowledgeOutcome> {
-  // ── Autonomy. Its OWN key, so a workspace can switch this off without touching anything else. ──
+  // ── Autonomy. Its OWN key, so a workspace can turn this on without touching anything else. ─────
   //
-  // ONLY `off` blocks. This write is unattended by construction: it happens after a signature the
-  // tenant already authorised by sending the agreement and after the counterparty completed it, so
-  // there is no human in the loop and a `confirm` that nobody can ever answer would mean the ingest
-  // simply never runs. `off` is therefore the whole control surface here, and that is deliberate
-  // rather than an oversight — `resolve_tool_autonomy` returns `confirm` for a key with no row, so
-  // treating `confirm` as blocking would make the default "never", which is the opposite of ruled.
-  // A workspace at trust rung 0 resolves to `off` and is honoured like any other `off`.
-  let mode = "auto";
+  // ONLY AN EXPLICIT `auto` PROCEEDS. This was written the other way round first — allowed unless
+  // `off` — on the reasoning that the write is unattended by construction (it happens after the
+  // counterparty completed, with no human in the loop), so honouring `confirm` would mean the
+  // ingest simply never runs. That reasoning was wrong in the way governance reasoning usually is:
+  // `resolve_tool_autonomy` returns `confirm` for a key with no row, and `trust_effective_rung`
+  // clamps `auto` DOWN to `confirm` at lower rungs — so "allowed unless off" silently gave every
+  // workspace that had never heard of this key an automatic write of its own agreement summaries
+  // into knowledge that Paige can retrieve in chat. A lane that means "ask first" is not a lane to
+  // read as "yes" merely because asking is inconvenient here (§16/§67).
+  //
+  // So the feature is opt-in: a workspace that wants it sets this key to `auto`, and the catalogue
+  // row that ships alongside this module is what makes that switch findable. Until then a completed
+  // agreement is sealed, delivered and recorded exactly as before — nothing else changes.
+  let mode: string | null = null;
   try {
     const { data } = await db.rpc("resolve_tool_autonomy", {
       _tenant_id: input.tenantId,
       _tool_key: AGREEMENT_LEARN_TOOL_KEY,
     });
-    const resolved = text(data);
-    if (resolved) mode = resolved;
-  } catch {
-    // A resolver that will not answer is not a grant to proceed, but it is also not a reason to
-    // fail a completed agreement. Proceed: this is a derived, tenant-internal write about the
-    // tenant's own record, and the only state that withholds it is an explicit `off`.
-    mode = "auto";
+    mode = text(data) ?? null;
+  } catch (e) {
+    // FAIL CLOSED. A resolver that will not answer has not granted anything, and treating its
+    // silence as a grant is the same error as treating a check that never ran as a pass (§68).
+    console.warn("[agreements] autonomy resolver did not answer; not remembering this agreement", {
+      agreementId: input.agreementId,
+      error: String(e),
+    });
+    return { ingested: false, reason: "autonomy_unresolved" };
   }
-  if (mode === "off") return { ingested: false, reason: "autonomy_off" };
+  if (mode !== "auto") return { ingested: false, reason: mode === "off" ? "autonomy_off" : "autonomy_not_granted" };
 
   const createdBy = await senderOf(db, input.agreementId);
   if (!createdBy) return { ingested: false, reason: "no_resolvable_author" };

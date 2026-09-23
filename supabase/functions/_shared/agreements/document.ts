@@ -177,6 +177,66 @@ export async function hashDocument(bytes: Uint8Array): Promise<string> {
 }
 
 /**
+ * An uploaded file this engine cannot seal.
+ *
+ * WHY MAGIC BYTES ARE NOT ENOUGH, and why this has to fail at SEND. `sealAgreementPdf` below loads
+ * the presented bytes with `PDFDocument.load`, which rejects a truncated, corrupt or ENCRYPTED file
+ * — and by then the counterparty has already signed, the send froze the document under
+ * `pa_sent_is_frozen_ck`, and a completed signature cannot be taken back. The agreement would sit
+ * signed and permanently unable to complete, which is the same one-way trap as emailing a blank
+ * document: irreversible, and discovered by the person least able to fix it.
+ *
+ * `%PDF-` is a five-byte prefix that any file can carry. Whether the bytes are a PDF is a question
+ * only the parser can answer, so the send asks the SAME parser, the same way, before it freezes
+ * anything.
+ */
+export class UnsealablePdfError extends Error {
+  readonly reason: "unreadable" | "no_pages";
+  constructor(reason: "unreadable" | "no_pages") {
+    super(
+      reason === "no_pages"
+        ? "That PDF has no pages in it, so there would be nothing for anyone to read or sign. Nothing was sent. " +
+          "Re-export the agreement and upload it again."
+        : "That file could not be opened as a PDF — it may be corrupt, incomplete, or password-protected. " +
+          "Nothing was sent. Re-export it as an unprotected PDF and upload it again.",
+    );
+    this.name = "UnsealablePdfError";
+    this.reason = reason;
+  }
+}
+
+/**
+ * Prove an uploaded file is one the seal will still be able to open, BEFORE the send freezes it.
+ *
+ * Deliberately mirrors `sealAgreementPdf`'s own call — `PDFDocument.load(bytes)` with no options —
+ * because the point is not "is this a plausible PDF" but "will the seal succeed on it". Loading
+ * with, say, `ignoreEncryption: true` here would let through exactly the files the seal then
+ * refuses, which is worse than not checking at all: it would move the failure back to the one
+ * moment it cannot be recovered from.
+ */
+export async function assertUploadedPdfIsSealable(bytes: Uint8Array): Promise<void> {
+  const { PDFDocument } = await import(PDFLIB_SPEC);
+  // MEASURED, not assumed. `PDFDocument.load` alone is NOT the whole question: given a file that is
+  // nothing but the eight bytes `%PDF-1.7` it returns without throwing, and the document only
+  // objects later, when something reads its structure. It throws promptly on prose and on a
+  // truncated body. So the check walks one step further and counts the pages — which is both the
+  // first thing the seal does to the document and the thing that separates "a PDF" from "a file
+  // that begins like one".
+  let pages: number;
+  try {
+    const pdf = await PDFDocument.load(bytes);
+    pages = pdf.getPageCount();
+  } catch {
+    throw new UnsealablePdfError("unreadable");
+  }
+  // A document that parses and holds no pages would seal successfully and produce a record whose
+  // only page is the signing record — a counterparty who provably signed nothing. That is the blank
+  // document defect arriving by a different door, so it is refused here rather than discovered
+  // after a signature that cannot be taken back.
+  if (pages < 1) throw new UnsealablePdfError("no_pages");
+}
+
+/**
  * Seal a completed agreement: stamp each signature INTO the document, then append the signing record.
  *
  * The signature is drawn onto the document itself rather than recorded beside it, because "the

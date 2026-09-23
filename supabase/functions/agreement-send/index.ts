@@ -17,7 +17,7 @@
 // comes from `current_user_tenant_id()` under the CALLER'S OWN JWT, every query is scoped to it, and
 // the database re-proves each link by trigger even for the service role.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { renderPresentedPdf, hashDocument, assertDocumentIsRenderable, assertNamesAreStampable, UnrenderableDocumentError, UnrenderableNameError } from "../_shared/agreements/document.ts";
+import { renderPresentedPdf, hashDocument, assertDocumentIsRenderable, assertNamesAreStampable, assertUploadedPdfIsSealable, UnrenderableDocumentError, UnrenderableNameError, UnsealablePdfError } from "../_shared/agreements/document.ts";
 import { expiryFromNow, mintSignerToken, sha256Hex, SIGNING_TOKEN_TTL_DAYS } from "../_shared/agreements/token.ts";
 import { tenantContactForDisclosure } from "../_shared/agreements/notify.ts";
 
@@ -200,6 +200,26 @@ Deno.serve(async (req: Request): Promise<Response> => {
           error: "This agreement was created from an uploaded file, but no file is attached to it. Nothing was sent. Re-attach the document and send it again.",
         }, 422);
       }
+      // §9. THE PATH IS CALLER-SUPPLIED AND THIS READ IS SERVICE-ROLE, SO THE PATH IS UNTRUSTED.
+      //
+      // `tenant-agreements` is protected by FOLDER-based RLS — every policy on it tests
+      // `(storage.foldername(name))[1]` against the caller's `tenant_members` rows — and the admin
+      // client below bypasses all of it. `save_paige_agreement` only requires `_document_path` to be
+      // non-empty, so a tenant admin can persist an object key belonging to ANOTHER workspace, and
+      // without this check those bytes would be downloaded, copied into this tenant's
+      // `paige-agreements` folder, hashed, frozen and emailed under this tenant's agreement. That is
+      // a caller-supplied identifier resolved with elevated credentials and no tenant filter — the
+      // exact shape of the `docusign-send-envelope` defect this engine exists not to repeat.
+      //
+      // The server-derived `tenantId` is the authority here; nothing from the request body is.
+      const firstFolder = path.split("/", 1)[0];
+      if (firstFolder !== tenantId) {
+        console.error("[agreement-send] refused a document path outside the caller's workspace", { agreementId, tenantId });
+        return json({
+          ok: false,
+          error: "That agreement points at a file outside this workspace, so nothing was sent. Re-upload the document and try again.",
+        }, 422);
+      }
       const src = await admin.storage.from(UPLOAD_BUCKET).download(path);
       if (src.error || !src.data) {
         console.error("[agreement-send] uploaded document could not be read", { agreementId, error: src.error?.message });
@@ -221,6 +241,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
           ok: false,
           error: "That file is not a PDF, so it cannot be sent for signature. Upload the agreement as a PDF and try again.",
         }, 422);
+      }
+      // The magic bytes only prove the file STARTS like a PDF. The seal opens it with a real parser,
+      // and by then the signature has been recorded and the document frozen — so a corrupt,
+      // truncated or password-protected upload would strand a signed agreement that can never
+      // complete. Ask the same parser now, while refusing still costs nothing.
+      try {
+        await assertUploadedPdfIsSealable(bytes);
+      } catch (e) {
+        console.error("[agreement-send] uploaded document is not openable as a PDF", { agreementId, error: String(e) });
+        if (e instanceof UnsealablePdfError) return json({ ok: false, error: e.message }, 422);
+        return json({ ok: false, error: "That file could not be opened as a PDF, so nothing was sent." }, 422);
       }
     } else {
       // A generated agreement's wording IS the body, so an empty one would seal a blank page just as
