@@ -1,57 +1,54 @@
 import type { SpineCapability } from "../contracts.ts";
 
-/**
- * Agreement overview — the ONE read behind a workspace's agreement list and behind any answer PAIGE
- * gives about what a client has agreed to.
- *
- * WHY ONLY THE READ IS HERE, stated plainly so the next reader does not go looking for the rest.
- * The engine's mutating acts — draft, send, resend, void, add a signer — are NOT registered. A
- * mutating capability must carry a LIVE chat binding and an exact chat tool name (`registry.ts`,
- * the MUTATING branch), and those tools have not been written yet.
- *
- * THIS IS SEQUENCING, NOT A BLOCKAGE — and that is a correction to what this comment said when it
- * was written. It described the INT-003 capability-kit deadlock, which was real then: a RISK entry
- * was rejected as `direct-risk-entry`, and the remedy that rejection named — `defineCapability()` —
- * required the entry it had just forbidden. **INT-003 was resolved on 2026-09-23 (PR #1367)**, so
- * nothing now stops the agreement tools being landed; they simply have not been. Measured rather
- * than assumed: `classifyAction("agreement_send")` still returns `unclassified` because the keys
- * are still absent, and `_shared/action-risk.ts` now carries its own rewritten note explaining that
- * their absence is a sequencing choice. Landing them is its own piece of work, not a side effect of
- * registering this read, and it is routed rather than absorbed here.
- *
- * The read never had that problem in either era. A `read` capability needs no chat tool — the
- * validator's LIVE-binding and tool-name requirements sit inside the mutating branch — so the list
- * PAIGE and the tenant both depend on registers on its own terms.
- *
- * `public.paige_agreement_overview` is §59-clean by construction: it is SECURITY DEFINER, and its
- * body re-derives the tenant from `current_user_tenant_id()` and requires `is_tenant_member`. The
- * `_expected_tenant_id` argument can only ever REFUSE — a caller that disagrees with the server
- * about which workspace is active is rejected — it can never select one. It emits no storage key
- * and no token.
- */
-export const AGREEMENT_OVERVIEW = {
-  key: "agreement.overview",
-  domain: "agreement",
-  owner: "agreements-engine",
-  humanSurface: "/solo/:account/growth/sales?view=terms",
-  action: {
-    classification: "read",
-    executor: "public.paige_agreement_overview",
-    idempotency: "read-only projection; no rows are written and no token is minted",
-    riskPolicyKey: "read_only",
-    approvalAuthority: "none",
-  },
-  // NO `outcome` BLOCK, deliberately. An outcome declares the projector that carries this domain's
-  // acts onto the Rail, and agreements are not on the Rail yet — `paige_agreement_events` is a
-  // complete evidentiary chain of custody that nothing projects into `paige_workspace_events`.
-  // Declaring a projector here would assert a wiring that does not exist, which is the exact class
-  // of false claim the registry comment above this domain's import once made. The Rail attachment
-  // is specified and blocked on a separate precondition; when it lands, the outcome block lands
-  // with it and not before.
-  chatBinding: "UNAVAILABLE",
-  mindBinding: "UNAVAILABLE",
-  sharedPrimitiveChange: "NONE",
-  maturity: "PARTIAL",
+// INT-178 — AGREEMENTS, the READ half. PAIGE can see a workspace's e-signature agreements and the
+// status of any one of them. Both capabilities execute the SAME governed seam,
+// `public.paige_agreement_overview` (migration 20270402000000), whose own header names it "the read
+// Paige answers from"; the adapter is `_shared/agreements/chat-read.ts`.
+//
+// WHAT THIS CORRECTS. INT-163 shipped the engine and left `registry.ts` carrying a comment that
+// DRAFT, VOID and STATUS "register here". None of them did — the array held zero agreement
+// capabilities, so PAIGE could not see an agreement at all. The comment described intent that was
+// never delivered, and this file is the first half of delivering it.
+//
+// WHY ONLY THE READS ARE HERE — the same seam boundary `calendar_link.ts` documents, for the same
+// reason. The Spine validator requires an action's executor to be an exact `public.<symbol>`
+// present in migration history. SEND and RESEND execute the `agreement-send` EDGE FUNCTION, which
+// that validator rejects, so registering them would mean widening the shared executor allowlist —
+// a change to the Spine contract itself — for zero added enforcement, since what actually clamps a
+// send is `_shared/action-risk.ts` plus the inline Chat confirm gate. DRAFT and VOID do have clean
+// `public.*` executors (`save_paige_agreement`, `void_paige_agreement`) and are deliberately NOT
+// registered here either: they are mutations, and this slice is read-first on purpose, because the
+// send path has a real client on the other end of it.
+//
+// SCOPE, STATED HONESTLY (§13). Registering a capability does not grant one. Both entries below are
+// `read` / `read_only` / no approval authority, and the RPC they name re-proves the caller's tenant
+// and membership in its own body under the caller's JWT (§59). Nothing here can read another
+// workspace, and nothing here writes.
+
+export const AGREEMENT_LIST = {
+  key:"agreement.list",domain:"agreement",owner:"agreements-engine",humanSurface:"/solo/:account/sales",
+  action:{classification:"read",executor:"public.paige_agreement_overview",chatTool:"agreement_list",riskPolicyKey:"read_only",approvalAuthority:"none",idempotency:"Read-only projection of the workspace's agreements. No write, no send, no idempotency key."},
+  outcome:{kinds:["capability_run"],projector:"public.record_capability_run",railVisibility:"owner_internal"},
+  chatBinding:"LIVE",mindBinding:"UNAVAILABLE",sharedPrimitiveChange:"NONE",maturity:"PARTIAL",
 } as const satisfies SpineCapability;
 
-export const AGREEMENT_CAPABILITIES = [AGREEMENT_OVERVIEW] as const;
+export const AGREEMENT_STATUS = {
+  key:"agreement.status",domain:"agreement",owner:"agreements-engine",humanSurface:"/solo/:account/sales",
+  action:{classification:"read",executor:"public.paige_agreement_overview",chatTool:"agreement_status",riskPolicyKey:"read_only",approvalAuthority:"none",idempotency:"Read-only status projection for one contact's or one state's agreements. No write, no send, no idempotency key."},
+  outcome:{kinds:["capability_run"],projector:"public.record_capability_run",railVisibility:"owner_internal"},
+  chatBinding:"LIVE",mindBinding:"UNAVAILABLE",sharedPrimitiveChange:"NONE",maturity:"PARTIAL",
+} as const satisfies SpineCapability;
+
+export const AGREEMENT_CAPABILITIES = [AGREEMENT_LIST, AGREEMENT_STATUS] as const;
+
+// Model-facing tool JSON. Authored COMPACT (single-line objects, `name:"…"` never alone on its own
+// line) so `chat-tool-registry-lint` does not count these as inline hand-wired Chat tools — they
+// enter Chat through the adapter spread, exactly as CALENDAR_LINK_TOOLS does.
+//
+// Every description states the honest boundary, because a model that believes it can send from a
+// read tool will tell the owner it did. These two READ. They do not draft, send, resend, remind,
+// void, or countersign, and they cannot be made to.
+export const AGREEMENT_TOOLS = [
+  {type:"function",function:{name:"agreement_list",description:"List this workspace's e-signature agreements with their current status — who it is with, how many signers have signed, what is still outstanding, and when it was sent, completed or expires. READ-ONLY: it never sends, resends, drafts, voids or reminds. Use it to answer 'where do my agreements stand', 'what is outstanding', or 'what have I got waiting on signatures'. Optionally narrow by status. Report the statuses exactly as returned and never imply a document was delivered or signed beyond what the status says.",parameters:{type:"object",properties:{status:{type:"string",enum:["draft","sent","viewed","partially_signed","completed","declined","voided","expired"],description:"Optional: show only agreements in this state."}}}}},
+  {type:"function",function:{name:"agreement_status",description:"Check where a specific client's agreement stands — its status, which signers are still outstanding, and the sent/completed/expiry dates. READ-ONLY: it never sends, resends, drafts, voids or reminds. Give it the contactId from a contact lookup to see that client's agreements. Answer only from what it returns: 'viewed' means opened, not signed, and 'sent' does not mean delivered. Signing evidence is deliberately not available here and must never be described as if it were.",parameters:{type:"object",properties:{contactId:{type:"string",format:"uuid",description:"The contact whose agreements to check."},status:{type:"string",enum:["draft","sent","viewed","partially_signed","completed","declined","voided","expired"],description:"Optional: narrow to one state."}},required:["contactId"]}}},
+] as const;

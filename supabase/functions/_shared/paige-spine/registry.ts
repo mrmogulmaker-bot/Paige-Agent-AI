@@ -21,16 +21,20 @@ import { CALENDAR_PRESET_CAPABILITIES } from "./domains/calendar_preset.ts";
 // (clean public.<symbol> executors). The SEND (calendar_link_send) is governed via
 // _shared/action-risk.ts + the inline confirm gate, NOT this manifest (see calendar_link.ts).
 import { CALENDAR_LINK_CAPABILITIES } from "./domains/calendar_link.ts";
-import { AGREEMENT_CAPABILITIES } from "./domains/agreement.ts";
-// INT-163 — agreements. ONLY the overview READ registers. The mutating acts do not, because a
-// mutation must carry a LIVE chat binding and an exact chat tool name and those tools have not been
-// written — sequencing, not a blockage: the INT-003 deadlock that once made them unlandable was
-// resolved on 2026-09-23 (PR #1367). See domains/agreement.ts for the measured trace.
+// INT-178 — agreements, the READ half, and a correction to what stood here before (§13).
 //
-// Twice now this comment has claimed something the code did not do. It first said DRAFT, VOID and
-// STATUS registered here while the array below was unchanged; then it said a deadlock stood after
-// that deadlock had been resolved. Both were corrected on discovery rather than left, because a
-// comment in a manifest is read as a statement about the manifest.
+// The previous comment said "DRAFT, VOID and STATUS register here". They did not. INT-163 shipped
+// the e-signature engine and this array held ZERO agreement capabilities, so PAIGE could not see an
+// agreement at all — a comment describing intent that was never delivered, which reads to the next
+// session exactly like a fact. What registers now is the two READS (list, status), both executing
+// the clean `public.paige_agreement_overview` seam.
+//
+// Still NOT registered, each for a stated reason rather than an oversight: SEND and RESEND execute
+// the `agreement-send` EDGE function, which this file's validator rejects, so they are governed by
+// _shared/action-risk.ts + the inline confirm gate exactly as calendar_link_send is; DRAFT and VOID
+// have clean `public.*` executors but are mutations, held back deliberately so the read half lands
+// first. See domains/agreement.ts for the full boundary.
+import { AGREEMENT_CAPABILITIES } from "./domains/agreement.ts";
 
 export const PAIGE_SPINE_CAPABILITIES = [PIPELINE_DEAL_STAGE_EVIDENCE, BUSINESS_CONTEXT_READINESS, TEAM_AUTHORITY, SOCIAL_PRESENCE, N8N_CONNECTION_READINESS, ...N8N_MANAGEMENT_CAPABILITIES, ...BUSINESS_MISSION_CAPABILITIES, ...CAMPAIGN_BRIEF_CAPABILITIES, ...CALENDAR_PRESET_CAPABILITIES, ...CALENDAR_LINK_CAPABILITIES, ...AGREEMENT_CAPABILITIES, COMMS_MESSAGES_READ, INTEGRATIONS_LIST, INTEGRATIONS_HEALTH, CONTACT_EVENT_STATUS, ...PIPELINE_CRM_ACTIONS, ...CONTACT_CRM_ACTIONS] as const;
 
