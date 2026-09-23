@@ -29,9 +29,10 @@ import {
 
 /* ── Provider catalogue (browse the gateway) ──────────────────────────────────
    Ported from the approved pack: each vendor's connect-mode reflects its real MCP capability
-   (researched 2026-09-22). mode: connect = one-click sign-in (not wired until the OAuth step ships
-   — honest "coming soon"); key = paste a key/token (wired today); setup = platform pre-registration
-   pending; zapier = no direct path, bridge via Zapier. `legacy` routes n8n/Zapier/social tiles to
+   (researched 2026-09-22). mode: connect = one-click sign-in, WIRED as of Slice ④ (it runs the
+   gateway's oauth_begin door; it read "coming soon" only while no browser could reach that door);
+   key = paste a key/token; setup = platform pre-registration pending; zapier = no direct path,
+   bridge via Zapier. `legacy` routes n8n/Zapier/social tiles to
    the existing live drawers rather than the gateway add flow. `verify` is a research-only tag and is
    never rendered to a tenant. */
 type CatMode = "connect" | "key" | "setup" | "zapier" | "review";
@@ -447,9 +448,14 @@ function SignInFlow({ gw, item, onCancel }: { gw: UseMcpGateway; item: CatItem; 
     if (!flow.ok || !flow.authorizeUrl) {
       setStep("form");
       if (flow.code === "MCP_BUSY" || flow.code === "MCP_NOT_READY") return;
+      // The row EXISTS now, so the copy must not imply nothing happened — but it must also not
+      // name a control this row does not have. It was created with NO credential, and Re-key
+      // renders no key field for a credential-less tool (its `needsKey` is false) and cannot
+      // change a tool's sign-in type at all. Telling the owner to "add a key instead" was an
+      // instruction with nothing behind it (§70.1) — caught by the peer-gate before it shipped.
       setMessage(
         flow.message ??
-          "That provider didn't offer a sign-in Paige can use. The tool was saved — open it and add a key instead.",
+          `That provider didn't offer a sign-in Paige can use. ${label.trim() || item.n} was saved with no key — open it to check the address and try again, or remove it.`,
       );
       return;
     }
@@ -653,14 +659,16 @@ function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayCon
           )}
 
           {/* The per-action list is NOT buildable yet, and this says so rather than showing an empty
-              list that reads as "this tool offers nothing". The missing piece is exact and named in
-              the §00 note at the head of this file: no client-readable door onto the tool catalogue
-              exists, so there is no honest way to enumerate the actions an approval would name. */}
+              list that reads as "this tool offers nothing". The missing piece is exact: no
+              client-readable door onto the tool catalogue exists. `mcp_connection_tools` carries an
+              is_platform_owner()-only RLS policy, no RPC reads it, and the verify action returns
+              tool_count as a NUMBER — so there is no honest way to enumerate the actions an approval
+              would name. Recorded in full in the Slice ④ PR body and the master reference. */}
           {tool.status === "connected" && (tool.toolCount ?? 0) > 0 && (
             <div className="ig-gw-info" role="status">
               <span>
-                Choosing actions one by one needs a change on Paige’s side that hasn’t shipped yet. Until it does,
-                approvals are all-or-nothing for this tool.
+                Choosing which of these actions Paige may use needs a change on Paige’s side that hasn’t shipped
+                yet. Until it does, she won’t act with this tool — nothing runs without your approval.
               </span>
             </div>
           )}

@@ -140,10 +140,18 @@ export function credentialTooShort(authKind: GatewayAuthKind | "api_key" | strin
    (20270334000000:45), and spent at execute time against `now()` (20270323000000:228). The platform
    grants a 60-second skew budget elsewhere for exactly this browser-vs-server mismatch
    (`_shared/mcp-oauth.ts` isExpired skewSeconds = 60; `_shared/zoomMeetings.ts` EXPIRY_SKEW_MS) —
-   but the approval checkers grant NONE: "exact <=, no skew/grace" is stated in terms at
-   20270330000000:173, 20270331000000:196 and 20270332000000:501. So the skew has to be absorbed by
-   the FLOOR, because it is absorbed nowhere else. That, not the round-trip count, is the dominant
-   machine term.
+   but NEITHER approval check grants any: both are a bare `<=` against the server's own clock, with
+   no grace term and no skew allowance anywhere in either expression. So the skew has to be absorbed
+   by the FLOOR, because it is absorbed nowhere else. That, not the round-trip count, is the
+   dominant machine term.
+
+   (§13 correction, caught by this PR's peer-gate: an earlier draft of this comment quoted
+   "exact <=, no skew/grace" from 20270330000000:173 / 20270331000000:196 / 20270332000000:501 as
+   though it described the approval checks. It does not — all three are the OAuth ACCESS-TOKEN
+   expiry check on `_access_token_expires_at`. The phrase is real and the no-grace conclusion is
+   still true of the approval path, but it is true by reading the approval checks themselves, not
+   by borrowing a sentence written about a different one. The quotation is withdrawn; the
+   conclusion stands on its own citations above.)
 
    TWO WINDOWS THE FLOOR MUST CLEAR:
      A. Surviving its own write — five sequential round trips between the edge clock check and the
@@ -168,8 +176,10 @@ export function credentialTooShort(authKind: GatewayAuthKind | "api_key" | strin
    window (20261004000000:382).
 
    THE DEFAULT IS 24 HOURS and THE MAXIMUM IS 30 DAYS, both borrowed rather than invented:
-   `set_trust_session_posture` already defaults a time-boxed grant of elevated authority to
-   `_hours int DEFAULT 24` (20260929000000:105), and §68's `trust_attestation_window` gives 30 days
+   `set_trust_posture` already defaults a time-boxed grant of elevated authority to
+   `_hours int DEFAULT 24` (20260929000000:105 — the function is `set_trust_posture`; an earlier
+   draft of this comment and of the Slice ④ commit message called it `set_trust_session_posture`,
+   which exists nowhere in the repo), and §68's `trust_attestation_window` gives 30 days
    as the longest window for any rung at which anything acts unread (20261001000000:93-96).
 
    THERE IS DELIBERATELY NO "UNTIL I REVOKE IT" OPTION, for two independent reasons:
@@ -350,16 +360,32 @@ const ERR: Record<string, string> = {
   unreachable: "Paige couldn't reach that address. Check it, then try again.",
   // oauth_begin
   connection_unconfigured: "This tool has no address or key yet, so there's nothing to sign in to.",
-  connection_disabled: "This tool is turned off. Turn it back on first.",
-  callback_not_configured: "Sign-in isn't finished being set up on our side yet. Try again shortly.",
+  // No control on THIS surface turns a tool back on; re-keying it is what re-enables it, and a
+  // credential-less tool cannot be re-keyed at all. Name the true recovery rather than an
+  // imperative with nothing behind it (§70.1).
+  connection_disabled:
+    "This tool is turned off, so Paige can't sign in to it. Re-key it to switch it back on, or remove it and add it again.",
+  // Raised when the redirect URI cannot be derived server-side — a configuration state that waiting
+  // never clears, so "try again shortly" was advice that could not work (§13).
+  callback_not_configured:
+    "Sign-in isn't switched on for this workspace yet. Nothing was changed — this one is on us, not something you can fix here.",
+  // "…or add it with a key instead" was wrong at BOTH call sites and shipped past the first fix,
+  // because this map — not the caller's fallback — is what actually renders. A row created for
+  // sign-in carries no credential, and Re-key offers no key field for a credential-less tool nor
+  // any way to change a tool's sign-in type; an existing OAuth tool is not re-keyable at all
+  // (`rekeyable = authKind !== "oauth"`). So the instruction named a control that exists on
+  // neither path (§70.1). Caught by the peer-gate, then caught AGAIN — in the right place — by the
+  // regression test written for the first fix.
   oauth_begin_failed:
-    "That provider didn't offer a sign-in Paige can use. Check the address, or add it with a key instead.",
+    "That provider didn't offer a sign-in Paige can use. Check the address and try again, or remove it.",
   // approve
   bad_tool_name: "We couldn't tell which action you meant. Reload and try again.",
   bad_expected_endpoint: "We couldn't confirm the address you reviewed. Reload and try again.",
   bad_args_shape: "We couldn't read the shape of that action. Reload and try again.",
-  bad_expiry: "That expiry date couldn't be read. Pick one of the listed windows.",
-  bad_timestamp: "That expiry date isn't a real date. Pick one of the listed windows.",
+  // These two name no control, because the surface that would offer one does not exist yet (see
+  // APPROVAL_LIFETIME above). Naming a "listed window" would point at a picker nothing renders.
+  bad_expiry: "That approval's time limit couldn't be read, so nothing was approved.",
+  bad_timestamp: "That approval's time limit isn't a real date, so nothing was approved.",
   expiry_in_past: "That approval would already have expired. Pick a longer window.",
   tool_not_verified:
     "Paige hasn't confirmed this action exists on the server yet. Check the tool first, then approve.",
@@ -433,6 +459,9 @@ function interpretWrite(data: Record<string, unknown>): GatewayWriteResult {
     connectionId,
     status: str(data.status),
     last4: str(data.auth_token_last4),
+    // `mode` is the disconnect writer's soft/hard answer, so it is only ever set on the RPC lane.
+    // The create door returns connection_id/status/endpoint_hash/auth_token_last4 and no mode, so
+    // this is legitimately null there rather than a field that went missing.
     mode: str(data.mode),
   };
 }

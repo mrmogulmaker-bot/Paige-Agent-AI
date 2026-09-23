@@ -353,6 +353,12 @@ describe("Adding a tool", () => {
     // The row EXISTS either way, so the copy must not imply nothing happened — it points at the
     // thing the owner can still do with it.
     expect(dialog(host)?.textContent).toMatch(/didn.t offer a sign-in/i);
+    // …and it must NOT point at a control this row does not have. The row was created with no
+    // credential, Re-key renders no key field for a credential-less tool, and re-keying cannot
+    // change a tool's sign-in type — so "add a key instead" was an instruction with nothing behind
+    // it (§70.1). The peer-gate caught it; this pins the fix.
+    expect(dialog(host)?.textContent).not.toMatch(/add a key/i);
+    expect(dialog(host)?.textContent).toMatch(/check the address and try again, or remove it/i);
   });
 
   it("narrows the catalogue by search and still leaves a way to finish", async () => {
