@@ -264,17 +264,33 @@ describe("useMcpGateway", () => {
     expect(result!.code).toBeNull();
   });
 
-  it("tolerates the verify race body, which carries no health key at all", async () => {
+  it("reads the verify race verdict off a REAL 409, whose body carries no `error` key", async () => {
     await mount();
-    // The 409 config-race body omits `health` entirely (verify.ts) — a shape asymmetry the reader
-    // must survive rather than read `undefined` as a health value.
-    h.invoke.mockResolvedValue(edgeOk({ ok: false, status: "pending_verification", tool_count: 0, error_code: "config_changed_during_verify" }));
+    // Two things are load-bearing and an earlier version of this test got both wrong by feeding the
+    // body as a 200: (a) verify.ts returns this shape with httpStatus 409, so supabase-js sets
+    // `data = null` and an error, and (b) the body keys the reason on `error_code`, with NO `error`
+    // key — so a reader that only looks at `error` drops the verdict and falls back to the generic
+    // line, leaving this message unreachable. Feeding it as a 200 green-lit exactly the gap the test
+    // is named for.
+    h.invoke.mockResolvedValue({
+      data: null,
+      error: {
+        name: "FunctionsHttpError",
+        message: "Edge Function returned a non-2xx status code",
+        context: { status: 409, json: async () => ({ ok: false, status: "pending_verification", tool_count: 0, error_code: "config_changed_during_verify" }) },
+      },
+    });
     let result: Awaited<ReturnType<UseMcpGateway["verify"]>> | null = null;
     await act(async () => {
       result = await latest().verify("11111111-1111-1111-1111-111111111111");
     });
-    expect(result!.probeHealth).toBeNull();
+    expect(result!.ok).toBe(false);
+    expect(result!.probeError).toBe("config_changed_during_verify");
     expect(result!.message).toMatch(/changed while it was being checked/i);
+    // The 409 body omits `health` entirely — a shape asymmetry the reader must survive rather than
+    // read `undefined` as a health value.
+    expect(result!.probeHealth).toBeNull();
+    expect(result!.probeStatus).toBe("pending_verification");
   });
 
   it("never reports a sign-in it cannot actually send the browser to", async () => {

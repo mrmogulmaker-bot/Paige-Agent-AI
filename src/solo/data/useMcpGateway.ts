@@ -673,6 +673,16 @@ export function useMcpGateway(): UseMcpGateway {
     async (
       action: string,
       body: Record<string, unknown>,
+      /** When true, a NON-2xx whose body carries no `error` key is handed back to the caller's
+       *  interpreter instead of being collapsed into an opaque refusal.
+       *
+       *  This exists for exactly one real shape. `verify` answers 409 with
+       *  `{ok:false, status:"pending_verification", tool_count:0, error_code:"config_changed_during_verify"}`
+       *  — a genuine verdict about the probe, keyed on `error_code`, with NO `error` key at all. Read
+       *  as a plain refusal it produced the generic "that didn't go through", and the race message
+       *  written for it was unreachable. The caller decides what the body means; this only stops the
+       *  body being thrown away. */
+      opts: { bodyOnRefusal?: boolean } = {},
     ): Promise<{ ok: boolean; code: string | null; data: Record<string, unknown> }> => {
       const answer = await Promise.resolve(
         supabase.functions.invoke("mcp-gateway", {
@@ -688,6 +698,11 @@ export function useMcpGateway(): UseMcpGateway {
       const failure = await readFunctionErrorBody(error, data).catch(() => null);
       const failureCode = typeof failure?.error === "string" ? failure.error : null;
       if (error || failureCode) {
+        // A structured non-2xx the caller can read (see `bodyOnRefusal`): hand the body through
+        // rather than discarding the one field that explains what happened.
+        if (opts.bodyOnRefusal && !failureCode && failure && typeof failure === "object") {
+          return { ok: true, code: null, data: failure };
+        }
         return { ok: false, code: failureCode, data: {} };
       }
       // A 2xx whose body is not an object confirms nothing. Treating it as success would close a
@@ -807,7 +822,8 @@ export function useMcpGateway(): UseMcpGateway {
   const verify = useCallback(
     (connectionId: string) =>
       guarded<GatewayVerifyResult>(
-        () => callEdge("verify", { connection_id: connectionId }),
+        // The 409 config-race body is a verdict, not a refusal — see `bodyOnRefusal`.
+        () => callEdge("verify", { connection_id: connectionId }, { bodyOnRefusal: true }),
         (data) => {
           const probeStatus = str(data.status) as GatewayStatus | null;
           const probeHealth = str(data.health) as GatewayHealth | null;

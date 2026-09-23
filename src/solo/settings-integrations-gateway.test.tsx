@@ -491,6 +491,39 @@ describe("Writes reach the server", () => {
   });
 });
 
+describe("The open drawer tells one story", () => {
+  it("re-reads the row from the live list after a check, instead of contradicting itself", async () => {
+    // Slice ④ added the first write that leaves this drawer OPEN. Re-key and disconnect both close
+    // it, so a frozen snapshot never had a way to show. After "Check now" reloads the list, a
+    // snapshot would leave the facts list reading "Not checked yet" with no last-checked time,
+    // directly above a banner saying Paige had just reached it.
+    let listed = [row({ status: "pending_verification", health: "unknown", last_checked_at: null, tool_count: 0 })];
+    rpc.mockImplementation((name: string) => {
+      if (name === "get_mcp_connections_v2") return builder({ data: listed, error: null });
+      if (name === "is_current_user_tenant_admin") return builder({ data: true, error: null });
+      return builder({ data: { connection_id: "conn-1" }, error: null });
+    });
+    invoke.mockResolvedValue({ data: { ok: true, status: "connected", health: "healthy", tool_count: 11, error_code: null }, error: null });
+
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(dialog(host)?.textContent).toMatch(/not checked yet/i);
+
+    // The server's own answer to the probe: the row is now connected and healthy.
+    listed = [row({ status: "connected", health: "healthy", last_checked_at: "2026-09-23T17:00:00Z", tool_count: 11 })];
+    await click(byText(host, "Check now"));
+
+    const text = dialog(host)!.textContent!;
+    expect(text).toMatch(/checked just now/i);
+    // The decisive assertions: the facts list moved WITH the verdict. A frozen snapshot fails both
+    // — it would still read "Not checked yet" and "No successful check yet" under the banner.
+    // Matched without \b, since textContent concatenates the <dt>/<dd> pair into "StatusReady".
+    expect(text).toMatch(/StatusReady/);
+    expect(text).not.toMatch(/not checked yet/i);
+    expect(text).not.toMatch(/no successful check yet/i);
+  });
+});
+
 describe("Listed is never connected", () => {
   it("stops honestly on a provider with no capability record instead of opening a prefilled form", async () => {
     // A tile that opens a real connection form prefilled with that provider's endpoint asserts

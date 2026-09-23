@@ -970,9 +970,19 @@ export function IntegrationsGatewaySection({
         </GatewayDrawer>
       )}
 
-      {drawer?.kind === "detail" && !tenantLoading && drawer.scope === scopeKey && (
-        <ToolDetail key={`${scopeKey}:${drawer.tool.id}`} gw={gw} tool={drawer.tool} onClose={closeDetail} />
-      )}
+      {/* Re-derive the open row from the LIVE list rather than rendering the snapshot taken when the
+          drawer opened. Slice ④ is the first change to add a write that leaves this drawer open —
+          "Check now" reloads gw.tools while the drawer is still on screen — so a frozen snapshot now
+          contradicts itself in front of the owner: the verdict banner says "Checked just now" while
+          the facts list above it still reads "Not checked yet" with no last-checked time. Re-key and
+          disconnect both closed the drawer, which is why this could not show before.
+          The snapshot remains the fallback: a row that has just been hard-deleted leaves the list,
+          and keeping its last-known identity on screen for the moment before the drawer closes beats
+          blanking the dialog out from under the person. */}
+      {drawer?.kind === "detail" && !tenantLoading && drawer.scope === scopeKey && (() => {
+        const live = gw.tools.find((t) => t.id === drawer.tool.id) ?? drawer.tool;
+        return <ToolDetail key={`${scopeKey}:${live.id}`} gw={gw} tool={live} onClose={closeDetail} />;
+      })()}
     </section>
   );
 }
