@@ -2,13 +2,14 @@
 // the approved server-side Paige Voice Profile. No provider voice id or request override lives here.
 import { envKey } from "./env-key.ts";
 import { openaiSpeech } from "./openai.ts";
+import { APPROVED_PAIGE_ELEVENLABS_VOICE_ID, resolveElevenLabsModel } from "./elevenlabs.ts";
 
 export type TtsTier = "openai-standard" | "elevenlabs-premium";
 export interface TtsRouteCell { provider: "openai" | "elevenlabs"; model: string; justification: string; host: string }
 const TTS_ROUTE_TABLE: Record<TtsTier, TtsRouteCell> = {
   "elevenlabs-premium": {
     provider: "elevenlabs",
-    model: "eleven_multilingual_v2",
+    model: "eleven_v3_conversational",
     justification: "Provider transport for an approved Paige Voice Profile; profile resolution owns voice identity.",
     host: "https://api.elevenlabs.io/v1/text-to-speech",
   },
@@ -36,7 +37,7 @@ export function resolveProfileVoice(profile: ServerVoiceProfile): ResolvedVoice 
   if (profile.provider === "openai" && isOpenAiVoice(profile.provider_voice_ref)) {
     return { provider: "openai", id: profile.provider_voice_ref, profileRevision: profile.revision };
   }
-  if (profile.provider === "elevenlabs" && typeof profile.provider_voice_ref === "string" && /^[A-Za-z0-9_-]{8,128}$/.test(profile.provider_voice_ref)) {
+  if (profile.provider === "elevenlabs" && profile.provider_voice_ref === APPROVED_PAIGE_ELEVENLABS_VOICE_ID) {
     return { provider: "elevenlabs", id: profile.provider_voice_ref, profileRevision: profile.revision };
   }
   return null;
@@ -58,8 +59,9 @@ export type TtsSynthPlan = { ok: true; attempts: [TtsAttempt] } | { ok: false; n
 
 export function planTtsSynthesis(resolved: ResolvedVoice): TtsSynthPlan {
   if (resolved.provider === "elevenlabs") {
-    if (!elevenLabsConfigured()) return { ok: false, needs_config: true };
-    return { ok: true, attempts: [{ provider: "elevenlabs", model: TTS_ROUTE_TABLE["elevenlabs-premium"].model, voiceId: resolved.id, profileRevision: resolved.profileRevision }] };
+    const model = resolveElevenLabsModel();
+    if (!elevenLabsConfigured() || !model) return { ok: false, needs_config: true };
+    return { ok: true, attempts: [{ provider: "elevenlabs", model, voiceId: resolved.id, profileRevision: resolved.profileRevision }] };
   }
   if (!ttsConfigured() || !isOpenAiVoice(resolved.id)) return { ok: false, needs_config: true };
   return { ok: true, attempts: [{ provider: "openai", model: TTS_ROUTE_TABLE["openai-standard"].model, voice: resolved.id, profileRevision: resolved.profileRevision }] };

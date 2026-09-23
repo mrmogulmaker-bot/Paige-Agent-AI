@@ -117,6 +117,10 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<LiveSurfaceState>("checking");
   const [muted, setMuted] = useState(false);
+  // Ticket renewal is asynchronous. Capture must follow the most recent control
+  // choice, not the mute value captured when renewal began.
+  const mutedRef = useRef(muted);
+  mutedRef.current = muted;
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [availability, setAvailability] = useState("PROOF OWED");
   const [explanation, setExplanation] = useState("Live audio setup is being verified. Paige will not request microphone access until it is authorized.");
@@ -275,8 +279,14 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
         if (mounted.current && generation === requestGeneration.current) connectResult(renewed, generation);
       } catch {
         if (mounted.current && generation === requestGeneration.current) {
+          stopPlayback.current();
+          relayRef.current?.stop();
+          relayRef.current = null;
+          relayReadyRef.current = false;
           setState("unavailable");
+          setAvailability("UNAVAILABLE");
           setExplanation("Paige could not reconnect live audio. You can continue in chat.");
+          setAnnouncement("Live audio unavailable. Paige could not reconnect live audio. You can continue in chat.");
         }
       }
       return;
@@ -315,7 +325,17 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   };
 
   const connectResult = (result: PaigeLiveStartResult, generation: number) => {
-    if (!result.sessionId || !result.ticket) return;
+    if (!result.ok || !result.sessionId || !result.ticket) {
+      stopPlayback.current();
+      relayRef.current?.stop();
+      relayRef.current = null;
+      relayReadyRef.current = false;
+      setState("unavailable");
+      setAvailability("UNAVAILABLE");
+      setExplanation(result.explanation);
+      setAnnouncement(`UNAVAILABLE. ${result.explanation}`);
+      return;
+    }
     relayRef.current?.stop();
     relayReadyRef.current = false;
     setState("checking");
@@ -349,7 +369,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
         }
       },
     });
-    relayRef.current.setMuted(muted);
+    relayRef.current.setMuted(mutedRef.current);
   };
 
   const retry = async () => {
@@ -423,8 +443,10 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   const controlsDisabled = state === "unavailable" || state === "checking" || state === "permission-denied" || state === "reconnecting" || state === "interrupted";
   const presenceState = resolvePresenceState({
     phase: output.playing ? "speaking" : state === "held" || state === "interrupted" ? state
-      : state === "reconnecting" ? "disconnected" : state === "checking" ? "ready" : "unavailable",
+      : state === "reconnecting" ? "disconnected" : state === "listening" ? "listening"
+        : state === "thinking" ? "thinking" : state === "checking" ? "ready" : "unavailable",
     outputPlaying: output.playing,
+    microphoneActive: state === "listening" && relayReadyRef.current && !muted,
     working: working && !output.playing,
   });
   const stage = open && portalDocument ? createPortal(
@@ -440,7 +462,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
       <main className="plc-stage__main">
         <section className="plc-presence" aria-label="Paige Presence and live audio status" data-live-state={state}>
           <PaigePresence state={presenceState} readEnergy={output.readEnergy} />
-          <p className="plc-state"><span />{output.playing ? "Speaking" : STATE_LABEL[state]}</p>
+          <p className="plc-state"><span />{output.playing ? "Speaking" : state === "listening" && muted ? "Muted" : STATE_LABEL[state]}</p>
           <p id="plc-description" className="plc-context">Working in this exact Paige thread. Nothing here creates a second assistant or a separate memory.</p>
           <div className="plc-working" aria-live="polite"><span>Paige is working on</span><strong>{working ? (workingLabel || "your current request") : "No active work"}</strong></div>
           {(state !== "checking" && availability !== "LIVE") && (

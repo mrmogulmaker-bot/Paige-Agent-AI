@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
@@ -14,6 +15,8 @@ import {
 import {
   PER_CAPABILITY_AVAILABILITY_STATES,
 } from "../../supabase/functions/_shared/paige-capability-status/resolver.ts";
+import { classifyAction, mutatingTools } from "../../supabase/functions/_shared/action-risk.ts";
+import { parsePolicy } from "../ci/action-risk-lint.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, "..", "fixtures", "capability-kit");
@@ -72,6 +75,10 @@ function test(name, body) {
 const readFixture = await readJson("valid-read.json");
 const mutationFixture = await readJson("valid-mutation.json");
 const invalidCases = await readJson("invalid-cases.json");
+
+// Every action the canonical policy classifies — the real RISK-derived set, not a fixture list.
+// `mutatingTools()` is `RISK_BY_TOOL.keys()`, so membership here IS "a hand-curated RISK entry".
+const CLASSIFIED_ACTION_KEYS = [...mutatingTools()].sort();
 
 test("valid read and mutation declarations are branded and recursively immutable", () => {
   for (const fixture of [readFixture, mutationFixture]) {
@@ -195,14 +202,112 @@ test("the provider-safe subset accepts one valid instance of every keyword", () 
 
 test("mutations must match the canonical action-risk policy", () => {
   const candidate = definitionFromFixture(mutationFixture);
+  // The class-mismatch vehicle is a genuinely wrong class for a classified key: the fixture's
+  // `crm_create_contact` is `ordinary`, so declaring `high` must be refused. It used to be
+  // `read_only`, which no longer reaches this check — the dedicated read_only veto fires first and
+  // is asserted on its own below. That made this assertion's green depend on a phrase inside a
+  // DIFFERENT error message, so retargeting it tests the property it names rather than a wording
+  // coincidence. Coverage is unchanged: read_only is still asserted, by its own test.
   assert.throws(() => defineCapability({
     ...candidate,
-    governance: { ...candidate.governance, risk: "read_only", approval: "none" },
+    governance: { ...candidate.governance, risk: "high", approval: "confirm" },
   }), /canonical action-risk policy/);
   assert.throws(() => defineCapability({
     ...candidate,
     governance: { ...candidate.governance, actionRiskKey: "crm_create_unclassified_thing" },
   }), /canonical action-risk policy/);
+});
+
+// THE INVARIANT THIS PAIR EXISTS FOR. If the canonical policy says a key is an action, the kit
+// must accept it; if the policy does not, the kit must refuse it. Both directions are asserted
+// against the REAL policy rather than one hand-picked key, because a suite that exercised only
+// `crm_create_contact` is precisely what let a second, redundant precondition ship in front of
+// `classifyAction()` and veto 32 already-curated actions (INT-003 follow-up).
+test("every action key the canonical policy classifies is declarable through the kit", () => {
+  assert.ok(CLASSIFIED_ACTION_KEYS.length > 0, "the canonical policy classifies at least one action");
+  const candidate = definitionFromFixture(mutationFixture);
+  const refused = [];
+  for (const actionRiskKey of CLASSIFIED_ACTION_KEYS) {
+    const risk = classifyAction(actionRiskKey);
+    const approval = risk === "owner_only" ? "owner_only" : "confirm";
+    let capability;
+    try {
+      capability = defineCapability({
+        ...candidate,
+        governance: { ...candidate.governance, actionRiskKey, risk, approval },
+      });
+    } catch (error) {
+      refused.push(`${actionRiskKey} — ${error.message}`);
+      continue;
+    }
+    assert.equal(isDefinedCapability(capability), true, actionRiskKey);
+    assert.equal(capability.governance.actionRiskKey, actionRiskKey);
+    assert.equal(capability.governance.risk, risk);
+    assert.equal(capability.governance.approval, approval);
+  }
+  if (refused.length > 0) {
+    assert.fail(
+      `the kit refused ${refused.length}/${CLASSIFIED_ACTION_KEYS.length} classified action keys:\n  ` +
+      refused.join("\n  "),
+    );
+  }
+});
+
+test("an unclassified key is refused on policy membership, whatever its verb reads like", () => {
+  const candidate = definitionFromFixture(mutationFixture);
+  // `revise` and `purge` are absent from MUTATION_VERB; `create` is present. All three must be
+  // refused, and refused by the POLICY branch — so acceptance is gated by curation, not by a regex.
+  for (const actionRiskKey of ["crm_create_unclassified_thing", "widget_revise", "widget_purge"]) {
+    assert.equal(classifyAction(actionRiskKey), "unclassified", actionRiskKey);
+    assert.throws(() => defineCapability({
+      ...candidate,
+      governance: { ...candidate.governance, actionRiskKey },
+    }), /must exist in the canonical action-risk policy/, actionRiskKey);
+  }
+});
+
+// The veto that replaced the verb precondition. Removing a check obliges the remaining ones to be
+// stronger, so `read_only` is refused outright for anything that writes or reaches outside the
+// platform. `ActionRisk` cannot even express `read_only` and no entry classifies one, so the risk
+// comparison below happens to reject it today — but that is the table's present composition doing
+// the work, not a rule, and this asserts the rule.
+test("mutation and external-effect capabilities cannot declare read_only risk", () => {
+  const candidate = definitionFromFixture(mutationFixture);
+  for (const effect of ["mutation", "external_effect"]) {
+    assert.throws(() => defineCapability({
+      ...candidate,
+      effect,
+      governance: { ...candidate.governance, risk: "read_only", approval: "none" },
+    }), /read_only/, effect);
+  }
+});
+
+// The premise the most-restrictive fold in `action-risk.ts` rests on: with the array deduplicated,
+// folding is a no-op. `RISK` is hand-maintained and both its maps were last-wins, so a second tuple
+// for an existing key silently re-classified it — `crm_update_task` carried two until the INT-003
+// follow-up. The fold means a duplicate can now only RAISE a class, but a policy that quietly
+// contradicts itself is still a policy nobody can read, so the array is asserted unique here.
+// The tidier home for this is `action-risk-lint`, which rejects no duplicates today and already
+// exports the `parsePolicy()` used below. That guard is outside this change, so the assertion sits
+// here for now. NOT filed as a tracked task — the task tool was unavailable when this shipped — so
+// it is recorded here and in the PR body rather than described as routed.
+// SYNCHRONOUS deliberately: `test()` above calls `body()` without awaiting it, so an async body
+// prints "ok" and increments the pass count before it can possibly fail, and the failure surfaces
+// only as an unhandled rejection. Node exits non-zero on one today, so it would not have gone
+// unnoticed — but a test whose green depends on that is the shape this whole change exists to fix.
+test("the canonical action-risk policy declares each key exactly once", () => {
+  const policy = readFileSync(
+    join(HERE, "..", "..", "supabase", "functions", "_shared", "action-risk.ts"),
+    "utf8",
+  );
+  // `parsePolicy()` is the policy guard's own reader and the one home for parsing this table
+  // (§18). The first draft of this test hand-rolled a third parser that sliced on `RISK_RANK` —
+  // a symbol this same change introduced — so renaming it would have silently emptied the test.
+  const keys = parsePolicy(policy).map((entry) => entry.tool);
+  assert.ok(keys.length > 0, "the RISK array parsed to at least one tuple");
+  const repeated = [...new Set(keys.filter((key, index) => keys.indexOf(key) !== index))];
+  assert.deepEqual(repeated, [], `RISK declares these keys more than once: ${repeated.join(", ")}`);
+  assert.equal(keys.length, mutatingTools().size, "every parsed tuple survives into the fold");
 });
 
 test("external effects require the canonical high-risk class", () => {
@@ -289,4 +394,7 @@ for (const fixture of invalidCases) {
   });
 }
 
-console.log(`\n✓ capability-kit focused tests passed — ${passed} cases.`);
+console.log(
+  `\n✓ capability-kit focused tests passed — ${passed} cases; ` +
+  `${CLASSIFIED_ACTION_KEYS.length} classified action keys proven declarable.`,
+);

@@ -63,7 +63,7 @@ export async function renewPaigeLiveRelayTicket(input: Readonly<{ sessionId: str
   return {
     ok: payload.ok === true,
     sessionId: typeof payload.session_id === "string" ? payload.session_id : null,
-    availability: "PROOF OWED",
+    availability: (payload.availability as TruthfulAvailability | undefined) ?? "UNAVAILABLE",
     code: typeof payload.code === "string" ? payload.code : "relay_ticket_unavailable",
     explanation: typeof payload.explanation === "string" ? payload.explanation : "Paige could not reconnect live audio. You can continue in chat.",
     ...(typeof payload.ticket === "string" ? { ticket: payload.ticket } : {}),
