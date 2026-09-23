@@ -7,6 +7,12 @@
 > capability registry facts. Existing capability run tables remain their domain records and carry
 > a nullable `work_id` reference; the Rail remains `record_capability_run`.
 >
+> **Capability status:** `SUBSTRATE PROVEN`, not `DONE` or `LIVE`. The table, migration, transition
+> contract, and local single-claim concurrency property are proven. Disconnect survival, client
+> resume without duplicate dispatch, persisted deployment, and authenticated owner readback remain
+> unproven. Until those land, this is a governed schema and execution contract—not yet a durable-work
+> capability Paige can rely on in production.
+>
 > **Routing per Master §3:** written after reading Master §3 (Harness), `paige-brain-wiring-standard.md`,
 > and `paige-spine-and-rail-state.md`. Collision-mapped against #917 (orchestration/tools),
 > #729/#776 (Spine/Rail), #109 (action bus) at the end.
@@ -131,12 +137,13 @@ onto the same server-issued work identity; a replay that changes immutable scope
 
 **Maturity gate.** Source contract tests cover retry folding, scope binding,
 reconciliation-before-retry, attempt ceilings, verified-readback success, and terminal
-immutability. The rollback-only database proof passed on PostgreSQL 16.14 against an isolated
-minimal dependency schema; it exercised the real migration, transition functions, raw-grant
-denials, tenant/thread isolation, and caller-safe readback. Full-repository migration replay,
-persisted apply, concurrent-worker proof, first-capability receipt correlation, disconnect/resume,
-and authenticated owner readback remain `PROOF OWED`. Until those pass, the platform has one
-governed envelope in code but may not claim durable long-form work is `LIVE`.
+immutability. `npm run proof:paige-durable-work` passed on PostgreSQL 16.14 against a disposable
+minimal dependency schema. It exercises the real migration and rollback proof, then races two
+independent service-role sessions against one blocked row: exactly one advances it to `claimed`,
+the loser fails closed with `DURABLE_WORK_TRANSITION_INVALID`, and one row remains at attempt 2.
+Full-repository migration replay, persisted apply, first-capability receipt correlation,
+disconnect/resume, and authenticated owner readback remain `PROOF OWED`. Until those pass, the
+platform has one governed envelope in code but may not claim durable long-form work is `LIVE`.
 
 ## 4. Collision assessment
 
