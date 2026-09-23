@@ -22,13 +22,7 @@ import {
   type GatewayConnection,
   type GatewayAuthKind,
   type UseMcpGateway,
-  mcpGatewayMessage,
 } from "./data/useMcpGateway";
-
-/** INT-153: bearer/header credentials must be at least this long (mirrors the server's
- *  `_mcp_assert_credential_bundle` floor). Caught client-side for immediate feedback so a short
- *  token never needs a server round-trip to explain itself. api_key/url/none are out of scope. */
-const MIN_MCP_CREDENTIAL_LEN = 12;
 
 /* ── Provider catalogue (browse the gateway) ──────────────────────────────────
    Ported from the approved pack: each vendor's connect-mode reflects its real MCP capability
@@ -329,12 +323,9 @@ function AddToolForm({ gw, preset, onDirtyChange, onDone }: { gw: UseMcpGateway;
     if (!label.trim()) next.label = true;
     if (!isHttps(url) || isPrivate(url)) next.url = true;
     if (needsKey && !token.trim()) next.token = true;
-    // INT-153: a bearer/header token below the server floor is rejected server-side — flag it here first.
-    const tokenTooShort = !isRest && needsKey && token.trim().length > 0 && token.trim().length < MIN_MCP_CREDENTIAL_LEN;
-    if (tokenTooShort) next.token = true;
     if (facet === "generic-remote" && authKind === "header" && !headerName.trim()) next.header = true;
     setBad(next);
-    if (Object.keys(next).length) { setMessage(tokenTooShort ? mcpGatewayMessage("MCP_CREDENTIAL_TOO_SHORT") : null); return; }
+    if (Object.keys(next).length) { setMessage(null); return; }
     const result = isRest
       ? await gw.createRest({ label: label.trim(), baseUrl: url.trim(), apiKey: token.trim() })
       : await gw.createMcp({ providerKey: "generic-remote", label: label.trim(), serverUrl: url.trim(), authKind, authToken: token.trim() || null, authHeaderName: headerName.trim() || null });
@@ -546,12 +537,9 @@ function RekeyForm({ gw, tool, isRest, onDone, onCancel }: { gw: UseMcpGateway; 
     const next: Record<string, boolean> = {};
     if (!isHttps(url)) next.url = true;
     if (needsKey && !key.trim()) next.key = true;
-    // INT-153: a re-key to a bearer/header token below the server floor is rejected server-side too.
-    const keyTooShort = !isRest && needsKey && key.trim().length > 0 && key.trim().length < MIN_MCP_CREDENTIAL_LEN;
-    if (keyTooShort) next.key = true;
     if (needsHeaderName && !headerName.trim()) next.header = true;
     setBad(next);
-    if (Object.keys(next).length) { setMessage(keyTooShort ? mcpGatewayMessage("MCP_CREDENTIAL_TOO_SHORT") : null); return; }
+    if (Object.keys(next).length) { setMessage(null); return; }
     const result = isRest
       ? await gw.rekeyRest(tool.id, url.trim(), key.trim())
       : await gw.rekeyMcp(tool.id, url.trim(), authKind, needsKey ? key.trim() : null, needsHeaderName ? headerName.trim() : null);
