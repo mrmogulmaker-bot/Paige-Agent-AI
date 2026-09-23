@@ -82,6 +82,11 @@ export type ExecuteResult = {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOOL_NAME_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
+// An untrusted caller must not dictate an unbounded wait: the client's `withApprovedCapabilitySession`
+// applies `opts.timeoutMs ?? DEFAULT_TIMEOUT_MS` (15s) with NO upper clamp, so a large body value would
+// hold the edge invocation open for as long as it asked. Clamp a caller-supplied timeout to this ceiling
+// (still generous vs the 15s default); an absent/non-positive value falls through to the runner default.
+const MAX_EXECUTE_TIMEOUT_MS = 30_000;
 
 /** Map the runner's closed outcome to an HTTP status. The JSON body's `outcome`/`code` are the
  *  AUTHORITATIVE result; the status reflects the class only.
@@ -179,7 +184,7 @@ export function readExecuteInput(
     ? (body.args as Record<string, unknown>)
     : {};
   const timeoutMs = typeof body.timeout_ms === "number" && Number.isFinite(body.timeout_ms) && body.timeout_ms > 0
-    ? body.timeout_ms
+    ? Math.min(body.timeout_ms, MAX_EXECUTE_TIMEOUT_MS)
     : undefined;
   return {
     connectionId: typeof body.connection_id === "string" ? body.connection_id : "",

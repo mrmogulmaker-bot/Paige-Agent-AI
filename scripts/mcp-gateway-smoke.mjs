@@ -1600,6 +1600,15 @@ console.log("\n— slice ③: approve (runApprove) —");
   const wBadPin = await approveMod.runApprove({ userClient: makeApproveUser({ setResult: { data: null, error: pgErr("MCP_BAD_PIN", "22023") } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());
   check("approve maps a writer 22023 → 400 with the specific MCP_* code", wBadPin.httpStatus === 400 && wBadPin.body.error === "MCP_BAD_PIN", JSON.stringify(wBadPin.body));
 
+  // Remaining input-validation + lookup-failure branches (compliance coverage).
+  check("approve rejects a malformed args_shape_hash (400 bad_args_shape)", (await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ argsShapeHash: "xyz" }))).body.error === "bad_args_shape");
+  const noEndpoint = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin({ secret: { configured: true, enabled: true, tenant_id: ATEN, endpoint_hash: "not-a-hash" } }), readToolPin: readToolPinOk }, inApprove());
+  check("approve refuses a configured connection whose endpoint hash is unusable (409 no_endpoint)", noEndpoint.httpStatus === 409 && noEndpoint.body.error === "no_endpoint", JSON.stringify(noEndpoint.body));
+  const v2Fail = await approveMod.runApprove({ userClient: makeApproveUser({ v2Err: { message: "v2 boom" } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());
+  check("approve surfaces a v2 lookup error as 500 lookup_failed (never leaks the PG message)", v2Fail.httpStatus === 500 && v2Fail.body.error === "lookup_failed" && !JSON.stringify(v2Fail.body).includes("boom"), JSON.stringify(v2Fail.body));
+  const secretFail = await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin({ secretErr: { message: "secret boom" } }), readToolPin: readToolPinOk }, inApprove());
+  check("approve surfaces a secret-read error as 500 lookup_failed (never leaks the PG message)", secretFail.httpStatus === 500 && secretFail.body.error === "lookup_failed" && !JSON.stringify(secretFail.body).includes("boom"), JSON.stringify(secretFail.body));
+
   // readApproveInput — untrusted body → typed input; empty/wrong-typed → null.
   const parsed = approveMod.readApproveInput({ connection_id: ACONN, tool_name: "send_message", expected_endpoint_hash: AEHASH, args_shape_hash: "c".repeat(64), expires_at: "2030-01-01T00:00:00Z" }, ATEN);
   check("readApproveInput maps snake_case body → typed input", parsed.connectionId === ACONN && parsed.toolName === "send_message" && parsed.expectedEndpointHash === AEHASH && parsed.argsShapeHash === "c".repeat(64) && parsed.expiresAt === "2030-01-01T00:00:00Z" && parsed.expectedTenantId === ATEN, JSON.stringify(parsed));
@@ -1675,6 +1684,10 @@ console.log("\n— slice ③: execute (runExecute) —");
   const unknownExec = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XEURL), approval: { authorized: true, reason: "authorized" } }) }, inExec({ toolName: "send_message", args: { to: "a" } }));
   check("execute a mutation that dispatched then errored → 200 outcome_unknown (never a retry-inviting 5xx)", unknownExec.httpStatus === 200 && unknownExec.body.outcome === "outcome_unknown", JSON.stringify(unknownExec.body));
 
+  // A READ that dispatches then reports isError → tool_error → 502 (no side effect to be unknown about).
+  const readErr = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XEURL) }) }, inExec({ toolName: "list_records" }));
+  check("execute a read tool that dispatched then errored → 502 tool_error", readErr.httpStatus === 502 && readErr.body.outcome === "tool_error", JSON.stringify(readErr.body));
+
   // Provider unreachable before dispatch → provider_unavailable → 502.
   const down = await executeMod.runExecute({ userClient: makeExecuteUser(), admin: makeExecuteAdmin({ secret: secretFor(XDOWN) }) }, inExec({ toolName: "list_records" }));
   check("execute against an unreachable provider → 502 provider_unavailable", down.httpStatus === 502 && down.body.outcome === "provider_unavailable", JSON.stringify(down.body));
@@ -1704,6 +1717,8 @@ console.log("\n— slice ③: execute (runExecute) —");
   check("readExecuteInput maps snake_case body → typed input", parsed.connectionId === XCONN && parsed.toolName === "send_message" && parsed.mode === "execute" && parsed.args.to === "a" && parsed.timeoutMs === 5000 && parsed.actor === "actor-1" && parsed.executeEnabled === true, JSON.stringify(parsed));
   const parsedDefault = executeMod.readExecuteInput({ connection_id: XCONN, tool_name: "x", mode: "banana", args: [1, 2] }, null, "actor-1", false);
   check("readExecuteInput defaults an unknown mode to prepare (fail-safe) and a non-object args to {}", parsedDefault.mode === "prepare" && typeof parsedDefault.args === "object" && !Array.isArray(parsedDefault.args) && Object.keys(parsedDefault.args).length === 0, JSON.stringify(parsedDefault));
+  const parsedClamp = executeMod.readExecuteInput({ connection_id: XCONN, tool_name: "x", timeout_ms: 999999 }, null, "actor-1", true);
+  check("readExecuteInput clamps an oversized caller timeout_ms to the 30s ceiling (untrusted callers cannot hold the invocation open)", parsedClamp.timeoutMs === 30000, JSON.stringify(parsedClamp.timeoutMs));
 }
 
 server.close();
