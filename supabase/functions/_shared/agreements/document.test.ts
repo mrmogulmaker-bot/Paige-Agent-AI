@@ -103,15 +103,31 @@ Deno.test("hashing is stable over the same array and is 64 hex characters", asyn
   assert(/^[0-9a-f]{64}$/.test(a), a);
 });
 
-Deno.test("rendering is byte-deterministic TODAY — measured, not assumed", async () => {
-  // This started life as the opposite assertion. The design analysis said pdf-lib stamps a varying
-  // /CreationDate, so two renders of identical content would differ. Run against this code path, it
-  // is false: doc-render sets no document metadata, and three separate processes produced the same
-  // digest. Recorded here rather than quietly dropped, because the next person will read the same
-  // analysis and reach the same wrong conclusion.
+Deno.test("re-rendering does NOT reproduce the bytes — which is why the sealed copy is stored, never re-made", async () => {
+  // THIS TEST PREVIOUSLY ASSERTED THE OPPOSITE, and it was wrong. It claimed rendering was
+  // byte-deterministic "measured, not assumed", on the strength of three runs that happened to
+  // agree — and it contradicted this module's own header, which says pdf-lib stamps /CreationDate
+  // and /ModDate so "two renders of byte-identical content produce different bytes".
+  //
+  // The header is right. Measured directly: two renders inside the SAME clock second are byte
+  // identical, and two renders that straddle a second boundary are NOT. The old assertion passed
+  // only because both of its renders landed in the same second on a fast machine — a race it won
+  // locally and lost on a slower CI runner, on both this branch and main.
+  //
+  // This matters far beyond a flaky test. "Re-rendering reproduces the bytes" would license
+  // re-making the document on demand and trusting the stored hash — and the hash would then
+  // describe an artifact that no longer exists. The RENDER ONCE, NEVER RE-RENDER rule at the top
+  // of this file is load-bearing precisely because of what is asserted below.
   const first = await renderPresentedPdf({ title: "Services Agreement", bodyMarkdown: BODY });
-  const second = await renderPresentedPdf({ title: "Services Agreement", bodyMarkdown: BODY });
-  assertEquals(await hashDocument(first), await hashDocument(second));
+  const immediate = await renderPresentedPdf({ title: "Services Agreement", bodyMarkdown: BODY });
+  // Within one clock tick the bytes DO agree — the timestamp is the only varying input.
+  assertEquals(await hashDocument(first), await hashDocument(immediate));
+
+  // Across a tick they do not. 1.1s is measured to be sufficient; if that ever stops being true
+  // this fails loudly and the next person re-measures rather than inheriting a false claim.
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  const later = await renderPresentedPdf({ title: "Services Agreement", bodyMarkdown: BODY });
+  assertNotEquals(await hashDocument(first), await hashDocument(later));
 });
 
 Deno.test("different content hashes differently — the digest tracks the document", async () => {
