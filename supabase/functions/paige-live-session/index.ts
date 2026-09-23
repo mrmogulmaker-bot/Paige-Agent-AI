@@ -3,7 +3,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
-import { isLiveAudioPilotEnabled, issueRelayTicket } from "../_shared/paige-live-ticket.ts";
+import { isLiveAudioPilotEnabled, issueRelayTicket, liveContextEpochTenant } from "../_shared/paige-live-ticket.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,7 +69,7 @@ serve(async (req: Request) => {
   const { data: tenantValue, error: tenantError } = await asCaller.rpc("current_user_tenant_id");
   if (tenantError || !tenantValue) return (await endStaleSession()) ?? json({ code: "workspace_unresolved" }, 409);
   const tenantId = String(tenantValue);
-  const epochTenant = parsed.data.context_epoch.split("|", 1)[0];
+  const epochTenant = liveContextEpochTenant(parsed.data.context_epoch);
   if (epochTenant !== tenantId) return (await endStaleSession()) ?? json({ code: "stale_context" }, 409);
 
   const { data: thread, error: threadError } = await asCaller

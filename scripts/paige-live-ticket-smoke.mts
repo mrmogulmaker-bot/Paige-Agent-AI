@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { consumeRelayTicket, issueRelayTicket, validateRelayTicket, isLiveAudioPilotEnabled, hasLiveWorkspaceStanding, isLiveWorkspaceCurrent } from "../supabase/functions/_shared/paige-live-ticket.ts";
+import { consumeRelayTicket, issueRelayTicket, validateRelayTicket, isLiveAudioPilotEnabled, hasLiveWorkspaceStanding, isLiveWorkspaceCurrent, liveContextEpochTenant } from "../supabase/functions/_shared/paige-live-ticket.ts";
+import { composerScopeIdentityKey } from "../src/lib/paigeComposerScopeState.ts";
 
 let network = 0;
 globalThis.fetch = (async () => { network++; throw new Error("network forbidden"); }) as typeof fetch;
@@ -48,6 +49,11 @@ assert.equal(isLiveWorkspaceCurrent("tenant-a", "tenant-a", false, "tenant-b"), 
 assert.equal(isLiveWorkspaceCurrent("tenant-a", null, false, null), false, "operator exit with no direct-member fallback revokes ticket");
 assert.equal(isLiveWorkspaceCurrent("tenant-a", null, false, "tenant-a"), true, "canonical first-member fallback remains usable");
 assert.equal(isLiveWorkspaceCurrent("tenant-a", null, false, "tenant-b"), false, "fallback to another workspace revokes ticket");
+const currentComposerEpoch = composerScopeIdentityKey({ tenantId: "tenant-a", userId: "user-a", focusedClientId: "none", focusedBusinessMissionId: "none" });
+assert.equal(liveContextEpochTenant(currentComposerEpoch), "tenant-a", "actual composer scope resolves the tenant");
+assert.equal(liveContextEpochTenant("tenant-a|client-a|mission-a"), "tenant-a", "older deployed composer scope remains compatible");
+assert.equal(liveContextEpochTenant('["tenant-a",'), null, "malformed JSON scope never authorizes a workspace");
+assert.equal(liveContextEpochTenant('["tenant-a"]'), null, "incomplete JSON scope never authorizes a workspace");
 
 const relay = readFileSync(new URL("../supabase/functions/paige-live-relay/index.ts", import.meta.url), "utf8");
 const session = readFileSync(new URL("../supabase/functions/paige-live-session/index.ts", import.meta.url), "utf8");
@@ -59,6 +65,7 @@ assert.match(relay, /\.eq\("tenant_id", session.tenant_id\)/);
 assert.match(relay, /state: "unavailable", availability: "UNAVAILABLE", failure_code: code/, "terminal provider-free state is durable");
 assert.ok(relay.indexOf("markUnavailable(unavailableCode)") < relay.indexOf("Deno.upgradeWebSocket(req)"), "terminal state precedes unavailable socket");
 assert.ok(session.indexOf('rpc("current_user_tenant_id")') < session.indexOf("issueRelayTicket()"));
+assert.match(session, /liveContextEpochTenant\(parsed\.data\.context_epoch\)/, "ticket admission understands the current composer scope format");
 assert.ok(session.indexOf('from("paige_chat_threads")') < session.indexOf("issueRelayTicket()"));
 assert.ok(session.indexOf('from("paige_live_tenant_availability")') < session.indexOf("issueRelayTicket()"), "platform availability read precedes ticket issuance");
 assert.match(session, /isLiveAudioPilotEnabled\(tenantPilot\)/, "session ticket requires the platform-stored flag");

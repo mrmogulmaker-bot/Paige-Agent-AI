@@ -7,6 +7,23 @@
  */
 export const RELAY_TICKET_TTL_MS = 45_000;
 
+/** The composer now serializes its tenant/user/focus scope as a JSON tuple.
+ * Legacy deployed clients still send a pipe-delimited epoch. This only extracts
+ * a comparison value; the control plane resolves authority from the JWT. */
+export function liveContextEpochTenant(epoch: string): string | null {
+  if (epoch.startsWith("[")) {
+    try {
+      const scope: unknown = JSON.parse(epoch);
+      if (!Array.isArray(scope) || scope.length !== 4 ||
+        !scope.every((part) => typeof part === "string")) return null;
+      return scope[0].length > 0 ? scope[0] : null;
+    } catch {
+      return null;
+    }
+  }
+  return epoch.split("|", 1)[0] || null;
+}
+
 /** Platform-owned workspace availability; never a client-supplied scope or role. */
 export function isLiveAudioPilotEnabled(row: unknown): boolean {
   return !!row && typeof row === "object" && !Array.isArray(row) &&
