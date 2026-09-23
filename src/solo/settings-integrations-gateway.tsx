@@ -18,7 +18,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Plus, RefreshCw, Search, TriangleAlert, X } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { armOAuthReturn } from "./data/oauthReturn";
 import {
   MCP_CREDENTIAL_MIN_LENGTH,
   credentialTooShort,
@@ -416,6 +415,13 @@ function SignInFlow({ gw, item, onCancel }: { gw: UseMcpGateway; item: CatItem; 
   const [bad, setBad] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [step, setStep] = useState<"form" | "starting">("form");
+  /** The row created by a previous attempt whose `oauth_begin` then failed. Kept so a retry
+   *  RESUMES that shell instead of trying to create it again. Without this a transient
+   *  discovery/DCR failure was unrecoverable in place: re-creating hits MCP_DUPLICATE_LABEL on
+   *  the same label, Re-key renders no key field for a credential-less row, and the saved row's
+   *  drawer offers "Sign in again" only for `auth_kind === "oauth"` — so the only recovery that
+   *  actually worked was deleting the connection and starting over. Caught in review. */
+  const [shellId, setShellId] = useState<string | null>(null);
   const isHttps = (v: string) => /^https:\/\/[^\s]+\.[^\s]+/i.test(v.trim());
 
   const begin = async () => {
@@ -428,23 +434,30 @@ function SignInFlow({ gw, item, onCancel }: { gw: UseMcpGateway; item: CatItem; 
     setStep("starting");
 
     // 1. The row. `none` carries no credential, which is what makes it creatable before sign-in.
-    const created = await gw.createMcp({
-      providerKey: "generic-remote",
-      label: label.trim(),
-      serverUrl: url.trim(),
-      authKind: "none",
-    });
-    if (!created.ok || !created.connectionId) {
-      setStep("form");
-      // A dropped or not-yet-ready write was never refused, so claiming a failure would be a lie (§13).
-      if (created.code === "MCP_BUSY" || created.code === "MCP_NOT_READY") return;
-      setMessage(created.message ?? "That didn't go through. Check the details and try again.");
-      return;
+    //    A retry after a failed begin RESUMES the shell it already made rather than creating a
+    //    second one, which would only earn MCP_DUPLICATE_LABEL on the same label.
+    let connectionId = shellId;
+    if (!connectionId) {
+      const created = await gw.createMcp({
+        providerKey: "generic-remote",
+        label: label.trim(),
+        serverUrl: url.trim(),
+        authKind: "none",
+      });
+      if (!created.ok || !created.connectionId) {
+        setStep("form");
+        // A dropped or not-yet-ready write was never refused, so claiming a failure would be a lie (§13).
+        if (created.code === "MCP_BUSY" || created.code === "MCP_NOT_READY") return;
+        setMessage(created.message ?? "That didn't go through. Check the details and try again.");
+        return;
+      }
+      connectionId = created.connectionId;
+      setShellId(connectionId);
     }
 
     // 2. The flow. The tool now EXISTS either way — if discovery fails the owner keeps a real row
     //    they can re-key by hand, which is why this reports rather than silently rolling back.
-    const flow = await gw.beginOAuth(created.connectionId);
+    const flow = await gw.beginOAuth(connectionId);
     if (!flow.ok || !flow.authorizeUrl) {
       setStep("form");
       if (flow.code === "MCP_BUSY" || flow.code === "MCP_NOT_READY") return;
@@ -455,13 +468,23 @@ function SignInFlow({ gw, item, onCancel }: { gw: UseMcpGateway; item: CatItem; 
       // instruction with nothing behind it (§70.1) — caught by the peer-gate before it shipped.
       setMessage(
         flow.message ??
-          `That provider didn't offer a sign-in Paige can use. ${label.trim() || item.n} was saved with no key — open it to check the address and try again, or remove it.`,
+          `That provider didn't offer a sign-in Paige can use. ${label.trim() || item.n} is saved — fix the address and press Sign in again, or remove it.`,
       );
       return;
     }
 
-    // 3. Leave. Recorded first so the callback can bring the person back to this exact surface.
-    armOAuthReturn(`${window.location.pathname}${window.location.search}`);
+    // 3. Leave.
+    //    NOT arming a return path, deliberately. This flow's callback is the JWT-less, server-owned
+    //    `mcp-oauth-callback`, which redirects straight to `connectedLocation(..., destination:
+    //    "connections")` — a FIXED destination that never loads the SPA route reading the stored
+    //    path (`takeOAuthReturn` has no production caller at all). Arming it looked like it brought
+    //    the owner back here and did nothing, so the call and its comment asserted a behaviour that
+    //    does not exist (§13/§70.1). Sign-in therefore lands on Connections, carrying
+    //    `?mcp=connected&connection=<id>`.
+    //    BACKEND DOOR NEEDED to land back here instead (§00 — named, not silently worked around):
+    //    the intended destination has to travel with the server-owned flow (oauth_begin → the stored
+    //    PKCE state → the callback), because a client-side hint cannot reach a callback that never
+    //    loads the app.
     window.location.assign(flow.authorizeUrl);
   };
 
@@ -622,7 +645,9 @@ function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayCon
       setSignInMessage(flow.message ?? "That sign-in couldn't be started. Try again in a moment.");
       return;
     }
-    armOAuthReturn(`${window.location.pathname}${window.location.search}`);
+    // Same server-owned callback as the create flow above, so the same note applies: it lands on
+    // Connections via a fixed destination and never loads the SPA route that would read a stored
+    // return path. Nothing is armed here, rather than arming something nothing reads.
     window.location.assign(flow.authorizeUrl);
   };
   /** An OAuth tool's credential is issued by its provider's sign-in, not pasted here, so this

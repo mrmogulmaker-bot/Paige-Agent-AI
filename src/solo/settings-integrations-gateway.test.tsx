@@ -149,6 +149,42 @@ beforeEach(() => {
   document.body.innerHTML = "";
 });
 
+describe("Sign-in retry after a failed start", () => {
+  /** REGRESSION (Codex P2, 2026-09-23). `oauth_begin` failing after `create` used to strand the
+   *  owner: the shell row existed, so pressing the button again re-ran `create` with the same
+   *  label and earned MCP_DUPLICATE_LABEL, while the saved row's drawer offers "Sign in again"
+   *  only for an `oauth` row — so a transient discovery/DCR failure could only be escaped by
+   *  deleting the connection. A retry must RESUME the shell it already made. */
+  it("resumes the shell it already created instead of creating a second one", async () => {
+    world();
+    invoke.mockImplementation((_fn: string, opts: { body?: Record<string, unknown> }) => {
+      const action = opts?.body?.action;
+      if (action === "create") return Promise.resolve({ data: { connection_id: "shell-1" }, error: null });
+      if (action === "oauth_begin") return Promise.resolve(edgeRefusal("discovery_failed"));
+      return Promise.resolve({ data: {}, error: null });
+    });
+
+    const { host } = await render();
+    await openCatalogue(host);
+    await click(tile(host, "Close"));
+    await type(fieldFor(host, "Name"), "My Close");
+    await type(fieldFor(host, "Server address"), "https://mcp.close.com/mcp");
+
+    await click(byText(host, "Sign in to Close"));
+    expect(edgeCalls("create").length).toBe(1);
+    expect(edgeCalls("oauth_begin").length).toBe(1);
+
+    // The owner presses it again after the honest failure message.
+    await click(byText(host, "Sign in to Close"));
+
+    // ONE row was ever created; the retry re-used it.
+    expect(edgeCalls("create").length).toBe(1);
+    expect(edgeCalls("oauth_begin").length).toBe(2);
+    const ids = edgeCalls("oauth_begin").map((c) => (c[1]?.body as Record<string, unknown>).connection_id);
+    expect(ids).toEqual(["shell-1", "shell-1"]);
+  });
+});
+
 describe("Truth boundary", () => {
   it("reads with no tenant argument and renders no payload of its own", async () => {
     world({ rows: [row({ label: "Scheduling tool" })] });

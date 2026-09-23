@@ -69,11 +69,37 @@
 -- connected to Zapier?", she would answer no about a connection that is live.
 -- That is a worse failure than today's honest silence, because it is confident.
 --
--- So the MCP half is GATEWAY-PREFERRED AND COMPLETE. The gateway answers for
--- every connection it holds — it is the source of truth (§57). The legacy
--- reader fills ONLY the gap, contributing a provider the gateway has no row
--- for. Neither registry's internal name reaches the row: which store answered
--- is an operations concern, measured by scripts/sql/mcp-backfill-drift.sql, not
+-- SO EACH CONNECTION IS READ FROM THE STORE THAT IS ACTUALLY LIVE FOR IT, and
+-- the lineage the schema already records is what decides which that is.
+--
+--   * A gateway row with legacy_source IS NULL was created natively through
+--     create_mcp_connection. The gateway IS its live store. Emit it.
+--   * A gateway row with legacy_source IS NOT NULL is the one-time backfill's
+--     PROJECTION of a legacy row. Its origin is still being written — connect,
+--     token rotation, disconnect and probe all UPDATE tenant_mcp_connections and
+--     none of them touch mcp_connections — so the projection is stale by
+--     construction. Suppress it and emit the legacy row it came from.
+--   * A legacy row the backfill never projected is emitted too. That is the
+--     gap the first paragraph is about.
+--
+-- WHY NOT "GATEWAY WINS", WHICH IS WHAT THIS FILE FIRST DID (§13). Preferring
+-- the gateway whenever ANY gateway row shared the provider string looked like
+-- §57 "derive from the source of truth", but it applied that rule one layer too
+-- high: for a PROJECTED row the gateway is not the source of truth, it is a
+-- snapshot of one. A tenant who disconnected Zapier yesterday would have had
+-- enabled=false in the live table and enabled=true, status=connected,
+-- health=healthy in the frozen projection — and Paige would have reported the
+-- dead connection as healthy. That is the same lie as the invisible connection,
+-- pointed the other way, and it is worse: silence invites a question, a
+-- confident wrong answer does not. Caught in review, not by the author.
+--
+-- Matching on LINEAGE rather than on the provider string also stops a second
+-- error: a tenant may legitimately hold both a legacy Zapier connection and a
+-- natively-created gateway one. Those are two real connections and both are
+-- listed; collapsing them because they share a provider name would hide one.
+--
+-- Neither registry's internal name reaches the row: which store answered is an
+-- operations concern, measured by scripts/sql/mcp-backfill-drift.sql, not
 -- something an owner asking "what am I connected to?" should have to parse.
 --
 -- §13 — THE HEALTH VOCABULARY GAINS 'unknown', DELIBERATELY. The channel half
@@ -125,7 +151,7 @@ begin
     where cc.tenant_id = public.current_user_tenant_id()
   ) s;
 
-  -- ── Half 2: MCP connections — GATEWAY first (the source of truth). ──────
+  -- ── Half 2: gateway connections the GATEWAY is actually live for. ───────
   begin
     select coalesce(jsonb_agg(
              jsonb_build_object(
@@ -166,7 +192,14 @@ begin
              )
            ), '[]'::jsonb)
       into _mcp
-      from jsonb_array_elements(public.get_mcp_connections_v2()) as c;
+      from jsonb_array_elements(public.get_mcp_connections_v2()) as c
+      -- The lineage join classifies a row v2 has ALREADY approved and filtered;
+      -- it re-implements none of v2's visibility gate, credential redaction or
+      -- `configured` predicate (§18). A projected row is dropped here so its
+      -- live legacy origin can speak for it below.
+      join public.mcp_connections m
+        on m.connection_id = (c->>'connection_id')::uuid
+     where m.legacy_source is null;
   exception when others then
     -- Loud, never silent (§32). The channel half still answers; the MCP half
     -- reports nothing rather than guessing.
@@ -174,12 +207,14 @@ begin
     _mcp := '[]'::jsonb;
   end;
 
-  -- ── Half 3: legacy MCP connections the backfill never projected. ────────
-  -- Gap-fill ONLY: a provider the gateway already holds is skipped, so the
-  -- gateway stays the source of truth and nothing is listed twice. Scoped by
-  -- the SAME _mcp_resolve_tenant(NULL,false) as Half 2, and the reader returns
-  -- host-only + last-4 — no credential material. Separately guarded so a fault
-  -- in either registry can never take the other one down.
+  -- ── Half 3: legacy connections — always the live store, so always read. ─
+  -- Every legacy row is read, with no exclusion, because the legacy table is
+  -- the live store for every row in it. Nothing is listed twice: Half 2 already
+  -- dropped the projections, so the two halves are disjoint BY LINEAGE rather
+  -- than by a provider-name guess. Scoped by the SAME _mcp_resolve_tenant(NULL,
+  -- false) as Half 2, and the reader returns host-only + last-4 — no credential
+  -- material. Separately guarded so a fault in either registry can never take
+  -- the other one down.
   begin
     select coalesce(jsonb_agg(
              jsonb_build_object(
@@ -211,11 +246,7 @@ begin
              )
            ), '[]'::jsonb)
       into _legacy
-      from jsonb_each(public.get_tenant_mcp_connections()) as kv(provider_key, v)
-     where not exists (
-             select 1 from jsonb_array_elements(_mcp) g
-              where g->>'provider' = kv.provider_key
-           );
+      from jsonb_each(public.get_tenant_mcp_connections()) as kv(provider_key, v);
   exception when others then
     raise warning 'list_integration_surface: legacy MCP gap-fill unavailable (%): %', sqlstate, sqlerrm;
     _legacy := '[]'::jsonb;

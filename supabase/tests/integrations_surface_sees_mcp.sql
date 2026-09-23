@@ -53,11 +53,17 @@ INSERT INTO public.channel_connectors (tenant_id, channel_type, provider, status
 VALUES ('f1a00000-0000-0000-0000-0000000000b1', 'email', 'resend', 'active', true, 'ISURF Resend', 'hi@isurf.test', 'isurf.test', 'in@isurf.test', now());
 
 -- GATEWAY registry: one ordinary connection, one owner_only.
-INSERT INTO public.mcp_connections (connection_id, tenant_id, provider_key, label, server_url_ct, auth_kind, visibility, enabled, status, health) VALUES
-  ('f1a00000-0000-0000-0000-0000000000c1', 'f1a00000-0000-0000-0000-0000000000b1', 'zapier', 'Zapier (gateway)',
-     public.platform_encrypt('https://mcp.zapier.example/rpc'), 'none', 'tenant',     true, 'connected', 'healthy'),
+-- The zapier row is the one-time backfill's PROJECTION (legacy_source set) and is
+-- deliberately STALE — it still says enabled/connected/healthy. The live legacy row
+-- below says the owner disconnected it. 'Restricted' is NATIVE (legacy_source NULL),
+-- so the gateway is its live store and it must survive.
+INSERT INTO public.mcp_connections (connection_id, tenant_id, provider_key, label, server_url_ct, auth_kind, visibility, enabled, status, health, legacy_source, legacy_provider) VALUES
+  ('f1a00000-0000-0000-0000-0000000000c1', 'f1a00000-0000-0000-0000-0000000000b1', 'zapier', 'Zapier (STALE projection)',
+     public.platform_encrypt('https://mcp.zapier.example/rpc'), 'none', 'tenant',     true, 'connected', 'healthy',
+     'tenant_mcp_connections', 'zapier'),
   ('f1a00000-0000-0000-0000-0000000000c2', 'f1a00000-0000-0000-0000-0000000000b1', 'generic-remote', 'Restricted',
-     public.platform_encrypt('https://restricted.example/rpc'), 'none', 'owner_only', true, 'connected', 'healthy');
+     public.platform_encrypt('https://restricted.example/rpc'), 'none', 'owner_only', true, 'connected', 'healthy',
+     NULL, NULL);
 
 -- LEGACY registry: the SAME zapier (must be deduped, gateway wins) and an n8n the backfill never
 -- projected (must still appear — this is the anti-lie case).
@@ -65,8 +71,11 @@ INSERT INTO public.tenant_mcp_connections (tenant_id, provider, label, server_ur
   -- auth_kind MUST be 'oauth' (or 'url') for zapier — tenant_mcp_connections_provider_auth_chk
   -- (20261201000000:12). A first draft used 'bearer' here, which the schema forbids, and CI is
   -- where that surfaced; the fixture now models a shape the platform can actually hold.
-  ('f1a00000-0000-0000-0000-0000000000b1', 'zapier', 'Zapier (legacy, stale)',
-     public.platform_encrypt('https://old.zapier.example/rpc'), public.platform_encrypt('tok-zapier-legacy'), 'gacy', 'http', 'oauth', true, 'connected'),
+  -- LIVE: the owner disconnected this yesterday (enabled=false). The stale projection
+  -- above still claims healthy. If the projection wins, Paige reports a dead connection
+  -- as live — the defect this file's (B) assertion now pins.
+  ('f1a00000-0000-0000-0000-0000000000b1', 'zapier', 'Zapier (LIVE)',
+     public.platform_encrypt('https://live.zapier.example/rpc'), public.platform_encrypt('tok-zapier-legacy'), 'gacy', 'http', 'oauth', false, 'connected'),
   ('f1a00000-0000-0000-0000-0000000000b1', 'n8n', 'My n8n',
      public.platform_encrypt('https://n8n.isurf.test/mcp'),     public.platform_encrypt('tok-n8n-unprojected'), 'cted', 'http', 'bearer', true, 'connected');
 
@@ -95,16 +104,25 @@ BEGIN
     RAISE EXCEPTION '(A) §58 REGRESSION: channel fields dropped: %', _e;
   END IF;
 
+  -- (B) EACH CONNECTION IS READ FROM ITS LIVE STORE. The gateway row for zapier is a
+  -- backfill PROJECTION and is frozen; the legacy row is the one connect/rotate/
+  -- disconnect/probe still write. So the LIVE row must win, and the projection must not
+  -- be able to mask it. Listed exactly once, keyed on lineage rather than provider name.
   SELECT e INTO _e FROM jsonb_array_elements(_v) e WHERE e->>'provider' = 'zapier';
-  IF _e IS NULL THEN RAISE EXCEPTION '(B) the gateway MCP connection is invisible to Paige: %', _v; END IF;
-  IF _e->>'channel' IS DISTINCT FROM 'mcp'      THEN RAISE EXCEPTION '(B) channel=%', _e->>'channel'; END IF;
-  IF _e->>'health'  IS DISTINCT FROM 'healthy'  THEN RAISE EXCEPTION '(B) health=%',  _e->>'health';  END IF;
-  IF _e->>'status'  IS DISTINCT FROM 'active'   THEN RAISE EXCEPTION '(B) status=%',  _e->>'status';  END IF;
-  IF _e->>'display_name' IS DISTINCT FROM 'Zapier (gateway)' THEN
-    RAISE EXCEPTION '(B) the stale LEGACY row won over the gateway (§57 source of truth): %', _e->>'display_name';
+  IF _e IS NULL THEN RAISE EXCEPTION '(B) the zapier connection is invisible to Paige: %', _v; END IF;
+  IF _e->>'channel' IS DISTINCT FROM 'mcp' THEN RAISE EXCEPTION '(B) channel=%', _e->>'channel'; END IF;
+  IF _e->>'display_name' IS DISTINCT FROM 'Zapier (LIVE)' THEN
+    RAISE EXCEPTION '(B) THE STALE PROJECTION WON. Paige would report a connection the owner disconnected as still live. got: %', _e->>'display_name';
+  END IF;
+  IF _e->>'health' IS DISTINCT FROM 'disconnected' OR _e->>'status' IS DISTINCT FROM 'disabled' THEN
+    RAISE EXCEPTION '(B) the live disconnect was masked by the frozen projection: health=%, status=%', _e->>'health', _e->>'status';
   END IF;
   IF (SELECT count(*) FROM jsonb_array_elements(_v) e WHERE e->>'provider' = 'zapier') <> 1 THEN
-    RAISE EXCEPTION '(B) zapier listed twice — dedup broken: %', _v;
+    RAISE EXCEPTION '(B) zapier listed twice — the projection was not suppressed: %', _v;
+  END IF;
+  -- ...and a NATIVE gateway connection (legacy_source NULL) is still read from the gateway.
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(_v) e WHERE e->>'display_name' = 'Restricted') THEN
+    RAISE EXCEPTION '(B) a NATIVE gateway connection vanished with the projections: %', _v;
   END IF;
 END $$;
 
