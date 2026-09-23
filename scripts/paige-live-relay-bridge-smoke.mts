@@ -149,7 +149,31 @@ const admissionBody = edge.slice(edge.indexOf('const checkCurrentAdmission = asy
   'const checkCurrentAdmission = async (): Promise<Response | null> => {'.length,
   edge.indexOf('  };\n  const admissionFailure')).replace(': string | null', '');
 const resolveAdmission = new AsyncFunction('admin', 'session', 'markUnavailable',
-  'hasLiveWorkspaceStanding', 'isLiveWorkspaceCurrent', 'isLiveAudioPilotEnabled', admissionBody);
+  'hasLiveWorkspaceStanding', 'isLiveWorkspaceCurrent', 'isLiveAudioPilotEnabled', 'readProviderAdmission', admissionBody);
+const approvedVoice = 'g6xIsTj2HwM6VR4iXFCw';
+let providerRows: Record<string, Record<string, unknown>>;
+const resetProviderRows = () => { providerRows = {
+  paige_voice_profiles: { provider: 'elevenlabs', provider_voice_ref: approvedVoice, revision: 'elevenlabs-jessica-take5-r1',
+    active: false, approved: true, status: 'approved', approved_at: 'fixture', provider_verification_id: 'proof', provider_verification_receipt_ref: 'receipt' },
+  paige_voice_readiness: { provider_verification_id: 'proof', account_verification_receipt_ref: 'receipt', account_verified_at: 'fixture',
+    key_scope_verified: true, voice_authorized: true, retention_policy_approved: true, zero_retention_confirmed: true },
+  paige_voice_provider_verifications: { provider: 'elevenlabs', provider_voice_ref: approvedVoice, evidence_ref: 'receipt',
+    key_scope_verified: true, voice_authorized: true, retention_policy_approved: true, zero_retention_confirmed: true },
+}; };
+resetProviderRows();
+let providerReadError = false;
+const providerDb = { from(table: string) {
+  const q = { select: () => q, eq: () => q, maybeSingle: async () => ({
+    error: providerReadError ? { code: 'fixture' } : null, data: providerRows[table],
+  }) }; return q;
+} };
+const readerMarker = 'const readProviderAdmission = async () => {';
+const readerStart = edge.indexOf(readerMarker);
+const providerReaderBody = readerStart < 0 ? 'return { unavailableCode: null };' :
+  edge.slice(readerStart + readerMarker.length, edge.indexOf('\n  };', readerStart));
+const readProviderAdmission = () => new AsyncFunction('admin', 'APPROVED_PAIGE_ELEVENLABS_VOICE_ID',
+  'resolveElevenLabsModel', 'envKey', providerReaderBody)(providerDb, approvedVoice, () => 'eleven_v3_conversational',
+    (key: string) => key === 'DEEPGRAM_MIP_ACCOUNT_VERIFIED' ? 'true' : 'fake-only-config-012345678901234567890123456789');
 let transportEnabled: boolean | undefined = false;
 const admissionDb = { from(table: string) {
   const query = { select: () => query, eq: () => query, in: () => query, order: () => query, limit: () => query,
@@ -161,7 +185,7 @@ const admissionDb = { from(table: string) {
 let masterDenied = 0;
 const masterCheck = async () => (await resolveAdmission(admissionDb,
   { id: base.sessionId, tenant_id: base.tenantId, actor_user_id: base.actorId },
-  async () => { masterDenied++; return true; }, () => true, () => true, () => true)) === null;
+  async () => { masterDenied++; return true; }, () => true, () => true, () => true, readProviderAdmission)) === null;
 for (const value of [false, undefined]) {
   transportEnabled = value;
   check(`master transport ${String(value)} refuses admission`, !await masterCheck());
@@ -178,6 +202,33 @@ const disabledBridge = new PaigeLiveRelayBridge({
 });
 await disabledBridge.open();
 check('disabled master switch opens neither provider adapter', blockedOpens === 0 && masterDenied === 3);
+
+transportEnabled = true;
+for (const [table, field, bad] of [
+  ['paige_voice_profiles', 'approved', false],
+  ['paige_voice_profiles', 'provider_voice_ref', 'wrong-voice'],
+  ['paige_voice_profiles', 'provider_verification_id', 'different-proof'],
+  ['paige_voice_profiles', 'status', 'revoked'],
+  ['paige_voice_profiles', 'active', true],
+  ['paige_voice_profiles', 'revision', 'unapproved-revision'],
+  ['paige_voice_readiness', 'provider_verification_id', 'different-proof'],
+  ['paige_voice_readiness', 'account_verification_receipt_ref', 'different-receipt'],
+  ...['key_scope_verified', 'voice_authorized', 'retention_policy_approved', 'zero_retention_confirmed']
+    .flatMap((field) => ['paige_voice_readiness', 'paige_voice_provider_verifications'].map((table) => [table, field, false])),
+] as [string, string, unknown][]) {
+  resetProviderRows();
+  check(`approval present before revoking ${table}.${field}`, await masterCheck());
+  providerRows[table][field] = bad;
+  check(`recurring admission rejects revoked ${table}.${field}`, !await masterCheck());
+}
+resetProviderRows(); providerReadError = true;
+check('provider approval read failure is closed', !await masterCheck());
+providerReadError = false;
+resetProviderRows();
+check('held final transcript can issue its authenticated runtime challenge',
+  /\.eq\("availability", "LIVE"\)\.in\("state", \[[^\]]*"held"/.test(edge));
+check('held in-flight runtime can consume its authenticated one-use claim',
+  /\.eq\("availability", "LIVE"\)\.in\("state", \[[^\]]*"held"/.test(chat));
 
 // Run the actual socket close callback. Durable minimize/restore/end belongs to
 // the existing authenticated control plane, independent of close delivery order.
