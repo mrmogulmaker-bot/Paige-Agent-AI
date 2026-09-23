@@ -2756,6 +2756,14 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      grep the whole document for every place that claim is restated, including headers and framing
      sentences — do not patch the one location a reviewer names.** A summary that contradicts its own
      detail is worse than either alone.
+     **THREE successive rounds landed here, each one layer up.** Round 5 fixed the procedure; round 6
+     fixed its scope; round 7 fixed the framing line, the column header and the row; round 8 found the
+     **Verdict column** still printing "Inherited" — assigning the reader's run the verdict the rest of
+     the table had stopped assigning. A table column is a claim too. The fix that finally held was
+     structural rather than another edit: the column now describes only what is true of `main`
+     (*"what `main`'s red is, when it is red"*) and a separate column carries what would establish
+     attribution for the reader's run. **Separate the two subjects rather than wording the shared one
+     more carefully** — the recurrence was a sign the structure conflated them.
   7. **The meta-pattern, and the one actually worth carrying: four of the seven findings were an
      ENUMERATION offered where a general RULE was needed.** Widen the regex to cover single quotes
      (enumerate the quote styles). Add a line counter (enumerate the layouts). Name two directories as

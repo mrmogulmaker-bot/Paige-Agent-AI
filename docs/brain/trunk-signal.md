@@ -33,16 +33,16 @@ Every row below is a real **check-run name** as GitHub reports it, with one deli
 is a *step* inside the `verify` job, listed here because people look for it by name. There is no check run
 called `ci:tsc`, and there is none called plain `Vercel` either.
 
-| Check | State on `main` | Verdict | What would establish attribution |
+| Check | Known state on `main` | What `main`'s red is, when it is red | What would establish attribution for YOUR run |
 |---|---|---|---|
-| **`verify`** | RED — fails on exactly one step, `npm run test` | **Inherited.** Tracked as **#1372**. | **Nothing in your diff's paths can clear this.** A failing test name not among the twenty below proves it is yours; matching names prove nothing, because a change can alter a listed failure in place. Only a base-vs-head diff of the failure output clears a run — see below. |
-| **`github-advanced-security`** | **FLAPPING** — mostly red, green perhaps a quarter of the time. Re-count rather than trust this line; the number moves within hours. | **Not diagnostic, and NOT a licence to ignore it.** | **Match the failure SIGNATURE in the job log before dismissing it** — see the section below. A red whose signature you have not checked is an uninvestigated failure, not an inherited one. |
-| `ci:tsc` — **a step inside `verify`, not a check of its own** | GREEN — *"no new type errors (baseline 12, current 12)"* | **Passing.** It is a ratchet, not a zero-error gate. | If it goes red, `verify` goes red and it is yours. Note the mechanism before you read the number — see below. |
-| **`audit`** | GREEN | — | A red here is yours. |
-| **`Validate UI delivery evidence`** | GREEN | — | Red means a recognised UI source changed without an evidence record. Usually yours. |
-| **`web-fetch-hardening-smoke`** | GREEN | — | A red here is yours. |
-| **`Supabase Preview`** | SKIPPED | — | Expected. Not a signal. |
-| **`Vercel Preview Comments`** | GREEN | — | A red here is yours. Note Vercel also reports through commit STATUSES, which the check-runs API does not return — so a Vercel signal you can see in the UI may not appear in a check-run listing. |
+| **`verify`** | RED — fails on exactly one step, `npm run test` | `main`'s own failure is tracked as **#1372**. That is a fact about `main`, not a verdict on your run. | **Nothing in your diff's paths can clear this.** A failing test name not among the twenty below proves it is yours; matching names prove nothing, because a change can alter a listed failure in place. Only a base-vs-head diff of the failure output clears a run — see below. |
+| **`github-advanced-security`** | **FLAPPING** — mostly red, green perhaps a quarter of the time. Re-count rather than trust this line; the number moves within hours. | When red, `main`'s failure is a vendor fault with a specific signature — **not diagnostic, and NOT a licence to ignore it.** | **Match the failure SIGNATURE in the job log before dismissing it** — see the section below. A red whose signature you have not checked is an uninvestigated failure, not an inherited one. |
+| `ci:tsc` — **a step inside `verify`, not a check of its own** | GREEN — *"no new type errors (baseline 12, current 12)"* | Not red on `main`. It is a ratchet, not a zero-error gate. | Red means a NEW error signature appeared. Read the diagnostic — the program is wider than `src/`, so do not rule yourself out by path. See below. |
+| **`audit`** | GREEN | Not red on `main`. | Read the failure. |
+| **`Validate UI delivery evidence`** | GREEN | Not red on `main`. | Red means a recognised UI source changed without an evidence record. Read the failure. |
+| **`web-fetch-hardening-smoke`** | GREEN | Not red on `main`. | Read the failure. |
+| **`Supabase Preview`** | SKIPPED | Never red; it does not run. | Not a signal either way. |
+| **`Vercel Preview Comments`** | GREEN | Not red on `main`. | Read the failure. Note Vercel also reports through commit STATUSES, which the check-runs API does not return — so a Vercel signal you can see in the UI may not appear in a check-run listing. |
 
 ---
 
@@ -174,9 +174,24 @@ The 10 files holding the 12 baseline errors: `StudioShell.tsx` · `PaigeWorkspac
 `useClientPortalBrand.ts` · `useMyActions.ts` · `customFields.ts` · `planning.ts` ·
 `tenantLifecycle.ts` · `playbook/resolve.ts` · `CalendarAdmin.tsx` · `Step1Welcome.tsx`.
 
-**Corollary worth knowing:** `tsconfig.app.json` includes only `["src"]`. A change confined to
-`scripts/` or `supabase/functions/` is not in that program at all, so it cannot move either number —
-which is itself a fast way to rule out attribution.
+**A corollary this file previously got HALF wrong, in the direction that wrongly clears a red.** It
+said: `tsconfig.app.json` includes only `["src"]`, so a change confined to `scripts/` or
+`supabase/functions/` cannot move either number. **`include` names the program's ROOTS, not the
+program** — the program is whatever those roots reach. Measured with
+`npx tsc --noEmit -p tsconfig.app.json --listFilesOnly`:
+
+| tree | files in the program |
+|---|---|
+| `scripts/` | **0** — genuinely outside it |
+| `supabase/functions/` (excluding `node_modules`) | **91** — including `_shared/action-risk.ts` |
+
+They arrive through ordinary imports: `src/integrations/auth/n8nManagement.test.ts` imports
+`../../../supabase/functions/_shared/action-risk.ts`. So an edge-function change **can** move the
+ratchet, and "my diff is not under `src/`" is not a reason to rule yourself out.
+
+**The rule, rather than the two tree names:** if you need to know whether a file is in the program,
+run `--listFilesOnly` and grep for it. Reading `include` tells you where the compiler starts, not
+where it ends up.
 
 ---
 
