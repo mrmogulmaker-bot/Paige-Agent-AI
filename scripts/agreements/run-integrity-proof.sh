@@ -108,7 +108,11 @@ if grep -qE 'NO ERROR - GUARANTEE IS FALSE|UNEXPECTED|SUCCEEDED - INTEGRITY CLAI
   echo "FAIL — at least one integrity guarantee did not hold."
   exit 1
 fi
-if [ "$(grep -c 'PASS' "$OUT")" -lt 25 ]; then
+# The floor exists so a suite that silently SHRANK cannot pass by asserting less. It was written at
+# 25 against a suite that produced 30, and it was not raised when rows were added — by the time the
+# suite produced 35 it tolerated 10 vanished negatives instead of 5. Raise it with the suite, or it
+# stops being a floor and becomes a formality. Count at the time of writing: 35.
+if [ "$(grep -c 'PASS' "$OUT")" -lt 33 ]; then
   echo "FAIL — fewer negatives ran than expected; the proof itself is broken."
   exit 1
 fi

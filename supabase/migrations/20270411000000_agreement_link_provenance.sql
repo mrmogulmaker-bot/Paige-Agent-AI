@@ -114,7 +114,7 @@ BEGIN
      AND position('/presented-source-' IN coalesce(_key, '')) = 0 THEN
     -- 'PA001' rather than the 23514 every other refusal here raises, and the reason is the whole
     -- point of the refusal. The surface maps a SQLSTATE to public copy and deliberately never
-    -- echoes a database message (`useSoloAgreementSignings.ts:251`), so on 23514 an owner would be
+    -- echoes a database message (`useSoloAgreementSignings.ts:252`), so on 23514 an owner would be
     -- shown "Check the client, the document and the wording, then try again." — an instruction to
     -- retry something that can never succeed, because the content columns are write-once
     -- (`enforce_agreement_seal_immutable`, 20270401000000:522). A refusal that sends a person round

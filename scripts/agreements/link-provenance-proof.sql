@@ -19,7 +19,7 @@ SELECT set_config('test.member','true',false);
 -- counterparty from the contact's email on insert, so every agreement below already has exactly one
 -- signer at position 1 — which is the shape a real agreement has. Adding another by hand produced a
 -- second row at the same position, and `signing_order` is unique only by the body of
--- `add_agreement_signer` (20270405000000:183) and not by any index, so nothing would have refused it.
+-- `add_agreement_signer` (20270405000000:186-190) and not by any index, so nothing would have refused it.
 
 -- Like pg_temp.probe in contract-proof.sql, but it also inspects the message. Both emit the same
 -- failure vocabulary the runner greps for, so a regression here fails the run without the runner
