@@ -39,7 +39,7 @@ import {
   DECLARED_METHODS,
 } from "./useSoloSalesOps";
 import { useSoloAgreements } from "./useSoloAgreements";
-import { useSoloAgreementSignings } from "./useSoloAgreementSignings";
+import { useSoloAgreementSignings, TRAIL_LIMIT } from "./useSoloAgreementSignings";
 import { useTierFeatures } from "@/hooks/useTierFeatures";
 import "./sales-ops.css";
 import { SalesDialogPortal, useSalesDraftExit } from "./sales-dialog";
@@ -1424,7 +1424,7 @@ const EVENT_DONE = new Set(["completed", "signed", "sealed", "consented"]);
 
 function AgreementCompletion({ signings, signing, clientName, tenantId, onClose, onOpenClients }) {
   const panelRef = useModalDialog();
-  const [trail, setTrail] = React.useState({ phase: "loading", events: [], message: "" });
+  const [trail, setTrail] = React.useState({ phase: "loading", events: [], message: "", truncated: false });
   const [notice, setNotice] = React.useState("");
   const alive = React.useRef(true);
   React.useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -1439,8 +1439,8 @@ function AgreementCompletion({ signings, signing, clientName, tenantId, onClose,
         .catch(() => ({ ok: false, message: "This document's history could not be read." }));
       if (!current || !alive.current) return;
       setTrail(outcome.ok
-        ? { phase: "ready", events: outcome.events, message: "" }
-        : { phase: "error", events: [], message: outcome.message });
+        ? { phase: "ready", events: outcome.events, message: "", truncated: outcome.truncated }
+        : { phase: "error", events: [], message: outcome.message, truncated: false });
     })();
     return () => { current = false; };
   }, [signings, signing.id, tenantId]);
@@ -1482,22 +1482,46 @@ function AgreementCompletion({ signings, signing, clientName, tenantId, onClose,
             </span>
             <div>
               <h2 id="so-done-title">Signed and completed</h2>
+              {/* This sentence asserted two things this surface does not know.
+                *
+                * "These terms are now active against their record" — signing completion does not
+                * touch the commercial row, and the create-and-sign flow saves it as a DRAFT, so
+                * the common case made this false. It also contradicted the closing note eight
+                * lines below, which says in so many words that the commercial state is separate
+                * and the owner controls it from here. The note is right; the sentence is gone.
+                *
+                * "The sealed PDF carries their signature" — asserted unconditionally while the
+                * footer said no sealed copy is recorded. The dialog argued with itself. */}
               <p>
-                {who} signed this{momentOf(signing.completedAt) ? ` on ${momentOf(signing.completedAt)}` : ""}. The sealed
-                PDF carries their signature, the exact wording they read, and the time they signed it.
-                These terms are now active against their record.
+                {who} signed this{momentOf(signing.completedAt) ? ` on ${momentOf(signing.completedAt)}` : ""}.
+                {signing.hasSealedCopy
+                  ? " The sealed PDF carries their signature, the exact wording they read, and the time they signed it."
+                  : " No sealed copy is recorded against it yet, so what follows is the recorded history rather than the document itself."}
               </p>
             </div>
           </div>
 
           <div className="so-trail">
             <div className="so-trail-hd">What happened, and when</div>
+            {/* A panel headed "What happened, and when" that quietly drops the oldest events
+              * presents a partial chain of custody as a complete one. It is capped for the same
+              * reason any list is, so the cap is DISCLOSED rather than hidden. */}
+            {trail.truncated && (
+              <p className="so-absent so-trail-cut" role="status">
+                Showing the {TRAIL_LIMIT} most recent events. Older ones — which may include this
+                document being created and first sent — are recorded but not shown here.
+              </p>
+            )}
             {trail.phase === "loading" && <p className="so-absent" role="status">Reading this document's history…</p>}
             {trail.phase === "error" && <p className="so-absent" role="alert">{trail.message}</p>}
+            {/* `phase === "ready"` PROVES the read completed, so "could not be read" was a
+              * possibility this branch had already excluded — and it undid the very distinction
+              * this lane claimed to draw, in the commit message, the PR and two evidence records.
+              * The error branch above carries the failed read; this one carries only the fact. */}
             {trail.phase === "ready" && trail.events.length === 0 && (
               <p className="so-absent">
-                No history is recorded against this document. That is not the same as nothing having
-                happened — it means the trail could not be read or was never written.
+                No events are recorded against this document. The history was read successfully and
+                came back empty, which is not the same as the history being unavailable.
               </p>
             )}
             {trail.phase === "ready" && trail.events.map((event) => (
@@ -1527,7 +1551,7 @@ function AgreementCompletion({ signings, signing, clientName, tenantId, onClose,
           {signing.hasSealedCopy
             ? <button className="btn btn-s btn-p" onClick={() => { void download(); }}><Ic.doc size={13} />Download the signed PDF</button>
             : <span className="so-quiet">This is signed, but no sealed copy is recorded against it.</span>}
-          {onOpenClients && <button className="btn btn-s" onClick={() => onOpenClients()}>Open {clientName || "the client"}&rsquo;s record</button>}
+          {onOpenClients && <button className="btn btn-s" onClick={() => onOpenClients(signing.contactId)}>Open {clientName || "the client"}&rsquo;s record</button>}
           <span style={{ flex: 1 }} />
           <button className="btn btn-s btn-q" onClick={onClose}>Back to Commercial Terms</button>
         </footer>

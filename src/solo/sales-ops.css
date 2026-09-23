@@ -1183,13 +1183,17 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
   border: 1px solid var(--line); border-radius: var(--r-m); overflow: hidden;
   background: var(--surface);
 }
+/* NO TRANSITION on the hover grounds below. AGENTS.md's interface standard says motion animates
+ * `transform`/`opacity` only, and `background`, `color` and `border-color` are paint-triggering.
+ * The state change stays — it is instant instead of eased, which costs a hover almost nothing and
+ * keeps the rule intact. (Honest note: 19 other stylesheets in src/ still carry paint transitions;
+ * those are pre-existing and not this change's to sweep.) */
 .so-res {
   display: flex; align-items: center; gap: 12px;
   width: 100%; padding: 10px 13px; text-align: left;
   border: 0; border-bottom: 1px solid var(--line-soft);
   background: var(--surface); color: var(--ink); cursor: pointer;
   font: 400 13px/1.4 var(--font);
-  transition: background .14s;
 }
 .so-res:last-child { border-bottom: 0; }
 .so-res > strong {
@@ -1228,7 +1232,6 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
   flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px;
   border-radius: 8px; font: 500 11.5px/1 var(--font); white-space: nowrap;
   color: var(--ink-3); background: var(--surface-2); border: 1px solid var(--line);
-  transition: color .14s, border-color .14s, background .14s;
 }
 @media (hover: hover) and (pointer: fine) {
   .so-res:not(:disabled):hover .so-res-act {
