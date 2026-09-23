@@ -155,11 +155,22 @@ export const VIEW_SOURCES: Readonly<Record<string, ViewSource>> = {
    *
    * §58 — this view previously rendered `FleetTeamPulseSurface`, a RETIRED-pack port
    * (`Super Admin Shell.dc.html` L6593) that the v3 pack draws nowhere, mounted here as a
-   * stopgap. It is displaced, not dropped: the component stays on disk (unmounted, like
-   * `OperatorLegacyApp`), and its real capability — the platform roster read
-   * (`list_platform_staff()`) — is owed to the v3 Settings → Team port (Layer 6 wiring),
-   * which is where the pack places platform staff. `carries` keeps `fleet/team-pulse` as the
+   * stopgap. It is displaced, not dropped, and `carries` keeps `fleet/team-pulse` as the
    * drop-nothing record of where that content lived.
+   *
+   * UPDATED 2026-09-23 — the component itself was STRIPPED (§30), and the earlier note here was
+   * wrong on the point it rested on. It justified keeping the file on disk "like
+   * `OperatorLegacyApp`", but that file does not exist: `src/operator/legacy/` is gone, stripped
+   * itself, so the precedent for retention was a file that had already been removed. Unmounting
+   * it also moved it into the one cell `lint:pack-lineage` exists to fail — unreachable AND
+   * dead-pack — which has no exemption path by design, so the guard was red on main from the
+   * moment of the unmount.
+   *
+   * What is OWED is unchanged and is not the component: the platform roster read
+   * (`list_platform_staff()`) is owed to the v3 Settings → Team port (Layer 6 wiring), which is
+   * where the pack places platform staff. That read survives at `src/operator/data/useTeamPulse.ts`
+   * and is registered in `operator-reachability.mjs`'s EXEMPT map with this reason. The v3 port
+   * will draw its own surface; it was never going to reuse the retired pack's.
    */
   "analytics/platform-health": {
     bespoke: "PlatformHealthSurface",
