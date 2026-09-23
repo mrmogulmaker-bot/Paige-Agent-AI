@@ -175,6 +175,28 @@ function looksLikeCredential(value: string): boolean {
   return classes >= 3;
 }
 
+/**
+ * Would this RUN OF SEGMENTS, rejoined, be one credential that a `/` split apart?
+ *
+ * MEASURED, and it is the difference between a control and a decoration. `/` is in the STANDARD
+ * base64 alphabet, and 39.59% of real-shape invite tokens contain one (2,000,000 samples). Such a
+ * token reaches a path already broken into pieces, each typically under the 20-character floor, so
+ * the per-segment rule never sees a credential and the whole token survives. Measured escape rate
+ * with per-segment checking alone, on a route the allowlist does not know: 1 in 7 — worse than the
+ * 1 in 786 that made a class count insufficient in the first place.
+ *
+ * Rejoining is therefore necessary, but it cannot use the ordinary predicate: `/solo/3855/growth/
+ * sales` rejoins to 22 characters of `[A-Za-z0-9/]` and would score three classes. The
+ * discriminator is CASE. This platform's routes are lowercase slugs; a 32-character base64 token
+ * contains an uppercase letter with probability 1 - (38/64)^32, which rounds to certainty. So a
+ * rejoined run is a credential only when it is long, strictly base64, and MIXED case.
+ */
+function looksLikeSplitCredential(rejoined: string): boolean {
+  if (rejoined.length < 28) return false;
+  if (!/^[A-Za-z0-9+/=]+$/.test(rejoined)) return false;
+  return /[a-z]/.test(rejoined) && /[A-Z]/.test(rejoined);
+}
+
 /** Redact a credential-bearing PATHNAME. Returns a stable shape so analytics can still group it. */
 export function redactSecretPath(pathname: string): string {
   if (!pathname) return pathname;
@@ -187,14 +209,18 @@ export function redactSecretPath(pathname: string): string {
   // skipping index 0 assumed the input always begins with `/`, which is true of a pathname and
   // false of the bare strings this is also reached with.
   const out: string[] = [];
-  for (const seg of segments) {
-    if (!looksLikeCredential(safeDecode(seg))) {
-      out.push(seg);
+  for (let i = 0; i < segments.length; i++) {
+    // Whole-run check FIRST: a token split by its own `/` is only visible once rejoined.
+    if (i > 0 && looksLikeSplitCredential(segments.slice(i).join("/"))) {
+      out.push(REDACTED);
+      return out.join("/");
+    }
+    if (!looksLikeCredential(safeDecode(segments[i]))) {
+      out.push(segments[i]);
       continue;
     }
-    // A STANDARD-base64 token contains `/`, so it arrives already split across segments. Once one
-    // piece is a credential the rest belongs to the same secret — and the trailing piece is often
-    // under the length floor, so inspecting it alone would let a fragment through. Collapse.
+    // Once one piece is a credential the rest belongs to the same secret — and a trailing piece is
+    // often under the length floor, so inspecting it alone would let a fragment through. Collapse.
     out.push(REDACTED);
     return out.join("/");
   }
