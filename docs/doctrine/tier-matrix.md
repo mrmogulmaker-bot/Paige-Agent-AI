@@ -341,7 +341,7 @@ class of lie as a fabricated metric (§13).
 
 Legend: **✓** live · **—** not built · **N/A** tier not opened yet · **403** denied at the route gate.
 
-### Agreements engine — PAIGE-native e-signature (INT-163, PR #1352, 2026-09-22)
+### Agreements engine — PAIGE-native e-signature (INT-163, PR #1352 MERGED `d08769bf` 2026-09-22; UI PR #1356 MERGED `cc9bf723`; reconciliation head `57dc6397` 2026-09-23)
 
 PAIGE's own signing lifecycle: a tenant sends a document to one of their own clients, that person
 signs it with no account on this platform, and the completed file is sealed and retained. No signing
@@ -357,13 +357,18 @@ on. Recorded as an exception rather than followed silently.
 | Capability | God (act-as) | Agency-as-tenant | Standalone Solo | Sub-account | Client | Anonymous | Deploy state |
 |---|---|---|---|---|---|---|---|
 | `agreement_signing` tier flag | — | **— (refused)** | ✓ | ✓ | — | — | **flag LIVE on merge, and now ENFORCED** at the database — see the correction below |
-| Records + integrity triggers (`paige_agreements`, `_signers`, `_events`) | ✓ (operator read) | **— (refused by `trg_agreement_tier`)** | ✓ | ✓ | — (no policy grants it) | — (`anon` holds no grant) | **code MERGED, prod apply PENDING** — migrations `20270401000000`/`20270402000000`/`20270403000000`/`20270404000000`/`20270405000000` |
-| Counterparty signer derived from the client (`trg_agreement_seed_counterparty`) | ✓ act-as | — | ✓ | ✓ | — | — | **code MERGED, prod apply PENDING** — `20270405000000` |
+| Records + integrity triggers (`paige_agreements`, `_signers`, `_events`) | ✓ (operator read) | **— (refused by `trg_agreement_tier`)** | ✓ | ✓ | — (no policy grants it) | — (`anon` holds no grant) | **APPLIED** — migrations `20270401000000`/`20270402000000`/`20270403000000`/`20270404000000`/`20270405000000`, persisted on prod (`db-live` at `d08769bf`, zero drift). Previously read `prod apply PENDING`; that was true when written and stale by merge. |
+| Counterparty signer derived from the client (`trg_agreement_seed_counterparty`) | ✓ act-as | — | ✓ | ✓ | — | — | **APPLIED** — `20270405000000`, persisted on prod (`db-live` at `d08769bf`) |
 | Agreement RPC seams (`save_paige_agreement` · `add_agreement_signer` · `create_agreement_signing` · `issue_agreement_signing_link` · `void_paige_agreement` · `paige_agreement_overview`) | ✓ act-as | **refused at the database** | ✓ | ✓ | — | 403 | **LIVE on merge** — these are the §10 callable seams |
 | Agreement PAIGE CHAT TOOLS (draft · add_signer · send · resend · void · status) | — | — | — | — | — | — | **WITHHELD — not shipped in this PR.** The INT-003 capability-kit guard cannot admit a new mutating tool: `capability-kit-lint` rejects a new `RISK` entry, and its stated remedy (`defineCapability()`) requires that same entry via `classifyAction`. Measured, not inferred. Lands when INT-003 resolves it. |
 | Token-gated signing act (`sign-agreement`, `verify_jwt=false`) | n/a | n/a | n/a | n/a | n/a | **token-gated, not a tier** | LIVE on merge |
 | Document retrieval (`agreement-document`, `verify_jwt=false`) | n/a | n/a | endpoint LIVE, **no UI caller yet** | endpoint LIVE, **no UI caller yet** | **signer: presented doc via a live signing token, sealed copy via the retrieval token** | — | endpoint LIVE on merge; the tenant-side surface that calls it with a session is OWED |
 | Signer VIEW recorded (`peek_agreement_signing` writes `first_viewed_at` + `viewed`) | ✓ act-as read | — | ✓ | ✓ | — | — | **LIVE on merge** — `20270407000000`. The owner's *email* notice for viewed/declined is OWED (a database function cannot send mail); both states show on their own surface. |
+| Uploaded document actually SENT (`agreement-send` reads `document_path` from `tenant-agreements`) | ✓ act-as | — | ✓ | ✓ | — | — | **code MERGED to branch, NOT deployed, NOT proven** — fixes a LIVE defect in which an upload was frozen and emailed as a document byte-identical to an empty one |
+| Agreement list read (`paige_agreement_overview`, widened) | ✓ act-as | **refused at the database** | ✓ | ✓ | — | 403 | **code MERGED to branch, migration `20270408000000` NOT proven applied.** Emits no storage key: sealedness and file-presence are booleans. Signer facts aggregate server-side, so the per-signer array stops reaching the browser |
+| Spine capability `agreement.overview` (READ) | ✓ | — | ✓ | ✓ | — | — | **LIVE on merge** — a read needs no chat tool, so the INT-003 deadlock does not reach it. The mutating acts stay WITHHELD, as the row above records |
+| Add a signer explicitly (`add_agreement_signer`) | ✓ act-as | **refused at the database** | ✓ | ✓ | — | 403 | **RPC LIVE since `20270405000000`; its FIRST producer ships here.** Until now a client with no email on file dead-ended: the send refused correctly and no surface could answer the refusal |
+| Completed agreement remembered in tenant knowledge (`agreement_learn_on_complete`) | — (no client book) | — | ✓ | ✓ | — | — | **code MERGED to branch, catalogue migration `20270409000000` NOT proven applied.** Summary only — counterparty, title, dates, terms. Carries NO signer evidence: no IP, no user agent, no signature image, no legal body. Only an explicit `off` blocks |
 | Expiry sweep (`sweep_expired_paige_agreements`, hourly `pg_cron`) | — | — | — | — | — | — | **conditional**: scheduled only where `pg_cron` is installed; the migration RAISEs a NOTICE and continues if it is not |
 
 **§13 CORRECTION, recorded rather than quietly fixed (2026-09-22).** The two rows above previously

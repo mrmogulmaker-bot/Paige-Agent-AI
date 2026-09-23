@@ -22,6 +22,17 @@ import { expiryFromNow, mintSignerToken, RETRIEVAL_TOKEN_TTL_DAYS, sha256Hex } f
 import { notify, ownerNotificationEmail } from "./notify.ts";
 import { recordCompletedAgreementToKnowledge } from "./knowledge.ts";
 
+/**
+ * DO NOT ADD AN INGEST OR NOTIFICATION REASON TO THIS UNION. The omission is the design, and the
+ * distinction it encodes is easy to lose: a SEALING failure means the agreement has no executed
+ * document, which decides whether it is validly executed at all. A knowledge-ingest or notification
+ * failure means Paige did not write down something she already has. The first is a state of the
+ * agreement; the second is not, and representing it here would make a completed, sealed, legally
+ * executed agreement reportable as a failure because a summary did not embed.
+ *
+ * The rule that a sealing failure must surface as its own visible state is real and applies to every
+ * reason listed below. It stops at the seal.
+ */
 export type SealOutcome =
   | { ok: true; sealedSha256: string; sealedKey: string }
   | { ok: false; reason: "not_ready" | "already_sealed" | "missing_presented" | "render_failed" | "storage_failed" | "verify_failed" | "unrenderable_name"; detail: string };
@@ -256,8 +267,15 @@ export async function sealAndComplete(db: Db, agreementId: string): Promise<Seal
       signers: (signers ?? []) as Array<Record<string, unknown>>,
     });
     if (!learned.ingested) {
-      // Loud, never silent (§32): a write that quietly never happens is indistinguishable from one
-      // that was never wired.
+      // Loud in the log, never silent (§32): a write that quietly never happens is
+      // indistinguishable from one that was never wired.
+      //
+      // AND NEVER LOUDER THAN THAT — this is the line a future session will want to "fix", so the
+      // reason is here rather than somewhere it can be missed. Returning a failure from here, or
+      // giving `SealOutcome` a reason to carry one, would make an agreement that IS executed report
+      // itself as not executed because a summary did not embed. The caller would then surface that
+      // to a signer who has already signed, and a retry would re-enter a path guarded by a
+      // write-once seal. Log it, leave the agreement completed, and let the miss be a miss.
       console.warn("[agreements] completed agreement not written to knowledge", { agreementId, reason: learned.reason });
     }
   } catch (e) {
