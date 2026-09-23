@@ -17,7 +17,7 @@
 // comes from `current_user_tenant_id()` under the CALLER'S OWN JWT, every query is scoped to it, and
 // the database re-proves each link by trigger even for the service role.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { renderPresentedPdf, hashDocument, assertDocumentIsRenderable, assertNamesAreStampable, inspectUploadedPdf, planPresentedDocument, UnrenderableDocumentError, UnrenderableNameError } from "../_shared/agreements/document.ts";
+import { renderPresentedPdf, hashDocument, assertDocumentIsRenderable, assertNamesAreStampable, inspectUploadedPdf, isOwnedByTenant, planPresentedDocument, UnrenderableDocumentError, UnrenderableNameError } from "../_shared/agreements/document.ts";
 import { expiryFromNow, mintSignerToken, sha256Hex, SIGNING_TOKEN_TTL_DAYS } from "../_shared/agreements/token.ts";
 import { tenantContactForDisclosure } from "../_shared/agreements/notify.ts";
 
@@ -162,6 +162,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let contentKey = agreement.content_storage_key as string | null;
   let contentHash = agreement.content_sha256 as string | null;
 
+  const alreadyFrozen = Boolean(contentKey && contentHash);
+
   if (!contentKey || !contentHash) {
     let bytes: Uint8Array;
 
@@ -197,6 +199,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
       } catch (e) {
         if (e instanceof UnrenderableDocumentError) return json({ ok: false, error: e.message }, 422);
         throw e;
+      }
+
+      // TENANT OWNERSHIP, RE-IMPOSED HERE BECAUSE NOTHING ELSE IMPOSES IT ON THIS PATH.
+      // `save_paige_agreement` validates only that `_document_path` is NON-EMPTY
+      // (20270401000000:788-790), and the value arrives from the browser through
+      // `create_agreement_signing`. Ordinary reads of this bucket are authorized on the path's
+      // first segment against `tenant_members` (20260630190349:2-13) — but the download below
+      // uses the SERVICE ROLE, which bypasses that policy completely.
+      //
+      // Before this change `document_path` was never read, so a foreign value sat inert in the
+      // row. Reading it without re-stating the policy's own predicate would have turned a dormant
+      // field into a cross-tenant file read, and copied another workspace's document into this
+      // caller's presented-document area where `agreement-document` would serve it back to them.
+      // The upload side builds the path as `${tenantId}/source/...`
+      // (useSoloAgreementSignings.ts:436), so the first segment is the owning tenant by
+      // construction on both sides.
+      if (!isOwnedByTenant(documentPath, tenantId)) {
+        console.error("[agreement-send] document_path is not owned by this workspace", { agreementId, tenantId });
+        return json({ ok: false, error: "That uploaded document does not belong to this workspace, so nothing was sent." }, 403);
       }
 
       const source = await admin.storage.from("tenant-agreements").download(documentPath);
@@ -264,6 +285,45 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (freezeError) {
       console.error("[agreement-send] frozen document could not be recorded", { agreementId, error: freezeError.message });
       return json({ ok: false, error: "The document could not be recorded, so nothing was sent." }, 502);
+    }
+  }
+
+  // ── 4b) AN AGREEMENT FROZEN BY THE OLD CODE STILL HOLDS THE BLANK.
+  //
+  // The freeze above is guarded on `content_storage_key`/`content_sha256` being absent, and those
+  // were written BEFORE email delivery (see the note below) — so they survive a send that failed,
+  // and they survive every send that succeeded. Every `tenant_upload` that was sent, or merely
+  // attempted, before this fix therefore carries a title-only render and the SHA-256 of that
+  // render as its integrity record, and a resend would keep mailing links to it. Correcting the
+  // render alone would have left exactly the agreements that already went out uncorrected.
+  //
+  // Those columns are write-once by `enforce_agreement_seal_immutable` (20270401000000:529-533),
+  // and rightly so: an integrity record a resend can quietly rewrite is not one. So this does not
+  // repair the row — it REFUSES to keep presenting it. Repairing the affected rows is a deliberate
+  // data decision (which rows are safely repairable, and what happens to any already signed
+  // against the blank), and it is named as owed rather than taken here.
+  //
+  // The test is exact rather than heuristic: for a tenant_upload the presented bytes ARE the
+  // uploaded bytes, so the frozen hash must equal the hash of the file at `document_path`. It also
+  // catches a second case worth catching — a file replaced at the same path after freezing.
+  if (alreadyFrozen && agreement.body_source === "tenant_upload") {
+    const documentPath = agreement.document_path as string | null;
+    if (!documentPath || !isOwnedByTenant(documentPath, tenantId)) {
+      console.error("[agreement-send] frozen upload has no usable document_path", { agreementId });
+      return json({ ok: false, error: "This agreement's document cannot be verified, so nothing was sent." }, 409);
+    }
+    const current = await admin.storage.from("tenant-agreements").download(documentPath);
+    if (current.error || !current.data) {
+      console.error("[agreement-send] frozen upload could not be re-read", { agreementId, error: current.error?.message });
+      return json({ ok: false, error: "The uploaded document could not be read, so nothing was sent." }, 502);
+    }
+    const currentHash = await hashDocument(new Uint8Array(await current.data.arrayBuffer()));
+    if (currentHash !== contentHash) {
+      console.error("[agreement-send] frozen document is not the uploaded file", { agreementId, contentKey });
+      return json({
+        ok: false,
+        error: "This agreement was prepared before a defect was fixed, so the document on file is not the one you uploaded. Nothing was sent. Create a new agreement from the same document and send that instead.",
+      }, 409);
     }
   }
 

@@ -17,6 +17,7 @@ import {
   assertDocumentIsRenderable,
   assertNamesAreStampable,
   hashDocument,
+  isOwnedByTenant,
   looksLikePdf,
   planPresentedDocument,
   renderPresentedPdf,
@@ -414,4 +415,46 @@ Deno.test("looksLikePdf requires the header at offset 0, not merely somewhere", 
   // strength of "the magic appears somewhere" is a guess, and this is not a place to guess.
   const withPreamble = new TextEncoder().encode("junk-prefix%PDF-1.7\n");
   assert(!looksLikePdf(withPreamble));
+});
+
+/**
+ * THE OWNERSHIP PREDICATE ON `document_path`.
+ *
+ * `save_paige_agreement` validates only that the path is NON-EMPTY, and the value arrives from the
+ * browser. Ordinary reads of the uploads bucket are authorized on the path's first segment against
+ * `tenant_members`, but the send path downloads with the SERVICE ROLE and never reaches that
+ * policy. Before the presented-document fix the field was never read, so a foreign value was
+ * inert; reading it is what made this predicate necessary.
+ */
+Deno.test("a path in this workspace is accepted", () => {
+  assert(isOwnedByTenant("11111111-1111-1111-1111-111111111111/source/1700-nda.pdf", "11111111-1111-1111-1111-111111111111"));
+});
+
+Deno.test("a path in ANOTHER workspace is refused", () => {
+  assert(!isOwnedByTenant("22222222-2222-2222-2222-222222222222/source/1700-nda.pdf", "11111111-1111-1111-1111-111111111111"));
+});
+
+Deno.test("traversal, absolute and backslash forms are refused rather than normalised", () => {
+  const me = "11111111-1111-1111-1111-111111111111";
+  assert(!isOwnedByTenant(`${me}/../2222/source/x.pdf`, me));
+  assert(!isOwnedByTenant(`/${me}/source/x.pdf`, me));
+  assert(!isOwnedByTenant(`${me}\\source\\x.pdf`, me));
+  assert(!isOwnedByTenant(`${me}//source/x.pdf`, me));
+});
+
+Deno.test("a bare tenant segment with no file is refused", () => {
+  const me = "11111111-1111-1111-1111-111111111111";
+  assert(!isOwnedByTenant(me, me));
+  assert(!isOwnedByTenant(`${me}/`, me));
+});
+
+Deno.test("a prefix that merely starts with the tenant id is refused", () => {
+  // `<tenant>evil/...` must not pass by string prefix.
+  const me = "11111111-1111-1111-1111-111111111111";
+  assert(!isOwnedByTenant(`${me}evil/source/x.pdf`, me));
+});
+
+Deno.test("an absent path or absent tenant is refused", () => {
+  assert(!isOwnedByTenant("", "11111111-1111-1111-1111-111111111111"));
+  assert(!isOwnedByTenant("11111111-1111-1111-1111-111111111111/source/x.pdf", null));
 });

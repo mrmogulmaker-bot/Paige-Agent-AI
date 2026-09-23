@@ -146,6 +146,21 @@ export async function inspectUploadedPdf(
 }
 
 /**
+ * Does this storage path belong to this workspace?
+ *
+ * The same predicate the bucket's own SELECT policy applies — the first path segment is the owning
+ * tenant — restated in code because the download that follows runs as the service role and so
+ * never reaches that policy. Traversal and absolute forms are refused rather than normalised: a
+ * path that needs normalising to look owned is not a path this should be reading.
+ */
+export function isOwnedByTenant(path: string, tenantId: string | null): boolean {
+  if (!path || !tenantId) return false;
+  if (path.startsWith("/") || path.includes("..") || path.includes("\\")) return false;
+  const segments = path.split("/");
+  return segments.length >= 2 && segments[0] === tenantId && segments.every((segment) => segment.length > 0);
+}
+
+/**
  * WHICH BYTES DO WE PRESENT FOR SIGNATURE?
  *
  * Pure, and separated from the send handler on purpose. This decision shipped wrong and nothing
