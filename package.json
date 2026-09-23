@@ -120,7 +120,9 @@
     "proof:lane:selftest": "node scripts/live-drive/proof-lane.selftest.mjs",
     "proof:lane": "node scripts/live-drive/flows/solo-governed-flows.mjs",
     "smoke:agreement-name-fidelity": "node --experimental-strip-types scripts/agreements-name-fidelity-smoke.mts",
-    "lint:definer-fns:test": "node scripts/ci/definer-signature-acl.mjs --self-test"
+    "lint:definer-fns:test": "node scripts/ci/definer-signature-acl.mjs --self-test",
+    "lint:receipt-coverage": "node scripts/ci/receipt-coverage-lint.mjs",
+    "lint:receipt-coverage:test": "node scripts/ci/receipt-coverage-lint.mjs --self-test"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",
