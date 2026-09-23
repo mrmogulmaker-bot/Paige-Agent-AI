@@ -50,7 +50,7 @@ INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, j
 
 -- The pre-existing capability this change must NOT disturb (§58).
 INSERT INTO public.channel_connectors (tenant_id, channel_type, provider, status, active, display_name, from_address, inbound_domain, inbound_address, updated_at)
-VALUES ('f1a00000-0000-0000-0000-0000000000b1', 'email', 'resend', 'active', true, 'Resend', 'hi@isurf.test', 'isurf.test', 'in@isurf.test', now());
+VALUES ('f1a00000-0000-0000-0000-0000000000b1', 'email', 'resend', 'active', true, 'ISURF Resend', 'hi@isurf.test', 'isurf.test', 'in@isurf.test', now());
 
 -- GATEWAY registry: one ordinary connection, one owner_only.
 INSERT INTO public.mcp_connections (connection_id, tenant_id, provider_key, label, server_url_ct, auth_kind, visibility, enabled, status, health) VALUES
@@ -79,10 +79,19 @@ DECLARE _v jsonb; _e jsonb;
 BEGIN
   _v := public.list_integration_surface();
 
-  SELECT e INTO _e FROM jsonb_array_elements(_v) e WHERE e->>'channel' = 'email';
-  IF _e IS NULL THEN RAISE EXCEPTION '(A) §58 REGRESSION: the channel_connectors half disappeared: %', _v; END IF;
+  -- Identify THIS fixture's row by its label, never by channel alone. Creating a tenant
+  -- auto-provisions its own sending identity, so `channel='email'` matches more than one row
+  -- and a bare SELECT..INTO silently takes an arbitrary one. A first draft did exactly that,
+  -- picked the platform's connector, and reported a §58 regression that had not happened —
+  -- an assertion failing for a reason unrelated to what it guards is worse than no assertion.
+  SELECT e INTO _e FROM jsonb_array_elements(_v) e
+   WHERE e->>'channel' = 'email' AND e->>'display_name' = 'ISURF Resend';
+  IF _e IS NULL THEN
+    RAISE EXCEPTION '(A) §58 REGRESSION: the channel_connectors half no longer returns this row: %', _v;
+  END IF;
   IF _e->>'from_address' IS DISTINCT FROM 'hi@isurf.test'
-     OR _e->>'inbound_address' IS DISTINCT FROM 'in@isurf.test' THEN
+     OR _e->>'inbound_address' IS DISTINCT FROM 'in@isurf.test'
+     OR _e->>'provider' IS DISTINCT FROM 'resend' THEN
     RAISE EXCEPTION '(A) §58 REGRESSION: channel fields dropped: %', _e;
   END IF;
 
