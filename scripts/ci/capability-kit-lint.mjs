@@ -569,13 +569,38 @@ export function scanSource(source, file = "fixture.ts", options = {}) {
   // governing it are both required, and neither substitutes for the other.
   //
   // EVERY key in RISK is flagged, with NO mutation-verb filter, and that is deliberate. `RISK`
-  // holds only actions — measured, not assumed: its 150 entries are 75 `high`, 72 `ordinary` and
-  // 3 `owner_only`, and zero `read_only`. Filtering on `MUTATION_VERB` was tried and REJECTED
-  // because it silently dropped 32 genuinely mutating actions whose verbs that regex does not
-  // list — `booking_preset_revise`, `crm_merge_contacts`, `crm_close_deal`, `delegate_to_subagent`
-  // and 28 more — which would have blinded this guard to 32 live capabilities while appearing to
-  // narrow it. (That regex gap is real but separate: it is the runtime fallback for UNCLASSIFIED
-  // tools only, and these 32 are classified, so `unclassifiedWriteReason` still governs them.)
+  // holds only actions — re-measured 2026-09-23, not assumed: 156 entries, 82 `high`, 71
+  // `ordinary`, 3 `owner_only`, and zero `read_only`. (The census written here at #1367 — "150
+  // entries, 75/72/3" — did not match its own commit, which carried 157 tuples for 156 keys. A
+  // hand-counted figure in a comment goes stale; what is load-bearing is the SHAPE — only actions,
+  // no `read_only` — and that is what was re-measured.) Filtering on `MUTATION_VERB` was tried and
+  // REJECTED because it silently dropped 32 genuinely mutating actions whose verbs that regex does
+  // not list — `booking_preset_revise`, `crm_merge_contacts`, `crm_close_deal`,
+  // `delegate_to_subagent` and 28 more — which would have blinded this guard to 32 live
+  // capabilities while appearing to narrow it.
+  //
+  // That regex gap is real but separate: `MUTATION_VERB` is the fail-safe FLOOR under tools the
+  // policy does NOT classify. This comment asserted exactly that at #1367 while it was not yet
+  // true — `defineCapability()` then ALSO demanded the regex of keys the policy DID classify, so
+  // those same 32 curated actions could be classified and still not declarable, and a declaration
+  // this lint cleared threw on import (Codex P1 on #1367). That precondition is now removed, so
+  // the claim finally holds. And being classified is precisely why `unclassifiedWriteReason()`
+  // returns null for these 32 on its first line: `classifyAction()` governs them and the fallback
+  // steps aside. (The earlier wording — "so `unclassifiedWriteReason` still governs them" — read
+  // that first line backwards; corrected rather than dropped, because the gap it points at is
+  // real and the identity.id note above still depends on it.)
+  //
+  // OPEN, and named rather than implied (§13): clearance here is "a declaration mentions this key",
+  // which is NOT the constructor's whole predicate. Policy membership is now automatic — this loop
+  // only ever visits keys that ARE in `RISK` — but `defineCapability()` also requires
+  // `governance.risk === classifyAction(key)`, and this rule reads no `risk` at all. Falsifying
+  // input, driven 2026-09-23 against the real tree: a `RISK` tuple whose class no longer matches an
+  // existing declaration's `governance.risk` (edit `["crm_merge_contacts","high",…]` to `ordinary`,
+  // or leave the declaration behind when the class is raised) keeps this guard GREEN while
+  // `defineCapability()` throws "Capability risk must match the canonical action-risk policy."
+  // Closing it means collecting `governance.risk` alongside the key and reporting the contradiction
+  // under its OWN rule name — reusing `direct-risk-entry` would not fail CI, because all 156 keys
+  // already sit in the shrink-only baseline and a re-reported one is not new debt.
   if (!strictOnly && normalized === "supabase/functions/_shared/action-risk.ts") {
     for (const statement of sourceFile.statements) {
       if (!ts.isVariableStatement(statement)) continue;
@@ -721,12 +746,55 @@ function runSelfTest() {
     failed += 1;
     console.error("  FAIL direct-risk-entry skipped an action whose verb is absent from MUTATION_VERB");
   } else console.log("  ok   direct-risk-entry does not depend on the MUTATION_VERB vocabulary");
-  const declaredFindings = scanSource(riskFixture, riskPath, { declaredRiskKeys: new Set(["widget_send", "widget_revise"]) })
+  // CLEARANCE — driven through the REAL collector, never a hand-passed Set.
+  //
+  // This assertion used to hand `scanSource()` a `Set` of names directly, which proved the rule's
+  // filter and nothing else: it asserted a clearance without ever exercising the code that decides
+  // who gets cleared. `collectDeclaredCapabilityNames()` is what `scanRepository()` actually calls,
+  // so the declaration below is parsed the same way a real one under `supabase/functions/` or `src/`
+  // would be, and a collector that silently stopped reading `governance.actionRiskKey` now fails
+  // here instead of quietly re-freezing the ledger. The resolver is a stub only because the real one
+  // reads from disk and this guard adds no fixture files for a case it can state inline.
+  //
+  // WHAT THIS STILL DOES NOT PROVE, and must never be read as proving: that the declaration
+  // CONSTRUCTS. This process never imports the kit — the guard is plain `.mjs` over a TypeScript
+  // AST, so a green lint means "the declaration is present and well-formed to the scanner", not
+  // "`defineCapability()` will accept it". That runtime half is the paired invariant, and it is
+  // proven in scripts/capability-kit/capability-kit.test.mjs: "every action key the canonical policy
+  // classifies is declarable through the kit" builds a real capability for every key in
+  // `mutatingTools()`. The two halves are the INT-003 follow-up in full — a lint that cleared a
+  // declaration the constructor then rejected is the exact defect that follow-up closed, and
+  // `widget_revise` below (verb absent from `MUTATION_VERB`) is the case that exposed it. Change one
+  // half and the other is where you look.
+  const declarationFile = "supabase/functions/probe/declaration.ts";
+  const declarationSource = `
+    defineCapability({ idempotency: {}, receipt: {}, outcome: {}, effect: "mutation",
+      governance: { actionRiskKey: "widget_send", risk: "high", approval: "confirm" } });
+    defineCapability({ idempotency: {}, receipt: {}, outcome: {}, effect: "mutation",
+      governance: { actionRiskKey: "widget_revise", risk: "ordinary", approval: "confirm" } });
+  `;
+  const declarationSourceFile = ts.createSourceFile(
+    declarationFile, declarationSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS,
+  );
+  const collected = collectDeclaredCapabilityNames([declarationFile], { sourceFile: () => declarationSourceFile });
+  const declaredFindings = scanSource(riskFixture, riskPath, { declaredRiskKeys: collected.riskKeys })
     .filter((item) => item.rule === "direct-risk-entry");
   if (declaredFindings.length !== 0) {
     failed += 1;
     console.error("  FAIL direct-risk-entry still fired for a key declared through defineCapability()");
   } else console.log("  ok   direct-risk-entry clears once the key is declared (INT-003 unblocked)");
+  // The same collected names must clear the tool schema too — Codex's finding named BOTH
+  // suppressions, and both are fed from the one `governance.actionRiskKey` field. The bite for this
+  // rule is the "tool definition" case above, which fires with no declaration in scope.
+  const declaredToolFindings = scanSource(
+    'const t = { name: "widget_revise", description: "x", parameters: { type: "object" } };',
+    "src/probe.ts",
+    { declaredToolNames: collected.toolNames },
+  ).filter((item) => item.rule === "direct-tool-definition");
+  if (declaredToolFindings.length !== 0) {
+    failed += 1;
+    console.error("  FAIL direct-tool-definition still fired for a tool the collector read as declared");
+  } else console.log("  ok   direct-tool-definition clears through the same collected declaration");
   // A cast must not hide an incomplete declaration from the strict rule. Before the shared
   // unwrap, `as any` escaped this check entirely — and once a collector read through casts, that
   // escape also minted governance clearance for the tool name.
@@ -757,7 +825,7 @@ function runSelfTest() {
     console.error("  FAIL shrink-only baseline admitted a duplicate occurrence");
   } else console.log("  ok   shrink-only baseline preserves occurrence counts");
   if (failed) process.exit(1);
-  console.log(`\n✓ capability-kit lint self-test passed — ${cases.length + aliasCases.length + 8} cases.`);
+  console.log(`\n✓ capability-kit lint self-test passed — ${cases.length + aliasCases.length + 9} cases.`);
 }
 
 if (process.argv.includes("--self-test")) {

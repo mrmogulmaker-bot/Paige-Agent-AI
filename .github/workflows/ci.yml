@@ -645,6 +645,11 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run smoke:voice-stt
 
+      # Mock fetch: approved voice/model, owner-switchable model, and no-retention flag.
+      - name: Smoke — Paige voice mouth transport (no network)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:voice-tts
+
       # Independent source guard for the v3 Fleet Directory. Component states run under Vitest;
       # this gate pins the authored lineage and prevents the retired orbit modules from returning.
       - name: Smoke — Fleet v3 Directory (lineage and retired-surface guard)

@@ -6,6 +6,68 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## Flipping a draft STARTS a review; merging in the same breath KILLS it (2026-09-23)
+
+- **Symptom.** PR #1367 was flipped out of draft and merged ~15 seconds later. The draft flip triggered
+  the Codex review, which was still `Running` when the merge closed the PR. It posted **zero reviews and
+  zero inline comments**, so the change — which included a §9 tenant-isolation fix *and* a deliberate
+  relaxation of two CI guards — landed on `main` carrying **no review pass at all**. The `Running` badge
+  sitting on the merged PR reads, at a glance, exactly like a review that found nothing.
+- **Root cause.** Two correct instructions composed into a wrong outcome. "Merge on the standard, don't
+  wait to be told" is right; "flip the draft to mark it ready" is right; doing both in one breath races
+  the reviewer that the flip just summoned. Nobody decided to skip the review — the sequence discarded
+  it. This is the **second occurrence in the program**; the first cost a lane six real findings it
+  nearly missed.
+  **And the rule was already written down.** `AGENTS.md` § *Merge gate* states it outright: marking
+  Ready auto-triggers a review on the exact head, you wait for it to complete before merging, and
+  *"never merge ahead of either"* the requested or the auto-triggered review — a gate that exists, in
+  its own words, *"because a PR marked Ready and merged seconds later has had real defects — including
+  a P1 — surfaced by the auto review only after merge."* Both the lane and the coordinator reasoned out
+  a standing rule the repo already carried, and the reasoned version came out **weaker** than the
+  in-tree one. That is the §BRAIN.2 trap in process clothing: answering *"what is our rule?"* from
+  reasoning instead of from the source. The first move on a rule you think you just discovered is to
+  grep for it.
+  **And then this entry got it wrong twice more, which is the part worth carrying.** Draft one offered
+  a post-merge review as an equal path; a review caught it. Draft two removed that but still said
+  "wait for the exact-head review" — singular — which lets an agent wait for the auto review and merge
+  without the requested one; a second review caught that. Between those two drafts the lane **merged
+  PR #1383 on the auto-triggered review alone**, having read the gate an hour earlier and corrected
+  someone else's reading of it. So: reading the authority is not the same as applying it, a rule you
+  are actively writing down is exactly when you are most confident and least careful, and a gate
+  stated as "wait for the review" will be read as one review by whoever is in a hurry — which is
+  always. Name both.
+- **Rule.** There is one valid sequence, `AGENTS.md` § *Merge gate* is its authority, and it requires
+  **TWO reviews, not one**: **flip (which auto-triggers a review on the exact head) → also REQUEST one
+  (`@codex review`) → wait for BOTH to complete → disposition every finding → merge.** The gate's own
+  words: *"'Exactly one review' means one REQUESTED review plus the auto-triggered exact-head review.
+  Never merge ahead of either."* Waiting for the auto review alone and merging is a weaker gate than
+  the one written down — and it is the mistake this entry itself made twice before it said so (below).
+  A fix pushed for a finding changes the head, so the wait repeats once; a second round means escalate
+  rather than merge.
+  Requesting `@codex review` after the fact is **forensic recovery from a gate already missed**, never
+  a second acceptable path — it does fire on a closed PR (measured: 👀 reaction plus the summary
+  flipping to `Manual request`) and it is exactly what you owe once a review has been lost, but it
+  cannot un-merge an unreviewed change. Its findings become follow-up PRs off current `main`; merged
+  history is never edited. Such a review names the PR **head** commit, not the squash commit — same
+  tree, different SHA, worth stating precisely rather than claiming the merge commit was reviewed. And
+  never let a `Running` badge stand as approval: say the review is *absent*, not clean.
+
+## Two pacing rules, from the same lane (2026-09-23)
+
+- **Symptom.** (a) A complete, merge-ready branch sat for seven hours because the assignment never named
+  the finish line, so the lane kept watch instead of finishing. (b) Over those hours it fired seven
+  hourly check-ins that each reported "nothing changed" — seven wake-ups, zero information.
+- **Root cause.** (a) Treating "return to coordinator" as "wait for permission to merge" when the merge
+  standard was already met. (b) Confusing *watching* with *polling*: arming a fixed hourly tick for a
+  thing that only changes on an event, so the cadence was paid whether or not anything could have moved.
+- **Rule.** (a) **A lane that meets the merge standard merges, and reports afterwards.** Coming back
+  first is only required for a change made under a coordinator-granted exception, or at one of the
+  material boundaries §69 lists. (b) **If you have nothing to report and nothing to do, do not wake up
+  to say so.** Wait on the event itself, or arm a single long-interval fallback. A quiet check-in only
+  earns its cost when the thing you are waiting for could plausibly have moved — so pace the interval
+  off *that*, never off a habit.
+
+
 ## A proof that stands up its own preconditions proves the RULES, never the REACHABILITY (2026-09-22)
 
 - **Symptom.** INT-163's agreements engine shipped with a 19-negative database integrity proof

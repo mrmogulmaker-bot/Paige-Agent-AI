@@ -178,12 +178,37 @@ Deno.serve(async (req) => {
     .eq("id", client_id)
     .maybeSingle();
   if (cliErr || !client) return err(404, "CLIENT_NOT_FOUND", "Client not found");
-  if (client.linked_user_id && client.linked_user_id !== userId) {
+  // The ownership check is UNCONDITIONAL (#1354). It used to read
+  // `if (client.linked_user_id && client.linked_user_id !== userId)`, so an UNLINKED record
+  // failed the `&&` and fell straight past the 403 into a self-claim — any holder of any valid
+  // Supabase JWT plus a victim's `clients.id` could bind that record to themselves and then
+  // execute an agreement under it with attacker-supplied contract text and signer name.
+  //
+  // LINKING IS NOT THIS FUNCTION'S JOB. It belongs to `public.accept_tenant_invite`, by owner
+  // ruling recorded in 20260803160000_hotfix_612_clients_linking_integrity.sql:20-22:
+  // "linkage to the auth user happens ONLY through the existing invite-accept path". Precisely:
+  // one other linker exists, in the BROWSER (`useOnboardingClient.ts`, match-by-email then bind),
+  // but it runs as the USER rather than as service-role, and the only permissive SELECT a consumer
+  // satisfies on `clients` is `clients_linked_self_read` (`linked_user_id = auth.uid()`), which by
+  // definition cannot return an unlinked row — so it cannot claim one. This function was the only
+  // path that could, because it reads with service-role and RLS never ran. That same
+  // note records WHY a gate on tenant membership is the wrong repair here: an earlier draft
+  // added a linking RPC validating "target is an active tenant_members row of the caller's
+  // tenant", and the adversarial §9 verifier proved that oracle is itself admin-forgeable. A
+  // membership gate would ALSO refuse every genuine signer — `accept_tenant_invite`'s
+  // kind='consumer' branch writes no `tenant_members` row at all, so an external client signer
+  // is never a member of the sponsoring tenant.
+  //
+  // `userId` is server-derived from the verified bearer at :151-153, never from the body. This
+  // is byte-for-byte the predicate the database already enforces on this very table —
+  // `client_insert_own_agreement WITH CHECK (is_program_client_owner(client_id))` — which the
+  // SERVICE-ROLE client above bypasses. The edge function was routing around its own guard.
+  //
+  // Nothing legitimate is refused: on the real path the row is already linked before this runs
+  // (accept_tenant_invite binds it at invite acceptance), so the removed branch was dead code
+  // for genuine signers and reachable only by someone who had no business there.
+  if (client.linked_user_id !== userId) {
     return err(403, "FORBIDDEN", "You may only sign your own agreement");
-  }
-  // If not yet linked, bind it now.
-  if (!client.linked_user_id) {
-    await admin.from("clients").update({ linked_user_id: userId }).eq("id", client_id);
   }
 
   // Build & upload PDF.

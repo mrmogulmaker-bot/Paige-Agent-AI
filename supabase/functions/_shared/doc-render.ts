@@ -651,8 +651,31 @@ async function renderPdf(title: string | undefined, blocks: Block[], _style: Rec
 // Exported for the agreements engine (INT-163), which stamps signer-supplied names onto a pdf-lib
 // page with the same WinAnsi StandardFonts and needs the identical normalisation. Additive: no
 // existing caller changes.
+/**
+ * Normalise the formatting characters that carry no meaning on a printed page.
+ *
+ * THIS IS HALF OF A CORRECTNESS PROPERTY, NOT A CONVENIENCE. It used to live privately in
+ * `_shared/agreements/document.ts`, where the VALIDATION called it and the RENDER did not — so a
+ * name was checked as `normaliseFormatting(name)` and then stamped as the raw original. Every
+ * codepoint below is absent from `sanitizeWinAnsi`'s allow-list, so each one passed the check and
+ * then rendered as `?`: a narrow no-break space (U+202F) or a zero-width joiner picked up from an
+ * ordinary copy-paste produced an executed PDF bearing a name that was not the signer's, on the
+ * one fact a signature block exists to establish. Owning it HERE means the string that is
+ * validated and the string that is rendered are the same string by construction, and the two can
+ * never drift apart again.
+ */
+export function normaliseFormatting(text: string): string {
+  return String(text ?? "")
+    .replace(/\r\n?/g, "\n")
+    // Zero-width space, ZWNJ, ZWJ, word joiner and the BOM carry no meaning on a printed page.
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "")
+    // Narrow and figure spaces render as ordinary spaces.
+    .replace(/[\u202F\u2007\u00A0]/g, " ");
+}
+
 export function sanitizeWinAnsi(text: string): string {
-  return String(text)
+  // Normalise FIRST, so what is rendered is exactly what `wouldLoseCharacters` inspected.
+  return normaliseFormatting(text)
     .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
     .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
     .replace(/[\u2013\u2014\u2015]/g, "-")
