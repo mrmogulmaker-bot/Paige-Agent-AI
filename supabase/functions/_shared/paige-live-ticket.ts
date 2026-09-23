@@ -26,14 +26,15 @@ export function hasLiveWorkspaceStanding(
     platformStanding === true;
 }
 
-/** Mirrors current_user_tenant_id(): active profile workspace first, otherwise
- * the first active direct membership. A missing resolution never keeps a ticket. */
+/** Mirrors current_user_tenant_id(): a profile workspace counts only while its
+ * standing is valid; otherwise use the first active direct membership. */
 export function isLiveWorkspaceCurrent(
   sessionTenantId: string,
   activeTenantId: unknown,
+  activeTenantHasStanding: boolean,
   fallbackTenantId: unknown,
 ): boolean {
-  const resolved = typeof activeTenantId === "string" && activeTenantId.length > 0
+  const resolved = activeTenantHasStanding && typeof activeTenantId === "string" && activeTenantId.length > 0
     ? activeTenantId
     : fallbackTenantId;
   return typeof resolved === "string" && resolved === sessionTenantId;

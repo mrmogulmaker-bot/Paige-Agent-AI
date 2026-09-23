@@ -83,8 +83,31 @@ Deno.serve(async (req) => {
     if (!await markUnavailable("workspace_unresolved")) return new Response("relay_unavailable", { status: 503 });
     return new Response("workspace_unresolved", { status: 503 });
   }
+  let activeTenantHasStanding = false;
+  if (profile?.active_tenant_id) {
+    const { data: activeMembership, error: activeMembershipError } = await admin.from("tenant_members")
+      .select("id").eq("tenant_id", profile.active_tenant_id)
+      .eq("user_id", session.actor_user_id).eq("status", "active").maybeSingle();
+    if (activeMembershipError) {
+      if (!await markUnavailable("workspace_unresolved")) return new Response("relay_unavailable", { status: 503 });
+      return new Response("workspace_unresolved", { status: 503 });
+    }
+    activeTenantHasStanding = !!activeMembership;
+    if (!activeTenantHasStanding) {
+      const [activeChildAccess, activeAgencyRole, activePlatformRole] = await Promise.all([
+        admin.rpc("agency_can_manage_child", { _child: profile.active_tenant_id, _actor: session.actor_user_id }),
+        admin.rpc("agency_team_role", { _agency: profile.active_tenant_id, _actor: session.actor_user_id }),
+        admin.rpc("is_platform_admin", { _actor: session.actor_user_id }),
+      ]);
+      if (activeChildAccess.error || activeAgencyRole.error || activePlatformRole.error) {
+        if (!await markUnavailable("workspace_unresolved")) return new Response("relay_unavailable", { status: 503 });
+        return new Response("workspace_unresolved", { status: 503 });
+      }
+      activeTenantHasStanding = hasLiveWorkspaceStanding(false, activeChildAccess.data, activeAgencyRole.data, activePlatformRole.data);
+    }
+  }
   let fallbackTenantId: string | null = null;
-  if (!profile?.active_tenant_id) {
+  if (!activeTenantHasStanding) {
     const { data: fallback, error: fallbackError } = await admin.from("tenant_members")
       .select("tenant_id").eq("user_id", session.actor_user_id).eq("status", "active")
       .order("joined_at", { ascending: true }).limit(1).maybeSingle();
@@ -94,7 +117,7 @@ Deno.serve(async (req) => {
     }
     fallbackTenantId = fallback?.tenant_id ?? null;
   }
-  if (!isLiveWorkspaceCurrent(session.tenant_id, profile?.active_tenant_id, fallbackTenantId)) {
+  if (!isLiveWorkspaceCurrent(session.tenant_id, profile?.active_tenant_id, activeTenantHasStanding, fallbackTenantId)) {
     if (!await markUnavailable("stale_context")) return new Response("relay_unavailable", { status: 503 });
     return new Response("stale_context", { status: 403 });
   }

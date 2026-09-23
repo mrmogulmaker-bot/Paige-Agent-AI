@@ -41,11 +41,13 @@ assert.equal(hasLiveWorkspaceStanding(false, false, null, true), true, "canonica
 assert.equal(hasLiveWorkspaceStanding(false, false, null, false), false, "removed agency and absent membership are denied");
 assert.equal(hasLiveWorkspaceStanding(false, false, undefined, false), false, "missing agency role never grants access");
 assert.equal(hasLiveWorkspaceStanding(false, false, "", false), false, "empty agency role never grants access");
-assert.equal(isLiveWorkspaceCurrent("tenant-a", "tenant-a", null), true, "matching active workspace remains current");
-assert.equal(isLiveWorkspaceCurrent("tenant-a", "tenant-b", "tenant-a"), false, "active workspace switch revokes old ticket");
-assert.equal(isLiveWorkspaceCurrent("tenant-a", null, null), false, "operator exit with no direct-member fallback revokes ticket");
-assert.equal(isLiveWorkspaceCurrent("tenant-a", null, "tenant-a"), true, "canonical first-member fallback remains usable");
-assert.equal(isLiveWorkspaceCurrent("tenant-a", null, "tenant-b"), false, "fallback to another workspace revokes ticket");
+assert.equal(isLiveWorkspaceCurrent("tenant-a", "tenant-a", true, null), true, "matching active workspace remains current");
+assert.equal(isLiveWorkspaceCurrent("tenant-a", "tenant-b", true, "tenant-a"), false, "valid active workspace switch revokes old ticket");
+assert.equal(isLiveWorkspaceCurrent("tenant-b", "tenant-a", false, "tenant-b"), true, "stale unauthorized active workspace falls back to the first active membership");
+assert.equal(isLiveWorkspaceCurrent("tenant-a", "tenant-a", false, "tenant-b"), false, "stale active workspace never authorizes its old ticket");
+assert.equal(isLiveWorkspaceCurrent("tenant-a", null, false, null), false, "operator exit with no direct-member fallback revokes ticket");
+assert.equal(isLiveWorkspaceCurrent("tenant-a", null, false, "tenant-a"), true, "canonical first-member fallback remains usable");
+assert.equal(isLiveWorkspaceCurrent("tenant-a", null, false, "tenant-b"), false, "fallback to another workspace revokes ticket");
 
 const relay = readFileSync(new URL("../supabase/functions/paige-live-relay/index.ts", import.meta.url), "utf8");
 const session = readFileSync(new URL("../supabase/functions/paige-live-session/index.ts", import.meta.url), "utf8");
@@ -69,6 +71,7 @@ assert.match(relay, /rpc\("agency_team_role"/, "relay preserves canonical agency
 assert.match(relay, /rpc\("is_platform_admin"/, "relay preserves canonical platform standing without granting tenant writes");
 assert.match(relay, /from\("profiles"\)[\s\S]*?active_tenant_id/, "relay rejects a stale ticket after active workspace switch");
 assert.match(relay, /order\("joined_at", \{ ascending: true \}\)/, "null active workspace uses the canonical first-active-member fallback");
+assert.match(relay, /hasLiveWorkspaceStanding\(false, activeChildAccess\.data, activeAgencyRole\.data, activePlatformRole\.data\)/, "non-null active workspace must prove standing before suppressing fallback");
 const pilotMigration = readFileSync(new URL("../supabase/migrations/20270408000000_paige_live_pilot_feature_guard.sql", import.meta.url), "utf8");
 assert.match(pilotMigration, /CREATE TABLE IF NOT EXISTS public\.paige_live_tenant_availability/, "rollout decision has a platform-owned table");
 assert.match(pilotMigration, /REVOKE ALL ON TABLE public\.paige_live_tenant_availability FROM PUBLIC, anon, authenticated/, "tenant roles have no table write route");
