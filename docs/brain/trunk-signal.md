@@ -119,10 +119,25 @@ twenty names are the signature; the counts are a smoke test on the signature.
 
 </details>
 
-**If a name appears that is not on that list, it is yours — whatever the counts say.** And if you
-changed anything under `src/solo/` or `src/components/tenant-shell/`, do not rely on this list at all:
-run the suite on your merge-base and on your head and diff the two, because those are the trees these
-files read from.
+**What the list can and cannot do, stated precisely, because two earlier versions of this paragraph
+overclaimed:**
+
+- **A name NOT on the list proves the failure is yours.** That direction is sound.
+- **Matching names prove nothing on their own.** A change can alter one of those twenty failures *in
+  place*, keeping its name, its file and both counts.
+
+So the list is a **fast path that can only ever add suspicion, never clear it.** The only check that
+clears a run is **base versus head**: run `npm run test` on your merge-base and on your head and diff
+the failure output — names *and* messages.
+
+**Do not try to decide from the paths in your diff whether that is necessary.** An earlier version of
+this section tried, and named two directories (`src/solo/`, `src/components/tenant-shell/`) as the
+trees to watch. That was wrong, and wrong in an instructive way: **a test can import or read anything.**
+`src/solo/resend-receipt-handler.test.ts` imports
+`../../supabase/functions/handle-resend-webhook/handler` and `readFileSync`s that function's
+`index.ts` — so an **edge-function** change, in neither named tree, can alter a listed failure while
+every name and count holds. Enumerating the reachable trees is the same losing move as enumerating the
+shapes a regex must match: the boundary is not listable, so state the rule instead of the list.
 
 **Do not pipe the run through `tail`.** The summary line is at the end, so a tail looks authoritative
 while hiding the other failures — that mistake was made twice in one session. Redirect the whole run
@@ -255,7 +270,13 @@ measured and what was merely handed down — including when this file was the on
 
   **So the check is: open the failed job's log and confirm it matches.** `CAPIError: 400 The requested
   model is not supported`, the job exiting before any scan, and an empty `output` on the check run. If
-  it matches, it is the vendor fault above and there is nothing to port. **If it does NOT match, you
+  it matches, it is the vendor fault above and there is nothing to port.
+
+  **SEARCH the log for that string — do not tail it.** Found by following this very rule: a 12-line
+  tail lands in the runner's cleanup block and shows *none* of the signature, so a small tail reads as
+  "does not match" on a red that matches perfectly. The error sits roughly 25–55 lines from the end,
+  above the cleanup group. A rule whose own instructions produce false negatives sends people chasing a
+  vendor fault. **If it does NOT match, you
   have an uninvestigated failure — including possibly a real one — and the rest of this row does not
   apply to it.**
 

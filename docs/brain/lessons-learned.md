@@ -2734,7 +2734,10 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      (`settings.rendered-copy.test.tsx` reads `SoloApp.tsx` directly, so a `SoloApp` change alters that
      failure while the file list and the aggregate are unchanged), and one fixed baseline assertion plus
      one newly broken one preserves both numbers. Same shape as the lint bug, in prose instead of code,
-     written by the same author in the same change. **Compare the twenty failing test NAMES.**
+     written by the same author in the same change. **Compare the twenty failing test NAMES** — and even
+     that only ever adds suspicion: a change can alter a listed failure *in place*, keeping its name, so
+     the only check that CLEARS a run is base-versus-head. Two successive fixes to this one paragraph
+     each overclaimed in the same direction before that landed.
   3. **A backstop written to cure a disease can carry it.** The line counter was added *because* the
      parser had a blind spot, and it had the same blind spot. Ask of any backstop: does this fail
      independently of the thing it is backing up?
@@ -2744,6 +2747,18 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
   5. **"The guard exited 1" is not "the guard caught what I meant."** One bite proof in this sequence
      dropped a comma between two planted tuples, so it tested a *syntax error* and nearly got recorded
      as a pass. Read the message, not the exit code.
+  6. **The meta-pattern, and the one actually worth carrying: four of the six findings were an
+     ENUMERATION offered where a general RULE was needed.** Widen the regex to cover single quotes
+     (enumerate the quote styles). Add a line counter (enumerate the layouts). Name two directories as
+     the trees a baseline test reads from (enumerate the dependency roots — defeated by
+     `src/solo/resend-receipt-handler.test.ts`, which imports
+     `supabase/functions/handle-resend-webhook/handler` across the `src/` ↔ `supabase/` boundary). Each
+     list was longer and more carefully reasoned than the last, and each was defeated by the first case
+     outside it, because **a boundary you have to enumerate is a boundary you have not understood.**
+     The three fixes that held were all of the other kind: use the language's parser, compare against
+     the runtime rather than a second derived count, and say "base versus head" instead of listing which
+     diffs need it. When the next fix is a slightly longer list, that is the signal to stop and find the
+     rule.
 - **Cross-references.** §13 (honest reporting), §32 (a green result is not a working one — this is its
   guard-shaped twin), §39 (peer-gate: all three were found by an independent read, none by the author),
   §18 (one home — the parser the sibling guard already used), #1383 (`read_only` is not an `ActionRisk`,
