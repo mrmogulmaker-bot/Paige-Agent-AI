@@ -35,7 +35,7 @@ the single most important fact about the chain is that **only one link in it pro
   about it proves a client agreed, let alone paid.
 - **COMMITTED** — `tenant_client_agreements.agreed_amount_minor` (`20261200000000:85`). A real
   commitment with a real counterparty, still not money received.
-- **BILLED** — `paige_invoices.amount_total_cents` (`20260629204156:15`).
+- **BILLED** — `paige_invoices.amount_total_cents` (`20260629204156:11`).
 - **COLLECTED** — `tenant_orders` with `status='complete'`, written **only** at
   `supabase/functions/stripe-webhook/index.ts:548-556`, gated at `:542` on
   `session.payment_status === "paid"`.
@@ -47,17 +47,27 @@ breaks this rule today, on a live Solo surface.
 
 ### What this model cannot express, structurally
 
-**There is no cost side.** No tenant-scoped expense, COGS, or cost-of-delivery table exists
-anywhere in `supabase/migrations/`. The only cost-bearing columns in the schema are
-`paige_skill_runs.cost_cents` (`20260630013855:67`) and `browser_use_sessions.cost_cents` (`:263`),
-which are Paige's AI-operation costs — the platform's costs, not the tenant's business expenses.
+**The cost side exists, but it does not live on this chain.** The chain above is Paige's own
+record of a Solo business, and nothing in it carries a cost: `paige_skill_runs.cost_cents`
+(`20260630013855:67`) and `browser_use_sessions.cost_cents` (`:263`) are Paige's AI-operation costs,
+the platform's, not the tenant's.
 
-**Therefore margin and profit are not computable for a Solo tenant. Not "hard" — absent.** Any
-profit figure would have to be invented, and this lane does not invent figures.
+Cost arrives instead through an **integration**: `public.quickbooks_financials`
+(`20260420201025:56-83`) carries `total_expenses`, `cogs`, `gross_profit`, `gross_margin_percent`,
+`operating_expenses` and `net_income`. That changes profit from *absent* to *conditional* — and the
+condition is not only "is QuickBooks connected." **That table has no `tenant_id`**; it is keyed on
+`user_id` and `business_id` (`:58-59`). Every other metric in this document scopes by tenant, so
+admitting this one means establishing its §9 scoping first, deliberately, rather than assuming the
+owner's user id is a safe proxy for their tenant.
+
+> **Corrected after the peer gate (§9).** The first draft of this paragraph said margin was
+> *"not computable. Not 'hard' — absent."* That was wrong, and wrong in the specific way this lane
+> exists to catch: a confident absence claim that one grep would have falsified. `quickbooks_financials`
+> was in my own grounding data at the time I wrote it.
 
 ---
 
-## 2. The three live defects grounding found — these are in the product now
+## 2. The four live defects grounding found — these are in the product now
 
 These are not proposals. They are existing Solo surfaces displaying numbers that do not mean what
 their labels say. They are recorded here because a dictionary that does not name them would be
@@ -67,35 +77,45 @@ ratifying them.
 
 `src/solo/data/useCommandCenter.ts:163` renders `won_value_cents` under the label
 **"Revenue this period"**. `won_value_cents` is computed at
-`supabase/migrations/20260713152601_tier_dashboard_metrics.sql:38-42` as
-`SUM(deals.value_cents)` for deals whose stage has `stage_type='won'`.
+`supabase/migrations/20260713152601_tier_dashboard_metrics.sql:38-40` as `SUM(deals.value_cents)`
+for deals whose stage has `stage_type='won'`, filtered
+`AND d.actual_close_date IS NOT NULL AND d.actual_close_date >= since_date`.
 
-That is a sum of operator-typed estimates on deals someone dragged into a "Won" column. No payment,
-no invoice, no agreement is consulted. A Solo owner reading their dashboard is being told they
-earned money that the platform has no evidence they received. Under the model in §1 this is
-ESTIMATED being displayed as COLLECTED — the exact substitution the model exists to prevent.
+**Be precise about which half of the label is wrong.** Those filters mean the figure genuinely *is*
+period-scoped, so *"this period"* is defensible. What is not defensible is *"Revenue."* The number
+is a sum of operator-typed estimates on deals someone dragged into a "Won" column; no payment, no
+invoice, no agreement is consulted. Under the model in §1 this is ESTIMATED displayed as COLLECTED
+— the exact substitution the model exists to prevent.
+
+The shipped Sales surface already refuses that substitution, in its own words
+(`src/solo/sales/deriveSalesCommand.ts:17-18`): *"'Actual received' is NOT derived here at all.
+There is no connected payment source and `tenant_orders` is never summed into revenue; the surface
+renders it unavailable."* Command Center and Sales currently disagree about what revenue means, and
+Sales is right.
 
 ### L-2 — "Active clients" counts cold leads, because `status` defaults to active
 
 `clients.status` allows `'pending','active','inactive','archived'` (`20260423012456:4-6`) and
-**defaults to `'active'`** (`20260411060930:16`). `create_contact` hardcodes `'active'` on every
+**defaults to `'active'`** (`20260411060930:15`). `create_contact` hardcodes `'active'` on every
 insert (`20261020010000_client_identity_contract.sql`), regardless of whether the person is a
 client or a name someone just typed in.
 
-So `active_clients` (`20260713152601:37`) counts every non-archived row in the book. A cold lead
-captured from a form is an "active client." Meanwhile `clients.lifecycle_stage` carries the values
-that actually mean something (`20260630200554:26-39`) and is not consulted by this metric.
+So `active_clients` (`20260713152601:36`) counts rows whose status is exactly `'active'` — it does
+exclude `'pending'`, `'inactive'` and `'archived'` — but because the default lands almost every new
+row on `'active'`, a cold lead captured from a form is counted as an "active client." Meanwhile
+`clients.lifecycle_stage` carries the values that actually mean something (`20260630200554:26-38`)
+and is not consulted by this metric.
 
 ### L-3 — ARPC divides a period figure by a point-in-time count, over an inflated denominator
 
-`arpc_cents` (`20260713152601:56`) is `round(v_won_alltime / v_active)` — **all-time** won value
+`arpc_cents` (`20260713152601:55`) is `round(v_won_alltime / v_active)` — **all-time** won value
 over the **current** active-client count. Two different time bases in one division, and the
 denominator is L-2's inflated count. The number is not wrong by a little; it has no coherent
 meaning.
 
 ### L-4 — The empty funnel shows stage names the tenant never created
 
-When the bundle is `UNAVAILABLE` or has no stages, `src/solo/analytics2.tsx:151-158` falls through
+When the bundle is `UNAVAILABLE` or has no stages, `src/solo/analytics2.tsx:150` falls through
 to a hardcoded list — `["Qualified lead", "Proposal", "Commitment", "Confirmed outcome"]` — and
 renders those four as the tenant's funnel.
 
@@ -116,7 +136,7 @@ full dictionary to be built, because each one is currently telling a Solo owner 
 Each carries the full spec the assignment requires. **Class** is the §1 chain position and is part
 of the metric's identity, not a note about it.
 
-### M-1 · `funnel.created_deals_by_current_stage` — SHIPPED, v1.0.0, unchanged
+### M-1 · `sales_funnel.created_deals_by_current_stage` — SHIPPED, v1.0.0, unchanged
 
 | | |
 |---|---|
@@ -195,7 +215,7 @@ before it are in a won stage with no close date and drop out of any dated figure
 | **Numerator** | `SUM(agreed_amount_minor)` on `status='active'` agreements, grouped by `agreed_currency` |
 | **Time basis** | Point-in-time |
 | **Source of record** | `public.tenant_client_agreements` (`20261200000000:85-86`) |
-| **Recurring convention** | **Monthly-equivalent, not annualised.** This is the already-shipped choice, documented at `src/solo/sales/deriveSalesCommand.ts:21-22`: *"Recurring is reported as a monthly-equivalent, NOT annualized into a single contracted figure it does not prove."* Adopting it rather than inventing a second convention (§18) |
+| **Recurring convention** | **Monthly-equivalent, not annualised.** This is the already-shipped choice, documented at `src/solo/sales/deriveSalesCommand.ts:14-16`: *"Recurring is reported as a monthly-equivalent, NOT annualized into a single contracted figure it does not prove."* Adopting it rather than inventing a second convention (§18) |
 | **Actual / forecast / estimate** | Committed — a real counterparty commitment, not received money |
 
 **Honest bound:** `term_kind` spans `one_time`, `recurring`, `installment`, `deposit`. Summing
@@ -229,31 +249,55 @@ return; specified in the Phase 2 slice rather than asserted here.
 
 ---
 
-## 4. What this lane will NOT build, and why
+## 4. What can and cannot be built, per lens
 
-Stated plainly, per lens, because four of the six lenses the owner is looking at cannot be
-honestly filled and saying so is the deliverable.
+> **This section was rewritten after the peer gate (§9).** Its first draft marked four lenses
+> NOT BUILDABLE, and four of those verdicts were wrong. The pattern is worth naming because it is
+> the failure mode this whole lane exists to prevent: I checked the obvious table, found the column
+> missing, and generalised from *"this table does not have it"* to *"the platform does not have
+> it"* — without following a foreign key or checking a sibling integration. Three of the four
+> refutations came out of my own grounding data, which had already listed the tables I then claimed
+> did not exist.
 
-| Lens | Verdict | The structural reason |
+| Lens | Verdict | Where it actually stands |
 |---|---|---|
-| `money` | **Buildable — shipped** | M-1 is live |
-| `brief` | **Buildable** | Composable from M-1 to M-7 |
-| `profit` | **NOT BUILDABLE** | No tenant expense/COGS/cost table exists anywhere. Revenue has a source; cost has none. Margin cannot be computed, only fabricated |
-| `ret` (retention) | **NOT BUILDABLE** | Three compounding blockers: no cohort boundary (no "became a client" date distinct from row creation), no relationship-end date on `clients` (so churn has no event), and no repeat-engagement signal the browser may read |
-| `mkt` (acquisition) | **NOT BUILDABLE** | Attribution exists only on the inbound row — `growth_form_submissions.utm_json` (`20260630004505:140-145`) — and **nothing copies it onto the contact or the deal**. `analytics_events`, the only other UTM capture, has no `tenant_id` at all |
-| `dec` (decisions) | **BLOCKED, not absent** | Needs the governed runtime binding that Phase 4 waits on from the Platform Reach Lane. The lens already marks only Human/Read/Page live (`analytics2.tsx:222`) |
+| `money` | **Shipped — with a caveat that matters** | M-1 is live, but it explicitly disclaims being money: `20261004000000:232` — *"Counts are records, not revenue, conversion, attribution, benchmark, or outcome claims."* The actual money metric (M-2) is unbuilt. Calling this lens "done" would repeat §2's substitution at the lens level |
+| `brief` | **Buildable** | Composable from M-1 to M-8 |
+| `profit` | **Conditionally buildable** | `public.quickbooks_financials` (`20260420201025:56-83`) carries a full P&L: `total_expenses`, `cogs`, `gross_profit`, `gross_margin_percent`, `operating_expenses`, `net_income`, plus `accounts_receivable` and `cash_runway_months`. **Two real conditions, not one:** it requires a connected QuickBooks, and — the part that needs design attention — **it has no `tenant_id`.** It is keyed on `user_id` and `business_id` (`:58-59`), a different scoping model from every other metric here, so §9 scoping has to be established before a single figure is read |
+| `ret` | **Partially buildable — over agreements, not over the contact book** | `tenant_client_agreements` carries `starts_on`, `renews_on` and `ends_on` (`20261200000000:101-103`) plus `'completed'`/`'cancelled'` states (`:114-115`) — a real cohort boundary and a real end event, on the table this document already uses for M-5. What does **not** exist is retention over the whole contact book: `clients` has no end date, and `lifecycle_stage` carries `'client_churned'` (`20260630200554:34`) as a **state, not a dated event** — you can count who is churned now, never how many churned in a period |
+| `mkt` | **Partially buildable — for form-originated contacts** | The attribution does not need copying forward, because the row holding it already points at both: `growth_form_submissions.contact_id` is an FK to `public.clients` (`20260630004505:133`), with `utm_json` at `:139` and `referrer` at `:140`, all tenant-scoped (`:132`). So UTM is one join from a contact. **Coverage is partial by construction** — only contacts that arrived through a Paige form carry it — which is exactly what the contract's `PARTIAL` state and its exclusion counts exist to express. Caveat: `deal_id` (`:134`) is a bare `uuid` with **no foreign key**, so the deal-side join is unenforced |
+| `dec` | **Blocked, not absent** | Needs the governed runtime binding Phase 4 waits on from the Platform Reach Lane. The lens already marks only Human/Read/Page live (`analytics2.tsx:222`) |
 
-Also not buildable today, and worth naming because an owner will ask: **MRR/ARR for the tenant's
-own book** (`tenant_service_subscriptions` has no amount column at all —
-`20260702005950:108-127`), **refunds and chargebacks** (no table; `tenant_orders.status` permits
-`'refunded'` but nothing writes it), **accounts receivable** (`paige_invoices.paid_at` is never
-written, so "outstanding" means "ever sent"), **LTV** (`tenant_orders` has no client FK — only
-free-text `customer_email`), and **conversion rate** (no stage-entry history anywhere).
+### Also revised: MRR/ARR is buildable
 
-**None of these become buildable by trying harder.** Each needs a specific schema addition, which
-is a Phase 2+ proposal and an owner decision, not something this lane should quietly add.
+The first draft said `tenant_service_subscriptions` "has no amount column at all." The table does
+carry `application_fee_amount` (`20260702005950:121`) — though that is *Paige's* cut, not the
+subscription price, so the original instinct was pointing at something real. The price itself is one
+hop away: `price_id` (`:114`) references `tenant_prices`, which supplies `unit_amount`, `currency`,
+`billing_interval` and `interval_count` (`20260629182422:102-105`), and the subscription carries its
+own `billing_period` (`:116`).
 
----
+So MRR **is** schema-permitted. Two caveats belong in the definition rather than in a refusal:
+`tenant_prices.unit_amount` is the **list** price, not necessarily what this client pays; and
+`price_id` is `ON DELETE SET NULL`, so a deleted price silently orphans a subscription's amount and
+drops it from the sum.
+
+### What genuinely remains unbuildable
+
+Stated narrowly this time, with the search that supports each.
+
+- **Refunds and chargebacks netted out of a revenue figure.** `tenant_orders.status` permits
+  `'refunded'` (`20260629182422:158`) but no shipped code writes it; the `charge.refunded` handler at
+  `supabase/functions/stripe-webhook/index.ts:571` does not touch `tenant_orders`.
+- **Accounts receivable from Paige's own invoices.** `paige_invoices.paid_at` is never written and
+  `'paid'` is never set, so "outstanding" means "ever sent." (Note: `quickbooks_financials` does
+  carry `accounts_receivable`, so AR is available on the same conditional footing as `profit`.)
+- **Lifetime value grounded in money actually received.** `tenant_orders` has no contact FK at all —
+  it identifies the buyer by free-text `customer_email` / `customer_name` (`20260629182422:154-155`),
+  so collected money cannot be attributed to a client record.
+- **Conversion rate between stages.** No stage-entry history exists anywhere: `lifecycle_stage` is a
+  single mutable value with no transition log, and the funnel bundle says so itself
+  (`20261004000000:231`).
 
 ## 5. Day-one behaviour — the owner's standing requirement
 
@@ -324,9 +368,13 @@ Each is a real fork. Each has a recommendation. **None is being taken silently.*
 ## 7. What Phase 2 does with this, once confirmed
 
 1. Lift the payload shape out of the pinned plpgsql body into a **metric definition table**, and
-   make `funnel.created_deals_by_current_stage` its first row (§18 — extend the one contract, never
+   make `sales_funnel.created_deals_by_current_stage` its first row (§18 — extend the one contract, never
    build a second beside it). The `metric_id` CHECK at `20261004000000:18` and the hardcoded
-   dispatch at `:325` are what make a second metric a schema change today.
+   metric gate at `:323` (`OR p_metric_id IS DISTINCT FROM 'sales_funnel.created_deals_by_current_stage'`)
+   are what make a second metric a schema change today. **The prefix is `sales_funnel.`, not
+   `funnel.`** — the CHECK permits exactly one literal, so the definition table must be seeded with
+   the shipped string or every insert fails 23514. (`:325` is the range-key whitelist, a different
+   gate; relaxing it admits nothing new.)
 2. Add `UNCONFIGURED` to the coverage layer, and give it the next action (§5), so a new
    account is guided rather than told its analytics cannot be measured.
 3. Fix L-1, L-2, L-3, L-4.
@@ -350,3 +398,45 @@ Unanswerable from this session; collected rather than guessed.
    This decides whether §5 is a new-account edge case or the current majority experience.
 6. For tenants that do have pipelines, how many were created before `20260915000000` (and so were
    auto-seeded) versus built by hand in Setup afterwards?
+7. Does any Solo tenant have a live QuickBooks connection with `quickbooks_financials` rows? This
+   decides whether the `profit` lens is conditionally live or conditionally empty, and it is the
+   difference between shipping a lens and shipping a prompt to connect an integration.
+8. What fraction of a Solo tenant's contacts arrived through a `growth_form_submissions` row? That
+   fraction **is** the `mkt` lens's coverage number, and it has to be shown next to any acquisition
+   figure rather than assumed high.
+9. How many `tenant_service_subscriptions` rows are `status='active'` with a non-null `price_id`?
+   Rows with a null `price_id` carry no amount and would silently drop out of an MRR sum.
+
+---
+
+## 9. What the peer gate changed, and why it is recorded rather than quietly fixed
+
+An independent adversarial pass read this document against the code before it was proposed, under
+the §39 peer gate. It checked 64 citations across two completed lenses and confirmed 45. Its
+verdicts were **FIX_FIRST** and **BLOCK**, and it was right on every point I re-verified myself.
+
+**What survived unchanged**, which matters as much as what did not: the economic model in §1 — the
+`tenant_orders` COLLECTED anchor, its `payment_status === "paid"` gate, and the fact that it is the
+only writer of `status='complete'` — plus the absence of any cost table *on the chain*, the
+`useCommandCenter.ts:163` mislabel, the truth-state expression, and the default-stage fallback.
+
+**What it caught:**
+
+| Class | Count | Example |
+|---|---|---|
+| Wrong lens verdict | 4 | `mkt` marked NOT BUILDABLE; the attribution row holds an FK to `clients` |
+| Wrong metric identity | 1 | `funnel.` where the shipped CHECK permits only `sales_funnel.` |
+| Wrong description of a live metric | 1 | `active_clients` described as "every non-archived row" |
+| Off-by-one or wrong-range citation | 7 | `amount_total_cents` cited at `:15`, which is `memo text` |
+
+**The instructive pattern**, and the reason this section exists rather than a silent edit: every
+wrong lens verdict was an **absence claim** — *"no such table exists"* — and three of the four were
+refuted by tables **listed in my own grounding data**. The evidence was in hand; the generalisation
+from *this table lacks the column* to *the platform lacks the capability* is what failed. A dictionary
+whose whole purpose is to stop the product asserting things it cannot prove nearly shipped four
+assertions it could not prove.
+
+One place the gate itself overstated, verified rather than relayed: it reported the empty-funnel
+fallback renders "four invented values." It renders four invented **labels**, each showing
+*"No proved count"* under a watermark reading *"no implied volume or conversion."* No number is
+fabricated. L-4 is written to the milder, accurate version.
