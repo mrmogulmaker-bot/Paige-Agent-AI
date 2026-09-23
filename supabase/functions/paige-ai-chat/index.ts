@@ -8299,6 +8299,15 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           const idempotencyKey = action === "contact.create"
             ? fallbackKeys.current
             : (suppliedKey || fallbackKeys.current);
+          // Before the canonical-key rollout, Chat accepted a model-supplied key for this
+          // action. Preserve a repeated old key only as an additional completed-result lookup;
+          // it never becomes the key for proposal, approval, preview, or new execution.
+          const legacySuppliedIdempotencyKey = action === "contact.create"
+            && suppliedKey
+            && suppliedKey !== fallbackKeys.current
+            && suppliedKey !== fallbackKeys.legacy
+            ? suppliedKey
+            : null;
           let approvedFingerprint: string | undefined;
           let approvalResolutionFailed = false;
           if (approvedConfirmations.size > 0 && personaCtx?.tenant_id) {
@@ -8327,6 +8336,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             body: { command: canonicalCrmCommand, idempotency_key: idempotencyKey,
               ...(legacyCrmCommand ? { legacy_command: legacyCrmCommand } : {}),
               ...(fallbackKeys.legacy ? { legacy_idempotency_key: fallbackKeys.legacy } : {}),
+              ...(legacySuppliedIdempotencyKey ? { legacy_supplied_idempotency_key: legacySuppliedIdempotencyKey } : {}),
               ...(approvedFingerprint ? { approved_fingerprint: approvedFingerprint } : {}) },
           });
           let crmBody: Record<string, unknown> = crmData && typeof crmData === "object" && !Array.isArray(crmData) ? crmData as Record<string, unknown> : {};

@@ -455,6 +455,28 @@ describe("Paige Chat canonical CRM adoption", () => {
     expect(chat).not.toContain("...(!suppliedKey && fallbackKeys.legacy ? { legacy_idempotency_key: fallbackKeys.legacy } : {})");
   });
 
+  it("keeps a pre-rollout supplied contact-create key as readback-only compatibility", async () => {
+    const sourceCommand = {
+      action: "contact.create",
+      patch: { first_name: " Avery ", last_name: " Quinn " },
+    };
+    const canonicalCommand = canonicalizeCrmCommand(sourceCommand);
+    const keys = await crmCommandFallbackIdempotencyKeys(canonicalCommand, sourceCommand, {
+      thread_id: "test-thread",
+      user_turn_ordinal: 1,
+      user_turn: "Add Avery Quinn",
+      tool_name: "crm_create_contact",
+    });
+    const preRolloutSuppliedKey = "model-key-before-canonical-rollout";
+
+    expect(preRolloutSuppliedKey).not.toBe(keys.current);
+    expect(chat).toContain('const legacySuppliedIdempotencyKey = action === "contact.create"');
+    expect(chat).toContain("suppliedKey !== fallbackKeys.current");
+    expect(chat).toContain("legacy_supplied_idempotency_key: legacySuppliedIdempotencyKey");
+    expect(chat).toContain('const idempotencyKey = action === "contact.create"\n            ? fallbackKeys.current');
+    expect(chat).not.toMatch(/(?:^|[{,]\s*)idempotency_key:\s*legacySuppliedIdempotencyKey/m);
+  });
+
   it("preserves meaningful orthographic join controls in the stored display form", () => {
     const command = canonicalizeCrmCommand({
       action: "contact.create",

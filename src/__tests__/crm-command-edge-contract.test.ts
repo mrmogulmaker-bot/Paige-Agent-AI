@@ -190,4 +190,21 @@ describe("canonical CRM action door", () => {
     expect(edge).not.toMatch(/execute_crm_command[\s\S]{0,300}_idempotency_key:\s*body\.legacyIdempotencyKey/);
     expect(executeAt).toBeGreaterThan(laneAt);
   });
+
+  it("uses a pre-rollout supplied contact-create key only for authorized completed-result readback", () => {
+    const parsedAt = edge.indexOf("bodySchema.parse(await req.json())");
+    const tenantAt = edge.indexOf('caller.rpc("current_user_tenant_id")');
+    const canonicalReadAt = edge.indexOf("for (const readbackKey of readbackKeys)");
+    const laneAt = edge.indexOf('caller.rpc("resolve_tool_autonomy"');
+
+    expect(edge).toContain("legacy_supplied_idempotency_key: z.string().trim().min(1).max(192).optional()");
+    expect(edge).toContain("CRM_COMMAND_LEGACY_SUPPLIED_KEY_UNSUPPORTED");
+    expect(edge).toContain("body.legacySuppliedIdempotencyKey");
+    expect(edge).toContain("body.legacySuppliedIdempotencyKey,\n    ].filter");
+    expect(canonicalReadAt).toBeGreaterThan(parsedAt);
+    expect(canonicalReadAt).toBeGreaterThan(tenantAt);
+    expect(canonicalReadAt).toBeLessThan(laneAt);
+    expect(edge).not.toMatch(/requestArgs\s*=\s*\{[^}]*legacy_supplied_idempotency_key/s);
+    expect(edge).not.toMatch(/execute_crm_command[\s\S]{0,300}_idempotency_key:\s*body\.legacySuppliedIdempotencyKey/);
+  });
 });

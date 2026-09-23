@@ -126,6 +126,7 @@ const bodySchema = z.object({
   command: commandSchema,
   legacy_command: commandSchema.optional(),
   legacy_idempotency_key: z.string().regex(/^[0-9a-f]{16}$/).optional(),
+  legacy_supplied_idempotency_key: z.string().trim().min(1).max(192).optional(),
   idempotency_key: z.string().trim().min(1).max(192),
   approved_fingerprint: z.string().regex(/^[0-9a-f]{16}$/).optional(),
 }).strict();
@@ -215,10 +216,11 @@ serve(async (req) => {
   if (authError || !user) return response(401, { ok: false, code: "CRM_AUTH_INVALID" });
 
   type ParsedBody = z.infer<typeof bodySchema>;
-  type CanonicalBody = Omit<ParsedBody, "command" | "legacy_command" | "legacy_idempotency_key"> & {
+  type CanonicalBody = Omit<ParsedBody, "command" | "legacy_command" | "legacy_idempotency_key" | "legacy_supplied_idempotency_key"> & {
     command: CanonicalCrmCommand<ParsedBody["command"]>;
     legacyCommand: Readonly<Record<string, unknown>> | null;
     legacyIdempotencyKey: string | null;
+    legacySuppliedIdempotencyKey: string | null;
   };
   let body: CanonicalBody;
   try {
@@ -229,6 +231,9 @@ serve(async (req) => {
       : null;
     if (parsedBody.legacy_command && !legacyCommand) throw new TypeError("CRM_COMMAND_LEGACY_REPLAY_UNSUPPORTED");
     if (parsedBody.legacy_idempotency_key && !legacyCommand) throw new TypeError("CRM_COMMAND_LEGACY_KEY_UNSUPPORTED");
+    if (parsedBody.legacy_supplied_idempotency_key && canonicalCommand.action !== "contact.create") {
+      throw new TypeError("CRM_COMMAND_LEGACY_SUPPLIED_KEY_UNSUPPORTED");
+    }
     const contactNameIssue = crmContactCreateNameIssue(canonicalCommand);
     if (contactNameIssue) {
       throw new z.ZodError([{
@@ -243,6 +248,7 @@ serve(async (req) => {
       ...(parsedBody.approved_fingerprint ? { approved_fingerprint: parsedBody.approved_fingerprint } : {}),
       legacyCommand,
       legacyIdempotencyKey: parsedBody.legacy_idempotency_key ?? null,
+      legacySuppliedIdempotencyKey: parsedBody.legacy_supplied_idempotency_key ?? null,
     };
   } catch (error) {
     return response(400, {
@@ -312,12 +318,11 @@ serve(async (req) => {
   // approve the already-completed action again. The service-only RPC revalidates the tenant,
   // active account, membership, actor, and exact command hash before returning anything.
   if (accessAllowed && await activeTenantStillMatches()) {
-    const readbackKeys = [
+    const readbackKeys = [...new Set([
       body.idempotency_key,
-      ...(body.legacyIdempotencyKey && body.legacyIdempotencyKey !== body.idempotency_key
-        ? [body.legacyIdempotencyKey]
-        : []),
-    ];
+      body.legacyIdempotencyKey,
+      body.legacySuppliedIdempotencyKey,
+    ].filter((key): key is string => Boolean(key)))];
     for (const readbackKey of readbackKeys) {
       const { data: cachedData, error: cachedError } = await admin.rpc("read_crm_command_result", {
         _tenant_id: tenantId,
