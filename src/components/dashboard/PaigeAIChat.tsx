@@ -2029,7 +2029,7 @@ const PaigeAIChatInner = ({
             {soloTenantSafety && connectionIssue && (
               <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
                 <span>{connectionIssue === "live-interrupted" ? "Paige's answer was interrupted. What arrived is still shown here. You can continue in text chat." : connectionIssue === "offline" ? "You appear to be offline. This message has not been sent." : connectionIssue === "server" ? "Something went wrong on our side and PAIGE didn't get to answer. Your message wasn't sent — try again." : "PAIGE did not respond before the local timeout. No later chunks will be accepted; earlier server work may still complete."}</span>
-                {connectionIssue !== "live-interrupted" && <Button type="button" variant="outline" size="sm" disabled={!composerScope.writable || dictationActive} onClick={handleConnectionRetry}>Retry</Button>}
+                {connectionIssue !== "live-interrupted" && !retryTurnRef.current?.live && <Button type="button" variant="outline" size="sm" disabled={!composerScope.writable || dictationActive} onClick={handleConnectionRetry}>Retry</Button>}
               </div>
             )}
             </div>

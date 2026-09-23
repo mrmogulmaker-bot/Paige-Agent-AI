@@ -51,7 +51,7 @@ MATERIAL_FLOW_CHANGE: NO: The existing approved conversation flow, states, autho
 FLOW_PROTOTYPE: NOT_REQUIRED: No new interaction, layout, state or action; the already approved Live conversation stage remains the surface
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: An authorized user in an enabled workspace speaks with Paige in their own tenant-scoped thread and receives a short natural reply
 VISUAL_DIRECTION: PASS: Existing Solo layout and tokens unchanged; the existing alert shows truthful interrupted-answer copy and suppresses replay of a possibly executed turn
-AUTOMATED_EVIDENCE: PASS: Prompt-denylist, persona-core, rendered composerScope and honesty suites 82/82; interruption, timeout, HTTP/network uncertainty, EOF, rejection and explicit failure keep delivered text without false success; no network/provider calls
+AUTOMATED_EVIDENCE: PASS: Prompt-denylist, persona-core, rendered composerScope and honesty suites 83/83; interruption, timeout, offline, HTTP/network uncertainty, EOF, rejection and explicit failure keep delivered text without false success; no network/provider calls
 STATIC_EVIDENCE: PASS: git diff --check passes; only deployed importer of paige-voice.ts is paige-ai-chat; canonical text voice block unchanged
 RENDERED_EVIDENCE: PASS: Local rendered React integration keeps the user's utterance and received first sentence through explicit error, EOF, reader rejection and barge-in; authenticated production audio remains UNVERIFIED
 BEHAVIORAL_EVIDENCE: UNVERIFIED: Actual spoken take-5 character and turn latency require enabled provider readiness and the owner's listening check
@@ -152,3 +152,6 @@ Two additional mounted failing-first cases cover HTTP 5xx and fetch rejection
 before a response arrives. All dispatched Live failures now share the same
 honest interrupted state and no-replay rule, rather than claiming the message
 was not sent. Text failures retain their existing behavior.
+The pre-dispatch offline case truthfully retains its not-sent copy and invokes
+the existing idempotent failed sink, but does not offer an inert Live Retry.
+Its mounted test failed first; no fetch occurs and text composition stays usable.

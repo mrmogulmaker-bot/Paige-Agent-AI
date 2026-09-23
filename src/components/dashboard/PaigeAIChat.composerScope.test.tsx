@@ -177,6 +177,21 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     expect(textarea().disabled).toBe(false);
   });
 
+  it("honestly refuses offline Live without an inert Retry or request", async () => {
+    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
+    await render();
+    await waitForWritable();
+    const sink = { challenge: "test-challenge", proof: vi.fn(), done: vi.fn(), failed: vi.fn() };
+    await act(async () => { await harness.liveVoiceTurn!("Offline spoken question", sink); await settle(); });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(host.textContent).toContain("You appear to be offline. This message has not been sent.");
+    expect(host.textContent).toContain("Offline spoken question");
+    expect(Array.from(host.querySelectorAll("button")).some((b) => b.textContent === "Retry")).toBe(false);
+    expect(sink.failed).toHaveBeenCalledTimes(1);
+    expect(sink.done).not.toHaveBeenCalled();
+    expect(textarea().disabled).toBe(false);
+  });
+
   it.each(["explicit-error", "eof", "rejection", "interrupt", "timeout", "done"] as const)(
     "keeps the same visible Live transcript and settles the sink on %s",
     async (ending) => {
