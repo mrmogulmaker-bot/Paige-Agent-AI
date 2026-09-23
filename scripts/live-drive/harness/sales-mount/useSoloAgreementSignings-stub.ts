@@ -123,6 +123,24 @@ const ROWS: readonly AgreementSigning[] = [
   },
 ];
 
+/* The recorded trail behind the completed row. Unlike the WRITES below, this is a READ, and a read
+ * CAN be answered honestly from a local fixture: these are shaped exactly as `paige_agreement_events`
+ * returns them (newest first, by `seq`), with the same gaps a real trail has — the owner's own `sent`
+ * event carries no address or device, because the engine does not record one for an act taken from
+ * inside the app. Nothing here is a timestamp reconstructed from the row. */
+const EVENTS = [
+  { id: "e5", type: "completed", actorKind: "signer", actorEmail: "delaney@okaforgroup.com",
+    ip: "203.0.113.42", userAgent: "Safari on iPhone", at: "2026-09-18T09:31:00.000Z" },
+  { id: "e4", type: "consented", actorKind: "signer", actorEmail: "delaney@okaforgroup.com",
+    ip: "203.0.113.42", userAgent: "Safari on iPhone", at: "2026-09-18T09:29:00.000Z" },
+  { id: "e3", type: "viewed", actorKind: "signer", actorEmail: null,
+    ip: "203.0.113.42", userAgent: "Safari on iPhone", at: "2026-09-18T09:20:00.000Z" },
+  { id: "e2", type: "delivered", actorKind: "system", actorEmail: "delaney@okaforgroup.com",
+    ip: null, userAgent: null, at: "2026-09-18T09:00:12.000Z" },
+  { id: "e1", type: "sent", actorKind: "owner", actorEmail: null, ip: null, userAgent: null,
+    at: "2026-09-18T09:00:00.000Z" },
+];
+
 // The writes answer honestly rather than pretending. A harness that fakes a success teaches the
 // surface nothing about the path it will actually take.
 const NOT_WIRED = "Documents are not available on this workspace yet, so nothing was recorded. Your commercial terms are unaffected.";
@@ -145,6 +163,11 @@ function snapshotFor(m: SigningsMode): SigningsState {
       ok: false,
       message: "That signed copy could not be opened just now. Nothing was changed; try again in a moment.",
     }),
+    // A READ of recorded history, answerable locally — see EVENTS above. Only the completed
+    // fixture has a trail; everything else answers the way a document with no history does.
+    signingEvents: async (id: string) => (id === "s3"
+      ? { ok: true as const, events: EVENTS }
+      : { ok: true as const, events: [] }),
   };
   switch (m) {
     case "resolving":   return { ...base, phase: "resolving",   signings: [],   readable: false, canManage: false, authorityUnknown: false };

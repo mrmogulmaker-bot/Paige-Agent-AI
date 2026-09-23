@@ -169,6 +169,10 @@ beforeEach(() => {
     uploadDocument: vi.fn(async () => ({ ok: true, path: "tenant-1/source/1-agreement.pdf" })),
     createSigning: vi.fn(async () => ({ ok: true, signingId: "signing-1", signatureState: "draft" })),
     sendForSignature: vi.fn(async () => ({ ok: true, sent: ["acme@example.com"], notDelivered: [] })),
+    signingEvents: vi.fn(async () => ({ ok: true, events: [
+      { id: "e2", type: "completed", actorKind: "signer", actorEmail: "dana@example.com", ip: "203.0.113.42", userAgent: "Safari on iPhone", at: "2026-09-22T16:12:00Z" },
+      { id: "e1", type: "sent", actorKind: "owner", actorEmail: null, ip: null, userAgent: null, at: "2026-09-22T15:51:00Z" },
+    ] })),
     issueLink: vi.fn(async () => ({ ok: true, token: "tok-abcdef", expiresAt: "2026-10-06T12:00:00Z" })),
     voidSigning: vi.fn(async () => ({ ok: true, signatureState: "voided" })),
     signedCopyUrl: vi.fn(async () => ({ ok: true, url: "https://storage.test/signed.pdf?token=x" })),
@@ -803,7 +807,17 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
     expect(sheet).toMatch(/\.so-tr\s*>\s*span\.so-num\b/);
     expect(sheet).toMatch(/\.so-tr\.so-th\s*>\s*span/);
     // Evidence chips never spend gold — gold stays on the act (§11).
-    expect(sheet).not.toMatch(/\.so-ec[\s\S]*?var\(--gold/);
+    //
+    // This used to read `/\.so-ec[\s\S]*?var\(--gold/`, which is not that rule: the lazy span runs
+    // from the first `.so-ec` to the next `var(--gold` ANYWHERE later in the file, so it passed only
+    // while no gold rule happened to be declared below the chips, and failed the moment one was —
+    // on a surface that has nothing to do with chips. It now reads the chips' own declaration
+    // blocks, which is what it always claimed to check.
+    const chipBlocks = [...sheet.matchAll(/([^{}]*)\{([^{}]*)\}/g)]
+      .filter(([, selector]) => /\.so-ec\b/.test(selector))
+      .map(([, , body]) => body);
+    expect(chipBlocks.length).toBeGreaterThan(5);
+    for (const body of chipBlocks) expect(body).not.toMatch(/var\(--gold/);
   });
 });
 
@@ -1043,13 +1057,14 @@ describe("Agreement documents — signature state, separate from commercial stat
     harness.signings.signings = [COMPLETED];
     render("terms");
     act(() => (host.querySelector('[aria-label="Agreements and terms"] .so-row') as HTMLButtonElement).click());
+    act(() => (buttonSaying("View the signed record") as HTMLButtonElement).click());
   };
 
   it("offers the signed copy on a completed document, and opens only what the server returned", async () => {
     const opened: string[] = [];
     const spy = vi.spyOn(window, "open").mockImplementation(((u: string) => { opened.push(u); return null; }) as never);
     openCompleted();
-    const button = buttonSaying("Download the signed copy") as HTMLButtonElement;
+    const button = buttonSaying("Download the signed PDF") as HTMLButtonElement;
     expect(button).toBeDefined();
     await act(async () => { button.click(); });
     // RE-POINTED, not rewritten away: the sealed copy is now streamed by `agreement-document`,
@@ -1067,7 +1082,7 @@ describe("Agreement documents — signature state, separate from commercial stat
     const spy = vi.spyOn(window, "open").mockImplementation(((u: string) => { opened.push(u); return null; }) as never);
     harness.signings.signedCopyUrl = vi.fn(async () => ({ ok: false, message: "That signed copy could not be opened just now." }));
     openCompleted();
-    await act(async () => { (buttonSaying("Download the signed copy") as HTMLButtonElement).click(); });
+    await act(async () => { (buttonSaying("Download the signed PDF") as HTMLButtonElement).click(); });
     // §13: a request is not a link. Nothing is opened and the refusal is what the owner is told.
     expect(opened).toEqual([]);
     expect(host.textContent).toContain("That signed copy could not be opened just now.");
@@ -1080,8 +1095,61 @@ describe("Agreement documents — signature state, separate from commercial stat
     harness.signings.signings = [{ ...COMPLETED, signedPdfPath: null }];
     render("terms");
     act(() => (host.querySelector('[aria-label="Agreements and terms"] .so-row') as HTMLButtonElement).click());
-    expect(buttonSaying("Download the signed copy")).toBeUndefined();
-    expect(host.textContent).toContain("no sealed copy is recorded against it");
+    // The record still opens — it is signed, and the trail of how it got there is the point of the
+    // surface. What is absent is the DOWNLOAD, and the footer says why instead of offering a
+    // control that cannot work (§70.1).
+    act(() => (buttonSaying("View the signed record") as HTMLButtonElement).click());
+    expect(buttonSaying("Download the signed PDF")).toBeUndefined();
+    // Targeted by its OWN label: the grounded-detail drawer is also role="dialog", so a bare
+    // querySelector returns whichever is first in the DOM rather than the one under test.
+    expect(document.querySelector('[aria-labelledby="so-done-title"]')!.textContent).toContain("no sealed copy is recorded against it");
+  });
+
+  it("shows the recorded trail — what the engine logged, at minute resolution, in its order", async () => {
+    openCompleted();
+    // The trail is fetched, not derived from the row's four timestamps: those can say a document
+    // was viewed, they cannot say by which address, from which device, or in what order.
+    await act(async () => {});
+    expect(harness.signings.signingEvents).toHaveBeenCalledWith("s1", "tenant-1");
+
+    const panel = document.querySelector('[aria-labelledby="so-done-title"]')!;
+    const rows = [...panel.querySelectorAll(".so-ev")];
+    expect(rows).toHaveLength(2);
+
+    // Newest first, exactly as the read returned it — never re-sorted into a guess.
+    expect(rows[0].textContent).toContain("Signed and completed");
+    expect(rows[1].textContent).toContain("Sent");
+    // The recorded actor, address and device, and nothing invented to fill the gaps: the `sent`
+    // event carries none of the three, so it falls back to who did it rather than a blank.
+    expect(rows[0].textContent).toContain("dana@example.com");
+    expect(rows[0].textContent).toContain("203.0.113.42");
+    expect(rows[0].textContent).toContain("Safari on iPhone");
+    expect(rows[1].textContent).toContain("by owner");
+    // MINUTE resolution. Both events fall on the same day, so a date-only stamp would render them
+    // identically and the ordering this surface exists to prove would be invisible.
+    expect(rows[0].querySelector(".so-ev-when")!.textContent)
+      .not.toEqual(rows[1].querySelector(".so-ev-when")!.textContent);
+    // The event that CLOSES the ceremony carries the settled mark; the one in flight does not.
+    expect(rows[0].className).toContain("is-done");
+    expect(rows[1].className).not.toContain("is-done");
+
+    // ONE title. The approved screen leads with the seal and says "Signed and completed" once;
+    // a head row repeating it directly above is a stutter, and this is what keeps it gone.
+    const headings = [...panel.querySelectorAll("h1, h2, h3")].map((h) => h.textContent);
+    expect(headings).toEqual(["Signed and completed"]);
+  });
+
+  it("says so when the trail cannot be read, rather than showing an empty history", async () => {
+    harness.signings.signingEvents = vi.fn(async () => ({ ok: false, message: "This document's history could not be read." }));
+    openCompleted();
+    await act(async () => {});
+    const panel = document.querySelector('[aria-labelledby="so-done-title"]')!;
+    // A failed READ and a document with no recorded history are not the same fact, and a trail
+    // that renders empty for both tells the owner the wrong one (§13).
+    expect(panel.textContent).toContain("This document's history could not be read.");
+    expect(panel.querySelectorAll(".so-ev")).toHaveLength(0);
+    // The rest of the record still stands: the seal and the sealed copy do not depend on the trail.
+    expect(buttonSaying("Download the signed PDF")).toBeDefined();
   });
 
   it("lets a reader who cannot write still retrieve the signed copy", () => {
@@ -1089,7 +1157,7 @@ describe("Agreement documents — signature state, separate from commercial stat
     // this on canManage would hide a signed contract from someone entitled to read its record.
     harness.signings.canManage = false;
     openCompleted();
-    expect(buttonSaying("Download the signed copy")).toBeDefined();
+    expect(buttonSaying("Download the signed PDF")).toBeDefined();
     expect(buttonSaying("Send for signature")).toBeUndefined();
   });
 

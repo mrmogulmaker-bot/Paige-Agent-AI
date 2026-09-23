@@ -118,6 +118,21 @@ export type SigningWriteResult = {
  * somebody away believing they had one.
  */
 /** What the send endpoint actually reports: who it reached, and who it did not. */
+/** One line of the engine's append-only trail, as the completion surface reads it. */
+export type SigningEvent = {
+  readonly id: string;
+  readonly type: string;
+  readonly actorKind: string;
+  readonly actorEmail: string | null;
+  readonly ip: string | null;
+  readonly userAgent: string | null;
+  readonly at: string | null;
+};
+
+export type SigningEventsResult =
+  | { readonly ok: true; readonly events: readonly SigningEvent[] }
+  | { readonly ok: false; readonly message: string };
+
 export type SigningSendResult =
   | { readonly ok: true; readonly sent: readonly string[]; readonly notDelivered: readonly string[] }
   | { readonly ok: false; readonly message: string };
@@ -171,6 +186,16 @@ export type SigningsState = {
    * a fixed 30 days, which is why this takes no duration. A surface offering a choice the server
    * does not honour is worse than one that states the real number.
    */
+  /**
+   * The engine's own append-only trail for one agreement — what happened, when, and who caused it.
+   *
+   * Read on demand rather than with the band, because it is one agreement's detail and loading it
+   * for every row would be a query per row for a surface nobody has opened yet.
+   */
+  readonly signingEvents: (
+    signingId: string,
+    loadedTenantId: string | null,
+  ) => Promise<SigningEventsResult>;
   readonly sendForSignature: (
     signingId: string,
     loadedTenantId: string | null,
@@ -436,6 +461,44 @@ export function useSoloAgreementSignings(): SigningsState {
     };
   }, [runWrite]);
 
+  const signingEvents = useCallback(async (
+    signingId: string,
+    loadedTenantId: string | null,
+  ): Promise<SigningEventsResult> => {
+    const expected = loadedTenantId ?? activeTenantId;
+    if (!expected) return { ok: false, message: "This workspace could not be resolved, so no history was read." };
+    try {
+      const { data, error } = await supabase
+        .from("paige_agreement_events" as never)
+        // `seq` is the engine's monotonic order and the ONLY safe sort: two events written in the
+        // same millisecond render in a stable order rather than swapping between reads, which on a
+        // legal trail would look like the history changing.
+        .select("id,event_type,actor_kind,actor_email,ip,user_agent,created_at,seq")
+        .eq("tenant_id", expected)
+        .eq("agreement_id", signingId)
+        .order("seq", { ascending: false })
+        .limit(50) as unknown as { data: Record<string, unknown>[] | null; error: unknown };
+      if (error) {
+        console.error("[signings] trail read failed", error);
+        return { ok: false, message: "This document's history could not be read, so none is shown rather than a partial one." };
+      }
+      return {
+        ok: true,
+        events: (data ?? []).map((row) => ({
+          id: String(row.id),
+          type: toText(row.event_type) ?? "unrecognised",
+          actorKind: toText(row.actor_kind) ?? "system",
+          actorEmail: toText(row.actor_email),
+          ip: toText(row.ip),
+          userAgent: toText(row.user_agent),
+          at: toText(row.created_at),
+        })),
+      };
+    } catch {
+      return { ok: false, message: "This document's history could not be read, so none is shown rather than a partial one." };
+    }
+  }, [activeTenantId]);
+
   const sendForSignature = useCallback(async (
     signingId: string,
     loadedTenantId: string | null,
@@ -673,5 +736,5 @@ export function useSoloAgreementSignings(): SigningsState {
       : "unavailable" as const,
     ...EMPTY,
   };
-  return { ...visible, retry, uploadDocument, createSigning, sendForSignature, issueLink, voidSigning, signedCopyUrl };
+  return { ...visible, retry, uploadDocument, createSigning, sendForSignature, signingEvents, issueLink, voidSigning, signedCopyUrl };
 }

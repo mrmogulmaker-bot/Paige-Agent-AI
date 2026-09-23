@@ -32,6 +32,10 @@ export function setAgreementsHarnessMode(next: AgreementsMode) {
 const CLIENTS = [
   { id: "c1", name: "Jordan Avery" },
   { id: "c2", name: "Meridian Advisory" },
+  // The counterparty on the SIGNED document. Without this pair — this client and `a3` below — the
+  // completed signing joins nothing and the terminal state of the whole flow renders in no frame,
+  // which is how it stayed unreviewable until it was shot.
+  { id: "c3", name: "Delaney Okafor" },
 ];
 
 const AGREEMENTS = [
@@ -55,6 +59,19 @@ const AGREEMENTS = [
     catalogSnapshotMinor: null, catalogSnapshotCurrency: null, catalogSnapshotAt: null,
     startsOn: "2026-08-15", renewsOn: null, endsOn: null,
     status: "draft", updatedAt: "2026-08-15T09:00:00Z",
+  },
+  {
+    // The SIGNED one. `status: "active"` beside a completed signature is the pairing the surface
+    // has to keep apart: the signature finished, and the engagement it authorises is running —
+    // two states, not one, which is exactly what the completion screen's closing line says.
+    id: "a3", contactId: "c3", offerId: "offer-1", title: null, notes: null,
+    termKind: "recurring", billingInterval: "month", intervalCount: 1, installmentsTotal: null,
+    paymentSchedule: null, priceBasis: "catalog",
+    agreedAmountMinor: 240000, agreedCurrency: "usd",
+    catalogSnapshotMinor: 240000, catalogSnapshotCurrency: "usd",
+    catalogSnapshotAt: "2026-09-18T08:58:00Z",
+    startsOn: "2026-10-01", renewsOn: "2026-11-01", endsOn: null,
+    status: "active", updatedAt: "2026-09-18T09:31:00Z",
   },
 ];
 
