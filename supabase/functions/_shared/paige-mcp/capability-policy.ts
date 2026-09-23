@@ -285,7 +285,7 @@ export const MCP_CAPABILITY_POLICY: Readonly<Record<string, McpCapability>> = {
     canonical: "crm_signed_agreement_list",
     effect: "read",
     category: "read",
-    evidence: "supabase/functions/paige-mcp/index.ts:2047-2077 — single .select() on paige_signed_agreements at :2058 with order/limit plus optional client_id and signed_at filters. No insert/update/delete, no rpc, no fetch.",
+    evidence: "supabase/functions/paige-mcp/index.ts:2065-2130 — single .select() on paige_signed_agreements at :2107, tenant-scoped (#1353) through the clients FK via `clients!inner(tenant_id)` + .eq(\"clients.tenant_id\", actorTenantId()), with the platform-owner carve-out tenantScopedClient() already documents; a named contact_id is ownership-checked through tenantScopedClient at :2105. Optional signed_at filter. No insert/update/delete, no fetch.",
     paigeHome: false,
   },
   list_skills: {

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>INT-178 — what PAIGE says about agreements</title>
+<style>
+  /* Prototype surface for review only. Not a product surface, not a component to copy from:
+     it exists so the owner can read the six answers PAIGE can now give, in one place, before
+     they are live. Every string below is copied verbatim from the shipped code. */
+  :root {
+    color-scheme: dark light;
+    --bg: #0b0d14; --panel: #141826; --raised: #1b2032; --line: #2a3145;
+    --ink: #e8eaf2; --muted: #9aa3bd; --indigo: #7c8cff; --ok: #4ade80; --warn: #fbbf24; --stop: #f87171;
+    --radius: 12px;
+  }
+  :root:not([data-theme="dark"]) { }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f7f8fc; --panel: #ffffff; --raised: #f1f3f9; --line: #dfe3ee;
+      --ink: #12151f; --muted: #5b6480; --indigo: #4f5bd5;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f7f8fc; --panel: #ffffff; --raised: #f1f3f9; --line: #dfe3ee;
+    --ink: #12151f; --muted: #5b6480; --indigo: #4f5bd5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 32px 16px 96px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 28px; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .sub { color: var(--muted); margin: 0 0 8px; }
+  .note {
+    border: 1px solid var(--line); border-left: 3px solid var(--indigo);
+    background: var(--panel); border-radius: var(--radius);
+    padding: 14px 16px; margin: 20px 0 32px; color: var(--muted); font-size: 14px;
+  }
+  .note strong { color: var(--ink); }
+  .state { border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius); margin: 0 0 20px; overflow: hidden; }
+  .state > header { padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--raised); display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+  .state h2 { font-size: 15px; margin: 0; letter-spacing: -0.01em; }
+  .when { color: var(--muted); font-size: 13px; }
+  .body { padding: 16px; }
+  .turn { display: flex; gap: 10px; margin: 0 0 12px; }
+  .turn:last-child { margin-bottom: 0; }
+  .who { flex: 0 0 52px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; padding-top: 3px; }
+  .says { flex: 1 1 auto; }
+  .ask { color: var(--ink); }
+  .chip { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; margin: 2px 0 10px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--indigo); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 4px 0 0; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  td:first-child { font-variant-numeric: tabular-nums; }
+  .s { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+  .s-live { color: var(--warn); } .s-done { color: var(--ok); } .s-stop { color: var(--stop); }
+  .refusal { border: 1px solid var(--line); border-left: 3px solid var(--stop); border-radius: 8px; padding: 12px 14px; background: var(--raised); }
+  .why { margin: 12px 0 0; padding-top: 12px; border-top: 1px dashed var(--line); color: var(--muted); font-size: 13px; }
+  .why b { color: var(--ink); font-weight: 600; }
+  code { background: var(--raised); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; font-size: 12.5px; }
+  .toggle { position: fixed; top: 14px; right: 14px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; font: inherit; font-size: 13px; cursor: pointer; }
+  @media (max-width: 560px) { .turn { flex-direction: column; gap: 2px; } .who { flex: none; } }
+</style>
+</head>
+<body>
+<button class="toggle" id="t">Light / dark</button>
+<div class="wrap">
+
+  <h1>What PAIGE says about agreements</h1>
+  <p class="sub">INT-178 · the six answers the two read tools can produce · PR #1388</p>
+
+  <div class="note">
+    <strong>What to judge here:</strong> the wording, and whether each answer is the one you would want
+    in that situation. Every string below is copied verbatim from the shipped adapter and the activity
+    chip — this is not a mock-up of intended copy, it is the copy.
+    <br><br>
+    <strong>What this is not:</strong> a screen. Nothing about the chat surface changes — no route,
+    layout, control or viewport. The only rendered element is the small grey activity chip, shown under
+    each answer. Three of these six states exist because an empty result is the answer most likely to be
+    stated as a confident falsehood, so each is told apart rather than flattened into “none”.
+  </div>
+
+  <!-- 1 -->
+  <section class="state">
+    <header><h2>1 · The ordinary answer</h2><span class="when">a workspace with agreements out</span></header>
+    <div class="body">
+      <div class="turn"><div class="who">You</div><div class="says ask">Where do my agreements stand?</div></div>
+      <div class="turn"><div class="who">Paige</div><div class="says">
+        <div class="chip"><span class="dot"></span>Checked where your agreements stand · 3 agreements · nothing sent</div>
+        <table>
+          <tr><th>Document</th><th>With</th><th>State</th><th>Waiting on</th></tr>
+          <tr><td>Coaching engagement — Q4</td><td>Dana Whitfield</td><td><span class="s s-live">partially signed</span></td><td>Jordan Reyes</td></tr>
+          <tr><td>Retainer — renewal</td><td>Marcus Bell</td><td><span class="s s-live">viewed</span></td><td>Marcus Bell</td></tr>
+          <tr><td>Scope addendum</td><td>Lena Ortiz</td><td><span class="s s-done">completed</span></td><td>—</td></tr>
+        </table>
+      </div></div>
+      <p class="why"><b>Deliberate:</b> “viewed” means opened, not signed, and the tool description says so to the model.
+      Signing evidence — IP address, device, the signature image — is never available here, so PAIGE cannot describe it even if asked.</p>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section class="state">
+    <header><h2>2 · Genuinely nothing</h2><span class="when">the workspace really has none</span></header>
+    <div class="body">
+      <div class="turn"><div class="who">You</div><div class="says ask">Anything waiting on signatures?</div></div>
+      <div class="turn"><div class="who">Paige</div><div class="says">
+        <div class="chip"><span class="dot"></span>Checked where your agreements stand · none matched</div>
+        Nothing is out for signature right now.
+      </div></div>
+      <p class="why"><b>This is the only state where “none” is the truthful answer</b> — and the three below exist so it is never given in their place.</p>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section class="state">
+    <header><h2>3 · An agency, which has no client book</h2><span class="when">top-level agency account</span></header>
+    <div class="body">
+      <div class="turn"><div class="who">You</div><div class="says ask">Where do my agreements stand?</div></div>
+      <div class="turn"><div class="who">Paige</div><div class="says">
+        <div class="chip"><span class="dot"></span>Checked where your agreements stand · agency account — agreements live in the sub-account</div>
+        This account is an agency, which manages sub-accounts rather than a client book, so it holds no
+        agreements of its own. Agreements live in the sub-account that holds the client relationship —
+        switch into it to see them.
+      </div></div>
+      <p class="why"><b>Without this, the answer would have been “you have no agreements.”</b> The database
+      refuses agreement writes on a top-level agency, so the read truthfully returns nothing — and reporting
+      that as an empty book would be a confident falsehood about an account that structurally cannot have one.
+      Given only after an <em>unfiltered</em> read: a converted agency keeps its earlier agreements, so a filter
+      matching none of them means “none matched”, not “this account holds none”.</p>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="state">
+    <header><h2>4 · A client who is not in this workspace</h2><span class="when">stale or invented contact id</span></header>
+    <div class="body">
+      <div class="turn"><div class="who">You</div><div class="says ask">Has Priya signed yet?</div></div>
+      <div class="turn"><div class="who">Paige</div><div class="says">
+        <div class="chip"><span class="dot"></span>Checked a client's agreement · that contact wasn't found in this workspace</div>
+        No contact with that id exists in this workspace, so this is not “that client has no agreements” —
+        the client could not be found at all. Let me look them up by name and try again.
+      </div></div>
+      <p class="why"><b>Without this, the answer would have been “Priya has nothing outstanding”</b> — a confident
+      statement about a person the workspace may not have. The lookup runs as you, so a contact belonging to another
+      workspace reads as absent, which is the correct answer to give you and discloses nothing about theirs.</p>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section class="state">
+    <header><h2>5 · Reached the workspace, but not by membership</h2><span class="when">agency managing a sub-account · operator acting-as</span></header>
+    <div class="body">
+      <div class="turn"><div class="who">You</div><div class="says ask">Show me this sub-account's agreements.</div></div>
+      <div class="turn"><div class="who">Paige</div><div class="says">
+        <div class="chip"><span class="dot"></span>Couldn't read your agreements</div>
+        <div class="refusal">Agreements can only be read by someone with their own membership in this workspace.
+        Access you hold by managing this account from a parent agency, or as a platform operator, does not extend
+        to its agreements — so nothing can be shown here, and this is a limit rather than an error.</div>
+      </div></div>
+      <p class="why"><b>Without this, the answer was “this account is not a member of it”</b> — which is not what
+      happened, and sends you to fix an access problem you do not have. Three kinds of access reach a workspace
+      without a direct membership row, and agreements do not travel down any of them today. Whether that limit
+      should be lifted is a separate decision about the agreements read itself, not about this tool.</p>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section class="state">
+    <header><h2>6 · The workspace changed underneath the question</h2><span class="when">switched accounts mid-turn</span></header>
+    <div class="body">
+      <div class="turn"><div class="who">You</div><div class="says ask">Where do my agreements stand?</div></div>
+      <div class="turn"><div class="who">Paige</div><div class="says">
+        <div class="chip"><span class="dot"></span>Couldn't read your agreements</div>
+        <div class="refusal">That workspace's agreements could not be read — the active workspace may have changed,
+        or this account is not a member of it. Reopen the workspace and try again.</div>
+      </div></div>
+      <p class="why"><b>Deliberate:</b> PAIGE never says which of the underlying refusals fired. The remedy is the
+      same in all of them, and naming which gate refused would let someone probe for the difference.</p>
+    </div>
+  </section>
+
+  <div class="note">
+    <strong>Two refusals that never reach the database at all:</strong> a status filter that is not one of the eight
+    real states, and a contact id that is not a well-formed id, are both refused before the read runs — because each
+    would otherwise return an empty list that reads exactly like “you have nothing”.
+    <br><br>
+    <strong>Not verified yet:</strong> nobody has driven this on the live platform. These are the strings the code
+    will produce, read from the code — not screenshots of PAIGE actually saying them.
+  </div>
+
+</div>
+<script>
+  // Per-viewer convenience only; never read back and safe to lose.
+  var t = document.getElementById('t'), r = document.documentElement;
+  try { var saved = localStorage.getItem('int178-theme'); if (saved) r.setAttribute('data-theme', saved); } catch (e) {}
+  t.addEventListener('click', function () {
+    var next = r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    r.setAttribute('data-theme', next);
+    try { localStorage.setItem('int178-theme', next); } catch (e) {}
+  });
+</script>
+</body>
+</html>
