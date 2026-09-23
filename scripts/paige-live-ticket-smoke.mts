@@ -72,7 +72,7 @@ assert.match(relay, /rpc\("is_platform_admin"/, "relay preserves canonical platf
 assert.match(relay, /from\("profiles"\)[\s\S]*?active_tenant_id/, "relay rejects a stale ticket after active workspace switch");
 assert.match(relay, /order\("joined_at", \{ ascending: true \}\)/, "null active workspace uses the canonical first-active-member fallback");
 assert.match(relay, /hasLiveWorkspaceStanding\(false, activeChildAccess\.data, activeAgencyRole\.data, activePlatformRole\.data\)/, "non-null active workspace must prove standing before suppressing fallback");
-const pilotMigration = readFileSync(new URL("../supabase/migrations/20270408000000_paige_live_pilot_feature_guard.sql", import.meta.url), "utf8");
+const pilotMigration = readFileSync(new URL("../supabase/migrations/20270409000000_paige_live_pilot_feature_guard.sql", import.meta.url), "utf8");
 assert.match(pilotMigration, /CREATE TABLE IF NOT EXISTS public\.paige_live_tenant_availability/, "rollout decision has a platform-owned table");
 assert.match(pilotMigration, /REVOKE ALL ON TABLE public\.paige_live_tenant_availability FROM PUBLIC, anon, authenticated/, "tenant roles have no table write route");
 assert.doesNotMatch(relay + session, /from\("tenants"\)\.select\("features"\)/, "tenant-writable feature JSON never controls Live audio");
