@@ -177,6 +177,77 @@ export async function hashDocument(bytes: Uint8Array): Promise<string> {
 }
 
 /**
+ * An uploaded file this engine cannot seal.
+ *
+ * WHY MAGIC BYTES ARE NOT ENOUGH, and why this has to fail at SEND. `sealAgreementPdf` below loads
+ * the presented bytes with `PDFDocument.load`, which rejects a truncated, corrupt or ENCRYPTED file
+ * — and by then the counterparty has already signed, the send froze the document under
+ * `pa_sent_is_frozen_ck`, and a completed signature cannot be taken back. The agreement would sit
+ * signed and permanently unable to complete, which is the same one-way trap as emailing a blank
+ * document: irreversible, and discovered by the person least able to fix it.
+ *
+ * `%PDF-` is a five-byte prefix that any file can carry. Whether the bytes are a PDF is a question
+ * only the parser can answer, so the send asks the SAME parser, the same way, before it freezes
+ * anything.
+ */
+export class UnsealablePdfError extends Error {
+  readonly reason: "unreadable" | "no_pages";
+  constructor(reason: "unreadable" | "no_pages") {
+    super(
+      reason === "no_pages"
+        ? "That PDF has no pages in it, so there would be nothing for anyone to read or sign. Nothing was sent. " +
+          "Re-export the agreement and upload it again."
+        : "That file could not be opened as a PDF — it may be corrupt, incomplete, or password-protected. " +
+          "Nothing was sent. Re-export it as an unprotected PDF and upload it again.",
+    );
+    this.name = "UnsealablePdfError";
+    this.reason = reason;
+  }
+}
+
+/**
+ * Prove an uploaded file is one the seal will still be able to open, BEFORE the send freezes it.
+ *
+ * Deliberately mirrors `sealAgreementPdf`'s own call — `PDFDocument.load(bytes)` with no options —
+ * because the point is not "is this a plausible PDF" but "will the seal succeed on it". Loading
+ * with, say, `ignoreEncryption: true` here would let through exactly the files the seal then
+ * refuses, which is worse than not checking at all: it would move the failure back to the one
+ * moment it cannot be recovered from.
+ */
+export async function assertUploadedPdfIsSealable(bytes: Uint8Array): Promise<void> {
+  const { PDFDocument } = await import(PDFLIB_SPEC);
+
+  // THE CHECK PERFORMS THE SEAL, IT DOES NOT APPROXIMATE IT — on a throwaway copy.
+  //
+  // Two weaker versions of this were tried and both let through a file the seal then refused, which
+  // is the worst possible outcome here: the send has frozen the document under
+  // `pa_sent_is_frozen_ck` and the counterparty has signed, and both are one-way, so the agreement
+  // is left permanently signed and permanently unable to complete.
+  //
+  //   `load` alone — measured: it returns happily for a file that is nothing but the eight bytes
+  //   `%PDF-1.7`, which is a zero-page document.
+  //
+  //   `load` + `getPageCount()` — measured: `getPageCount` COUNTS the real page leaves by
+  //   traversal, while `addPage` gates on the page tree's DECLARED `/Count`
+  //   (pdf-lib `core/structures/PDFPageTree.js`). A file with two real pages and `/Count 1`, or
+  //   with no `/Count` at all, passes the count and throws at the seal — and a wrong or missing
+  //   `/Count` is one of the commonest real defects from naive merge tools and scanner firmware.
+  //
+  // So the only honest question is "will the seal succeed on these bytes", and the only reliable
+  // way to ask it is to do what the seal does. `sealAgreementPdf` reloads from the original bytes,
+  // so mutating this copy affects nothing.
+  try {
+    const probe = await PDFDocument.load(bytes);
+    if (probe.getPageCount() < 1) throw new UnsealablePdfError("no_pages");
+    probe.addPage([612, 792]);
+    await probe.save();
+  } catch (e) {
+    if (e instanceof UnsealablePdfError) throw e;
+    throw new UnsealablePdfError("unreadable");
+  }
+}
+
+/**
  * Seal a completed agreement: stamp each signature INTO the document, then append the signing record.
  *
  * The signature is drawn onto the document itself rather than recorded beside it, because "the

@@ -620,7 +620,8 @@ jobs:
           deno test --allow-import --node-modules-dir=none --deny-net --deny-env --deny-run --deny-ffi --deny-sys \
             supabase/functions/_shared/agreements/token.test.ts \
             supabase/functions/_shared/agreements/document.test.ts \
-            supabase/functions/_shared/agreements/signing-guard.test.ts
+            supabase/functions/_shared/agreements/signing-guard.test.ts \
+            supabase/functions/_shared/agreements/storage-path.test.ts
           # The edge functions must at least TYPE-check; none is exercised by the tests above.
           deno check --allow-import --node-modules-dir=none \
             supabase/functions/sign-agreement/index.ts \

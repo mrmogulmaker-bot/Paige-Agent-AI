@@ -1181,6 +1181,10 @@ function SignatureSender({ signings, signing, clientName, agreedLabel, tenantId,
   const [copied, setCopied] = React.useState(false);
   const [sent, setSent] = React.useState(null);
   const [showLink, setShowLink] = React.useState(false);
+  // The repair path for a document with nobody to send it to. Prefilled with the client's own name
+  // because that is who it almost always is; the address is the part that was missing.
+  const [signerName, setSignerName] = React.useState(clientName || "");
+  const [signerEmail, setSignerEmail] = React.useState("");
   const alive = React.useRef(true);
   React.useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   React.useEffect(() => { firstRef.current?.focus(); }, []);
@@ -1204,6 +1208,26 @@ function SignatureSender({ signings, signing, clientName, agreedLabel, tenantId,
     setBusy(false);
     if (!outcome.ok) { setNotice(outcome.message); return; }
     setSent(outcome);
+  };
+
+  /**
+   * THE WAY OUT OF THE DEAD END. A signer is seeded from the client's own email address, so a
+   * client with no address on file yields no signer — and the send then refuses with "Add at least
+   * one signer before sending." That was true and impossible to act on: nothing anywhere could add
+   * one, so the person was told what was wrong and given no control that would fix it (§70).
+   */
+  const addSigner = async () => {
+    setBusy(true);
+    setNotice("");
+    const outcome = await signings.addSigner(signing.id, signerName, signerEmail, tenantId)
+      .catch(() => ({ ok: false, message: "That could not be confirmed, so no signer is being reported as added." }));
+    if (!alive.current) return;
+    setBusy(false);
+    if (!outcome.ok) { setNotice(outcome.message); return; }
+    setSignerEmail("");
+    // Re-read rather than patching the row in place: the server assigns the signing order, and a
+    // surface that guessed it would be stating something it did not get back.
+    signings.retry?.();
   };
 
   const issue = async () => {
@@ -1258,6 +1282,51 @@ function SignatureSender({ signings, signing, clientName, agreedLabel, tenantId,
         </header>
 
         <div className="so-editor-body" inert={busy ? "" : undefined}>
+          {/* NOBODY TO SEND IT TO — stated here, at the top, because it blocks everything below it.
+            * A signer is seeded from the client's own email, so a client with no address on file
+            * produces a document that cannot be sent. The send refuses correctly; what was missing
+            * was any way to answer the refusal. Draft only, which is the server's rule: adding a
+            * party to a document others have already been shown would change what they agreed to
+            * after they agreed to it. */}
+          {!signing.signerName && state === "draft" && (
+            <div className="so-banner so-banner-warn">
+              <Ic.shield size={15} />
+              <span>
+                <b>This document has nobody to sign it.</b> {clientName || "This client"} has no
+                email address on file, so there is no one for the link to reach. Add the person who
+                will sign and the address to send it to — it is saved against this document only,
+                and does not change the client's record.
+                <span className="so-signer-add">
+                  <label className="so-field">
+                    <span>Who will sign</span>
+                    <input
+                      value={signerName}
+                      onChange={(e) => setSignerName(e.target.value)}
+                      aria-label="The name they will sign under"
+                      placeholder="Their full name"
+                    />
+                  </label>
+                  <label className="so-field">
+                    <span>Where to send it</span>
+                    <input
+                      type="email"
+                      value={signerEmail}
+                      onChange={(e) => setSignerEmail(e.target.value)}
+                      aria-label="The email address the signing link is sent to"
+                      placeholder="their@email.com"
+                    />
+                  </label>
+                  <button
+                    className="btn btn-s btn-p"
+                    onClick={addSigner}
+                    disabled={busy || !signerName.trim() || signerEmail.indexOf("@") < 1}
+                  >
+                    {busy ? "Adding…" : "Add the signer"}
+                  </button>
+                </span>
+              </span>
+            </div>
+          )}
           {/* THE APPROVED RECAP (§28 screen 3): the last screen before anything leaves the
             * building, saying plainly WHO receives it, WHAT they get and WHAT HAPPENS when they
             * sign. Only rows this surface can fill TRUTHFULLY are here — the approved screen also

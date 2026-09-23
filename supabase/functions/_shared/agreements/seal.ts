@@ -20,7 +20,40 @@
 import { renderPresentedPdf, sealAgreementPdf, UnrenderableDocumentError, UnrenderableNameError } from "./document.ts";
 import { expiryFromNow, mintSignerToken, RETRIEVAL_TOKEN_TTL_DAYS, sha256Hex } from "./token.ts";
 import { notify, ownerNotificationEmail } from "./notify.ts";
+import { recordCompletedAgreementToKnowledge } from "./knowledge.ts";
 
+/**
+ * How long the completed-agreement knowledge write may hold the signer's response, when there is no
+ * way to hand it off instead.
+ *
+ * ABANDONING THIS WORK IS NOT FREE, which an earlier version of this comment got wrong by claiming
+ * "a late embed that still lands is harmless". It is not: `kb-ingest-core.ts` COMMITS the
+ * `tenant_knowledge_docs` row before it calls the embedding provider, inserts the chunks after, and
+ * deletes the orphan row only at the very end if nothing embedded. Every one of those repair lines
+ * is downstream of the await that hangs, so a race that walks away mid-ingest can leave a durable
+ * row carrying a `chunk_count` it never produced — listed in the tenant's knowledge base, never
+ * retrievable, and lying about its own size.
+ *
+ * So the timeout is the FALLBACK, not the plan. Where the runtime can keep the isolate alive past
+ * the response (`EdgeRuntime.waitUntil`, as `paige-tts` and `generate-image` already use), the
+ * ingest is handed to it and allowed to finish and clean up after itself, off the signer's request
+ * entirely. The bound below only applies where that hand-off is unavailable, and there it is the
+ * lesser of two bad outcomes: a possible orphan row beats showing a signer a failed signing for an
+ * agreement that is completed, sealed and emailed.
+ */
+const KNOWLEDGE_INGEST_TIMEOUT_MS = 8_000;
+
+/**
+ * DO NOT ADD AN INGEST OR NOTIFICATION REASON TO THIS UNION. The omission is the design, and the
+ * distinction it encodes is easy to lose: a SEALING failure means the agreement has no executed
+ * document, which decides whether it is validly executed at all. A knowledge-ingest or notification
+ * failure means Paige did not write down something she already has. The first is a state of the
+ * agreement; the second is not, and representing it here would make a completed, sealed, legally
+ * executed agreement reportable as a failure because a summary did not embed.
+ *
+ * The rule that a sealing failure must surface as its own visible state is real and applies to every
+ * reason listed below. It stops at the seal.
+ */
 export type SealOutcome =
   | { ok: true; sealedSha256: string; sealedKey: string }
   | { ok: false; reason: "not_ready" | "already_sealed" | "missing_presented" | "render_failed" | "storage_failed" | "verify_failed" | "unrenderable_name"; detail: string };
@@ -238,6 +271,69 @@ export async function sealAndComplete(db: Db, agreementId: string): Promise<Seal
     sealedSha256,
     signers: (signers ?? []) as Array<Record<string, unknown>>,
   });
+
+  // ── Remember it, so Paige can answer what this client agreed to ────────────────────────────────
+  // LAST, and guarded twice. It runs after the parties have been told because a slow or failing
+  // ingest must never delay the counterparty's retrieval link — that link is the only copy somebody
+  // with no account on this platform gets. The module returns rather than throws, and this catches
+  // anyway: `sign-agreement` has no top-level catch, so an escape here would hand a signer a 500
+  // for an agreement that is completed, sealed and emailed. A knowledge miss is not a seal failure,
+  // and `SealOutcome` deliberately has no way to say it was one.
+  try {
+    const ingest = () =>
+      recordCompletedAgreementToKnowledge(db as never, {
+        agreementId,
+        tenantId: agreement.tenant_id,
+        title: agreement.title,
+        completedAt,
+        signers: (signers ?? []) as Array<Record<string, unknown>>,
+      });
+
+    // PREFERRED PATH: hand the work off, so it finishes and cleans up after itself rather than
+    // being abandoned half-written. The signer's response does not wait for it at all.
+    const waitUntil = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } })
+      .EdgeRuntime?.waitUntil;
+    if (typeof waitUntil === "function") {
+      waitUntil(
+        ingest().then(
+          (r) => {
+            if (!r.ingested) {
+              console.warn("[agreements] completed agreement not written to knowledge", { agreementId, reason: r.reason });
+            }
+          },
+          (e) => console.error("[agreements] knowledge ingest threw after completion", { agreementId, error: String(e) }),
+        ),
+      );
+      return { ok: true, sealedSha256, sealedKey };
+    }
+
+    // FALLBACK, where no hand-off exists: bound it, for the reason on the constant above.
+    // `ReturnType<typeof setTimeout>` rather than `number`: under the Node-shaped typings this
+    // bundle resolves, `setTimeout` returns a `Timeout` object, not a numeric handle.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const learned = await Promise.race([
+      ingest(),
+      new Promise<{ ingested: false; reason: string }>((resolve) => {
+        timer = setTimeout(() => resolve({ ingested: false, reason: "ingest_timed_out" }), KNOWLEDGE_INGEST_TIMEOUT_MS);
+      }),
+    ]);
+    // Do not leave a pending 8s timer behind on the happy path.
+    if (timer !== undefined) clearTimeout(timer);
+    if (!learned.ingested) {
+      // Loud in the log, never silent (§32): a write that quietly never happens is
+      // indistinguishable from one that was never wired.
+      //
+      // AND NEVER LOUDER THAN THAT — this is the line a future session will want to "fix", so the
+      // reason is here rather than somewhere it can be missed. Returning a failure from here, or
+      // giving `SealOutcome` a reason to carry one, would make an agreement that IS executed report
+      // itself as not executed because a summary did not embed. The caller would then surface that
+      // to a signer who has already signed, and a retry would re-enter a path guarded by a
+      // write-once seal. Log it, leave the agreement completed, and let the miss be a miss.
+      console.warn("[agreements] completed agreement not written to knowledge", { agreementId, reason: learned.reason });
+    }
+  } catch (e) {
+    console.error("[agreements] knowledge ingest threw after completion", { agreementId, error: String(e) });
+  }
 
   return { ok: true, sealedSha256, sealedKey };
 }

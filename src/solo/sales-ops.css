@@ -1250,3 +1250,13 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 .so-nomatch > p { margin: 0; font-size: 12.5px; color: var(--ink-2); }
 .so-nomatch-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
 .so-nomatch > small { display: block; margin-top: 8px; }
+/* The add-a-signer repair path inside the send panel's blocking banner. Laid out as its own row so
+   the two fields and the act read as one control rather than as prose with inputs loose in it. */
+.so-signer-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+.so-signer-add .so-field { flex: 1 1 180px; margin: 0; }

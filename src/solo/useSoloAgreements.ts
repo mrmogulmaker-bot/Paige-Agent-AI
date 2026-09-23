@@ -62,6 +62,22 @@ export type AgreementClient = {
    * this does not add a third opinion.
    */
   readonly name: string;
+  /**
+   * THE ADDRESS A SIGNING LINK CAN REACH, and the reason this field exists rather than being
+   * dropped as it was.
+   *
+   * A signer is seeded from the client's own email by `seed_agreement_counterparty`, so a client
+   * with no address on file yields NO signer — and the send then refuses with "Add at least one
+   * signer before sending." That refusal was true and unactionable: the surface had thrown the
+   * email away in this mapper, so it could not tell the difference between a client who can be
+   * sent to and one who cannot, could not warn before the document was created, and offered no
+   * control to fix it. A person hit a dead end with no way out, which is the §70 failure exactly.
+   *
+   * `null` means no usable address, and the surface is expected to say so BEFORE the send rather
+   * than after. It is not shown as a contact detail; it is read to decide whether a signer can be
+   * seeded at all.
+   */
+  readonly email: string | null;
 };
 
 export type ClientAgreement = {
@@ -440,7 +456,11 @@ export function useSoloAgreements(): AgreementsState {
           const name = company && (Boolean(entityType) || !full)
             ? company
             : full || company || toText(row.email)?.trim() || "Unnamed contact";
-          return { id: String(row.id), name };
+          // Normalised the way the server normalises it (`add_agreement_signer` lowercases and
+          // trims), and `position('@' in _mail) < 2` is its validity test — so a value that would
+          // be refused there reads as absent here rather than as an address the surface can use.
+          const mail = toText(row.email)?.trim().toLowerCase() ?? "";
+          return { id: String(row.id), name, email: mail.indexOf("@") > 0 ? mail : null };
         });
 
         const role = typeof roleResponse.data?.role === "string" ? roleResponse.data.role : null;

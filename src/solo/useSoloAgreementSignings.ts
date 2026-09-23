@@ -210,6 +210,16 @@ export type SigningsState = {
     ttlDays: number,
     loadedTenantId: string | null,
   ) => Promise<SigningLinkResult>;
+  /**
+   * Add a signer to a DRAFT agreement. The way out for a client with no email on file, whose
+   * agreement otherwise reaches the send and is refused for having nobody to send to.
+   */
+  readonly addSigner: (
+    signingId: string,
+    fullName: string,
+    email: string,
+    loadedTenantId: string | null,
+  ) => Promise<SigningWriteResult>;
   readonly voidSigning: (
     signingId: string,
     loadedTenantId: string | null,
@@ -584,6 +594,51 @@ export function useSoloAgreementSignings(): SigningsState {
     return { ok: true, token: outcome.value.token, expiresAt: outcome.value.expiresAt };
   }, [runWrite, activeTenantId]);
 
+  /**
+   * Give an agreement a signer explicitly — the way out of the dead end.
+   *
+   * A signer is normally seeded by trigger from the client's own email address. A client with no
+   * address yields no signer, and the send then refuses with "Add at least one signer before
+   * sending" — true, and until now unactionable, because nothing on any surface could add one.
+   *
+   * DRAFT ONLY, and that is the server's rule rather than this hook's: adding a party to a document
+   * other people have already been shown would change what they agreed to after they agreed to it.
+   * The refusal is left to the RPC rather than pre-empted here, so the surface cannot drift from it.
+   */
+  const addSigner = useCallback(async (
+    signingId: string,
+    fullName: string,
+    email: string,
+    // The workspace the ROW WAS LOADED AGAINST, never the current one — same reason as issueLink:
+    // sending the current tenant makes the server's refusal guard unable to fire.
+    loadedTenantId: string | null,
+  ): Promise<SigningWriteResult> => {
+    const outcome = await runWrite(
+      loadedTenantId ?? activeTenantId,
+      () => supabase.rpc(
+        "add_agreement_signer" as never,
+        {
+          _expected_tenant_id: loadedTenantId ?? activeTenantId,
+          _signing_id: signingId,
+          _full_name: fullName,
+          _email: email,
+          // Role and order are left at their server defaults: 'counterparty', and the next DISTINCT
+          // signing order. Passing an order from here is how two signers end up sharing one and
+          // racing the seal.
+        } as never,
+      ) as unknown as Promise<{ data: unknown; error: { code?: string } | null }>,
+      // §13 — a resolved promise is not a signer. The RPC returns the row it wrote; no id means
+      // nothing was added, whatever the transport said.
+      (data) => (toText(data.signer_id) ? { added: true } : null),
+    );
+    // Read through an explicit narrowing rather than off the discriminant. Three sibling writers in
+    // this file access `outcome.message` directly and each raises TS2339 because the union does not
+    // narrow here; this pass is not the place to change their shape, so it declines to add a fourth.
+    if (outcome.ok) return { ok: true };
+    const refused = outcome as { readonly ok: false; readonly message: string };
+    return { ok: false, message: refused.message };
+  }, [runWrite, activeTenantId]);
+
   const voidSigning = useCallback(async (
     signingId: string,
     loadedTenantId: string | null,
@@ -768,5 +823,5 @@ export function useSoloAgreementSignings(): SigningsState {
       : "unavailable" as const,
     ...EMPTY,
   };
-  return { ...visible, retry, uploadDocument, createSigning, sendForSignature, signingEvents, issueLink, voidSigning, signedCopyUrl };
+  return { ...visible, retry, uploadDocument, createSigning, sendForSignature, signingEvents, issueLink, addSigner, voidSigning, signedCopyUrl };
 }
