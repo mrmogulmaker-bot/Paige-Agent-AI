@@ -20,6 +20,22 @@ describe("canonical CRM action door", () => {
     expect(edge).toContain("Task metadata must be an object.");
   });
 
+  it("canonicalizes a create-contact command before any readback, policy, approval, or write seam", () => {
+    expect(edge).toContain("canonicalizeCrmCommand");
+    const parsedAt = edge.indexOf("bodySchema.parse(await req.json())");
+    const canonicalizedAt = edge.indexOf("body.command = canonicalizeCrmCommand(body.command)");
+    const tenantAt = edge.indexOf('caller.rpc("current_user_tenant_id")');
+    const readbackAt = edge.indexOf('admin.rpc("read_crm_command_result"');
+    const laneAt = edge.indexOf('caller.rpc("resolve_tool_autonomy"');
+    const executeAt = edge.indexOf('admin.rpc("execute_crm_command"');
+    expect(parsedAt).toBeGreaterThan(-1);
+    expect(canonicalizedAt).toBeGreaterThan(parsedAt);
+    expect(canonicalizedAt).toBeLessThan(tenantAt);
+    expect(canonicalizedAt).toBeLessThan(readbackAt);
+    expect(canonicalizedAt).toBeLessThan(laneAt);
+    expect(canonicalizedAt).toBeLessThan(executeAt);
+  });
+
   it("binds each command to an existing classified capability", () => {
     for (const capability of ["crm_create_contact", "crm_update_contact", "crm_archive_contact", "crm_restore_contact", "crm_link_contact_company", "crm_unlink_contact_company", "crm_assign_coach", "crm_assign_contact_owner", "crm_merge_contacts", "crm_hard_delete_contact", "crm_bulk_update_contacts", "crm_create_company", "crm_update_company", "crm_archive_company", "crm_restore_company", "crm_create_task", "crm_update_task", "crm_assign_task", "crm_reschedule_task", "crm_complete_task", "crm_reopen_task", "crm_cancel_task", "crm_delete_task", "crm_log_activity", "deal_create", "crm_update_deal", "crm_assign_deal_owner", "crm_assign_deal_contact", "deal_move_stage", "crm_close_deal", "crm_reopen_deal", "crm_delete_deal"]) {
       expect(catalog).toContain(`"${capability}"`);

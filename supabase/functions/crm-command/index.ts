@@ -3,7 +3,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
 import { confirmFingerprint } from "../_shared/confirm-fingerprint.ts";
 import { decideGovernedExecution } from "../_shared/paige-spine/governedExecution.ts";
-import { CRM_ACTION_CAPABILITY as ACTION_CAPABILITY, crmApprovalSubject, type CrmAction } from "../_shared/crm-command/catalog.ts";
+import {
+  CRM_ACTION_CAPABILITY as ACTION_CAPABILITY,
+  canonicalizeCrmCommand,
+  crmApprovalSubject,
+  type CrmAction,
+} from "../_shared/crm-command/catalog.ts";
 import { canonicalAppUrl, type CanonicalTier } from "../_shared/canonical-app-url.ts";
 
 const cors = {
@@ -206,6 +211,7 @@ serve(async (req) => {
   let body: z.infer<typeof bodySchema>;
   try {
     body = bodySchema.parse(await req.json());
+    body.command = canonicalizeCrmCommand(body.command);
   } catch (error) {
     return response(400, {
       ok: false,

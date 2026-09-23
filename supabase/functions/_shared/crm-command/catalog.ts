@@ -36,32 +36,113 @@ function stableCommandValue(value: unknown): unknown {
   return value;
 }
 
+const LEGACY_CONTACT_LIFECYCLE: Readonly<Record<string, string>> = Object.freeze({
+  lead: "new_lead",
+  mql: "qualified",
+  sql: "hot_lead",
+  opportunity: "negotiating",
+  customer: "client_active",
+  evangelist: "client_alumni",
+  churned: "client_churned",
+  archived: "client_alumni",
+});
+
+// #1234 replaced the original create-contact arguments with a generic patch object. Existing
+// model turns can therefore still carry the historical display-name field and pre-V3 lifecycle
+// values. Normalize only those proven aliases; every other unknown or malformed field remains in
+// place so the canonical executor rejects it rather than silently guessing.
+export function canonicalizeCrmCommand<T extends Record<string, unknown>>(command: T): T {
+  if (command.action !== "contact.create") return command;
+  const sourcePatch = command.patch;
+  if (!sourcePatch || typeof sourcePatch !== "object" || Array.isArray(sourcePatch)) return command;
+
+  const patch = { ...sourcePatch as Record<string, unknown> };
+  let changed = false;
+  if (typeof patch.name === "string" && patch.name.trim().length > 0) {
+    const hasCanonicalName = Object.prototype.hasOwnProperty.call(patch, "first_name")
+      || Object.prototype.hasOwnProperty.call(patch, "last_name");
+    if (!hasCanonicalName) {
+      const normalizedName = patch.name.trim().replace(/\s+/g, " ");
+      const splitAt = normalizedName.lastIndexOf(" ");
+      patch.first_name = splitAt > 0 ? normalizedName.slice(0, splitAt) : normalizedName;
+      if (splitAt > 0) patch.last_name = normalizedName.slice(splitAt + 1);
+    }
+    delete patch.name;
+    changed = true;
+  }
+
+  if (typeof patch.lifecycle_stage === "string") {
+    const canonicalStage = LEGACY_CONTACT_LIFECYCLE[patch.lifecycle_stage];
+    if (canonicalStage) {
+      patch.lifecycle_stage = canonicalStage;
+      changed = true;
+    }
+  }
+
+  return changed ? { ...command, patch } as T : command;
+}
+
 // Canonical stable subject used only to disambiguate one command inside the operator's already-
 // approved same-tool set. The subject is always a required opaque record id (or the exact bulk set)
 // when the action has one. Consequential argument drift is safe because the stored proposal executes;
 // two approved effects for the same subject deliberately remain ambiguous and fail closed. Create
 // actions have no pre-existing record id, so they fall back to the normalized full proposed command.
 export async function crmApprovalSubject(action: CrmAction, command: Record<string, unknown>): Promise<string> {
+  const canonicalCommand = canonicalizeCrmCommand(command);
   let identity: unknown;
   if (action === "contact.bulk_update") {
-    identity = Array.isArray(command.target_ids) ? [...command.target_ids].map(String).sort() : null;
+    identity = Array.isArray(canonicalCommand.target_ids) ? [...canonicalCommand.target_ids].map(String).sort() : null;
   } else if (action.startsWith("contact.") && !["contact.create"].includes(action)) {
-    identity = command.contact_id ?? null;
+    identity = canonicalCommand.contact_id ?? null;
   } else if (action === "company.create") {
-    identity = command.contact_id ?? null;
+    identity = canonicalCommand.contact_id ?? null;
   } else if (action.startsWith("company.")) {
-    identity = command.company_id ?? null;
+    identity = canonicalCommand.company_id ?? null;
   } else if (action.startsWith("task.") && action !== "task.create") {
-    identity = command.task_id ?? null;
+    identity = canonicalCommand.task_id ?? null;
   } else if (action === "activity.log") {
-    identity = command.contact_id ?? null;
+    identity = canonicalCommand.contact_id ?? null;
   } else if (action.startsWith("deal.") && action !== "deal.create") {
-    identity = command.deal_id ?? null;
+    identity = canonicalCommand.deal_id ?? null;
   } else {
-    identity = stableCommandValue({ ...command, action });
+    identity = stableCommandValue({ ...canonicalCommand, action });
   }
   return await confirmFingerprint(`crm_approval_subject:${action}`, { identity });
 }
+
+const CONTACT_LIFECYCLE_STAGES = [
+  "new_lead", "qualified", "nurturing", "hot_lead", "negotiating", "won",
+  "client_active", "client_paused", "client_churned", "client_funded", "client_alumni",
+] as const;
+
+const contactCreatePatch = {
+  type: "object",
+  description: "Canonical fields for the new contact. Omit fields the operator did not provide.",
+  additionalProperties: false,
+  properties: {
+    first_name: { type: "string", description: "First or single name. Split a full person name into first_name and last_name." },
+    last_name: { type: "string", description: "Last name when the operator supplied one." },
+    email: { type: "string" },
+    phone: { type: "string" },
+    entity_name: { type: "string", description: "Company or business name." },
+    entity_type: { type: "string" },
+    title: { type: "string", description: "Job title or role." },
+    lifecycle_stage: { type: "string", enum: CONTACT_LIFECYCLE_STAGES },
+    source: { type: "string" },
+    tags: { type: "array", maxItems: 50, items: { type: "string" } },
+    primary_offer: { type: "string" },
+    notes: { type: "string", maxLength: 10000 },
+    do_not_contact: { type: "boolean" },
+    website: { type: "string" },
+    linkedin_url: { type: "string" },
+    street_address: { type: "string" },
+    city: { type: "string" },
+    state: { type: "string" },
+    zip_code: { type: "string" },
+    funding_goal: { type: "number" },
+    monthly_revenue: { type: "number" },
+  },
+} as const;
 
 const properties = {
   idempotency_key: { type: "string", maxLength: 192, description: "Optional stable retry key. Paige may omit it; the server settles one." },
@@ -127,6 +208,7 @@ export const CRM_COMMAND_TOOLS = (Object.entries(CRM_ACTION_CAPABILITY) as [CrmA
       type: "object",
       properties: {
         ...properties,
+        patch: action === "contact.create" ? contactCreatePatch : properties.patch,
         confirm: {
           type: "boolean",
           description: classifyAction(capability) === "high"

@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { CRM_ACTION_CAPABILITY, CRM_COMMAND_TOOLS, CRM_TOOL_TO_ACTION, crmApprovalSubject } from "../../supabase/functions/_shared/crm-command/catalog.ts";
+import {
+  CRM_ACTION_CAPABILITY,
+  CRM_COMMAND_TOOLS,
+  CRM_TOOL_TO_ACTION,
+  canonicalizeCrmCommand,
+  crmApprovalSubject,
+} from "../../supabase/functions/_shared/crm-command/catalog.ts";
 
 const chat = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
 
@@ -37,6 +43,71 @@ describe("Paige Chat canonical CRM adoption", () => {
     expect(first).not.toBe(second);
     expect(first).toBe(changedVersion);
     expect(first).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it("publishes the canonical create-contact patch instead of the legacy free-form shape", () => {
+    const createContact = CRM_COMMAND_TOOLS.find((tool) => tool.function.name === "crm_create_contact");
+    const patch = createContact?.function.parameters.properties.patch;
+    expect(patch).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        first_name: expect.any(Object),
+        last_name: expect.any(Object),
+        phone: expect.any(Object),
+        lifecycle_stage: {
+          type: "string",
+          enum: [
+            "new_lead", "qualified", "nurturing", "hot_lead", "negotiating", "won",
+            "client_active", "client_paused", "client_churned", "client_funded", "client_alumni",
+          ],
+        },
+      },
+    });
+    expect(patch).not.toHaveProperty("properties.name");
+  });
+
+  it("canonicalizes the exact legacy create-contact shape before approval or execution", async () => {
+    const legacy = {
+      action: "contact.create",
+      patch: {
+        name: "Avery Quinn",
+        phone: "+1 555 010 0199",
+        lifecycle_stage: "lead",
+      },
+    };
+    const canonical = canonicalizeCrmCommand(legacy);
+
+    expect(canonical).toEqual({
+      action: "contact.create",
+      patch: {
+        first_name: "Avery",
+        last_name: "Quinn",
+        phone: "+1 555 010 0199",
+        lifecycle_stage: "new_lead",
+      },
+    });
+    expect(legacy.patch).toHaveProperty("name", "Avery Quinn");
+    expect(await crmApprovalSubject("contact.create", legacy)).toBe(
+      await crmApprovalSubject("contact.create", canonical),
+    );
+  });
+
+  it("preserves explicit canonical names and leaves unknown malformed fields to fail closed", () => {
+    expect(canonicalizeCrmCommand({
+      action: "contact.create",
+      patch: { name: "Ignored Alias", first_name: "Canonical", last_name: "Person" },
+    })).toEqual({
+      action: "contact.create",
+      patch: { first_name: "Canonical", last_name: "Person" },
+    });
+    expect(canonicalizeCrmCommand({
+      action: "contact.create",
+      patch: { name: 42, nickname: "A.Q." },
+    })).toEqual({
+      action: "contact.create",
+      patch: { name: 42, nickname: "A.Q." },
+    });
   });
   it("does not accept tenant, actor, role, account, approval, or authority as model arguments", () => {
     const serialized = JSON.stringify(CRM_COMMAND_TOOLS);
