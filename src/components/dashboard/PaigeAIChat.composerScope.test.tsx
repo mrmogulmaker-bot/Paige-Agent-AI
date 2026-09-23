@@ -161,6 +161,22 @@ describe("PaigeAIChat ComposerScopeState integration", () => {
     expect(textarea().disabled).toBe(false);
   };
 
+  it.each(["http-500", "fetch-rejection"] as const)("does not offer unsafe or inert Live replay after %s", async (failure) => {
+    if (failure === "http-500") vi.mocked(fetch).mockResolvedValueOnce(serverFailure());
+    else vi.mocked(fetch).mockRejectedValueOnce(new Error("fixture-network-failure"));
+    await render();
+    await waitForWritable();
+    const sink = { challenge: "test-challenge", proof: vi.fn(), done: vi.fn(), failed: vi.fn() };
+    await act(async () => { await harness.liveVoiceTurn!("Keep my spoken question", sink); await settle(); });
+    expect(host.textContent).toContain("Keep my spoken question");
+    expect(host.textContent).toContain("Paige's answer was interrupted");
+    expect(host.textContent).not.toContain("Your message wasn't sent");
+    expect(Array.from(host.querySelectorAll("button")).some((b) => b.textContent === "Retry")).toBe(false);
+    expect(sink.failed).toHaveBeenCalledTimes(1);
+    expect(sink.done).not.toHaveBeenCalled();
+    expect(textarea().disabled).toBe(false);
+  });
+
   it.each(["explicit-error", "eof", "rejection", "interrupt", "timeout", "done"] as const)(
     "keeps the same visible Live transcript and settles the sink on %s",
     async (ending) => {

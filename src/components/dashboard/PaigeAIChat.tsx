@@ -972,7 +972,7 @@ const PaigeAIChatInner = ({
     }, 45_000) : null;
     const assistantId = safeUuid();
     const assistantTs = Date.now();
-    let liveResponseStarted = false;
+    let liveRequestDispatched = false;
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -1037,6 +1037,7 @@ const PaigeAIChatInner = ({
         }
       }
 
+      liveRequestDispatched = Boolean(voiceSink);
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-ai-chat`,
         {
@@ -1083,6 +1084,9 @@ const PaigeAIChatInner = ({
       if (!ticketAccepted(requestTicket)) return;
 
       if (!response.ok) {
+        // Once dispatched, an HTTP failure does not prove the turn or its
+        // governed tools did nothing. Keep the Live transcript, never replay it.
+        if (voiceSink) throw new Error("live_answer_unavailable");
         if (response.status === 429) {
           toast({
             title: "Rate Limit Reached",
@@ -1114,7 +1118,6 @@ const PaigeAIChatInner = ({
       }
       // This is the canonical PAIGE runtime request, under the same caller JWT,
       // thread, tenant context and governed approval path as text chat.
-      liveResponseStarted = Boolean(voiceSink);
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -1328,7 +1331,7 @@ const PaigeAIChatInner = ({
       }
     } catch (error) {
       if (!ticketAccepted(requestTicket)) return;
-      if (liveResponseStarted && voiceSink) {
+      if (liveRequestDispatched && voiceSink) {
         voiceSink.failed();
         retryTurnRef.current = null;
         releaseRequestBusy(requestTicket);
