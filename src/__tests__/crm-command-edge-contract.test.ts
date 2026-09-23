@@ -169,4 +169,25 @@ describe("canonical CRM action door", () => {
     expect(migration).toContain("__paige_legacy_display_v1");
     expect(migration).toMatch(/_stored_hash=pg_catalog\.encode\([\s\S]*_command->'__paige_legacy_display_v1'/);
   });
+
+  it("uses the legacy fallback key only for authorized completed-result readback", () => {
+    const parsedAt = edge.indexOf("bodySchema.parse(await req.json())");
+    const legacyValidationAt = edge.indexOf("crmCommandLegacyReplaySource(canonicalCommand, parsedBody.legacy_command)");
+    const tenantAt = edge.indexOf('caller.rpc("current_user_tenant_id")');
+    const canonicalReadAt = edge.indexOf("for (const readbackKey of readbackKeys)");
+    const laneAt = edge.indexOf('caller.rpc("resolve_tool_autonomy"');
+    const executeAt = edge.indexOf('admin.rpc("execute_crm_command"');
+
+    expect(edge).toContain("legacy_idempotency_key: z.string().regex(/^[0-9a-f]{16}$/).optional()");
+    expect(edge).toContain("CRM_COMMAND_LEGACY_KEY_UNSUPPORTED");
+    expect(legacyValidationAt).toBeGreaterThan(parsedAt);
+    expect(legacyValidationAt).toBeLessThan(tenantAt);
+    expect(canonicalReadAt).toBeGreaterThan(tenantAt);
+    expect(canonicalReadAt).toBeLessThan(laneAt);
+    expect(edge).toContain("body.legacyIdempotencyKey");
+    expect(edge).toContain("_idempotency_key: readbackKey");
+    expect(edge).not.toMatch(/requestArgs\s*=\s*\{[^}]*legacy_idempotency_key/s);
+    expect(edge).not.toMatch(/execute_crm_command[\s\S]{0,300}_idempotency_key:\s*body\.legacyIdempotencyKey/);
+    expect(executeAt).toBeGreaterThan(laneAt);
+  });
 });

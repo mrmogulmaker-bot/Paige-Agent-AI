@@ -97,6 +97,51 @@ export function crmCommandLegacyReplaySource(
   return Object.freeze(stableCommandValue(contextualSource) as Record<string, unknown>);
 }
 
+export type CrmCommandIdempotencyContext = Readonly<{
+  thread_id: string | null;
+  user_turn_ordinal: number;
+  user_turn: unknown;
+  tool_name: string;
+}>;
+
+/**
+ * Settles both sides of the contact-create retry-identity rollout.
+ *
+ * The current key is the only key used for a new proposal or mutation. The
+ * legacy key is the exact value an older Chat bundle derived from the
+ * pre-normalization arguments, and is therefore a readback-only candidate.
+ * The legacy command must first canonicalize to the same complete identity,
+ * so an unrelated raw command cannot acquire a compatibility key here.
+ */
+export async function crmCommandFallbackIdempotencyKeys(
+  command: CanonicalCrmCommand,
+  source: Record<string, unknown> | null | undefined,
+  context: CrmCommandIdempotencyContext,
+): Promise<Readonly<{
+  current: string;
+  legacy: string | null;
+  legacyCommand: Readonly<Record<string, unknown>> | null;
+}>> {
+  const current = await confirmFingerprint("crm_command_idempotency", {
+    ...context,
+    arguments: crmCommandFingerprintArgs(command),
+  });
+  const legacyCommand = crmCommandLegacyReplaySource(command, source);
+  if (!legacyCommand) return Object.freeze({ current, legacy: null, legacyCommand: null });
+  const legacyArguments = Object.fromEntries(
+    Object.entries(legacyCommand).filter(([key]) => key !== "action"),
+  );
+  const legacy = await confirmFingerprint("crm_command_idempotency", {
+    ...context,
+    arguments: legacyArguments,
+  });
+  return Object.freeze({
+    current,
+    legacy: legacy === current ? null : legacy,
+    legacyCommand,
+  });
+}
+
 export function crmCommandExecutionPayload(
   command: CanonicalCrmCommand,
   legacySource?: Record<string, unknown> | null,

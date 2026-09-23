@@ -9,6 +9,7 @@ import {
   crmContactCreateNameIssue,
   crmApprovalSubject,
   crmCommandExecutionPayload,
+  crmCommandFallbackIdempotencyKeys,
   crmCommandFingerprintArgs,
 } from "../../supabase/functions/_shared/crm-command/catalog.ts";
 import { canonicalizePersonName } from "../../supabase/functions/_shared/canonical-person-name.ts";
@@ -219,7 +220,7 @@ describe("Paige Chat canonical CRM adoption", () => {
     expect(persistedCrmProjection).not.toContain("readback:");
     expect(persistedCrmProjection).not.toContain("record_locator:");
     expect(chat).toContain("receipt_recorded: parsed.receipt_recorded === true");
-    expect(chat).toContain('confirmFingerprint("crm_command_idempotency"');
+    expect(chat).toContain("crmCommandFallbackIdempotencyKeys(canonicalCrmCommand, sourceCrmCommand");
     expect(chat).toContain("user_turn_ordinal: userTurns.length");
     expect(chat).toContain("user_turn: currentUserTurn?.content ?? null");
     expect(chat).not.toContain("tool_index: toolIndex");
@@ -234,8 +235,8 @@ describe("Paige Chat canonical CRM adoption", () => {
   it("canonicalizes equivalent CRM retries before both hashing and invocation", async () => {
     const sourceAt = chat.indexOf("const sourceCrmCommand = { action, ...crmArgs }");
     const canonicalizeAt = chat.indexOf("const canonicalCrmCommand = canonicalizeCrmCommand(sourceCrmCommand)");
-    const identityAt = chat.indexOf("const canonicalCrmArgs = crmCommandFingerprintArgs(canonicalCrmCommand)", canonicalizeAt);
-    const hashAt = chat.indexOf('confirmFingerprint("crm_command_idempotency"', canonicalizeAt);
+    const identityAt = chat.indexOf("const fallbackKeys = await crmCommandFallbackIdempotencyKeys", canonicalizeAt);
+    const hashAt = chat.indexOf("const idempotencyKey = suppliedKey || fallbackKeys.current", canonicalizeAt);
     const invokeAt = chat.indexOf('functions.invoke("crm-command"', canonicalizeAt);
 
     expect(chat).toContain("canonicalizeCrmCommand");
@@ -244,7 +245,7 @@ describe("Paige Chat canonical CRM adoption", () => {
     expect(identityAt).toBeGreaterThan(canonicalizeAt);
     expect(hashAt).toBeGreaterThan(identityAt);
     expect(invokeAt).toBeGreaterThan(hashAt);
-    expect(chat).toContain("arguments: canonicalCrmArgs");
+    expect(chat).toContain("const idempotencyKey = suppliedKey || fallbackKeys.current");
     expect(chat).toContain("body: { command: canonicalCrmCommand, idempotency_key: idempotencyKey");
     expect(chat).not.toContain("body: { command: { action, ...crmArgs }, idempotency_key: idempotencyKey");
 
@@ -415,8 +416,37 @@ describe("Paige Chat canonical CRM adoption", () => {
       patch: { first_name: "Different", last_name: "Person", lifecycle_stage: "new_lead" },
     })).toThrow("CRM_COMMAND_LEGACY_REPLAY_MISMATCH");
     expect(chat).toContain("const sourceCrmCommand = { action, ...crmArgs }");
-    expect(chat).toContain("crmCommandLegacyReplaySource(canonicalCrmCommand, sourceCrmCommand)");
+    expect(chat).toContain("crmCommandFallbackIdempotencyKeys(canonicalCrmCommand, sourceCrmCommand");
     expect(chat).toContain("legacy_command: legacyCrmCommand");
+  });
+
+  it("preserves the pre-canonicalization fallback key for a cross-deploy replay", async () => {
+    const sourceCommand = {
+      action: "contact.create",
+      patch: {
+        first_name: "  José ",
+        last_name: " Quinn ",
+        lifecycle_stage: "new_lead",
+      },
+    };
+    const canonicalCommand = canonicalizeCrmCommand(sourceCommand);
+    const context = {
+      thread_id: "test-thread",
+      user_turn_ordinal: 1,
+      user_turn: "Add José Quinn as a lead",
+      tool_name: "crm_create_contact",
+    };
+    const keys = await crmCommandFallbackIdempotencyKeys(canonicalCommand, sourceCommand, context);
+    const legacyKeyBeforeCanonicalization = await confirmFingerprint("crm_command_idempotency", {
+      ...context,
+      arguments: sourceCommand.patch ? { patch: sourceCommand.patch } : {},
+    });
+
+    expect(keys.current).not.toBe(legacyKeyBeforeCanonicalization);
+    expect(keys.legacy).toBe(legacyKeyBeforeCanonicalization);
+    expect(keys.legacyCommand).toEqual(sourceCommand);
+    expect(chat).toContain("crmCommandFallbackIdempotencyKeys(canonicalCrmCommand, sourceCrmCommand");
+    expect(chat).toContain("legacy_idempotency_key: fallbackKeys.legacy");
   });
 
   it("preserves meaningful orthographic join controls in the stored display form", () => {

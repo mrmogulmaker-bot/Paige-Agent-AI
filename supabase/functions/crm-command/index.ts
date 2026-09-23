@@ -125,6 +125,7 @@ const commandSchema = z.object({
 const bodySchema = z.object({
   command: commandSchema,
   legacy_command: commandSchema.optional(),
+  legacy_idempotency_key: z.string().regex(/^[0-9a-f]{16}$/).optional(),
   idempotency_key: z.string().trim().min(1).max(192),
   approved_fingerprint: z.string().regex(/^[0-9a-f]{16}$/).optional(),
 }).strict();
@@ -214,9 +215,10 @@ serve(async (req) => {
   if (authError || !user) return response(401, { ok: false, code: "CRM_AUTH_INVALID" });
 
   type ParsedBody = z.infer<typeof bodySchema>;
-  type CanonicalBody = Omit<ParsedBody, "command" | "legacy_command"> & {
+  type CanonicalBody = Omit<ParsedBody, "command" | "legacy_command" | "legacy_idempotency_key"> & {
     command: CanonicalCrmCommand<ParsedBody["command"]>;
     legacyCommand: Readonly<Record<string, unknown>> | null;
+    legacyIdempotencyKey: string | null;
   };
   let body: CanonicalBody;
   try {
@@ -226,6 +228,7 @@ serve(async (req) => {
       ? crmCommandLegacyReplaySource(canonicalCommand, parsedBody.legacy_command)
       : null;
     if (parsedBody.legacy_command && !legacyCommand) throw new TypeError("CRM_COMMAND_LEGACY_REPLAY_UNSUPPORTED");
+    if (parsedBody.legacy_idempotency_key && !legacyCommand) throw new TypeError("CRM_COMMAND_LEGACY_KEY_UNSUPPORTED");
     const contactNameIssue = crmContactCreateNameIssue(canonicalCommand);
     if (contactNameIssue) {
       throw new z.ZodError([{
@@ -239,6 +242,7 @@ serve(async (req) => {
       idempotency_key: parsedBody.idempotency_key,
       ...(parsedBody.approved_fingerprint ? { approved_fingerprint: parsedBody.approved_fingerprint } : {}),
       legacyCommand,
+      legacyIdempotencyKey: parsedBody.legacy_idempotency_key ?? null,
     };
   } catch (error) {
     return response(400, {
@@ -308,24 +312,32 @@ serve(async (req) => {
   // approve the already-completed action again. The service-only RPC revalidates the tenant,
   // active account, membership, actor, and exact command hash before returning anything.
   if (accessAllowed && await activeTenantStillMatches()) {
-    const { data: cachedData, error: cachedError } = await admin.rpc("read_crm_command_result", {
-      _tenant_id: tenantId,
-      _actor_id: user.id,
-      _command: readbackCommand,
-      _idempotency_key: body.idempotency_key,
-    });
-    const cachedResult = object(cachedData);
-    if (!cachedError && cachedResult) return successfulResultResponse(cachedResult, body.command.action);
-    if (cachedError) {
-      const code = /^(CRM|PIPELINE)_[A-Z0-9_:,-]+$/.test(cachedError.message ?? "")
-        ? cachedError.message
-        : "CRM_READBACK_UNAVAILABLE";
-      const status = code === "CRM_IDEMPOTENCY_REUSE" || code === "CRM_ACTIVE_ACCOUNT_CHANGED"
-        ? 409
-        : code === "CRM_FORBIDDEN"
-        ? 403
-        : 503;
-      return response(status, { ok: false, outcome: "refused", code });
+    const readbackKeys = [
+      body.idempotency_key,
+      ...(body.legacyIdempotencyKey && body.legacyIdempotencyKey !== body.idempotency_key
+        ? [body.legacyIdempotencyKey]
+        : []),
+    ];
+    for (const readbackKey of readbackKeys) {
+      const { data: cachedData, error: cachedError } = await admin.rpc("read_crm_command_result", {
+        _tenant_id: tenantId,
+        _actor_id: user.id,
+        _command: readbackCommand,
+        _idempotency_key: readbackKey,
+      });
+      const cachedResult = object(cachedData);
+      if (!cachedError && cachedResult) return successfulResultResponse(cachedResult, body.command.action);
+      if (cachedError) {
+        const code = /^(CRM|PIPELINE)_[A-Z0-9_:,-]+$/.test(cachedError.message ?? "")
+          ? cachedError.message
+          : "CRM_READBACK_UNAVAILABLE";
+        const status = code === "CRM_IDEMPOTENCY_REUSE" || code === "CRM_ACTIVE_ACCOUNT_CHANGED"
+          ? 409
+          : code === "CRM_FORBIDDEN"
+          ? 403
+          : 503;
+        return response(status, { ok: false, outcome: "refused", code });
+      }
     }
   }
 
