@@ -61,6 +61,28 @@ describe("first-party Live relay transport", () => {
     expect(socket.readyState).toBe(3);
   });
 
+  it("routes a finalized voice turn through the existing runtime and fences it on interruption", () => {
+    const turns: Array<{ text: string; turnId: string }> = [];
+    const cancelled: string[] = [];
+    const transport = connectPaigeLiveRelay({
+      sessionId: "session-runtime", ticket: "opaque-runtime", onState: () => undefined,
+      onVoiceTurn: (text, turnId) => turns.push({ text, turnId }),
+      onRuntimeCancel: (turnId) => cancelled.push(turnId),
+    });
+    const socket = FakeSocket.instances[0];
+    socket.receive(JSON.stringify({ type: "runtime.dispatch", text: "What next?", turn_id: "turn-1" }));
+    expect(turns).toEqual([{ text: "What next?", turnId: "turn-1" }]);
+    transport.runtimeDispatched("turn-1");
+    transport.runtimeChunk("turn-1", "One sentence.");
+    expect(socket.sent).toContain(JSON.stringify({ type: "runtime.dispatched", turn_id: "turn-1" }));
+    expect(socket.sent).toContain(JSON.stringify({ type: "runtime.chunk", turn_id: "turn-1", text: "One sentence." }));
+    socket.receive(JSON.stringify({ type: "runtime.cancel", turn_id: "turn-1" }));
+    expect(cancelled).toEqual(["turn-1"]);
+    transport.interrupt();
+    expect(socket.sent).toContain(JSON.stringify({ type: "interrupt" }));
+    transport.stop();
+  });
+
   it("does not complete playback while audio waits for the output context to resume", async () => {
     let finishResume!: () => void;
     const resume = new Promise<void>((resolve) => { finishResume = resolve; });

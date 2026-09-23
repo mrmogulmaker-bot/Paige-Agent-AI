@@ -36,7 +36,7 @@ import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingInd
 import { PaigeArtifactCard, type PaigeArtifact } from "@/components/paige/chat/PaigeArtifactCard";
 import { ExtractionProposalCard, type ExtractionProposal } from "@/components/chat/ExtractionProposalCard";
 import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/chat/PaigeCompactingCard";
-import { PaigeLiveConversation } from "@/components/paige/live/PaigeLiveConversation";
+import { PaigeLiveConversation, type LiveVoiceSink } from "@/components/paige/live/PaigeLiveConversation";
 import { parseLiveConversationCard, type LiveConversationCard } from "@/lib/paigeLiveConversation/contract";
 import { createAnchoredTranscriptScroll, messageScrollAnchorKey } from "@/components/chat/anchoredTranscriptScroll";
 import {
@@ -935,6 +935,7 @@ const PaigeAIChatInner = ({
     originDraft: ComposerDraftHandle | null = null,
     approvedFingerprints?: string[],
     declinedFingerprints?: string[],
+    voiceSink?: LiveVoiceSink,
   ) => {
     if (soloTenantSafety && !activeTenantId) return;
     const requestHandle = originDraft ?? composerScopeRef.current.writableHandle;
@@ -1103,6 +1104,9 @@ const PaigeAIChatInner = ({
         if (response.status >= 500) setConnectionIssue("server");
         return;
       }
+      // This is the canonical PAIGE runtime request, under the same caller JWT,
+      // thread, tenant context and governed approval path as text chat.
+      voiceSink?.dispatched();
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -1142,6 +1146,7 @@ const PaigeAIChatInner = ({
           const jsonStr = line.slice(6).trim();
           if (jsonStr === "[DONE]") {
             streamDone = true;
+            voiceSink?.done();
             break;
           }
 
@@ -1259,6 +1264,7 @@ const PaigeAIChatInner = ({
             }
             const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) {
+              voiceSink?.chunk(content);
               if (!assistantMessage) setWritingPhase(true); // #11 — first token → "Writing…"
               assistantMessage += content;
               setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined, crmResults: crmResultsThisTurn.length ? [...crmResultsThisTurn] : undefined, artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined, extractionProposal: proposalThisTurn ?? undefined }]);
@@ -1373,14 +1379,25 @@ const PaigeAIChatInner = ({
   /** `approvedFingerprints` carries the exact calls a person ticked on a confirm card. The server's
    *  gate requires the call it is about to run to be one of them; a `confirm:true` flag alone no
    *  longer opens it. Absent on every ordinary turn. */
-  const handleSend = async (overrideText?: string, approvedFingerprints?: string[], declinedFingerprints?: string[]) => {
+  const handleSend = async (overrideText?: string, approvedFingerprints?: string[], declinedFingerprints?: string[], voiceSink?: LiveVoiceSink) => {
     const originDraft = composerScope.writableHandle;
-    if (dictationActive || !originDraft) return;
+    if (dictationActive || !originDraft) { voiceSink?.failed(); return; }
     const text = (overrideText ?? input).trim();
     // Allow a send with text OR an attachment alone (#480). An override (confirm
     // card Approve/Deny) never carries a doc, so snapshot only on a real compose.
     const currentDoc = overrideText === undefined ? attachedDoc : null;
-    if ((!text && !currentDoc) || !composerScope.writable) return;
+    if ((!text && !currentDoc) || !composerScope.writable) { voiceSink?.failed(); return; }
+    let voiceSettled = false;
+    const trackedVoiceSink: LiveVoiceSink | undefined = voiceSink && {
+      dispatched: () => voiceSink.dispatched(),
+      chunk: (value) => {
+        // The relay accepts bounded control frames; split an SSE delta without
+        // changing the authored text or the canonical chat transcript.
+        for (let i = 0; i < value.length; i += 2048) voiceSink.chunk(value.slice(i, i + 2048));
+      },
+      done: () => { voiceSettled = true; voiceSink.done(); },
+      failed: () => { if (!voiceSettled) { voiceSettled = true; voiceSink.failed(); } },
+    };
     // An accepted send closes the current dictation generation before clearing
     // the composer. A delayed provider final can never become the next draft.
     dictationGenerationRef.current += 1;
@@ -1405,7 +1422,9 @@ const PaigeAIChatInner = ({
       originDraft,
       approvedFingerprints,
       declinedFingerprints,
+      trackedVoiceSink,
     );
+    if (trackedVoiceSink && !voiceSettled) trackedVoiceSink.failed();
   };
 
   // Regenerate an assistant turn: re-run the nearest preceding user turn and REPLACE
@@ -1643,6 +1662,8 @@ const PaigeAIChatInner = ({
       onAnswer={(answer) => void handleSend(answer)}
       onApprove={(fingerprints) => void handleSend("Approved — run it.", fingerprints)}
       onDecline={(fingerprints) => void handleSend("Hold off — skip that one.", undefined, fingerprints)}
+      onVoiceTurn={(text, sink) => handleSend(text, undefined, undefined, sink)}
+      onVoiceInterrupt={cancelSoloRequest}
     />
   ) : null;
 

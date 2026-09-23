@@ -42,6 +42,8 @@ describe("Paige Live Conversation owner surface", () => {
   const onAnswer = vi.fn();
   const onApprove = vi.fn();
   const onDecline = vi.fn();
+  const onVoiceTurn = vi.fn();
+  const onVoiceInterrupt = vi.fn();
 
   beforeEach(() => {
     host = document.createElement("div");
@@ -60,6 +62,8 @@ describe("Paige Live Conversation owner surface", () => {
     onAnswer.mockClear();
     onApprove.mockClear();
     onDecline.mockClear();
+    onVoiceTurn.mockClear();
+    onVoiceInterrupt.mockClear();
     getUserMedia = vi.fn();
     Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia } });
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => { callback(0); return 1; });
@@ -87,6 +91,8 @@ describe("Paige Live Conversation owner surface", () => {
         onAnswer={onAnswer}
         onApprove={onApprove}
         onDecline={onDecline}
+        onVoiceTurn={onVoiceTurn}
+        onVoiceInterrupt={onVoiceInterrupt}
       />,
     ));
   };

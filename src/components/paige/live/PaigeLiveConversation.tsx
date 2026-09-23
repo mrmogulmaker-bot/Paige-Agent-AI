@@ -14,6 +14,12 @@ import { createAnchoredTranscriptScroll, messageScrollAnchorKey } from "@/compon
 import "./paige-live-conversation.css";
 
 export type PaigeLiveTranscriptTurn = Readonly<{ id: string; role: "user" | "assistant"; content: string }>;
+export type LiveVoiceSink = Readonly<{
+  dispatched(): void;
+  chunk(text: string): void;
+  done(): void;
+  failed(): void;
+}>;
 type LiveSurfaceState = "checking" | "unavailable" | "permission-denied" | "listening" | "thinking" | "waiting" | "speaking" | "interrupted" | "held" | "reconnecting";
 
 const STATE_LABEL: Record<LiveSurfaceState, string> = {
@@ -89,7 +95,7 @@ function ConversationCard({ card, disabled, canConfirm, onAnswer, onApprove, onD
   );
 }
 
-export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensureThread, transcript, activeCard, workingLabel, working, confirmationFingerprints = [], onAnswer, onApprove, onDecline }: {
+export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensureThread, transcript, activeCard, workingLabel, working, confirmationFingerprints = [], onAnswer, onApprove, onDecline, onVoiceTurn, onVoiceInterrupt }: {
   disabled?: boolean;
   contextEpoch: string;
   threadId: string | null;
@@ -102,6 +108,8 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   onAnswer: (answer: string) => void;
   onApprove: (fingerprints: string[]) => void;
   onDecline: (fingerprints: string[]) => void;
+  onVoiceTurn: (text: string, sink: LiveVoiceSink) => void | Promise<void>;
+  onVoiceInterrupt: () => void;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -110,6 +118,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   const sessionScopeRef = useRef<{ threadId: string; contextEpoch: string } | null>(null);
   const relayRef = useRef<RelayTransport | null>(null);
   const relayReadyRef = useRef(false);
+  const activeVoiceTurnRef = useRef<string | null>(null);
   const previousEpochRef = useRef(contextEpoch);
   const previousThreadRef = useRef(threadId);
   const requestGeneration = useRef(0);
@@ -168,6 +177,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
 
   const closeStage = useCallback((kind: "minimize" | "end") => {
     requestGeneration.current++;
+    if (activeVoiceTurnRef.current) { activeVoiceTurnRef.current = null; onVoiceInterrupt(); }
     stopPlayback.current();
     relayRef.current?.stop();
     relayRef.current = null;
@@ -182,7 +192,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
     setPortalDocument(null);
     setAnnouncement(kind === "end" ? "Live Conversation ended. The Paige chat is unchanged." : "Live Conversation minimized. Returned to the same Paige conversation.");
     requestAnimationFrame(() => triggerRef.current?.focus({ preventScroll: true }));
-  }, [transitionCurrent]);
+  }, [transitionCurrent, onVoiceInterrupt]);
 
   useEffect(() => {
     if (!open) return;
@@ -341,16 +351,45 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
     setState("checking");
     setAvailability("PROOF OWED");
     setExplanation("Paige is checking the live connection. Your microphone has not started.");
-    relayRef.current = connectPaigeLiveRelay({
+    let transport: RelayTransport | null = null;
+    transport = connectPaigeLiveRelay({
       sessionId: result.sessionId,
       ticket: result.ticket,
+      onVoiceTurn: (text, turnId) => {
+        if (!mounted.current || generation !== requestGeneration.current || !transport ||
+          relayRef.current !== transport) return;
+        activeVoiceTurnRef.current = turnId;
+        const send = (kind: "dispatched" | "chunk" | "done" | "failed", value?: string) => {
+          if (activeVoiceTurnRef.current !== turnId || relayRef.current !== transport) return;
+          if (kind === "dispatched") transport.runtimeDispatched(turnId);
+          else if (kind === "chunk" && value) transport.runtimeChunk(turnId, value);
+          else if (kind === "done") { transport.runtimeDone(turnId); activeVoiceTurnRef.current = null; }
+          else if (kind === "failed") { transport.runtimeFailed(turnId); activeVoiceTurnRef.current = null; }
+        };
+        setState("thinking");
+        void Promise.resolve(onVoiceTurn(text, {
+          dispatched: () => send("dispatched"),
+          chunk: (value) => send("chunk", value),
+          done: () => send("done"),
+          failed: () => send("failed"),
+        })).catch(() => send("failed"));
+      },
+      onRuntimeCancel: (turnId) => {
+        if (activeVoiceTurnRef.current !== turnId) return;
+        activeVoiceTurnRef.current = null;
+        onVoiceInterrupt();
+        setState("listening");
+      },
       onState: (next) => {
         if (!mounted.current || generation !== requestGeneration.current) return;
         if (next.kind === "ready") {
           relayReadyRef.current = true;
           setState("listening");
-          setAvailability("PARTIAL");
-          setExplanation("The audio connection is open. Stay in this conversation to continue.");
+          setAvailability("LIVE");
+          setExplanation("Paige is listening in this conversation.");
+        } else if (next.kind === "speaking") {
+          setState("speaking");
+          setAvailability("LIVE");
         } else if (next.kind === "permission-denied") {
           relayReadyRef.current = false;
           setState("permission-denied");
@@ -369,6 +408,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
         }
       },
     });
+    relayRef.current = transport;
     relayRef.current.setMuted(mutedRef.current);
   };
 
@@ -484,7 +524,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
         {!pinned && <Button variant="outline" onClick={() => scrollController.jumpToBottom("auto")}>Jump to latest</Button>}
         <Button variant="outline" disabled={controlsDisabled && !output.playing && !muted} aria-pressed={muted} onClick={() => { stopPlayback.current(); relayRef.current?.setMuted(state === "held" || !muted); setMuted((value) => !value); }}>{muted ? <MicOff aria-hidden /> : <Mic aria-hidden />}{muted ? "Unmute" : "Mute"}</Button>
         <Button variant="outline" disabled={controlsDisabled && !output.playing} aria-pressed={state === "held"} onClick={toggleHold}><CirclePause aria-hidden />{state === "held" ? "Resume" : "Hold"}</Button>
-        <Button variant="outline" disabled={controlsDisabled && !output.playing} onClick={() => { stopPlayback.current(); relayRef.current?.interrupt(); setState(relayReadyRef.current ? "listening" : "interrupted"); setAnnouncement("Paige stopped speaking. You can continue in this conversation."); }}><Hand aria-hidden />Interrupt</Button>
+        <Button variant="outline" disabled={controlsDisabled && !output.playing} onClick={() => { stopPlayback.current(); relayRef.current?.interrupt(); if (activeVoiceTurnRef.current) { activeVoiceTurnRef.current = null; onVoiceInterrupt(); } setState(relayReadyRef.current ? "listening" : "interrupted"); setAnnouncement("Paige stopped speaking. You can continue in this conversation."); }}><Hand aria-hidden />Interrupt</Button>
         <Button variant="outline" onClick={() => closeStage("minimize")}><Minimize2 aria-hidden />Minimize</Button>
         <Button variant="destructive" onClick={() => closeStage("end")}><PhoneOff aria-hidden />End</Button>
       </footer>

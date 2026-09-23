@@ -6,11 +6,15 @@
 // atomic conditional UPDATE before upgrade; tenant/thread identity is resolved
 // only from that verified database row, never from query/body tenantId.
 //
-// This provider-free slice does not open ears, runtime, or mouth. It refuses
-// audio honestly until separately approved adapters are available; no client
-// voice is sent to a vendor or recorded by this function.
+// Pilot availability defaults off in the platform-owned table. Only after a
+// consumed ticket, current caller-owned thread, standing, and pilot gate do
+// server-side ears/mouth adapters open. The canonical paige-ai-chat stream
+// remains the sole runtime; this relay never executes a spoken approval.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
-import { createRelayState, reduceRelay } from "../_shared/paige-live-relay-contract.ts";
+import { APPROVED_PAIGE_ELEVENLABS_VOICE_ID, elevenlabsSpeechStream, resolveElevenLabsModel } from "../_shared/elevenlabs.ts";
+import { envKey } from "../_shared/env-key.ts";
+import { openFluxEars } from "../_shared/paige-live-flux-ears.ts";
+import { PaigeLiveRelayBridge } from "../_shared/paige-live-relay-bridge.ts";
 import { consumeRelayTicket, hasLiveWorkspaceStanding, isLiveAudioPilotEnabled, isLiveWorkspaceCurrent } from "../_shared/paige-live-ticket.ts";
 
 const waitUntil = (promise: Promise<unknown>): void => {
@@ -152,35 +156,124 @@ Deno.serve(async (req) => {
     if (!await markUnavailable("live_audio_not_enabled")) return new Response("relay_unavailable", { status: 503 });
     return new Response("live_audio_not_enabled", { status: 403 });
   }
-  const unavailableCode = "adapters_not_connected";
-  if (!await markUnavailable(unavailableCode)) return new Response("relay_unavailable", { status: 503 });
+  // Read back the one corrected Jessica candidate. Active read-aloud stays on
+  // OpenAI; neither a browser value nor a tenant preference selects a voice.
+  const { data: voice, error: voiceError } = await admin.from("paige_voice_profiles")
+    .select("provider,provider_voice_ref,revision,active")
+    .eq("slot", "candidate").maybeSingle();
+  const voiceReady = !voiceError && voice?.provider === "elevenlabs" &&
+    voice.provider_voice_ref === APPROVED_PAIGE_ELEVENLABS_VOICE_ID &&
+    voice.revision === "elevenlabs-jessica-take5-r1" && voice.active === false;
+  const modelReady = resolveElevenLabsModel() !== null;
+  // Account-level Deepgram training opt-out is an operational fact, not
+  // inferred from the per-request flag. This server-side switch stays OFF
+  // until the owner has checked the account setting; no tenant can set it.
+  const mipAccountVerified = envKey("DEEPGRAM_MIP_ACCOUNT_VERIFIED") === "true";
+  const unavailableCode = !voiceReady ? "approved_voice_unavailable"
+    : !modelReady || !envKey("ELEVENLABS_API_KEY") ? "mouth_not_configured"
+    : !envKey("DEEPGRAM_API_KEY") ? "ears_not_configured"
+    : !mipAccountVerified ? "audio_privacy_not_verified"
+    : null;
+  if (unavailableCode) {
+    if (!await markUnavailable(unavailableCode)) return new Response("relay_unavailable", { status: 503 });
+    const { socket, response } = Deno.upgradeWebSocket(req);
+    const closed = new Promise<void>((resolve) => { socket.onclose = () => resolve(); });
+    waitUntil(closed);
+    socket.onopen = () => {
+      socket.send(JSON.stringify({
+        type: "unavailable", code: unavailableCode,
+        message: "Live audio isn't ready for this workspace yet. You can keep working with Paige in chat.",
+      }));
+      setTimeout(() => socket.close(1013, "live_audio_unavailable"), 0);
+    };
+    socket.onmessage = () => { try { socket.close(1008, "audio_not_ready"); } catch { /* closed */ } };
+    return response;
+  }
 
   const { socket, response } = Deno.upgradeWebSocket(req);
-  let relay = createRelayState({
-    sessionId: session.id, epoch: session.context_epoch, ticketId: "consumed",
-    ticketExpiresAt: Date.now(),
+  const markLive = async (): Promise<boolean> => {
+    const { data, error } = await admin.from("paige_live_sessions")
+      .update({
+        state: "listening", availability: "LIVE", failure_code: null,
+        profile_provider: "elevenlabs",
+        profile_provider_voice_ref: APPROVED_PAIGE_ELEVENLABS_VOICE_ID,
+        profile_revision: voice.revision,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", session.id).eq("tenant_id", session.tenant_id)
+      .eq("actor_user_id", session.actor_user_id).eq("state", "connecting")
+      .select("id").maybeSingle();
+    if (error || !data) {
+      console.error("[paige-live-relay] ready state write failed", { code: error?.code });
+      return false;
+    }
+    return true;
+  };
+  const markFailed = async (code: string): Promise<void> => {
+    const { error } = await admin.from("paige_live_sessions")
+      .update({
+        state: "unavailable", availability: "UNAVAILABLE",
+        failure_code: code, updated_at: new Date().toISOString(),
+      })
+      .eq("id", session.id).eq("tenant_id", session.tenant_id)
+      .eq("actor_user_id", session.actor_user_id)
+      .in("state", ["connecting", "listening", "thinking", "speaking", "interrupted", "held"]);
+    if (error) console.error("[paige-live-relay] failure state write failed", { code: error.code });
+  };
+  let failureWrite: Promise<void> | null = null;
+  const bridge = new PaigeLiveRelayBridge({
+    sessionId: session.id, epoch: session.context_epoch,
+    send(frame) { if (socket.readyState === WebSocket.OPEN) socket.send(frame); },
+    close(code, reason) {
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+        try { socket.close(code, reason); } catch { /* already closed */ }
+      }
+    },
+    openEars: (events) => openFluxEars(events),
+    async openMouth(text, signal) {
+      const response = await elevenlabsSpeechStream({
+        text, voiceId: APPROVED_PAIGE_ELEVENLABS_VOICE_ID,
+        modelId: resolveElevenLabsModel() ?? "",
+      }, signal);
+      if (!response.body) throw new Error("mouth_stream_missing");
+      return response.body;
+    },
+    usage: { emit() { /* Neutral UsageSink seam. Budget lane supplies persistence later. */ } },
+    onFailure(code) {
+      failureWrite = markFailed(code);
+      waitUntil(failureWrite);
+    },
   });
   const closed = new Promise<void>((resolve) => {
     socket.onclose = () => {
-      relay = reduceRelay(relay, { kind: "session.cancel", at: Date.now(), reason: "socket_closed" }).state;
-      resolve();
+      bridge.end();
+      void (async () => {
+        if (failureWrite) await failureWrite;
+        await admin.from("paige_live_sessions")
+        .update({ state: "ended", ended_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq("id", session.id).eq("tenant_id", session.tenant_id)
+        .eq("actor_user_id", session.actor_user_id).neq("state", "unavailable");
+      })().finally(resolve);
     };
     socket.onerror = () => { try { socket.close(1011, "relay_unavailable"); } catch { resolve(); } };
   });
   waitUntil(closed);
   socket.onopen = () => {
-    socket.send(JSON.stringify({
-      type: "unavailable", code: unavailableCode,
-      message: "Live audio is not connected yet. You can keep working with Paige in chat.",
-    }));
-    // The provider-free server never sends ready and never accepts microphone
-    // frames. Give the terminal frame a task turn before closing.
-    setTimeout(() => socket.close(1013, unavailableCode), 0);
+    waitUntil((async () => {
+      if (!await bridge.open()) return;
+      if (!await markLive()) {
+        bridge.unavailable("live_admission_changed");
+        return;
+      }
+      bridge.ready();
+    })());
   };
-  socket.onmessage = () => {
-    // A client that sends audio before an explicit ready frame violates the
-    // contract. Do not parse, log, persist, or relay those bytes.
-    try { socket.close(1008, "audio_not_ready"); } catch { /* socket already closed */ }
+  socket.onmessage = (event) => {
+    if (typeof event.data === "string" || event.data instanceof ArrayBuffer) {
+      bridge.receive(event.data);
+    } else {
+      try { socket.close(1008, "invalid_audio_frame"); } catch { /* socket already closed */ }
+    }
   };
   return response;
 });

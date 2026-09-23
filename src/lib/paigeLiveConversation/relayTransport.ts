@@ -2,6 +2,7 @@ import { AudioRecorder } from "@/utils/VoiceAudio";
 
 export type RelayTransportState =
   | { kind: "ready" }
+  | { kind: "speaking" }
   | { kind: "unavailable"; message: string }
   | { kind: "permission-denied" }
   | { kind: "disconnected" };
@@ -9,6 +10,10 @@ export type RelayTransportState =
 export interface RelayTransport {
   interrupt(): void;
   setMuted(muted: boolean): void;
+  runtimeDispatched(turnId: string): void;
+  runtimeChunk(turnId: string, text: string): void;
+  runtimeDone(turnId: string): void;
+  runtimeFailed(turnId: string): void;
   stop(): void;
 }
 
@@ -38,7 +43,9 @@ export function connectPaigeLiveRelay(input: Readonly<{
   sessionId: string;
   ticket: string;
   onState: (state: RelayTransportState) => void;
-  onTranscript?: (text: string, final: boolean) => void;
+  onTranscript?: (text: string, final: boolean, turnId: string) => void;
+  onVoiceTurn?: (text: string, turnId: string) => void;
+  onRuntimeCancel?: (turnId: string) => void;
 }>): RelayTransport {
   const socket = new WebSocket(relayUrl(input.sessionId, input.ticket));
   socket.binaryType = "arraybuffer";
@@ -52,6 +59,7 @@ export function connectPaigeLiveRelay(input: Readonly<{
   let terminal = false;
   let runtimeDone = false;
   let muted = false;
+  let speaking = false;
 
   const clearPlayback = () => {
     playbackEpoch++;
@@ -60,6 +68,7 @@ export function connectPaigeLiveRelay(input: Readonly<{
     activeSources = new Set();
     nextPlayAt = 0;
     runtimeDone = false;
+    speaking = false;
   };
   const stop = () => {
     if (stopped) return;
@@ -75,6 +84,8 @@ export function connectPaigeLiveRelay(input: Readonly<{
     if (runtimeDone && !pendingPlayback && !activeSources.size && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: "playback.complete" }));
       runtimeDone = false;
+      speaking = false;
+      input.onState({ kind: "ready" });
     }
   };
   const playPcm = async (data: ArrayBuffer) => {
@@ -96,6 +107,7 @@ export function connectPaigeLiveRelay(input: Readonly<{
       source.onended = () => { activeSources.delete(source); maybePlaybackDone(); };
       nextPlayAt = Math.max(playbackContext.currentTime, nextPlayAt);
       source.start(nextPlayAt);
+      if (!speaking) { speaking = true; input.onState({ kind: "speaking" }); }
       nextPlayAt += buffer.duration;
     } catch {
       if (!stopped && !terminal) {
@@ -124,7 +136,7 @@ export function connectPaigeLiveRelay(input: Readonly<{
     } else if (frame.type === "ready") {
       const nextRecorder = new AudioRecorder((samples) => {
         if (socket.readyState === WebSocket.OPEN && !stopped && !terminal && !muted) socket.send(pcm16(samples));
-      }, 16_000);
+      }, 16_000, 1024);
       recorder = nextRecorder;
       void nextRecorder.start().then(() => {
         if (stopped || terminal || recorder !== nextRecorder || socket.readyState !== WebSocket.OPEN) { nextRecorder.stop(); return; }
@@ -136,8 +148,14 @@ export function connectPaigeLiveRelay(input: Readonly<{
         input.onState({ kind: "permission-denied" });
         stop();
       });
-    } else if (frame.type === "transcript" && typeof frame.text === "string") {
-      input.onTranscript?.(frame.text, frame.is_final === true);
+    } else if (frame.type === "transcript" && typeof frame.text === "string" &&
+      typeof frame.turn_id === "string") {
+      input.onTranscript?.(frame.text, frame.is_final === true, frame.turn_id);
+    } else if (frame.type === "runtime.dispatch" && typeof frame.text === "string" &&
+      typeof frame.turn_id === "string") {
+      input.onVoiceTurn?.(frame.text, frame.turn_id);
+    } else if (frame.type === "runtime.cancel" && typeof frame.turn_id === "string") {
+      input.onRuntimeCancel?.(frame.turn_id);
     } else if (frame.type === "runtime.done") {
       runtimeDone = true;
       maybePlaybackDone();
@@ -157,6 +175,22 @@ export function connectPaigeLiveRelay(input: Readonly<{
   };
   return {
     setMuted(value) { muted = value; },
+    runtimeDispatched(turnId) {
+      if (socket.readyState === WebSocket.OPEN && !terminal && !stopped)
+        socket.send(JSON.stringify({ type: "runtime.dispatched", turn_id: turnId }));
+    },
+    runtimeChunk(turnId, text) {
+      if (socket.readyState === WebSocket.OPEN && !terminal && !stopped && text)
+        socket.send(JSON.stringify({ type: "runtime.chunk", turn_id: turnId, text }));
+    },
+    runtimeDone(turnId) {
+      if (socket.readyState === WebSocket.OPEN && !terminal && !stopped)
+        socket.send(JSON.stringify({ type: "runtime.done", turn_id: turnId }));
+    },
+    runtimeFailed(turnId) {
+      if (socket.readyState === WebSocket.OPEN && !terminal && !stopped)
+        socket.send(JSON.stringify({ type: "runtime.failed", turn_id: turnId }));
+    },
     interrupt() {
       clearPlayback();
       if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "interrupt" }));
