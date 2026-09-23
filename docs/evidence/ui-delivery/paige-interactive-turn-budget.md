@@ -8,7 +8,7 @@ FLOW_PROTOTYPE: NOT_REQUIRED: no new container, navigation, control, state trans
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: a tenant owner sends Paige work and can tell continuously whether she is thinking or writing until the response or six-minute boundary
 VISUAL_DIRECTION: PASS: existing PaigeThinkingIndicator, alert, button, tokens, spacing, and motion behavior are preserved byte-for-byte
 AUTOMATED_EVIDENCE: PASS: npx vitest run src/components/dashboard/PaigeAIChat.turnBudget.contract.test.ts src/__tests__/durable-job-seam.test.ts src/__tests__/paige-durable-work-envelope.test.ts passed 3 files and 18 tests; the turn-budget test proves client/server symmetry, progress wiring, and timeout wording
-STATIC_EVIDENCE: PASS: npx tsc --noEmit -p tsconfig.app.json reports the exact same 12 errors at base 7ebdd9fea9832572e9d479b27e2a9c88e27b75ee and candidate; no changed file appears in the error set
+STATIC_EVIDENCE: PASS: npx tsc --noEmit -p tsconfig.app.json reports the exact same 12 errors at rebased base 6bd8849d4b9bad7c8d331458cab03c00c61b87aa and candidate; no changed file appears in the error set
 RENDERED_EVIDENCE: UNVERIFIED: the shared paige-scroll-stability-react drive fails at openTenant line 112 before the interaction; the 2026-09-23 coordinator ruling accepts the contract test plus owner post-deploy verification for Phase 1a only and routes the harness defect to Platform Health
 BEHAVIORAL_EVIDENCE: UNVERIFIED: owner post-deploy proof is required by running a request past 45 seconds and confirming the session remains active; no deployment was authorized or performed here
 AUTHENTICATED_RUNTIME: UNVERIFIED: no candidate deployment or authenticated tenant mutation was performed; the raised runtime boundary remains proof owed
@@ -36,13 +36,13 @@ ACCEPTANCE_CRITERIA: on the deployed candidate, an authenticated owner starts wo
 MOTION_PURPOSE: NONE: no motion change; the existing indicator communicates active work and keeps its reduced-motion fallback
 PROTECTED_SEAMS: client and paige-ai-chat budgets remain equal at 360000 milliseconds; request acceptance, cancellation, thread persistence, Spine, Rail, Memory, and Knowledge logic are unchanged
 
-INTERNAL_BUILD_IDENTITY: 4b40040966f08c63ed8f4f2668384a1ffaa69764; deployment=none; environment=development; migrations=NOT_APPLICABLE; edge=PROOF_OWED(paige-ai-chat candidate not deployed); evidence=PaigeAIChat.turnBudget.contract.test.ts plus exact-base typecheck comparison
+INTERNAL_BUILD_IDENTITY: 169a2925bd89601a53d23493b5f58775f5c641f1; deployment=none; environment=development; migrations=NOT_APPLICABLE; edge=PROOF_OWED(paige-ai-chat candidate not deployed); evidence=PaigeAIChat.turnBudget.contract.test.ts plus exact-base typecheck comparison
 RELEASE_CHANNEL: development: local candidate only; no preview or production deployment was authorized
 RELEASE_CLASSIFICATION: patch: owner-visible timeout relief and truthful recovery wording without a new capability or customer release identity
 CUSTOMER_RELEASE_IDENTITY: none: owner has not assigned a customer release identity and runtime proof is owed
 RELEASE_NOTE_REQUIRED: NO: the candidate is not deployed and the durable envelope remains the actual INT-180 fix
 RELEASE_TRUTH_BOUNDARY: PARTIAL: symmetry, continuous progress wiring, and honest timeout copy are source/test proven; deployed duration and all durable recovery claims are proof owed
-RELEASE_RECOVERY: position=revert commits 4b400409 and 6303012b before deployment if the extended interactive fence regresses chat; reference=git history plus this evidence record
+RELEASE_RECOVERY: position=revert commits 169a2925 and 4ee365d7 before deployment if the extended interactive fence regresses chat; reference=git history plus this evidence record
 
 ## Scope and collisions
 
@@ -58,9 +58,9 @@ The owner sends once. While the request is accepted, the shared status line rema
 
 ## Evidence index
 
-- Candidate UI commit: `4b40040966f08c63ed8f4f2668384a1ffaa69764`.
-- Budget commit: `6303012b0cf552540f68fc5d4ce775011966d922`.
-- Base: `7ebdd9fea9832572e9d479b27e2a9c88e27b75ee`.
+- Candidate UI commit: `169a2925bd89601a53d23493b5f58775f5c641f1`.
+- Budget commit: `4ee365d72551a35ff520be0ce64522f2eff0b67d`.
+- Base: `6bd8849d4b9bad7c8d331458cab03c00c61b87aa`.
 - Automated: focused Vitest, 18/18 passing.
 - Static: required app typecheck, 12 base errors and the identical 12 candidate errors.
 - Routed failure: `docs/assessments/CONSOLIDATED_PLATFORM_AUDIT.md` PH-EVIDENCE-18.

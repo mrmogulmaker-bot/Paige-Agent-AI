@@ -185,6 +185,18 @@ Each finding records exact source evidence, reachable boundary, current ownershi
 - **Smallest next step / proof:** reproduce from current `main`, identify why tenant hydration no longer reaches the script's fixed transcript precondition, and prove the repaired drive reaches its intended interaction at every declared viewport. Do not weaken the assertion merely to make the script green.
 - **Lesson/control:** a rendered-evidence script that fails before the affected interaction is a harness defect, not evidence that the product change failed or passed.
 
+#### PH-EVIDENCE-19 — Required app typecheck has an undocumented 12-error trunk baseline (`VERIFIED` locally; Platform Health)
+
+- **Evidence / boundary:** `npx tsc --noEmit -p tsconfig.app.json --pretty false` exits 2 with exactly 12 diagnostics on current `main` `6bd8849d4b9bad7c8d331458cab03c00c61b87aa` and the Long-Form candidate. The identical set is two `StudioShell.tsx` TS2339 errors plus one each in `PaigeWorkspaceContext.tsx`, `useClientPortalBrand.ts`, `useMyActions.ts`, two in `customFields.ts`, and one each in `planning.ts`, `tenantLifecycle.ts`, `playbook/resolve.ts`, `CalendarAdmin.tsx`, and `Step1Welcome.tsx`. The lane introduced zero diagnostic drift.
+- **Status / owner / collision:** routed to Platform Health as a trunk-signal defect. The Long-Form lane records the exact baseline and does not repair unrelated files under park-and-route.
+- **Smallest next step / proof:** establish an owned baseline artifact or repair the 12 diagnostics on trunk, then require the app-config command in CI. The root `tsconfig.json` remains non-evidence because it checks no files.
+
+#### PH-EVIDENCE-20 — Deno-ratchet self-test is not trustworthy on this Windows host (`VERIFIED` locally; Platform Health)
+
+- **Evidence / boundary:** `npm run test:deno-ratchet` fails on both exact `main` and the Long-Form candidate. Deno-backed runner cases are abandoned with `spawnSync deno ENOENT`; an independent path-normalization assertion also fails because the same repo file is keyed twice under Windows worktree roots. The candidate changes no ratchet code.
+- **Status / owner / collision:** routed to Platform Health; this lane does not install shared tooling or modify the cross-lane ratchet harness.
+- **Smallest next step / proof:** provision the declared Deno executable for the test process, normalize repository-relative Windows paths once, and prove the complete self-test passes from both a normal checkout and a linked worktree.
+
 ### Proposed or local remediation — non-shipped
 
 No runtime, schema, credential, provider, deployment or production change was made. This documentation PR can make the reconciliation canonical, but it does not ship any security repair or change the health claims above. Any local/proposed security patch remains explicitly non-shipped until separately merged and verified; this PR contains no such patch. Candidate repairs remain open; active PR #1173 is not absorbed. Merged #1175 is incorporated as current doctrine.
