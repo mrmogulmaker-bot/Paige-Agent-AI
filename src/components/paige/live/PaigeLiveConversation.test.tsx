@@ -304,6 +304,14 @@ describe("Paige Live Conversation owner surface", () => {
     expect(document.querySelector(".plc-state")?.textContent).toContain("Listening");
     expect(document.querySelector('[data-presence-state="listening"]')).not.toBeNull();
     expect(document.querySelector('[data-presence-state="unavailable"]')).toBeNull();
+    await act(async () => clickText("Mute"));
+    expect(relay.setMuted).toHaveBeenLastCalledWith(true);
+    expect(document.querySelector('[data-presence-state="listening"]')).toBeNull();
+    expect(document.querySelector(".plc-state")?.textContent).toContain("Muted");
+    await act(async () => clickText("Unmute"));
+    expect(relay.setMuted).toHaveBeenLastCalledWith(false);
+    expect(document.querySelector('[data-presence-state="listening"]')).not.toBeNull();
+    expect(document.querySelector(".plc-state")?.textContent).toContain("Listening");
   });
 
   it("keeps listening controls available after a ready relay is interrupted", async () => {

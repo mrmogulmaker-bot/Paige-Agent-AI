@@ -462,7 +462,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
       <main className="plc-stage__main">
         <section className="plc-presence" aria-label="Paige Presence and live audio status" data-live-state={state}>
           <PaigePresence state={presenceState} readEnergy={output.readEnergy} />
-          <p className="plc-state"><span />{output.playing ? "Speaking" : STATE_LABEL[state]}</p>
+          <p className="plc-state"><span />{output.playing ? "Speaking" : state === "listening" && muted ? "Muted" : STATE_LABEL[state]}</p>
           <p id="plc-description" className="plc-context">Working in this exact Paige thread. Nothing here creates a second assistant or a separate memory.</p>
           <div className="plc-working" aria-live="polite"><span>Paige is working on</span><strong>{working ? (workingLabel || "your current request") : "No active work"}</strong></div>
           {(state !== "checking" && availability !== "LIVE") && (
