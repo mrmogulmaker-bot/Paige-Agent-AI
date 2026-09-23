@@ -236,7 +236,7 @@ describe("Paige Chat canonical CRM adoption", () => {
     const sourceAt = chat.indexOf("const sourceCrmCommand = { action, ...crmArgs }");
     const canonicalizeAt = chat.indexOf("const canonicalCrmCommand = canonicalizeCrmCommand(sourceCrmCommand)");
     const identityAt = chat.indexOf("const fallbackKeys = await crmCommandFallbackIdempotencyKeys", canonicalizeAt);
-    const hashAt = chat.indexOf("const idempotencyKey = suppliedKey || fallbackKeys.current", canonicalizeAt);
+    const hashAt = chat.indexOf('const idempotencyKey = action === "contact.create"', canonicalizeAt);
     const invokeAt = chat.indexOf('functions.invoke("crm-command"', canonicalizeAt);
 
     expect(chat).toContain("canonicalizeCrmCommand");
@@ -245,7 +245,7 @@ describe("Paige Chat canonical CRM adoption", () => {
     expect(identityAt).toBeGreaterThan(canonicalizeAt);
     expect(hashAt).toBeGreaterThan(identityAt);
     expect(invokeAt).toBeGreaterThan(hashAt);
-    expect(chat).toContain("const idempotencyKey = suppliedKey || fallbackKeys.current");
+    expect(chat).toContain('const idempotencyKey = action === "contact.create"\n            ? fallbackKeys.current\n            : (suppliedKey || fallbackKeys.current)');
     expect(chat).toContain("body: { command: canonicalCrmCommand, idempotency_key: idempotencyKey");
     expect(chat).not.toContain("body: { command: { action, ...crmArgs }, idempotency_key: idempotencyKey");
 
@@ -447,6 +447,12 @@ describe("Paige Chat canonical CRM adoption", () => {
     expect(keys.legacyCommand).toEqual(sourceCommand);
     expect(chat).toContain("crmCommandFallbackIdempotencyKeys(canonicalCrmCommand, sourceCrmCommand");
     expect(chat).toContain("legacy_idempotency_key: fallbackKeys.legacy");
+  });
+
+  it("does not let a newly emitted model key bypass canonical and legacy contact-create replay", () => {
+    expect(chat).toContain('const idempotencyKey = action === "contact.create"\n            ? fallbackKeys.current\n            : (suppliedKey || fallbackKeys.current)');
+    expect(chat).toContain("...(fallbackKeys.legacy ? { legacy_idempotency_key: fallbackKeys.legacy } : {})");
+    expect(chat).not.toContain("...(!suppliedKey && fallbackKeys.legacy ? { legacy_idempotency_key: fallbackKeys.legacy } : {})");
   });
 
   it("preserves meaningful orthographic join controls in the stored display form", () => {

@@ -8260,7 +8260,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             tool_name: tc.function.name,
           });
           const legacyCrmCommand = fallbackKeys.legacyCommand;
-          const idempotencyKey = suppliedKey || fallbackKeys.current;
+          // contact.create owns one server-derived retry identity. A model-supplied key must not
+          // replace it: a cross-rollout retry can newly emit that optional field after the original
+          // turn committed under the old fallback key. The canonical key is the only key for new
+          // work; the validated legacy key below remains readback-only.
+          const idempotencyKey = action === "contact.create"
+            ? fallbackKeys.current
+            : (suppliedKey || fallbackKeys.current);
           let approvedFingerprint: string | undefined;
           let approvalResolutionFailed = false;
           if (approvedConfirmations.size > 0 && personaCtx?.tenant_id) {
@@ -8288,7 +8294,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             headers: { Authorization: authHeader },
             body: { command: canonicalCrmCommand, idempotency_key: idempotencyKey,
               ...(legacyCrmCommand ? { legacy_command: legacyCrmCommand } : {}),
-              ...(!suppliedKey && fallbackKeys.legacy ? { legacy_idempotency_key: fallbackKeys.legacy } : {}),
+              ...(fallbackKeys.legacy ? { legacy_idempotency_key: fallbackKeys.legacy } : {}),
               ...(approvedFingerprint ? { approved_fingerprint: approvedFingerprint } : {}) },
           });
           let crmBody: Record<string, unknown> = crmData && typeof crmData === "object" && !Array.isArray(crmData) ? crmData as Record<string, unknown> : {};
