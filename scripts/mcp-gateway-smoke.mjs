@@ -1604,6 +1604,15 @@ console.log("\n— slice ③: approve (runApprove) —");
   // A 22023 validation token → 400 with the specific code.
   const wBadPin = await approveMod.runApprove({ userClient: makeApproveUser({ setResult: { data: null, error: pgErr("MCP_BAD_PIN", "22023") } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());
   check("approve maps a writer 22023 → 400 with the specific MCP_* code", wBadPin.httpStatus === 400 && wBadPin.body.error === "MCP_BAD_PIN", JSON.stringify(wBadPin.body));
+  // Codex P2 (atomic TOCTOU close): the future-expiry TRIGGER raises MCP_EXPIRY_IN_PAST (22023) — the
+  // token path maps it to a closed 400 (so a slightly-future expiry that lapsed before the write, which
+  // the edge pre-check could not catch, is still refused honestly, never a lying approved:true).
+  const wExpiry = await approveMod.runApprove({ userClient: makeApproveUser({ setResult: { data: null, error: pgErr("MCP_EXPIRY_IN_PAST: approval expiry must be in the future", "22023") } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());
+  check("approve maps the writer's MCP_EXPIRY_IN_PAST trigger (22023) → 400 (TOCTOU closed atomically)", wExpiry.httpStatus === 400 && wExpiry.body.error === "MCP_EXPIRY_IN_PAST", JSON.stringify(wExpiry.body));
+  // Codex P2 (calendar-invalid): a timestamptz cast error (22008 datetime_field_overflow, e.g. Feb 30)
+  // surfaces as a closed 400 bad_timestamp, never the generic 500.
+  const wBadTs = await approveMod.runApprove({ userClient: makeApproveUser({ setResult: { data: null, error: pgErr('date/time field value out of range', "22008") } }), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove());
+  check("approve maps a datetime cast error (22008) → 400 bad_timestamp (never a generic 500)", wBadTs.httpStatus === 400 && wBadTs.body.error === "bad_timestamp" && !JSON.stringify(wBadTs.body).includes("out of range"), JSON.stringify(wBadTs.body));
 
   // Remaining input-validation + lookup-failure branches (compliance coverage).
   check("approve rejects a malformed args_shape_hash (400 bad_args_shape)", (await approveMod.runApprove({ userClient: makeApproveUser(), admin: makeApproveAdmin(), readToolPin: readToolPinOk }, inApprove({ argsShapeHash: "xyz" }))).body.error === "bad_args_shape");

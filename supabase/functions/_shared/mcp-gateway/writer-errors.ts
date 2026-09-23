@@ -39,6 +39,14 @@ export function mapWriterError(error: unknown, genericCode: string): WriterError
     : "";
   const token = mcpToken(error);
 
+  // A datetime the writer's `timestamptz` cast rejects — a malformed format (22007
+  // `invalid_datetime_format`) or an out-of-range calendar date like Feb 30 (22008
+  // `datetime_field_overflow`) — is a bad CLIENT value, not an internal fault, so it surfaces as a
+  // closed 400 rather than the generic 500 (Codex P2). It fires on approve's `expires_at` and create's
+  // `access_token_expires_at`; the cast happens at the RPC boundary, so it carries no MCP_* token.
+  if (sqlstate === "22007" || sqlstate === "22008") {
+    return { httpStatus: 400, body: { error: "bad_timestamp" } };
+  }
   // Endpoint-review conflict (approve only): `set_mcp_connection_approval` RAISEs MCP_ENDPOINT_CHANGED
   // with SQLSTATE 42501, but it is NOT an authority which-gate — it means the connection's endpoint
   // changed since the operator reviewed it (Codex P1 reviewed-endpoint guard). It reveals nothing

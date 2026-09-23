@@ -101,10 +101,13 @@ export async function runApprove(deps: ApproveDeps, input: ApproveInput): Promis
   if (argsShapeHash !== null && !HEX64_RE.test(argsShapeHash)) {
     return { httpStatus: 400, body: { error: "bad_args_shape" } };
   }
-  // §13 (Codex P2): an already-past `expires_at` is STORED by `set_mcp_connection_approval` (which has
-  // no future-check) but INSTANTLY rejected by `verify_mcp_connection_approval` as `approval_expired` —
-  // so approve would return `approved: true` for a consent that can never authorize a run (a lie the
-  // operator acts on). Reject a malformed or non-future expiry up front, so success is always truthful.
+  // §13 (Codex P2): fast-reject an obviously-malformed or already-past `expires_at` here so a clearly
+  // bad value gets a clean 400 without a round-trip. This edge-clock check is a UX PRE-FILTER, NOT the
+  // authority: a value that is future here can still lapse during the intervening RPCs, and a
+  // calendar-invalid string the writer's `timestamptz` cast rejects (22007/22008 → `bad_timestamp`) is
+  // caught there. The ATOMIC guarantee that `approved: true` is never returned for an approval that
+  // cannot authorize a run is the `trg_mcp_reject_past_approval_expiry` trigger (migration
+  // 20270334000000) — it fires inside the writer's own transaction and raises MCP_EXPIRY_IN_PAST (→ 400).
   if (expiresAt !== null) {
     const expiryMs = Date.parse(expiresAt);
     if (!Number.isFinite(expiryMs)) return { httpStatus: 400, body: { error: "bad_expiry" } };
