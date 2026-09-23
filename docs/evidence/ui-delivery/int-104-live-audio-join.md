@@ -75,3 +75,8 @@ FAIL minimize before socket close remains resumable
 
 After the fixes: `47 passed, 0 failed; network/provider calls=0` (exit 0).
 Relay Deno check: exit 0. Three focused Vitest files: 43 passed, exit 0.
+The first full CI comparison also identified this PR's one stale exact-source
+dictation assertion: the send guard still refuses dictation/no-draft, but now
+notifies the voice sink before returning. The assertion now requires that entire
+guard, including the failure callback; it was not deleted or relaxed. The focused
+send-guard test passes (exit 0); full CI must return to the measured main baseline.
