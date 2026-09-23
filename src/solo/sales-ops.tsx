@@ -1524,7 +1524,7 @@ function AgreementCompletion({ signings, signing, clientName, tenantId, onClose,
         </div>
 
         <footer className="so-editor-foot">
-          {signing.signedPdfPath
+          {signing.hasSealedCopy
             ? <button className="btn btn-s btn-p" onClick={() => { void download(); }}><Ic.doc size={13} />Download the signed PDF</button>
             : <span className="so-quiet">This is signed, but no sealed copy is recorded against it.</span>}
           {onOpenClients && <button className="btn btn-s" onClick={() => onOpenClients()}>Open {clientName || "the client"}&rsquo;s record</button>}

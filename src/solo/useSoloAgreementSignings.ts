@@ -58,7 +58,6 @@ export type AgreementSigning = {
   readonly documentTitle: string;
   readonly documentSource: DocumentSource | null;
   /** The ORIGINAL file the business uploaded, if there is one. Not the signed result. */
-  readonly documentPath: string | null;
   /** What the record itself says. */
   readonly signatureState: SignatureState;
   /**
@@ -81,7 +80,8 @@ export type AgreementSigning = {
   readonly signerName: string | null;
   /** The countersigned PDF. Present only once the signing genuinely completed — the table's own
    * `tas_completed_is_evidenced_ck` refuses `completed` without it, so this is evidence, not a hope. */
-  readonly signedPdfPath: string | null;
+  /** Whether a sealed copy exists. Never its storage key — the key discloses tenant and agreement. */
+  readonly hasSealedCopy: boolean;
   readonly createdAt: string | null;
   readonly updatedAt: string | null;
 };
@@ -629,8 +629,16 @@ export function useSoloAgreementSignings(): SigningsState {
             // on both tables and `token_hash` is column-revoked, so the join returns what a
             // workspace may see and nothing that would let it forge a link.
             .select(
-              "id,contact_id,commercial_terms_id,title,body_source,document_path,status," +
-              "expires_at,sent_at,completed_at,declined_at,voided_at,sealed_storage_key," +
+              // `sealed_sha256`, NOT `sealed_storage_key`, and `document_path` is gone entirely.
+              // The key is shaped `${tenant_id}/${agreement_id}/...`, so selecting it put both ids
+              // into every browser that opens this band — the exact disclosure this lane removed
+              // from the RETRIEVAL path when it adopted `agreement-document` over a signed URL, left
+              // standing in the LIST path. The surface only ever asked "is there a sealed copy?", and
+              // the CHECK at 20270401000000:124 makes the hash answer that identically
+              // (`status <> 'completed' OR (sealed_sha256 IS NOT NULL AND sealed_storage_key IS NOT NULL)`)
+              // while disclosing no path. `document_path` had no read-side consumer at all.
+              "id,contact_id,commercial_terms_id,title,body_source,status," +
+              "expires_at,sent_at,completed_at,declined_at,voided_at,sealed_sha256," +
               "created_at,updated_at," +
               "paige_agreement_signers(full_name,decline_reason,first_viewed_at,signing_order)",
             )
@@ -692,7 +700,6 @@ export function useSoloAgreementSignings(): SigningsState {
             agreementId: toText(row.commercial_terms_id),
             documentTitle: toText(row.title) ?? "Untitled document",
             documentSource: narrow(row.body_source, DOCUMENT_SOURCES),
-            documentPath: toText(row.document_path),
             signatureState: stored,
             displayState: readState(stored, expiresAt),
             expiresAt,
@@ -703,7 +710,7 @@ export function useSoloAgreementSignings(): SigningsState {
             voidedAt: toText(row.voided_at),
             declineReason: signers.map((x) => toText(x?.decline_reason)).find(Boolean) ?? null,
             signerName: toText(signers[0]?.full_name),
-            signedPdfPath: toText(row.sealed_storage_key),
+            hasSealedCopy: Boolean(toText(row.sealed_sha256)),
             createdAt: toText(row.created_at),
             updatedAt: toText(row.updated_at),
           };

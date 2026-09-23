@@ -1084,7 +1084,7 @@ describe("Agreement documents — signature state, separate from commercial stat
     documentSource: "tenant_upload", documentPath: "tenant-1/source/1-x.pdf",
     signatureState: "sent", displayState: "sent", expiresAt: "2026-10-06T12:00:00Z",
     sentAt: "2026-09-22T12:00:00Z", viewedAt: null, completedAt: null, declinedAt: null,
-    voidedAt: null, declineReason: null, signerName: null, signedPdfPath: null,
+    voidedAt: null, declineReason: null, signerName: null, hasSealedCopy: false,
     createdAt: "2026-09-22T12:00:00Z", updatedAt: "2026-09-22T12:00:00Z",
   };
 
@@ -1094,7 +1094,7 @@ describe("Agreement documents — signature state, separate from commercial stat
   const COMPLETED = {
     ...SIGNING, signatureState: "completed", displayState: "completed",
     signerName: "Dana Reed", completedAt: "2026-09-22T13:00:00Z",
-    signedPdfPath: "tenant-1/signed/s1-1.pdf",
+    hasSealedCopy: true,
   };
   const openCompleted = () => {
     harness.agreements.clients = [{ id: "c1", name: "Acme" }];
@@ -1137,7 +1137,7 @@ describe("Agreement documents — signature state, separate from commercial stat
   it("says a completed document carries no sealed copy rather than offering a control that cannot work", () => {
     harness.agreements.clients = [{ id: "c1", name: "Acme" }];
     harness.agreements.agreements = [AGREEMENT];
-    harness.signings.signings = [{ ...COMPLETED, signedPdfPath: null }];
+    harness.signings.signings = [{ ...COMPLETED, hasSealedCopy: false }];
     render("terms");
     act(() => (host.querySelector('[aria-label="Agreements and terms"] .so-row') as HTMLButtonElement).click());
     // The record still opens — it is signed, and the trail of how it got there is the point of the
@@ -1148,6 +1148,21 @@ describe("Agreement documents — signature state, separate from commercial stat
     // Targeted by its OWN label: the grounded-detail drawer is also role="dialog", so a bare
     // querySelector returns whichever is first in the DOM rather than the one under test.
     expect(document.querySelector('[aria-labelledby="so-done-title"]')!.textContent).toContain("no sealed copy is recorded against it");
+  });
+
+  it("never asks the database for a storage key or a document path", () => {
+    // The sealed key is shaped `${tenant_id}/${agreement_id}/...`, so selecting it puts both ids
+    // into every browser that opens this band. This lane removed that disclosure from the
+    // RETRIEVAL path (adopting `agreement-document` over a signed URL) and left it standing in the
+    // LIST path — the same leak arriving by a different door. The surface only ever asked "is
+    // there a sealed copy?", and a CHECK in the engine's own schema
+    // (20270401000000:124) makes `sealed_sha256` answer that identically while disclosing nothing.
+    const hook = readFileSync(resolve(process.cwd(), "src/solo/useSoloAgreementSignings.ts"), "utf8");
+    const selected = [...hook.matchAll(/"([a-z_,()]*(?:id|at|status|source|sha256|key|path)[a-z_,()]*)" \+/g)]
+      .map(([, chunk]) => chunk).join(",");
+    expect(selected).toContain("sealed_sha256");
+    expect(selected).not.toContain("sealed_storage_key");
+    expect(selected).not.toContain("document_path");
   });
 
   it("shows the recorded trail — what the engine logged, at minute resolution, in its order", async () => {
@@ -1388,7 +1403,7 @@ describe("Agreement documents — signature state, separate from commercial stat
   it("offers no act on a document that is finished, and never a dead control (§70)", () => {
     harness.agreements.clients = [{ id: "c1", name: "Acme" }];
     harness.agreements.agreements = [AGREEMENT];
-    harness.signings.signings = [{ ...SIGNING, signatureState: "completed", displayState: "completed", completedAt: "2026-09-23T09:00:00Z", signerName: "A Client", signedPdfPath: "tenant-1/signed/s1.pdf" }];
+    harness.signings.signings = [{ ...SIGNING, signatureState: "completed", displayState: "completed", completedAt: "2026-09-23T09:00:00Z", signerName: "A Client", hasSealedCopy: true }];
     render("terms");
     act(() => (host.querySelector('[aria-label="Agreements and terms"] button') as HTMLButtonElement).click());
     expect(buttonSaying("Send for signature")).toBeUndefined();
