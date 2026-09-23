@@ -28,7 +28,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GrowthHub } from "./growth2";
 
@@ -116,8 +116,19 @@ vi.mock("@/hooks/useTierFeatures", () => ({
 let host: HTMLDivElement;
 let root: Root | null = null;
 
+/* Where the app actually went. The router here is in-memory, so a navigation leaves no trace a
+ * test can read — and asserting on a spied callback would only prove the handler was called, not
+ * that it routed anywhere real. This records the live location instead. */
+let lastLocation = "";
+function LocationProbe() {
+  const loc = useLocation();
+  lastLocation = loc.pathname + loc.search;
+  return null;
+}
+
 const appAt = (path: string) => (
   <MemoryRouter initialEntries={[path]}>
+    <LocationProbe />
     <Routes><Route path="/solo/:account/*" element={<GrowthHub />} /></Routes>
   </MemoryRouter>
 );
@@ -1148,6 +1159,74 @@ describe("Agreement documents — signature state, separate from commercial stat
     // Targeted by its OWN label: the grounded-detail drawer is also role="dialog", so a bare
     // querySelector returns whichever is first in the DOM rather than the one under test.
     expect(document.querySelector('[aria-labelledby="so-done-title"]')!.textContent).toContain("no sealed copy is recorded against it");
+  });
+
+  it("claims only what it knows about a completed agreement", async () => {
+    // Two assertions in one sentence were not the surface's to make.
+    openCompleted();
+    await act(async () => {});
+    const panel = document.querySelector('[aria-labelledby="so-done-title"]')!;
+    const text = panel.textContent ?? "";
+
+    // Signing completion does not touch the commercial row, and create-and-sign saves it DRAFT,
+    // so the common case made this false — and it contradicted the closing note in the same dialog.
+    expect(text).not.toContain("now active against their record");
+    // The closing note, which states the distinction correctly, is still there.
+    expect(text).toContain("is a separate state you control from here on");
+    // With a sealed copy, the sentence may describe it.
+    expect(text).toContain("The sealed PDF carries their signature");
+  });
+
+  it("does not describe a sealed PDF that is not recorded", async () => {
+    harness.agreements.clients = [{ id: "c1", name: "Acme" }];
+    harness.agreements.agreements = [AGREEMENT];
+    harness.signings.signings = [{ ...COMPLETED, hasSealedCopy: false }];
+    render("terms");
+    act(() => (host.querySelector('[aria-label="Agreements and terms"] .so-row') as HTMLButtonElement).click());
+    act(() => (buttonSaying("View the signed record") as HTMLButtonElement).click());
+    await act(async () => {});
+    const panel = document.querySelector('[aria-labelledby="so-done-title"]')!;
+    // The footer already said no sealed copy is recorded; the summary must not argue with it.
+    expect(panel.textContent).not.toContain("The sealed PDF carries their signature");
+    expect(panel.textContent).toContain("No sealed copy is recorded against it yet");
+    expect(buttonSaying("Download the signed PDF")).toBeUndefined();
+  });
+
+  it("says a successfully-read empty trail is empty, not unreadable", async () => {
+    harness.signings.signingEvents = vi.fn(async () => ({ ok: true, events: [], truncated: false }));
+    openCompleted();
+    await act(async () => {});
+    const panel = document.querySelector('[aria-labelledby="so-done-title"]')!;
+    // `ready` PROVES the read completed, so offering "could not be read" collapsed the very
+    // distinction this surface exists to draw.
+    expect(panel.textContent).not.toContain("could not be read or was never written");
+    expect(panel.textContent).toContain("read successfully and came back empty");
+  });
+
+  it("discloses a truncated audit trail instead of presenting it as the whole history", async () => {
+    harness.signings.signingEvents = vi.fn(async () => ({
+      ok: true, truncated: true,
+      events: [{ id: "e1", type: "completed", actorKind: "signer", actorEmail: null, ip: null, userAgent: null, at: "2026-09-18T09:31:00Z" }],
+    }));
+    openCompleted();
+    await act(async () => {});
+    const panel = document.querySelector('[aria-labelledby="so-done-title"]')!;
+    // The order is seq DESC, so a cap drops the OLDEST — creation and the original send. A panel
+    // headed "What happened, and when" must not present that as complete.
+    expect(panel.textContent).toContain("most recent events");
+    expect(panel.textContent).toContain("recorded but not shown here");
+  });
+
+  it("opens the named client's record, not the general list", async () => {
+    openCompleted();
+    await act(async () => {});
+    act(() => (buttonSaying("Open Acme\u2019s record") as HTMLButtonElement).click());
+    // The clients workspace already reads `?person=` as its deep link; the control just never
+    // sent one, so a button naming a person landed on everyone.
+    // The clients workspace reads `?person=` as its deep link (TenantRelationshipsClientsWorkspace),
+    // so this asserts the real destination rather than that a handler fired.
+    expect(lastLocation).toContain("/clients/people");
+    expect(lastLocation).toContain("person=c1");
   });
 
   it("never asks the database for a storage key or a document path", () => {

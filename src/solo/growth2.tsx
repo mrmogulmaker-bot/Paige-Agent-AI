@@ -401,8 +401,12 @@ export const GrowthHub=()=>{
   const openPipeline=React.useCallback(()=>{
     navigate(subtabPath("solo",params.account,"growth","pipeline"));
   },[navigate,params.account]);
-  const openClients=React.useCallback(()=>{
-    navigate(`${subtabPath("solo",params.account,"clients","people")}?origin=sales`);
+  // `?person=` is NOT a new contract — TenantRelationshipsClientsWorkspace already reads it as
+  // `deepLinkedContactId`. A control labelled "Open <client>'s record" that landed on the general
+  // list was not missing a route; it was declining to use one that already existed (§18).
+  const openClients=React.useCallback((contactId)=>{
+    const base=`${subtabPath("solo",params.account,"clients","people")}?origin=sales`;
+    navigate(typeof contactId==="string"&&contactId ? `${base}&person=${encodeURIComponent(contactId)}` : base);
   },[navigate,params.account]);
   // The Command Desk's single router. Overview coordinates; each target opens the subtab that OWNS
   // that stage of the loop (Vibe Studio opens through the existing handoff). Overview never does

@@ -129,8 +129,12 @@ export type SigningEvent = {
   readonly at: string | null;
 };
 
+/** How many trail events the surface shows. One more is READ, to detect truncation. */
+export const TRAIL_LIMIT = 50;
+
 export type SigningEventsResult =
-  | { readonly ok: true; readonly events: readonly SigningEvent[] }
+  /** `truncated` means OLDER events exist that are not in `events` — the surface must say so. */
+  | { readonly ok: true; readonly events: readonly SigningEvent[]; readonly truncated: boolean }
   | { readonly ok: false; readonly message: string };
 
 export type SigningSendResult =
@@ -492,14 +496,20 @@ export function useSoloAgreementSignings(): SigningsState {
         .eq("tenant_id", expected)
         .eq("agreement_id", signingId)
         .order("seq", { ascending: false })
-        .limit(50) as unknown as { data: Record<string, unknown>[] | null; error: unknown };
+        // ONE MORE THAN WE SHOW, so truncation is a FACT rather than a guess. The order is
+        // `seq` DESC, so the rows dropped by a cap are the OLDEST — creation and the original
+        // send: precisely the end of a chain of custody you cannot afford to lose silently
+        // while a panel headed "What happened, and when" implies it is the whole story.
+        .limit(TRAIL_LIMIT + 1) as unknown as { data: Record<string, unknown>[] | null; error: unknown };
       if (error) {
         console.error("[signings] trail read failed", error);
         return { ok: false, message: "This document's history could not be read, so none is shown rather than a partial one." };
       }
+      const all = data ?? [];
       return {
         ok: true,
-        events: (data ?? []).map((row) => ({
+        truncated: all.length > TRAIL_LIMIT,
+        events: all.slice(0, TRAIL_LIMIT).map((row) => ({
           id: String(row.id),
           type: toText(row.event_type) ?? "unrecognised",
           actorKind: toText(row.actor_kind) ?? "system",
