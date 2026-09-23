@@ -719,11 +719,16 @@ jobs:
 
       - name: Type-check — connected MCP gateway edge function (Deno)
         if: ${{ !cancelled() }}
-        # The gateway's actions (verify + create, and the slices to come) are Deno, so tsc never sees
-        # them and the smoke below esbuild-strips types away. This deno check makes the gateway's type
-        # safety CI-enforced — the same pattern the agreements functions use above (§32: a green build
-        # must be a real check). The import closure pulls in every _shared/mcp-gateway/* module.
-        run: deno check --allow-import --node-modules-dir=none supabase/functions/mcp-gateway/index.ts
+        # The gateway's actions (verify + create + oauth_begin, and the slices to come) are Deno, so tsc
+        # never sees them and the smoke below esbuild-strips types away. This deno check makes the
+        # gateway's type safety CI-enforced — the same pattern the agreements functions use above (§32: a
+        # green build must be a real check). The import closure pulls in every _shared/mcp-gateway/*
+        # module (incl. oauth.ts). mcp-oauth-callback is the JWT-less OAuth redirect target — a SEPARATE
+        # entry not imported by the gateway door, so it is checked explicitly (its closure pulls in
+        # _shared/mcp-gateway/oauth-callback.ts).
+        run: |
+          deno check --allow-import --node-modules-dir=none supabase/functions/mcp-gateway/index.ts
+          deno check --allow-import --node-modules-dir=none supabase/functions/mcp-oauth-callback/index.ts
 
       - name: Smoke — connected MCP gateway (intake read-only, model-safe summary, runner approval gate)
         if: ${{ !cancelled() }}

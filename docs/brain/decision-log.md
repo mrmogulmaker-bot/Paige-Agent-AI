@@ -5694,3 +5694,53 @@ tenant-switch document turn making an unexpected provider call; a §9 evidence/c
 by the chat/knowledge lane, NOT the SDK lane; the exact failing tests are to be preserved, never
 weakened or skipped.
 - **One canonical governed CRM command path (2026-09-13, owner-authorized release candidate).** Paige CRM operations enter through the shared catalogue and authenticated `crm-command` door, resolve tenant/actor/membership server-side, use the existing action-risk/autonomy and single-use confirmation seams, execute through one service-only `execute_crm_command` transaction, and require canonical readback plus `record_capability_run` before a success result. Merge, destructive, bulk, ownership/assignment and outcome actions are preview/confirmation-bound. No second registry, resolver, approval store, task system or receipt ledger is permitted. Activity logging is internal-only and is never an external send/call/schedule. Source status is NOT SHIPPED; database, authenticated and deployment proof remain owed.
+
+### 2026-09-23 — Connected MCP Gateway Slice ② OAuth: begin + JWT-less callback (Path A, #1355-structural)
+
+Coordinator RATIFIED **Path A** for the OAuth authorization-code flow: the provider redirect target is a
+NEW `verify_jwt=false` edge function (`mcp-oauth-callback`), NOT a React route and NOT an action on the
+JWT-gated `mcp-gateway` door. This is the #1355 fix by CONSTRUCTION — the SPA's analytics (usePageView →
+track-event; PostHog capture_pageview/autocapture) never see `?code=&state=`, because the redirect lands
+on a Deno edge endpoint that answers only with a 302 to a CLEAN app URL. Rejected Path B (React callback
++ analytics redaction) because it would make a fragile redaction load-bearing for authorization-code
+secrecy; a regression would leak silently. Structural prevention beats defence-in-depth where available.
+
+Three new/edited seams, all attaching to existing spine (SINGLE SPINE map accepted): (1) `oauth_begin`
+action on the one gateway door — dual-client, mirrors `runVerify`'s §9 authority chain exactly
+(`current_user_tenant_id` → switch guard → `is_current_user_tenant_admin` → `get_mcp_connections_v2`
+ownership → server-side server-URL read), runs the EXISTING `_shared/mcp-oauth.ts` OAuth 2.1 spine
+(RFC 9728/8414/7591, S256, issuer-verified, safeFetch), stores the flow via the merged
+`begin_mcp_oauth`, returns only the authorize URL (challenge, never the verifier). (2) `mcp-oauth-callback`
+edge (zoom/tenant-n8n/paige-social callback convention) — state-authenticated (no JWT), atomic
+single-use consume, exchange with the STORED verifier/resource/redirect, then the new grant writer.
+(3) `complete_mcp_oauth_grant` (migration 20270333000000) — the ONE genuinely-new surface: a
+service_role-only, connection-keyed grant writer (no such writer existed; `set_mcp_connection_endpoint`
+refuses a NULL-actor by INT-089 design, and widening it was rejected — §18 add-don't-widen, §59). It
+re-verifies the connection is in the passed tenant (FOR UPDATE), validates via the one
+`_mcp_assert_credential_bundle` home, re-keys `none`→`oauth`, stores tokens encrypted, records granted
+scopes, resets to `pending_verification` (config_generation bumps → an in-flight probe of the old config
+no-ops), and returns the tenant's routing facts for the landing.
+
+Coordinator's two required properties: (a) INDISTINGUISHABLE refusal — an unknown/expired/replayed/
+tampered/un-redeemable state all present ONE identical browser outcome (`mcp=error&mcp_detail=state_invalid`),
+never revealing whether the state existed, never echoing the code, only closed codes (no operator/PG text).
+(b) ORDERING = consume-FIRST (atomic single-use) → exchange → grant: a replay finds nothing (no second
+grant), and any post-consume failure leaves the connection its unchanged pre-flow shell (the grant UPDATE
+is all-or-nothing) so re-running `oauth_begin` fully recovers — never stranded flow-spent-no-grant.
+
+The `_actor` surface: caller-supplied `_actor` is NEVER trusted as tenant-legitimate — the sole caller
+(callback) passes NULL; a non-null `_actor` must be an active member of the passed tenant or the same
+uniform MCP_FORBIDDEN. Neither a foreign connection nor a foreign actor can complete a grant.
+
+PROOFS (real exit codes, not arguments): (1) grant-writer authority — the REAL `complete_mcp_oauth_grant`
+body run against a throwaway Postgres refused a cross-tenant connection AND a mismatched `_actor`
+(MCP_FORBIDDEN), accepted a member actor, re-keyed+bumped+encrypted, and reused the bundle validation —
+psql exit 0. (2) #1355 — the gateway smoke (310 assertions, exit 0) MEASURES that the callback's redirect
+Location carries NO `code`/`state` across the happy path AND all reject paths, with code/state present in
+every input; plus indistinguishable-refusal and replay-safety measured on actual redirects. The full-stack
+pgTAP `mcp_gateway_oauth_grant_writer.sql` is wired into the `database-contract` CI job (supabase start +
+db reset + `psql -v ON_ERROR_STOP=1`). Deno type-check of `mcp-oauth-callback` added to CI.
+
+Harness/agent-access (INT-083) honestly NOT wired — `oauth_begin` is JWT-only (a service-role Paige caller
+gets `is_current_user_tenant_admin`=false → forbidden); NO service-role bypass was built. That gap is the
+capability-kit deadlock, assigned to the Bug lane as platform health — deliberately not worked around.

@@ -1290,6 +1290,228 @@ console.log("\n— slice ②: create (runCreate) —");
   check("readCreateInput on an empty body → facet '' (→ unsupported_facet), all fields null", parsedEmpty.facet === "" && parsedEmpty.label === null && parsedEmpty.apiKey === null && parsedEmpty.expectedTenantId === null, JSON.stringify(parsedEmpty));
 }
 
+// ── Slice ② — OAUTH BEGIN (runOauthBegin: start an authorization-code flow for one connection) ──────
+// Drives the REAL runOauthBegin against the REAL OAuth 2.1 spine (_shared/mcp-oauth.ts → safeFetch) and
+// a minimal, spec-shaped local authorization server (RFC 9728 protected-resource + RFC 8414 AS metadata
+// + RFC 7591 DCR), reachable through the same fetch shim + SSRF guard as every other test. The §9 gates
+// are fed by fake caller/admin clients; the flow store (begin_mcp_oauth) is captured.
+console.log("\n— slice ②: oauth_begin (runOauthBegin) —");
+{
+  const oauthMod = await bundle("supabase/functions/_shared/mcp-gateway/oauth.ts", "oauth-begin.mjs");
+  const OTEN = "ten-oauth-1";
+  const OCONN = "33333333-3333-4333-8333-333333333333";
+  const OSRV = "https://public.example/mcp-oauth-srv";
+  const REDIRECT = "https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/mcp-oauth-callback";
+  const ISSUER = "https://public.example"; // origin == every endpoint's origin (RFC 8414 requires it)
+
+  routes.set("/.well-known/oauth-protected-resource/mcp-oauth-srv", (_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ resource: OSRV, authorization_servers: [ISSUER] }));
+  });
+  routes.set("/.well-known/oauth-authorization-server", (_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      issuer: ISSUER,
+      authorization_endpoint: `${ISSUER}/oauth/authorize`,
+      token_endpoint: `${ISSUER}/oauth/token`,
+      registration_endpoint: `${ISSUER}/oauth/register`,
+      revocation_endpoint: `${ISSUER}/oauth/revoke`,
+      code_challenge_methods_supported: ["S256"],
+      scopes_supported: ["mcp.read", "mcp.write"],
+    }));
+  });
+  const regCalls = [];
+  routes.set("/oauth/register", (req, res) => {
+    let raw = ""; req.on("data", (c) => { raw += c; });
+    req.on("end", () => {
+      regCalls.push(raw ? JSON.parse(raw) : {});
+      res.writeHead(201, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ client_id: "client-xyz" })); // public client — no secret issued
+    });
+  });
+
+  const beginCalls = [];
+  const makeAdmin = (o = {}) => ({
+    rpc: async (fn, params) => {
+      if (fn === "get_mcp_connection_secret") {
+        return { data: o.secret === undefined ? { configured: true, enabled: true, server_url: OSRV, tenant_id: OTEN } : o.secret, error: o.secretErr ?? null };
+      }
+      if (fn === "begin_mcp_oauth") { beginCalls.push(params); return { data: null, error: o.beginErr ?? null }; }
+      return { data: null, error: null };
+    },
+  });
+  const makeUser = (o = {}) => ({
+    rpc: async (fn) => {
+      if (fn === "current_user_tenant_id") return { data: o.tenant === undefined ? OTEN : o.tenant, error: o.tenantErr ?? null };
+      if (fn === "is_current_user_tenant_admin") return { data: o.admin === undefined ? true : o.admin, error: null };
+      if (fn === "get_mcp_connections_v2") return { data: o.v2 === undefined ? [{ connection_id: OCONN }] : o.v2, error: o.v2Err ?? null };
+      return { data: null, error: null };
+    },
+  });
+  const beginInput = (over = {}) => ({ connectionId: OCONN, expectedTenantId: OTEN, actor: "user-1", redirectUri: REDIRECT, ...over });
+
+  // Happy path — gates pass, real discovery + DCR run, the flow is stored, an authorize URL returns.
+  beginCalls.length = 0; regCalls.length = 0;
+  const okBegin = await oauthMod.runOauthBegin({ userClient: makeUser(), admin: makeAdmin() }, beginInput());
+  check("oauth_begin happy path → 200 with an authorize_url", okBegin.httpStatus === 200 && okBegin.body.ok === true && typeof okBegin.body.authorize_url === "string", JSON.stringify(okBegin.body));
+  {
+    const u = new URL(okBegin.body.authorize_url);
+    check("authorize_url points at the DISCOVERED authorization endpoint", `${u.origin}${u.pathname}` === `${ISSUER}/oauth/authorize`, okBegin.body.authorize_url);
+    check("authorize_url carries S256 PKCE challenge + state + the registered client + resource + OUR callback redirect",
+      u.searchParams.get("code_challenge_method") === "S256" && !!u.searchParams.get("code_challenge") && !!u.searchParams.get("state") &&
+      u.searchParams.get("client_id") === "client-xyz" && u.searchParams.get("resource") === OSRV && u.searchParams.get("redirect_uri") === REDIRECT,
+      okBegin.body.authorize_url);
+    check("authorize_url NEVER carries the PKCE verifier (only the challenge)", !!beginCalls[0]?._verifier && !okBegin.body.authorize_url.includes(beginCalls[0]._verifier));
+  }
+  check("oauth_begin registered a PUBLIC client (auth_method=none) whose redirect is OUR callback",
+    regCalls.length === 1 && regCalls[0].token_endpoint_auth_method === "none" && Array.isArray(regCalls[0].redirect_uris) && regCalls[0].redirect_uris[0] === REDIRECT, JSON.stringify(regCalls[0]));
+  check("oauth_begin stored the flow BEFORE returning (verifier+issuer+resource+client_id; tenant+connection from the gates, actor recorded)",
+    beginCalls.length === 1 && beginCalls[0]._connection_id === OCONN && beginCalls[0]._tenant_id === OTEN && !!beginCalls[0]._verifier &&
+    beginCalls[0]._issuer === ISSUER && beginCalls[0]._resource === OSRV && beginCalls[0]._client_id === "client-xyz" &&
+    beginCalls[0]._redirect_uri === REDIRECT && beginCalls[0]._actor === "user-1", JSON.stringify(Object.keys(beginCalls[0] ?? {})));
+  check("oauth_begin response leaks NO verifier", !JSON.stringify(okBegin.body).includes(beginCalls[0]._verifier));
+
+  // §9 authority refusals — every one returns BEFORE any network/discovery (the security-critical gates).
+  const badId = await oauthMod.runOauthBegin({ userClient: makeUser(), admin: makeAdmin() }, beginInput({ connectionId: "nope" }));
+  check("oauth_begin refuses a malformed connection_id (400)", badId.httpStatus === 400 && badId.body.error === "bad_connection_id");
+  const noCb = await oauthMod.runOauthBegin({ userClient: makeUser(), admin: makeAdmin() }, beginInput({ redirectUri: "" }));
+  check("oauth_begin refuses when the callback URL is unconfigured (500 callback_not_configured)", noCb.httpStatus === 500 && noCb.body.error === "callback_not_configured");
+  const noTen = await oauthMod.runOauthBegin({ userClient: makeUser({ tenant: null }), admin: makeAdmin() }, beginInput());
+  check("oauth_begin refuses when the caller has no tenant (400)", noTen.httpStatus === 400 && noTen.body.error === "no_tenant");
+  const mism = await oauthMod.runOauthBegin({ userClient: makeUser(), admin: makeAdmin() }, beginInput({ expectedTenantId: "ten-OTHER" }));
+  check("oauth_begin refuses a workspace-switch tenant mismatch (409)", mism.httpStatus === 409 && mism.body.error === "tenant_mismatch");
+  const nonAdmin = await oauthMod.runOauthBegin({ userClient: makeUser({ admin: false }), admin: makeAdmin() }, beginInput());
+  check("oauth_begin refuses a non-admin caller — the manage gate (403)", nonAdmin.httpStatus === 403 && nonAdmin.body.error === "forbidden");
+  const notMine = await oauthMod.runOauthBegin({ userClient: makeUser({ v2: [] }), admin: makeAdmin() }, beginInput());
+  check("oauth_begin refuses a connection not visible to the caller — §9 (404, no info leak)", notMine.httpStatus === 404 && notMine.body.error === "not_found");
+  const unconf = await oauthMod.runOauthBegin({ userClient: makeUser(), admin: makeAdmin({ secret: { configured: false } }) }, beginInput());
+  check("oauth_begin refuses a connection with no server URL (409 connection_unconfigured)", unconf.httpStatus === 409 && unconf.body.error === "connection_unconfigured");
+  const disabledB = await oauthMod.runOauthBegin({ userClient: makeUser(), admin: makeAdmin({ secret: { configured: true, enabled: false } }) }, beginInput());
+  check("oauth_begin refuses a disabled connection (409 connection_disabled)", disabledB.httpStatus === 409 && disabledB.body.error === "connection_disabled");
+  const crossB = await oauthMod.runOauthBegin({ userClient: makeUser(), admin: makeAdmin({ secret: { configured: true, enabled: true, server_url: OSRV, tenant_id: "ten-ELSE" } }) }, beginInput());
+  check("oauth_begin refuses when the loaded row's tenant ≠ the caller's (defense in depth, 403)", crossB.httpStatus === 403 && crossB.body.error === "forbidden");
+
+  // A begin_mcp_oauth store failure → 500 (never a consent that can complete against nothing).
+  const storeFail = await oauthMod.runOauthBegin({ userClient: makeUser(), admin: makeAdmin({ beginErr: { message: "store boom" } }) }, beginInput());
+  check("oauth_begin surfaces a store failure as 500 oauth_begin_failed (never returns a URL with no stored flow)", storeFail.httpStatus === 500 && storeFail.body.error === "oauth_begin_failed", JSON.stringify(storeFail.body));
+}
+
+// ── Slice ② — OAUTH CALLBACK (runOauthCallback: the JWT-less provider redirect target, #1355-structural) ──
+// Drives the REAL runOauthCallback. consume_mcp_oauth_state + complete_mcp_oauth_grant are captured by a
+// fake service-role admin; the two OAuth network ops are injected (their REAL behaviour is proven by the
+// oauth_begin block above). THE INVARIANT UNDER TEST: every branch answers with a 302 whose Location
+// carries NO `code` and NO `state` — the #1355 structural guarantee, MEASURED with code/state present in
+// the input and absent from the output (not read off the source).
+console.log("\n— slice ②: oauth_callback (runOauthCallback — #1355 structural) —");
+{
+  const cbMod = await bundle("supabase/functions/_shared/mcp-gateway/oauth-callback.ts", "oauth-callback.mjs");
+  const APP = "https://app.paigeagent.ai";
+  const CBTEN = "ten-cb-1";
+  const CBCONN = "44444444-4444-4444-8444-444444444444";
+  const CODE = "AUTHCODE-super-secret-xyz";
+  const STATE = "STATE-super-secret-abc";
+  const validPending = {
+    found: true, state: STATE, tenant_id: CBTEN, connection_id: CBCONN,
+    issuer: "https://public.example", client_id: "client-xyz",
+    redirect_uri: "https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/mcp-oauth-callback",
+    resource: "https://public.example/mcp-oauth-srv", code_verifier: "verifier-xyz", client_secret: null,
+  };
+  const grantCalls = [];
+  const makeAdmin = (o = {}) => ({
+    rpc: async (fn, params) => {
+      if (fn === "consume_mcp_oauth_state") return { data: o.pending === undefined ? validPending : o.pending, error: o.consumeErr ?? null };
+      if (fn === "complete_mcp_oauth_grant") {
+        grantCalls.push(params);
+        return { data: o.grant === undefined ? { connection_id: CBCONN, status: "pending_verification", account_type: "solo", account_number: 3855 } : o.grant, error: o.grantErr ?? null };
+      }
+      return { data: null, error: null };
+    },
+  });
+  // Injected OAuth ops (the real ones are proven by the oauth_begin block); here they let the callback's
+  // own logic + the #1355 redirect invariant be measured without the network.
+  const okOps = {
+    discoverAuthorizationServer: async (issuer) => ({ issuer, authorizationEndpoint: `${issuer}/a`, tokenEndpoint: `${issuer}/t`, registrationEndpoint: null, revocationEndpoint: null, scopesSupported: ["mcp.read"] }),
+    exchangeCode: async (opts) => { okOps._lastExchange = opts; return { accessToken: "provider-access-xyz", refreshToken: "provider-refresh-xyz", expiresAt: new Date(Date.now() + 3600e3).toISOString(), scopes: ["mcp.read"] }; },
+  };
+  // THE #1355 assertion: code/state never appear in a redirect Location.
+  const noCodeState = (loc) => { const u = new URL(loc); return u.searchParams.get("code") === null && u.searchParams.get("state") === null && !loc.includes(CODE) && !loc.includes(STATE); };
+
+  // Happy path — state consumed, code exchanged, grant persisted, land on the tenant's OWN connections page.
+  grantCalls.length = 0;
+  const okCb = await cbMod.runOauthCallback({ admin: makeAdmin(), ops: okOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+  check("callback happy path → 302 connected", okCb.status === 302 && okCb.outcome === "connected", JSON.stringify(okCb));
+  check("callback lands on the tenant's OWN canonical connections page (solo/3855, from the grant writer's routing facts)",
+    okCb.location === `${APP}/solo/3855/settings/connections?mcp=connected&connection=${CBCONN}`, okCb.location);
+  check("#1355: the SUCCESS redirect carries NO code and NO state", noCodeState(okCb.location), okCb.location);
+  check("callback persisted the grant with tenant+connection FROM THE CONSUMED STATE, tokens from the exchange, actor null",
+    grantCalls.length === 1 && grantCalls[0]._connection_id === CBCONN && grantCalls[0]._tenant_id === CBTEN &&
+    grantCalls[0]._access_token === "provider-access-xyz" && grantCalls[0]._actor === null, JSON.stringify(Object.keys(grantCalls[0] ?? {})));
+  check("callback bound the exchange to the STORED verifier + resource + redirect_uri (only the code came from the browser)",
+    okOps._lastExchange.verifier === "verifier-xyz" && okOps._lastExchange.resource === "https://public.example/mcp-oauth-srv" &&
+    okOps._lastExchange.redirectUri === validPending.redirect_uri && okOps._lastExchange.code === CODE, JSON.stringify(okOps._lastExchange));
+  check("callback redirect leaks NO provider token / verifier", !okCb.location.includes("provider-access-xyz") && !okCb.location.includes("verifier-xyz"), okCb.location);
+
+  // #1355 MEASURED across EVERY reject path — code/state present in the INPUT, absent from the redirect.
+  const denied = await cbMod.runOauthCallback({ admin: makeAdmin(), ops: okOps }, { code: CODE, state: STATE, error: "access_denied" }, { appOrigin: APP });
+  check("callback on provider denial → 302 error, #1355: no code/state in the redirect", denied.status === 302 && denied.outcome === "access_denied" && noCodeState(denied.location), denied.location);
+  check("...and NO grant is written on a denial (nothing consumed)", grantCalls.length === 1, String(grantCalls.length));
+  const missing = await cbMod.runOauthCallback({ admin: makeAdmin(), ops: okOps }, { code: CODE, state: null, error: null }, { appOrigin: APP });
+  check("callback with missing params → 302 error, no code/state leak", missing.outcome === "missing_params" && noCodeState(missing.location), missing.location);
+  const noState = await cbMod.runOauthCallback({ admin: makeAdmin({ pending: { found: false } }), ops: okOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+  check("callback on an unknown/expired/replayed state → state_invalid, no code/state leak", noState.outcome === "state_invalid" && noCodeState(noState.location), noState.location);
+  const mismatchCb = await cbMod.runOauthCallback({ admin: makeAdmin({ pending: { ...validPending, state: "A-DIFFERENT-STATE" } }), ops: okOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+  check("callback on a state that fails the constant-time compare → state_invalid, no code/state leak", mismatchCb.outcome === "state_invalid" && noCodeState(mismatchCb.location), mismatchCb.location);
+  const consumeErr = await cbMod.runOauthCallback({ admin: makeAdmin({ consumeErr: { message: "db boom" } }), ops: okOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+  check("callback on a state-store error → internal state_error, no code/state leak", consumeErr.outcome === "state_error" && noCodeState(consumeErr.location), consumeErr.location);
+
+  // INDISTINGUISHABLE REFUSAL (coordinator condition), MEASURED on the actual redirect detail: an
+  // unknown/replayed state, a tampered state, AND an un-redeemable (store-error) state present ONE
+  // identical browser outcome — the browser can never tell whether the state existed. (The internal
+  // `outcome` tag stays precise for telemetry; the BROWSER-facing mcp_detail is uniform.)
+  const detailOf = (loc) => new URL(loc).searchParams.get("mcp_detail");
+  check("refusal is INDISTINGUISHABLE: unknown, tampered, and store-error states emit the SAME browser detail (state_invalid)",
+    detailOf(noState.location) === "state_invalid" && detailOf(mismatchCb.location) === "state_invalid" && detailOf(consumeErr.location) === "state_invalid" &&
+    detailOf(noState.location) === detailOf(consumeErr.location) && detailOf(noState.location) === detailOf(mismatchCb.location),
+    JSON.stringify([detailOf(noState.location), detailOf(mismatchCb.location), detailOf(consumeErr.location)]));
+  check("...and no refusal detail is operator text / a PG message (closed codes only)",
+    /^[a-z_]+$/.test(detailOf(noState.location)) && /^[a-z_]+$/.test(detailOf(consumeErr.location)), detailOf(consumeErr.location));
+
+  // REPLAY SAFETY (ordering: consume-FIRST, atomic single-use). A stateful admin redeems the state ONCE
+  // (found:true), then finds nothing (found:false) — the DB's atomic single-use consume. The FIRST
+  // callback exchanges + writes the grant + lands connected; the REPLAY writes NO second grant and
+  // refuses state_invalid. (The SQL atomicity itself is proven by the pgTAP oauth-state test; this proves
+  // the callback wiring honours it.)
+  {
+    const replayGrants = [];
+    let consumed = false;
+    const replayAdmin = {
+      rpc: async (fn, params) => {
+        if (fn === "consume_mcp_oauth_state") {
+          if (consumed) return { data: { found: false }, error: null };
+          consumed = true; return { data: validPending, error: null };
+        }
+        if (fn === "complete_mcp_oauth_grant") { replayGrants.push(params); return { data: { connection_id: CBCONN, status: "pending_verification", account_type: "solo", account_number: 3855 }, error: null }; }
+        return { data: null, error: null };
+      },
+    };
+    const first = await cbMod.runOauthCallback({ admin: replayAdmin, ops: okOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+    const replay = await cbMod.runOauthCallback({ admin: replayAdmin, ops: okOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+    check("replay safety: the FIRST callback connects and writes EXACTLY ONE grant", first.outcome === "connected" && replayGrants.length === 1, JSON.stringify({ first: first.outcome, grants: replayGrants.length }));
+    check("replay safety: the REPLAYED callback (state already consumed) writes NO second grant and refuses state_invalid",
+      replay.outcome === "state_invalid" && replayGrants.length === 1 && noCodeState(replay.location), JSON.stringify({ replay: replay.outcome, grants: replayGrants.length }));
+  }
+  const throwOps = { ...okOps, exchangeCode: async () => { throw new Error("boom"); } };
+  const exchFail = await cbMod.runOauthCallback({ admin: makeAdmin(), ops: throwOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+  check("callback on a failed token exchange → 302 error (exchange_failed), no code/state leak", exchFail.status === 302 && exchFail.outcome === "exchange_failed" && noCodeState(exchFail.location), exchFail.location);
+  const persistFail = await cbMod.runOauthCallback({ admin: makeAdmin({ grantErr: { message: "grant boom" } }), ops: okOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+  check("callback on a grant-write failure → 302 error persist_failed, no code/state leak", persistFail.outcome === "persist_failed" && noCodeState(persistFail.location), persistFail.location);
+
+  // Landing falls CLOSED to /auth when the tenant route is unresolvable (e.g. enterprise/unmounted) —
+  // never a guessed or shared address; still no code/state.
+  const unmounted = await cbMod.runOauthCallback({ admin: makeAdmin({ grant: { connection_id: CBCONN, status: "pending_verification", account_type: "enterprise", account_number: null } }), ops: okOps }, { code: CODE, state: STATE, error: null }, { appOrigin: APP });
+  check("callback lands closed to /auth when the tenant route is unresolvable, still no code/state", unmounted.outcome === "connected" && unmounted.location.startsWith(`${APP}/auth?mode=login`) && noCodeState(unmounted.location), unmounted.location);
+}
+
 server.close();
 console.log(`\n${passed} assertions passed.`);
 if (failures.length) { console.error(`\n${failures.length} FAILURE(S):\n- ${failures.join("\n- ")}`); process.exit(1); }

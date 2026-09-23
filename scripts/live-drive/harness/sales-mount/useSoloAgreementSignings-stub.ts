@@ -21,7 +21,7 @@ import type {
 } from "@/solo/useSoloAgreementSignings";
 
 export type { AgreementSigning, SigningDraft, SigningsState };
-export { DOCUMENT_SOURCES } from "@/solo/useSoloAgreementSignings";
+export { DOCUMENT_SOURCES, TRAIL_LIMIT } from "@/solo/useSoloAgreementSignings";
 export type { DocumentSource, SignatureState } from "@/solo/useSoloAgreementSignings";
 
 export type SigningsMode =
@@ -160,8 +160,8 @@ function snapshotFor(m: SigningsMode): SigningsState {
     // A READ of recorded history, answerable locally — see EVENTS above. Only the completed
     // fixture has a trail; everything else answers the way a document with no history does.
     signingEvents: async (id: string) => (id === "s3"
-      ? { ok: true as const, events: EVENTS }
-      : { ok: true as const, events: [] }),
+      ? { ok: true as const, events: EVENTS, truncated: false }
+      : { ok: true as const, events: [], truncated: false }),
   };
   switch (m) {
     case "resolving":   return { ...base, phase: "resolving",   signings: [],   readable: false, canManage: false, authorityUnknown: false };
