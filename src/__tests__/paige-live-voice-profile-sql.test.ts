@@ -6,8 +6,20 @@ const sql = readFileSync(
   resolve(process.cwd(), "supabase/migrations/20260907155052_paige_live_conversation_control_plane.sql"),
   "utf8",
 );
+const jessicaCorrection = readFileSync(
+  resolve(process.cwd(), "supabase/migrations/20270410000000_paige_jessica_candidate_voice.sql"),
+  "utf8",
+);
 
 describe("Paige voice profile SQL contract", () => {
+  it("corrects only the dormant candidate forward without changing active read-aloud", () => {
+    expect(jessicaCorrection).toContain("provider_voice_ref = 'g6xIsTj2HwM6VR4iXFCw'");
+    expect(jessicaCorrection).toContain("revision = 'elevenlabs-jessica-take5-r1'");
+    expect(jessicaCorrection).toContain("AND approved = false");
+    expect(jessicaCorrection).toContain("AND active = false");
+    expect(jessicaCorrection).toContain("PAIGE_LIVE_LEGACY_VOICE_REMAINS");
+    expect(jessicaCorrection).not.toMatch(/SET[^;]*active\s*=\s*true/i);
+  });
   it("keeps the resolver and writer service-only", () => {
     expect(sql).toMatch(/auth\.role\(\)\s*<>\s*'service_role'/);
     expect(sql).toContain("'cgSgspJ2msm6clMCkdW9'");

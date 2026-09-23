@@ -391,3 +391,20 @@ and the account-level MIP setting must be verified. Broader enablement also
 requires the INT-100/INT-107 privacy and split-vendor decisions. No
 provider-call, voice-quality, browser-latency, or authenticated-conversation
 proof is claimed here.
+
+## INT-104 Jessica mouth transport — inactive candidate, 2026-09-23
+
+The previously seeded ElevenLabs candidate carried the wrong voice. A forward
+migration corrects only that inactive, unapproved row to Jessica
+`g6xIsTj2HwM6VR4iXFCw` and records the take-5 spoken register; the active
+OpenAI read-aloud profile does not move. The existing TTS router defaults to
+`eleven_v3_conversational` and accepts only `eleven_v3` as a server-side model
+switch. The existing ElevenLabs transport rejects any other voice/model,
+requests `enable_logging=false`, and exposes a cancellable response stream for
+the later relay join. The no-network smoke falsifies wrong-voice, old-model,
+logging-flag and missing-stream regressions.
+
+This is a provider-ready transport seam, not a provider call or a live
+conversation. ElevenLabs account tier, exact voice entitlement, Zero Retention
+Mode, and real latency remain **UNVERIFIED**. The platform Live pilot flag
+remains off; activation and the owner production drive are later gates.

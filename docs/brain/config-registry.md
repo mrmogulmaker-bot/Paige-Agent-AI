@@ -339,6 +339,15 @@ created by this architecture.
 server-side provider wiring. `ELEVENLABS_VOICE_ID` is superseded for Paige speech and is not read by
 the new shared TTS path. Secret values were not inspected or tested in this delivery.
 
+**2026-09-23 candidate correction (INT-104 S3):** the inactive ElevenLabs candidate is
+forward-corrected to Jessica voice `g6xIsTj2HwM6VR4iXFCw` with the take-5 register; the
+applied historical seed is not rewritten. The single ElevenLabs transport and TTS router
+default to `eleven_v3_conversational`; server-only `ELEVENLABS_MODEL=eleven_v3` is the
+reversible owner-by-ear alternative. Any other configured model or voice fails closed.
+Both buffered and streaming requests include `enable_logging=false`; the account's
+eligibility for Zero Retention Mode remains unverified, so this is not provider proof or
+activation. The active OpenAI read-aloud profile is unchanged.
+
 | System | Voice resolution | Current state |
 |---|---|---|
 | Paige message playback | `paige-tts` → service-only profile resolver → provider-neutral router | Deployed; authenticated runtime proof owed |
