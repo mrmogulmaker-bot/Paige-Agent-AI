@@ -305,16 +305,23 @@ test("mutation and external-effect capabilities cannot declare read_only risk", 
 // duplicate. Two blind spots that cancel are worse than either alone, because the result is a tick.
 // Reproduced with a second `crm_create_contact` tuple before being fixed.
 //
-// What changed: `parsePolicy` now accepts any quoting style TypeScript does (matched per position
-// by back-reference, so `"x'` still does not parse), and `action-risk-lint` carries a
-// shape-agnostic tuple counter whose disagreement with the parser is itself a failure. So a shape
-// the parser cannot read — a camelCase or hyphenated key, an inline comment between elements —
-// no longer vanishes; it fails loudly and names itself. A tuple wrapped across lines parses fine
-// (`\s*` matches newlines).
+// IT HAPPENED A SECOND TIME, which is why the fix is not another pattern. The first repair widened
+// the regex and added a line-anchored tuple counter as a backstop. Review then defeated BOTH with one
+// shape: two tuples on ONE line whose second reason was a concatenation (`"a" + "b"`). The counter
+// counts lines, so it saw one; the parser wanted a single literal, so it read one; the counts agreed
+// and every check went silent again. Measured: 157 tuples in source, 156 keys at runtime, both counts
+// reporting 156. The backstop had the disease it was added to cure.
 //
-// This test remains the only place the two REPRESENTATIONS meet. `action-risk-lint` is plain `.mjs`
-// over source text and can compare its parse against a count of the same text; only this process,
-// under the register hook, can compare it against what the runtime module actually holds.
+// So `parsePolicy` now reads the TypeScript AST — `typescript` is already a dependency and already
+// imported by the sibling guard. One entry per array element, whatever the layout, quoting or
+// comments; and an element whose reason is not a single literal is returned with `reason: null` and
+// reported as such, rather than disappearing and taking its key out of the duplicate check. The
+// line counter is GONE, not kept: with the AST the parse count IS the element count, so a backstop
+// would be tautological, and a tautological backstop that was once broken is worse than none.
+//
+// This test remains the only place the two REPRESENTATIONS meet. `action-risk-lint` reads source;
+// only this process, under the register hook, can compare that against what the runtime module
+// actually holds after the most-restrictive fold.
 test("every tuple in the policy source survives into the runtime map", () => {
   const source = readFileSync(
     join(HERE, "..", "..", "supabase", "functions", "_shared", "action-risk.ts"),

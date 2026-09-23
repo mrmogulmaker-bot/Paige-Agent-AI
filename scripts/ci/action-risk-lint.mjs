@@ -35,6 +35,7 @@
  *   node scripts/ci/action-risk-lint.mjs --self-test
  */
 import fs from "node:fs";
+import ts from "typescript";
 
 const POLICY = "supabase/functions/_shared/action-risk.ts";
 const CHAT = "supabase/functions/paige-ai-chat/index.ts";
@@ -46,48 +47,68 @@ const CONTACT_SCOPED_EDGE_HANDLERS = [
 ];
 const CRM_CATALOG = "supabase/functions/_shared/crm-command/catalog.ts";
 
-/** The RISK array's source text, or null if the table's declaration has moved. */
-function policyBlock(src) {
-  const at = src.indexOf("const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [");
-  if (at < 0) return null;
-  const end = src.indexOf("\n];", at);
-  if (end < 0) return null;
-  return src.slice(at, end);
-}
-
 /**
- * A tuple in any quoting style TypeScript accepts. The delimiter is captured and back-referenced
- * per position, so `'x'` and `"x"` both parse while `"x'` does not. This started life
- * double-quote-only, and a reviewer proved that mattered: a duplicate written with a single-quoted
- * reason was invisible to the duplicate check below, AND to the parse-vs-runtime cross-check in
- * `capability-kit.test.mjs`, because the skipped tuple and the collapsed duplicate each removed one
- * from their respective counts and the equality survived. Two blind spots cancelling is worse than
- * either alone, because the guard reports success.
- */
-const POLICY_TUPLE = /\[\s*(['"`])([a-z0-9_]+)\1\s*,\s*(['"`])(ordinary|high|owner_only)\3\s*,\s*(['"`])((?:\\.|(?!\5)[^\\])*)\5\s*\]/g;
-
-/** Every classified action, as `[tool, class, reason]`, read from the policy's own table. */
-export function parsePolicy(src) {
-  const block = policyBlock(src);
-  if (block === null) return null;
-  return [...block.matchAll(POLICY_TUPLE)].map((m) => ({ tool: m[2], risk: m[4], reason: m[6] }));
-}
-
-/**
- * How many tuples the table CONTAINS, counted without understanding any of them — one per line that
- * opens with a bracket and a quote. This exists to be compared against `parsePolicy()`'s output so
- * that a tuple the parser cannot read fails LOUDLY instead of vanishing.
+ * The RISK table, read from the TypeScript AST rather than matched out of the text.
  *
- * Widening the parser above fixes the shapes we know about. This fixes the ones we do not: every
- * check in this guard is built on `parsePolicy()`, so a silently dropped tuple under-reports the
- * duplicate check, the unclassified-write check and the reason check at once, and each of them
- * still prints a tick. Measured when written: 156 tuples, 156 tuple-opening lines, zero anchored
- * lines the strict regex missed, and no reason containing a `["` sequence that could inflate it.
+ * This was regex-based twice and had a hole both times, found by review both times. The first: a
+ * double-quote-only pattern skipped a single-quoted tuple, so a duplicate key went unreported — and
+ * the parse-vs-runtime cross-check in `capability-kit.test.mjs` ALSO passed, because the skipped
+ * tuple and the folded duplicate each removed one from their counts and the equality survived. The
+ * second, after widening the pattern and adding a line-anchored tuple counter as a backstop: two
+ * tuples on ONE line with a concatenated reason (`"a" + "b"`) defeated both, because the counter
+ * counts lines and the parser wants a single literal. Measured: 157 tuples in source, 156 keys at
+ * runtime, both counts reporting 156, every check silent.
+ *
+ * The lesson is not "widen the regex again" — a regex does not have a grammar, so each fix buys one
+ * shape and leaves the class open. The AST has the grammar. `typescript` is already a dependency and
+ * already imported by the sibling guard `capability-kit-lint.mjs`, so this costs no new dependency.
+ *
+ * An element whose reason is not a single string literal (a concatenation, a template with
+ * substitutions, an identifier) is STILL RETURNED, with `reason: null`. That matters: the tuple is
+ * counted and its key is graded for duplication, and the reason check below reports the non-literal
+ * separately rather than the tuple vanishing. A tuple that cannot be read must never be a tuple that
+ * is not there.
  */
-export function countPolicyTupleLines(src) {
-  const block = policyBlock(src);
-  if (block === null) return null;
-  return block.split("\n").filter((line) => /^\s*\[\s*['"`]/.test(line)).length;
+export function parsePolicy(src) {
+  const sourceFile = ts.createSourceFile("action-risk.ts", src, ts.ScriptTarget.Latest, true);
+  let table = null;
+
+  const findTable = (node) => {
+    if (table) return;
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === "RISK" &&
+      node.initializer &&
+      ts.isArrayLiteralExpression(node.initializer)
+    ) {
+      table = node.initializer;
+      return;
+    }
+    ts.forEachChild(node, findTable);
+  };
+  ts.forEachChild(sourceFile, findTable);
+  if (!table) return null;
+
+  // `isStringLiteralLike` is exactly the right predicate: it accepts a quoted string in any style
+  // and a template with no substitutions, and rejects a concatenation or a template that
+  // interpolates — which is what we want flagged rather than silently read.
+  const literal = (node) => (node && ts.isStringLiteralLike(node) ? node.text : null);
+
+  return table.elements.map((element) => {
+    // A non-tuple element (a spread, an identifier) is still an entry in the array, so it is
+    // reported rather than dropped — same rule as a non-literal reason.
+    if (!ts.isArrayLiteralExpression(element)) {
+      return { tool: null, risk: null, reason: null, unreadable: element.getText(sourceFile).slice(0, 60) };
+    }
+    const [toolNode, riskNode, reasonNode] = element.elements;
+    return {
+      tool: literal(toolNode),
+      risk: literal(riskNode),
+      reason: literal(reasonNode),
+      unreadable: null,
+    };
+  });
 }
 
 /** The tools the handler declares to the model, with the exempt list it honours. */
@@ -138,9 +159,9 @@ const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|insta
 /** The rule: destroys, changes permissions, or goes public ⇒ never `ordinary`. */
 const IRREVERSIBLE_OR_OUTWARD = /(^|_)(delete|remove|revoke|publish|uninstall|install)(_|$)|(^|_)grant(_|$)/;
 
-export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanonicals = [], governedEdgeActions = [], policyTupleLines = null }) {
+export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanonicals = [], governedEdgeActions = [] }) {
   const out = [];
-  const classified = new Map(policy.map((p) => [p.tool, p.risk]));
+  const classified = new Map(policy.filter((p) => p.tool !== null).map((p) => [p.tool, p.risk]));
   const exempt = new Set(exemptions.map((e) => e.tool));
 
   // A regex that matches nothing reports a clean bill of health, which is indistinguishable from
@@ -163,6 +184,7 @@ export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanon
   //    classification alive — an entry with neither is the line nobody deletes.
   const declared = new Set([...chat.declared, ...mcpCanonicals, ...governedEdgeActions]);
   for (const { tool } of policy) {
+    if (tool === null) continue;
     // Containment tombstones are deliberately classified while not being dispatched, so a future
     // accidental re-registration cannot inherit read semantics. They are named here rather than
     // silently tolerated.
@@ -181,7 +203,9 @@ export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanon
   // 4. Every entry states WHY. The reason is the rubric a later reader argues with and the next
   //    tool is placed against; an entry without one is a guess that will be copied.
   for (const { tool, reason } of policy) {
-    if (!reason || reason.trim().length < 12) out.push(`${tool} carries no usable reason for its classification.`);
+    // A null reason is a non-literal, already reported with its own wording by rule 7.
+    if (tool === null || reason === null) continue;
+    if (!reason.trim() || reason.trim().length < 12) out.push(`${tool} carries no usable reason for its classification.`);
   }
   for (const { tool, reason } of exemptions) {
     if (!reason || reason.trim().length < 20) out.push(`${tool} is exempted from classification without saying why it persists nothing.`);
@@ -198,6 +222,7 @@ export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanon
   //    the case that actually happened; disagreeing ones are a policy arguing with itself.
   const classesByTool = new Map();
   for (const { tool, risk } of policy) {
+    if (tool === null) continue;
     const held = classesByTool.get(tool);
     if (held) held.push(risk);
     else classesByTool.set(tool, [risk]);
@@ -212,20 +237,19 @@ export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanon
     );
   }
 
-  // 7. The parser must have read the WHOLE table. Every check above is built on `policy`, so a tuple
-  //    `parsePolicy()` cannot match does not merely go ungraded — it silently shrinks the input to
-  //    the duplicate check, the unclassified-write check and the reason check at once, and all three
-  //    then print a tick. A reviewer proved this was not theoretical: a duplicate whose reason used
-  //    single quotes was invisible here AND to the parse-vs-runtime cross-check, because the dropped
-  //    tuple and the folded duplicate each removed one from their counts and the equality held.
-  //
-  //    Both directions fail, and they mean different things, so they say different things.
-  if (policyTupleLines !== null && policyTupleLines !== policy.length) {
-    out.push(
-      policyTupleLines > policy.length
-        ? `${POLICY} contains ${policyTupleLines} tuples but this guard could only parse ${policy.length} — ${policyTupleLines - policy.length} tuple(s) use a shape the parser does not read, so every check in this guard is grading an incomplete table and reporting success. Fix the parser or the tuple; do not leave them disagreeing.`
-        : `this guard parsed ${policy.length} tuples from ${POLICY} but only ${policyTupleLines} line(s) open one — the table's shape changed (a tuple spanning lines, most likely), so the tuple counter no longer sees what the parser does and can no longer back it up. Update the counter.`,
-    );
+  // 7. Anything in the table this guard could not fully read is REPORTED, never dropped. The AST
+  //    returns one entry per array element, so a tuple can no longer vanish and take its key out of
+  //    the duplicate check with it — which is precisely how both earlier versions of this parser
+  //    failed. What can still be unreadable is a FIELD: a reason built by concatenation, a key held
+  //    in a constant. Those are named here so the table stays something a person can grade.
+  for (const entry of policy) {
+    if (entry.unreadable !== null && entry.unreadable !== undefined) {
+      out.push(`${POLICY} holds an entry this guard cannot read as a tuple — \`${entry.unreadable}\`. Every entry must be a literal [tool, class, reason] triple, or the table stops being reviewable.`);
+      continue;
+    }
+    if (entry.tool === null) out.push(`${POLICY} holds a tuple whose TOOL KEY is not a plain string literal, so it cannot be classified or checked for duplication. Write the key as a literal.`);
+    else if (entry.risk === null) out.push(`${entry.tool} has a class that is not a plain string literal in ${POLICY} — write \`ordinary\`, \`high\` or \`owner_only\` literally, so the class is greppable.`);
+    else if (entry.reason === null) out.push(`${entry.tool} has a reason that is not a single string literal in ${POLICY} (a concatenation or an interpolated template). Write it as one literal — a reason assembled at runtime cannot be read by a reviewer scanning the table.`);
   }
 
   return out;
@@ -304,33 +328,37 @@ function selfTest() {
     findings({ ...base, policy: [...base.policy, { tool: "t_create_0", risk: "ordinary", reason: "a sufficiently long reason" }] })
       .some((f) => f.includes("t_create_0 is classified 2 times") && f.includes("as ordinary, ordinary") && f.includes("classes agree")));
 
-  // The parser's own reach, and the backstop for where it does not reach. A reviewer showed that a
-  // duplicate with a single-quoted reason was invisible to BOTH the rule above and the cross-check
-  // in capability-kit.test.mjs — the dropped tuple and the folded duplicate cancelled, so the
-  // guard reported success. These four cases are that defect, restored.
+  // The parser's reach, now that it has a grammar instead of a pattern. Every case below is a shape
+  // that defeated one of the two regex versions and was found by review, not by me.
   const BLOCK = (...tuples) =>
     `const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [\n${tuples.map((t) => `  ${t},`).join("\n")}\n];\n`;
-  bad += ok("a single-quoted tuple parses (it did not, and a duplicate hid in the gap)",
+  bad += ok("a single-quoted tuple parses (regex v1 skipped it, and a duplicate hid in the gap)",
     parsePolicy(BLOCK(`['a_create_x', 'ordinary', 'a sufficiently long reason']`))?.[0]?.tool === "a_create_x");
-  bad += ok("a backtick tuple parses",
+  bad += ok("a no-substitution template tuple parses",
     parsePolicy(BLOCK("[`a_create_x`, `high`, `a sufficiently long reason`]"))?.[0]?.risk === "high");
-  // Delimiters may differ BETWEEN positions — `["a", 'b', "c"]` is legal TypeScript — but each
-  // string's own pair must match. The first version of this case asserted the opposite and failed;
-  // the regex was right and the test was wrong.
-  bad += ok("delimiters that differ between positions parse, because that is valid source",
-    parsePolicy(BLOCK(`["a_create_x", 'ordinary', "a sufficiently long reason"]`))?.length === 1);
-  bad += ok("a string whose own quotes do not match does NOT parse (widened is not loose)",
-    parsePolicy(BLOCK(`["a_create_x", "ordinary', "a sufficiently long reason"]`))?.length === 0);
-  bad += ok("the tuple counter counts shapes the parser cannot read",
-    countPolicyTupleLines(BLOCK(`["a_create_x", "ordinary", "a sufficiently long reason"]`, `["aCreateX", "ordinary", "an unreadable key"]`)) === 2);
-  bad += ok("a tuple the parser silently skipped is caught, not passed",
-    findings({ ...base, policyTupleLines: base.policy.length + 1 })
-      .some((f) => f.includes("could only parse") && f.includes("grading an incomplete table")));
-  bad += ok("a counter that has fallen behind the parser is caught too, and says so differently",
-    findings({ ...base, policyTupleLines: base.policy.length - 1 })
-      .some((f) => f.includes("Update the counter")));
-  bad += ok("a table whose counts agree stays silent",
-    findings({ ...base, policyTupleLines: base.policy.length }).length === 0);
+  bad += ok("TWO tuples on ONE line are two entries (regex v2 counted the line, so it saw one)",
+    parsePolicy(BLOCK(`["a_create_x", "ordinary", "a sufficiently long reason"], ["a_create_x", "ordinary", "another sufficiently long reason"]`))?.length === 2);
+  bad += ok("a duplicate sharing a line with a CONCATENATED reason is caught — the exact v2 bypass",
+    findings({
+      ...base,
+      policy: parsePolicy(BLOCK(`["a_create_x", "ordinary", "a sufficiently long reason"], ["a_create_x", "ordinary", "half " + "and half"]`)),
+      chat: { ...base.chat, declared: ["a_create_x"] },
+    }).some((f) => f.includes("a_create_x is classified 2 times")));
+  bad += ok("a tuple wrapped across lines is one entry, not zero",
+    parsePolicy(BLOCK(`[\n    "a_create_x",\n    "ordinary",\n    "a sufficiently long reason",\n  ]`))?.length === 1);
+  bad += ok("a tuple with an inline comment between elements still parses",
+    parsePolicy(BLOCK(`["a_create_x", /* why */ "ordinary", "a sufficiently long reason"]`))?.length === 1);
+  bad += ok("a non-literal reason is RETURNED with reason null, never dropped",
+    parsePolicy(BLOCK(`["a_create_x", "ordinary", "half " + "and half"]`))?.[0]?.reason === null);
+  bad += ok("a non-literal reason is reported as such",
+    findings({ ...base, policy: [...base.policy, { tool: "t_create_99", risk: "ordinary", reason: null, unreadable: null }], chat: { ...base.chat, declared: [...base.chat.declared, "t_create_99"] } })
+      .some((f) => f.includes("not a single string literal")));
+  bad += ok("an entry that is not a tuple at all is reported, not dropped",
+    findings({ ...base, policy: [...base.policy, { tool: null, risk: null, reason: null, unreadable: "...spread" }] })
+      .some((f) => f.includes("cannot read as a tuple")));
+  bad += ok("a non-literal KEY is reported (it cannot be duplicate-checked)",
+    findings({ ...base, policy: [...base.policy, { tool: null, risk: "ordinary", reason: "a sufficiently long reason", unreadable: null }] })
+      .some((f) => f.includes("TOOL KEY is not a plain string literal")));
   bad += ok("a policy that declares each key exactly once reports no duplicate",
     !findings(base).some((f) => /is classified \d+ times/.test(f)));
   // 2026-09-12 regression: `decide` must read as a mutation verb, so an unclassified `*_decide`
@@ -428,7 +456,6 @@ const problems = findings({
   verbSourceMatches,
   mcpCanonicals,
   governedEdgeActions,
-  policyTupleLines: countPolicyTupleLines(policySrc),
 });
 
 if (problems.length) {
