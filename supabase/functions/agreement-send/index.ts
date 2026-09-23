@@ -28,6 +28,16 @@ const corsHeaders = {
 
 const PUBLIC_BASE = (Deno.env.get("PUBLIC_SITE_URL") ?? "https://paigeagent.ai").replace(/\/$/, "");
 
+/**
+ * Where the WORKSPACE puts a contract it wrote itself, which is not where this engine keeps the
+ * documents it produces. The Sales desk uploads to `tenant-agreements` under `<tenant>/source/...`
+ * — its object policies key on that first path segment — while everything this engine freezes and
+ * seals lives in the private `paige-agreements` bucket. Reading one and writing the other is
+ * deliberate: the uploaded file stays exactly where the operator put it, and the frozen copy is a
+ * separate immutable object whose bytes are the ones the signer is shown.
+ */
+const UPLOAD_BUCKET = "tenant-agreements";
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -98,7 +108,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // Scoped by the caller's tenant, never by an id from the body alone.
   const { data: agreement } = await admin.from("paige_agreements")
-    .select("id,tenant_id,title,body_source,body_markdown,status,expires_at,content_storage_key,content_sha256")
+    .select("id,tenant_id,title,body_source,body_markdown,document_path,status,expires_at,content_storage_key,content_sha256")
     .eq("id", agreementId).eq("tenant_id", tenantId).maybeSingle();
   if (!agreement) return json({ ok: false, error: "That agreement is not in this workspace." }, 404);
 
@@ -164,12 +174,71 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   if (!contentKey || !contentHash) {
     let bytes: Uint8Array;
-    try {
-      bytes = await renderPresentedPdf({ title: agreement.title, bodyMarkdown: agreement.body_markdown });
-    } catch (e) {
-      console.error("[agreement-send] render failed", { agreementId, error: String(e) });
-      if (e instanceof UnrenderableDocumentError) return json({ ok: false, error: e.message }, 422);
-      return json({ ok: false, error: "This agreement could not be turned into a document. Nothing was sent." }, 422);
+
+    // WHERE THE PRESENTED BYTES COME FROM, and why this is a branch rather than one render call.
+    //
+    // An UPLOADED agreement's document is the file the business already wrote. It lives in
+    // `tenant-agreements` under `document_path`, and `save_paige_agreement` deliberately stores NULL
+    // in `body_markdown` for that source because the wording is in the file, not in a column.
+    // `issue_agreement_signing_link` refuses an upload for exactly this reason — the database cannot
+    // read storage, so it cannot hash the real bytes — and its error names THIS function as the path
+    // that can. This function then never read the file: it called the renderer with that NULL body,
+    // which produces a document byte-identical to an empty one, stored it, hashed it, froze it under
+    // `pa_sent_is_frozen_ck` and emailed the signer a link to it. The freeze is what made it
+    // unrecoverable: the operator's real contract was never read, and the agreement had to be voided
+    // and redrafted. Measured, not inferred — the NULL-body and empty-body renders share a digest.
+    //
+    // So an upload is READ, never re-rendered, and anything that stops us reading it is a refusal.
+    // Substituting a document we generated for one the operator supplied is the single worst thing
+    // this function could do, because the whole point of the frozen hash is "the signer saw exactly
+    // this" and a blank page provably is not that.
+    if (agreement.body_source === "tenant_upload") {
+      const path = typeof agreement.document_path === "string" ? agreement.document_path.trim() : "";
+      if (!path) {
+        return json({
+          ok: false,
+          error: "This agreement was created from an uploaded file, but no file is attached to it. Nothing was sent. Re-attach the document and send it again.",
+        }, 422);
+      }
+      const src = await admin.storage.from(UPLOAD_BUCKET).download(path);
+      if (src.error || !src.data) {
+        console.error("[agreement-send] uploaded document could not be read", { agreementId, error: src.error?.message });
+        return json({
+          ok: false,
+          error: "The uploaded document could not be read, so nothing was sent and nothing was frozen. Re-upload it and try again.",
+        }, 502);
+      }
+      bytes = new Uint8Array(await src.data.arrayBuffer());
+      // An empty or non-PDF object is refused rather than sealed. `tenant-agreements` carries object
+      // policies but no bucket row declaring `allowed_mime_types`, so the type is not enforced on the
+      // way in and has to be proven here.
+      if (bytes.length === 0) {
+        return json({ ok: false, error: "The uploaded document is empty, so nothing was sent." }, 422);
+      }
+      const magic = new TextDecoder("latin1").decode(bytes.slice(0, 5));
+      if (magic !== "%PDF-") {
+        return json({
+          ok: false,
+          error: "That file is not a PDF, so it cannot be sent for signature. Upload the agreement as a PDF and try again.",
+        }, 422);
+      }
+    } else {
+      // A generated agreement's wording IS the body, so an empty one would seal a blank page just as
+      // surely as the upload path did. Refuse before the renderer turns nothing into a document.
+      const body = typeof agreement.body_markdown === "string" ? agreement.body_markdown.trim() : "";
+      if (!body) {
+        return json({
+          ok: false,
+          error: "This agreement has no wording yet, so there is nothing for anyone to sign. Nothing was sent.",
+        }, 422);
+      }
+      try {
+        bytes = await renderPresentedPdf({ title: agreement.title, bodyMarkdown: agreement.body_markdown });
+      } catch (e) {
+        console.error("[agreement-send] render failed", { agreementId, error: String(e) });
+        if (e instanceof UnrenderableDocumentError) return json({ ok: false, error: e.message }, 422);
+        return json({ ok: false, error: "This agreement could not be turned into a document. Nothing was sent." }, 422);
+      }
     }
 
     const key = `${tenantId}/${agreementId}/presented-${crypto.randomUUID()}.pdf`;
