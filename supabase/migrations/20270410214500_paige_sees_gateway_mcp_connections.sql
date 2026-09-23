@@ -82,6 +82,18 @@
 --   * A legacy row the backfill never projected is emitted too. That is the
 --     gap the first paragraph is about.
 --
+-- THERE ARE TWO LEGACY STORES, NOT ONE, AND MISSING THAT RE-CREATED THE ORIGINAL
+-- BUG (§13). `legacy_source` takes two values: 'tenant_mcp_connections' (the
+-- Zapier/n8n-OAuth table) and 'tenant_n8n_connections' (the n8n API-KEY facet,
+-- a separate table the backfill projects at 20270319000000 §6b). A first version
+-- of this file suppressed EVERY projection while reading back only the first
+-- table — so a tenant's live n8n API connection was suppressed and never
+-- re-emitted, and Paige would once again have answered that a working connection
+-- does not exist. That is precisely the defect this migration exists to fix,
+-- re-introduced one table over. Caught in review. Each legacy store now has its
+-- own reader, and a projection is suppressed ONLY when the store that replaces
+-- it is actually read.
+--
 -- WHY NOT "GATEWAY WINS", WHICH IS WHAT THIS FILE FIRST DID (§13). Preferring
 -- the gateway whenever ANY gateway row shared the provider string looked like
 -- §57 "derive from the source of truth", but it applied that rule one layer too
@@ -128,6 +140,7 @@ declare
   _channels jsonb;
   _mcp      jsonb := '[]'::jsonb;
   _legacy   jsonb := '[]'::jsonb;
+  _n8napi   jsonb := '[]'::jsonb;
 begin
   -- ── Half 1: channel connectors. UNCHANGED from 20270116000000. ───────────
   select coalesce(jsonb_agg(t), '[]'::jsonb) into _channels from (
@@ -252,7 +265,52 @@ begin
     _legacy := '[]'::jsonb;
   end;
 
-  return _channels || _mcp || _legacy;
+  -- ── Half 4: the n8n API-key facet — its own live table, its own reader. ─
+  -- One row per tenant. The reader hands back the FULL decrypted base_url and an
+  -- api_key_last4; neither may cross into a model-facing row, so only the HOST is
+  -- taken (same split as get_mcp_connections_v2) and the last-4 is dropped
+  -- entirely. An absent connection short-circuits to a two-key object with no
+  -- `workflow_count`, which is how a real row is told from no row at all.
+  begin
+    select case
+             when public.get_tenant_n8n_connection() ? 'workflow_count' then
+               jsonb_build_array(jsonb_build_object(
+                 'channel',         'mcp',
+                 'provider',        'n8n',
+                 'status', case
+                   when (v->>'status') = 'unconfigured' then 'disabled'
+                   when (v->>'status') = 'connected'    then 'active'
+                   else 'pending'
+                 end,
+                 'active',          (v->>'status') IS DISTINCT FROM 'unconfigured',
+                 -- Matches the label the backfill itself defaults to, so the API facet
+                 -- is distinguishable from an n8n OAuth connection in the same list.
+                 'display_name',    coalesce(nullif(btrim(coalesce(v->>'label','')), ''), 'n8n (API)'),
+                 'from_address',    null,
+                 'inbound_domain',  null,
+                 'inbound_address', null,
+                 'health', case
+                   when (v->>'configured')::boolean is not true then 'unconfigured'
+                   when (v->>'status') = 'error'                then 'degraded'
+                   when (v->>'status') = 'connected'            then 'healthy'
+                   else 'unknown'
+                 end,
+                 'last_updated',    v->>'last_sync_at',
+                 'server_host',     case when v->>'base_url' is not null
+                   then split_part(split_part(v->>'base_url', '://', 2), '/', 1) else null end,
+                 'tool_count',      v->>'workflow_count',
+                 'approved_count',  null
+               ))
+             else '[]'::jsonb
+           end
+      into _n8napi
+      from (select public.get_tenant_n8n_connection() as v) q;
+  exception when others then
+    raise warning 'list_integration_surface: n8n API half unavailable (%): %', sqlstate, sqlerrm;
+    _n8napi := '[]'::jsonb;
+  end;
+
+  return _channels || _mcp || _legacy || _n8napi;
 end;
 $$;
 

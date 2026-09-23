@@ -183,6 +183,36 @@ describe("Sign-in retry after a failed start", () => {
     const ids = edgeCalls("oauth_begin").map((c) => (c[1]?.body as Record<string, unknown>).connection_id);
     expect(ids).toEqual(["shell-1", "shell-1"]);
   });
+
+  /** REGRESSION (Codex P1/P2 round 2, 2026-09-23). Keeping the shell made the retry possible but
+   *  ignored an edited address, so "correct the address and press Sign in again" would have run
+   *  discovery against the same bad endpoint — the fix re-creating the defect it was closing. */
+  it("applies a corrected address to the saved shell before retrying", async () => {
+    world();
+    invoke.mockImplementation((_fn: string, opts: { body?: Record<string, unknown> }) => {
+      const action = opts?.body?.action;
+      if (action === "create") return Promise.resolve({ data: { connection_id: "shell-1" }, error: null });
+      if (action === "oauth_begin") return Promise.resolve(edgeRefusal("discovery_failed"));
+      return Promise.resolve({ data: {}, error: null });
+    });
+
+    const { host } = await render();
+    await openCatalogue(host);
+    await click(tile(host, "Close"));
+    await type(fieldFor(host, "Server address"), "https://wrong.example/mcp");
+    await click(byText(host, "Sign in to Close"));
+
+    // The owner corrects the address and presses again.
+    await type(fieldFor(host, "Server address"), "https://right.example/mcp");
+    await click(byText(host, "Sign in to Close"));
+
+    // The saved shell was re-keyed to the NEW address before discovery re-ran.
+    const rekeys = rpc.mock.calls.filter((c) => c[0] === "set_mcp_connection_endpoint");
+    expect(rekeys.length).toBe(1);
+    expect(rekeys[0][1]).toMatchObject({ _connection_id: "shell-1", _server_url: "https://right.example/mcp" });
+    // Still exactly one row ever created.
+    expect(edgeCalls("create").length).toBe(1);
+  });
 });
 
 describe("Truth boundary", () => {

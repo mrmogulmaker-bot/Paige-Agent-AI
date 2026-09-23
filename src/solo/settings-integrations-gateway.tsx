@@ -422,6 +422,8 @@ function SignInFlow({ gw, item, onCancel }: { gw: UseMcpGateway; item: CatItem; 
    *  drawer offers "Sign in again" only for `auth_kind === "oauth"` — so the only recovery that
    *  actually worked was deleting the connection and starting over. Caught in review. */
   const [shellId, setShellId] = useState<string | null>(null);
+  /** The address the shell was created with, so an edited one can actually be applied on retry. */
+  const [shellUrl, setShellUrl] = useState<string | null>(null);
   const isHttps = (v: string) => /^https:\/\/[^\s]+\.[^\s]+/i.test(v.trim());
 
   const begin = async () => {
@@ -437,6 +439,20 @@ function SignInFlow({ gw, item, onCancel }: { gw: UseMcpGateway; item: CatItem; 
     //    A retry after a failed begin RESUMES the shell it already made rather than creating a
     //    second one, which would only earn MCP_DUPLICATE_LABEL on the same label.
     let connectionId = shellId;
+    if (connectionId && shellUrl !== null && shellUrl !== url.trim()) {
+      // The owner took the advice and corrected the address. Re-key the saved shell BEFORE
+      // discovery, or the retry would run against the same bad endpoint and fail identically —
+      // making "fix the address and press Sign in again" another instruction with nothing behind
+      // it, which is the very defect the retry fix was closing. Caught in review.
+      const rekeyed = await gw.rekeyMcp(connectionId, url.trim(), "none");
+      if (!rekeyed.ok) {
+        setStep("form");
+        if (rekeyed.code === "MCP_BUSY" || rekeyed.code === "MCP_NOT_READY") return;
+        setMessage(rekeyed.message ?? "That new address couldn't be saved. Check it and try again.");
+        return;
+      }
+      setShellUrl(url.trim());
+    }
     if (!connectionId) {
       const created = await gw.createMcp({
         providerKey: "generic-remote",
@@ -453,6 +469,7 @@ function SignInFlow({ gw, item, onCancel }: { gw: UseMcpGateway; item: CatItem; 
       }
       connectionId = created.connectionId;
       setShellId(connectionId);
+      setShellUrl(url.trim());
     }
 
     // 2. The flow. The tool now EXISTS either way — if discovery fails the owner keeps a real row
@@ -468,7 +485,7 @@ function SignInFlow({ gw, item, onCancel }: { gw: UseMcpGateway; item: CatItem; 
       // instruction with nothing behind it (§70.1) — caught by the peer-gate before it shipped.
       setMessage(
         flow.message ??
-          `That provider didn't offer a sign-in Paige can use. ${label.trim() || item.n} is saved — fix the address and press Sign in again, or remove it.`,
+          `That provider didn't offer a sign-in Paige can use. ${label.trim() || item.n} is saved under that name — correct the address and press Sign in again, or remove it.`,
       );
       return;
     }

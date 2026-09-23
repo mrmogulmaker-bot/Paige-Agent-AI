@@ -79,6 +79,20 @@ INSERT INTO public.tenant_mcp_connections (tenant_id, provider, label, server_ur
   ('f1a00000-0000-0000-0000-0000000000b1', 'n8n', 'My n8n',
      public.platform_encrypt('https://n8n.isurf.test/mcp'),     public.platform_encrypt('tok-n8n-unprojected'), 'cted', 'http', 'bearer', true, 'connected');
 
+-- The n8n API-KEY facet lives in its OWN table with its OWN projection lineage
+-- ('tenant_n8n_connections'). A first version of the migration suppressed that projection while
+-- reading back only tenant_mcp_connections, so this live connection became INVISIBLE — the very
+-- defect the migration exists to fix, one table over. The projection below is stale on purpose.
+INSERT INTO public.tenant_n8n_connections (tenant_id, label, base_url_ct, api_key_ct, api_key_last4, status, last_sync_at, workflow_count)
+VALUES ('f1a00000-0000-0000-0000-0000000000b1', 'My n8n API',
+        public.platform_encrypt('https://n8n.live.isurf.test/api/v1/secret-path'),
+        public.platform_encrypt('tok-n8n-api-key'), '9zQ4', 'connected', now(), 7);
+
+INSERT INTO public.mcp_connections (connection_id, tenant_id, provider_key, label, server_url_ct, auth_kind, visibility, enabled, status, health, legacy_source, legacy_provider) VALUES
+  ('f1a00000-0000-0000-0000-0000000000c3', 'f1a00000-0000-0000-0000-0000000000b1', 'n8n', 'n8n (API) [STALE projection]',
+     public.platform_encrypt('https://stale.n8n.example/api'), 'api_key', 'tenant', true, 'connected', 'healthy',
+     'tenant_n8n_connections', NULL);
+
 SET LOCAL ROLE authenticated;
 
 -- ── (A) the channel half is untouched, and (B) the gateway connection is now visible ───────────
@@ -130,11 +144,30 @@ END $$;
 DO $$
 DECLARE _e jsonb;
 BEGIN
-  SELECT e INTO _e FROM jsonb_array_elements(public.list_integration_surface()) e WHERE e->>'provider' = 'n8n';
+  -- Identified by LABEL: two connections legitimately carry provider 'n8n' here — the OAuth facet
+  -- (tenant_mcp_connections) and the API-key facet (tenant_n8n_connections). Selecting on provider
+  -- alone would take an arbitrary one, which is how an earlier assertion in this file failed for a
+  -- reason unrelated to what it guards.
+  SELECT e INTO _e FROM jsonb_array_elements(public.list_integration_surface()) e
+   WHERE e->>'provider' = 'n8n' AND e->>'display_name' = 'My n8n';
   IF _e IS NULL THEN
     RAISE EXCEPTION '(C) a LIVE legacy MCP connection is invisible. Paige would answer "you are not connected" about a connection that works — the exact failure 20270410214500 exists to prevent.';
   END IF;
   IF _e->>'health' IS DISTINCT FROM 'healthy' THEN RAISE EXCEPTION '(C) health=%', _e->>'health'; END IF;
+
+  -- (C2) THE SAME INVARIANT FOR THE OTHER LEGACY STORE. Its projection is stale; the live row wins.
+  SELECT e INTO _e FROM jsonb_array_elements(public.list_integration_surface()) e
+   WHERE e->>'display_name' = 'My n8n API';
+  IF _e IS NULL THEN
+    RAISE EXCEPTION '(C2) the LIVE n8n API connection is invisible — the original defect re-created for tenant_n8n_connections.';
+  END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(public.list_integration_surface()) e
+              WHERE e->>'display_name' = 'n8n (API) [STALE projection]') THEN
+    RAISE EXCEPTION '(C2) the stale n8n API projection was emitted alongside its live row.';
+  END IF;
+  IF _e->>'server_host' IS DISTINCT FROM 'n8n.live.isurf.test' THEN
+    RAISE EXCEPTION '(C2) host-only projection broken: %', _e->>'server_host';
+  END IF;
 END $$;
 
 -- ── (D) §9: owner_only is hidden from an ordinary member and shown to an admin ─────────────────
@@ -162,7 +195,7 @@ BEGIN
   END IF;
 
   -- ── (E) nothing credential-bearing ever crosses ──
-  IF _v::text ~* 'auth_token|refresh_token|last4|_ct"|tok-' THEN
+  IF _v::text ~* 'auth_token|refresh_token|last4|_ct"|tok-|9zQ4|secret-path|/api/v1' THEN
     RAISE EXCEPTION '(E) credential material reached the caller: %', _v;
   END IF;
 END $$;
