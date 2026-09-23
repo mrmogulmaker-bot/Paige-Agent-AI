@@ -2733,3 +2733,30 @@ never the scope of what it points at.
 ### CRM mutation reach must be counted from the real command door, not tool names
 
 A Chat tool name, human CRUD screen, direct service-role branch or draft PR can all make an operation look present while bypassing tenant authority, risk, idempotency, readback or Rail. The recurrence guard is a shared action-to-tool catalogue plus contract tests proving every exposed CRM tool dispatches to the single authenticated `crm-command` door. Consequential operations need a server preview that binds exact targets, versions and dependency counts; a model `confirm` argument is never approval. Result UI must render server readback and router-owned links, not reconstructed model prose. Source-complete still is not LIVE until database/RLS, authenticated account-switch and deployment proof pass.
+### A route-level grep is not a guard audit — check the component before assigning severity
+
+**What happened (2026-09-23, Platform Reach census).** The census reported two production routes as
+carrying no auth guard: `/tenant-redesign` (`src/App.tsx:233`) and `/broker/app` (`:353`), both
+mounted with only `PageSuspense` where `/app` (`:260`) wraps in `RequireCompleteSignup`. The
+route-level observation was correct, and it was reported with an implied security severity that sent
+both onward as bug fixes. Reading the components reversed it:
+
+- `BrokerWorkspace.tsx:34-52` **guards itself** — `onAuthStateChange` bounces a signed-out visitor,
+  and `getSession()` returns to `/auth` *before* the `user_roles` read. Fails closed.
+- `src/prototype/TenantRedesign.tsx` is **deliberately public and dataless**; its own rendered copy
+  says so — *"This public design route never invents CRM records."*
+
+**The lesson (the class).** "Which routes lack a guard wrapper?" is a one-line grep and it produces a
+list that LOOKS like a security finding. It is not one until two further things are established:
+whether the component guards itself, and whether the data behind it is RLS-scoped server-side. A
+client-side `navigate("/auth")` never protects data either way — **RLS does**. So an unwrapped route
+is, on its own, a *consistency and reviewability* finding: the protection is invisible to anyone
+reading the router. It becomes a security finding only where the server-side scope is also absent.
+
+**How to catch it:** before assigning severity to any "surface X is ungated" finding, open the
+component and answer (a) does it self-guard, (b) does it hold authenticated data at all, and (c) is
+the server-side scope present. Report what you checked and name what you did not. The recurrence
+tell is a finding phrased as a property of a *route table* rather than of a *data path*.
+
+Recorded as [#1409](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/1409), which files the
+accurate, downgraded version and withdraws the overstatement rather than quietly restating it.
