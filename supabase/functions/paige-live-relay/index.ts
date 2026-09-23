@@ -11,7 +11,7 @@
 // voice is sent to a vendor or recorded by this function.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { createRelayState, reduceRelay } from "../_shared/paige-live-relay-contract.ts";
-import { consumeRelayTicket, isLiveAudioPilotEnabled } from "../_shared/paige-live-ticket.ts";
+import { consumeRelayTicket, hasLiveWorkspaceStanding, isLiveAudioPilotEnabled } from "../_shared/paige-live-ticket.ts";
 
 const waitUntil = (promise: Promise<unknown>): void => {
   const runtime = (globalThis as unknown as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
@@ -73,13 +73,41 @@ Deno.serve(async (req) => {
     if (!await markUnavailable("thread_scope_mismatch")) return new Response("relay_unavailable", { status: 503 });
     return new Response("thread_scope_mismatch", { status: 403 });
   }
-  // A ticket binds the original user, tenant and thread. Recheck active
-  // membership at upgrade so a removal during the ticket TTL cannot enter.
-  // Owner, admin and member use the same scoped path; no role-specific shell.
+  // A ticket binds the original user, tenant and thread. Recheck the current
+  // workspace and the same standing alternatives as current_user_tenant_id()
+  // before upgrade; an agency user need not have a child tenant_members row.
+  // No role label changes the caller-owned thread or grants tenant writes.
+  const { data: profile, error: profileError } = await admin.from("profiles")
+    .select("active_tenant_id").eq("user_id", session.actor_user_id).maybeSingle();
+  if (profileError) {
+    if (!await markUnavailable("workspace_unresolved")) return new Response("relay_unavailable", { status: 503 });
+    return new Response("workspace_unresolved", { status: 503 });
+  }
+  if (profile?.active_tenant_id && profile.active_tenant_id !== session.tenant_id) {
+    if (!await markUnavailable("stale_context")) return new Response("relay_unavailable", { status: 503 });
+    return new Response("stale_context", { status: 403 });
+  }
   const { data: membership, error: membershipError } = await admin.from("tenant_members")
     .select("id").eq("tenant_id", session.tenant_id)
     .eq("user_id", session.actor_user_id).eq("status", "active").maybeSingle();
-  if (membershipError || !membership) {
+  if (membershipError) {
+    if (!await markUnavailable("workspace_unresolved")) return new Response("relay_unavailable", { status: 503 });
+    return new Response("workspace_unresolved", { status: 503 });
+  }
+  let hasStanding = !!membership;
+  if (!hasStanding) {
+    const [childAccess, agencyRole, platformRole] = await Promise.all([
+      admin.rpc("agency_can_manage_child", { _child: session.tenant_id, _actor: session.actor_user_id }),
+      admin.rpc("agency_team_role", { _agency: session.tenant_id, _actor: session.actor_user_id }),
+      admin.rpc("is_platform_admin", { _actor: session.actor_user_id }),
+    ]);
+    if (childAccess.error || agencyRole.error || platformRole.error) {
+      if (!await markUnavailable("workspace_unresolved")) return new Response("relay_unavailable", { status: 503 });
+      return new Response("workspace_unresolved", { status: 503 });
+    }
+    hasStanding = hasLiveWorkspaceStanding(false, childAccess.data, agencyRole.data, platformRole.data);
+  }
+  if (!hasStanding) {
     if (!await markUnavailable("membership_inactive")) return new Response("relay_unavailable", { status: 503 });
     return new Response("membership_inactive", { status: 403 });
   }

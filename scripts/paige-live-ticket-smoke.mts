@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { consumeRelayTicket, issueRelayTicket, validateRelayTicket, isLiveAudioPilotEnabled } from "../supabase/functions/_shared/paige-live-ticket.ts";
+import { consumeRelayTicket, issueRelayTicket, validateRelayTicket, isLiveAudioPilotEnabled, hasLiveWorkspaceStanding } from "../supabase/functions/_shared/paige-live-ticket.ts";
 
 let network = 0;
 globalThis.fetch = (async () => { network++; throw new Error("network forbidden"); }) as typeof fetch;
@@ -34,6 +34,13 @@ assert.equal(isLiveAudioPilotEnabled({}), false, "pilot defaults off for every t
 assert.equal(isLiveAudioPilotEnabled(null), false, "missing feature record fails closed");
 assert.equal(isLiveAudioPilotEnabled({ enabled: "true" }), false, "string truthiness never enables audio");
 assert.equal(isLiveAudioPilotEnabled({ enabled: true }), true, "only explicit platform-stored boolean enables audio");
+assert.equal(hasLiveWorkspaceStanding(true, false, null, false), true, "active direct member enters");
+assert.equal(hasLiveWorkspaceStanding(false, true, null, false), true, "authorized agency child manager enters without child roster row");
+assert.equal(hasLiveWorkspaceStanding(false, false, "agency_specialist", false), true, "active agency team member enters own agency workspace");
+assert.equal(hasLiveWorkspaceStanding(false, false, null, true), true, "canonical platform standing remains recognized");
+assert.equal(hasLiveWorkspaceStanding(false, false, null, false), false, "removed agency and absent membership are denied");
+assert.equal(hasLiveWorkspaceStanding(false, false, undefined, false), false, "missing agency role never grants access");
+assert.equal(hasLiveWorkspaceStanding(false, false, "", false), false, "empty agency role never grants access");
 
 const relay = readFileSync(new URL("../supabase/functions/paige-live-relay/index.ts", import.meta.url), "utf8");
 const session = readFileSync(new URL("../supabase/functions/paige-live-session/index.ts", import.meta.url), "utf8");
@@ -52,6 +59,10 @@ assert.ok(relay.indexOf('from("paige_live_tenant_availability")') < relay.indexO
 assert.match(relay, /isLiveAudioPilotEnabled\(tenantPilot\)/, "relay admission requires the platform-stored flag");
 assert.ok(relay.indexOf('return new Response("live_audio_not_enabled", { status: 403 })') < relay.indexOf("Deno.upgradeWebSocket(req)"), "revoked or missing pilot rejects before socket upgrade");
 assert.match(relay, /from\("tenant_members"\)[\s\S]*?\.eq\("user_id", session\.actor_user_id\)\.eq\("status", "active"\)/, "relay rechecks the signed-in user's active membership, independent of role label");
+assert.match(relay, /rpc\("agency_can_manage_child"/, "relay preserves canonical agency child access");
+assert.match(relay, /rpc\("agency_team_role"/, "relay preserves canonical agency team access");
+assert.match(relay, /rpc\("is_platform_admin"/, "relay preserves canonical platform standing without granting tenant writes");
+assert.match(relay, /from\("profiles"\)[\s\S]*?active_tenant_id/, "relay rejects a stale ticket after active workspace switch");
 const pilotMigration = readFileSync(new URL("../supabase/migrations/20270408000000_paige_live_pilot_feature_guard.sql", import.meta.url), "utf8");
 assert.match(pilotMigration, /CREATE TABLE IF NOT EXISTS public\.paige_live_tenant_availability/, "rollout decision has a platform-owned table");
 assert.match(pilotMigration, /REVOKE ALL ON TABLE public\.paige_live_tenant_availability FROM PUBLIC, anon, authenticated/, "tenant roles have no table write route");

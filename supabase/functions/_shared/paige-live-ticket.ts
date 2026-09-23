@@ -13,6 +13,19 @@ export function isLiveAudioPilotEnabled(row: unknown): boolean {
     (row as Record<string, unknown>).enabled === true;
 }
 
+/** Matches the standing alternatives in current_user_tenant_id(); it never
+ * grants access without the separately checked caller-owned thread and pilot. */
+export function hasLiveWorkspaceStanding(
+  directMember: boolean,
+  agencyChildAccess: unknown,
+  agencyRole: unknown,
+  platformStanding: unknown,
+): boolean {
+  return directMember || agencyChildAccess === true ||
+    (typeof agencyRole === "string" && agencyRole.length > 0) ||
+    platformStanding === true;
+}
+
 export interface RelayTicket {
   value: string;
   storedDigest: string;
