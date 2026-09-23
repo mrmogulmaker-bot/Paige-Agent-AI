@@ -563,14 +563,16 @@ function QuickOffer({ offers, tenantId, onClose, onCreated }) {
  * The lead plan is the first active priced plan — the same reading the Catalog table takes, not a
  * "from" figure this surface computed for itself (§18: one opinion about an offer's price).
  */
-function offerOptionLabel(offer) {
+/* The price and cadence ALONE, for the attach list's own column. The label this replaced fused
+ * them onto the name because a native <option> can only render one string; separating them lets a
+ * reader run their eye down the prices instead of re-reading every name to find them. */
+function offerPriceLabel(offer) {
   const lead = (offer.prices || []).filter((p) => p.active && typeof p.unitAmount === "number")[0] || null;
-  const name = offer.name || "Untitled offer";
-  if (!lead) return `${name} — no price recorded`;
+  if (!lead) return "No price recorded";
   const cadence = lead.billingInterval && lead.billingInterval !== "one_time"
     ? CADENCE_LABEL[lead.billingInterval] || lead.billingInterval
     : "once";
-  return `${name} — ${money(lead.unitAmount, lead.currency) ?? "no amount"} · ${cadence}`;
+  return `${money(lead.unitAmount, lead.currency) ?? "No amount"} · ${cadence}`;
 }
 
 /**
@@ -598,6 +600,9 @@ function AgreementEditor({ agreements, signings, offers, tenantId, existing, exi
   const [pickerSearch, setPickerSearch] = React.useState("");
   const [pickerPage, setPickerPage] = React.useState(0);
   const picker = useCatalogOffers({ search: pickerSearch, page: pickerPage, pageSize: 5, referenceIds: offerId ? [offerId] : [] });
+  /* Named once rather than re-deriving Boolean(existing?.catalogSnapshotAt) at five call sites, so
+   * the lock cannot drift apart between the search, the list and the pager. */
+  const offerLocked = Boolean(existing?.catalogSnapshotAt);
   const pickerOffers = [...picker.offers, ...(picker.referencedOffers || [])].filter((offer, index, rows) => rows.findIndex((o) => o.id === offer.id) === index);
   const [term, setTerm] = React.useState(existing?.termKind ?? "one_time");
   const [basis, setBasis] = React.useState(existing?.priceBasis ?? "negotiated");
@@ -906,20 +911,76 @@ function AgreementEditor({ agreements, signings, offers, tenantId, existing, exi
             * unreachable and left a new workspace unable to create its first offer from Sales),
             * and Open Catalog now sits in the band head on the surface behind this drawer. */}
           <h3 className="so-step">Which offer this is for</h3>
-          <label className="so-field"><span>Search your Catalog</span><input type="search" disabled={Boolean(existing?.catalogSnapshotAt)} value={pickerSearch} onChange={(e) => { setPickerSearch(e.target.value); setPickerPage(0); }} placeholder="Search your Catalog…" /></label>
-          <div className="so-page-controls"><span role="status">{picker.phase === "ready" ? "Offer page " + (pickerPage + 1) + " · up to 5 offers" : picker.phase === "error" ? "Could not load offers" : "Loading offers…"}</span>{picker.phase === "error" && <button className="btn btn-s" onClick={picker.retry}>Retry offers</button>}<button className="btn btn-s" disabled={!pickerPage || picker.phase !== "ready" || Boolean(existing?.catalogSnapshotAt)} onClick={() => setPickerPage((p) => p - 1)}>Previous</button><button className="btn btn-s" disabled={!picker.hasMore || picker.phase !== "ready" || Boolean(existing?.catalogSnapshotAt)} onClick={() => setPickerPage((p) => p + 1)}>Next</button></div>
-          <label className="so-field">
-            <span>Offer</span>
-            <select aria-label="Offer" disabled={Boolean(existing?.catalogSnapshotAt)} value={offerId} onChange={(e) => setOfferId(e.target.value)}>
-              <option value="">No offer — this document carries no price</option>
-              {pickerOffers.map((offer) => (
-                // The price and cadence travel WITH the name. The band this replaced showed them in
-                // a table and a drawer; an offer chosen blind, by name alone, is how the wrong plan
-                // gets attached to somebody's contract.
-                <option key={offer.id} value={offer.id}>{offerOptionLabel(offer)}</option>
-              ))}
-            </select>
-          </label>
+          <label className="so-field"><span>Search your Catalog</span><input type="search" disabled={offerLocked} value={pickerSearch} onChange={(e) => { setPickerSearch(e.target.value); setPickerPage(0); }} placeholder="Search your Catalog…" /></label>
+
+          {/* THE SNAPSHOT LOCK, SAID OUT LOUD. When an offer's list price has been snapshotted the
+            * choice is fixed, and until now the controls simply went dead with no reason given —
+            * a disabled control that explains nothing is exactly what §70.1 refuses to count as
+            * delivered. The lock itself is unchanged; what is new is that it says why. */}
+          {offerLocked && (
+            <p className="so-absent" role="status">
+              This agreement&rsquo;s price was snapshotted when it was saved, so the offer is fixed.
+              That snapshot is what keeps the terms provable after you reprice the offer in Catalog.
+            </p>
+          )}
+
+          {/* THE APPROVED ATTACH LIST (§28 screen 2). This was a native &lt;select&gt; under a pager —
+            * banned outright by §11, and the reason the approved pack does not use one is plainer
+            * than the rule: a dropdown shows one offer at a time, so choosing meant opening it,
+            * reading down, and closing it again, with the prices invisible until you did. The list
+            * shows every offer and its price at once, which is how you notice you are about to
+            * attach the wrong plan to somebody's contract. */}
+          <div className="so-results" role="group" aria-label="Offer">
+            {/* Always first, always reachable: an agreement with no price is a real thing (an NDA,
+              * a scope letter), not the absence of a choice. It was the first <option>; it is the
+              * first row. */}
+            <button
+              type="button" className="so-res" aria-pressed={!offerId} disabled={offerLocked}
+              onClick={() => setOfferId("")}
+            >
+              <strong>No offer &mdash; this document carries no price</strong>
+              <span className="so-res-sp" />
+              {!offerId
+                ? <span className="so-res-on">Attached</span>
+                : <span className="so-res-act" aria-hidden="true">Attach</span>}
+            </button>
+            {pickerOffers.map((offer) => (
+              <button
+                key={offer.id} type="button" className="so-res"
+                aria-pressed={offerId === offer.id} disabled={offerLocked}
+                onClick={() => setOfferId(offer.id)}
+              >
+                <strong>{offer.name || "Untitled offer"}</strong>
+                <span className="so-res-sp" />
+                {/* The price travels beside the name rather than inside it. An offer chosen blind,
+                  * by name alone, is how the wrong plan gets attached to somebody's contract. */}
+                <span className="so-res-price">{offerPriceLabel(offer)}</span>
+                {offerId === offer.id
+                  ? <span className="so-res-on">Attached</span>
+                  : <span className="so-res-act" aria-hidden="true">Attach</span>}
+              </button>
+            ))}
+          </div>
+
+          {/* §58 — the pager is PRESERVED, not dropped with the dropdown. The approved pack shows
+            * three fixture offers and needs no pager; a real catalog has hundreds, and removing the
+            * only way past the first five would be a regression dressed as fidelity. It renders
+            * only when it can actually do something. */}
+          {picker.phase === "error" && (
+            <p className="so-absent" role="alert">
+              Your Catalog could not be read, so these offers may be incomplete.{" "}
+              <button className="btn btn-s" onClick={picker.retry}>Retry offers</button>
+            </p>
+          )}
+          {picker.phase !== "error" && (pickerPage > 0 || picker.hasMore) && (
+            <div className="so-page-controls">
+              <span role="status">
+                {picker.phase === "ready" ? `Offer page ${pickerPage + 1} · up to 5 offers` : "Loading offers…"}
+              </span>
+              <button className="btn btn-s" disabled={!pickerPage || picker.phase !== "ready" || offerLocked} onClick={() => setPickerPage((p) => p - 1)}>Previous</button>
+              <button className="btn btn-s" disabled={!picker.hasMore || picker.phase !== "ready" || offerLocked} onClick={() => setPickerPage((p) => p + 1)}>Next</button>
+            </div>
+          )}
           {/* §58 — both of these came off the deleted band with the search. A search that matches
             * nothing said so there and must say so here, or the picker silently offers one option
             * and the person cannot tell an empty catalog from an unlucky word. And an offer
@@ -930,7 +991,23 @@ function AgreementEditor({ agreements, signings, offers, tenantId, existing, exi
             * every first open of this editor. It reads as junk output, which is exactly how it
             * looked on the desk. */}
           {(Boolean(pickerSearch) || pickerPage > 0) && picker.phase === "ready" && !pickerOffers.length && (
-            <p className="so-absent">No offers match this view. Clear your search or go back a page.</p>
+            /* KEPT DISTINCT from the empty-catalog state below. "Nothing matches that word" and
+             * "you have no offers at all" are different facts, and a reader who cannot tell them
+             * apart will go looking in Catalog for something that was never there. The approved
+             * pack shows only this one because its fixtures are never empty — so its two acts are
+             * adopted here, and the other state stays. */
+            <div className="so-nomatch">
+              <p>Nothing in your Catalog matches that.</p>
+              <div className="so-nomatch-acts">
+                {offers.canManage && !offerLocked && (
+                  <button className="btn btn-s btn-p" onClick={() => request(onQuickOffer)}>Quick offer</button>
+                )}
+                <button className="btn btn-s" onClick={() => request(() => onOpenCatalog(true))}>Open Catalog</button>
+              </div>
+              {offers.canManage && !offerLocked && (
+                <small className="so-quiet">Quick offer writes it straight into your Catalog. It opens on its own, so anything typed here is not kept.</small>
+              )}
+            </div>
           )}
           {!pickerSearch && !pickerPage && picker.phase === "ready" && !pickerOffers.length && (
             <div className="so-prerequisite">

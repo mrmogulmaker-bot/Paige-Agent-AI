@@ -557,9 +557,42 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
     expect(text).toContain("Twelve-week program");
     expect(text).toContain("$2,400");
     expect(text).toContain("monthly");
-    expect(text).toContain("Offer page 1 · up to 5 offers");
     // The deleted band's own search input came with it.
     expect(dialog?.querySelector('input[placeholder="Search your Catalog…"]')).not.toBeNull();
+
+    // The offer is a real ATTACH ROW now, not an <option> in a dropdown — §11 bans the native
+    // control, and a dropdown hid every price behind a click at the one moment they matter.
+    const rows = [...dialog!.querySelectorAll(".so-res")];
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining("No offer"),
+      expect.stringContaining("Twelve-week program"),
+    ]);
+    // Exactly one thing is attached at a time, and the price sits in its own column beside it.
+    expect(rows.filter((r) => r.getAttribute("aria-pressed") === "true")).toHaveLength(1);
+    expect(rows[1].querySelector(".so-res-price")!.textContent).toBe("$2,400 · monthly");
+
+    // §58 — THE PAGER SURVIVED the dropdown it used to sit under. It now renders only when it can
+    // do something, so a single-page catalog correctly shows none: asserting its LABEL on one
+    // offer, as this test used to, proved the label existed and never that paging worked.
+    expect(text).not.toContain("Offer page");
+    expect(buttonSaying("Next")).toBeUndefined();
+  });
+
+  it("shows the offer pager, and pages, once there is more than one page (Terms)", () => {
+    harness.offers.offers = [{
+      id: "offer-1", name: "Twelve-week program", availability: "active",
+      prices: [{ id: "price-1", unitAmount: 240000, currency: "usd", billingInterval: "month", active: true }],
+    }];
+    harness.offers.hasMore = true;
+    render("terms");
+    act(() => (buttonSaying("New agreement") as HTMLButtonElement).click());
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Offer page 1 · up to 5 offers");
+    const next = buttonSaying("Next") as HTMLButtonElement;
+    expect(next).toBeDefined();
+    expect(next.disabled).toBe(false);
+    act(() => next.click());
+    // Paging is a real read against a new page, not a local slice of what was already fetched.
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Offer page 2 · up to 5 offers");
   });
 
   /** §58 RE-POINT — the two smaller things the deleted band also did. */
@@ -576,8 +609,13 @@ describe("Sales operations — what an owner can actually do (§70.1)", () => {
       search.dispatchEvent(new Event("input", { bubbles: true }));
     });
     const after = document.querySelector('[role="dialog"]')!;
-    expect(after.textContent).toContain("No offers match this view");
+    expect(after.textContent).toContain("Nothing in your Catalog matches that.");
+    // The two states stay DISTINCT: "nothing matches that word" must never render as "you have no
+    // offers at all", or a reader goes looking in Catalog for something that was never there.
     expect(after.textContent).not.toContain("Nothing in your catalog yet");
+    // The no-match state carries the two acts that resolve it, per the approved pack.
+    expect(buttonSaying("Quick offer")).toBeDefined();
+    expect(buttonSaying("Open Catalog")).toBeDefined();
   });
 
   it("renders recorded payments as recorded, and no total (Revenue)", () => {
@@ -1009,8 +1047,15 @@ describe("Commercial quote transitions (Terms)", () => {
     if (existing) { act(() => (host.querySelector('[aria-label="Agreements and terms"] button') as HTMLButtonElement).click()); act(() => (buttonSaying("Edit commercial terms") as HTMLButtonElement).click()); expect(buttonSaying("Your catalog price")).toBeUndefined(); }
     else {
       act(() => (buttonSaying("New agreement") as HTMLButtonElement).click());
-      const selects = document.querySelectorAll('.so-editor select');
-      act(() => { (selects[0] as HTMLSelectElement).value = "c1"; selects[0].dispatchEvent(new Event('change', { bubbles: true })); (selects[1] as HTMLSelectElement).value = "o1"; selects[1].dispatchEvent(new Event('change', { bubbles: true })); });
+      // The client is still a select; the offer is now an attach row, so it is CLICKED rather
+      // than assigned. Reaching it by its name and not by index keeps this test honest if the
+      // list ever reorders.
+      const clientSelect = document.querySelector('.so-editor select') as HTMLSelectElement;
+      act(() => { clientSelect.value = "c1"; clientSelect.dispatchEvent(new Event('change', { bubbles: true })); });
+      const offerRow = [...document.querySelectorAll('.so-editor .so-res')]
+        .find((r) => r.textContent?.includes("Offer")) as HTMLButtonElement;
+      act(() => offerRow.click());
+      expect(offerRow.getAttribute("aria-pressed")).toBe("true");
       const input = document.querySelector('input[placeholder="Amount"]') as HTMLInputElement;
       act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '125'); input.dispatchEvent(new Event('input', { bubbles: true })); });
     }

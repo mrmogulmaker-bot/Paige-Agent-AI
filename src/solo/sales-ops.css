@@ -1171,3 +1171,79 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 
 .so-done-note { margin: 0; }
 .so-done-note b { color: var(--ink-2); font-weight: 600; }
+
+/* ── the offer attach list (approved screen 2) ──────────────────────────────────────────────────
+ *
+ * This was a native <select> under a pager. §11 bans the control outright, and the reason the
+ * approved pack does not use one is plainer than the rule: a dropdown shows one offer at a time,
+ * so every price stayed hidden behind a click at exactly the moment a person is deciding which
+ * plan goes onto somebody's contract. The list shows all of them at once.
+ */
+.so-results {
+  border: 1px solid var(--line); border-radius: var(--r-m); overflow: hidden;
+  background: var(--surface);
+}
+.so-res {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 10px 13px; text-align: left;
+  border: 0; border-bottom: 1px solid var(--line-soft);
+  background: var(--surface); color: var(--ink); cursor: pointer;
+  font: 400 13px/1.4 var(--font);
+  transition: background .14s;
+}
+.so-res:last-child { border-bottom: 0; }
+.so-res > strong {
+  font-weight: 500; letter-spacing: -.01em; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.so-res-sp { flex: 1; min-width: 8px; }
+.so-res-price {
+  flex: none; font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: 12px; color: var(--ink-3);
+}
+@media (hover: hover) and (pointer: fine) {
+  .so-res:not(:disabled):hover { background: var(--violet-tint); }
+}
+.so-res:focus-visible { outline: 2px solid var(--violet); outline-offset: -2px; }
+/* The attached row keeps a standing violet ground — this is the one row whose state you must be
+   able to find without reading, and it is a SELECTION, never an act, so it spends no gold (§11). */
+.so-res[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--violet-tint) 70%, var(--surface));
+}
+.so-res[aria-pressed="true"] > strong { color: var(--violet); }
+.so-res:disabled { cursor: default; opacity: .62; }
+
+/* "Attached" — the state. A violet pill, the same one the band's own counts use. */
+.so-res-on {
+  flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 9px;
+  border-radius: 99px; font: 600 11px/1 var(--font); letter-spacing: .02em; white-space: nowrap;
+  color: var(--violet); background: var(--violet-tint);
+  border: 1px solid color-mix(in srgb, var(--violet) 24%, transparent);
+}
+/* "Attach" — the affordance. Reads as a control and is deliberately quiet until the row is
+   hovered, because eight shouting buttons down a list is noise, not an invitation. It is
+   aria-hidden in the markup: the row itself is the button and already carries the offer's name,
+   so announcing "Attach" again would read the control twice. */
+.so-res-act {
+  flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px;
+  border-radius: 8px; font: 500 11.5px/1 var(--font); white-space: nowrap;
+  color: var(--ink-3); background: var(--surface-2); border: 1px solid var(--line);
+  transition: color .14s, border-color .14s, background .14s;
+}
+@media (hover: hover) and (pointer: fine) {
+  .so-res:not(:disabled):hover .so-res-act {
+    color: var(--violet); border-color: var(--violet-line); background: var(--surface);
+  }
+}
+.so-res:disabled .so-res-act { visibility: hidden; }
+
+/* Nothing matched the search. DISTINCT from `.so-prerequisite` below it, which says the catalog is
+   empty — two different facts, and a reader who cannot tell them apart goes hunting in Catalog for
+   something that was never there. */
+.so-nomatch {
+  padding: 13px; border: 1px solid var(--line); border-radius: var(--r-m);
+  background: var(--surface-2);
+}
+.so-nomatch > p { margin: 0; font-size: 12.5px; color: var(--ink-2); }
+.so-nomatch-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+.so-nomatch > small { display: block; margin-top: 8px; }
