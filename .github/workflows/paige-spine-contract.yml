@@ -31,6 +31,7 @@ on:
       - "supabase/tests/paige_voice_budget_control.sql"
       - "supabase/tests/paige_live_pilot_feature_guard.sql"
       - "supabase/tests/paige_live_runtime_claim.sql"
+      - "supabase/tests/paige_live_session_transition.sql"
       - "scripts/proof/paige-voice-budget-concurrency.mjs"
       - "supabase/tests/paige_spine_foundation.sql"
       - "supabase/tests/governed_crm_commands.sql"
@@ -95,6 +96,7 @@ on:
       - "supabase/tests/paige_voice_budget_control.sql"
       - "supabase/tests/paige_live_pilot_feature_guard.sql"
       - "supabase/tests/paige_live_runtime_claim.sql"
+      - "supabase/tests/paige_live_session_transition.sql"
       - "scripts/proof/paige-voice-budget-concurrency.mjs"
       - "supabase/tests/paige_spine_foundation.sql"
       - "supabase/tests/governed_crm_commands.sql"
@@ -171,6 +173,7 @@ jobs:
       # caller's existing tenant membership/role and Paige thread entitlement.
       - run: supabase test db supabase/tests/paige_live_pilot_feature_guard.sql
       - run: supabase test db supabase/tests/paige_live_runtime_claim.sql
+      - run: supabase test db supabase/tests/paige_live_session_transition.sql
       # Governed CRM/Pipeline: tenant, authority, idempotency, destructive preview, readback, and Rail proof.
       - run: supabase test db supabase/tests/governed_crm_commands.sql
       - run: supabase test db supabase/tests/paige_spine_foundation.sql
