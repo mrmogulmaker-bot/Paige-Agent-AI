@@ -6,6 +6,68 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+### Provider identity must never come from a field the tenant can edit (2026-09-24)
+
+**Symptom.** A de-duplication matcher, with 147 green tests and a real-Chromium render drive behind
+it, would let a generic MCP server a tenant named after a vendor claim that vendor's catalogue tile —
+opening an unrelated connection's drawer AND, because the parent suppresses a tile it believes is
+held, **removing the real vendor's setup path from the surface entirely**. Found by an external
+adversarial review at the merge gate, not by any of my own proof.
+
+**Root cause.** The matcher's last arm compared the connection's `label` — free text the tenant types
+— against the catalogue vendor's name, treating a display field as provenance. It was added as a
+"falls through to its name" convenience for catalogue entries carrying neither a provider key nor a
+URL, and the convenience was never weighed against what a hostile or merely careless label does.
+Worse, it never served the case that motivated it: the labels it was meant to match tokenized to
+values that never equalled the vendor keys, so the arm was load-bearing for nothing.
+
+**Rule.** Identity comes from a **stable** attribute — a provider key, a host, an id — never from a
+name, label, title, or any field a user can rename. When a heuristic can be wrong, decide which
+direction it fails in *before* writing it: here a missed de-duplication shows one extra tile
+(cosmetic) while a wrong match removes a capability (functional). Fail toward the cosmetic one. And
+when an arm is removed, check what actually depended on it — every existing test here matched
+through `provider_key` or `server_url_host`, which is how a supposedly load-bearing branch was
+proven to carry nothing.
+
+---
+
+### One flag answering two questions is a race (2026-09-24)
+
+**Symptom.** A drawer could render "Checked just now" directly above the action list it had read
+*before* the check — an older in-flight request overwriting a newer response.
+
+**Root cause.** A single `alive` boolean was asked both *"may I still call setState"* (an unmount
+question) and *"is this the latest read"* (a generation question). A reload tears the effect down and
+re-runs it immediately, so the boolean is false for an instant and **true again before the older
+request resolves** — the stale answer passes the guard. The tenant-scope check sitting beside it
+looked like protection but only catches a workspace switch, never a same-tenant reload.
+
+**Rule.** Unmount-safety and staleness are different questions; give them different variables. A
+monotonic generation claimed at call time and compared on resolve is the correct shape, and the
+effect's teardown must **increment** it so in-flight work is retired rather than left current. When
+testing it, hold every request and settle them by hand newest-first — real timing only sometimes
+produces the losing interleaving, so a test that relies on it passes over the bug.
+
+---
+
+### A stale local git tag will misreport deploy drift (2026-09-24)
+
+**Symptom.** Immediately after a successful `deploy-migrations` and `deploy-edge-functions`,
+`git diff edge-live..HEAD` listed six changed edge functions — reading as real drift on a deploy that
+had just succeeded.
+
+**Root cause.** `git fetch origin --tags` does **not** move a tag that already exists locally. Both
+`db-live` and `edge-live` were pinned to a commit from days earlier, so the diff was against ancient
+history rather than the deploy the pipeline had just recorded. `--tags --force` showed both tags at
+the new merge commit with zero drift.
+
+**Rule.** Force-refresh (`git fetch origin --tags --force`) before reading ANY deploy tag, and never
+report drift from a tag you have not just re-fetched. This is the same class as the "re-fetch
+origin/main before asserting anything about trunk" rule, and it bites in the more dangerous
+direction: it invents a problem on a healthy deploy, and the natural reaction to invented drift is a
+redundant redeploy.
+
+---
 
 ### A restriction written into the identity model is indistinguishable from a single-user product (2026-09-24)
 
