@@ -1134,3 +1134,119 @@ describe("Managing a tool", () => {
     expect(dialog(host)?.textContent).toMatch(/fix the address or re-key/i);
   });
 });
+
+/* ── One tool, one tile ───────────────────────────────────────────────────────
+   The owner reported two connections reading as SIX tiles. The three lists that draw
+   them are built from unrelated sources and never compared notes, so a connected
+   provider appeared as something to add AND as the thing already added.
+
+   These drive the merge itself, not its wiring: every assertion opens the real
+   catalogue against real hook state and reads what rendered. */
+describe("a tool the tenant already has is one tile, not two", () => {
+  /** Open the catalogue drawer and hand back the tile for a named vendor. */
+  const catalogueTile = async (host: HTMLElement, vendor: string) => {
+    await click(byText(host, "MCP server"));
+    return Array.from(host.querySelectorAll<HTMLElement>(".ig-gw-tile"))
+      .find((t) => t.querySelector(".ig-gw-tile-name")?.textContent === vendor);
+  };
+
+  it("shows a connected vendor's real status in the catalogue instead of offering to add it again", async () => {
+    world({ rows: [row({ provider_key: "zapier", label: "MMA-Zapier", auth_kind: "oauth", server_url_host: "mcp.zapier.com" })] });
+    const { host } = await render();
+    const tile = await catalogueTile(host, "Zapier");
+    expect(tile).toBeTruthy();
+    // The foot carries the connection's status, not the "paste a key" mode badge.
+    expect(tile!.querySelector(".ig-gw-chip")?.textContent).toBe("Ready");
+    expect(tile!.querySelector(".ig-gw-badge")).toBeNull();
+    expect(tile!.getAttribute("data-held")).toBe("");
+    // And it says so to a screen reader, rather than leaving the label claiming an add flow.
+    expect(tile!.getAttribute("aria-label")).toContain("connected");
+  });
+
+  it("opens the connection it represents rather than the add form", async () => {
+    world({ rows: [row({ provider_key: "zapier", label: "MMA-Zapier", auth_kind: "oauth", server_url_host: "mcp.zapier.com" })] });
+    const { host } = await render();
+    await click(await catalogueTile(host, "Zapier"));
+    // The detail drawer for the connection — not the add drawer, which would have a name field.
+    expect(dialog(host)?.textContent).toContain("MMA-Zapier");
+    expect(fieldFor(host, "API key")).toBeUndefined();
+  });
+
+  it("still offers a vendor the tenant has NOT connected", async () => {
+    world({ rows: [row({ provider_key: "zapier", server_url_host: "mcp.zapier.com" })] });
+    const { host } = await render();
+    const tile = await catalogueTile(host, "n8n");
+    expect(tile!.querySelector(".ig-gw-badge")).toBeTruthy();
+    expect(tile!.getAttribute("data-held")).toBeNull();
+  });
+
+  it("changes nothing for a tenant with no connections at all", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    const tiles = Array.from(host.querySelectorAll<HTMLElement>(".ig-gw-tile"));
+    expect(await catalogueTile(host, "Zapier")).toBeTruthy();
+    expect(host.querySelectorAll(".ig-gw-tile[data-held]").length).toBe(0);
+    expect(tiles.length).toBe(0); // the catalogue only exists once opened
+  });
+
+  it("matches on the ADDRESS when the provider key is the generic one", async () => {
+    // A tool added through a catalogue tile is stored as `generic-remote`; its address is what
+    // identifies it. Without this arm every catalogue-added tool would still duplicate.
+    world({ rows: [row({ provider_key: "generic-remote", label: "Notes", server_url_host: "mcp.notion.com" })] });
+    const { host } = await render();
+    const tile = await catalogueTile(host, "Notion");
+    expect(tile!.getAttribute("data-held")).toBe("");
+  });
+
+  it("prefers a usable row when the tenant holds several for one vendor", async () => {
+    // Production has a tenant with two n8n rows. Pointing the tile at the turned-off one while a
+    // working one sits behind the same name would be the wrong half of the truth.
+    world({ rows: [
+      row({ connection_id: "off", provider_key: "n8n", label: "n8n API connection", enabled: false, status: "unconfigured", configured: false }),
+      row({ connection_id: "live", provider_key: "n8n", label: "n8n (API)", auth_kind: "api_key" }),
+    ] });
+    const { host } = await render();
+    await click(await catalogueTile(host, "n8n"));
+    expect(dialog(host)?.textContent).toContain("n8n (API)");
+  });
+});
+
+describe("a connection tile is named for its tool, not for whoever's data it came from", () => {
+  it("titles a recognised vendor's tile with the vendor, keeping the tenant's own label in the drawer", async () => {
+    // The backfill composed labels per tenant — "MMA-Zapier". A tile answers "which tool is this",
+    // and one account's internal shorthand is not that answer on a platform every tenant shares.
+    world({ rows: [row({ provider_key: "zapier", label: "MMA-Zapier", auth_kind: "oauth", server_url_host: "mcp.zapier.com" })] });
+    const { host } = await render();
+    const card = host.querySelector<HTMLElement>('[data-owner="gateway"][data-gateway-tool]');
+    expect(card!.querySelector("strong")?.textContent).toBe("Zapier");
+    expect(card!.textContent).not.toContain("MMA");
+    // The label is not lost — it is where telling two Zapier connections apart is the question.
+    await click(card);
+    expect(dialog(host)?.textContent).toContain("MMA-Zapier");
+  });
+
+  it("leaves a tenant-named server alone, because there the label is the only name it has", async () => {
+    world({ rows: [row({ provider_key: "generic-remote", label: "Ops bridge", server_url_host: "mcp.internal.example" })] });
+    const { host } = await render();
+    const card = host.querySelector<HTMLElement>('[data-owner="gateway"][data-gateway-tool]');
+    expect(card!.querySelector("strong")?.textContent).toBe("Ops bridge");
+  });
+});
+
+describe("the older setup panel stays reachable once its duplicate tile is gone", () => {
+  it("offers the way back for a vendor that still has one, and routes to that vendor's panel", async () => {
+    const seen: string[] = [];
+    world({ rows: [row({ provider_key: "n8n", label: "n8n (API)", auth_kind: "api_key" })] });
+    const { host } = await render((which) => seen.push(which));
+    await click(host.querySelector('[data-owner="gateway"][data-gateway-tool]'));
+    await click(byText(host, "Older setup options"));
+    expect(seen).toEqual(["n8n"]);
+  });
+
+  it("offers nothing for a vendor that never had one", async () => {
+    world({ rows: [row({ provider_key: "generic-remote", label: "Ops bridge" })] });
+    const { host } = await render();
+    await click(host.querySelector('[data-owner="gateway"][data-gateway-tool]'));
+    expect(byText(host, "Older setup options")).toBeUndefined();
+  });
+});

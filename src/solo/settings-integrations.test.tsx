@@ -995,3 +995,72 @@ describe("Social tenant-owned connection flow", () => {
     )).toBe(false);
   });
 });
+
+/* ── One tool, one tile (owner ruling 2026-09-24) ─────────────────────────────
+   The shipped provider tiles and the gateway's connection tiles come from two
+   sources that never compared notes, so a tenant who had connected n8n saw n8n
+   twice — once here offering setup, once beside it as the connection they had.
+   With Zapier doing the same, two connections read as six tiles. */
+describe("a connected tool does not also render as a tile offering to set it up", () => {
+  const conn = (over: Record<string, unknown> = {}) => ({
+    connection_id: "c1", provider_key: "n8n", label: "n8n (API)", transport: "http",
+    auth_kind: "api_key", configured: true, enabled: true, status: "connected",
+    health: "healthy", last_checked_at: "2026-09-20T10:00:00Z",
+    server_url_host: "team.app.n8n.cloud", tool_count: 3, approved_count: 0, ...over,
+  });
+
+  it("drops the duplicate once the tenant holds that vendor", async () => {
+    world({ gateway: [conn()] });
+    const { host } = await render();
+    expect(host.querySelector('.ig-card[data-provider="n8n"]')).toBeNull();
+    // and the connection itself is still on screen, so nothing was lost by dropping it
+    expect(host.querySelector('[data-owner="gateway"][data-gateway-tool]')).toBeTruthy();
+  });
+
+  it("keeps the tile for a vendor the tenant has NOT connected", async () => {
+    world({ gateway: [conn({ provider_key: "n8n" })] });
+    const { host } = await render();
+    // n8n is covered; Zapier is not, so its shipped tile stays exactly where it was
+    expect(host.querySelector('.ig-card[data-provider="mcp"]')).toBeTruthy();
+  });
+
+  it("changes nothing at all for a tenant with no connections", async () => {
+    world({ gateway: [] });
+    const { host } = await render();
+    expect(host.querySelector('.ig-card[data-provider="n8n"]')).toBeTruthy();
+    expect(host.querySelector('.ig-card[data-provider="mcp"]')).toBeTruthy();
+  });
+
+  it("suppresses nothing while the connection list is unread", async () => {
+    // An unread list must never make a shipped tile vanish: that would hide setup from
+    // someone whose read merely failed. Empty gateway data is the same shape as loading.
+    world({ gateway: [] });
+    const { host } = await render();
+    expect(host.querySelector('.ig-card[data-provider="n8n"]')).toBeTruthy();
+  });
+
+  it("counts what is actually on screen", async () => {
+    // The "All" chip and the Automation chip both had to stop counting a tile that no longer
+    // renders, or the number disagrees with the grid underneath it. Read from the filter bar,
+    // which is where those counts actually live — an assertion aimed at the wrong element
+    // passes whatever the code does, which is worse than having no assertion at all.
+    const countOnChip = (host: HTMLElement, label: string) => {
+      const chip = Array.from(host.querySelectorAll<HTMLElement>('.ig-bar button'))
+        .find((b) => b.textContent?.includes(label));
+      return Number(chip?.querySelector("em")?.textContent ?? "-1");
+    };
+    world({ gateway: [] });
+    const bare = await render();
+    const beforeAll = countOnChip(bare.host, "All");
+    const beforeAuto = countOnChip(bare.host, "Automation");
+    expect(beforeAll).toBeGreaterThan(0);
+    bare.root.unmount();
+
+    world({ gateway: [conn()] });
+    const { host } = await render();
+    // One shipped tile suppressed, one connection tile gained: both chips hold steady. Without
+    // the suppression each would have climbed by one while the grid showed the same tools twice.
+    expect(countOnChip(host, "All")).toBe(beforeAll);
+    expect(countOnChip(host, "Automation")).toBe(beforeAuto);
+  });
+});

@@ -20,6 +20,14 @@ function gatewayRows(){
  const tenant=currentHarnessTenantId();
  if(tenant.endsWith('-b')||mode()==='empty')return [];
  const base={provider_key:'generic-remote',transport:'http',auth_kind:'bearer',configured:true,enabled:true,visibility:'tenant',granted_scopes:[] as string[]};
+ // ?data=held — the duplicate-tile case the owner reported. Two connections to vendors the
+ // catalogue NAMES, carrying labels of the shape the one-time backfill composed per tenant.
+ // The labels are invented for this fixture on purpose: a real account's name never becomes
+ // example data (§63), and the point being rendered is that a composed label is not a tool name.
+ if(mode()==='held')return [
+  {...base,provider_key:'zapier',auth_kind:'oauth',connection_id:'harness-held-z',label:'workspace-Zapier',status:'connected',health:'healthy',server_url_host:'mcp.zapier.com',last_checked_at:'2026-09-20T10:00:00Z',tool_count:4,approved_count:1},
+  {...base,provider_key:'n8n',auth_kind:'api_key',connection_id:'harness-held-n',label:'n8n- workspace',status:'connected',health:'healthy',server_url_host:'team.app.n8n.cloud',last_checked_at:'2026-09-20T10:00:00Z',tool_count:3,approved_count:0},
+ ];
  return [
   {...base,connection_id:'harness-tool-1',label:'Scheduling tool',status:'connected',health:'healthy',server_url_host:'scheduling.example.invalid',last_checked_at:'2026-09-20T10:00:00Z',tool_count:6,approved_count:2},
   {...base,connection_id:'harness-tool-2',label:'Docs tool',status:'pending_verification',health:'unknown',server_url_host:'docs.example.invalid',last_checked_at:null,tool_count:0,approved_count:0},

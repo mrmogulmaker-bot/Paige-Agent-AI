@@ -613,3 +613,53 @@ p.ig-gw-foot { margin: 0 0 10px; }
   .ig-gw-eff { border: 1px solid CanvasText; }
   .ig-gw-seg button:focus-visible { outline: 2px solid Highlight; }
 }
+
+/* ── The way back to an older setup panel ──────────────────────────────────────
+   Shown inside a connection's drawer for the two vendors that still have one, now that
+   their duplicate tile is gone from the group. It is a way OUT of this connection, not one
+   of its actions, so it sits below the action row and is never styled as a fifth button.
+
+   QUIET COMES FROM SIZE AND WEIGHT, NOT FROM WASHING OUT THE COLOUR. Dropping a link to a
+   faint tone to make it recede is how a control lands under 4.5:1; this keeps body ink and
+   earns its quietness from a smaller, lighter face. Both themes redefine `--pg-ink` in
+   their own direction, so one declaration is correct in each. */
+.ig-gw-older { margin: 10px 0 0; }
+/* SCOPED ONE LEVEL UP ON PURPOSE. The shell resets every button's face with
+   `[data-tenant-shell] button { font: inherit }` (tenant-command-center-shell.css:27) at
+   specificity (0,1,1), which beats a lone class. A bare `.ig-linkish` rule MATCHED — its
+   underline, offset and layout all applied — while font-size and font-weight silently fell
+   back to the inherited 14px/400. Only measuring the COMPUTED value caught it; reading the
+   rule back would have confirmed a size the browser never used. (0,2,0) wins cleanly, and
+   any other own-face control in this shell needs the same. No `!important` anywhere. */
+.ig-gw-older .ig-linkish {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 0; border: 0; background: none;
+  color: var(--pg-ink);
+  /* Longhand, not the `font` shorthand: the shorthand is all-or-nothing, so one unresolved value
+     silently discards weight, size and leading together. This surface renders at 14px otherwise,
+     which is how the size was found to not be applying at all — by measuring the computed value,
+     not by reading the rule back. */
+  font-family: var(--pg-font-ui); font-size: 11px; font-weight: 600; line-height: 1.5;
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--pg-ink) 35%, transparent);
+  cursor: pointer;
+  transition: text-decoration-color .14s ease-out;
+}
+.ig-gw-older .ig-linkish:hover { text-decoration-color: currentColor; }
+.ig-gw-older .ig-linkish:focus-visible { outline: 2px solid var(--pg-ring, var(--pg-violet)); outline-offset: 3px; border-radius: 3px; }
+/* The chevron leans toward what it opens. One authored moment, not an entrance. */
+.ig-gw-older .ig-linkish svg { transition: transform .16s cubic-bezier(.22,1,.36,1); }
+.ig-gw-older .ig-linkish:hover svg { transform: translateX(2px); }
+@media (prefers-reduced-motion: reduce) {
+  .ig-gw-older .ig-linkish, .ig-gw-older .ig-linkish svg { transition: none; }
+  .ig-gw-older .ig-linkish:hover svg { transform: none; }
+}
+@media (forced-colors: active) {
+  .ig-gw-older .ig-linkish { color: LinkText; text-decoration-color: currentColor; }
+}
+
+/* A catalogue tile the tenant already holds. It keeps its place in the grid — the position a
+   person already looks in for that tool — and the status chip in its foot does the talking.
+   The border firms up so the tile reads as theirs at a glance without a second colour or an
+   accent stripe; nothing else about the tile changes, because nothing else should. */
+.ig-gw-tile[data-held] { border-color: var(--pg-line-strong); }

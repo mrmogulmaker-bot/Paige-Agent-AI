@@ -16,7 +16,7 @@
  * removed).
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Plus, RefreshCw, Search, TriangleAlert, X } from "lucide-react";
+import { ChevronRight, Plus, RefreshCw, Search, TriangleAlert, X } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import {
   APPROVAL_DEFAULT_LIFETIME_MINUTES,
@@ -198,6 +198,108 @@ function facetName(c: GatewayConnection): string {
   if (c.providerKey === "zapier") return "Zapier · sign-in";
   if (c.providerKey === "n8n") return c.authKind === "api_key" ? "n8n · API key" : "n8n · sign-in";
   return `Remote MCP · ${c.authKind ?? "—"}`;
+}
+
+/* ── One tool, one tile ───────────────────────────────────────────────────────
+   A provider the tenant has already connected used to render up to THREE times in
+   the Automation group: the shipped `PROVIDERS` tile from the incumbent surface, an
+   "add this" catalogue entry that had no idea the tenant already had it, and the
+   connection's own tile. Two connections read as six tiles. Nothing anywhere asked
+   whether a tile was already represented, because the three lists are built from
+   three unrelated sources and never meet.
+
+   THE MATCH IS DERIVED FROM THE TENANT'S OWN ROWS, never from a hardcoded list of
+   providers to hide. A list would be right for exactly the accounts it was written
+   against and silently wrong for every account provisioned afterwards — the shape
+   of single-account thinking this rule exists to keep out of a multi-tenant surface.
+   So the answer is computed per render from `gw.tools`: correct at zero connections,
+   at N, and for a tenant created next month who connects something nobody listed.
+
+   THREE KEYS, strongest first, because no single one covers every way a connection
+   can come into being:
+     1. `providerKey` — exact for the vendors the registry actually names (`zapier`,
+        `n8n`). The legacy-backed rows carry these, which is why the two tiles the
+        owner reported match on this key and not the others.
+     2. `serverUrlHost` — the endpoint itself, for catalogue entries that ship an
+        address. Survives the tenant renaming their connection to anything they like.
+     3. label — the add flow seeds `label` from the catalogue name (see `onPick`), so
+        a connection added through a catalogue tile still matches after the other two
+        miss. Weakest of the three and deliberately last.
+
+   A MISS IS ALWAYS SAFE. Failing to match renders exactly what shipped before — the
+   catalogue tile offering to add it — so the worst case of a wrong answer here is
+   the duplicate that already exists, never a hidden connection or a lost path. */
+
+/** One comparable token for a vendor name or provider key: case and punctuation carry no meaning. */
+function providerToken(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+/** The comparable host of an MCP address, or "" when there is nothing to compare. */
+function addressHost(value: string | null | undefined): string {
+  if (!value) return "";
+  const raw = value.trim();
+  if (!raw) return "";
+  try {
+    return new URL(raw).host.toLowerCase().replace(/^www\./, "");
+  } catch {
+    // Not a parseable absolute URL. A host we cannot read is not a host that matches
+    // anything — returning "" keeps it out of the comparison instead of guessing at it.
+    return "";
+  }
+}
+
+/** What a caller knows about a tile before it knows which connection (if any) is behind it. */
+export type ProviderProbe = { providerKey?: string | null; name?: string | null; url?: string | null };
+
+/**
+ * The connection this tile already represents, or null when the tenant does not have one.
+ *
+ * When a tenant holds SEVERAL rows for one provider — production has a tenant with two
+ * `n8n` rows today — a usable one wins, then an enabled one, then the first. The tile can
+ * only carry one connection, and pointing it at a turned-off row while a working one sits
+ * behind the same name would be the wrong half of the truth.
+ */
+export function connectionForProvider(
+  tools: readonly GatewayConnection[],
+  probe: ProviderProbe,
+): GatewayConnection | null {
+  const key = providerToken(probe.providerKey);
+  const name = providerToken(probe.name);
+  const host = addressHost(probe.url);
+  const hits = tools.filter((c) => {
+    if (key && providerToken(c.providerKey) === key) return true;
+    if (host && addressHost(`https://${c.serverUrlHost ?? ""}`) === host) return true;
+    if (name && providerToken(c.label) === name) return true;
+    return false;
+  });
+  if (!hits.length) return null;
+  return hits.find(usable) ?? hits.find((c) => c.enabled) ?? hits[0];
+}
+
+/**
+ * What to call this connection on a tile.
+ *
+ * A row's `label` is whatever named it, and for every row that came through the one-time backfill
+ * that was a string the old pipeline composed per tenant — "MMA-Zapier", "n8n- MMA". Those are one
+ * account's internal shorthand, and a tile is the wrong place for it: the tile answers "which tool
+ * is this", and the answer is Zapier. So a connection the catalogue recognises is titled with the
+ * VENDOR's name, and the tenant's own label moves into the drawer, where telling two Zapier
+ * connections apart is the actual question being asked.
+ *
+ * A connection the catalogue does not recognise — a server someone added by address — keeps its
+ * label untouched, because there the label is the only name it has and the tenant chose it.
+ */
+export function connectionDisplayName(c: GatewayConnection): string {
+  const match = CATALOGUE.find((p) => {
+    if (p.manual) return false;
+    const key = p.legacy && p.legacy !== "social" ? providerToken(p.legacy) : "";
+    if (key && key === providerToken(c.providerKey)) return true;
+    const host = addressHost(p.url);
+    if (host && host === addressHost(`https://${c.serverUrlHost ?? ""}`)) return true;
+    return false;
+  });
+  return match?.n ?? c.label;
 }
 
 /* ── Drawer wrapper (matches the incumbent .ig-panel dialog idiom) ─────────────
@@ -602,6 +704,8 @@ function Catalogue({
   onSetup,
   onZapier,
   onLegacy,
+  tools,
+  onOpenConnection,
 }: {
   onPick: (item: CatItem) => void;
   /** A provider whose sign-in Paige can actually run — routed to the real OAuth flow. */
@@ -609,15 +713,40 @@ function Catalogue({
   onSetup: (item: CatItem) => void;
   onZapier: (item: CatItem) => void;
   onLegacy: (which: CatLegacy) => void;
+  /** This tenant's own connections — the only thing that decides whether a tile is already theirs. */
+  tools: readonly GatewayConnection[];
+  /** Open the connection a tile already represents, instead of offering to add it again. */
+  onOpenConnection: (c: GatewayConnection) => void;
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<(typeof CAT_CATEGORIES)[number]>("All");
   const q = query.trim().toLowerCase();
   const matches = (p: CatItem) => !q || (`${p.n} ${p.d} ${p.net ?? ""} ${p.c}`.toLowerCase().includes(q));
   const showPopular = category === "All" && !q;
-  const popular = useMemo(() => CATALOGUE.filter((p) => p.pop).slice().sort((a, b) => (a.r ?? 99) - (b.r ?? 99)), []);
+  /** "Popular for service businesses" is a shortcut to things worth ADDING, so a tool the tenant
+   *  already holds drops out of it — it is still in its own category section, marked as theirs.
+   *  Without this the merge is only half done: the group shows one Zapier and the catalogue two. */
+  const popular = useMemo(
+    () => CATALOGUE.filter((p) => p.pop && !connectionForProvider(tools, { providerKey: p.legacy && p.legacy !== "social" ? p.legacy : null, name: p.n, url: p.url ?? null }))
+      .slice().sort((a, b) => (a.r ?? 99) - (b.r ?? 99)),
+    [tools],
+  );
+
+  /** What this tile knows about itself before it knows whether the tenant already has it. The
+   *  legacy key doubles as the registry's provider key for the two vendors that carry one; every
+   *  other entry falls through to its address and then its name. */
+  const probe = (p: CatItem): ProviderProbe => ({
+    providerKey: p.legacy && p.legacy !== "social" ? p.legacy : null,
+    name: p.manual ? null : p.n,
+    url: p.url ?? null,
+  });
+  const held = (p: CatItem) => (p.manual ? null : connectionForProvider(tools, probe(p)));
 
   const route = (p: CatItem) => {
+    // Already theirs: this tile IS that connection, so it opens it rather than offering to add a
+    // second copy of something they are looking straight at.
+    const have = held(p);
+    if (have) return onOpenConnection(have);
     if (p.legacy && p.legacy !== "social") return onLegacy(p.legacy);
     if (p.legacy === "social") return onLegacy("social");
     if (p.m === "key") return onPick(p);
@@ -630,16 +759,29 @@ function Catalogue({
     return onZapier(p);
   };
 
-  const tile = (p: CatItem) => (
-    <li key={p.n}>
-      <button type="button" className="ig-gw-tile" data-mode={p.m} onClick={() => route(p)} aria-label={`${p.n} — ${MODE_LABEL[p.m]}`}>
-        <span className="ig-gw-tile-top"><span className="ig-gw-tile-mark" aria-hidden>{p.g}</span><span className="ig-gw-tile-name">{p.n}</span></span>
-        <span className="ig-gw-tile-desc">{p.d}</span>
-        {p.net && <span className="ig-gw-tile-net">{p.net}</span>}
-        <span className="ig-gw-tile-foot"><span className="ig-gw-badge" data-mode={p.m}>{MODE_LABEL[p.m]}</span></span>
-      </button>
-    </li>
-  );
+  const tile = (p: CatItem) => {
+    // One tool, one tile. A connected provider keeps its place in the catalogue — the position a
+    // person already looks in for it — and reports its real state there instead of appearing twice:
+    // once as something to add, once as the thing they already added.
+    const have = held(p);
+    const chip = have ? statusChip(have) : null;
+    return (
+      <li key={p.n}>
+        <button type="button" className="ig-gw-tile" data-mode={p.m} data-held={have ? "" : undefined}
+          onClick={() => route(p)}
+          aria-label={have ? `${p.n} — connected, ${chip!.label.toLowerCase()}. Open it.` : `${p.n} — ${MODE_LABEL[p.m]}`}>
+          <span className="ig-gw-tile-top"><span className="ig-gw-tile-mark" aria-hidden>{p.g}</span><span className="ig-gw-tile-name">{p.n}</span></span>
+          <span className="ig-gw-tile-desc">{p.d}</span>
+          {p.net && <span className="ig-gw-tile-net">{p.net}</span>}
+          <span className="ig-gw-tile-foot">
+            {have
+              ? <span className="ig-gw-chip" data-tone={chip!.tone}>{chip!.label}</span>
+              : <span className="ig-gw-badge" data-mode={p.m}>{MODE_LABEL[p.m]}</span>}
+          </span>
+        </button>
+      </li>
+    );
+  };
 
   const sections = CAT_CATEGORIES.slice(1).map((cat) => {
     if (category !== "All" && category !== cat) return null;
@@ -1072,7 +1214,13 @@ function ToolActions({ gw, tool, reloadKey }: { gw: UseMcpGateway; tool: Gateway
   );
 }
 
-function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayConnection; onClose: () => void }) {
+function ToolDetail({ gw, tool, onClose, onOlderSetup }: {
+  gw: UseMcpGateway;
+  tool: GatewayConnection;
+  onClose: () => void;
+  /** Open this vendor's older setup panel. Absent for a vendor that has none. */
+  onOlderSetup?: () => void;
+}) {
   const [mode, setMode] = useState<"view" | "rekey" | "disconnect">("view");
   /** The last probe verdict, held so the person sees what the check FOUND rather than only a row
    *  that silently changed colour underneath them. Cleared when another action starts. */
@@ -1185,6 +1333,18 @@ function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayCon
             {gw.canWrite && rekeyable && <button type="button" className="ig-btn" onClick={() => setMode("rekey")}>Re-key</button>}
             {gw.canWrite && <button type="button" className="ig-btn" data-danger onClick={() => setMode("disconnect")}>Disconnect</button>}
           </div>
+          {/* The older panel for this vendor still does things this drawer cannot — saving and
+              re-checking an n8n API key, connecting Zapier by address. Its duplicate TILE is gone
+              from the group, so this is the path that keeps those reachable rather than removing
+              them with the tile (§58). It is a quiet link, not a fifth button: it is a way back to
+              something older, never one of this connection's own actions. */}
+          {onOlderSetup && (
+            <p className="ig-gw-older">
+              <button type="button" className="ig-linkish" onClick={onOlderSetup}>
+                Older setup options<ChevronRight size={13} aria-hidden />
+              </button>
+            </p>
+          )}
         </>
       )}
 
@@ -1385,15 +1545,16 @@ export function IntegrationsGatewaySection({
       )}
       {gw.tools.map((c) => {
         const chip = statusChip(c);
+        const title = connectionDisplayName(c);
         return (
           <li key={c.id}>
             <button type="button" className="ig-card" data-provider={`gateway-${c.id}`} data-gateway-tool={c.id}
               data-owner="gateway" onClick={() => setDrawer({ kind: "detail", tool: c, scope: scopeKey })} aria-haspopup="dialog">
               <span className="ig-logo" data-glyph="light" data-initials style={{ ["--ig-brand" as string]: "var(--pg-violet)" }} aria-hidden>
-                {c.label.slice(0, 2).toUpperCase()}
+                {title.slice(0, 2).toUpperCase()}
               </span>
               <span className="ig-card-title">
-                <strong>{c.label}</strong>
+                <strong>{title}</strong>
                 {!usable(c) && <span className="ig-chip" data-warn>not usable yet</span>}
               </span>
               <span className="ig-card-foot">
@@ -1443,6 +1604,8 @@ export function IntegrationsGatewaySection({
             onSetup={(item) => setDrawer({ kind: "stop", item, via: "setup" })}
             onZapier={(item) => setDrawer({ kind: "stop", item, via: "zapier" })}
             onLegacy={openLegacy}
+            tools={gw.tools}
+            onOpenConnection={(c) => setDrawer({ kind: "detail", tool: c, scope: scopeKey })}
           />
         </GatewayDrawer>
       )}
@@ -1487,7 +1650,13 @@ export function IntegrationsGatewaySection({
           blanking the dialog out from under the person. */}
       {drawer?.kind === "detail" && !tenantLoading && drawer.scope === scopeKey && (() => {
         const live = gw.tools.find((t) => t.id === drawer.tool.id) ?? drawer.tool;
-        return <ToolDetail key={`${scopeKey}:${live.id}`} gw={gw} tool={live} onClose={closeDetail} />;
+        // The older setup panel for this vendor, when one exists. Derived from the registry's own
+        // provider key so it appears for exactly the two vendors that still have one, and stops
+        // appearing by itself the day those panels retire — no list to remember to update.
+        const legacy: CatLegacy | null =
+          live.providerKey === "n8n" ? "n8n" : live.providerKey === "zapier" ? "zapier" : null;
+        return <ToolDetail key={`${scopeKey}:${live.id}`} gw={gw} tool={live} onClose={closeDetail}
+          onOlderSetup={legacy ? () => openLegacy(legacy) : undefined} />;
       })()}
     </section>
   );
