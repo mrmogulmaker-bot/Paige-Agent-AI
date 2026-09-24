@@ -67,3 +67,14 @@ deno-ratchet-evidence/
 # record cites them and the repo keeps the script, not the binaries (house pattern).
 docs/evidence/ui-delivery/campaigns-overview/
 supabase/.temp/
+
+# Impeccable (npx impeccable install) — portable guidance is committed; the
+# platform-specific engine and its data are NOT. They are ~16MB per copy,
+# linux-x64 here and useless on another platform, and every hook that invokes
+# them is guarded with `[ ! -f ... ] ||` so a checkout without them no-ops.
+# Each machine/CI regenerates its own with: npx impeccable install --project --yes
+*/skills/impeccable/scripts/bin/
+*/skills/impeccable/scripts/data/
+*/skills/impeccable/scripts/impeccable
+*/skills/impeccable/scripts/impeccable.cmd
+*/skills/impeccable/scripts/live-browser.js
