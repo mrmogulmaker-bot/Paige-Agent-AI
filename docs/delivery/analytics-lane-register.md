@@ -191,6 +191,26 @@ What is actually true, in order:
    the **binding** blocker: all eight owed records sit on auth-gated Solo routes, so fixing (3)
    alone would still drive nothing. No credential was invented, and none may be.
 
+**This is already a specified process, not a new request.** `scripts/live-drive/PROOF-LANE.md:77`
+heads the section "The one owner action that turns PROOF_OWED into VERIFIED", and names exactly
+two prerequisites: a least-privilege Solo test tenant + test user (standalone, one base-role owner
+membership, no operator/admin/cross-tenant/send/publish/spend/billing/provider/destructive
+authority, test-only records with a cleanup path — spec at `docs/delivery/solo-test-tenant-spec.md`),
+and **`LIVE_DRIVE_URL` + `LIVE_DRIVE_EMAIL` + `LIVE_DRIVE_PASSWORD`** set in the approved CI secret
+mechanism. Correcting this entry's own first draft: that is **three** variables, not two. No
+credential value is ever needed in code or in any record.
+
+**Independently corroborated, and recorded as a lead rather than as fact (§13).** The lane driving
+PR #1381 reached the same conclusion from the same wall — its standing check-in states that
+Playwright and Chromium work, that the installed Chromium is 1194 against a repo pinning 1234, and
+that the authenticated live sign-in is its ONE remaining owed proof, blocked on the same
+credentials as an owner action. It also reports having the proxy CA trusted in Chromium's NSS store
+with TLS verification never disabled — which, if it holds, means item (3) above is solvable rather
+than fundamental. I have not reproduced that here and am not claiming it; container NSS state is
+per-session and would not carry over regardless. Recorded because **two independent lanes are now
+blocked on the same two prerequisites**, which is a stronger case for provisioning them than either
+lane makes alone.
+
 **Why this matters beyond accuracy:** "no browser" reads as *needs a different class of session*.
 The real remedy is **two environment variables** — a scoped test-tenant account, never owner PII —
 plus the browser-trust fix in (3). That is a request the coordinator or owner can actually grant,
@@ -262,10 +282,13 @@ any approved phase plan. It is logged for the coordinator to sequence.
 3. **Live-drive credentials for the auth-gated Solo routes.** `LIVE_DRIVE_EMAIL` and
    `LIVE_DRIVE_PASSWORD` are unset, which is the binding blocker on all eight owed Solo viewport
    records and the whole rendered/interactive/keyboard/zoom class (F-3). The browser itself is
-   present and prod answers; only the credentials and the browser-trust fix are missing. Needs a
-   **scoped test-tenant account — never owner PII, never a pasted value in any artifact, ticket,
-   log or PR** — supplied as server-side environment variables. *Owner's to resolve; it would let
-   this lane discharge its own §32 proof instead of owing it onward.*
+   present and prod answers; only the credentials and the browser-trust fix are missing. This is
+   the already-specified owner action at `scripts/live-drive/PROOF-LANE.md:77` — a least-privilege
+   Solo test tenant per `docs/delivery/solo-test-tenant-spec.md`, plus `LIVE_DRIVE_URL` +
+   `LIVE_DRIVE_EMAIL` + `LIVE_DRIVE_PASSWORD` in the approved CI secret mechanism. **Never owner
+   PII, and never a pasted value in any artifact, ticket, log or PR.** The lane driving PR #1381
+   reports being blocked on the same prerequisites. *Owner's to resolve; it would let this lane
+   discharge its own §32 proof instead of owing it onward.*
 
 ## D. STANDING REQUIREMENT
 
