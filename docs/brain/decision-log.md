@@ -5817,11 +5817,32 @@ showed 0 and 0 with the table intact at 30 columns. CI on `29d1038dc`: **Deno ra
 affected edge functions — success** (the gate that could not run locally, no deno binary), plus the
 real-deno contract tests and the typecheck ratchet. Local: tsc 0, `lint:migration-versions` 1082,
 `lint:definer-fns`, `lint:tier-features`, `lint:tool-catalogue` 9/9, `token-pricing` 20/20 with no
-pairing moved. `scripts/token-pricing/trace-wiring.mjs` could NOT be run here — it fails identically
-on clean `origin/main` with `ERR_UNSUPPORTED_ESM_URL_SCHEME`, confirmed in a detached worktree; owed
-to CI. Persisted-apply confirmation owed post-merge per §32.
+pairing moved. `scripts/token-pricing/trace-wiring.mjs` **RUNS — the claim that it could not was
+wrong.** Corrected below. Persisted-apply confirmation owed post-merge per §32.
 
 **Version note (§1425).** `20270421000000`, not `20270420000000` — open PR #1437 already claims that
 version, and `lint:migration-versions` passes both branches because it compares only to `origin/main`.
 Same blind spot that wedged prod that morning, found again four hours later by a manual sweep of open
 PRs. Four of 30+ PRs were checked, so the sweep is not proof of uniqueness, only of diligence.
+
+**CORRECTION (same day, from the §39 adversarial pass).** This entry and commit `29d1038dc` both
+claimed `scripts/token-pricing/trace-wiring.mjs` could not run here, "confirmed" because it failed
+identically on clean `origin/main`. **False.** It runs and passes under the loader its own header
+names: `node --import ./scripts/client-memory-authz/register.mjs scripts/token-pricing/trace-wiring.mjs`
+→ 12 passed, exit 0. I invoked it bare, hit `ERR_UNSUPPORTED_ESM_URL_SCHEME`, then reproduced **my own
+mistake** against clean main and read the matching failure as proof the tool was broken. A control
+that repeats the experimenter's error confirms nothing — the check felt rigorous and was worthless.
+
+The consequence was not cosmetic: the new PGRST204 shed-and-retry shipped with **no test coverage**
+on the false grounds that none was possible, while `fake-supabase.mjs` had supported a returned
+insert error the whole time. Section 5 now covers it — the retry fires exactly once, sheds both cache
+columns and keeps the rest of the row; a PGRST204 naming a *different* column does not retry; an
+ordinary rejection is logged once; and cache counts reach the row without entering `tokens_in`.
+Harness now 20 passed, 0 failed.
+
+**Also surfaced by that pass, and larger than the caching question:** `accruedSpendToday`
+(`_shared/router-budget/mod.ts:172-189`) sums `cost_estimate_usd` to enforce the daily spend ceiling,
+and that estimate omits cached tokens. `cache_control` has been live on the streaming chat path since
+`8af6bd91a` (2026-09-11), so the ceiling has admitted more real spend than it states for two weeks.
+Pre-existing; named in the migration header and filed rather than silently fixed, because pricing
+cached tokens moves a shipped §33 cap.

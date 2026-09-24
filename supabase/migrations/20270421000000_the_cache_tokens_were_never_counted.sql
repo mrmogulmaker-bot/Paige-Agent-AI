@@ -15,6 +15,15 @@
 --   turn traces as a few thousand input tokens when the prompt was tens of thousands. Every
 --   token-volume figure read off this table is therefore an UNDERCOUNT whenever a cache hit occurred.
 --
+--   ONE OF THOSE READERS ENFORCES SOMETHING. `accruedSpendToday` (_shared/router-budget/mod.ts:172)
+--   sums `cost_estimate_usd` off this table to decide whether the daily ceiling is reached, and that
+--   estimate is derived from tokens_in/tokens_out alone. `cache_control` has been live on the
+--   streaming chat path since 8af6bd91a (2026-09-11, #1120), so on every cache hit since then the
+--   cached prefix has been priced at zero and the gate has admitted MORE real spend than its ceiling
+--   states. Pre-existing and NOT changed here — this migration is what makes it measurable. Pricing
+--   cached tokens (read ~0.1x base input, write ~1.25x at the 5-minute TTL) moves a shipped §33 cost
+--   cap and is therefore an owner decision, tracked separately rather than folded in here.
+--
 -- WHAT CHANGES (additive, backward-compatible):
 --   Two nullable integer columns. Writers set them only where the provider actually reports them;
 --   every other producer leaves them unset, so they default to NULL. No existing column, index,

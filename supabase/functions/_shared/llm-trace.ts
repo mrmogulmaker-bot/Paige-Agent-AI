@@ -237,13 +237,21 @@ export function traceLLMCall(row: TraceRow): void {
         // on EVERY path — not just the cache fields. deploy-migrations.yml and deploy-edge-functions.yml
         // are independent path-triggered jobs with no ordering guarantee, so that race is real. Shed the
         // two optional columns and retry once: observability degrades instead of disappearing.
-        const missingColumn = (error as { code?: string }).code === "PGRST204" ||
-          /column .* does not exist/i.test(error.message ?? "");
-        if (missingColumn) {
+        // Trigger ONLY when the column the database NAMES is one of ours. Keying on the code alone
+        // misattributes any other missing column to the cache fields — it logs a false cause and
+        // spends the retry still carrying the offending field. Measured: a PGRST204 naming
+        // working_context_tenant_id produced two attempts and a log line blaming the cache columns.
+        const msg = error.message ?? "";
+        const missingCacheColumn = /cache_(read|creation)_input_tokens/.test(msg) &&
+          ((error as { code?: string }).code === "PGRST204" || /column .* does not exist/i.test(msg));
+        if (missingCacheColumn) {
           const withoutCache = { ...record } as Record<string, unknown>;
           delete withoutCache.cache_read_input_tokens;
           delete withoutCache.cache_creation_input_tokens;
-          console.error("paige_llm_trace: cache columns absent, retrying without them:", error.message);
+          // NOTE: the retry shares the original 5s abort budget rather than extending it — a slow
+          // first attempt leaves it little, and an already-fired signal sends it to the outer catch.
+          // That is the intended bound: a trace write must not lengthen to chase its own retry.
+          console.error("paige_llm_trace: cache columns absent, retrying without them:", msg);
           const retry = await admin.from("paige_llm_trace").insert(withoutCache).abortSignal(ctrl.signal);
           if (retry.error) console.error("paige_llm_trace: write failed after retry:", retry.error.message);
         } else {

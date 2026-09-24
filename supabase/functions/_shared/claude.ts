@@ -459,7 +459,11 @@ export async function chatCompletionCompat(body: OpenAIStyleBody, tierOverride?:
     // Cache counts ride ALONGSIDE the OpenAI-shaped pair and are never folded into prompt_tokens:
     // input_tokens is the uncached remainder, and meter_llm_usage bills tokens_in + tokens_out, so
     // widening prompt_tokens would change every tenant's metered quantity. Additive only — every
-    // consumer of this object reads named keys (model-router emit, gatewayCompat trace, eval scorers).
+    // consumer reads NAMED keys, so adding two cannot break one: model-router emit, gatewayCompat
+    // trace, eval scorers, and paige-context-router:316 — which reads `usage.total_tokens`, a field
+    // this compat object has NEVER emitted, so its token counter has always been zero. Named here
+    // because an inventory that omits a consumer is worth less than no inventory at all; the dead
+    // read is pre-existing and tracked separately, not introduced or fixed here.
     usage: result.usage
       ? {
           prompt_tokens: result.usage.input_tokens,
