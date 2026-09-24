@@ -166,6 +166,50 @@ checking whether anything routes to it. Corrected in the proposal's §2.
 
 ---
 
+### F-3 — This lane recorded "no browser" as the reason for eight owed proofs. That was wrong.
+
+**Correcting my own claim (§13), not reporting someone else's defect.** The D-8 evidence record
+(`docs/evidence/ui-delivery/solo-stop-false-figures-d8.md`) stated eight Solo viewport records and
+the whole rendered/interactive/keyboard/zoom class were UNVERIFIED because "this session has no
+browser-driving capability (no Playwright, Chrome MCP or in-app browser)". Probed rather than
+assumed on 2026-09-24, that is false. The record is corrected in place; the owed set is unchanged.
+
+What is actually true, in order:
+
+1. **Browser capability: PRESENT.** `chromium.launch()` returns OK. `node_modules/playwright` is
+   installed and `/opt/pw-browsers` carries chromium-1194. The repo's pinned Playwright expects
+   build 1234, so an `executablePath` override is required — `scripts/live-drive/live-drive.mjs`
+   `resolveExecutablePath()` already supplies exactly that, and resolves correctly here
+   (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome` exists).
+2. **Prod reachable by a system-CA-trusting client: YES.** `curl https://paigeagent.ai` → `200`.
+3. **Chromium → prod: FAILS `ERR_CERT_AUTHORITY_INVALID`.** The agent proxy CA is in the system
+   store (proxy status: `hasSystemCa: true`, `bundleCoversEveryHost: true`) but not in the browser
+   NSS store — `~/.pki/nssdb` held no CA and was created empty by Chromium on first launch; no
+   `certutil` is installed. **TLS verification was not disabled to work around this**, so this
+   remains unresolved rather than bypassed.
+4. **Credentials: UNSET.** `LIVE_DRIVE_EMAIL` and `LIVE_DRIVE_PASSWORD` are both absent. This is
+   the **binding** blocker: all eight owed records sit on auth-gated Solo routes, so fixing (3)
+   alone would still drive nothing. No credential was invented, and none may be.
+
+**Why this matters beyond accuracy:** "no browser" reads as *needs a different class of session*.
+The real remedy is **two environment variables** — a scoped test-tenant account, never owner PII —
+plus the browser-trust fix in (3). That is a request the coordinator or owner can actually grant,
+and it would let a session like this one discharge the whole owed set itself, which is what §32
+asks for.
+
+### F-4 — PARKED, not mine to fix: the live-drive README's reachability claim is stale here
+
+`scripts/live-drive/README.md:65-71` carries a standing claim that live prod was **not** reachable
+headless from this sandbox "even through the agent proxy (the proxy forwards tool/MCP hosts, not
+arbitrary web egress)". In this session that is not the case: proxy status reports
+`selective: false`, `toolScoped: false`, `bundleCoversEveryHost: true`, and curl to
+`https://paigeagent.ai` returns `200`. The claim was honest when written and is environment-
+dependent by its own admission — but left as-is it will keep telling capable sessions not to try.
+
+**Not fixed here.** It is another lane's file and outside this lane's scope under the park-and-route
+rule; the fix is also a judgement about that lane's standing guidance, not a defect in my own new
+code. Recorded so the next session that hits it does not re-derive the same probe.
+
 ## C. BLOCKED — and who owes it
 
 1. **Read-only database access.** Supabase MCP returns permission denied on `list_edge_functions`
@@ -178,6 +222,14 @@ checking whether anything routes to it. Corrected in the proposal's §2.
    new governed READ would mean growing `scripts/ci/capability-kit-bypass-baseline.json`.
    Coordinator ruling: the baseline stays shrink-only; the machinery belongs to the Platform Reach
    Lane. Phases 0–3 do not depend on it. **Phase 4 does.** *Platform Reach Lane's to resolve.*
+
+3. **Live-drive credentials for the auth-gated Solo routes.** `LIVE_DRIVE_EMAIL` and
+   `LIVE_DRIVE_PASSWORD` are unset, which is the binding blocker on all eight owed Solo viewport
+   records and the whole rendered/interactive/keyboard/zoom class (F-3). The browser itself is
+   present and prod answers; only the credentials and the browser-trust fix are missing. Needs a
+   **scoped test-tenant account — never owner PII, never a pasted value in any artifact, ticket,
+   log or PR** — supplied as server-side environment variables. *Owner's to resolve; it would let
+   this lane discharge its own §32 proof instead of owing it onward.*
 
 ## D. STANDING REQUIREMENT
 
