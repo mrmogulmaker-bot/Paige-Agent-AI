@@ -5077,7 +5077,9 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // tab still saves it), then auto-title a new thread and refresh the summary.
     // bundle_ref stores the queued/confirm cards so the UI reconstructs them on reload.
     const persistAssistantTurn = async (finalText: string, meta: { surfaces?: string[] | null; bundleRef?: unknown; model?: string }) => {
-      if (!payloadThreadId || !finalText || !finalText.trim()) return;
+      // A receipt-only interrupted turn has real cards but no spoken prose.
+      // The canonical turn RPC accepts empty content; never invent an answer.
+      if (!payloadThreadId || (!finalText?.trim() && !meta.bundleRef)) return;
       try {
         await supabaseClient.rpc("paige_chat_turn_append", {
           p_thread_id: payloadThreadId, p_role: "assistant", p_content: finalText,
@@ -13335,6 +13337,23 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // to echo it back for the approval to bind to this exact call rather than to a boolean.
       const confirmTrace: Array<{ tool: string; summary: string; fingerprint?: string }> = [];
       const crmResultTrace: Array<Record<string, unknown>> = [];
+      // One authorization-neutral projection for success AND interrupted Live
+      // history. Never persist the live CRM readback, locator or contact payload.
+      const assistantTurnMetadata = () => ({
+        surfaces: stepTrace.filter((s) => s.kind !== "thought").map((s) => s.group).filter((v, i, a) => v && a.indexOf(v) === i),
+        bundleRef: (queuedApprovals.length || confirmTrace.length || crmResultTrace.length)
+          ? {
+              approval_queued: queuedApprovals,
+              paige_confirm: confirmTrace,
+              paige_crm_result: crmResultTrace.map((result) => ({
+                action: result.action,
+                outcome: result.outcome,
+                receipt_recorded: result.receipt_recorded,
+                ...(typeof result.external_effect === "boolean" ? { external_effect: result.external_effect } : {}),
+              })),
+            }
+          : null,
+      });
       const convo: any[] = [...aiMessages];
       let currentResponse = response;
       let totalToolCalls = 0;
@@ -13848,26 +13867,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // the check holds.
           if (payloadThreadId && finalAssistantText.trim()) {
             try {
-              const p = persistAssistantTurn(finalAssistantText, {
-                // Surfaces reflect executed WORK — thoughts (narration) don't count.
-                surfaces: stepTrace.filter((s) => s.kind !== "thought").map((s) => s.group).filter((v, i, a) => v && a.indexOf(v) === i),
-                // A live result may contain contact PII. Durable thread history is coach-owned and
-                // can outlive a later reassignment, so persist only the authorization-neutral
-                // receipt projection. The live card keeps its readback and locator for the
-                // currently-authorized request; a reload never becomes a stale access path.
-                bundleRef: (queuedApprovals.length || confirmTrace.length || crmResultTrace.length)
-                  ? {
-                      approval_queued: queuedApprovals,
-                      paige_confirm: confirmTrace,
-                      paige_crm_result: crmResultTrace.map((result) => ({
-                        action: result.action,
-                        outcome: result.outcome,
-                        receipt_recorded: result.receipt_recorded,
-                        ...(typeof result.external_effect === "boolean" ? { external_effect: result.external_effect } : {}),
-                      })),
-                    }
-                  : null,
-              });
+              const p = persistAssistantTurn(finalAssistantText, assistantTurnMetadata());
               // @ts-ignore — EdgeRuntime is available in Supabase Edge Functions runtime
               if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p); else await p;
             } catch (e) { console.error("[paige] persist assistant turn failed:", (e as Error)?.message); }
@@ -13880,10 +13880,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
              // the signed-output wrapper cannot mint a success receipt.
              console.error("[paige] Live answer interrupted");
              discardContent();
-             if (!turnCarriesProtectedContent() && payloadThreadId && finalAssistantText.trim()
+             const interruptedMeta = assistantTurnMetadata();
+             if (!turnCarriesProtectedContent() && payloadThreadId && (finalAssistantText.trim() || interruptedMeta.bundleRef)
                && await revalidateTenantKnowledgeScope()) {
                try {
-                 await persistAssistantTurn(finalAssistantText, { surfaces: [], bundleRef: null });
+                 await persistAssistantTurn(finalAssistantText, interruptedMeta);
                } catch { console.error("[paige] partial Live answer persistence failed"); }
              }
              try {

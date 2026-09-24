@@ -91,6 +91,38 @@ describe("INT-104 Live final-answer streaming preserves the canonical tool gate"
     expect(await answer).toBe("First sentence. Next sentence.");
     if (protectedTurn) expect(emitted).toEqual([]);
   });
+  it.each(["First sentence.", ""])("keeps already-issued safe cards when Live fails with text=%j", async (text) => {
+    const caught = find((n) => ts.isCatchClause(n) && n.getText(source).includes('[paige] live reasoning stream failed:')) as ts.CatchClause;
+    const meta = { surfaces: ["client"], bundleRef: { approval_queued: [{ id: "approval" }], paige_confirm: [{ tool: "governed_write" }], paige_crm_result: [{ outcome: "success", receipt_recorded: true }] } };
+    const persisted: unknown[] = [];
+    const run = new Function("finalAssistantText", "assistantTurnMetadata", "persistAssistantTurn", "turnCarriesProtectedContent", "revalidateTenantKnowledgeScope", "console",
+      js(`return (async()=>{const liveRuntimeScope={},payloadThreadId='thread',enc=new TextEncoder(),controller={enqueue(){}},discardContent=()=>{};try{throw Error('fixture')}catch(e)${caught.block.getText(source)}})();`));
+    await run(text, () => meta, async (content: string, metadata: unknown) => persisted.push({ content, metadata }), () => false, async () => true, { error() {} });
+    expect(persisted).toEqual([{ content: text, metadata: meta }]);
+    for (const [protectedTurn, validScope] of [[true, true], [false, false]]) {
+      persisted.length = 0;
+      await run(text, () => meta, async (content: string) => persisted.push(content), () => protectedTurn, async () => validScope, { error() {} });
+      expect(persisted).toEqual([]);
+    }
+  });
+  it("writes a receipt-only assistant turn without inventing spoken text", async () => {
+    const writes: unknown[] = [];
+    const make = new Function("payloadThreadId", "supabaseClient", "maybeRefreshSummary", "console", js(`return ${initializer("persistAssistantTurn")};`));
+    const persist = make("thread", { rpc: async (_name: string, args: unknown) => { writes.push(args); }, from() { throw Error("no title in fixture"); } }, async () => {}, { error() {} });
+    const bundleRef = { paige_crm_result: [{ outcome: "success", receipt_recorded: true }] };
+    await persist("", { bundleRef });
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ p_content: "", p_bundle_ref: bundleRef });
+    await persist("", { bundleRef: null });
+    expect(writes).toHaveLength(1);
+  });
+  it("shares the success projection and drops CRM readback and locator from history", () => {
+    const make = new Function("stepTrace", "queuedApprovals", "confirmTrace", "crmResultTrace", js(`return ${initializer("assistantTurnMetadata")};`));
+    const result = { action: "crm_update", outcome: "success", receipt_recorded: true, external_effect: false, readback: { private: "fixture" }, record_locator: "private-fixture", contact_id: "private-fixture" };
+    const project = make([{ kind: "thought", group: "owner" }, { kind: "action", group: "client" }, { kind: "action", group: "client" }], [], [], [result]);
+    expect(project()).toEqual({ surfaces: ["client"], bundleRef: { approval_queued: [], paige_confirm: [], paige_crm_result: [{ action: "crm_update", outcome: "success", receipt_recorded: true, external_effect: false }] } });
+    expect(code).toContain("persistAssistantTurn(finalAssistantText, assistantTurnMetadata())");
+  });
   it.each([false, true].flatMap((protectedTurn) => ["reject", "eof", "error-frame", "enqueue-reject", "non-ok", "bodyless"].map((ending) => ({ protectedTurn, ending }))))("settles an interrupted Live stream without success or transcript loss, %j", async ({ protectedTurn, ending }) => {
     const branch = find((n) => ts.isIfStatement(n) && n.expression.getText(source) === "finalStreamResponse?.ok && finalStreamResponse.body") as ts.IfStatement;
     const body = branch.getText(source);
@@ -101,11 +133,11 @@ describe("INT-104 Live final-answer streaming preserves the canonical tool gate"
     const hasStream = !["non-ok", "bodyless"].includes(ending);
     const response = hasStream ? new Response(new ReadableStream<Uint8Array>({ start(c) { upstream = c; } }))
       : new Response(null, { status: ending === "non-ok" ? 503 : 200 });
-    const run = new Function("finalStreamResponse", "controller", "emitContent", "turnCarriesProtectedContent", "discardContent", "persistAssistantTurn", "revalidateTenantKnowledgeScope", "console",
+    const run = new Function("finalStreamResponse", "controller", "emitContent", "turnCarriesProtectedContent", "discardContent", "persistAssistantTurn", "revalidateTenantKnowledgeScope", "console", "assistantTurnMetadata",
       js(`return (async()=>{let finalAssistantText='';const liveRuntimeScope={},payloadThreadId='thread',enc=new TextEncoder();try{${body}}catch(e)${caught.block.getText(source)}})();`));
     const settled = run(response, { enqueue(c: Uint8Array) { emitted.push(c); } },
       ending === "enqueue-reject" ? () => { throw new Error("fixture-enqueue-rejected"); } : emit, () => protectedTurn,
-      () => { heldContent.length = 0; }, async (text: string) => { persisted.push(text); }, async () => true, { error() {} });
+      () => { heldContent.length = 0; }, async (text: string) => { persisted.push(text); }, async () => true, { error() {} }, () => ({ surfaces: [], bundleRef: null }));
     if (hasStream) {
       upstream.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"First sentence."}}]}\n\n'));
       await new Promise((r) => setTimeout(r, 0));
