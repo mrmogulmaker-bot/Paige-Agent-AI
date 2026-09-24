@@ -67,3 +67,14 @@ deno-ratchet-evidence/
 # record cites them and the repo keeps the script, not the binaries (house pattern).
 docs/evidence/ui-delivery/campaigns-overview/
 supabase/.temp/
+
+# Impeccable (npm `impeccable`, Apache-2.0) ships a ~16MB PLATFORM-SPECIFIC engine binary
+# per harness directory. Three harnesses are installed, so committing them would put ~48MB
+# of linux-x64-only executable into every clone forever — dead weight on macOS and Windows,
+# and a third-party binary in our history. The SKILL CONTENT (the markdown Impeccable exists
+# to teach from) IS versioned; only the engine is ignored.
+# Restore on any machine, and in CI before `impeccable detect`, with:
+#   npx impeccable@<version> install --yes --project
+.claude/skills/impeccable/scripts/bin/
+.agents/skills/impeccable/scripts/bin/
+.github/skills/impeccable/scripts/bin/
