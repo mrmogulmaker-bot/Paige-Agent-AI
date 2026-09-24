@@ -5974,7 +5974,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   required_facts: { type: "object", description: "Real scalar facts the draft must preserve exactly, such as client, candidate, scope, dates, compensation, packages, and prices. Never put placeholders here.", additionalProperties: { type: ["string", "number", "boolean"] } },
                   source_refs: { type: "array", maxItems: 40, description: "Optional tenant-scoped source identifiers already available to Paige. Identifiers only, never raw source bodies.", items: { type: "object", properties: { kind: { type: "string" }, id: { type: "string" }, label: { type: "string" } }, required: ["kind", "id"] } },
                   target_content_id: { type: "string", description: "Set to the on-canvas artifact's id (see CANVAS STATE) ONLY when the user is refining/revising the document already on the canvas — this updates that same document in place and keeps its version history. OMIT it to create a brand-new/additional document as a separate asset. Never pass an id for a genuinely new document." },
-                  export_format: { type: "string", enum: ["pdf", "docx", "pptx", "md"], description: "Optional requested downloadable format. The durable artifact is created first; export availability is reported separately and never changes whether the draft itself succeeded." }
+                  export_format: { type: "string", enum: ["pdf", "docx", "pptx", "md"], description: "Optional requested downloadable format. The durable artifact is created first; export availability is reported separately and never changes whether the draft itself succeeded. Markdown is the most reliable export format." }
                 },
                 required: ["doc_type", "title", "brief"]
               }
@@ -11459,16 +11459,48 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                     } else {
                       const accepted = Array.isArray(submitted) ? submitted[0] : submitted;
                       if (accepted?.work_id) {
-                        result = {
-                          success: true,
-                          accepted: true,
-                          work_id: accepted.work_id,
-                          work_status: accepted.work_status,
-                          resumed_existing: accepted.resumed_existing === true,
-                          note: accepted.resumed_existing
-                            ? "The existing document job was resumed. Do not submit it again; the completed artifact will appear in this conversation."
-                            : "Document authoring is underway. Do not claim the document is ready yet; the verified artifact will appear in this conversation when complete.",
-                        };
+                        const workStatus = String(accepted.work_status ?? "outcome_unknown");
+                        if (workStatus === "claimed") {
+                          result = {
+                            success: true,
+                            accepted: true,
+                            work_id: accepted.work_id,
+                            work_status: workStatus,
+                            resumed_existing: accepted.resumed_existing === true,
+                            note: accepted.resumed_existing
+                              ? "The active document job was safely re-awakened under the same work identity. Do not submit it again; the verified artifact will appear in this conversation when complete."
+                              : "Document authoring is underway. Do not claim the document is ready yet; the verified artifact will appear in this conversation when complete.",
+                          };
+                        } else if (workStatus === "succeeded") {
+                          result = {
+                            success: true,
+                            accepted: false,
+                            completed: true,
+                            work_id: accepted.work_id,
+                            work_status: workStatus,
+                            resumed_existing: false,
+                            note: "This document job already completed. Use the verified artifact already filed in this conversation; no new work was dispatched.",
+                          };
+                        } else {
+                          const needsReconciliation = workStatus === "outcome_unknown" || workStatus === "expired";
+                          result = {
+                            success: false,
+                            accepted: false,
+                            work_id: accepted.work_id,
+                            work_status: workStatus,
+                            resumed_existing: false,
+                            code: needsReconciliation
+                              ? "DURABLE_DOCUMENT_RECONCILIATION_REQUIRED"
+                              : workStatus === "blocked"
+                              ? "DURABLE_DOCUMENT_BLOCKED"
+                              : "DURABLE_DOCUMENT_TERMINAL",
+                            error: needsReconciliation
+                              ? "Paige cannot confirm this document job's outcome yet. It must be reconciled before any retry."
+                              : workStatus === "blocked"
+                              ? "This document job is blocked and was not restarted. Resolve the stated authority or version conflict before continuing under the same work identity."
+                              : `This document job is already ${workStatus} and was not restarted. Start a new document request only if you intend new work.`,
+                          };
+                        }
                       } else {
                         await recordDocumentSubmissionOutcome("DURABLE_DOCUMENT_WORK_ID_MISSING", "capability_outcome_unknown");
                         result = {

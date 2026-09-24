@@ -29,6 +29,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { callModel } from "../_shared/model-router.ts";
 import { recordCapabilityRun } from "../_shared/capability-record.ts";
+import { isAuthorizedInternalCaller } from "../_shared/systems-check-http.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -51,21 +52,6 @@ const json = (status: number, payload: Record<string, unknown>) =>
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return json(401, { error: "No authorization header" });
-    const authed = createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: authHeader } } });
-    const { data: { user }, error: uErr } = await authed.auth.getUser();
-    if (uErr || !user) return json(401, { error: "Unauthorized" });
-    const { data: roleRows } = await authed.from("user_roles").select("role").eq("user_id", user.id);
-    const roles = (roleRows || []).map((r: any) => r.role);
-    // NO coarse global-role gate here. `user_roles` is GLOBAL and tenant-agnostic, and a freshly-provisioned
-    // Solo owner holds ONLY the global `user` role — their authority is an active OWNER membership that
-    // `is_tenant_admin` recognizes (migration 20261180000000, the §59 "WRONGLY REFUSES" half). A coarse
-    // `admin|coach` global gate would 403 that owner before the tenant check even runs — they'd be unable to
-    // export their OWN document (§70). Authorization is decided ENTIRELY by the tenant-scoped check below
-    // (owner/admin via is_tenant_admin, coach via has_tenant_role) OR the platform-operator role — so a
-    // non-member/non-operator still fails there. The global roles are read ONLY to detect operators.
-
     const body = await req.json().catch(() => ({}));
     const format = String(body?.format ?? "").toLowerCase();
     const contentId = String(body?.content_id ?? "");
@@ -76,11 +62,43 @@ serve(async (req: Request) => {
       return json(400, { error: "A valid document content_id is required." });
     }
 
-    // A platform operator (super_admin/platform_admin, §53) can export ACROSS tenants. Derive that from
-    // the VERIFIED JWT's global roles (user_roles) — those two ARE platform-global tiers by design (§53),
-    // so reading them here is correct, not §59's global-role trap (that trap is about TENANT-level roles).
-    const isOperator = roles.some((r: string) => r === "super_admin" || r === "platform_admin");
     const service = createClient(supabaseUrl, supabaseServiceKey);
+    const internalCaller = await isAuthorizedInternalCaller(req, service);
+    let actorId = "";
+    let tenantId: string | null = null;
+    let isOperator = false;
+    let authed: any = null;
+
+    if (internalCaller) {
+      const workId = String(body?.work_id ?? "");
+      if (!UUID_RE.test(workId)) return json(400, { error: "A valid durable work_id is required." });
+      const { data: work, error: workError } = await service
+        .from("paige_durable_work")
+        .select("id, tenant_id, initiating_user_id, work_kind, status, terminal_outcome, request_payload")
+        .eq("id", workId)
+        .maybeSingle();
+      const terminalContentId = String((work?.terminal_outcome as Record<string, unknown> | null)?.content_id ?? "");
+      const requestedFormat = String((work?.request_payload as Record<string, unknown> | null)?.export_format ?? "").toLowerCase();
+      if (
+        workError || !work || work.work_kind !== "document_authoring" || work.status !== "succeeded" ||
+        terminalContentId !== contentId || requestedFormat !== format
+      ) return json(409, { error: "The durable document is not eligible for this export." });
+      actorId = String(work.initiating_user_id ?? "");
+      tenantId = String(work.tenant_id ?? "") || null;
+      if (!UUID_RE.test(actorId) || !tenantId) return json(409, { error: "The durable document identity is incomplete." });
+    } else {
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader) return json(401, { error: "No authorization header" });
+      authed = createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: authHeader } } });
+      const { data: { user }, error: uErr } = await authed.auth.getUser();
+      if (uErr || !user) return json(401, { error: "Unauthorized" });
+      actorId = user.id;
+      const { data: roleRows } = await authed.from("user_roles").select("role").eq("user_id", user.id);
+      const roles = (roleRows || []).map((r: any) => r.role);
+      // A platform operator can export across tenants; ordinary owners/coaches are checked against the
+      // document's resolved tenant below. Global roles are read only to detect platform operators.
+      isOperator = roles.some((r: string) => r === "super_admin" || r === "platform_admin");
+    }
 
     // §9/§59 — PRIVILEGED READ, then AUTHORIZE IN-BODY. `marketing_content` RLS admits only users holding a
     // GLOBAL admin/coach role in the active tenant (or is_platform_owner), so a caller-JWT read returns NULL
@@ -98,7 +116,11 @@ serve(async (req: Request) => {
       .maybeSingle();
     if (docErr) return json(500, { error: "Could not read that document." });
     if (!doc) return json(404, { error: "Document not found, or you don't have access to it." });
-    const tenantId = doc.tenant_id as string | null;
+    const documentTenantId = doc.tenant_id as string | null;
+    if (internalCaller && documentTenantId !== tenantId) {
+      return json(409, { error: "The durable document tenant does not match the artifact." });
+    }
+    tenantId = documentTenantId;
 
     // §9/§59 — AUTHORIZE FIRST, before ANY response that depends on the row's kind or tenant shape.
     // The service-role read above can see EVERY tenant's row, so a `kind !== "document"` 400 or a
@@ -120,11 +142,11 @@ serve(async (req: Request) => {
     // Operators (super_admin/platform_admin, §53) span tenants and skip this. (The RLS OR-branch is a
     // platform-wide §9/§59 gap reachable via raw PostgREST — its own follow-up (#1023); this gate closes
     // the export vector regardless.)
-    if (!isOperator) {
+    if (!internalCaller && !isOperator) {
       const { data: isAdmin } = await authed.rpc("is_tenant_admin", { _tenant: tenantId });
       let allowed = isAdmin === true;
       if (!allowed) {
-        const { data: isCoach } = await authed.rpc("has_tenant_role", { _user_id: user.id, _tenant_id: tenantId, _role: "coach" });
+        const { data: isCoach } = await authed.rpc("has_tenant_role", { _user_id: actorId, _tenant_id: tenantId, _role: "coach" });
         allowed = isCoach === true;
       }
       // Fail CLOSED as a 404 (not 403): the service-role read above can see any tenant's row, so a 403 here
@@ -161,9 +183,9 @@ serve(async (req: Request) => {
     // we skip the Rail row for operators rather than emit a spurious error (§5 finding; §13 — loud logs
     // for real faults only).
     const record = (outcome: Parameters<typeof recordCapabilityRun>[1]["outcome"]) =>
-      isOperator
+      isOperator || internalCaller
         ? Promise.resolve(false)
-        : recordCapabilityRun(service, { tenantId, actorId: user.id, capabilityKey: "document_export", outcome });
+        : recordCapabilityRun(service, { tenantId, actorId, capabilityKey: "document_export", outcome });
 
     let rendered: Awaited<ReturnType<typeof callModel>>;
     try {
@@ -171,7 +193,7 @@ serve(async (req: Request) => {
         "doc-render",
         "frontier",
         { format, title, content },
-        { tenantId, actorUserId: user.id, callerFunction: "export-document" },
+        { tenantId, actorUserId: actorId, callerFunction: "export-document" },
       );
     } catch (e) {
       // A pre-produce throw: nothing was rendered or persisted. Honest `failed` (§947 — writeAttempted

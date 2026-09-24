@@ -212,7 +212,10 @@ begin
     raise exception 'DURABLE_WORK_INTENT_REPLAY_MISMATCH' using errcode = '22023';
   end if;
 
-  if not _created.resumed_existing then
+  -- A replay of active work is also a wake-up. The worker's atomic dispatch gate makes duplicate
+  -- delivery harmless, while this closes the lost-first-wake path. Terminal/reconciliation states
+  -- are returned truthfully below and are never described as newly resumed work.
+  if not _created.resumed_existing or _created.work_status = 'claimed' then
     begin
       perform net.http_post(
         url := 'https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/paige-document-worker',
@@ -494,6 +497,91 @@ $$;
 revoke all on function public.complete_paige_document_work(uuid,text,text,text,jsonb,text,text,integer,integer)
   from public, anon, authenticated;
 grant execute on function public.complete_paige_document_work(uuid,text,text,text,jsonb,text,text,integer,integer)
+  to service_role;
+
+-- Optional export is a secondary outcome: the verified draft stays succeeded even when its requested
+-- file cannot be rendered. This seam attaches the export result to the already-persisted completion
+-- turn and records the document_export Rail receipt in the same transaction.
+create or replace function public.attach_paige_document_export(
+  _work_id uuid,
+  _server_idempotency_key text,
+  _format text,
+  _export_status text,
+  _download_url text default null,
+  _deliverable_id uuid default null
+)
+returns table (export_status text, download_url text)
+language plpgsql security definer set search_path = '' as $$
+declare
+  _work public.paige_durable_work%rowtype;
+  _turn public.paige_chat_turns%rowtype;
+  _content public.marketing_content%rowtype;
+  _artifact jsonb;
+  _outcome text;
+begin
+  select * into _work from public.paige_durable_work w where w.id = _work_id for update;
+  if not found or _work.idempotency_key is distinct from _server_idempotency_key
+     or _work.work_kind <> 'document_authoring' or _work.status <> 'succeeded' then
+    raise exception 'DURABLE_DOCUMENT_EXPORT_WORK_INVALID' using errcode = '55000';
+  end if;
+  if _format not in ('pdf','docx','pptx','md')
+     or (_work.request_payload->>'export_format') is distinct from _format
+     or _export_status not in ('succeeded','failed','outcome_unknown')
+     or (_export_status = 'succeeded' and nullif(btrim(_download_url), '') is null)
+     or (_export_status <> 'succeeded' and _download_url is not null) then
+    raise exception 'DURABLE_DOCUMENT_EXPORT_RESULT_INVALID' using errcode = '22023';
+  end if;
+
+  select * into _content from public.marketing_content m
+   where m.id = ((_work.terminal_outcome->>'content_id')::uuid)
+     and m.tenant_id = _work.tenant_id;
+  select * into _turn from public.paige_chat_turns t where t.work_id = _work.id for update;
+  if _content.id is null or _turn.id is null then
+    raise exception 'DURABLE_DOCUMENT_SUCCESS_READBACK_MISSING' using errcode = '55000';
+  end if;
+
+  _artifact := coalesce(_turn.bundle_ref->'paige_artifact'->0, '{}'::jsonb)
+    || jsonb_strip_nulls(jsonb_build_object(
+      'export_format', _format,
+      'export_status', _export_status,
+      'url', _download_url,
+      'deliverable_id', _deliverable_id
+    ));
+  update public.paige_chat_turns
+     set bundle_ref = jsonb_set(_turn.bundle_ref, '{paige_artifact,0}', _artifact, true),
+         content = case when _export_status = 'succeeded'
+           then 'Your document is ready: ' || _content.title || '. [Download the requested '
+                || upper(_format) || ' file](' || _download_url || ').'
+           when _export_status = 'outcome_unknown'
+           then 'Your document is ready: ' || _content.title
+                || '. The requested file export could not be confirmed; the in-app draft is safe to review.'
+           else 'Your document is ready: ' || _content.title
+                || '. The requested file could not be produced; the in-app draft is safe to review.' end
+   where id = _turn.id;
+
+  _outcome := case _export_status
+    when 'succeeded' then 'capability_succeeded'
+    when 'failed' then 'capability_failed'
+    else 'capability_outcome_unknown' end;
+  perform public.record_capability_run(
+    _work.tenant_id, _work.initiating_user_id, 'document_export',
+    _outcome, _work.id, null,
+    _work.id::text || ':export:' || _format, null, null,
+    jsonb_strip_nulls(jsonb_build_object(
+      'work_id', _work.id,
+      'content_id', _content.id,
+      'format', _format,
+      'export_status', _export_status,
+      'deliverable_id', _deliverable_id
+    ))
+  );
+
+  return query select _export_status, _download_url;
+end
+$$;
+revoke all on function public.attach_paige_document_export(uuid,text,text,text,text,uuid)
+  from public, anon, authenticated;
+grant execute on function public.attach_paige_document_export(uuid,text,text,text,text,uuid)
   to service_role;
 
 -- Only work whose provider dispatch never began is reclaimed automatically. A lost lease after

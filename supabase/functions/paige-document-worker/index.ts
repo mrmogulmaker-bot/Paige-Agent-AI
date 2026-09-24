@@ -30,7 +30,7 @@ async function settleFailure(
   status: "failed" | "outcome_unknown",
   errorCode: string,
   summary: string,
-): Promise<void> {
+): Promise<boolean> {
   const outcome = status === "failed" ? "capability_failed" : "capability_outcome_unknown";
   const { error } = await admin.rpc("transition_paige_durable_work", {
     _work_id: work.work_id,
@@ -43,7 +43,10 @@ async function settleFailure(
     _lease_seconds: 300,
     _reconciled: false,
   });
-  if (error) console.error("[paige-document-worker] settlement failed", { work_id: work.work_id, reason: error.message });
+  if (error) {
+    console.error("[paige-document-worker] settlement failed", { work_id: work.work_id, reason: error.message });
+    return false;
+  }
   await recordCapabilityRun(admin, {
     tenantId: work.tenant_id,
     actorId: work.initiating_user_id,
@@ -53,6 +56,52 @@ async function settleFailure(
     correlation: { jobAttemptId: `${work.work_id}:${work.attempt_count}` },
     detail: { work_id: work.work_id, error_code: errorCode },
   });
+  return true;
+}
+
+async function produceRequestedExport(
+  admin: SupabaseClient,
+  work: StartedWork,
+  format: "pdf" | "docx" | "pptx" | "md",
+  contentId: string,
+): Promise<{ export_status: "succeeded" | "failed" | "outcome_unknown"; download_url?: string }> {
+  let exportStatus: "succeeded" | "failed" | "outcome_unknown" = "outcome_unknown";
+  let downloadUrl: string | null = null;
+  let deliverableId: string | null = null;
+  try {
+    const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/export-document`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ work_id: work.work_id, content_id: contentId, format }),
+    });
+    const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+    if (response.ok && payload.success === true && typeof payload.download_url === "string" && payload.download_url) {
+      exportStatus = "succeeded";
+      downloadUrl = payload.download_url;
+      deliverableId = typeof payload.deliverable_id === "string" ? payload.deliverable_id : null;
+    } else {
+      exportStatus = payload.status === "unknown" ? "outcome_unknown" : "failed";
+    }
+  } catch (error) {
+    console.error("[paige-document-worker] export response lost", { work_id: work.work_id, reason: rpcMessage(error) });
+  }
+
+  const { error: attachError } = await admin.rpc("attach_paige_document_export", {
+    _work_id: work.work_id,
+    _server_idempotency_key: work.server_idempotency_key,
+    _format: format,
+    _export_status: exportStatus,
+    _download_url: downloadUrl,
+    _deliverable_id: deliverableId,
+  });
+  if (attachError) {
+    console.error("[paige-document-worker] export attachment failed", { work_id: work.work_id, reason: attachError.message });
+    return { export_status: "outcome_unknown" };
+  }
+  return { export_status: exportStatus, ...(downloadUrl ? { download_url: downloadUrl } : {}) };
 }
 
 async function runOne(admin: SupabaseClient, workId: string): Promise<Record<string, unknown>> {
@@ -115,7 +164,17 @@ async function runOne(admin: SupabaseClient, workId: string): Promise<Record<str
     if (row?.work_status !== "succeeded" || !row.content_id) {
       throw new Error("DURABLE_DOCUMENT_SUCCESS_READBACK_MISSING");
     }
-    return { ok: true, work_id: workId, status: "succeeded", content_id: row?.content_id, verified_readback: true };
+    const exportResult = checked.value.export_format
+      ? await produceRequestedExport(admin, work, checked.value.export_format, row.content_id)
+      : null;
+    return {
+      ok: true,
+      work_id: workId,
+      status: "succeeded",
+      content_id: row.content_id,
+      verified_readback: true,
+      ...(exportResult ?? {}),
+    };
   } catch (error) {
     const message = rpcMessage(error);
     const deterministic = message.startsWith("DOCUMENT_OUTPUT_")

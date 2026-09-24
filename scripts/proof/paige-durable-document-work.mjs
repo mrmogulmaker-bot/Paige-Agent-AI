@@ -228,7 +228,7 @@ try {
     select count(*)::text || '|' || (select count(*) from net.proof_wakeups)::text
       from public.paige_durable_work where intent_id='${intentId}';
   `);
-  assert.equal(identityProof.stdout, "1|1", identityProof.stdout);
+  assert.equal(identityProof.stdout, "1|2", identityProof.stdout);
 
   const startedWork = await psql(`
     set role service_role;
@@ -257,11 +257,26 @@ try {
       );
   `);
   assert.equal(firstLineContaining(completed.stdout, workId), `${workId}|1|succeeded`);
+  const terminalReplay = await psql(submitSql(intentId));
+  assert.equal(firstLineContaining(terminalReplay.stdout, workId), `${workId}|succeeded|true`);
+  const terminalWakeProof = await psql(`select count(*)::text from net.proof_wakeups;`);
+  assert.equal(terminalWakeProof.stdout, "2", terminalWakeProof.stdout);
+  const attachedExport = await psql(`
+    set role service_role;
+    select export_status || '|' || download_url
+      from public.attach_paige_document_export(
+        '${workId}','${serverKey}','docx','succeeded',
+        'https://downloads.tests.invalid/durable-document.docx','${randomUUID()}'
+      );
+  `);
+  assert.equal(attachedExport.stdout, "succeeded|https://downloads.tests.invalid/durable-document.docx", attachedExport.stdout);
   const persisted = await psql(`
     reset role;
     select w.status || '|' || (w.terminal_outcome->>'verified_readback') || '|'
       || m.status || '|' || m.document_revision::text || '|'
       || (t.bundle_ref->'paige_artifact'->0->>'id') || '|'
+      || (t.bundle_ref->'paige_artifact'->0->>'export_status') || '|'
+      || (t.bundle_ref->'paige_artifact'->0->>'url') || '|'
       || (select count(*) from public.proof_capability_runs r where r.run_id=w.id)::text || '|'
       || (select count(*) from public.audit_logs a where a.data->>'work_id'=w.id::text)::text
     from public.paige_durable_work w
@@ -269,7 +284,7 @@ try {
     join public.paige_chat_turns t on t.work_id=w.id
     where w.id='${workId}';
   `);
-  assert.equal(persisted.stdout, `succeeded|true|draft|1|${workId}|1|1`, persisted.stdout);
+  assert.equal(persisted.stdout, `succeeded|true|draft|1|${workId}|succeeded|https://downloads.tests.invalid/durable-document.docx|2|1`, persisted.stdout);
 
   const revisionIntent = randomUUID();
   const revisionBrief = JSON.stringify({
@@ -366,7 +381,7 @@ try {
   `);
   assert.equal(receiptRollback.stdout, "claimed|0|0", receiptRollback.stdout);
 
-  console.log("PASS: Phase 2 migration applied on PostgreSQL 16; invalid/cross-tenant submissions failed closed, intent replay dispatched once, duplicate worker dispatch failed closed, verified artifact/readback/turn/receipt committed atomically (including receipt-failure rollback), revision conflicts and authority changes stayed blocked, missed wake-up resumed, and post-dispatch expiry became outcome_unknown.");
+  console.log("PASS: Phase 2 migration applied on PostgreSQL 16; invalid/cross-tenant submissions failed closed, active intent replay safely re-awakened while terminal replay dispatched nothing, duplicate worker dispatch failed closed, verified artifact/readback/turn/receipt committed atomically, requested export attached with its own receipt, receipt failure rolled back, revision conflicts and authority changes stayed blocked, missed wake-up resumed, and post-dispatch expiry became outcome_unknown.");
 } finally {
   if (started) {
     await command(executable("pg_ctl"), ["-D", cluster, "-m", "immediate", "-w", "stop"], "", true);

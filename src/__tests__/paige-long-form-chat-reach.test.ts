@@ -5,6 +5,7 @@ import { getSpineCapability, PAIGE_SPINE_CAPABILITIES, validateSpineRegistry } f
 const chat = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
 const dashboard = readFileSync("src/components/dashboard/PaigeAIChat.tsx", "utf8");
 const studio = readFileSync("src/components/admin/studio/StudioChat.tsx", "utf8");
+const worker = readFileSync("supabase/functions/paige-document-worker/index.ts", "utf8");
 
 describe("durable long-form Chat reach", () => {
   it("registers the outcome honestly without claiming the unavailable approval vocabulary", () => {
@@ -36,6 +37,17 @@ describe("durable long-form Chat reach", () => {
     expect(handler).toContain("recordDocumentSubmissionOutcome(validatedBrief.code");
     expect(handler).toContain("classifyDocumentSubmissionError(submitError)");
     expect(handler).toContain("recordCapabilityRun(supabase");
+    expect(handler).toContain('if (workStatus === "claimed")');
+    expect(handler).toContain('} else if (workStatus === "succeeded")');
+    expect(handler).toContain('"DURABLE_DOCUMENT_RECONCILIATION_REQUIRED"');
+    expect(handler).toContain('"DURABLE_DOCUMENT_BLOCKED"');
+  });
+
+  it("never files a failure receipt when durable settlement did not commit", () => {
+    const settle = worker.slice(worker.indexOf("async function settleFailure"), worker.indexOf("async function produceRequestedExport"));
+    expect(settle).toContain('if (error) {');
+    expect(settle).toContain('return false;');
+    expect(settle.indexOf("return false;")).toBeLessThan(settle.indexOf("await recordCapabilityRun"));
   });
 
   it("carries one stable intent identity through both primary document surfaces", () => {
