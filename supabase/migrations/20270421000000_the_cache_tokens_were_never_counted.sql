@@ -38,9 +38,11 @@
 --   conflating them is how an unwired seam gets read as a working one.
 --
 -- SCOPE HONESTY (§13) — what this migration does NOT establish:
---   `cache_control` is set in exactly ONE place (_shared/claude.ts:485, inside buildClaudeRequest),
---   and that builder has exactly one caller: the `stream === true` branch of gatewayCompat
---   (claude.ts:699). Every non-streaming Anthropic call — routedChatCompletion, claudeText, the five
+--   `cache_control` is set in exactly ONE place — inside `buildClaudeRequest` in _shared/claude.ts —
+--   and that builder has exactly one caller: the `stream === true` branch of `gatewayCompat`.
+--   (Symbolic references on purpose: line numbers here drifted the moment the writer commit added
+--   lines above them, so they are named by symbol and verifiable by grep instead.)
+--   Every non-streaming Anthropic call — routedChatCompletion, claudeText, the five
 --   growth/content retry sites, ~30 gatewayCompat non-stream callers — runs UNCACHED today. So a
 --   zero or NULL on those paths after this ships is a TRUE reading, not a wiring bug. Making the
 --   non-streaming path cache is a separate, deliberate change.
@@ -67,3 +69,25 @@ COMMENT ON COLUMN public.paige_llm_trace.cache_read_input_tokens IS
 
 COMMENT ON COLUMN public.paige_llm_trace.cache_creation_input_tokens IS
   'Additive: prompt tokens WRITTEN to the provider cache on this call (Anthropic usage.cache_creation_input_tokens). Billed by Anthropic at a premium over base input (1.25x at the 5-minute TTL), against cache reads at roughly 0.1x — which is why the two are counted separately rather than summed. NOT included in tokens_in, for the same metered-quantity reason as cache_read_input_tokens. NULL = not reported; 0 = reported zero.';
+
+-- ─────────────────────────────────────────────────────────────────────────────────────────────────
+-- CORRECTION (2026-09-24, from the §39 peer-gate on the pushed diff). Appended, not overwritten, so
+-- the record of what was believed at authoring time survives alongside what is now true.
+--
+-- 1. THE ORDERING BLOCK ABOVE DESCRIBES A HAZARD THAT NO LONGER EXISTS AS WRITTEN. It says
+--    traceLLMCall "inserts its record whole and swallows the error", so an unknown column would
+--    silently destroy every trace row on every path. That was exactly true of the code this header
+--    was written against, and it is what motivated shipping the schema as its own commit. The very
+--    next commit on this branch changed it: _shared/llm-trace.ts now destructures the insert result,
+--    logs a rejection (supabase-js RESOLVES a PostgREST error rather than throwing, so nothing was
+--    logged before), and on PGRST204 — or a "column ... does not exist" message — sheds the two
+--    optional cache columns and retries once. A writer that reaches production ahead of this
+--    migration therefore DEGRADES to the previous trace shape instead of losing every row.
+--
+-- 2. CONSEQUENTLY "schema ships alone and first" IS NOT WHAT THIS BRANCH DELIVERS, and claiming it
+--    would be false. Both commits sit on one branch; merging it fires deploy-migrations.yml and
+--    deploy-edge-functions.yml in parallel, with no ordering guarantee between them. The accepted
+--    mitigation is the shed-and-retry in (1), not sequencing. Migration-first remains the SAFER
+--    order and is still worth taking where a merger controls it — but nothing structural enforces
+--    it, and this header should not imply otherwise.
+-- ─────────────────────────────────────────────────────────────────────────────────────────────────

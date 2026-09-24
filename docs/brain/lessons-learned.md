@@ -2899,3 +2899,31 @@ commented on twice, but it is a dedup issue 29 comments deep, so a new failure l
 Same root as the entries above it: I explained from a plausible model instead of measuring the thing
 itself. The difference here is that the unmeasured part was not a detail in my account — it was the
 severity.
+
+## The trace's token counts exclude cached tokens, and the tenant-facing figure inherits it
+
+**2026-09-24.** Anthropic's `usage.input_tokens` is the **uncached remainder**, not the prompt size.
+True prompt = `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`. Until
+`20270421000000` nothing in the repo read either cache field, so every token-volume figure derived
+from `paige_llm_trace` was an UNDERCOUNT on any cached turn.
+
+That is not confined to an internal table. `meter_llm_usage` writes
+`quantity = tokens_in + tokens_out` into `platform_usage_events` (`20261033000000:112,126`), and
+`src/solo/billing-contract.ts:611,636` renders that as the tenant-facing **"Used this period — N
+tokens"**. So a tenant on a heavily-cached workload is shown less usage than they actually drove.
+
+**Why this is deliberate and must stay deliberate.** Cache counts were given their own columns rather
+than folded into `tokens_in` precisely because that sum is the metered quantity. Widening `tokens_in`
+would have changed every tenant's metered number as a side effect of an observability fix — a pricing
+change nobody decided (§38/§17). The exclusion is a known, chosen position, not an oversight.
+
+**What makes it safe today and what changes that.** Nothing is charged for this usage — the card says
+so in its own copy. The undercount is therefore a truthfulness gap, not a billing harm. **It becomes a
+billing harm the moment metered usage is charged**, and whoever turns that on owns this decision:
+either cache tokens enter the billable quantity, or the tenant-facing label stops implying it counts
+everything.
+
+**The rule:** before reading any token or cost total off `paige_llm_trace` or
+`platform_usage_events`, ask whether cached tokens belong in the answer. For "what did this cost us"
+they do. For "what is the tenant metered at" they currently, deliberately, do not — and those two
+numbers are not the same number.
