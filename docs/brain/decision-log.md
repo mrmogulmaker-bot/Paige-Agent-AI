@@ -5754,3 +5754,72 @@ db reset + `psql -v ON_ERROR_STOP=1`). Deno type-check of `mcp-oauth-callback` a
 Harness/agent-access (INT-083) honestly NOT wired — `oauth_begin` is JWT-only (a service-role Paige caller
 gets `is_current_user_tenant_admin`=false → forbidden); NO service-role bypass was built. That gap is the
 capability-kit deadlock, assigned to the Bug lane as platform health — deliberately not worked around.
+
+---
+
+## 2026-09-24 — Anthropic prompt-cache usage is captured; the trace sink no longer swallows refusals
+
+**Commits** `6f30b40cf` (schema) and `29d1038dc` (writer), branch `claude/relaxed-cori-q9pt7f`.
+Migration `20270421000000_the_cache_tokens_were_never_counted.sql`.
+
+**What prompted it.** Asked whether Paige's spend was better served by a different routing vendor,
+the measurement said no. Across 1,228 traces / $29.22, `chat` + `chat-tool-loop` are 843 calls and
+$25.43 — 87% — at an average **52,278 input tokens against 460 out**. Input beats output ~100:1, so
+prompt caching is the lever, not the provider. Anthropic carries 1,067 of 1,228 calls; Featherless
+158 (flat subscription, `model` null); Groq has a route-table cell with zero traffic; `openaiChat`
+has no caller at all (`openaiImage`/`openaiSpeech` are live). The multi-provider property in §34 is
+real in the route table and unexercised in production.
+
+**The correction that made this more than a cost question.** Anthropic's `input_tokens` is the
+**uncached remainder**. True prompt size is `input_tokens + cache_creation_input_tokens +
+cache_read_input_tokens`. The trace was therefore UNDERCOUNTING prompt volume on every cached turn,
+not merely omitting a discount. Repo-wide grep for either cache field returned zero hits before this.
+
+**Where the fields were being lost.** Not in the response — `claude.ts:308` returns `usage: data?.usage`
+verbatim, so they arrived on every call. Two things dropped them: `ClaudeResult.usage` declared only
+two fields (type-level erasure), and `chatCompletionCompat` re-shaped usage to `{prompt_tokens,
+completion_tokens}` — two keys copied out of an object that had four. Everything downstream inherited
+that loss. Now carried at every usage-bearing site: raw non-stream trace, the compat object, the
+streamed turn (`message_start`, using `?? previous` so an absent field cannot erase a reported one),
+`gatewayCompat`, and both router paths via a widened `ProviderCallResult`.
+
+**Separate defect found while wiring it.** `traceLLMCall` never checked its own insert result.
+supabase-js **resolves** a PostgREST rejection into `{ error }` rather than throwing, so the existing
+catch only ever saw network and abort faults — a row the database refused was silent, without even a
+`console.error`. Now logged; a missing-column rejection sheds the two optional columns and retries
+once, sharing the original 5s abort budget rather than extending it. Without that, a writer deploying
+ahead of its migration returns PGRST204 and costs EVERY trace row on EVERY path — and
+`deploy-migrations.yml` / `deploy-edge-functions.yml` are independent path-triggered jobs with no
+ordering guarantee, so the race is real. Schema therefore shipped as its own commit.
+
+**Deliberately NOT done, and why.** Cache tokens are recorded but NOT priced, and NOT folded into
+`tokens_in`. `meter_llm_usage` writes `quantity = tokens_in + tokens_out` (`20261033000000:112,126`),
+so widening `tokens_in` would silently change every tenant's metered quantity — a pricing change
+dressed as an observability fix (§38/§17). `COST_BASIS` and `estimateTokenCostUsd` are untouched,
+verified by grepping the commit range, which is why the four UI sentences claiming figures "exclude
+caching" (`PaigeContributionSection.tsx:137,297,336`, `usePaigeContribution.ts:71`) remain TRUE. They
+become a §13 exposure the day someone prices cached tokens.
+
+**Scope honesty.** `cache_control` is set in exactly one place (`claude.ts:485`, inside
+`buildClaudeRequest`) and that builder has exactly one caller — the `stream === true` branch of
+`gatewayCompat`. Every non-streaming Anthropic call runs UNCACHED today. A null or zero on those paths
+is a true reading, not a wiring bug.
+
+**Open, flagged not acted on.** The price table may overstate: `claude-sonnet-5` carried at $3/$15 per
+MTok against a $2/$10 reference, opus at $15/$75 against $5/$25. If real, that overstatement is larger
+than the caching correction — but `CLAUDE_REASONING = claude-sonnet-5` and repricing moves a shipped
+§33 cost cap, so it is an owner decision, not a lane's.
+
+**Proof.** BEGIN/ALTER/ROLLBACK on prod created both columns as `integer`; the post-rollback readback
+showed 0 and 0 with the table intact at 30 columns. CI on `29d1038dc`: **Deno ratchet across the 39
+affected edge functions — success** (the gate that could not run locally, no deno binary), plus the
+real-deno contract tests and the typecheck ratchet. Local: tsc 0, `lint:migration-versions` 1082,
+`lint:definer-fns`, `lint:tier-features`, `lint:tool-catalogue` 9/9, `token-pricing` 20/20 with no
+pairing moved. `scripts/token-pricing/trace-wiring.mjs` could NOT be run here — it fails identically
+on clean `origin/main` with `ERR_UNSUPPORTED_ESM_URL_SCHEME`, confirmed in a detached worktree; owed
+to CI. Persisted-apply confirmation owed post-merge per §32.
+
+**Version note (§1425).** `20270421000000`, not `20270420000000` — open PR #1437 already claims that
+version, and `lint:migration-versions` passes both branches because it compares only to `origin/main`.
+Same blind spot that wedged prod that morning, found again four hours later by a manual sweep of open
+PRs. Four of 30+ PRs were checked, so the sweep is not proof of uniqueness, only of diligence.
