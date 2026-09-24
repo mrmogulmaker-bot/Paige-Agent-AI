@@ -348,10 +348,22 @@ Both buffered and streaming requests include `enable_logging=false`; the account
 eligibility for Zero Retention Mode remains unverified, so this is not provider proof or
 activation. The active OpenAI read-aloud profile is unchanged.
 
+**2026-09-24 admission correction (INT-104, migration `20270420000000`):** Live admission was an
+identity predicate — a singleton readiness row pinning the speaker to one stored user id who also
+had to hold `super_admin` — so no other Solo account could reach Live at all. It is now a
+platform-owned, service-role-only allowlist (`public.paige_live_pilot_subjects`, RLS on, no
+anon/authenticated policy, missing row refuses) with per-subject acceptance and an `expires_at`
+lifetime. **NAMES only, no values, and nothing was activated:** the allowlist ships empty, the
+ElevenLabs provider gate is unchanged and still shut, `ELEVENLABS_API_KEY` was neither read nor
+tested by this change, verified zero retention remains `UNAVAILABLE`, and physical speaker identity
+is still unenforced (#1417). Both database function signatures were preserved, so **no edge function
+was redeployed** — `paige-live-session`, `paige-live-relay`, `paige-ai-chat` and
+`paige-voice-profile-admin` are byte-for-byte unchanged.
+
 | System | Voice resolution | Current state |
 |---|---|---|
 | Paige message playback | `paige-tts` → service-only profile resolver → provider-neutral router | Deployed; authenticated runtime proof owed |
-| Paige Live Conversation | immutable profile revision in `paige_live_sessions`; provider transport disabled | UI/control plane deployed on `f8eb2362`; realtime audio `PROOF OWED`; authenticated owner E2E `UNVERIFIED` |
+| Paige Live Conversation | immutable profile revision in `paige_live_sessions`; provider transport disabled | UI/control plane deployed on `f8eb2362`; admission is platform-owned rollout **configuration** (`paige_live_pilot_subjects`), not an identity predicate, and that allowlist ships EMPTY — no account admitted; realtime audio `PROOF OWED`; authenticated owner E2E `UNVERIFIED` |
 | Studio voiceover | request-selected provider voice removed; model-router fails closed | `UNAVAILABLE` until this lane uses the same Paige Voice Profile/readiness resolver |
 | Hosted ElevenLabs agent | none | `UNAVAILABLE` and intentionally outside Paige ownership |
 
