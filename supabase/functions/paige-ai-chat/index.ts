@@ -881,7 +881,7 @@ serve(async (req) => {
         .eq("id", scope.sessionId).eq("tenant_id", scope.tenantId).eq("actor_user_id", user.id)
         .eq("thread_id", scope.threadId).eq("context_epoch", scope.epoch)
         .eq("provider_session_ref", `runtime:${await liveRuntimeDigest(validatedData.liveRuntimeChallenge)}`)
-        .eq("availability", "LIVE").in("state", ["listening", "thinking", "speaking", "interrupted"])
+        .eq("availability", "LIVE").in("state", ["listening", "thinking", "speaking", "interrupted", "held"])
         .select("id").maybeSingle();
       if (claimError || !claimed) return refuseLive();
       const { data: history, error: historyError } = await supabaseClient.from("paige_chat_turns")

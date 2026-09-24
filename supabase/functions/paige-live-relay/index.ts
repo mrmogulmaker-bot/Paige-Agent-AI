@@ -70,7 +70,54 @@ Deno.serve(async (req) => {
     return true;
   };
 
-  const checkCurrentAdmission = async (): Promise<Response | null> => {
+  const readProviderAdmission = async () => {
+  // Read back the one corrected Jessica candidate. Active read-aloud stays on
+  // OpenAI; neither a browser value nor a tenant preference selects a voice.
+  const { data: voice, error: voiceError } = await admin.from("paige_voice_profiles")
+    .select("provider,provider_voice_ref,revision,active,approved,status,provider_verification_id,provider_verification_receipt_ref,approved_at")
+    .eq("slot", "candidate").maybeSingle();
+  const voiceReady = !voiceError && voice?.provider === "elevenlabs" &&
+    voice.provider_voice_ref === APPROVED_PAIGE_ELEVENLABS_VOICE_ID &&
+    voice.revision === "elevenlabs-jessica-take5-r1" && voice.active === false &&
+    voice.approved === true && voice.status === "approved" && !!voice.approved_at &&
+    !!voice.provider_verification_id && !!voice.provider_verification_receipt_ref;
+  const { data: readiness, error: readinessError } = await admin.from("paige_voice_readiness")
+    .select("key_scope_verified,voice_authorized,retention_policy_approved,zero_retention_confirmed,provider_verification_id,account_verification_receipt_ref,account_verified_at")
+    .eq("singleton", true).maybeSingle();
+  const { data: verification, error: verificationError } = voice?.provider_verification_id
+    ? await admin.from("paige_voice_provider_verifications")
+      .select("provider,provider_voice_ref,evidence_ref,key_scope_verified,voice_authorized,retention_policy_approved,zero_retention_confirmed")
+      .eq("id", voice.provider_verification_id).maybeSingle()
+    : { data: null, error: null };
+  // Pilot rollout is not provider/privacy approval. Reuse the canonical proof
+  // records; never infer entitlement or retention from a present API key. No
+  // legacy quota/rate/ceiling fields participate: costs belong to the Budget lane.
+  const privacyReady = !readinessError && !verificationError &&
+    readiness?.provider_verification_id === voice?.provider_verification_id &&
+    !!readiness?.account_verification_receipt_ref && !!readiness?.account_verified_at &&
+    verification?.provider === "elevenlabs" &&
+    verification?.provider_voice_ref === APPROVED_PAIGE_ELEVENLABS_VOICE_ID &&
+    verification?.evidence_ref === voice?.provider_verification_receipt_ref &&
+    verification?.evidence_ref === readiness?.account_verification_receipt_ref &&
+    [readiness, verification].every((row) => row?.key_scope_verified === true &&
+      row.voice_authorized === true && row.retention_policy_approved === true && row.zero_retention_confirmed === true);
+  const modelReady = resolveElevenLabsModel() !== null;
+  // Account-level Deepgram training opt-out is an operational fact, not
+  // inferred from the per-request flag. This server-side switch stays OFF
+  // until the owner has checked the account setting; no tenant can set it.
+  const mipAccountVerified = envKey("DEEPGRAM_MIP_ACCOUNT_VERIFIED") === "true";
+  const runtimeSigningKey = envKey("PAIGE_LIVE_STREAM_SIGNING_KEY") ?? "";
+  const unavailableCode = !voiceReady ? "approved_voice_unavailable"
+    : !privacyReady ? "audio_privacy_not_verified"
+    : !modelReady || !envKey("ELEVENLABS_API_KEY") ? "mouth_not_configured"
+    : !envKey("DEEPGRAM_API_KEY") ? "ears_not_configured"
+    : !mipAccountVerified ? "audio_privacy_not_verified"
+    : runtimeSigningKey.length < 32 ? "runtime_not_configured"
+    : null;
+    return { voice, runtimeSigningKey, unavailableCode };
+  };
+
+  const checkCurrentAdmission = async (recheckProvider = true): Promise<Response | null> => {
   // The platform's canonical transport switch is independent of tenant pilot
   // rollout and provider proof. Re-read it on the existing admission monitor,
   // so disabling live audio also stops an already-connected relay.
@@ -177,52 +224,23 @@ Deno.serve(async (req) => {
     if (!await markUnavailable("live_audio_not_enabled")) return new Response("relay_unavailable", { status: 503 });
     return new Response("live_audio_not_enabled", { status: 403 });
   }
+  // Provider approval is revocable just like workspace authority. Reuse the
+  // same canonical proof on every monitor decision and before further speech.
+  if (recheckProvider) {
+    const { unavailableCode: providerFailure } = await readProviderAdmission();
+    if (providerFailure) {
+      if (!await markUnavailable(providerFailure)) return new Response("relay_unavailable", { status: 503 });
+      return new Response(providerFailure, { status: 403 });
+    }
+  }
   return null;
   };
-  const admissionFailure = await checkCurrentAdmission();
+  // Initial identity/standing checks still precede upgrade. A provider refusal
+  // uses the structured unavailable socket below (browser WS cannot read a
+  // failed handshake body). Recurring checks always include provider approval.
+  const admissionFailure = await checkCurrentAdmission(false);
   if (admissionFailure) return admissionFailure;
-  // Read back the one corrected Jessica candidate. Active read-aloud stays on
-  // OpenAI; neither a browser value nor a tenant preference selects a voice.
-  const { data: voice, error: voiceError } = await admin.from("paige_voice_profiles")
-    .select("provider,provider_voice_ref,revision,active,approved,status,provider_verification_id,provider_verification_receipt_ref,approved_at")
-    .eq("slot", "candidate").maybeSingle();
-  const voiceReady = !voiceError && voice?.provider === "elevenlabs" &&
-    voice.provider_voice_ref === APPROVED_PAIGE_ELEVENLABS_VOICE_ID &&
-    voice.revision === "elevenlabs-jessica-take5-r1" && voice.active === false &&
-    voice.approved === true && voice.status === "approved" && !!voice.approved_at &&
-    !!voice.provider_verification_id && !!voice.provider_verification_receipt_ref;
-  const { data: readiness, error: readinessError } = await admin.from("paige_voice_readiness")
-    .select("key_scope_verified,voice_authorized,retention_policy_approved,zero_retention_confirmed,provider_verification_id,account_verification_receipt_ref,account_verified_at")
-    .eq("singleton", true).maybeSingle();
-  const { data: verification, error: verificationError } = voice?.provider_verification_id
-    ? await admin.from("paige_voice_provider_verifications")
-      .select("provider,provider_voice_ref,evidence_ref,key_scope_verified,voice_authorized,retention_policy_approved,zero_retention_confirmed")
-      .eq("id", voice.provider_verification_id).maybeSingle()
-    : { data: null, error: null };
-  // Pilot rollout is not provider/privacy approval. Reuse the canonical proof
-  // records; never infer entitlement or retention from a present API key. No
-  // legacy quota/rate/ceiling fields participate: costs belong to the Budget lane.
-  const privacyReady = !readinessError && !verificationError &&
-    readiness?.provider_verification_id === voice?.provider_verification_id &&
-    !!readiness?.account_verification_receipt_ref && !!readiness?.account_verified_at &&
-    verification?.provider === "elevenlabs" &&
-    verification?.provider_voice_ref === APPROVED_PAIGE_ELEVENLABS_VOICE_ID &&
-    verification?.evidence_ref === voice?.provider_verification_receipt_ref &&
-    [readiness, verification].every((row) => row?.key_scope_verified === true &&
-      row.voice_authorized === true && row.retention_policy_approved === true && row.zero_retention_confirmed === true);
-  const modelReady = resolveElevenLabsModel() !== null;
-  // Account-level Deepgram training opt-out is an operational fact, not
-  // inferred from the per-request flag. This server-side switch stays OFF
-  // until the owner has checked the account setting; no tenant can set it.
-  const mipAccountVerified = envKey("DEEPGRAM_MIP_ACCOUNT_VERIFIED") === "true";
-  const runtimeSigningKey = envKey("PAIGE_LIVE_STREAM_SIGNING_KEY") ?? "";
-  const unavailableCode = !voiceReady ? "approved_voice_unavailable"
-    : !privacyReady ? "audio_privacy_not_verified"
-    : !modelReady || !envKey("ELEVENLABS_API_KEY") ? "mouth_not_configured"
-    : !envKey("DEEPGRAM_API_KEY") ? "ears_not_configured"
-    : !mipAccountVerified ? "audio_privacy_not_verified"
-    : runtimeSigningKey.length < 32 ? "runtime_not_configured"
-    : null;
+  const { voice, runtimeSigningKey, unavailableCode } = await readProviderAdmission();
   if (unavailableCode) {
     if (!await markUnavailable(unavailableCode)) return new Response("relay_unavailable", { status: 503 });
     const { socket, response } = Deno.upgradeWebSocket(req);
@@ -286,7 +304,7 @@ Deno.serve(async (req) => {
     },
     openEars: (events) => openFluxEars(events),
     async openMouth(text, signal) {
-      if (!await admission.check()) throw new Error("live_admission_changed");
+      if (!await admission.check(true)) throw new Error("live_admission_changed");
       const response = await elevenlabsSpeechStream({
         text, voiceId: APPROVED_PAIGE_ELEVENLABS_VOICE_ID,
         modelId: resolveElevenLabsModel() ?? "",
@@ -310,7 +328,7 @@ Deno.serve(async (req) => {
           .update({ provider_session_ref: `runtime:${await liveRuntimeDigest(challenge.token)}` })
           .eq("id", session.id).eq("tenant_id", session.tenant_id)
           .eq("actor_user_id", session.actor_user_id).eq("context_epoch", session.context_epoch)
-          .eq("availability", "LIVE").in("state", ["listening", "thinking", "speaking", "interrupted"])
+          .eq("availability", "LIVE").in("state", ["listening", "thinking", "speaking", "interrupted", "held"])
           .select("id").maybeSingle();
         if (error || !data) throw new Error("live_runtime_admission_changed");
         return challenge;
