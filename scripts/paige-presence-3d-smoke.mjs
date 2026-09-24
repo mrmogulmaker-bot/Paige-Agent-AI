@@ -80,6 +80,25 @@ try {
   bad(`normalize threw: ${error?.message ?? error}`);
 }
 
+// DRIFT GUARD. Everything above exercises three.js against the real asset, but with values COPIED
+// from the component — so "framed to 2.400 units" and "the halo builds" would stay green while the
+// component changed to anything at all. A `keep in sync` comment is the manual step §24 exists to
+// end, so the numbers are read back out of the source and compared. This is not a substitute for
+// importing the component (a .tsx module cannot be loaded by plain node on CI's Node 20); it is
+// what makes the copy falsifiable.
+const source = fs.readFileSync("src/components/paige/live/PaigePresenceScene.tsx", "utf8");
+const expectations = [
+  [/useGLTF\.preload\("([^"]+)"\)/, MODEL.replace(/^public/, ""), "the model this smoke parses is the one the scene preloads"],
+  [/normalize\(cloned,\s*([\d.]+)\)/, "2.4", "the framing height this smoke asserts is the one the scene uses"],
+  [/torusGeometry args=\{\[([^\]]+)\]\}/, "1.05, 0.012, 8, 96", "the halo args this smoke builds are the ones the scene renders"],
+];
+for (const [pattern, expected, label] of expectations) {
+  const found = source.match(pattern)?.[1]?.trim();
+  if (found === undefined) bad(`${label} — could not find it in PaigePresenceScene.tsx`);
+  else if (found !== expected) bad(`${label} — the scene says ${found}, this smoke asserts ${expected}`);
+  else ok(label);
+}
+
 // The torus the halo uses must build; a bad segment count is a silent throw inside the boundary.
 try {
   const halo = new THREE.TorusGeometry(1.05, 0.012, 8, 96);

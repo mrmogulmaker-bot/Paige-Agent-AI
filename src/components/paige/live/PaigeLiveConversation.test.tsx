@@ -651,7 +651,53 @@ describe("Paige Live Conversation owner surface", () => {
       const notice = document.querySelector(".plc-notice");
       expect(notice?.textContent).toContain("UNAVAILABLE");
       expect(notice?.textContent).toContain("Nothing was recorded, sent, or saved");
-      expect(getUserMedia).not.toHaveBeenCalled();
+      // The old assertion here was `expect(getUserMedia).not.toHaveBeenCalled()`, which could never
+      // fail: nothing in src/ calls getUserMedia outside tests, and the relay is mocked, so this
+      // suite could not observe a microphone request even if one happened. What IS observable, and
+      // is the thing that matters, is that no relay connection was opened and the terms are still
+      // being offered rather than replaced by a claim of success.
+      expect(relay.connect).not.toHaveBeenCalled();
+      expect(document.querySelector(".plc-terms")).not.toBeNull();
+    });
+
+    it("a thrown failure says so instead of silently doing nothing", async () => {
+      // The reachable case is ordinary: acceptPaigeLiveTerms dynamically imports the Supabase
+      // client, and a hashed chunk goes stale the moment a deploy lands under an open tab. Before
+      // this was caught, the button flipped back from "Turning on Live…" with no message at all —
+      // a press that does nothing and says nothing, which is the exact failure this control exists
+      // to remove.
+      control.start.mockResolvedValue(refusedForTerms);
+      control.acceptTerms.mockRejectedValue(new Error("Failed to fetch dynamically imported module"));
+      await render();
+      clickText("Talk live with Paige");
+      await flush();
+      await act(async () => { clickText("I understand"); });
+      await flush();
+      const notice = document.querySelector(".plc-notice");
+      expect(notice?.textContent).toContain("could not turn Live on");
+      expect(notice?.textContent).toContain("Nothing was recorded, sent, or saved");
+      expect(relay.connect).not.toHaveBeenCalled();
+      // And the control is usable again rather than stuck mid-flight.
+      const button = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("I understand"));
+      expect(button?.disabled).toBe(false);
+    });
+
+    it("a later, different failure does not leave the audio-consent panel standing", async () => {
+      // `reason` is set on every refusal and was cleared in one place, so after the first
+      // "not open yet" it survived retries — and any later failure (a dropped socket, an expired
+      // session) still rendered the retention consent panel underneath it, inviting someone to
+      // accept provider retention in order to fix a network error.
+      control.start.mockResolvedValueOnce(refusedForTerms);
+      await render();
+      clickText("Talk live with Paige");
+      await flush();
+      expect(document.querySelector(".plc-terms")).not.toBeNull();
+      control.start.mockRejectedValue(new Error("network"));
+      await act(async () => { clickText("Retry setup check"); });
+      await flush();
+      const notice = document.querySelector(".plc-notice");
+      expect(notice?.textContent).toContain("could not verify live audio availability");
+      expect(document.querySelector(".plc-terms")).toBeNull();
     });
 
     it("the terms are not offered for a refusal the person cannot act on", async () => {

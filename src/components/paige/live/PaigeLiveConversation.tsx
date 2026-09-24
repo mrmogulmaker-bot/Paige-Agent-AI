@@ -302,6 +302,9 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
           stopPlayback.current();
           stopRelay();
           setState("unavailable");
+          // A reconnect failure is not something a person accepts their way out of, so the audio
+          // consent panel must not be left standing under it from an earlier refusal.
+          setReason(null);
           setAvailability("UNAVAILABLE");
           setExplanation("Paige could not reconnect live audio. You can continue in chat.");
           setAnnouncement("Live audio unavailable. Paige could not reconnect live audio. You can continue in chat.");
@@ -325,6 +328,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
       sessionIdRef.current = result.sessionId;
       setSessionId(result.sessionId);
       if (result.ok && result.sessionId && result.ticket) {
+        setReason(null);
         connectResult(result, generation);
         return;
       }
@@ -335,6 +339,8 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
       setAnnouncement(`${result.availability}. ${result.explanation}`);
     } catch (error) {
       if (!mounted.current || generation !== requestGeneration.current) return;
+      // Not a refusal anyone can accept their way out of, so the consent panel must not appear.
+      setReason(null);
       setAvailability("UNAVAILABLE");
       setState("unavailable");
       setExplanation(error instanceof Error && error.message === "session_expired"
@@ -348,6 +354,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
       stopPlayback.current();
       stopRelay();
       setState("unavailable");
+      setReason(null);
       setAvailability("UNAVAILABLE");
       setExplanation(result.explanation);
       setAnnouncement(`UNAVAILABLE. ${result.explanation}`);
@@ -399,16 +406,19 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
         } else if (next.kind === "permission-denied") {
           relayReadyRef.current = false;
           setState("permission-denied");
+          setReason(null);
           setAvailability("UNAVAILABLE");
           setExplanation("Microphone access is off. Allow it in your browser settings, then try again.");
         } else if (next.kind === "disconnected") {
           relayReadyRef.current = false;
           setState("reconnecting");
+          setReason(null);
           setAvailability("UNAVAILABLE");
           setExplanation("The live connection ended. Try again or continue in chat.");
         } else {
           relayReadyRef.current = false;
           setState("unavailable");
+          setReason(null);
           setAvailability("UNAVAILABLE");
           setExplanation(next.message);
         }
@@ -421,6 +431,12 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
 
   const retry = async () => {
     if (disabled) return;
+    // Clear the last refusal BEFORE re-asking. It is written on every refusal and was cleared in
+    // only one place, so after the first "not open yet" it stayed set through retries and reopens —
+    // and any LATER, different failure (a dropped socket, an expired session) would still render
+    // the audio-retention consent panel underneath it, inviting someone to accept provider
+    // retention in order to fix a network error. begin() sets it again if the answer is unchanged.
+    setReason(null);
     transitionCurrent("end");
     sessionIdRef.current = null;
     sessionScopeRef.current = null;
@@ -453,6 +469,15 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
       }
       setReason(null);
       await retry();
+    } catch {
+      // A press that does nothing and says nothing is the failure this whole control exists to
+      // remove, so it cannot be the way this control itself fails. The reachable case is ordinary:
+      // acceptPaigeLiveTerms dynamically imports the Supabase client, and a hashed chunk goes stale
+      // the moment a deploy lands under an open tab — which, shipping straight to main, is the
+      // common case rather than the exotic one.
+      if (!mounted.current) return;
+      setExplanation("Paige could not turn Live on just now. Nothing was recorded, sent, or saved. Reload the page and try again, or keep working in this conversation.");
+      setAnnouncement("Paige could not turn Live on. Nothing was recorded or sent.");
     } finally {
       if (mounted.current) setAcceptingTerms(false);
     }
@@ -542,9 +567,17 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
           <p id="plc-description" className="plc-context">Working in this exact Paige thread. Nothing here creates a second assistant or a separate memory.</p>
           <div className="plc-working" aria-live="polite"><span>Paige is working on</span><strong>{working ? (workingLabel || "your current request") : "No active work"}</strong></div>
           {(state !== "checking" && availability !== "LIVE") && (
-            <div className="plc-notice" role="status">
-              <strong>{availability}</strong>
-              <p>{explanation}</p>
+            <div className="plc-notice">
+              {/* Only the availability line is a live region. It used to wrap the whole notice,
+                  which was fine when that was a heading, a sentence and one static button — but the
+                  terms added ~90 words and a button whose label changes on press, and any mutation
+                  inside a live region re-announces the WHOLE region. Pressing "I understand" would
+                  have re-read the availability, the explanation, both bullets and both buttons, on
+                  top of the separate polite announcement this same action already makes. */}
+              <div role="status">
+                <strong>{availability}</strong>
+                <p>{explanation}</p>
+              </div>
               {reason === "live_audio_not_enabled" && (
                 <div className="plc-terms">
                   {/* Said plainly, before anyone speaks, because it is true and because a person

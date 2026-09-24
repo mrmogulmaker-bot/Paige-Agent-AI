@@ -11,7 +11,14 @@
 .plc-stage__header-actions svg,.plc-controls svg,.plc-card__actions svg { width: .95rem; height: .95rem; }
 .plc-stage__main { min-height: 0; overflow: auto; display: grid; grid-template-columns: minmax(0,1.2fr) minmax(0,.8fr); gap: clamp(1rem,2.5vw,2.5rem); padding: clamp(.9rem,1.8vw,1.5rem); }
 .plc-presence { min-width: 0; display: grid; grid-template-columns: minmax(0,.8fr) minmax(0,1.2fr); align-content: center; align-items: start; justify-items: center; column-gap: .75rem; text-align: center; }
-.plc-presence > .paige-presence,.plc-state,.plc-context { grid-column: 1 / -1; }
+/* BOTH presences span the full column. The 3D wrapper has its own class, so when it replaced the
+   flat one as the mounted component it stopped matching this rule and was auto-placed into the
+   narrow .8fr track — rendering Paige at ~61% of her size and off-axis from the "Listening" label
+   directly beneath her, which still spans 1/-1. Worse, the no-WebGL path returns the bare flat
+   presence and DID match, so a device without WebGL got the correct design and a device with it got
+   the broken one. Nothing could catch this: jsdom computes no layout and the headless smoke never
+   mounts React. Named here so the next person who swaps the component knows this rule exists. */
+.plc-presence > .paige-presence,.plc-presence > .paige-presence-3d,.plc-state,.plc-context { grid-column: 1 / -1; }
 .plc-presence > .plc-working,.plc-presence > .plc-notice { width: 100%; margin-top: .8rem; }
 .plc-state { margin-top: 1rem; display: flex; align-items: center; gap: .5rem; font-weight: 650; }
 .plc-state span { width: .55rem; height: .55rem; border-radius: 50%; background: hsl(var(--muted-foreground)); }
