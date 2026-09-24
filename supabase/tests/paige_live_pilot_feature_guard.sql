@@ -1,7 +1,7 @@
 -- INT-104: the normal tenant-admin role cannot self-enable third-party audio.
 -- Synthetic fixture only. Every write rolls back.
 BEGIN;
-SELECT plan(39);
+SELECT plan(54);
 
 SELECT ok((SELECT relrowsecurity FROM pg_class WHERE oid='public.paige_live_tenant_availability'::regclass),'platform availability has RLS');
 SELECT ok(NOT has_table_privilege('authenticated','public.paige_live_tenant_availability','SELECT'),'tenant roles cannot read pilot holder rows');
@@ -20,6 +20,9 @@ INSERT INTO public.tenants(id,slug,name,status,account_type,account_number_prefi
 VALUES ('fa100000-0000-4000-8000-000000002222','live-pilot-other-test','Live Pilot Other Test','active','standalone','LPO',9381012,'{}','{}','fa100000-0000-4000-8000-000000000002');
 INSERT INTO public.tenant_members(tenant_id,user_id,role,status,is_owner,joined_at)
 VALUES ('fa100000-0000-4000-8000-000000001111','fa100000-0000-4000-8000-000000000001','admin','active',false,now());
+-- Preserve legacy same-actor authorization coverage with a real active membership.
+INSERT INTO public.tenant_members(tenant_id,user_id,role,status,is_owner,joined_at)
+VALUES ('fa100000-0000-4000-8000-000000001111','fa100000-0000-4000-8000-000000000002','member','active',false,now());
 
 SELECT is((SELECT count(*)::integer FROM public.paige_live_tenant_availability WHERE tenant_id='fa100000-0000-4000-8000-000000001111'),0,'new workspace is off without a platform row');
 
@@ -150,6 +153,74 @@ SELECT lives_ok($q$SELECT public.set_paige_live_pilot_internal(
 SELECT is(public.paige_live_pilot_authorized_internal(
   'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111'),false,
   'revocation takes effect immediately');
+
+SELECT ok(NOT has_function_privilege('authenticated',
+  'public.set_paige_live_pilot_internal(uuid,uuid,boolean,text,uuid,uuid)','EXECUTE'),
+  'tenant roles cannot call the separate-participant writer');
+SELECT throws_ok($q$SELECT public.set_paige_live_pilot_internal(
+  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111',true,
+  'test-owner-default-retention-acceptance','fa100000-0000-4000-8000-000000000099',
+  'fa100000-0000-4000-8000-000000000001')$q$,'42501',NULL,
+  'participant cannot serve as the platform authorizer');
+SELECT throws_ok($q$SELECT public.set_paige_live_pilot_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000002222',true,
+  'test-owner-default-retention-acceptance','fa100000-0000-4000-8000-000000000099',
+  'fa100000-0000-4000-8000-000000000001')$q$,'22023',NULL,
+  'participant cannot be authorized for a workspace they do not belong to');
+SELECT throws_ok($q$SELECT public.set_paige_live_pilot_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111',true,
+  'test-owner-default-retention-acceptance','fa100000-0000-4000-8000-000000000099',
+  NULL)$q$,'22023',NULL,'null participant cannot be authorized');
+SELECT lives_ok($q$SELECT public.set_paige_live_pilot_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111',true,
+  'test-owner-default-retention-acceptance','fa100000-0000-4000-8000-000000000099',
+  'fa100000-0000-4000-8000-000000000001')$q$,
+  'platform authorizer enables a distinct ordinary Solo participant');
+SELECT ok((SELECT pilot_actor_user_id <> pilot_authorized_by
+  FROM public.paige_voice_readiness WHERE singleton),'authorizer and participant remain separate');
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),true,
+  'ordinary Solo participant passes without platform privileges');
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111'),false,
+  'authorizing operator does not inherit participant access');
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000002222'),false,
+  'authorized participant remains blocked in another workspace');
+RESET ROLE;
+DELETE FROM public.tenant_members WHERE user_id='fa100000-0000-4000-8000-000000000001'
+  AND tenant_id='fa100000-0000-4000-8000-000000001111';
+SET LOCAL ROLE service_role;
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),false,
+  'membership removal immediately blocks the canonical admission predicate');
+SELECT throws_ok($q$SELECT public.set_paige_live_pilot_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111',true,
+  'test-owner-default-retention-acceptance','fa100000-0000-4000-8000-000000000099',
+  'fa100000-0000-4000-8000-000000000001')$q$,'22023',NULL,
+  'removed membership cannot be reauthorized');
+RESET ROLE;
+INSERT INTO public.tenant_members(tenant_id,user_id,role,status,is_owner,joined_at)
+VALUES ('fa100000-0000-4000-8000-000000001111','fa100000-0000-4000-8000-000000000001','member','active',false,now());
+SET LOCAL ROLE service_role;
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),true,
+  'active ordinary member is eligible without an owner or admin role');
+RESET ROLE;
+DELETE FROM public.user_roles WHERE user_id='fa100000-0000-4000-8000-000000000002' AND role='super_admin';
+SET LOCAL ROLE service_role;
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),false,
+  'authorizer authority revocation still fails closed');
+RESET ROLE;
+INSERT INTO public.user_roles(user_id,role) VALUES ('fa100000-0000-4000-8000-000000000002','super_admin');
+SET LOCAL ROLE service_role;
+SELECT lives_ok($q$SELECT public.set_paige_live_pilot_internal(
+  'fa100000-0000-4000-8000-000000000002',NULL,false,NULL,NULL)$q$,
+  'legacy disable revokes a separately authorized participant');
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),false,
+  'disable denies the Solo participant immediately');
 
 SELECT * FROM finish();
 ROLLBACK;

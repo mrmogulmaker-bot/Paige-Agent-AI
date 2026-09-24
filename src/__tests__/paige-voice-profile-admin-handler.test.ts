@@ -29,7 +29,7 @@ describe("Voice Profile inspection request boundary", () => {
   });
   function ownerSetup(options: { profile?: unknown; profileError?: unknown; auditError?: unknown; outcomeError?: unknown;
     user?: { id: string } | null; owner?: unknown; ownerError?: unknown; tenant?: unknown; tenantError?: unknown;
-    rpcError?: unknown; auditId?: string } = {}) {
+    rpcError?: unknown; auditId?: string; membership?: unknown; membershipError?: unknown } = {}) {
     const caller = { auth: { getUser: vi.fn().mockResolvedValue({ data: { user: options.user === undefined ? { id: "owner-id" } : options.user }, error: null }) },
       rpc: vi.fn(async (name: string) => {
         if (name === "is_platform_owner") return { data: options.owner === undefined ? true : options.owner, error: options.ownerError };
@@ -40,11 +40,14 @@ describe("Voice Profile inspection request boundary", () => {
     const profileQuery = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: profile, error: options.profileError }) };
     const auditQuery = { insert: vi.fn().mockReturnThis(), select: vi.fn().mockReturnThis(), single: vi.fn().mockResolvedValue({ data: options.auditError ? null : { id: options.auditId ?? "audit-id" }, error: options.auditError }),
       update: vi.fn().mockReturnThis(), eq: vi.fn().mockResolvedValue({ error: options.outcomeError }) };
-    const admin = { from: vi.fn((table: string) => table === "paige_voice_profiles" ? profileQuery : auditQuery), rpc: vi.fn().mockResolvedValue({ data: null, error: options.rpcError }) };
+    const membershipQuery = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: options.membership === undefined
+        ? { user_id: "test-solo-user", tenant_id: "test-solo-tenant" } : options.membership, error: options.membershipError }) };
+    const admin = { from: vi.fn((table: string) => table === "paige_voice_profiles" ? profileQuery : table === "tenant_members" ? membershipQuery : auditQuery), rpc: vi.fn().mockResolvedValue({ data: null, error: options.rpcError }) };
     mocks.createClient.mockReturnValueOnce(caller).mockReturnValueOnce(admin);
     mocks.envKey.mockReturnValue("test-secret-never-output");
     mocks.inspect.mockResolvedValue({ code: "metadata_only", voice: { accessible: true, referenceMatches: true }, subscription: { transport: "ok", tier: "creator" } });
-    return { caller, admin, auditQuery };
+    return { caller, admin, auditQuery, membershipQuery };
   }
   it("rejects missing authentication before resolving any key or client", async () => {
     const response = await mocks.handler!(request({ action: "inspect-configured-account" }, false));
@@ -106,6 +109,34 @@ describe("Voice Profile inspection request boundary", () => {
 
   const authorize = { action: "authorize-live-pilot", accept_default_provider_retention: true,
     accept_procedural_single_speaker: true, evidence_ref: "fa100000-0000-4000-8000-000000000123" };
+  const participantMembership = "fa100000-0000-4000-8000-000000000321";
+  it("authorizes a separate Solo participant without using the operator's workspace", async () => {
+    const { caller, admin, membershipQuery } = ownerSetup({ tenant: null });
+    const response = await mocks.handler!(request({ ...authorize, participant_membership_id: participantMembership }));
+    expect(response.status).toBe(200);
+    expect(membershipQuery.eq).toHaveBeenCalledWith("id", participantMembership);
+    expect(membershipQuery.eq).toHaveBeenCalledWith("status", "active");
+    expect(caller.rpc).not.toHaveBeenCalledWith("current_user_tenant_id");
+    expect(admin.rpc).toHaveBeenCalledExactlyOnceWith("set_paige_live_pilot_internal", {
+      _actor_user_id: "owner-id", _participant_user_id: "test-solo-user", _tenant_id: "test-solo-tenant", _enabled: true,
+      _evidence_ref: authorize.evidence_ref, _inspection_id: "audit-id",
+    });
+  });
+  it.each([{ membership: null }, { membershipError: { code: "fixture" } }])("refuses unresolved membership before provider contact: %j", async (options) => {
+    const { admin } = ownerSetup(options);
+    const response = await mocks.handler!(request({ ...authorize, participant_membership_id: participantMembership }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "participant_unavailable", audio_enabled: false });
+    expect(mocks.inspect).not.toHaveBeenCalled();
+    expect(admin.rpc).not.toHaveBeenCalled();
+  });
+  it("does not let a Solo user self-authorize by supplying a membership", async () => {
+    const { admin } = ownerSetup({ owner: false });
+    const response = await mocks.handler!(request({ ...authorize, participant_membership_id: participantMembership }));
+    expect(response.status).toBe(403);
+    expect(admin.from).not.toHaveBeenCalled();
+    expect(mocks.inspect).not.toHaveBeenCalled();
+  });
   it("lets the authenticated platform owner revoke even with no selected workspace", async () => {
     const { caller, admin } = ownerSetup({ tenant: null });
     const response = await mocks.handler!(request({ action: "disable-live-pilot" }));
