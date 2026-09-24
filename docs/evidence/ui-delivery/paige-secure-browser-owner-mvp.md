@@ -65,3 +65,18 @@ The owner states a business purpose and public HTTPS target, reviews the fixed r
 ## Review and limitations
 
 The initial CI UI-evidence failure correctly detected that the owner-visible code lacked this record. Later database-contract failures exposed and drove repairs to migration ordering, recursive sensitive-value validation, and the negative tenant-link assertion. The exact implementation head is now green and independently reviewed; this evidence-only follow-up preserves missing rendered/authenticated proof as `UNVERIFIED`. Shared-chat mounting and its rendered matrix must wait for PR #1044 to merge or relinquish ownership. Provider work remains gated by the seven independently documented vendor gates.
+
+
+> **CORRECTION, 2026-09-24.** That repair did not hold, and the sentence above is kept as the record of what was
+> done rather than rewritten. Moving to `20270106000000` escaped the #1047 collision and walked into a new one:
+> `20270106000000_durable_job_weekly_summary_claims.sql` landed on `main` on 2026-09-10, three days after this
+> renumber, so by the time PR #1046 merged the version was taken. `schema_migrations` is keyed on the version
+> alone, so **this migration was silently skipped** — MEASURED on production: one row at `20270106000000`, and it
+> belongs to the durable-job migration, whose index exists, while `secure_browser_sessions`,
+> `secure_browser_tenant_limits` and `_secure_browser_safe_text` do not. The control plane merged and its schema
+> never arrived.
+>
+> Moved forward-only to `20270419000000`. Renumbering it is safe precisely because it never applied; the rule
+> against renumbering a migration is about applied ones. This is the class filed as #1425 — a branch whose
+> version was free against `main` when it was chosen and taken by the time it merged, which no lint catches,
+> because each branch only ever compares itself to trunk.
