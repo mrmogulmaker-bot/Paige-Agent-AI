@@ -63,7 +63,8 @@ describe("Paige Chat canonical CRM adoption", () => {
     expect(chat).toContain("paige_crm_result");
     expect(chat).toContain("crmResultTrace");
     expect(chat).toContain("paige_crm_result: crmResultTrace.map");
-    const persistedCrmProjection = chat.slice(chat.indexOf("paige_crm_result: crmResultTrace.map"), chat.indexOf("@ts-ignore", chat.indexOf("paige_crm_result: crmResultTrace.map")));
+    // Success and interrupted Live now share this one projection, before convo.
+    const persistedCrmProjection = chat.slice(chat.indexOf("paige_crm_result: crmResultTrace.map"), chat.indexOf("const convo:", chat.indexOf("paige_crm_result: crmResultTrace.map")));
     expect(persistedCrmProjection).not.toContain("readback:");
     expect(persistedCrmProjection).not.toContain("record_locator:");
     expect(chat).toContain("receipt_recorded: parsed.receipt_recorded === true");
