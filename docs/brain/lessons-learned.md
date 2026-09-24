@@ -2760,3 +2760,32 @@ tell is a finding phrased as a property of a *route table* rather than of a *dat
 
 Recorded as [#1409](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/1409), which files the
 accurate, downgraded version and withdraws the overstatement rather than quietly restating it.
+
+## Do not measure a file an agent is still writing, then report it as your commit's state
+
+**2026-09-24, PR #1394.** I grepped `scripts/ci/tool-catalogue-lint.mjs` while a crew agent was
+mid-write, saw `await import("./tool-catalogue-lint.selftest.mjs")` at :217, confirmed that file did
+not exist, and concluded the self-test could not run. That was TRUE at the instant I measured it.
+
+By the time I ran `git add -A`, the agent had rewritten the file: `selfTest()` is now INLINE at :226
+and there is no external import. The self-test works and its negative fixtures bite. But my commit
+message on `1ffef5dd1` states the opposite as fact, and I repeated it to the owner.
+
+The same race produced a second defect in the same stretch. `git status` showed two changed paths, so
+I described the commit as two files. Between that check and the `git add -A`, the agent wrote two
+more — including a 524-line new lint. `1ffef5dd1` shipped four files. Then `32ed90b10`, whose message
+describes only an ACL correction, swept in 30 lines of `.github/workflows/ci.yml` and 3 of
+`package.json` that I never read before pushing. Four new CI steps entered the pipeline on a commit
+message about something else.
+
+**The rule:** a working tree with a live agent in it is not a snapshot. Either the agents write to a
+worktree of their own (`isolation: "worktree"`), or they return their work as data and the integrator
+applies it — which is what I asked for and then undercut by handing them a toolset with write access.
+`git add -A` against a moving tree is not staging; it is a gamble on timing.
+
+**And the narrower one:** never describe a commit from a `git status` taken before the work finished.
+Read `git show --stat` of what you actually committed, after committing, before writing the message
+into a report. The diff is the only account of a commit that cannot be stale.
+
+This is the same failure as the `20270412000000` citations and the receipt-ACL claim, in a third
+costume: acting on a stale read of something that moved underneath.
