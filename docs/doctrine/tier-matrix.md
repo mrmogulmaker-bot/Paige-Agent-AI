@@ -341,6 +341,36 @@ class of lie as a fabricated metric (§13).
 
 Legend: **✓** live · **—** not built · **N/A** tier not opened yet · **403** denied at the route gate.
 
+### Live Conversation — admission is rollout configuration, not identity (INT-104, 2026-09-24)
+
+**§66, same commit as the ship.** Live Conversation is one shared capability. Any account whose
+authenticated actor resolves canonical standing in its own workspace and owns the thread is
+*eligible* by construction — the admission predicate no longer pins the product to one stored user
+id who also had to hold `super_admin`. Separately, and deliberately not collapsed into the same row,
+*who may actually speak today* is an operational allowlist that ships empty.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon | Deploy state |
+|---|---|---|---|---|---|---|---|---|
+| Live Conversation — product eligibility (own tenant, role, thread, memory) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 | migration `20270419000000`, no edge change |
+| Live Conversation — admitted to the rollout today | — | — | — | — | — | — | 403 | allowlist ships EMPTY; no account admitted |
+
+**The two rows say different things on purpose.** One ✓ per tier that conflated "every Solo account
+is eligible" with "who may speak today" would re-commit in this ledger exactly the conflation the
+migration just removed from the database. Eligibility is the product; admission is configuration.
+
+**No `getTierFeatureSet` flag** — the `TierFeature` union carries no `live_conversation` key, and
+`getTierFeatureSet` is frontend-only and not server-importable. Availability is the edge caller's
+canonical standing (`current_user_tenant_id()` / `hasLiveWorkspaceStanding`) plus the platform-owned
+rollout configuration, both server-side.
+
+**What is NOT live, stated plainly.** The provider gate is shut. ElevenLabs retention is unresolved
+and verified zero retention remains `UNAVAILABLE`. Physical speaker identity is not enforced (#1417).
+Nobody has been admitted, so the second row is `—` for every tier, and broadening the product did
+not broaden the audience.
+
+**§61 default: no exception.** Eligibility follows the standing distribution; no owner ruling was
+sought for it. The empty admission row is a rollout state, not a tier decision.
+
 ### Agreements engine — PAIGE-native e-signature (INT-163, PR #1352, 2026-09-22)
 
 PAIGE's own signing lifecycle: a tenant sends a document to one of their own clients, that person
