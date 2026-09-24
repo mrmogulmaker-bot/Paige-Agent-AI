@@ -68,13 +68,13 @@ deno-ratchet-evidence/
 docs/evidence/ui-delivery/campaigns-overview/
 supabase/.temp/
 
-# Impeccable (npx impeccable install) — portable guidance is committed; the
-# platform-specific engine and its data are NOT. They are ~16MB per copy,
-# linux-x64 here and useless on another platform, and every hook that invokes
-# them is guarded with `[ ! -f ... ] ||` so a checkout without them no-ops.
-# Each machine/CI regenerates its own with: npx impeccable install --project --yes
-*/skills/impeccable/scripts/bin/
-*/skills/impeccable/scripts/data/
-*/skills/impeccable/scripts/impeccable
-*/skills/impeccable/scripts/impeccable.cmd
-*/skills/impeccable/scripts/live-browser.js
+# Impeccable (npm `impeccable`, Apache-2.0) ships a ~16MB PLATFORM-SPECIFIC engine binary
+# per harness directory. Three harnesses are installed, so committing them would put ~48MB
+# of linux-x64-only executable into every clone forever — dead weight on macOS and Windows,
+# and a third-party binary in our history. The SKILL CONTENT (the markdown Impeccable exists
+# to teach from) IS versioned; only the engine is ignored.
+# Restore on any machine, and in CI before `impeccable detect`, with:
+#   npx impeccable@<version> install --yes --project
+.claude/skills/impeccable/scripts/bin/
+.agents/skills/impeccable/scripts/bin/
+.github/skills/impeccable/scripts/bin/
