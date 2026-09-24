@@ -132,7 +132,7 @@ All figures below were checked live this session; how each was verified is in `c
   immutable session revision. Historical literal/request overrides were superseded by the
   2026-09-07 Live Conversation delivery. Provider-backed realtime audio remains `PROOF OWED`; see
   `config-registry.md` → Voice.
-- **Live Conversation admission (2026-09-24, migration `20270419000000`):** the capability is
+- **Live Conversation admission (2026-09-24, migration `20270420000000`):** the capability is
   shell-wide by construction; *who may speak today* is platform-owned rollout **configuration**
   (`paige_live_pilot_subjects`), which ships EMPTY. It used to be an identity predicate pinned to one
   `super_admin` user id, which made every other Solo account structurally incapable of Live — see

@@ -351,7 +351,7 @@ id who also had to hold `super_admin`. Separately, and deliberately not collapse
 
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon | Deploy state |
 |---|---|---|---|---|---|---|---|---|
-| Live Conversation — product eligibility (own tenant, role, thread, memory) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 | migration `20270419000000`, no edge change |
+| Live Conversation — product eligibility (own tenant, role, thread, memory) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 | migration `20270420000000`, no edge change |
 | Live Conversation — admitted to the rollout today | — | — | — | — | — | — | 403 | allowlist ships EMPTY; no account admitted |
 
 **The two rows say different things on purpose.** One ✓ per tier that conflated "every Solo account

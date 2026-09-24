@@ -22,7 +22,7 @@ different active member of the same enabled workspace, so "only one person can u
 rule works" were the same observation.
 
 ## What changed
-`20270419000000_paige_live_rollout_is_configuration.sql` adds
+`20270420000000_paige_live_rollout_is_configuration.sql` adds
 `public.paige_live_pilot_subjects` — a platform-owned, service-role-only rollout allowlist with the
 same posture as the existing `paige_live_tenant_availability` (RLS on, no anon/authenticated policy,
 missing row refuses, ships empty, no tenant or account seeded). Admission becomes a configuration
@@ -58,7 +58,7 @@ FLOW_PROTOTYPE: PASS: Existing owner-approved Organic Paige Presence and Real Au
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: Any Solo account admitted by rollout configuration uses Talk live in their own workspace and their own thread
 VISUAL_DIRECTION: PASS: No DOM, theme, layout, geometry, focus, motion or control change; this change touches zero TypeScript
 AUTOMATED_EVIDENCE: PASS: 36/36 existing Edge handler and provider-boundary tests pass UNCHANGED, which is itself the §37 evidence that no consumer contract moved; the relay ticket smoke that pins the RPC call shape across all three consumers passes; the pgTAP matrix grows 39 to 72 assertions and its execution is owed to the exact-head database CI job
-STATIC_EVIDENCE: PASS: definer-fn lint passes; migration-version collision lint does not flag 20270419000000; service-role-only grants and REVOKE from PUBLIC/anon/authenticated preserved on both functions and the new table
+STATIC_EVIDENCE: PASS: definer-fn lint passes; migration-version collision lint does not flag 20270420000000; service-role-only grants and REVOKE from PUBLIC/anon/authenticated preserved on both functions and the new table
 RENDERED_EVIDENCE: UNVERIFIED: No fresh authenticated browser render; an unchanged shell does not substitute for proof
 BEHAVIORAL_EVIDENCE: PASS: 24/24 assertions against the actual migration file on a local PostgreSQL 16 with a faithful role and grant posture, including the negative proof, the forged-receipt refusal, expiry, per-subject withdrawal and disable-withdraws-everyone; real Solo speech remains UNVERIFIED and requires operational authorization after deployment
 AUTHENTICATED_RUNTIME: UNVERIFIED: No pilot authorization, no provider call and no live conversation performed by this change
@@ -84,7 +84,7 @@ MUST_PRESERVE: Canonical standing resolution in its existing home, the caller-ow
 ACCEPTANCE_CRITERIA: An ordinary Solo member holding no platform role passes the product gate once admitted; an active member of the same enabled workspace who is not admitted is refused; one subject's consent cannot authorize another; withdrawal, lapse and disable each deny immediately; no consumer redeploys
 MOTION_PURPOSE: NONE: no motion change
 PROTECTED_SEAMS: Affected and tested: Live admission, rollout authority, canonical readiness and audit, account/workspace isolation, privacy acceptance. Unchanged: login and account choice, signup/paywall/billing/provisioning, action approval and autonomy, Spine tool execution, tool writes/readback/Rail/Memory, chat transcript and thread behavior, Secure Browser and Vault, provider transport, durable jobs, shell geometry and accessibility.
-INTERNAL_BUILD_IDENTITY: pr=PROOF_OWED; base=154bef2bdac3a41dadb272a9c748cab115125781; merge_sha=PROOF_OWED; reviewed_head=PROOF_OWED; deployment=PROOF_OWED; environment=development; migrations=PROOF_OWED(20270419000000_paige_live_rollout_is_configuration applied only by the merge pipeline); edge=NOT_APPLICABLE; evidence=supabase/tests/paige_live_pilot_feature_guard.sql
+INTERNAL_BUILD_IDENTITY: pr=PROOF_OWED; base=154bef2bdac3a41dadb272a9c748cab115125781; merge_sha=PROOF_OWED; reviewed_head=PROOF_OWED; deployment=PROOF_OWED; environment=development; migrations=PROOF_OWED(20270420000000_paige_live_rollout_is_configuration applied only by the merge pipeline); edge=NOT_APPLICABLE; evidence=supabase/tests/paige_live_pilot_feature_guard.sql
 RELEASE_CHANNEL: development: contract repair; no production activation and no rollout enablement
 RELEASE_CLASSIFICATION: internal-only: readiness-contract repair, not a customer launch
 CUSTOMER_RELEASE_IDENTITY: none: no customer-visible outcome is ready to explain as one release, and production conversation remains unverified

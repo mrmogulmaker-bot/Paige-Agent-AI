@@ -348,7 +348,7 @@ Both buffered and streaming requests include `enable_logging=false`; the account
 eligibility for Zero Retention Mode remains unverified, so this is not provider proof or
 activation. The active OpenAI read-aloud profile is unchanged.
 
-**2026-09-24 admission correction (INT-104, migration `20270419000000`):** Live admission was an
+**2026-09-24 admission correction (INT-104, migration `20270420000000`):** Live admission was an
 identity predicate — a singleton readiness row pinning the speaker to one stored user id who also
 had to hold `super_admin` — so no other Solo account could reach Live at all. It is now a
 platform-owned, service-role-only allowlist (`public.paige_live_pilot_subjects`, RLS on, no
