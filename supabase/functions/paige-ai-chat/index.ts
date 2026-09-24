@@ -9989,7 +9989,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // REVOKE, so it defaults to `EXECUTE TO PUBLIC`, and its body never calls
           // `auth.uid()` — it checks the ARGUMENT actor against the ARGUMENT tenant,
           // which constrains the subject, not the caller. On that path the wrong client
-          // would succeed SILENTLY instead of failing loudly. `20270412000000` revokes
+          // would succeed SILENTLY instead of failing loudly. `20270416000000` revokes
           // it; in the repo, prod apply owed. Do not read the paragraph above as a
           // guarantee until that is confirmed applied.
           //
@@ -12784,7 +12784,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // because `record_capability_run` is granted to service_role only ON ITS 6-ARGUMENT
           // SIGNATURE. The 10-arg overload (`20270107000000:94`, bound whenever correlation or
           // detail is passed) shipped with NO ACL and defaults to PUBLIC EXECUTE; it never calls
-          // `auth.uid()`. `20270412000000` revokes it — in the repo, prod apply owed.
+          // `auth.uid()`. `20270416000000` revokes it — in the repo, prod apply owed.
           //
           // NO CONFIRM GATE, DELIBERATELY. These are reads: unclassified in action-risk.ts on
           // purpose, and their names carry no MUTATION_VERB segment, so `unclassifiedWriteReason`

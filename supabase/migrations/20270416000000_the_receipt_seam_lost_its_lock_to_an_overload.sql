@@ -64,14 +64,27 @@
 -- that default in this database. These two statements are correct either way — a no-op if the
 -- signature is somehow already sealed, the fix if it is not. They are idempotent and re-runnable.
 --
--- RENUMBERED 20270411000000 -> 20270412000000 on 2026-09-24, when a base merge brought in
+-- RENUMBERED TWICE, and the second time is the one worth reading.
+--
+-- (1) 20270411000000 -> 20270412000000 on 2026-09-24, when a base merge brought in
 -- 20270411000000_paige_live_resume_admitted_state.sql at the same version. `schema_migrations` is
 -- keyed on the version alone, so two files sharing one version means exactly one is ever applied —
 -- and the loser is SKIPPED SILENTLY, with every gate still green. The other file reached `main`
 -- first, so this one moved; the rule is never to renumber a migration that is already applied.
--- Caught by `lint:migration-versions` on the merge, which is the only thing that would have caught
--- it. Recorded here because this migration's entire subject is a lock that looked applied and was
--- not, and shipping it under a version that would never run would have been the same defect twice.
+-- Caught by `lint:migration-versions` on the merge.
+--
+-- (2) 20270412000000 -> 20270416000000 on 2026-09-24, and this collision was with a branch, not
+-- with `main`. `claude/agreements-blank-pdf` carries four migrations at 20270412 through 20270415,
+-- the first of them 20270412000000_commercial_terms_refusals_reach_the_operator.sql. Neither branch
+-- could see the other: `lint:migration-versions` resolves its base as `origin/main`
+-- (scripts/ci/migration-version-collision-lint.mjs:97), so BOTH branches pass their own lint, both
+-- merge cleanly because the filenames differ, and whichever lands second is silently skipped by
+-- `supabase db push`. This file moved clear of their contiguous block rather than splitting it.
+--
+-- Recorded here because this migration's entire subject is a lock that looked applied and was not,
+-- and shipping it under a version that would never run would have been the same defect twice. The
+-- guard's blind spot to branch-vs-branch collisions is filed separately; it is a real gap and it
+-- found this one by hand.
 
 -- STILL OWED, and not claimed here: a `pg_proc.proacl` readback confirming the applied state, by a
 -- session with production SQL access.
