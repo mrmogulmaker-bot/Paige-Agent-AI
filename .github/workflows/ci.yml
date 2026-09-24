@@ -725,6 +725,19 @@ jobs:
         run: npm run smoke:voice-stt
 
       # Mock fetch: approved voice/model, owner-switchable model, and no-retention flag.
+      # §32 — a green build is not a working render. The 3D presence degrades to the flat presence
+      # on any throw, which is correct and is also how a compiles-but-crashes bug hides: the corner
+      # quietly shows 2D and nobody learns the 3D never ran. This executes the real GLB parse,
+      # normal computation, material swap and framing headless, against the actual asset.
+      #
+      # Plain `node`, deliberately: this job runs Node 20, which has no type stripping. The matching
+      # honesty assertions — that the scene may only move to real audio — import presence.ts and so
+      # live in the vitest suite, where they execute, rather than here where they would have been
+      # skipped in silence.
+      - name: Smoke — Paige 3D presence (the real model parses, frames and materialises)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:paige-presence-3d
+
       - name: Smoke — Paige voice mouth transport (no network)
         if: ${{ !cancelled() }}
         run: npm run smoke:voice-tts

@@ -7,6 +7,7 @@ const control = vi.hoisted(() => ({
   start: vi.fn(),
   transition: vi.fn(async (_id?: string, _action?: string) => undefined),
   renew: vi.fn(),
+  acceptTerms: vi.fn(),
 }));
 const relay = vi.hoisted(() => ({
   connect: vi.fn(),
@@ -20,7 +21,12 @@ vi.mock("@/lib/paigeLiveConversation/client", () => ({
   startPaigeLiveConversation: control.start,
   transitionPaigeLiveConversation: control.transition,
   renewPaigeLiveRelayTicket: control.renew,
+  acceptPaigeLiveTerms: control.acceptTerms,
 }));
+// The 3D presence fetches a 3.7 MB GLB through a lazy import and needs a WebGL context; neither
+// exists here. The component already falls back to the flat presence when WebGL is absent, which is
+// exactly what happens in this environment, so these tests exercise the real fallback path rather
+// than a stub of it.
 vi.mock("@/lib/paigeLiveConversation/relayTransport", () => ({
   connectPaigeLiveRelay: relay.connect,
 }));
@@ -55,6 +61,7 @@ describe("Paige Live Conversation owner surface", () => {
     control.transition.mockClear();
     control.transition.mockImplementation(async () => undefined);
     control.renew.mockReset();
+    control.acceptTerms.mockReset();
     relay.connect.mockReset();
     relay.stop.mockClear();
     relay.interrupt.mockClear();
@@ -587,5 +594,74 @@ describe("Paige Live Conversation owner surface", () => {
     expect(popupDocument.querySelector('[role="dialog"]')).toBeNull();
     expect(document.activeElement).toBe(trigger);
     expect(control.transition).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222", "minimize", { threadId: "11111111-1111-4111-8111-111111111111", contextEpoch: "tenant-a||" });
+  });
+
+  // §70 — the deliverable is a person completing a task, not a code path that exists. Until this
+  // control shipped, a Solo user whose rollout was open still had no way to give the acceptance the
+  // database requires, so Live stayed off for a reason they could neither see nor act on.
+  describe("turning Live on is something a person can actually finish", () => {
+    const refusedForTerms = {
+      ok: false, sessionId: null, availability: "UNAVAILABLE", code: "live_audio_not_enabled",
+      explanation: "Live audio isn't available for this account yet. You can keep working with Paige in chat.",
+    };
+
+    it("offers the terms, and says what is true about the audio before anyone speaks", async () => {
+      control.start.mockResolvedValue(refusedForTerms);
+      await render();
+      clickText("Talk live with Paige");
+      await flush();
+      const notice = document.querySelector(".plc-notice");
+      expect(notice?.textContent).toContain("default retention");
+      expect(notice?.textContent).toContain("one speaker");
+      expect(notice?.textContent).toContain("your own decision for your own account");
+      expect([...document.querySelectorAll("button")].some((b) => b.textContent?.includes("I understand"))).toBe(true);
+    });
+
+    it("accepting admits the person and starts the session, with no identifier supplied by the caller", async () => {
+      control.start.mockResolvedValueOnce(refusedForTerms);
+      control.acceptTerms.mockResolvedValue({ accepted: true, unchanged: false, code: null });
+      control.start.mockResolvedValue({
+        ok: true, sessionId: "22222222-2222-4222-8222-222222222222", availability: "LIVE",
+        code: "live", explanation: "", ticket: "ticket-1", ticketExpiresAt: Date.now() + 60_000,
+      });
+      await render();
+      clickText("Talk live with Paige");
+      await flush();
+      await act(async () => { clickText("I understand"); });
+      await flush();
+      // The RPC takes NO arguments. That is the doctrine — a build that needs an account identifier
+      // is the wrong build — so it is asserted here rather than left to the migration comment.
+      expect(control.acceptTerms).toHaveBeenCalledTimes(1);
+      expect(control.acceptTerms.mock.calls[0]).toEqual([]);
+      // And the acceptance is followed by a real attempt, not a claim that it worked.
+      expect(control.start).toHaveBeenCalledTimes(2);
+      expect(relay.connect).toHaveBeenCalled();
+    });
+
+    it("a refusal stays honest: no session is started and nothing claims success", async () => {
+      control.start.mockResolvedValue(refusedForTerms);
+      control.acceptTerms.mockResolvedValue({ accepted: false, unchanged: false, code: "live_audio_not_enabled" });
+      await render();
+      clickText("Talk live with Paige");
+      await flush();
+      await act(async () => { clickText("I understand"); });
+      await flush();
+      expect(control.start).toHaveBeenCalledTimes(1);
+      expect(relay.connect).not.toHaveBeenCalled();
+      const notice = document.querySelector(".plc-notice");
+      expect(notice?.textContent).toContain("UNAVAILABLE");
+      expect(notice?.textContent).toContain("Nothing was recorded, sent, or saved");
+      expect(getUserMedia).not.toHaveBeenCalled();
+    });
+
+    it("the terms are not offered for a refusal the person cannot act on", async () => {
+      // privacy_not_approved is the platform's own gate. Offering an acceptance there would invite
+      // someone to press a button that cannot change the answer.
+      await render();
+      clickText("Talk live with Paige");
+      await flush();
+      expect([...document.querySelectorAll("button")].some((b) => b.textContent?.includes("I understand"))).toBe(false);
+      expect(document.querySelector(".plc-terms")).toBeNull();
+    });
   });
 });
