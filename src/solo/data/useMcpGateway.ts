@@ -47,9 +47,11 @@
  *     A last-4 exists transiently in a create/re-key response and nowhere else.
  *   - A newly created / re-keyed row is `pending_verification / unknown` until a verify probe
  *     promotes it. This hook never fabricates a `connected` state.
- *   - The per-connection TOOL LIST is not readable by any client today (see
- *     APPROVAL_LIFETIME below and the §00 note in settings-integrations-gateway.tsx), so
- *     `approveTool` is callable but cannot yet be driven from a list of real tool names.
+ *   - The per-connection TOOL LIST is readable via `listTools`, and every judgement in it — whether
+ *     consent is needed and why, whether an approval has expired or drifted — is the SERVER's.
+ *     This hook renders those verdicts; it never recomputes one. An EMPTY list means the catalogue
+ *     has been read and found empty; `observedAt: null` means it has never been read at all. Those
+ *     are different facts and the surface must not collapse them into one sentence.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -257,6 +259,36 @@ export type GatewayWriteResult = {
   /** last-4 is only ever present here (a create/re-key response), never in the list read. */
   last4?: string | null;
   mode?: string | null;
+};
+
+/** One action a connected tool offers, as the owner is shown it. Mirrors the edge's `GatewayTool`.
+ *  Every judgement here is the SERVER's: whether consent is needed and why, whether an existing
+ *  approval has expired against the server clock, and whether the tool has changed since it was
+ *  approved. The browser renders these; it never computes them. */
+export type GatewayToolRow = {
+  name: string;
+  effects: string[];
+  app: string;
+  actionType: string;
+  requiresApproval: boolean;
+  approvalBasis: "server_name_floor" | "provider_declared_effect" | "effects_undeclared" | null;
+  approved: boolean;
+  approvedAt: string | null;
+  expiresAt: string | null;
+  approvalExpired: boolean;
+  approvalStale: boolean;
+  approvedByYou: boolean;
+  observedAt: string | null;
+};
+
+export type GatewayToolsResult = {
+  ok: boolean;
+  code: string | null;
+  message: string | null;
+  tools: GatewayToolRow[];
+  /** Null when the catalogue has never been read — which is NOT the same as "offers nothing",
+   *  and the surface must not conflate them. */
+  observedAt: string | null;
 };
 
 /** What a verify probe actually found. `ok:false` with a status is a REAL answer (the server was
@@ -562,6 +594,10 @@ export type UseMcpGateway = McpGatewayState & {
   verify: (connectionId: string) => Promise<GatewayVerifyResult>;
   /** Start a provider sign-in. Resolves with the URL to send the browser to. */
   beginOAuth: (connectionId: string) => Promise<GatewayOAuthResult>;
+  /** List the ACTIONS one connection offers, with each one's approval story. A refusal here is
+   *  deliberately uniform — unknown, another tenant's, and an owner_only one this caller may not
+   *  see are indistinguishable, so the list cannot be used to probe for what exists. */
+  listTools: (connectionId: string) => Promise<GatewayToolsResult>;
   /** Record durable per-tool consent. `expiry` is built by `approvalExpiryFromMinutes`, which is
    *  where the lifetime floor is applied; a `below_floor` result is refused here rather than being
    *  sent as "no expiry". */
@@ -861,6 +897,61 @@ export function useMcpGateway(): UseMcpGateway {
   );
 
   /**
+   * List the actions a connection offers.
+   *
+   * A pure READ, so it takes no write lock and does not reload the connection list: nothing on
+   * the server changed, and a reload would only re-fetch rows the drawer already holds.
+   *
+   * Every field is rendered, never recomputed. `requiresApproval`, `approvalExpired` and
+   * `approvalStale` are the SERVER's verdicts — expiry in particular is judged on the Postgres
+   * clock, which is the whole point: the approval lifetime floor exists because a value minted on
+   * the browser clock and judged on the server's can be dead before first use, so the browser is
+   * the last thing that should be deciding whether consent is still live.
+   */
+  const listTools = useCallback(
+    async (connectionId: string): Promise<GatewayToolsResult> => {
+      const answer = await callEdge("tools", { connection_id: connectionId });
+      if (!answer.ok) {
+        return {
+          ok: false,
+          code: answer.code,
+          message: mcpGatewayMessage(answer.code),
+          tools: [],
+          observedAt: null,
+        };
+      }
+      const raw = Array.isArray(answer.data.tools) ? answer.data.tools : [];
+      const tools: GatewayToolRow[] = [];
+      for (const t of raw) {
+        if (!t || typeof t !== "object") continue;
+        const r = t as Record<string, unknown>;
+        const name = str(r.name);
+        // A row with no name cannot be approved and cannot be labelled; rendering it would put an
+        // unnamed control in front of the owner. The edge already drops these — this is the
+        // second belt, not the first.
+        if (!name) continue;
+        tools.push({
+          name,
+          effects: Array.isArray(r.effects) ? r.effects.filter((e): e is string => typeof e === "string") : [],
+          app: str(r.app) ?? "",
+          actionType: str(r.actionType) ?? "",
+          requiresApproval: r.requiresApproval === true,
+          approvalBasis: (str(r.approvalBasis) as GatewayToolRow["approvalBasis"]) ?? null,
+          approved: r.approved === true,
+          approvedAt: str(r.approvedAt),
+          expiresAt: str(r.expiresAt),
+          approvalExpired: r.approvalExpired === true,
+          approvalStale: r.approvalStale === true,
+          approvedByYou: r.approvedByYou === true,
+          observedAt: str(r.observedAt),
+        });
+      }
+      return { ok: true, code: null, message: null, tools, observedAt: str(answer.data.observed_at) };
+    },
+    [callEdge],
+  );
+
+  /**
    * Start a provider sign-in and hand back where to send the browser.
    *
    * Deliberately does NOT navigate: the caller decides when to leave the page, and a hook that
@@ -1032,6 +1123,7 @@ export function useMcpGateway(): UseMcpGateway {
     createRest,
     verify,
     beginOAuth,
+    listTools,
     approveTool,
     rekeyMcp,
     rekeyRest,
