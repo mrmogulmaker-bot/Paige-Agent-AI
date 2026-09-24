@@ -78,8 +78,8 @@ MUST_PRESERVE: Existing Solo shell, one canonical brain/thread, governed approva
 ACCEPTANCE_CRITERIA: After provider verification, Hold then Resume preserves audio; withdrawing approval stops audio; text chat and same thread remain available.
 PROTECTED_SEAMS: AFFECTED: scoped transition RPC and existing recurring admission. PRESERVED: ticket authority, Spine/Rail/Mind/Memory/Knowledge/Harness, provider-neutral contract and permission flow.
 
-INTERNAL_BUILD_IDENTITY: merge_sha=PROOF_OWED; reviewed_head=PROOF_OWED; base_merge_sha=6bd8849d4b9bad7c8d331458cab03c00c61b87aa (base only); deployment=PROOF_OWED; environment=development; migrations=PROOF_OWED(20270411000000); edge=PROOF_OWED(paige-live-relay,paige-ai-chat); evidence=scripts/paige-live-relay-bridge-smoke.mts and supabase/tests/paige_live_session_transition.sql
-RELEASE_CHANNEL: development: regression repair without pilot activation
+INTERNAL_BUILD_IDENTITY: merge_sha=1e592542ede48589349b5445376ec2396e948cc6; pr=1408; reviewed_head=72395be53f5811709748497624d5ae86a6756a1e; deployment=dpl_6vBCkQmHArKHJbtNBc2q37LepRMT; environment=production; migrations=APPLIED(20270411000000_paige_live_resume_admitted_state); edge=APPLIED(paige-live-relay@v8,paige-ai-chat@v268); evidence=scripts/paige-live-relay-bridge-smoke.mts and supabase/tests/paige_live_session_transition.sql; deploy_runs=35935279150,35935279183
+RELEASE_CHANNEL: production: regression repair deployed without pilot activation
 RELEASE_CLASSIFICATION: internal-only: no real-audio customer capability claimed before provider verification
 CUSTOMER_RELEASE_IDENTITY: none: human production conversation not yet proven
 RELEASE_NOTE_REQUIRED: NO: no general availability claim
