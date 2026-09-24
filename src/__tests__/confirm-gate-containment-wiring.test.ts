@@ -28,7 +28,8 @@ describe("FIX A — a batch is disambiguated by the stable subject id, WITHIN th
   it("narrows the APPROVED-SET lookup by the call's subject id — never widens what is claimable", () => {
     // The narrowing filter is applied to the same query that is scoped `.in("fingerprint", approvedConfirmations)`,
     // so it can only ever select a proposal the operator already approved.
-    expect(gate).toContain('.in("fingerprint", [...approvedConfirmations])');
+    expect(gate).toContain('.in("fingerprint", [...approvedConfirmations].map((token) => token.split(":")[0]))');
+    expect(gate).toContain('if (token && approvedConfirmations.has(token))');
     // The jsonb-text narrow uses the proven `.filter(col,"eq",val)` form (not `.eq` shorthand).
     expect(gate).toContain('lookup = lookup.filter(`args->>${identityKey}`, "eq", identityVal)');
     // The narrowed claim still requires exactly one match and that it is in the approved set.
@@ -92,6 +93,8 @@ describe("approval-path hardening", () => {
     expect(HANDLER).toContain("!approvedConfirmations.has(fp)");
     expect(gate).not.toContain("claimBy");
     expect(HANDLER).not.toContain("if (fp === null)");
+    expect(HANDLER).toContain('const nonce = await selectedConfirmationNonce(fp, tool)');
+    expect(HANDLER).toContain('.eq("fingerprint", fp.split(":")[0]).eq("issued_in_request", nonce)');
   });
 
   it("the terminal NEVER executes — it only pushes a success:false tool result and continues", () => {

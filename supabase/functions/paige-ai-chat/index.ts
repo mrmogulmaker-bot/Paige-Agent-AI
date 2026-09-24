@@ -505,11 +505,11 @@ const messageSchema = z.object({
    *  requires the call it is about to run to be one of these — a `confirm:true` flag on its own no
    *  longer opens it, because that flag says only that SOMETHING was approved, not what. Bounded
    *  and shaped so a body cannot smuggle anything else through this field. */
-  approvedConfirmations: z.array(z.string().regex(/^[0-9a-f]{16}$/)).max(16).optional(),
+  approvedConfirmations: z.array(z.string().regex(/^[0-9a-f]{16}(?::[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$/)).max(16).optional(),
   /** Fingerprints the person DECLINED on the confirm card. A refusal that lives only in the prose
    *  of the next message is a refusal the model has to interpret correctly — and the proposal it
    *  describes stays redeemable for its whole window. These are cancelled outright instead. */
-  declinedConfirmations: z.array(z.string().regex(/^[0-9a-f]{16}$/)).max(16).optional(),
+  declinedConfirmations: z.array(z.string().regex(/^[0-9a-f]{16}(?::[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$/)).max(16).optional(),
   // RETIRED HERE, 2026-09-02: `confirmedActions`, a second approval channel carrying a
   // pipeline-archive token, arrived from a parallel branch. It solved the same problem as the two
   // fields above — bind the approval to the exact thing approved — for exactly one action.
@@ -7207,38 +7207,66 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       return (data?.length ?? 0) > 0;
     };
 
+    const confirmationArgs = (args: Record<string, unknown>) => Object.fromEntries(
+      Object.entries(args).filter(([k]) => k !== "confirm" && k !== "confirm_token"),
+    );
+    const scopedConfirmationFingerprint = (tool: string, intent: string) => confirmFingerprint(tool, {
+      intent, tenant: personaCtx?.tenant_id ?? null, thread: payloadThreadId ?? null,
+      client: scopedClientId ?? null,
+    });
+    type PendingConfirmation = { fingerprint: string; issued_in_request: string; args: Record<string, unknown>; summary?: string; tool_name?: string };
+    const confirmationToken = async (row: PendingConfirmation, tool: string): Promise<string | null> => {
+      if (!/^[0-9a-f]{16}$/.test(row.fingerprint) || !row.args || typeof row.args !== "object" || Array.isArray(row.args)) return null;
+      const scoped = await scopedConfirmationFingerprint(tool, await confirmFingerprint(tool, row.args));
+      if (row.fingerprint === scoped) {
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(row.issued_in_request)
+          ? `${row.fingerprint}:${row.issued_in_request}` : null;
+      }
+      return await confirmationWasConsumed(row.fingerprint, tool) ? null : row.fingerprint;
+    };
+
     const recordConfirmation = async (
       fp: string, tool: string, args: Record<string, unknown>, summary: string,
-    ): Promise<{ state: "created" | "exists" | "failed"; fingerprint?: string }> => {
+    ): Promise<{ state: "created" | "exists" | "failed"; fingerprint?: string; summary?: string }> => {
       try {
         if (!(await revalidateProposalScope())) return { state: "failed" };
-        const storedArgs = Object.fromEntries(
-          Object.entries(args).filter(([k]) => k !== "confirm" && k !== "confirm_token"),
-        );
-        let existing = supabase.from("paige_pending_confirmations")
-          .select("fingerprint,args").eq("user_id", user.id).eq("tool_name", tool)
-          .is("consumed_at", null)
-          .not("server_issued_at", "is", null).not("issued_in_request", "is", null)
-          .gt("expires_at", new Date().toISOString());
-        existing = personaCtx?.tenant_id ? existing.eq("tenant_id", personaCtx.tenant_id) : existing.is("tenant_id", null);
-        existing = payloadThreadId ? existing.eq("thread_id", payloadThreadId) : existing.is("thread_id", null);
-        existing = scopedClientId ? existing.eq("scoped_client_id", scopedClientId) : existing.is("scoped_client_id", null);
-        const { data: pending, error: pendingError } = await existing.limit(65);
-        if (pendingError || (pending?.length ?? 0) > 64) {
-          console.error("[paige] confirmation preparation unavailable");
-          return { state: "failed" };
-        }
-        const reusable: string[] = [];
-        for (const row of pending ?? []) {
-          if (!row?.args || typeof row.args !== "object" || Array.isArray(row.args)
-            || await confirmFingerprint(tool, row.args) !== fp) continue;
-          if (typeof row.fingerprint !== "string" || !/^[0-9a-f]{16}$/.test(row.fingerprint)) return { state: "failed" };
-          if (!(await confirmationWasConsumed(row.fingerprint, tool))) reusable.push(row.fingerprint);
-        }
+        const storedArgs = confirmationArgs(args);
+        const findReusable = async (): Promise<Array<{ fingerprint: string; summary: string }>> => {
+          let existing = supabase.from("paige_pending_confirmations")
+            .select("fingerprint,args,issued_in_request,summary").eq("user_id", user.id).eq("tool_name", tool)
+            .is("consumed_at", null)
+            .not("server_issued_at", "is", null).not("issued_in_request", "is", null)
+            .gt("expires_at", new Date().toISOString());
+          existing = personaCtx?.tenant_id ? existing.eq("tenant_id", personaCtx.tenant_id) : existing.is("tenant_id", null);
+          existing = payloadThreadId ? existing.eq("thread_id", payloadThreadId) : existing.is("thread_id", null);
+          existing = scopedClientId ? existing.eq("scoped_client_id", scopedClientId) : existing.is("scoped_client_id", null);
+          const { data: pending, error: pendingError } = await existing.limit(65);
+          if (pendingError || (pending?.length ?? 0) > 64) {
+            throw new Error("confirmation preparation unavailable");
+          }
+          const reusable: Array<{ fingerprint: string; summary: string }> = [];
+          for (const row of pending ?? []) {
+            if (!row?.args || typeof row.args !== "object" || Array.isArray(row.args)
+              || await confirmFingerprint(tool, row.args) !== fp) continue;
+            const token = await confirmationToken(row, tool);
+            if (token) reusable.push({ fingerprint: token, summary: typeof row.summary === "string" ? row.summary : summary });
+          }
+          return reusable;
+        };
+        const reusable = await findReusable();
         if (reusable.length > 1) return { state: "failed" };
-        if (reusable.length === 1) return { state: "exists", fingerprint: reusable[0] };
+        if (reusable.length === 1) return { state: "exists", ...reusable[0] };
         if (!(await revalidateProposalScope())) return { state: "failed" };
-        const fingerprint = await confirmFingerprint(tool, { intent: fp, request: requestNonce });
+        const fingerprint = await scopedConfirmationFingerprint(tool, fp);
+        let expired = supabase.from("paige_pending_confirmations")
+          .update({ consumed_at: new Date().toISOString() }).eq("user_id", user.id)
+          .eq("fingerprint", fingerprint).eq("tool_name", tool).is("consumed_at", null)
+          .not("server_issued_at", "is", null).lte("expires_at", new Date().toISOString());
+        expired = personaCtx?.tenant_id ? expired.eq("tenant_id", personaCtx.tenant_id) : expired.is("tenant_id", null);
+        expired = payloadThreadId ? expired.eq("thread_id", payloadThreadId) : expired.is("thread_id", null);
+        expired = scopedClientId ? expired.eq("scoped_client_id", scopedClientId) : expired.is("scoped_client_id", null);
+        const { error: expiryError } = await expired;
+        if (expiryError) return { state: "failed" };
         const { error } = await supabase.from("paige_pending_confirmations").insert({
           user_id: user.id,
           tenant_id: personaCtx?.tenant_id ?? null,
@@ -7252,10 +7280,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           summary,
         });
         if (error) {
+          if (error.code === "23505") {
+            const winner = await findReusable();
+            return winner.length === 1 ? { state: "exists", ...winner[0] } : { state: "failed" };
+          }
           console.error("[paige] confirm proposal NOT recorded", JSON.stringify({ tool, code: error.code ?? null }));
           return { state: "failed" };
         }
-        return { state: "created", fingerprint };
+        return { state: "created", fingerprint: `${fingerprint}:${requestNonce}`, summary };
       } catch {
         console.error("[paige] confirmation preparation failed");
         return { state: "failed" };
@@ -7282,34 +7314,55 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
      *
      *  Failure preserves read-only replies but blocks every mutation for this turn; prose alone
      *  must not stand in for recording the person's refusal. */
+    const selectedConfirmationNonce = async (token: string, tool?: string): Promise<string | null> => {
+      let selected = supabase.from("paige_pending_confirmations")
+        .select("fingerprint,args,issued_in_request,tool_name").eq("user_id", user.id)
+        .eq("fingerprint", token.split(":")[0]).is("consumed_at", null)
+        .not("server_issued_at", "is", null).not("issued_in_request", "is", null)
+        .gt("expires_at", new Date().toISOString());
+      if (tool) selected = selected.eq("tool_name", tool);
+      selected = personaCtx?.tenant_id ? selected.eq("tenant_id", personaCtx.tenant_id) : selected.is("tenant_id", null);
+      selected = payloadThreadId ? selected.eq("thread_id", payloadThreadId) : selected.is("thread_id", null);
+      selected = scopedClientId ? selected.eq("scoped_client_id", scopedClientId) : selected.is("scoped_client_id", null);
+      const { data, error } = await selected.limit(2);
+      if (error) throw new Error("confirmation selection unavailable");
+      const row = data?.length === 1 ? data[0] : null;
+      return row && typeof row.tool_name === "string" && await confirmationToken(row, row.tool_name) === token
+        ? row.issued_in_request : null;
+    };
     const cancelConfirmations = async (fps: string[]): Promise<boolean> => {
       if (fps.length === 0) return true;
       try {
         if (!(await revalidateProposalScope())) return false;
-        let cancellation = supabase.from("paige_pending_confirmations")
-          .update({ consumed_at: new Date().toISOString() })
-          .eq("user_id", user.id)
-          .in("fingerprint", fps)
-          .is("consumed_at", null)
-          .not("server_issued_at", "is", null);
-        cancellation = personaCtx?.tenant_id ? cancellation.eq("tenant_id", personaCtx.tenant_id) : cancellation.is("tenant_id", null);
-        cancellation = payloadThreadId ? cancellation.eq("thread_id", payloadThreadId) : cancellation.is("thread_id", null);
-        cancellation = scopedClientId ? cancellation.eq("scoped_client_id", scopedClientId) : cancellation.is("scoped_client_id", null);
-        const { error } = await cancellation;
-        if (error) {
-          console.error("[paige] confirm decline not recorded", JSON.stringify({ code: error.code ?? null }));
-          return false;
+        for (const token of fps) {
+          const nonce = await selectedConfirmationNonce(token);
+          if (!nonce) continue;
+          let cancellation = supabase.from("paige_pending_confirmations")
+            .update({ consumed_at: new Date().toISOString() })
+            .eq("user_id", user.id)
+            .eq("fingerprint", token.split(":")[0]).eq("issued_in_request", nonce)
+            .is("consumed_at", null)
+            .not("server_issued_at", "is", null);
+          cancellation = personaCtx?.tenant_id ? cancellation.eq("tenant_id", personaCtx.tenant_id) : cancellation.is("tenant_id", null);
+          cancellation = payloadThreadId ? cancellation.eq("thread_id", payloadThreadId) : cancellation.is("thread_id", null);
+          cancellation = scopedClientId ? cancellation.eq("scoped_client_id", scopedClientId) : cancellation.is("scoped_client_id", null);
+          const { error } = await cancellation;
+          if (error) {
+            console.error("[paige] confirm decline not recorded", JSON.stringify({ code: error.code ?? null }));
+            return false;
+          }
         }
         // CRM command proposals are intentionally action-door scoped (tenant + actor + exact
         // capability) and carry NULL thread/client scope because the Edge Function cannot trust
         // model/request-provided scope. Record an inline-card decline against that exact, server-
         // issued proposal too. The tool-name restriction prevents this fallback from consuming a
         // proposal owned by any other confirmation flow.
-        if (personaCtx?.tenant_id) {
+        const legacyFps = fps.filter((token) => /^[0-9a-f]{16}$/.test(token));
+        if (personaCtx?.tenant_id && legacyFps.length > 0) {
           const { error: crmCancellationError } = await supabase.from("paige_pending_confirmations")
             .update({ consumed_at: new Date().toISOString() })
             .eq("user_id", user.id).eq("tenant_id", personaCtx.tenant_id)
-            .in("fingerprint", fps).in("tool_name", [...CRM_COMMAND_TOOL_NAMES])
+            .in("fingerprint", legacyFps).in("tool_name", [...CRM_COMMAND_TOOL_NAMES])
             .is("thread_id", null).is("scoped_client_id", null).is("consumed_at", null)
             .not("server_issued_at", "is", null);
           if (crmCancellationError) {
@@ -7331,12 +7384,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       try {
         if (!cancellationsRecorded || !approvedConfirmations.has(fp) || !(await revalidateProposalScope())) return null;
 
-        if (await confirmationWasConsumed(fp, tool)) return null;
+        const nonce = await selectedConfirmationNonce(fp, tool);
+        if (!nonce) return null;
 
         let q = supabase.from("paige_pending_confirmations")
           .update({ consumed_at: new Date().toISOString() })
           .eq("user_id", user.id)
-          .eq("fingerprint", fp)
+          .eq("fingerprint", fp.split(":")[0]).eq("issued_in_request", nonce)
           .eq("tool_name", tool)
           .is("consumed_at", null)
           .not("server_issued_at", "is", null)
@@ -8698,7 +8752,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               continue;
             }
 
-            const fp = await confirmFingerprint(tc.function.name, gateArgs);
+            const fp = await confirmFingerprint(tc.function.name, confirmationArgs(gateArgs));
 
             // CHANNEL 1 — the authenticated caller submits a selected proposal fingerprint.
             // The model cannot author this request field. This is not proof of a physical click;
@@ -8722,8 +8776,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 const identityKey = CONFIRM_IDENTITY_KEY[tc.function.name];
                 const identityVal = identityKey ? confirmIdentityValue(tc.function.name, gateArgs) : null;
                 let lookup = supabase.from("paige_pending_confirmations")
-                  .select("fingerprint,args").eq("user_id", user.id).eq("tool_name", tc.function.name)
-                  .in("fingerprint", [...approvedConfirmations]).is("consumed_at", null)
+                  .select("fingerprint,args,issued_in_request").eq("user_id", user.id).eq("tool_name", tc.function.name)
+                  .in("fingerprint", [...approvedConfirmations].map((token) => token.split(":")[0])).is("consumed_at", null)
                   .gt("expires_at", new Date().toISOString())
                   .not("server_issued_at", "is", null)
                   .neq("issued_in_request", requestNonce).not("issued_in_request", "is", null);
@@ -8737,7 +8791,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 // "eq", val)` jsonb-text form already proven across the edge tree (embed-client-financials,
                 // ingest-rag-outcome, rebuild-client-financial-brief) rather than `.eq` string shorthand.
                 if (identityVal !== null) lookup = lookup.filter(`args->>${identityKey}`, "eq", identityVal);
-                const { data: matches, error: lookupError } = await lookup.limit(17);
+                const { data: candidates, error: lookupError } = await lookup.limit(17);
+                const matches: Array<{ fingerprint: string; args: Record<string, unknown> }> = [];
+                if (!lookupError && (candidates?.length ?? 0) <= 16) {
+                  for (const row of candidates ?? []) {
+                    const token = await confirmationToken(row, tc.function.name);
+                    if (token && approvedConfirmations.has(token)) matches.push({ fingerprint: token, args: row.args });
+                  }
+                }
                 const exactMatches: Array<{ fingerprint: string }> = [];
                 if (!lookupError && (matches?.length ?? 0) <= 16) {
                   for (const row of matches ?? []) {
@@ -8756,6 +8817,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 // subject-id narrow (identityVal) or the model asserting confirm. A no-identity tool's
                 // fresh `confirm:false` proposal that merely shares a tool with pending approvals is NOT
                 // an approval of them, so it must still get its own card, not the terminal.
+                else if (!lookupError && (candidates?.length ?? 0) > 16) approvedSetAmbiguous = true;
                 else if (!lookupError && (matches?.length ?? 0) >= 1
                          && (identityVal !== null || gateArgs.confirm === true)) approvedSetAmbiguous = true;
                 // A lookup FAILURE (a PostgREST error, or the jsonb `args->>…` path filter being
@@ -8813,7 +8875,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 success: false,
                 needs_confirm: recorded.state !== "failed",
                 ...(recorded.state !== "failed" ? { confirm_fingerprint: recorded.fingerprint,
-                  requires_operator_approval: true, confirm_summary: summary } : {}),
+                  requires_operator_approval: true, confirm_summary: recorded.summary ?? summary } : {}),
                 ...(recorded.state === "failed" ? { error: "confirmation_unavailable" } : {}),
                 note: recorded.state === "failed"
                   ? "The approval could not be recorded. Nothing ran and there is no approval card to use yet. Explain the failure and retry only after the operator asks."
