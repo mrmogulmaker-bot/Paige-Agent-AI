@@ -56,7 +56,8 @@ describe("Paige voice provider boundary", () => {
   it("keeps activation atomic and separate from read-only owner inspection", () => {
     expect(operator).toContain('rpc("is_platform_owner")');
     expect(operator).toContain('admin.rpc("activate_paige_voice_profile_internal",');
-    expect((operator.match(/admin\.rpc\(/g) ?? [])).toHaveLength(1);
+    expect((operator.match(/admin\.rpc\("activate_paige_voice_profile_internal"/g) ?? [])).toHaveLength(1);
+    expect((operator.match(/admin\.rpc\("set_paige_live_pilot_internal"/g) ?? [])).toHaveLength(2);
     expect(operator).not.toContain('rpc("set_paige_voice_readiness_internal")');
     expect(operator).not.toContain('rpc("set_paige_voice_profile_internal")');
     expect(operator).not.toMatch(/elevenlabsTts|api\.elevenlabs|fetch\(/);
@@ -72,7 +73,10 @@ describe("Paige voice provider boundary", () => {
     expect(inspection).toContain('inspectConfiguredVoiceProvider');
     expect(inspection).toContain('envKey("ELEVENLABS_API_KEY")');
     expect(inspection).toContain('admin.from("paige_audit_log").insert');
-    expect(inspection).not.toMatch(/activate_paige|set_paige|parsed.data.provider_voice_ref/);
+    expect(inspection).not.toMatch(/activate_paige|set_paige_voice|parsed.data.provider_voice_ref/);
+    expect(inspection).toMatch(/if \(parsed.data.action === "authorize-live-pilot"\)[\s\S]*?rpc\("set_paige_live_pilot_internal"/);
+    expect(operator).toContain("accept_default_provider_retention: z.literal(true)");
+    expect(operator).toContain("accept_procedural_single_speaker: z.literal(true)");
     expect(inspection).toContain('audio_enabled: false');
   });
 });

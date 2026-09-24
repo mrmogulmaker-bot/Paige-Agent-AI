@@ -13,6 +13,14 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const requestSchema = z.discriminatedUnion("action", [z.object({
   action: z.literal("inspect-configured-account"),
 }).strict(), z.object({
+  action: z.literal("authorize-live-pilot"),
+  accept_default_provider_retention: z.literal(true),
+  accept_procedural_single_speaker: z.literal(true),
+  // Opaque private register ID only; never accept a transcript, credential, or URL here.
+  evidence_ref: z.string().uuid(),
+}).strict(), z.object({
+  action: z.literal("disable-live-pilot"),
+}).strict(), z.object({
   action: z.literal("activate-approved-profile"),
   profile_id: z.string().min(1).max(128),
   paige_facing_name: z.string().min(1).max(128),
@@ -40,7 +48,16 @@ serve(async (req: Request) => {
   if (ownerError || isOwner !== true) return json({ code: "platform_owner_required" }, 403);
 
   const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  if (parsed.data.action === "inspect-configured-account") {
+  // Scope comes only from the authenticated canonical workspace resolver,
+  // never an account or tenant value supplied in the request body.
+  if (parsed.data.action === "disable-live-pilot") {
+    const { error } = await admin.rpc("set_paige_live_pilot_internal", {
+      _actor_user_id: user.id, _tenant_id: null, _enabled: false,
+      _evidence_ref: null, _inspection_id: null,
+    });
+    return error ? json({ code: "pilot_change_refused" }, 409) : json({ ok: true, audio_enabled: false });
+  }
+  if (parsed.data.action === "inspect-configured-account" || parsed.data.action === "authorize-live-pilot") {
     // The account key never leaves server memory. No caller-selected voice, host, or provider.
     const { data: profile, error: profileError } = await admin.from("paige_voice_profiles")
       .select("revision,provider,provider_voice_ref").eq("slot", "candidate").maybeSingle();
@@ -58,15 +75,32 @@ serve(async (req: Request) => {
     const inspection = await inspectConfiguredVoiceProvider({
       apiKey: envKey("ELEVENLABS_API_KEY"), voiceRef: profile.provider_voice_ref,
     });
-    // This observation is not proof accepted by activation. If settlement fails, the start row
+    // This observation proves metadata access only, never retention. If settlement fails, the start row
     // remains for reconciliation; do not claim the metadata was durably verified.
     const { error: auditError } = await admin.from("paige_audit_log").update({
       payload: { profile_revision: profile.revision, observed_at: observedAt,
         completed_at: new Date().toISOString(), phase: "inspection_completed", inspection },
     }).eq("id", audit.id);
     if (auditError) return json({ code: "inspection_audit_unavailable", audio_enabled: false }, 503);
+    if (parsed.data.action === "authorize-live-pilot") {
+      const { data: tenant, error: tenantError } = await caller.rpc("current_user_tenant_id");
+      if (tenantError || !tenant) return json({ code: "workspace_unresolved", audio_enabled: false }, 409);
+      // A metadata read is voice access evidence, NOT a retention attestation.
+      // The database writes scoped owner authorization separately and atomically.
+      const { error } = await admin.rpc("set_paige_live_pilot_internal", {
+        _actor_user_id: user.id, _tenant_id: tenant, _enabled: true,
+        _evidence_ref: parsed.data.evidence_ref, _inspection_id: audit.id,
+      });
+      if (error) return json({ code: "pilot_authorization_refused", audio_enabled: false }, 409);
+      return json({
+        ok: true, code: "scoped_pilot_authorized", retention_state: "default_provider_retention",
+        zero_retention_state: "UNAVAILABLE", speaker_identity_system_enforced: false,
+        live_audio_proof: "UNVERIFIED",
+      });
+    }
     return json({ code: "metadata_only", profile_revision: profile.revision, observed_at: observedAt,
-      inspection, audio_enabled: false, live_audio_proof: "UNVERIFIED", retention_proof: "UNVERIFIED" });
+      inspection, audio_enabled: false, live_audio_proof: "UNVERIFIED", retention_proof: "UNVERIFIED",
+      runtime_signing_key_configured: (envKey("PAIGE_LIVE_STREAM_SIGNING_KEY")?.length ?? 0) >= 32 });
   }
   // One database call owns proof validation, readiness, and profile replacement. PostgreSQL rolls
   // the whole statement back if any step fails, so transport can never be enabled by a failed
