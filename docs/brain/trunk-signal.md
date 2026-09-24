@@ -100,7 +100,7 @@ the base tip merged with your head. Verified on run `35933689151`: `"event": "pu
 | the question | the two trees to compare |
 |---|---|
 | *"why did THAT recorded run fail?"* | the **base SHA that run recorded** and the **exact merge commit that run checked out**. Both pinned to the run, because the run is the subject. |
-| *"is my branch sound right now?"* | `origin/main`'s current tip, and a merge of it into your head made now. Both current, because now is the subject. |
+| *"is my branch sound right now?"* | `origin/main`'s current tip, and the PR's **current merge ref** — `refs/pull/<N>/merge`, fetched, not hand-built (see below). Both current, because now is the subject. |
 
   **Do not mix one from each column.** That is what every version of this procedure did, in a
   different combination each time.
@@ -112,6 +112,20 @@ the base tip merged with your head. Verified on run `35933689151`: `"event": "pu
   tested tree, the honest outcome is that the attribution for that run is UNPROVEN.** Re-run CI on a
   head you control and attribute that instead; do not substitute a fresh merge and call it the same
   run.
+
+**The CURRENT merge tree does not have to be hand-built — it can be FETCHED, and that is strictly
+better.** GitHub publishes its own merge of the PR's current base and head at `refs/pull/<N>/merge`,
+which is the same tree a bare `actions/checkout@v4` hands CI:
+
+```sh
+git fetch origin 'refs/pull/1400/merge:refs/remotes/origin/pr-1400-merge'
+git log --format='%H %P' -1 refs/remotes/origin/pr-1400-merge   # prints BOTH parents — read them
+```
+
+Prefer it over `git merge` in a scratch worktree: a hand-made merge is *a* merge of those two commits,
+this is *the* one, and printing its parents proves which base and which head it actually carries. It
+does **not** narrow the limit above — the ref follows the PR's current head and base, so it moves when
+either moves, and it is not a record of what any past run tested.
 
 **Why nothing else works, stated once so it does not have to be rediscovered a sixth time.** Five
 successive review rounds each killed one shortcut this section had offered, and the fifth killed the
