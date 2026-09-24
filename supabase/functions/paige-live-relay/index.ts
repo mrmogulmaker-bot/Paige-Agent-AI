@@ -272,9 +272,23 @@ Deno.serve(async (req) => {
     () => bridge.unavailable("live_admission_changed"),
   );
   const runtimeProof = createLiveRuntimeProof(runtimeSigningKey);
+  let outputBlocked = false;
   const bridge = new PaigeLiveRelayBridge({
     sessionId: session.id, epoch: session.context_epoch,
-    send(frame) { if (socket.readyState === WebSocket.OPEN) socket.send(frame); },
+    send(frame) {
+      if (outputBlocked || socket.readyState !== WebSocket.OPEN) return;
+      const bytes = typeof frame === "string" ? new TextEncoder().encode(frame).byteLength : frame.byteLength;
+      if (socket.bufferedAmount + bytes > 262_144) {
+        // Transport memory bound, not a usage cap. Set first: failure notification uses this sender.
+        outputBlocked = true;
+        bridge.unavailable("live_output_backpressure");
+        return;
+      }
+      try { socket.send(frame); } catch {
+        outputBlocked = true;
+        bridge.unavailable("live_output_unavailable");
+      }
+    },
     close(code, reason) {
       if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
         try { socket.close(code, reason); } catch { /* already closed */ }
@@ -286,6 +300,8 @@ Deno.serve(async (req) => {
       const response = await elevenlabsSpeechStream({
         text, voiceId: APPROVED_PAIGE_ELEVENLABS_VOICE_ID,
         modelId: resolveElevenLabsModel() ?? "",
+        // check(true) above proves the stored scoped default-retention authorization.
+        retentionPolicy: "default_provider_retention",
       }, signal);
       if (!response.body) throw new Error("mouth_stream_missing");
       return response.body;
