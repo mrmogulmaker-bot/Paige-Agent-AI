@@ -349,6 +349,12 @@ jobs:
       # And the two-session concurrency proof that the approval-write vs endpoint-change RACE is closed:
       # set_mcp_connection_approval's FOR UPDATE row lock serializes it against a concurrent endpoint
       # change, so no approval is ever left bound to an endpoint the connection no longer has (#1262 finding 3).
+      # Door 1 — the `tools` action, driven against the REAL handler + effect policy. Pins that
+      # the approval decision is never re-derived (a send_* tool a provider labels "read" still
+      # requires approval), that a genuine declared read is honestly marked as needing nothing,
+      # that unknown/foreign/owner_only stay one indistinguishable refusal, and that an expired
+      # or pin-drifted approval is not counted as consent.
+      - run: node scripts/proof/mcp-gateway-tools-action.mjs
       - run: node scripts/proof/mcp-gateway-endpoint-consent-race.mjs
         env:
           MCP_GATEWAY_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
