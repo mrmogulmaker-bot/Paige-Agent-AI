@@ -13775,7 +13775,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             if (liveRuntimeScope) {
               capBuf += dec.decode();
               if (capBuf) capLine(capBuf);
-              if (!finalStreamDone) throw new Error("live_answer_incomplete");
+              if (!finalStreamDone || !finalAssistantText.trim()) throw new Error("live_answer_incomplete");
               void up.cancel().catch(() => {});
               emitContent(controller, new TextEncoder().encode("data: [DONE]\n\n"));
             }

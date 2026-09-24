@@ -123,7 +123,7 @@ describe("INT-104 Live final-answer streaming preserves the canonical tool gate"
     expect(project()).toEqual({ surfaces: ["client"], bundleRef: { approval_queued: [], paige_confirm: [], paige_crm_result: [{ action: "crm_update", outcome: "success", receipt_recorded: true, external_effect: false }] } });
     expect(code).toContain("persistAssistantTurn(finalAssistantText, assistantTurnMetadata())");
   });
-  it.each([false, true].flatMap((protectedTurn) => ["reject", "eof", "error-frame", "enqueue-reject", "non-ok", "bodyless"].map((ending) => ({ protectedTurn, ending }))))("settles an interrupted Live stream without success or transcript loss, %j", async ({ protectedTurn, ending }) => {
+  it.each([false, true].flatMap((protectedTurn) => ["reject", "eof", "error-frame", "enqueue-reject", "non-ok", "bodyless", "empty-done", "whitespace-done"].map((ending) => ({ protectedTurn, ending }))))("settles an interrupted Live stream without success or transcript loss, %j", async ({ protectedTurn, ending }) => {
     const branch = find((n) => ts.isIfStatement(n) && n.expression.getText(source) === "finalStreamResponse?.ok && finalStreamResponse.body") as ts.IfStatement;
     const body = branch.getText(source);
     const caught = find((n) => ts.isCatchClause(n) && n.getText(source).includes('[paige] live reasoning stream failed:')) as ts.CatchClause;
@@ -139,18 +139,20 @@ describe("INT-104 Live final-answer streaming preserves the canonical tool gate"
       ending === "enqueue-reject" ? () => { throw new Error("fixture-enqueue-rejected"); } : emit, () => protectedTurn,
       () => { heldContent.length = 0; }, async (text: string) => { persisted.push(text); }, async () => true, { error() {} }, () => ({ surfaces: [], bundleRef: null }));
     if (hasStream) {
-      upstream.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"First sentence."}}]}\n\n'));
+      const content = ending === "empty-done" ? "" : ending === "whitespace-done" ? "   " : "First sentence.";
+      upstream.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`));
       await new Promise((r) => setTimeout(r, 0));
       if (ending === "reject") upstream.error(new Error("fixture-stream-interrupted"));
       else {
         if (ending === "error-frame") upstream.enqueue(new TextEncoder().encode('data: {"error":"fixture"}\n\ndata: [DONE]\n\n'));
+        if (ending.endsWith("-done")) upstream.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
         upstream.close();
       }
     }
     await settled;
     const wire = emitted.map((c) => new TextDecoder().decode(c)).join("");
     expect(wire.includes('[DONE]')).toBe(false);
-    expect(persisted).toEqual(protectedTurn || !hasStream || ending === "enqueue-reject" ? [] : ["First sentence."]);
+    expect(persisted).toEqual(protectedTurn || !hasStream || ending === "enqueue-reject" || ending.endsWith("-done") ? [] : ["First sentence."]);
     expect(heldContent).toEqual([]);
     expect(wire.includes('paige_live_error')).toBe(true);
   });

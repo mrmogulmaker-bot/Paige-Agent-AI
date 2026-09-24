@@ -166,3 +166,8 @@ already-issued cards even with empty speech text, using the existing turn RPC
 scope persists nothing. The existing CRM guard follows the extracted projection;
 its no-readback/no-locator assertions remain, supplemented by an executed projection
 test. No schema change, second store or provider call.
+
+Empty-answer repair: DONE alone, including whitespace-only deltas, is not a
+successful spoken answer. Four failing-first cases (protected/unprotected times
+empty/whitespace) now route through interruption settlement, retaining safe
+receipt-only history where authorized rather than dropping cards on reload.
