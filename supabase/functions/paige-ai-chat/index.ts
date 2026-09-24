@@ -1,7 +1,7 @@
 import { BUSINESS_MISSION_TOOLS } from '../_shared/paige-spine/domains/business_mission.ts';
 import { executeVerifiedMissionMutation, resolveBusinessMissionThreadContext, resolveSelectedBusinessMissionContext } from '../_shared/business-mission-tenant-brain.ts';
 import { CAMPAIGN_BRIEF_TOOLS } from '../_shared/paige-spine/domains/campaigns.ts';
-import { CRM_COMMAND_TOOLS, CRM_COMMAND_TOOL_NAMES, CRM_TOOL_TO_ACTION, crmApprovalSubject } from '../_shared/crm-command/catalog.ts';
+import { CRM_COMMAND_TOOLS, CRM_COMMAND_TOOL_NAMES, CRM_TOOL_TO_ACTION, canonicalizeCrmCommand, crmApprovalSubject, crmCommandFallbackIdempotencyKeys } from '../_shared/crm-command/catalog.ts';
 import { executeVerifiedCampaignBriefMutation, resolveCampaignBriefListContext } from '../_shared/campaign-brief-tenant-brain.ts';
 import { CALENDAR_PRESET_TOOLS } from '../_shared/paige-spine/domains/calendar_preset.ts';
 import { executeVerifiedCalendarPresetMutation, resolveCalendarPresetListContext, type CalendarPresetMutationTool } from '../_shared/calendar-preset-tenant-brain.ts';
@@ -8306,18 +8306,36 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           const currentUserTurn = userTurns[userTurns.length - 1] ?? null;
           delete crmArgs.idempotency_key;
           delete crmArgs.confirm;
-          const idempotencyKey = suppliedKey || await confirmFingerprint("crm_command_idempotency", {
+          const sourceCrmCommand = { action, ...crmArgs };
+          const canonicalCrmCommand = canonicalizeCrmCommand(sourceCrmCommand);
+          const fallbackKeys = await crmCommandFallbackIdempotencyKeys(canonicalCrmCommand, sourceCrmCommand, {
             thread_id: payloadThreadId ?? null,
             user_turn_ordinal: userTurns.length,
             user_turn: currentUserTurn?.content ?? null,
             tool_name: tc.function.name,
-            arguments: crmArgs,
           });
+          const legacyCrmCommand = fallbackKeys.legacyCommand;
+          // contact.create owns one server-derived retry identity. A model-supplied key must not
+          // replace it: a cross-rollout retry can newly emit that optional field after the original
+          // turn committed under the old fallback key. The canonical key is the only key for new
+          // work; the validated legacy key below remains readback-only.
+          const idempotencyKey = action === "contact.create"
+            ? fallbackKeys.current
+            : (suppliedKey || fallbackKeys.current);
+          // Before the canonical-key rollout, Chat accepted a model-supplied key for this
+          // action. Preserve a repeated old key only as an additional completed-result lookup;
+          // it never becomes the key for proposal, approval, preview, or new execution.
+          const legacySuppliedIdempotencyKey = action === "contact.create"
+            && suppliedKey
+            && suppliedKey !== fallbackKeys.current
+            && suppliedKey !== fallbackKeys.legacy
+            ? suppliedKey
+            : null;
           let approvedFingerprint: string | undefined;
           let approvalResolutionFailed = false;
           if (approvedConfirmations.size > 0 && personaCtx?.tenant_id) {
             const gateAdmin = createClient(supabaseUrl, supabaseServiceKey);
-            const approvalSubject = await crmApprovalSubject(action, { action, ...crmArgs });
+            const approvalSubject = await crmApprovalSubject(action, canonicalCrmCommand);
             // Narrow THIS call within the operator-echoed set by the canonical, full consequential
             // command subject stored by crm-command. Two identical approved commands remain
             // ambiguous and fail closed; arguments from the model never replace the stored call.
@@ -8338,7 +8356,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           }
           const { data: crmData, error: crmError } = await supabaseClient.functions.invoke("crm-command", {
             headers: { Authorization: authHeader },
-            body: { command: { action, ...crmArgs }, idempotency_key: idempotencyKey,
+            body: { command: canonicalCrmCommand, idempotency_key: idempotencyKey,
+              ...(legacyCrmCommand ? { legacy_command: legacyCrmCommand } : {}),
+              ...(fallbackKeys.legacy ? { legacy_idempotency_key: fallbackKeys.legacy } : {}),
+              ...(legacySuppliedIdempotencyKey ? { legacy_supplied_idempotency_key: legacySuppliedIdempotencyKey } : {}),
               ...(approvedFingerprint ? { approved_fingerprint: approvedFingerprint } : {}) },
           });
           let crmBody: Record<string, unknown> = crmData && typeof crmData === "object" && !Array.isArray(crmData) ? crmData as Record<string, unknown> : {};

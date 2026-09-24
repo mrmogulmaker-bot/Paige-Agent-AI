@@ -1,5 +1,6 @@
 import { confirmFingerprint } from "../confirm-fingerprint.ts";
 import { classifyAction } from "../action-risk.ts";
+import { canonicalizePersonName } from "../canonical-person-name.ts";
 
 export const CRM_ACTION_CAPABILITY = {
   "contact.create": "crm_create_contact", "contact.update": "crm_update_contact",
@@ -22,10 +23,142 @@ export const CRM_ACTION_CAPABILITY = {
 
 export type CrmAction = keyof typeof CRM_ACTION_CAPABILITY;
 export type CrmCapability = typeof CRM_ACTION_CAPABILITY[CrmAction];
+declare const canonicalCrmCommandBrand: unique symbol;
+export type CanonicalCrmCommand<T extends Record<string, unknown> = Record<string, unknown>> =
+  T & { readonly [canonicalCrmCommandBrand]: true };
+export const CRM_COMMAND_CANONICAL_IDENTITY_FIELD = "__paige_canonical_identity_v1" as const;
+export const CRM_COMMAND_LEGACY_DISPLAY_FIELD = "__paige_legacy_display_v1" as const;
 export const CRM_TOOL_TO_ACTION = Object.freeze(Object.fromEntries(
   Object.entries(CRM_ACTION_CAPABILITY).map(([action, capability]) => [capability, action]),
 )) as Readonly<Record<CrmCapability, CrmAction>>;
 export const CRM_COMMAND_TOOL_NAMES = new Set<CrmCapability>(Object.keys(CRM_TOOL_TO_ACTION) as CrmCapability[]);
+
+const CONTACT_NAME_FIELDS = ["first_name", "last_name"] as const;
+const fingerprintArgsByCanonicalCommand = new WeakMap<object, Record<string, unknown>>();
+
+function buildCrmCommandFingerprintArgs(command: Record<string, unknown>): Record<string, unknown> {
+  const args = Object.fromEntries(Object.entries(command).filter(([key]) => key !== "action"));
+  if (command.action !== "contact.create") return Object.freeze(args);
+  const sourcePatch = args.patch;
+  if (!sourcePatch || typeof sourcePatch !== "object" || Array.isArray(sourcePatch)) {
+    return Object.freeze(args);
+  }
+  const patch = { ...sourcePatch as Record<string, unknown> };
+  for (const field of CONTACT_NAME_FIELDS) {
+    const canonicalName = canonicalizePersonName(patch[field]);
+    if (canonicalName) patch[field] = canonicalName.identity;
+  }
+  return Object.freeze({ ...args, patch: Object.freeze(patch) });
+}
+
+function markCanonicalCrmCommand<T extends Record<string, unknown>>(command: T): CanonicalCrmCommand<T> {
+  const frozen = Object.freeze(command);
+  fingerprintArgsByCanonicalCommand.set(frozen, buildCrmCommandFingerprintArgs(frozen));
+  return frozen as CanonicalCrmCommand<T>;
+}
+
+/**
+ * Returns the precomputed hash projection for a command issued by the
+ * canonical command boundary. Raw/model arguments are rejected at runtime,
+ * and the branded parameter prevents an uncanonicalized call at compile time.
+ */
+export function crmCommandFingerprintArgs(command: CanonicalCrmCommand): Record<string, unknown> {
+  const args = fingerprintArgsByCanonicalCommand.get(command);
+  if (!args) throw new TypeError("CRM_COMMAND_NOT_CANONICAL");
+  return args;
+}
+
+/**
+ * Adds the server-derived identity projection consumed only by the database
+ * replay hash. The executable command remains the canonical display form.
+ * Raw/model commands fail here because only canonicalizeCrmCommand registers
+ * the WeakMap marker used by crmCommandFingerprintArgs.
+ */
+export function crmCommandLegacyReplaySource(
+  command: CanonicalCrmCommand,
+  source: Record<string, unknown> | null | undefined,
+): Readonly<Record<string, unknown>> | null {
+  if (command.action !== "contact.create" || !source) return null;
+  const contextualSource = command.approval_channel === undefined
+    ? source
+    : { ...source, approval_channel: command.approval_channel };
+  const canonicalSource = canonicalizeCrmCommand(contextualSource);
+  const expectedIdentity = stableCommandValue({
+    action: command.action,
+    ...crmCommandFingerprintArgs(command),
+  });
+  const sourceIdentity = stableCommandValue({
+    action: canonicalSource.action,
+    ...crmCommandFingerprintArgs(canonicalSource),
+  });
+  if (JSON.stringify(sourceIdentity) !== JSON.stringify(expectedIdentity)) {
+    throw new TypeError("CRM_COMMAND_LEGACY_REPLAY_MISMATCH");
+  }
+  return Object.freeze(stableCommandValue(contextualSource) as Record<string, unknown>);
+}
+
+export type CrmCommandIdempotencyContext = Readonly<{
+  thread_id: string | null;
+  user_turn_ordinal: number;
+  user_turn: unknown;
+  tool_name: string;
+}>;
+
+/**
+ * Settles both sides of the contact-create retry-identity rollout.
+ *
+ * The current key is the only key used for a new proposal or mutation. The
+ * legacy key is the exact value an older Chat bundle derived from the
+ * pre-normalization arguments, and is therefore a readback-only candidate.
+ * The legacy command must first canonicalize to the same complete identity,
+ * so an unrelated raw command cannot acquire a compatibility key here.
+ */
+export async function crmCommandFallbackIdempotencyKeys(
+  command: CanonicalCrmCommand,
+  source: Record<string, unknown> | null | undefined,
+  context: CrmCommandIdempotencyContext,
+): Promise<Readonly<{
+  current: string;
+  legacy: string | null;
+  legacyCommand: Readonly<Record<string, unknown>> | null;
+}>> {
+  const current = await confirmFingerprint("crm_command_idempotency", {
+    ...context,
+    arguments: crmCommandFingerprintArgs(command),
+  });
+  const legacyCommand = crmCommandLegacyReplaySource(command, source);
+  if (!legacyCommand) return Object.freeze({ current, legacy: null, legacyCommand: null });
+  const legacyArguments = Object.fromEntries(
+    Object.entries(legacyCommand).filter(([key]) => key !== "action"),
+  );
+  const legacy = await confirmFingerprint("crm_command_idempotency", {
+    ...context,
+    arguments: legacyArguments,
+  });
+  return Object.freeze({
+    current,
+    legacy: legacy === current ? null : legacy,
+    legacyCommand,
+  });
+}
+
+export function crmCommandExecutionPayload(
+  command: CanonicalCrmCommand,
+  legacySource?: Record<string, unknown> | null,
+): Record<string, unknown> {
+  const fingerprintArgs = crmCommandFingerprintArgs(command);
+  // Contact creation is the only command whose executable display spelling intentionally differs
+  // from its retry identity. Leaving every other action byte-for-byte unchanged also preserves the
+  // existing preview hashes used by destructive commands.
+  if (command.action !== "contact.create") return command;
+  const identity = Object.freeze({ action: command.action, ...fingerprintArgs });
+  const legacyDisplay = crmCommandLegacyReplaySource(command, legacySource);
+  return Object.freeze({
+    ...command,
+    [CRM_COMMAND_CANONICAL_IDENTITY_FIELD]: identity,
+    ...(legacyDisplay ? { [CRM_COMMAND_LEGACY_DISPLAY_FIELD]: legacyDisplay } : {}),
+  });
+}
 
 function stableCommandValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableCommandValue);
@@ -36,32 +169,136 @@ function stableCommandValue(value: unknown): unknown {
   return value;
 }
 
+const LEGACY_CONTACT_LIFECYCLE: Readonly<Record<string, string>> = Object.freeze({
+  lead: "new_lead",
+  mql: "qualified",
+  sql: "hot_lead",
+  opportunity: "negotiating",
+  customer: "client_active",
+  evangelist: "client_alumni",
+  churned: "client_churned",
+  archived: "client_alumni",
+});
+
+// #1234 replaced the original create-contact arguments with a generic patch object. Existing
+// model turns can therefore still carry the historical display-name field and pre-V3 lifecycle
+// values. Normalize only those proven aliases; every other unknown or malformed field remains in
+// place so the canonical executor rejects it rather than silently guessing.
+export function canonicalizeCrmCommand<T extends Record<string, unknown>>(command: T): CanonicalCrmCommand<T> {
+  if (command.action !== "contact.create") return markCanonicalCrmCommand({ ...command } as T);
+  const sourcePatch = command.patch;
+  if (!sourcePatch || typeof sourcePatch !== "object" || Array.isArray(sourcePatch)) {
+    return markCanonicalCrmCommand({ ...command } as T);
+  }
+
+  const patch = { ...sourcePatch as Record<string, unknown> };
+  for (const field of CONTACT_NAME_FIELDS) {
+    const canonicalName = canonicalizePersonName(patch[field]);
+    if (canonicalName) patch[field] = canonicalName.display;
+  }
+  const legacyName = canonicalizePersonName(patch.name);
+  if (legacyName) {
+    const presentCanonicalNameFields = CONTACT_NAME_FIELDS.filter((field) =>
+      Object.prototype.hasOwnProperty.call(patch, field)
+    );
+    const malformedCanonicalNameFields = presentCanonicalNameFields.filter((field) =>
+      canonicalizePersonName(patch[field]) === null
+    );
+    for (const field of malformedCanonicalNameFields) delete patch[field];
+    const splitAt = legacyName.display.lastIndexOf(" ");
+    const legacyFirstName = splitAt > 0 ? legacyName.display.slice(0, splitAt) : legacyName.display;
+    const legacyLastName = splitAt > 0 ? legacyName.display.slice(splitAt + 1) : null;
+    if (!canonicalizePersonName(patch.first_name)) patch.first_name = legacyFirstName;
+    if (legacyLastName && !canonicalizePersonName(patch.last_name)) patch.last_name = legacyLastName;
+    // A canonical value wins only when it is actually usable. Malformed canonical values are
+    // removed before the decision, so a valid legacy alias can fill each rejected part instead of
+    // being discarded merely because a canonical key existed.
+    delete patch.name;
+  }
+
+  if (typeof patch.lifecycle_stage === "string"
+    && Object.prototype.hasOwnProperty.call(LEGACY_CONTACT_LIFECYCLE, patch.lifecycle_stage)) {
+    const canonicalStage = LEGACY_CONTACT_LIFECYCLE[patch.lifecycle_stage];
+    if (canonicalStage) patch.lifecycle_stage = canonicalStage;
+  }
+
+  return markCanonicalCrmCommand({ ...command, patch: Object.freeze(patch) } as T);
+}
+
+export function crmContactCreateNameIssue(
+  command: Record<string, unknown>,
+): "first_name" | "last_name" | null {
+  if (command.action !== "contact.create") return null;
+  const patch = command.patch;
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) return "first_name";
+  const namePatch = patch as Record<string, unknown>;
+  if (!canonicalizePersonName(namePatch.first_name)) return "first_name";
+  if (!canonicalizePersonName(namePatch.last_name)) return "last_name";
+  return null;
+}
+
 // Canonical stable subject used only to disambiguate one command inside the operator's already-
 // approved same-tool set. The subject is always a required opaque record id (or the exact bulk set)
 // when the action has one. Consequential argument drift is safe because the stored proposal executes;
 // two approved effects for the same subject deliberately remain ambiguous and fail closed. Create
 // actions have no pre-existing record id, so they fall back to the normalized full proposed command.
 export async function crmApprovalSubject(action: CrmAction, command: Record<string, unknown>): Promise<string> {
+  const canonicalCommand = canonicalizeCrmCommand(command);
   let identity: unknown;
   if (action === "contact.bulk_update") {
-    identity = Array.isArray(command.target_ids) ? [...command.target_ids].map(String).sort() : null;
+    identity = Array.isArray(canonicalCommand.target_ids) ? [...canonicalCommand.target_ids].map(String).sort() : null;
   } else if (action.startsWith("contact.") && !["contact.create"].includes(action)) {
-    identity = command.contact_id ?? null;
+    identity = canonicalCommand.contact_id ?? null;
   } else if (action === "company.create") {
-    identity = command.contact_id ?? null;
+    identity = canonicalCommand.contact_id ?? null;
   } else if (action.startsWith("company.")) {
-    identity = command.company_id ?? null;
+    identity = canonicalCommand.company_id ?? null;
   } else if (action.startsWith("task.") && action !== "task.create") {
-    identity = command.task_id ?? null;
+    identity = canonicalCommand.task_id ?? null;
   } else if (action === "activity.log") {
-    identity = command.contact_id ?? null;
+    identity = canonicalCommand.contact_id ?? null;
   } else if (action.startsWith("deal.") && action !== "deal.create") {
-    identity = command.deal_id ?? null;
+    identity = canonicalCommand.deal_id ?? null;
   } else {
-    identity = stableCommandValue({ ...command, action });
+    identity = stableCommandValue({ action, ...crmCommandFingerprintArgs(canonicalCommand) });
   }
   return await confirmFingerprint(`crm_approval_subject:${action}`, { identity });
 }
+
+const CONTACT_LIFECYCLE_STAGES = [
+  "new_lead", "qualified", "nurturing", "hot_lead", "negotiating", "won",
+  "client_active", "client_paused", "client_churned", "client_funded", "client_alumni",
+] as const;
+
+const contactCreatePatch = {
+  type: "object",
+  description: "Canonical fields for the new contact. The current contact record requires both a first and last name; ask the operator for the missing part before calling this tool.",
+  additionalProperties: false,
+  required: ["first_name", "last_name"],
+  properties: {
+    first_name: { type: "string", description: "First name. Split a supplied full person name into first_name and last_name." },
+    last_name: { type: "string", description: "Last name. Ask the operator when it was not supplied; never invent a placeholder." },
+    email: { type: "string" },
+    phone: { type: "string" },
+    entity_name: { type: "string", description: "Company or business name." },
+    entity_type: { type: "string" },
+    title: { type: "string", description: "Job title or role." },
+    lifecycle_stage: { type: "string", enum: CONTACT_LIFECYCLE_STAGES },
+    source: { type: "string" },
+    tags: { type: "array", maxItems: 50, items: { type: "string" } },
+    primary_offer: { type: "string" },
+    notes: { type: "string", maxLength: 10000 },
+    do_not_contact: { type: "boolean" },
+    website: { type: "string" },
+    linkedin_url: { type: "string" },
+    street_address: { type: "string" },
+    city: { type: "string" },
+    state: { type: "string" },
+    zip_code: { type: "string" },
+    funding_goal: { type: "number" },
+    monthly_revenue: { type: "number" },
+  },
+} as const;
 
 const properties = {
   idempotency_key: { type: "string", maxLength: 192, description: "Optional stable retry key. Paige may omit it; the server settles one." },
@@ -127,6 +364,7 @@ export const CRM_COMMAND_TOOLS = (Object.entries(CRM_ACTION_CAPABILITY) as [CrmA
       type: "object",
       properties: {
         ...properties,
+        patch: action === "contact.create" ? contactCreatePatch : properties.patch,
         confirm: {
           type: "boolean",
           description: classifyAction(capability) === "high"
