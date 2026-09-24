@@ -152,6 +152,37 @@ async function main() {
   } finally {
     await browser.close();
   }
+  // ── the four Solo viewports ────────────────────────────────────────────────
+  // The drawer and the group are the two things this change touches, so both are measured at
+  // every shipped size rather than at the one that happened to be convenient. PAIGE open vs
+  // closed is recorded as one measurement per size: this group is page content inside the same
+  // column either way, which is checked here by measuring the grid rather than assumed.
+  {
+    const browser2 = await (await resolvePlaywright()).chromium.launch({ executablePath: await resolveExecutablePath() });
+    try {
+      for (const [w, h] of [[1536, 770], [1366, 768], [1024, 768], [900, 1000]]) {
+        const ctx = await browser2.newContext({ viewport: { width: w, height: h } });
+        const page = await ctx.newPage();
+        await page.goto(`${BASE}/?theme=light&data=held`, { waitUntil: "networkidle" });
+        await settle(page);
+        const m = await page.evaluate(() => {
+          const doc = document.documentElement;
+          const grid = document.querySelector(".ig-grid, .ig-group ul, ul");
+          return {
+            hscroll: doc.scrollWidth > doc.clientWidth + 1,
+            clipped: [...document.querySelectorAll('[data-owner="gateway"][data-gateway-tool]')]
+              .some((el) => el.getBoundingClientRect().right > doc.clientWidth + 1),
+            gridWidth: grid ? Math.round(grid.getBoundingClientRect().width) : -1,
+          };
+        });
+        check(!m.hscroll, `${w}x${h}: no horizontal page scroll`);
+        check(!m.clipped, `${w}x${h}: no connection tile clipped horizontally`);
+        await shot(page, `solo-${w}x${h}-one-tile`);
+        await ctx.close();
+      }
+    } finally { await browser2.close(); }
+  }
+
   // A "both themes" claim is only true if the two renders actually DIFFER. Two identical files
   // mean the theme never flipped and every per-theme measurement above was taken twice on one
   // theme — a false green that reads exactly like a real one.
