@@ -109,6 +109,11 @@ jobs:
           src="$(echo "$all" | grep -E '^src/.*\.(ts|tsx)$' || true)"
           echo "src_count=$(printf '%s' "$src" | grep -c . || true)" >> "$GITHUB_OUTPUT"
           printf '%s\n' "$src" | grep -E '.' > changed_src.txt || true
+          # Impeccable reads stylesheets as well as components, so its change set is wider
+          # than the ESLint one. Same base/head, so the two gates never disagree.
+          ui="$(echo "$all" | grep -E '^src/.*\.(ts|tsx|css)$' || true)"
+          echo "ui_count=$(printf '%s' "$ui" | grep -c . || true)" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$ui" | grep -E '.' > changed_ui.txt || true
           echo "Changed src files:"; cat changed_src.txt || true
           # Edge functions are a SEPARATE tree that tsc never sees (they are Deno, not Vite).
           fns="$(echo "$all" | grep -E '^supabase/functions/.*\.ts$' || true)"
@@ -440,6 +445,22 @@ jobs:
       - name: Gold-discipline (changed src)
         if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && steps.changed.outputs.src_count != '0' }}
         run: xargs -r -a changed_src.txt node scripts/gold-discipline-lint.mjs
+
+      # Impeccable (npm `impeccable`, Apache-2.0) — UI anti-pattern detection on the files this
+      # PR actually touches, the same posture as the two lints above. Deliberately NOT repo-wide:
+      # `src/index.css` carries pre-existing findings (an overused face, gradient-clipped text,
+      # bounce easing) and failing every unrelated PR on them would train people to ignore the
+      # gate. Touch a file, own its findings.
+      #
+      # The CLI exits 0 clean / 2 findings / 1 could-not-scan and prints findings to STDERR.
+      # MEASURED: xargs collapses any non-zero child status to 123, so this step fails on both
+      # findings and an unscannable target without distinguishing them — the same trade the two
+      # xargs lints above already make. Do not pipe it; a pipe would report the pipe's status
+      # and mask the failure entirely. The engine binary is platform-specific and gitignored,
+      # so CI fetches it through npx at the pinned version.
+      - name: Impeccable — UI anti-patterns (changed src)
+        if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && steps.changed.outputs.ui_count != '0' }}
+        run: xargs -r -a changed_ui.txt npx --yes impeccable@4.1.0 detect
 
       # --- Edge functions: the gap this closes (task #142) ---------------------------------
       # NOTHING compiled an edge function before it deployed. `tsc` covers src/ only (edge fns
