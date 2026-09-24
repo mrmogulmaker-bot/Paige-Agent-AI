@@ -14,6 +14,9 @@
  * Run: node --import ./scripts/client-memory-authz/register.mjs scripts/client-memory-authz/check.mjs
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
+const modelTurnState = new AsyncLocalStorage();
+
 const USER    = "44444444-4444-4444-8444-444444444444";
 const OWN     = "55555555-5555-4555-8555-555555555555"; // a client this caller may read
 const FOREIGN = "66666666-6666-4666-8666-666666666666"; // another tenant's client
@@ -123,7 +126,12 @@ globalThis.fetch = async (url, init) => {
           return sseToolCallReply(toolCallSpec.name, { ...toolCallSpec.args, confirm: true });
         }
       }
-      if (toolCallOnce) { toolCallOnce = false; return sseToolCallReply(toolCallSpec.name, toolCallSpec.args); }
+      const turn = modelTurnState.getStore();
+      if (turn ? turn.toolCallOnce : toolCallOnce) {
+        if (turn) turn.toolCallOnce = false;
+        else toolCallOnce = false;
+        return sseToolCallReply(toolCallSpec.name, toolCallSpec.args);
+      }
       return sseModelReply("ok");
     }
     // Answer the document READ-CHECK with the JSON it expects, so `isCreditReportPdf` can be
@@ -150,6 +158,8 @@ const fake = await import("./fake-supabase.mjs");
 await import("../../supabase/functions/paige-ai-chat/index.ts");
 const { capturedHandler } = await import("./stub-serve.mjs");
 const handler = capturedHandler();
+const issuedApproval = (row) => row?.fingerprint && /^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(row.issued_in_request ?? "")
+  ? `${row.fingerprint}:${row.issued_in_request}` : row?.fingerprint;
 
 const MEMORY_TEXT = "SECRET-CLIENT-MEMORY-CONTENT";
 
@@ -194,6 +204,7 @@ async function drive({
   selfApproving = false,
   /** Called synchronously on every insert, so a scenario can model read-your-own-write. */
   onInsert = undefined,
+  concurrentRequests = 1,
 }) {
   const logged = [];
   embedCount = 0;
@@ -258,9 +269,10 @@ async function drive({
     },
   });
 
-  let status = null, bodyText = "";
-  try {
-    const res = await handler(new Request("http://local/paige-ai-chat", {
+  const responses = await Promise.all(Array.from({ length: concurrentRequests }, () => modelTurnState.run({ toolCallOnce: !!toolCall }, async () => {
+    let status = null, bodyText = "";
+    try {
+      const res = await handler(new Request("http://local/paige-ai-chat", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: authorization },
       body: JSON.stringify({
@@ -271,9 +283,13 @@ async function drive({
         ...(extraBody ?? {}),
       }),
     }));
-    status = res.status;
-    try { bodyText = await res.text(); } catch { /* streamed */ }
-  } catch (e) { status = "throw:" + (e?.message ?? e); }
+      status = res.status;
+      try { bodyText = await res.text(); } catch { /* streamed */ }
+    } catch (e) { status = "throw:" + (e?.message ?? e); }
+    return { status, bodyText };
+  })));
+  const status = responses[0]?.status ?? null;
+  const bodyText = responses.map((response) => response.bodyText).join("\n");
   modelStub = false;
   toolCallOnce = false;
   selfApprove = false;
@@ -281,7 +297,7 @@ async function drive({
   console.error = origError; console.warn = origWarn;
   const memoryReads = rec.from.filter((f) => f.table === "client_memory" && f.op === "select");
   const memoryRpc = rec.rpc.filter((r) => r.name === "match_paige_memory");
-  return { rec, status, bodyText, logged, embeds: embedCount, memoryReads, memoryRpc, modelEgress: [...modelEgress], outboundCalls: [...outboundCalls], selfApproveReplays };
+  return { rec, status, bodyText, responses, logged, embeds: embedCount, memoryReads, memoryRpc, modelEgress: [...modelEgress], outboundCalls: [...outboundCalls], selfApproveReplays };
 }
 
 console.log("\nauthorized paths still work (no regression)");
@@ -810,68 +826,39 @@ console.log("\nthe TOOL loop does not retarget a refused subject at the caller")
  * scenario can model consecutive REQUESTS against one database.
  */
 function makeConfirmStore(seed = []) {
-  // Existing seeded happy paths represent trusted proposals; untrusted tests explicitly set marker null.
   const rows = seed.map((r, i) => ({ id: `row-seed-${i}`, consumed: false, tenant_id:null, thread_id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc', scoped_client_id:r.args?.client_id??null, expires_at:'2099-01-01T00:00:00Z', server_issued_at:'2026-01-01T00:00:00Z', ...r }));
-  const matches=(r,filters)=>filters.every(([op,col,value,extra])=>{const v=col==='consumed_at'?(r.consumed?'consumed':null):r[col];if(op==='eq')return v===value;if(op==='neq')return v!=null&&v!==value;if(op==='is')return value===null?v==null:v===value;if(op==='not'&&value==='is'&&extra===null)return v!=null;if(op==='gt')return v!=null&&v>value;if(op==='in')return value.includes(v);return true;});
+  const matches = (r, filters) => filters.every(([op, col, value, extra]) => {
+    const v = col === "consumed_at" ? (r.consumed ? "consumed" : null) : r[col];
+    if (op === "eq") return v === value;
+    if (op === "filter") return value === "eq" && col.startsWith("args->>") && String(r.args?.[col.slice(7)]) === String(extra);
+    if (op === "neq") return v != null && v !== value;
+    if (op === "is") return value === null ? v == null : v === value;
+    if (op === "not" && value === "is" && extra === null) return v != null;
+    if (op === "gt") return v != null && v > value;
+    if (op === "gte") return v != null && v >= value;
+    if (op === "lt") return v != null && v < value;
+    if (op === "lte") return v != null && v <= value;
+    if (op === "in") return value.includes(v);
+    return true;
+  });
   return {
     rows,
     table: (filters) => {
-      const f = (op, c) => filters.find((x) => x[0] === op && x[1] === c)?.[2];
-      const notFrom = f("neq", "issued_in_request");
-      // Faithful to postgrest: `.not(col,"is",null)` drops NULL rows, and `neq` against a NULL
-      // column value is NULL — not a match — rather than true.
-      const excludesNull = filters.some((x) => x[0] === "not" && x[1] === "issued_in_request");
-      const fromEarlier = (r) => (!excludesNull || r.issued_in_request != null)
-        && (notFrom === undefined || (r.issued_in_request != null && r.issued_in_request !== notFrom));
-
-      // Read-only exact-card lookup. Unlike decline's .in(), this must not consume rows.
-      if (filters.some((x) => x[0] === "select" && x[1] === "fingerprint")) {
-        const submitted = f("in", "fingerprint") ?? [];
-        return rows.filter((r) => matches(r,filters) && submitted.includes(r.fingerprint) && fromEarlier(r)
-          && ["user_id", "tool_name", "tenant_id", "thread_id", "scoped_client_id"].every((key) => {
-            const eq = f("eq", key); const nil = filters.some((x) => x[0] === "is" && x[1] === key);
-            return eq !== undefined ? r[key] === eq : !nil || r[key] == null;
-          }))
-          .slice(0, 2).map((r) => ({ fingerprint: r.fingerprint }));
+      const update = filters.find(([op]) => op === "update")?.[1];
+      const columns = filters.find(([op]) => op === "select")?.[1];
+      if (!update && columns === undefined) return [];
+      const hits = rows.filter((row) => matches(row, filters))
+        .slice(0, filters.find(([op]) => op === "limit")?.[1] ?? rows.length);
+      if (update) for (const row of hits) {
+        if (Object.hasOwn(update, "consumed_at")) row.consumed = update.consumed_at !== null;
+        for (const [key, value] of Object.entries(update)) if (key !== "consumed_at") row[key] = value;
       }
-
-      // The DECLINE leg: `update(...).in("fingerprint", [...])`. Modelled because without it a
-      // cancelled row stays live in the fixture and the check would pass or fail for reasons that
-      // have nothing to do with the handler.
-      const declined = filters.find((x) => x[0] === "in" && x[1] === "fingerprint")?.[2];
-      if (Array.isArray(declined)) {
-        const hit = rows.filter((r) => matches(r,filters) && declined.includes(r.fingerprint));
-        hit.forEach((r) => { r.consumed = true; });
-        return hit.map((r) => ({ id: r.id }));
-      }
-
-      // The claim-by-id leg of the scope path.
-      const byId = f("eq", "id");
-      if (byId !== undefined) {
-        const hit = rows.find((r) => matches(r,filters) && r.id === byId);
-        if (!hit) return [];
-        hit.consumed = true;
-        return [{ args: hit.args }];
-      }
-
-      const fp = f("eq", "fingerprint");
-      const tool = f("eq", "tool_name");
-      if (fp !== undefined) {
-        // A filter the code STOPPED sending must stop narrowing here too, or a mutation that
-        // deletes it would be masked by the fixture rather than caught.
-        const hit = rows.find((r) => matches(r,filters) && r.fingerprint === fp && fromEarlier(r)
-          && (tool === undefined || r.tool_name === tool));
-        if (!hit) return [];
-        hit.consumed = true;
-        return [{ args: hit.args }];
-      }
-
-      // The lookup leg of the scope path: every live prior-request proposal for this tool.
-      if (tool !== undefined) {
-        return rows.filter((r) => matches(r,filters) && r.tool_name === tool && fromEarlier(r))
-          .map((r) => ({ id: r.id }));
-      }
-      return [];
+      return hits.map((row) => {
+        if (columns === "*") return JSON.parse(JSON.stringify(row));
+        return Object.fromEntries(String(columns ?? "id").split(",").map((key) => [key,
+          key === "consumed_at" ? (row.consumed ? "consumed" : null) : structuredClone(row[key]),
+        ]));
+      });
     },
   };
 }
@@ -882,7 +869,7 @@ function makeConfirmStore(seed = []) {
 const mirrorConfirms = (st) => (t, row) => {
   if (t !== "paige_pending_confirmations") return;
   const clash = st.rows.some((r) => r.server_issued_at!=null && row.server_issued_at!=null && !r.consumed && r.fingerprint === row.fingerprint
-    && r.tool_name === row.tool_name && r.user_id === row.user_id);
+    && r.user_id === row.user_id);
   // Return the real constraint violation rather than quietly dropping the row: the handler must
   // read this as "exists", never as "created", and a fixture that just skips makes those two
   // outcomes look identical from the handler's side.
@@ -901,10 +888,7 @@ const mirrorConfirms = (st) => (t, row) => {
 // any tool carrying model-written free text. Thirteen separate mutations to that code left every
 // suite green, which is the real finding: the mechanism had no coverage at all.
 //
-// The repair that followed introduced a `confirm_token`, and section 18 records why that is now
-// gone. What remains are two channels: a surface echo (a rendered card, unforgeable by a model)
-// and `confirm: true` (the model's word, refused for the high-risk set). Both redeem the STORED
-// call, and neither is redeemable inside the request that proposed it.
+// Approval-path hardening. Detailed evidence retained privately.
 //
 // So each check below names the exact mutation it kills. A check that cannot name one is decoration.
 {
@@ -927,7 +911,7 @@ const mirrorConfirms = (st) => (t, row) => {
     return {
       present: true,
       raw: all,
-      fingerprint: (all.match(/"confirm_fingerprint":"([0-9a-f]{16})"/) ?? [])[1] ?? null,
+      fingerprint: (all.match(/"confirm_fingerprint":"([0-9a-f]{16}(?::[0-9a-f-]{36})?)"/) ?? [])[1] ?? null,
       summary: (all.match(/"confirm_summary":"([^"]{0,160})/) ?? [])[1] ?? "",
       note: (all.match(/"note":"([^"]{0,600})/) ?? [])[1] ?? "",
     };
@@ -948,7 +932,7 @@ const mirrorConfirms = (st) => (t, row) => {
 
   // ── 13.2 …and the proposal is PERSISTED, with the arguments that will actually run.
   // Kills: deleting the `recordConfirmation` call, or storing a summary instead of the args.
-  const stored = proposed.rec.inserts.find((i) => i.table === "paige_pending_confirmations")?.row;
+  const stored = proposed.rec.inserts.find((i) => i.table === "paige_pending_confirmations" && !i.update)?.row;
   assert("13.2 the proposed call is persisted with its exact arguments",
     !!stored && stored.tool_name === TOOL
       && JSON.stringify(stored.args?.updates) === JSON.stringify({ goal: "buy a house" }),
@@ -980,7 +964,8 @@ const mirrorConfirms = (st) => (t, row) => {
   // spendable. Kills: reinstating `confirm_token` in the refusal, which is the whole of section 18.
   const refusal = refusalOf(proposed.modelEgress);
   assert("13.5 the refusal explains how to approve and hands back no spendable key",
-    !!refusal && refusal.summary.length > 0 && /confirm: true/.test(refusal.note)
+    !!refusal && refusal.summary.length > 0 && /click Approve/.test(refusal.note)
+      && /cannot approve this action/.test(refusal.note) && !/confirm: true/.test(refusal.note)
       && !/confirm_token/.test(refusal.raw),
     JSON.stringify(refusal ?? null));
 
@@ -990,11 +975,10 @@ const mirrorConfirms = (st) => (t, row) => {
   // send the drifted arguments to write-back; and reverting to the echo-only gate, which would
   // refuse this turn outright.
   const st2 = makeConfirmStore([{
-    user_id: USER, tool_name: TOOL, fingerprint: refusal?.fingerprint ?? "0".repeat(16),
-    args: PROPOSED, issued_in_request: EARLIER,
+    ...st1.rows[0], args: PROPOSED,
   }]);
   const approved = await drive({
-    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD, approvedConfirmations: [refusal.fingerprint] },
     toolCall: { name: TOOL, args: { client_id: OWN, updates: { goal: "SOMETHING ELSE ENTIRELY" }, confirm: true } },
     ...CONFIRM,
     tablesExtra: { paige_pending_confirmations: st2.table },
@@ -1009,7 +993,8 @@ const mirrorConfirms = (st) => (t, row) => {
   // tool name alone. Kills: dropping the tenant / thread / focused-client predicates from the
   // lookup, which would let a drifted approval reach across a switch — the thing S2 exists to stop.
   const lookupQ = approved.rec.from.find(
-    (f) => f.table === "paige_pending_confirmations" && f.op === "select");
+    (f) => f.table === "paige_pending_confirmations" && f.op === "select"
+      && f.filters.some((x) => x[0] === "in" && x[1] === "fingerprint"));
   const lf = (op, col) => lookupQ?.filters.some((x) => x[0] === op && x[1] === col);
   assert("13.6b the scope lookup re-checks user, tenant, expiry, thread and focused client",
     !!lookupQ && lf("eq", "user_id") && lf("gt", "expires_at")
@@ -1026,13 +1011,15 @@ const mirrorConfirms = (st) => (t, row) => {
     { user_id: USER, tool_name: TOOL, fingerprint: "2".repeat(16), args: { client_id: OWN, updates: { goal: "a different plan" } }, issued_in_request: EARLIER },
   ]);
   const ambiguous = await drive({
-    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD, approvedConfirmations: ["1".repeat(16), "2".repeat(16)] },
     toolCall: { name: TOOL, args: { client_id: OWN, updates: { goal: "drifted" }, confirm: true } },
     ...CONFIRM,
     tablesExtra: { paige_pending_confirmations: st2b.table },
   });
-  assert("13.6c an ambiguous yes redeems nothing and asks again",
-    !ambiguous.outboundCalls.some((c) => c.url.includes("paige-write-back")),
+  assert("13.6c approval-path hardening",
+    !ambiguous.outboundCalls.some((c) => c.url.includes("paige-write-back"))
+      && st2b.rows.every((row) => !row.consumed)
+      && ambiguous.modelEgress.some((body) => body.includes("execution_unavailable")),
     JSON.stringify(ambiguous.outboundCalls.map((c) => c.body)));
 
   // ── 13.7 The claim is a COMPARE-AND-SET, so one approval cannot execute twice.
@@ -1042,8 +1029,7 @@ const mirrorConfirms = (st) => (t, row) => {
   // Driven down the SURFACE-ECHO path, where the arguments are identical and the claim is by
   // fingerprint, so the exact-match leg gets its own coverage rather than sharing 13.6's.
   const st2c = makeConfirmStore([{
-    user_id: USER, tool_name: TOOL, fingerprint: refusal?.fingerprint ?? "0".repeat(16),
-    args: PROPOSED, issued_in_request: EARLIER,
+    ...st1.rows[0], args: PROPOSED,
   }]);
   const cardApproved = await drive({
     clientId: OWN, stream: true,
@@ -1087,7 +1073,7 @@ const mirrorConfirms = (st) => (t, row) => {
     args: { amount: 1 }, issued_in_request: EARLIER,
   }]);
   const wrongTool = await drive({
-    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD, approvedConfirmations: ["abcdef0123456789"] },
     toolCall: { name: TOOL, args: { client_id: OWN, updates: { goal: "x" }, confirm: true } },
     ...CONFIRM,
     tablesExtra: { paige_pending_confirmations: st3.table },
@@ -1117,7 +1103,7 @@ const mirrorConfirms = (st) => (t, row) => {
   });
   const again = refusalOf(reProposed.modelEgress);
   assert("13.9b re-proposing an unanswered action says they have not answered, not the same ask",
-    !!again && /ALREADY asked them/.test(again.note),
+    !!again && /pending/.test(again.note) && /Do NOT call this tool again/.test(again.note),
     JSON.stringify(again?.note ?? null));
   assert("13.9b2 …and does not mint a second live proposal for the same call",
     st3b.rows.length === 1, JSON.stringify(st3b.rows.map((r) => r.fingerprint)));
@@ -1143,8 +1129,17 @@ const mirrorConfirms = (st) => (t, row) => {
     !declined.outboundCalls.some((c) => c.url.includes("paige-write-back")),
     JSON.stringify(declined.outboundCalls.map((c) => c.body)));
 
+  const declinedReplay = await drive({
+    clientId: OWN, stream: true,
+    extraBody: { threadId: THREAD, approvedConfirmations: ["dddddddddddddddd"] },
+    toolCall: { name: TOOL, args: { ...PROPOSED, confirm: true } }, ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: st5.table },
+  });
+  assert("13.H1", st5.rows[0].consumed
+    && !declinedReplay.outboundCalls.some((call) => call.url.includes("paige-write-back")));
+
   const cancelQ = declined.rec.from.find((f) => f.table === "paige_pending_confirmations"
-    && f.op === "update" && f.filters.some((x) => x[0] === "in" && x[1] === "fingerprint"));
+    && f.op === "update" && f.filters.some((x) => x[0] === "eq" && x[1] === "issued_in_request"));
   assert("13.11b the decline is a scoped compare-and-set, not a blind update",
     !!cancelQ && cancelQ.client === "service"
       && cancelQ.filters.some((x) => x[0] === "eq" && x[1] === "user_id")
@@ -1234,16 +1229,18 @@ const mirrorConfirms = (st) => (t, row) => {
   // keep asserting approval and keep being refused, and the person will be told it is pending
   // forever. Kills: the one-branch description that says the same thing to every tool.
   const offeredHighRisk = highRisk.filter((t) => declared.includes(t));
-  const notWarned = offeredHighRisk.filter((t) => !/not enough on its own/.test(blockFor(t)));
+  const { CRM_COMMAND_TOOL_NAMES } = await import("../../supabase/functions/_shared/crm-command/catalog.ts");
+  const notWarned = offeredHighRisk.filter((t) => !(CRM_COMMAND_TOOL_NAMES.has(t)
+    ? /not enough on its own/ : /workspace approval control/).test(blockFor(t)));
   assert("14.4 every high-risk tool tells the model its word is not enough",
     highRisk.length >= 10 && offeredHighRisk.length >= 5 && notWarned.length === 0,
     JSON.stringify({ highRisk: highRisk.length, offered: offeredHighRisk.length, notWarned }));
 
   // ── 14.5 …and an ORDINARY gated tool is not given that warning, or 14.4 would be satisfied by
   // printing it everywhere, which tells the model nothing about which acts are different.
-  assert("14.5 …and an ordinary gated tool is not given that warning",
-    declared.includes("crm_create_task") && !/not enough on its own/.test(blockFor("crm_create_task")),
-    JSON.stringify({ sawTool: declared.includes("crm_create_task") }));
+  assert("14.5 approval-path hardening",
+    declared.includes("update_client_data") && /workspace approval control/.test(blockFor("update_client_data")),
+    JSON.stringify({ sawTool: declared.includes("update_client_data") }));
 
   // ── 14.6 THE SET IS A RULE, NOT A HAND-LIST. Mutation-testing found that deleting three tools
   // from HIGH_RISK_CONFIRM_TOOLS failed nothing: 18.6 drives one member, and a count threshold
@@ -1665,34 +1662,7 @@ const mirrorConfirms = (st) => (t, row) => {
     (settled.bodyText ?? "").slice(0, 200));
 }
 
-// ── 18. THE MODEL CANNOT APPROVE ITSELF ──────────────────────────────────────────────────────
-//
-// THE PROPERTY, AND HOW IT WAS LOST TWICE.
-//
-// Originally the re-entry test read `approvedConfirmations`, which comes only from the validated
-// REQUEST BODY. A model cannot write the request body, so self-approval was impossible by
-// construction — not by instruction. But five of the six chat surfaces send no such echo, so that
-// version was an outage: on those surfaces nothing could ever be approved.
-//
-// The first repair handed the model a `confirm_token` in the tool result. The tool loop pushes
-// tool results back into `convo`, so the token landed in the model's own context one round before
-// any human saw anything. A per-request nonce then stopped it being spent in the SAME request —
-// and that much held. What did not hold: the token is the fingerprint of the ACTION, not a secret,
-// so any LATER request that re-proposed the same call was handed it straight back and could spend
-// it immediately. A request whose human message was "no, cancel that" executed the stored write
-// and raised an autonomy grant from `confirm` to `auto`. Driven, not read.
-//
-// Every check in section 13 passed throughout both losses, because each supplies approval the way
-// a SURFACE would and none of them drives two requests against one store. 18.5 does, and is the
-// check that would have caught it.
-//
-// THE DESIGN NOW. Approval arrives down two channels of different worth, and the code says so:
-//   1. `approvedConfirmations` — a card a surface RENDERED and a human clicked. Unforgeable by a
-//      model, because a model cannot put anything in an HTTP request body.
-//   2. `confirm: true` — the model's WORD that the operator answered yes. Kept, because without it
-//      five surfaces can approve nothing; refused outright for HIGH_RISK_CONFIRM_TOOLS, where the
-//      model's word is not an acceptable basis for an irreversible, permission-changing,
-//      outward-facing or money-spending act.
+// ── 18. APPROVAL-PATH HARDENING ───────────────────────────────────────────────────────────
 {
   const CONFIRM = { rpcOverrides: {
     resolve_tool_autonomy: { data: "confirm", error: null },
@@ -1701,6 +1671,267 @@ const mirrorConfirms = (st) => (t, row) => {
   const THREAD = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
   const AUTOMATION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const wroteBack = (r) => r.outboundCalls.some((c) => c.url.includes("paige-write-back"));
+
+  const hardeningStore = makeConfirmStore();
+  const hardeningArgs = { client_id: OWN, updates: { goal: "approval-path-check" } };
+  const hardeningDrive = (args, body = {}) => drive({
+    stream: true, clientId: OWN, extraBody: { threadId: THREAD, ...body },
+    toolCall: { name: "update_client_data", args }, ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: hardeningStore.table },
+    onInsert: mirrorConfirms(hardeningStore),
+  });
+  const hardeningProposal = await hardeningDrive(hardeningArgs);
+  const hardeningFrames = hardeningProposal.bodyText.split("\n")
+    .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
+    .map((line) => JSON.parse(line.slice(6)));
+  const hardeningCard = hardeningFrames.find((frame) => frame.paige_confirm)?.paige_confirm;
+  assert("18.H1", !wroteBack(hardeningProposal)
+    && hardeningStore.rows.length === 1
+    && /^[0-9a-f]{16}:[0-9a-f-]{36}$/.test(hardeningCard?.fingerprint ?? "")
+    && hardeningCard.fingerprint === issuedApproval(hardeningStore.rows[0]));
+  const hardeningUnselected = await hardeningDrive({ ...hardeningArgs, confirm: true });
+  assert("18.H2", !wroteBack(hardeningUnselected));
+  assert("18.H3", hardeningStore.rows.length === 1 && !hardeningStore.rows[0].consumed);
+  const hardeningSelected = await hardeningDrive(
+    { ...hardeningArgs, updates: { goal: "different-value" }, confirm: true },
+    { approvedConfirmations: [hardeningCard?.fingerprint] },
+  );
+  assert("18.H4", hardeningSelected.outboundCalls.filter((call) => call.url.includes("paige-write-back")).length === 1
+    && hardeningSelected.outboundCalls.some((call) => call.body.includes("approval-path-check"))
+    && !hardeningSelected.outboundCalls.some((call) => call.body.includes("different-value")));
+  const hardeningReplay = await hardeningDrive(hardeningArgs, { approvedConfirmations: [hardeningCard?.fingerprint] });
+  assert("18.H5", !wroteBack(hardeningReplay));
+  const hardeningReplayAgain = await hardeningDrive(hardeningArgs, { approvedConfirmations: [hardeningCard?.fingerprint] });
+  assert("18.H6", !wroteBack(hardeningReplayAgain));
+  const hardeningNext = await hardeningDrive(hardeningArgs);
+  const hardeningNextCard = hardeningNext.bodyText.split("\n")
+    .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
+    .map((line) => JSON.parse(line.slice(6))).find((frame) => frame.paige_confirm)?.paige_confirm;
+  assert("18.H7", !!hardeningNextCard?.fingerprint && hardeningNextCard.fingerprint !== hardeningCard?.fingerprint);
+  const hardeningOld = await hardeningDrive(hardeningArgs, { approvedConfirmations: [hardeningCard?.fingerprint] });
+  assert("18.H8", !wroteBack(hardeningOld)
+    && hardeningStore.rows.some((row) => issuedApproval(row) === hardeningNextCard?.fingerprint && !row.consumed));
+  const hardeningNextSelected = await hardeningDrive(hardeningArgs, { approvedConfirmations: [hardeningNextCard?.fingerprint] });
+  assert("18.H9", hardeningNextSelected.outboundCalls.filter((call) => call.url.includes("paige-write-back")).length === 1);
+  for (let retry = 0; retry < 3; retry++) {
+    const result = await hardeningDrive(hardeningArgs, { approvedConfirmations: [hardeningNextCard?.fingerprint] });
+    assert("18.H10." + retry, !wroteBack(result));
+  }
+  const hardeningLegacy = makeConfirmStore([
+    { ...hardeningStore.rows[0], fingerprint: "eeeeeeeeeeeeeeee", consumed: true },
+    { ...hardeningStore.rows[0], fingerprint: "eeeeeeeeeeeeeeee", id: "legacy-pending", consumed: false, issued_in_request: "legacy-request" },
+  ]);
+  const hardeningLegacyResult = await drive({
+    stream: true, clientId: OWN,
+    extraBody: { threadId: THREAD, approvedConfirmations: [hardeningLegacy.rows[0].fingerprint] },
+    toolCall: { name: "update_client_data", args: hardeningArgs }, ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: hardeningLegacy.table },
+    onInsert: mirrorConfirms(hardeningLegacy),
+  });
+  assert("18.H11", !wroteBack(hardeningLegacyResult) && !hardeningLegacy.rows[1].consumed);
+
+  const batchStore = makeConfirmStore();
+  const batchDrive = (args, body = {}) => drive({
+    stream: true, clientId: OWN, extraBody: { threadId: THREAD, ...body },
+    toolCall: { name: "update_client_data", args }, ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: batchStore.table },
+    onInsert: mirrorConfirms(batchStore),
+  });
+  const batchArgs = ["one", "two", "three"].map((goal) => ({ client_id: OWN, updates: { goal } }));
+  for (const args of batchArgs) await batchDrive(args);
+  const batchSelected = await batchDrive({ ...batchArgs[2], confirm: true }, {
+    approvedConfirmations: batchStore.rows.map(issuedApproval),
+  });
+  assert("18.H12", batchStore.rows.length === 3
+    && batchStore.rows.filter((row) => row.consumed).length === 1
+    && batchStore.rows[2].consumed
+    && batchSelected.outboundCalls.filter((call) => call.url.includes("paige-write-back")).length === 1);
+  const legacyFresh = hardeningLegacy.rows.find((row) => !row.consumed
+    && row.fingerprint !== hardeningLegacy.rows[0].fingerprint);
+  assert("18.H13", !!legacyFresh);
+  if (legacyFresh) {
+    const legacySelected = await drive({
+      stream: true, clientId: OWN,
+      extraBody: { threadId: THREAD, approvedConfirmations: [issuedApproval(legacyFresh)] },
+      toolCall: { name: "update_client_data", args: hardeningArgs }, ...CONFIRM,
+      tablesExtra: { paige_pending_confirmations: hardeningLegacy.table },
+      onInsert: mirrorConfirms(hardeningLegacy),
+    });
+    assert("18.H14", wroteBack(legacySelected));
+  }
+
+  const subjectStore = makeConfirmStore();
+  const subjectDrive = (args, body = {}) => drive({
+    stream: true, extraBody: { threadId: THREAD, ...body },
+    toolCall: { name: "action_advance", args }, ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: subjectStore.table, user_roles: [{ role: "admin" }] },
+    onInsert: mirrorConfirms(subjectStore),
+  });
+  const subjectArgs = [OWN, FOREIGN].map((action_id) => ({ action_id, to_status: "dismissed", decision_rationale: "original note" }));
+  for (const args of subjectArgs) await subjectDrive(args);
+  const subjectSelected = await subjectDrive({ ...subjectArgs[1], decision_rationale: "different note", confirm: true }, {
+    approvedConfirmations: subjectStore.rows.map(issuedApproval),
+  });
+  assert("18.H15", subjectStore.rows.length === 2 && !subjectStore.rows[0].consumed && subjectStore.rows[1].consumed
+    && subjectSelected.rec.rpc.filter((call) => call.name === "advance_action").length === 1
+    && subjectSelected.rec.rpc.some((call) => call.name === "advance_action"
+      && call.args.p_action_id === FOREIGN && call.args.p_decision_rationale === "original note"));
+
+  const h16Store = makeConfirmStore();
+  let h16Arrivals = 0;
+  let h16Release;
+  let h16Timeout;
+  const h16Ready = new Promise((resolve, reject) => {
+    h16Release = () => { clearTimeout(h16Timeout); resolve(); };
+    h16Timeout = setTimeout(() => reject(new Error("18.H16")), 3000);
+  });
+  const h16Table = async (filters) => {
+    const snapshot = h16Store.table(filters);
+    if (h16Arrivals < 2 && filters.some(([op, columns]) => op === "select" && String(columns).includes("fingerprint"))) {
+      h16Arrivals += 1;
+      if (h16Arrivals === 2) h16Release();
+      await h16Ready;
+    }
+    return snapshot;
+  };
+  const h16Result = await drive({
+    concurrentRequests: 2, stream: true, clientId: OWN,
+    extraBody: { threadId: THREAD }, toolCall: { name: "update_client_data", args: hardeningArgs },
+    ...CONFIRM, tablesExtra: { paige_pending_confirmations: h16Table }, onInsert: mirrorConfirms(h16Store),
+  });
+  const h16Cards = h16Result.bodyText.split("\n")
+    .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
+    .map((line) => JSON.parse(line.slice(6))).filter((frame) => frame.paige_confirm).map((frame) => frame.paige_confirm);
+  assert("18.H16", h16Arrivals === 2 && h16Cards.length === 2 && h16Store.rows.length === 1
+    && h16Cards[0].fingerprint === h16Cards[1].fingerprint && !wroteBack(h16Result)
+    && h16Result.responses.every((response) => response.status === 200
+      && response.bodyText.split("\n").filter((line) => line.startsWith("data: ") && line.includes('"paige_confirm":')).length === 1));
+
+  const hCards = (result) => result.bodyText.split("\n")
+    .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
+    .map((line) => JSON.parse(line.slice(6))).filter((frame) => frame.paige_confirm).map((frame) => frame.paige_confirm);
+  const hDrive = (store, body = {}, extra = {}) => drive({
+    stream: true, clientId: OWN, extraBody: { threadId: THREAD, ...body },
+    toolCall: { name: "update_client_data", args: hardeningArgs }, ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: store.table }, onInsert: mirrorConfirms(store), ...extra,
+  });
+  let h17Arrivals = 0;
+  let h17Release;
+  let h17Timeout;
+  const h17Ready = new Promise((resolve, reject) => {
+    h17Release = () => { clearTimeout(h17Timeout); resolve(); };
+    h17Timeout = setTimeout(() => reject(new Error("18.H17")), 3000);
+  });
+  const h17Table = async (filters) => {
+    const snapshot = h16Store.table(filters);
+    if (h17Arrivals < 2 && !filters.some(([op]) => op === "update")
+      && filters.some(([op, columns]) => op === "select" && String(columns).includes("tool_name"))) {
+      h17Arrivals += 1;
+      if (h17Arrivals === 2) h17Release();
+      await h17Ready;
+    }
+    return snapshot;
+  };
+  const h17Result = await hDrive(h16Store, { approvedConfirmations: [h16Cards[0]?.fingerprint] }, {
+    concurrentRequests: 2, tablesExtra: { paige_pending_confirmations: h17Table },
+  });
+  assert("18.H17", h17Arrivals === 2 && h17Result.responses.every((response) => response.status === 200)
+    && h17Result.outboundCalls.filter((call) => call.url.includes("paige-write-back")).length === 1
+    && h16Store.rows.filter((row) => row.consumed).length === 1);
+
+  const h18Store = makeConfirmStore();
+  const h18Issued = await hDrive(h18Store);
+  const h18Token = hCards(h18Issued)[0]?.fingerprint;
+  const h18Stripped = h18Token?.split(":")[0];
+  const h18Approved = await hDrive(h18Store, { approvedConfirmations: [h18Stripped] });
+  const h18Declined = await hDrive(h18Store, { declinedConfirmations: [h18Stripped] }, { toolCall: null });
+  assert("18.H18", !!h18Token?.includes(":") && h18Store.rows.length === 1 && !h18Store.rows[0].consumed
+    && !wroteBack(h18Approved) && !wroteBack(h18Declined));
+  const h19Token = `${h18Stripped}:11111111-1111-4111-8111-111111111111`;
+  const h19Approved = await hDrive(h18Store, { approvedConfirmations: [h19Token] });
+  const h19Declined = await hDrive(h18Store, { declinedConfirmations: [h19Token] }, { toolCall: null });
+  assert("18.H19", !h18Store.rows[0].consumed && !wroteBack(h19Approved) && !wroteBack(h19Declined));
+
+  h18Store.rows[0].expires_at = "2000-01-01T00:00:00Z";
+  const h20Issued = await hDrive(h18Store);
+  const h20Token = hCards(h20Issued)[0]?.fingerprint;
+  assert("18.H20", h18Store.rows.length === 2 && h18Store.rows[0].consumed && !h18Store.rows[1].consumed
+    && h18Store.rows[0].fingerprint === h18Store.rows[1].fingerprint && !!h20Token && h20Token !== h18Token);
+  const h21Approved = await hDrive(h18Store, { approvedConfirmations: [h18Token] });
+  const h21Declined = await hDrive(h18Store, { declinedConfirmations: [h18Token] }, { toolCall: null });
+  assert("18.H21", !wroteBack(h21Approved) && !wroteBack(h21Declined) && !h18Store.rows[1].consumed);
+  const h22Approved = await hDrive(h18Store, { approvedConfirmations: [h20Token] });
+  assert("18.H22", h18Store.rows[1].consumed
+    && h22Approved.outboundCalls.filter((call) => call.url.includes("paige-write-back")).length === 1);
+
+  const h23Store = makeConfirmStore();
+  await hDrive(h23Store);
+  await hDrive(h23Store, { threadId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd" });
+  assert("18.H23", h23Store.rows.length === 2 && h23Store.rows.every((row) => !row.consumed)
+    && h23Store.rows[0].fingerprint !== h23Store.rows[1].fingerprint);
+
+  const h24Store = makeConfirmStore();
+  const h24Issued = await hDrive(h24Store, {}, {
+    toolCall: { name: "update_client_data", args: { ...hardeningArgs, confirm: true, confirm_token: "legacy-value" } },
+  });
+  const h24Token = hCards(h24Issued)[0]?.fingerprint;
+  const h24Approved = await hDrive(h24Store, { approvedConfirmations: [h24Token] });
+  assert("18.H24", !!h24Token && h24Store.rows.length === 1 && h24Store.rows[0].consumed
+    && !Object.hasOwn(h24Store.rows[0].args, "confirm") && !Object.hasOwn(h24Store.rows[0].args, "confirm_token")
+    && h24Approved.outboundCalls.filter((call) => call.url.includes("paige-write-back")).length === 1
+    && !h24Approved.outboundCalls.some((call) => call.body.includes("legacy-value")));
+
+  const { crmApprovalSubject } = await import("../../supabase/functions/_shared/crm-command/catalog.ts");
+  const h25Args = { patch: { first_name: "Test", last_name: "Contact" } };
+  const h25Row = { user_id: USER, tenant_id: CALLER_TENANT, thread_id: null, scoped_client_id: null,
+    tool_name: "crm_create_contact", fingerprint: "abababababababab", issued_in_request: "previous-crm-request",
+    args: { approval_subject: await crmApprovalSubject("contact.create", { action: "contact.create", ...h25Args }) } };
+  const h25Drive = (store, body, toolCall = { name: "crm_create_contact", args: h25Args }) => drive({
+    stream: true, extraBody: { threadId: THREAD, ...body }, toolCall,
+    rpcOverrides: { ...CONFIRM.rpcOverrides, get_paige_persona_context: { data: [{ tenant_id: CALLER_TENANT }], error: null } },
+    tablesExtra: { paige_pending_confirmations: store.table, user_roles: [{ role: "admin" }] }, onInsert: mirrorConfirms(store),
+  });
+  const h25Composite = `${h25Row.fingerprint}:11111111-1111-4111-8111-111111111111`;
+  const h25Store = makeConfirmStore([h25Row]);
+  const h25Wrong = await h25Drive(h25Store, { approvedConfirmations: [h25Composite] });
+  await h25Drive(h25Store, { declinedConfirmations: [h25Composite] }, null);
+  assert("18.H25", !h25Wrong.rec.functions.some((call) => call.name === "crm-command") && !h25Store.rows[0].consumed);
+  const h26Mixed = await h25Drive(h25Store, { approvedConfirmations: [h25Composite, h25Row.fingerprint] });
+  assert("18.H26", h26Mixed.rec.functions.filter((call) => call.name === "crm-command").length === 1
+    && h26Mixed.rec.functions.some((call) => call.name === "crm-command" && call.body.approved_fingerprint === h25Row.fingerprint));
+  await h25Drive(h25Store, { declinedConfirmations: [h25Composite, h25Row.fingerprint] }, null);
+  assert("18.H27", h25Store.rows[0].consumed);
+
+  const h28Store = makeConfirmStore();
+  const h28First = await hDrive(h28Store);
+  h28Store.rows[0].args = { updates: { goal: hardeningArgs.updates.goal }, client_id: OWN };
+  const h28Second = await hDrive(h28Store);
+  const h28Token = hCards(h28First)[0]?.fingerprint;
+  const h28Approved = await hDrive(h28Store, { approvedConfirmations: [h28Token] });
+  assert("18.H28", h28Store.rows.length === 1 && hCards(h28Second)[0]?.fingerprint === h28Token
+    && wroteBack(h28Approved) && h28Store.rows[0].consumed);
+
+  for (const [label, operation] of [["18.H29", "approve"], ["18.H30", "decline"]]) {
+    const store = makeConfirmStore();
+    const first = await hDrive(store);
+    const token = hCards(first)[0]?.fingerprint;
+    const table = store.table;
+    let changed = false;
+    store.table = (filters) => {
+      const snapshot = table(filters);
+      if (!changed && !filters.some(([op]) => op === "update")
+        && filters.some(([op, columns]) => op === "select" && String(columns).includes("tool_name"))) {
+        changed = true;
+        store.rows[0].issued_in_request = "22222222-2222-4222-8222-222222222222";
+      }
+      return snapshot;
+    };
+    const result = await hDrive(store, operation === "approve"
+      ? { approvedConfirmations: [token] } : { declinedConfirmations: [token] }, operation === "decline" ? { toolCall: null } : {});
+    assert(label, changed && !wroteBack(result) && !store.rows[0].consumed
+      && result.rec.from.some((call) => call.table === "paige_pending_confirmations" && call.op === "update"
+        && call.filters.some(([op, column]) => op === "eq" && column === "issued_in_request")));
+  }
 
   // ── 18.1/18.2 — WITHIN ONE REQUEST. The nonce leg. ─────────────────────────────────────────
   const st = makeConfirmStore();
@@ -1750,8 +1981,8 @@ const mirrorConfirms = (st) => (t, row) => {
     ...CONFIRM,
     tablesExtra: { paige_pending_confirmations: st3.table },
   });
-  assert("18.3 an approval in a LATER request still redeems, so approval still works",
-    laterTurn.outboundCalls.some((c) => c.url.includes("paige-write-back") && c.body.includes("buy a house")),
+  assert("18.3 approval-path hardening",
+    !wroteBack(laterTurn) && !st3.rows[0].consumed,
     JSON.stringify(laterTurn.outboundCalls.map((c) => c.body)));
   assert("18.3b …and what runs is the STORED call, never the drifted one it was re-sent with",
     !laterTurn.outboundCalls.some((c) => c.body.includes("drifted wording")),
@@ -1764,7 +1995,7 @@ const mirrorConfirms = (st) => (t, row) => {
     args: { client_id: OWN, updates: { goal: "legacy" } }, issued_in_request: null,
   }]);
   const legacy = await drive({
-    stream: true, clientId: OWN, extraBody: { threadId: THREAD },
+    stream: true, clientId: OWN, extraBody: { threadId: THREAD, approvedConfirmations: ["beefbeefbeefbeef"] },
     toolCall: { name: "update_client_data", args: { client_id: OWN, updates: { goal: "legacy" }, confirm: true } },
     ...CONFIRM,
     tablesExtra: { paige_pending_confirmations: st4.table },
@@ -1781,8 +2012,7 @@ const mirrorConfirms = (st) => (t, row) => {
   // still-live token from request A, which the model spent one round later. Nothing in request B
   // represents the human's answer, so nothing could stop it.
   //
-  // The property now: a plain re-proposal yields nothing to redeem. Approval requires either the
-  // surface echo or an explicit `confirm: true`, and neither is present when the human said no.
+  // Approval-path hardening. Detailed evidence retained privately.
   const st5 = makeConfirmStore();
   const requestA = await drive({
     stream: true, clientId: OWN, extraBody: { threadId: THREAD },
@@ -1892,7 +2122,7 @@ const mirrorConfirms = (st) => (t, row) => {
 
   const highRiskCard = await drive({
     stream: true,
-    extraBody: { threadId: THREAD, approvedConfirmations: [st8.rows[0]?.fingerprint] },
+    extraBody: { threadId: THREAD, approvedConfirmations: [issuedApproval(st8.rows[0])] },
     toolCall: { name: GRANT_TOOL, args: GRANT_ARGS }, ...CONFIRM,
     tablesExtra: { paige_pending_confirmations: st8.table, ...asAdmin },
     onInsert: mirrorConfirms(st8),
@@ -1906,7 +2136,7 @@ const mirrorConfirms = (st) => (t, row) => {
     tablesExtra:{paige_pending_confirmations:driftStore.table,...asAdmin},onInsert:mirrorConfirms(driftStore)});
   const approvedRow = {...driftStore.rows[0]};
   const driftArgs = {...GRANT_ARGS, role:"model-changed-role", confirm:true};
-  const driveCard = (store, body={}) => drive({stream:true,extraBody:{threadId:THREAD,approvedConfirmations:[approvedRow.fingerprint],...body},
+  const driveCard = (store, body={}) => drive({stream:true,extraBody:{threadId:THREAD,approvedConfirmations:[issuedApproval(approvedRow)],...body},
     toolCall:{name:GRANT_TOOL,args:driftArgs},...CONFIRM,tablesExtra:{paige_pending_confirmations:store.table,...asAdmin},onInsert:mirrorConfirms(store)});
   const driftApproved = await driveCard(driftStore);
   assert("18.7d clicked high-risk card survives model argument drift",granted(driftApproved));
@@ -1919,7 +2149,7 @@ const mirrorConfirms = (st) => (t, row) => {
     assert("18.7g drifted card refuses " + label,!granted(refused));
   }
   const ambiguous=makeConfirmStore([{...approvedRow,consumed:false},{...approvedRow,fingerprint:"f".repeat(16),consumed:false}]);
-  const ambiguousReply=await driveCard(ambiguous,{approvedConfirmations:[approvedRow.fingerprint,"f".repeat(16)]});
+  const ambiguousReply=await driveCard(ambiguous,{approvedConfirmations:[issuedApproval(approvedRow),"f".repeat(16)]});
   assert("18.7h ambiguous submitted proposals do not pick an arbitrary call",!granted(ambiguousReply));
 
   // ── 18.7b — OWNER-ONLY IS REFUSED DOWN BOTH CHANNELS, INCLUDING THE CARD. This is the property
@@ -1940,9 +2170,9 @@ const mirrorConfirms = (st) => (t, row) => {
     tablesExtra: { paige_pending_confirmations: st9.table, ...automationTable, ...asAdmin },
     onInsert: mirrorConfirms(st9),
   });
-  const liveFp = st9.rows[0]?.fingerprint;
+  const liveFp = issuedApproval(st9.rows[0]);
   assert("18.7b0 the echo channel is genuinely open in this drive (guards 18.7b)",
-    typeof liveFp === "string" && /^[0-9a-f]{16}$/.test(liveFp),
+    typeof liveFp === "string" && /^[0-9a-f]{16}:[0-9a-f-]{36}$/.test(liveFp),
     JSON.stringify({ rows: st9.rows.length, egress: echoProbe.modelEgress.length }));
 
   const ownerOnlyCard = await drive({
@@ -2069,7 +2299,7 @@ const mirrorConfirms = (st) => (t, row) => {
 
   const approved = await drive({
     clientId: OWN, stream: true,
-    extraBody: { threadId: THREAD, approvedConfirmations: [st.rows[0]?.fingerprint] },
+    extraBody: { threadId: THREAD, approvedConfirmations: [issuedApproval(st.rows[0])] },
     toolCall: { name: "update_client_data", args: { client_id: OWN, updates: { goal: "buy a house" } } },
     ...CONFIRM,
     tablesExtra: { paige_pending_confirmations: st.table },
@@ -2330,7 +2560,7 @@ const mirrorConfirms = (st) => (t, row) => {
   // ── 21.3 On approval the note is filed — tenant stamped, author the REAL person, not Paige.
   const approved = await drive({
     clientId: OWN, stream: true,
-    extraBody: { threadId: THREAD, approvedConfirmations: [st.rows[0]?.fingerprint] },
+    extraBody: { threadId: THREAD, approvedConfirmations: [issuedApproval(st.rows[0])] },
     toolCall: { name: "crm_add_note", args: { contact_id: OWN_CONTACT, body: "Wants to close before year end." } },
     ...CONFIRM,
     tablesExtra: { paige_pending_confirmations: st.table, ...CRM }, serviceTablesExtra: { ...CRM },
@@ -2423,13 +2653,13 @@ const mirrorConfirms = (st) => (t, row) => {
   const proposed=await drive({...base,toolCall:{name:"n8n_create_workflow",args:sdk}});
   const acquired=r=>r.rec.rpc.filter(c=>c.name==="n8n_oauth_service"&&c.args._operation==="acquire");
   assert("22.1 n8n never acquires provider credentials before the approval card",acquired(proposed).length===0&&st.rows.length===1);
-  const approved=await drive({...base,extraBody:{threadId:THREAD,approvedConfirmations:[st.rows[0].fingerprint]},toolCall:{name:"n8n_create_workflow",args:{...sdk,code:"",confirm:true}}});
+  const approved=await drive({...base,extraBody:{threadId:THREAD,approvedConfirmations:[issuedApproval(st.rows[0])]},toolCall:{name:"n8n_create_workflow",args:{...sdk,code:"",confirm:true}}});
   assert("22.2 Solo owner without global CRM roles reaches real n8n adapter after clicked card",acquired(approved).length===1);
   assert("22.3 real adapter validates stored SDK code instead of model's invalid replacement",acquired(approved)[0]?.args._input.session_id===SESSION&&acquired(approved)[0]?.args._input.tenant_id===CALLER_TENANT);
   const audit=approved.rec.inserts.find(i=>i.table==="paige_audit_log"&&i.row.action==="n8n_create_workflow")?.row;
   assert("22.4 refused n8n adapter result is audited as failed with safe reason",audit?.payload.outcome==="failed"&&audit?.payload.error==="forbidden",JSON.stringify(audit));
   assert("22.5 audit excludes SDK code and provider input",!JSON.stringify(audit).includes("export default")&&!JSON.stringify(audit).includes("Owner approved design"));
-  const replay=await drive({...base,extraBody:{threadId:THREAD,approvedConfirmations:[st.rows[0].fingerprint]},toolCall:{name:"n8n_create_workflow",args:{...sdk,code:"",confirm:true}}});
+  const replay=await drive({...base,extraBody:{threadId:THREAD,approvedConfirmations:[issuedApproval(st.rows[0])]},toolCall:{name:"n8n_create_workflow",args:{...sdk,code:"",confirm:true}}});
   assert("22.6 clicked n8n approval cannot acquire again on replay",acquired(replay).length===0);
   const clientSeat=await drive({...base,rpcOverrides:{...base.rpcOverrides,get_actor_access:{data:{tier:"client"},error:null}},toolCall:{name:"n8n_list_workflows",args:{}}});
   assert("22.7 client portal seat never reaches n8n owner adapter",acquired(clientSeat).length===0);
@@ -2449,27 +2679,27 @@ console.log('\n23. canonical server-issued proposal integrity');
  assert('23.1 issuance is marked and performed by service',!!issued?.server_issued_at && first.rec.from.some(x=>x.table==='paige_pending_confirmations'&&x.op==='insert'&&x.client==='service'));
  if(issued){
   const untrusted=makeConfirmStore([{...issued,server_issued_at:null,consumed:false}]);
-  const refused=await run(untrusted,{extraBody:{threadId:THREAD,approvedConfirmations:[issued.fingerprint]},toolCall:{name:'update_client_data',args:{...args,updates:{goal:'DRIFT'}}}});
+  const refused=await run(untrusted,{extraBody:{threadId:THREAD,approvedConfirmations:[issuedApproval(issued)]},toolCall:{name:'update_client_data',args:{...args,updates:{goal:'DRIFT'}}}});
   assert('23.2 unmarked submitted proposal cannot recover or execute',writes(refused).length===0&&!untrusted.rows[0].consumed);
   assert('23.3 same-fingerprint trusted reproposal leaves legacy record intact',untrusted.rows.length===2&&untrusted.rows[0].server_issued_at===null&&!!untrusted.rows[1].server_issued_at);
   // Exact original args produces the same fingerprint; the old record must not block it.
   const old=makeConfirmStore([{...issued,server_issued_at:null,consumed:false}]);await run(old);
-  assert('23.3b untrusted live uniqueness does not block same-call reissue',old.rows.length===2&&old.rows[0].fingerprint===old.rows[1].fingerprint);
-  const success=await run(old,{extraBody:{threadId:THREAD,approvedConfirmations:[issued.fingerprint]}});
+  assert('23.3b approval-path hardening',old.rows.length===2&&old.rows[0].fingerprint===old.rows[1].fingerprint&&old.rows[0].issued_in_request!==old.rows[1].issued_in_request&&!!old.rows[1].server_issued_at);
+  const success=await run(old,{extraBody:{threadId:THREAD,approvedConfirmations:[issuedApproval(old.rows[1])]}});
   assert('23.4 trusted replacement executes stored args once',writes(success).length===1&&writes(success)[0].body.includes('EXACT-STORED-INTEGRITY')&&!old.rows[0].consumed&&old.rows[1].consumed);
-  const replay=await run(old,{extraBody:{threadId:THREAD,approvedConfirmations:[issued.fingerprint]}});
+  const replay=await run(old,{extraBody:{threadId:THREAD,approvedConfirmations:[issuedApproval(old.rows[1])]}});
   assert('23.5 replacement cannot replay',writes(replay).length===0);
   for(const key of ['user_id','tenant_id','thread_id','scoped_client_id','tool_name','expires_at','issued_in_request','server_issued_at']){
-   const st=makeConfirmStore([{...issued,consumed:false}]);const table=st.table;let raced=false;
-   st.table=filters=>{const result=table(filters);if(!raced&&filters.some(x=>x[0]==='select'&&x[1]==='id')){raced=true;st.rows[0][key]=key==='server_issued_at'?null:key==='expires_at'?'2000-01-01T00:00:00Z':key==='issued_in_request'?filters.find(x=>x[0]==='neq'&&x[1]===key)?.[2]:FOREIGN;}return result;};
-   const r=await run(st,{toolCall:{name:'update_client_data',args:{...args,confirm:true,updates:{goal:'drifted fallback'}}}});
-   assert('23.6 final CAS repeats '+key,raced&&writes(r).length===0&&!st.rows[0].consumed);
-   const cas=r.rec.from.find(x=>x.table==='paige_pending_confirmations'&&x.op==='update'&&x.filters.some(f=>f[0]==='eq'&&f[1]==='id'));
+   const st=makeConfirmStore([{...issued,consumed:false}]);const table=st.table;let raced=false;let claimRows=null;
+   st.table=filters=>{const claim=!raced&&filters.some(x=>x[0]==='update')&&filters.some(x=>x[0]==='eq'&&x[1]==='issued_in_request');if(claim){raced=true;st.rows[0][key]=key==='server_issued_at'?null:key==='expires_at'?'2000-01-01T00:00:00Z':FOREIGN;}const result=table(filters);if(claim)claimRows=result.length;return result;};
+   const r=await run(st,{extraBody:{threadId:THREAD,approvedConfirmations:[issuedApproval(issued)]},toolCall:{name:'update_client_data',args:{...args,confirm:true,updates:{goal:'changed-value'}}}});
+   assert('23.6 final CAS repeats '+key,raced&&claimRows===0&&writes(r).length===0&&(key==='expires_at'||!st.rows[0].consumed));
+   const cas=r.rec.from.find(x=>x.table==='paige_pending_confirmations'&&x.op==='update'&&x.filters.some(f=>f[0]==='eq'&&f[1]==='issued_in_request'));
    assert('23.6b final CAS actually reached '+key,!!cas&&cas.client==='service');
   }
   for(const [key,value] of [['user_id',FOREIGN],['tenant_id',OTHER_TENANT],['thread_id',FOREIGN],['scoped_client_id',FOREIGN]]){
    const st=makeConfirmStore([{...issued,consumed:false},{...issued,id:'foreign-row',consumed:false,[key]:value}]);
-   await run(st,{extraBody:{threadId:THREAD,declinedConfirmations:[issued.fingerprint]},toolCall:null,text:'Do not run it.'});
+   await run(st,{extraBody:{threadId:THREAD,declinedConfirmations:[issuedApproval(issued)]},toolCall:null,text:'Do not run it.'});
    assert('23.7 cancellation scopes '+key,st.rows[0].consumed&&!st.rows[1].consumed);
   }
  }
@@ -2509,15 +2739,15 @@ console.log('\n24. proposal authority requires proven current scope and durable 
  for(const operation of ['issue','claim','recover','cancel']){
  const st=makeConfirmStore(operation==='issue'?[]:[{...issued,consumed:false}]);let n=0;
  const resolver=()=>rpc([++n===1?tenant:{tenant_id:OTHER_TENANT}]);
- const body={threadId:THREAD,...(operation==='claim'||operation==='recover'?{approvedConfirmations:[issued.fingerprint]}:{}),...(operation==='cancel'?{declinedConfirmations:[issued.fingerprint]}:{})};
+ const body={threadId:THREAD,...(operation==='claim'||operation==='recover'?{approvedConfirmations:[issuedApproval(issued)]}:{}),...(operation==='cancel'?{declinedConfirmations:[issuedApproval(issued)]}:{})};
  const r=await run(st,resolver,{extraBody:body,toolCall:{name:'update_client_data',args:operation==='recover'?{updates:{goal:'DRIFT'},confirm:true}:args}});
  assert('24.4 fresh scope mismatch stops '+operation,n>1&&writes(r).length===0&&pending(r).length===0&&(operation==='issue'?st.rows.length===0:!st.rows[0].consumed));
  }
  for(const mode of ['confirm','auto']){
  const st=makeConfirmStore([{...issued,consumed:false}]);let cancelled=false;
- const failure=({filters})=>{if(filters.some(x=>x[0]==='in'&&x[1]==='fingerprint')){cancelled=true;return {code:'57014',message:'cancel write failed'};}return null;};
- const r=await run(st,()=>rpc([tenant]),{extraBody:{threadId:THREAD,approvedConfirmations:[issued.fingerprint],declinedConfirmations:[issued.fingerprint]},toolCall:{name:'update_client_data',args:{...args,confirm:true}},rpcOverrides:{get_paige_persona_context:()=>rpc([tenant]),resolve_tool_autonomy:rpc(mode),get_actor_access:rpc({tier:'tenant'})},tableErrorsExtra:{'paige_pending_confirmations:update':failure}});
- assert('24.5 failed cancellation blocks claim reproposal and '+mode+' mutation',cancelled&&writes(r).length===0&&!st.rows[0].consumed&&!pending(r).some(x=>x.op==='insert'||(x.op==='update'&&!x.filters.some(f=>f[0]==='in'))));
+ const failure=({filters})=>{if(filters.some(x=>x[0]==='eq'&&x[1]==='issued_in_request')){cancelled=true;return {code:'57014',message:'cancel write failed'};}return null;};
+ const r=await run(st,()=>rpc([tenant]),{extraBody:{threadId:THREAD,approvedConfirmations:[issuedApproval(issued)],declinedConfirmations:[issuedApproval(issued)]},toolCall:{name:'update_client_data',args:{...args,confirm:true}},rpcOverrides:{get_paige_persona_context:()=>rpc([tenant]),resolve_tool_autonomy:rpc(mode),get_actor_access:rpc({tier:'tenant'})},tableErrorsExtra:{'paige_pending_confirmations:update':failure}});
+ assert('24.5 failed cancellation blocks claim reproposal and '+mode+' mutation',cancelled&&writes(r).length===0&&!st.rows[0].consumed&&pending(r).filter(x=>x.op==='update').length===1&&!pending(r).some(x=>x.op==='insert'));
  }
  }
 }
@@ -2527,7 +2757,7 @@ console.log('\n24. proposal authority requires proven current scope and durable 
  await drive({...base,tablesExtra:{paige_pending_confirmations:st.table},onInsert:mirrorConfirms(st)});
  if(st.rows[0])for(const op of ['claim','recover','cancel']){
  const store=makeConfirmStore([{...st.rows[0],consumed:false}]);
- const r=await drive({...base,rpcOverrides:{...base.rpcOverrides,get_paige_persona_context:{data:null,error:{message:'scope failed'}}},extraBody:{threadId:THREAD,...(op==='cancel'?{declinedConfirmations:[st.rows[0].fingerprint]}:{approvedConfirmations:[st.rows[0].fingerprint]})},toolCall:{name:'update_client_data',args:op==='recover'?{updates:{goal:'drift'},confirm:true}:args},tablesExtra:{paige_pending_confirmations:store.table},onInsert:mirrorConfirms(store)});
+ const r=await drive({...base,rpcOverrides:{...base.rpcOverrides,get_paige_persona_context:{data:null,error:{message:'scope failed'}}},extraBody:{threadId:THREAD,...(op==='cancel'?{declinedConfirmations:[issuedApproval(st.rows[0])]}:{approvedConfirmations:[issuedApproval(st.rows[0])]})},toolCall:{name:'update_client_data',args:op==='recover'?{updates:{goal:'drift'},confirm:true}:args},tablesExtra:{paige_pending_confirmations:store.table},onInsert:mirrorConfirms(store)});
  assert('24.6 unknown scope never becomes operator-null '+op,!store.rows[0].consumed&&!r.rec.from.some(x=>x.table==='paige_pending_confirmations')&&!r.outboundCalls.some(x=>x.url.includes('paige-write-back')));
  }
  const read=await drive({stream:true,extraBody:{threadId:THREAD,declinedConfirmations:['1234567890abcdef']},toolCall:{name:'pipeline_catalogue',args:{}},rpcOverrides:{get_paige_persona_context:{data:[{tenant_id:CALLER_TENANT}],error:null},get_actor_access:{data:{tier:'tenant'},error:null},get_pipeline_catalogue:{data:{items:[]},error:null}},tablesExtra:{user_roles:()=>[{role:'admin'}]},tableErrorsExtra:{'paige_pending_confirmations:update':{code:'57014',message:'cancel failed'}}});
