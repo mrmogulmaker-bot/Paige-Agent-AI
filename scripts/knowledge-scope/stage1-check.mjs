@@ -96,19 +96,16 @@ function anthropicStream(kind = "text") {
     // tool has run and every later tool in the same round still executes on stale scope.
     // Distinct `limit` args make the two dispatches individually identifiable in the RPC
     // recorder — `plan_list` maps straight through to a `plan_list` RPC with `p_limit`.
-    // A round that calls `document_generate` with valid blocks and a real title. That tool
-    // persists via `save_marketing_content` and, outside a Studio session, pushes a
-    // `chatArtifacts` entry whose `title` is the model's own words — so the turn emits a
-    // `paige_artifact` frame carrying model-authored, evidence-derived text. Nothing else in
-    // this harness produces one, and without it an assertion that artifact frames are withheld
-    // would pass against a fixture that never makes one (the group-20 thought-frame lesson).
+    // A round that calls durable `document_generate` with a bounded brief and a real title.
+    // Submission must acknowledge the durable work identity without pretending the later
+    // worker-owned artifact already exists or echoing the model-authored title to the wire.
     : kind === "doc-artifact"
     ? [
         { type: "message_start", message: { usage: { input_tokens: 1 } } },
         { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
         { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Writing that up from the private note." } },
         { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-1", name: "document_generate" } },
-        { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify({ title: "CHILD-PRIVATE-MARKER onboarding guide", doc_type: "guide", confirm: true, blocks: [{ type: "prose", markdown: "Body text." }] }) } },
+        { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify({ title: "CHILD-PRIVATE-MARKER onboarding guide", doc_type: "guide", brief: "Create an onboarding guide from the verified private note.", confirm: true }) } },
         { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } },
         { type: "message_stop" },
       ]
@@ -2081,21 +2078,21 @@ group("safety-first streaming: the sources the first enumeration missed");
     JSON.stringify(nonNeutralFrames(sessionAtGate.responseText)).slice(0, 300),
   );
 
-  // 21.b — THE ARTIFACT HANDOFF CARD. `paige_artifact` carries a model-authored `title` written
-  // out of the same Knowledge-bearing prompt as the reply, and it went straight to the wire.
-  // A turn that correctly withheld its answer still put a card on screen naming, in the previous
-  // workspace's words, the document it had just made from that workspace's evidence.
+  // 21.b — DURABLE DOCUMENT SUBMISSION. The request now creates durable work; the worker owns
+  // the later artifact and completion turn. This request must therefore prove it submitted the
+  // model-authored title while emitting neither a premature artifact nor that private title.
   const artifactOpts = {
     chunkContent: "PRIVATE-KB-SOURCE-MARKER",
     provider: ["doc-artifact", "private-text"],
+    bodyExtras: { threadId: "99999999-9999-4999-8999-999999999999", requestIntentId: "77777777-7777-4777-8777-777777777777" },
     rpcExtras: {
       // A real tenant seat: without it the actor resolves to the most-restricted `client` tier
       // and `document_generate` is refused before it can produce anything to assert about.
       get_actor_access: { data: { tier: "tenant" }, error: null },
       // §16 lane. The default is `confirm`, which returns a needs_confirm result instead of
-      // running the tool, so no artifact is ever produced to hold or leak.
+      // submitting durable work.
       resolve_tool_autonomy: { data: "auto", error: null },
-      save_marketing_content: { data: "content-abc", error: null },
+      submit_paige_document_work: { data: [{ work_id: "88888888-8888-4888-8888-888888888888", work_status: "claimed", resumed_existing: false }], error: null },
     },
     // The creative tools sit behind an admin/coach role gate; without a role the call is
     // refused and dropped from the trace, so nothing is produced to hold or leak.
@@ -2104,15 +2101,16 @@ group("safety-first streaming: the sources the first enumeration missed");
   const artifactClean = await drive({
     personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...artifactOpts,
   });
+  const durableSubmit = artifactClean.rec.rpc.find((call) => call.name === "submit_paige_document_work");
   assert(
-    "21.b CONTROL — the tool shape really does emit an artifact frame when the turn completes",
-    artifactFrames(artifactClean.responseText).length > 0,
-    artifactClean.responseText.slice(0, 400),
+    "21.b CONTROL — the tool shape really does submit durable document work",
+    durableSubmit?.args?._request_payload?.title === "CHILD-PRIVATE-MARKER onboarding guide",
+    JSON.stringify(durableSubmit ?? artifactClean.rec.rpc).slice(0, 400),
   );
   assert(
-    "21.b CONTROL — and that frame carries the model-authored title",
-    artifactFrames(artifactClean.responseText).join("").includes("CHILD-PRIVATE-MARKER"),
-    artifactFrames(artifactClean.responseText).join("").slice(0, 300),
+    "21.b CONTROL — accepted work emits no premature artifact",
+    artifactFrames(artifactClean.responseText).length === 0,
+    artifactClean.responseText.slice(0, 400),
   );
   const artifactTotal = personaCallsOf(artifactClean);
   const artifactAtGate = await drive({
@@ -2262,7 +2260,7 @@ group("safety-first streaming: the sources the first enumeration missed");
   const choiceOpts = {
     chunkContent: "PRIVATE-KB-SOURCE-MARKER",
     provider: ["ask-choices"],
-    bodyExtras: { threadId: STUDIO_THREAD },
+    bodyExtras: { threadId: STUDIO_THREAD, requestIntentId: "66666666-6666-4666-8666-666666666666" },
     // `ask_choices` is Studio-gated, and studioSessionId is read off the thread row.
     tableExtras: { paige_chat_threads: () => [{ summary: null, studio_session_id: "studio-sess-1" }] },
   };
@@ -2355,17 +2353,17 @@ group("safety-first streaming: the sources the first enumeration missed");
     JSON.stringify(nonNeutralFrames(syncAtGate.responseText)).slice(0, 300),
   );
 
-  // 21.h — THE STUDIO CANVAS ARTIFACT. `studioLinked` is the Studio twin of `chatArtifacts` and
-  // is emitted from its own line one above it; the two are mutually exclusive, so 21.b can never
-  // reach this one. Without this case, reverting the Studio line alone left the whole suite
-  // green — a guard on an adjacent line is not a guard on this one.
+  // 21.h — STUDIO USES THE SAME DURABLE DOCUMENT ENVELOPE. The worker owns the later
+  // canvas artifact; the initiating Studio turn must submit the same bounded work identity
+  // without emitting a premature canvas artifact.
   const studioOpts = {
     chunkContent: "PRIVATE-KB-SOURCE-MARKER",
     provider: ["doc-artifact", "private-text"],
-    bodyExtras: { threadId: STUDIO_THREAD },
+    bodyExtras: { threadId: STUDIO_THREAD, requestIntentId: "66666666-6666-4666-8666-666666666666" },
     rpcExtras: {
       get_actor_access: { data: { tier: "tenant" }, error: null },
-      save_marketing_content: { data: "content-studio", error: null },
+      resolve_tool_autonomy: { data: "auto", error: null },
+      submit_paige_document_work: { data: [{ work_id: "55555555-5555-4555-8555-555555555555", work_status: "claimed", resumed_existing: false }], error: null },
     },
     tableExtras: {
       user_roles: () => [{ role: "admin" }],
@@ -2375,15 +2373,16 @@ group("safety-first streaming: the sources the first enumeration missed");
   const studioClean = await drive({
     personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...studioOpts,
   });
+  const studioSubmit = studioClean.rec.rpc.find((call) => call.name === "submit_paige_document_work");
   assert(
-    "21.h CONTROL — a Studio turn really does emit a canvas artifact frame",
-    artifactFrames(studioClean.responseText).length > 0,
-    studioClean.responseText.slice(0, 500),
+    "21.h CONTROL — Studio submits the same durable document work",
+    studioSubmit?.args?._request_payload?.title === "CHILD-PRIVATE-MARKER onboarding guide",
+    JSON.stringify(studioSubmit ?? studioClean.rec.rpc).slice(0, 400),
   );
   assert(
-    "21.h CONTROL — and that frame carries the model-authored title",
-    artifactFrames(studioClean.responseText).join("").includes("CHILD-PRIVATE-MARKER"),
-    artifactFrames(studioClean.responseText).join("").slice(0, 300),
+    "21.h CONTROL — Studio emits no premature canvas artifact",
+    artifactFrames(studioClean.responseText).length === 0,
+    studioClean.responseText.slice(0, 500),
   );
   const studioTotal = personaCallsOf(studioClean);
   const studioAtGate = await drive({
