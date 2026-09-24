@@ -16,15 +16,20 @@
  * removed).
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Plus, RefreshCw, Search, TriangleAlert, X } from "lucide-react";
+import { ChevronRight, Plus, RefreshCw, Search, TriangleAlert, X } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import {
+  APPROVAL_DEFAULT_LIFETIME_MINUTES,
+  APPROVAL_LIFETIME_CHOICES,
   MCP_CREDENTIAL_MIN_LENGTH,
   MCP_GATEWAY_GENERIC_REFUSAL,
+  approvalExpiryFromMinutes,
   credentialTooShort,
   mcpGatewayMessage,
   type GatewayConnection,
   type GatewayAuthKind,
+  type GatewayToolRow,
+  type GatewayToolsResult,
   type UseMcpGateway,
 } from "./data/useMcpGateway";
 
@@ -193,6 +198,115 @@ function facetName(c: GatewayConnection): string {
   if (c.providerKey === "zapier") return "Zapier · sign-in";
   if (c.providerKey === "n8n") return c.authKind === "api_key" ? "n8n · API key" : "n8n · sign-in";
   return `Remote MCP · ${c.authKind ?? "—"}`;
+}
+
+/* ── One tool, one tile ───────────────────────────────────────────────────────
+   A provider the tenant has already connected used to render up to THREE times in
+   the Automation group: the shipped `PROVIDERS` tile from the incumbent surface, an
+   "add this" catalogue entry that had no idea the tenant already had it, and the
+   connection's own tile. Two connections read as six tiles. Nothing anywhere asked
+   whether a tile was already represented, because the three lists are built from
+   three unrelated sources and never meet.
+
+   THE MATCH IS DERIVED FROM THE TENANT'S OWN ROWS, never from a hardcoded list of
+   providers to hide. A list would be right for exactly the accounts it was written
+   against and silently wrong for every account provisioned afterwards — the shape
+   of single-account thinking this rule exists to keep out of a multi-tenant surface.
+   So the answer is computed per render from `gw.tools`: correct at zero connections,
+   at N, and for a tenant created next month who connects something nobody listed.
+
+   THREE KEYS, strongest first, because no single one covers every way a connection
+   can come into being:
+     1. `providerKey` — exact for the vendors the registry actually names (`zapier`,
+        `n8n`). The legacy-backed rows carry these, which is why the two tiles the
+        owner reported match on this key and not the others.
+     2. `serverUrlHost` — the endpoint itself, for catalogue entries that ship an
+        address. Survives the tenant renaming their connection to anything they like.
+     3. label — the add flow seeds `label` from the catalogue name (see `onPick`), so
+        a connection added through a catalogue tile still matches after the other two
+        miss. Weakest of the three and deliberately last.
+
+   A MISS IS ALWAYS SAFE. Failing to match renders exactly what shipped before — the
+   catalogue tile offering to add it — so the worst case of a wrong answer here is
+   the duplicate that already exists, never a hidden connection or a lost path. */
+
+/** One comparable token for a vendor name or provider key: case and punctuation carry no meaning. */
+function providerToken(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+/** The comparable host of an MCP address, or "" when there is nothing to compare. */
+function addressHost(value: string | null | undefined): string {
+  if (!value) return "";
+  const raw = value.trim();
+  if (!raw) return "";
+  try {
+    return new URL(raw).host.toLowerCase().replace(/^www\./, "");
+  } catch {
+    // Not a parseable absolute URL. A host we cannot read is not a host that matches
+    // anything — returning "" keeps it out of the comparison instead of guessing at it.
+    return "";
+  }
+}
+
+/** What a caller knows about a tile before it knows which connection (if any) is behind it. */
+export type ProviderProbe = { providerKey?: string | null; url?: string | null };
+
+/**
+ * The connection this tile already represents, or null when the tenant does not have one.
+ *
+ * When a tenant holds SEVERAL rows for one provider — production has a tenant with two
+ * `n8n` rows today — a usable one wins, then an enabled one, then the first. The tile can
+ * only carry one connection, and pointing it at a turned-off row while a working one sits
+ * behind the same name would be the wrong half of the truth.
+ *
+ * Identity is the provider key or the ADDRESS, and deliberately never the `label`. A label is
+ * tenant-editable text, so matching on it lets any generic server a tenant happens to name
+ * "Zapier" claim that vendor's tile: the catalogue would mark Zapier connected, open the
+ * unrelated server's drawer, and — because the parent suppresses a tile it believes is held —
+ * remove the real Zapier setup path from the surface. A missed de-duplication shows one extra
+ * tile; a wrong match takes a capability away. The first is cosmetic, so that is the way this
+ * fails. Note it never served the case that motivated it either: the backfilled labels tokenize
+ * to "mmazapier" and "n8nmma", which never equalled "zapier" or "n8n".
+ */
+export function connectionForProvider(
+  tools: readonly GatewayConnection[],
+  probe: ProviderProbe,
+): GatewayConnection | null {
+  const key = providerToken(probe.providerKey);
+  const host = addressHost(probe.url);
+  const hits = tools.filter((c) => {
+    if (key && providerToken(c.providerKey) === key) return true;
+    if (host && addressHost(`https://${c.serverUrlHost ?? ""}`) === host) return true;
+    return false;
+  });
+  if (!hits.length) return null;
+  return hits.find(usable) ?? hits.find((c) => c.enabled) ?? hits[0];
+}
+
+/**
+ * What to call this connection on a tile.
+ *
+ * A row's `label` is whatever named it, and for every row that came through the one-time backfill
+ * that was a string the old pipeline composed per tenant — "MMA-Zapier", "n8n- MMA". Those are one
+ * account's internal shorthand, and a tile is the wrong place for it: the tile answers "which tool
+ * is this", and the answer is Zapier. So a connection the catalogue recognises is titled with the
+ * VENDOR's name, and the tenant's own label moves into the drawer, where telling two Zapier
+ * connections apart is the actual question being asked.
+ *
+ * A connection the catalogue does not recognise — a server someone added by address — keeps its
+ * label untouched, because there the label is the only name it has and the tenant chose it.
+ */
+export function connectionDisplayName(c: GatewayConnection): string {
+  const match = CATALOGUE.find((p) => {
+    if (p.manual) return false;
+    const key = p.legacy && p.legacy !== "social" ? providerToken(p.legacy) : "";
+    if (key && key === providerToken(c.providerKey)) return true;
+    const host = addressHost(p.url);
+    if (host && host === addressHost(`https://${c.serverUrlHost ?? ""}`)) return true;
+    return false;
+  });
+  return match?.n ?? c.label;
 }
 
 /* ── Drawer wrapper (matches the incumbent .ig-panel dialog idiom) ─────────────
@@ -597,6 +711,8 @@ function Catalogue({
   onSetup,
   onZapier,
   onLegacy,
+  tools,
+  onOpenConnection,
 }: {
   onPick: (item: CatItem) => void;
   /** A provider whose sign-in Paige can actually run — routed to the real OAuth flow. */
@@ -604,15 +720,40 @@ function Catalogue({
   onSetup: (item: CatItem) => void;
   onZapier: (item: CatItem) => void;
   onLegacy: (which: CatLegacy) => void;
+  /** This tenant's own connections — the only thing that decides whether a tile is already theirs. */
+  tools: readonly GatewayConnection[];
+  /** Open the connection a tile already represents, instead of offering to add it again. */
+  onOpenConnection: (c: GatewayConnection) => void;
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<(typeof CAT_CATEGORIES)[number]>("All");
   const q = query.trim().toLowerCase();
   const matches = (p: CatItem) => !q || (`${p.n} ${p.d} ${p.net ?? ""} ${p.c}`.toLowerCase().includes(q));
   const showPopular = category === "All" && !q;
-  const popular = useMemo(() => CATALOGUE.filter((p) => p.pop).slice().sort((a, b) => (a.r ?? 99) - (b.r ?? 99)), []);
+  /** "Popular for service businesses" is a shortcut to things worth ADDING, so a tool the tenant
+   *  already holds drops out of it — it is still in its own category section, marked as theirs.
+   *  Without this the merge is only half done: the group shows one Zapier and the catalogue two. */
+  const popular = useMemo(
+    () => CATALOGUE.filter((p) => p.pop && !connectionForProvider(tools, { providerKey: p.legacy && p.legacy !== "social" ? p.legacy : null, url: p.url ?? null }))
+      .slice().sort((a, b) => (a.r ?? 99) - (b.r ?? 99)),
+    [tools],
+  );
+
+  /** What this tile knows about itself before it knows whether the tenant already has it. The
+   *  legacy key doubles as the registry's provider key for the two vendors that carry one; every
+   *  other entry falls through to its address. A tile never probes by NAME — see
+   *  `connectionForProvider` for why a tenant-editable label cannot decide provider identity. */
+  const probe = (p: CatItem): ProviderProbe => ({
+    providerKey: p.legacy && p.legacy !== "social" ? p.legacy : null,
+    url: p.url ?? null,
+  });
+  const held = (p: CatItem) => (p.manual ? null : connectionForProvider(tools, probe(p)));
 
   const route = (p: CatItem) => {
+    // Already theirs: this tile IS that connection, so it opens it rather than offering to add a
+    // second copy of something they are looking straight at.
+    const have = held(p);
+    if (have) return onOpenConnection(have);
     if (p.legacy && p.legacy !== "social") return onLegacy(p.legacy);
     if (p.legacy === "social") return onLegacy("social");
     if (p.m === "key") return onPick(p);
@@ -625,16 +766,29 @@ function Catalogue({
     return onZapier(p);
   };
 
-  const tile = (p: CatItem) => (
-    <li key={p.n}>
-      <button type="button" className="ig-gw-tile" data-mode={p.m} onClick={() => route(p)} aria-label={`${p.n} — ${MODE_LABEL[p.m]}`}>
-        <span className="ig-gw-tile-top"><span className="ig-gw-tile-mark" aria-hidden>{p.g}</span><span className="ig-gw-tile-name">{p.n}</span></span>
-        <span className="ig-gw-tile-desc">{p.d}</span>
-        {p.net && <span className="ig-gw-tile-net">{p.net}</span>}
-        <span className="ig-gw-tile-foot"><span className="ig-gw-badge" data-mode={p.m}>{MODE_LABEL[p.m]}</span></span>
-      </button>
-    </li>
-  );
+  const tile = (p: CatItem) => {
+    // One tool, one tile. A connected provider keeps its place in the catalogue — the position a
+    // person already looks in for it — and reports its real state there instead of appearing twice:
+    // once as something to add, once as the thing they already added.
+    const have = held(p);
+    const chip = have ? statusChip(have) : null;
+    return (
+      <li key={p.n}>
+        <button type="button" className="ig-gw-tile" data-mode={p.m} data-held={have ? "" : undefined}
+          onClick={() => route(p)}
+          aria-label={have ? `${p.n} — connected, ${chip!.label.toLowerCase()}. Open it.` : `${p.n} — ${MODE_LABEL[p.m]}`}>
+          <span className="ig-gw-tile-top"><span className="ig-gw-tile-mark" aria-hidden>{p.g}</span><span className="ig-gw-tile-name">{p.n}</span></span>
+          <span className="ig-gw-tile-desc">{p.d}</span>
+          {p.net && <span className="ig-gw-tile-net">{p.net}</span>}
+          <span className="ig-gw-tile-foot">
+            {have
+              ? <span className="ig-gw-chip" data-tone={chip!.tone}>{chip!.label}</span>
+              : <span className="ig-gw-badge" data-mode={p.m}>{MODE_LABEL[p.m]}</span>}
+          </span>
+        </button>
+      </li>
+    );
+  };
 
   const sections = CAT_CATEGORIES.slice(1).map((cat) => {
     if (category !== "All" && category !== cat) return null;
@@ -674,12 +828,428 @@ function Catalogue({
 }
 
 /* ── Detail (re-key / disconnect / honest tool state) ────────────────────────── */
-function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayConnection; onClose: () => void }) {
+/* ── The actions a connection offers ──────────────────────────────────────────
+   Until this shipped, the drawer ended in a paragraph saying that choosing which
+   actions Paige may use "needs a change on Paige's side that hasn't shipped yet."
+   That was true and is now false, so the paragraph is gone rather than softened.
+
+   EVERY VERDICT ON SCREEN IS THE SERVER'S. Whether an action needs consent and on
+   what basis, whether an existing approval has run out, whether the action has
+   changed since it was approved — all decided server-side and rendered here. The
+   browser deciding any of them would fork the one rule that governs whether Paige
+   may act, and an authority rule with two copies drifts.
+
+   THE EMPTY LIST HAS TWO MEANINGS AND THEY ARE NOT THE SAME SENTENCE. "Paige has
+   not read this tool's actions yet" and "this tool offers no actions" are opposite
+   facts to someone deciding what to grant, and both arrive as an empty array.
+
+   WHAT DISTINGUISHES THEM IS NOT `observedAt`, AND THE FIRST DRAFT OF THIS SECTION
+   GOT THAT WRONG. `observedAt` is the newest `discovered_at` across the rows that
+   came back, so an empty catalogue yields `null` unconditionally and the "read and
+   empty" arm of a test on it is unreachable. The real distinguisher lives on the
+   connection: a successful probe sets `last_checked_at` and replaces the catalogue
+   with what it found, INCLUDING an empty array — an empty catalogue is still a
+   healthy connection. So `lastCheckedAt !== null` on a connected row is what
+   separates "asked, and there is nothing" from "never asked."
+
+   `observedAt` is still carried and still used — for the case it CAN answer, which
+   is dating a list that has rows in it. That matters most when the newest check
+   FAILED: `last_checked_at` moves on a failed probe too, so it would date the
+   catalogue to a moment the read did not happen, while `observedAt` dates it to
+   when those rows were actually written.                                        */
+
+/** What the owner is told about one action, and what they can do about it.
+ *
+ *  `approved` is tested before expiry, staleness and authorship because all three
+ *  describe an approval that EXISTS. The row's join is a LEFT one, so on an action
+ *  with no approval those fields are all `false` and both timestamps are `null` —
+ *  reading any of them first is how this renders "approved by someone else" against
+ *  something nobody has ever approved. */
+function actionState(t: GatewayToolRow): {
+  tone: ChipTone;
+  label: string;
+  /** The reason, in the owner's terms. Null when the label already says everything. */
+  why: string | null;
+  /** The approve control's wording, or null when approving is not the next move. */
+  cta: string | null;
+} {
+  if (!t.requiresApproval) {
+    return {
+      tone: "off",
+      label: "Runs without asking",
+      why: "This one only reads, so it doesn’t need your approval.",
+      cta: null,
+    };
+  }
+  // An approval that exists but would be REFUSED at dispatch. Keyed on the server's
+  // single reason rather than on the two booleans beside it, because those cover
+  // only two of the five things that can invalidate consent — and a row that is
+  // unexpired and unstale and still unusable is exactly the one an owner would
+  // otherwise be told they were covered for.
+  if (t.approved && t.approvalBlockedReason !== null) {
+    const [label, why] = {
+      contract_changed: [
+        "Changed since you approved it",
+        // Re-keying would also clear this, by deleting every approval on the
+        // connection. Naming it would trade one action's lapsed consent for all of
+        // them, so the only recovery offered is the one scoped to this row.
+        "This action isn’t the same as the one you approved, so that approval no longer covers it.",
+      ],
+      approval_expired: [
+        "Approval ran out",
+        t.expiresAt ? `It ended ${new Date(t.expiresAt).toLocaleString()}.` : "Approve it again to keep using it.",
+      ],
+      endpoint_changed: [
+        "Approved for a different address",
+        "This tool’s address has changed since you approved this, so Paige won’t use the old approval against the new one.",
+      ],
+      approval_not_endpoint_bound: [
+        "Approval needs redoing",
+        "This approval predates the check that ties consent to a tool’s address, so Paige won’t act on it. Approving again fixes it for good.",
+      ],
+      endpoint_missing: [
+        "Nothing to approve against",
+        "This tool has no confirmed address right now, so there’s nothing for an approval to point at.",
+      ],
+    }[t.approvalBlockedReason];
+    return {
+      tone: "warn",
+      label,
+      why,
+      // The one blocked state approving cannot fix: with no address there is nothing
+      // to bind consent to, and the button would only refuse (§70.1).
+      cta: t.approvalBlockedReason === "endpoint_missing" ? null : "Approve again",
+    };
+  }
+  if (t.approved) {
+    return {
+      tone: "ok",
+      label: t.approvedByYou ? "You approved this" : "Approved by your team",
+      // A null expiry is a PERMANENT approval. This surface cannot create one — every
+      // offered window ends — but a row written by an RPC caller or by an earlier
+      // contract can carry one, and an owner reading "Approved" deserves to know
+      // which kind they are looking at.
+      why: t.expiresAt
+        ? `Until ${new Date(t.expiresAt).toLocaleString()}.`
+        : "This approval has no end date. Re-approve it to put a window on it.",
+      cta: null,
+    };
+  }
+  // Not approved. WHY it needs approval is a real distinction: a provider that
+  // declared a mutating effect is one thing; a provider that declared nothing at
+  // all is another, and Paige treats the second as consequential precisely because
+  // she cannot be sure. Saying which is the difference between a gate and a shrug.
+  const why =
+    t.approvalBasis === "effects_undeclared"
+      ? "This tool didn’t say what this action does, so Paige treats it as if it changes something."
+      : t.approvalBasis === "server_name_floor"
+        ? "Its name says it sends or changes something, so Paige needs your approval even if the tool calls it a read."
+        : "This action changes or sends something.";
+  return { tone: "pending", label: "Needs your approval", why, cta: "Approve" };
+}
+
+/**
+ * The per-action approval list for one connection.
+ *
+ * WHERE IT RENDERS AT ALL is a deliberate decision per connection state, because for
+ * most of them an empty list would be a statement about the PROVIDER that we have no
+ * grounds for:
+ *   · turned off / unconfigured — disconnecting deletes every tool and approval row
+ *     and nulls `last_checked_at`, so the read is guaranteed empty and would read as
+ *     "Paige hasn't looked yet" about a tool its owner deliberately switched off.
+ *   · pending verification — create and re-key both clear the catalogue, so the same
+ *     guaranteed-empty applies. The drawer already says the true thing above.
+ *   · error — the catalogue SURVIVES a failed probe by design, so here there may be
+ *     a real list, and suppressing it would hide approvals its owner granted (§58).
+ *     It renders, dated and flagged as pre-dating the failure.
+ * In the three suppressed cases no read is issued either: the answer is known, and
+ * spending a round trip to render nothing is worse than not asking.
+ */
+function ToolActions({ gw, tool, reloadKey }: { gw: UseMcpGateway; tool: GatewayConnection; reloadKey: number }) {
+  const { activeTenantId, loading: tenantLoading } = useTenantContext();
+  const [phase, setPhase] = useState<"loading" | "ready">("loading");
+  const [result, setResult] = useState<GatewayToolsResult | null>(null);
+  /** The row being approved right now, so only that row's control goes busy. The
+   *  hook's own `saving` is global to every write on this surface, so using it for a
+   *  per-row label would put "Approving…" on every row at once. */
+  const [busyName, setBusyName] = useState<string | null>(null);
+  /** The outcome of the last approve attempt, good or bad. The hook's `writeError` is
+   *  never rendered anywhere on this surface, so a refusal held only there is a
+   *  refusal nobody sees (§70.1). */
+  const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
+  const [minutes, setMinutes] = useState(APPROVAL_DEFAULT_LIFETIME_MINUTES);
+  /** Two different questions, and collapsing them into one boolean is what let a stale
+   *  read win. `mounted` answers "may I still call setState"; `generation` answers "is
+   *  this the LATEST read". A `reloadKey` bump tears down and immediately re-runs the
+   *  effect, so a shared boolean is true again before the older request resolves. */
+  const mounted = useRef(true);
+  const generation = useRef(0);
+
+  const readable = tool.enabled && (tool.status === "connected" || tool.status === "error");
+  // The workspace this read belongs to, captured at call time. `callEdge` sends the
+  // active tenant as an expected-tenant guard, but that guard is skipped when the
+  // value is null — so firing before the tenant resolves would bind the read to
+  // whatever the token happens to resolve to, with nothing to catch it.
+  const ready = readable && !tenantLoading && !!activeTenantId;
+
+  const read = useCallback(async () => {
+    if (!ready) return;
+    const scope = activeTenantId;
+    const mine = ++generation.current;
+    const answer = await gw.listTools(tool.id);
+    // A late answer for a workspace the person has already left is dropped rather
+    // than rendered or announced: the surface it belonged to is gone, and a banner
+    // about it would be about nothing they can see. A superseded read is dropped for
+    // a different reason: "Checked just now" above the list it read BEFORE the check
+    // is a false statement about fresher data, and it is the older request that wins
+    // whenever it happens to resolve last.
+    if (!mounted.current || mine !== generation.current || scope !== activeTenantId) return;
+    setResult(answer);
+    setPhase("ready");
+  }, [ready, activeTenantId, gw, tool.id]);
+
+  useEffect(() => {
+    mounted.current = true;
+    void read();
+    return () => {
+      mounted.current = false;
+      // Retire whatever is in flight. Without this the request issued by the effect
+      // being torn down stays current and can still land on the next one's result.
+      generation.current++;
+    };
+    // `reloadKey` is bumped by the drawer after a successful check. Without it the
+    // drawer would show "Checked just now — found 12 actions" directly above a list
+    // still holding what it read before the check ran.
+  }, [read, reloadKey]);
+
+  /** Grant consent for ONE action, then RE-READ rather than patching the row.
+   *  Approval carries server-side consequences — an expiry judged on the Postgres
+   *  clock, a pin taken at the moment of approval — so the honest way to show what
+   *  was recorded is to ask what was recorded (§13: never render a hoped-for state). */
+  const approve = async (name: string) => {
+    setSaid(null);
+    setBusyName(name);
+    const outcome = await gw.approveTool(tool.id, name, approvalExpiryFromMinutes(minutes, Date.now()));
+    if (!mounted.current) return;
+    setBusyName(null);
+    // Three codes mean the call never left: another write held the lock, the tenant
+    // wasn't ready, or the workspace changed underneath it. All three carry no
+    // message because there is nothing to report — announcing a refusal that never
+    // happened is its own false statement.
+    if (outcome.code === "MCP_BUSY" || outcome.code === "MCP_NOT_READY" || outcome.code === "MCP_STALE") return;
+    if (!outcome.ok) {
+      setSaid({ ok: false, text: outcome.message ?? "That approval couldn’t be saved just now. Try again in a moment." });
+      return;
+    }
+    // What this records is CONSENT. Whether Paige may then run the action is a
+    // separate switch that is off by default and is not this surface's to claim —
+    // so the sentence says what actually happened and stops there. Replacing one
+    // false statement with a different one is not a fix.
+    setSaid({ ok: true, text: `Approved ${name} for the window you chose. That’s your consent recorded — it’s what Paige checks before she acts.` });
+    await read();
+  };
+
+  if (!readable) return null;
+
+  if (phase === "loading") {
+    return (
+      <div className="ig-gw-tools-skel" role="status" aria-label="Reading what this tool can do">
+        <i /><i /><i />
+      </div>
+    );
+  }
+
+  // The read itself was refused. Say which refusal it was and stop — rendering an
+  // empty list underneath would read as "this tool offers nothing", which is a
+  // different and false statement.
+  if (result && !result.ok) {
+    // A null code is a transport failure: the adapter rejected, or the answer came
+    // back in a shape that confirms nothing. The shared copy for that case asks the
+    // person to check the details they entered, which is advice from a form — there
+    // is nothing to check on a read that submitted nothing.
+    const text = result.code === null ? "Paige couldn’t read what this tool can do just now. Try again in a moment." : result.message;
+    return (
+      <div className="ig-error" role="alert">
+        <TriangleAlert aria-hidden size={14} />
+        <span>{text ?? MCP_GATEWAY_GENERIC_REFUSAL}</span>
+      </div>
+    );
+  }
+
+  const tools = result?.tools ?? [];
+
+  if (tools.length === 0) {
+    return (
+      <div className="ig-gw-info" role="status">
+        <span>
+          {(tool.toolCount ?? 0) > 0
+            ? // The connection's own count and the catalogue disagreeing is worth
+              // saying out loud rather than resolving silently in favour of the
+              // emptier answer.
+              `Paige counted ${tool.toolCount} ${tool.toolCount === 1 ? "action" : "actions"} here but can’t list them right now. Check the tool again.`
+            : tool.lastCheckedAt && tool.status === "connected"
+              ? `Paige reached this tool on ${new Date(tool.lastCheckedAt).toLocaleDateString()} and it offered nothing she can run.`
+              : "Paige hasn’t looked at what this tool can do yet. Check it, and its actions will be listed here to approve one at a time."}
+        </span>
+      </div>
+    );
+  }
+
+  // The summary counts what still AUTHORISES something, which is why it cannot be
+  // the connection row's `approved_count`: that counts approval rows, and a row
+  // whose window has closed or whose action has changed is a row that no longer
+  // authorises anything. Telling an owner they are covered when they are not is the
+  // one error this list exists to make impossible.
+  const gated = tools.filter((t) => t.requiresApproval);
+  const live = gated.filter((t) => t.approved && t.approvalBlockedReason === null).length;
+  const needing = gated.length - live;
+
+  return (
+    <>
+      <div className="ig-gw-tools-head">
+        <b>What this tool can do</b>
+        <span>
+          {gated.length === 0
+            ? `${tools.length} ${tools.length === 1 ? "action" : "actions"}, none needing approval`
+            : `${live} of ${gated.length} approved`}
+          {result?.observedAt ? ` · read ${new Date(result.observedAt).toLocaleDateString()}` : ""}
+        </span>
+      </div>
+
+      {/* Dated from the ROWS, not from the connection's last check: a failed probe
+          moves `last_checked_at` without writing a catalogue, so on an errored
+          connection that timestamp names a moment this list did not come from. */}
+      {tool.status === "error" && (
+        <div className="ig-gw-warn" role="status">
+          <span>
+            The last check on this tool didn’t get through, so this is what Paige saw the last time she
+            read it{result?.observedAt ? ` — on ${new Date(result.observedAt).toLocaleDateString()}` : ""}.
+          </span>
+        </div>
+      )}
+
+      {said && (
+        said.ok
+          ? <div className="ig-gw-info" role="status"><span>{said.text}</span></div>
+          : <div className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} /><span>{said.text}</span></div>
+      )}
+
+      <ul className="ig-gw-tools" aria-busy={busyName !== null}>
+        {tools.map((t) => {
+          const s = actionState(t);
+          // The approve control renders ONLY where it can actually act. A member who
+          // is not a workspace admin is refused by the hook before anything is sent,
+          // and the server refuses independently — so for them the button's single
+          // outcome is a refusal, and a control that can only refuse is worse than
+          // none (§70.1). They still see the whole list, which is already disclosed
+          // to them, and a line naming who can act on it.
+          const canApprove = gw.canWrite && s.cta !== null;
+          return (
+            <li key={t.name}>
+              <div className="ig-gw-tool">
+                <div className="ig-gw-tool-id">
+                  <span className="ig-gw-tool-name">{t.name}</span>
+                  <span className="ig-gw-tool-meta">
+                    {t.effects.length === 0
+                      ? <span className="ig-gw-eff" data-eff="undeclared">didn’t say</span>
+                      : t.effects.map((e) => <span key={e} className="ig-gw-eff" data-eff={e}>{e}</span>)}
+                    {t.app && <span className="ig-gw-tool-app">{t.app}</span>}
+                  </span>
+                </div>
+                <span className="ig-gw-chip" data-tone={s.tone}>{s.label}</span>
+                {/* The reason and the control that acts on it share a line, so the row reads as
+                    one sentence — here is what this is, and here is what to do about it. Stacking
+                    the button under the status chip instead put the two halves of that thought in
+                    different places and left a ragged column down the right of the list. */}
+                <div className="ig-gw-tool-foot">
+                  {s.why && <p>{s.why}</p>}
+                  {canApprove && (
+                    <button
+                      type="button"
+                      className="ig-btn"
+                      data-primary
+                      // Every approve control goes inert while one is in flight, because the
+                      // hook takes a single write lock: a second press would be refused in
+                      // silence, which is a worse answer than a disabled control. `aria-busy`
+                      // on the list says WHY they went dead rather than leaving it to be
+                      // inferred from the greying.
+                      disabled={busyName !== null}
+                      onClick={() => void approve(t.name)}
+                    >
+                      {busyName === t.name ? "Approving…" : s.cta}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      {/* The lifetime the next approval gets. One choice for the drawer rather than
+          one per row: the owner is answering "how long do I trust this for", which is
+          the same question whichever action they press next, and asking it once per
+          row would be one more chance to answer it differently by accident. Every
+          offered window clears the 15-minute floor, so this control cannot produce
+          the refusal that floor exists to raise. */}
+      {gw.canWrite && needing > 0 && (
+        <div className="ig-gw-life">
+          <span id="ig-gw-life-label">How long should an approval last?</span>
+          <div className="ig-gw-seg" role="group" aria-labelledby="ig-gw-life-label">
+            {APPROVAL_LIFETIME_CHOICES.map((c) => (
+              <button
+                key={c.minutes}
+                type="button"
+                className={c.minutes === minutes ? "on" : undefined}
+                aria-pressed={c.minutes === minutes}
+                onClick={() => setMinutes(c.minutes)}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!gw.canWrite && needing > 0 && (
+        <p className="ig-gw-foot">A workspace admin approves what Paige may use here.</p>
+      )}
+
+      {/* SAID OUT LOUD BECAUSE IT IS A REAL LIMIT, NOT A DETAIL. An approval ends when
+          its window closes, and there is no per-action way to take one back before
+          then — no revoke RPC exists and the edge dispatches no revoke action; every
+          deletion of an approval in the schema is connection-scoped. So the only early
+          exits are re-keying or disconnecting, both of which clear the lot. An owner
+          who grants a 30-day approval and wants it back tomorrow should learn that
+          here, while choosing, rather than by hunting for a control nobody built
+          (§70.1/§13). */}
+      {live > 0 && (
+        <p className="ig-gw-foot">
+          An approval ends when its window runs out. There’s no way to take a single one back sooner
+          yet — re-keying or disconnecting this tool clears them all.
+        </p>
+      )}
+    </>
+  );
+}
+
+function ToolDetail({ gw, tool, onClose, onOlderSetup }: {
+  gw: UseMcpGateway;
+  tool: GatewayConnection;
+  onClose: () => void;
+  /** Open this vendor's older setup panel. Absent for a vendor that has none. */
+  onOlderSetup?: () => void;
+}) {
   const [mode, setMode] = useState<"view" | "rekey" | "disconnect">("view");
   /** The last probe verdict, held so the person sees what the check FOUND rather than only a row
    *  that silently changed colour underneath them. Cleared when another action starts. */
   const [checked, setChecked] = useState<{ ok: boolean; message: string | null; toolCount: number | null } | null>(null);
   const [signInMessage, setSignInMessage] = useState<string | null>(null);
+  /** Bumped after a check that came back OK, so the action list re-reads. A check is
+   *  exactly the thing that rewrites the catalogue — discovery replaces it wholesale —
+   *  so without this the drawer would announce "found 12 actions" directly above a list
+   *  still showing what it read before the check ran. */
+  const [catalogueRead, setCatalogueRead] = useState(0);
   const chip = statusChip(tool);
   const isRest = tool.authKind === "api_key";
   const isOAuth = tool.authKind === "oauth";
@@ -692,6 +1262,10 @@ function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayCon
     // never happened (§13).
     if (result.code === "MCP_BUSY" || result.code === "MCP_NOT_READY") return;
     setChecked({ ok: result.ok, message: result.message, toolCount: result.toolCount ?? null });
+    // Only on success: a failed probe leaves the catalogue exactly as it was (it
+    // passes no tool array), so re-reading would spend a round trip to render the
+    // same rows back.
+    if (result.ok) setCatalogueRead((n) => n + 1);
   };
 
   /** Re-run the provider sign-in for a connection that already holds an OAuth grant. */
@@ -744,38 +1318,25 @@ function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayCon
               : "This tool is turned off, and its sign-in was cleared when you turned it off — switching it back on means removing it and adding it again."}</span></div>
           )}
 
-          {tool.status === "pending_verification" ? (
+          {tool.status === "pending_verification" && (
             <div className="ig-gw-info" role="status"><span>This tool hasn’t been checked yet. Paige can’t use it until she has reached it and you’ve approved what it may do.</span></div>
-          ) : tool.status === "error" ? (
+          )}
+          {tool.status === "error" && (
             <div className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} /><span>Couldn’t reach it. Fix the address or re-key, then check it again.</span></div>
-          ) : (
-            <div className="ig-gw-info" role="status"><span>{tool.approvedCount === null || tool.toolCount === null ? "How many actions this tool offers hasn’t been read yet." : `${tool.approvedCount} of ${tool.toolCount} actions approved.`}</span></div>
           )}
 
-          {/* Two earlier versions of the sentence below were each false, in opposite directions.
-              "approvals are all-or-nothing" named a bulk approval that exists nowhere (the door is
-              per-tool-name). "she won't act with this tool — nothing runs without your approval"
-              then over-corrected: resolveEffectApproval returns requiresApproval:false for a tool
-              that is neither mutation-verb-named nor provider-declared-mutating nor
-              effects-undeclared, and the runner skips the consent check for it outright. So a
-              declared READ genuinely does run unapproved. The wording is now scoped to the three
-              branches that actually gate — which is the true statement, and the narrowest one.
+          {/* The list replaces the "N of M actions approved" summary that used to sit here, and it
+              is a replacement rather than an addition on purpose. That summary counted approval
+              ROWS; the list discounts an approval that has expired or whose action has changed
+              since. Both were honest about what they counted, and shown together they would have
+              disagreed out loud — "3 of 5 approved" above three rows reading "ran out". One source
+              of truth, and it is the one that knows what still authorises something (§57).
 
-              The per-action list is NOT buildable yet, and this says so rather than showing an empty
-              list that reads as "this tool offers nothing". The missing piece is exact: no
-              client-readable door onto the tool catalogue exists. `mcp_connection_tools` carries an
-              is_platform_owner()-only RLS policy, no RPC reads it, and the verify action returns
-              tool_count as a NUMBER — so there is no honest way to enumerate the actions an approval
-              would name. Recorded in full in the Slice ④ PR body and the master reference. */}
-          {tool.status === "connected" && (tool.toolCount ?? 0) > 0 && (
-            <div className="ig-gw-info" role="status">
-              <span>
-                Choosing which of these actions Paige may use needs a change on Paige’s side that hasn’t shipped
-                yet. Until it does, anything that would send or change something stays blocked — you’ll approve
-                those one at a time when it lands.
-              </span>
-            </div>
-          )}
+              Rendered for every status, not only `connected`, because a connection that has fallen
+              into error still holds the approvals its owner granted, and hiding them would hide a
+              decision they made. Where there is genuinely nothing to show, the list says which kind
+              of nothing it is. */}
+          <ToolActions gw={gw} tool={tool} reloadKey={catalogueRead} />
 
           {/* Check now and Sign in again are gated on `enabled` because on a turned-off row they can
               ONLY refuse: the server answers connection_disabled to both. Rendering a control whose
@@ -791,6 +1352,18 @@ function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayCon
             {gw.canWrite && rekeyable && <button type="button" className="ig-btn" onClick={() => setMode("rekey")}>Re-key</button>}
             {gw.canWrite && <button type="button" className="ig-btn" data-danger onClick={() => setMode("disconnect")}>Disconnect</button>}
           </div>
+          {/* The older panel for this vendor still does things this drawer cannot — saving and
+              re-checking an n8n API key, connecting Zapier by address. Its duplicate TILE is gone
+              from the group, so this is the path that keeps those reachable rather than removing
+              them with the tile (§58). It is a quiet link, not a fifth button: it is a way back to
+              something older, never one of this connection's own actions. */}
+          {onOlderSetup && (
+            <p className="ig-gw-older">
+              <button type="button" className="ig-linkish" onClick={onOlderSetup}>
+                Older setup options<ChevronRight size={13} aria-hidden />
+              </button>
+            </p>
+          )}
         </>
       )}
 
@@ -991,15 +1564,16 @@ export function IntegrationsGatewaySection({
       )}
       {gw.tools.map((c) => {
         const chip = statusChip(c);
+        const title = connectionDisplayName(c);
         return (
           <li key={c.id}>
             <button type="button" className="ig-card" data-provider={`gateway-${c.id}`} data-gateway-tool={c.id}
               data-owner="gateway" onClick={() => setDrawer({ kind: "detail", tool: c, scope: scopeKey })} aria-haspopup="dialog">
               <span className="ig-logo" data-glyph="light" data-initials style={{ ["--ig-brand" as string]: "var(--pg-violet)" }} aria-hidden>
-                {c.label.slice(0, 2).toUpperCase()}
+                {title.slice(0, 2).toUpperCase()}
               </span>
               <span className="ig-card-title">
-                <strong>{c.label}</strong>
+                <strong>{title}</strong>
                 {!usable(c) && <span className="ig-chip" data-warn>not usable yet</span>}
               </span>
               <span className="ig-card-foot">
@@ -1049,6 +1623,8 @@ export function IntegrationsGatewaySection({
             onSetup={(item) => setDrawer({ kind: "stop", item, via: "setup" })}
             onZapier={(item) => setDrawer({ kind: "stop", item, via: "zapier" })}
             onLegacy={openLegacy}
+            tools={gw.tools}
+            onOpenConnection={(c) => setDrawer({ kind: "detail", tool: c, scope: scopeKey })}
           />
         </GatewayDrawer>
       )}
@@ -1093,7 +1669,13 @@ export function IntegrationsGatewaySection({
           blanking the dialog out from under the person. */}
       {drawer?.kind === "detail" && !tenantLoading && drawer.scope === scopeKey && (() => {
         const live = gw.tools.find((t) => t.id === drawer.tool.id) ?? drawer.tool;
-        return <ToolDetail key={`${scopeKey}:${live.id}`} gw={gw} tool={live} onClose={closeDetail} />;
+        // The older setup panel for this vendor, when one exists. Derived from the registry's own
+        // provider key so it appears for exactly the two vendors that still have one, and stops
+        // appearing by itself the day those panels retire — no list to remember to update.
+        const legacy: CatLegacy | null =
+          live.providerKey === "n8n" ? "n8n" : live.providerKey === "zapier" ? "zapier" : null;
+        return <ToolDetail key={`${scopeKey}:${live.id}`} gw={gw} tool={live} onClose={closeDetail}
+          onOlderSetup={legacy ? () => openLegacy(legacy) : undefined} />;
       })()}
     </section>
   );

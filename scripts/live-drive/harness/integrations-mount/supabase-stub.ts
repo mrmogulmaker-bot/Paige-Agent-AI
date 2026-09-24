@@ -20,12 +20,45 @@ function gatewayRows(){
  const tenant=currentHarnessTenantId();
  if(tenant.endsWith('-b')||mode()==='empty')return [];
  const base={provider_key:'generic-remote',transport:'http',auth_kind:'bearer',configured:true,enabled:true,visibility:'tenant',granted_scopes:[] as string[]};
+ // ?data=held — the duplicate-tile case the owner reported. Two connections to vendors the
+ // catalogue NAMES, carrying labels of the shape the one-time backfill composed per tenant.
+ // The labels are invented for this fixture on purpose: a real account's name never becomes
+ // example data (§63), and the point being rendered is that a composed label is not a tool name.
+ if(mode()==='held')return [
+  {...base,provider_key:'zapier',auth_kind:'oauth',connection_id:'harness-held-z',label:'workspace-Zapier',status:'connected',health:'healthy',server_url_host:'mcp.zapier.com',last_checked_at:'2026-09-20T10:00:00Z',tool_count:4,approved_count:1},
+  {...base,provider_key:'n8n',auth_kind:'api_key',connection_id:'harness-held-n',label:'n8n- workspace',status:'connected',health:'healthy',server_url_host:'team.app.n8n.cloud',last_checked_at:'2026-09-20T10:00:00Z',tool_count:3,approved_count:0},
+ ];
  return [
   {...base,connection_id:'harness-tool-1',label:'Scheduling tool',status:'connected',health:'healthy',server_url_host:'scheduling.example.invalid',last_checked_at:'2026-09-20T10:00:00Z',tool_count:6,approved_count:2},
   {...base,connection_id:'harness-tool-2',label:'Docs tool',status:'pending_verification',health:'unknown',server_url_host:'docs.example.invalid',last_checked_at:null,tool_count:0,approved_count:0},
   {...base,connection_id:'harness-tool-3',label:'Billing tool',status:'error',health:'needs_attention',server_url_host:'billing.example.invalid',last_checked_at:'2026-09-19T08:00:00Z',tool_count:0,approved_count:0},
  ];
 }
+/**
+ * The per-action catalogue behind the gateway's `tools` action, keyed by connection so the
+ * drawer's three fixture connections each render a DIFFERENT honest state:
+ *   harness-tool-1 (connected, last_checked_at set) — a real list spanning every row state.
+ *   harness-tool-2 (pending_verification)           — no list at all; the drawer's own banner.
+ *   harness-tool-3 (error, rows survive the failure) — a dated list under the stale-read warning.
+ * Every field mirrors what `get_mcp_connection_tools` projects; the approval verdicts are
+ * SERVER-computed there and are therefore fixtures here rather than anything the surface derives.
+ */
+const gatewayTools:Record<string,Array<Record<string,unknown>>>={
+ 'harness-tool-1':[
+  {tool_name:'list_events',app:'Scheduling',action_type:'calendar.list',effects:['read'],observed_at:'2026-09-20T10:00:00Z',approved:false,approved_at:null,expires_at:null,approval_expired:false,approval_stale:false,approved_by_you:false,approval_blocked_reason:null},
+  {tool_name:'send_invite',app:'Scheduling',action_type:'calendar.invite',effects:['read'],observed_at:'2026-09-20T10:00:00Z',approved:false,approved_at:null,expires_at:null,approval_expired:false,approval_stale:false,approved_by_you:false,approval_blocked_reason:null},
+  {tool_name:'create_booking',app:'Scheduling',action_type:'calendar.create',effects:['create'],observed_at:'2026-09-20T10:00:00Z',approved:true,approved_at:'2026-09-20T11:00:00Z',expires_at:'2026-10-20T11:00:00Z',approval_expired:false,approval_stale:false,approved_by_you:true,approval_blocked_reason:null},
+  {tool_name:'cancel_booking',app:'Scheduling',action_type:'calendar.cancel',effects:['delete'],observed_at:'2026-09-20T10:00:00Z',approved:true,approved_at:'2026-09-01T11:00:00Z',expires_at:'2026-09-02T11:00:00Z',approval_expired:true,approval_stale:false,approved_by_you:true,approval_blocked_reason:'approval_expired'},
+  {tool_name:'reschedule',app:'Scheduling',action_type:'calendar.move',effects:['update'],observed_at:'2026-09-20T10:00:00Z',approved:true,approved_at:'2026-09-10T11:00:00Z',expires_at:'2026-10-10T11:00:00Z',approval_expired:false,approval_stale:true,approved_by_you:false,approval_blocked_reason:'contract_changed'},
+  {tool_name:'charge_deposit',app:'Scheduling',action_type:'billing.charge',effects:['send'],observed_at:'2026-09-20T10:00:00Z',approved:true,approved_at:'2026-09-18T11:00:00Z',expires_at:'2026-10-18T11:00:00Z',approval_expired:false,approval_stale:false,approved_by_you:true,approval_blocked_reason:'endpoint_changed'},
+  {tool_name:'weather_hint',app:'Scheduling',action_type:'ext.weather',effects:[],observed_at:'2026-09-20T10:00:00Z',approved:false,approved_at:null,expires_at:null,approval_expired:false,approval_stale:false,approved_by_you:false,approval_blocked_reason:null},
+ ],
+ 'harness-tool-2':[],
+ 'harness-tool-3':[
+  {tool_name:'list_invoices',app:'Billing',action_type:'invoice.list',effects:['read'],observed_at:'2026-09-14T08:00:00Z',approved:false,approved_at:null,expires_at:null,approval_expired:false,approval_stale:false,approved_by_you:false,approval_blocked_reason:null},
+  {tool_name:'charge_card',app:'Billing',action_type:'invoice.charge',effects:['send'],observed_at:'2026-09-14T08:00:00Z',approved:false,approved_at:null,expires_at:null,approval_expired:false,approval_stale:false,approved_by_you:false,approval_blocked_reason:null},
+ ],
+};
 const ok=(data:unknown=null)=>Promise.resolve({data,error:null});
 const fail=(message:string)=>Promise.resolve({data:null,error:{message}});
 const pending:Array<()=>void>=[];
@@ -40,7 +73,14 @@ export const supabase={
   // `get_mcp_connections_v2` projects it — no secret is representable in this shape.
   if(name==='get_mcp_connections_v2')return mode()==='error'||mode()==='gateway-error'?fail('fixture-read-refused'):ok(gatewayRows());
   if(name==='is_current_user_tenant_admin')return ok(mode()!=='readonly');
-  return ok();
+ // The retry flow in ?data=signin-fail genuinely calls this one. A catch-all `ok()` answered it
+ // with {data:null}, which trips the hook's acknowledgement guard, so the harness silently
+ // rendered a generic refusal on a path the unit tests prove works — a wrong SHAPE, not a
+ // wrong value, and therefore invisible.
+ if(name==='set_mcp_connection_endpoint')return ok({connection_id:'harness-shell-1',status:'pending_verification'});
+ // Anything else is a gap in this fixture or a bug in the caller. It must be loud: a silent
+ // null-shaped success is how a renamed RPC passes for a working one.
+ return fail('unstubbed rpc: '+name);
  },
  functions:{invoke:(name:string,options:{body?:Record<string,unknown>})=>{
   const body=options?.body??{};const tenant=currentHarnessTenantId();
@@ -56,7 +96,38 @@ export const supabase={
    if(body.action==='oauth_begin')return mode()==='signin-fail'
     ?ok({error:'discovery_failed'})
     :ok({authorize_url:'https://provider.example.invalid/authorize?harness=1'});
-   return ok({error:'unavailable'});
+   // Door 1's read. `?data=tools-refused` drives the refusal branch, which must NOT render as an
+   // empty list — "we couldn't read this" and "this offers nothing" are different sentences.
+   if(body.action==='tools'){
+    if(mode()==='tools-refused')return ok({error:'not_found'});
+    const rows=gatewayTools[String(body.connection_id)]??[];
+    const seen=rows.map(r=>String(r.observed_at)).sort().at(-1)??null;
+    return ok({ok:true,connection_id:body.connection_id,tools:rows.map(r=>({
+     name:r.tool_name,effects:r.effects,app:r.app,actionType:r.action_type,
+     // The APPROVAL POLICY IS THE SERVER'S and is applied in the edge, so the fixture states the
+     // decision rather than re-deriving it — including the case the policy exists for:
+     // `send_invite` is labelled `["read"]` by its provider and is raised anyway by its name.
+     requiresApproval:!(Array.isArray(r.effects)&&r.effects.length>0&&(r.effects as string[]).every(e=>e==='read')&&!/^(send|delete|create|update|post|write|remove|cancel|charge)_/.test(String(r.tool_name))),
+     approvalBasis:Array.isArray(r.effects)&&(r.effects as string[]).length===0?'effects_undeclared'
+      :/^(send|delete|cancel|charge)_/.test(String(r.tool_name))?'server_name_floor'
+      :(r.effects as string[]).every(e=>e==='read')?null:'provider_declared_effect',
+     approved:r.approved,approvedAt:r.approved_at,expiresAt:r.expires_at,
+     approvalExpired:r.approval_expired,approvalStale:r.approval_stale,approvedByYou:r.approved_by_you,
+     approvalBlockedReason:r.approval_blocked_reason??null,
+     observedAt:r.observed_at,
+    })),tool_count:rows.length,approved_count:rows.filter(r=>r.approved&&!r.approval_blocked_reason).length,observed_at:seen});
+   }
+   if(body.action==='approve'){
+    if(mode()==='approve-refused')return ok({error:'tool_not_verified'});
+    const rows=gatewayTools[String(body.connection_id)]??[];
+    const hit=rows.find(r=>r.tool_name===body.tool_name);
+    if(hit){hit.approved=true;hit.approved_at=new Date().toISOString();hit.expires_at=String(body.expires_at??'');hit.approval_expired=false;hit.approval_stale=false;hit.approved_by_you=true;}
+    return ok({ok:true,connection_id:body.connection_id,tool_name:body.tool_name,approved:true});
+   }
+   // An action this stub does not serve is a BUG in the caller or a gap in the fixture, and it
+   // answers the way the real function does — `unsupported_action`, the code the edge raises —
+   // so a harness run can never make a mis-named action look like a working one.
+   return ok({error:'unsupported_action'});
   }
   if(name!=='tenant-n8n-api-connect')return ok({error:'unavailable'});
   if(body.action==='disconnect'){apiRows.set(tenant,emptyApi(tenant));return ok({ok:true,outcome:'disconnected',connection:apiRow()});}

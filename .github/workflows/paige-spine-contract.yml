@@ -24,6 +24,9 @@ on:
       - "supabase/tests/mcp_gateway_approval_future_expiry.sql"
       - "supabase/tests/integrations_surface_sees_mcp.sql"
       - "supabase/tests/record_capability_run_single_overload.sql"
+      - "supabase/tests/mcp_tool_catalog_tenant_scope.sql"
+      - "supabase/tests/mcp_oauth_refuses_the_rest_facet.sql"
+      - "supabase/migrations/20270412090000_a_tenant_can_read_its_own_tool_catalog.sql"
       - "supabase/migrations/20270411090000_one_record_capability_run_not_two.sql"
       - "scripts/proof/mcp-gateway-endpoint-consent-race.mjs"
       - "supabase/functions/_shared/mcp-gateway/**"
@@ -89,6 +92,9 @@ on:
       - "supabase/tests/mcp_gateway_approval_future_expiry.sql"
       - "supabase/tests/integrations_surface_sees_mcp.sql"
       - "supabase/tests/record_capability_run_single_overload.sql"
+      - "supabase/tests/mcp_tool_catalog_tenant_scope.sql"
+      - "supabase/tests/mcp_oauth_refuses_the_rest_facet.sql"
+      - "supabase/migrations/20270412090000_a_tenant_can_read_its_own_tool_catalog.sql"
       - "supabase/migrations/20270411090000_one_record_capability_run_not_two.sql"
       - "scripts/proof/mcp-gateway-endpoint-consent-race.mjs"
       - "supabase/functions/_shared/mcp-gateway/**"
@@ -314,6 +320,18 @@ jobs:
       # next migration that reaches for a second overload fails here instead of silently
       # switching the Rail off again. Rides this replayed DB for the same §24 reason as above.
       - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/record_capability_run_single_overload.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      # Door 1 (migration 20270412090000): a tenant reads its OWN tool catalogue and nothing
+      # else. The obvious implementation — mirror get_mcp_connections_v2 — is WRONG and leaks
+      # every tenant to every other: v2's isolation lives in its WHERE tenant_id LIST filter,
+      # which a by-id read does not have, and _mcp_resolve_tenant scopes the CALLER, never the
+      # ROW. Proven live during the build: with the bind removed, a tenant-A member read tenant
+      # B's tools outright. This pins that bind, the owner_only re-check after it, one identical
+      # refusal for unknown/foreign/owner_only (no existence oracle), [] meaning ONLY "not probed
+      # yet", and that no pin/schema_hash/authority_hash/endpoint_hash/args_shape_hash/approver
+      # uuid crosses — checked by VALUE so a rename cannot defeat it.
+      - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_tool_catalog_tenant_scope.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      # The OAuth flow must refuse the REST facet, or it overwrites an unrecoverable API key.
+      - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/mcp_oauth_refuses_the_rest_facet.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       # Connected MCP Gateway — Slice ② OAuth GRANT WRITER (migration 20270333000000): complete_mcp_oauth_grant
       # re-keys a 'none' shell to oauth (tokens ENCRYPTED, granted scopes recorded, status→pending_verification,
       # config_generation BUMPED, routing facts returned, loader round-trips); §9/§59 refuses a cross-tenant
@@ -336,6 +354,12 @@ jobs:
       # And the two-session concurrency proof that the approval-write vs endpoint-change RACE is closed:
       # set_mcp_connection_approval's FOR UPDATE row lock serializes it against a concurrent endpoint
       # change, so no approval is ever left bound to an endpoint the connection no longer has (#1262 finding 3).
+      # Door 1 — the `tools` action, driven against the REAL handler + effect policy. Pins that
+      # the approval decision is never re-derived (a send_* tool a provider labels "read" still
+      # requires approval), that a genuine declared read is honestly marked as needing nothing,
+      # that unknown/foreign/owner_only stay one indistinguishable refusal, and that an expired
+      # or pin-drifted approval is not counted as consent.
+      - run: node scripts/proof/mcp-gateway-tools-action.mjs
       - run: node scripts/proof/mcp-gateway-endpoint-consent-race.mjs
         env:
           MCP_GATEWAY_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres

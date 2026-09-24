@@ -71,6 +71,57 @@ const row = (over: Record<string, unknown> = {}) => ({
  * Default world: the caller may write and the account holds whatever rows are passed.
  * `write` decides what every write RPC returns, so a refusal can be driven end to end.
  */
+/** The RPCs this surface genuinely calls. Anything else is a bug in the caller or a
+ *  gap in this file, and either way must fail loudly rather than succeed quietly. */
+const WRITE_RPCS = new Set([
+  "set_mcp_connection_endpoint",
+  "set_mcp_rest_connection_endpoint",
+  "disconnect_mcp_connection",
+]);
+/** The gateway edge actions this surface genuinely dispatches, `tools` handled apart. */
+const EDGE_ACTIONS = new Set(["create", "verify", "oauth_begin", "approve"]);
+
+/** A connection whose catalogue has been read and holds nothing — the default, because
+ *  it is the honest shape for a fixture that declares no tools, and because the
+ *  alternative (a body with no `tools` array at all) is what hid the degraded render. */
+const emptyToolsAnswer = {
+  data: { ok: true, connection_id: "conn-1", tools: [], tool_count: 0, approved_count: 0, observed_at: null },
+  error: null,
+};
+
+/** One row as the gateway's `tools` action returns it. Every approval verdict here is a
+ *  SERVER verdict in production, so the fixture states them rather than deriving them. */
+const toolRow = (over: Record<string, unknown> = {}) => ({
+  name: "list_contacts",
+  effects: ["read"],
+  app: "Gmail",
+  actionType: "contact.list",
+  requiresApproval: false,
+  approvalBasis: null,
+  approved: false,
+  approvedAt: null,
+  expiresAt: null,
+  approvalExpired: false,
+  approvalStale: false,
+  approvedByYou: false,
+  approvalBlockedReason: null,
+  observedAt: "2026-09-20T10:00:00Z",
+  ...over,
+});
+
+/** A `tools` answer carrying rows, with the counts the server would have computed. */
+const toolsAnswer = (rows: Record<string, unknown>[]) => ({
+  data: {
+    ok: true,
+    connection_id: "conn-1",
+    tools: rows,
+    tool_count: rows.length,
+    approved_count: rows.filter((r) => r.approved === true && r.approvalBlockedReason == null).length,
+    observed_at: rows.map((r) => String(r.observedAt ?? "")).sort().at(-1) || null,
+  },
+  error: null,
+});
+
 function world(over: {
   rows?: Record<string, unknown>[];
   admin?: boolean;
@@ -78,13 +129,35 @@ function world(over: {
   write?: { data?: unknown; error?: unknown };
   /** What a WRITE answers on the RETAINED rpc lane (re-key, disconnect) — still a builder answer. */
   rpcWrite?: { data?: unknown; error?: unknown };
+  /** What the `tools` READ answers. Its own lane, because it is the only edge action
+   *  a drawer fires on OPEN — sharing the write lane is what hid it. */
+  tools?: { data?: unknown; error?: unknown };
 } = {}) {
   rpc.mockImplementation((name: string) => {
     if (name === "get_mcp_connections_v2") return builder({ data: over.rows ?? [], error: null });
     if (name === "is_current_user_tenant_admin") return builder({ data: over.admin !== false, error: null });
-    return builder(over.rpcWrite ?? { data: { connection_id: "conn-new", status: "pending_verification" }, error: null });
+    if (WRITE_RPCS.has(name)) {
+      return builder(over.rpcWrite ?? { data: { connection_id: "conn-new", status: "pending_verification" }, error: null });
+    }
+    // A catch-all here answered ANY name with a connection-shaped success, and that
+    // shape is exactly what the hook's acknowledgement guard accepts — so a renamed
+    // or mistyped RPC was indistinguishable from the real writer working. Naming the
+    // three real ones and throwing on the rest turns that into a failure that says
+    // which call was unstubbed.
+    throw new Error(`unstubbed rpc: ${name}`);
   });
-  invoke.mockResolvedValue(over.write ?? { data: { connection_id: "conn-new", status: "pending_verification" }, error: null });
+  invoke.mockImplementation((_fn: string, opts: { body?: Record<string, unknown> }) => {
+    const action = String(opts?.body?.action ?? "");
+    // The same hole, one layer out, and worse: ONE resolved value served every edge
+    // action. A `tools` call got a connection-shaped body, `listTools` found no array
+    // where it expected one, and the drawer rendered its degraded branch — in every
+    // test that opens a drawer. Fifty-two of them passed that way.
+    if (action === "tools") return Promise.resolve(over.tools ?? emptyToolsAnswer);
+    if (EDGE_ACTIONS.has(action)) {
+      return Promise.resolve(over.write ?? { data: { connection_id: "conn-new", status: "pending_verification" }, error: null });
+    }
+    return Promise.reject(new Error(`unstubbed gateway action: ${action}`));
+  });
 }
 
 /** The body of the last gateway call, for asserting what actually went over the wire. */
@@ -621,6 +694,55 @@ describe("Writes reach the server", () => {
   });
 });
 
+describe("A superseded read never wins", () => {
+  it("keeps the FRESH action list when a superseded read resolves last", async () => {
+    // "Check now" tears down and immediately re-runs the read effect. A single shared
+    // liveness boolean is false during teardown and true again before the OLDER request
+    // resolves, so that older answer passes the guard and overwrites the newer one —
+    // rendering "Checked just now" directly above the list read BEFORE the check.
+    // Every read is held here and settled by hand, newest FIRST, so the superseded ones
+    // land late: the exact interleaving the defect needs, which real timing only
+    // sometimes produces.
+    rpc.mockImplementation((name: string) => {
+      if (name === "get_mcp_connections_v2") {
+        return builder({ data: [row({ status: "connected", health: "healthy", tool_count: 1 })], error: null });
+      }
+      if (name === "is_current_user_tenant_admin") return builder({ data: true, error: null });
+      return builder({ data: { connection_id: "conn-1" }, error: null });
+    });
+
+    const pending: ((v: unknown) => void)[] = [];
+    invoke.mockImplementation((_fn: string, opts: { body?: Record<string, unknown> }) => {
+      const action = String(opts?.body?.action ?? "");
+      if (action === "tools") return new Promise((resolve) => { pending.push(resolve); });
+      return Promise.resolve({ data: { ok: true, status: "connected", health: "healthy", tool_count: 1, error_code: null }, error: null });
+    });
+
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    const beforeCheck = pending.length;
+    expect(beforeCheck).toBeGreaterThan(0); // a read is in flight, deliberately unresolved
+
+    await click(byText(host, "Check now"));
+    expect(pending.length).toBeGreaterThan(beforeCheck); // the reload issued a newer read
+
+    const held = pending.length;
+    // The NEWEST read lands first, carrying what the server says now.
+    pending[held - 1](toolsAnswer([toolRow({ name: "fresh_action" })]));
+    await act(async () => { await Promise.resolve(); });
+    // Then every superseded read lands late, carrying what it read before the check.
+    for (let i = 0; i < held - 1; i += 1) {
+      pending[i](toolsAnswer([toolRow({ name: "stale_action" })]));
+    }
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+
+    const text = dialog(host)!.textContent!;
+    expect(text).toContain("fresh_action");
+    expect(text).not.toContain("stale_action");
+  });
+});
+
 describe("The open drawer tells one story", () => {
   it("re-reads the row from the live list after a check, instead of contradicting itself", async () => {
     // Slice ④ added the first write that leaves this drawer OPEN. Re-key and disconnect both close
@@ -656,24 +778,136 @@ describe("The open drawer tells one story", () => {
 
 describe("What the surface claims about approvals is true of the runner", () => {
   it("claims neither a bulk approval nor a blanket block — both are false, in opposite directions", async () => {
-    world({ rows: [row({ status: "connected", health: "healthy", tool_count: 11, approved_count: 3 })] });
+    // The sentence this replaces said choosing actions "hasn't shipped yet", which was true
+    // until the list did ship. Two earlier versions were false in opposite directions:
+    // "all-or-nothing" named a bulk approval that exists nowhere (the door takes ONE
+    // tool_name), and "nothing runs without your approval" over-corrected, because
+    // resolveEffectApproval returns requiresApproval:false for a declared read and the
+    // runner skips the consent check for it outright. The list now proves both, per row.
+    world({
+      rows: [row({ status: "connected", health: "healthy", tool_count: 3, approved_count: 1 })],
+      tools: toolsAnswer([
+        toolRow({ name: "list_contacts", effects: ["read"], requiresApproval: false }),
+        toolRow({ name: "send_email", effects: ["read"], requiresApproval: true, approvalBasis: "server_name_floor" }),
+        toolRow({ name: "create_booking", effects: ["create"], requiresApproval: true, approvalBasis: "provider_declared_effect",
+                  approved: true, expiresAt: "2026-10-20T11:00:00Z", approvedByYou: true }),
+      ]),
+    });
     const { host } = await render();
     await click(host.querySelector('[data-gateway-tool="conn-1"]'));
     const text = dialog(host)!.textContent!;
 
-    // There is no bulk approval anywhere: the approve door takes ONE tool_name, and approved_count
-    // is one row per approved action. "All-or-nothing" also contradicted the line directly above it,
-    // which reads "3 of 11 actions approved".
     expect(text).not.toMatch(/all-or-nothing/i);
-    expect(text).toMatch(/3 of 11 actions approved/);
-
-    // And the opposite over-correction is false too: resolveEffectApproval returns
-    // requiresApproval:false for a declared read, and the runner skips the consent check for it — so
-    // a blanket "nothing runs without your approval" would be its own §13 defect.
     expect(text).not.toMatch(/nothing runs without your approval/i);
+    // The claim that shipped in its place is dead, and must not come back as copy.
+    expect(text).not.toMatch(/hasn.t shipped yet/i);
+    // A declared read is honestly marked as needing nothing — the true statement the
+    // over-correction denied.
+    expect(text).toMatch(/Runs without asking/);
+    // And a mutation is honestly gated, per row, with its reason. `send_email` is labelled
+    // ["read"] by its provider and is raised anyway, which is the server floor working.
+    expect(text).toMatch(/Needs your approval/);
+    expect(text).toMatch(/name says it sends or changes something/i);
+    // The summary counts CONSENT, not rows: one of the two gated actions is approved.
+    expect(text).toMatch(/1 of 2 approved/);
+  });
 
-    // What IS true is scoped to the three branches that actually gate.
-    expect(text).toMatch(/send or change something stays blocked/i);
+  it("tells an owner when an approval that LOOKS live would be refused at dispatch", async () => {
+    // The defect this exists to prevent: `approved` means only "a row exists", while the
+    // function governing execution refuses on seven conditions. An approval bound to an
+    // endpoint this connection no longer uses is unexpired, unstale, and useless — and the
+    // surface used to render it as "You approved this" with no control to fix it.
+    world({
+      rows: [row({ status: "connected", health: "healthy", tool_count: 2, approved_count: 2 })],
+      tools: toolsAnswer([
+        toolRow({ name: "charge_card", effects: ["send"], requiresApproval: true, approvalBasis: "provider_declared_effect",
+                  approved: true, expiresAt: "2026-10-20T11:00:00Z", approvalBlockedReason: "endpoint_changed" }),
+        toolRow({ name: "wipe_all", effects: ["delete"], requiresApproval: true, approvalBasis: "server_name_floor",
+                  approved: true, approvalBlockedReason: "approval_not_endpoint_bound" }),
+      ]),
+    });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    const text = dialog(host)!.textContent!;
+
+    expect(text).toMatch(/Approved for a different address/);
+    expect(text).toMatch(/Approval needs redoing/);
+    // Neither may read as live consent, and the count must not include them.
+    expect(text).not.toMatch(/You approved this/);
+    expect(text).toMatch(/0 of 2 approved/);
+    // Both are recoverable, so both offer the control that recovers them.
+    expect(buttons(host).filter((b) => b.textContent === "Approve again")).toHaveLength(2);
+  });
+
+  it("does not offer a control that could only be refused", async () => {
+    // A member who is not a workspace admin is refused before anything is sent, and the
+    // server refuses independently. They still see the whole list — it is already disclosed
+    // to them — plus a line naming who can act on it.
+    world({
+      admin: false,
+      rows: [row({ status: "connected", health: "healthy", tool_count: 1, approved_count: 0 })],
+      tools: toolsAnswer([toolRow({ name: "send_email", effects: ["send"], requiresApproval: true, approvalBasis: "server_name_floor" })]),
+    });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(byText(host, "Approve")).toBeUndefined();
+    const text = dialog(host)!.textContent!;
+    expect(text).toMatch(/send_email/);
+    expect(text).toMatch(/A workspace admin approves what Paige may use/);
+  });
+
+  it("keeps 'never read' and 'offers nothing' as different sentences", async () => {
+    // Both arrive as an empty array. `observedAt` cannot separate them — it is derived from
+    // the rows, so it is null whenever there are none. The connection's own last-checked time
+    // is what says whether anyone ever asked. Production is entirely the first case today, so
+    // one "nothing here" line would be false about every connection anyone owns.
+    world({ rows: [row({ status: "connected", health: "healthy", last_checked_at: null, tool_count: 0, approved_count: 0 })] });
+    const first = await render();
+    await click(first.host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(dialog(first.host)!.textContent).toMatch(/hasn.t looked at what this tool can do yet/i);
+    first.root.unmount();
+
+    world({ rows: [row({ status: "connected", health: "healthy", last_checked_at: "2026-09-20T10:00:00Z", tool_count: 0, approved_count: 0 })] });
+    const second = await render();
+    await click(second.host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(dialog(second.host)!.textContent).toMatch(/offered nothing she can run/i);
+  });
+
+  it("does not render an empty list as 'offers nothing' when the read was REFUSED", async () => {
+    world({
+      rows: [row({ status: "connected", health: "healthy", tool_count: 4, approved_count: 0 })],
+      tools: edgeRefusal("not_found", 404),
+    });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    const text = dialog(host)!.textContent!;
+    expect(text).toMatch(/could not be found/i);
+    expect(text).not.toMatch(/offered nothing/i);
+    expect(text).not.toMatch(/hasn.t looked/i);
+  });
+
+  it("records consent without claiming Paige will then run it", async () => {
+    // Approving records CONSENT. Whether Paige may act on it is a separate switch that is off
+    // by default, and promising a run here would swap one false sentence for another.
+    world({
+      rows: [row({ status: "connected", health: "healthy", tool_count: 1, approved_count: 0 })],
+      tools: toolsAnswer([toolRow({ name: "send_email", effects: ["send"], requiresApproval: true, approvalBasis: "server_name_floor" })]),
+      write: { data: { ok: true, connection_id: "conn-1", tool_name: "send_email", approved: true }, error: null },
+    });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    await click(byText(host, "Approve"));
+
+    const sent = edgeCalls("approve").at(-1)?.[1]?.body as Record<string, unknown>;
+    expect(sent.tool_name).toBe("send_email");
+    // The lifetime floor is applied before the wire, never by omitting the field — omitting it
+    // means NO EXPIRY to the handler, which would make the most suspicious input the most
+    // permissive outcome.
+    expect(typeof sent.expires_at).toBe("string");
+
+    const text = dialog(host)!.textContent!;
+    expect(text).toMatch(/consent recorded/i);
+    expect(text).not.toMatch(/Paige can use it/i);
   });
 });
 
@@ -947,5 +1181,145 @@ describe("Managing a tool", () => {
     expect(host.textContent).toContain("Couldn’t reach it");
     await click(host.querySelector('[data-gateway-tool="conn-1"]'));
     expect(dialog(host)?.textContent).toMatch(/fix the address or re-key/i);
+  });
+});
+
+/* ── One tool, one tile ───────────────────────────────────────────────────────
+   The owner reported two connections reading as SIX tiles. The three lists that draw
+   them are built from unrelated sources and never compared notes, so a connected
+   provider appeared as something to add AND as the thing already added.
+
+   These drive the merge itself, not its wiring: every assertion opens the real
+   catalogue against real hook state and reads what rendered. */
+describe("a tool the tenant already has is one tile, not two", () => {
+  /** Open the catalogue drawer and hand back the tile for a named vendor. */
+  const catalogueTile = async (host: HTMLElement, vendor: string) => {
+    await click(byText(host, "MCP server"));
+    return Array.from(host.querySelectorAll<HTMLElement>(".ig-gw-tile"))
+      .find((t) => t.querySelector(".ig-gw-tile-name")?.textContent === vendor);
+  };
+
+  it("shows a connected vendor's real status in the catalogue instead of offering to add it again", async () => {
+    world({ rows: [row({ provider_key: "zapier", label: "MMA-Zapier", auth_kind: "oauth", server_url_host: "mcp.zapier.com" })] });
+    const { host } = await render();
+    const tile = await catalogueTile(host, "Zapier");
+    expect(tile).toBeTruthy();
+    // The foot carries the connection's status, not the "paste a key" mode badge.
+    expect(tile!.querySelector(".ig-gw-chip")?.textContent).toBe("Ready");
+    expect(tile!.querySelector(".ig-gw-badge")).toBeNull();
+    expect(tile!.getAttribute("data-held")).toBe("");
+    // And it says so to a screen reader, rather than leaving the label claiming an add flow.
+    expect(tile!.getAttribute("aria-label")).toContain("connected");
+  });
+
+  it("opens the connection it represents rather than the add form", async () => {
+    world({ rows: [row({ provider_key: "zapier", label: "MMA-Zapier", auth_kind: "oauth", server_url_host: "mcp.zapier.com" })] });
+    const { host } = await render();
+    await click(await catalogueTile(host, "Zapier"));
+    // The detail drawer for the connection — not the add drawer, which would have a name field.
+    expect(dialog(host)?.textContent).toContain("MMA-Zapier");
+    expect(fieldFor(host, "API key")).toBeUndefined();
+  });
+
+  it("still offers a vendor the tenant has NOT connected", async () => {
+    world({ rows: [row({ provider_key: "zapier", server_url_host: "mcp.zapier.com" })] });
+    const { host } = await render();
+    const tile = await catalogueTile(host, "n8n");
+    expect(tile!.querySelector(".ig-gw-badge")).toBeTruthy();
+    expect(tile!.getAttribute("data-held")).toBeNull();
+  });
+
+  it("changes nothing for a tenant with no connections at all", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    const tiles = Array.from(host.querySelectorAll<HTMLElement>(".ig-gw-tile"));
+    expect(await catalogueTile(host, "Zapier")).toBeTruthy();
+    expect(host.querySelectorAll(".ig-gw-tile[data-held]").length).toBe(0);
+    expect(tiles.length).toBe(0); // the catalogue only exists once opened
+  });
+
+  it("matches on the ADDRESS when the provider key is the generic one", async () => {
+    // A tool added through a catalogue tile is stored as `generic-remote`; its address is what
+    // identifies it. Without this arm every catalogue-added tool would still duplicate.
+    world({ rows: [row({ provider_key: "generic-remote", label: "Notes", server_url_host: "mcp.notion.com" })] });
+    const { host } = await render();
+    const tile = await catalogueTile(host, "Notion");
+    expect(tile!.getAttribute("data-held")).toBe("");
+  });
+
+  it("does NOT let a tenant's own label claim a vendor's tile", async () => {
+    // A label is tenant-editable text, not provider provenance. A generic server someone
+    // named "Zapier" must not mark the Zapier tile as held: doing so opens that unrelated
+    // server from Zapier's tile and — via the parent's suppression — removes the real
+    // Zapier setup path from the surface entirely.
+    world({ rows: [row({
+      connection_id: "spoof", provider_key: "generic-remote", label: "Zapier",
+      server_url_host: "unrelated.example",
+    })] });
+    const { host } = await render();
+    const tile = await catalogueTile(host, "Zapier");
+    expect(tile).toBeTruthy();
+    expect(tile!.getAttribute("data-held")).toBeNull();
+  });
+
+  it("still matches that same row by its real identity", async () => {
+    // The guard above must not be "match nothing": the row IS matched when its provider
+    // key genuinely says Zapier, which is the arm that carries the de-duplication.
+    world({ rows: [row({ connection_id: "real", provider_key: "zapier", label: "whatever they called it" })] });
+    const { host } = await render();
+    const tile = await catalogueTile(host, "Zapier");
+    expect(tile!.getAttribute("data-held")).toBe("");
+  });
+
+  it("prefers a usable row when the tenant holds several for one vendor", async () => {
+    // Production has a tenant with two n8n rows. Pointing the tile at the turned-off one while a
+    // working one sits behind the same name would be the wrong half of the truth.
+    world({ rows: [
+      row({ connection_id: "off", provider_key: "n8n", label: "n8n API connection", enabled: false, status: "unconfigured", configured: false }),
+      row({ connection_id: "live", provider_key: "n8n", label: "n8n (API)", auth_kind: "api_key" }),
+    ] });
+    const { host } = await render();
+    await click(await catalogueTile(host, "n8n"));
+    expect(dialog(host)?.textContent).toContain("n8n (API)");
+  });
+});
+
+describe("a connection tile is named for its tool, not for whoever's data it came from", () => {
+  it("titles a recognised vendor's tile with the vendor, keeping the tenant's own label in the drawer", async () => {
+    // The backfill composed labels per tenant — "MMA-Zapier". A tile answers "which tool is this",
+    // and one account's internal shorthand is not that answer on a platform every tenant shares.
+    world({ rows: [row({ provider_key: "zapier", label: "MMA-Zapier", auth_kind: "oauth", server_url_host: "mcp.zapier.com" })] });
+    const { host } = await render();
+    const card = host.querySelector<HTMLElement>('[data-owner="gateway"][data-gateway-tool]');
+    expect(card!.querySelector("strong")?.textContent).toBe("Zapier");
+    expect(card!.textContent).not.toContain("MMA");
+    // The label is not lost — it is where telling two Zapier connections apart is the question.
+    await click(card);
+    expect(dialog(host)?.textContent).toContain("MMA-Zapier");
+  });
+
+  it("leaves a tenant-named server alone, because there the label is the only name it has", async () => {
+    world({ rows: [row({ provider_key: "generic-remote", label: "Ops bridge", server_url_host: "mcp.internal.example" })] });
+    const { host } = await render();
+    const card = host.querySelector<HTMLElement>('[data-owner="gateway"][data-gateway-tool]');
+    expect(card!.querySelector("strong")?.textContent).toBe("Ops bridge");
+  });
+});
+
+describe("the older setup panel stays reachable once its duplicate tile is gone", () => {
+  it("offers the way back for a vendor that still has one, and routes to that vendor's panel", async () => {
+    const seen: string[] = [];
+    world({ rows: [row({ provider_key: "n8n", label: "n8n (API)", auth_kind: "api_key" })] });
+    const { host } = await render((which) => seen.push(which));
+    await click(host.querySelector('[data-owner="gateway"][data-gateway-tool]'));
+    await click(byText(host, "Older setup options"));
+    expect(seen).toEqual(["n8n"]);
+  });
+
+  it("offers nothing for a vendor that never had one", async () => {
+    world({ rows: [row({ provider_key: "generic-remote", label: "Ops bridge" })] });
+    const { host } = await render();
+    await click(host.querySelector('[data-owner="gateway"][data-gateway-tool]'));
+    expect(byText(host, "Older setup options")).toBeUndefined();
   });
 });
