@@ -44,6 +44,22 @@ export type BriefValidation =
   | { ok: true; value: DocumentBrief }
   | { ok: false; code: string; message: string };
 
+export type DocumentSubmissionErrorOutcome = "capability_refused" | "capability_outcome_unknown";
+
+/**
+ * An RPC response carrying a PostgreSQL SQLSTATE proves the statement aborted. PostgreSQL rolls the
+ * whole statement back, including a durable-work row inserted earlier in the function, so refusal
+ * is honest for every five-character SQLSTATE (explicit, implicit P0001, constraint, or internal).
+ * Gateway, PostgREST, network, and missing codes do not prove rollback; the response may have been
+ * lost after commit, so those remain outcome_unknown until the intent id is reconciled.
+ */
+export function classifyDocumentSubmissionError(error: unknown): DocumentSubmissionErrorOutcome {
+  const code = error && typeof error === "object" && "code" in error
+    ? String((error as { code?: unknown }).code ?? "").trim().toUpperCase()
+    : "";
+  return /^[0-9A-Z]{5}$/.test(code) ? "capability_refused" : "capability_outcome_unknown";
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PLACEHOLDER_RE = /\[[^\]]*\b(CLIENT|NAME|DATE|AMOUNT|SCOPE|COMPANY|PRICE|COST|ADDRESS|EMAIL|PHONE|YOUR|INSERT|TBD|TODO|XXX|ROLE|SALARY|CANDIDATE|COMPENSATION|EQUITY|BENEFITS|POSITION|MANAGER|PROSPECT|EXPIR)\b[^\]]*\](?!\()/i;
 

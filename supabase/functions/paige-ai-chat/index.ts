@@ -43,7 +43,7 @@ import { classifyCrmRun } from "../_shared/crm-capability-outcome.ts";
 // not a success-shaped receipt. ONE pure home for that decision (§18); handlers wrap their
 // own success shape in it so the model, the status label and the artifact card all inherit it.
 import { artifactProduced, ARTIFACT_ABSENT_ERROR, usableDrafts, IMAGE_NOT_FILED_ERROR } from "../_shared/artifact-receipt.ts";
-import { validateDocumentBrief } from "../_shared/document-production.ts";
+import { classifyDocumentSubmissionError, validateDocumentBrief } from "../_shared/document-production.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
 import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold, compactionPressurePct } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
@@ -11564,17 +11564,18 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                       },
                     );
                     if (submitError) {
-                      // A recognized PostgreSQL RAISE aborts the statement, so refusal is honest.
-                      // Anything else may be a lost response after commit and must stay unknown;
+                      // Any five-character PostgreSQL SQLSTATE proves the statement aborted and
+                      // rolled back, so refusal is honest. Gateway/transport codes may describe a
+                      // lost response after commit and must stay unknown;
                       // the worker may still finish the same intent and file its terminal receipt.
-                      const statementAborted = ["22023", "42501"].includes(String(submitError.code ?? ""));
+                      const submissionOutcome = classifyDocumentSubmissionError(submitError);
                       await recordDocumentSubmissionOutcome(
                         "DURABLE_DOCUMENT_SUBMIT_FAILED",
-                        statementAborted ? "capability_refused" : "capability_outcome_unknown",
+                        submissionOutcome,
                       );
                       result = {
                         success: false,
-                        error: statementAborted
+                        error: submissionOutcome === "capability_refused"
                           ? "The document request was refused before any work was accepted."
                           : "Paige could not confirm whether the document request was accepted. Do not submit it again until this conversation reconnects and reconciles the same request.",
                         code: "DURABLE_DOCUMENT_SUBMIT_FAILED",

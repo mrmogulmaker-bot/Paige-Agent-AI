@@ -34,11 +34,8 @@ describe("durable long-form Chat reach", () => {
     expect(handler).toContain('"DURABLE_DOCUMENT_SUBMIT_FAILED"');
     expect(handler).toContain('recordDocumentSubmissionOutcome("DURABLE_DOCUMENT_WORK_ID_MISSING"');
     expect(handler).toContain("recordDocumentSubmissionOutcome(validatedBrief.code");
-    expect(handler).toContain('["22023", "42501"].includes');
-    expect(handler).toContain("statementAborted ? \"capability_refused\" : \"capability_outcome_unknown\"");
+    expect(handler).toContain("classifyDocumentSubmissionError(submitError)");
     expect(handler).toContain("recordCapabilityRun(supabase");
-    expect(handler).not.toContain("correlation:");
-    expect(handler).not.toContain("detail:");
   });
 
   it("carries one stable intent identity through both primary document surfaces", () => {

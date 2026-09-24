@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDocumentAuthoringPrompt,
+  classifyDocumentSubmissionError,
   containsDocumentPlaceholder,
   normalizeDocumentDraft,
   parseDocumentModelOutput,
@@ -17,6 +18,16 @@ const brief: DocumentBrief = {
 };
 
 describe("durable document production contract", () => {
+  it.each(["42501", "22023", "P0001", "P0002", "23505", "23514", "28000", "22000", "54000", "XX000"])(
+    "classifies PostgreSQL statement abort %s as refused",
+    (code) => expect(classifyDocumentSubmissionError({ code })).toBe("capability_refused"),
+  );
+
+  it.each([undefined, null, {}, { code: "" }, { code: "PGRST116" }, { code: "NETWORK_ERROR" }])(
+    "keeps non-SQLSTATE submission errors outcome-unknown",
+    (error) => expect(classifyDocumentSubmissionError(error)).toBe("capability_outcome_unknown"),
+  );
+
   it("accepts a bounded agreement draft without promoting it to an agreement", () => {
     const result = validateDocumentBrief(brief);
     expect(result.ok).toBe(true);
