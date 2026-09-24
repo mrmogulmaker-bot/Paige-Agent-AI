@@ -29,7 +29,7 @@ Find your red check. **A row here tells you what a check is known to do — it n
 Each row says what would establish attribution; several require evidence you have to go and get.
 Stopping at this table is how a regression gets filed as inherited.
 
-Every row below is a real **check-run name** as GitHub reports it, with one deliberate exception: `ci:tsc`
+Every row in the lookup table is a real **check-run name** as GitHub reports it, with one deliberate exception: `ci:tsc`
 is a *step* inside the `verify` job, listed here because people look for it by name. There is no check run
 called `ci:tsc`, and there is none called plain `Vercel` either.
 
@@ -73,20 +73,43 @@ The five files:
 One of the twenty asserts on the **text of** `src/solo/SoloApp.tsx` rather than on behaviour; the run
 also carries an undici/WebSocket `Uncaught Exception` in the harness. Both are inside those files.
 
-## Attributing a failing run: one PRINCIPLE, two trees, and the list below is not either of them
+## Attributing a failing run: read the EVENT, then compare two trees from the SAME moment
 
 **The principle: compare two trees that both belong to the moment your question is about, and diff the
-failure output — names AND messages.** Which two trees that is depends on the question, so the
-procedure branches; the table a few lines down gives both pairs and **that table is the procedure**,
-not this paragraph. This opening previously named one pair and called it "the whole procedure", which
-made it wrong for the other question — the fifth time a summary here outlived the detail it summarised.
+failure output — names AND messages.** WHICH two trees depends on the run's **event** and on the
+question, so the procedure branches twice; the two tables below carry those branches and **the tables
+are the procedure**, not this paragraph. This opening has twice been the thing that went stale — it
+once named a single pair and called it "the whole procedure", and it later described only the
+`pull_request` event as though it were the only one. It points now, and states no pair of its own.
 
 Everything above this section is context for reading a result. None of it is a shortcut around the
 comparison.
 
-**Why neither obvious tree is the right one, for either question.** `ci.yml` runs
-`on: pull_request` with a bare `actions/checkout@v4`, which checks out the **synthetic merge ref** —
-the base tip merged with your head. Verified on run `35933689151`: `"event": "pull_request"`. So:
+**First branch — the event.** `ci.yml` fires on three (`.github/workflows/ci.yml:21-32`) and the checkout
+is bare in all three, so what it lands on differs:
+
+| the run's `event` | the tree that actually ran | how the changed-file / edge gates pick their base |
+|---|---|---|
+| `pull_request` | the **synthetic merge ref** — the base merged with your head | `github.event.pull_request.base.sha` (lines 83, 86-87) |
+| `workflow_dispatch` | the **dispatched commit itself**; no merge is created. The job takes `HEAD="$GITHUB_SHA"` (line 92) | the **live `origin/main` tip at run time**, fetched inside the step (lines 91-92) |
+| `push` to `main` | the pushed commit | not a PR question |
+
+`GET /actions/runs/<id>` → `"event"`. Do this first; the rest of this section branches on it.
+
+**The dispatch row is not hypothetical, and the reason it exists carries a trap of its own.** `ci.yml`'s
+header (lines 25-27) records why the trigger was added: *a bot-authored PR's `pull_request` and `push`
+events are withheld from Actions (recursion prevention), so such a PR can never earn a real CI run from
+its own events.* For a dispatch run there is **no merge commit to find**, and hunting one either stalls
+the attribution or sends you to compare a merge tree that never existed.
+
+**But do not read "bot-authored" off an account NAME.** Both runs on the PR that introduced this file were
+`event: pull_request` (`35937045540` and `35938350749`, read from `/actions/runs/<id>`) — on a PR authored
+by an account whose login ends in `-bot`. Its events were not withheld: the API reports that account as
+`"type": "User"`, not a Bot, and not the Actions token. So the withholding is about *which credential opened the PR*, not what the
+login is called, and the only reliable way to know which path a run took is to **read that run's `event`**.
+Guessing it from the author is how you end up attributing against a tree that was never checked out.
+
+**So, for a `pull_request` run:**
 
 - **Your branch head is not what CI tested.** The `head_sha` in a check-run event names your commit;
   the tree that ran is the merge.
@@ -94,42 +117,58 @@ the base tip merged with your head. Verified on run `35933689151`: `"event": "pu
   or by the *combination* of `main` and your branch, shows up in CI while appearing in neither — so
   matching those two would clear a run that CI is legitimately failing. An earlier version of this
   procedure named exactly that wrong pair.
-- **And a freshly-made local merge is not that run's merge either, once `main` moves.** So the two
-  states depend on which question you are asking, and they are different questions:
+- **And a freshly-made local merge is not that run's merge either, once `main` moves.**
+- **The tested tree and the gates' base are two different commits in the same run.** The checkout takes
+  the merge ref, which GitHub recomputes against `main`'s live tip; the changed-file and edge gates take
+  `github.event.pull_request.base.sha`, which GitHub does **not** update when the base branch advances.
+  On the run above, the merge ref's base parent was `1e592542e` while the PR payload's `base.sha` still
+  read `6bd8849d4`. So "what this PR adds" means different things to the test step and to the edge
+  resolver, and which one you need depends on which check you are attributing.
+
+So the two states depend on which question you are asking, and they are different questions:
 
 | the question | the two trees to compare |
 |---|---|
-| *"why did THAT recorded run fail?"* | the **base SHA that run recorded** and the **exact merge commit that run checked out**. Both pinned to the run, because the run is the subject. |
+| *"why did THAT recorded `pull_request` run fail?"* | the **base SHA that run recorded** and the **exact merge commit that run checked out**. Both pinned to the run, because the run is the subject. |
+| *"why did THAT recorded `workflow_dispatch` run fail?"* | the **dispatched commit** — which for a dispatch IS the tested tree, so `head_sha` is enough — and the **`main` tip that run fetched**. |
 | *"is my branch sound right now?"* | `origin/main`'s current tip, and the PR's **current merge ref** — `refs/pull/<N>/merge`, fetched, not hand-built (see below). Both current, because now is the subject. |
 
-  **Do not mix one from each column.** That is what every version of this procedure did, in a
-  different combination each time.
+  **Do not mix one from each row.** That is what every version of this procedure did, in a different
+  combination each time.
 
-  **HONEST LIMIT (§13).** Recovering a past run's exact merge commit is not something this file can
-  currently tell you how to do: the workflow-run API exposes `head_sha` — your **branch** commit, not
-  the tree that ran — and no field I checked carries the merge SHA. I did not verify whether the
-  checkout step's log records it, so I am not claiming that it does. **If you cannot reconstruct the
-  tested tree, the honest outcome is that the attribution for that run is UNPROVEN.** Re-run CI on a
-  head you control and attribute that instead; do not substitute a fresh merge and call it the same
-  run.
+  **HONEST LIMIT (§13), and it differs by event.** For a `pull_request` run, recovering the exact merge
+  commit is not something this file can tell you how to do: the workflow-run API exposes `head_sha` —
+  your **branch** commit, not the tree that ran — and no field I checked carries the merge SHA. I did
+  not verify whether the checkout step's log records it, so I am not claiming that it does. For a
+  `workflow_dispatch` run the tested tree IS recoverable (it is `head_sha`), but the base it diffed
+  against was `main`'s tip at that moment and is not recoverable once `main` moves. **Either way, if you
+  cannot reconstruct both trees, the honest outcome is that the attribution for that run is UNPROVEN.**
+  Re-run CI on a head you control and attribute that instead; do not substitute a fresh merge, or a
+  current `main`, and call it the same run.
 
 **The CURRENT merge tree does not have to be hand-built — it can be FETCHED, and that is strictly
 better.** GitHub publishes its own merge of the PR's current base and head at `refs/pull/<N>/merge`,
 which is the same tree a bare `actions/checkout@v4` hands CI:
 
 ```sh
-git fetch origin 'refs/pull/1400/merge:refs/remotes/origin/pr-1400-merge'
-git log --format='%H %P' -1 refs/remotes/origin/pr-1400-merge   # prints BOTH parents — read them
+PR=<your PR number>            # NOT a number copied out of this file
+git fetch origin "refs/pull/$PR/merge:refs/remotes/origin/pr-$PR-merge"
+git log --format='%H %P' -1 "refs/remotes/origin/pr-$PR-merge"   # prints BOTH parents — read them
 ```
 
 Prefer it over `git merge` in a scratch worktree: a hand-made merge is *a* merge of those two commits,
 this is *the* one, and printing its parents proves which base and which head it actually carries. It
 does **not** narrow the limit above — the ref follows the PR's current head and base, so it moves when
-either moves, and it is not a record of what any past run tested.
+either moves, and it is not a record of what any past run tested. And it is only the `pull_request`
+answer: a `workflow_dispatch` run has no merge ref, so fetching one tells you nothing about it.
 
-**Why nothing else works, stated once so it does not have to be rediscovered a sixth time.** Five
-successive review rounds each killed one shortcut this section had offered, and the fifth killed the
-last one:
+**The `$PR` variable is not decoration.** The first version of this block hard-coded the PR it was
+written on, which would have sent every later lane to fetch *that* PR's merge ref and then validate
+parents belonging to someone else's branch. Same fault as the enumerations below: a concrete instance
+standing in for the rule.
+
+**Why nothing else works, stated once so it does not have to be rediscovered again.** Successive review
+rounds have each killed one shortcut this section offered. Do not re-offer them:
 
 | shortcut | why it fails |
 |---|---|
@@ -138,17 +177,27 @@ last one:
 | none of **my diff's paths** appear | Vitest names the test FILE, not what it reads; and a test can import anything, including across `src/` ↔ `supabase/functions/` |
 | the failing **names** all match the twenty | a change can alter a listed failure *in place*, keeping its name |
 | a failing **name is missing** from the twenty | **the list is pinned to `7ebdd9fea` and `main` moves.** A failure `main` acquired afterwards is absent from the list and is still not yours |
-| **merge-base versus head** match | neither is the tree CI ran. CI tests the base tip MERGED with your head, so a failure from current `main` or from the combination appears in CI and in neither of those two |
+| **merge-base versus head** match | neither is the tree CI ran. On a `pull_request` run CI tests the base tip MERGED with your head, so a failure from current `main` or from the combination appears in CI and in neither of those two |
+| **the merge ref** is the tested tree | only for a `pull_request` run. A `workflow_dispatch` run tests the dispatched commit and creates no merge, so fetching a merge ref there compares against a tree that never existed. Read the run's `event`; do not infer it from who opened the PR |
 
-**The last row is the one that generalises, and it is this file's own opening mistake wearing a
-different hat: a measurement pinned to a commit cannot answer a question about the present.** That is
+**The `merge-base versus head` row is the one that generalises, and it is this file's own opening mistake
+wearing a different hat: a measurement pinned to a commit cannot answer a question about the present.**
+(It used to be introduced as "the last row" — and then a later round appended a row beneath it, which
+silently re-pointed the sentence at something else. A reference by POSITION goes stale the moment the
+thing it counts from grows; name the row.) That is
 why the totals went stale, why the name list cannot convict, and — a sixth round found — why "merge-base
 versus head" was itself the wrong pair: the merge-base is a pinned point too.
 
 **A seventh round then corrected the rule itself, and this is the version to keep.** The fault was never
 *pinning* — it is a MISMATCH between the question's moment and the measurement's. Asking why a recorded
 run failed requires the trees THAT run used, both pinned to it. Asking whether your branch is sound now
-requires current trees, both current. Every wrong pair in the table above took one from each column.
+requires current trees, both current. Every wrong pair in the questions table took one tree from one row
+and the other from a different one.
+
+**And a later round added the other axis: the moment is not the only thing a measurement can mismatch.**
+The run's **event** decides what "the tree that ran" even means, so a procedure that names one tree shape
+is wrong for the other event no matter how carefully its moments line up. Read the event first, then pick
+the pair.
 
 **So the twenty names below are ORIENTATION, not evidence** — they tell you what `main`'s failure
 looked like when it was measured, which is useful for recognising the shape of a run. They cannot
@@ -318,9 +367,11 @@ claiming the in-flight findings still apply. They do not; they were never delive
 
 ## Where this file's confidence ends
 
-One row below rests on someone else's word; the other was believed, then measured, and the measurement
-contradicted the belief. Both are here so a future session knows the difference between what was
-measured and what was merely handed down — including when this file was the one doing the handing.
+Two entries are listed here. The **`github-advanced-security`** one was believed, then measured, and the
+measurement contradicted the belief; the **`verify`-is-not-required** one still rests on someone else's
+word. Both are here so a future session knows the difference between what was measured and what was
+merely handed down — including when this file was the one doing the handing. Each entry names its own
+status, so adding a third does not make this paragraph wrong.
 
 - **`github-advanced-security` — measured, and NOT what this file first claimed.** It is
   **flapping**, not constantly red. Counted from its own run history (workflow `325162554`,
