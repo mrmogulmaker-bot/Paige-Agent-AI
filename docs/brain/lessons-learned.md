@@ -2797,13 +2797,17 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      pinned pair, and neither side is the tree CI ran.** `ci.yml` runs `on: pull_request` with a bare
      `actions/checkout@v4`, so CI checks out the synthetic MERGE ref — base tip merged with head
      (verified: run `35933689151`, `"event": "pull_request"`). A failure introduced by current `main`, or
-     by the combination of `main` and the branch, therefore appears in CI and in neither the merge-base
-     nor a head that does not contain the base. **Know what your CI actually checks out before you design
-     a comparison against it** — and note that the `head_sha` in a check-run event names your commit, not
-     the tree that ran. One carve-out, measured later and worth knowing because it removes all the
-     gymnastics: once `origin/main` is an ANCESTOR of the head, the merge ref's tree equals the head's
-     tree, so the head IS the tested tree — verify it by comparing the two `^{tree}` SHAs rather than
-     assuming it.
+     by the combination of `main` and the branch, therefore appears in CI and in neither the merge-base nor
+     the branch head. **Know what your CI actually checks out before you design a comparison against it** —
+     and note that the `head_sha` in a check-run event names your commit, not the tree that ran. Work from
+     the merge ref's own two parents, in two throwaway worktrees.
+     **A carve-out offered here was DELETED rather than corrected a fifth time, and that is the lesson
+     worth carrying.** It said: once the head contains the base, the merge ref's tree equals the head's
+     tree, so you can run the suite in place. True — and stating it safely cost four review rounds and
+     five findings inside twelve lines (a baseline that disagreed with the fetch block, a fetch missing
+     `--force`, a proof built from local refs, a headline naming a different condition than its own
+     commands, and a final check that could not see a dirty worktree). **When a convenience needs five
+     corrections to be safe, the convenience is the defect** — delete it and pay the extra command.
      **A seventh round corrected this rule, and the corrected form is the one to carry: the fault is not
      PINNING, it is a MISMATCH between the moment the question is about and the moment the measurement
      belongs to.** "Why did that recorded run fail?" needs both trees pinned to that run. "Is my branch
