@@ -117,7 +117,8 @@ Guessing it from the author is how you end up attributing against a tree that wa
 **So, for a `pull_request` run:**
 
 - **Your branch head is not what CI tested.** The `head_sha` in a check-run event names your commit; the
-  tree that ran is the merge. Work from the merge ref's own two parents instead of your checkout — below.
+  tree that ran is the merge. Work from the merge ref **itself** and its **first parent** — not its second
+  parent, which is that same branch commit under another name, and not your checkout. Below.
 - **Nor is the merge-base.** A failure introduced by current `main`, or by the *combination* of `main` and
   your branch, shows up in CI while appearing in neither the merge-base nor your head — so matching those
   two would clear a run that CI is legitimately failing. An earlier version of this procedure named exactly
@@ -173,7 +174,6 @@ REF=refs/remotes/origin/pr-$PR-merge
 git fetch --force origin "refs/pull/$PR/merge:$REF" || { echo "fetch failed — stop"; exit 1; }
 git log --format='%H %P' -1 "$REF"     # the merge and BOTH parents — read them
 BASE=$(git rev-parse "$REF^1")         # <- the baseline. NOT origin/main, which this fetch did not touch
-HEAD_CMT=$(git rev-parse "$REF^2")     # the head COMMIT that merge carries. Needed below — not optional
 ```
 
 **The `--force` is load-bearing, not tidiness.** GitHub regenerates the merge commit whenever the head
@@ -188,16 +188,27 @@ does **not** narrow the limit above — the ref follows the PR's current head an
 either moves, and it is not a record of what any past run tested. And it is only the `pull_request`
 answer: a `workflow_dispatch` run has no merge ref, so fetching one tells you nothing about it.
 
-**Run both sides in throwaway worktrees at the two commits you just derived.** Do not reach for your own
-checkout: it equals `$HEAD_CMT` only sometimes, and even then only if nothing is staged, unstaged or
-untracked — `git rev-parse HEAD` cannot see a dirty tree, so the suite would run your edits and report
-them as the merge's result.
+**Run both sides in throwaway worktrees: `$BASE` and `$REF` ITSELF.** The tested side is the merge, never
+`$REF^2` — the second parent is your branch commit, and its tree is what CI ran only in the special case
+where the head already contains the base. Measured on this PR's own history, which supplies the general
+case: base `bad21bed6` against head `03789eaed`, which predates it, gives a merge tree
+(`git merge-tree --write-tree`) differing from that head's own tree by **20 files**. A suite run at
+`$REF^2` therefore tests a tree CI never checked out, and misses precisely the base-plus-branch
+interaction the bullets above say to look for. Do not reach for your own checkout either: even when its
+commit is the right one, `git rev-parse HEAD` cannot see a dirty tree, so the suite would run your
+uncommitted edits and report them as the merge's result.
 
 ```sh
-git worktree add --detach "$SCRATCH/wt-base" "$BASE"
-git worktree add --detach "$SCRATCH/wt-head" "$HEAD_CMT"
-# run the suite in each, then diff the failure output — names AND messages. Remove both when done.
+SCRATCH=$(mktemp -d)                                   # the block owns its scratch space
+git worktree add --detach "$SCRATCH/wt-base" "$BASE"   # baseline: the merge's FIRST PARENT
+git worktree add --detach "$SCRATCH/wt-head" "$REF"    # tested tree: the MERGE, not $REF^2
+# run the suite in each, then diff the failure output — names AND messages.
+git worktree remove "$SCRATCH/wt-base" && git worktree remove "$SCRATCH/wt-head" && rmdir "$SCRATCH"
 ```
+
+**For a `workflow_dispatch` run, substitute the two commits and keep the method.** There is no merge to
+fetch, so the tested side is the dispatched commit itself and the baseline is the merge-base that run
+logged (`ci.yml:97`) — same two worktrees, different pair.
 
 **An earlier version of this section offered a shortcut here, and it is deleted rather than patched
 again.** The shortcut was: when the head already contains the base, the merge ref's tree equals the

@@ -2800,7 +2800,8 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      by the combination of `main` and the branch, therefore appears in CI and in neither the merge-base nor
      the branch head. **Know what your CI actually checks out before you design a comparison against it** —
      and note that the `head_sha` in a check-run event names your commit, not the tree that ran. Work from
-     the merge ref's own two parents, in two throwaway worktrees.
+     the merge ref ITSELF and its FIRST PARENT, in two throwaway worktrees — never its second parent,
+     which is just your branch commit again.
      **A carve-out offered here was DELETED rather than corrected a fifth time, and that is the lesson
      worth carrying.** It said: once the head contains the base, the merge ref's tree equals the head's
      tree, so you can run the suite in place. True — and stating it safely cost four review rounds and
@@ -2823,7 +2824,11 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      `main`, so a failure `main` fixed after the fork reads as branch-introduced. **And the baseline
      follows from what the run checked out, which is why it is a rule and not two special cases:** a
      `pull_request` run tests the merge, so the baseline is that merge's first parent; a dispatch run
-     tests the dispatched commit alone, so the baseline is its merge-base. A round of this review said
+     tests the dispatched commit alone, so the baseline is its merge-base. **State BOTH halves, because
+     an eleventh round found the rule written correctly in a table and contradicted by the commands three
+     paragraphs below it:** the tested half of a `pull_request` pair is the merge COMMIT, and `<merge>^2`
+     is not a stand-in for it — measured, the two trees differ by 20 files as soon as the head does not
+     already contain the base. A sweep that reads only the prose will not catch that. A round of this review said
      the dispatch baseline was unrecoverable; it is printed in the run log, and giving up on a
      recoverable attribution is its own kind of wrong. And when the trees for the question you are asking cannot be reconstructed, the
      honest answer is UNPROVEN; substituting the nearest available tree is how a confident wrong
