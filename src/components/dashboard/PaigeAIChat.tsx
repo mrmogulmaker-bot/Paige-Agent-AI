@@ -36,7 +36,7 @@ import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingInd
 import { PaigeArtifactCard, type PaigeArtifact } from "@/components/paige/chat/PaigeArtifactCard";
 import { ExtractionProposalCard, type ExtractionProposal } from "@/components/chat/ExtractionProposalCard";
 import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/chat/PaigeCompactingCard";
-import { PaigeLiveConversation } from "@/components/paige/live/PaigeLiveConversation";
+import { PaigeLiveConversation, type LiveVoiceSink } from "@/components/paige/live/PaigeLiveConversation";
 import { parseLiveConversationCard, type LiveConversationCard } from "@/lib/paigeLiveConversation/contract";
 import { createAnchoredTranscriptScroll, messageScrollAnchorKey } from "@/components/chat/anchoredTranscriptScroll";
 import {
@@ -493,13 +493,14 @@ const PaigeAIChatInner = ({
   // the turn did not happen and trying again is worth doing. A 4xx is NOT in this set — a request
   // the server refused on its merits will be refused identically on a retry, and offering one
   // would be a button that cannot work (§70).
-  const [connectionIssue, setConnectionIssue] = useState<"offline" | "timeout" | "server" | null>(null);
+  const [connectionIssue, setConnectionIssue] = useState<"offline" | "timeout" | "server" | "live-interrupted" | null>(null);
   const retryTurnRef = useRef<{
     base: Message[];
     rollback: Message[];
     userText: string;
     doc?: AttachedDocument | null;
     draftHandle: ComposerDraftHandle | null;
+    live?: boolean;
   } | null>(null);
 
   // §13 — `!ticket ||` USED TO SHORT-CIRCUIT THIS TO `true`, AND THAT UNDID THE WHOLE FENCE ON THE
@@ -548,7 +549,8 @@ const PaigeAIChatInner = ({
     if (!soloTenantSafety) return;
     const cancelledTurn = retryTurnRef.current;
     abortActiveRequest();
-    if (cancelledTurn) setMessages(cancelledTurn.rollback);
+    if (cancelledTurn && !cancelledTurn.live) setMessages(cancelledTurn.rollback);
+    if (cancelledTurn?.live) retryTurnRef.current = null;
     setCancelled(true);
     setConnectionIssue(null);
   }, [abortActiveRequest, soloTenantSafety]);
@@ -935,6 +937,7 @@ const PaigeAIChatInner = ({
     originDraft: ComposerDraftHandle | null = null,
     approvedFingerprints?: string[],
     declinedFingerprints?: string[],
+    voiceSink?: LiveVoiceSink,
   ) => {
     if (soloTenantSafety && !activeTenantId) return;
     const requestHandle = originDraft ?? composerScopeRef.current.writableHandle;
@@ -945,7 +948,7 @@ const PaigeAIChatInner = ({
     // on a network retry would re-approve whatever the model emits the second time, which is the
     // exact substitution the fingerprint exists to prevent.
     let persistedDraft = originDraft;
-    retryTurnRef.current = { base, rollback, userText, doc, draftHandle: persistedDraft };
+    retryTurnRef.current = { base, rollback, userText, doc, draftHandle: persistedDraft, live: Boolean(voiceSink) };
     setConnectionIssue(null);
     if (soloTenantSafety && typeof navigator !== "undefined" && navigator.onLine === false) {
       setConnectionIssue("offline");
@@ -961,10 +964,15 @@ const PaigeAIChatInner = ({
     const timeoutId = soloTenantSafety ? window.setTimeout(() => {
       if (!ticketAccepted(requestTicket)) return;
       abortActiveRequest();
-      setConnectionIssue("timeout");
+      if (voiceSink) {
+        voiceSink.failed();
+        retryTurnRef.current = null;
+        setConnectionIssue("live-interrupted");
+      } else setConnectionIssue("timeout");
     }, 45_000) : null;
     const assistantId = safeUuid();
     const assistantTs = Date.now();
+    let liveRequestDispatched = false;
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -1029,6 +1037,7 @@ const PaigeAIChatInner = ({
         }
       }
 
+      liveRequestDispatched = Boolean(voiceSink);
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-ai-chat`,
         {
@@ -1038,7 +1047,8 @@ const PaigeAIChatInner = ({
             Authorization: `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
-            messages: newMessages,
+            messages: voiceSink ? [{ role: "user", content: userText }] : newMessages,
+            ...(voiceSink ? { liveRuntimeChallenge: voiceSink.challenge } : {}),
             ...(threadId ? { threadId } : {}),
             ...(clientId ? { clientId } : {}),
             ...(clientContext ? { clientContext } : {}),
@@ -1074,6 +1084,9 @@ const PaigeAIChatInner = ({
       if (!ticketAccepted(requestTicket)) return;
 
       if (!response.ok) {
+        // Once dispatched, an HTTP failure does not prove the turn or its
+        // governed tools did nothing. Keep the Live transcript, never replay it.
+        if (voiceSink) throw new Error("live_answer_unavailable");
         if (response.status === 429) {
           toast({
             title: "Rate Limit Reached",
@@ -1103,6 +1116,8 @@ const PaigeAIChatInner = ({
         if (response.status >= 500) setConnectionIssue("server");
         return;
       }
+      // This is the canonical PAIGE runtime request, under the same caller JWT,
+      // thread, tenant context and governed approval path as text chat.
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -1120,10 +1135,11 @@ const PaigeAIChatInner = ({
       let proposalThisTurn: ExtractionProposal | null = null;
       let textBuffer = "";
       let streamDone = false;
+      let liveStreamFailed = false;
 
       setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: "" }]);
 
-      while (reader && !streamDone) {
+      while (reader && !streamDone && !liveStreamFailed) {
         const { done, value } = await reader.read();
         if (!ticketAccepted(requestTicket)) return;
         if (done) break;
@@ -1142,12 +1158,22 @@ const PaigeAIChatInner = ({
           const jsonStr = line.slice(6).trim();
           if (jsonStr === "[DONE]") {
             streamDone = true;
+            voiceSink?.done();
             break;
           }
 
           try {
             const parsed = JSON.parse(jsonStr);
             if (!ticketAccepted(requestTicket)) return;
+            if (voiceSink && parsed.paige_live_error) {
+              liveStreamFailed = true;
+              voiceSink.failed();
+              break;
+            }
+            if (typeof parsed.paige_live_output === "string") {
+              voiceSink?.proof(parsed.paige_live_output);
+              continue;
+            }
             // Structured event: a "watch her work" step (#95). Upsert by id, sorted by seq.
             if (parsed.paige_step) {
               setSteps((prev) => upsertStep(prev, parsed.paige_step as PaigeStep));
@@ -1272,10 +1298,16 @@ const PaigeAIChatInner = ({
 
       if (!ticketAccepted(requestTicket)) return;
       if (!streamDone) {
-        setMessages(rollback);
+        // A released Live sentence may already have been heard and persisted.
+        // Keep that same transcript; an incomplete answer is never a success
+        // and must not offer replay of a possibly executed tool turn.
+        if (voiceSink) {
+          voiceSink.failed();
+          retryTurnRef.current = null;
+        } else setMessages(rollback);
         releaseRequestBusy(requestTicket);
         setStreamingThreadId(null);
-        setConnectionIssue("server");
+        setConnectionIssue(voiceSink ? "live-interrupted" : "server");
         return;
       }
       if (persistedDraft && shouldClearComposerDraft({
@@ -1299,6 +1331,14 @@ const PaigeAIChatInner = ({
       }
     } catch (error) {
       if (!ticketAccepted(requestTicket)) return;
+      if (liveRequestDispatched && voiceSink) {
+        voiceSink.failed();
+        retryTurnRef.current = null;
+        releaseRequestBusy(requestTicket);
+        setStreamingThreadId(null);
+        setConnectionIssue("live-interrupted");
+        return;
+      }
       if (error instanceof DOMException && error.name === "AbortError") {
         releaseRequestBusy(requestTicket);
         setStreamingThreadId(null);
@@ -1373,14 +1413,21 @@ const PaigeAIChatInner = ({
   /** `approvedFingerprints` carries the exact calls a person ticked on a confirm card. The server's
    *  gate requires the call it is about to run to be one of them; a `confirm:true` flag alone no
    *  longer opens it. Absent on every ordinary turn. */
-  const handleSend = async (overrideText?: string, approvedFingerprints?: string[], declinedFingerprints?: string[]) => {
+  const handleSend = async (overrideText?: string, approvedFingerprints?: string[], declinedFingerprints?: string[], voiceSink?: LiveVoiceSink) => {
     const originDraft = composerScope.writableHandle;
-    if (dictationActive || !originDraft) return;
+    if (dictationActive || !originDraft) { voiceSink?.failed(); return; }
     const text = (overrideText ?? input).trim();
     // Allow a send with text OR an attachment alone (#480). An override (confirm
     // card Approve/Deny) never carries a doc, so snapshot only on a real compose.
     const currentDoc = overrideText === undefined ? attachedDoc : null;
-    if ((!text && !currentDoc) || !composerScope.writable) return;
+    if ((!text && !currentDoc) || !composerScope.writable) { voiceSink?.failed(); return; }
+    let voiceSettled = false;
+    const trackedVoiceSink: LiveVoiceSink | undefined = voiceSink && {
+      challenge: voiceSink.challenge,
+      proof: (token) => voiceSink.proof(token),
+      done: () => { voiceSettled = true; voiceSink.done(); },
+      failed: () => { if (!voiceSettled) { voiceSettled = true; voiceSink.failed(); } },
+    };
     // An accepted send closes the current dictation generation before clearing
     // the composer. A delayed provider final can never become the next draft.
     dictationGenerationRef.current += 1;
@@ -1405,7 +1452,9 @@ const PaigeAIChatInner = ({
       originDraft,
       approvedFingerprints,
       declinedFingerprints,
+      trackedVoiceSink,
     );
+    if (trackedVoiceSink && !voiceSettled) trackedVoiceSink.failed();
   };
 
   // Regenerate an assistant turn: re-run the nearest preceding user turn and REPLACE
@@ -1432,6 +1481,7 @@ const PaigeAIChatInner = ({
     const retry = retryTurnRef.current;
     if (
       !retry
+      || retry.live
       || !retry.draftHandle
       || !composerScope.writable
       || !composerDraftHandlesMatch(retry.draftHandle, composerScope.writableHandle)
@@ -1643,6 +1693,8 @@ const PaigeAIChatInner = ({
       onAnswer={(answer) => void handleSend(answer)}
       onApprove={(fingerprints) => void handleSend("Approved — run it.", fingerprints)}
       onDecline={(fingerprints) => void handleSend("Hold off — skip that one.", undefined, fingerprints)}
+      onVoiceTurn={(text, sink) => handleSend(text, undefined, undefined, sink)}
+      onVoiceInterrupt={cancelSoloRequest}
     />
   ) : null;
 
@@ -1976,8 +2028,8 @@ const PaigeAIChatInner = ({
             )}
             {soloTenantSafety && connectionIssue && (
               <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
-                <span>{connectionIssue === "offline" ? "You appear to be offline. This message has not been sent." : connectionIssue === "server" ? "Something went wrong on our side and PAIGE didn't get to answer. Your message wasn't sent — try again." : "PAIGE did not respond before the local timeout. No later chunks will be accepted; earlier server work may still complete."}</span>
-                <Button type="button" variant="outline" size="sm" disabled={!composerScope.writable || dictationActive} onClick={handleConnectionRetry}>Retry</Button>
+                <span>{connectionIssue === "live-interrupted" ? "Paige's answer was interrupted. What arrived is still shown here. You can continue in text chat." : connectionIssue === "offline" ? "You appear to be offline. This message has not been sent." : connectionIssue === "server" ? "Something went wrong on our side and PAIGE didn't get to answer. Your message wasn't sent — try again." : "PAIGE did not respond before the local timeout. No later chunks will be accepted; earlier server work may still complete."}</span>
+                {connectionIssue !== "live-interrupted" && !retryTurnRef.current?.live && <Button type="button" variant="outline" size="sm" disabled={!composerScope.writable || dictationActive} onClick={handleConnectionRetry}>Retry</Button>}
               </div>
             )}
             </div>
