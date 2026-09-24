@@ -21,10 +21,21 @@
 -- not an edit to this predicate, and not a product change.
 --
 -- WHY CONSENT CANNOT BE INHERITED. An admitted subject's row records ITS OWN acceptance, and a CHECK
--- requires the acceptor to be the subject. One person's acceptance can therefore never stand as
--- everybody else's authorization: a further subject is admitted only by a row that they themselves
--- accepted. No account identifier is read from, or typed into, any request to make this work — the
--- subject is the authenticated actor of the call that admits them.
+-- requires the acceptor to be the subject. That makes inherited consent UNREPRESENTABLE — there is no
+-- row shape in which one person's acceptance stands as another's authorization — which is not the
+-- same as unforgeable: a service-role writer sets all three columns at once, so the CHECK constrains
+-- the shape of the record, and the operator remains answerable for its truth. Today's only
+-- production writer takes the subject from the verified session of the caller, so no account
+-- identifier is read from, or typed into, any request.
+--
+-- §58, NAMED RATHER THAN LEFT TO BE DISCOVERED. One shipped behaviour does change. Because the old
+-- predicate matched the singleton's pilot_tenant_id, authorizing a second workspace implicitly
+-- revoked the first. That was an artifact of there being one row, not a designed control, and it is
+-- the wrong default once more than one subject can be admitted — silently killing an existing
+-- workspace's access is a worse surprise than leaving it. So it is gone deliberately, and the
+-- consequence is stated plainly: withdrawal is now explicit, and the only withdrawal seam an edge
+-- caller has is the global disable-live-pilot. Per-workspace and per-subject withdrawal are
+-- configuration writes; no edge action for them is built here.
 --
 -- THE INSPECTION RECEIPT STAYS BOUND TO THE AUTHORIZER, NEVER TO THE SUBJECT. public.paige_audit_log
 -- is INSERTable by any authenticated user under a `actor_user_id = auth.uid()` policy, and its
@@ -70,7 +81,9 @@ CREATE TABLE IF NOT EXISTS public.paige_live_pilot_subjects (
   accepted_default_provider_retention boolean NOT NULL DEFAULT false,
   accepted_procedural_single_speaker boolean NOT NULL DEFAULT false,
   -- Who performed the acceptance. The CHECK below makes inherited consent unrepresentable.
-  acceptance_actor_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
+  -- CASCADE, matching user_id: the CHECK below holds these equal, so two different delete actions
+  -- on the same row would resolve by internal trigger ordering rather than by a stated contract.
+  acceptance_actor_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, tenant_id),
   CONSTRAINT paige_live_pilot_consent_is_never_inherited

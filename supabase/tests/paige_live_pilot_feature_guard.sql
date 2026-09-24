@@ -1,7 +1,7 @@
 -- INT-104: the normal tenant-admin role cannot self-enable third-party audio.
 -- Synthetic fixture only. Every write rolls back.
 BEGIN;
-SELECT plan(72);
+SELECT plan(77);
 
 SELECT ok((SELECT relrowsecurity FROM pg_class WHERE oid='public.paige_live_tenant_availability'::regclass),'platform availability has RLS');
 SELECT ok(NOT has_table_privilege('authenticated','public.paige_live_tenant_availability','SELECT'),'tenant roles cannot read pilot holder rows');
@@ -152,7 +152,7 @@ SELECT is(public.paige_live_pilot_authorized_internal(
   'revocation takes effect immediately');
 
 -- ===========================================================================
--- Rollout configuration is where the restriction lives (migration 20270419000000).
+-- Rollout configuration is where the restriction lives (migration 20270420000000).
 -- The product is one shared capability for every Solo account; WHO may speak today is a
 -- configuration row. These assertions prove both halves, and prove the refusal rather than
 -- asserting it: an ordinary Solo member with no platform role can be admitted and passes, and
@@ -195,7 +195,8 @@ SELECT throws_ok($q$INSERT INTO public.paige_live_pilot_subjects(
   VALUES('fa100000-0000-4000-8000-000000000003','fa100000-0000-4000-8000-000000001111',
     'fa100000-0000-4000-8000-000000000002',now()+interval '14 days',true,true,
     'fa100000-0000-4000-8000-000000000002')$q$,
-  '23514',NULL,'one subject''s consent cannot be recorded as another subject''s acceptance');
+  '23514','new row for relation "paige_live_pilot_subjects" violates check constraint "paige_live_pilot_consent_is_never_inherited"',
+  'one subject''s consent cannot be recorded as another subject''s acceptance');
 -- §68: an admission that never lapses is an authority nobody has to revisit.
 SELECT throws_ok($q$INSERT INTO public.paige_live_pilot_subjects(
   user_id,tenant_id,admitted_by,admitted_at,expires_at,
@@ -203,7 +204,8 @@ SELECT throws_ok($q$INSERT INTO public.paige_live_pilot_subjects(
   VALUES('fa100000-0000-4000-8000-000000000003','fa100000-0000-4000-8000-000000001111',
     'fa100000-0000-4000-8000-000000000002',now(),now()-interval '1 day',true,true,
     'fa100000-0000-4000-8000-000000000003')$q$,
-  '23514',NULL,'an admission cannot be recorded already expired');
+  '23514','new row for relation "paige_live_pilot_subjects" violates check constraint "paige_live_pilot_admission_expires"',
+  'an admission cannot be recorded already expired');
 
 SELECT lives_ok($q$SELECT public.set_paige_live_pilot_internal(
   'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111',true,
@@ -262,9 +264,35 @@ SELECT lives_ok($q$INSERT INTO public.paige_audit_log(actor_user_id,actor_role,a
 RESET ROLE;
 SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+-- Refused here only because 003 holds no configuration row, which is a different property.
+-- The receipt itself cannot be under test until 003 IS admitted, so admit them.
 SELECT is(public.paige_live_pilot_authorized_internal(
   'fa100000-0000-4000-8000-000000000003','fa100000-0000-4000-8000-000000001111'),false,
-  'a self-forged inspection receipt admits nobody');
+  'the forger is still refused while they hold no configuration row');
+INSERT INTO public.paige_live_pilot_subjects(user_id,tenant_id,admitted_by,expires_at,
+  accepted_default_provider_retention,accepted_procedural_single_speaker,acceptance_actor_user_id)
+  VALUES('fa100000-0000-4000-8000-000000000003','fa100000-0000-4000-8000-000000001111',
+    'fa100000-0000-4000-8000-000000000002',now()+interval '14 days',true,true,
+    'fa100000-0000-4000-8000-000000000003');
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000003','fa100000-0000-4000-8000-000000001111'),true,
+  'the forger is now an admitted subject, so the next assertion has something to lose');
+-- Break the receipt the OWNER wrote, leaving the forger's own receipt perfect. A predicate that
+-- keyed the receipt to the subject would now pass. This one must not.
+UPDATE public.paige_audit_log
+   SET payload=jsonb_set(payload,'{inspection,voice,accessible}','"false"')
+ WHERE id='fa100000-0000-4000-8000-000000000099';
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000003','fa100000-0000-4000-8000-000000001111'),false,
+  'a subject cannot rescue a broken owner receipt with one they wrote themselves');
+UPDATE public.paige_audit_log
+   SET payload=jsonb_set(payload,'{inspection,voice,accessible}','"true"')
+ WHERE id='fa100000-0000-4000-8000-000000000099';
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000003','fa100000-0000-4000-8000-000000001111'),true,
+  'restoring the owner receipt restores the admitted subject');
+UPDATE public.paige_live_pilot_subjects SET revoked_at=now()
+ WHERE user_id='fa100000-0000-4000-8000-000000000003';
 
 -- §68 again, this time through the predicate rather than the constraint.
 -- Age the whole admission. Pushing expires_at behind admitted_at would trip the CHECK and the
@@ -322,8 +350,10 @@ SELECT is(public.paige_live_pilot_authorized_internal(
 -- the rollout, so the writer stays on the frozen is_platform_owner() helper. Pinned here, because a
 -- later well-meaning migration to is_platform_operator() would otherwise pass unnoticed.
 -- Both fixture rows are written at the default role, exactly as the fixtures at the top of this
--- file are: service_role holds no INSERT on public.user_roles, and the transaction-local JWT claim
--- set earlier still reads 'service_role' here, which is the trusted context the §53 trigger wants.
+-- file are, and as every other user_roles insert under supabase/tests/ is. On the replayed database
+-- this suite runs against, service_role has no INSERT on public.user_roles and the write fails
+-- 42501 outside any throws_ok, aborting the transaction (measured: it did). The transaction-local
+-- JWT claim set earlier still reads 'service_role' here, which is the trusted context §53 wants.
 RESET ROLE;
 INSERT INTO auth.users(id,aud,role,email)
 VALUES ('fa100000-0000-4000-8000-000000000004','authenticated','authenticated','live-delegate@tests.invalid');
@@ -335,6 +365,16 @@ SELECT throws_ok($q$SELECT public.set_paige_live_pilot_internal(
   'fa100000-0000-4000-8000-000000000004','fa100000-0000-4000-8000-000000001111',true,
   'test-owner-default-retention-acceptance','fa100000-0000-4000-8000-000000000099')$q$,
   '42501',NULL,'a delegated platform_admin cannot open the Live rollout');
+
+-- §37: the whole "no consumer redeploys" claim rests on CREATE OR REPLACE having REPLACED rather
+-- than created a second overload. has_function_privilege resolves one signature and is silent
+-- about a sibling, so count them. (Same guard as record_capability_run_single_overload.sql.)
+SELECT is((SELECT count(*)::integer FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='public' AND p.proname='paige_live_pilot_authorized_internal'),1,
+  'exactly one admission predicate exists, so no caller can resolve a stale overload');
+SELECT is((SELECT count(*)::integer FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='public' AND p.proname='set_paige_live_pilot_internal'),1,
+  'exactly one rollout writer exists, so the five-key edge call stays unambiguous');
 
 -- Disable means nobody is admitted, and a later re-enable never revives a stale acceptance.
 SELECT lives_ok($q$SELECT public.set_paige_live_pilot_internal(
