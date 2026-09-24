@@ -584,3 +584,107 @@ one of the four.
   empty state changing from a four-item flex row to a single centred message, and its accessible
   name, which was verified accurate.
 
+---
+
+## 11. Definitions for the money-received ledger (answered 2026-09-24)
+
+The Sales lane owns the ledger and produces the fact; this lane defines and measures it. These five
+answers were requested before a migration exists, so that the ledger's shape is constrained by the
+definition rather than the definition being retrofitted to a table. **They interlock — read them
+together.**
+
+Two were already ruled and are restated here so the ledger's authors can cite one document. Three
+are new.
+
+### 11.1 Revenue means RECEIVED — already ruled (D-9)
+
+Invoiced is **billed**; contracted is **committed**; neither is revenue. That is §1's economic model
+and the D-9 amendment: revenue is *confirmed payment from an evidenced source*. Three tiles on the
+Sales desk implying three different answers is the defect, not the open question.
+
+**Consequence for the ledger: it stores no field called revenue.** It stores payment facts. Revenue
+is what a metric composes from them — like currency conversion and like net-of-fee, all three are
+read-time compositions and none is a stored value.
+
+### 11.2 Net of refunds, and the refund owns its own date — NEW
+
+Not previously ruled, because refunds were unbuildable: `tenant_orders.status` permits `'refunded'`
+(`20260629182422:158`) and nothing writes it.
+
+**A refund is its own dated entry, never a mutation of the original.** Same principle as the
+store-the-original currency rule, for the same reason: a refund that retro-changes a closed month
+silently changes every report ever run against that month. The tenant who reconciled March against
+their bank in April finds a different March in May — the D-2 trust defect arriving by a second route.
+
+**The cost, stated rather than hidden.** "March revenue" and "what March eventually turned out to be
+worth" become different questions. That is correct — it matches the bank statement, which is the
+document the owner will check us against — but a period total is only final in the sense that cash
+is final, so any figure presented as a closed period must be labelled *as of* a date.
+
+### 11.3 Unattributed money counts as revenue; it enters no breakdown — NEW
+
+The money arrived. Refusing to count it understates what the business took in, and the owner's bank
+would disagree with us: **excluding real money is as much a lie as inventing it.**
+
+But it enters **no** per-client, per-offer or per-campaign figure, because attributing it would be
+inventing the link. Every breakdown discloses the excluded amount — which is exactly the
+`coverage` / `exclusions` shape `analytics_sales_funnel_evidence_bundle` already emits
+(`20261004000000:203-215`), so this reuses machinery rather than adding any (§18).
+
+**Attribution and evidence class are orthogonal axes, never one spectrum.** A provider can confirm a
+payment while we still have no idea which offer it was for. Two columns.
+
+### 11.4 Only source-confirmed money enters the headline; tenant-asserted is still recorded — NEW
+
+Partly ruled by D-9's *evidenced source*. The Sales desk already prints the promise *"Actual
+received stays empty until a real source proves it"* — an owner-approved capability, so §58 says it
+is not quietly broken.
+
+**The trap to avoid:** §38 says tenants bring their own processor. A tenant taking checks has no
+source that can confirm, so a strict source-confirmed-only rule leaves them permanently at zero —
+the exact failure D-9's widening exists to prevent.
+
+So `evidence_class` is a **column on the fact, not a filter at read time**, because *who says so* is
+part of what happened. Source-confirmed feeds the headline. Tenant-asserted is recorded, shown
+beside it, labelled, and **never merged into it**.
+
+### 11.5 Per-currency — already ruled (D-3), plus one addition
+
+Never summed across currencies. The coordinator's standing ruling holds and is not this lane's to
+revisit: the ledger stores the original amount and currency always, and conversion happens at read
+time against a recorded rate, because a converted figure written into the row destroys the original
+irreversibly.
+
+**One addition, same immutability principle: convert at the PAYMENT-DATE rate, not today's.**
+Converting at today's rate makes a closed month's total drift every day — the problem the
+store-the-original rule just solved, rebuilt one layer up. The rate and its date belong on the
+figure, visible, not buried in the query.
+
+### 11.6 What these answers constrain in the ledger's shape
+
+Stated as constraints, not as a schema — the table is Sales-owned.
+
+- **Append-only.** No `UPDATE` of amount, currency or date. A correction is a new reversing entry.
+- `amount_minor` + `currency` — original, never overwritten, never converted in place.
+- `occurred_at` — when the money moved. **This owns the period** (11.2).
+- `entry_type` — payment / refund / chargeback / adjustment, so a reversal is a row (11.2).
+- `reverses_entry_id` — nullable; a reversal points at what it reverses.
+- `evidence_class` — NOT NULL, with `source_ref` null only when tenant-asserted (11.4).
+- `attributed_terms_id` — nullable, and **null is a first-class state, not an error** (11.3).
+- `tenant_id` — NOT NULL.
+- **No stored `net`.** Net of platform fee (D-5) and net of refunds (11.2) compose at read time, as
+  currency does, for the same reason.
+
+### 11.7 Deliberately not ruled here
+
+- **Whether a chargeback is a distinct `entry_type` from a refund.** The recommendation is yes —
+  they are different facts with different costs and different reversibility — but that is provider
+  semantics and Sales owns it.
+- **Which FX source supplies the conversion rate.** Procurement under §38, not a definition.
+
+### 11.8 None of this is blocked by D-1
+
+The ledger keys attribution to **commercial terms**, not to a client classification, so it can be
+built while the lead-versus-client boundary is still held. Only a *per-client* breakdown waits on
+D-1 — and that is a metric, not the ledger's shape.
+
