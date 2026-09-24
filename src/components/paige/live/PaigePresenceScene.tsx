@@ -166,8 +166,8 @@ void main(){
 
 const FRAGMENT = /* glsl */ `
 precision highp float;
-uniform vec3 uCore, uRim, uGold;
-uniform float uLight, uSpeak;
+uniform vec3 uCore, uRim, uGold, uGlow;
+uniform float uLight, uSpeak, uFlash;
 varying vec3 vNormal, vView;
 varying float vCrest;
 
@@ -187,10 +187,21 @@ void main(){
   // body is indigo.
   vec3 rim = mix(uRim, uGold, clamp(uSpeak, 0.0, 1.0));
 
-  vec3 colour = uCore * (0.34 + diffuse * 0.66);
+  // MORE COLOUR THAN A SINGLE HUE. The body travels from the deep core toward a lighter violet as
+  // it turns into the light, so it reads as a coloured object rather than one tint at two
+  // brightnesses. Still indigo family — the accent budget is untouched.
+  vec3 body = mix(uCore, uGlow, smoothstep(0.15, 0.95, diffuse));
+  vec3 colour = body * (0.34 + diffuse * 0.66);
   colour += rim * fresnel * (0.75 + uLight * 0.9);
   // Crests catch more light than troughs, so the travelling bands are legible as form.
   colour += rim * clamp(vCrest, 0.0, 1.0) * (0.55 + uSpeak * 1.1);
+
+  // THE SPARK. On a peak in her voice the crests that are riding highest catch a brief highlight
+  // that decays fast — the flash the owner asked for. It is keyed to uFlash, which only rises on a
+  // real jump in output amplitude, so it fires on the stresses in a sentence and never on silence.
+  float ridge = smoothstep(0.35, 1.0, clamp(vCrest, 0.0, 1.0));
+  colour += mix(uGlow, uGold, clamp(uSpeak, 0.0, 1.0)) * ridge * uFlash * 1.5;
+
   // A soft interior lift keeps the centre from reading as a hole on the dark theme.
   colour += uCore * uLight * 0.3;
 
@@ -210,6 +221,9 @@ function Orb({ state, reduced, readEnergy, onCrash }: {
   const invalidate = useThree((three) => three.invalidate);
   const viewport = useThree((three) => three.viewport);
   const crashed = useRef(false);
+  // Previous eased amplitude, so a RISE can be told from a level. A flash on loudness alone would
+  // glow steadily through a long vowel; a flash on the rise fires on the stresses.
+  const lastEnergy = useRef(0);
   const settled = SETTLED.has(state);
 
   const geometry = useMemo(() => new THREE.IcosahedronGeometry(RADIUS, SUBDIVISION), []);
@@ -221,6 +235,9 @@ function Orb({ state, reduced, readEnergy, onCrash }: {
     // on idling, the one thing §11 forbids.
     const primary = token(styles, "--primary", "#6c5ce0");
     const core = primary.clone().multiplyScalar(0.55);
+    // A lighter, slightly cooler violet the body travels toward in the light. Derived from the same
+    // token rather than a second hardcoded hue, so both themes stay coherent.
+    const glow = primary.clone().lerp(new THREE.Color("#ffffff"), 0.34);
     return new THREE.ShaderMaterial({
       vertexShader: VERTEX,
       fragmentShader: FRAGMENT,
@@ -232,7 +249,9 @@ function Orb({ state, reduced, readEnergy, onCrash }: {
         uSpeak: { value: 0 },
         uPulse: { value: 0 },
         uBusy: { value: 0 },
+        uFlash: { value: 0 },
         uCore: { value: core },
+        uGlow: { value: glow },
         uRim: { value: primary },
         uGold: { value: token(styles, "--accent", "#ebb94c") },
       },
@@ -248,7 +267,7 @@ function Orb({ state, reduced, readEnergy, onCrash }: {
   // thin thing in it does not read as someone in the room with you.
   useEffect(() => {
     if (!group.current) return;
-    const fit = Math.min(viewport.width, viewport.height) / (RADIUS * 2.65);
+    const fit = Math.min(viewport.width, viewport.height) / (RADIUS * 2.25);
     group.current.scale.setScalar(fit);
     if (reduced) invalidate();
   }, [viewport.width, viewport.height, reduced, invalidate]);
@@ -260,7 +279,7 @@ function Orb({ state, reduced, readEnergy, onCrash }: {
     const still = presenceFrame(state, 0);
     const u = material.uniforms;
     u.uTime.value = 0; u.uEnergy.value = 0; u.uDetail.value = 0;
-    u.uSpeak.value = 0; u.uBusy.value = 0; u.uPulse.value = 0;
+    u.uSpeak.value = 0; u.uBusy.value = 0; u.uPulse.value = 0; u.uFlash.value = 0;
     u.uLight.value = still.light;
     if (mesh.current) mesh.current.rotation.set(0, 0, 0);
     invalidate();
@@ -298,6 +317,11 @@ function Orb({ state, reduced, readEnergy, onCrash }: {
       u.uSpeak.value += (hers - u.uSpeak.value) * Math.min(1, delta * 6);
       u.uPulse.value += (pulse - u.uPulse.value) * Math.min(1, delta * 10);
       u.uBusy.value += (busy - u.uBusy.value) * Math.min(1, delta * 4);
+      // The spark: driven by the RISE in her amplitude, then decayed fast so it reads as a flash
+      // rather than a glow. Never fires on silence, because hers is zero unless she is speaking.
+      const rise = Math.max(0, hers - lastEnergy.current);
+      lastEnergy.current = hers;
+      u.uFlash.value = Math.max(u.uFlash.value * Math.max(0, 1 - delta * 7), Math.min(1, rise * 6));
       u.uLight.value = frame.light;
 
       // Integrated, never an absolute angle from elapsed time: multiplying elapsed time by a rate
