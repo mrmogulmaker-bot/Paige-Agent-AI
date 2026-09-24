@@ -64,7 +64,7 @@ import { buildVpAddressBlock, detectVpAddress } from "../_shared/paige-context/v
 // §18 one home — the platform-default VOICE DNA lives in ONE shared module so both this
 // edge function AND the §2/§3 denylist test import the same text (§32: the assembled
 // voice is scannable). A tenant-authored persona still OVERRIDES it (read first below).
-import { PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
+import { PAIGE_LIVE_SPOKEN_STYLE, PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
 // INT-117 S1-replacement — the IDENTITY-FREE persona core: read-the-room registers +
 // the global distress-precedence rule + honesty/naming lines, ONE unconditional system
 // message for every seat (identity is established per-lane in an earlier message).
@@ -3837,23 +3837,6 @@ When a client describes having a document with relevant data ("I have my EIN let
 
 === END CONVERSATIONAL DATA CAPTURE RULES ===
 
-=== VOICE SESSION RULES ===
-These rules apply ONLY when the request indicates a voice session (look for "VOICE_MODE: true" in the system context, or when responses will be spoken aloud).
-
-CONVERSATIONAL TONE RULE (VOICE)
-In voice sessions you use shorter sentences than in text. Speak naturally with quick acknowledgments — "Got it", "Right", "Exactly", "That makes sense" — before giving longer explanations. NEVER read out bullet points, numbered lists, headers, or markdown in voice — convert them to natural spoken language. Aim for 1-3 sentences per turn unless the client asks for more depth.
-
-VOICE PACING RULE
-When explaining complex topics (DSCR calculations, entity structure, capital stacks, dispute strategy), break them into conversational chunks and check in: "Does that make sense so far?" or "Want me to go deeper on that?" — never deliver a wall of information in voice. Pause naturally between concepts.
-
-HANDOFF RULE (VOICE END)
-When a voice session is wrapping up, close naturally with a warm sign-off: "I'll add a summary of what we discussed to your chat so you can reference it later. Talk soon, [first name]!" Do not list everything you discussed — that's what the summary handles.
-
-CONTEXT CARRY RULE (VOICE)
-Anything the client says aloud during voice — funding goals, EINs, business names, addresses, formation states — is captured in the transcript and processed by the same conversational extraction flow as text after the call ends. So when a client says their EIN or company name out loud, just acknowledge it naturally ("Got it — [company name], cool name") — the extraction card will appear in their chat after the call ends.
-
-=== END VOICE SESSION RULES ===
-
 =============================================================
 CAPITAL INFRASTRUCTURE INTELLIGENCE
 =============================================================
@@ -4761,6 +4744,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       // any general impression from the tool list or persona (P0 Defect-1, §13/§36/§70).
       ...(capabilityStatusBlock ? [{ role: "system", content: capabilityStatusBlock }] : []),
       { role: "system", content: systemPrompt },
+      ...(liveRuntimeScope ? [{ role: "system", content: PAIGE_LIVE_SPOKEN_STYLE }] : []),
       // "Watch Paige work" narration (#152): when she's about to USE tools, she first
       // writes one short backstage line saying what she's doing and why. It streams to
       // the operator's live reasoning panel — reassurance that she's really working —
@@ -5093,7 +5077,9 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // tab still saves it), then auto-title a new thread and refresh the summary.
     // bundle_ref stores the queued/confirm cards so the UI reconstructs them on reload.
     const persistAssistantTurn = async (finalText: string, meta: { surfaces?: string[] | null; bundleRef?: unknown; model?: string }) => {
-      if (!payloadThreadId || !finalText || !finalText.trim()) return;
+      // A receipt-only interrupted turn has real cards but no spoken prose.
+      // The canonical turn RPC accepts empty content; never invent an answer.
+      if (!payloadThreadId || (!finalText?.trim() && !meta.bundleRef)) return;
       try {
         await supabaseClient.rpc("paige_chat_turn_append", {
           p_thread_id: payloadThreadId, p_role: "assistant", p_content: finalText,
@@ -8194,6 +8180,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       }
     }
 
+    // Live uses the SAME governed tool loop, then the existing tools-free
+    // answer stream. Never speak speculative content from a tool-capable round.
+    const liveDecisionMessages = (messages: any[]) => liveRuntimeScope && !attachedDocument
+      ? [...messages, { role: "system", content: "This is the internal tool-decision phase of a Live turn. Select the tools needed under the existing authority rules. Do not draft the user-facing answer here. When no further tool is needed, reply only with Ready. The same runtime will then request the final spoken answer in a tools-free phase." }]
+      : messages;
     const response = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
@@ -8204,7 +8195,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         // extended thinking is a real reasoning model, never Haiku; the doc-attach path already did.
         // #34 — substantiveTurn adds the reasoning tier for approval/creation intents (see above).
         model: (studioSessionId || attachedDocument || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash",
-        messages: aiMessages,
+        messages: liveDecisionMessages(aiMessages),
         tools: toolDefs,
         tool_choice: "auto",
         stream: true,
@@ -13346,11 +13337,29 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // to echo it back for the approval to bind to this exact call rather than to a boolean.
       const confirmTrace: Array<{ tool: string; summary: string; fingerprint?: string }> = [];
       const crmResultTrace: Array<Record<string, unknown>> = [];
+      // One authorization-neutral projection for success AND interrupted Live
+      // history. Never persist the live CRM readback, locator or contact payload.
+      const assistantTurnMetadata = () => ({
+        surfaces: stepTrace.filter((s) => s.kind !== "thought").map((s) => s.group).filter((v, i, a) => v && a.indexOf(v) === i),
+        bundleRef: (queuedApprovals.length || confirmTrace.length || crmResultTrace.length)
+          ? {
+              approval_queued: queuedApprovals,
+              paige_confirm: confirmTrace,
+              paige_crm_result: crmResultTrace.map((result) => ({
+                action: result.action,
+                outcome: result.outcome,
+                receipt_recorded: result.receipt_recorded,
+                ...(typeof result.external_effect === "boolean" ? { external_effect: result.external_effect } : {}),
+              })),
+            }
+          : null,
+      });
       const convo: any[] = [...aiMessages];
       let currentResponse = response;
       let totalToolCalls = 0;
       const seenSignatures = new Set<string>();
       let finalChunks: Uint8Array[] | null = null;
+      let liveAnswerPending = false;
       let forcedTermination = false;
       let tenantKnowledgeScopeInvalidated = false;
       // Accumulates Paige's final reply text so we can persist the turn (#94).
@@ -13424,7 +13433,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               forcedTermination = true;
               break;
             }
-            if (!hasToolCall) { finalChunks = allChunks; finalAssistantText = content; break; }
+            if (!hasToolCall) {
+              if (liveRuntimeScope) liveAnswerPending = true;
+              else { finalChunks = allChunks; finalAssistantText = content; }
+              break;
+            }
             const realCalls = toolCalls.filter((tc: any) => tc && tc.function?.name);
             // #292 — ask_choices is a TURN-ENDER, not a backend call: the design agent is asking the
             // customer a clickable decision. Emit the chips as a paige_choices frame, persist the
@@ -13558,25 +13571,26 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             currentResponse = await gatewayCompat("anthropic", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, tools: toolDefs, tool_choice: "auto", stream: true }),
+              body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: liveDecisionMessages(convo), tools: toolDefs, tool_choice: "auto", stream: true }),
             }, traceFor("chat-tool-loop"));
             if (!currentResponse.ok) { forcedTermination = true; break; }
           }
 
-          // Hybrid final stream: replay a natural tool-less round verbatim, or issue a
-          // tools-less closing call when we terminated mid-flight.
+          // Text keeps its natural-round replay. Live streams the final answer
+          // only from this tools-free call, AFTER the governed tool decision.
+          // Protected turns still use emitContent's hold and final scope check.
           let finalStreamResponse: Response | null = null;
-          if (!finalChunks && forcedTermination && !tenantKnowledgeScopeInvalidated) {
+          if (!finalChunks && (forcedTermination || liveAnswerPending) && !tenantKnowledgeScopeInvalidated) {
             if (!(await revalidateTenantKnowledgeScope())) {
               tenantKnowledgeScopeInvalidated = true;
             }
           }
-          if (!finalChunks && forcedTermination && !tenantKnowledgeScopeInvalidated) {
+          if (!finalChunks && (forcedTermination || liveAnswerPending) && !tenantKnowledgeScopeInvalidated) {
             finalStreamResponse = await gatewayCompat("anthropic", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, stream: true }),
-            }, traceFor("chat-close"));
+            }, traceFor(liveAnswerPending ? "chat-live-answer" : "chat-close"));
           }
           // §13 — the wording matters here, and the previous wording was FALSE. Since the tool
           // dispatch guard became per-tool, a round can abort with earlier tools in the SAME
@@ -13731,24 +13745,42 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // Buffer across reads so a `data:` record split over two reads still
             // contributes its delta to the persisted text (#94 integrity).
             let capBuf = "";
+            let finalStreamDone = false;
             const capLine = (line: string) => {
-              if (!line.startsWith("data: ") || line.includes("[DONE]")) return;
-              try { const c = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content; if (c) finalAssistantText += c; } catch { /* skip */ }
+              if (!line.startsWith("data: ") || (liveRuntimeScope && finalStreamDone)) return;
+              if (line.slice(6).trim() === "[DONE]") { finalStreamDone = true; return; }
+              try {
+                const parsed = JSON.parse(line.slice(6));
+                if (liveRuntimeScope && parsed.error) throw new Error("live_answer_failed");
+                const c = parsed?.choices?.[0]?.delta?.content;
+                if (liveRuntimeScope) emitContent(controller, new TextEncoder().encode(`${line}\n\n`));
+                if (c) finalAssistantText += c;
+              } catch (error) { if (liveRuntimeScope) throw error; }
             };
             try {
-              while (true) {
+              while (!liveRuntimeScope || !finalStreamDone) {
                 const { done, value } = await up.read();
                 if (done) break;
-                emitContent(controller, value);
+                if (!liveRuntimeScope) emitContent(controller, value);
                 capBuf += dec.decode(value, { stream: true });
                 let nl: number;
                 while ((nl = capBuf.indexOf("\n")) !== -1) { capLine(capBuf.slice(0, nl)); capBuf = capBuf.slice(nl + 1); }
               }
             } finally {
+              if (!liveRuntimeScope) {
+                capBuf += dec.decode();
+                if (capBuf) capLine(capBuf);
+              }
+            }
+            if (liveRuntimeScope) {
               capBuf += dec.decode();
               if (capBuf) capLine(capBuf);
+              if (!finalStreamDone || !finalAssistantText.trim()) throw new Error("live_answer_incomplete");
+              void up.cancel().catch(() => {});
+              emitContent(controller, new TextEncoder().encode("data: [DONE]\n\n"));
             }
           } else {
+            if (liveRuntimeScope) throw new Error("live_answer_unavailable");
             // Couldn't finish. Show the fallback AND persist it, so a reload
             // shows the same thing the user saw (not a question with no reply).
             const fallback = "I gathered what I could but couldn't finish that — mind trying again?";
@@ -13835,31 +13867,31 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // the check holds.
           if (payloadThreadId && finalAssistantText.trim()) {
             try {
-              const p = persistAssistantTurn(finalAssistantText, {
-                // Surfaces reflect executed WORK — thoughts (narration) don't count.
-                surfaces: stepTrace.filter((s) => s.kind !== "thought").map((s) => s.group).filter((v, i, a) => v && a.indexOf(v) === i),
-                // A live result may contain contact PII. Durable thread history is coach-owned and
-                // can outlive a later reassignment, so persist only the authorization-neutral
-                // receipt projection. The live card keeps its readback and locator for the
-                // currently-authorized request; a reload never becomes a stale access path.
-                bundleRef: (queuedApprovals.length || confirmTrace.length || crmResultTrace.length)
-                  ? {
-                      approval_queued: queuedApprovals,
-                      paige_confirm: confirmTrace,
-                      paige_crm_result: crmResultTrace.map((result) => ({
-                        action: result.action,
-                        outcome: result.outcome,
-                        receipt_recorded: result.receipt_recorded,
-                        ...(typeof result.external_effect === "boolean" ? { external_effect: result.external_effect } : {}),
-                      })),
-                    }
-                  : null,
-              });
+              const p = persistAssistantTurn(finalAssistantText, assistantTurnMetadata());
               // @ts-ignore — EdgeRuntime is available in Supabase Edge Functions runtime
               if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p); else await p;
             } catch (e) { console.error("[paige] persist assistant turn failed:", (e as Error)?.message); }
           }
          } catch (e) {
+           if (liveRuntimeScope) {
+             // A partly spoken answer is not a successful turn. Keep exactly
+             // the released, unprotected text in this same thread; never save
+             // protected text that the caller has not received. No DONE means
+             // the signed-output wrapper cannot mint a success receipt.
+             console.error("[paige] Live answer interrupted");
+             discardContent();
+             const interruptedMeta = assistantTurnMetadata();
+             if (!turnCarriesProtectedContent() && payloadThreadId && (finalAssistantText.trim() || interruptedMeta.bundleRef)
+               && await revalidateTenantKnowledgeScope()) {
+               try {
+                 await persistAssistantTurn(finalAssistantText, interruptedMeta);
+               } catch { console.error("[paige] partial Live answer persistence failed"); }
+             }
+             try {
+               controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_live_error: "answer_interrupted" })}\n\n`));
+             } catch { /* caller already left */ }
+             return;
+           }
            // The live loop or final stream failed mid-flight. Never leave the client
            // with a truncated stream — emit a clean fallback reply and a [DONE].
            console.error("[paige] live reasoning stream failed:", (e as Error)?.message);

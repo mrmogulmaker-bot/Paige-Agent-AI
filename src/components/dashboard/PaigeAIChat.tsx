@@ -493,13 +493,14 @@ const PaigeAIChatInner = ({
   // the turn did not happen and trying again is worth doing. A 4xx is NOT in this set — a request
   // the server refused on its merits will be refused identically on a retry, and offering one
   // would be a button that cannot work (§70).
-  const [connectionIssue, setConnectionIssue] = useState<"offline" | "timeout" | "server" | null>(null);
+  const [connectionIssue, setConnectionIssue] = useState<"offline" | "timeout" | "server" | "live-interrupted" | null>(null);
   const retryTurnRef = useRef<{
     base: Message[];
     rollback: Message[];
     userText: string;
     doc?: AttachedDocument | null;
     draftHandle: ComposerDraftHandle | null;
+    live?: boolean;
   } | null>(null);
 
   // §13 — `!ticket ||` USED TO SHORT-CIRCUIT THIS TO `true`, AND THAT UNDID THE WHOLE FENCE ON THE
@@ -548,7 +549,8 @@ const PaigeAIChatInner = ({
     if (!soloTenantSafety) return;
     const cancelledTurn = retryTurnRef.current;
     abortActiveRequest();
-    if (cancelledTurn) setMessages(cancelledTurn.rollback);
+    if (cancelledTurn && !cancelledTurn.live) setMessages(cancelledTurn.rollback);
+    if (cancelledTurn?.live) retryTurnRef.current = null;
     setCancelled(true);
     setConnectionIssue(null);
   }, [abortActiveRequest, soloTenantSafety]);
@@ -946,7 +948,7 @@ const PaigeAIChatInner = ({
     // on a network retry would re-approve whatever the model emits the second time, which is the
     // exact substitution the fingerprint exists to prevent.
     let persistedDraft = originDraft;
-    retryTurnRef.current = { base, rollback, userText, doc, draftHandle: persistedDraft };
+    retryTurnRef.current = { base, rollback, userText, doc, draftHandle: persistedDraft, live: Boolean(voiceSink) };
     setConnectionIssue(null);
     if (soloTenantSafety && typeof navigator !== "undefined" && navigator.onLine === false) {
       setConnectionIssue("offline");
@@ -962,10 +964,15 @@ const PaigeAIChatInner = ({
     const timeoutId = soloTenantSafety ? window.setTimeout(() => {
       if (!ticketAccepted(requestTicket)) return;
       abortActiveRequest();
-      setConnectionIssue("timeout");
+      if (voiceSink) {
+        voiceSink.failed();
+        retryTurnRef.current = null;
+        setConnectionIssue("live-interrupted");
+      } else setConnectionIssue("timeout");
     }, 45_000) : null;
     const assistantId = safeUuid();
     const assistantTs = Date.now();
+    let liveRequestDispatched = false;
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -1030,6 +1037,7 @@ const PaigeAIChatInner = ({
         }
       }
 
+      liveRequestDispatched = Boolean(voiceSink);
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-ai-chat`,
         {
@@ -1076,6 +1084,9 @@ const PaigeAIChatInner = ({
       if (!ticketAccepted(requestTicket)) return;
 
       if (!response.ok) {
+        // Once dispatched, an HTTP failure does not prove the turn or its
+        // governed tools did nothing. Keep the Live transcript, never replay it.
+        if (voiceSink) throw new Error("live_answer_unavailable");
         if (response.status === 429) {
           toast({
             title: "Rate Limit Reached",
@@ -1124,10 +1135,11 @@ const PaigeAIChatInner = ({
       let proposalThisTurn: ExtractionProposal | null = null;
       let textBuffer = "";
       let streamDone = false;
+      let liveStreamFailed = false;
 
       setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: "" }]);
 
-      while (reader && !streamDone) {
+      while (reader && !streamDone && !liveStreamFailed) {
         const { done, value } = await reader.read();
         if (!ticketAccepted(requestTicket)) return;
         if (done) break;
@@ -1153,6 +1165,11 @@ const PaigeAIChatInner = ({
           try {
             const parsed = JSON.parse(jsonStr);
             if (!ticketAccepted(requestTicket)) return;
+            if (voiceSink && parsed.paige_live_error) {
+              liveStreamFailed = true;
+              voiceSink.failed();
+              break;
+            }
             if (typeof parsed.paige_live_output === "string") {
               voiceSink?.proof(parsed.paige_live_output);
               continue;
@@ -1281,10 +1298,16 @@ const PaigeAIChatInner = ({
 
       if (!ticketAccepted(requestTicket)) return;
       if (!streamDone) {
-        setMessages(rollback);
+        // A released Live sentence may already have been heard and persisted.
+        // Keep that same transcript; an incomplete answer is never a success
+        // and must not offer replay of a possibly executed tool turn.
+        if (voiceSink) {
+          voiceSink.failed();
+          retryTurnRef.current = null;
+        } else setMessages(rollback);
         releaseRequestBusy(requestTicket);
         setStreamingThreadId(null);
-        setConnectionIssue("server");
+        setConnectionIssue(voiceSink ? "live-interrupted" : "server");
         return;
       }
       if (persistedDraft && shouldClearComposerDraft({
@@ -1308,6 +1331,14 @@ const PaigeAIChatInner = ({
       }
     } catch (error) {
       if (!ticketAccepted(requestTicket)) return;
+      if (liveRequestDispatched && voiceSink) {
+        voiceSink.failed();
+        retryTurnRef.current = null;
+        releaseRequestBusy(requestTicket);
+        setStreamingThreadId(null);
+        setConnectionIssue("live-interrupted");
+        return;
+      }
       if (error instanceof DOMException && error.name === "AbortError") {
         releaseRequestBusy(requestTicket);
         setStreamingThreadId(null);
@@ -1450,6 +1481,7 @@ const PaigeAIChatInner = ({
     const retry = retryTurnRef.current;
     if (
       !retry
+      || retry.live
       || !retry.draftHandle
       || !composerScope.writable
       || !composerDraftHandlesMatch(retry.draftHandle, composerScope.writableHandle)
@@ -1996,8 +2028,8 @@ const PaigeAIChatInner = ({
             )}
             {soloTenantSafety && connectionIssue && (
               <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
-                <span>{connectionIssue === "offline" ? "You appear to be offline. This message has not been sent." : connectionIssue === "server" ? "Something went wrong on our side and PAIGE didn't get to answer. Your message wasn't sent — try again." : "PAIGE did not respond before the local timeout. No later chunks will be accepted; earlier server work may still complete."}</span>
-                <Button type="button" variant="outline" size="sm" disabled={!composerScope.writable || dictationActive} onClick={handleConnectionRetry}>Retry</Button>
+                <span>{connectionIssue === "live-interrupted" ? "Paige's answer was interrupted. What arrived is still shown here. You can continue in text chat." : connectionIssue === "offline" ? "You appear to be offline. This message has not been sent." : connectionIssue === "server" ? "Something went wrong on our side and PAIGE didn't get to answer. Your message wasn't sent — try again." : "PAIGE did not respond before the local timeout. No later chunks will be accepted; earlier server work may still complete."}</span>
+                {connectionIssue !== "live-interrupted" && !retryTurnRef.current?.live && <Button type="button" variant="outline" size="sm" disabled={!composerScope.writable || dictationActive} onClick={handleConnectionRetry}>Retry</Button>}
               </div>
             )}
             </div>
