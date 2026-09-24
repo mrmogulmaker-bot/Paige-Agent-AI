@@ -112,6 +112,15 @@ const safeUuid = (): string => {
   } catch { /* fall through */ }
   return `m-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 };
+const durableIntentUuid = (): string => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+};
 const mkMsg = (m: Omit<Message, "id" | "ts"> & Partial<Pick<Message, "id" | "ts">>): Message =>
   ({ ...m, id: m.id ?? safeUuid(), ts: m.ts ?? Date.now() });
 
@@ -504,6 +513,7 @@ const PaigeAIChatInner = ({
     userText: string;
     doc?: AttachedDocument | null;
     draftHandle: ComposerDraftHandle | null;
+    requestIntentId: string;
   } | null>(null);
 
   // §13 — `!ticket ||` USED TO SHORT-CIRCUIT THIS TO `true`, AND THAT UNDID THE WHOLE FENCE ON THE
@@ -956,6 +966,7 @@ const PaigeAIChatInner = ({
     approvedFingerprints?: string[],
     declinedFingerprints?: string[],
     voiceSink?: LiveVoiceSink,
+    requestIntentId: string = durableIntentUuid(),
   ) => {
     if (soloTenantSafety && !activeTenantId) return;
     const requestHandle = originDraft ?? composerScopeRef.current.writableHandle;
@@ -966,7 +977,7 @@ const PaigeAIChatInner = ({
     // on a network retry would re-approve whatever the model emits the second time, which is the
     // exact substitution the fingerprint exists to prevent.
     let persistedDraft = originDraft;
-    retryTurnRef.current = { base, rollback, userText, doc, draftHandle: persistedDraft };
+    retryTurnRef.current = { base, rollback, userText, doc, draftHandle: persistedDraft, requestIntentId };
     setConnectionIssue(null);
     if (soloTenantSafety && typeof navigator !== "undefined" && navigator.onLine === false) {
       setConnectionIssue("offline");
@@ -1062,6 +1073,7 @@ const PaigeAIChatInner = ({
             messages: voiceSink ? [{ role: "user", content: userText }] : newMessages,
             ...(voiceSink ? { liveRuntimeChallenge: voiceSink.challenge } : {}),
             ...(threadId ? { threadId } : {}),
+            requestIntentId,
             ...(clientId ? { clientId } : {}),
             ...(clientContext ? { clientContext } : {}),
             ...(surfaceContext ? { surfaceContext } : {}),
@@ -1480,6 +1492,10 @@ const PaigeAIChatInner = ({
       retry.userText,
       retry.doc,
       retry.draftHandle,
+      undefined,
+      undefined,
+      undefined,
+      retry.requestIntentId,
     );
   };
 

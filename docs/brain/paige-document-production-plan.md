@@ -1,11 +1,12 @@
 # Paige Document Production — Phase 2 Plan
 
-> **Status:** BUILDING BEHIND THE EXISTING CHAT TOOL. `document_generate` already exists and already
-> reaches the chat executor, but the actual `PAIGE_SPINE_CAPABILITIES` registry has no document
-> declaration; `documents.create` is a capability-status projection, not a Spine entry. Platform
-> Reach coordination therefore covers (1) one new Spine declaration for the existing authoring
-> capability and (2) an in-place change to the existing tool's input and return schema. This lane
-> will not edit either registry-owned surface until the coordinator's relay lands.
+> **Status:** LOCAL INTEGRATION CANDIDATE; NOT LIVE. Platform Reach released the existing
+> `document_generate` handler and the narrow Spine registry attachment to Long-Form. Chat now submits
+> a bounded brief to `public.submit_paige_document_work`, browser Retry reuses one intent UUID, and
+> the existing artifact is returned by the worker through the persisted conversation. The Spine
+> carries `long_form.document_authoring` as an explicit action-unavailable/outcome declaration:
+> the current vocabulary cannot truthfully describe the intentionally automatic Studio build lane,
+> so it does not invent `chat-canonical` approval or a parallel governed-execution path.
 >
 > **Dependency:** `paige_durable_work` is `SUBSTRATE PROVEN`, not a live durability capability.
 > Local single-claim concurrency is proven. Disconnect/resume, persisted apply, and authenticated
@@ -61,8 +62,8 @@ There is no implicit synchronization between the two homes and no second agreeme
 
 | Layer | Planned attachment |
 |---|---|
-| Spine | `document_generate` exists as a chat tool and `documents.create` exists in capability-status projection, but no document entry exists in `PAIGE_SPINE_CAPABILITIES`. Registering the existing authoring capability is a coordinator-relayed Platform Reach change, not a second tool. |
-| Rails | `record_capability_run` on submit, every resumed execution invocation, and terminal/`outcome_unknown` settlement; correlate by durable work id and server idempotency key. Existing `document_export` receipts remain. |
+| Spine | `long_form.document_authoring` is attached to `PAIGE_SPINE_CAPABILITIES` with the verified terminal outcome contract. Its `action` is explicitly unavailable until the shared vocabulary can represent the existing Studio-session authority honestly; runtime submission remains `public.submit_paige_document_work`. |
+| Rails | Accepted work records its terminal receipt atomically in the worker. The five pre-envelope terminal paths record executor-local refusal or `outcome_unknown` receipts with the service-role client, no correlation/detail overload, and no mega-catch inference. Existing `document_export` receipts remain. |
 | Harness | `paige_durable_work` plus the existing durable-job mechanism, model router, canonical `marketing_content`, Studio versioning where a session exists, and `export-document`. Completion uses one security-definer transaction instead of `save_marketing_content` because artifact + readback + completion turn + receipt + work settlement must commit or roll back together. No second scheduler, lease system, or artifact store. |
 | Agent access | Evolve the existing `document_generate` entry into bounded submit semantics through the coordinator-held relay. No new authoring entry. Status/cancel tools remain deferred. |
 | Mind | Completed or blocked safe summary only through existing projections. No document body, source text, prompts, or provider payload becomes Mind state. |
@@ -257,13 +258,13 @@ work; it never silently submits four new generations for one owner intent.
 10. The captured production `400` field is diagnosed and regression-tested directly; no telemetry
     work is added unless that evidence remains insufficient.
 
-## 9. Deliberately deferred pending Platform Reach
+## 9. Deliberately deferred
 
-- The in-place `document_generate` input/return schema change from full generated blocks to a
-  bounded brief and accepted-work reference.
-- The missing `PAIGE_SPINE_CAPABILITIES` declaration for the existing authoring capability.
+- A truthful Spine action authority enum for the existing Studio-session auto-build lane. Until
+  ratified, the registry explicitly carries no action rather than falsely declaring chat approval.
 - Any future status or cancellation tool entry and its exposed semantics.
+- Platform-wide catalogue generation, eligibility resolution, and specialist delegation. Platform
+  Reach owns that broader convergence; it does not block the Long-Form integration.
 
 No new authoring tool is required. Durable submission, worker execution, verified artifact
-persistence, and reconnect reconstruction proceed behind the existing chat identity; the
-registry-owned items above wait for the coordinator relay.
+persistence, and reconnect reconstruction proceed behind the existing `document_generate` identity.
