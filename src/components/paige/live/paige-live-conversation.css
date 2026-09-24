@@ -17,7 +17,7 @@
 .plc-stage__main { min-height: 0; overflow: hidden; display: grid; grid-template-columns: minmax(0,1.2fr) minmax(0,.8fr); gap: clamp(1rem,2.5vw,2.5rem); padding: clamp(.9rem,1.8vw,1.5rem); }
 /* Rows, not a centred stack: the wave takes whatever height is left (1fr), the labels and panels
    take what they need, and nothing can push a sibling out of the frame. */
-.plc-presence { min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-columns: minmax(0,.8fr) minmax(0,1.2fr); grid-template-rows: minmax(9rem,1.15fr) auto auto minmax(0,.85fr); align-items: start; justify-items: center; column-gap: .75rem; text-align: center; }
+.plc-presence { min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-columns: minmax(0,.8fr) minmax(0,1.2fr); grid-template-rows: minmax(11rem,1fr) auto auto auto; align-items: start; justify-items: center; column-gap: .75rem; text-align: center; }
 /* BOTH presences span the full column. The 3D wrapper has its own class, so when it replaced the
    flat one as the mounted component it stopped matching this rule and was auto-placed into the
    narrow .8fr track — rendering Paige at ~61% of her size and off-axis from the "Listening" label
@@ -31,12 +31,15 @@
 .plc-presence > .paige-presence,.plc-presence > .paige-presence-3d { grid-row: 1; width: 100%; height: 100%; min-height: 0; }
 .plc-state { grid-row: 2; }
 .plc-context { grid-row: 3; }
-/* Row 4 carries the two panels side by side, and it is a FRACTION, not content height. It used to be
-   minmax(0,auto), so a ~500px consent notice took everything it wanted and the orb's row — the 1fr
-   above it — got whatever was left, collapsing the presence to a dot the moment Live reported
-   unavailable. The orb never shrinks to make room for a notice; the notice scrolls inside its own
-   share (with no visible bar, below). */
-.plc-presence > .plc-working,.plc-presence > .plc-notice { grid-row: 4; width: 100%; min-height: 0; max-height: 100%; overflow-y: auto; margin-top: .8rem; }
+/* Row 4 carries the two panels side by side, and it is `auto` with the panels capped — not a
+   fraction, and not unbounded content height. Both of those were wrong for different reasons.
+   Unbounded (the original) let a ~500px consent notice take whatever it wanted and starved the orb's
+   row above it, collapsing the presence to a dot. A fraction fixed that but introduced the opposite
+   fault: an fr track keeps its share of free space even when it holds nothing, so the moment Live is
+   actually open and the notice disappears, the orb would be left staring at a dead gap. `auto`
+   collapses to zero when there is no panel and gives the whole column back to the presence, while
+   the cap keeps a long notice inside its own scroll. */
+.plc-presence > .plc-working,.plc-presence > .plc-notice { grid-row: 4; width: 100%; min-height: 0; max-height: 34vh; overflow-y: auto; margin-top: .8rem; }
 .plc-state { margin-top: 1rem; display: flex; align-items: center; gap: .5rem; font-weight: 650; }
 .plc-state span { width: .55rem; height: .55rem; border-radius: 50%; background: hsl(var(--muted-foreground)); }
 [data-live-state="listening"] .plc-state span,[data-live-state="speaking"] .plc-state span { background: hsl(var(--primary)); }

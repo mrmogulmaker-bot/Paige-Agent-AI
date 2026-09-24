@@ -267,7 +267,7 @@ function Orb({ state, reduced, readEnergy, onCrash }: {
   // thin thing in it does not read as someone in the room with you.
   useEffect(() => {
     if (!group.current) return;
-    const fit = Math.min(viewport.width, viewport.height) / (RADIUS * 2.25);
+    const fit = Math.min(viewport.width, viewport.height) / (RADIUS * 1.95);
     group.current.scale.setScalar(fit);
     if (reduced) invalidate();
   }, [viewport.width, viewport.height, reduced, invalidate]);
