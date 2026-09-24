@@ -459,8 +459,7 @@ describe("export-document edge function — the callable seam (source contract)"
     expect(SRC).not.toContain("Admin or coach access required.");
     expect(SRC).toContain('.from("marketing_content")');
     // the tenant the file is filed under is the row's tenant, never the request body
-    expect(SRC).toContain("const documentTenantId = doc.tenant_id");
-    expect(SRC).toContain("tenantId = documentTenantId");
+    expect(SRC).toContain("const tenantId = doc.tenant_id as string | null");
     expect(SRC).not.toContain("body?.tenant_id");
     expect(SRC).toContain('roles.some((r: string) => r === "super_admin" || r === "platform_admin")');
     // Codex round-10 L1 (§59) — marketing_content RLS refuses a fresh Solo OWNER (global role only `user`)
@@ -471,7 +470,7 @@ describe("export-document edge function — the callable seam (source contract)"
     // Codex F2 / §59 global-role trap — the in-body gate requires a MANAGE role IN THE DOC'S TENANT
     // (owner/admin via is_tenant_admin, coach via has_tenant_role), tenant-scoped — never is_tenant_member.
     expect(SRC).toContain('authed.rpc("is_tenant_admin", { _tenant: tenantId })');
-    expect(SRC).toContain('authed.rpc("has_tenant_role", { _user_id: actorId, _tenant_id: tenantId, _role: "coach" })');
+    expect(SRC).toContain('authed.rpc("has_tenant_role", { _user_id: user.id, _tenant_id: tenantId, _role: "coach" })');
     expect(SRC).not.toContain('.rpc("is_tenant_member"'); // the any-role membership CALL was the F2 leak (a comment may still name it)
     // L1 — the privileged read means the auth failure must fail closed as a 404 (not 403), so a by-id caller
     // can't learn that an out-of-scope document exists.
@@ -523,31 +522,14 @@ describe("export-document edge function — the callable seam (source contract)"
   });
 });
 
-describe("document_generate wires the export seam (source contract)", () => {
+describe("document_generate keeps optional export outside durable authoring (source contract)", () => {
   const CHAT = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
   const WORKER = readFileSync("supabase/functions/paige-document-worker/index.ts", "utf8");
-  const EXPORT = readFileSync("supabase/functions/export-document/index.ts", "utf8");
 
-  it("adds the optional export_format param without adding a new inline tool name", () => {
-    expect(CHAT).toContain('export_format: { type: "string", enum: ["pdf", "docx", "pptx", "md"]');
-  });
-
-  it("does not advertise the UNVERIFIED PDF path as reliable — recommends only Markdown (Codex round-12e)", () => {
-    expect(CHAT).not.toContain("PDF and Markdown are the most reliable");
-    expect(CHAT).toContain("Markdown is the most reliable");
-  });
-
-  it("invokes the existing export-document seam after durable readback and atomically attaches its outcome", () => {
-    expect(WORKER).toContain('/functions/v1/export-document');
-    expect(WORKER).toContain('body: JSON.stringify({ work_id: work.work_id, content_id: contentId, format })');
-    expect(WORKER).toContain('admin.rpc("attach_paige_document_export"');
-    expect(WORKER).toContain('_export_status: exportStatus');
-  });
-
-  it("re-derives internal export authority from the canonical succeeded work row", () => {
-    expect(EXPORT).toContain('isAuthorizedInternalCaller(req, service)');
-    expect(EXPORT).toContain('.from("paige_durable_work")');
-    expect(EXPORT).toContain('work.work_kind !== "document_authoring" || work.status !== "succeeded"');
-    expect(EXPORT).toContain('terminalContentId !== contentId || requestedFormat !== format');
+  it("does not promise an export that lacks its own durable reconciliation path", () => {
+    const tool = CHAT.slice(CHAT.indexOf('name: "document_generate"'), CHAT.indexOf('name: "growth_list"'));
+    expect(tool).not.toContain("export_format");
+    expect(WORKER).not.toContain("/functions/v1/export-document");
+    expect(WORKER).not.toContain("attach_paige_document_export");
   });
 });

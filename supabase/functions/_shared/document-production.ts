@@ -31,7 +31,6 @@ export interface DocumentBrief {
   source_refs?: Array<{ kind: string; id: string; label?: string }>;
   target_content_id?: string;
   expected_revision?: number;
-  export_format?: "pdf" | "docx" | "pptx" | "md";
 }
 
 export interface DocumentDraft {
@@ -91,7 +90,7 @@ export function validateDocumentBrief(input: unknown): BriefValidation {
   }
   const allowed = new Set([
     "version", "doc_type", "title", "brief", "audience", "purpose", "required_facts",
-    "source_refs", "target_content_id", "expected_revision", "export_format",
+    "source_refs", "target_content_id", "expected_revision",
   ]);
   if (Object.keys(input).some((key) => !allowed.has(key))) {
     return { ok: false, code: "document_brief_unknown_field", message: "The document brief contains an unsupported field." };
@@ -144,9 +143,6 @@ export function validateDocumentBrief(input: unknown): BriefValidation {
   }
   if (Boolean(input.target_content_id) !== Boolean(input.expected_revision)) {
     return { ok: false, code: "document_revision_pair_required", message: "A revision target and expected revision must be supplied together." };
-  }
-  if (input.export_format !== undefined && !["pdf", "docx", "pptx", "md"].includes(String(input.export_format))) {
-    return { ok: false, code: "document_export_format_invalid", message: "The requested export format is unsupported." };
   }
 
   const serialized = JSON.stringify(input);
@@ -246,10 +242,11 @@ export function normalizeDocumentDraft(input: unknown, brief: DocumentBrief): Do
     throw new Error("DOCUMENT_OUTPUT_PLACEHOLDER");
   }
   const title = nonEmptyString(input.title, 200) ? input.title.trim() : brief.title.trim();
-  const docType = typeof input.doc_type === "string" && DOCUMENT_TYPES.includes(input.doc_type as DocumentType)
-    ? input.doc_type as DocumentType
-    : brief.doc_type;
-  if (blocks[0].type !== "cover") blocks.unshift({ type: "cover", title });
+  const docType = brief.doc_type;
+  if (blocks[0].type !== "cover") {
+    if (blocks.length >= 80) blocks.length = 79;
+    blocks.unshift({ type: "cover", title });
+  }
   return { docType, title, blocks };
 }
 

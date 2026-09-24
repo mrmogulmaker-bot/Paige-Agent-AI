@@ -115,6 +115,12 @@ create function public.current_user_tenant_id() returns uuid language sql stable
 $$;
 create function public.has_any_role(_user_id uuid, _roles text[]) returns boolean language sql stable as $$
   select exists(select 1 from public.tenant_members m where m.user_id=_user_id and m.status='active' and m.role=any(_roles))
+$$;create function public.has_tenant_role(_user_id uuid, _tenant_id uuid, _role text) returns boolean language sql stable as $$
+  select exists(
+    select 1 from public.tenant_members m
+     where m.user_id=_user_id and m.tenant_id=_tenant_id and m.status='active'
+       and (m.role=_role or (_role='owner' and m.is_owner))
+  )
 $$;
 create function public.is_platform_owner() returns boolean language sql stable as $$ select false $$;
 create function public.record_capability_run(
@@ -182,7 +188,6 @@ try {
     brief: "Draft a reviewable services agreement artifact. It is not signable.",
     required_facts: { governing_law: "Georgia" },
     source_refs: [{ kind: "tenant_knowledge", id: "agreement_terms" }],
-    export_format: "docx",
   }).replaceAll("'", "''");
   const submitSql = (intent, payload = brief) => `
     set request.jwt.claim.sub='${userId}';
@@ -261,22 +266,11 @@ try {
   assert.equal(firstLineContaining(terminalReplay.stdout, workId), `${workId}|succeeded|true`);
   const terminalWakeProof = await psql(`select count(*)::text from net.proof_wakeups;`);
   assert.equal(terminalWakeProof.stdout, "2", terminalWakeProof.stdout);
-  const attachedExport = await psql(`
-    set role service_role;
-    select export_status || '|' || download_url
-      from public.attach_paige_document_export(
-        '${workId}','${serverKey}','docx','succeeded',
-        'https://downloads.tests.invalid/durable-document.docx','${randomUUID()}'
-      );
-  `);
-  assert.equal(attachedExport.stdout, "succeeded|https://downloads.tests.invalid/durable-document.docx", attachedExport.stdout);
   const persisted = await psql(`
     reset role;
     select w.status || '|' || (w.terminal_outcome->>'verified_readback') || '|'
       || m.status || '|' || m.document_revision::text || '|'
       || (t.bundle_ref->'paige_artifact'->0->>'id') || '|'
-      || (t.bundle_ref->'paige_artifact'->0->>'export_status') || '|'
-      || (t.bundle_ref->'paige_artifact'->0->>'url') || '|'
       || (select count(*) from public.proof_capability_runs r where r.run_id=w.id)::text || '|'
       || (select count(*) from public.audit_logs a where a.data->>'work_id'=w.id::text)::text
     from public.paige_durable_work w
@@ -284,7 +278,7 @@ try {
     join public.paige_chat_turns t on t.work_id=w.id
     where w.id='${workId}';
   `);
-  assert.equal(persisted.stdout, `succeeded|true|draft|1|${workId}|succeeded|https://downloads.tests.invalid/durable-document.docx|2|1`, persisted.stdout);
+  assert.equal(persisted.stdout, `succeeded|true|draft|1|${workId}|1|1`, persisted.stdout);
 
   const revisionIntent = randomUUID();
   const revisionBrief = JSON.stringify({
@@ -381,7 +375,7 @@ try {
   `);
   assert.equal(receiptRollback.stdout, "claimed|0|0", receiptRollback.stdout);
 
-  console.log("PASS: Phase 2 migration applied on PostgreSQL 16; invalid/cross-tenant submissions failed closed, active intent replay safely re-awakened while terminal replay dispatched nothing, duplicate worker dispatch failed closed, verified artifact/readback/turn/receipt committed atomically, requested export attached with its own receipt, receipt failure rolled back, revision conflicts and authority changes stayed blocked, missed wake-up resumed, and post-dispatch expiry became outcome_unknown.");
+  console.log("PASS: Phase 2 migration applied on PostgreSQL 16; invalid/cross-tenant submissions failed closed, active intent replay safely re-awakened while terminal replay dispatched nothing, duplicate worker dispatch failed closed, verified artifact/readback/turn/receipt committed atomically, receipt failure rolled back, revision conflicts and authority changes stayed blocked, missed wake-up resumed, and post-dispatch expiry became outcome_unknown.");
 } finally {
   if (started) {
     await command(executable("pg_ctl"), ["-D", cluster, "-m", "immediate", "-w", "stop"], "", true);

@@ -5974,7 +5974,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   required_facts: { type: "object", description: "Real scalar facts the draft must preserve exactly, such as client, candidate, scope, dates, compensation, packages, and prices. Never put placeholders here.", additionalProperties: { type: ["string", "number", "boolean"] } },
                   source_refs: { type: "array", maxItems: 40, description: "Optional tenant-scoped source identifiers already available to Paige. Identifiers only, never raw source bodies.", items: { type: "object", properties: { kind: { type: "string" }, id: { type: "string" }, label: { type: "string" } }, required: ["kind", "id"] } },
                   target_content_id: { type: "string", description: "Set to the on-canvas artifact's id (see CANVAS STATE) ONLY when the user is refining/revising the document already on the canvas — this updates that same document in place and keeps its version history. OMIT it to create a brand-new/additional document as a separate asset. Never pass an id for a genuinely new document." },
-                  export_format: { type: "string", enum: ["pdf", "docx", "pptx", "md"], description: "Optional requested downloadable format. The durable artifact is created first; export availability is reported separately and never changes whether the draft itself succeeded. Markdown is the most reliable export format." }
                 },
                 required: ["doc_type", "title", "brief"]
               }
@@ -11424,7 +11423,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                     ...(requestedTarget && expectedRevision
                       ? { target_content_id: requestedTarget, expected_revision: expectedRevision }
                       : {}),
-                    ...(args.export_format !== undefined ? { export_format: args.export_format } : {}),
                   };
                   const validatedBrief = validateDocumentBrief(candidate);
                   if (!validatedBrief.ok) {

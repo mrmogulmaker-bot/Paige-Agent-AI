@@ -44,10 +44,10 @@ describe("durable long-form Chat reach", () => {
   });
 
   it("never files a failure receipt when durable settlement did not commit", () => {
-    const settle = worker.slice(worker.indexOf("async function settleFailure"), worker.indexOf("async function produceRequestedExport"));
+    const settle = worker.slice(worker.indexOf("async function settleFailure"), worker.indexOf("async function runOne"));
+    expect(settle).toContain('admin.rpc("settle_paige_document_work_failure"');
+    expect(settle).not.toContain("recordCapabilityRun");
     expect(settle).toContain('if (error) {');
-    expect(settle).toContain('return false;');
-    expect(settle.indexOf("return false;")).toBeLessThan(settle.indexOf("await recordCapabilityRun"));
   });
 
   it("carries one stable intent identity through both primary document surfaces", () => {
