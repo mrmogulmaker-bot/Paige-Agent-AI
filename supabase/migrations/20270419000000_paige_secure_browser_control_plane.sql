@@ -1,3 +1,33 @@
+-- RENUMBERED 20270106000000 -> 20270419000000 on 2026-09-24, because it had NEVER APPLIED.
+--
+-- MEASURED on production before the move, not inferred: `schema_migrations` holds exactly one row at
+-- 20270106000000 and it belongs to 20270106000000_durable_job_weekly_summary_claims.sql, whose index
+-- `idx_comm_prefs_weekly_summary_due` exists. Of this file's objects, `secure_browser_sessions`,
+-- `secure_browser_tenant_limits` and `_secure_browser_safe_text` were all ABSENT. The control plane
+-- merged in PR #1046 and its schema never arrived.
+--
+-- HOW IT HAPPENED, because the shape matters more than this instance. This file was ALREADY renumbered
+-- once: the evidence doc records it moving TO 20270106000000 to escape the #1047 collision on 2026-09-07.
+-- The durable-job migration then landed on `main` on 2026-09-10 at that same version. Three days apart,
+-- and no lint could see it: `lint:migration-versions` resolves its base as `origin/main`, so a branch
+-- only ever compares itself to trunk and never to another open branch. Both passed. The second to merge
+-- was skipped in silence, with every gate green. Filed as the general case in #1425.
+--
+-- Renumbering is safe HERE precisely because it never applied. The rule against renumbering a migration
+-- protects APPLIED ones, whose version is already recorded; this one has no row to contradict.
+--
+-- VERIFIED BEFORE THE MOVE, against production, because this makes dormant SQL runnable:
+--   * zero destructive statements -- no DROP, TRUNCATE or DELETE anywhere in the file;
+--   * all 11 external dependencies present (7 tables, 4 functions);
+--   * every object this file creates is ABSENT, so nothing collides;
+--   * the one UNIQUE index on a pre-existing table is (tenant_id, id) where id is already unique,
+--     so duplicates are impossible;
+--   * its eight `record_capability_run` calls pass SIX arguments, and 20270411090000 DROPPED the
+--     six-argument signature hours earlier. They still resolve: the surviving ten-argument function
+--     has 5 required parameters and 5 defaulted, so a six-argument call binds to it. Checked rather
+--     than assumed in either direction, because a plpgsql body resolves its calls at RUN time and a
+--     wrong answer here would have shipped functions that fail the moment they file a receipt.
+
 -- Paige Secure Browser MVP: Paige-owned, worker-independent control plane.
 -- No worker, secret, credential, cookie, external account, external session, login,
 -- crawl, download, live-view grant, or website action is created by this migration.
