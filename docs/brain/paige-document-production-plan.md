@@ -14,10 +14,10 @@
 > **Candidate proof state:** the Phase 2 migration and durable document transaction are locally
 > proven on disposable PostgreSQL 16, including malformed/cross-tenant refusal, same-intent replay,
 > duplicate-dispatch refusal, receipt-failure rollback, revision conflict, authority change, missed
-> wake-up recovery, and post-dispatch `outcome_unknown`. The new Edge worker is not yet Deno-clean:
-> its required import of the existing shared model router reaches an unchanged trunk diagnostic
-> (`Tier` cannot equal `"reasoning"` in `_shared/model-router.ts`). This lane has not edited that
-> out-of-lane shared defect; Platform Health owns the blocker decision/repair.
+> wake-up recovery, and post-dispatch `outcome_unknown`. The shared router vocabulary blocker is
+> locally repaired at `d247abba47e386fa7426179a52c449550c41f7c4`: `frontier` now maps to the
+> reasoning budget band. Real Deno checks are zero-diagnostic for the shared router, the existing
+> `export-document` consumer, and the new `paige-document-worker`.
 
 ## 1. Corrected current state: extend, do not replace
 

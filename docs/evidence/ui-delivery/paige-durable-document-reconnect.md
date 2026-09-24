@@ -8,7 +8,7 @@ FLOW_PROTOTYPE: NOT_REQUIRED: no material flow or visual design changes; the alr
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: tenant owner/admin asks Paige for a long-form draft and later opens the same verified artifact from the same conversation; Open remains the primary card action and Send remains host-delegated
 VISUAL_DIRECTION: PASS: no new visual direction; existing Paige transcript and `PaigeArtifactCard` are the approved surface
 AUTOMATED_EVIDENCE: PASS: `npx vitest run src/__tests__/document-production.test.ts src/__tests__/paige-durable-work-envelope.test.ts src/components/dashboard/PaigeAIChat.clientScope.test.tsx` — 3 files, 27 tests passed; reconnect test proves persisted `bundle_ref.paige_artifact` reconstructs with the stored tenant and id
-STATIC_EVIDENCE: UNVERIFIED: migration-version lint passes (1075 unique); app typecheck matches the documented 12-error trunk baseline with zero introduced; real Deno check is blocked by unchanged shared-router TS2367 and is filed as PH-EVIDENCE-21
+STATIC_EVIDENCE: PASS: migration-version lint passes (1075 unique); app typecheck matches the documented 12-error trunk baseline with zero introduced; repair `d247abba47e386fa7426179a52c449550c41f7c4` gives zero-diagnostic real Deno checks for the shared router, existing document export consumer, and new durable document worker
 RENDERED_EVIDENCE: UNVERIFIED: no deployable, authenticated document completion exists until the Reach-owned Spine/schema relay and PH-EVIDENCE-21 land; no screenshot is presented as proof of an unavailable end-to-end state
 BEHAVIORAL_EVIDENCE: PASS: DOM regression mounts the real shared Paige chat, reloads a stored assistant completion turn, and observes the existing artifact-card boundary with the persisted artifact id and tenant scope
 AUTHENTICATED_RUNTIME: UNVERIFIED: no production write or deployment was authorized; durable submission, provider completion, authenticated artifact hydration, disconnect/reload, account switch, and revision remain proof owed after registry integration and persisted apply
@@ -18,7 +18,7 @@ REDUCED_MOTION: NOT_APPLICABLE: no motion was added or changed; the existing art
 STATE_COVERAGE: PASS: local PostgreSQL 16 proof covers accepted/replayed, duplicate dispatch, succeeded with verified readback, version-conflict blocked, authority-change blocked, missed-wake recovery, ambiguous post-dispatch reconciliation, cross-tenant refusal, and receipt-failure rollback; DOM covers reconnect reconstruction
 TRUTHFUL_STATE_LABELS: PASS: durable substrate remains `SUBSTRATE PROVEN`; this candidate is not called LIVE, deployed, or production-proven; agreement-shaped output is labelled an attorney-review draft artifact only
 SOLO_UI: NO: the changed code is the shared transcript data projection and existing artifact type/label; no Solo shell, route, navigation, form fit, or viewport geometry changes
-UNVERIFIED: Reach-owned Spine declaration and existing-tool schema evolution; governedExecution integration and per-invocation receipt; real Deno-clean Edge graph; full migration replay; `db-live`/`edge-live`; authenticated create/disconnect/reload/revise/export/account-switch evidence; owner 45-second verification; captured production 400 field diagnosis
+UNVERIFIED: Reach-owned Spine declaration and existing-tool schema evolution; governedExecution integration and per-invocation receipt; full migration replay; `db-live`/`edge-live`; authenticated create/disconnect/reload/revise/export/account-switch evidence; owner 45-second verification; captured production 400 field diagnosis
 
 OWNER_INTENT: Paige accepts one long-form drafting intent, keeps working outside the chat request, and later returns one real openable draft artifact in the same conversation without duplicate generation
 MUST_NOT_HAPPEN: duplicate dispatch on Retry; empty-artifact success; raw document content in Mind/Rail/work status; client-supplied authority; agreement lifecycle writes; implicit send/share/sign/publish; DONE plus timeout contradiction
@@ -55,7 +55,7 @@ The owner asks once, receives an accepted durable identity, may disconnect, and 
 - `npm run lint:migration-versions` — 1075 migrations, no version collision, PASS.
 - Impeccable post-edit detect on `src/components/dashboard/PaigeAIChat.tsx` — `[]`, no finding.
 - `npx tsc --noEmit -p tsconfig.app.json` — 12 known trunk diagnostics, exact candidate count 12, zero introduced.
-- `npx --yes deno-bin check --allow-import --node-modules-dir=none supabase/functions/paige-document-worker/index.ts` — BLOCKED by unchanged `_shared/model-router.ts:888` TS2367; PH-EVIDENCE-21.
+- Real `deno check --allow-import --node-modules-dir=none` — zero diagnostics for `_shared/model-router.ts`, `export-document/index.ts`, and `paige-document-worker/index.ts` after repair `d247abba47e386fa7426179a52c449550c41f7c4`.
 
 ## Review and limitations
 
