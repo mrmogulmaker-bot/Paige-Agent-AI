@@ -425,8 +425,16 @@ status, so adding a third does not make this paragraph wrong.
 
   GitHub's code-scanning agent asks its own API for a model, the API answers **HTTP 400 "The requested
   model is not supported"**, and the job exits 1. Corroborating, and also measured: the **check run's
-  output is entirely empty** — no title, no summary, no text — on both heads checked (`221d16669` and
-  `676aa27da`). That is not what a check that found something looks like. *Inference, flagged as one:*
+  output carries no findings** — no title, no summary, no text — on every head checked.
+
+  **`annotations_count` is the trap in that sentence, and it is NOT zero.** On `e986d4eff` it read **2**,
+  which reads like two findings and is not: fetching `/check-runs/<id>/annotations` returned the runner's
+  own noise — a `failure` annotation on `.github` saying *"Process completed with exit code 1."* and a
+  `notice` about the `ubuntu-latest` label migrating to Ubuntu 26. So check the ANNOTATIONS, not the
+  count; a non-zero count here is consistent with the vendor fault, and an earlier version of this
+  passage said "entirely empty", which a lane could have read as refuted by that 2 and concluded this row
+  did not apply — the inverse of the error the row exists to prevent. That is not what a check that found
+  something looks like. *Inference, flagged as one:*
   model availability flipping minute to minute would produce exactly the flapping measured above — but
   that is a hypothesis the error is consistent with, not a second measurement.
 
