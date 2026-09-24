@@ -2,8 +2,8 @@
 /**
  * Door 1 — the gateway `tools` action, driven rather than described.
  *
- * Runs the REAL `_shared/mcp-gateway/tools.ts` (which pulls in the REAL `effect-policy.ts`)
- * against a stubbed Supabase client. Nothing in the handler is mocked; only the transport under
+ * Runs the REAL `_shared/mcp-gateway/tools.ts` (which pulls in the REAL `effect-policy.ts`),
+ * loaded straight from source by Node's own type stripping, against a stubbed Supabase client. Nothing in the handler is mocked; only the transport under
  * it is, because what is under test is the decision layer, not Postgres — the SQL half is proven
  * separately against real Postgres in `supabase/tests/mcp_tool_catalog_tenant_scope.sql`.
  *
@@ -32,17 +32,23 @@
  *
  * Run: node scripts/proof/mcp-gateway-tools-action.mjs
  */
-import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { build } from "esbuild";
+import path from "node:path";
 
-const outDir = path.join(process.cwd(), "node_modules", ".cache", "mcp-gateway-tools-proof");
-const bundle = async (entry, name) => {
-  const outfile = path.join(outDir, name);
-  await build({ entryPoints: [entry], outfile, bundle: true, format: "esm", platform: "node", logLevel: "silent" });
-  return import(pathToFileURL(outfile).href);
-};
-const toolsMod = await bundle("supabase/functions/_shared/mcp-gateway/tools.ts", "tools.mjs");
+// NODE BUILT-INS ONLY, and that is a constraint rather than a preference. This runs in the
+// `database-contract` job, which checks out, installs the Supabase CLI and runs SQL — it does
+// NOT run `npm ci`, so there is no node_modules on that runner. The first version of this file
+// imported `esbuild` to bundle the handler and died with ERR_MODULE_NOT_FOUND the moment CI ran
+// it, having passed locally where the dependency happened to exist. Its two sibling proofs in the
+// same job (`paige-voice-budget-concurrency.mjs`, `mcp-gateway-endpoint-consent-race.mjs`) use
+// `node:` built-ins only; this one now matches them.
+//
+// Node strips TypeScript types natively (22.18+, no flag), and it resolves the `.ts` import
+// specifiers this Deno-targeted module uses, so the REAL handler and the REAL effect policy load
+// directly from source with nothing compiled, copied or stubbed in between.
+const toolsMod = await import(
+  pathToFileURL(path.resolve("supabase/functions/_shared/mcp-gateway/tools.ts")).href
+);
 
 /** A real uuid, because the handler now refuses anything else before it reads. */
 const FIXTURE_ID = "11111111-2222-4333-8444-555555555555";
