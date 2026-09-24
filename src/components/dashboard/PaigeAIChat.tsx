@@ -223,6 +223,14 @@ export interface PaigeAIChatProps {
    */
   soloTenantSafety?: boolean;
   /**
+   * Does the CURRENT account type carry Live Conversation? (§60.) The answer is derived in the one
+   * home — `hasFeature(classification, "live_conversation")` — and passed in, because this component
+   * mounts outside `TenantProvider` in several tests and must not start requiring it. Defaults to
+   * true so no existing mount changes behaviour; it only ever HIDES the control, and the database
+   * refuses independently of whatever is rendered (`live_conversation_tier_allows`).
+   */
+  liveConversation?: boolean;
+  /**
    * An optional caller-owned control rendered in the Solo composer action bar, next to the
    * attachment/mic controls. The dedicated Solo workspace passes the real Paige-permissions chip
    * here; every other mount omits it, so the chip never leaks onto a non-Solo surface. Rendered only
@@ -269,6 +277,7 @@ const PaigeAIChatInner = ({
   activeThreadId: controlledThreadId,
   onActiveThreadIdChange,
   soloTenantSafety = false,
+  liveConversation = true,
   composerAutonomyControl,
 }: PaigeAIChatProps) => {
   /** Claude Design's operator chrome. Presentation only — never a second engine. */
@@ -1723,7 +1732,7 @@ const PaigeAIChatInner = ({
     return id;
   }, [activeThreadId, applyConversationEvent, composerScope.visibleHandle, setActiveThreadId, threadsApi]);
 
-  const liveConversationButton = soloTenantSafety && enableHistory ? (
+  const liveConversationButton = soloTenantSafety && enableHistory && liveConversation ? (
     <PaigeLiveConversation
       disabled={composerBlocked || dictationActive}
       contextEpoch={scopeEpoch}

@@ -483,7 +483,7 @@ architecture branch.
 | Rail and detailed receipts | `PARTIAL` | Rail and capability-run evidence cover bounded paths. A universal, correlated, redacted detailed-receipt contract across all Harness work is not live. |
 | Second Brain, Tenant Brain, Mind, Memory, and skills inventory | `PARTIAL` | Durable doctrine, Tenant Brain composition, bounded Mind projections, Memory contracts/stores, and the skills inventory exist at different maturity levels. Proposed durable rows are not eligible confirmed Memory; the confirmed-only runtime projection and integration are `UNAVAILABLE`, with proof owed only after implementation exists. Inventory or storage presence does not prove runtime reach or evaluation. |
 | Text-chat Skills / Intentful Interview | `UNAVAILABLE` | The active MVP workstream owns its shared-chat files and acceptance criteria. Its candidate branch is not on current `main` and is not absorbed by this record; authenticated durable-state, Rail, abandonment, and regression evidence remain its gate. |
-| Live Conversation architecture and provider gates | `PARTIAL` | PR #1053 landed the provider-neutral UI/control plane and governance contract; merged PR #1068 adds the organic Paige Presence and actual played-output reaction. Migration `20270420000000` (2026-09-24) removes the single-account shape: admission was an identity predicate pinned to one stored user id who also had to hold `super_admin`, and is now a platform-owned rollout allowlist, so the capability is shell-wide by construction while who may speak today stays configuration. The rollout allowlist ships EMPTY — no account is admitted, and the product being multi-tenant is not the restriction lifting. Provider-backed realtime audio remains `PROOF OWED` until provider scope/privacy/cost and authenticated end-to-end proof gates are met; local test audio is not provider speech; verified zero retention remains `UNAVAILABLE` and speaker identity is unenforced (#1417). |
+| Live Conversation architecture and provider gates | `PARTIAL` | PR #1053 landed the provider-neutral UI/control plane and governance contract; merged PR #1068 adds the organic Paige Presence and actual played-output reaction. Migration `20270420000000` (2026-09-24) removes the single-account shape: admission was an identity predicate pinned to one stored user id who also had to hold `super_admin`, and is now a platform-owned rollout allowlist, so the capability is shell-wide by construction while who may speak today stays configuration. Migration `20270422000000` (2026-09-24) completes that move and corrects two things the first pass got wrong. Eligibility is now a question about the tenant's TIER — `live_conversation_tier_allows`, the server twin of `SOLO_FEATURES`, pinned to it by a test — so every Solo account satisfies it the moment it is provisioned, with no per-account row and no operator action; a MISSING availability row means "follow the rollout scope" rather than "refused", which is what a brand-new signup needs. Who may speak today is ONE setting, `paige_voice_readiness.pilot_rollout_scope` (`'off' | 'solo_tier'`), which names no person, login or workspace and ships `'off'`; `paige-voice-profile-admin` gained one additive action to turn it, because a setting only an engineer can change with raw SQL is not a setting the owner has. The correction that mattered most was found by an adversarial read, not by the build: all three admission edge functions (`paige-live-session`, `paige-ai-chat`, `paige-live-relay`) independently read the availability row and refused on a missing one BEFORE consulting the predicate, so the change would have been inert in every product path — a brand-new Solo account refused one layer above the fix. Those duplicate reads are removed and the predicate is the one home. The rollout ships CLOSED — no account is admitted, and the product being multi-tenant is not the restriction lifting. HONEST GAP: no surface calls `paige_live_accept_terms()` yet, so when the scope opens a Solo user still has no button to accept with; that is tracked separately and is not claimed here. Provider-backed realtime audio remains `PROOF OWED` until provider scope/privacy/cost and authenticated end-to-end proof gates are met; local test audio is not provider speech; verified zero retention remains `UNAVAILABLE` and speaker identity is unenforced (#1417). |
 | Secure Browser control plane and worker boundary | `UNAVAILABLE` | Public bounded research and the prerequisite security foundation exist, but the customer capability does not. Credentialed browsing, provider sessions, Connected Accounts, worker authority proof, budgets, and detailed receipts remain unavailable or proof-owed in the separately owned MVP workstream. |
 | Durable background work, retry, recovery, and visible job state | `PARTIAL` | The action bus, scheduled workers, claims, retries, alert evaluation, and several job records exist. They are not yet one uniformly governed, owner-visible Harness job contract. |
 | Model routing, provider fallback, spend, and latency controls | `PARTIAL` | The shared router has task/modality routing, allowlists, fallback, traces, latency, and cost estimates. Universal provider coverage, enforced per-task/tenant spend ceilings, and correlated quality gates remain owed. Estimates are not budget enforcement. |
@@ -2818,6 +2818,26 @@ Grouped:
 ---
 
 ## 5. Current focus + known gaps
+
+### Live Conversation has no way in for a Solo user — GAP, named rather than implied (2026-09-24)
+
+Migration `20270422000000` made Live a Solo **tier** capability and reduced "who may speak today" to
+one setting. Two things it deliberately did not do, both of which stand between a Solo user and
+actually talking to Paige:
+
+- **`paige_live_accept_terms()` has no caller.** The RPC exists, takes no identity argument, refuses
+  while the scope excludes the caller, and is granted to `authenticated` — but nothing in `src/` or
+  `supabase/functions/` invokes it. So even with the scope open, a Solo user has no control to accept
+  the terms with, and without an acceptance row the admission predicate still refuses them. This is
+  the one item that decides whether the capability is usable rather than merely correct (§70.1: UI
+  that describes a capability without allowing its human flow is not delivered).
+- **Nobody has been admitted, because nothing is open.** `pilot_rollout_scope` ships `'off'`.
+  Flipping it is a decision about extending acceptance of the provider's **default audio retention**
+  to people who are not the platform owner, and it is the owner's to make, not an engineering step.
+  Verified zero retention remains `UNAVAILABLE` and physical speaker identity is unenforced (#1417).
+
+Neither is a defect in the migration; both are the honest edge of what it claims. The first is
+tracked as the next slice of this work.
 
 ### Agent-control experience — PROPOSED / NOT BUILT, gated behind #1234 (owner-accepted 2026-09-13)
 

@@ -21,6 +21,16 @@ const requestSchema = z.discriminatedUnion("action", [z.object({
 }).strict(), z.object({
   action: z.literal("disable-live-pilot"),
 }).strict(), z.object({
+  // Who may use Live today, as a TIER and never a roster. This is the whole of "when the gate
+  // opens, you change a setting": there is no account, login, email or workspace to supply here,
+  // and the schema is `.strict()`, so one cannot be smuggled in.
+  action: z.literal("set-live-rollout-scope"),
+  scope: z.enum(["off", "solo_tier"]),
+  // Opening Live to every Solo account extends the operator's own acceptance of DEFAULT PROVIDER
+  // RETENTION to people who are not the operator. That is a decision, not a toggle, so it is
+  // restated at the moment it is made rather than inherited from the earlier authorization.
+  accept_default_provider_retention_for_scope: z.literal(true).optional(),
+}).strict(), z.object({
   action: z.literal("activate-approved-profile"),
   profile_id: z.string().min(1).max(128),
   paige_facing_name: z.string().min(1).max(128),
@@ -50,6 +60,29 @@ serve(async (req: Request) => {
   const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   // Scope comes only from the authenticated canonical workspace resolver,
   // never an account or tenant value supplied in the request body.
+  if (parsed.data.action === "set-live-rollout-scope") {
+    // Widening requires the acceptance to be restated in the same request that widens it. Closing
+    // never does: a brake must not be harder to reach than the accelerator.
+    if (parsed.data.scope !== "off" && parsed.data.accept_default_provider_retention_for_scope !== true) {
+      return json({ code: "scope_retention_acceptance_required", scope_unchanged: true }, 409);
+    }
+    const { data: scopeResult, error } = await admin.rpc("set_paige_live_rollout_scope_internal", {
+      _actor_user_id: user.id, _scope: parsed.data.scope,
+    });
+    if (error) return json({ code: "rollout_scope_change_refused", scope_unchanged: true }, 409);
+    // Say what changed and what is still unresolved. Opening the scope does not make audio work,
+    // and nothing here has observed that it does (§13): verified zero retention is still
+    // UNAVAILABLE and physical speaker identity is still unenforced (#1417).
+    return json({
+      ok: true, code: "rollout_scope_set",
+      scope: scopeResult?.scope ?? parsed.data.scope,
+      subjects_withdrawn: scopeResult?.subjects_withdrawn ?? 0,
+      retention_state: "default_provider_retention",
+      zero_retention_state: "UNAVAILABLE",
+      speaker_identity_system_enforced: false,
+      live_audio_proof: "UNVERIFIED",
+    });
+  }
   if (parsed.data.action === "disable-live-pilot") {
     const { error } = await admin.rpc("set_paige_live_pilot_internal", {
       _actor_user_id: user.id, _tenant_id: null, _enabled: false,

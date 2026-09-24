@@ -406,9 +406,21 @@ for (const value of [false, null, 'true', 1, {}]) {
 }
 const brokenAdmission = await driveSession({ authorization: true, authorizationError: true });
 check('session authorization RPC error prevents ticket insertion', brokenAdmission.body.availability === 'UNAVAILABLE' && brokenAdmission.writes.length === 0);
-const workspaceDisabled = await driveSession({ enabled: false });
-check('disabled workspace availability prevents session ticket issuance', workspaceDisabled.body.availability === 'UNAVAILABLE'
-  && workspaceDisabled.writes.length === 0 && !workspaceDisabled.calls.some((call) => call.name === 'paige_live_pilot_authorized_internal'));
+// The availability row is no longer read here (§18: the predicate owns the admission question and
+// honours BOTH of that row's meanings — enabled=true admits outright, enabled=false is a kill
+// switch). A disabled workspace is still refused; it is refused because the PREDICATE refuses it,
+// against the real table, which the pgTAP suite proves. This asserts the seam that replaced the
+// old short-circuit: the handler consults the predicate and does not substitute its own answer.
+const workspaceDisabled = await driveSession({ enabled: false, authorization: false });
+check('a workspace the predicate refuses issues no ticket', workspaceDisabled.body.availability === 'UNAVAILABLE'
+  && workspaceDisabled.writes.length === 0
+  && workspaceDisabled.calls.some((call) => call.name === 'paige_live_pilot_authorized_internal'));
+// `enabled:false` beside an admitting predicate is not a reachable production state — the predicate
+// reads that row itself. It exists here only to prove the stale second gate is gone: were it still
+// present, this would short-circuit and never reach the predicate at all.
+const availabilityNotSecondGuessed = await driveSession({ enabled: false, authorization: true });
+check('the handler no longer short-circuits on the availability row', availabilityNotSecondGuessed.calls
+  .some((call) => call.name === 'paige_live_pilot_authorized_internal'));
 const suppliedScope = await driveSession({ body: { actor_user_id: 'forged-actor', tenant_id: 'forged-tenant' } });
 check('session request cannot replace canonical actor or tenant', suppliedScope.writes.length === 1 && suppliedScope.writes[0].value.actor_user_id === sessionActor
   && suppliedScope.writes[0].value.tenant_id === sessionTenant);
