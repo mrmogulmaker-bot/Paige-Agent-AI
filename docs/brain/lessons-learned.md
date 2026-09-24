@@ -2813,9 +2813,15 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      exactly one right answer in both columns: that merge commit's FIRST PARENT.** Anything else you
      might reach for can drift from the merge it is meant to pair with — the payload `base.sha` because
      GitHub never advances it, a local `origin/main` because fetching the merge ref does not update it.
-     A `workflow_dispatch` run has no merge and therefore no first parent (rule 10), so its baseline is
-     the `main` tip that run fetched, which is not recoverable afterwards — that is an UNPROVEN
-     attribution, not a licence to substitute today's tip. And when the trees for the question you are asking cannot be reconstructed, the
+     A `workflow_dispatch` run has no merge and therefore no first parent (rule 10); its baseline is the
+     **merge-base that run logged** (`ci.yml` prints `merge-base(base=…, head=…) = …`), NOT the `main`
+     tip it fetched — that tip carries `main`-only changes whenever the branch does not contain current
+     `main`, so a failure `main` fixed after the fork reads as branch-introduced. **And the baseline
+     follows from what the run checked out, which is why it is a rule and not two special cases:** a
+     `pull_request` run tests the merge, so the baseline is that merge's first parent; a dispatch run
+     tests the dispatched commit alone, so the baseline is its merge-base. A round of this review said
+     the dispatch baseline was unrecoverable; it is printed in the run log, and giving up on a
+     recoverable attribution is its own kind of wrong. And when the trees for the question you are asking cannot be reconstructed, the
      honest answer is UNPROVEN; substituting the nearest available tree is how a confident wrong
      attribution gets made.
   8. **The meta-pattern, and the one actually worth carrying: four of the findings were an

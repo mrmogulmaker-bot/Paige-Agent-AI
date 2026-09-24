@@ -96,7 +96,7 @@ is bare in all three, so what it lands on differs:
 | the run's `event` | the tree that actually ran | how the changed-file / edge gates pick their base |
 |---|---|---|
 | `pull_request` | the **synthetic merge ref** — the base merged with your head | `github.event.pull_request.base.sha` (lines 83, 86-87) |
-| `workflow_dispatch` | the **dispatched commit itself**; no merge is created. The job takes `HEAD="$GITHUB_SHA"` (line 92) | the **live `origin/main` tip at run time**, fetched inside the step (lines 91-92) |
+| `workflow_dispatch` | the **dispatched commit itself**; no merge is created. The job takes `HEAD="$GITHUB_SHA"` (line 92) | the **live `origin/main` tip at run time**, fetched inside the step (lines 91-92) — and the step then computes and **logs** `merge-base(base, head)` (lines 94, 97) |
 | `push` to `main` | the pushed commit | not a PR question |
 
 `GET /actions/runs/<id>` → `"event"`. Do this first; the rest of this section branches on it.
@@ -147,7 +147,7 @@ it; your local `origin/main` drifts because nothing fetched it.
 | the question | the two trees to compare |
 |---|---|
 | *"why did THAT recorded `pull_request` run fail?"* | the **exact merge commit that run checked out** and **its own FIRST PARENT**. Both pinned to the run, because the run is the subject — and the first parent IS the base tip that merge used, so it cannot drift from it. **Do not use `github.event.pull_request.base.sha` here**: see the row below. |
-| *"why did THAT recorded `workflow_dispatch` run fail?"* | the **dispatched commit** — which for a dispatch IS the tested tree, so `head_sha` is enough — and the **`main` tip that run fetched**. |
+| *"why did THAT recorded `workflow_dispatch` run fail?"* | the **dispatched commit** — which for a dispatch IS the tested tree, so `head_sha` is enough — and **that run's logged MERGE-BASE**, which `ci.yml:97` prints as `merge-base(base=…, head=…) = …`. **Not the `main` tip it fetched**: if the branch does not contain current `main`, that tip carries `main`-only changes, and a failure `main` fixed after the fork then reads as branch-introduced. |
 | *"is my branch sound right now?"* | the PR's **current merge ref** — `refs/pull/<N>/merge`, fetched, not hand-built (see below) — and **its own FIRST PARENT**. Both current, because now is the subject. **Not your local `origin/main`**: fetching the merge ref does not update it, so a stale `origin/main` can predate the base that merge was built on, and then the comparison carries `main`-only changes into your branch's column. |
 
   **Do not mix one from each row.** That is what every version of this procedure did, in a different
@@ -157,8 +157,11 @@ it; your local `origin/main` drifts because nothing fetched it.
   commit is not something this file can tell you how to do: the workflow-run API exposes `head_sha` —
   your **branch** commit, not the tree that ran — and no field I checked carries the merge SHA. I did
   not verify whether the checkout step's log records it, so I am not claiming that it does. For a
-  `workflow_dispatch` run the tested tree IS recoverable (it is `head_sha`), but the base it diffed
-  against was `main`'s tip at that moment and is not recoverable once `main` moves. **Either way, if you
+  `workflow_dispatch` run **both trees are recoverable**: the tested tree is `head_sha`, and the baseline
+  is printed into the run log by the workflow itself (`ci.yml:97`). An earlier version of this limit said
+  that baseline was lost once `main` moved — wrong, and wrong in the direction that gives up on an
+  attribution that is actually available; the `main` tip it fetched is not recoverable, but that tip was
+  never the right baseline. **If you
   cannot reconstruct both trees, the honest outcome is that the attribution for that run is UNPROVEN.**
   Re-run CI on a head you control and attribute that instead; do not substitute a fresh merge, or a
   current `main`, and call it the same run.
@@ -170,11 +173,17 @@ which is the same tree a bare `actions/checkout@v4` hands CI:
 ```sh
 PR=<your PR number>            # NOT a number copied out of this file
 REF=refs/remotes/origin/pr-$PR-merge
-git fetch origin "refs/pull/$PR/merge:$REF"
+git fetch --force origin "refs/pull/$PR/merge:$REF" || { echo "fetch failed — stop"; exit 1; }
 git log --format='%H %P' -1 "$REF"     # the merge and BOTH parents — read them
 BASE=$(git rev-parse "$REF^1")         # <- the baseline. NOT origin/main, which this fetch did not touch
 HEAD_CMT=$(git rev-parse "$REF^2")     # the head COMMIT that merge carries, if you want to check it is yours
 ```
+
+**The `--force` is load-bearing, not tidiness.** GitHub regenerates the merge commit whenever the head
+or the base moves, and the new one is generally NOT an ancestor of the old, so a plain fetch is refused
+as a non-fast-forward and silently leaves `$REF` on the previous merge — after which `$REF^1` and `$REF^2`
+describe a state that no longer exists. Fetch refusals are quiet enough to miss, which is why the line
+also stops on failure rather than continuing with whatever was there.
 
 Prefer it over `git merge` in a scratch worktree: a hand-made merge is *a* merge of those two commits,
 this is *the* one, and printing its parents proves which base and which head it actually carries. It
@@ -214,7 +223,7 @@ rounds have each killed one shortcut this section offered. Do not re-offer them:
 | none of **my diff's paths** appear | Vitest names the test FILE, not what it reads; and a test can import anything, including across `src/` ↔ `supabase/functions/` |
 | the failing **names** all match the twenty | a change can alter a listed failure *in place*, keeping its name |
 | a failing **name is missing** from the twenty | **the list is pinned to `7ebdd9fea` and `main` moves.** A failure `main` acquired afterwards is absent from the list and is still not yours |
-| **merge-base versus head** match | neither is the tree CI ran. On a `pull_request` run CI tests the base tip MERGED with your head, so a failure from current `main` or from the combination appears in CI and in neither of those two. (The head alone becomes valid the moment `origin/main` is an ancestor of it — but that is a condition to CHECK, not a default, and the merge-base is still wrong either way) |
+| **merge-base versus head** match | dead for a `pull_request` run, and CORRECT for a `workflow_dispatch` one — which is not a special case but the rule falling out of what each run checked out. A `pull_request` run tests the base tip MERGED with your head, so a failure from current `main` or from the combination appears in CI and in neither of those two. A dispatch run tests the dispatched commit ALONE, so `merge-base..head` is exactly the branch's own contribution, and that merge-base is the one the run logged. (On a `pull_request` run the head alone also becomes valid the moment `origin/main` is an ancestor of it — a condition to CHECK, not a default) |
 | **the merge ref** is the tested tree | only for a `pull_request` run. A `workflow_dispatch` run tests the dispatched commit and creates no merge, so fetching a merge ref there compares against a tree that never existed. Read the run's `event`; do not infer it from who opened the PR |
 
 **The `merge-base versus head` row is the one that generalises, and it is this file's own opening mistake
