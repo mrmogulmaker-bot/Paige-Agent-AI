@@ -24,7 +24,8 @@ const outputTokens = async (scope: LiveRuntimeScope, content = "I hear you. Let 
   return signed.split("\n").filter((line) => line.startsWith("data: {")).map((line) => JSON.parse(line.slice(6)))
     .filter((event) => event.paige_live_output).map((event) => event.paige_live_output as string);
 };
-async function fixture(authorize: (force?: boolean) => Promise<boolean> = async () => true) {
+async function fixture(authorize: (force?: boolean) => Promise<boolean> = async () => true,
+  mouth?: (text: string, signal: AbortSignal) => Promise<ReadableStream<Uint8Array>>) {
   const sent: Array<string | ArrayBuffer> = [];
   const usage: UsageEvent[] = [];
   const spoken: string[] = [];
@@ -38,7 +39,7 @@ async function fixture(authorize: (force?: boolean) => Promise<boolean> = async 
     send(frame) { sent.push(frame); if (typeof frame === "string") { const f = JSON.parse(frame); if (f.type === "runtime.dispatch") resolveDispatch(f); } },
     close() { closes++; },
     openEars: async (events) => { ears = events; return { ok: true, ears: { sendPcm: (b) => b.byteLength / 32, close() {}, cancel() {} } }; },
-    openMouth: async (text) => { spoken.push(text); return new ReadableStream<Uint8Array>({ start(c) { c.enqueue(Uint8Array.of(1, 2, 3)); c.enqueue(Uint8Array.of(4, 5, 6)); c.close(); } }); },
+    openMouth: mouth ?? (async (text) => { spoken.push(text); return new ReadableStream<Uint8Array>({ start(c) { c.enqueue(Uint8Array.of(1, 2, 3)); c.enqueue(Uint8Array.of(4, 5, 6)); c.close(); } }); }),
     runtimeProof: { issue: (turnId, text) => proof.issue({ ...base, turnId }, text), readOutput: proof.readOutput },
     usage: { emit(event) { usage.push(event); } },
   });
@@ -81,6 +82,38 @@ for (const attack of ["unsigned", "tamper", "replay", "gap", "wrong-scope", "aft
   else { a.bridge.receive(JSON.stringify({ type: "interrupt" })); for (const t of valid) await send(t); }
   await tick(); check(`${attack}: no mouth call`, a.spoken.length === 0);
   a.bridge.end();
+}
+let mouthAborted = false;
+const barrier = await fixture(undefined, async (_text, signal) => new ReadableStream<Uint8Array>({ start(c) {
+  c.enqueue(Uint8Array.of(1, 2));
+  signal.addEventListener('abort', () => { mouthAborted = true; c.error(new Error('fixture_cancelled')); }, { once: true });
+} }));
+for (const token of await outputTokens(barrier.scope, 'An answer.')) {
+  await barrier.bridge.receive(JSON.stringify({ type: 'runtime.proof', turn_id: barrier.scope.turnId, proof: token }));
+}
+await tick();
+check('interrupt barrier fixture has actual in-flight mouth audio', barrier.sent.some(frame => frame instanceof ArrayBuffer));
+check('completed runtime still waits while mouth audio is in flight', !barrier.sent.some(frame =>
+  typeof frame === 'string' && JSON.parse(frame).type === 'runtime.done'));
+barrier.bridge.receive(JSON.stringify({ type: 'interrupt', request_id: 1 }));
+const barrierFrames = barrier.sent.filter((frame): frame is string => typeof frame === 'string').map(frame => JSON.parse(frame));
+const ackIndex = barrierFrames.findIndex(frame => frame.type === 'interrupt.ack' && frame.request_id === 1);
+check('interrupt acknowledgement follows mouth abort and playback clear', mouthAborted && ackIndex >= 0 &&
+  barrierFrames.findIndex(frame => frame.type === 'clear_playback') < ackIndex);
+barrier.bridge.receive(JSON.stringify({ type: 'interrupt', request_id: 2 }));
+check('already-interrupted turn still acknowledges the latest barrier', barrier.sent.some(frame =>
+  typeof frame === 'string' && JSON.parse(frame).type === 'interrupt.ack' && JSON.parse(frame).request_id === 2));
+await tick(); await tick();
+check('cancelled mouth cleanup cannot emit runtime completion after the acknowledgement', !barrier.sent.some(frame =>
+  typeof frame === 'string' && JSON.parse(frame).type === 'runtime.done'));
+barrier.bridge.end();
+for (const request_id of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, '1', null]) {
+  const bad = await fixture();
+  bad.bridge.receive(JSON.stringify({ type: 'interrupt', request_id }));
+  check('invalid provided interrupt request ID fails closed: ' + JSON.stringify(request_id), bad.closes() === 1 &&
+    bad.sent.some(frame => typeof frame === 'string' && JSON.parse(frame).type === 'unavailable') &&
+    !bad.sent.some(frame => typeof frame === 'string' && JSON.parse(frame).type === 'interrupt.ack'));
+  bad.bridge.end();
 }
 const expired = createLiveRuntimeProof("fake-only-never-a-server-secret-0123456789", () => Date.now() + 121000);
 check("expired challenge rejected", await expired.readChallenge(f.dispatch.challenge) === null);

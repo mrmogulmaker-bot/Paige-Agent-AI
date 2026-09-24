@@ -8,6 +8,23 @@ const session = readFileSync("supabase/functions/paige-live-session/index.ts", "
 const operator = readFileSync("supabase/functions/paige-voice-profile-admin/index.ts", "utf8");
 
 describe("Paige voice provider boundary", () => {
+  it("bounds the actual relay sender and cancels once without recursively sending into a full socket", () => {
+    const edge = readFileSync("supabase/functions/paige-live-relay/index.ts", "utf8");
+    const method = edge.slice(edge.indexOf("    send(frame) {"), edge.indexOf("    close(code, reason) {"));
+    const sent: unknown[] = [];
+    const failures: string[] = [];
+    const socket = { readyState: 1, bufferedAmount: 0, send: (frame: unknown) => sent.push(frame) };
+    const bridge = { unavailable: (code: string) => { failures.push(code); send("failure notification"); } };
+    const send: (frame: string | ArrayBuffer) => void = new Function("socket", "bridge", "WebSocket", `let outputBlocked = false; return ({${method}}).send;`)(socket, bridge, { OPEN: 1 });
+    send(new ArrayBuffer(4));
+    expect(sent).toHaveLength(1);
+    socket.bufferedAmount = 262_144;
+    send(new ArrayBuffer(2));
+    send(new ArrayBuffer(2));
+    expect(sent).toHaveLength(1);
+    expect(failures).toEqual(["live_output_backpressure"]);
+  });
+
   it("cannot route a caller-selected voice from the shared model router", () => {
     const voiceCell = router.slice(router.indexOf("const voiceCell"), router.indexOf("const docRenderCell"));
     expect(voiceCell).not.toMatch(/voiceId|voice_id|elevenlabsTts|ELEVENLABS_API_KEY/);
