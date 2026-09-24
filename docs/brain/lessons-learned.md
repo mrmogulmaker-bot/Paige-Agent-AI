@@ -2808,7 +2808,7 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      historical run. And when the trees for the question you are asking cannot be reconstructed, the
      honest answer is UNPROVEN; substituting the nearest available tree is how a confident wrong
      attribution gets made.
-  8. **The meta-pattern, and the one actually worth carrying: four of the nine findings were an
+  8. **The meta-pattern, and the one actually worth carrying: four of the findings were an
      ENUMERATION offered where a general RULE was needed.** Widen the regex to cover single quotes
      (enumerate the quote styles). Add a line counter (enumerate the layouts). Name two directories as
      the trees a baseline test reads from (enumerate the dependency roots — defeated by
@@ -2820,6 +2820,29 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      the runtime rather than a second derived count, and name the comparison by the question's moment
      instead of listing which diffs need it. When the next fix is a slightly longer list, that is the signal to stop and find the
      rule.
+  9. **A reference by POSITION goes stale the moment the thing it counts from grows.** A sentence
+     introducing a table's conclusion as *"the last row is the one that generalises"* was silently
+     re-pointed at something else by a later round appending a row beneath it — so the summary now
+     described a different claim than the one it was written for, with nothing edited and nothing to
+     notice. This is rule 6 wearing a different hat: rule 6 is a summary that RESTATES its detail, this
+     is a summary that COUNTS it. **Name the thing you mean** — the row, the section, the check — because
+     a name survives insertion and an ordinal does not. The sweep that caught the other four instances
+     was the same one rule 6 prescribes: grep by the SUBJECT (here, positional reference) rather than by
+     the phrasing you just wrote.
+ 10. **The MOMENT is not the only axis a measurement can mismatch: for anything read out of CI, the
+     run's EVENT decides what "the tree that ran" even means.** Rule 7 says compare two trees from the
+     question's moment. That is necessary and it is not sufficient: `ci.yml` fires on `pull_request`,
+     `push` and `workflow_dispatch`, and a bare `actions/checkout@v4` lands on a *different kind of
+     thing* in each — the synthetic merge ref, the pushed commit, or the dispatched commit with **no
+     merge created at all**. A procedure that names one tree shape is wrong for the other event however
+     carefully its moments line up, and "go find the merge commit" is unanswerable for a dispatch run.
+     **Read the run's `event` first, then pick the pair.** Two corollaries worth having, both measured:
+     do NOT infer the event from who opened the PR (the `workflow_dispatch` path exists because a
+     bot-authored PR's events are withheld, yet this PR's own runs are `pull_request` on an author whose
+     login ends in `-bot` and whose API `type` is `User` — the withholding is about the credential, not
+     the name); and within ONE `pull_request` run the tested tree and the changed-file gates' base are
+     different commits, because the merge ref tracks `main`'s live tip while
+     `github.event.pull_request.base.sha` does not advance.
 - **Cross-references.** §13 (honest reporting), §32 (a green result is not a working one — this is its
   guard-shaped twin), §39 (peer-gate: all three were found by an independent read, none by the author),
   §18 (one home — the parser the sibling guard already used), #1383 (`read_only` is not an `ActionRisk`,

@@ -48,19 +48,24 @@ called `ci:tsc`, and there is none called plain `Vercel` either.
 
 ## #1372 — the `npm run test` baseline
 
-Measured twice, full output captured both times:
+Measured three times on three different `main` tips, full output captured each time. **These rows exist
+to prove the totals MOVE — they are not values to match**, and the file does not promise to keep chasing
+them:
 
 | measured at | Test Files | Tests | exit |
 |---|---|---|---|
 | `main` @ `a96e37a70` | 5 failed \| 371 passed (376) | 20 failed \| 5253 passed (5273) | **1** |
-| `main` @ `7ebdd9fea` (+ this branch, which touches no `src/`) | 5 failed \| **375** passed (**380**) | 20 failed \| **5314** passed (**5334**) | **1** |
+| `main` @ `7ebdd9fea` (+ a branch touching no `src/`) | 5 failed \| 375 passed (380) | 20 failed \| 5314 passed (5334) | **1** |
+| `main` @ `bad21bed6` | 5 failed \| 375 passed (380) | 20 failed \| **5406** passed (**5426**) | **1** |
 
-**Compare the FAILING numbers, not the totals.** Across those two measurements the failing set is
-identical — the same 5 files, the same 20 tests — while the passing totals moved by +4 files and +61
-tests, because `main` merged new test files in between. A lane that matches on "376 files" will
-conclude something is wrong the first time anyone adds a test. **Neither pair of numbers is an
-invariant; both are snapshots of a branch that keeps moving** — see the procedure below, which is the
-only thing that attributes a failure.
+**Compare the FAILING numbers, not the totals.** The failing set has been identical at all three tips —
+the same 5 files, the same 20 tests, and (checked on the last two) the same names and the same failure
+messages. The passing totals moved twice, by +4 files / +61 tests and then by **+0 files / +79 tests**:
+the last jump added no test FILES at all, so a lane watching the file count would have seen nothing while
+79 tests appeared. A lane matching on "376 files", or on any total here, will conclude something is wrong
+the first time anyone adds a test. **No number in this table is an invariant; the *failing set* is the
+closest thing to one, and even that is a claim to re-measure rather than to trust** — see the procedure
+below, which is the only thing that attributes a failure.
 
 The five files:
 
@@ -204,7 +209,7 @@ looked like when it was measured, which is useful for recognising the shape of a
 clear your run and they cannot convict it.
 
 <details>
-<summary><b>The twenty failing tests</b> — measured on <code>main</code> @ <code>7ebdd9fea</code> (14 · 1 · 3 · 1 · 1)</summary>
+<summary><b>The twenty failing tests</b> — measured on <code>main</code> @ <code>7ebdd9fea</code> (14 · 1 · 3 · 1 · 1), re-measured unchanged at <code>1e592542e</code> and <code>bad21bed6</code></summary>
 
 `src/solo/SoloGamePlanWorkspace.test.tsx` › *Business Game Plan owner-complete vertical* ›
 - preserves Set your plan and replaces generic system/activity material with Plan in Motion
