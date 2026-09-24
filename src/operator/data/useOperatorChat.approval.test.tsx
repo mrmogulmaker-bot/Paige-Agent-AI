@@ -111,6 +111,20 @@ describe("the platform operator can approve a gated action from the spine", () =
     // by-scope fallback for every tool in the request while approving nothing.
     expect(approval.declinedConfirmations).toBeUndefined();
 
+    // WHAT THE MODEL CAN READ BACK. History crosses a turn as `{role, content}` only — tool calls
+    // and tool results do not — so the approving turn must not follow the operator's own previous
+    // message with no record in between of what was proposed. The summaries are that record, in
+    // prose the model can reproduce.
+    const msgs = approval.messages as Array<{ role: string; content: string }>;
+    expect(msgs.at(-1)).toEqual({ role: "user", content: "Approved — run it." });
+    const spoken = msgs.filter((m) => m.role === "assistant");
+    expect(spoken.length, "the proposing turn left an assistant record").toBeGreaterThan(0);
+    // Here she DID speak, so her own prose is the record — the summaries stand in only when she
+    // said nothing at all.
+    expect(spoken.at(-1)!.content).toBe("One change to approve.");
+    // ...and never an empty assistant turn, which records nothing and some providers refuse.
+    expect(msgs.every((m) => m.content.trim().length > 0)).toBe(true);
+
     // Decided means decided: the act is gone, so it cannot be fired twice. `act` itself is removed
     // rather than just its handler, because the gold plate has no disabled treatment — a button
     // that still looks live and does nothing is the dead control this work exists to end.
@@ -179,10 +193,12 @@ describe("the platform operator can approve a gated action from the spine", () =
   });
 
   it("does not leave an empty bubble when the turn was all proposal and no prose", async () => {
+    const bodies: string[] = [];
     const controllers: ReadableStreamDefaultController<Uint8Array>[] = [];
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(
-      new ReadableStream<Uint8Array>({ start: (c) => { controllers.push(c); } }), { status: 200 },
-    )));
+    vi.stubGlobal("fetch", vi.fn(async (_u: string, init?: RequestInit) => {
+      if (typeof init?.body === "string") bodies.push(init.body);
+      return new Response(new ReadableStream<Uint8Array>({ start: (c) => { controllers.push(c); } }), { status: 200 });
+    }));
 
     const host = document.createElement("div");
     document.body.appendChild(host);
@@ -214,6 +230,20 @@ describe("the platform operator can approve a gated action from the spine", () =
     // empty bubble sitting above it.
     expect(host.textContent).toContain("needs your OK");
     expect((host.textContent ?? "").match(/Paige/g) ?? []).toHaveLength(1);
+
+    // AND THE NEXT TURN CAN STILL READ WHAT SHE PROPOSED. With no prose of her own, the summaries
+    // become the assistant record — otherwise "Approved — run it." would follow the operator's own
+    // previous message with nothing in between saying what was being approved.
+    await act(async () => {
+      [...host.querySelectorAll<HTMLButtonElement>("button")]
+        .find((b) => b.textContent?.trim() === "Approve")!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const sent = JSON.parse(bodies[bodies.length - 1]).messages as Array<{ role: string; content: string }>;
+    const record = sent.filter((m) => m.role === "assistant").at(-1);
+    expect(record?.content).toContain("Move Northwind Partners to Proposal.");
+    expect(sent.every((m) => m.content.trim().length > 0)).toBe(true);
 
     await act(async () => root.unmount());
     host.remove();

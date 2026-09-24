@@ -239,8 +239,19 @@ export function useOperatorChat(enabled: boolean = true): OperatorChat {
           return;
         }
 
-        if (answer.trim()) {
-          history.current = [...history.current, { role: "assistant", content: answer }];
+        // WHAT THE NEXT TURN CAN READ BACK. Conversation history crosses a turn boundary as
+        // `{ role, content }` only — tool calls and tool results do not — so on the approving turn
+        // the model has nothing but prose to reason from. A turn that was all proposal would
+        // otherwise leave NO assistant entry at all, and the operator's "Approved — run it." would
+        // follow their own previous message with no record in between of what was proposed.
+        // Recording the summaries keeps the binding on something the model can actually reproduce.
+        const spokenRecord = answer.trim()
+          ? answer
+          : confirmThisTurn.length === 1
+            ? `I need your OK before I do this: ${confirmThisTurn[0].summary}`
+            : `I need your OK before I do these: ${confirmThisTurn.map((c) => `— ${c.summary}`).join(" ")}`;
+        if (spokenRecord.trim()) {
+          history.current = [...history.current, { role: "assistant", content: spokenRecord }];
         }
 
         const fingerprints = confirmThisTurn
