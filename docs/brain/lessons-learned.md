@@ -7,6 +7,49 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 ---
 
 
+### A test that has never been RUN is a test that proves nothing, however carefully it was written (2026-09-24)
+
+`supabase/tests/mcp_tool_catalog_tenant_scope.sql` was written with care, reviewed, committed, and
+wired into CI. Executed against Postgres for the first time it failed **three times** before it
+passed — `tenants.slug` is `NOT NULL`, a `BEFORE INSERT OR UPDATE` trigger refuses an
+already-expired approval so that fixture could not be written through the front door at all, and
+`_mcp_endpoint_hash` is REVOKEd from `authenticated` so an assertion could not call it after
+impersonating a tenant member. None of those are subtle. All three were invisible to reading.
+
+Worse than the three failures was what the passing version would have hidden: its connections
+carried no encrypted endpoint, so every assertion in it about a *live* approval was passing over
+consent the runtime verifier would have refused — the exact defect the file was written to catch,
+sitting inside the file. **Writing an assertion is not running it, and running it is what tells you
+which fixtures your production schema will actually accept.** Run the thing before you cite it.
+
+### `approved` is not `authorized`, and a weaker predicate in a READ becomes a lie in a SURFACE (2026-09-24)
+
+The MCP catalogue read returned `approved` from `a.tool_name IS NOT NULL` — an approval ROW exists.
+The function that decides whether Paige may actually run something refuses on **seven** conditions.
+The read modelled two. Everything downstream inherited the gap: the edge counted blocked rows as
+consent, and the drawer rendered *"You approved this"* over an approval bound to an endpoint the
+connection no longer used, with no control on that row because nothing looked wrong.
+
+**When a read backs a surface that states an authority fact, enumerate the authority function's
+refusal conditions and model every one the read can see — then say plainly which ones it cannot.**
+Here two genuinely cannot be known from a list (one compares against the endpoint a runner LOADED
+for a specific dispatch, the other against a specific call's arguments), and inventing inputs for
+them to "reuse the one function" would have fabricated the very values those guards exist to check.
+Naming the boundary is the honest move; silently modelling two of seven is not.
+
+### One catch-all in a test double can make an entire surface's test suite green over a broken render (2026-09-24)
+
+A `world()` helper served ONE resolved value to every edge action. The new `tools` call received a
+connection-shaped body, the hook found no array where it expected one, and the drawer rendered its
+degraded branch — **in all 52 tests that open a drawer, every one of them passing.** The same
+helper's rpc lane answered any unrecognised name with a connection-shaped success, which is exactly
+the shape the hook's acknowledgement guard accepts, so a renamed RPC would have been
+indistinguishable from the real writer working.
+
+**A test double should dispatch on what was actually asked and fail loudly on anything else.** The
+cost of the strict version is naming the three real RPCs and four real actions; the cost of the
+catch-all was a suite that could not fail.
+
 ### "Backward compatible" is a claim about a REPLACE that `create or replace` may not have performed (2026-09-23)
 
 `create or replace function` cannot replace across a **differing argument list**. Given a new
