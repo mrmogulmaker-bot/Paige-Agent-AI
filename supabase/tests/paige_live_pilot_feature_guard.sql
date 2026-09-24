@@ -1,7 +1,7 @@
 -- INT-104: the normal tenant-admin role cannot self-enable third-party audio.
 -- Synthetic fixture only. Every write rolls back.
 BEGIN;
-SELECT plan(130);
+SELECT plan(140);
 
 SELECT ok((SELECT relrowsecurity FROM pg_class WHERE oid='public.paige_live_tenant_availability'::regclass),'platform availability has RLS');
 SELECT ok(NOT has_table_privilege('authenticated','public.paige_live_tenant_availability','SELECT'),'tenant roles cannot read pilot holder rows');
@@ -668,6 +668,45 @@ SELECT ok(NOT has_function_privilege('authenticated','public.set_paige_live_roll
   'and no browser caller can set the rollout scope');
 SELECT ok(NOT has_function_privilege('authenticated','public.live_conversation_tier_allows(uuid)','EXECUTE'),
   'nor read the tier predicate directly');
+
+
+-- ===========================================================================
+-- THE OPERATOR CAN SEE IT (20270423000000)
+--
+-- The setting existed with no way to read it, which is half of why it also had no way to turn it.
+-- This projection is platform-owner-only in its BODY, not by its grant (§59), and it reports counts
+-- rather than people (§13) — an operator needs to know that four accounts are admitted, never which
+-- four; that is the tenants' business, not the platform's.
+-- ===========================================================================
+RESET ROLE;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-00000000000a","role":"authenticated"}',true);
+SELECT throws_ok($q$SELECT public.paige_live_rollout_status()$q$,'42501',NULL,
+  'an ordinary Solo member is refused the rollout status despite holding EXECUTE on it');
+SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-000000000004","role":"authenticated"}',true);
+SELECT throws_ok($q$SELECT public.paige_live_rollout_status()$q$,'42501',NULL,
+  'and so is a delegated platform_admin — this is is_platform_owner, which §53 freezes');
+SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-000000000002","role":"authenticated"}',true);
+SELECT lives_ok($q$SELECT public.paige_live_rollout_status()$q$,
+  'the platform owner is answered');
+SELECT is((public.paige_live_rollout_status() ->> 'zero_retention_state'),'UNAVAILABLE',
+  'and the projection surfaces verified zero retention as UNAVAILABLE beside the switch');
+SELECT is((public.paige_live_rollout_status() ->> 'speaker_identity_enforced')::boolean,false,
+  'and surfaces that physical speaker identity is not enforced');
+SELECT ok((public.paige_live_rollout_status() ->> 'solo_class_tenants')::integer >= 1,
+  'it counts the Solo-class accounts the scope would reach, so the decision is sized not guessed');
+-- §13: the payload is counts. A user id appearing here would leak one tenant's subject to the
+-- operator surface, which is the §9 seam this projection must not cross.
+SELECT ok(public.paige_live_rollout_status()::text NOT LIKE '%fa100000-0000-4000-8000-00000000000a%',
+  'no subject identity appears in the payload');
+SELECT ok(NOT (public.paige_live_rollout_status() ?| array['user_id','tenant_id','email','evidence_ref','provider_voice_ref']),
+  'and no key exists that could carry an identity or a provider reference');
+RESET ROLE;
+SELECT is((SELECT count(*)::integer FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='public' AND p.proname='paige_live_rollout_status'),1,
+  'exactly one rollout projection exists');
+SELECT ok(NOT has_function_privilege('anon','public.paige_live_rollout_status()','EXECUTE'),
+  'an unauthenticated caller cannot reach it at all');
 
 SELECT * FROM finish();
 ROLLBACK;
