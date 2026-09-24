@@ -5,9 +5,9 @@ import { PaigeCommandMark } from "@/components/brand/PaigeCommandMark";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PAIGE_LIVE_CONVERSATION_ENABLED, type LiveConversationCard } from "@/lib/paigeLiveConversation/contract";
-import { renewPaigeLiveRelayTicket, startPaigeLiveConversation, transitionPaigeLiveConversation, type PaigeLiveEntryMode, type PaigeLiveStartResult } from "@/lib/paigeLiveConversation/client";
+import { acceptPaigeLiveTerms, renewPaigeLiveRelayTicket, startPaigeLiveConversation, transitionPaigeLiveConversation, type PaigeLiveEntryMode, type PaigeLiveStartResult } from "@/lib/paigeLiveConversation/client";
 import { connectPaigeLiveRelay, type RelayTransport } from "@/lib/paigeLiveConversation/relayTransport";
-import { PaigePresence } from "./PaigePresence";
+import { PaigePresence3D } from "./PaigePresence3D";
 import { usePaigeOutput } from "./usePaigeOutput";
 import { resolvePresenceState } from "@/lib/paigeLiveConversation/presence";
 import { createAnchoredTranscriptScroll, messageScrollAnchorKey } from "@/components/chat/anchoredTranscriptScroll";
@@ -149,6 +149,9 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   const [explanation, setExplanation] = useState("Live audio setup is being verified. Paige will not request microphone access until it is authorized.");
   const [portalDocument, setPortalDocument] = useState<Document | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  // The refusal CODE, kept because one of them is the only one a person can act on themselves.
+  const [reason, setReason] = useState<string | null>(null);
+  const [acceptingTerms, setAcceptingTerms] = useState(false);
   const [pinned, setPinned] = useState(true);
   const [scrollController] = useState(() => createAnchoredTranscriptScroll({ storagePrefix: "paige-live-reading", onPinnedChange: setPinned }));
   const scrollContext = `${contextEpoch}:${threadId ?? "new"}`;
@@ -327,6 +330,7 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
       }
       setAvailability(result.availability);
       setExplanation(result.explanation);
+      setReason(result.code);
       setState(result.code === "microphone_permission_denied" ? "permission-denied" : "unavailable");
       setAnnouncement(`${result.availability}. ${result.explanation}`);
     } catch (error) {
@@ -423,6 +427,37 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
     await begin();
   };
 
+  /**
+   * The person accepts Live's terms for themselves, then we try again.
+   *
+   * §70 — this is the difference between a capability that exists and one someone can finish. The
+   * database has always been willing to take an acceptance; until this control existed there was no
+   * way in the product to give one, so an open rollout still left a Solo user with nothing to press.
+   *
+   * §13 — the RPC refuses when the rollout does not cover this caller, writes nothing, and says so.
+   * We surface that refusal as the same honest unavailable state, never as an error and never as a
+   * success we are hoping for. It takes no identity argument: the subject is the signed-in person.
+   */
+  const acceptTerms = async () => {
+    if (disabled || acceptingTerms) return;
+    setAcceptingTerms(true);
+    setAnnouncement("Turning on Live Conversation.");
+    try {
+      const outcome = await acceptPaigeLiveTerms();
+      if (!mounted.current) return;
+      if (!outcome.accepted) {
+        setReason(outcome.code ?? "live_audio_not_enabled");
+        setExplanation("Live audio isn't open for this account yet. Nothing was recorded, sent, or saved. You can keep working with Paige in this conversation.");
+        setAnnouncement("Live audio is not open for this account yet. You can keep working with Paige in this conversation.");
+        return;
+      }
+      setReason(null);
+      await retry();
+    } finally {
+      if (mounted.current) setAcceptingTerms(false);
+    }
+  };
+
   const toggleHold = () => {
     const resuming = state === "held";
     if (resuming) output.resume(); else output.pause();
@@ -502,12 +537,32 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
       </header>
       <main className="plc-stage__main">
         <section className="plc-presence" aria-label="Paige Presence and live audio status" data-live-state={state}>
-          <PaigePresence state={presenceState} readEnergy={output.readEnergy} />
+          <PaigePresence3D state={presenceState} visible={open} readEnergy={output.readEnergy} />
           <p className="plc-state"><span />{output.playing ? "Speaking" : state === "listening" && muted ? "Muted" : STATE_LABEL[state]}</p>
           <p id="plc-description" className="plc-context">Working in this exact Paige thread. Nothing here creates a second assistant or a separate memory.</p>
           <div className="plc-working" aria-live="polite"><span>Paige is working on</span><strong>{working ? (workingLabel || "your current request") : "No active work"}</strong></div>
           {(state !== "checking" && availability !== "LIVE") && (
-            <div className="plc-notice" role="status"><strong>{availability}</strong><p>{explanation}</p><Button variant="outline" size="sm" disabled={disabled} onClick={() => void retry()}><RefreshCw aria-hidden />Retry setup check</Button></div>
+            <div className="plc-notice" role="status">
+              <strong>{availability}</strong>
+              <p>{explanation}</p>
+              {reason === "live_audio_not_enabled" && (
+                <div className="plc-terms">
+                  {/* Said plainly, before anyone speaks, because it is true and because a person
+                      cannot agree to something they were not told. No claim is made here that is
+                      not also enforced in the database. */}
+                  <p className="plc-terms__lede">Before Paige can hear you, two things you should know:</p>
+                  <ul className="plc-terms__list">
+                    <li>Your voice is sent to the speech provider and kept under their default retention. Paige has not verified a zero-retention arrangement, so do not assume one.</li>
+                    <li>Paige treats the microphone as one speaker — you. She cannot tell voices apart, so anyone else in the room is heard as you.</li>
+                  </ul>
+                  <p className="plc-terms__scope">This is your own decision for your own account. Nobody can make it on your behalf, and you can stop at any time.</p>
+                  <Button variant="gold" size="sm" disabled={disabled || acceptingTerms} onClick={() => void acceptTerms()}>
+                    <ShieldCheck aria-hidden />{acceptingTerms ? "Turning on Live…" : "I understand — turn on Live"}
+                  </Button>
+                </div>
+              )}
+              <Button variant="outline" size="sm" disabled={disabled} onClick={() => void retry()}><RefreshCw aria-hidden />Retry setup check</Button>
+            </div>
           )}
         </section>
         <section className="plc-workspace" aria-label="Live conversation workspace">

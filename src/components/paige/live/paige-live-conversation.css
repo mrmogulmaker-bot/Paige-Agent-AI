@@ -24,6 +24,15 @@
 .plc-working strong { font-size: .82rem; }
 .plc-notice { width: min(100%,28rem); margin-top: .8rem; padding: .9rem; border: 1px solid hsl(var(--border)); border-radius: .8rem; text-align: left; background: hsl(var(--muted)/.65); }
 .plc-notice > strong { font-size: .68rem; letter-spacing: .08em; }
+/* The terms a person agrees to before Paige can hear them. Token-only, AA in both themes, and
+   deliberately unhurried: this is a consent surface, not a banner, so it earns its height by
+   saying the two things that are actually true about the audio. */
+.plc-terms { margin: .75rem 0 .9rem; padding-top: .75rem; border-top: 1px solid hsl(var(--border)); display: grid; gap: .5rem; }
+.plc-terms__lede { font-weight: 600; font-size: .82rem; color: hsl(var(--foreground)); }
+.plc-terms__list { margin: 0; padding-left: 1.05rem; display: grid; gap: .4rem; font-size: .8rem; line-height: 1.45; color: hsl(var(--muted-foreground)); }
+.plc-terms__list > li::marker { color: hsl(var(--muted-foreground)); }
+.plc-terms__scope { font-size: .76rem; line-height: 1.45; color: hsl(var(--muted-foreground)); }
+.plc-terms > button { justify-self: start; margin-top: .15rem; }
 .plc-notice p { margin: .3rem 0 .7rem; font-size: .78rem; line-height: 1.45; }
 .plc-workspace { min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(10rem,1fr) auto; gap: .9rem; }
 .plc-transcript,.plc-card-layer { min-width: 0; overflow: auto; border: 1px solid hsl(var(--border)/.9); border-radius: 1rem; background: hsl(var(--card)/.76); box-shadow: 0 1rem 3rem hsl(var(--foreground)/.04); }
@@ -64,6 +73,25 @@
 .plc-stage button:focus-visible,.plc-stage input:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; }
 .plc-turn p,.plc-card,.plc-notice,.plc-working { overflow-wrap: anywhere; }
 @keyframes plc-pulse { 0%,100% { opacity: .45; transform: scale(.85); } 50% { opacity: 1; transform: scale(1); } }
+
+/* ENTERING THE STAGE IS ONE CONTINUOUS ACT (§22), not four things appearing at once. The ground
+   settles, then Paige, then the workspace, then the controls — about a third of a second end to end,
+   which reads as the surface arriving rather than as a wait. Spring-shaped easing, transform and
+   opacity only, so nothing here can cost a layout pass. Every one of these is disabled outright
+   under prefers-reduced-motion below. */
+@keyframes plc-stage-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes plc-rise { from { opacity: 0; transform: translateY(14px) scale(.985); } to { opacity: 1; transform: none; } }
+.plc-stage { animation: plc-stage-in .22s ease-out both; }
+.plc-presence { animation: plc-rise .42s cubic-bezier(.22,1,.36,1) both; animation-delay: .04s; }
+.plc-workspace { animation: plc-rise .42s cubic-bezier(.22,1,.36,1) both; animation-delay: .1s; }
+.plc-controls { animation: plc-rise .38s cubic-bezier(.22,1,.36,1) both; animation-delay: .16s; }
+/* The terms are a consent surface: they arrive a beat later and unhurried, so the control is not
+   under the cursor before the sentence above it has been read. */
+.plc-terms { animation: plc-rise .44s cubic-bezier(.22,1,.36,1) both; animation-delay: .06s; }
+/* Controls answer the pointer. Gold stays on the act; this is only lift and edge. */
+.plc-controls button, .plc-terms button { transition: transform .16s cubic-bezier(.22,1,.36,1), box-shadow .16s ease-out; }
+.plc-controls button:hover:not(:disabled), .plc-terms button:hover:not(:disabled) { transform: translateY(-1px); }
+.plc-controls button:active:not(:disabled), .plc-terms button:active:not(:disabled) { transform: translateY(0); }
 @media (max-width: 800px) {
   .plc-stage__main { grid-template-columns: 1fr; grid-template-rows: auto minmax(0,1fr); padding: .8rem; gap: .8rem; }
   .plc-presence { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }
@@ -82,6 +110,12 @@
 }
 @media (prefers-reduced-motion: reduce) {
   [data-live-state] .plc-state span { animation: none; }
+  /* The stage arrives, it does not animate in. Written per-primitive rather than relying on the
+     blanket transition-duration rule below, because an animation-delay with `both` fill would
+     otherwise hold each element invisible for its delay and then snap it in. */
+  .plc-stage, .plc-presence, .plc-workspace, .plc-controls, .plc-terms { animation: none !important; }
+  .plc-controls button, .plc-terms button { transition: none !important; }
+  .plc-controls button:hover:not(:disabled), .plc-terms button:hover:not(:disabled) { transform: none; }
   .plc-stage * { scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
 @media (forced-colors: active) { .plc-stage,.plc-transcript,.plc-card-layer,.plc-working,.plc-notice { border-color: CanvasText; } }

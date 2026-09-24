@@ -2823,19 +2823,24 @@ Migration `20270422000000` made Live a Solo **tier** capability and reduced "who
 one setting. Two things it deliberately did not do, both of which stand between a Solo user and
 actually talking to Paige:
 
-- **`paige_live_accept_terms()` has no caller.** The RPC exists, takes no identity argument, refuses
-  while the scope excludes the caller, and is granted to `authenticated` — but nothing in `src/` or
-  `supabase/functions/` invokes it. So even with the scope open, a Solo user has no control to accept
-  the terms with, and without an acceptance row the admission predicate still refuses them. This is
-  the one item that decides whether the capability is usable rather than merely correct (§70.1: UI
-  that describes a capability without allowing its human flow is not delivered).
+- ~~**`paige_live_accept_terms()` has no caller.**~~ **CLOSED, same day.** The Live stage now offers
+  the acceptance on the one refusal a person can act on: it states what happens to their voice
+  (default provider retention; one speaker), takes the decision with a single control, calls the RPC
+  with no arguments, and then genuinely retries rather than claiming success. A refusal is surfaced
+  as the same honest unavailable state, with no session started and no microphone requested. Four
+  tests drive the flow end to end and a mutation check confirms they discriminate.
 - **Nobody has been admitted, because nothing is open.** `pilot_rollout_scope` ships `'off'`.
   Flipping it is a decision about extending acceptance of the provider's **default audio retention**
   to people who are not the platform owner, and it is the owner's to make, not an engineering step.
   Verified zero retention remains `UNAVAILABLE` and physical speaker identity is unenforced (#1417).
 
-Neither is a defect in the migration; both are the honest edge of what it claims. The first is
-tracked as the next slice of this work.
+The second remains. It is not a defect in the migration; it is the honest edge of what it claims,
+and it is the owner's decision rather than an engineering step.
+
+**What is still owed on this surface:** nobody has SEEN the 3D presence render — not the author, not
+a reviewer. The headless smoke proves the real model parses, frames and materialises, and that a
+silent stage produces zero motion energy; what it looks like on screen is a live look the owner
+owes it, which is how he asked for it to be judged.
 
 ### Agent-control experience — PROPOSED / NOT BUILT, gated behind #1234 (owner-accepted 2026-09-13)
 
