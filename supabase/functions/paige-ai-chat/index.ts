@@ -873,6 +873,10 @@ serve(async (req) => {
         supabase.from("paige_live_tenant_availability").select("enabled").eq("tenant_id", scope.tenantId).maybeSingle(),
       ]);
       if (tenantError || tenant !== scope.tenantId || threadError || !thread || pilotError || pilot?.enabled !== true) return refuseLive();
+      const { data: authorizedPilot, error: authorizationError } = await supabase.rpc("paige_live_pilot_authorized_internal", {
+        _actor_user_id: user.id, _tenant_id: scope.tenantId,
+      });
+      if (authorizationError || authorizedPilot !== true) return refuseLive();
       // Atomic consume BEFORE history writes, tools or model calls. The slot is
       // service-only; concurrent replays cannot both obtain a row. A reconnect or
       // newer turn replaces the digest, making the old challenge unusable.

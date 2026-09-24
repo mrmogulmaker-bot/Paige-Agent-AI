@@ -24,6 +24,7 @@ const NULLTEN = "77777777-7777-4777-8777-777777777777"; // client row with tenan
 const OTHERTEN = "88888888-8888-4888-8888-888888888888"; // visible via a non-tenant policy, other workspace
 const CALLER_TENANT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OTHER_TENANT  = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const LIVE_TEST_SIGNING_KEY = "local-harness-only-live-signing-key-000000000000";
 
 /** Tenant-neutral on purpose: survives `sanitizeClientContextForTier` for a non-funding tenant,
  *  so a missing block means the GUARD dropped it, not the sanitizer. */
@@ -43,6 +44,7 @@ globalThis.Deno = {
     SUPABASE_URL: "https://test.supabase.co", SUPABASE_ANON_KEY: "anon-key",
     SUPABASE_SERVICE_ROLE_KEY: "service-role-key", VOYAGE_API_KEY: "test-voyage-key",
     ANTHROPIC_API_KEY: "test-anthropic-key",
+    PAIGE_LIVE_STREAM_SIGNING_KEY: LIVE_TEST_SIGNING_KEY,
   })[k] ?? "" },
 };
 
@@ -2872,6 +2874,107 @@ console.log("\ncomms/CRM tool gate — Super Admin admitted, platform_admin deni
     assert(`${n} a tenant-less super_admin gets tenant_not_resolved from ${tool}, not "Unknown error"`,
       !readinessRan(r) && egressHas(r, "tenant_not_resolved") && !egressHas(r, "Unknown error"),
       JSON.stringify({ readiness: readinessRan(r), tenant_not_resolved: egressHas(r, "tenant_not_resolved"), unknown_error: egressHas(r, "Unknown error") }));
+  }
+}
+
+console.log("\nsigned Live runtime admission (real handler and real signed challenge)");
+{
+  const { createLiveRuntimeProof, liveRuntimeDigest, sameLiveRuntimeScope } = await import("../../supabase/functions/_shared/paige-live-runtime-proof.ts");
+  const proof = createLiveRuntimeProof(LIVE_TEST_SIGNING_KEY);
+  const threadId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const sessionId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  const transcript = "Check my communication connection status.";
+  const scope = { sessionId, tenantId: CALLER_TENANT, actorId: USER, threadId, epoch: "test-epoch", turnId: "test-turn" };
+  const historyMarker = "Earlier authenticated conversation about this workspace.";
+  const liveDrive = async ({ authority = { data: true, error: null }, scopeOverride = {}, bodyOverride = {} } = {}) => {
+    const issued = await proof.issue({ ...scope, ...scopeOverride }, transcript);
+    const session = { id: sessionId, tenant_id: issued.scope.tenantId, actor_user_id: issued.scope.actorId,
+      thread_id: threadId, context_epoch: issued.scope.epoch, availability: "LIVE", state: "thinking",
+      provider_session_ref: `runtime:${await liveRuntimeDigest(issued.token)}` };
+    let claims = 0;
+    const initialRef = session.provider_session_ref;
+    const matches = (row, filters) => filters.every(([op, key, value]) =>
+      op === "eq" ? row[key] === value : op === "in" ? value.includes(row[key]) : true);
+    const result = await drive({
+      text: transcript, stream: true,
+      extraBody: { threadId, liveRuntimeChallenge: issued.token, ...bodyOverride },
+      toolCall: { name: "comms_connection_summary", args: {} },
+      rpcOverrides: {
+        paige_live_pilot_authorized_internal: authority,
+        get_actor_access: { data: { tier: "tenant" }, error: null },
+        get_paige_persona_context: { data: [{ tenant_id: CALLER_TENANT, tenant_name: "T", playbook_config: null,
+          playbook_slug: null, funding_enabled: false, brand: null }], error: null },
+        tenant_comms_readiness: { data: { can_send_sms: false, blocked_reason: null, number: "absent", number_e164: null, a2p: "absent" }, error: null },
+        list_tool_autonomy: { data: [], error: null },
+      },
+      tablesExtra: {
+        user_roles: () => [{ role: "admin" }],
+        paige_chat_threads: (filters) => {
+          const row = { id: threadId, tenant_id: CALLER_TENANT, caller_user_id: USER, contact_id: null };
+          return matches(row, filters) ? [row] : [];
+        },
+        paige_chat_turns: () => [{ role: "user", content: historyMarker, seq: 1 }],
+      },
+      serviceTablesExtra: {
+        paige_live_tenant_availability: (filters) => {
+          const row = { tenant_id: CALLER_TENANT, enabled: true };
+          return matches(row, filters) ? [row] : [];
+        },
+        paige_live_sessions: (filters) => {
+          if (!matches(session, filters)) return [];
+          const update = filters.find(([op]) => op === "update")?.[1];
+          if (update) { claims += 1; Object.assign(session, update); }
+          return [{ ...session }];
+        },
+      },
+    });
+    return { ...result, claims, session, initialRef, issued };
+  };
+  const authorized = await liveDrive();
+  const authorityCalls = (r) => r.rec.rpc.filter((c) => c.name === "paige_live_pilot_authorized_internal");
+  assert("26.1 literal true admits the signed Live request and consumes its challenge once",
+    authorized.status === 200 && authorized.claims === 1 && authorized.session.provider_session_ref === null,
+    JSON.stringify({ status: authorized.status, claims: authorized.claims, logged: authorized.logged }));
+  assert("26.2 authorization uses the authenticated actor and canonical tenant on the service boundary",
+    authorityCalls(authorized).length === 1 && authorityCalls(authorized).every((c) => c.client === "service" &&
+      c.args._actor_user_id === USER && c.args._tenant_id === CALLER_TENANT), JSON.stringify(authorityCalls(authorized)));
+  assert("26.3 admitted Live reads stored history, reaches the model, and executes the read tool",
+    authorized.rec.from.some((c) => c.table === "paige_chat_turns") &&
+      authorized.modelEgress.some((body) => body.includes(historyMarker)) &&
+      authorized.rec.rpc.some((c) => c.name === "tenant_comms_readiness"), JSON.stringify(authorized.logged));
+  const tokens = authorized.bodyText.split("\n").flatMap((line) => {
+    if (!line.startsWith("data: ")) return [];
+    try { const value = JSON.parse(line.slice(6)); return value.paige_live_output ? [value.paige_live_output] : []; } catch { return []; }
+  });
+  const output = await Promise.all(tokens.map((token) => proof.readOutput(token)));
+  assert("26.4 admitted response carries valid signed output through completion for the issued scope",
+    output.some((frame) => frame?.kind === "done") && output.every((frame) => frame && sameLiveRuntimeScope(frame.scope, authorized.issued.scope)),
+    JSON.stringify({ status: authorized.status, outputKinds: output.map((frame) => frame?.kind), logged: authorized.logged }));
+
+  for (const [name, options, reachesAuthority] of [
+    ["false authorization", { authority: { data: false, error: null } }, true],
+    ["missing authorization", { authority: { data: null, error: null } }, true],
+    ["errored authorization even with true data", { authority: { data: true, error: { message: "unavailable" } } }, true],
+    ["nonboolean authorization", { authority: { data: "true", error: null } }, true],
+    ["another signed actor", { scopeOverride: { actorId: FOREIGN } }, false],
+    ["another signed tenant", { scopeOverride: { tenantId: OTHER_TENANT } }, false],
+    ["body-supplied identity cannot override authorization", { authority: { data: false, error: null },
+      bodyOverride: { actorId: FOREIGN, user_id: FOREIGN, tenantId: OTHER_TENANT, tenant_id: OTHER_TENANT } }, true],
+  ]) {
+    const denied = await liveDrive(options);
+    assert(`26 ${name}: refuses`, denied.status === 403 && denied.bodyText === '{"error":"live_runtime_unavailable"}', denied.bodyText);
+    assert(`26 ${name}: no challenge consumption or session update`, denied.claims === 0 &&
+      denied.session.provider_session_ref === denied.initialRef &&
+      !denied.rec.inserts.some((c) => c.table === "paige_live_sessions"));
+    assert(`26 ${name}: no history, memory, model, tools, or downstream writes`,
+      !denied.rec.from.some((c) => ["paige_chat_turns", "client_memory"].includes(c.table)) &&
+      denied.rec.inserts.length === 0 && denied.modelEgress.length === 0 && denied.embeds === 0 &&
+      denied.outboundCalls.length === 0 && denied.rec.functions.length === 0 &&
+      !denied.rec.rpc.some((c) => ["tenant_comms_readiness", "match_paige_memory"].includes(c.name)));
+    assert(`26 ${name}: canonical authority boundary`, reachesAuthority
+      ? authorityCalls(denied).length === 1 && authorityCalls(denied).every((c) =>
+        c.args._actor_user_id === USER && c.args._tenant_id === CALLER_TENANT && c.client === "service")
+      : authorityCalls(denied).length === 0, JSON.stringify(authorityCalls(denied)));
   }
 }
 
