@@ -73,13 +73,18 @@ The five files:
 One of the twenty asserts on the **text of** `src/solo/SoloApp.tsx` rather than on behaviour; the run
 also carries an undici/WebSocket `Uncaught Exception` in the harness. Both are inside those files.
 
-## Attributing a failing run: there is ONE procedure, and the list below is not it
+## Attributing a failing run: one PRINCIPLE, two trees, and the list below is not either of them
 
-**Compare `main`'s CURRENT tip against `main`-merged-with-your-head, and diff the failure output —
-names AND messages. That is the whole procedure.** Everything above is context for reading the result;
-none of it is a shortcut around it.
+**The principle: compare two trees that both belong to the moment your question is about, and diff the
+failure output — names AND messages.** Which two trees that is depends on the question, so the
+procedure branches; the table a few lines down gives both pairs and **that table is the procedure**,
+not this paragraph. This opening previously named one pair and called it "the whole procedure", which
+made it wrong for the other question — the fifth time a summary here outlived the detail it summarised.
 
-**Those two states, and not the obvious ones, because of what CI actually checks out.** `ci.yml` runs
+Everything above this section is context for reading a result. None of it is a shortcut around the
+comparison.
+
+**Why neither obvious tree is the right one, for either question.** `ci.yml` runs
 `on: pull_request` with a bare `actions/checkout@v4`, which checks out the **synthetic merge ref** —
 the base tip merged with your head. Verified on run `35933689151`: `"event": "pull_request"`. So:
 
