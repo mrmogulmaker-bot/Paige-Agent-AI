@@ -176,7 +176,7 @@ REF=refs/remotes/origin/pr-$PR-merge
 git fetch --force origin "refs/pull/$PR/merge:$REF" || { echo "fetch failed — stop"; exit 1; }
 git log --format='%H %P' -1 "$REF"     # the merge and BOTH parents — read them
 BASE=$(git rev-parse "$REF^1")         # <- the baseline. NOT origin/main, which this fetch did not touch
-HEAD_CMT=$(git rev-parse "$REF^2")     # the head COMMIT that merge carries, if you want to check it is yours
+HEAD_CMT=$(git rev-parse "$REF^2")     # the head COMMIT that merge carries. Needed below — not optional
 ```
 
 **The `--force` is load-bearing, not tidiness.** GitHub regenerates the merge commit whenever the head
@@ -197,16 +197,28 @@ already contains changes nothing, so GitHub's merge commit differs from your hea
 object. Do not take that on faith; it costs one comparison:
 
 ```sh
-git merge-base --is-ancestor origin/main HEAD && echo "contains main"
-git rev-parse "refs/remotes/origin/pr-$PR-merge^{tree}" "HEAD^{tree}"   # two lines, expect them equal
+# Ask the fetched merge about ITSELF — $BASE and $HEAD_CMT come from $REF above.
+git merge-base --is-ancestor "$BASE" "$HEAD_CMT" && echo "that head contains that base"
+git rev-parse "$REF^{tree}" "$HEAD_CMT^{tree}"   # two lines, expect them equal
+# Only now is a local run meaningful, and only if your checkout IS that head:
+test "$(git rev-parse HEAD)" = "$HEAD_CMT" && echo "checked out at the tested head"
 ```
+
+**Every ref in that block comes from the fetched merge, and that is deliberate.** An earlier version
+asked `origin/main` and `HEAD` instead — the two local refs the paragraph above it had just finished
+warning about. It would have printed `contains main` for a base the merge never used, and compared the
+merge's tree against whatever happened to be checked out. A proof about the tested tree has to be built
+from the tested tree's own commits; reaching for a local ref inside it is how the answer comes out
+confidently wrong.
+
+The third line is what licenses the local run. The first two establish a fact about the MERGE; running
+the suite on your own working copy only answers the question if that copy *is* `$HEAD_CMT`.
 
 Measured here: merge ref `f81bb721f` (parents `bad21bed6` + `e986d4eff`) and head `e986d4eff` both
 resolve to tree `1676c222…`. That turns the "is my branch sound right now?" run into an ordinary run on
 your own checkout — **and it is the only condition under which running the suite on your head answers
 the question**, which is why the standalone head is a dead shortcut everywhere else. The baseline is
-still `$BASE` above, the merge's first parent, **not** `origin/main`: being an ancestor does not make a
-stale local ref equal to the tip that merge was built on.
+still `$BASE`, the merge's first parent, **not** `origin/main`.
 
 **The `$PR` variable is not decoration.** The first version of this block hard-coded the PR it was
 written on, which would have sent every later lane to fetch *that* PR's merge ref and then validate
