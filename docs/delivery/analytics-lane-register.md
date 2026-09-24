@@ -210,6 +210,42 @@ dependent by its own admission — but left as-is it will keep telling capable s
 rule; the fix is also a judgement about that lane's standing guidance, not a defect in my own new
 code. Recorded so the next session that hits it does not re-derive the same probe.
 
+## B3. INHERITED 2026-09-24 — #1389 merged as interim cover and handed four findings here
+
+`bad21bed6` ("fix(analytics): scrub attribution values, and cover the base64url invite mint",
+PR #1389) landed on `main` while this lane was in Phase 1. It closes two live leak paths in
+`src/hooks/useAnalytics.ts` and `src/hooks/useReferralTracking.ts`, and its own commit message
+states it was **merged as interim cover by coordinator ruling, with four findings knowingly open**
+and routed to this lane rather than a fifth patch round.
+
+**Four P2 findings handed over, quoted from the merge commit:** the attribution path still
+delegating to a redactor that preserves the URL authority · opaque-scheme values reaching the flat
+scan · decoding before parsing moving component boundaries · a rebuild that turns a form-encoded
+space into `%2B` (data corruption rather than a leak). None is verified by this lane yet.
+
+**The consolidation it asks for is Phase 2's "one pipe", and I checked the claim rather than
+inheriting it.** The commit describes "three independent URL-parameter readers with three separate
+exits and no shared chokepoint". Measured here, the shape is slightly different and the difference
+matters, because it names the chokepoint:
+
+- **Three readers, two exits, one scrub.** `src/lib/analytics/session.ts:52-70`
+  (`readUtmFromUrl()`) reads `utm_source` / `utm_medium` / `utm_campaign` straight off
+  `URLSearchParams` and returns them **raw** — no scrub at the read. It has no exit of its own and
+  exactly one importer, `src/hooks/useAnalytics.ts`.
+- `src/hooks/useAnalytics.ts:613` exits via a raw `void fetch(FUNCTION_URL, {` and **does** scrub
+  before the wire.
+- `src/hooks/useReferralTracking.ts:100` exits via
+  `await supabase.functions.invoke("track-referral-click", {` — a second, independent destination. This
+  is the path #1389 just closed.
+
+**So the chokepoint already exists and is one function.** `readUtmFromUrl()` is the shared read and
+currently the unscrubbed one; moving the scrub to the read, and routing `useReferralTracking`
+through it, is a smaller change than the commit's framing implies. That is a Phase 2 design input,
+not a Phase 1 ruling, and it is recorded here so Phase 2 starts from the measured shape.
+
+**Not started, and not silently absorbed.** This arrived after the Phase 1 rulings and is not in
+any approved phase plan. It is logged for the coordinator to sequence.
+
 ## C. BLOCKED — and who owes it
 
 1. **Read-only database access.** Supabase MCP returns permission denied on `list_edge_functions`
