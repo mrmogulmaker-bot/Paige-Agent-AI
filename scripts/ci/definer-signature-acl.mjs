@@ -19,7 +19,7 @@
  * 2027-01-07, `20270107000000:94` added a TEN-argument overload. An overload is a new `pg_proc`
  * entry, not a replacement, so it inherited nothing, and that migration issued no GRANT and no
  * REVOKE for it. Name-level auditing reported the function as ACL'd, because the NAME was. Only a
- * signature-level, cross-file check surfaces it. `20270416000000` re-locks it.
+ * signature-level, cross-file check surfaces it. `20270416000000` re-locks it. MEASURED ON PROD 2026-09-24 (pg_proc.proacl): both signatures already read `{postgres=X/postgres,service_role=X/postgres}`, so the hole is NOT live. The migration is not applied and 20270107000000 carries no GRANT/REVOKE, so an out-of-band action set that ACL -- the migration's real job is making the lock REPRODUCIBLE from the repo.
  *
  * THE BLANKET SWEEPS, AND WHY THERE IS A CUTOFF. Four DO-block statements revoke PUBLIC/anon
  * EXECUTE across every public DEFINER function — 20260627002438, 20260628220854, 20260629185611

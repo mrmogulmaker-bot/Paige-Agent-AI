@@ -362,7 +362,7 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 > PUBLIC`, and its body never calls `auth.uid()`. On that path the anon+JWT client does not get
 > `permission denied` — it WRITES THE ROW. The failure described below is loud only while the
 > signature actually invoked is locked. `20270416000000` restores the lock on both (in the repo;
-> prod apply owed). That makes the generalisation SHARPER, not weaker: check the grant against the
+> MEASURED 2026-09-24: prod already service-role-only on both signatures; the hole is not live and the migration makes that lock reproducible). That makes the generalisation SHARPER, not weaker: check the grant against the
 > client **and against the exact signature the caller binds** — an overload is a new `pg_proc`
 > entry and inherits nothing.
 

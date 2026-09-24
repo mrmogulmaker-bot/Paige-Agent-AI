@@ -98,7 +98,7 @@ a role granted, an automation run, a marketplace item installed — had **nowher
   constrains the SUBJECT named in the arguments, NOT the caller, so it is not a §59 caller-scope
   guard and never carried the boundary alone. **The grant IS the boundary here**, which is why
   the 10-argument overload at `20270107000000:94` shipping with no ACL (default `EXECUTE TO
-  PUBLIC`, body never calls `auth.uid()`) was a real hole. `20270416000000` re-asserts both
+  PUBLIC`, body never calls `auth.uid()`) was a real hole IN THE REPO'S OWN HISTORY. MEASURED ON PROD 2026-09-24 (pg_proc.proacl): both signatures already read `{postgres=X/postgres,service_role=X/postgres}`, so the hole is NOT live. The migration is not applied and 20270107000000 carries no GRANT/REVOKE, so an out-of-band action set that ACL -- the migration's real job is making the lock REPRODUCIBLE from the repo. `20270416000000` re-asserts both
   signatures; prod apply is owed. An earlier version of this line claimed §59 caller-scope
   compliance, and a reader auditing §59 coverage would have ticked it off and moved on. It deliberately does not
   re-check role — that is the tool gate's decision, and duplicating it would silently drop the

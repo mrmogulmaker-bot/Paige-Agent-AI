@@ -9989,9 +9989,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // REVOKE, so it defaults to `EXECUTE TO PUBLIC`, and its body never calls
           // `auth.uid()` — it checks the ARGUMENT actor against the ARGUMENT tenant,
           // which constrains the subject, not the caller. On that path the wrong client
-          // would succeed SILENTLY instead of failing loudly. `20270416000000` revokes
-          // it; in the repo, prod apply owed. Do not read the paragraph above as a
-          // guarantee until that is confirmed applied.
+          // would succeed SILENTLY instead of failing loudly IF the overload were open.
+          // IT IS NOT, and that is measured rather than assumed: a `pg_proc.proacl` readback
+          // on prod (2026-09-24) returns `{postgres=X/postgres,service_role=X/postgres}` for
+          // BOTH signatures. `20270416000000` is NOT applied and `20270107000000` carries no
+          // GRANT/REVOKE, so an out-of-band action set that ACL and the repo cannot reproduce
+          // it -- which is what the migration is actually for. Rebuild this database from
+          // migrations alone and the overload WOULD be open.
           //
           // NO `agentSlug`. `_record_workspace_rail_event` resolves it against
           // `paige_subagents` for a label, and no subagent owns these four acts today.
@@ -12784,7 +12788,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // because `record_capability_run` is granted to service_role only ON ITS 6-ARGUMENT
           // SIGNATURE. The 10-arg overload (`20270107000000:94`, bound whenever correlation or
           // detail is passed) shipped with NO ACL and defaults to PUBLIC EXECUTE; it never calls
-          // `auth.uid()`. `20270416000000` revokes it — in the repo, prod apply owed.
+          // `auth.uid()`. MEASURED ON PROD 2026-09-24 (pg_proc.proacl): BOTH signatures already
+          // read `{postgres=X/postgres,service_role=X/postgres}`, so this is NOT an open hole.
+          // `20270416000000` is NOT applied and `20270107000000` carries no GRANT/REVOKE, so an
+          // out-of-band action set that ACL — the migration makes it reproducible from the repo.
           //
           // NO CONFIRM GATE, DELIBERATELY. These are reads: unclassified in action-risk.ts on
           // purpose, and their names carry no MUTATION_VERB segment, so `unclassifiedWriteReason`

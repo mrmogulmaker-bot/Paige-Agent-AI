@@ -41,6 +41,8 @@ is a separate `pg_proc` entry, was given no GRANT and no REVOKE, and so defaults
 PUBLIC`; its body never calls `auth.uid()`. `20270416000000` revokes it and re-asserts the 6-arg
 posture — in the repo; a `pg_proc.proacl` readback on prod is still owed.
 
+> MEASURED ON PROD 2026-09-24 (pg_proc.proacl): both signatures already read `{postgres=X/postgres,service_role=X/postgres}`, so the hole is NOT live. The migration is not applied and 20270107000000 carries no GRANT/REVOKE, so an out-of-band action set that ACL -- the migration's real job is making the lock REPRODUCIBLE from the repo.
+
 `20261220000000_an_act_that_landed_but_was_not_recorded.sql` adds a **sixth**,
 `capability_completed_unrecorded`, and the four Communications capability keys. The sixth exists
 because `comms_buy_number` has two exits where Twilio has **charged the tenant** and the
