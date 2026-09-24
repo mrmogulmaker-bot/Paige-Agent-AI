@@ -19,12 +19,17 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Plus, RefreshCw, Search, TriangleAlert, X } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import {
+  APPROVAL_DEFAULT_LIFETIME_MINUTES,
+  APPROVAL_LIFETIME_CHOICES,
   MCP_CREDENTIAL_MIN_LENGTH,
   MCP_GATEWAY_GENERIC_REFUSAL,
+  approvalExpiryFromMinutes,
   credentialTooShort,
   mcpGatewayMessage,
   type GatewayConnection,
   type GatewayAuthKind,
+  type GatewayToolRow,
+  type GatewayToolsResult,
   type UseMcpGateway,
 } from "./data/useMcpGateway";
 
@@ -674,12 +679,401 @@ function Catalogue({
 }
 
 /* ── Detail (re-key / disconnect / honest tool state) ────────────────────────── */
+/* ── The actions a connection offers ──────────────────────────────────────────
+   Until this shipped, the drawer ended in a paragraph saying that choosing which
+   actions Paige may use "needs a change on Paige's side that hasn't shipped yet."
+   That was true and is now false, so the paragraph is gone rather than softened.
+
+   EVERY VERDICT ON SCREEN IS THE SERVER'S. Whether an action needs consent and on
+   what basis, whether an existing approval has run out, whether the action has
+   changed since it was approved — all decided server-side and rendered here. The
+   browser deciding any of them would fork the one rule that governs whether Paige
+   may act, and an authority rule with two copies drifts.
+
+   THE EMPTY LIST HAS TWO MEANINGS AND THEY ARE NOT THE SAME SENTENCE. "Paige has
+   not read this tool's actions yet" and "this tool offers no actions" are opposite
+   facts to someone deciding what to grant, and both arrive as an empty array.
+
+   WHAT DISTINGUISHES THEM IS NOT `observedAt`, AND THE FIRST DRAFT OF THIS SECTION
+   GOT THAT WRONG. `observedAt` is the newest `discovered_at` across the rows that
+   came back, so an empty catalogue yields `null` unconditionally and the "read and
+   empty" arm of a test on it is unreachable. The real distinguisher lives on the
+   connection: a successful probe sets `last_checked_at` and replaces the catalogue
+   with what it found, INCLUDING an empty array — an empty catalogue is still a
+   healthy connection. So `lastCheckedAt !== null` on a connected row is what
+   separates "asked, and there is nothing" from "never asked."
+
+   `observedAt` is still carried and still used — for the case it CAN answer, which
+   is dating a list that has rows in it. That matters most when the newest check
+   FAILED: `last_checked_at` moves on a failed probe too, so it would date the
+   catalogue to a moment the read did not happen, while `observedAt` dates it to
+   when those rows were actually written.                                        */
+
+/** What the owner is told about one action, and what they can do about it.
+ *
+ *  `approved` is tested before expiry, staleness and authorship because all three
+ *  describe an approval that EXISTS. The row's join is a LEFT one, so on an action
+ *  with no approval those fields are all `false` and both timestamps are `null` —
+ *  reading any of them first is how this renders "approved by someone else" against
+ *  something nobody has ever approved. */
+function actionState(t: GatewayToolRow): {
+  tone: ChipTone;
+  label: string;
+  /** The reason, in the owner's terms. Null when the label already says everything. */
+  why: string | null;
+  /** The approve control's wording, or null when approving is not the next move. */
+  cta: string | null;
+} {
+  if (!t.requiresApproval) {
+    return {
+      tone: "off",
+      label: "Runs without asking",
+      why: "This one only reads, so it doesn’t need your approval.",
+      cta: null,
+    };
+  }
+  // An approval that exists but would be REFUSED at dispatch. Keyed on the server's
+  // single reason rather than on the two booleans beside it, because those cover
+  // only two of the five things that can invalidate consent — and a row that is
+  // unexpired and unstale and still unusable is exactly the one an owner would
+  // otherwise be told they were covered for.
+  if (t.approved && t.approvalBlockedReason !== null) {
+    const [label, why] = {
+      contract_changed: [
+        "Changed since you approved it",
+        // Re-keying would also clear this, by deleting every approval on the
+        // connection. Naming it would trade one action's lapsed consent for all of
+        // them, so the only recovery offered is the one scoped to this row.
+        "This action isn’t the same as the one you approved, so that approval no longer covers it.",
+      ],
+      approval_expired: [
+        "Approval ran out",
+        t.expiresAt ? `It ended ${new Date(t.expiresAt).toLocaleString()}.` : "Approve it again to keep using it.",
+      ],
+      endpoint_changed: [
+        "Approved for a different address",
+        "This tool’s address has changed since you approved this, so Paige won’t use the old approval against the new one.",
+      ],
+      approval_not_endpoint_bound: [
+        "Approval needs redoing",
+        "This approval predates the check that ties consent to a tool’s address, so Paige won’t act on it. Approving again fixes it for good.",
+      ],
+      endpoint_missing: [
+        "Nothing to approve against",
+        "This tool has no confirmed address right now, so there’s nothing for an approval to point at.",
+      ],
+    }[t.approvalBlockedReason];
+    return {
+      tone: "warn",
+      label,
+      why,
+      // The one blocked state approving cannot fix: with no address there is nothing
+      // to bind consent to, and the button would only refuse (§70.1).
+      cta: t.approvalBlockedReason === "endpoint_missing" ? null : "Approve again",
+    };
+  }
+  if (t.approved) {
+    return {
+      tone: "ok",
+      label: t.approvedByYou ? "You approved this" : "Approved by your team",
+      // A null expiry is a PERMANENT approval. This surface cannot create one — every
+      // offered window ends — but a row written by an RPC caller or by an earlier
+      // contract can carry one, and an owner reading "Approved" deserves to know
+      // which kind they are looking at.
+      why: t.expiresAt
+        ? `Until ${new Date(t.expiresAt).toLocaleString()}.`
+        : "This approval has no end date. Re-approve it to put a window on it.",
+      cta: null,
+    };
+  }
+  // Not approved. WHY it needs approval is a real distinction: a provider that
+  // declared a mutating effect is one thing; a provider that declared nothing at
+  // all is another, and Paige treats the second as consequential precisely because
+  // she cannot be sure. Saying which is the difference between a gate and a shrug.
+  const why =
+    t.approvalBasis === "effects_undeclared"
+      ? "This tool didn’t say what this action does, so Paige treats it as if it changes something."
+      : t.approvalBasis === "server_name_floor"
+        ? "Its name says it sends or changes something, so Paige needs your approval even if the tool calls it a read."
+        : "This action changes or sends something.";
+  return { tone: "pending", label: "Needs your approval", why, cta: "Approve" };
+}
+
+/**
+ * The per-action approval list for one connection.
+ *
+ * WHERE IT RENDERS AT ALL is a deliberate decision per connection state, because for
+ * most of them an empty list would be a statement about the PROVIDER that we have no
+ * grounds for:
+ *   · turned off / unconfigured — disconnecting deletes every tool and approval row
+ *     and nulls `last_checked_at`, so the read is guaranteed empty and would read as
+ *     "Paige hasn't looked yet" about a tool its owner deliberately switched off.
+ *   · pending verification — create and re-key both clear the catalogue, so the same
+ *     guaranteed-empty applies. The drawer already says the true thing above.
+ *   · error — the catalogue SURVIVES a failed probe by design, so here there may be
+ *     a real list, and suppressing it would hide approvals its owner granted (§58).
+ *     It renders, dated and flagged as pre-dating the failure.
+ * In the three suppressed cases no read is issued either: the answer is known, and
+ * spending a round trip to render nothing is worse than not asking.
+ */
+function ToolActions({ gw, tool, reloadKey }: { gw: UseMcpGateway; tool: GatewayConnection; reloadKey: number }) {
+  const { activeTenantId, loading: tenantLoading } = useTenantContext();
+  const [phase, setPhase] = useState<"loading" | "ready">("loading");
+  const [result, setResult] = useState<GatewayToolsResult | null>(null);
+  /** The row being approved right now, so only that row's control goes busy. The
+   *  hook's own `saving` is global to every write on this surface, so using it for a
+   *  per-row label would put "Approving…" on every row at once. */
+  const [busyName, setBusyName] = useState<string | null>(null);
+  /** The outcome of the last approve attempt, good or bad. The hook's `writeError` is
+   *  never rendered anywhere on this surface, so a refusal held only there is a
+   *  refusal nobody sees (§70.1). */
+  const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
+  const [minutes, setMinutes] = useState(APPROVAL_DEFAULT_LIFETIME_MINUTES);
+  const alive = useRef(true);
+
+  const readable = tool.enabled && (tool.status === "connected" || tool.status === "error");
+  // The workspace this read belongs to, captured at call time. `callEdge` sends the
+  // active tenant as an expected-tenant guard, but that guard is skipped when the
+  // value is null — so firing before the tenant resolves would bind the read to
+  // whatever the token happens to resolve to, with nothing to catch it.
+  const ready = readable && !tenantLoading && !!activeTenantId;
+
+  const read = useCallback(async () => {
+    if (!ready) return;
+    const scope = activeTenantId;
+    const answer = await gw.listTools(tool.id);
+    // A late answer for a workspace the person has already left is dropped rather
+    // than rendered or announced: the surface it belonged to is gone, and a banner
+    // about it would be about nothing they can see.
+    if (!alive.current || scope !== activeTenantId) return;
+    setResult(answer);
+    setPhase("ready");
+  }, [ready, activeTenantId, gw, tool.id]);
+
+  useEffect(() => {
+    alive.current = true;
+    void read();
+    return () => {
+      alive.current = false;
+    };
+    // `reloadKey` is bumped by the drawer after a successful check. Without it the
+    // drawer would show "Checked just now — found 12 actions" directly above a list
+    // still holding what it read before the check ran.
+  }, [read, reloadKey]);
+
+  /** Grant consent for ONE action, then RE-READ rather than patching the row.
+   *  Approval carries server-side consequences — an expiry judged on the Postgres
+   *  clock, a pin taken at the moment of approval — so the honest way to show what
+   *  was recorded is to ask what was recorded (§13: never render a hoped-for state). */
+  const approve = async (name: string) => {
+    setSaid(null);
+    setBusyName(name);
+    const outcome = await gw.approveTool(tool.id, name, approvalExpiryFromMinutes(minutes, Date.now()));
+    if (!alive.current) return;
+    setBusyName(null);
+    // Three codes mean the call never left: another write held the lock, the tenant
+    // wasn't ready, or the workspace changed underneath it. All three carry no
+    // message because there is nothing to report — announcing a refusal that never
+    // happened is its own false statement.
+    if (outcome.code === "MCP_BUSY" || outcome.code === "MCP_NOT_READY" || outcome.code === "MCP_STALE") return;
+    if (!outcome.ok) {
+      setSaid({ ok: false, text: outcome.message ?? "That approval couldn’t be saved just now. Try again in a moment." });
+      return;
+    }
+    // What this records is CONSENT. Whether Paige may then run the action is a
+    // separate switch that is off by default and is not this surface's to claim —
+    // so the sentence says what actually happened and stops there. Replacing one
+    // false statement with a different one is not a fix.
+    setSaid({ ok: true, text: `Approved ${name} for the window you chose. That’s your consent recorded — it’s what Paige checks before she acts.` });
+    await read();
+  };
+
+  if (!readable) return null;
+
+  if (phase === "loading") {
+    return (
+      <div className="ig-gw-tools-skel" role="status" aria-label="Reading what this tool can do">
+        <i /><i /><i />
+      </div>
+    );
+  }
+
+  // The read itself was refused. Say which refusal it was and stop — rendering an
+  // empty list underneath would read as "this tool offers nothing", which is a
+  // different and false statement.
+  if (result && !result.ok) {
+    // A null code is a transport failure: the adapter rejected, or the answer came
+    // back in a shape that confirms nothing. The shared copy for that case asks the
+    // person to check the details they entered, which is advice from a form — there
+    // is nothing to check on a read that submitted nothing.
+    const text = result.code === null ? "Paige couldn’t read what this tool can do just now. Try again in a moment." : result.message;
+    return (
+      <div className="ig-error" role="alert">
+        <TriangleAlert aria-hidden size={14} />
+        <span>{text ?? MCP_GATEWAY_GENERIC_REFUSAL}</span>
+      </div>
+    );
+  }
+
+  const tools = result?.tools ?? [];
+
+  if (tools.length === 0) {
+    return (
+      <div className="ig-gw-info" role="status">
+        <span>
+          {(tool.toolCount ?? 0) > 0
+            ? // The connection's own count and the catalogue disagreeing is worth
+              // saying out loud rather than resolving silently in favour of the
+              // emptier answer.
+              `Paige counted ${tool.toolCount} ${tool.toolCount === 1 ? "action" : "actions"} here but can’t list them right now. Check the tool again.`
+            : tool.lastCheckedAt && tool.status === "connected"
+              ? `Paige reached this tool on ${new Date(tool.lastCheckedAt).toLocaleDateString()} and it offered nothing she can run.`
+              : "Paige hasn’t looked at what this tool can do yet. Check it, and its actions will be listed here to approve one at a time."}
+        </span>
+      </div>
+    );
+  }
+
+  // The summary counts what still AUTHORISES something, which is why it cannot be
+  // the connection row's `approved_count`: that counts approval rows, and a row
+  // whose window has closed or whose action has changed is a row that no longer
+  // authorises anything. Telling an owner they are covered when they are not is the
+  // one error this list exists to make impossible.
+  const gated = tools.filter((t) => t.requiresApproval);
+  const live = gated.filter((t) => t.approved && t.approvalBlockedReason === null).length;
+  const needing = gated.length - live;
+
+  return (
+    <>
+      <div className="ig-gw-tools-head">
+        <b>What this tool can do</b>
+        <span>
+          {gated.length === 0
+            ? `${tools.length} ${tools.length === 1 ? "action" : "actions"}, none needing approval`
+            : `${live} of ${gated.length} approved`}
+          {result?.observedAt ? ` · read ${new Date(result.observedAt).toLocaleDateString()}` : ""}
+        </span>
+      </div>
+
+      {/* Dated from the ROWS, not from the connection's last check: a failed probe
+          moves `last_checked_at` without writing a catalogue, so on an errored
+          connection that timestamp names a moment this list did not come from. */}
+      {tool.status === "error" && (
+        <div className="ig-gw-warn" role="status">
+          <span>
+            The last check on this tool didn’t get through, so this is what Paige saw the last time she
+            read it{result?.observedAt ? ` — on ${new Date(result.observedAt).toLocaleDateString()}` : ""}.
+          </span>
+        </div>
+      )}
+
+      {said && (
+        said.ok
+          ? <div className="ig-gw-info" role="status"><span>{said.text}</span></div>
+          : <div className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} /><span>{said.text}</span></div>
+      )}
+
+      <ul className="ig-gw-tools">
+        {tools.map((t) => {
+          const s = actionState(t);
+          // The approve control renders ONLY where it can actually act. A member who
+          // is not a workspace admin is refused by the hook before anything is sent,
+          // and the server refuses independently — so for them the button's single
+          // outcome is a refusal, and a control that can only refuse is worse than
+          // none (§70.1). They still see the whole list, which is already disclosed
+          // to them, and a line naming who can act on it.
+          const canApprove = gw.canWrite && s.cta !== null;
+          return (
+            <li key={t.name}>
+              <div className="ig-gw-tool">
+                <div className="ig-gw-tool-id">
+                  <span className="ig-gw-tool-name">{t.name}</span>
+                  <span className="ig-gw-tool-meta">
+                    {t.effects.length === 0
+                      ? <span className="ig-gw-eff" data-eff="undeclared">didn’t say</span>
+                      : t.effects.map((e) => <span key={e} className="ig-gw-eff" data-eff={e}>{e}</span>)}
+                    {t.app && <span className="ig-gw-tool-app">{t.app}</span>}
+                  </span>
+                </div>
+                <div className="ig-gw-tool-side">
+                  <span className="ig-gw-chip" data-tone={s.tone}>{s.label}</span>
+                  {canApprove && (
+                    <button
+                      type="button"
+                      className="ig-btn"
+                      data-primary
+                      disabled={busyName !== null}
+                      onClick={() => void approve(t.name)}
+                    >
+                      {busyName === t.name ? "Approving…" : s.cta}
+                    </button>
+                  )}
+                </div>
+                {s.why && <p className="ig-gw-tool-why">{s.why}</p>}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      {/* The lifetime the next approval gets. One choice for the drawer rather than
+          one per row: the owner is answering "how long do I trust this for", which is
+          the same question whichever action they press next, and asking it once per
+          row would be one more chance to answer it differently by accident. Every
+          offered window clears the 15-minute floor, so this control cannot produce
+          the refusal that floor exists to raise. */}
+      {gw.canWrite && needing > 0 && (
+        <div className="ig-gw-life">
+          <span id="ig-gw-life-label">How long should an approval last?</span>
+          <div className="ig-gw-seg" role="group" aria-labelledby="ig-gw-life-label">
+            {APPROVAL_LIFETIME_CHOICES.map((c) => (
+              <button
+                key={c.minutes}
+                type="button"
+                className={c.minutes === minutes ? "on" : undefined}
+                aria-pressed={c.minutes === minutes}
+                onClick={() => setMinutes(c.minutes)}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!gw.canWrite && needing > 0 && (
+        <p className="ig-gw-foot">A workspace admin approves what Paige may use here.</p>
+      )}
+
+      {/* SAID OUT LOUD BECAUSE IT IS A REAL LIMIT, NOT A DETAIL. An approval ends when
+          its window closes, and there is no per-action way to take one back before
+          then — no revoke RPC exists and the edge dispatches no revoke action; every
+          deletion of an approval in the schema is connection-scoped. So the only early
+          exits are re-keying or disconnecting, both of which clear the lot. An owner
+          who grants a 30-day approval and wants it back tomorrow should learn that
+          here, while choosing, rather than by hunting for a control nobody built
+          (§70.1/§13). */}
+      {live > 0 && (
+        <p className="ig-gw-foot">
+          An approval ends when its window runs out. There’s no way to take a single one back sooner
+          yet — re-keying or disconnecting this tool clears them all.
+        </p>
+      )}
+    </>
+  );
+}
+
 function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayConnection; onClose: () => void }) {
   const [mode, setMode] = useState<"view" | "rekey" | "disconnect">("view");
   /** The last probe verdict, held so the person sees what the check FOUND rather than only a row
    *  that silently changed colour underneath them. Cleared when another action starts. */
   const [checked, setChecked] = useState<{ ok: boolean; message: string | null; toolCount: number | null } | null>(null);
   const [signInMessage, setSignInMessage] = useState<string | null>(null);
+  /** Bumped after a check that came back OK, so the action list re-reads. A check is
+   *  exactly the thing that rewrites the catalogue — discovery replaces it wholesale —
+   *  so without this the drawer would announce "found 12 actions" directly above a list
+   *  still showing what it read before the check ran. */
+  const [catalogueRead, setCatalogueRead] = useState(0);
   const chip = statusChip(tool);
   const isRest = tool.authKind === "api_key";
   const isOAuth = tool.authKind === "oauth";
@@ -692,6 +1086,10 @@ function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayCon
     // never happened (§13).
     if (result.code === "MCP_BUSY" || result.code === "MCP_NOT_READY") return;
     setChecked({ ok: result.ok, message: result.message, toolCount: result.toolCount ?? null });
+    // Only on success: a failed probe leaves the catalogue exactly as it was (it
+    // passes no tool array), so re-reading would spend a round trip to render the
+    // same rows back.
+    if (result.ok) setCatalogueRead((n) => n + 1);
   };
 
   /** Re-run the provider sign-in for a connection that already holds an OAuth grant. */
@@ -744,38 +1142,25 @@ function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayCon
               : "This tool is turned off, and its sign-in was cleared when you turned it off — switching it back on means removing it and adding it again."}</span></div>
           )}
 
-          {tool.status === "pending_verification" ? (
+          {tool.status === "pending_verification" && (
             <div className="ig-gw-info" role="status"><span>This tool hasn’t been checked yet. Paige can’t use it until she has reached it and you’ve approved what it may do.</span></div>
-          ) : tool.status === "error" ? (
+          )}
+          {tool.status === "error" && (
             <div className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} /><span>Couldn’t reach it. Fix the address or re-key, then check it again.</span></div>
-          ) : (
-            <div className="ig-gw-info" role="status"><span>{tool.approvedCount === null || tool.toolCount === null ? "How many actions this tool offers hasn’t been read yet." : `${tool.approvedCount} of ${tool.toolCount} actions approved.`}</span></div>
           )}
 
-          {/* Two earlier versions of the sentence below were each false, in opposite directions.
-              "approvals are all-or-nothing" named a bulk approval that exists nowhere (the door is
-              per-tool-name). "she won't act with this tool — nothing runs without your approval"
-              then over-corrected: resolveEffectApproval returns requiresApproval:false for a tool
-              that is neither mutation-verb-named nor provider-declared-mutating nor
-              effects-undeclared, and the runner skips the consent check for it outright. So a
-              declared READ genuinely does run unapproved. The wording is now scoped to the three
-              branches that actually gate — which is the true statement, and the narrowest one.
+          {/* The list replaces the "N of M actions approved" summary that used to sit here, and it
+              is a replacement rather than an addition on purpose. That summary counted approval
+              ROWS; the list discounts an approval that has expired or whose action has changed
+              since. Both were honest about what they counted, and shown together they would have
+              disagreed out loud — "3 of 5 approved" above three rows reading "ran out". One source
+              of truth, and it is the one that knows what still authorises something (§57).
 
-              The per-action list is NOT buildable yet, and this says so rather than showing an empty
-              list that reads as "this tool offers nothing". The missing piece is exact: no
-              client-readable door onto the tool catalogue exists. `mcp_connection_tools` carries an
-              is_platform_owner()-only RLS policy, no RPC reads it, and the verify action returns
-              tool_count as a NUMBER — so there is no honest way to enumerate the actions an approval
-              would name. Recorded in full in the Slice ④ PR body and the master reference. */}
-          {tool.status === "connected" && (tool.toolCount ?? 0) > 0 && (
-            <div className="ig-gw-info" role="status">
-              <span>
-                Choosing which of these actions Paige may use needs a change on Paige’s side that hasn’t shipped
-                yet. Until it does, anything that would send or change something stays blocked — you’ll approve
-                those one at a time when it lands.
-              </span>
-            </div>
-          )}
+              Rendered for every status, not only `connected`, because a connection that has fallen
+              into error still holds the approvals its owner granted, and hiding them would hide a
+              decision they made. Where there is genuinely nothing to show, the list says which kind
+              of nothing it is. */}
+          <ToolActions gw={gw} tool={tool} reloadKey={catalogueRead} />
 
           {/* Check now and Sign in again are gated on `enabled` because on a turned-off row they can
               ONLY refuse: the server answers connection_disabled to both. Rendering a control whose

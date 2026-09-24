@@ -121,6 +121,7 @@ DECLARE
   _tenant uuid;
   _conn   public.mcp_connections%ROWTYPE;
   _full   boolean;
+  _live_endpoint_hash text;
   _out    jsonb;
 BEGIN
   -- Scopes the CALLER (raises MCP_FORBIDDEN for a non-member, and ignores a
@@ -146,6 +147,17 @@ BEGIN
     RAISE EXCEPTION 'MCP_FORBIDDEN: connection not in tenant' USING ERRCODE = '42501';
   END IF;
 
+  -- The connection's CURRENT endpoint identity, computed ONCE for the whole
+  -- catalogue rather than per row. This is the input to the endpoint-binding
+  -- checks below; it never crosses the wire (see the header — it is an unsalted
+  -- sha256 over the full decrypted url, and its generator is revoked from
+  -- `authenticated` precisely so a tenant cannot mint one). NULL when the row
+  -- carries no endpoint, which is itself one of the blocking reasons.
+  _live_endpoint_hash := CASE
+    WHEN _conn.server_url_ct IS NULL THEN NULL
+    ELSE public._mcp_endpoint_hash(public.platform_decrypt(_conn.server_url_ct))
+  END;
+
   SELECT COALESCE(jsonb_agg(row_to_json(x)::jsonb ORDER BY x.tool_name), '[]'::jsonb)
     INTO _out
     FROM (
@@ -170,7 +182,43 @@ BEGIN
         -- crosses; neither pin does.
         (a.tool_name IS NOT NULL
            AND a.pin IS DISTINCT FROM t.pin)                  AS approval_stale,
-        (a.approved_by IS NOT NULL AND a.approved_by = auth.uid()) AS approved_by_you
+        (a.approved_by IS NOT NULL AND a.approved_by = auth.uid()) AS approved_by_you,
+        -- ── WHY THIS FIELD EXISTS, AND WHY THE TWO ABOVE ARE NOT ENOUGH ──────
+        -- `approved` here means only "an approval row exists". The function that
+        -- actually decides whether Paige may run something,
+        -- verify_mcp_connection_approval, refuses on SEVEN conditions, and until
+        -- this field was added this read modelled TWO of them. So a row could
+        -- come back approved, unexpired and unstale — and the runner would still
+        -- decline it, because the approval was never bound to an endpoint, or the
+        -- endpoint moved underneath it, or the connection has no endpoint at all.
+        -- A surface built on that renders "You approved this" over consent that
+        -- authorises nothing, which is the exact false-green the whole list was
+        -- built to end.
+        --
+        -- THE ORDER BELOW MIRRORS THE VERIFIER'S OWN ORDER, so the reason this
+        -- read gives is the reason the runner would give.
+        --
+        -- TWO of the verifier's conditions are deliberately NOT modelled, because
+        -- they are not knowable from a catalogue:
+        --   · endpoint_load_mismatch — compares the approval against the endpoint
+        --     a RUNNER LOADED for a specific dispatch. There is no dispatch here,
+        --     and inventing a loaded hash to pass in would fabricate the very
+        --     input that guard exists to check.
+        --   · action_shape_changed — depends on the arguments of a future call.
+        -- So a NULL here means "nothing we can see from a catalogue blocks this",
+        -- never "this is guaranteed to run". The runner re-checks at dispatch
+        -- against the endpoint it actually loads, and the surface says so.
+        CASE
+          WHEN a.tool_name IS NULL                       THEN NULL
+          WHEN _conn.server_url_ct IS NULL               THEN 'endpoint_missing'
+          WHEN a.pin IS DISTINCT FROM t.pin              THEN 'contract_changed'
+          WHEN a.endpoint_hash IS NULL                   THEN 'approval_not_endpoint_bound'
+          WHEN a.endpoint_hash IS DISTINCT FROM _live_endpoint_hash
+                                                         THEN 'endpoint_changed'
+          WHEN a.expires_at IS NOT NULL
+               AND a.expires_at <= now()                 THEN 'approval_expired'
+          ELSE NULL
+        END                                                   AS approval_blocked_reason
         FROM public.mcp_connection_tools t
         LEFT JOIN public.mcp_connection_approvals a
                ON a.connection_id = t.connection_id
@@ -192,4 +240,4 @@ REVOKE ALL  ON FUNCTION public.get_mcp_connection_tools(uuid, uuid) FROM PUBLIC,
 GRANT EXECUTE ON FUNCTION public.get_mcp_connection_tools(uuid, uuid) TO authenticated;
 
 COMMENT ON FUNCTION public.get_mcp_connection_tools(uuid, uuid) IS
-  'Door 1: the per-tool catalogue of ONE gateway connection, scoped to the caller''s own tenant, so the per-action approve surface can name real actions instead of rendering an empty list. SECURITY DEFINER IS REQUIRED AND MUST NOT BE "CORRECTED" TO INVOKER: mcp_connection_tools and mcp_connection_approvals are both is_platform_owner()-only FOR ALL, and _mcp_resolve_tenant is itself REVOKEd from authenticated, so an invoker-rights version would fail to execute AND return zero rows. Scope is enforced IN-BODY (§59, the grant is never the guard) and binds the ROW, not merely the caller: _mcp_resolve_tenant answers "which tenant is this caller in" and asserts nothing about a connection_id, so the tenant predicate sits inside the connection lookup and the child read keys off the proven row. Both predicates are in the WHERE so a foreign row is never selected and the writers'' `_conn.tenant_id <> _tenant` NULL trap cannot arise. owner_only is re-checked in-body, because binding the tenant alone would let an ordinary member enumerate a connection v2 hides from them entirely. Unknown id, foreign tenant and owner_only-without-standing raise ONE identical MCP_FORBIDDEN (42501) — no existence oracle — and an empty array therefore means only "connected, catalogue not yet probed", which is the live state of every connection until a verify succeeds. Membership suffices to READ (v2 already discloses tool_count/approved_count to a member); the WRITE stays admin-only via set_mcp_connection_approval. NO credential or verification material crosses: pin, schema_hash, authority_hash, endpoint_hash and args_shape_hash are all withheld — endpoint_hash especially, being an unsalted sha256 over the FULL DECRYPTED url whose own generator _mcp_endpoint_hash is revoked from authenticated — and approved_by is reduced to a boolean so a platform operator''s uuid cannot leak into a tenant surface. Staleness and expiry cross as server-computed verdicts rather than as pins for the client to subtract. Tool names failing the identifier grammar are dropped, not sanitized, matching toSafeCapabilities and approve''s bad_tool_name guard.';
+  'Door 1: the per-tool catalogue of ONE gateway connection, scoped to the caller''s own tenant, so the per-action approve surface can name real actions instead of rendering an empty list. SECURITY DEFINER IS REQUIRED AND MUST NOT BE "CORRECTED" TO INVOKER: mcp_connection_tools and mcp_connection_approvals are both is_platform_owner()-only FOR ALL, and _mcp_resolve_tenant is itself REVOKEd from authenticated, so an invoker-rights version would fail to execute AND return zero rows. Scope is enforced IN-BODY (§59, the grant is never the guard) and binds the ROW, not merely the caller: _mcp_resolve_tenant answers "which tenant is this caller in" and asserts nothing about a connection_id, so the tenant predicate sits inside the connection lookup and the child read keys off the proven row. Both predicates are in the WHERE so a foreign row is never selected and the writers'' `_conn.tenant_id <> _tenant` NULL trap cannot arise. owner_only is re-checked in-body, because binding the tenant alone would let an ordinary member enumerate a connection v2 hides from them entirely. Unknown id, foreign tenant and owner_only-without-standing raise ONE identical MCP_FORBIDDEN (42501) — no existence oracle — and an empty array therefore means only "connected, catalogue not yet probed", which is the live state of every connection until a verify succeeds. Membership suffices to READ (v2 already discloses tool_count/approved_count to a member); the WRITE stays admin-only via set_mcp_connection_approval. NO credential or verification material crosses: pin, schema_hash, authority_hash, endpoint_hash and args_shape_hash are all withheld — endpoint_hash especially, being an unsalted sha256 over the FULL DECRYPTED url whose own generator _mcp_endpoint_hash is revoked from authenticated — and approved_by is reduced to a boolean so a platform operator''s uuid cannot leak into a tenant surface. Staleness and expiry cross as server-computed verdicts rather than as pins for the client to subtract, and `approval_blocked_reason` carries the FIVE catalogue-knowable reasons verify_mcp_connection_approval would refuse on — endpoint_missing, contract_changed, approval_not_endpoint_bound, endpoint_changed, approval_expired — in that function''s own order, because "an approval row exists" is a strictly weaker predicate than "the runner will authorize this" and a surface built on the weaker one tells an owner they are covered when they are not. Its two remaining conditions are not modelled and must not be: endpoint_load_mismatch is about a dispatch this read does not make, and action_shape_changed depends on a future call''s arguments; a NULL therefore means "nothing a catalogue can see blocks this", never a guarantee. Tool names failing the identifier grammar are dropped, not sanitized, matching toSafeCapabilities and approve''s bad_tool_name guard.';

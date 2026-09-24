@@ -278,6 +278,19 @@ export type GatewayToolRow = {
   approvalExpired: boolean;
   approvalStale: boolean;
   approvedByYou: boolean;
+  /** Why an existing approval would NOT authorize a run, or null when nothing a catalogue can see
+   *  would stop it. `approved` alone is a WEAKER claim than "the runner will allow this": the
+   *  function that decides at dispatch refuses on seven conditions, and a row can carry a live,
+   *  unexpired, unstale approval that is nonetheless bound to an endpoint this connection no
+   *  longer uses, or to no endpoint at all. Null is never a promise — two of those conditions
+   *  depend on the dispatch itself and cannot be known from a list. */
+  approvalBlockedReason:
+    | "endpoint_missing"
+    | "contract_changed"
+    | "approval_not_endpoint_bound"
+    | "endpoint_changed"
+    | "approval_expired"
+    | null;
   observedAt: string | null;
 };
 
@@ -286,8 +299,14 @@ export type GatewayToolsResult = {
   code: string | null;
   message: string | null;
   tools: GatewayToolRow[];
-  /** Null when the catalogue has never been read — which is NOT the same as "offers nothing",
-   *  and the surface must not conflate them. */
+  /** The SERVER's counts, carried rather than recomputed. `approvedCount` is consent that still
+   *  authorises something, which is not the same number as the connection list's `approvedCount`
+   *  (that one counts approval rows). Two homes for one definition drift; this is the one. */
+  toolCount: number;
+  approvedCount: number;
+  /** Freshness of the ROWS. Derived from their own discovery times, so it is null whenever the
+   *  list is empty — it can date a catalogue that has content, and it cannot tell "never read"
+   *  from "read and empty". The connection's `lastCheckedAt` is what separates those two. */
   observedAt: string | null;
 };
 
@@ -419,10 +438,11 @@ const ERR: Record<string, string> = {
   bad_tool_name: "We couldn't tell which action you meant. Reload and try again.",
   bad_expected_endpoint: "We couldn't confirm the address you reviewed. Reload and try again.",
   bad_args_shape: "We couldn't read the shape of that action. Reload and try again.",
-  // These two name no control, because the surface that would offer one does not exist yet (see
-  // APPROVAL_LIFETIME above). Naming a "listed window" would point at a picker nothing renders.
-  bad_expiry: "That approval's time limit couldn't be read, so nothing was approved.",
-  bad_timestamp: "That approval's time limit isn't a real date, so nothing was approved.",
+  // These two used to name no control, because the picker they would have pointed at did not
+  // render anywhere. It does now — the drawer's action list offers the listed windows — so they
+  // can finally say what to do about it instead of only what went wrong.
+  bad_expiry: "That approval's time limit couldn't be read, so nothing was approved. Pick a window and try again.",
+  bad_timestamp: "That approval's time limit isn't a real date, so nothing was approved. Pick a window and try again.",
   expiry_in_past: "That approval would already have expired. Pick a longer window.",
   tool_not_verified:
     "Paige hasn't confirmed this action exists on the server yet. Check the tool first, then approve.",
@@ -614,6 +634,16 @@ export type UseMcpGateway = McpGatewayState & {
   reload: () => void;
   dismissWriteError: () => void;
 };
+
+/** The closed vocabulary the gateway may answer with. An unrecognised non-empty value means the
+ *  server knows something this build does not, so it is treated as a BLOCK rather than dropped —
+ *  dropping it would silently promote a blocked approval back to "fine", which is the exact
+ *  direction this field exists to stop the surface failing in. */
+function blockedReason(v: unknown): GatewayToolRow["approvalBlockedReason"] {
+  if (typeof v !== "string" || !v) return null;
+  const known = ["endpoint_missing", "contract_changed", "approval_not_endpoint_bound", "endpoint_changed", "approval_expired"];
+  return (known.includes(v) ? v : "contract_changed") as GatewayToolRow["approvalBlockedReason"];
+}
 
 export function useMcpGateway(): UseMcpGateway {
   const { activeTenantId, activeUserId, loading: tenantLoading } = useTenantContext();
@@ -917,6 +947,8 @@ export function useMcpGateway(): UseMcpGateway {
           code: answer.code,
           message: mcpGatewayMessage(answer.code),
           tools: [],
+          toolCount: 0,
+          approvedCount: 0,
           observedAt: null,
         };
       }
@@ -943,10 +975,24 @@ export function useMcpGateway(): UseMcpGateway {
           approvalExpired: r.approvalExpired === true,
           approvalStale: r.approvalStale === true,
           approvedByYou: r.approvedByYou === true,
+          approvalBlockedReason: blockedReason(r.approvalBlockedReason),
           observedAt: str(r.observedAt),
         });
       }
-      return { ok: true, code: null, message: null, tools, observedAt: str(answer.data.observed_at) };
+      return {
+        ok: true,
+        code: null,
+        message: null,
+        tools,
+        // Fall back to the rows only when the server sent no count. A server count and a local
+        // count disagreeing would mean the definitions have drifted, and the server's is the one
+        // that governs.
+        toolCount: count(answer.data.tool_count) ?? tools.length,
+        approvedCount:
+          count(answer.data.approved_count) ??
+          tools.filter((t) => t.approved && t.approvalBlockedReason === null).length,
+        observedAt: str(answer.data.observed_at),
+      };
     },
     [callEdge],
   );

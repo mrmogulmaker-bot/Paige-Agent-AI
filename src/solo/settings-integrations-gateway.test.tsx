@@ -71,6 +71,57 @@ const row = (over: Record<string, unknown> = {}) => ({
  * Default world: the caller may write and the account holds whatever rows are passed.
  * `write` decides what every write RPC returns, so a refusal can be driven end to end.
  */
+/** The RPCs this surface genuinely calls. Anything else is a bug in the caller or a
+ *  gap in this file, and either way must fail loudly rather than succeed quietly. */
+const WRITE_RPCS = new Set([
+  "set_mcp_connection_endpoint",
+  "set_mcp_rest_connection_endpoint",
+  "disconnect_mcp_connection",
+]);
+/** The gateway edge actions this surface genuinely dispatches, `tools` handled apart. */
+const EDGE_ACTIONS = new Set(["create", "verify", "oauth_begin", "approve"]);
+
+/** A connection whose catalogue has been read and holds nothing — the default, because
+ *  it is the honest shape for a fixture that declares no tools, and because the
+ *  alternative (a body with no `tools` array at all) is what hid the degraded render. */
+const emptyToolsAnswer = {
+  data: { ok: true, connection_id: "conn-1", tools: [], tool_count: 0, approved_count: 0, observed_at: null },
+  error: null,
+};
+
+/** One row as the gateway's `tools` action returns it. Every approval verdict here is a
+ *  SERVER verdict in production, so the fixture states them rather than deriving them. */
+const toolRow = (over: Record<string, unknown> = {}) => ({
+  name: "list_contacts",
+  effects: ["read"],
+  app: "Gmail",
+  actionType: "contact.list",
+  requiresApproval: false,
+  approvalBasis: null,
+  approved: false,
+  approvedAt: null,
+  expiresAt: null,
+  approvalExpired: false,
+  approvalStale: false,
+  approvedByYou: false,
+  approvalBlockedReason: null,
+  observedAt: "2026-09-20T10:00:00Z",
+  ...over,
+});
+
+/** A `tools` answer carrying rows, with the counts the server would have computed. */
+const toolsAnswer = (rows: Record<string, unknown>[]) => ({
+  data: {
+    ok: true,
+    connection_id: "conn-1",
+    tools: rows,
+    tool_count: rows.length,
+    approved_count: rows.filter((r) => r.approved === true && r.approvalBlockedReason == null).length,
+    observed_at: rows.map((r) => String(r.observedAt ?? "")).sort().at(-1) || null,
+  },
+  error: null,
+});
+
 function world(over: {
   rows?: Record<string, unknown>[];
   admin?: boolean;
@@ -78,13 +129,35 @@ function world(over: {
   write?: { data?: unknown; error?: unknown };
   /** What a WRITE answers on the RETAINED rpc lane (re-key, disconnect) — still a builder answer. */
   rpcWrite?: { data?: unknown; error?: unknown };
+  /** What the `tools` READ answers. Its own lane, because it is the only edge action
+   *  a drawer fires on OPEN — sharing the write lane is what hid it. */
+  tools?: { data?: unknown; error?: unknown };
 } = {}) {
   rpc.mockImplementation((name: string) => {
     if (name === "get_mcp_connections_v2") return builder({ data: over.rows ?? [], error: null });
     if (name === "is_current_user_tenant_admin") return builder({ data: over.admin !== false, error: null });
-    return builder(over.rpcWrite ?? { data: { connection_id: "conn-new", status: "pending_verification" }, error: null });
+    if (WRITE_RPCS.has(name)) {
+      return builder(over.rpcWrite ?? { data: { connection_id: "conn-new", status: "pending_verification" }, error: null });
+    }
+    // A catch-all here answered ANY name with a connection-shaped success, and that
+    // shape is exactly what the hook's acknowledgement guard accepts — so a renamed
+    // or mistyped RPC was indistinguishable from the real writer working. Naming the
+    // three real ones and throwing on the rest turns that into a failure that says
+    // which call was unstubbed.
+    throw new Error(`unstubbed rpc: ${name}`);
   });
-  invoke.mockResolvedValue(over.write ?? { data: { connection_id: "conn-new", status: "pending_verification" }, error: null });
+  invoke.mockImplementation((_fn: string, opts: { body?: Record<string, unknown> }) => {
+    const action = String(opts?.body?.action ?? "");
+    // The same hole, one layer out, and worse: ONE resolved value served every edge
+    // action. A `tools` call got a connection-shaped body, `listTools` found no array
+    // where it expected one, and the drawer rendered its degraded branch — in every
+    // test that opens a drawer. Fifty-two of them passed that way.
+    if (action === "tools") return Promise.resolve(over.tools ?? emptyToolsAnswer);
+    if (EDGE_ACTIONS.has(action)) {
+      return Promise.resolve(over.write ?? { data: { connection_id: "conn-new", status: "pending_verification" }, error: null });
+    }
+    return Promise.reject(new Error(`unstubbed gateway action: ${action}`));
+  });
 }
 
 /** The body of the last gateway call, for asserting what actually went over the wire. */
@@ -656,24 +729,136 @@ describe("The open drawer tells one story", () => {
 
 describe("What the surface claims about approvals is true of the runner", () => {
   it("claims neither a bulk approval nor a blanket block — both are false, in opposite directions", async () => {
-    world({ rows: [row({ status: "connected", health: "healthy", tool_count: 11, approved_count: 3 })] });
+    // The sentence this replaces said choosing actions "hasn't shipped yet", which was true
+    // until the list did ship. Two earlier versions were false in opposite directions:
+    // "all-or-nothing" named a bulk approval that exists nowhere (the door takes ONE
+    // tool_name), and "nothing runs without your approval" over-corrected, because
+    // resolveEffectApproval returns requiresApproval:false for a declared read and the
+    // runner skips the consent check for it outright. The list now proves both, per row.
+    world({
+      rows: [row({ status: "connected", health: "healthy", tool_count: 3, approved_count: 1 })],
+      tools: toolsAnswer([
+        toolRow({ name: "list_contacts", effects: ["read"], requiresApproval: false }),
+        toolRow({ name: "send_email", effects: ["read"], requiresApproval: true, approvalBasis: "server_name_floor" }),
+        toolRow({ name: "create_booking", effects: ["create"], requiresApproval: true, approvalBasis: "provider_declared_effect",
+                  approved: true, expiresAt: "2026-10-20T11:00:00Z", approvedByYou: true }),
+      ]),
+    });
     const { host } = await render();
     await click(host.querySelector('[data-gateway-tool="conn-1"]'));
     const text = dialog(host)!.textContent!;
 
-    // There is no bulk approval anywhere: the approve door takes ONE tool_name, and approved_count
-    // is one row per approved action. "All-or-nothing" also contradicted the line directly above it,
-    // which reads "3 of 11 actions approved".
     expect(text).not.toMatch(/all-or-nothing/i);
-    expect(text).toMatch(/3 of 11 actions approved/);
-
-    // And the opposite over-correction is false too: resolveEffectApproval returns
-    // requiresApproval:false for a declared read, and the runner skips the consent check for it — so
-    // a blanket "nothing runs without your approval" would be its own §13 defect.
     expect(text).not.toMatch(/nothing runs without your approval/i);
+    // The claim that shipped in its place is dead, and must not come back as copy.
+    expect(text).not.toMatch(/hasn.t shipped yet/i);
+    // A declared read is honestly marked as needing nothing — the true statement the
+    // over-correction denied.
+    expect(text).toMatch(/Runs without asking/);
+    // And a mutation is honestly gated, per row, with its reason. `send_email` is labelled
+    // ["read"] by its provider and is raised anyway, which is the server floor working.
+    expect(text).toMatch(/Needs your approval/);
+    expect(text).toMatch(/name says it sends or changes something/i);
+    // The summary counts CONSENT, not rows: one of the two gated actions is approved.
+    expect(text).toMatch(/1 of 2 approved/);
+  });
 
-    // What IS true is scoped to the three branches that actually gate.
-    expect(text).toMatch(/send or change something stays blocked/i);
+  it("tells an owner when an approval that LOOKS live would be refused at dispatch", async () => {
+    // The defect this exists to prevent: `approved` means only "a row exists", while the
+    // function governing execution refuses on seven conditions. An approval bound to an
+    // endpoint this connection no longer uses is unexpired, unstale, and useless — and the
+    // surface used to render it as "You approved this" with no control to fix it.
+    world({
+      rows: [row({ status: "connected", health: "healthy", tool_count: 2, approved_count: 2 })],
+      tools: toolsAnswer([
+        toolRow({ name: "charge_card", effects: ["send"], requiresApproval: true, approvalBasis: "provider_declared_effect",
+                  approved: true, expiresAt: "2026-10-20T11:00:00Z", approvalBlockedReason: "endpoint_changed" }),
+        toolRow({ name: "wipe_all", effects: ["delete"], requiresApproval: true, approvalBasis: "server_name_floor",
+                  approved: true, approvalBlockedReason: "approval_not_endpoint_bound" }),
+      ]),
+    });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    const text = dialog(host)!.textContent!;
+
+    expect(text).toMatch(/Approved for a different address/);
+    expect(text).toMatch(/Approval needs redoing/);
+    // Neither may read as live consent, and the count must not include them.
+    expect(text).not.toMatch(/You approved this/);
+    expect(text).toMatch(/0 of 2 approved/);
+    // Both are recoverable, so both offer the control that recovers them.
+    expect(buttons(host).filter((b) => b.textContent === "Approve again")).toHaveLength(2);
+  });
+
+  it("does not offer a control that could only be refused", async () => {
+    // A member who is not a workspace admin is refused before anything is sent, and the
+    // server refuses independently. They still see the whole list — it is already disclosed
+    // to them — plus a line naming who can act on it.
+    world({
+      admin: false,
+      rows: [row({ status: "connected", health: "healthy", tool_count: 1, approved_count: 0 })],
+      tools: toolsAnswer([toolRow({ name: "send_email", effects: ["send"], requiresApproval: true, approvalBasis: "server_name_floor" })]),
+    });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(byText(host, "Approve")).toBeUndefined();
+    const text = dialog(host)!.textContent!;
+    expect(text).toMatch(/send_email/);
+    expect(text).toMatch(/A workspace admin approves what Paige may use/);
+  });
+
+  it("keeps 'never read' and 'offers nothing' as different sentences", async () => {
+    // Both arrive as an empty array. `observedAt` cannot separate them — it is derived from
+    // the rows, so it is null whenever there are none. The connection's own last-checked time
+    // is what says whether anyone ever asked. Production is entirely the first case today, so
+    // one "nothing here" line would be false about every connection anyone owns.
+    world({ rows: [row({ status: "connected", health: "healthy", last_checked_at: null, tool_count: 0, approved_count: 0 })] });
+    const first = await render();
+    await click(first.host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(dialog(first.host)!.textContent).toMatch(/hasn.t looked at what this tool can do yet/i);
+    first.root.unmount();
+
+    world({ rows: [row({ status: "connected", health: "healthy", last_checked_at: "2026-09-20T10:00:00Z", tool_count: 0, approved_count: 0 })] });
+    const second = await render();
+    await click(second.host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(dialog(second.host)!.textContent).toMatch(/offered nothing she can run/i);
+  });
+
+  it("does not render an empty list as 'offers nothing' when the read was REFUSED", async () => {
+    world({
+      rows: [row({ status: "connected", health: "healthy", tool_count: 4, approved_count: 0 })],
+      tools: edgeRefusal("not_found", 404),
+    });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    const text = dialog(host)!.textContent!;
+    expect(text).toMatch(/could not be found/i);
+    expect(text).not.toMatch(/offered nothing/i);
+    expect(text).not.toMatch(/hasn.t looked/i);
+  });
+
+  it("records consent without claiming Paige will then run it", async () => {
+    // Approving records CONSENT. Whether Paige may act on it is a separate switch that is off
+    // by default, and promising a run here would swap one false sentence for another.
+    world({
+      rows: [row({ status: "connected", health: "healthy", tool_count: 1, approved_count: 0 })],
+      tools: toolsAnswer([toolRow({ name: "send_email", effects: ["send"], requiresApproval: true, approvalBasis: "server_name_floor" })]),
+      write: { data: { ok: true, connection_id: "conn-1", tool_name: "send_email", approved: true }, error: null },
+    });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    await click(byText(host, "Approve"));
+
+    const sent = edgeCalls("approve").at(-1)?.[1]?.body as Record<string, unknown>;
+    expect(sent.tool_name).toBe("send_email");
+    // The lifetime floor is applied before the wire, never by omitting the field — omitting it
+    // means NO EXPIRY to the handler, which would make the most suspicious input the most
+    // permissive outcome.
+    expect(typeof sent.expires_at).toBe("string");
+
+    const text = dialog(host)!.textContent!;
+    expect(text).toMatch(/consent recorded/i);
+    expect(text).not.toMatch(/Paige can use it/i);
   });
 });
 

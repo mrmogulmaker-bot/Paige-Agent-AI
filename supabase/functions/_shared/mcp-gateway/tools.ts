@@ -42,6 +42,7 @@ export type GatewayTool = {
   requiresApproval: boolean;
   /** WHY, so the surface can explain rather than assert. Null only when no approval is needed. */
   approvalBasis: "server_name_floor" | "provider_declared_effect" | "effects_undeclared" | null;
+  /** An approval ROW exists. Strictly weaker than "the runner will authorize this". */
   approved: boolean;
   approvedAt: string | null;
   expiresAt: string | null;
@@ -49,6 +50,24 @@ export type GatewayTool = {
   approvalExpired: boolean;
   approvalStale: boolean;
   approvedByYou: boolean;
+  /**
+   * Why an existing approval would NOT authorize a run, or null when nothing a
+   * catalogue can see would stop it. Null on an unapproved action too — `approved`
+   * carries that, and conflating "no consent" with "consent is fine" is the bug
+   * this field exists to make impossible.
+   *
+   * Five of the seven reasons `verify_mcp_connection_approval` refuses on. The other
+   * two are about a specific dispatch (the endpoint a runner loaded, the arguments a
+   * call carries) and cannot be known from a list, so a null here is never a promise
+   * that a run will succeed — only that nothing visible from here blocks it.
+   */
+  approvalBlockedReason:
+    | "endpoint_missing"
+    | "contract_changed"
+    | "approval_not_endpoint_bound"
+    | "endpoint_changed"
+    | "approval_expired"
+    | null;
   observedAt: string | null;
 };
 
@@ -78,6 +97,17 @@ export function readToolsInput(
 }
 
 const EFFECTS: readonly string[] = ["read", "create", "update", "send", "delete"];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** The closed vocabulary the RPC may answer with. Anything else is treated as a block with no
+ *  nameable reason rather than passed through — a reason string the surface cannot render is
+ *  worse than an honest "something about this approval no longer holds". */
+const BLOCK_REASONS: readonly string[] = [
+  "endpoint_missing",
+  "contract_changed",
+  "approval_not_endpoint_bound",
+  "endpoint_changed",
+  "approval_expired",
+];
 // The identifier grammar the DB, `toSafeCapabilities` and `approve`'s own guard all share. The RPC
 // already drops rows failing it; re-checking costs nothing and means this module is safe to point
 // at any row source, not only that one.
@@ -100,6 +130,14 @@ function safeEffects(raw: unknown): CapabilityEffect[] {
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 const bool = (v: unknown): boolean => v === true;
 
+/** A reason the surface can render, or null. An unknown non-empty string means the RPC knows
+ *  something this module does not, so it is reported as a block under the safest reason rather
+ *  than dropped — dropping it would silently promote a blocked approval back to "fine". */
+function blockReason(v: unknown): GatewayTool["approvalBlockedReason"] {
+  if (typeof v !== "string" || !v) return null;
+  return (BLOCK_REASONS.includes(v) ? v : "contract_changed") as GatewayTool["approvalBlockedReason"];
+}
+
 /**
  * List the actions one connection offers, with each one's approval story.
  *
@@ -116,7 +154,12 @@ export async function runTools(
   const { userClient } = deps;
   const { connectionId, expectedTenantId } = input;
 
-  if (!connectionId) return { httpStatus: 400, body: { error: "bad_connection_id" } };
+  // Same guard, same code, same status as `approve`, `execute` and `oauth_begin`. Without it a
+  // malformed id travels to Postgres, comes back as an unrecognised `invalid input syntax` error
+  // and is reported as a 500 `lookup_failed` — a different refusal shape from every sibling, for
+  // an input the module could have rejected without a round trip. It reveals nothing either way
+  // (malformed is not an existence answer), which is why this is a consistency fix, not a leak fix.
+  if (!UUID_RE.test(connectionId)) return { httpStatus: 400, body: { error: "bad_connection_id" } };
 
   // Workspace-switch-race guard, mirroring `approve`. A list rendered for the workspace the person
   // has just left is a quieter error than a refused write, and a worse one: it looks correct.
@@ -172,6 +215,7 @@ export async function runTools(
       approvalExpired: bool(r.approval_expired),
       approvalStale: bool(r.approval_stale),
       approvedByYou: bool(r.approved_by_you),
+      approvalBlockedReason: blockReason(r.approval_blocked_reason),
       observedAt: seen,
     });
   }
@@ -185,10 +229,11 @@ export async function runTools(
       connection_id: connectionId,
       tools,
       tool_count: tools.length,
-      // An approval that has EXPIRED or gone STALE is not consent any more, so it is not counted
-      // as one. This can legitimately disagree with the connection list's `approved_count`, which
-      // counts approval ROWS: the row still exists, it just no longer authorises anything.
-      approved_count: tools.filter((t) => t.approved && !t.approvalExpired && !t.approvalStale).length,
+      // Consent that still AUTHORISES something. An approval that has expired, gone stale, lost its
+      // endpoint binding or been left pointing at an endpoint this connection no longer uses is a
+      // row that authorises nothing, so it is not counted as consent. This legitimately disagrees
+      // with the connection list's `approved_count`, which counts approval ROWS.
+      approved_count: tools.filter((t) => t.approved && t.approvalBlockedReason === null).length,
       observed_at: observedAt,
     },
   };
