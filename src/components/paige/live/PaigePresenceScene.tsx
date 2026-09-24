@@ -61,10 +61,11 @@ function usePaige() {
   }, [scene]);
 }
 
-function Figure({ state, reduced, readEnergy }: {
+function Figure({ state, reduced, readEnergy, onCrash }: {
   state: PresenceState;
   reduced: boolean;
   readEnergy: () => AudioEnergy;
+  onCrash: () => void;
 }) {
   const { object, material } = usePaige();
   const group = useRef<THREE.Group>(null);
@@ -72,6 +73,7 @@ function Figure({ state, reduced, readEnergy }: {
   const settled = SETTLED.has(state);
   const still = presenceFrame(state, 0);
   const invalidate = useThree((three) => three.invalidate);
+  const crashed = useRef(false);
 
   // Under reduced motion the canvas is on `demand`, so it paints only when something asks it to.
   // R3F does invalidate on a root-state change, which covers mount and this model resolving out of
@@ -92,23 +94,61 @@ function Figure({ state, reduced, readEnergy }: {
   // A leak is a slow problem; this would have been a "works once" bug.
   useEffect(() => () => material.dispose(), [material]);
 
-  useFrame(({ clock }) => {
+  // Reduced motion must SETTLE her, not freeze her wherever she happened to be. The props below
+  // are constants (presenceFrame at t=0 is the same pose for every state), and R3F skips re-applying
+  // a prop it considers unchanged — so flipping the preference mid-session would otherwise leave the
+  // last mutated tilt, offset and scale in place and simply stop. Put her back in the pose by hand,
+  // then ask for the one frame that shows it.
+  useEffect(() => {
+    if (!reduced) return;
     const rig = group.current;
-    if (!rig || reduced) return;
-    // One source of truth for every animated value, shared with the flat presence.
-    const frame = presenceFrame(state, clock.elapsedTime, readEnergy());
-    rig.position.y = (frame.drift / 320) * 1.4;
-    rig.rotation.y = THREE.MathUtils.degToRad(frame.turn * 0.9);
-    // Listening leans her a little closer; speaking lets the real amplitude read on her surface.
-    rig.rotation.x = state === "listening" ? 0.07 + frame.energy * 0.05 : 0.02;
-    rig.scale.setScalar(1 + frame.energy * 0.035);
-    material.emissiveIntensity = 0.1 + frame.light * 0.55 + frame.energy * 0.5;
+    if (rig) {
+      rig.position.y = (still.drift / 320) * 1.4;
+      rig.rotation.set(0.02, THREE.MathUtils.degToRad(still.turn * 0.9), 0);
+      rig.scale.setScalar(1);
+    }
     if (halo.current) {
-      const ring = halo.current;
-      ring.rotation.z = clock.elapsedTime * (state === "thinking" || state === "working" ? 0.55 : 0.12);
-      const visible = ring.material as THREE.MeshBasicMaterial;
-      visible.opacity = (settled ? 0.1 : 0.18) + frame.energy * 0.46;
-      ring.scale.setScalar(1 + frame.energy * 0.14);
+      halo.current.rotation.z = 0;
+      halo.current.scale.setScalar(1);
+      (halo.current.material as THREE.MeshBasicMaterial).opacity = settled ? 0.1 : 0.18;
+    }
+    material.emissiveIntensity = 0.1 + still.light * 0.55;
+    invalidate();
+  }, [reduced, state, still.drift, still.turn, still.light, settled, material, invalidate]);
+
+  useFrame(({ clock }, delta) => {
+    const rig = group.current;
+    if (!rig || reduced || crashed.current) return;
+    // A THROW HERE ESCAPES THE ERROR BOUNDARY ENTIRELY. R3F calls frame subscribers from inside a
+    // requestAnimationFrame callback with no try/catch of its own, and React boundaries catch render
+    // and lifecycle errors only — so an exception would repeat ~60 times a second forever, freeze
+    // the canvas on its last painted frame, and never reach SceneBoundary or print the one console
+    // line the whole degrade contract rests on. Caught here, logged once, and the scene steps aside
+    // for the flat presence, which is what the wrapper promises.
+    try {
+      // One source of truth for every animated value, shared with the flat presence.
+      const frame = presenceFrame(state, clock.elapsedTime, readEnergy());
+      rig.position.y = (frame.drift / 320) * 1.4;
+      rig.rotation.y = THREE.MathUtils.degToRad(frame.turn * 0.9);
+      // Listening leans her a little closer; speaking lets the real amplitude read on her surface.
+      rig.rotation.x = state === "listening" ? 0.07 + frame.energy * 0.05 : 0.02;
+      rig.scale.setScalar(1 + frame.energy * 0.035);
+      material.emissiveIntensity = 0.1 + frame.light * 0.55 + frame.energy * 0.5;
+      if (halo.current) {
+        const ring = halo.current;
+        // INTEGRATED, not an absolute angle from elapsed time. Multiplying elapsed time by a rate
+        // that changes makes the ring jump: at ten seconds, leaving `thinking` moved it 4.3 radians
+        // backwards in a single frame. Settled states stop it, because a ring still turning under
+        // "the live connection ended" reads as work that is not happening.
+        ring.rotation.z += delta * (settled ? 0 : state === "thinking" || state === "working" ? 0.55 : 0.12);
+        const visible = ring.material as THREE.MeshBasicMaterial;
+        visible.opacity = (settled ? 0.1 : 0.18) + frame.energy * 0.46;
+        ring.scale.setScalar(1 + frame.energy * 0.14);
+      }
+    } catch (error) {
+      crashed.current = true;
+      console.error("[PaigePresenceScene] the animation loop threw — standing down to the flat presence. Cause:", error);
+      onCrash();
     }
   });
 
@@ -129,10 +169,12 @@ function Figure({ state, reduced, readEnergy }: {
   );
 }
 
-export default function PaigePresenceScene({ state, reduced, readEnergy = () => SILENT_ENERGY }: {
+export default function PaigePresenceScene({ state, reduced, readEnergy = () => SILENT_ENERGY, onCrash = () => {} }: {
   state: PresenceState;
   reduced: boolean;
   readEnergy?: () => AudioEnergy;
+  /** Called once if the animation loop throws — a boundary cannot see inside requestAnimationFrame. */
+  onCrash?: () => void;
 }) {
   return (
     <Canvas
@@ -149,7 +191,7 @@ export default function PaigePresenceScene({ state, reduced, readEnergy = () => 
       <directionalLight position={[2.6, 3.2, 2.4]} intensity={1.35} color="#efe3ff" />
       <directionalLight position={[-2.8, 0.6, -1.8]} intensity={0.75} color="#bc965b" />
       <pointLight position={[0, -1.6, 1.4]} intensity={0.5} color="#796b7d" />
-      <Figure state={state} reduced={reduced} readEnergy={readEnergy} />
+      <Figure state={state} reduced={reduced} readEnergy={readEnergy} onCrash={onCrash} />
     </Canvas>
   );
 }

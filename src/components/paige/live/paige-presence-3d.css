@@ -1,6 +1,7 @@
-/* The 3D presence occupies the same frame the flat presence defined, so nothing above it reflows
-   when one degrades to the other. Depth comes from elevation and a hairline edge rather than from
-   darkening (§22/§23): the canvas itself is transparent and the stage's ground shows through. */
+/* The 3D presence occupies the same frame the flat presence defined — same width clamps, same
+   aspect ratio as its 320x310 viewBox, and the same full-column placement (granted in
+   paige-live-conversation.css, which keys on BOTH class names) — so nothing above it reflows when
+   one degrades to the other. The canvas is transparent and the stage's ground shows through. */
 .paige-presence-3d {
   position: relative;
   width: min(100%, 48vh, 36rem);
@@ -11,14 +12,18 @@
   overflow: hidden;
   isolation: isolate;
 }
-/* A soft floor under her, so she reads as standing in the frame rather than pasted onto it. */
+/* A soft floor under her, so she reads as standing in the frame rather than pasted onto it.
+   THEME-AWARE, and the first draft was not: it was a 45%-opaque near-black ellipse with no light
+   variant, in a rule whose own comment claimed depth does not come from darkening. A shadow under a
+   figure is the figure's own contact shadow, so it derives from the foreground token and stays a
+   shadow in both themes instead of a dark blob on a bright stage. */
 .paige-presence-3d::after {
   content: "";
   position: absolute;
   inset: auto 12% 6% 12%;
   height: 14%;
   border-radius: 50%;
-  background: radial-gradient(closest-side, rgb(12 8 16 / 0.45), transparent);
+  background: radial-gradient(closest-side, hsl(var(--foreground) / 0.28), transparent);
   pointer-events: none;
   z-index: -1;
 }

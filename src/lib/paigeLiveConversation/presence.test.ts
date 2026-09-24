@@ -43,12 +43,17 @@ describe("truthful Paige Presence", () => {
   });
 
   // The 3D presence (PaigePresenceScene) drives every animated value — position, rotation, scale,
-  // emissive intensity, the halo's opacity — from this one function. That makes these two
+  // emissive intensity, the halo's opacity — from this one function. Two of those, `drift` and
+  // `turn`, are timers and DO move in silence: that is the owner-approved flat presence's own
+  // ambient behaviour, carried over rather than introduced, and it is identity, not a claim about
+  // hearing. What must never move without audio is the energy term, which is the only thing scale,
+  // the halo's opacity and the emissive lift key off. So these assertions are about energy
+  // specifically, and the test above is named for what it actually proves. That makes them the
   // assertions the thing standing between "she reacts when you speak" and a scene that moves on a
   // timer and merely LOOKS like it is listening. The 3D smoke cannot make them: it runs on CI's
   // Node 20, which has no type stripping, so importing this module there would have skipped them
   // silently. They live here instead, where they actually execute.
-  it("the 3D scene may only move to real audio: silence produces zero energy in every state", () => {
+  it("no AUDIO-DERIVED cue moves without audio: silence produces zero energy in every state", () => {
     const states: PresenceState[] = ["ready", "listening", "thinking", "working", "speaking", "held", "interrupted", "unavailable", "disconnected"];
     for (const state of states) {
       for (const seconds of [0, 1.7, 3.5, 11]) {
