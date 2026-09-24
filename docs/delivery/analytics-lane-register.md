@@ -138,6 +138,34 @@ fact that this gate is an inline `accountType ===` compare rather than `hasFeatu
 
 ---
 
+## B2. FOUND WHILE EXECUTING D-8 — needs a ruling, not a phase
+
+### F-1 — The same two false labels still ship on the LIVE agency Command Center
+
+`src/agency/data/useAgencyMetrics.ts:139,141` emits `"Revenue this period"` and `"Active clients"`
+from the same `practice_dashboard_metrics` own-book values that the Solo adapter was just corrected
+for. It is live code, not dead code, and not a test.
+
+**This is a genuine tension between two standing instructions, which is why it is recorded rather
+than taken.** The agency tier is explicitly parked (§B). But the D-8 ruling says a false assertion
+does not wait for a phase, and §13 does not carve out a tier. The fix is the identical two string
+swaps already approved for Solo. Left untouched pending a coordinator ruling; the Solo surface and
+the agency surface now disagree about the same numbers, which is itself a state worth ending quickly
+either way.
+
+### F-2 — `src/pages/admin/PracticeOverview.tsx` is unreachable
+
+Zero importers; a repo-wide search finds only prose mentions in comments, and
+`docs/delivery/solo-completion-matrix.json` classifies it `orphaned_dead_code` — "the unrouted
+PracticeOverview page". It carries `label="Active clients"` (`:117`) and `label="Revenue this
+period"` (`:129`), and carried the ARPC hint removed under D-8.
+
+Recorded so nobody rediscovers it and mistakes it for a live defect — **as this lane did.** The
+Phase 1 proposal named ARPC as a live defect on the strength of finding its render call, without
+checking whether anything routes to it. Corrected in the proposal's §2.
+
+---
+
 ## C. BLOCKED — and who owes it
 
 1. **Read-only database access.** Supabase MCP returns permission denied on `list_edge_functions`

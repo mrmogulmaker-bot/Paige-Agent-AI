@@ -121,6 +121,19 @@ over the **current** active-client count. Two different time bases in one divisi
 denominator is L-2's inflated count. The number is not wrong by a little; it has no coherent
 meaning.
 
+> **Correction: it is not on any screen, and I said it was.** Its only render site is
+> `src/pages/admin/PracticeOverview.tsx:133`, and that module has **zero importers** — a repo-wide
+> search finds only prose mentions in comments — with the repo's own
+> `docs/delivery/solo-completion-matrix.json` classifying it `orphaned_dead_code`, "the unrouted
+> PracticeOverview page". So L-3 is a latent defect in unreachable code, not a live one. I reported
+> it as live after finding the render call and not checking whether anything routes to it — the same
+> find-the-code-and-assume-the-reach error as the stale citations in §9. Caught by the peer gate,
+> not by me.
+>
+> Two consequences. The hint removal below stopped nothing a user could see, and is cleanup rather
+> than a fix. And the same two false labels also sit in that file's `KPI_META` (`:117`, `:129`),
+> where they are equally unreachable and equally not worth spending on.
+
 ### L-4 — The empty funnel shows stage names the tenant never created
 
 When the bundle is `UNAVAILABLE` or has no stages, `src/solo/analytics2.tsx:150` falls through
@@ -386,23 +399,29 @@ different sentences — *this cannot be measured* and *you have not set this up 
 account deserves the second, with the next action named. This is a coverage-layer addition, not a
 new contract, and it satisfies both owner rulings instead of trading one against the other.
 
-## 6. Decisions owed by the owner
+## 6. Decisions — ruled 2026-09-24, except D-1
 
-Each is a real fork. Each has a recommendation. **None is being taken silently.**
+Eight of nine are ruled. Recommendations that were accepted are recorded as accepted; the four the
+coordinator amended are recorded **as amended, not as proposed**, because the amendment is the
+ruling.
 
-| # | The decision | Recommendation | Cost of the other choice |
-|---|---|---|---|
-| **D-1** | Where is the lead/client boundary? Four competing answers exist (`clients.status`, `lifecycle_stage`, `client_types`, deal state) with **no declared precedence** | `lifecycle_stage` is the single source; `status` is never used for measurement | Every people metric stays ambiguous and L-2 recurs under a new name |
-| **D-2** | Is `tenant_orders.created_at` the right time basis for collected money? It is session-create time, not payment time | Use it, and label the metric's time basis honestly on the surface | Needs a schema addition to capture payment time |
-| **D-3** | Sum across currencies, or refuse to? `deals.currency` exists and is currently discarded | **Never sum across currencies.** Group by currency; show one figure only when one currency is present | A mixed-currency tenant gets a meaningless number that looks precise |
-| **D-4** | Which "won" — `deals.status='won'` or `stage_type='won'`? | `stage_type`, and backfill the pre-`20261204000000` deals | Two surfaces disagree about the same deals, permanently |
-| **D-5** | Gross or net for collected revenue? `application_fee_amount` is Paige's cut | Net of the application fee as the headline, gross beside it — but **not labelled "what the tenant receives"**, because Stripe's own processing fee is not in this schema, so even the net figure sits above the real deposit | Gross counts money the tenant never got; a naive "net receives" label claims a precision the data does not have |
-| **D-6** | Recurring convention for committed value | Monthly-equivalent — adopt the shipped choice, do not invent a second | A second convention in the codebase, and §18 drift |
-| **D-7** | Is the at-risk threshold (21 days, hardcoded) tenant-configurable? | Yes, defaulting to 21 | Every business is assumed to have the same cadence |
-| **D-8** | Fix L-1 through L-4 in Phase 2, or wait for the full dictionary? | Fix in Phase 2 — they are telling owners untrue things now | Known-false numbers stay on screen for longer |
-| **D-9** | May a Stripe-confirmed order be summed as revenue at all? The shipped Sales rule (2026-09-05) says `tenant_orders` is *never* summed and the surface renders received money unavailable | Yes, narrowly: sum it **only** where a confirmed order exists, and return `UNAVAILABLE` — never zero — where none does. That keeps the rule's principle (never substitute an estimate for a receipt) while letting a real receipt count | Either the platform can never report revenue at all, or M-2 quietly overrides a dated owner ruling without anyone deciding to |
+| # | Status | The ruling |
+|---|---|---|
+| **D-1** | **HELD — the owner is answering directly** | No metric whose definition depends on the lead-versus-client boundary proceeds until it lands. A **fifth candidate** was added by the coordinator and is recorded here as a candidate, not a recommendation: derive client status from a **signed agreement or a confirmed payment** — a fact the system can prove and point at, rather than a state someone typed. It cannot drift and cannot be inflated by a quickly-entered lead. It is also stricter than how most owners describe their book, which is precisely why it is the owner's call |
+| **D-2** | Approved, amended | Use the checkout date and **say on screen that it is the checkout date**. The paid-at gap is filed with its consequence named: at a month boundary a sale lands in the wrong month, and the first tenant reconciling against a bank statement finds the mismatch and stops trusting every number on the page. A trust defect with a delayed fuse, not a nice-to-have |
+| **D-3** | **Approved as proposed** | Never sum across currencies — one line per currency. The current code adds dollars and euros into one figure, which is a **live wrong number, not a future risk**. A single converted total needs a rate and a rate date; that is its own policy decision and is parked |
+| **D-4** | Approved, amended | The board column (`stage_type='won'`) wins. The backfill is approved **in principle only**: it is a production data write, and it requires a dry-run count of affected deals plus the owner's explicit authorization before anything runs. **No exceptions.** See §10 — this session cannot produce that count |
+| **D-5** | Approved, amended | Net headline, gross beside it. The caveat becomes the rule: it **cannot be labelled "what you receive"**, because the processor fee is invisible to the system and the true figure is lower. Label it **after-platform-fee** and let the confidence model carry the incompleteness — the spec's "provable but incomplete" case |
+| **D-6** | **Approved as proposed** | Recurring reported monthly, never annualised, adopting the Sales convention. One home (§18) — do not invent a second convention two screens apart |
+| **D-7** | **Approved as proposed** | A tenant setting defaulting to 21 days — and it **enters the dictionary with an owner and a threshold like every other metric**, not as a constant in a file |
+| **D-8** | **Amended — split** | Computing the right number is Phase 2. **Stopping the wrong one is now.** The surface already implements an honest way to say nothing; suppressing or relabelling a false figure costs nothing, needs no dictionary entry and no evidence layer. Under §13 that does not wait for a phase. Executed — see §10 |
+| **D-9** | Approved, **definition widened** | Yes, narrowly — but defined as **confirmed payment from an evidenced source**, not confirmed *Stripe* payment. Stripe is the first writer into that definition, not the definition itself. §38 holds that Paige never holds tenant client money and the tenant brings their own processor, so a tenant taking checks, bank transfers or QuickBooks invoices must be able to reach a complete revenue view. Baking the processor into the definition makes every one of those tenants see zero permanently. This matters more at definition time than at table time |
 
----
+**M-2 is restated under the D-9 amendment.** Its source of record is no longer "`tenant_orders`" but
+**"any evidenced confirmation of payment received"**, of which `tenant_orders` at `status='complete'`
+is the first and currently only implementation. A second writer — a reconciled bank transfer, a
+QuickBooks-confirmed invoice, a different processor's webhook — enters the same metric rather than
+needing a second one.
 
 ## 7. What Phase 2 does with this, once confirmed
 
@@ -500,3 +519,68 @@ One place a lens itself overstated, verified rather than relayed: the citations 
 empty-funnel fallback renders "four invented values." It renders four invented **labels**, each
 showing *"No proved count"* under a watermark reading *"no implied volume or conversion."* No number
 is fabricated, and L-4 is written to the accurate version.
+
+---
+
+## 10. D-8 executed — what was stopped, and what was not
+
+The coordinator split D-8: computing the right number is Phase 2, stopping the wrong one is now.
+This section is the honest accounting of which is which.
+
+### Stopped, on a live Solo surface
+
+| Was | Is | Why the old one was false |
+|---|---|---|
+| `"Revenue this period"` | **`"Won this period (estimated)"`** | The value is `sum(d.value_cents)` over won-stage deals dated by `actual_close_date`. The period half was accurate; the word *Revenue* asserted money received, which the figure cannot prove |
+| `"Active clients"` | **`"Active contacts"`** | The value counts `clients` rows with `status='active'`, and that column defaults to `'active'` while `create_contact` hardcodes it — so a row created as a lead is counted. One word, and deliberately no attempt at a better definition, because D-1 is held |
+| `"N clients at risk"` ×4 | **`"N contacts at risk"`** | The same false noun over the same population — `at_risk_clients` counts `clients` rows with `status='active'` that have had no contact in 21 days. One is the greeting in `useCommandCenter.ts`; the other three are in `useSoloGamePlan.ts` (`:522`, `:718`, `:896`) — a chip and two evidence lines rendered **beside** it. Renaming only the greeting would have left a chip reading "clients at risk" next to a greeting reading "contacts at risk", which is worse than either extreme. D-7 rules the at-risk *threshold* into the dictionary as Phase 2 work; only the label moved here |
+| Four invented funnel stages | An honest empty state | `analytics2.tsx` rendered `"Qualified lead" / "Proposal" / "Commitment" / "Confirmed outcome"` for tenants who created none. **No number was fabricated** — each read *"No proved count"* — so the defect was the invented **names**, and the fix is proportionate to that |
+
+### Cleanup, not a fix — say so plainly
+
+The ARPC hint was removed from `PracticeOverview.tsx`, and **that file is unreachable** (§2, L-3).
+No figure a user can see was stopped by that edit. It is recorded as cleanup rather than counted as
+one of the four.
+
+### Found, and deliberately NOT changed
+
+- **`src/agency/data/useAgencyMetrics.ts:139,141` still emits `"Revenue this period"` and
+  `"Active clients"`** from the same `practice_dashboard_metrics` own-book values, on a **live**
+  agency surface. This is a genuine tension and it is the coordinator's to resolve, not mine: the
+  agency tier is explicitly parked, while §13 and the D-8 ruling say a false assertion does not wait
+  for a phase. The fix is the identical two string swaps already approved. **Flagged, not taken.**
+- **`PracticeOverview.tsx:117,129`** carry the same two labels. Unreachable, so not worth spending
+  on; recorded so nobody rediscovers them.
+- **The relabelled won figure is still formatted with a hardcoded `$`** (`useCommandCenter.ts`'s
+  `usd()` pins `currency: "USD"`) over a sum that ignores `deals.currency`. D-3 has now ruled that
+  summing across currencies is a live wrong number — so this is a **ruled** defect, and closing it
+  needs the per-currency grouping that is Phase 2 compute work. `(estimated)` does not cover it.
+
+### Capabilities removed, made visible (§58)
+
+- The `"$X avg / client"` hint on `PracticeOverview` — gone, nothing replaces it, unreachable anyway.
+- The four-stage cylinder silhouette **in the unproved state only**. The proved branch still renders
+  it from server-issued stages, so the funnel visual is not gone from the surface — only from the
+  state where it was drawn without evidence.
+- **Four keyboard tab stops.** Each placeholder stage carried `tabIndex={0}`; the replacement is
+  static text. A real interaction change, recorded because what those stops announced were the
+  invented names.
+
+### Evidence, separated by class
+
+- **Automated** — `npx vitest run` over the three affected files: **3 passed, 52 tests, exit 0**.
+  The failing assertion was inverted rather than deleted: `analytics2.render.test.tsx` had pinned
+  the invented placeholder in place by counting four of them, and now asserts their absence by name.
+- **Static** — `npx tsc --noEmit -p tsconfig.app.json`: pre-existing errors only, proven by reverting
+  the edited files and diffing the output byte-for-byte; zero errors in any edited file.
+  `lint:doc-citations` and its self-test pass.
+- **Rendered / interactive / authenticated-runtime — `UNVERIFIED`.** This session has no
+  browser-driving capability, so the four Solo viewports PAIGE-open and closed were **not** driven.
+  Module 3's geometry proof is genuinely owed to a capable session, and is not claimed here. The
+  change is copy plus suppression with no layout, token, colour or motion change, but that is an
+  argument for low risk, not a substitute for the proof.
+- **Protected seams** — the adversarial verifier declared all fifteen: two affected (responsive shell
+  geometry, accessibility), thirteen explicitly not-affected. The two affected are the analytics2
+  empty state changing from a four-item flex row to a single centred message, and its accessible
+  name, which was verified accurate.
+
