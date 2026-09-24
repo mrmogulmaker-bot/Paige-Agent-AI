@@ -2823,3 +2823,51 @@ into a report. The diff is the only account of a commit that cannot be stale.
 
 This is the same failure as the `20270412000000` citations and the receipt-ACL claim, in a third
 costume: acting on a stale read of something that moved underneath.
+
+## A migration version collision does not skip a file — it WEDGES the whole prod chain
+
+**2026-09-24, PR #1436.** Two files shared version `20270106000000`: the durable-job weekly-summary
+claims migration, which merged first and applied, and the Secure Browser control plane, which merged
+second in PR #1046. I reported this as the second file being "silently skipped," reasoning that
+`schema_migrations` is keyed on version alone so the later arrival is ignored.
+
+**That is not what happens, and the difference is the whole incident.** The deploy log:
+
+```
+Applying migration 20270106000000_paige_secure_browser_control_plane.sql...
+ERROR: duplicate key value violates unique constraint "schema_migrations_pkey" (SQLSTATE 23505)
+Key (version)=(20270106000000) already exists.
+At statement: 93
+##[error]Process completed with exit code 1.
+```
+
+`supabase db push` ran all 92 DDL statements, then failed on statement 93 — its own bookkeeping
+`INSERT` — and rolled the transaction back. Then it **exited 1**. Every migration queued behind it
+stopped. Production deploys had been failing for ~30 minutes across two merges, and the Long-Form
+durable document engine the owner merged himself was stuck behind a collision in someone else's
+feature. `main` carried 1079 distinct versions; production had 1077.
+
+**What made it invisible:** three separate green signals. Both branches passed
+`lint:migration-versions`, because `migration-version-collision-lint.mjs:97` resolves its base as
+`origin/main` — a branch only ever compares itself to trunk, never to another open branch (#1425).
+Both PRs' CI was green, because CI does not deploy. And the incident issue #198 exists and was
+commented on twice, but it is a dedup issue 29 comments deep, so a new failure looks like the old one.
+
+**The rules:**
+
+1. **A red `deploy-migrations` run is a production outage of the migration pipeline, not one
+   feature's problem.** Check it on any "why isn't this schema on prod" question before theorising.
+   The count comparison is two queries: distinct versions in `supabase/migrations/` versus rows in
+   `supabase_migrations.schema_migrations`. A gap is a wedge until proven otherwise.
+2. **Read the deploy log before explaining the mechanism.** My "silently skipped" story was coherent,
+   consistent with the evidence I had, and wrong. The log was one call away and said something
+   materially different — that the chain was blocked, not that one file was missing.
+3. **Un-wedging makes OTHER people's dormant SQL runnable.** Auditing my own migration was not
+   enough; the merge is what executes the two Long-Form migrations queued behind it. Audit
+   everything the unblock will run — destructive statements, dependency presence, and above all a
+   `UNIQUE` index on a pre-existing table. (Theirs was safe: partial, `where work_id is not null`, on
+   a column added in the same block, so zero rows were indexed at creation.)
+
+Same root as the entries above it: I explained from a plausible model instead of measuring the thing
+itself. The difference here is that the unmeasured part was not a detail in my account — it was the
+severity.
