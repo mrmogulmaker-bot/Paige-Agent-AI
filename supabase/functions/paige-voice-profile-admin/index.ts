@@ -18,6 +18,8 @@ const requestSchema = z.discriminatedUnion("action", [z.object({
   accept_procedural_single_speaker: z.literal(true),
   // Opaque private register ID only; never accept a transcript, credential, or URL here.
   evidence_ref: z.string().uuid(),
+  // Rollout target only, resolved server-side. This never selects the authorizer.
+  participant_membership_id: z.string().uuid().optional(),
 }).strict(), z.object({
   action: z.literal("disable-live-pilot"),
 }).strict(), z.object({
@@ -58,6 +60,16 @@ serve(async (req: Request) => {
     return error ? json({ code: "pilot_change_refused" }, 409) : json({ ok: true, audio_enabled: false });
   }
   if (parsed.data.action === "inspect-configured-account" || parsed.data.action === "authorize-live-pilot") {
+    let participant: { user_id: string; tenant_id: string } | null = null;
+    if (parsed.data.action === "authorize-live-pilot" && parsed.data.participant_membership_id) {
+      const { data: membership, error: membershipError } = await admin.from("tenant_members")
+        .select("user_id,tenant_id").eq("id", parsed.data.participant_membership_id)
+        .eq("status", "active").maybeSingle();
+      if (membershipError || !membership?.user_id || !membership?.tenant_id) {
+        return json({ code: "participant_unavailable", audio_enabled: false }, 409);
+      }
+      participant = membership;
+    }
     // The account key never leaves server memory. No caller-selected voice, host, or provider.
     const { data: profile, error: profileError } = await admin.from("paige_voice_profiles")
       .select("revision,provider,provider_voice_ref").eq("slot", "candidate").maybeSingle();
@@ -83,13 +95,16 @@ serve(async (req: Request) => {
     }).eq("id", audit.id);
     if (auditError) return json({ code: "inspection_audit_unavailable", audio_enabled: false }, 503);
     if (parsed.data.action === "authorize-live-pilot") {
-      const { data: tenant, error: tenantError } = await caller.rpc("current_user_tenant_id");
+      const { data: tenant, error: tenantError } = participant
+        ? { data: participant.tenant_id, error: null }
+        : await caller.rpc("current_user_tenant_id");
       if (tenantError || !tenant) return json({ code: "workspace_unresolved", audio_enabled: false }, 409);
       // A metadata read is voice access evidence, NOT a retention attestation.
       // The database writes scoped owner authorization separately and atomically.
       const { error } = await admin.rpc("set_paige_live_pilot_internal", {
         _actor_user_id: user.id, _tenant_id: tenant, _enabled: true,
         _evidence_ref: parsed.data.evidence_ref, _inspection_id: audit.id,
+        ...(participant ? { _participant_user_id: participant.user_id } : {}),
       });
       if (error) return json({ code: "pilot_authorization_refused", audio_enabled: false }, 409);
       return json({
