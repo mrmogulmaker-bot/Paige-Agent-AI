@@ -321,13 +321,16 @@ SELECT is(public.paige_live_pilot_authorized_internal(
 -- §53: rollout authority is super_admin only. A delegated platform_admin must NOT be able to open
 -- the rollout, so the writer stays on the frozen is_platform_owner() helper. Pinned here, because a
 -- later well-meaning migration to is_platform_operator() would otherwise pass unnoticed.
+-- Both fixture rows are written at the default role, exactly as the fixtures at the top of this
+-- file are: service_role holds no INSERT on public.user_roles, and the transaction-local JWT claim
+-- set earlier still reads 'service_role' here, which is the trusted context the §53 trigger wants.
 RESET ROLE;
 INSERT INTO auth.users(id,aud,role,email)
 VALUES ('fa100000-0000-4000-8000-000000000004','authenticated','authenticated','live-delegate@tests.invalid');
-SET LOCAL ROLE service_role;
-SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 INSERT INTO public.user_roles(user_id,role)
 VALUES ('fa100000-0000-4000-8000-000000000004','platform_admin');
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 SELECT throws_ok($q$SELECT public.set_paige_live_pilot_internal(
   'fa100000-0000-4000-8000-000000000004','fa100000-0000-4000-8000-000000001111',true,
   'test-owner-default-retention-acceptance','fa100000-0000-4000-8000-000000000099')$q$,
