@@ -351,25 +351,61 @@ id who also had to hold `super_admin`. Separately, and deliberately not collapse
 
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon | Deploy state |
 |---|---|---|---|---|---|---|---|---|
-| Live Conversation — product eligibility (own tenant, role, thread, memory) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 | migration `20270420000000`, no edge change |
-| Live Conversation — admitted to the rollout today | — | — | — | — | — | — | 403 | allowlist ships EMPTY; no account admitted |
+| Live Conversation — product eligibility (own tenant, role, thread, memory) | — (no tenant book) | — (refused by tier) | ✓ | ✓ | — (release DEFERRED) | — | 403 | migration `20270422000000`; the three admission edge callers redeploy |
+| Live Conversation — admitted to the rollout today | — | — | — | — | — | — | 403 | `pilot_rollout_scope` ships `'off'`; no account admitted |
 
 **The two rows say different things on purpose.** One ✓ per tier that conflated "every Solo account
 is eligible" with "who may speak today" would re-commit in this ledger exactly the conflation the
 migration just removed from the database. Eligibility is the product; admission is configuration.
 
-**No `getTierFeatureSet` flag** — the `TierFeature` union carries no `live_conversation` key, and
-`getTierFeatureSet` is frontend-only and not server-importable. Availability is the edge caller's
-canonical standing (`current_user_tenant_id()` / `hasLiveWorkspaceStanding`) plus the platform-owned
-rollout configuration, both server-side.
+**A `getTierFeatureSet` flag NOW EXISTS, and it is the UI half only.** `live_conversation` joins the
+`Feature` union and `SOLO_FEATURES` (`src/lib/tier/tierFeatures.ts`), read at
+`SoloPaigeWorkspace.tsx` → `PaigeAIChat.tsx`. It decides whether the entry point RENDERS; it grants
+nothing. The server answers separately: `live_conversation_tier_allows(uuid)` inside
+`paige_live_pilot_authorized_internal`, which the three deployed edge consumers call.
+`getTierFeatureSet` is frontend-only and not server-importable, so that SQL predicate is a
+deliberate twin of `SOLO_FEATURES` — the same pattern as `trg_agreement_tier` — and the two are
+pinned to each other by a test rather than left to drift. An adversarial read of the first draft
+caught them already disagreeing about Enterprise, which is why the pin exists.
+
+**The edge functions no longer hold a second opinion, and that correction IS this change.** Each of
+`paige-live-session`, `paige-ai-chat` and `paige-live-relay` used to read
+`paige_live_tenant_availability` itself and refuse on a missing row, before asking the predicate.
+Once a missing row came to mean "follow the rollout scope", that second answer contradicted the
+first — a brand-new Solo account would have been refused at the edge without the predicate ever
+being consulted, making the whole change inert in every product path. The reads are gone; the
+predicate is the one home, and it honours both of the row's meanings (enabled = true admits a
+workspace the tier would refuse; enabled = false is a per-workspace kill switch).
 
 **What is NOT live, stated plainly.** The provider gate is shut. ElevenLabs retention is unresolved
 and verified zero retention remains `UNAVAILABLE`. Physical speaker identity is not enforced (#1417).
 Nobody has been admitted, so the second row is `—` for every tier, and broadening the product did
 not broaden the audience.
 
-**§61 default: no exception.** Eligibility follows the standing distribution; no owner ruling was
-sought for it. The empty admission row is a rollout state, not a tier decision.
+**§61 EXCEPTION, deliberately — the same shape as `trust_compass` and for the same reason.** Solo,
+plus Enterprise through the Solo union. Sub-account delivery is DEFERRED under the standing owner
+ruling of 2026-09-06 ("no subaccount delivery without explicit release"), which already governs
+`trust_compass` in the same file. Agency has no direct book to speak about (§61 default:
+Agency = RESELL, no operator flag). God is the platform operator, not a tenant with clients of its
+own. Recorded as an exception rather than followed silently — and no new owner question was raised,
+because an existing standing ruling already answered it.
+
+**§58, named rather than left to be discovered.** The eligibility row above previously read ✓ for
+God, Agency, Enterprise and Sub-account. `live_conversation_tier_allows` now refuses Agency and
+Sub-account, and the UI entry point is gated to the Solo shell. Nobody loses a working capability —
+the admission row was `—` for every tier, and production carries 0 admitted subjects and 0 enabled
+workspaces (queried 2026-09-24) — but the ledger said ✓ and now does not, so the narrowing is stated
+here rather than found later. The per-workspace `enabled = true` path still admits a workspace the
+tier refuses, so an operator retains a way to include one, and that is proven in the suite against
+the agency fixture rather than asserted.
+
+**One setting, and now the owner can turn it.** `paige_voice_readiness.pilot_rollout_scope`
+(`'off' | 'solo_tier'`) is the whole audience decision, and it names no person, login or workspace.
+`paige-voice-profile-admin` gains one additive action, `set-live-rollout-scope`, behind the
+platform-owner gate already there — because a setting only an engineer can turn with raw SQL is not
+a setting the owner has (§70). Widening it requires the default-provider-retention acceptance to be
+restated in the same request; closing it never does. The global disable now closes the audience with
+it, so re-enabling cannot silently re-open the tier.
 
 ### Agreements engine — PAIGE-native e-signature (INT-163, PR #1352, 2026-09-22)
 

@@ -1,7 +1,7 @@
 -- INT-104: the normal tenant-admin role cannot self-enable third-party audio.
 -- Synthetic fixture only. Every write rolls back.
 BEGIN;
-SELECT plan(77);
+SELECT plan(130);
 
 SELECT ok((SELECT relrowsecurity FROM pg_class WHERE oid='public.paige_live_tenant_availability'::regclass),'platform availability has RLS');
 SELECT ok(NOT has_table_privilege('authenticated','public.paige_live_tenant_availability','SELECT'),'tenant roles cannot read pilot holder rows');
@@ -398,6 +398,276 @@ SELECT is(public.paige_live_pilot_authorized_internal(
 SELECT is(public.paige_live_pilot_authorized_internal(
   'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),false,
   'reopening the rollout never revives a withdrawn subject''s acceptance as fresh authorization');
+
+
+-- ===========================================================================
+-- A BRAND-NEW SOLO ACCOUNT, AND THE SETTING THAT NAMES NOBODY (20270422000000)
+--
+-- Everything above proves the rollout refuses the people it should. This section proves the other
+-- half, which is the half that was missing: that when the rollout opens, it opens for an ordinary
+-- Solo account that NOBODY has hand-enabled — because the previous design would have left every
+-- new signup waiting on an operator to add a row, which is the same gate one layer down.
+--
+-- The three tenants below are untouched by any operator: no availability row, no admission, no
+-- mention anywhere. The only thing that changes between "refused" and "works" is one value.
+-- ===========================================================================
+RESET ROLE;
+INSERT INTO auth.users(id,aud,role,email) VALUES
+ ('fa100000-0000-4000-8000-00000000000a','authenticated','authenticated','fresh-solo@tests.invalid'),
+ ('fa100000-0000-4000-8000-00000000000b','authenticated','authenticated','agency-owner@tests.invalid'),
+ ('fa100000-0000-4000-8000-00000000000c','authenticated','authenticated','sub-owner@tests.invalid'),
+ ('fa100000-0000-4000-8000-00000000000e','authenticated','authenticated','solo-staff@tests.invalid');
+-- Exactly what canonical Solo provisioning leaves behind: account_type 'standalone', no parent,
+-- an owner, nothing else (assert_canonical_solo_tenant, 20270325000000, raises otherwise).
+INSERT INTO public.tenants(id,slug,name,status,account_type,parent_tenant_id,account_number_prefix,account_number,features,brand,owner_user_id) VALUES
+ ('fa100000-0000-4000-8000-000000003333','live-fresh-solo','Live Fresh Solo','active','standalone',NULL,'LFS',9381013,'{}','{}','fa100000-0000-4000-8000-00000000000a'),
+ ('fa100000-0000-4000-8000-000000004444','live-an-agency','Live An Agency','active','agency',NULL,'LAA',9381014,'{}','{}','fa100000-0000-4000-8000-00000000000b');
+INSERT INTO public.tenants(id,slug,name,status,account_type,parent_tenant_id,account_number_prefix,account_number,features,brand,owner_user_id) VALUES
+ ('fa100000-0000-4000-8000-000000005555','live-a-sub','Live A Sub','active','sub_account','fa100000-0000-4000-8000-000000004444','LAS',9381015,'{}','{}','fa100000-0000-4000-8000-00000000000c');
+INSERT INTO public.tenant_members(tenant_id,user_id,role,status,is_owner,joined_at) VALUES
+ ('fa100000-0000-4000-8000-000000003333','fa100000-0000-4000-8000-00000000000a','admin','active',true,now()),
+ ('fa100000-0000-4000-8000-000000004444','fa100000-0000-4000-8000-00000000000b','admin','active',true,now()),
+ ('fa100000-0000-4000-8000-000000005555','fa100000-0000-4000-8000-00000000000c','admin','active',true,now()),
+ -- A NON-OWNER member of the same Solo tenant, for section 7.
+ ('fa100000-0000-4000-8000-000000003333','fa100000-0000-4000-8000-00000000000e','member','active',false,now());
+
+SELECT is((SELECT pilot_rollout_scope FROM public.paige_voice_readiness WHERE singleton),'off',
+  'the rollout scope ships shut, so this migration changes nobody''s access on merge');
+SELECT is((SELECT count(*)::integer FROM public.paige_live_tenant_availability
+            WHERE tenant_id='fa100000-0000-4000-8000-000000003333'),0,
+  'no operator has hand-enabled the brand-new Solo workspace');
+
+-- 1. Scope off: the fresh Solo owner is refused, and cannot bank an acceptance in advance.
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-00000000000a","role":"authenticated"}',true);
+SELECT is(public.paige_live_accept_terms() ->> 'code','live_audio_not_enabled',
+  'a brand-new Solo owner is honestly refused while the scope is off');
+SELECT is((public.paige_live_accept_terms() ->> 'accepted')::boolean,false,
+  'and the refusal is explicit, never a silent success');
+RESET ROLE;
+SELECT is((SELECT count(*)::integer FROM public.paige_live_pilot_subjects
+            WHERE tenant_id='fa100000-0000-4000-8000-000000003333'),0,
+  'nothing was written, so acceptance cannot be stockpiled ahead of the decision');
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-00000000000a','fa100000-0000-4000-8000-000000003333'),false,
+  'and the admission predicate refuses them too');
+
+-- 2. Opening it is one value, and only the platform owner may turn it (§53: NOT a platform_admin).
+SELECT throws_ok($q$SELECT public.set_paige_live_rollout_scope_internal(
+  'fa100000-0000-4000-8000-000000000004','solo_tier')$q$,
+  '42501',NULL,'a delegated platform_admin cannot open the rollout scope');
+SELECT throws_ok($q$SELECT public.set_paige_live_rollout_scope_internal(
+  'fa100000-0000-4000-8000-000000000002','everyone')$q$,
+  '22023',NULL,'an unrecognised scope is refused rather than quietly stored');
+RESET ROLE;
+SELECT throws_ok($q$UPDATE public.paige_voice_readiness SET pilot_rollout_scope='everyone' WHERE singleton$q$,
+  '23514',NULL,'and the column CHECK refuses it on the direct write path too');
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT is(public.set_paige_live_rollout_scope_internal(
+  'fa100000-0000-4000-8000-000000000002','solo_tier') ->> 'scope','solo_tier',
+  'the platform owner opens Live to the Solo tier by changing one value');
+
+-- 3. THE POINT. The same untouched account now works, with zero operator action on it.
+RESET ROLE;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-00000000000a","role":"authenticated"}',true);
+SELECT is((public.paige_live_accept_terms() ->> 'accepted')::boolean,true,
+  'the brand-new Solo owner accepts for THEMSELVES, supplying no account identifier');
+RESET ROLE;
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-00000000000a','fa100000-0000-4000-8000-000000003333'),true,
+  'and is admitted immediately, without waiting for anyone');
+RESET ROLE;
+SELECT is((SELECT count(*)::integer FROM public.paige_live_tenant_availability
+            WHERE tenant_id='fa100000-0000-4000-8000-000000003333'),0,
+  'with STILL no row naming their workspace: eligibility came from their tier, not a roster');
+SELECT is((SELECT acceptance_actor_user_id FROM public.paige_live_pilot_subjects
+            WHERE tenant_id='fa100000-0000-4000-8000-000000003333'),
+  'fa100000-0000-4000-8000-00000000000a'::uuid,
+  'and the acceptance on file is their own, which no operator could have given for them');
+
+-- 4. The tier question genuinely discriminates. Mutation-checked locally: replacing the predicate
+--    body with SELECT true DOES admit the agency owner, so these refusals come from the tier and
+--    not from some other clause that would have refused them anyway.
+SELECT ok(public.live_conversation_tier_allows('fa100000-0000-4000-8000-000000003333'),
+  'a top-level standalone tenant is Solo-class');
+SELECT ok(NOT public.live_conversation_tier_allows('fa100000-0000-4000-8000-000000004444'),
+  'an agency is not');
+SELECT ok(NOT public.live_conversation_tier_allows('fa100000-0000-4000-8000-000000005555'),
+  'nor is a sub-account, whose release is deferred until the owner says so');
+SELECT ok(NOT public.live_conversation_tier_allows('fa100000-0000-4000-8000-0000000fffff'),
+  'nor is a tenant that does not exist');
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-00000000000b","role":"authenticated"}',true);
+SELECT is(public.paige_live_accept_terms() ->> 'code','live_audio_not_enabled',
+  'the agency owner is refused under the very same open scope');
+SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-00000000000c","role":"authenticated"}',true);
+SELECT is(public.paige_live_accept_terms() ->> 'code','live_audio_not_enabled',
+  'and so is the sub-account owner');
+RESET ROLE;
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-00000000000b','fa100000-0000-4000-8000-000000004444'),false,
+  'the admission predicate refuses the agency');
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-00000000000c','fa100000-0000-4000-8000-000000005555'),false,
+  'and refuses the sub-account');
+
+-- 5. The availability row keeps BOTH of its older meanings (§58: nothing shipped is removed), and
+--    this is stated as the claim it actually is. An EARLIER draft of this block enabled the SOLO
+--    tenant outright and asserted it was still admitted "regardless of tier" — which passed because
+--    that tenant is Solo under an open scope, so BOTH disjuncts were true and deleting the
+--    enabled-outright branch entirely would have left it green. An adversarial read caught it. The
+--    claim under test is that enabled = true admits a workspace THE TIER WOULD REFUSE, so the test
+--    now uses the AGENCY, which the tier refuses one assertion above.
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-00000000000b","role":"authenticated"}',true);
+SELECT is(public.paige_live_accept_terms() ->> 'code','live_audio_not_enabled',
+  'the agency owner cannot accept through the tier scope (the negative this depends on)');
+RESET ROLE;
+SELECT lives_ok($q$INSERT INTO public.paige_live_tenant_availability(tenant_id,enabled)
+  VALUES('fa100000-0000-4000-8000-000000004444',true)$q$,
+  'the operator switches the agency workspace on outright, the pre-existing path');
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-00000000000b","role":"authenticated"}',true);
+SELECT is((public.paige_live_accept_terms() ->> 'accepted')::boolean,true,
+  'and now the agency owner CAN accept, tier notwithstanding');
+RESET ROLE;
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-00000000000b','fa100000-0000-4000-8000-000000004444'),true,
+  'enabled = true still admits a workspace the TIER refuses — the §58 meaning, genuinely tested');
+
+-- The kill switch, on a workspace the tier WOULD admit.
+RESET ROLE;
+SELECT lives_ok($q$INSERT INTO public.paige_live_tenant_availability(tenant_id,enabled)
+  VALUES('fa100000-0000-4000-8000-000000003333',false)$q$,
+  'a Solo workspace can still be switched off individually');
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-00000000000a','fa100000-0000-4000-8000-000000003333'),false,
+  'and that kill switch overrides an open tier scope');
+RESET ROLE;
+SELECT lives_ok($q$DELETE FROM public.paige_live_tenant_availability
+  WHERE tenant_id='fa100000-0000-4000-8000-000000003333'$q$,
+  'and the row can be removed again');
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-00000000000a','fa100000-0000-4000-8000-000000003333'),true,
+  'leaving the account back under the scope, which still admits it: a MISSING row is not a refusal');
+
+-- 6. ACT-AS IS NOT MEMBERSHIP. current_user_tenant_id() hands a platform_admin any tenant they
+--    point active_tenant_id at, with no membership, which is correct for READS under §51 Tier 1 and
+--    would be a §53 escalation here: the only prior writer of this table required is_platform_owner,
+--    which §53 freezes as super_admin-only. The door is proven open first, so the refusal below
+--    cannot pass for the wrong reason.
+RESET ROLE;
+SELECT lives_ok($q$INSERT INTO public.profiles(user_id,active_tenant_id)
+  VALUES('fa100000-0000-4000-8000-000000000004','fa100000-0000-4000-8000-000000003333')
+  ON CONFLICT (user_id) DO UPDATE SET active_tenant_id = EXCLUDED.active_tenant_id$q$,
+  'a delegated platform_admin points their active workspace at a customer Solo tenant');
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-000000000004","role":"authenticated"}',true);
+SELECT is(public.current_user_tenant_id(),'fa100000-0000-4000-8000-000000003333'::uuid,
+  'the resolver DOES hand them that tenant, so the door being closed below is a real closure');
+SELECT is(public.paige_live_accept_terms() ->> 'code','live_audio_not_enabled',
+  'and acceptance refuses them anyway: act-as is not membership');
+RESET ROLE;
+SELECT is((SELECT count(*)::integer FROM public.paige_live_pilot_subjects
+            WHERE user_id='fa100000-0000-4000-8000-000000000004'),0,
+  'no subject row was written for a platform_admin on a book that is not theirs');
+
+-- 7. Every ACTIVE MEMBER of a Solo account is eligible, not only its owner. Deliberate: the owner
+--    asked for this for "all of my users", and Live is a MODALITY over a book a member already
+--    reaches in chat, not new access to it. Stated out loud because the pre-existing suite treated
+--    the opposite as a property, back when admission was a per-person allowlist.
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-00000000000e","role":"authenticated"}',true);
+SELECT is((public.paige_live_accept_terms() ->> 'accepted')::boolean,true,
+  'a NON-OWNER active member of the Solo tenant accepts for themselves');
+RESET ROLE;
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-00000000000e','fa100000-0000-4000-8000-000000003333'),true,
+  'and is admitted');
+
+-- 8. Acceptance is idempotent, so the platform audit log cannot be looped by an authenticated
+--    member, and re-calling cannot silently restart anyone's expiry clock.
+RESET ROLE;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-00000000000e","role":"authenticated"}',true);
+SELECT is((public.paige_live_accept_terms() ->> 'unchanged')::boolean,true,
+  'a second call on a live acceptance reports unchanged');
+RESET ROLE;
+SELECT is((SELECT count(*)::integer FROM public.paige_audit_log
+            WHERE action='paige_live.accept_terms'
+              AND actor_user_id='fa100000-0000-4000-8000-00000000000e'),1,
+  'exactly one acceptance audit row exists for that member after two calls');
+
+-- 9. Closing the scope withdraws only what THE SCOPE carried. Its first draft revoked every
+--    unrevoked subject in the table, which would have destroyed the admission held by the
+--    enabled-outright operator path — on production, the only row that exists — and made the
+--    rollback documented at the top of the migration a destructive act needing a fresh inspection
+--    receipt to undo. A lever must not destroy what it did not create.
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT ok((public.set_paige_live_rollout_scope_internal(
+  'fa100000-0000-4000-8000-000000000002','off') ->> 'subjects_withdrawn')::integer >= 1,
+  'closing the scope withdraws the subjects it was carrying');
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-00000000000a','fa100000-0000-4000-8000-000000003333'),false,
+  'the tier-admitted Solo owner is denied again immediately');
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-00000000000b','fa100000-0000-4000-8000-000000004444'),true,
+  'and the AGENCY owner, admitted by the enabled-outright path, is UNTOUCHED by it');
+SELECT is(public.set_paige_live_rollout_scope_internal(
+  'fa100000-0000-4000-8000-000000000002','solo_tier') ->> 'scope','solo_tier',
+  'the owner re-opens it');
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-00000000000a','fa100000-0000-4000-8000-000000003333'),false,
+  'and re-opening never revives a withdrawn acceptance as fresh authorization');
+
+-- 10. The global disable CLOSES the audience too. Two switches that compose in one direction and
+--     not the other are a trap: leaving the scope open means the next authorization silently
+--     re-opens Live to every Solo account with no fresh decision about who it is for.
+SELECT is(public.set_paige_live_pilot_internal(
+  'fa100000-0000-4000-8000-000000000002',NULL,false,NULL,NULL) ->> 'scope','off',
+  'disabling reports the audience closed');
+RESET ROLE;
+SELECT is((SELECT pilot_rollout_scope FROM public.paige_voice_readiness WHERE singleton),'off',
+  'and the stored scope really is off, so a re-enable cannot silently re-open the tier');
+
+-- 11. One of each function, and the grants that keep the setting out of a browser's reach.
+SELECT is((SELECT count(*)::integer FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='public' AND p.proname='paige_live_accept_terms'),1,
+  'exactly one acceptance function exists');
+SELECT is((SELECT count(*)::integer FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='public' AND p.proname='set_paige_live_rollout_scope_internal'),1,
+  'exactly one scope writer exists');
+SELECT is((SELECT count(*)::integer FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='public' AND p.proname='live_conversation_tier_allows'),1,
+  'exactly one tier predicate exists');
+SELECT is((SELECT count(*)::integer FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='public' AND p.proname='set_paige_live_pilot_internal'),1,
+  'the rollout writer was REPLACED, not forked into a second overload');
+SELECT ok(has_function_privilege('authenticated','public.paige_live_accept_terms()','EXECUTE'),
+  'a signed-in Solo member CAN accept for themselves — the capability is theirs, not an operator''s');
+SELECT ok(NOT has_function_privilege('anon','public.paige_live_accept_terms()','EXECUTE'),
+  'an unauthenticated caller cannot');
+SELECT ok(NOT has_function_privilege('authenticated','public.set_paige_live_rollout_scope_internal(uuid,text)','EXECUTE'),
+  'and no browser caller can set the rollout scope');
+SELECT ok(NOT has_function_privilege('authenticated','public.live_conversation_tier_allows(uuid)','EXECUTE'),
+  'nor read the tier predicate directly');
 
 SELECT * FROM finish();
 ROLLBACK;
