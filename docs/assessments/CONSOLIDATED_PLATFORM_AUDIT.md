@@ -197,6 +197,13 @@ Each finding records exact source evidence, reachable boundary, current ownershi
 - **Status / owner / collision:** routed to Platform Health; this lane does not install shared tooling or modify the cross-lane ratchet harness.
 - **Smallest next step / proof:** provision the declared Deno executable for the test process, normalize repository-relative Windows paths once, and prove the complete self-test passes from both a normal checkout and a linked worktree.
 
+#### PH-EVIDENCE-21 — Shared model router is not Deno-clean under its declared Tier vocabulary (`VERIFIED` locally; Platform Health)
+
+- **Evidence / boundary:** on current `main` `7ebdd9fea9832572e9d479b27e2a9c88e27b75ee` and the Long-Form candidate, `npx --yes deno-bin check --allow-import --node-modules-dir=none supabase/functions/paige-document-worker/index.ts` reaches the unchanged required dependency `supabase/functions/_shared/model-router.ts:888` and fails TS2367: `Tier` (`"frontier" | "open-fast" | "open-flexible"`) cannot equal `"reasoning"`. The new worker imports the canonical router as required; it does not fork provider invocation to evade this diagnostic.
+- **Status / owner / collision:** routed to Platform Health as a shared Edge type-signal blocker. The Long-Form lane does not edit the shared router under park-and-route, but a newly added function has no historical Deno baseline to inherit, so this blocks a green Phase 2 Edge candidate.
+- **Smallest next step / proof:** reconcile the budget-band comparison with the canonical `Tier` vocabulary (the reasoning route is currently named `frontier`), then run real `deno check` on the router’s existing importing functions and `paige-document-worker`; zero new diagnostics is the exit condition.
+- **Lesson/control:** a ratchet can preserve an inherited shared diagnostic for existing functions, but a new governed adopter exposes it as a release blocker. Do not bypass the router or hide the import graph to manufacture a green result.
+
 ### Proposed or local remediation — non-shipped
 
 No runtime, schema, credential, provider, deployment or production change was made. This documentation PR can make the reconciliation canonical, but it does not ship any security repair or change the health claims above. Any local/proposed security patch remains explicitly non-shipped until separately merged and verified; this PR contains no such patch. Candidate repairs remain open; active PR #1173 is not absorbed. Merged #1175 is incorporated as current doctrine.

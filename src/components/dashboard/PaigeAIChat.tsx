@@ -94,8 +94,8 @@ type Message = {
   confirmResolved?: boolean;
   crmResults?: PaigeCrmResult[];
   /** #29 — deliverables Paige produced this turn (document/image), streamed as
-   *  `paige_artifact` frames and rendered as inline handoff cards. Live-turn only;
-   *  the card re-hydrates from marketing_content by id, so it isn't persisted. */
+   *  `paige_artifact` frames or restored from the completion turn's persisted bundle_ref.
+   *  The card re-hydrates the artifact itself from marketing_content by id. */
   artifacts?: PaigeArtifact[];
   /** A document Paige read produced fields she is PROPOSING to record. Nothing has been written
    *  when this arrives — the card is where a person picks what to keep. Live-turn only: once
@@ -721,6 +721,21 @@ const PaigeAIChatInner = ({
           ? (b.paige_confirm as Array<{ tool: string; summary: string }>)
           : undefined;
         const crmResults = Array.isArray(b.paige_crm_result) ? b.paige_crm_result as PaigeCrmResult[] : undefined;
+        const artifacts = Array.isArray(b.paige_artifact)
+          ? b.paige_artifact.flatMap((candidate): PaigeArtifact[] => {
+              if (!candidate || typeof candidate !== "object") return [];
+              const raw = candidate as Record<string, unknown>;
+              if (typeof raw.id !== "string" || typeof raw.title !== "string") return [];
+              if (raw.artifactType !== "document" && raw.artifactType !== "image") return [];
+              return [{
+                id: raw.id,
+                title: raw.title,
+                artifactType: raw.artifactType,
+                ...(typeof raw.url === "string" ? { url: raw.url } : {}),
+                ...(typeof raw.tenant_id === "string" ? { tenantId: raw.tenant_id } : {}),
+              }];
+            })
+          : undefined;
         // Honest timestamp: use the turn's stored created_at when present; if the
         // stored turn has none, omit it and the hover time simply hides (never faked).
         const tid = (t as { id?: string }).id;
@@ -734,6 +749,7 @@ const PaigeAIChatInner = ({
           confirm: confirm?.length ? confirm : undefined,
           confirmResolved: true,
           crmResults: crmResults?.length ? crmResults : undefined,
+          artifacts: artifacts?.length ? artifacts : undefined,
         });
       });
 

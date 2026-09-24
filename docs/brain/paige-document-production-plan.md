@@ -1,12 +1,23 @@
 # Paige Document Production — Phase 2 Plan
 
-> **Status:** PLANNING ONLY. No capability registration, chat-tool registry, worker, UI, or
-> production behavior is added by this document. Platform Reach is rebuilding the capability kit;
-> the coordinator holds the registry relay until that plan lands.
+> **Status:** BUILDING BEHIND THE EXISTING CHAT TOOL. `document_generate` already exists and already
+> reaches the chat executor, but the actual `PAIGE_SPINE_CAPABILITIES` registry has no document
+> declaration; `documents.create` is a capability-status projection, not a Spine entry. Platform
+> Reach coordination therefore covers (1) one new Spine declaration for the existing authoring
+> capability and (2) an in-place change to the existing tool's input and return schema. This lane
+> will not edit either registry-owned surface until the coordinator's relay lands.
 >
 > **Dependency:** `paige_durable_work` is `SUBSTRATE PROVEN`, not a live durability capability.
 > Local single-claim concurrency is proven. Disconnect/resume, persisted apply, and authenticated
 > owner readback must be proven before document production may ship as durable.
+>
+> **Candidate proof state:** the Phase 2 migration and durable document transaction are locally
+> proven on disposable PostgreSQL 16, including malformed/cross-tenant refusal, same-intent replay,
+> duplicate-dispatch refusal, receipt-failure rollback, revision conflict, authority change, missed
+> wake-up recovery, and post-dispatch `outcome_unknown`. The new Edge worker is not yet Deno-clean:
+> its required import of the existing shared model router reaches an unchanged trunk diagnostic
+> (`Tier` cannot equal `"reasoning"` in `_shared/model-router.ts`). This lane has not edited that
+> out-of-lane shared defect; Platform Health owns the blocker decision/repair.
 
 ## 1. Corrected current state: extend, do not replace
 
@@ -17,7 +28,10 @@ Document production is not absent. It is synchronous and trapped inside one chat
 - `marketing_content` with `kind='document'` is the canonical artifact row. Its body stores
   `{ docType, title, blocks }`; it remains the document home.
 - `studio_artifact_versions` is the existing append-only revision lineage for session-bound
-  documents. It remains the revision home where a Studio session exists.
+  documents. It remains the revision home where a Studio session exists. A chat-authored document
+  has no Studio session foreign key, so its bounded prior bodies stay on the canonical
+  `marketing_content.meta.document_versions` row during compare-and-set revision; this is not a
+  second universal artifact store.
 - `export-document` renders the saved artifact to PDF, DOCX, PPTX, or Markdown and already emits a
   `document_export` Rail outcome.
 - `PaigeArtifactCard` and `DocumentPreview` are the existing open/preview surfaces. They remain the
@@ -32,20 +46,93 @@ artifact, and project its state back into the originating thread after disconnec
 The observed production `400 Invalid input format` remains undiagnosed until the owner-supplied
 response body names the rejected field. This plan does not relabel it as a size or timeout defect.
 
+### Agreement ownership boundary
+
+A document produced by this capability is a **draft artifact and nothing more**, even when its
+content looks like an agreement. `marketing_content` is the home for that draft. This lane does not
+create, promote, mirror, or update a signable agreement in the agreements lane's tables, and it does
+not assign agreement lifecycle, execution, signature, filing, or legal-review status.
+
+Promotion from an agreement-shaped draft to a signable agreement is an explicit handoff to the
+agreements lane through that lane's own governed path, tables, lifecycle, and evidence requirements.
+There is no implicit synchronization between the two homes and no second agreement-authoring path.
+
 ## 2. Single-Spine attachment map
 
 | Layer | Planned attachment |
 |---|---|
-| Spine | Proposed capability key `documents.author`; registration and final key require the coordinator-held Platform Reach relay. No lane-local registry edit. |
+| Spine | `document_generate` exists as a chat tool and `documents.create` exists in capability-status projection, but no document entry exists in `PAIGE_SPINE_CAPABILITIES`. Registering the existing authoring capability is a coordinator-relayed Platform Reach change, not a second tool. |
 | Rails | `record_capability_run` on submit, every resumed execution invocation, and terminal/`outcome_unknown` settlement; correlate by durable work id and server idempotency key. Existing `document_export` receipts remain. |
-| Harness | `paige_durable_work` plus the existing durable-job mechanism, model router, `save_marketing_content`, Studio versioning, and `export-document`. No second scheduler, lease system, or artifact store. |
-| Agent access | Evolve `document_generate` into bounded submit semantics; add status/cancel only through the capability-kit/registry relay. Names and schemas remain provisional until that relay returns. |
+| Harness | `paige_durable_work` plus the existing durable-job mechanism, model router, canonical `marketing_content`, Studio versioning where a session exists, and `export-document`. Completion uses one security-definer transaction instead of `save_marketing_content` because artifact + readback + completion turn + receipt + work settlement must commit or roll back together. No second scheduler, lease system, or artifact store. |
+| Agent access | Evolve the existing `document_generate` entry into bounded submit semantics through the coordinator-held relay. No new authoring entry. Status/cancel tools remain deferred. |
 | Mind | Completed or blocked safe summary only through existing projections. No document body, source text, prompts, or provider payload becomes Mind state. |
 | Memory | No raw document persistence. Existing tenant-relative memory may retain an owner-approved preference only through its current governed path; this capability adds no memory writer. |
 | Tenant knowledge | Tenant-resolved templates, brand facts, and approved business facts may ground the brief. All retrieval remains tenant-relative and untrusted content never becomes instruction. |
 
 Tenant and user identity are resolved server-side at acceptance and revalidated at each execution
 step. Client-passed tenant, actor, role, approval, or scope data is context only, never authority.
+
+### Pre-edit capability routing decision
+
+1. **Intended owner outcome:** ask once for a substantial private draft, leave or disconnect, and
+   later recover the same verified document artifact without duplicate generation.
+2. **Domain owner:** Vibe / creative owns the draft artifact path; the Long-Form lane owns its durable
+   execution. The Agreements lane exclusively owns promotion into a signable agreement.
+3. **Harness / Gateway dependency:** Layer A governance, the canonical durable-work substrate, the
+   existing model router, canonical artifact writes, Layer F receipts, and existing chat-turn
+   persistence. The durable substrate is `SUBSTRATE PROVEN`; deployed disconnect survival remains
+   unproven. No parallel scheduler, lease, model router, artifact store, or receipt stream is added.
+4. **Spine capability:** no document entry exists in `PAIGE_SPINE_CAPABILITIES`. The existing chat
+   tool is `document_generate`; the existing status projection is `documents.create`. Platform Reach
+   must register the existing authoring capability before shipment.
+5. **Provider / connection:** native private Paige artifact; no tenant provider connection is
+   required. Model generation stays behind the existing model router. Native artifacts are outside
+   the Integration Capability Registry under rule R5, so no provider entry is invented.
+6. **Approval / budget / autonomy:** `document_generate` remains `ordinary`, with a create/draft
+   mutation and its server-resolved Trust Compass lane. The existing one approval gate remains the
+   only gate. Authoring does not grant send, share, sign, publish, or file authority.
+7. **Durable job / event:** required. It extends `paige_durable_work` and its transition/lease
+   contract. Recovery may use the platform's existing scheduler infrastructure, never a second job
+   system or claim implementation.
+8. **Readback / receipt / Rail:** exact tenant-scoped `marketing_content` readback plus the persisted
+   completion turn must match before `succeeded`. Every submit/resumed invocation and settlement
+   emits `record_capability_run`, correlated by work id. No readback means no success claim.
+9. **Visible surface / ledger:** `paige.workspace`, currently `PARTIAL`. This change reuses its
+   existing transcript and `PaigeArtifactCard`; it does not change the shell or visual system. The
+   row stays `PARTIAL` until authenticated runtime evidence discharges the owed proof.
+10. **Proof required:** local migration replay, two-worker and retry idempotency tests, reconnect
+    reconstruction, cross-tenant negative controls, exact receipt correlation, then persisted
+    `db-live`/`edge-live` and authenticated owner create/disconnect/reload/revise/readback evidence.
+    Until those deployed checks pass, the capability is `PROOF OWED`, not `LIVE`.
+
+### Owner-intent and changed-flow contract
+
+- **OWNER_INTENT:** Paige accepts one long-form drafting intent, keeps working outside the request,
+  and returns one real, openable draft artifact in the same conversation.
+- **MUST_NOT_HAPPEN:** no duplicate dispatch on Retry; no empty artifact success; no raw document in
+  Mind, Memory, Rail, durable-work status, or authority context; no tenant/user authority from the
+  client; no agreement lifecycle write; no implicit send/share/sign/publish; no simultaneous DONE
+  and timeout claim.
+- **MUST_PRESERVE:** the single Paige workspace, existing artifact card and preview, Studio linkage
+  and version behavior, action-risk/autonomy gate, tenant isolation, export separation, transcript
+  identity/scroll behavior, and existing synchronous behavior until the tool-schema relay lands.
+- **ACCEPTANCE_CRITERIA:** one intent produces one work id, one model dispatch, one verified artifact
+  lineage, one completion turn and correlated receipts; disconnect/reload reconstructs it; concurrent
+  workers and rapid Retry fail closed; foreign workspace/account reads reveal nothing.
+- **VISUAL_DIRECTION:** no new visual treatment. Reuse the incumbent Paige artifact card and thread
+  layout exactly; only persisted data begins reconstructing the already-approved card after reload.
+- **MOTION_PURPOSE:** none added or changed.
+
+Changed-flow map (the existing inline conversation remains the container):
+
+| From | Trigger / guard | To | Durable feedback | Recovery / exit |
+|---|---|---|---|---|
+| Request | bounded valid brief; server resolves tenant/user/thread | Accepted | persisted work reference; safe working summary | close or disconnect without cancelling |
+| Accepted | one worker owns the claim | Authoring | server state only; no fake progress percentage | lease heartbeat; reconcile before retry |
+| Authoring | verified artifact + completion-turn readback | Complete | existing artifact card in the thread | open, revise, export, or leave |
+| Any active state | required fact or current approval absent | Blocked | named safe reason | provide fact/approval; resume same work id |
+| Any active state | ambiguous provider/persistence boundary | Outcome unknown | no success claim | reconcile by work/artifact identity before retry |
+| Reload / reconnect | authenticated thread load | Current persisted state | same work/artifact identity | foreign/stale workspace fails closed |
 
 ## 3. Owner flow
 
@@ -100,9 +187,9 @@ Server-authorized internal state transition. It can prevent undispatched work or
 cancellation of a claimed authoring step. It cannot claim that an already-dispatched provider call
 was stopped; an ambiguous interrupted effect becomes `outcome_unknown` and reconciles.
 
-Final capability keys, tool names, risk class, schemas, and registration files are owned by the
-Platform Reach relay. This lane will adapt this contract to that kit instead of pre-building a
-parallel runtime.
+The tool name, risk class, autonomy resolution, and chat governed-execution route already exist and
+remain unchanged. Platform Reach owns the missing Spine declaration and the in-place input/return
+schema edit described above. This lane will not pre-build a parallel registration or runtime.
 
 ## 5. Artifact and revision rules
 
@@ -113,9 +200,10 @@ parallel runtime.
 - Revision must use an expected-version compare-and-set or equivalent row lock. Two simultaneous
   revisions cannot silently overwrite each other; one wins and the other becomes `blocked` with a
   named version conflict requiring owner resolution.
-- Existing `studio_artifact_versions` remains the version home for Studio-bound documents. The
-  implementation must decide, with evidence, how non-Studio chat documents receive equivalent
-  lineage without creating a competing universal artifact store.
+- Existing `studio_artifact_versions` remains the version home for Studio-bound documents. A
+  non-Studio chat document cannot write that table without fabricating a Studio session, so guarded
+  revisions retain at most 20 prior bodies in the same canonical artifact row's
+  `meta.document_versions`. That is per-artifact history, not a parallel work or artifact identity.
 - Export failure does not erase a successfully authored document. Authoring may succeed while an
   optional export records its own failed or `outcome_unknown` receipt.
 
@@ -171,10 +259,11 @@ work; it never silently submits four new generations for one owner intent.
 
 ## 9. Deliberately deferred pending Platform Reach
 
-- Spine registration and final capability key.
-- Chat-tool registry edits and capability-kit adapter shape.
-- Worker entrypoint/dispatch attachment to the existing orchestration runner.
-- Final tool names, risk classes, and cancellation semantics exposed to Paige.
+- The in-place `document_generate` input/return schema change from full generated blocks to a
+  bounded brief and accepted-work reference.
+- The missing `PAIGE_SPINE_CAPABILITIES` declaration for the existing authoring capability.
+- Any future status or cancellation tool entry and its exposed semantics.
 
-Those are coordination dependencies, not permission to invent a second runtime. Planning can
-continue; implementation of these surfaces waits for the coordinator relay.
+No new authoring tool is required. Durable submission, worker execution, verified artifact
+persistence, and reconnect reconstruction proceed behind the existing chat identity; the
+registry-owned items above wait for the coordinator relay.
