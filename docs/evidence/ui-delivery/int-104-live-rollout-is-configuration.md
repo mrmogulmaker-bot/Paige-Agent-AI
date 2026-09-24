@@ -61,7 +61,7 @@ AUTOMATED_EVIDENCE: PASS: 36/36 existing Edge handler and provider-boundary test
 STATIC_EVIDENCE: PASS: definer-fn lint passes; migration-version collision lint does not flag 20270420000000; service-role-only grants and REVOKE from PUBLIC/anon/authenticated preserved on both functions and the new table
 RENDERED_EVIDENCE: UNVERIFIED: No fresh authenticated browser render; an unchanged shell does not substitute for proof
 BEHAVIORAL_EVIDENCE: PASS: 28/28 assertions against the actual migration file on a local PostgreSQL 16 development harness with a faithful role and grant posture, covering the negative proof, expiry, per-subject withdrawal and disable-withdraws-everyone, plus a mutation check proving the rebuilt forged-receipt assertion discriminates (a predicate keyed to the subject IS admitted by the forgery; this one refuses). That harness is uncommitted scaffolding, so it is reproducible only from this record's description, and the CI pgTAP run above is the durable proof. Real Solo speech remains UNVERIFIED and requires operational authorization after deployment
-AUTHENTICATED_RUNTIME: UNVERIFIED: No pilot authorization, no provider call and no live conversation performed by this change
+AUTHENTICATED_RUNTIME: UNVERIFIED: No pilot authorization, no provider call and no live conversation performed by this change. Post-merge production reads confirm the schema and the empty rollout state only; they are not runtime proof of a conversation
 KEYBOARD_FOCUS: PASS: Existing controls and focus behavior unchanged by a database-only change
 ZOOM_REFLOW: UNVERIFIED: No geometry change; no fresh viewport capture
 REDUCED_MOTION: PASS: No motion code change
@@ -76,7 +76,7 @@ SOLO_1024X768_PAIGE_CLOSED: UNVERIFIED: No fresh render
 SOLO_1024X768_PAIGE_OPEN: UNVERIFIED: No fresh render
 SOLO_900X1000_PAIGE_CLOSED: UNVERIFIED: No fresh render
 SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: No fresh render
-UNVERIFIED: CI execution of the suite at its new 77-assertion count, deployed migration identity, authenticated provider and conversation proof, and any real pilot authorization all remain required. The 72-assertion count passed CI; the five assertions added after that run have not.
+UNVERIFIED: authenticated provider and conversation proof and any real pilot authorization remain required. RESOLVED since first writing: the 77-assertion suite ran and passed in CI (Files=1, Tests=77, Result: PASS) and the migration is confirmed persisted on production with its objects present. Formerly owed and now closed: authenticated provider and conversation proof, and any real pilot authorization all remain required. The 72-assertion count passed CI; the five assertions added after that run have not.
 
 OWNER_INTENT: One shared Live Conversation capability for all Solo accounts on each person's own tenant, role, permissions, thread and memory, with the current restriction enforced as configuration and the refusal proven
 MUST_NOT_HAPPEN: An owner-only or named-account build, role elevation, a special login, a request for any account identifier or email, self-enabled customer audio, a claim that the provider gate opened, or a claim of verified zero retention
@@ -84,8 +84,8 @@ MUST_PRESERVE: Canonical standing resolution in its existing home, the caller-ow
 ACCEPTANCE_CRITERIA: An ordinary Solo member holding no platform role passes the product gate once admitted; an active member of the same enabled workspace who is not admitted is refused; one subject's consent cannot authorize another; withdrawal, lapse and disable each deny immediately; no consumer redeploys
 MOTION_PURPOSE: NONE: no motion change
 PROTECTED_SEAMS: Affected and tested: Live admission, rollout authority, canonical readiness and audit, account/workspace isolation, privacy acceptance. Unchanged: login and account choice, signup/paywall/billing/provisioning, action approval and autonomy, Spine tool execution, tool writes/readback/Rail/Memory, chat transcript and thread behavior, Secure Browser and Vault, provider transport, durable jobs, shell geometry and accessibility.
-INTERNAL_BUILD_IDENTITY: pr=PROOF_OWED; base=154bef2bdac3a41dadb272a9c748cab115125781; merge_sha=PROOF_OWED; reviewed_head=PROOF_OWED; deployment=PROOF_OWED; environment=development; migrations=PROOF_OWED(20270420000000_paige_live_rollout_is_configuration applied only by the merge pipeline); edge=NOT_APPLICABLE; evidence=supabase/tests/paige_live_pilot_feature_guard.sql
-RELEASE_CHANNEL: development: contract repair; no production activation and no rollout enablement
+INTERNAL_BUILD_IDENTITY: pr=1437; base=154bef2bdac3a41dadb272a9c748cab115125781; merge_sha=7bda45ed1c79c16c17d9e4fa4a9637eee66a191b; reviewed_head=9b5966152243650c1769dbf42cfd635b4a417d38; deployment=APPLIED(supabase_migrations.schema_migrations row 20270420000000 observed on xygzykjyynhzqytbqnzu 2026-09-24); environment=production; migrations=APPLIED(20270420000000_paige_live_rollout_is_configuration); edge=NOT_APPLICABLE; evidence=supabase/tests/paige_live_pilot_feature_guard.sql
+RELEASE_CHANNEL: production: the migration is applied on production; no rollout was enabled and no account admitted, confirmed by a live read showing 0 subject rows, pilot_enabled false and 0 enabled workspaces
 RELEASE_CLASSIFICATION: internal-only: readiness-contract repair, not a customer launch
 CUSTOMER_RELEASE_IDENTITY: none: no customer-visible outcome is ready to explain as one release, and production conversation remains unverified
 RELEASE_NOTE_REQUIRED: no: no customer announcement
