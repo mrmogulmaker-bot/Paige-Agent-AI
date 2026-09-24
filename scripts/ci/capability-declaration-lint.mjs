@@ -103,15 +103,43 @@ export function balanced(source, open) {
 }
 
 /**
- * A tool declaration is `name: "snake_case",` alone on its line — the same lens
- * `chat-tool-registry-lint` already grades this handler with, kept identical on purpose so the two
- * guards can never disagree about what a declaration looks like.
+ * A tool declaration's name, read WIDELY and then CROSS-CHECKED, because the narrow lens is how a
+ * guard becomes theatre.
+ *
+ * The first version of this used `/^\s*name: "([a-z0-9_]+)",\s*$/gm` — the same lens
+ * `chat-tool-registry-lint` uses — on the reasoning that two guards should never disagree about
+ * what a declaration looks like. An adversarial pass then PROVED four ordinary formattings of a
+ * genuine new tool that slip straight through it: `name` last with no trailing comma, single
+ * quotes, the whole object on one line, and a trailing comment after the comma. Agreeing with a
+ * blind guard is not a virtue; it is the same blind spot twice. (That other lint reports 98 tools
+ * where the real model surface is 154, for exactly this reason.)
+ *
+ * So: match `name` in any of those positions, then prove the count is right. Every tool object in
+ * this array opens `type: "function"`, so the number of those is the number of names there must be.
+ * A mismatch means the lens missed something and the guard FAILS CLOSED rather than under-reporting.
  */
-export const inlineToolNames = (source) => [...source.matchAll(/^\s*name: "([a-z0-9_]+)",\s*$/gm)].map((m) => m[1]);
+export const inlineToolNames = (source) =>
+  [...source.matchAll(/\bname:\s*["']([a-z0-9_]+)["']/g)].map((m) => m[1]);
 
-/** `...SYMBOL,` or `...builder(),` alone on its line. */
+/** How many tool objects the literal actually contains — the cross-check for the lens above. */
+export const toolObjectCount = (source) => [...source.matchAll(/\btype:\s*["']function["']/g)].length;
+
+/**
+ * `...SYMBOL,` or `...builder(),` alone on its line — and, critically, a CENSUS of every other
+ * spread so none can hide.
+ *
+ * The first version matched only the bare form. An adversarial pass rewrote index.ts:6835
+ * `...N8N_MANAGEMENT_TOOLS,` as `...(true ? N8N_MANAGEMENT_TOOLS : []),` — a refactor any reviewer
+ * waves through — and twelve tools vanished from the surface while the guard still exited 0 with a
+ * green tick. A resolver that silently drops a whole tool family is worse than no resolver, because
+ * it certifies the gap it just created.
+ */
 export const spreadSymbols = (source) =>
   [...source.matchAll(/^\s*\.\.\.([A-Za-z_$][\w$]*)(\(\))?,\s*$/gm)].map((m) => ({ symbol: m[1], call: Boolean(m[2]) }));
+
+/** Every line-leading spread, resolvable or not. Anything here that spreadSymbols missed is fatal. */
+export const allSpreadLines = (source) =>
+  [...source.matchAll(/^\s*\.\.\..*$/gm)].map((m) => m[0].trim());
 
 export function importSpecifiers(source) {
   const map = new Map();
@@ -144,6 +172,44 @@ export function resolveChatTools(source, resolveSpread) {
   // later behind the Studio gate and is still a tool the model can be given.
   const names = new Set(inlineToolNames(source));
   if (names.size < 50) throw new Error(`parsed only ${names.size} inline tool declarations — the declaration shape changed and this guard is blind`);
+
+  // FAIL CLOSED (1): every tool object opens `type: "function"`, so that count is how many names
+  // there must be inside the literal. If the lens found fewer, it missed a declaration and this
+  // guard would silently under-report the surface — the exact failure it exists to prevent.
+  const objectsInLiteral = toolObjectCount(literal);
+  const namesInLiteral = new Set(inlineToolNames(literal));
+  if (namesInLiteral.size < objectsInLiteral) {
+    throw new Error(
+      `the toolDefs literal holds ${objectsInLiteral} tool object(s) but only ${namesInLiteral.size} name(s) could be read. ` +
+      `A declaration is written in a shape this guard cannot see, so the surface it reports is too small. ` +
+      `Widen inlineToolNames rather than lowering this check.`,
+    );
+  }
+
+  // FAIL CLOSED (2): census every line-leading spread and prove each one was resolved. The bare
+  // `...SYMBOL,` form is all spreadSymbols can follow; `...(cond ? SYMBOL : [])` and friends are
+  // NOT resolvable here and must stop the run rather than quietly removing a tool family.
+  const resolvedSpreads = new Set(spreadSymbols(literal).map((x) => x.symbol));
+  const unresolved = allSpreadLines(literal).filter((line) => {
+    const bare = line.match(/^\.\.\.([A-Za-z_$][\w$]*)(\(\))?,?$/);
+    if (bare && resolvedSpreads.has(bare[1])) return false;
+    // A conditional spread of INLINE objects — `...(fundingEnabled ? [{ type: "function", ... }]`
+    // — is safe: the objects are written out in this file, so the name lens above already has them
+    // and the cross-check above already counts them. Two of these ship today (the funding gate at
+    // index.ts:5451 and the marketplace gate at :5538) and they are not a gap.
+    if (/^\.\.\.\(.*\?\s*\[\s*\{/.test(line)) return false;
+    // What is NOT safe is a conditional spread of a SYMBOL — `...(cond ? SYMBOL : [])` — because
+    // the tools live in another module and nothing here can see them.
+    return true;
+  });
+  if (unresolved.length) {
+    throw new Error(
+      `${unresolved.length} spread(s) in the toolDefs literal cannot be resolved, so the tools they contribute are invisible:\n` +
+      unresolved.map((l) => `    ${l}`).join("\n") +
+      `\n  Teach resolveSpread to follow this shape, or flatten it back to \`...SYMBOL,\`. ` +
+      `Do NOT delete this check: a conditional spread once removed 12 tools while the guard still reported success.`,
+    );
+  }
 
   for (const spread of spreadSymbols(literal)) for (const n of resolveSpread(spread)) names.add(n);
 

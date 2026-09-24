@@ -106,13 +106,39 @@ function runtimeTools() {
   return new Set(tools);
 }
 
-/** The `VALUES` rows of one declaration, in order. `null` when the body has no catalogue block. */
+/**
+ * Does this file DECLARE list_tool_autonomy? Case-insensitive on the CREATE, and it must be a
+ * CREATE — not any mention of the name.
+ *
+ * This was `sql.includes("FUNCTION public.list_tool_autonomy")`, a case-sensitive substring. An
+ * adversarial pass EXECUTED the counter-example: a migration written in lowercase SQL
+ * (`create or replace function public.list_tool_autonomy`) is invisible to that check, so the
+ * guard skips the real tip, grades an OLDER file, and exits 0 — defeating two of its own asserts at
+ * once. Lowercase DDL is ordinary in this repo; six of the migrations already in `supabase/migrations`
+ * are written that way.
+ */
+const DECLARES = /create\s+or\s+replace\s+function\s+public\.list_tool_autonomy/i;
+export const declaresCatalogue = (sql) => DECLARES.test(sql);
+
+/**
+ * The `VALUES` rows of one declaration, in order. `null` when the body has no catalogue block.
+ *
+ * Reads the LAST catalogue block in the file, not the first. A migration carrying two
+ * `CREATE OR REPLACE` bodies runs both, so PROD ends up with the second — while the first version
+ * of this graded the first and let a second body that dropped 20 governed rows pass green. Proven
+ * by execution, not argued.
+ */
 function parseCatalogue(sql) {
-  const from = sql.indexOf("WITH catalog(tool_key");
-  const to = from < 0 ? -1 : sql.indexOf("SELECT", from);
-  if (from < 0 || to < 0) return null;
+  const starts = [...sql.matchAll(/WITH catalog\(tool_key/g)].map((m) => m.index);
+  if (!starts.length) return null;
+  const from = starts[starts.length - 1];
+  const to = sql.indexOf("SELECT", from);
+  if (to < 0) return null;
   return [...sql.slice(from, to).matchAll(/\('([a-z0-9_]+)',/g)].map((m) => m[1]);
 }
+
+/** More than one declaration in one file is legal SQL and a trap for any single-body reader. */
+export const declarationCount = (sql) => [...sql.matchAll(new RegExp(DECLARES.source, "gi"))].length;
 
 /**
  * A removal is allowed when the migration that drops the row SAYS SO, with a reason:
@@ -194,7 +220,13 @@ function catalogueDeclarations() {
   const decls = [];
   for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".sql")).sort()) {
     const sql = fs.readFileSync(path.join(dir, f), "utf8");
-    if (!sql.includes("FUNCTION public.list_tool_autonomy")) continue;
+    if (!declaresCatalogue(sql)) continue;
+    if (declarationCount(sql) > 1) {
+      console.error(`✗ tool-catalogue-lint: ${f} declares list_tool_autonomy ${declarationCount(sql)} times. ` +
+        `Postgres runs them all and prod keeps the LAST, so a second body can silently drop rows the first one has. ` +
+        `Split it into one declaration per migration.`);
+      process.exit(1);
+    }
     const keys = parseCatalogue(sql);
     if (keys === null) {
       console.error(`✗ tool-catalogue-lint: ${f} redeclares list_tool_autonomy but has no readable`);
