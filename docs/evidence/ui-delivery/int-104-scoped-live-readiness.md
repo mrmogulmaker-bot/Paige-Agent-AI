@@ -37,12 +37,12 @@ MUST_PRESERVE: Same authenticated user/workspace/thread, canonical runtime and g
 ACCEPTANCE_CRITERIA: Scoped account receives a ticket only with canonical authorization; others fail closed before adapters; owner can revoke without a selected workspace; real conversation and governed action checks still required
 MOTION_PURPOSE: NONE: no motion change
 PROTECTED_SEAMS: Session and relay admission, signed runtime admission, service-only readiness, owner administration and canonical thread identity; STT/TTS modules untouched
-INTERNAL_BUILD_IDENTITY: merge_sha=PROOF_OWED; reviewed_head=PROOF_OWED; deployment=PROOF_OWED; environment=development; migrations=PROOF_OWED(20270412000000); edge=PROOF_OWED; evidence=scripts/paige-live-relay-bridge-smoke.mts and supabase/tests/paige_live_pilot_feature_guard.sql
+INTERNAL_BUILD_IDENTITY: pr=1430; historical_base_merge=e392d7f0cf7c3aca7ce91a592cc6673e318a517c; merge_sha=PROOF_OWED; reviewed_head=PROOF_OWED; deployment=PROOF_OWED; environment=development; migrations=PROOF_OWED(20270412000000_paige_live_scoped_pilot_authorization); edge=PROOF_OWED(four-function production deployment has not occurred); evidence=scripts/paige-live-relay-bridge-smoke.mts and supabase/tests/paige_live_pilot_feature_guard.sql
 RELEASE_CHANNEL: development: code and local fake-provider proof; no pilot authorization performed
 RELEASE_CLASSIFICATION: internal-only: readiness contract repair, not a customer launch
 CUSTOMER_RELEASE_IDENTITY: none: end-to-end production acceptance is incomplete
 RELEASE_NOTE_REQUIRED: no: no customer announcement authorized
-RELEASE_TRUTH_BOUNDARY: PARTIAL existing workspace; UNAVAILABLE for unauthorized accounts; production Live remains PROOF OWED
+RELEASE_TRUTH_BOUNDARY: PARTIAL: existing workspace; UNAVAILABLE for unauthorized accounts; production Live remains PROOF OWED because scoped authorization and provider readbacks are not deployed
 RELEASE_RECOVERY: position=authenticated platform-owner disable; reference=additive migration rollback comment; keep audit and schema history, no legacy transport/profile changes
 
 ## Authority and deployment
