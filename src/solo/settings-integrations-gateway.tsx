@@ -250,7 +250,7 @@ function addressHost(value: string | null | undefined): string {
 }
 
 /** What a caller knows about a tile before it knows which connection (if any) is behind it. */
-export type ProviderProbe = { providerKey?: string | null; name?: string | null; url?: string | null };
+export type ProviderProbe = { providerKey?: string | null; url?: string | null };
 
 /**
  * The connection this tile already represents, or null when the tenant does not have one.
@@ -259,18 +259,25 @@ export type ProviderProbe = { providerKey?: string | null; name?: string | null;
  * `n8n` rows today — a usable one wins, then an enabled one, then the first. The tile can
  * only carry one connection, and pointing it at a turned-off row while a working one sits
  * behind the same name would be the wrong half of the truth.
+ *
+ * Identity is the provider key or the ADDRESS, and deliberately never the `label`. A label is
+ * tenant-editable text, so matching on it lets any generic server a tenant happens to name
+ * "Zapier" claim that vendor's tile: the catalogue would mark Zapier connected, open the
+ * unrelated server's drawer, and — because the parent suppresses a tile it believes is held —
+ * remove the real Zapier setup path from the surface. A missed de-duplication shows one extra
+ * tile; a wrong match takes a capability away. The first is cosmetic, so that is the way this
+ * fails. Note it never served the case that motivated it either: the backfilled labels tokenize
+ * to "mmazapier" and "n8nmma", which never equalled "zapier" or "n8n".
  */
 export function connectionForProvider(
   tools: readonly GatewayConnection[],
   probe: ProviderProbe,
 ): GatewayConnection | null {
   const key = providerToken(probe.providerKey);
-  const name = providerToken(probe.name);
   const host = addressHost(probe.url);
   const hits = tools.filter((c) => {
     if (key && providerToken(c.providerKey) === key) return true;
     if (host && addressHost(`https://${c.serverUrlHost ?? ""}`) === host) return true;
-    if (name && providerToken(c.label) === name) return true;
     return false;
   });
   if (!hits.length) return null;
@@ -727,17 +734,17 @@ function Catalogue({
    *  already holds drops out of it — it is still in its own category section, marked as theirs.
    *  Without this the merge is only half done: the group shows one Zapier and the catalogue two. */
   const popular = useMemo(
-    () => CATALOGUE.filter((p) => p.pop && !connectionForProvider(tools, { providerKey: p.legacy && p.legacy !== "social" ? p.legacy : null, name: p.n, url: p.url ?? null }))
+    () => CATALOGUE.filter((p) => p.pop && !connectionForProvider(tools, { providerKey: p.legacy && p.legacy !== "social" ? p.legacy : null, url: p.url ?? null }))
       .slice().sort((a, b) => (a.r ?? 99) - (b.r ?? 99)),
     [tools],
   );
 
   /** What this tile knows about itself before it knows whether the tenant already has it. The
    *  legacy key doubles as the registry's provider key for the two vendors that carry one; every
-   *  other entry falls through to its address and then its name. */
+   *  other entry falls through to its address. A tile never probes by NAME — see
+   *  `connectionForProvider` for why a tenant-editable label cannot decide provider identity. */
   const probe = (p: CatItem): ProviderProbe => ({
     providerKey: p.legacy && p.legacy !== "social" ? p.legacy : null,
-    name: p.manual ? null : p.n,
     url: p.url ?? null,
   });
   const held = (p: CatItem) => (p.manual ? null : connectionForProvider(tools, probe(p)));
@@ -971,7 +978,12 @@ function ToolActions({ gw, tool, reloadKey }: { gw: UseMcpGateway; tool: Gateway
    *  refusal nobody sees (§70.1). */
   const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
   const [minutes, setMinutes] = useState(APPROVAL_DEFAULT_LIFETIME_MINUTES);
-  const alive = useRef(true);
+  /** Two different questions, and collapsing them into one boolean is what let a stale
+   *  read win. `mounted` answers "may I still call setState"; `generation` answers "is
+   *  this the LATEST read". A `reloadKey` bump tears down and immediately re-runs the
+   *  effect, so a shared boolean is true again before the older request resolves. */
+  const mounted = useRef(true);
+  const generation = useRef(0);
 
   const readable = tool.enabled && (tool.status === "connected" || tool.status === "error");
   // The workspace this read belongs to, captured at call time. `callEdge` sends the
@@ -983,20 +995,27 @@ function ToolActions({ gw, tool, reloadKey }: { gw: UseMcpGateway; tool: Gateway
   const read = useCallback(async () => {
     if (!ready) return;
     const scope = activeTenantId;
+    const mine = ++generation.current;
     const answer = await gw.listTools(tool.id);
     // A late answer for a workspace the person has already left is dropped rather
     // than rendered or announced: the surface it belonged to is gone, and a banner
-    // about it would be about nothing they can see.
-    if (!alive.current || scope !== activeTenantId) return;
+    // about it would be about nothing they can see. A superseded read is dropped for
+    // a different reason: "Checked just now" above the list it read BEFORE the check
+    // is a false statement about fresher data, and it is the older request that wins
+    // whenever it happens to resolve last.
+    if (!mounted.current || mine !== generation.current || scope !== activeTenantId) return;
     setResult(answer);
     setPhase("ready");
   }, [ready, activeTenantId, gw, tool.id]);
 
   useEffect(() => {
-    alive.current = true;
+    mounted.current = true;
     void read();
     return () => {
-      alive.current = false;
+      mounted.current = false;
+      // Retire whatever is in flight. Without this the request issued by the effect
+      // being torn down stays current and can still land on the next one's result.
+      generation.current++;
     };
     // `reloadKey` is bumped by the drawer after a successful check. Without it the
     // drawer would show "Checked just now — found 12 actions" directly above a list
@@ -1011,7 +1030,7 @@ function ToolActions({ gw, tool, reloadKey }: { gw: UseMcpGateway; tool: Gateway
     setSaid(null);
     setBusyName(name);
     const outcome = await gw.approveTool(tool.id, name, approvalExpiryFromMinutes(minutes, Date.now()));
-    if (!alive.current) return;
+    if (!mounted.current) return;
     setBusyName(null);
     // Three codes mean the call never left: another write held the lock, the tenant
     // wasn't ready, or the workspace changed underneath it. All three carry no

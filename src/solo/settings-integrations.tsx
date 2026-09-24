@@ -895,7 +895,7 @@ export function SoloIntegrationsView() {
    */
   const automationTiles = tiles.filter(t =>
     t.group === "automation"
-    && !(t.kind === "provider" && connectionForProvider(gw.tools, { providerKey: t.name, name: t.name })),
+    && !(t.kind === "provider" && connectionForProvider(gw.tools, { providerKey: t.name })),
   );
   /** What the Automation group actually renders: its shipped tiles, every MCP server already
    *  added, and the repeatable add tile — but none of them while the list is unread. */

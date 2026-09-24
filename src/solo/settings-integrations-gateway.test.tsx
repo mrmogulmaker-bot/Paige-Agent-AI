@@ -694,6 +694,55 @@ describe("Writes reach the server", () => {
   });
 });
 
+describe("A superseded read never wins", () => {
+  it("keeps the FRESH action list when a superseded read resolves last", async () => {
+    // "Check now" tears down and immediately re-runs the read effect. A single shared
+    // liveness boolean is false during teardown and true again before the OLDER request
+    // resolves, so that older answer passes the guard and overwrites the newer one —
+    // rendering "Checked just now" directly above the list read BEFORE the check.
+    // Every read is held here and settled by hand, newest FIRST, so the superseded ones
+    // land late: the exact interleaving the defect needs, which real timing only
+    // sometimes produces.
+    rpc.mockImplementation((name: string) => {
+      if (name === "get_mcp_connections_v2") {
+        return builder({ data: [row({ status: "connected", health: "healthy", tool_count: 1 })], error: null });
+      }
+      if (name === "is_current_user_tenant_admin") return builder({ data: true, error: null });
+      return builder({ data: { connection_id: "conn-1" }, error: null });
+    });
+
+    const pending: ((v: unknown) => void)[] = [];
+    invoke.mockImplementation((_fn: string, opts: { body?: Record<string, unknown> }) => {
+      const action = String(opts?.body?.action ?? "");
+      if (action === "tools") return new Promise((resolve) => { pending.push(resolve); });
+      return Promise.resolve({ data: { ok: true, status: "connected", health: "healthy", tool_count: 1, error_code: null }, error: null });
+    });
+
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    const beforeCheck = pending.length;
+    expect(beforeCheck).toBeGreaterThan(0); // a read is in flight, deliberately unresolved
+
+    await click(byText(host, "Check now"));
+    expect(pending.length).toBeGreaterThan(beforeCheck); // the reload issued a newer read
+
+    const held = pending.length;
+    // The NEWEST read lands first, carrying what the server says now.
+    pending[held - 1](toolsAnswer([toolRow({ name: "fresh_action" })]));
+    await act(async () => { await Promise.resolve(); });
+    // Then every superseded read lands late, carrying what it read before the check.
+    for (let i = 0; i < held - 1; i += 1) {
+      pending[i](toolsAnswer([toolRow({ name: "stale_action" })]));
+    }
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+
+    const text = dialog(host)!.textContent!;
+    expect(text).toContain("fresh_action");
+    expect(text).not.toContain("stale_action");
+  });
+});
+
 describe("The open drawer tells one story", () => {
   it("re-reads the row from the live list after a check, instead of contradicting itself", async () => {
     // Slice ④ added the first write that leaves this drawer OPEN. Re-key and disconnect both close
@@ -1195,6 +1244,30 @@ describe("a tool the tenant already has is one tile, not two", () => {
     world({ rows: [row({ provider_key: "generic-remote", label: "Notes", server_url_host: "mcp.notion.com" })] });
     const { host } = await render();
     const tile = await catalogueTile(host, "Notion");
+    expect(tile!.getAttribute("data-held")).toBe("");
+  });
+
+  it("does NOT let a tenant's own label claim a vendor's tile", async () => {
+    // A label is tenant-editable text, not provider provenance. A generic server someone
+    // named "Zapier" must not mark the Zapier tile as held: doing so opens that unrelated
+    // server from Zapier's tile and — via the parent's suppression — removes the real
+    // Zapier setup path from the surface entirely.
+    world({ rows: [row({
+      connection_id: "spoof", provider_key: "generic-remote", label: "Zapier",
+      server_url_host: "unrelated.example",
+    })] });
+    const { host } = await render();
+    const tile = await catalogueTile(host, "Zapier");
+    expect(tile).toBeTruthy();
+    expect(tile!.getAttribute("data-held")).toBeNull();
+  });
+
+  it("still matches that same row by its real identity", async () => {
+    // The guard above must not be "match nothing": the row IS matched when its provider
+    // key genuinely says Zapier, which is the arm that carries the de-duplication.
+    world({ rows: [row({ connection_id: "real", provider_key: "zapier", label: "whatever they called it" })] });
+    const { host } = await render();
+    const tile = await catalogueTile(host, "Zapier");
     expect(tile!.getAttribute("data-held")).toBe("");
   });
 
