@@ -2685,3 +2685,195 @@ never the scope of what it points at.
 ### CRM mutation reach must be counted from the real command door, not tool names
 
 A Chat tool name, human CRUD screen, direct service-role branch or draft PR can all make an operation look present while bypassing tenant authority, risk, idempotency, readback or Rail. The recurrence guard is a shared action-to-tool catalogue plus contract tests proving every exposed CRM tool dispatches to the single authenticated `crm-command` door. Consequential operations need a server preview that binds exact targets, versions and dependency counts; a model `confirm` argument is never approval. Result UI must render server readback and router-owned links, not reconstructed model prose. Source-complete still is not LIVE until database/RLS, authenticated account-switch and deployment proof pass.
+
+---
+
+## A text-matching guard fails THREE times the same way: the parse silently shrinks, and every check built on it reports a tick (2026-09-23, #1400)
+
+- **Symptom.** A new `action-risk-lint` rule — "one key, one line" — was written, bite-proofed, and
+  reviewed. Review then defeated it three times in a row, each time with a legal TypeScript shape, and
+  each time the guard **exited 0** rather than erring:
+  1. A duplicate whose reason used **single quotes**. The pattern was double-quote-only, so the tuple
+     was skipped entirely.
+  2. After widening the pattern and adding a line-anchored tuple counter as a backstop: **two tuples on
+     one line** with a **concatenated** reason (`"a" + "b"`). The counter counts lines, so it saw one;
+     the parser wanted a single literal, so it read one.
+  3. After replacing both with an AST read: a **class outside the enum** (`"ordnary"`, `"read_only"`,
+     `"ORDINARY"`) parsed as a perfectly good string literal and the tool read as classified.
+- **Root cause, and it is three faces of one thing.**
+  - **(1) and (2): a regex has no grammar.** Each fix bought exactly one shape and left the class open,
+    because a pattern cannot know what a tuple *is*. The correct move was available from the start —
+    `typescript` was already a dependency and already imported by the sibling guard
+    `capability-kit-lint.mjs` — and was not reached for until the second failure.
+  - **The cancellation that made all of it invisible.** A cross-check in `capability-kit.test.mjs`
+    asserted `parsePolicy(source).length === mutatingTools().size` — source tuples equal runtime keys —
+    specifically to catch parser blind spots. But a **skipped** tuple removes one from the left side and
+    a **folded** duplicate removes one from the right, so the two defects cancelled and the equality
+    held. Measured: **157 tuples in source, 156 keys at runtime, both counts reporting 156.** The
+    backstop added in fix (2) then inherited the same disease one level up.
+  - **(3): validation a parser did IMPLICITLY leaves with the parser.** The regex encoded
+    `ordinary|high|owner_only` inside its own pattern. Replacing it with an AST read dropped that
+    constraint, and **no deleted line looked like a removed check** — which is exactly why neither the
+    author nor the author's own bite proofs noticed. The tell was in the guard's own summary: `70
+    ordinary` where it had always said `71`, printed directly above a green tick.
+- **Why the accidental net hid the severity.** `capability-kit-lint` *did* fail on several of these, via
+  its anti-bypass debt count — but only because **zero** capabilities are currently declared through
+  `defineCapability()`. That rule skips declared keys, so the first real declaration removes the net.
+  Latent, not live, and the latency was doing the reassuring.
+- **The rules.**
+  1. **Parsing a language? Use its parser.** If a guard reads source structure — tuples, calls, object
+     literals — reach for the AST on the first version, not the third. Check whether the repo already
+     has the parser; here it did.
+  2. **A cross-check between two derived counts can cancel.** Before trusting "these two numbers agree",
+     ask what makes each number *smaller* and whether one defect can do both. Prefer comparing against
+     something that cannot shrink for the same reason.
+     **This rule earned a second instance in the same PR, which is why it is stated generally.** The
+     `trunk-signal.md` procedure for "is this failing test run inherited?" said to compare the failing
+     COUNTS (5 files / 20 tests) and check that no file in your diff appears. Review showed that
+     misattributes a regression two ways: Vitest reports the test FILE, not the source files it reads
+     (`settings.rendered-copy.test.tsx` reads `SoloApp.tsx` directly, so a `SoloApp` change alters that
+     failure while the file list and the aggregate are unchanged), and one fixed baseline assertion plus
+     one newly broken one preserves both numbers. Same shape as the lint bug, in prose instead of code,
+     written by the same author in the same change. **Compare the twenty failing test NAMES** — and even
+     that only ever adds suspicion: a change can alter a listed failure *in place*, keeping its name, so
+     the only check that CLEARS a run is a comparison whose two trees match the question's moment (see
+     rule 7 — for a recorded `pull_request` CI run that is **the merge commit it checked out and that
+     merge's own first parent**, NOT the branch head, NOT a merge made later, and NOT the payload's
+     `base.sha`, which does not advance with the base branch and was measured four commits stale). Two successive fixes to this one paragraph
+     each overclaimed in the same direction before that landed.
+  3. **A backstop written to cure a disease can carry it.** The line counter was added *because* the
+     parser had a blind spot, and it had the same blind spot. Ask of any backstop: does this fail
+     independently of the thing it is backing up?
+  4. **When you replace a parser, enumerate what the old one validated implicitly** — enums baked into
+     patterns, shapes excluded by construction, fields a regex could not match. Those constraints are
+     invisible in the diff and vanish silently.
+  5. **"The guard exited 1" is not "the guard caught what I meant."** One bite proof in this sequence
+     dropped a comma between two planted tuples, so it tested a *syntax error* and nearly got recorded
+     as a pass. Read the message, not the exit code.
+  6. **A document with a fast-path SUMMARY and a careful DETAIL section will have them disagree, and
+     the summary wins.** Two successive findings landed on the same conceptual mistake in
+     `trunk-signal.md` because the fix went into the detailed procedure while the lookup table kept the
+     old shortcut — and the table is what a reader hits first, so it decides. The table's framing line
+     ("if your symptom matches, it is not yours"), its column header ("How to confirm it is not yours")
+     and the row itself all still granted clearance from the diff's paths. **When you correct a claim,
+     grep the whole document for every place that claim is restated, including headers and framing
+     sentences — do not patch the one location a reviewer names.** A summary that contradicts its own
+     detail is worse than either alone.
+     **AND THE GREP ITSELF HAS A FAILURE MODE, which is how a fourth round happened after I claimed the
+     class was closed.** I swept for the phrasing I had just written — `proves it is yours`, `is not
+     yours` — and missed a superseded paragraph saying `proves the failure is yours`. Worse, that
+     paragraph was a rewritten *duplicate* of the section I had replaced, left in place instead of
+     deleted, so the document contained two passages contradicting each other and I had read only the
+     new one. **Grep for the SUBJECT of the claim (the thing being reasoned about), not the sentence you
+     remember writing — and when you replace a passage, DELETE the old one rather than leaving a
+     superseded version above or below it.** A stale duplicate is not a harmless leftover; it is a
+     second, competing rule.
+     **FOUR successive rounds landed here, each one layer up.** Round 5 fixed the procedure; round 6
+     fixed its scope; round 7 fixed the framing line, the column header and the row; round 8 found the
+     **Verdict column** still printing "Inherited" — assigning the reader's run the verdict the rest of
+     the table had stopped assigning. A table column is a claim too. The fix that finally held was
+     structural rather than another edit: the column now describes only what is true of `main`
+     (*"what `main`'s red is, when it is red"*) and a separate column carries what would establish
+     attribution for the reader's run. **Separate the two subjects rather than wording the shared one
+     more carefully** — the recurrence was a sign the structure conflated them.
+     **A cell corrected FOUR times earns a different fix: stop trying to say it there.** The `verify`
+     row's attribution cell was rewritten four times and was wrong each time, because a table cell was
+     being asked to compress a procedure that branches on which question the reader is asking. It now
+     carries one sentence — *go to the section below* — and says why it no longer tries. **When a summary
+     keeps going stale against its own detail, the summary should POINT rather than restate.** A pointer
+     cannot contradict the thing it points at.
+  7. **A measurement pinned to a commit cannot answer a question about the present — and that single
+     sentence unifies the first and last findings in this entry.** The document's opening error was
+     stale COUNTS (376 files / 5273 tests, true at one commit, wrong as soon as `main` added a test).
+     Its final error was the repaired version of the same thing: a list of twenty failing test NAMES,
+     measured at `7ebdd9fea` and then used to convict — *"a name not on the list proves it is yours"* —
+     which fails the moment `main` acquires a failure of its own after the measurement. Five review
+     rounds each killed one shortcut (totals · failing counts · diff paths · matching names · a missing
+     name) before the shape became visible: **every one was a pinned snapshot being asked about now.**
+     The only sound comparison is one whose two sides match the MOMENT the question is about. When
+     you catch yourself reaching for a recorded value to decide something about the present, that is
+     the trap, and the fix is never a fresher snapshot.
+     **A sixth round found the rule applying to the REPAIR itself: "merge-base versus head" is also a
+     pinned pair, and neither side is the tree CI ran.** `ci.yml` runs `on: pull_request` with a bare
+     `actions/checkout@v4`, so CI checks out the synthetic MERGE ref — base tip merged with head
+     (verified: run `35933689151`, `"event": "pull_request"`). A failure introduced by current `main`, or
+     by the combination of `main` and the branch, therefore appears in CI and in neither the merge-base nor
+     the branch head. **Know what your CI actually checks out before you design a comparison against it** —
+     and note that the `head_sha` in a check-run event names your commit, not the tree that ran. Work from
+     the merge ref ITSELF and its FIRST PARENT, in two throwaway worktrees — never its second parent,
+     which is just your branch commit again.
+     **A carve-out offered here was DELETED rather than corrected a fifth time, and that is the lesson
+     worth carrying.** It said: once the head contains the base, the merge ref's tree equals the head's
+     tree, so you can run the suite in place. True — and stating it safely cost four review rounds and
+     five findings inside twelve lines (a baseline that disagreed with the fetch block, a fetch missing
+     `--force`, a proof built from local refs, a headline naming a different condition than its own
+     commands, and a final check that could not see a dirty worktree). **When a convenience needs five
+     corrections to be safe, the convenience is the defect** — delete it and pay the extra command.
+     **The replacement then cost two rounds of its own** (a scratch directory it never created, the wrong
+     commit on the tested side, and no dependency install in either fresh tree), which is the wider rule:
+     **a procedure that provisions its own environment must provision ALL of it — the steps you do by
+     reflex in your own checkout are exactly the ones a copy will lack.** Prove it by running the block
+     verbatim somewhere that has none of your setup, not by reading it.
+     **A seventh round corrected this rule, and the corrected form is the one to carry: the fault is not
+     PINNING, it is a MISMATCH between the moment the question is about and the moment the measurement
+     belongs to.** "Why did that recorded run fail?" needs both trees pinned to that run. "Is my branch
+     sound now?" needs both trees current. Every wrong pair in this saga took one from each column — a
+     pinned list against a live run, a pinned merge-base against a tested merge, a current tip against a
+     historical run. **Where a merge exists at all — i.e. a `pull_request` run — the baseline half has
+     exactly one right answer in both columns: that merge commit's FIRST PARENT.** Anything else you
+     might reach for can drift from the merge it is meant to pair with — the payload `base.sha` because
+     GitHub never advances it, a local `origin/main` because fetching the merge ref does not update it.
+     A `workflow_dispatch` run has no merge and therefore no first parent (rule 10); its baseline is the
+     **merge-base that run logged** (`ci.yml` prints `merge-base(base=…, head=…) = …`), NOT the `main`
+     tip it fetched — that tip carries `main`-only changes whenever the branch does not contain current
+     `main`, so a failure `main` fixed after the fork reads as branch-introduced. **And the baseline
+     follows from what the run checked out, which is why it is a rule and not two special cases:** a
+     `pull_request` run tests the merge, so the baseline is that merge's first parent; a dispatch run
+     tests the dispatched commit alone, so the baseline is its merge-base. **State BOTH halves, because
+     an eleventh round found the rule written correctly in a table and contradicted by the commands three
+     paragraphs below it:** the tested half of a `pull_request` pair is the merge COMMIT, and `<merge>^2`
+     is not a stand-in for it — measured, the two trees differ by 20 files as soon as the head does not
+     already contain the base. A sweep that reads only the prose will not catch that. A round of this review said
+     the dispatch baseline was unrecoverable; it is printed in the run log, and giving up on a
+     recoverable attribution is its own kind of wrong. And when the trees for the question you are asking cannot be reconstructed, the
+     honest answer is UNPROVEN; substituting the nearest available tree is how a confident wrong
+     attribution gets made.
+  8. **The meta-pattern, and the one actually worth carrying: four of the findings were an
+     ENUMERATION offered where a general RULE was needed.** Widen the regex to cover single quotes
+     (enumerate the quote styles). Add a line counter (enumerate the layouts). Name two directories as
+     the trees a baseline test reads from (enumerate the dependency roots — defeated by
+     `src/solo/resend-receipt-handler.test.ts`, which imports
+     `supabase/functions/handle-resend-webhook/handler` across the `src/` ↔ `supabase/` boundary). Each
+     list was longer and more carefully reasoned than the last, and each was defeated by the first case
+     outside it, because **a boundary you have to enumerate is a boundary you have not understood.**
+     The three fixes that held were all of the other kind: use the language's parser, compare against
+     the runtime rather than a second derived count, and name the comparison by the question's moment
+     instead of listing which diffs need it. When the next fix is a slightly longer list, that is the signal to stop and find the
+     rule.
+  9. **A reference by POSITION goes stale the moment the thing it counts from grows.** A sentence
+     introducing a table's conclusion as *"the last row is the one that generalises"* was silently
+     re-pointed at something else by a later round appending a row beneath it — so the summary now
+     described a different claim than the one it was written for, with nothing edited and nothing to
+     notice. This is rule 6 wearing a different hat: rule 6 is a summary that RESTATES its detail, this
+     is a summary that COUNTS it. **Name the thing you mean** — the row, the section, the check — because
+     a name survives insertion and an ordinal does not. The sweep that caught the other four instances
+     was the same one rule 6 prescribes: grep by the SUBJECT (here, positional reference) rather than by
+     the phrasing you just wrote.
+ 10. **The MOMENT is not the only axis a measurement can mismatch: for anything read out of CI, the
+     run's EVENT decides what "the tree that ran" even means.** Rule 7 says compare two trees from the
+     question's moment. That is necessary and it is not sufficient: `ci.yml` fires on `pull_request`,
+     `push` and `workflow_dispatch`, and a bare `actions/checkout@v4` lands on a *different kind of
+     thing* in each — the synthetic merge ref, the pushed commit, or the dispatched commit with **no
+     merge created at all**. A procedure that names one tree shape is wrong for the other event however
+     carefully its moments line up, and "go find the merge commit" is unanswerable for a dispatch run.
+     **Read the run's `event` first, then pick the pair.** Two corollaries worth having, both measured:
+     do NOT infer the event from who opened the PR (the `workflow_dispatch` path exists because a
+     bot-authored PR's events are withheld, yet this PR's own runs are `pull_request` on an author whose
+     login ends in `-bot` and whose API `type` is `User` — the withholding is about the credential, not
+     the name); and within ONE `pull_request` run the tested tree and the changed-file gates' base are
+     different commits, because the merge ref tracks `main`'s live tip while
+     `github.event.pull_request.base.sha` does not advance.
+- **Cross-references.** §13 (honest reporting), §32 (a green result is not a working one — this is its
+  guard-shaped twin), §39 (peer-gate: all three were found by an independent read, none by the author),
+  §18 (one home — the parser the sibling guard already used), #1383 (`read_only` is not an `ActionRisk`,
+  which is what made face (3) dangerous rather than cosmetic).

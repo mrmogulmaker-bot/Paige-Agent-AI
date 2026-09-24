@@ -24,10 +24,18 @@
  * MCP door work. The rule itself is unchanged in spirit: a classified key that NO surface points
  * at is still a line nobody reads.
  *
+ * ONE KEY, ONE LINE — added 2026-09-23. `RISK` is a hand-maintained array and every map derived from
+ * it folds repeats, so a second tuple for a key already present is a classification settled by fold
+ * order rather than by a person. `crm_update_task` carried two until #1383. That fold now keeps the
+ * MOST RESTRICTIVE class, so a repeat can only raise authority and never lower it — which means this
+ * check is the WARNING that the table contradicts itself, not the thing that makes it safe. It says
+ * whether the repeated classes agree, because "duplicate key" alone leaves the reader to go and look.
+ *
  *   node scripts/ci/action-risk-lint.mjs
  *   node scripts/ci/action-risk-lint.mjs --self-test
  */
 import fs from "node:fs";
+import ts from "typescript";
 
 const POLICY = "supabase/functions/_shared/action-risk.ts";
 const CHAT = "supabase/functions/paige-ai-chat/index.ts";
@@ -39,15 +47,68 @@ const CONTACT_SCOPED_EDGE_HANDLERS = [
 ];
 const CRM_CATALOG = "supabase/functions/_shared/crm-command/catalog.ts";
 
-/** Every classified action, as `[tool, class, reason]`, read from the policy's own table. */
+/**
+ * The RISK table, read from the TypeScript AST rather than matched out of the text.
+ *
+ * This was regex-based twice and had a hole both times, found by review both times. The first: a
+ * double-quote-only pattern skipped a single-quoted tuple, so a duplicate key went unreported — and
+ * the parse-vs-runtime cross-check in `capability-kit.test.mjs` ALSO passed, because the skipped
+ * tuple and the folded duplicate each removed one from their counts and the equality survived. The
+ * second, after widening the pattern and adding a line-anchored tuple counter as a backstop: two
+ * tuples on ONE line with a concatenated reason (`"a" + "b"`) defeated both, because the counter
+ * counts lines and the parser wants a single literal. Measured: 157 tuples in source, 156 keys at
+ * runtime, both counts reporting 156, every check silent.
+ *
+ * The lesson is not "widen the regex again" — a regex does not have a grammar, so each fix buys one
+ * shape and leaves the class open. The AST has the grammar. `typescript` is already a dependency and
+ * already imported by the sibling guard `capability-kit-lint.mjs`, so this costs no new dependency.
+ *
+ * An element whose reason is not a single string literal (a concatenation, a template with
+ * substitutions, an identifier) is STILL RETURNED, with `reason: null`. That matters: the tuple is
+ * counted and its key is graded for duplication, and the reason check below reports the non-literal
+ * separately rather than the tuple vanishing. A tuple that cannot be read must never be a tuple that
+ * is not there.
+ */
 export function parsePolicy(src) {
-  const at = src.indexOf("const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [");
-  if (at < 0) return null;
-  const end = src.indexOf("\n];", at);
-  if (end < 0) return null;
-  return [...src.slice(at, end).matchAll(
-    /\[\s*"([a-z0-9_]+)"\s*,\s*"(ordinary|high|owner_only)"\s*,\s*"((?:[^"\\]|\\.)*)"\s*\]/g,
-  )].map((m) => ({ tool: m[1], risk: m[2], reason: m[3] }));
+  const sourceFile = ts.createSourceFile("action-risk.ts", src, ts.ScriptTarget.Latest, true);
+  let table = null;
+
+  const findTable = (node) => {
+    if (table) return;
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === "RISK" &&
+      node.initializer &&
+      ts.isArrayLiteralExpression(node.initializer)
+    ) {
+      table = node.initializer;
+      return;
+    }
+    ts.forEachChild(node, findTable);
+  };
+  ts.forEachChild(sourceFile, findTable);
+  if (!table) return null;
+
+  // `isStringLiteralLike` is exactly the right predicate: it accepts a quoted string in any style
+  // and a template with no substitutions, and rejects a concatenation or a template that
+  // interpolates — which is what we want flagged rather than silently read.
+  const literal = (node) => (node && ts.isStringLiteralLike(node) ? node.text : null);
+
+  return table.elements.map((element) => {
+    // A non-tuple element (a spread, an identifier) is still an entry in the array, so it is
+    // reported rather than dropped — same rule as a non-literal reason.
+    if (!ts.isArrayLiteralExpression(element)) {
+      return { tool: null, risk: null, reason: null, unreadable: element.getText(sourceFile).slice(0, 60) };
+    }
+    const [toolNode, riskNode, reasonNode] = element.elements;
+    return {
+      tool: literal(toolNode),
+      risk: literal(riskNode),
+      reason: literal(reasonNode),
+      unreadable: null,
+    };
+  });
 }
 
 /** The tools the handler declares to the model, with the exempt list it honours. */
@@ -95,12 +156,22 @@ export function parseExemptions(src) {
 /** Kept in step with `MUTATION_VERB` in the policy by `checkVerbParity` below. */
 const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|install|uninstall|grant|revoke|run|assign|enroll|book|set|draft|generate|file|advance|forge|archive|activate|deactivate|move|add|build|log|author|enable|disable|invite|upload|apply|approve|reject|decide|import|export|sync|write|post|schedule|cancel|start|stop|trigger|fire|configure|buy|purchase|pull|name|rename|propose|provision|claim|release)(_|$)/;
 
+/**
+ * The three classes `ActionRisk` permits. The regex parser encoded this inside its pattern, so moving
+ * to the AST silently DROPPED it: a typo (`"ordnary"`) or an unsupported class (`"read_only"`) parsed
+ * as a perfectly good string literal, `classified` accepted the tool, and the guard exited 0 while its
+ * own summary line quietly counted one fewer `ordinary`. Found by review, on the commit that was
+ * supposed to be the careful one. Validation a parser used to do implicitly must be made explicit when
+ * the parser is replaced, or it leaves with it.
+ */
+const RISK_CLASSES = new Set(["ordinary", "high", "owner_only"]);
+
 /** The rule: destroys, changes permissions, or goes public ⇒ never `ordinary`. */
 const IRREVERSIBLE_OR_OUTWARD = /(^|_)(delete|remove|revoke|publish|uninstall|install)(_|$)|(^|_)grant(_|$)/;
 
 export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanonicals = [], governedEdgeActions = [] }) {
   const out = [];
-  const classified = new Map(policy.map((p) => [p.tool, p.risk]));
+  const classified = new Map(policy.filter((p) => p.tool !== null).map((p) => [p.tool, p.risk]));
   const exempt = new Set(exemptions.map((e) => e.tool));
 
   // A regex that matches nothing reports a clean bill of health, which is indistinguishable from
@@ -123,6 +194,7 @@ export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanon
   //    classification alive — an entry with neither is the line nobody deletes.
   const declared = new Set([...chat.declared, ...mcpCanonicals, ...governedEdgeActions]);
   for (const { tool } of policy) {
+    if (tool === null) continue;
     // Containment tombstones are deliberately classified while not being dispatched, so a future
     // accidental re-registration cannot inherit read semantics. They are named here rather than
     // silently tolerated.
@@ -133,6 +205,9 @@ export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanon
   // 3. The membership rule, not a hand-list: anything that destroys, changes who may do what, or
   //    goes public is at least `high`. `owner_only` is stronger, so it satisfies this too.
   for (const { tool, risk } of policy) {
+    // An unreadable key is reported by rule 7; skipping it explicitly beats relying on
+    // `test(null)` coercing to the string "null" and happening not to match.
+    if (tool === null) continue;
     if (IRREVERSIBLE_OR_OUTWARD.test(tool) && risk === "ordinary") {
       out.push(`${tool} is classified ordinary, but its name says it destroys, changes permissions, or goes public. That needs the approval card at minimum.`);
     }
@@ -141,7 +216,9 @@ export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanon
   // 4. Every entry states WHY. The reason is the rubric a later reader argues with and the next
   //    tool is placed against; an entry without one is a guess that will be copied.
   for (const { tool, reason } of policy) {
-    if (!reason || reason.trim().length < 12) out.push(`${tool} carries no usable reason for its classification.`);
+    // A null reason is a non-literal, already reported with its own wording by rule 7.
+    if (tool === null || reason === null) continue;
+    if (!reason.trim() || reason.trim().length < 12) out.push(`${tool} carries no usable reason for its classification.`);
   }
   for (const { tool, reason } of exemptions) {
     if (!reason || reason.trim().length < 20) out.push(`${tool} is exempted from classification without saying why it persists nothing.`);
@@ -151,6 +228,43 @@ export function findings({ policy, exemptions, chat, verbSourceMatches, mcpCanon
   //    two regexes that eventually will not, and the divergence would show up as CI passing a tool
   //    the runtime then refuses.
   if (!verbSourceMatches) out.push(`the MUTATION_VERB pattern in this guard no longer matches the one in ${POLICY} — they must be identical or CI and the runtime will disagree about what counts as a write.`);
+
+  // 6. One key, one line. Two tuples for the same key is a classification the fold picks, not a
+  //    person — and the reader of a bare "duplicate key" cannot tell whether they just created a
+  //    downgrade or restated something harmlessly, so the classes are named. Agreeing repeats are
+  //    the case that actually happened; disagreeing ones are a policy arguing with itself.
+  const classesByTool = new Map();
+  for (const { tool, risk } of policy) {
+    if (tool === null) continue;
+    const held = classesByTool.get(tool);
+    if (held) held.push(risk);
+    else classesByTool.set(tool, [risk]);
+  }
+  for (const [tool, classes] of classesByTool) {
+    if (classes.length < 2) continue;
+    out.push(
+      `${tool} is classified ${classes.length} times in ${POLICY} — as ${classes.join(", ")}. ` +
+      (new Set(classes).size === 1
+        ? `The classes agree, so nothing is mis-classified today, but one key on two lines means the next edit to either can disagree with the other. Keep exactly one.`
+        : `The classes DISAGREE, so the table contradicts itself and the fold picks the winner instead of a person. Keep exactly one, and make it the class you mean.`),
+    );
+  }
+
+  // 7. Anything in the table this guard could not fully read is REPORTED, never dropped. The AST
+  //    returns one entry per array element, so a tuple can no longer vanish and take its key out of
+  //    the duplicate check with it — which is precisely how both earlier versions of this parser
+  //    failed. What can still be unreadable is a FIELD: a reason built by concatenation, a key held
+  //    in a constant. Those are named here so the table stays something a person can grade.
+  for (const entry of policy) {
+    if (entry.unreadable !== null && entry.unreadable !== undefined) {
+      out.push(`${POLICY} holds an entry this guard cannot read as a tuple — \`${entry.unreadable}\`. Every entry must be a literal [tool, class, reason] triple, or the table stops being reviewable.`);
+      continue;
+    }
+    if (entry.tool === null) out.push(`${POLICY} holds a tuple whose TOOL KEY is not a plain string literal, so it cannot be classified or checked for duplication. Write the key as a literal.`);
+    else if (entry.risk === null) out.push(`${entry.tool} has a class that is not a plain string literal in ${POLICY} — write \`ordinary\`, \`high\` or \`owner_only\` literally, so the class is greppable.`);
+    else if (!RISK_CLASSES.has(entry.risk)) out.push(`${entry.tool} is classified \`${entry.risk}\` in ${POLICY}, which is not one of ordinary | high | owner_only. A class outside the enum is not a classification — \`classifyAction()\` will not honour it, and a typo here reads as "classified" while the clamp has nothing to clamp on.`);
+    else if (entry.reason === null) out.push(`${entry.tool} has a reason that is not a single string literal in ${POLICY} (a concatenation or an interpolated template). Write it as one literal — a reason assembled at runtime cannot be read by a reviewer scanning the table.`);
+  }
 
   return out;
 }
@@ -218,6 +332,60 @@ function selfTest() {
     findings({ ...base, policy: [] }).some((f) => f.includes("reading nothing")));
   bad += ok("a diverged verb pattern is caught",
     findings({ ...base, verbSourceMatches: false }).some((f) => f.includes("disagree about what counts")));
+  // The duplicate rule, both directions. The clean fixture declares 60 distinct keys, so its silence
+  // is the no-false-positive half; the two repeats below are the real defect (`crm_update_task` held
+  // two `ordinary` tuples until #1383) and the worse hypothetical (classes that disagree).
+  bad += ok("a repeated key whose classes DISAGREE is caught, naming both classes",
+    findings({ ...base, policy: [...base.policy, { tool: "t_create_0", risk: "high", reason: "a sufficiently long reason" }] })
+      .some((f) => f.includes("t_create_0 is classified 2 times") && f.includes("as ordinary, high") && f.includes("DISAGREE")));
+  bad += ok("a repeated key whose classes AGREE is caught too, named as a restatement",
+    findings({ ...base, policy: [...base.policy, { tool: "t_create_0", risk: "ordinary", reason: "a sufficiently long reason" }] })
+      .some((f) => f.includes("t_create_0 is classified 2 times") && f.includes("as ordinary, ordinary") && f.includes("classes agree")));
+
+  // The parser's reach, now that it has a grammar instead of a pattern. Every case below is a shape
+  // that defeated one of the two regex versions and was found by review, not by me.
+  const BLOCK = (...tuples) =>
+    `const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [\n${tuples.map((t) => `  ${t},`).join("\n")}\n];\n`;
+  bad += ok("a single-quoted tuple parses (regex v1 skipped it, and a duplicate hid in the gap)",
+    parsePolicy(BLOCK(`['a_create_x', 'ordinary', 'a sufficiently long reason']`))?.[0]?.tool === "a_create_x");
+  bad += ok("a no-substitution template tuple parses",
+    parsePolicy(BLOCK("[`a_create_x`, `high`, `a sufficiently long reason`]"))?.[0]?.risk === "high");
+  bad += ok("TWO tuples on ONE line are two entries (regex v2 counted the line, so it saw one)",
+    parsePolicy(BLOCK(`["a_create_x", "ordinary", "a sufficiently long reason"], ["a_create_x", "ordinary", "another sufficiently long reason"]`))?.length === 2);
+  bad += ok("a duplicate sharing a line with a CONCATENATED reason is caught — the exact v2 bypass",
+    findings({
+      ...base,
+      policy: parsePolicy(BLOCK(`["a_create_x", "ordinary", "a sufficiently long reason"], ["a_create_x", "ordinary", "half " + "and half"]`)),
+      chat: { ...base.chat, declared: ["a_create_x"] },
+    }).some((f) => f.includes("a_create_x is classified 2 times")));
+  bad += ok("a tuple wrapped across lines is one entry, not zero",
+    parsePolicy(BLOCK(`[\n    "a_create_x",\n    "ordinary",\n    "a sufficiently long reason",\n  ]`))?.length === 1);
+  bad += ok("a tuple with an inline comment between elements still parses",
+    parsePolicy(BLOCK(`["a_create_x", /* why */ "ordinary", "a sufficiently long reason"]`))?.length === 1);
+  bad += ok("a non-literal reason is RETURNED with reason null, never dropped",
+    parsePolicy(BLOCK(`["a_create_x", "ordinary", "half " + "and half"]`))?.[0]?.reason === null);
+  bad += ok("a non-literal reason is reported as such",
+    findings({ ...base, policy: [...base.policy, { tool: "t_create_99", risk: "ordinary", reason: null, unreadable: null }], chat: { ...base.chat, declared: [...base.chat.declared, "t_create_99"] } })
+      .some((f) => f.includes("not a single string literal")));
+  bad += ok("an entry that is not a tuple at all is reported, not dropped",
+    findings({ ...base, policy: [...base.policy, { tool: null, risk: null, reason: null, unreadable: "...spread" }] })
+      .some((f) => f.includes("cannot read as a tuple")));
+  // The enum the AST move silently dropped. A parser that validated implicitly took its validation
+  // with it when it was replaced, and the guard exited 0 with its own summary counting one fewer.
+  bad += ok("a typo'd class is reported, not accepted as a classification",
+    findings({ ...base, policy: [...base.policy, { tool: "t_create_98", risk: "ordnary", reason: "a sufficiently long reason", unreadable: null }], chat: { ...base.chat, declared: [...base.chat.declared, "t_create_98"] } })
+      .some((f) => f.includes("is classified `ordnary`") && f.includes("not one of ordinary | high | owner_only")));
+  bad += ok("`read_only` is rejected as a class (it is not an ActionRisk — see #1383)",
+    findings({ ...base, policy: [...base.policy, { tool: "t_create_97", risk: "read_only", reason: "a sufficiently long reason", unreadable: null }], chat: { ...base.chat, declared: [...base.chat.declared, "t_create_97"] } })
+      .some((f) => f.includes("is classified `read_only`")));
+  bad += ok("a correctly-cased valid class stays silent",
+    findings({ ...base, policy: [...base.policy, { tool: "t_create_96", risk: "owner_only", reason: "a sufficiently long reason", unreadable: null }], chat: { ...base.chat, declared: [...base.chat.declared, "t_create_96"] } })
+      .every((f) => !f.includes("not one of ordinary")));
+  bad += ok("a non-literal KEY is reported (it cannot be duplicate-checked)",
+    findings({ ...base, policy: [...base.policy, { tool: null, risk: "ordinary", reason: "a sufficiently long reason", unreadable: null }] })
+      .some((f) => f.includes("TOOL KEY is not a plain string literal")));
+  bad += ok("a policy that declares each key exactly once reports no duplicate",
+    !findings(base).some((f) => /is classified \d+ times/.test(f)));
   // 2026-09-12 regression: `decide` must read as a mutation verb, so an unclassified `*_decide`
   // write (the `improvement_decide` bypass) is caught as a write rather than sailing through as a
   // query. Guards the lint's own copy of MUTATION_VERB; `checkVerbParity` guards it against the policy.
