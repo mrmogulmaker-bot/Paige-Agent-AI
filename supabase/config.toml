@@ -583,6 +583,11 @@ verify_jwt = false
 [functions.solo-beta-welcome-drainer]
 verify_jwt = false
 
+[functions.paige-document-worker]
+# Internal durable-work runner. pg_net/pg_cron cannot present a user JWT; the function fails closed
+# to the existing service-role bearer OR Vault-backed x-cron-token gate before reading any work row.
+verify_jwt = false
+
 [functions.paige-social]
 # Owner/admin JWT is verified by the gateway and again in-function. Tenant is
 # always resolved from the caller's active workspace; body tenant is refusal-only.

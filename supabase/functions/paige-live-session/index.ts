@@ -94,6 +94,15 @@ serve(async (req: Request) => {
         explanation: "Live audio isn't available for this workspace yet. You can keep working with Paige in chat.",
       });
     }
+    const { data: authorizedPilot, error: authorizationError } = await admin.rpc("paige_live_pilot_authorized_internal", {
+      _actor_user_id: user.id, _tenant_id: tenantId,
+    });
+    if (authorizationError || authorizedPilot !== true) {
+      return json({
+        ok: false, session_id: null, availability: "UNAVAILABLE", code: "live_audio_not_enabled",
+        explanation: "Live audio isn't available for this account yet. You can keep working with Paige in chat.",
+      });
+    }
     // This is a first-party ticket, not a provider token. Existing sessions
     // supply a fresh ticket on reconnect; replacing a pending digest revokes it.
     const ticket = await issueRelayTicket();
