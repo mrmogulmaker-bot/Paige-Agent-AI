@@ -198,13 +198,34 @@ interaction the bullets above say to look for. Do not reach for your own checkou
 commit is the right one, `git rev-parse HEAD` cannot see a dirty tree, so the suite would run your
 uncommitted edits and report them as the merge's result.
 
+**First check whether CI has already measured the baseline for you.** `ci.yml` also runs `on: push` to
+`main` (lines 23-24), so `$BASE` usually has a run of its own, and comparing its `Test` step against the
+PR's costs nothing. Two conditions, both to be checked rather than assumed: the run must be for EXACTLY
+`$BASE`, and it must have COMPLETED — consecutive pushes cancel each other's in-flight runs, and a
+`cancelled` run looks like a run while having measured nothing. Over the six most recent `main` tips at the
+time of writing: three completed, **two `cancelled`**, one with no run at all. Fall through to the worktrees
+when the baseline run is missing or cancelled, or when you need the failing MESSAGES rather than which step
+went red.
+
 ```sh
 SCRATCH=$(mktemp -d)                                   # the block owns its scratch space
 git worktree add --detach "$SCRATCH/wt-base" "$BASE"   # baseline: the merge's FIRST PARENT
 git worktree add --detach "$SCRATCH/wt-head" "$REF"    # tested tree: the MERGE, not $REF^2
-# run the suite in each, then diff the failure output — names AND messages.
+for w in wt-base wt-head; do ( cd "$SCRATCH/$w" && npm ci && npm run test ); done
+# then diff the two outputs — failing NAMES and MESSAGES, not counts.
 git worktree remove "$SCRATCH/wt-base" && git worktree remove "$SCRATCH/wt-head" && rmdir "$SCRATCH"
 ```
+
+**The `npm ci` is not a formality and it is not free.** A fresh worktree has no `node_modules` — it is
+gitignored, so it is not part of the checkout — and without one `npm run test` cannot start at all
+(measured: `vitest` unresolvable, *"missing packages"*). Installing per worktree, from each tree's OWN
+lockfile, is also what keeps the comparison honest: a dependency change between the base and the merge is
+then part of what you measure instead of being hidden behind one shared install. Sharing the original
+checkout's `node_modules` is safe only while the two lockfiles are identical — which on the PR that wrote
+this block they were, exactly the sort of coincidence the paragraph above warns against building on. The
+price here was **821M per worktree**. `git worktree remove` afterwards needs no `--force`: ignored files do
+not count as the untracked files that make it refuse, so reach for `--force` only if you know what it is
+about to discard.
 
 **For a `workflow_dispatch` run, substitute the two commits and keep the method.** There is no merge to
 fetch, so the tested side is the dispatched commit itself and the baseline is the merge-base that run

@@ -2809,6 +2809,11 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      `--force`, a proof built from local refs, a headline naming a different condition than its own
      commands, and a final check that could not see a dirty worktree). **When a convenience needs five
      corrections to be safe, the convenience is the defect** — delete it and pay the extra command.
+     **The replacement then cost two rounds of its own** (a scratch directory it never created, the wrong
+     commit on the tested side, and no dependency install in either fresh tree), which is the wider rule:
+     **a procedure that provisions its own environment must provision ALL of it — the steps you do by
+     reflex in your own checkout are exactly the ones a copy will lack.** Prove it by running the block
+     verbatim somewhere that has none of your setup, not by reading it.
      **A seventh round corrected this rule, and the corrected form is the one to carry: the fault is not
      PINNING, it is a MISMATCH between the moment the question is about and the moment the measurement
      belongs to.** "Why did that recorded run fail?" needs both trees pinned to that run. "Is my branch
