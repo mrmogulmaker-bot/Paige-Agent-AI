@@ -7,7 +7,7 @@ MATERIAL_FLOW_CHANGE: YES: approval-path hardening affects the existing chat int
 FLOW_PROTOTYPE: WAIVED: owner-decision=2026-09-23 explicit owner confirmation in delivery task; reason=Owner approved this repair and waived a separate prototype because it changes no layout and reuses existing approval controls.
 PURPOSE_AUDIENCE_PRIMARY_ACTION: PASS: signed-in users operating Paige through existing chat surfaces; owner-approved approval-path hardening.
 VISUAL_DIRECTION: PASS: existing Paige interface and controls preserved; no frontend layout, tokens, navigation or motion edits.
-AUTOMATED_EVIDENCE: PASS: npm run test:client-memory-authz, 287 assertions; two focused Vitest files, 26 tests; local negative control exited 1 and restored source passed. Detailed evidence retained privately under owner publication ruling.
+AUTOMATED_EVIDENCE: PASS: npm run test:client-memory-authz, 302 assertions; two focused Vitest files, 26 tests; local negative controls exited 1 and restored source passed. Independent reviewer reran 302 assertions successfully. Detailed evidence retained privately under owner publication ruling.
 STATIC_EVIDENCE: PASS: git diff --check; lint:approval-gate; lint:action-risk; lint:chat-tool-registry; independent source review; edge-affected.py resolves paige-ai-chat only. Impeccable 4.3.1 copy/context inspection and detector returned an empty finding array.
 RENDERED_EVIDENCE: UNVERIFIED: no authenticated rendered browser drive of this candidate has been performed; this repair edits no frontend component.
 BEHAVIORAL_EVIDENCE: UNVERIFIED: local handler execution is automated evidence only; authenticated browser behavior is not established by test doubles.
@@ -29,7 +29,7 @@ SOLO_1024X768_PAIGE_OPEN: UNVERIFIED: no candidate browser render; no frontend f
 SOLO_900X1000_PAIGE_CLOSED: UNVERIFIED: no candidate browser render; no frontend files changed.
 SOLO_900X1000_PAIGE_OPEN: UNVERIFIED: no candidate browser render; no frontend files changed.
 
-INTERNAL_BUILD_IDENTITY: source-history=584300efc479dfdb18b7579b072fe5c12e9501a5; merge=PROOF_OWED; deployment=PROOF_OWED; environment=local; migrations=NOT_APPLICABLE; edge=PROOF_OWED(paige-ai-chat production deployment); evidence=npm-run-test:client-memory-authz
+INTERNAL_BUILD_IDENTITY: source-history=e541a736995a53a4093ae7e160f250c472029ce6; pr=1423; merge=PROOF_OWED; deployment=PROOF_OWED; environment=local; migrations=NOT_APPLICABLE; edge=PROOF_OWED(paige-ai-chat production deployment); evidence=npm-run-test:client-memory-authz
 RELEASE_CHANNEL: development: local source verification only; production identity is recorded in the post-merge closeout, not inferred from this source-history commit.
 RELEASE_CLASSIFICATION: patch: standalone approval-path hardening.
 CUSTOMER_RELEASE_IDENTITY: none: no customer announcement authorized.
