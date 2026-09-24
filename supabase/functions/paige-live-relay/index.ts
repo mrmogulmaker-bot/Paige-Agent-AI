@@ -16,7 +16,7 @@ import { envKey } from "../_shared/env-key.ts";
 import { openFluxEars } from "../_shared/paige-live-flux-ears.ts";
 import { LiveRelayAdmission, PaigeLiveRelayBridge } from "../_shared/paige-live-relay-bridge.ts";
 import { createLiveRuntimeProof, liveRuntimeDigest } from "../_shared/paige-live-runtime-proof.ts";
-import { consumeRelayTicket, hasLiveWorkspaceStanding, isLiveAudioPilotEnabled, isLiveWorkspaceCurrent } from "../_shared/paige-live-ticket.ts";
+import { consumeRelayTicket, hasLiveWorkspaceStanding, isLiveWorkspaceCurrent } from "../_shared/paige-live-ticket.ts";
 
 const waitUntil = (promise: Promise<unknown>): void => {
   const runtime = (globalThis as unknown as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
@@ -195,13 +195,12 @@ Deno.serve(async (req) => {
     if (!await markUnavailable("membership_inactive")) return new Response("relay_unavailable", { status: 503 });
     return new Response("membership_inactive", { status: 403 });
   }
-  const { data: tenantPilot, error: pilotError } = await admin.from("paige_live_tenant_availability")
-    .select("enabled").eq("tenant_id", session.tenant_id).maybeSingle();
-  const pilotEnabled = !pilotError && isLiveAudioPilotEnabled(tenantPilot);
-  if (!pilotEnabled) {
-    if (!await markUnavailable("live_audio_not_enabled")) return new Response("relay_unavailable", { status: 503 });
-    return new Response("live_audio_not_enabled", { status: 403 });
-  }
+  // ONE HOME FOR "MAY THIS PERSON SPEAK" (§18). A second paige_live_tenant_availability read
+  // stood here and refused on a missing row. The predicate called at the top of this same
+  // function already owns that question and honours both meanings of the row, so this was a
+  // duplicate answer that would have contradicted it for any workspace admitted by tier rather
+  // than by a hand-written row. Revocation still stops a connected relay: it is the predicate,
+  // re-run on every renewal and PCM check, that does the stopping.
   // Provider approval is revocable just like workspace authority. Reuse the
   // same canonical proof on every monitor decision and before further speech.
   if (recheckProvider) {

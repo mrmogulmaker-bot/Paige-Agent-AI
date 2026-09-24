@@ -67,10 +67,18 @@ assert.ok(relay.indexOf("markUnavailable(unavailableCode)") < relay.indexOf("Den
 assert.ok(session.indexOf('rpc("current_user_tenant_id")') < session.indexOf("issueRelayTicket()"));
 assert.match(session, /liveContextEpochTenant\(parsed\.data\.context_epoch\)/, "ticket admission understands the current composer scope format");
 assert.ok(session.indexOf('from("paige_chat_threads")') < session.indexOf("issueRelayTicket()"));
-assert.ok(session.indexOf('from("paige_live_tenant_availability")') < session.indexOf("issueRelayTicket()"), "platform availability read precedes ticket issuance");
-assert.match(session, /isLiveAudioPilotEnabled\(tenantPilot\)/, "session ticket requires the platform-stored flag");
-assert.ok(relay.indexOf('from("paige_live_tenant_availability")') < relay.indexOf("Deno.upgradeWebSocket(req)"), "relay rechecks platform availability before upgrade");
-assert.match(relay, /isLiveAudioPilotEnabled\(tenantPilot\)/, "relay admission requires the platform-stored flag");
+// The admission question has ONE home, and it is the database predicate (§18). These used to pin a
+// SECOND, weaker gate in each function — a direct paige_live_tenant_availability read that refused
+// on a missing row. That second answer contradicted the predicate as soon as a missing row came to
+// mean "follow the rollout scope", so it was removed and these assertions now pin the real gate:
+// the predicate is consulted, and anything short of an explicit `true` refuses. The predicate reads
+// that same table itself and still honours both of its meanings, which the pgTAP suite proves.
+assert.ok(session.indexOf('rpc("paige_live_pilot_authorized_internal"') < session.indexOf("issueRelayTicket()"), "scoped admission is decided before a ticket is issued");
+assert.match(session, /authorizationError \|\| authorizedPilot !== true/, "session ticket refuses anything short of an explicit admission");
+assert.doesNotMatch(session, /from\("paige_live_tenant_availability"\)/, "no second availability gate may reappear beside the predicate");
+assert.ok(relay.indexOf('rpc("paige_live_pilot_authorized_internal"') < relay.indexOf("Deno.upgradeWebSocket(req)"), "relay decides scoped admission before upgrade");
+assert.match(relay, /authorizationError \|\| authorizedPilot !== true/, "relay admission refuses anything short of an explicit admission");
+assert.doesNotMatch(relay, /from\("paige_live_tenant_availability"\)/, "no second availability gate may reappear beside the predicate");
 assert.ok(relay.indexOf('return new Response("live_audio_not_enabled", { status: 403 })') < relay.indexOf("Deno.upgradeWebSocket(req)"), "revoked or missing pilot rejects before socket upgrade");
 assert.match(relay, /from\("tenant_members"\)[\s\S]*?\.eq\("user_id", session\.actor_user_id\)\.eq\("status", "active"\)/, "relay rechecks the signed-in user's active membership, independent of role label");
 assert.match(relay, /rpc\("agency_can_manage_child"/, "relay preserves canonical agency child access");

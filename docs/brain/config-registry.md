@@ -353,7 +353,17 @@ identity predicate — a singleton readiness row pinning the speaker to one stor
 had to hold `super_admin` — so no other Solo account could reach Live at all. It is now a
 platform-owned, service-role-only allowlist (`public.paige_live_pilot_subjects`, RLS on, no
 anon/authenticated policy, missing row refuses) with per-subject acceptance and an `expires_at`
-lifetime. **NAMES only, no values, and nothing was activated:** the allowlist ships empty, the
+lifetime.
+
+**2026-09-24 audience correction (migration `20270422000000`), same day, one layer down:** that
+allowlist's only production writer admitted the authenticated operator themselves, so the set of
+people who could ever be admitted was still one login. Eligibility now derives from the tenant's TIER
+and *who may speak today* is a single stored setting. NAME only, values stated because they are a
+closed enum and not a secret: `public.paige_voice_readiness.pilot_rollout_scope`, `'off' | 'solo_tier'`,
+**ships `'off'`**. It cannot name a person, a login or a workspace by construction. The operator turns
+it through `paige-voice-profile-admin`'s `set-live-rollout-scope` action (platform-owner gated;
+widening requires the default-provider-retention acceptance restated in the same request), and the
+global disable now closes the audience with it. **NAMES only, no values, and nothing was activated:** the allowlist ships empty, the
 ElevenLabs provider gate is unchanged and still shut, `ELEVENLABS_API_KEY` was neither read nor
 tested by this change, verified zero retention remains `UNAVAILABLE`, and physical speaker identity
 is still unenforced (#1417). Both database function signatures were preserved, so **no edge function
@@ -363,7 +373,7 @@ was redeployed** — `paige-live-session`, `paige-live-relay`, `paige-ai-chat` a
 | System | Voice resolution | Current state |
 |---|---|---|
 | Paige message playback | `paige-tts` → service-only profile resolver → provider-neutral router | Deployed; authenticated runtime proof owed |
-| Paige Live Conversation | immutable profile revision in `paige_live_sessions`; provider transport disabled | UI/control plane deployed on `f8eb2362`; admission is platform-owned rollout **configuration** (`paige_live_pilot_subjects`), not an identity predicate, and that allowlist ships EMPTY — no account admitted; realtime audio `PROOF OWED`; authenticated owner E2E `UNVERIFIED` |
+| Paige Live Conversation | immutable profile revision in `paige_live_sessions`; provider transport disabled | UI/control plane deployed on `f8eb2362`; eligibility derives from the tenant's TIER (`live_conversation_tier_allows`), and *who may speak today* is one setting — `paige_voice_readiness.pilot_rollout_scope`, `'off' | 'solo_tier'`, **shipping `'off'`** — so no account is admitted; realtime audio `PROOF OWED`; authenticated owner E2E `UNVERIFIED`; no surface calls `paige_live_accept_terms()` yet |
 | Studio voiceover | request-selected provider voice removed; model-router fails closed | `UNAVAILABLE` until this lane uses the same Paige Voice Profile/readiness resolver |
 | Hosted ElevenLabs agent | none | `UNAVAILABLE` and intentionally outside Paige ownership |
 

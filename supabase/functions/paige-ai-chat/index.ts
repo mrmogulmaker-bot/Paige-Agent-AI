@@ -875,13 +875,16 @@ serve(async (req) => {
         validatedData.approvedConfirmations?.length || validatedData.declinedConfirmations?.length ||
         validatedData.document || validatedData.attachments?.length || validatedData.generateSessionSummary ||
         validatedData.sessionMessages || validatedData.sessionDocumentContext) return refuseLive();
-      const [{ data: tenant, error: tenantError }, { data: thread, error: threadError }, { data: pilot, error: pilotError }] = await Promise.all([
+      const [{ data: tenant, error: tenantError }, { data: thread, error: threadError }] = await Promise.all([
         supabaseClient.rpc("current_user_tenant_id"),
         supabaseClient.from("paige_chat_threads").select("id,contact_id")
           .eq("id", scope.threadId).eq("tenant_id", scope.tenantId).eq("caller_user_id", user.id).maybeSingle(),
-        supabase.from("paige_live_tenant_availability").select("enabled").eq("tenant_id", scope.tenantId).maybeSingle(),
       ]);
-      if (tenantError || tenant !== scope.tenantId || threadError || !thread || pilotError || pilot?.enabled !== true) return refuseLive();
+      if (tenantError || tenant !== scope.tenantId || threadError || !thread) return refuseLive();
+      // ONE HOME FOR "MAY THIS PERSON SPEAK" (§18). The paige_live_tenant_availability read that
+      // used to sit in the Promise.all above refused on a missing row, which contradicted the
+      // predicate once a missing row came to mean "follow the rollout scope". The predicate reads
+      // that table itself and honours both of its meanings.
       const { data: authorizedPilot, error: authorizationError } = await supabase.rpc("paige_live_pilot_authorized_internal", {
         _actor_user_id: user.id, _tenant_id: scope.tenantId,
       });
