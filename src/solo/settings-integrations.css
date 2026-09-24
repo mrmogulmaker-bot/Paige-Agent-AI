@@ -525,8 +525,14 @@ p.ig-gw-foot { margin: 0 0 10px; }
 .ig-gw-tool-name { overflow-wrap: anywhere; color: var(--pg-ink); font: 650 11.5px/1.35 var(--pg-font-data); }
 .ig-gw-tool-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-width: 0; }
 .ig-gw-tool-app { overflow: hidden; color: var(--pg-faint); font: 400 9.5px/1.6 var(--pg-font-data); text-overflow: ellipsis; }
-.ig-gw-tool-side { display: grid; justify-items: end; align-content: start; gap: 6px; }
-.ig-gw-tool-why { grid-column: 1 / -1; margin: 0; color: var(--pg-muted); font: 400 10.5px/1.5 var(--pg-font-ui); }
+/* The reason and its control on one baseline. `align-items: end` keeps the button
+   sitting with the LAST line of a reason that wraps, rather than floating beside
+   the first — the two belong to each other and should look like it. */
+.ig-gw-tool-foot { display: flex; grid-column: 1 / -1; align-items: end; justify-content: space-between; gap: 10px 12px; min-width: 0; }
+.ig-gw-tool-foot p { flex: 1 1 auto; min-width: 0; margin: 0; color: var(--pg-muted); font: 400 10.5px/1.5 var(--pg-font-ui); }
+/* Pushed to the end even on a row that carries no reason, so the control column
+   stays true down the list instead of jumping left on one row. */
+.ig-gw-tool-foot .ig-btn { flex: none; margin-left: auto; }
 
 /* One declared effect.
    THE INK IS DARKENED, AND THAT IS A MEASUREMENT, NOT A PREFERENCE. At 9px this is
@@ -586,7 +592,10 @@ p.ig-gw-foot { margin: 0 0 10px; }
 
 @media (max-width: 520px) {
   .ig-gw-tool { grid-template-columns: 1fr; }
-  .ig-gw-tool-side { justify-items: start; }
+  .ig-gw-tool > .ig-gw-chip { justify-self: start; }
+  /* At this width the reason needs the full line, so the control drops beneath it
+     rather than squeezing the text into a column two words wide. */
+  .ig-gw-tool-foot { flex-wrap: wrap; }
 }
 
 /* The list adds no animation of its own, so it needs no reduced-motion fallback —

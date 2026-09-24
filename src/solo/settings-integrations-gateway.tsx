@@ -973,7 +973,7 @@ function ToolActions({ gw, tool, reloadKey }: { gw: UseMcpGateway; tool: Gateway
           : <div className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} /><span>{said.text}</span></div>
       )}
 
-      <ul className="ig-gw-tools">
+      <ul className="ig-gw-tools" aria-busy={busyName !== null}>
         {tools.map((t) => {
           const s = actionState(t);
           // The approve control renders ONLY where it can actually act. A member who
@@ -995,13 +995,23 @@ function ToolActions({ gw, tool, reloadKey }: { gw: UseMcpGateway; tool: Gateway
                     {t.app && <span className="ig-gw-tool-app">{t.app}</span>}
                   </span>
                 </div>
-                <div className="ig-gw-tool-side">
-                  <span className="ig-gw-chip" data-tone={s.tone}>{s.label}</span>
+                <span className="ig-gw-chip" data-tone={s.tone}>{s.label}</span>
+                {/* The reason and the control that acts on it share a line, so the row reads as
+                    one sentence — here is what this is, and here is what to do about it. Stacking
+                    the button under the status chip instead put the two halves of that thought in
+                    different places and left a ragged column down the right of the list. */}
+                <div className="ig-gw-tool-foot">
+                  {s.why && <p>{s.why}</p>}
                   {canApprove && (
                     <button
                       type="button"
                       className="ig-btn"
                       data-primary
+                      // Every approve control goes inert while one is in flight, because the
+                      // hook takes a single write lock: a second press would be refused in
+                      // silence, which is a worse answer than a disabled control. `aria-busy`
+                      // on the list says WHY they went dead rather than leaving it to be
+                      // inferred from the greying.
                       disabled={busyName !== null}
                       onClick={() => void approve(t.name)}
                     >
@@ -1009,7 +1019,6 @@ function ToolActions({ gw, tool, reloadKey }: { gw: UseMcpGateway; tool: Gateway
                     </button>
                   )}
                 </div>
-                {s.why && <p className="ig-gw-tool-why">{s.why}</p>}
               </div>
             </li>
           );
