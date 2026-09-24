@@ -1,7 +1,7 @@
 -- INT-104: the normal tenant-admin role cannot self-enable third-party audio.
 -- Synthetic fixture only. Every write rolls back.
 BEGIN;
-SELECT plan(8);
+SELECT plan(39);
 
 SELECT ok((SELECT relrowsecurity FROM pg_class WHERE oid='public.paige_live_tenant_availability'::regclass),'platform availability has RLS');
 SELECT ok(NOT has_table_privilege('authenticated','public.paige_live_tenant_availability','SELECT'),'tenant roles cannot read pilot holder rows');
@@ -10,8 +10,14 @@ SELECT ok(has_table_privilege('service_role','public.paige_live_tenant_availabil
 
 INSERT INTO auth.users(id,aud,role,email)
 VALUES ('fa100000-0000-4000-8000-000000000001','authenticated','authenticated','live-admin@tests.invalid');
+INSERT INTO auth.users(id,aud,role,email)
+VALUES ('fa100000-0000-4000-8000-000000000002','authenticated','authenticated','live-owner@tests.invalid');
+INSERT INTO public.user_roles(user_id,role)
+VALUES ('fa100000-0000-4000-8000-000000000002','super_admin');
 INSERT INTO public.tenants(id,slug,name,status,account_type,account_number_prefix,account_number,features,brand,owner_user_id)
 VALUES ('fa100000-0000-4000-8000-000000001111','live-pilot-guard-test','Live Pilot Guard Test','active','standalone','LPG',9381011,'{}','{}','fa100000-0000-4000-8000-000000000001');
+INSERT INTO public.tenants(id,slug,name,status,account_type,account_number_prefix,account_number,features,brand,owner_user_id)
+VALUES ('fa100000-0000-4000-8000-000000002222','live-pilot-other-test','Live Pilot Other Test','active','standalone','LPO',9381012,'{}','{}','fa100000-0000-4000-8000-000000000002');
 INSERT INTO public.tenant_members(tenant_id,user_id,role,status,is_owner,joined_at)
 VALUES ('fa100000-0000-4000-8000-000000001111','fa100000-0000-4000-8000-000000000001','admin','active',false,now());
 
@@ -30,6 +36,120 @@ RESET ROLE;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-000000000001","role":"authenticated"}',true);
 SELECT throws_ok($q$UPDATE public.paige_live_tenant_availability SET enabled=false WHERE tenant_id='fa100000-0000-4000-8000-000000001111'$q$,'42501',NULL,'active tenant admin cannot rewrite platform availability');
+
+SELECT ok(NOT has_function_privilege('authenticated','public.paige_live_pilot_authorized_internal(uuid,uuid)','EXECUTE'),
+  'authenticated roles cannot call the pilot reader');
+SELECT ok(NOT has_function_privilege('authenticated','public.set_paige_live_pilot_internal(uuid,uuid,boolean,text,uuid)','EXECUTE'),
+  'authenticated roles cannot call the pilot writer');
+SELECT throws_ok($q$SELECT public.set_paige_live_pilot_internal(
+  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111',true,'test-consent',NULL)$q$,
+  '42501',NULL,'tenant admin cannot authorize live audio via RPC');
+SELECT ok(NOT has_table_privilege('authenticated','public.paige_voice_readiness','UPDATE'),
+  'tenant admin has no direct readiness write privilege');
+SELECT throws_ok($q$UPDATE public.paige_voice_readiness SET pilot_enabled=true WHERE singleton=true$q$,
+  '42501',NULL,'tenant admin cannot directly edit pilot readiness');
+
+RESET ROLE;
+SELECT is((SELECT pilot_enabled FROM public.paige_voice_readiness WHERE singleton),false,
+  'pilot defaults off for every workspace');
+SELECT is((SELECT pilot_zero_retention_state FROM public.paige_voice_readiness WHERE singleton),'UNAVAILABLE',
+  'zero retention is honestly unavailable by default');
+SELECT is((SELECT pilot_speaker_identity_enforced FROM public.paige_voice_readiness WHERE singleton),false,
+  'no physical speaker identity is claimed');
+
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT throws_ok($q$UPDATE public.paige_voice_readiness
+  SET pilot_enabled=true WHERE singleton=true$q$,
+  '23514',NULL,'even service-role direct write cannot enable an incomplete pilot row');
+SELECT throws_ok($q$SELECT public.set_paige_live_pilot_internal(
+  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111',true,'test-consent',NULL)$q$,
+  '42501',NULL,'service-role call with a non-platform actor is denied');
+SELECT throws_ok($q$SELECT public.set_paige_live_pilot_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111',true,'test-consent',NULL)$q$,
+  '22023',NULL,'platform owner cannot enable without an inspection');
+
+INSERT INTO public.paige_audit_log(id,actor_user_id,actor_role,action,target_type,created_at,payload)
+VALUES
+('fa100000-0000-4000-8000-000000000098','fa100000-0000-4000-8000-000000000002',
+ 'super_admin','platform.paige_voice_profile.inspect','paige_voice_profiles',now(),
+ '{"phase":"inspection_completed","profile_revision":"elevenlabs-jessica-take5-r1","inspection":{"code":"metadata_only","subscription":{"transport":"ok"},"voice":{"transport":"ok","accessible":false,"referenceMatches":true}}}'::jsonb),
+('fa100000-0000-4000-8000-000000000099','fa100000-0000-4000-8000-000000000002',
+ 'super_admin','platform.paige_voice_profile.inspect','paige_voice_profiles',now(),
+ '{"phase":"inspection_completed","profile_revision":"elevenlabs-jessica-take5-r1","inspection":{"code":"metadata_only","subscription":{"transport":"ok"},"voice":{"transport":"ok","accessible":true,"referenceMatches":true}}}'::jsonb),
+('fa100000-0000-4000-8000-000000000097','fa100000-0000-4000-8000-000000000002',
+ 'super_admin','platform.paige_voice_profile.inspect','paige_voice_profiles',now()-interval '10 minutes',
+ '{"phase":"inspection_completed","profile_revision":"elevenlabs-jessica-take5-r1","inspection":{"code":"metadata_only","subscription":{"transport":"ok"},"voice":{"transport":"ok","accessible":true,"referenceMatches":true}}}'::jsonb);
+SELECT throws_ok($q$SELECT public.set_paige_live_pilot_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111',true,
+  'test-owner-default-retention-acceptance','fa100000-0000-4000-8000-000000000098')$q$,
+  '22023',NULL,'inaccessible candidate voice cannot authorize');
+SELECT throws_ok($q$SELECT public.set_paige_live_pilot_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111',true,
+  'test-owner-default-retention-acceptance','fa100000-0000-4000-8000-000000000097')$q$,
+  '22023',NULL,'stale inspection cannot authorize');
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111'),false,
+  'rejected proof leaves pilot off');
+SELECT lives_ok($q$SELECT public.set_paige_live_pilot_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111',true,
+  'test-owner-default-retention-acceptance','fa100000-0000-4000-8000-000000000099')$q$,
+  'platform owner can authorize one account and workspace with fresh matching metadata');
+UPDATE public.paige_voice_profiles SET speech_policy=NULL WHERE slot='candidate';
+SELECT throws_ok($q$SELECT public.set_paige_live_pilot_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111',true,
+  'test-owner-default-retention-acceptance','fa100000-0000-4000-8000-000000000099')$q$,
+  '22023',NULL,'missing speech policy cannot authorize');
+UPDATE public.paige_voice_profiles SET speech_policy='{}'::jsonb WHERE slot='candidate';
+SELECT throws_ok($q$SELECT public.set_paige_live_pilot_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111',true,
+  'test-owner-default-retention-acceptance','fa100000-0000-4000-8000-000000000099')$q$,
+  '22023',NULL,'missing spoken register cannot authorize');
+UPDATE public.paige_voice_profiles
+  SET speech_policy='{"source":"paige-profile","spoken_register":"take-5"}'::jsonb WHERE slot='candidate';
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111'),true,
+  'exact authorized actor and tenant pass');
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),false,
+  'another actor in the enabled workspace is denied');
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000002222'),false,
+  'same actor in another workspace is denied');
+UPDATE public.paige_live_tenant_availability
+  SET enabled=false WHERE tenant_id='fa100000-0000-4000-8000-000000001111';
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111'),false,
+  'platform availability revocation immediately denies pilot');
+UPDATE public.paige_live_tenant_availability
+  SET enabled=true WHERE tenant_id='fa100000-0000-4000-8000-000000001111';
+UPDATE public.paige_voice_profiles SET provider_voice_ref='wrong-test-voice'
+  WHERE slot='candidate';
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111'),false,
+  'wrong candidate voice immediately denies pilot');
+UPDATE public.paige_voice_profiles SET provider_voice_ref='g6xIsTj2HwM6VR4iXFCw'
+  WHERE slot='candidate';
+SELECT is((SELECT transport_enabled FROM public.paige_voice_readiness WHERE singleton),false,
+  'scoped pilot does not activate legacy global voice transport');
+SELECT is((SELECT provider || ':' || revision FROM public.paige_voice_profiles WHERE slot='active'),
+  'openai:openai-fallback-r1','active OpenAI read-aloud is unchanged');
+SELECT is((SELECT pilot_zero_retention_state FROM public.paige_voice_readiness WHERE singleton),
+  'UNAVAILABLE','pilot never claims zero retention');
+SELECT is((SELECT pilot_speaker_identity_enforced FROM public.paige_voice_readiness WHERE singleton),false,
+  'procedural acceptance never claims speaker recognition');
+SELECT is((SELECT pilot_single_speaker_accepted FROM public.paige_voice_readiness WHERE singleton),true,
+  'owner action records procedural single-speaker acceptance');
+SELECT is((SELECT quota_verified FROM public.paige_voice_readiness WHERE singleton),false,
+  'pilot does not invent provider quota proof');
+SELECT ok((SELECT hard_cost_limit_usd IS NULL FROM public.paige_voice_readiness WHERE singleton),
+  'pilot does not invent a cost ceiling');
+SELECT lives_ok($q$SELECT public.set_paige_live_pilot_internal(
+  'fa100000-0000-4000-8000-000000000002',NULL,false,NULL,NULL)$q$,
+  'owner can revoke without an inspection or another tenant choice');
+SELECT is(public.paige_live_pilot_authorized_internal(
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111'),false,
+  'revocation takes effect immediately');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -3,6 +3,9 @@ import { LiveRelayAdmission, PaigeLiveRelayBridge, type LiveEarsEvents } from ".
 import { createLiveRuntimeProof, liveRuntimeDigest, type LiveRuntimeScope } from "../supabase/functions/_shared/paige-live-runtime-proof.ts";
 import type { UsageEvent } from "../supabase/functions/_shared/paige-live-relay-contract.ts";
 import { readFileSync } from "node:fs";
+import { transformSync } from "esbuild";
+import { z } from "zod";
+import { isLiveAudioPilotEnabled, issueRelayTicket, liveContextEpochTenant, validateRelayTicket } from "../supabase/functions/_shared/paige-live-ticket.ts";
 let pass = 0;
 let fail = 0;
 const check = (name: string, okay: boolean) => { console.log(`${okay ? "PASS" : "FAIL"} ${name}`); okay ? pass++ : fail++; };
@@ -142,8 +145,8 @@ const opened = await midOpen.open(); midOpen.ready();
 check("revoked during ears open never earns ready and cancels ears", !opened && cancelledEars === 1 &&
   !midOpenFrames.some((frame) => typeof frame === "string" && JSON.parse(frame).type === "ready"));
 const edge = readFileSync(new URL("../supabase/functions/paige-live-relay/index.ts", import.meta.url), "utf8").replace(/\r/g, '');
-// Execute the production admission body with a database double: the master
-// transport switch must stop adapter opening even when tenant standing is valid.
+// Execute the production admission body with a database double. PostgreSQL
+// proof/role semantics are separately exercised by the pilot pgTAP suite.
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const admissionBody = edge.slice(edge.indexOf('const checkCurrentAdmission = async (recheckProvider = true): Promise<Response | null> => {') +
   'const checkCurrentAdmission = async (recheckProvider = true): Promise<Response | null> => {'.length,
@@ -154,15 +157,12 @@ const approvedVoice = 'g6xIsTj2HwM6VR4iXFCw';
 let providerRows: Record<string, Record<string, unknown>>;
 const resetProviderRows = () => { providerRows = {
   paige_voice_profiles: { provider: 'elevenlabs', provider_voice_ref: approvedVoice, revision: 'elevenlabs-jessica-take5-r1',
-    active: false, approved: true, status: 'approved', approved_at: 'fixture', provider_verification_id: 'proof', provider_verification_receipt_ref: 'receipt' },
-  paige_voice_readiness: { provider_verification_id: 'proof', account_verification_receipt_ref: 'receipt', account_verified_at: 'fixture',
-    key_scope_verified: true, voice_authorized: true, retention_policy_approved: true, zero_retention_confirmed: true },
-  paige_voice_provider_verifications: { provider: 'elevenlabs', provider_voice_ref: approvedVoice, evidence_ref: 'receipt',
-    key_scope_verified: true, voice_authorized: true, retention_policy_approved: true, zero_retention_confirmed: true },
+    active: false },
 }; };
 resetProviderRows();
 let providerReadError = false;
 const providerDb = { from(table: string) {
+  if (table !== 'paige_voice_profiles') throw new Error('unexpected legacy provider proof read');
   const q = { select: () => q, eq: () => q, maybeSingle: async () => ({
     error: providerReadError ? { code: 'fixture' } : null, data: providerRows[table],
   }) }; return q;
@@ -173,26 +173,45 @@ const providerReaderBody = readerStart < 0 ? 'return { unavailableCode: null };'
   edge.slice(readerStart + readerMarker.length, edge.indexOf('\n  };', readerStart));
 const readProviderAdmission = () => new AsyncFunction('admin', 'APPROVED_PAIGE_ELEVENLABS_VOICE_ID',
   'resolveElevenLabsModel', 'envKey', providerReaderBody)(providerDb, approvedVoice, () => 'eleven_v3_conversational',
-    (key: string) => key === 'DEEPGRAM_MIP_ACCOUNT_VERIFIED' ? 'true' : 'fake-only-config-012345678901234567890123456789');
-let transportEnabled: boolean | undefined = false;
-const admissionDb = { from(table: string) {
+    (key: string) => ['ELEVENLABS_API_KEY', 'DEEPGRAM_API_KEY', 'PAIGE_LIVE_STREAM_SIGNING_KEY'].includes(key)
+      ? 'fake-only-config-012345678901234567890123456789' : null);
+let pilotAuthorized: boolean | undefined = false;
+let pilotReadError = false;
+let checkedSession = { id: base.sessionId, tenant_id: base.tenantId, actor_user_id: base.actorId };
+const admissionDb = {
+  async rpc(name: string, args: Record<string, string>) {
+    if (name !== 'paige_live_pilot_authorized_internal') throw new Error('unexpected admission RPC');
+    return { error: pilotReadError ? { code: 'fixture' } : null, data: pilotAuthorized === true &&
+      args._actor_user_id === base.actorId && args._tenant_id === base.tenantId };
+  },
+  from(table: string) {
+  if (table === 'paige_voice_readiness' || table === 'paige_voice_provider_verifications') throw new Error('unexpected legacy admission proof read');
   const query = { select: () => query, eq: () => query, in: () => query, order: () => query, limit: () => query,
-    maybeSingle: async () => ({ error: null, data: table === 'paige_voice_readiness'
-      ? { transport_enabled: transportEnabled } : table === 'profiles'
+    maybeSingle: async () => ({ error: null, data: table === 'profiles'
       ? { active_tenant_id: base.tenantId } : { id: 'valid', enabled: true } }) };
   return query;
 } };
 let masterDenied = 0;
 const masterCheck = async () => (await resolveAdmission(admissionDb,
-  { id: base.sessionId, tenant_id: base.tenantId, actor_user_id: base.actorId },
+  checkedSession,
   async () => { masterDenied++; return true; }, () => true, () => true, () => true, readProviderAdmission)) === null;
 for (const value of [false, undefined]) {
-  transportEnabled = value;
-  check(`master transport ${String(value)} refuses admission`, !await masterCheck());
+  pilotAuthorized = value;
+  check(`scoped pilot ${String(value)} refuses admission without exact authorization`, !await masterCheck());
 }
-transportEnabled = true;
-check('master transport explicitly enabled admits an otherwise valid session', await masterCheck());
-transportEnabled = false;
+pilotAuthorized = true;
+check('exact scoped pilot admits default retention without legacy transport or proof flags', await masterCheck());
+for (const role of ['member', 'admin', 'owner', 'platform']) {
+  checkedSession = { ...checkedSession, actor_user_id: `other-${role}` };
+  check(`other ${role} account refused before adapters`, !await masterCheck());
+}
+checkedSession = { ...checkedSession, actor_user_id: base.actorId, tenant_id: 'other-tenant' };
+check('same account in a different tenant is refused', !await masterCheck());
+checkedSession = { id: base.sessionId, tenant_id: base.tenantId, actor_user_id: base.actorId };
+pilotReadError = true;
+check('authorization store error fails closed', !await masterCheck());
+pilotReadError = false;
+pilotAuthorized = false;
 let blockedOpens = 0;
 const disabledBridge = new PaigeLiveRelayBridge({
   sessionId: base.sessionId, epoch: base.epoch, authorize: masterCheck, send() {}, close() {},
@@ -201,20 +220,14 @@ const disabledBridge = new PaigeLiveRelayBridge({
   runtimeProof: { issue: (turnId, text) => proof.issue({ ...base, turnId }, text), readOutput: proof.readOutput },
 });
 await disabledBridge.open();
-check('disabled master switch opens neither provider adapter', blockedOpens === 0 && masterDenied === 3);
+check('disabled scoped pilot opens neither provider adapter', blockedOpens === 0 && masterDenied >= 3);
 
-transportEnabled = true;
+pilotAuthorized = true;
 for (const [table, field, bad] of [
-  ['paige_voice_profiles', 'approved', false],
   ['paige_voice_profiles', 'provider_voice_ref', 'wrong-voice'],
-  ['paige_voice_profiles', 'provider_verification_id', 'different-proof'],
-  ['paige_voice_profiles', 'status', 'revoked'],
+  ['paige_voice_profiles', 'provider', 'wrong-provider'],
   ['paige_voice_profiles', 'active', true],
   ['paige_voice_profiles', 'revision', 'unapproved-revision'],
-  ['paige_voice_readiness', 'provider_verification_id', 'different-proof'],
-  ['paige_voice_readiness', 'account_verification_receipt_ref', 'different-receipt'],
-  ...['key_scope_verified', 'voice_authorized', 'retention_policy_approved', 'zero_retention_confirmed']
-    .flatMap((field) => ['paige_voice_readiness', 'paige_voice_provider_verifications'].map((table) => [table, field, false])),
 ] as [string, string, unknown][]) {
   resetProviderRows();
   check(`approval present before revoking ${table}.${field}`, await masterCheck());
@@ -225,7 +238,7 @@ resetProviderRows(); providerReadError = true;
 check('provider approval read failure is closed', !await masterCheck());
 providerReadError = false;
 resetProviderRows();
-providerRows.paige_voice_profiles.approved = false;
+providerRows.paige_voice_profiles.provider_voice_ref = 'wrong-voice';
 const initialStart = edge.indexOf('  const admissionFailure = await checkCurrentAdmission');
 const initialEnd = edge.indexOf('\n  const { socket, response } = Deno.upgradeWebSocket(req);\n  const markLive', initialStart);
 const initialBody = edge.slice(initialStart, initialEnd).replace('new Promise<void>', 'new Promise');
@@ -275,6 +288,112 @@ for (const minimizeFirst of [false, true]) {
 }
 check("production reuses admission resolver before ready and throughout capture", edge.includes('async () => (await checkCurrentAdmission()) === null') &&
   edge.includes('authorize: (force) => admission.check(force)') && edge.includes('setInterval(() => { waitUntil(admission.check(true)); }, 500)'));
+// Capture the complete production request handler; only imported platform boundaries are supplied.
+const sessionSource = readFileSync(new URL('../supabase/functions/paige-live-session/index.ts', import.meta.url), 'utf8');
+type SessionHandler = (request: Request) => Promise<Response>;
+function sessionHandler(createClient: (...args: any[]) => unknown, source = sessionSource): SessionHandler {
+  let captured: SessionHandler | undefined;
+  const code = transformSync(source.replace(/^import .*;\r?$/gm, ''), { loader: 'ts', format: 'esm', target: 'es2022' }).code;
+  new Function('serve', 'createClient', 'z', 'Deno', 'isLiveAudioPilotEnabled', 'issueRelayTicket', 'liveContextEpochTenant', code)(
+    (handler: SessionHandler) => { captured = handler; }, createClient, z,
+    { env: { get: (key: string) => ({ SUPABASE_URL: 'https://fixture.invalid', SUPABASE_ANON_KEY: 'fixture-anon', SUPABASE_SERVICE_ROLE_KEY: 'fixture-service' }[key]) } },
+    isLiveAudioPilotEnabled, issueRelayTicket, liveContextEpochTenant,
+  );
+  if (!captured) throw new Error('session_handler_not_captured');
+  return captured;
+}
+const sessionActor = '11111111-1111-4111-8111-111111111111';
+const sessionTenant = '22222222-2222-4222-8222-222222222222';
+const sessionThread = '33333333-3333-4333-8333-333333333333';
+const sessionRowId = '44444444-4444-4444-8444-444444444444';
+const sessionBody = { action: 'relay', thread_id: sessionThread,
+  context_epoch: JSON.stringify([sessionTenant, sessionActor, '', '']), entry_mode: 'embedded' };
+async function driveSession(options: { actor?: string; authorization?: unknown; authorizationError?: boolean; tenantError?: boolean;
+  authenticated?: boolean; header?: boolean; thread?: boolean; enabled?: boolean; writeError?: boolean; body?: Record<string, unknown>; source?: string } = {}) {
+  const events: string[] = [];
+  const calls: Array<{ client: string; name: string; args?: Record<string, unknown> }> = [];
+  const writes: Array<{ table: string; value: Record<string, unknown> }> = [];
+  const clients: Array<{ key: string; auth: string | undefined }> = [];
+  const actor = options.actor ?? sessionActor;
+  const createClient = (_url: string, key: string, config?: any) => {
+    const client = key === 'fixture-anon' ? 'caller' : 'service';
+    clients.push({ key, auth: config?.global?.headers?.Authorization });
+    return {
+      auth: { getUser: async () => { events.push('authenticated'); return { data: { user: options.authenticated === false ? null : { id: actor } }, error: null }; } },
+      rpc: async (name: string, args?: Record<string, unknown>) => {
+        calls.push({ client, name, args }); events.push(name);
+        if (name === 'current_user_tenant_id') return { data: sessionTenant, error: options.tenantError ? { code: 'fixture' } : null };
+        if (name === 'paige_live_pilot_authorized_internal') return {
+          data: Object.hasOwn(options, 'authorization') ? options.authorization : args?._actor_user_id === sessionActor && args?._tenant_id === sessionTenant,
+          error: options.authorizationError ? { code: 'fixture' } : null,
+        };
+        throw new Error('unexpected session RPC ' + name);
+      },
+      from(table: string) {
+        const filters: Array<[string, unknown]> = [];
+        let write = false;
+        const result = async () => {
+          if (table === 'paige_chat_threads') return { error: null, data: options.thread !== false &&
+            filters.some(([key, value]) => key === 'caller_user_id' && value === actor) &&
+            filters.some(([key, value]) => key === 'tenant_id' && value === sessionTenant) &&
+            filters.some(([key, value]) => key === 'id' && value === sessionThread) ? { id: sessionThread } : null };
+          if (table === 'paige_live_tenant_availability') return { error: null, data: { enabled: options.enabled !== false } };
+          if (table === 'paige_live_sessions' && write) return { error: options.writeError ? { code: 'fixture' } : null, data: options.writeError ? null : { id: sessionRowId } };
+          throw new Error('unexpected session table ' + table);
+        };
+        const query = { select: () => query, eq: (key: string, value: unknown) => { filters.push([key, value]); return query; },
+          neq: () => query, insert: (value: Record<string, unknown>) => { write = true; writes.push({ table, value }); events.push('ticket-write'); return query; },
+          update: (value: Record<string, unknown>) => { write = true; writes.push({ table, value }); events.push('ticket-write'); return query; },
+          maybeSingle: result, single: result };
+        return query;
+      },
+    };
+  };
+  const response = await sessionHandler(createClient, options.source)(new Request('https://fixture.invalid/session', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(options.header === false ? {} : { Authorization: 'Bearer fixture-only' }) },
+    body: JSON.stringify({ ...sessionBody, ...options.body }),
+  }));
+  return { status: response.status, body: await response.json(), events, calls, writes, clients };
+}
+const ticketed = await driveSession();
+const checkedTicket = await validateRelayTicket(ticketed.body.ticket);
+check('session handler issues a digest-backed ticket only after exact scoped admission', ticketed.status === 200 && ticketed.body.code === 'relay_ticket_issued'
+  && ticketed.body.availability === 'PROOF OWED' && ticketed.writes.length === 1 && !!checkedTicket
+  && ticketed.writes[0].value.provider_session_ref === checkedTicket.storedDigest
+  && ticketed.events.indexOf('paige_live_pilot_authorized_internal') < ticketed.events.indexOf('ticket-write'));
+check('session caller identity is authenticated with the forwarded bearer', ticketed.clients[0].auth === 'Bearer fixture-only'
+  && ticketed.events[0] === 'authenticated' && ticketed.calls[0].client === 'caller');
+const otherAccount = await driveSession({ actor: '55555555-5555-4555-8555-555555555555', body: { actor_user_id: sessionActor, tenant_id: 'forged-tenant' } });
+check('session handler refuses another account in the same workspace before ticket insertion', otherAccount.body.availability === 'UNAVAILABLE'
+  && otherAccount.writes.length === 0 && otherAccount.calls.some((call) => call.name === 'paige_live_pilot_authorized_internal'
+    && call.args?._actor_user_id === '55555555-5555-4555-8555-555555555555' && call.args?._tenant_id === sessionTenant));
+for (const value of [false, null, 'true', 1, {}]) {
+  const result = await driveSession({ authorization: value });
+  check('session admission requires literal RPC true: ' + JSON.stringify(value), result.body.availability === 'UNAVAILABLE' && result.writes.length === 0 && !result.body.ticket);
+}
+const brokenAdmission = await driveSession({ authorization: true, authorizationError: true });
+check('session authorization RPC error prevents ticket insertion', brokenAdmission.body.availability === 'UNAVAILABLE' && brokenAdmission.writes.length === 0);
+const workspaceDisabled = await driveSession({ enabled: false });
+check('disabled workspace availability prevents session ticket issuance', workspaceDisabled.body.availability === 'UNAVAILABLE'
+  && workspaceDisabled.writes.length === 0 && !workspaceDisabled.calls.some((call) => call.name === 'paige_live_pilot_authorized_internal'));
+const suppliedScope = await driveSession({ body: { actor_user_id: 'forged-actor', tenant_id: 'forged-tenant' } });
+check('session request cannot replace canonical actor or tenant', suppliedScope.writes.length === 1 && suppliedScope.writes[0].value.actor_user_id === sessionActor
+  && suppliedScope.writes[0].value.tenant_id === sessionTenant);
+for (const [label, options, status] of [
+  ['no bearer', { header: false }, 401], ['invalid identity', { authenticated: false }, 401],
+  ['unresolved tenant', { tenantError: true }, 409], ['unowned thread', { thread: false }, 403],
+  ['stale epoch', { body: { context_epoch: 'another-tenant|scope' } }, 409],
+] as const) {
+  const result = await driveSession(options);
+  check('session ' + label + ' cannot issue a ticket', result.status === status && result.writes.length === 0 && !result.body.ticket);
+}
+const failedTicket = await driveSession({ writeError: true });
+check('session failed ticket persistence does not expose a usable ticket', failedTicket.status === 409 && !failedTicket.body.ticket && failedTicket.body.code === 'relay_ticket_unavailable');
+const guard = 'if (authorizationError || authorizedPilot !== true)';
+if (!sessionSource.includes(guard)) throw new Error('session_negative_control_guard_not_found');
+const guardRemoved = await driveSession({ authorization: false, source: sessionSource.replace(guard, 'if (false)') });
+check('session negative control detects a removed admission guard', guardRemoved.body.availability !== 'UNAVAILABLE'
+  && guardRemoved.writes.length === 1 && !!guardRemoved.body.ticket);
 check("no real network or provider call occurred", networkCalls === 0);
 globalThis.fetch = originalFetch; globalThis.WebSocket = originalWebSocket;
 console.log(`\n${pass} passed, ${fail} failed; network/provider calls=${networkCalls}`);

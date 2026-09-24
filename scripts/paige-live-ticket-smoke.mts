@@ -87,10 +87,14 @@ assert.doesNotMatch(relay + session, /daily_ceiling|concurrent_session_limit|res
 // S4 intentionally joins real adapters. Admission still precedes ANY adapter
 // open, and canonical privacy proof is independent of pilot availability.
 assert.ok(relay.indexOf('if (unavailableCode)') < relay.indexOf('openEars: (events) => openFluxEars(events)'), 'provider readiness refuses before ears open');
-assert.match(relay, /voice\.approved === true && voice\.status === "approved"/, 'an unapproved candidate cannot activate');
-assert.match(relay, /readiness\?\.provider_verification_id === voice\?\.provider_verification_id/, 'readiness binds the exact candidate verification');
-assert.match(relay, /row\.voice_authorized === true && row\.retention_policy_approved === true && row\.zero_retention_confirmed === true/, 'canonical privacy fields must all be true');
-assert.match(relay, /envKey\("DEEPGRAM_MIP_ACCOUNT_VERIFIED"\) === "true"/, 'account opt-out is not inferred from per-request flag');
+const chat = readFileSync(new URL("../supabase/functions/paige-ai-chat/index.ts", import.meta.url), "utf8");
+for (const source of [session, relay, chat]) {
+  assert.match(source, /rpc\("paige_live_pilot_authorized_internal", \{\s*_actor_user_id: [^,]+, _tenant_id: [^,]+,/, 'every entry scopes the one canonical pilot predicate');
+  assert.match(source, /authorizationError \|\| authorizedPilot !== true/, 'missing and errored authorization always refuses');
+}
+assert.ok(session.indexOf('rpc("paige_live_pilot_authorized_internal"') < session.indexOf('issueRelayTicket()'), 'account authorization precedes ticket creation');
+assert.ok(chat.indexOf('rpc("paige_live_pilot_authorized_internal"') < chat.indexOf('const { data: claimed, error: claimError }'), 'account authorization precedes signed runtime claim');
+assert.doesNotMatch(relay, /DEEPGRAM_MIP_ACCOUNT_VERIFIED/, 'no nonexistent project-level opt-out setting');
 assert.doesNotMatch(session, /elevenlabsSpeechStream|openFluxEars/, 'ticket issuance never opens providers');
 assert.equal(network, 0);
 console.log("✅ relay ticket smoke: expiry, tamper, concurrent one-use, replay, server-scope, pre-upgrade gate, zero network/provider calls");
