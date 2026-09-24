@@ -204,17 +204,44 @@ PR's costs nothing. Two conditions, both to be checked rather than assumed: the 
 `$BASE`, and it must have COMPLETED — consecutive pushes cancel each other's in-flight runs, and a
 `cancelled` run looks like a run while having measured nothing. Over the six most recent `main` tips at the
 time of writing: three completed, **two `cancelled`**, one with no run at all. Fall through to the worktrees
-when the baseline run is missing or cancelled, or when you need the failing MESSAGES rather than which step
-went red.
+when the baseline run is missing or cancelled, or when you need the failing NAMES or MESSAGES rather than
+which step went red — and you will, for anything the signature above is used for. Measured: a **2500-line**
+tail of `main`'s own `verify` log for `bad21bed6` contains zero occurrences of `FAIL`, `Test Files`,
+`AssertionError` or any of the twenty failing test names, because the `Test` step is step 75 of 109 and its
+output is nowhere near the end. **So CI can tell you the baseline is red at the same step; it cannot tell
+you it is red in the same way.**
 
 ```sh
 SCRATCH=$(mktemp -d)                                   # the block owns its scratch space
 git worktree add --detach "$SCRATCH/wt-base" "$BASE"   # baseline: the merge's FIRST PARENT
 git worktree add --detach "$SCRATCH/wt-head" "$REF"    # tested tree: the MERGE, not $REF^2
-for w in wt-base wt-head; do ( cd "$SCRATCH/$w" && npm ci && npm run test ); done
-# then diff the two outputs — failing NAMES and MESSAGES, not counts.
-git worktree remove "$SCRATCH/wt-base" && git worktree remove "$SCRATCH/wt-head" && rmdir "$SCRATCH"
+for w in wt-base wt-head; do
+  ( cd "$SCRATCH/$w" && npm ci && npm run test ) > "$SCRATCH/$w.log" 2>&1
+  echo "$w exit $?"                                    # read it here — the next command clobbers it
+done
+diff "$SCRATCH/wt-base.log" "$SCRATCH/wt-head.log"     # READ it; its exit is always 1 — see below
+rm -f "${SCRATCH:?}"/*.log && git worktree remove "$SCRATCH/wt-base" &&
+  git worktree remove "$SCRATCH/wt-head" && rmdir "$SCRATCH"
 ```
+
+**Each run goes to its OWN file, and that is the point of the drill.** Both sides are expected to fail —
+that is the situation you are attributing — so streaming them both to one terminal interleaves the two sets
+of failures and leaves nothing to compare; `diff` needs two artifacts. The run's own exit status has to be
+read on the line straight after the subshell, because the next command replaces it.
+
+**`diff`'s exit status is NOT the verdict, and treating it as one inverts the answer.** It is always 1: two
+runs of *identical* work differ on timestamps and durations. Measured by running one test file twice in the
+same tree — **6 differing lines**, every one of them noise: a `[vite]` deprecation warning carrying a wall
+clock time, `Start at`, and `Duration`. So read the diff rather than its exit code, and the verdict is
+whether a failing **name or message** appears on one side and not the other. Everything else it prints is
+that noise.
+
+**Clean up in that order, and note the `:?`.** Delete the logs before removing the worktrees, or `rmdir`
+fails on a directory that is not empty — and
+note the `:?` on that `rm`. It is not decoration: a reader who copies the cleanup line without the
+`mktemp -d` line above it would otherwise be running `rm -f /*.log`, which is the missing-variable failure
+one round earlier wearing a destructive hat. `${SCRATCH:?}` makes the shell stop with an error instead of
+expanding to the filesystem root.
 
 **The `npm ci` is not a formality and it is not free.** A fresh worktree has no `node_modules` — it is
 gitignored, so it is not part of the checkout — and without one `npm run test` cannot start at all
