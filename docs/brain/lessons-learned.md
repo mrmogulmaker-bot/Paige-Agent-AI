@@ -6,6 +6,40 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+
+### "Backward compatible" is a claim about a REPLACE that `create or replace` may not have performed (2026-09-23)
+
+`create or replace function` cannot replace across a **differing argument list**. Given a new
+signature it creates a **SECOND** function and leaves the old one live. A migration that adds
+optional trailing parameters and describes itself as *"backward compatible — existing grants and
+callers unchanged"* has done the opposite unless it also DROPs what it superseded.
+
+`public.record_capability_run` is the live case: `20270107000000` added four trailing defaults as a
+new 10-argument signature next to the existing 6-argument one, with no DROP anywhere. Every
+parameter past the fifth defaults on **both**, so a five-argument call satisfies both and Postgres
+refuses it — `42725 function is not unique`, measured on production.
+
+**Three things made it invisible for months, and each is the reusable lesson:**
+
+1. **The callers were right to swallow it.** A Rail receipt is best-effort and must never turn a
+   completed action into a reported failure, so all three callers `console.error` and continue.
+   Correct design; it also means a total filing failure looks exactly like no traffic. When a write
+   is deliberately best-effort, something else has to assert it is *possible* — a test, a counter,
+   an alert. Otherwise "never fired" and "never worked" are the same observation.
+2. **Arity decided who noticed.** The two in-database callers pass ten positional arguments and
+   resolve fine, so the Rail had rows and looked healthy. Only the five-named-argument PostgREST
+   callers were refused. A partial break reads as a working system.
+3. **The check I said was impossible was one tool call away.** The prior entry recorded this as
+   *"production SQL is permission-denied to this session, so this is flagged, not measured."* The
+   Supabase MCP `execute_sql` tool reaches prod, and `PREPARE` parses and plans **without
+   executing**, so the exact failing call can be measured against production while writing nothing.
+   **Verify the blocker before recording one** — an unverified claim of inability is the §13
+   absence-claim failure wearing a different hat, and it is the reason this sat unmeasured.
+
+**The rule:** a migration that changes a function's signature says which overload it REPLACES and
+drops what it supersedes, or explains why two are wanted. Where a function must stay single, count
+it in a test — `supabase/tests/record_capability_run_single_overload.sql` does, and PREPAREs the
+real call shapes so the assertion is about resolution rather than about existence.
 ## `git fetch --tags` does NOT move a tag that moved — a drift report built on it is fiction (2026-09-23)
 
 - **Symptom.** The INT-178 lane reported **"13 edge functions undeployed — 4 mine, 9 other lanes'"** and
