@@ -52,7 +52,7 @@ MIGRATION2="$REPO/supabase/migrations/20270402000000_agreements_read_and_expiry.
 MIGRATION4="$REPO/supabase/migrations/20270404000000_agreement_signing_contract.sql"
 MIGRATION5="$REPO/supabase/migrations/20270405000000_agreement_signer_seam.sql"
 MIGRATION6="$REPO/supabase/migrations/20270407000000_agreement_view_tracking.sql"
-MIGRATION7="$REPO/supabase/migrations/20270411000000_agreement_link_provenance.sql"
+MIGRATION7="$REPO/supabase/migrations/20270413000000_agreement_link_provenance.sql"
 WORK="$(mktemp -d)"
 PORT="${PGPORT:-55432}"
 

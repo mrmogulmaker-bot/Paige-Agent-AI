@@ -31,7 +31,7 @@
 --   40001  concurrency — untouched; the surface keys `stale` off this exact constant and offers
 --          RELOAD rather than retry, because a retry would overwrite the other writer
 --
--- `PA001` is already taken, by the agreements provenance refusal in 20270411000000. The CLASS is
+-- `PA001` is already taken, by the agreements provenance refusal in 20270413000000. The CLASS is
 -- the signal, not the number.
 --
 -- THE INTERPOLATED VALUES ARE NOW BOUNDED, and this is the one change here that is not cosmetic.
