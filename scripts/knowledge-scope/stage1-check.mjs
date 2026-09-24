@@ -2353,9 +2353,9 @@ group("safety-first streaming: the sources the first enumeration missed");
     JSON.stringify(nonNeutralFrames(syncAtGate.responseText)).slice(0, 300),
   );
 
-  // 21.h — STUDIO USES THE SAME DURABLE DOCUMENT ENVELOPE. The worker owns the later
-  // canvas artifact; the initiating Studio turn must submit the same bounded work identity
-  // without emitting a premature canvas artifact.
+  // 21.h — STUDIO FAILS CLOSED BEFORE DURABLE SUBMISSION. The worker cannot yet link an
+  // asynchronously completed document into the Studio canvas, so Studio must refuse instead
+  // of accepting work whose artifact would be unreachable.
   const studioOpts = {
     chunkContent: "PRIVATE-KB-SOURCE-MARKER",
     provider: ["doc-artifact", "private-text"],
@@ -2375,9 +2375,9 @@ group("safety-first streaming: the sources the first enumeration missed");
   });
   const studioSubmit = studioClean.rec.rpc.find((call) => call.name === "submit_paige_document_work");
   assert(
-    "21.h CONTROL — Studio submits the same durable document work",
-    studioSubmit?.args?._request_payload?.title === "CHILD-PRIVATE-MARKER onboarding guide",
-    JSON.stringify(studioSubmit ?? studioClean.rec.rpc).slice(0, 400),
+    "21.h CONTROL — Studio refuses before durable document submission",
+    studioSubmit === undefined,
+    JSON.stringify(studioClean.rec.rpc).slice(0, 400),
   );
   assert(
     "21.h CONTROL — Studio emits no premature canvas artifact",

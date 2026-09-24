@@ -25,6 +25,7 @@ describe("durable long-form Chat reach", () => {
     const handler = chat.slice(handlerStart, chat.indexOf('} else if (tc.function.name === "growth_list") {', handlerStart));
     expect(tool).toContain('required: ["doc_type", "title", "brief"]');
     expect(tool).not.toContain('required: ["doc_type", "title", "blocks"]');
+    expect(tool).not.toContain("source_refs");
     expect(handler).toContain('"submit_paige_document_work"');
     expect(handler).toContain("validateDocumentBrief(candidate)");
     expect(handler).toContain("if (targetVerified)");
@@ -41,6 +42,10 @@ describe("durable long-form Chat reach", () => {
     expect(handler).toContain('} else if (workStatus === "succeeded")');
     expect(handler).toContain('"DURABLE_DOCUMENT_RECONCILIATION_REQUIRED"');
     expect(handler).toContain('"DURABLE_DOCUMENT_BLOCKED"');
+    expect(handler).toContain('"DURABLE_DOCUMENT_STUDIO_ASYNC_UNAVAILABLE"');
+    expect(handler).toContain("cannot resume");
+    expect(handler).toContain("start a new document request");
+    expect(handler).not.toContain("args.source_refs");
   });
 
   it("never files a failure receipt when durable settlement did not commit", () => {
@@ -50,9 +55,10 @@ describe("durable long-form Chat reach", () => {
     expect(settle).toContain('if (error) {');
   });
 
-  it("carries one stable intent identity through both primary document surfaces", () => {
+  it("derives a retry-stable intent for each document call in a turn", () => {
     expect(chat).toContain("requestIntentId: z.string().uuid().optional()");
-    expect(chat).toContain("_intent_id: payloadRequestIntentId");
+    expect(chat).toContain('stableRunId(["document_generate_intent", payloadRequestIntentId, String(currentDocumentCallOrdinal)])');
+    expect(chat).toContain("_intent_id: documentIntentId");
     expect(dashboard).toContain("retry.requestIntentId");
     expect(studio).toContain("failedIntentRef.current.id");
   });

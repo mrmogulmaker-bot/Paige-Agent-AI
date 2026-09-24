@@ -5972,7 +5972,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   audience: { type: "string", description: "Optional bounded description of the intended reader." },
                   purpose: { type: "string", description: "Optional bounded description of how the private draft will be used." },
                   required_facts: { type: "object", description: "Real scalar facts the draft must preserve exactly, such as client, candidate, scope, dates, compensation, packages, and prices. Never put placeholders here.", additionalProperties: { type: ["string", "number", "boolean"] } },
-                  source_refs: { type: "array", maxItems: 40, description: "Optional tenant-scoped source identifiers already available to Paige. Identifiers only, never raw source bodies.", items: { type: "object", properties: { kind: { type: "string" }, id: { type: "string" }, label: { type: "string" } }, required: ["kind", "id"] } },
                   target_content_id: { type: "string", description: "Set to the on-canvas artifact's id (see CANVAS STATE) ONLY when the user is refining/revising the document already on the canvas — this updates that same document in place and keeps its version history. OMIT it to create a brand-new/additional document as a separate asset. Never pass an id for a genuinely new document." },
                 },
                 required: ["doc_type", "title", "brief"]
@@ -8245,6 +8244,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // the guard is pushed to `executed` and gets EXACTLY ONE tool-result
       // (including the terminal Unknown-tool branch). Approvals accumulate into
       // the shared queuedApprovals passed in from the loop.
+      let documentCallOrdinal = 0;
       const executeToolCalls = async (toolCalls: any[], queuedApprovals: Array<{ id: string; summary: string; category: string; contact_id: string | null }>) => {
       const toolResults: any[] = [];
       const executed: any[] = [];
@@ -11345,6 +11345,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 ? { success: true, content_id: cid }
                 : { success: false, error: ARTIFACT_ABSENT_ERROR.saved_id };
             } else if (tc.function.name === "document_generate") {
+              const currentDocumentCallOrdinal = documentCallOrdinal++;
+              const documentIntentId = payloadRequestIntentId
+                ? await stableRunId(["document_generate_intent", payloadRequestIntentId, String(currentDocumentCallOrdinal)])
+                : null;
               // Phase 2 — the chat turn submits a BOUNDED brief and returns immediately. The durable
               // worker owns long-form authoring, verified artifact persistence, the completion turn,
               // and the terminal Rail receipt. This request never carries generated document bodies.
@@ -11356,7 +11360,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   "document_generate_submission",
                   personaCtx?.tenant_id ?? null,
                   user.id,
-                  payloadRequestIntentId ?? tc.id,
+                  documentIntentId ?? tc.id,
                   code,
                 ]);
                 return recordCapabilityRun(supabase, {
@@ -11367,7 +11371,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   runId,
                 });
               };
-              if (!payloadThreadId || !payloadRequestIntentId) {
+              if (studioSessionId) {
+                await recordDocumentSubmissionOutcome("DURABLE_DOCUMENT_STUDIO_ASYNC_UNAVAILABLE", "capability_refused");
+                result = {
+                  success: false,
+                  error: "Long-form document authoring completes asynchronously in Paige chat. Open this request in Paige chat so the verified artifact can reconnect there.",
+                  code: "DURABLE_DOCUMENT_STUDIO_ASYNC_UNAVAILABLE",
+                };
+              } else if (!payloadThreadId || !payloadRequestIntentId || !documentIntentId) {
                 await recordDocumentSubmissionOutcome("DURABLE_DOCUMENT_IDENTITY_REQUIRED", "capability_refused");
                 result = {
                   success: false,
@@ -11419,7 +11430,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                     ...(args.audience !== undefined ? { audience: args.audience } : {}),
                     ...(args.purpose !== undefined ? { purpose: args.purpose } : {}),
                     ...(args.required_facts !== undefined ? { required_facts: args.required_facts } : {}),
-                    ...(args.source_refs !== undefined ? { source_refs: args.source_refs } : {}),
                     ...(requestedTarget && expectedRevision
                       ? { target_content_id: requestedTarget, expected_revision: expectedRevision }
                       : {}),
@@ -11432,7 +11442,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                     const { data: submitted, error: submitError } = await supabaseClient.rpc(
                       "submit_paige_document_work",
                       {
-                        _intent_id: payloadRequestIntentId,
+                        _intent_id: documentIntentId,
                         _thread_id: payloadThreadId,
                         _request_payload: validatedBrief.value,
                       },
@@ -11495,7 +11505,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                             error: needsReconciliation
                               ? "Paige cannot confirm this document job's outcome yet. It must be reconciled before any retry."
                               : workStatus === "blocked"
-                              ? "This document job is blocked and was not restarted. Resolve the stated authority or version conflict before continuing under the same work identity."
+                              ? "This document job is blocked and cannot resume. Resolve the stated authority or version conflict, then start a new document request so Paige can use a fresh work identity and revision."
                               : `This document job is already ${workStatus} and was not restarted. Start a new document request only if you intend new work.`,
                           };
                         }

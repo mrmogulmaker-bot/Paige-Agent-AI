@@ -113,7 +113,7 @@ begin
   if exists (
     select 1 from jsonb_object_keys(_request_payload) as keys(key)
     where key not in ('version','doc_type','title','brief','audience','purpose','required_facts',
-                      'source_refs','target_content_id','expected_revision')
+                      'target_content_id','expected_revision')
   ) then
     raise exception 'DURABLE_DOCUMENT_BRIEF_UNKNOWN_FIELD' using errcode = '22023';
   end if;
@@ -152,25 +152,7 @@ begin
   ) then
     raise exception 'DURABLE_DOCUMENT_REQUIRED_FACTS_INVALID' using errcode = '22023';
   end if;
-  if (_request_payload ? 'source_refs') and jsonb_typeof(_request_payload->'source_refs') <> 'array' then
-    raise exception 'DURABLE_DOCUMENT_SOURCE_REFS_INVALID' using errcode = '22023';
-  end if;
-  if (_request_payload ? 'source_refs') and (
-    jsonb_array_length(_request_payload->'source_refs') > 40
-    or exists (
-      select 1 from jsonb_array_elements(_request_payload->'source_refs') as refs(ref)
-       where jsonb_typeof(ref) <> 'object'
-          or nullif(btrim(ref->>'kind'), '') is null or char_length(ref->>'kind') > 64
-          or nullif(btrim(ref->>'id'), '') is null or char_length(ref->>'id') > 200
-          or ((ref ? 'label') and (nullif(btrim(ref->>'label'), '') is null or char_length(ref->>'label') > 200))
-          or exists (
-            select 1 from jsonb_object_keys(ref) as source_keys(key)
-             where key not in ('kind','id','label')
-          )
-    )
-  ) then
-    raise exception 'DURABLE_DOCUMENT_SOURCE_REFS_INVALID' using errcode = '22023';
-  end if;
+
 
   select t.tenant_id into _tenant
     from public.paige_chat_threads t
@@ -560,24 +542,42 @@ begin
      for update skip locked
      limit greatest(1, least(coalesce(_limit, 10), 25))
   loop
-    if _row.dispatch_started_attempt < _row.attempt_count then
-      perform public.transition_paige_durable_work(
-        _row.id, _row.idempotency_key, 'expired', null,
-        'A worker wake-up was missed; Paige is safely resuming the same document work.',
-        null, 'lease_expired', 300, false
-      );
-      perform public.transition_paige_durable_work(
-        _row.id, _row.idempotency_key, 'claimed', null,
-        'Paige is authoring your document.', null, null, 60, true
-      );
-      return query select _row.id;
-    else
-      perform public.settle_paige_document_work_failure(
-        _row.id, _row.idempotency_key, 'outcome_unknown',
-        'provider_outcome_unknown',
-        'Paige is reconciling document work whose outcome is not yet known.'
-      );
-    end if;
+    begin
+      if not exists (
+        select 1 from public.tenant_members m
+         where m.tenant_id = _row.tenant_id and m.user_id = _row.initiating_user_id and m.status = 'active'
+      ) or not (public.has_tenant_role(_row.initiating_user_id, _row.tenant_id, 'owner')
+          or public.has_tenant_role(_row.initiating_user_id, _row.tenant_id, 'admin')
+          or public.has_tenant_role(_row.initiating_user_id, _row.tenant_id, 'coach')) then
+        perform public.transition_paige_durable_work(
+          _row.id, _row.idempotency_key, 'blocked', null,
+          'Document work is paused because its workspace authority changed.',
+          'authority_changed', 'authority_changed', 300, false
+        );
+        continue;
+      end if;
+
+      if _row.dispatch_started_attempt < _row.attempt_count then
+        perform public.transition_paige_durable_work(
+          _row.id, _row.idempotency_key, 'expired', null,
+          'A worker wake-up was missed; Paige is safely resuming the same document work.',
+          null, 'lease_expired', 300, false
+        );
+        perform public.transition_paige_durable_work(
+          _row.id, _row.idempotency_key, 'claimed', null,
+          'Paige is authoring your document.', null, null, 60, true
+        );
+        return query select _row.id;
+      else
+        perform public.settle_paige_document_work_failure(
+          _row.id, _row.idempotency_key, 'outcome_unknown',
+          'provider_outcome_unknown',
+          'Paige is reconciling document work whose outcome is not yet known.'
+        );
+      end if;
+    exception when others then
+      raise warning 'recover_paige_document_work skipped % after settlement error: %', _row.id, sqlerrm;
+    end;
   end loop;
 end
 $$;

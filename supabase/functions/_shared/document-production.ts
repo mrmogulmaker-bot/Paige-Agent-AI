@@ -28,7 +28,6 @@ export interface DocumentBrief {
   audience?: string;
   purpose?: string;
   required_facts?: Record<string, string | number | boolean>;
-  source_refs?: Array<{ kind: string; id: string; label?: string }>;
   target_content_id?: string;
   expected_revision?: number;
 }
@@ -90,7 +89,7 @@ export function validateDocumentBrief(input: unknown): BriefValidation {
   }
   const allowed = new Set([
     "version", "doc_type", "title", "brief", "audience", "purpose", "required_facts",
-    "source_refs", "target_content_id", "expected_revision",
+    "target_content_id", "expected_revision",
   ]);
   if (Object.keys(input).some((key) => !allowed.has(key))) {
     return { ok: false, code: "document_brief_unknown_field", message: "The document brief contains an unsupported field." };
@@ -125,16 +124,7 @@ export function validateDocumentBrief(input: unknown): BriefValidation {
       }
     }
   }
-  if (input.source_refs !== undefined) {
-    if (!Array.isArray(input.source_refs) || input.source_refs.length > 40 || input.source_refs.some((ref) => {
-      if (!isPlainRecord(ref)) return true;
-      if (Object.keys(ref).some((key) => !["kind", "id", "label"].includes(key))) return true;
-      return !nonEmptyString(ref.kind, 64) || !nonEmptyString(ref.id, 200)
-        || (ref.label !== undefined && !nonEmptyString(ref.label, 200));
-    })) {
-      return { ok: false, code: "document_source_refs_invalid", message: "Source references must be bounded identifiers, not source bodies." };
-    }
-  }
+
   if (input.target_content_id !== undefined && (typeof input.target_content_id !== "string" || !UUID_RE.test(input.target_content_id))) {
     return { ok: false, code: "document_target_invalid", message: "The revision target is invalid." };
   }
@@ -267,13 +257,12 @@ export function parseDocumentModelOutput(content: string, brief: DocumentBrief):
 }
 
 export function buildDocumentAuthoringPrompt(brief: DocumentBrief): string {
-  const sourceRefs = (brief.source_refs ?? []).map((ref) => ({ kind: ref.kind, id: ref.id, label: ref.label ?? null }));
   return [
     "Author a substantial private draft document from the bounded brief below.",
     "Return JSON only: {\"doc_type\":string,\"title\":string,\"blocks\":object[]}.",
     "Allowed shapes: cover{title,eyebrow?,subhead?}; toc{title?,entries?}; section-header/chapter-divider{title,number?,kicker?,subhead?}; prose{markdown}; callout{body,title?,variant?}; pull-quote{quote,attribution?}; stat{value,label}; list{items,style?}; worksheet-field{label,helper?,field?,lines?}; pricing-table{rows:[{item,amount,detail?}],caption?,total?}; cta{headline,action,href?}.",
     "The first block must be cover. Use real supplied facts only. Never emit bracketed placeholders, invented facts, citations, legal claims, signatures, or an assertion that counsel reviewed the draft.",
     "An agreement_draft is an attorney-review draft artifact only, never a signable agreement and never legal advice.",
-    `BRIEF_JSON=${JSON.stringify({ ...brief, source_refs: sourceRefs })}`,
+    `BRIEF_JSON=${JSON.stringify(brief)}`,
   ].join("\n");
 }

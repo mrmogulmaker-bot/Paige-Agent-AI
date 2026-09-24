@@ -187,7 +187,6 @@ try {
     title: "Services Agreement Draft",
     brief: "Draft a reviewable services agreement artifact. It is not signable.",
     required_facts: { governing_law: "Georgia" },
-    source_refs: [{ kind: "tenant_knowledge", id: "agreement_terms" }],
   }).replaceAll("'", "''");
   const submitSql = (intent, payload = brief) => `
     set request.jwt.claim.sub='${userId}';
@@ -202,7 +201,7 @@ try {
     source_refs: ["raw-source-body"],
   }).replaceAll("'", "''");
   const invalidSubmission = await psql(submitSql(randomUUID(), invalidBrief), true);
-  assert.match(invalidSubmission.stderr, /DURABLE_DOCUMENT_SOURCE_REFS_INVALID/);
+  assert.match(invalidSubmission.stderr, /DURABLE_DOCUMENT_BRIEF_UNKNOWN_FIELD/);
 
   const foreignUserId = randomUUID();
   const foreignTenantId = randomUUID();

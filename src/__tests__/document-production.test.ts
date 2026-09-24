@@ -75,6 +75,17 @@ describe("durable document production contract", () => {
     expect(draft.blocks[3]).toEqual({ type: "cta", headline: "Review", action: "Open" });
   });
 
+  it("pins the validated document type and keeps a synthesized cover within 80 blocks", () => {
+    const blocks = Array.from({ length: 80 }, (_, index) => ({ type: "prose", markdown: `Section ${index + 1}` }));
+    const draft = normalizeDocumentDraft({ title: "Specific Draft", doc_type: "ebook", blocks }, brief);
+    expect(draft.docType).toBe("agreement_draft");
+    expect(draft.blocks).toHaveLength(80);
+    expect(draft.blocks[0]).toEqual({ type: "cover", title: "Specific Draft" });
+  });
+
+  it("rejects unresolved source identifiers instead of pretending they were read", () => {
+    expect(validateDocumentBrief({ ...brief, source_refs: [{ kind: "tenant_knowledge", id: "terms" }] }).ok).toBe(false);
+  });
   it("parses fenced JSON and refuses empty or placeholder output", () => {
     const draft = parseDocumentModelOutput('```json\n{"doc_type":"agreement_draft","title":"Draft","blocks":[{"type":"cover","title":"Draft"},{"type":"prose","markdown":"Real terms."}]}\n```', brief);
     expect(draft.blocks).toHaveLength(2);
