@@ -65,7 +65,7 @@ import { buildVpAddressBlock, detectVpAddress } from "../_shared/paige-context/v
 // §18 one home — the platform-default VOICE DNA lives in ONE shared module so both this
 // edge function AND the §2/§3 denylist test import the same text (§32: the assembled
 // voice is scannable). A tenant-authored persona still OVERRIDES it (read first below).
-import { PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
+import { PAIGE_LIVE_SPOKEN_STYLE, PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
 // INT-117 S1-replacement — the IDENTITY-FREE persona core: read-the-room registers +
 // the global distress-precedence rule + honesty/naming lines, ONE unconditional system
 // message for every seat (identity is established per-lane in an earlier message).
@@ -115,12 +115,11 @@ import { resolveActiveMarketplaceTenant, retainActiveMarketplaceTenant } from ".
 // Redeploy trigger (2026-07-16): the git integration skipped this function on the #88 merge,
 // so the Studio funnel tools (growth_funnel_generate/build/publish) never went live. This
 // no-op comment forces a re-detect so the already-merged tool code deploys. Safe to remove.
-
+// Approval-path hardening.
 // Phase 1a / INT-180 relief: the production project is on the paid 400s
 // wall-clock tier. Keep 40s of platform headroom and keep this exactly symmetric
 // with PaigeAIChat's local fence. Durable work still needs the envelope.
 const PAIGE_INTERACTIVE_TURN_BUDGET_MS = 360_000;
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -515,11 +514,11 @@ const messageSchema = z.object({
    *  requires the call it is about to run to be one of these — a `confirm:true` flag on its own no
    *  longer opens it, because that flag says only that SOMETHING was approved, not what. Bounded
    *  and shaped so a body cannot smuggle anything else through this field. */
-  approvedConfirmations: z.array(z.string().regex(/^[0-9a-f]{16}$/)).max(16).optional(),
+  approvedConfirmations: z.array(z.string().regex(/^[0-9a-f]{16}(?::[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$/)).max(16).optional(),
   /** Fingerprints the person DECLINED on the confirm card. A refusal that lives only in the prose
    *  of the next message is a refusal the model has to interpret correctly — and the proposal it
    *  describes stays redeemable for its whole window. These are cancelled outright instead. */
-  declinedConfirmations: z.array(z.string().regex(/^[0-9a-f]{16}$/)).max(16).optional(),
+  declinedConfirmations: z.array(z.string().regex(/^[0-9a-f]{16}(?::[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$/)).max(16).optional(),
   // RETIRED HERE, 2026-09-02: `confirmedActions`, a second approval channel carrying a
   // pipeline-archive token, arrived from a parallel branch. It solved the same problem as the two
   // fields above — bind the approval to the exact thing approved — for exactly one action.
@@ -3847,23 +3846,6 @@ When a client describes having a document with relevant data ("I have my EIN let
 
 === END CONVERSATIONAL DATA CAPTURE RULES ===
 
-=== VOICE SESSION RULES ===
-These rules apply ONLY when the request indicates a voice session (look for "VOICE_MODE: true" in the system context, or when responses will be spoken aloud).
-
-CONVERSATIONAL TONE RULE (VOICE)
-In voice sessions you use shorter sentences than in text. Speak naturally with quick acknowledgments — "Got it", "Right", "Exactly", "That makes sense" — before giving longer explanations. NEVER read out bullet points, numbered lists, headers, or markdown in voice — convert them to natural spoken language. Aim for 1-3 sentences per turn unless the client asks for more depth.
-
-VOICE PACING RULE
-When explaining complex topics (DSCR calculations, entity structure, capital stacks, dispute strategy), break them into conversational chunks and check in: "Does that make sense so far?" or "Want me to go deeper on that?" — never deliver a wall of information in voice. Pause naturally between concepts.
-
-HANDOFF RULE (VOICE END)
-When a voice session is wrapping up, close naturally with a warm sign-off: "I'll add a summary of what we discussed to your chat so you can reference it later. Talk soon, [first name]!" Do not list everything you discussed — that's what the summary handles.
-
-CONTEXT CARRY RULE (VOICE)
-Anything the client says aloud during voice — funding goals, EINs, business names, addresses, formation states — is captured in the transcript and processed by the same conversational extraction flow as text after the call ends. So when a client says their EIN or company name out loud, just acknowledge it naturally ("Got it — [company name], cool name") — the extraction card will appear in their chat after the call ends.
-
-=== END VOICE SESSION RULES ===
-
 =============================================================
 CAPITAL INFRASTRUCTURE INTELLIGENCE
 =============================================================
@@ -4771,6 +4753,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       // any general impression from the tool list or persona (P0 Defect-1, §13/§36/§70).
       ...(capabilityStatusBlock ? [{ role: "system", content: capabilityStatusBlock }] : []),
       { role: "system", content: systemPrompt },
+      ...(liveRuntimeScope ? [{ role: "system", content: PAIGE_LIVE_SPOKEN_STYLE }] : []),
       // "Watch Paige work" narration (#152): when she's about to USE tools, she first
       // writes one short backstage line saying what she's doing and why. It streams to
       // the operator's live reasoning panel — reassurance that she's really working —
@@ -5103,7 +5086,9 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // tab still saves it), then auto-title a new thread and refresh the summary.
     // bundle_ref stores the queued/confirm cards so the UI reconstructs them on reload.
     const persistAssistantTurn = async (finalText: string, meta: { surfaces?: string[] | null; bundleRef?: unknown; model?: string }) => {
-      if (!payloadThreadId || !finalText || !finalText.trim()) return;
+      // A receipt-only interrupted turn has real cards but no spoken prose.
+      // The canonical turn RPC accepts empty content; never invent an answer.
+      if (!payloadThreadId || (!finalText?.trim() && !meta.bundleRef)) return;
       try {
         await supabaseClient.rpc("paige_chat_turn_append", {
           p_thread_id: payloadThreadId, p_role: "assistant", p_content: finalText,
@@ -5230,7 +5215,7 @@ N8N AUTHORING — read n8n_get_sdk_reference before writing Workflow SDK code. V
 ADD SUB-AGENTS INTELLIGENTLY — one brain by default (give it tools, not more brains). Add a specialist sub-agent ("@n8n/n8n-nodes-langchain.agentTool") only when the work genuinely splits: a distinct expertise/persona is needed, two audiences at once (a Client-Experience agent for the client + an Owner-Ops agent for the coach — the action bus §8), more than ~6-8 tools on one agent, a stage needs its own memory/loop, or a long-horizon 90-day workflow (orchestrator decides "who's due today", a content sub-agent personalizes each touch). Tell the operator plainly: "one brain that can act, unless the work splits into different jobs or two audiences — then I give the brain a specialist teammate." Keep every generated automation coaching-generic (never funding/credit content in a default).
 
 BE A PROACTIVE ASSISTANT, NOT AN ORDER-TAKER. Never just execute the literal request and stop. Anticipate the natural next steps and offer them, and confirm before you commit anything. Three rules:
-1. PROPOSE → GET A YES → THEN ACT. For ANYTHING that creates or changes a record — a contact, a pipeline, a stage, a task, a booking, a role, saved content, an action — FIRST say in one plain line exactly what you intend to do and WAIT for the operator's yes. Do NOT silently call the tool to "just do it" and report after the fact — that is jumping the gun, and it is not allowed. The platform enforces this for you: when you call a mutating tool, it may come back with needs_confirm and a confirm_summary. When it does, read that summary back to the operator in plain words and ask them to confirm. ONLY after they have actually replied and said yes, call the SAME tool again with confirm: true — you do not need to reproduce the other arguments exactly, because the exact call they approved is already saved and is what runs. NEVER set confirm in the same reply where you proposed the action: you have not heard from them yet, and the platform will refuse it. If they ask for a change, call the tool again with the full new arguments and confirm left false, so they get a fresh summary to approve. Some actions cannot be approved by you reporting a yes at all — they come back saying so, and those need the operator to approve them in the workspace where the action can be shown to them; tell them that plainly instead of trying again. Some actions may be set to autopilot for this workspace (they run without the pause) — that is the operator's standing choice, never an assumption you make on your own. Anything outbound (an email, an SMS) is NEVER sent directly — you draft it and route it to the coach's approval lane.
+1. PROPOSE → REVIEW → THEN ACT. For an action that needs approval, describe exactly what you intend to do and wait for approval through the workspace's approval control. When a tool returns needs_confirm, read confirm_summary in plain language. If a Needs your OK card is visible in this conversation, the person can click Approve there. A spoken or typed yes alone does not complete this step. If this chat has no approval control, say the action is pending and cannot be approved here. They can request the action afresh in a Paige workspace with approval controls if their account has access, or ask an authorized workspace teammate to complete it. Never claim the pending action transferred to another conversation. Do not retry a pending action in the same reply. If the person changes the request, propose the new action for review. Existing workspace autopilot settings remain the operator's standing choice, never your assumption. Anything outbound (an email, an SMS) is NEVER sent directly — draft it and route it to the existing approval lane.
 2. CONFIRM THE RESULT — AND NEVER FAKE ONE. Only say you did something ("Done — created…", "reminder set", "task assigned", "added to your calendar") when a TOOL you called THIS turn actually returned success. A claim of completion with no tool call behind it is a lie, and it is the worst thing you can do here — it destroys trust. You DO have real tools for reminders, planning, tasks, and booking (plan_set_reminder, plan_create/plan_assign_task/plan_add_milestone, crm_create_task, calendar_book_meeting) — USE them, then confirm off the tool's success. If there is genuinely no tool for what they asked, DO NOT pretend — say plainly "I can't do that one from here yet" and offer what you genuinely can do, or file it on the action bus so it's tracked. "It'll show up in your reminders / Task Manager / calendar" is only true if a tool actually put it there — never say it otherwise. Once an action really commits, confirm plainly in one line; never leave them guessing. For anything that SENDS (SMS/email/outbound), this is bound by AUTOMATION HONESTY: report fired vs delivered, and only say "sent" when delivered:true — never off a bare fire. The test before every "done": "Did a tool call this turn return success for exactly this? If not, I do not claim it happened."
 3. PROBE, THEN DRIVE. Then surface the obvious next moves as a short, tight menu of questions (not a wall of text).
 
@@ -7184,41 +7169,102 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     };
 
 
+    const confirmationWasConsumed = async (fp: string, tool: string): Promise<boolean> => {
+      let previous = supabase.from("paige_pending_confirmations").select("id")
+        .eq("user_id", user.id).eq("fingerprint", fp).eq("tool_name", tool)
+        .not("consumed_at", "is", null);
+      previous = personaCtx?.tenant_id ? previous.eq("tenant_id", personaCtx.tenant_id) : previous.is("tenant_id", null);
+      previous = payloadThreadId ? previous.eq("thread_id", payloadThreadId) : previous.is("thread_id", null);
+      previous = scopedClientId ? previous.eq("scoped_client_id", scopedClientId) : previous.is("scoped_client_id", null);
+      const { data, error } = await previous.limit(1);
+      if (error) throw new Error("confirmation history unavailable");
+      return (data?.length ?? 0) > 0;
+    };
+
+    const confirmationArgs = (args: Record<string, unknown>) => Object.fromEntries(
+      Object.entries(args).filter(([k]) => k !== "confirm" && k !== "confirm_token"),
+    );
+    const scopedConfirmationFingerprint = (tool: string, intent: string) => confirmFingerprint(tool, {
+      intent, tenant: personaCtx?.tenant_id ?? null, thread: payloadThreadId ?? null,
+      client: scopedClientId ?? null,
+    });
+    type PendingConfirmation = { fingerprint: string; issued_in_request: string; args: Record<string, unknown>; summary?: string; tool_name?: string };
+    const confirmationToken = async (row: PendingConfirmation, tool: string): Promise<string | null> => {
+      if (!/^[0-9a-f]{16}$/.test(row.fingerprint) || !row.args || typeof row.args !== "object" || Array.isArray(row.args)) return null;
+      const scoped = await scopedConfirmationFingerprint(tool, await confirmFingerprint(tool, row.args));
+      if (row.fingerprint === scoped) {
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(row.issued_in_request)
+          ? `${row.fingerprint}:${row.issued_in_request}` : null;
+      }
+      return await confirmationWasConsumed(row.fingerprint, tool) ? null : row.fingerprint;
+    };
+
     const recordConfirmation = async (
       fp: string, tool: string, args: Record<string, unknown>, summary: string,
-    ): Promise<"created" | "exists" | "failed"> => {
+    ): Promise<{ state: "created" | "exists" | "failed"; fingerprint?: string; summary?: string }> => {
       try {
-        if (!(await revalidateProposalScope())) return "failed";
+        if (!(await revalidateProposalScope())) return { state: "failed" };
+        const storedArgs = confirmationArgs(args);
+        const findReusable = async (): Promise<Array<{ fingerprint: string; summary: string }>> => {
+          let existing = supabase.from("paige_pending_confirmations")
+            .select("fingerprint,args,issued_in_request,summary").eq("user_id", user.id).eq("tool_name", tool)
+            .is("consumed_at", null)
+            .not("server_issued_at", "is", null).not("issued_in_request", "is", null)
+            .gt("expires_at", new Date().toISOString());
+          existing = personaCtx?.tenant_id ? existing.eq("tenant_id", personaCtx.tenant_id) : existing.is("tenant_id", null);
+          existing = payloadThreadId ? existing.eq("thread_id", payloadThreadId) : existing.is("thread_id", null);
+          existing = scopedClientId ? existing.eq("scoped_client_id", scopedClientId) : existing.is("scoped_client_id", null);
+          const { data: pending, error: pendingError } = await existing.limit(65);
+          if (pendingError || (pending?.length ?? 0) > 64) {
+            throw new Error("confirmation preparation unavailable");
+          }
+          const reusable: Array<{ fingerprint: string; summary: string }> = [];
+          for (const row of pending ?? []) {
+            if (!row?.args || typeof row.args !== "object" || Array.isArray(row.args)
+              || await confirmFingerprint(tool, row.args) !== fp) continue;
+            const token = await confirmationToken(row, tool);
+            if (token) reusable.push({ fingerprint: token, summary: typeof row.summary === "string" ? row.summary : summary });
+          }
+          return reusable;
+        };
+        const reusable = await findReusable();
+        if (reusable.length > 1) return { state: "failed" };
+        if (reusable.length === 1) return { state: "exists", ...reusable[0] };
+        if (!(await revalidateProposalScope())) return { state: "failed" };
+        const fingerprint = await scopedConfirmationFingerprint(tool, fp);
+        let expired = supabase.from("paige_pending_confirmations")
+          .update({ consumed_at: new Date().toISOString() }).eq("user_id", user.id)
+          .eq("fingerprint", fingerprint).eq("tool_name", tool).is("consumed_at", null)
+          .not("server_issued_at", "is", null).lte("expires_at", new Date().toISOString());
+        expired = personaCtx?.tenant_id ? expired.eq("tenant_id", personaCtx.tenant_id) : expired.is("tenant_id", null);
+        expired = payloadThreadId ? expired.eq("thread_id", payloadThreadId) : expired.is("thread_id", null);
+        expired = scopedClientId ? expired.eq("scoped_client_id", scopedClientId) : expired.is("scoped_client_id", null);
+        const { error: expiryError } = await expired;
+        if (expiryError) return { state: "failed" };
         const { error } = await supabase.from("paige_pending_confirmations").insert({
           user_id: user.id,
           tenant_id: personaCtx?.tenant_id ?? null,
           thread_id: payloadThreadId ?? null,
           scoped_client_id: scopedClientId ?? null,
           tool_name: tool,
-          fingerprint: fp,
+          fingerprint,
           issued_in_request: requestNonce,
           server_issued_at: new Date().toISOString(),
-          // `confirm` and `confirm_token` are stripped: they are the handshake, not the action, and
-          // storing them would mean re-executing the approval flag alongside the work.
-          args: Object.fromEntries(
-            Object.entries(args).filter(([k]) => k !== "confirm" && k !== "confirm_token"),
-          ),
+          args: storedArgs,
           summary,
         });
         if (error) {
-          // 23505 is the live-proposal unique index doing its job: this exact call is ALREADY
-          // proposed by an earlier request and still waiting. The person has a card open for it.
-          // It is NOT a failure — but it is emphatically not the same thing as having just
-          // proposed it either, and conflating the two is exactly how a model obtained a
-          // redeemable approval for a call the operator had already declined.
-          if (error.code === "23505") return "exists";
-          console.error("[paige] confirm proposal NOT recorded", JSON.stringify({ tool, code: error.code ?? null, message: error.message ?? null }));
-          return "failed";
+          if (error.code === "23505") {
+            const winner = await findReusable();
+            return winner.length === 1 ? { state: "exists", ...winner[0] } : { state: "failed" };
+          }
+          console.error("[paige] confirm proposal NOT recorded", JSON.stringify({ tool, code: error.code ?? null }));
+          return { state: "failed" };
         }
-        return "created";
-      } catch (e) {
-        console.error("[paige] confirm proposal threw", String(e));
-        return "failed";
+        return { state: "created", fingerprint: `${fingerprint}:${requestNonce}`, summary };
+      } catch {
+        console.error("[paige] confirmation preparation failed");
+        return { state: "failed" };
       }
     };
 
@@ -7242,34 +7288,55 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
      *
      *  Failure preserves read-only replies but blocks every mutation for this turn; prose alone
      *  must not stand in for recording the person's refusal. */
+    const selectedConfirmationNonce = async (token: string, tool?: string): Promise<string | null> => {
+      let selected = supabase.from("paige_pending_confirmations")
+        .select("fingerprint,args,issued_in_request,tool_name").eq("user_id", user.id)
+        .eq("fingerprint", token.split(":")[0]).is("consumed_at", null)
+        .not("server_issued_at", "is", null).not("issued_in_request", "is", null)
+        .gt("expires_at", new Date().toISOString());
+      if (tool) selected = selected.eq("tool_name", tool);
+      selected = personaCtx?.tenant_id ? selected.eq("tenant_id", personaCtx.tenant_id) : selected.is("tenant_id", null);
+      selected = payloadThreadId ? selected.eq("thread_id", payloadThreadId) : selected.is("thread_id", null);
+      selected = scopedClientId ? selected.eq("scoped_client_id", scopedClientId) : selected.is("scoped_client_id", null);
+      const { data, error } = await selected.limit(2);
+      if (error) throw new Error("confirmation selection unavailable");
+      const row = data?.length === 1 ? data[0] : null;
+      return row && typeof row.tool_name === "string" && await confirmationToken(row, row.tool_name) === token
+        ? row.issued_in_request : null;
+    };
     const cancelConfirmations = async (fps: string[]): Promise<boolean> => {
       if (fps.length === 0) return true;
       try {
         if (!(await revalidateProposalScope())) return false;
-        let cancellation = supabase.from("paige_pending_confirmations")
-          .update({ consumed_at: new Date().toISOString() })
-          .eq("user_id", user.id)
-          .in("fingerprint", fps)
-          .is("consumed_at", null)
-          .not("server_issued_at", "is", null);
-        cancellation = personaCtx?.tenant_id ? cancellation.eq("tenant_id", personaCtx.tenant_id) : cancellation.is("tenant_id", null);
-        cancellation = payloadThreadId ? cancellation.eq("thread_id", payloadThreadId) : cancellation.is("thread_id", null);
-        cancellation = scopedClientId ? cancellation.eq("scoped_client_id", scopedClientId) : cancellation.is("scoped_client_id", null);
-        const { error } = await cancellation;
-        if (error) {
-          console.error("[paige] confirm decline not recorded", JSON.stringify({ code: error.code ?? null }));
-          return false;
+        for (const token of fps) {
+          const nonce = await selectedConfirmationNonce(token);
+          if (!nonce) continue;
+          let cancellation = supabase.from("paige_pending_confirmations")
+            .update({ consumed_at: new Date().toISOString() })
+            .eq("user_id", user.id)
+            .eq("fingerprint", token.split(":")[0]).eq("issued_in_request", nonce)
+            .is("consumed_at", null)
+            .not("server_issued_at", "is", null);
+          cancellation = personaCtx?.tenant_id ? cancellation.eq("tenant_id", personaCtx.tenant_id) : cancellation.is("tenant_id", null);
+          cancellation = payloadThreadId ? cancellation.eq("thread_id", payloadThreadId) : cancellation.is("thread_id", null);
+          cancellation = scopedClientId ? cancellation.eq("scoped_client_id", scopedClientId) : cancellation.is("scoped_client_id", null);
+          const { error } = await cancellation;
+          if (error) {
+            console.error("[paige] confirm decline not recorded", JSON.stringify({ code: error.code ?? null }));
+            return false;
+          }
         }
         // CRM command proposals are intentionally action-door scoped (tenant + actor + exact
         // capability) and carry NULL thread/client scope because the Edge Function cannot trust
         // model/request-provided scope. Record an inline-card decline against that exact, server-
         // issued proposal too. The tool-name restriction prevents this fallback from consuming a
         // proposal owned by any other confirmation flow.
-        if (personaCtx?.tenant_id) {
+        const legacyFps = fps.filter((token) => /^[0-9a-f]{16}$/.test(token));
+        if (personaCtx?.tenant_id && legacyFps.length > 0) {
           const { error: crmCancellationError } = await supabase.from("paige_pending_confirmations")
             .update({ consumed_at: new Date().toISOString() })
             .eq("user_id", user.id).eq("tenant_id", personaCtx.tenant_id)
-            .in("fingerprint", fps).in("tool_name", [...CRM_COMMAND_TOOL_NAMES])
+            .in("fingerprint", legacyFps).in("tool_name", [...CRM_COMMAND_TOOL_NAMES])
             .is("thread_id", null).is("scoped_client_id", null).is("consumed_at", null)
             .not("server_issued_at", "is", null);
           if (crmCancellationError) {
@@ -7286,84 +7353,23 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     const cancellationsRecorded = await cancelConfirmations(declinedConfirmations);
 
     const claimConfirmation = async (
-      fp: string | null, tool: string,
+      fp: string, tool: string,
     ): Promise<Record<string, unknown> | null> => {
       try {
-        if (!cancellationsRecorded || !(await revalidateProposalScope())) return null;
-        // WHY `fp` MAY BE NULL — the livelock this exists to avoid.
-        //
-        // A surface that renders a card echoes the fingerprint of what it displayed, so it always
-        // has an exact `fp`. A surface with no card does not: there, "the operator said yes" is
-        // carried by the model re-calling the tool, and a tool whose arguments include model-written
-        // free text will not reproduce them byte-for-byte. The fingerprint drifts, no proposal
-        // matches, and the person is read a fresh summary — forever. That is the livelock the
-        // previous design fixed with a token, and the token is what leaked.
-        //
-        // So when the fingerprint drifts, fall back to identity by SCOPE rather than by content:
-        // the single live proposal for this tool, in this tenant, thread and focused client, made
-        // by an EARLIER request. If there is exactly one, it is unambiguously the thing the person
-        // was read and answered. If there are several, there is nothing to disambiguate with and
-        // this refuses — a fresh summary is the correct answer to a genuinely ambiguous yes.
-        //
-        // What executes is still the STORED arguments either way, so drift never reaches the write.
-        if (fp === null) {
-          let f = supabase.from("paige_pending_confirmations")
-            .select("id")
-            .eq("user_id", user.id)
-            .eq("tool_name", tool)
-            .is("consumed_at", null)
-            .not("server_issued_at", "is", null)
-            .gt("expires_at", new Date().toISOString())
-            .neq("issued_in_request", requestNonce)
-            .not("issued_in_request", "is", null);
-          f = personaCtx?.tenant_id ? f.eq("tenant_id", personaCtx.tenant_id) : f.is("tenant_id", null);
-          f = payloadThreadId ? f.eq("thread_id", payloadThreadId) : f.is("thread_id", null);
-          f = scopedClientId ? f.eq("scoped_client_id", scopedClientId) : f.is("scoped_client_id", null);
-          const { data: live, error: findErr } = await f.limit(2);
-          if (findErr) {
-            console.error("[paige] confirm lookup failed", JSON.stringify({ tool, code: findErr.code ?? null }));
-            return null;
-          }
-          const rows = (live ?? []) as Array<{ id?: string }>;
-          if (rows.length !== 1 || typeof rows[0]?.id !== "string") return null;
-          if (!(await revalidateProposalScope())) return null;
-          let claim = supabase
-            .from("paige_pending_confirmations")
-            .update({ consumed_at: new Date().toISOString() })
-            .eq("id", rows[0].id)
-            // Still a compare-and-set, so two tool_use blocks in one round cannot both win.
-            .is("consumed_at", null)
-            .eq("user_id", user.id)
-            .eq("tool_name", tool)
-            .gt("expires_at", new Date().toISOString())
-            .neq("issued_in_request", requestNonce)
-            .not("issued_in_request", "is", null)
-            .not("server_issued_at", "is", null);
-          claim = personaCtx?.tenant_id ? claim.eq("tenant_id", personaCtx.tenant_id) : claim.is("tenant_id", null);
-          claim = payloadThreadId ? claim.eq("thread_id", payloadThreadId) : claim.is("thread_id", null);
-          claim = scopedClientId ? claim.eq("scoped_client_id", scopedClientId) : claim.is("scoped_client_id", null);
-          const { data: claimed, error: claimErr } = await claim.select("args").maybeSingle();
-          if (claimErr) {
-            console.error("[paige] confirm claim failed", JSON.stringify({ tool, code: claimErr.code ?? null }));
-            return null;
-          }
-          const soleArgs = (claimed as { args?: unknown } | null)?.args;
-          return soleArgs && typeof soleArgs === "object" && !Array.isArray(soleArgs)
-            ? soleArgs as Record<string, unknown>
-            : null;
-        }
+        if (!cancellationsRecorded || !approvedConfirmations.has(fp) || !(await revalidateProposalScope())) return null;
+
+        const nonce = await selectedConfirmationNonce(fp, tool);
+        if (!nonce) return null;
 
         let q = supabase.from("paige_pending_confirmations")
           .update({ consumed_at: new Date().toISOString() })
           .eq("user_id", user.id)
-          .eq("fingerprint", fp)
+          .eq("fingerprint", fp.split(":")[0]).eq("issued_in_request", nonce)
           .eq("tool_name", tool)
           .is("consumed_at", null)
           .not("server_issued_at", "is", null)
           .gt("expires_at", new Date().toISOString())
-          // THE GATE. A token minted by THIS request is not redeemable by it, so a model replaying
-          // the token out of its own tool-result one round later claims nothing. A person sending
-          // another message is what makes it redeemable — and that is the part the model cannot do.
+          // A selected proposal must predate this request.
           .neq("issued_in_request", requestNonce)
           // REDUNDANT, AND KEPT ON PURPOSE — stated honestly because the first version of this
           // comment claimed it was load-bearing and mutation-testing proved it is not. Postgres
@@ -7398,38 +7404,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // every mutation once, CI proves the classification is exhaustive, and this reads it.
     const MUTATING_TOOLS = mutatingTools();
 
-    // ── HOW APPROVAL REACHES THIS GATE, AND WHY THE TWO CHANNELS ARE NOT EQUAL ──────────────
-    //
-    //   1. `approvedConfirmations` — the fingerprint of a card a surface actually RENDERED, sent up
-    //      in the request body when the person clicked Approve. The model cannot forge it: it
-    //      cannot start an HTTP request, so it cannot put anything in the body.
-    //   2. `confirm: true` in the tool arguments — the model REPORTING that the person said yes.
-    //      Five of the six chat surfaces render no card, so without this channel they could not
-    //      approve anything at all. But it is the model's own word, and a model that is confused,
-    //      or steered by content it just read, can produce it after the person said "no".
-    //
-    // Which channel an action requires is not decided here. `classifyAction` decides it, from the
-    // action alone, in `_shared/action-risk.ts`.
-    // EVERY GATED TOOL LEARNS HOW TO BE APPROVED.
-    //
-    // Only three of the fifty-one tools the gate governs ever declared a `confirm` parameter, so
-    // for the other forty-eight the model had no way to express "the operator said yes" even when
-    // they had. Declaring it on exactly the gated set — derived from `MUTATING_TOOLS` rather than
-    // hand-listed, so a tool added to the gate can never miss it — makes approval a first-class
-    // part of the contract instead of an undocumented convention.
-    //
-    // §13 — WHY THIS IS A FLAG AND NO LONGER A TOKEN. The previous design handed the model a
-    // `confirm_token` in the tool result. It was meant to be unusable in the request that minted
-    // it, and it was. It was NOT unusable in the next one: re-proposing the same call returned the
-    // same token, because the token is a fingerprint of the action rather than a secret, so any
-    // later request could ask for it back and immediately spend it — including a request whose
-    // human message was "no, cancel that". Driven, that executed arbitrary stored calls and raised
-    // an autonomy grant from `confirm` to `auto`. A key that anyone can ask for is not a key, so
-    // it is gone rather than patched, and what remains is a plain assertion that is treated as
-    // exactly what it is: the model's word, refused outright for the high-risk set above.
-    //
-    // Mutating `toolDefs` in place is safe: it is read at the two request sites below, both of which
-    // come after this point.
+    // Approval schema.
+    // Approval-path hardening.
     for (const t of toolDefs as Array<{ function?: { name?: string; parameters?: { properties?: Record<string, unknown> } } }>) {
       const name = t?.function?.name;
       if (!name || !MUTATING_TOOLS.has(name) || CRM_COMMAND_TOOL_NAMES.has(name as any)) continue;
@@ -7437,9 +7413,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       if (!props) continue;
       props.confirm = {
         type: "boolean",
-        description: classifyAction(name) === "high"
-          ? "Set true ONLY after the operator has actually replied and approved this exact action. For this action that is not enough on its own — it must be approved on a surface that can show it to them — but never set it before they have answered."
-          : "Set true ONLY after the operator has actually replied and approved. Never in the same reply where you proposed it — you have not heard back yet, and the platform will refuse it. You do not need to repeat the other arguments exactly: the exact call they were read is saved and is what runs. If they asked for ANY change, send the full new arguments and leave this false, so they get a fresh summary to approve.",
+        description: "Compatibility field only. Approval is completed through the workspace approval control. When approval is pending, follow the tool's guidance and do not retry in the same reply.",
       };
       delete props.confirm_token;
     }
@@ -8169,6 +8143,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       }
     }
 
+    // Live uses the SAME governed tool loop, then the existing tools-free
+    // answer stream. Never speak speculative content from a tool-capable round.
+    const liveDecisionMessages = (messages: any[]) => liveRuntimeScope && !attachedDocument
+      ? [...messages, { role: "system", content: "This is the internal tool-decision phase of a Live turn. Select the tools needed under the existing authority rules. Do not draft the user-facing answer here. When no further tool is needed, reply only with Ready. The same runtime will then request the final spoken answer in a tools-free phase." }]
+      : messages;
     const response = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
@@ -8179,7 +8158,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         // extended thinking is a real reasoning model, never Haiku; the doc-attach path already did.
         // #34 — substantiveTurn adds the reasoning tier for approval/creation intents (see above).
         model: (studioSessionId || attachedDocument || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash",
-        messages: aiMessages,
+        messages: liveDecisionMessages(aiMessages),
         tools: toolDefs,
         tool_choice: "auto",
         stream: true,
@@ -8718,67 +8697,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             continue;
           }
           if (autoMode === "confirm") {
-            // ── MERGE, 2026-09-02: main's `paige_tool_confirmations` binding (#711) meets this one.
-            //
-            // Both branches found the same hole independently — `gateArgs.confirm` is the model's
-            // own JSON — and both built a server-minted proposal that a later turn must spend. The
-            // two are kept apart rather than stacked, because two stateful single-use claim
-            // protocols in series deadlock the first time their notions of "the same action"
-            // disagree, and #711's own history is two peer-gate rounds spent on exactly that.
-            //
-            // This one is kept, and it is a superset of what #711 proves:
-            //   · proposal predates the turn — by REQUEST identity (`issued_in_request` vs the
-            //     nonce), which is stricter than a timestamp: a token minted by this request is
-            //     not redeemable by it, whatever the clock says.
-            //   · one approval, one execution — compare-and-set on `consumed_at`.
-            //   · fails closed — an unmatched claim returns null and refuses.
-            // …and adds the two #711 names as NOT done:
-            //   · IT EXECUTES THE STORED ARGUMENTS. #711 binds an identity SUBSET and then runs
-            //     whatever the model re-authored on the confirming turn, so the content that runs
-            //     need not be the content the operator was read. Here the write is the proposal.
-            //   · IT PROVES THE OPERATOR SAID YES. #711's honest bound is that any turn satisfies
-            //     it, "including 'no, don't'" — and that binding the approval CLICK "needs
-            //     per-surface UI work ... tracked separately". That work is this branch: the
-            //     fingerprint travels in the request BODY, which a model cannot author, and only
-            //     the Approve button puts it there. The surface with no card is not stranded — it
-            //     falls back to the single live proposal for this tool in this scope.
-            //
-            // #711's livelock worry is answered rather than inherited: a drifting fingerprint does
-            // not livelock here, because the fallback is by SCOPE and the stored arguments run.
-            // `_shared/toolConfirmation.ts`, its migration and its tests stay in the tree unwired,
-            // recorded in the decision log — the table is already on prod and removing it is a
-            // separate, deliberate act, not a merge side-effect (§58).
-            // THE APPROVAL IS BOUND TO THE CALL — AND THE MODEL NEVER RESTATES THE CALL.
-            //
-            // `gateArgs.confirm !== true` was once the entire re-entry test. A person read the
-            // summary, clicked Approve, the UI sent "Approved — run it.", and the model re-emitted
-            // the tool call from scratch with nothing tying the arguments it emitted the second
-            // time to the ones the summary described. Different amount, different recipient,
-            // different client: all approved.
-            //
-            // The first repair fingerprinted the call and demanded the surface echo the
-            // fingerprint back. Review found that shipped a worse failure than it fixed. Five of
-            // the six chat surfaces never send the echo, so every gated tool became permanently
-            // un-executable on them; the client-portal seat lost `update_client_data`, its ONLY
-            // write; forty-five of the forty-eight gated tools never declared a `confirm`
-            // parameter at all; and where the echo did work the model still had to re-author the
-            // arguments byte-identically from a transcript that truncates them — a livelock for
-            // any tool carrying model-written free text, where the person clicks Approve and gets
-            // the same card back forever.
-            //
-            // So the call is no longer something the model restates. It is persisted server-side
-            // in `paige_pending_confirmations` under its fingerprint, and approval carries a
-            // TOKEN. What executes below is the STORED arguments — the exact ones whose summary
-            // the person read. The model cannot drift them because it never repeats them, and it
-            // does not need to reproduce a document to say yes to one.
-            //
-            // If the person AMENDS the request, the model emits fresh arguments with no token.
-            // That fingerprints differently, finds no proposal, and becomes a NEW card with a NEW
-            // summary — which is right: a changed action deserves a fresh look.
-            // THE CLASSIFICATION, FROM THE ACTION ALONE. Nothing in `gateArgs`, the request body,
-            // or the calling surface is an input here — which is the point: an action's risk is a
-            // property of the action, and a request that could argue about its own risk would be
-            // negotiating its own permission.
             const risk = classifyAction(tc.function.name);
 
             // FAIL CLOSED. A write with no classification does not run — not as ordinary, not as
@@ -8808,8 +8726,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               continue;
             }
 
-            const fp = await confirmFingerprint(tc.function.name, gateArgs);
-            const highRisk = risk === "high";
+            const fp = await confirmFingerprint(tc.function.name, confirmationArgs(gateArgs));
 
             // CHANNEL 1 — the authenticated caller submits a selected proposal fingerprint.
             // The model cannot author this request field. This is not proof of a physical click;
@@ -8833,8 +8750,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 const identityKey = CONFIRM_IDENTITY_KEY[tc.function.name];
                 const identityVal = identityKey ? confirmIdentityValue(tc.function.name, gateArgs) : null;
                 let lookup = supabase.from("paige_pending_confirmations")
-                  .select("fingerprint").eq("user_id", user.id).eq("tool_name", tc.function.name)
-                  .in("fingerprint", [...approvedConfirmations]).is("consumed_at", null)
+                  .select("fingerprint,args,issued_in_request").eq("user_id", user.id).eq("tool_name", tc.function.name)
+                  .in("fingerprint", [...approvedConfirmations].map((token) => token.split(":")[0])).is("consumed_at", null)
                   .gt("expires_at", new Date().toISOString())
                   .not("server_issued_at", "is", null)
                   .neq("issued_in_request", requestNonce).not("issued_in_request", "is", null);
@@ -8848,9 +8765,25 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 // "eq", val)` jsonb-text form already proven across the edge tree (embed-client-financials,
                 // ingest-rag-outcome, rebuild-client-financial-brief) rather than `.eq` string shorthand.
                 if (identityVal !== null) lookup = lookup.filter(`args->>${identityKey}`, "eq", identityVal);
-                const { data: matches, error: lookupError } = await lookup.limit(2);
-                if (!lookupError && matches?.length === 1 && typeof matches[0]?.fingerprint === "string"
-                  && approvedConfirmations.has(matches[0].fingerprint)) approvedFingerprint = matches[0].fingerprint;
+                const { data: candidates, error: lookupError } = await lookup.limit(17);
+                const matches: Array<{ fingerprint: string; args: Record<string, unknown> }> = [];
+                if (!lookupError && (candidates?.length ?? 0) <= 16) {
+                  for (const row of candidates ?? []) {
+                    const token = await confirmationToken(row, tc.function.name);
+                    if (token && approvedConfirmations.has(token)) matches.push({ fingerprint: token, args: row.args });
+                  }
+                }
+                const exactMatches: Array<{ fingerprint: string }> = [];
+                if (!lookupError && (matches?.length ?? 0) <= 16) {
+                  for (const row of matches ?? []) {
+                    if (row?.args && typeof row.args === "object" && !Array.isArray(row.args)
+                      && await confirmFingerprint(tc.function.name, row.args) === fp) exactMatches.push(row);
+                  }
+                }
+                const selected = exactMatches.length === 1 ? exactMatches[0]
+                  : matches?.length === 1 ? matches[0] : undefined;
+                if (!lookupError && selected && typeof selected.fingerprint === "string"
+                  && approvedConfirmations.has(selected.fingerprint)) approvedFingerprint = selected.fingerprint;
                 // ≥1 approved proposal exists for this tool but no single one resolved to this call (a
                 // batch the subject id did not disambiguate, or a no-identity-key tool) — the ambiguous
                 // approval FIX B turns into a truthful terminal rather than a re-ask-and-accumulate loop.
@@ -8858,6 +8791,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 // subject-id narrow (identityVal) or the model asserting confirm. A no-identity tool's
                 // fresh `confirm:false` proposal that merely shares a tool with pending approvals is NOT
                 // an approval of them, so it must still get its own card, not the terminal.
+                else if (!lookupError && (candidates?.length ?? 0) > 16) approvedSetAmbiguous = true;
                 else if (!lookupError && (matches?.length ?? 0) >= 1
                          && (identityVal !== null || gateArgs.confirm === true)) approvedSetAmbiguous = true;
                 // A lookup FAILURE (a PostgREST error, or the jsonb `args->>…` path filter being
@@ -8881,24 +8815,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 approvedSetAmbiguous = true;
               }
             }
-            const surfaceApproved = approvedFingerprint !== undefined;
-            // CHANNEL 2 — the model's word that the operator said yes. Necessary, because five of
-            // the six surfaces render no card and a rule only one caller can obey is not a rule,
-            // it is an outage. Refused outright when the policy classifies the action `high`.
-            const modelAsserted = gateArgs.confirm === true;
-            const claimBy: string | null | undefined = surfaceApproved
-              ? approvedFingerprint                   // exact stored call the card displayed
-              : (modelAsserted && !highRisk && approvedConfirmations.size === 0)
-                ? null                                // by scope — ONLY on a CARD-LESS surface (no echo).
-                                                      // GUARD (adversary #1): when the surface DID echo
-                                                      // approvals, the model's word must never claim an
-                                                      // unapproved leftover proposal; only the echoed
-                                                      // fingerprint (surfaceApproved) may. Drift there
-                                                      // routes to FIX B's terminal / a fresh card.
-                : undefined;                          // nothing to redeem
-
-            const approvedArgs = claimBy !== undefined
-              ? await claimConfirmation(claimBy, tc.function.name)
+            const approvedArgs = approvedFingerprint !== undefined
+              ? await claimConfirmation(approvedFingerprint, tc.function.name)
               : null;
 
             if (!approvedArgs) {
@@ -8910,24 +8828,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // terminal state, record NOTHING, and let the operator decide. Nothing ran; nothing was
               // sent. (FIX A resolves the common batch BEFORE here; this is the honest floor when it
               // genuinely cannot — the state the owner required instead of a silent re-ask loop.)
-              let ambiguousApproval = approvedSetAmbiguous;
-              if (!ambiguousApproval && modelAsserted && !highRisk && approvedConfirmations.size === 0
-                  && await revalidateProposalScope()) {
-                // Typed-yes with no card echo: the by-scope claim refuses on ≥2 live proposals and
-                // would otherwise re-ask forever. Detect that ambiguity (≥2) the same way.
-                try {
-                  let pend = supabase.from("paige_pending_confirmations")
-                    .select("id").eq("user_id", user.id).eq("tool_name", tc.function.name)
-                    .is("consumed_at", null).gt("expires_at", new Date().toISOString())
-                    .not("server_issued_at", "is", null)
-                    .neq("issued_in_request", requestNonce).not("issued_in_request", "is", null);
-                  pend = personaCtx?.tenant_id ? pend.eq("tenant_id", personaCtx.tenant_id) : pend.is("tenant_id", null);
-                  pend = payloadThreadId ? pend.eq("thread_id", payloadThreadId) : pend.is("thread_id", null);
-                  pend = scopedClientId ? pend.eq("scoped_client_id", scopedClientId) : pend.is("scoped_client_id", null);
-                  const { data: pendRows, error: pendErr } = await pend.limit(2);
-                  if (!pendErr && (pendRows?.length ?? 0) >= 2) ambiguousApproval = true;
-                } catch { /* detection failure falls through to the normal re-ask; never executes */ }
-              }
+              const ambiguousApproval = approvedSetAmbiguous;
               if (ambiguousApproval) {
                 const subjectRef = confirmIdentityValue(tc.function.name, gateArgs);
                 console.warn("[paige] confirm ambiguous-approval terminal", JSON.stringify({ tool: tc.function.name, correlation_id: requestNonce }));
@@ -8942,42 +8843,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 continue;
               }
               const summary = await describeConfirm(tc.function.name, gateArgs);
-              // Persist BEFORE answering, so that when the person does say yes there is something
-              // to redeem. If this write fails the gate still refuses, and says so honestly rather
-              // than telling them it is pending. Failing closed is the only acceptable direction.
+              // Persist before offering the existing approval control.
               const recorded = await recordConfirmation(fp, tc.function.name, gateArgs, summary);
-              // A high-risk action the model tried to approve by itself. Say plainly that the word
-              // of the model is not what is missing here — a person has to see it.
-              const refusedSelfApproval = modelAsserted && highRisk;
-              // §13 — WHY A MISMATCH IS A PLAIN RE-ASK RATHER THAN AN ACCUSATION. The
-              // overwhelmingly common cause is benign: the person amended something in their
-              // approval and the model faithfully carried the change. The right answer is a new
-              // summary and a new ask, which is exactly what this is.
-              const changed = modelAsserted && !highRisk;
               toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
                 success: false,
-                needs_confirm: recorded !== "failed",
-                ...(recorded !== "failed" ? { confirm_fingerprint: fp,
-                  requires_operator_approval: highRisk, confirm_summary: summary } : {}),
-                ...(recorded === "failed" ? { error: "confirmation_unavailable" } : {}),
-                note: recorded === "failed"
+                needs_confirm: recorded.state !== "failed",
+                ...(recorded.state !== "failed" ? { confirm_fingerprint: recorded.fingerprint,
+                  requires_operator_approval: true, confirm_summary: recorded.summary ?? summary } : {}),
+                ...(recorded.state === "failed" ? { error: "confirmation_unavailable" } : {}),
+                note: recorded.state === "failed"
                   ? "The approval could not be recorded. Nothing ran and there is no approval card to use yet. Explain the failure and retry only after the operator asks."
-                  : refusedSelfApproval
-                  ? "This action cannot be approved by you saying it was approved — it is irreversible, changes permissions, reaches outside this platform, or spends money, so it needs the operator to click Approve on the Needs your OK card in this conversation. A typed yes alone does not submit that approval. Read confirm_summary back, point to that card, and do NOT call this again in this reply."
-                  : changed
-                    ? (recorded === "exists"
-                      // The exact call is ALREADY a live proposal — a card is on screen for it — but a
-                      // typed "yes" carries no card fingerprint, so it cannot bind here (and a batch of
-                      // several pending actions is ambiguous to bind by word alone). Point the operator
-                      // to the card ONCE rather than re-reading and re-asking — that re-ask is the
-                      // approval loop this branch exists to stop (P0, dismissing a batch of drafts).
-                      ? "Not run. A typed 'yes' does not submit this — the action set you asked about is ALREADY waiting on the 'Needs your OK' card shown above. Tell the operator, in one line, to click Approve on THAT card once. Do NOT read it back again and do NOT call this tool again in this reply. (Only if they want a CHANGE: call it again with the full new arguments and confirm left false, for a fresh card.)"
-                      : "Not approved. Either you set confirm before actually hearing back from the operator — in which case you cannot approve on their behalf, so STOP and ask them — or the approval is spent, expired, or the action has changed since. Read the NEW confirm_summary back to them and wait for their answer.")
-                    : recorded === "exists"
-                      ? "You have ALREADY asked them this and they have not answered yet. Do not read the same thing to them again and do not call this tool again — say what you are waiting on, in one line, and then move on or wait."
-                      : (recorded === "created"
-                      ? "Do NOT retry yet. This needs the operator's approval. Read confirm_summary back in plain language — and name the SPECIFIC client, contact or program you're acting on by the name you just used, never 'the client'. ONLY after they have actually replied and approved, call this same tool again with confirm: true. You do not need to reproduce the other arguments exactly — the exact call they were read is saved and is what runs. If they ask for ANY change, call it again with the full new arguments and confirm left false, so they get a fresh summary to approve."
-                      : "Do NOT retry. This needs the operator's approval and the approval could not be recorded, so there is nothing for them to approve yet. Tell them plainly that the action could not be set up right now and don't pretend it is pending."),
+                  : "This action is pending; nothing has changed. If the Needs your OK card is visible in this conversation, click Approve there. If this chat has no approval card, it cannot approve this action. Request the action afresh in a Paige workspace with approval controls if your account has access, or ask an authorized workspace teammate to complete it. The pending action does not transfer to another conversation. Read confirm_summary once in plain language. Do NOT call this tool again in this reply.",
               }) });
               continue;
             }
@@ -8986,7 +8862,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // `tc.function.arguments`, so overwriting it here routes all fifty-one gated tools
             // through one seam rather than fifty-one per-tool edits.
             tc.function.arguments = JSON.stringify(approvedArgs);
-            approvalChannel.set(tc.id, surfaceApproved ? "operator_card" : "model_asserted");
+            approvalChannel.set(tc.id, "operator_card");
           } else {
             // `auto` — the operator's standing decision in their autonomy settings, not an
             // approval given in this conversation. Recorded as what it is, so a later reader can
@@ -13351,11 +13227,29 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // to echo it back for the approval to bind to this exact call rather than to a boolean.
       const confirmTrace: Array<{ tool: string; summary: string; fingerprint?: string }> = [];
       const crmResultTrace: Array<Record<string, unknown>> = [];
+      // One authorization-neutral projection for success AND interrupted Live
+      // history. Never persist the live CRM readback, locator or contact payload.
+      const assistantTurnMetadata = () => ({
+        surfaces: stepTrace.filter((s) => s.kind !== "thought").map((s) => s.group).filter((v, i, a) => v && a.indexOf(v) === i),
+        bundleRef: (queuedApprovals.length || confirmTrace.length || crmResultTrace.length)
+          ? {
+              approval_queued: queuedApprovals,
+              paige_confirm: confirmTrace,
+              paige_crm_result: crmResultTrace.map((result) => ({
+                action: result.action,
+                outcome: result.outcome,
+                receipt_recorded: result.receipt_recorded,
+                ...(typeof result.external_effect === "boolean" ? { external_effect: result.external_effect } : {}),
+              })),
+            }
+          : null,
+      });
       const convo: any[] = [...aiMessages];
       let currentResponse = response;
       let totalToolCalls = 0;
       const seenSignatures = new Set<string>();
       let finalChunks: Uint8Array[] | null = null;
+      let liveAnswerPending = false;
       let forcedTermination = false;
       let tenantKnowledgeScopeInvalidated = false;
       // Accumulates Paige's final reply text so we can persist the turn (#94).
@@ -13429,7 +13323,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               forcedTermination = true;
               break;
             }
-            if (!hasToolCall) { finalChunks = allChunks; finalAssistantText = content; break; }
+            if (!hasToolCall) {
+              if (liveRuntimeScope) liveAnswerPending = true;
+              else { finalChunks = allChunks; finalAssistantText = content; }
+              break;
+            }
             const realCalls = toolCalls.filter((tc: any) => tc && tc.function?.name);
             // #292 — ask_choices is a TURN-ENDER, not a backend call: the design agent is asking the
             // customer a clickable decision. Emit the chips as a paige_choices frame, persist the
@@ -13563,25 +13461,26 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             currentResponse = await gatewayCompat("anthropic", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, tools: toolDefs, tool_choice: "auto", stream: true }),
+              body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: liveDecisionMessages(convo), tools: toolDefs, tool_choice: "auto", stream: true }),
             }, traceFor("chat-tool-loop"));
             if (!currentResponse.ok) { forcedTermination = true; break; }
           }
 
-          // Hybrid final stream: replay a natural tool-less round verbatim, or issue a
-          // tools-less closing call when we terminated mid-flight.
+          // Text keeps its natural-round replay. Live streams the final answer
+          // only from this tools-free call, AFTER the governed tool decision.
+          // Protected turns still use emitContent's hold and final scope check.
           let finalStreamResponse: Response | null = null;
-          if (!finalChunks && forcedTermination && !tenantKnowledgeScopeInvalidated) {
+          if (!finalChunks && (forcedTermination || liveAnswerPending) && !tenantKnowledgeScopeInvalidated) {
             if (!(await revalidateTenantKnowledgeScope())) {
               tenantKnowledgeScopeInvalidated = true;
             }
           }
-          if (!finalChunks && forcedTermination && !tenantKnowledgeScopeInvalidated) {
+          if (!finalChunks && (forcedTermination || liveAnswerPending) && !tenantKnowledgeScopeInvalidated) {
             finalStreamResponse = await gatewayCompat("anthropic", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, stream: true }),
-            }, traceFor("chat-close"));
+            }, traceFor(liveAnswerPending ? "chat-live-answer" : "chat-close"));
           }
           // §13 — the wording matters here, and the previous wording was FALSE. Since the tool
           // dispatch guard became per-tool, a round can abort with earlier tools in the SAME
@@ -13736,24 +13635,42 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // Buffer across reads so a `data:` record split over two reads still
             // contributes its delta to the persisted text (#94 integrity).
             let capBuf = "";
+            let finalStreamDone = false;
             const capLine = (line: string) => {
-              if (!line.startsWith("data: ") || line.includes("[DONE]")) return;
-              try { const c = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content; if (c) finalAssistantText += c; } catch { /* skip */ }
+              if (!line.startsWith("data: ") || (liveRuntimeScope && finalStreamDone)) return;
+              if (line.slice(6).trim() === "[DONE]") { finalStreamDone = true; return; }
+              try {
+                const parsed = JSON.parse(line.slice(6));
+                if (liveRuntimeScope && parsed.error) throw new Error("live_answer_failed");
+                const c = parsed?.choices?.[0]?.delta?.content;
+                if (liveRuntimeScope) emitContent(controller, new TextEncoder().encode(`${line}\n\n`));
+                if (c) finalAssistantText += c;
+              } catch (error) { if (liveRuntimeScope) throw error; }
             };
             try {
-              while (true) {
+              while (!liveRuntimeScope || !finalStreamDone) {
                 const { done, value } = await up.read();
                 if (done) break;
-                emitContent(controller, value);
+                if (!liveRuntimeScope) emitContent(controller, value);
                 capBuf += dec.decode(value, { stream: true });
                 let nl: number;
                 while ((nl = capBuf.indexOf("\n")) !== -1) { capLine(capBuf.slice(0, nl)); capBuf = capBuf.slice(nl + 1); }
               }
             } finally {
+              if (!liveRuntimeScope) {
+                capBuf += dec.decode();
+                if (capBuf) capLine(capBuf);
+              }
+            }
+            if (liveRuntimeScope) {
               capBuf += dec.decode();
               if (capBuf) capLine(capBuf);
+              if (!finalStreamDone || !finalAssistantText.trim()) throw new Error("live_answer_incomplete");
+              void up.cancel().catch(() => {});
+              emitContent(controller, new TextEncoder().encode("data: [DONE]\n\n"));
             }
           } else {
+            if (liveRuntimeScope) throw new Error("live_answer_unavailable");
             // Couldn't finish. Show the fallback AND persist it, so a reload
             // shows the same thing the user saw (not a question with no reply).
             const fallback = "I gathered what I could but couldn't finish that — mind trying again?";
@@ -13840,31 +13757,31 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // the check holds.
           if (payloadThreadId && finalAssistantText.trim()) {
             try {
-              const p = persistAssistantTurn(finalAssistantText, {
-                // Surfaces reflect executed WORK — thoughts (narration) don't count.
-                surfaces: stepTrace.filter((s) => s.kind !== "thought").map((s) => s.group).filter((v, i, a) => v && a.indexOf(v) === i),
-                // A live result may contain contact PII. Durable thread history is coach-owned and
-                // can outlive a later reassignment, so persist only the authorization-neutral
-                // receipt projection. The live card keeps its readback and locator for the
-                // currently-authorized request; a reload never becomes a stale access path.
-                bundleRef: (queuedApprovals.length || confirmTrace.length || crmResultTrace.length)
-                  ? {
-                      approval_queued: queuedApprovals,
-                      paige_confirm: confirmTrace,
-                      paige_crm_result: crmResultTrace.map((result) => ({
-                        action: result.action,
-                        outcome: result.outcome,
-                        receipt_recorded: result.receipt_recorded,
-                        ...(typeof result.external_effect === "boolean" ? { external_effect: result.external_effect } : {}),
-                      })),
-                    }
-                  : null,
-              });
+              const p = persistAssistantTurn(finalAssistantText, assistantTurnMetadata());
               // @ts-ignore — EdgeRuntime is available in Supabase Edge Functions runtime
               if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p); else await p;
             } catch (e) { console.error("[paige] persist assistant turn failed:", (e as Error)?.message); }
           }
          } catch (e) {
+           if (liveRuntimeScope) {
+             // A partly spoken answer is not a successful turn. Keep exactly
+             // the released, unprotected text in this same thread; never save
+             // protected text that the caller has not received. No DONE means
+             // the signed-output wrapper cannot mint a success receipt.
+             console.error("[paige] Live answer interrupted");
+             discardContent();
+             const interruptedMeta = assistantTurnMetadata();
+             if (!turnCarriesProtectedContent() && payloadThreadId && (finalAssistantText.trim() || interruptedMeta.bundleRef)
+               && await revalidateTenantKnowledgeScope()) {
+               try {
+                 await persistAssistantTurn(finalAssistantText, interruptedMeta);
+               } catch { console.error("[paige] partial Live answer persistence failed"); }
+             }
+             try {
+               controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_live_error: "answer_interrupted" })}\n\n`));
+             } catch { /* caller already left */ }
+             return;
+           }
            // The live loop or final stream failed mid-flight. Never leave the client
            // with a truncated stream — emit a clean fallback reply and a [DONE].
            console.error("[paige] live reasoning stream failed:", (e as Error)?.message);

@@ -19,6 +19,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Plus, RefreshCw, Search, TriangleAlert, X } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import {
+  MCP_CREDENTIAL_MIN_LENGTH,
+  MCP_GATEWAY_GENERIC_REFUSAL,
+  credentialTooShort,
+  mcpGatewayMessage,
   type GatewayConnection,
   type GatewayAuthKind,
   type UseMcpGateway,
@@ -26,9 +30,10 @@ import {
 
 /* ── Provider catalogue (browse the gateway) ──────────────────────────────────
    Ported from the approved pack: each vendor's connect-mode reflects its real MCP capability
-   (researched 2026-09-22). mode: connect = one-click sign-in (not wired until the OAuth step ships
-   — honest "coming soon"); key = paste a key/token (wired today); setup = platform pre-registration
-   pending; zapier = no direct path, bridge via Zapier. `legacy` routes n8n/Zapier/social tiles to
+   (researched 2026-09-22). mode: connect = one-click sign-in, WIRED as of Slice ④ (it runs the
+   gateway's oauth_begin door; it read "coming soon" only while no browser could reach that door);
+   key = paste a key/token; setup = platform pre-registration pending; zapier = no direct path,
+   bridge via Zapier. `legacy` routes n8n/Zapier/social tiles to
    the existing live drawers rather than the gateway add flow. `verify` is a research-only tag and is
    never rendered to a tenant. */
 type CatMode = "connect" | "key" | "setup" | "zapier" | "review";
@@ -161,7 +166,7 @@ const CATALOGUE: ReadonlyArray<CatItem> = [
 ];
 
 const MODE_LABEL: Record<CatMode, string> = {
-  connect: "Sign-in soon",
+  connect: "Sign in",
   key: "Paste key",
   setup: "Setup needed",
   zapier: "Use Zapier",
@@ -323,6 +328,11 @@ function AddToolForm({ gw, preset, onDirtyChange, onDone }: { gw: UseMcpGateway;
     if (!label.trim()) next.label = true;
     if (!isHttps(url) || isPrivate(url)) next.url = true;
     if (needsKey && !token.trim()) next.token = true;
+    // INT-153, mirrored client-side: the server refuses a bearer/header credential under 12 chars
+    // with MCP_CREDENTIAL_TOO_SHORT. Saying so in the field beats spending a round trip to be told.
+    // Deliberately keyed on the REAL auth kind, so the n8n API-key facet — which the server does not
+    // gate — is never refused here for a rule that does not apply to it.
+    if (!isRest && needsKey && token.trim() && credentialTooShort(authKind, token)) next.short = true;
     if (facet === "generic-remote" && authKind === "header" && !headerName.trim()) next.header = true;
     setBad(next);
     if (Object.keys(next).length) { setMessage(null); return; }
@@ -366,15 +376,202 @@ function AddToolForm({ gw, preset, onDirtyChange, onDone }: { gw: UseMcpGateway;
       )}
       {needsKey && (
         <label className={`ig-field${bad.token ? " ig-field-bad" : ""}`}><span>{isRest ? "API key" : authKind === "header" ? "Value" : "Bearer token"}</span>
-          <input type="password" autoComplete="off" placeholder={isRest ? "n8n_api_…" : "token…"} value={token} onChange={(e) => setToken(e.target.value)} aria-invalid={bad.token || undefined} aria-describedby={bad.token ? "ig-gw-add-token-note ig-gw-add-token-err" : "ig-gw-add-token-note"} />
+          <input type="password" autoComplete="off" placeholder={isRest ? "n8n_api_…" : "token…"} value={token} onChange={(e) => setToken(e.target.value)} aria-invalid={bad.token || bad.short || undefined} aria-describedby={bad.token || bad.short ? "ig-gw-add-token-note ig-gw-add-token-err" : "ig-gw-add-token-note"} />
           <small id="ig-gw-add-token-note">Stored encrypted. Paige never shows it back — to change it later you replace it.</small>
           {bad.token && <small className="ig-gw-err" id="ig-gw-add-token-err">Enter the {isRest ? "API key" : "token"}.</small>}
+          {bad.short && <small className="ig-gw-err" id="ig-gw-add-token-err">That looks too short. Paste the full {isRest ? "key" : "token"} — it needs at least {MCP_CREDENTIAL_MIN_LENGTH} characters.</small>}
         </label>
       )}
       <div className="ig-actions ig-gw-actions">
         <button type="button" className="ig-btn" onClick={onDone}>Cancel</button>
         <button type="button" className="ig-btn" data-primary disabled={gw.saving} onClick={() => void submit()}>{gw.saving ? "Adding…" : "Add tool"}</button>
       </div>
+    </>
+  );
+}
+
+/* ── Sign in with the provider (the Slice ② OAuth spine, reached at last) ─────
+   WHY THIS SHAPE, AND WHY IT IS TWO STEPS.
+
+   `oauth_begin` acts on a connection that already EXISTS — it reads that row's server URL, runs the
+   OAuth 2.1 discovery spine against it (RFC 9728 protected-resource → RFC 8414 metadata → RFC 7591
+   dynamic client registration), stores a PKCE flow, and hands back one authorize URL. So a provider
+   the tenant has never added has to become a row first.
+
+   The row is created with `auth_kind: "none"`, and that is deliberate rather than a placeholder.
+   `get_mcp_connection_secret` treats a row as configured when it has an endpoint AND either a stored
+   credential or an auth kind of `none`/`url` (migration 20270326000000). So a `none` row with a
+   server URL is configured — which is exactly what `oauth_begin` requires and refuses without
+   (`connection_unconfigured`). Creating it as `oauth` instead is impossible on purpose: that bundle
+   REQUIRES a token, an issuer and a client id up front, and those are the very things the sign-in is
+   about to produce. The grant itself lands out of band in the JWT-less `mcp-oauth-callback`, which is
+   where the provider redirects.
+
+   This is why every "connect" tile in the catalogue used to be an honest stop reading "Sign-in soon".
+   The flow existed on the backend; no browser could reach it. Now it can. */
+/** No `onDone`: a successful begin NAVIGATES away, so there is no success state to return to here.
+ *  The person comes back through the provider redirect, not through this component. */
+function SignInFlow({ gw, item, onCancel }: { gw: UseMcpGateway; item: CatItem; onCancel: () => void }) {
+  const [label, setLabel] = useState(item.n);
+  const [url, setUrl] = useState(item.url ?? "");
+  const [bad, setBad] = useState<Record<string, boolean>>({});
+  const [message, setMessage] = useState<string | null>(null);
+  const [step, setStep] = useState<"form" | "starting">("form");
+  /** The row created by a previous attempt whose `oauth_begin` then failed. Kept so a retry
+   *  RESUMES that shell instead of trying to create it again. Without this a transient
+   *  discovery/DCR failure was unrecoverable in place: re-creating hits MCP_DUPLICATE_LABEL on
+   *  the same label, Re-key renders no key field for a credential-less row, and the saved row's
+   *  drawer offers "Sign in again" only for `auth_kind === "oauth"` — so the only recovery that
+   *  actually worked was deleting the connection and starting over. Caught in review. */
+  const [shellId, setShellId] = useState<string | null>(null);
+  /** The address the shell was created with, so an edited one can actually be applied on retry. */
+  const [shellUrl, setShellUrl] = useState<string | null>(null);
+  const isHttps = (v: string) => /^https:\/\/[^\s]+\.[^\s]+/i.test(v.trim());
+
+  const begin = async () => {
+    const next: Record<string, boolean> = {};
+    if (!label.trim()) next.label = true;
+    if (!isHttps(url)) next.url = true;
+    setBad(next);
+    if (Object.keys(next).length) { setMessage(null); return; }
+    setMessage(null);
+    setStep("starting");
+
+    // 1. The row. `none` carries no credential, which is what makes it creatable before sign-in.
+    //    A retry after a failed begin RESUMES the shell it already made rather than creating a
+    //    second one, which would only earn MCP_DUPLICATE_LABEL on the same label.
+    let connectionId = shellId;
+    if (connectionId && shellUrl !== null && shellUrl !== url.trim()) {
+      // The owner took the advice and corrected the address. Re-key the saved shell BEFORE
+      // discovery, or the retry would run against the same bad endpoint and fail identically —
+      // making "fix the address and press Sign in again" another instruction with nothing behind
+      // it, which is the very defect the retry fix was closing. Caught in review.
+      const rekeyed = await gw.rekeyMcp(connectionId, url.trim(), "none");
+      if (!rekeyed.ok) {
+        setStep("form");
+        if (rekeyed.code === "MCP_BUSY" || rekeyed.code === "MCP_NOT_READY") return;
+        setMessage(rekeyed.message ?? "That new address couldn't be saved. Check it and try again.");
+        return;
+      }
+      setShellUrl(url.trim());
+    }
+    if (!connectionId) {
+      const created = await gw.createMcp({
+        providerKey: "generic-remote",
+        label: label.trim(),
+        serverUrl: url.trim(),
+        authKind: "none",
+      });
+      if (!created.ok || !created.connectionId) {
+        setStep("form");
+        // A dropped or not-yet-ready write was never refused, so claiming a failure would be a lie (§13).
+        if (created.code === "MCP_BUSY" || created.code === "MCP_NOT_READY") return;
+        setMessage(created.message ?? "That didn't go through. Check the details and try again.");
+        return;
+      }
+      connectionId = created.connectionId;
+      setShellId(connectionId);
+      setShellUrl(url.trim());
+    }
+
+    // 2. The flow. The tool now EXISTS either way — if discovery fails the owner keeps a real row
+    //    they can re-key by hand, which is why this reports rather than silently rolling back.
+    const flow = await gw.beginOAuth(connectionId);
+    if (!flow.ok || !flow.authorizeUrl) {
+      setStep("form");
+      if (flow.code === "MCP_BUSY" || flow.code === "MCP_NOT_READY") return;
+      // The row EXISTS now, so the copy must not imply nothing happened — but it must also not
+      // name a control this row does not have. It was created with NO credential, and Re-key
+      // renders no key field for a credential-less tool (its `needsKey` is false) and cannot
+      // change a tool's sign-in type at all. Telling the owner to "add a key instead" was an
+      // instruction with nothing behind it (§70.1) — caught by the peer-gate before it shipped.
+      //
+      // THE ROW-EXISTS CLAUSE IS UNCONDITIONAL, and that is the whole point. It used to be the
+      // `??` FALLBACK, reached only when the edge supplied no message — so for every refusal that
+      // DID map, including the ones this retry path exists for, the owner was told "That didn't
+      // go through" while the Name field directly below read "Saved under this name." Two
+      // statements, opposite meanings, one panel. The banner was the one that was wrong: the
+      // connection was written, only the sign-in failed, and an owner who believed the banner
+      // would later find a tool in their list that they were told was never created.
+      // Every unit test passed straight through this; a rendered frame is what caught it.
+      //
+      // The shared map cannot fix it, because it serves callers for whom a refusal genuinely
+      // means no write occurred. So the reason comes from the map and the consequence comes from
+      // here — and its generic line is swapped out, being false on this path by construction.
+      const why =
+        !flow.message || flow.message === MCP_GATEWAY_GENERIC_REFUSAL
+          ? mcpGatewayMessage("oauth_begin_failed")
+          : flow.message;
+      setMessage(
+        `${why} ${label.trim() || item.n} is saved under that name — correct the address and press Sign in again, or remove it.`,
+      );
+      return;
+    }
+
+    // 3. Leave.
+    //    NOT arming a return path, deliberately. This flow's callback is the JWT-less, server-owned
+    //    `mcp-oauth-callback`, which redirects straight to `connectedLocation(..., destination:
+    //    "connections")` — a FIXED destination that never loads the SPA route reading the stored
+    //    path (`takeOAuthReturn` has no production caller at all). Arming it looked like it brought
+    //    the owner back here and did nothing, so the call and its comment asserted a behaviour that
+    //    does not exist (§13/§70.1). Sign-in therefore lands on Connections, carrying
+    //    `?mcp=connected&connection=<id>`.
+    //    BACKEND DOOR NEEDED to land back here instead (§00 — named, not silently worked around):
+    //    the intended destination has to travel with the server-owned flow (oauth_begin → the stored
+    //    PKCE state → the callback), because a client-side hint cannot reach a callback that never
+    //    loads the app.
+    window.location.assign(flow.authorizeUrl);
+  };
+
+  return (
+    <>
+      <p className="ig-lede">
+        Paige will send you to {item.n} to sign in. You approve what she may do there, and she never sees your password.
+      </p>
+      {message && <div className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} /><span>{message}</span></div>}
+      {/* LOCKED once the shell row exists, because from that moment this control cannot do
+          anything. A retry re-keys the SAVED row through `set_mcp_connection_endpoint`, whose
+          twelve arguments are an endpoint and a credential bundle and NOT a label — and no
+          relabel door exists anywhere: searched `rename`, `set_label`, `connection_label`,
+          `p_label` and `update_label` across every migration and the whole `_shared/mcp-gateway`
+          module, and enumerated all 51 mcp-named public functions; the only one that ever accepts
+          a label is `create_mcp_connection`, at creation. Left editable it would take the owner's
+          correction, accept it, and silently discard it — the same class of defect as a save that
+          reports success and writes nothing (§70.1). The note says what to do instead. Caught in
+          review. */}
+      <label className={`ig-field${bad.label ? " ig-field-bad" : ""}`}><span>Name</span>
+        <input
+          type="text"
+          autoComplete="off"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          disabled={shellId !== null}
+          aria-invalid={bad.label || undefined}
+          aria-describedby={shellId !== null ? "ig-gw-signin-label-note" : undefined}
+        />
+        {shellId !== null && (
+          <small id="ig-gw-signin-label-note">
+            Saved under this name. To use a different one, remove it from Connections and start again.
+          </small>
+        )}
+        {bad.label && <small className="ig-gw-err">Enter a name.</small>}
+      </label>
+      <label className={`ig-field${bad.url ? " ig-field-bad" : ""}`}><span>Server address</span>
+        <input type="url" autoComplete="off" spellCheck={false} value={url} onChange={(e) => setUrl(e.target.value)} aria-invalid={bad.url || undefined} aria-describedby="ig-gw-signin-url-note" />
+        <small id="ig-gw-signin-url-note">
+          {item.url ? "This is the address Paige knows for this tool. Change it only if yours is different." : "Enter the tool's public https:// MCP address."}
+        </small>
+        {bad.url && <small className="ig-gw-err">Enter a public https:// address.</small>}
+      </label>
+      <div className="ig-actions ig-gw-actions">
+        <button type="button" className="ig-btn" onClick={onCancel} disabled={step === "starting"}>Cancel</button>
+        <button type="button" className="ig-btn" data-primary disabled={step === "starting" || gw.saving} onClick={() => void begin()}>
+          {step === "starting" ? "Starting sign-in…" : `Sign in to ${item.n}`}
+        </button>
+      </div>
+      <p className="ig-note">
+        Nothing is shared until you approve it on {item.n}'s own screen. You can disconnect at any time.
+      </p>
     </>
   );
 }
@@ -396,11 +593,14 @@ const MANUAL_ENTRY: CatItem = {
 
 function Catalogue({
   onPick,
+  onSignIn,
   onSetup,
   onZapier,
   onLegacy,
 }: {
   onPick: (item: CatItem) => void;
+  /** A provider whose sign-in Paige can actually run — routed to the real OAuth flow. */
+  onSignIn: (item: CatItem) => void;
   onSetup: (item: CatItem) => void;
   onZapier: (item: CatItem) => void;
   onLegacy: (which: CatLegacy) => void;
@@ -416,7 +616,10 @@ function Catalogue({
     if (p.legacy && p.legacy !== "social") return onLegacy(p.legacy);
     if (p.legacy === "social") return onLegacy("social");
     if (p.m === "key") return onPick(p);
-    if (p.m === "connect") return onSetup(p); // OAuth sign-in not wired yet — honest stop
+    // Slice ④: the gateway's oauth_begin door is reachable from the browser now, so a "connect"
+    // provider runs a real sign-in instead of stopping. A tile with no known address is routed the
+    // same way — SignInFlow asks for one rather than refusing the whole provider.
+    if (p.m === "connect") return onSignIn(p);
     if (p.m === "review") return onSetup(p); // no capability record yet — honest stop
     if (p.m === "setup") return onSetup(p);
     return onZapier(p);
@@ -473,8 +676,38 @@ function Catalogue({
 /* ── Detail (re-key / disconnect / honest tool state) ────────────────────────── */
 function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayConnection; onClose: () => void }) {
   const [mode, setMode] = useState<"view" | "rekey" | "disconnect">("view");
+  /** The last probe verdict, held so the person sees what the check FOUND rather than only a row
+   *  that silently changed colour underneath them. Cleared when another action starts. */
+  const [checked, setChecked] = useState<{ ok: boolean; message: string | null; toolCount: number | null } | null>(null);
+  const [signInMessage, setSignInMessage] = useState<string | null>(null);
   const chip = statusChip(tool);
   const isRest = tool.authKind === "api_key";
+  const isOAuth = tool.authKind === "oauth";
+
+  /** Run the read-only probe: handshake the server and load what it offers. */
+  const check = async () => {
+    setSignInMessage(null);
+    const result = await gw.verify(tool.id);
+    // Nothing was sent, so there is nothing to report — saying "failed" would claim a refusal that
+    // never happened (§13).
+    if (result.code === "MCP_BUSY" || result.code === "MCP_NOT_READY") return;
+    setChecked({ ok: result.ok, message: result.message, toolCount: result.toolCount ?? null });
+  };
+
+  /** Re-run the provider sign-in for a connection that already holds an OAuth grant. */
+  const signInAgain = async () => {
+    setChecked(null);
+    const flow = await gw.beginOAuth(tool.id);
+    if (flow.code === "MCP_BUSY" || flow.code === "MCP_NOT_READY") return;
+    if (!flow.ok || !flow.authorizeUrl) {
+      setSignInMessage(flow.message ?? "That sign-in couldn't be started. Try again in a moment.");
+      return;
+    }
+    // Same server-owned callback as the create flow above, so the same note applies: it lands on
+    // Connections via a fixed destination and never loads the SPA route that would read a stored
+    // return path. Nothing is armed here, rather than arming something nothing reads.
+    window.location.assign(flow.authorizeUrl);
+  };
   /** An OAuth tool's credential is issued by its provider's sign-in, not pasted here, so this
    *  surface has no honest way to re-key one. Offering the control would be offering a button
    *  the server refuses every time (§70.1 — never render a control that cannot act). */
@@ -491,14 +724,70 @@ function ToolDetail({ gw, tool, onClose }: { gw: UseMcpGateway; tool: GatewayCon
 
       {mode === "view" && (
         <>
-          {tool.status === "pending_verification" ? (
-            <div className="ig-gw-info" role="status"><span>Paige will check this tool and load what it can do. She can’t use it until it’s verified and you approve its actions.</span></div>
-          ) : tool.status === "error" ? (
-            <div className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} /><span>Couldn’t reach it. Fix the address or re-key, then Paige will check it again.</span></div>
-          ) : (
-            <div className="ig-gw-info" role="status"><span>{tool.approvedCount === null || tool.toolCount === null ? "How many actions this tool offers hasn’t been read yet." : `${tool.approvedCount} of ${tool.toolCount} actions approved.`} The per-action list appears once tool discovery ships.</span></div>
+          {/* The probe's own verdict, when one has been run in this drawer. It leads, because it is
+              the newest thing the person knows and the reason they pressed the button. */}
+          {checked && (
+            checked.ok
+              ? <div className="ig-gw-info" role="status"><span>Checked just now — Paige reached it{checked.toolCount === null ? "" : ` and found ${checked.toolCount} ${checked.toolCount === 1 ? "action" : "actions"}`}.</span></div>
+              : <div className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} /><span>{checked.message ?? "Paige couldn’t use it. Check the address and the key."}</span></div>
           )}
+          {signInMessage && <div className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} /><span>{signInMessage}</span></div>}
+
+          {/* A turned-off row has exactly one honest recovery, and WHICH one depends on the row.
+              Re-key restores enabled=true, so for a re-keyable tool that is the path. An OAuth tool
+              is not re-keyable, and turning it off nulled its credential, so there is nothing to
+              re-key with — the only way back is to add it again. A single sentence in the error map
+              could not be true for both, which is exactly how the first fix here went wrong. */}
+          {!tool.enabled && (
+            <div className="ig-gw-info" role="status"><span>{rekeyable
+              ? "This tool is turned off. Re-key it to switch it back on."
+              : "This tool is turned off, and its sign-in was cleared when you turned it off — switching it back on means removing it and adding it again."}</span></div>
+          )}
+
+          {tool.status === "pending_verification" ? (
+            <div className="ig-gw-info" role="status"><span>This tool hasn’t been checked yet. Paige can’t use it until she has reached it and you’ve approved what it may do.</span></div>
+          ) : tool.status === "error" ? (
+            <div className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} /><span>Couldn’t reach it. Fix the address or re-key, then check it again.</span></div>
+          ) : (
+            <div className="ig-gw-info" role="status"><span>{tool.approvedCount === null || tool.toolCount === null ? "How many actions this tool offers hasn’t been read yet." : `${tool.approvedCount} of ${tool.toolCount} actions approved.`}</span></div>
+          )}
+
+          {/* Two earlier versions of the sentence below were each false, in opposite directions.
+              "approvals are all-or-nothing" named a bulk approval that exists nowhere (the door is
+              per-tool-name). "she won't act with this tool — nothing runs without your approval"
+              then over-corrected: resolveEffectApproval returns requiresApproval:false for a tool
+              that is neither mutation-verb-named nor provider-declared-mutating nor
+              effects-undeclared, and the runner skips the consent check for it outright. So a
+              declared READ genuinely does run unapproved. The wording is now scoped to the three
+              branches that actually gate — which is the true statement, and the narrowest one.
+
+              The per-action list is NOT buildable yet, and this says so rather than showing an empty
+              list that reads as "this tool offers nothing". The missing piece is exact: no
+              client-readable door onto the tool catalogue exists. `mcp_connection_tools` carries an
+              is_platform_owner()-only RLS policy, no RPC reads it, and the verify action returns
+              tool_count as a NUMBER — so there is no honest way to enumerate the actions an approval
+              would name. Recorded in full in the Slice ④ PR body and the master reference. */}
+          {tool.status === "connected" && (tool.toolCount ?? 0) > 0 && (
+            <div className="ig-gw-info" role="status">
+              <span>
+                Choosing which of these actions Paige may use needs a change on Paige’s side that hasn’t shipped
+                yet. Until it does, anything that would send or change something stays blocked — you’ll approve
+                those one at a time when it lands.
+              </span>
+            </div>
+          )}
+
+          {/* Check now and Sign in again are gated on `enabled` because on a turned-off row they can
+              ONLY refuse: the server answers connection_disabled to both. Rendering a control whose
+              single outcome is a refusal is the §70.1 failure, not a safety net.
+              Re-key is deliberately NOT gated — it is the enable path. A successful re-key restores
+              enabled=true (P1(a) in the endpoint setter), so it must stay on screen for a turned-off
+              row that has one. An OAuth row does not: `rekeyable` is false for it, and soft-disable
+              nulls its credential without changing its auth_kind, so it can never be re-keyed back
+              on. That asymmetry is why the banner above names a different path for each. */}
           <div className="ig-actions ig-gw-actions">
+            {gw.canWrite && tool.enabled && <button type="button" className="ig-btn" disabled={gw.saving} onClick={() => void check()}>{gw.saving ? "Checking…" : "Check now"}</button>}
+            {gw.canWrite && tool.enabled && isOAuth && <button type="button" className="ig-btn" disabled={gw.saving} onClick={() => void signInAgain()}>Sign in again</button>}
             {gw.canWrite && rekeyable && <button type="button" className="ig-btn" onClick={() => setMode("rekey")}>Re-key</button>}
             {gw.canWrite && <button type="button" className="ig-btn" data-danger onClick={() => setMode("disconnect")}>Disconnect</button>}
           </div>
@@ -661,6 +950,7 @@ export function IntegrationsGatewaySection({
   const [drawer, setDrawer] = useState<
     | { kind: "catalogue" }
     | { kind: "add"; preset: AddPreset }
+    | { kind: "signin"; item: CatItem }
     | { kind: "stop"; item: CatItem; via: "setup" | "zapier" }
     | { kind: "detail"; tool: GatewayConnection; scope: string }
     | null
@@ -755,6 +1045,7 @@ export function IntegrationsGatewaySection({
         >
           <Catalogue
             onPick={(item) => setDrawer({ kind: "add", preset: { facet: item.legacy === "n8n" ? "n8n-rest" : "generic-remote", authKind: item.auth ?? "bearer", label: item.manual ? undefined : item.n, url: item.url } })}
+            onSignIn={(item) => setDrawer({ kind: "signin", item })}
             onSetup={(item) => setDrawer({ kind: "stop", item, via: "setup" })}
             onZapier={(item) => setDrawer({ kind: "stop", item, via: "zapier" })}
             onLegacy={openLegacy}
@@ -768,26 +1059,42 @@ export function IntegrationsGatewaySection({
         </GatewayDrawer>
       )}
 
+      {drawer?.kind === "signin" && (
+        <GatewayDrawer eyebrow={drawer.item.n} title={`Sign in to ${drawer.item.n}`} onClose={close}>
+          <SignInFlow gw={gw} item={drawer.item} onCancel={close} />
+        </GatewayDrawer>
+      )}
+
       {drawer?.kind === "stop" && (
         <GatewayDrawer
           eyebrow={drawer.item.n}
-          title={drawer.via === "setup" ? (drawer.item.m === "connect" ? "Sign-in coming soon" : drawer.item.m === "review" ? "Not cleared for use yet" : "Setup needed") : "Not available yet"}
+          title={drawer.via === "setup" ? (drawer.item.m === "review" ? "Not cleared for use yet" : "Setup needed") : "Not available yet"}
           onClose={close}
           footer={drawer.via === "zapier" ? <span>Bridge it through Zapier from the Zapier tile.</span> : drawer.item.m === "review" ? <span>You can still connect any server yourself from “Any MCP server”.</span> : <span>Paige will flag {drawer.item.n} the moment it’s ready.</span>}
         >
           {drawer.via === "setup" && drawer.item.m === "review" ? (
             <div className="ig-gw-info" role="status"><span><strong>{drawer.item.n}</strong> isn’t cleared for use yet — we haven’t recorded who owns it, what it may do, or what it costs, and Paige won’t offer a tool we can’t answer that for. {drawer.item.d} Once it’s recorded it becomes a one-click add here. In the meantime you can point Paige at any server yourself from “Any MCP server”.</span></div>
           ) : drawer.via === "setup" ? (
-            <div className="ig-gw-info" role="status"><span><strong>{drawer.item.n}</strong> {drawer.item.m === "connect" ? "connects with a one-click sign-in that isn’t wired yet. " : "needs a one-time platform setup before it can connect. "}{drawer.item.d} When it’s ready it becomes a one-click add right here — nothing to paste.</span></div>
+            <div className="ig-gw-info" role="status"><span><strong>{drawer.item.n}</strong> needs a one-time platform setup before it can connect. {drawer.item.d} When it’s ready it becomes a one-click add right here — nothing to paste.</span></div>
           ) : (
             <div className="ig-gw-info" role="status"><span><strong>{drawer.item.n}</strong> has no direct path Paige can use yet. {drawer.item.d} Connect Zapier once and Paige can reach it through the 8,000+ apps Zapier bridges.</span></div>
           )}
         </GatewayDrawer>
       )}
 
-      {drawer?.kind === "detail" && !tenantLoading && drawer.scope === scopeKey && (
-        <ToolDetail key={`${scopeKey}:${drawer.tool.id}`} gw={gw} tool={drawer.tool} onClose={closeDetail} />
-      )}
+      {/* Re-derive the open row from the LIVE list rather than rendering the snapshot taken when the
+          drawer opened. Slice ④ is the first change to add a write that leaves this drawer open —
+          "Check now" reloads gw.tools while the drawer is still on screen — so a frozen snapshot now
+          contradicts itself in front of the owner: the verdict banner says "Checked just now" while
+          the facts list above it still reads "Not checked yet" with no last-checked time. Re-key and
+          disconnect both closed the drawer, which is why this could not show before.
+          The snapshot remains the fallback: a row that has just been hard-deleted leaves the list,
+          and keeping its last-known identity on screen for the moment before the drawer closes beats
+          blanking the dialog out from under the person. */}
+      {drawer?.kind === "detail" && !tenantLoading && drawer.scope === scopeKey && (() => {
+        const live = gw.tools.find((t) => t.id === drawer.tool.id) ?? drawer.tool;
+        return <ToolDetail key={`${scopeKey}:${live.id}`} gw={gw} tool={live} onClose={closeDetail} />;
+      })()}
     </section>
   );
 }
