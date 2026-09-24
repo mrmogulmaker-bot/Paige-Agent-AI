@@ -46,6 +46,18 @@ export const supabase={
   const body=options?.body??{};const tenant=currentHarnessTenantId();
   if(body.expected_tenant_id!==tenant||mode()==='readonly'||mode()==='refused')return ok({error:'forbidden'});
   if(name==='tenant-mcp-connect'&&body.action==='disconnect'){mcpRows.set(tenant,none());return ok({ok:true});}
+  // The registry-native gateway door (Slice ④). Only the two actions the catalogue sign-in flow
+  // spends are served, and deliberately so: `create` acknowledges the credential-less shell row,
+  // and `oauth_begin` REFUSES under ?data=signin-fail so the retry state — the one where the name
+  // is locked because `set_mcp_connection_endpoint` carries no label — can be rendered at all.
+  // Without a refusal the flow navigates to a provider and the state is unreachable in a harness.
+  if(name==='mcp-gateway'){
+   if(body.action==='create')return ok({connection_id:'harness-shell-1',status:'pending_verification'});
+   if(body.action==='oauth_begin')return mode()==='signin-fail'
+    ?ok({error:'discovery_failed'})
+    :ok({authorize_url:'https://provider.example.invalid/authorize?harness=1'});
+   return ok({error:'unavailable'});
+  }
   if(name!=='tenant-n8n-api-connect')return ok({error:'unavailable'});
   if(body.action==='disconnect'){apiRows.set(tenant,emptyApi(tenant));return ok({ok:true,outcome:'disconnected',connection:apiRow()});}
   if(body.action!=='save'&&body.action!=='validate')return ok({error:'operation_failed'});

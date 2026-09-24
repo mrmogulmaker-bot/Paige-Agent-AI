@@ -28,13 +28,14 @@ function Section({ onOpenLegacy }: { onOpenLegacy?: (which: "n8n" | "zapier" | "
 
 const context = vi.hoisted(() => ({ tenantId: "tenant-a" as string | null, loading: false }));
 const rpc = vi.hoisted(() => vi.fn());
+const invoke = vi.hoisted(() => vi.fn());
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("@/hooks/useTenantContext", () => ({
   useTenantContext: () => ({ activeTenantId: context.tenantId, activeUserId: "user-a", loading: context.loading }),
 }));
-vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc } }));
+vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc, functions: { invoke } } }));
 
 /**
  * The REAL `supabase.rpc()` returns a PostgrestFilterBuilder: a thenable that has `then` and
@@ -70,13 +71,32 @@ const row = (over: Record<string, unknown> = {}) => ({
  * Default world: the caller may write and the account holds whatever rows are passed.
  * `write` decides what every write RPC returns, so a refusal can be driven end to end.
  */
-function world(over: { rows?: Record<string, unknown>[]; admin?: boolean; write?: { data?: unknown; error?: unknown } } = {}) {
+function world(over: {
+  rows?: Record<string, unknown>[];
+  admin?: boolean;
+  /** What a WRITE answers. Writes now go to the gateway edge, so this is an invoke() answer. */
+  write?: { data?: unknown; error?: unknown };
+  /** What a WRITE answers on the RETAINED rpc lane (re-key, disconnect) — still a builder answer. */
+  rpcWrite?: { data?: unknown; error?: unknown };
+} = {}) {
   rpc.mockImplementation((name: string) => {
     if (name === "get_mcp_connections_v2") return builder({ data: over.rows ?? [], error: null });
     if (name === "is_current_user_tenant_admin") return builder({ data: over.admin !== false, error: null });
-    return builder(over.write ?? { data: { connection_id: "conn-new", status: "pending_verification" }, error: null });
+    return builder(over.rpcWrite ?? { data: { connection_id: "conn-new", status: "pending_verification" }, error: null });
   });
+  invoke.mockResolvedValue(over.write ?? { data: { connection_id: "conn-new", status: "pending_verification" }, error: null });
 }
+
+/** The body of the last gateway call, for asserting what actually went over the wire. */
+const lastEdgeBody = () => (invoke.mock.calls.at(-1)?.[1]?.body ?? {}) as Record<string, unknown>;
+/** Every gateway call made with a given action. */
+const edgeCalls = (action: string) =>
+  invoke.mock.calls.filter((c) => (c[1]?.body as Record<string, unknown> | undefined)?.action === action);
+/** A non-2xx edge refusal, in supabase-js's real shape (code lives on error.context, not on data). */
+const edgeRefusal = (code: string, status = 400) => ({
+  data: null,
+  error: { name: "FunctionsHttpError", message: "Edge Function returned a non-2xx status code", context: { status, json: async () => ({ error: code }) } },
+});
 
 async function render(onOpenLegacy?: (which: "n8n" | "zapier" | "social") => void) {
   const host = document.createElement("div");
@@ -125,7 +145,109 @@ beforeEach(() => {
   context.tenantId = "tenant-a";
   context.loading = false;
   rpc.mockReset();
+  invoke.mockReset();
   document.body.innerHTML = "";
+});
+
+describe("Sign-in retry after a failed start", () => {
+  /** REGRESSION (Codex P2, 2026-09-23). `oauth_begin` failing after `create` used to strand the
+   *  owner: the shell row existed, so pressing the button again re-ran `create` with the same
+   *  label and earned MCP_DUPLICATE_LABEL, while the saved row's drawer offers "Sign in again"
+   *  only for an `oauth` row — so a transient discovery/DCR failure could only be escaped by
+   *  deleting the connection. A retry must RESUME the shell it already made. */
+  it("resumes the shell it already created instead of creating a second one", async () => {
+    world();
+    invoke.mockImplementation((_fn: string, opts: { body?: Record<string, unknown> }) => {
+      const action = opts?.body?.action;
+      if (action === "create") return Promise.resolve({ data: { connection_id: "shell-1" }, error: null });
+      if (action === "oauth_begin") return Promise.resolve(edgeRefusal("discovery_failed"));
+      return Promise.resolve({ data: {}, error: null });
+    });
+
+    const { host } = await render();
+    await openCatalogue(host);
+    await click(tile(host, "Close"));
+    await type(fieldFor(host, "Name"), "My Close");
+    await type(fieldFor(host, "Server address"), "https://mcp.close.com/mcp");
+
+    await click(byText(host, "Sign in to Close"));
+    expect(edgeCalls("create").length).toBe(1);
+    expect(edgeCalls("oauth_begin").length).toBe(1);
+
+    // The owner presses it again after the honest failure message.
+    await click(byText(host, "Sign in to Close"));
+
+    // ONE row was ever created; the retry re-used it.
+    expect(edgeCalls("create").length).toBe(1);
+    expect(edgeCalls("oauth_begin").length).toBe(2);
+    const ids = edgeCalls("oauth_begin").map((c) => (c[1]?.body as Record<string, unknown>).connection_id);
+    expect(ids).toEqual(["shell-1", "shell-1"]);
+  });
+
+  /** REGRESSION (Codex P1/P2 round 2, 2026-09-23). Keeping the shell made the retry possible but
+   *  ignored an edited address, so "correct the address and press Sign in again" would have run
+   *  discovery against the same bad endpoint — the fix re-creating the defect it was closing. */
+  it("applies a corrected address to the saved shell before retrying", async () => {
+    world();
+    invoke.mockImplementation((_fn: string, opts: { body?: Record<string, unknown> }) => {
+      const action = opts?.body?.action;
+      if (action === "create") return Promise.resolve({ data: { connection_id: "shell-1" }, error: null });
+      if (action === "oauth_begin") return Promise.resolve(edgeRefusal("discovery_failed"));
+      return Promise.resolve({ data: {}, error: null });
+    });
+
+    const { host } = await render();
+    await openCatalogue(host);
+    await click(tile(host, "Close"));
+    await type(fieldFor(host, "Server address"), "https://wrong.example/mcp");
+    await click(byText(host, "Sign in to Close"));
+
+    // The owner corrects the address and presses again.
+    await type(fieldFor(host, "Server address"), "https://right.example/mcp");
+    await click(byText(host, "Sign in to Close"));
+
+    // The saved shell was re-keyed to the NEW address before discovery re-ran.
+    const rekeys = rpc.mock.calls.filter((c) => c[0] === "set_mcp_connection_endpoint");
+    expect(rekeys.length).toBe(1);
+    expect(rekeys[0][1]).toMatchObject({ _connection_id: "shell-1", _server_url: "https://right.example/mcp" });
+    // Still exactly one row ever created.
+    expect(edgeCalls("create").length).toBe(1);
+  });
+
+  /** REGRESSION (Codex P2 round 3, 2026-09-23). The address became correctable on retry; the NAME
+   *  did not, and stayed editable anyway. `set_mcp_connection_endpoint` takes an endpoint and a
+   *  credential bundle and no label, and no relabel door exists in the schema at all, so an owner
+   *  who corrected the name on retry would have their edit accepted into the field and then
+   *  silently dropped — a control that looks like it saves and does not (§70.1). It locks once
+   *  the shell row exists, and says what to do instead. */
+  it("locks the name once the shell row exists rather than accepting an edit it cannot apply", async () => {
+    world();
+    invoke.mockImplementation((_fn: string, opts: { body?: Record<string, unknown> }) => {
+      const action = opts?.body?.action;
+      if (action === "create") return Promise.resolve({ data: { connection_id: "shell-1" }, error: null });
+      if (action === "oauth_begin") return Promise.resolve(edgeRefusal("discovery_failed"));
+      return Promise.resolve({ data: {}, error: null });
+    });
+
+    const { host } = await render();
+    await openCatalogue(host);
+    await click(tile(host, "Close"));
+    await type(fieldFor(host, "Name"), "My Close");
+    await type(fieldFor(host, "Server address"), "https://mcp.close.com/mcp");
+
+    // Editable before anything is saved.
+    expect((fieldFor(host, "Name") as HTMLInputElement).disabled).toBe(false);
+
+    await click(byText(host, "Sign in to Close"));
+
+    // The row now exists, so the name is fixed — and the surface says so instead of pretending.
+    const name = fieldFor(host, "Name") as HTMLInputElement;
+    expect(name.disabled).toBe(true);
+    expect(name.value).toBe("My Close");
+    expect(host.textContent).toContain("remove it from Connections and start again");
+    // The create carried the name the owner actually typed.
+    expect((edgeCalls("create")[0][1]?.body as Record<string, unknown>).label).toBe("My Close");
+  });
 });
 
 describe("Truth boundary", () => {
@@ -216,14 +338,14 @@ describe("Adding a tool", () => {
     await click(tile(host, "Any MCP server"));
     await type(fieldFor(host, "Name"), "Scheduling tool");
     await type(fieldFor(host, "Server URL"), "https://services.example.com/mcp");
-    await type(fieldFor(host, "Bearer token"), "tok_live_value");
+    await type(fieldFor(host, "Bearer token"), "tok_live_value_123");
     await click(byText(host, "Add tool"));
 
-    const write = rpc.mock.calls.find((c) => c[0] === "create_mcp_connection");
-    expect(write).toBeTruthy();
-    expect(write?.[1]).toMatchObject({ _label: "Scheduling tool", _server_url: "https://services.example.com/mcp" });
+    // The write goes to the ONE gateway door, dispatched on action — not to the writer RPC.
+    expect(edgeCalls("create").length).toBe(1);
+    expect(lastEdgeBody()).toMatchObject({ action: "create", facet: "mcp", label: "Scheduling tool", server_url: "https://services.example.com/mcp" });
     // The write carries the caller's own tenant as an expected-tenant guard.
-    expect(write?.[1]._tenant_id).toBe("tenant-a");
+    expect(lastEdgeBody().expected_tenant_id).toBe("tenant-a");
     // Success closes the drawer and the list is re-read from the server, never patched locally.
     expect(dialog(host)).toBeNull();
     expect(rpc.mock.calls.filter((c) => c[0] === "get_mcp_connections_v2").length).toBeGreaterThan(1);
@@ -265,20 +387,19 @@ describe("Adding a tool", () => {
     await click(byText(host, "n8n — API key"));
     await type(fieldFor(host, "Name"), "Workflow bridge");
     await type(fieldFor(host, "Base URL"), "https://team.app.n8n.cloud");
-    await type(fieldFor(host, "API key"), "n8n_api_value");
+    await type(fieldFor(host, "API key"), "n8n_api_value_1");
     await click(byText(host, "Add tool"));
-    const write = rpc.mock.calls.find((c) => c[0] === "create_mcp_rest_connection");
-    // Named, never positional: a positional call would bind the key to `_provider_key`.
-    expect(write?.[1]).toMatchObject({ _provider_key: "n8n", _label: "Workflow bridge", _base_url: "https://team.app.n8n.cloud" });
+    // The REST facet is named explicitly — never inferred from the auth kind.
+    expect(lastEdgeBody()).toMatchObject({ action: "create", facet: "rest", provider_key: "n8n", label: "Workflow bridge", base_url: "https://team.app.n8n.cloud" });
   });
 
   it("reports a refused write in the product's own words and keeps the details on screen", async () => {
-    world({ rows: [], write: { data: null, error: { code: "42501", message: "permission denied for function" } } });
+    world({ rows: [], write: edgeRefusal("MCP_FORBIDDEN", 403) });
     const { host } = await render();
     await openAddForm(host);
     await type(fieldFor(host, "Name"), "Scheduling tool");
     await type(fieldFor(host, "Server URL"), "https://services.example.com/mcp");
-    await type(fieldFor(host, "Bearer token"), "tok_live_value");
+    await type(fieldFor(host, "Bearer token"), "tok_live_value_123");
     await click(byText(host, "Add tool"));
     expect(dialog(host)).toBeTruthy();
     expect(host.textContent).not.toContain("42501");
@@ -286,16 +407,88 @@ describe("Adding a tool", () => {
     expect((fieldFor(host, "Name") as HTMLInputElement).value).toBe("Scheduling tool");
   });
 
-  it("says plainly that a tool whose sign-in is not wired cannot be added yet", async () => {
+  it("runs a REAL sign-in for a connect provider — the honest stop is no longer the answer", async () => {
+    // This test used to assert "Sign-in coming soon". The gateway's oauth_begin door is reachable
+    // from the browser now, so the stop would be a lie about our own capability. What it guards
+    // instead is the two-step shape the door actually requires.
     world({ rows: [] });
     const { host } = await render();
     await openCatalogue(host);
     const connectTile = host.querySelector<HTMLButtonElement>('.ig-gw-tile[data-mode="connect"]');
     expect(connectTile).toBeTruthy();
     await click(connectTile);
-    // An honest stop, never a Connect that cannot connect.
-    expect(dialog(host)?.textContent).toMatch(/coming soon/i);
-    expect(rpc.mock.calls.some((c) => String(c[0]).startsWith("create_"))).toBe(false);
+    expect(dialog(host)?.textContent).toMatch(/sign in to/i);
+    expect(dialog(host)?.textContent).not.toMatch(/coming soon/i);
+  });
+
+  it("creates the row as `none` first, because an oauth row cannot exist before its token does", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    await openCatalogue(host);
+    await click(host.querySelector<HTMLButtonElement>('.ig-gw-tile[data-mode="connect"]'));
+    // Two answers in order: the create, then the flow.
+    invoke
+      .mockResolvedValueOnce({ data: { connection_id: "conn-oauth", status: "pending_verification" }, error: null })
+      .mockResolvedValueOnce({ data: { ok: true, authorize_url: "https://provider.example/authorize" }, error: null });
+    await click(host.querySelector(".ig-gw-actions button[data-primary]"));
+
+    const create = edgeCalls("create")[0]?.[1].body as Record<string, unknown>;
+    expect(create).toMatchObject({ action: "create", facet: "mcp" });
+    // `none` is what makes the row creatable before sign-in AND configured enough for oauth_begin.
+    // Creating it as `oauth` is impossible: that bundle requires the very token sign-in produces.
+    expect(create.auth_kind).toBe("none");
+    expect(create.auth_token).toBeNull();
+    // Then the flow, on the row that now exists.
+    expect((edgeCalls("oauth_begin")[0]?.[1].body as Record<string, unknown>)?.connection_id).toBe("conn-oauth");
+  });
+
+  it("keeps the tool it just made when the provider offers no usable sign-in", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    await openCatalogue(host);
+    await click(host.querySelector<HTMLButtonElement>('.ig-gw-tile[data-mode="connect"]'));
+    invoke
+      .mockResolvedValueOnce({ data: { connection_id: "conn-oauth", status: "pending_verification" }, error: null })
+      .mockResolvedValueOnce(edgeRefusal("oauth_begin_failed", 502));
+    await click(host.querySelector(".ig-gw-actions button[data-primary]"));
+    // The row EXISTS either way, so the copy must not imply nothing happened — it points at the
+    // thing the owner can still do with it.
+    expect(dialog(host)?.textContent).toMatch(/didn.t offer a sign-in/i);
+    // …and it must NOT point at a control this row does not have. The row was created with no
+    // credential, Re-key renders no key field for a credential-less tool, and re-keying cannot
+    // change a tool's sign-in type — so "add a key instead" was an instruction with nothing behind
+    // it (§70.1). The peer-gate caught it; this pins the fix.
+    expect(dialog(host)?.textContent).not.toMatch(/add a key/i);
+    // The advice moved from the shared map to the call site, and names the control that exists:
+    // the Sign in button the owner is looking at, not a vague "try again".
+    expect(dialog(host)?.textContent).toMatch(/correct the address and press Sign in again, or remove it/i);
+    // REGRESSION (found by a rendered frame, 2026-09-23). The comment above has always claimed
+    // "the copy must not imply nothing happened" — and never checked it. It didn't: the
+    // row-exists sentence was the `??` fallback, so any refusal the map ANSWERED (this one
+    // included) replaced it entirely, leaving a banner that said the write failed above a Name
+    // field that said the row was saved. Now unconditional, and pinned on both paths.
+    expect(dialog(host)?.textContent).toMatch(/is saved under that name/i);
+  });
+
+  /** REGRESSION (rendered frame, 2026-09-23) — the OTHER path into the same contradiction. When
+   *  the edge answers with a code the map has nothing for, the message is the generic
+   *  "That didn't go through", which on this path is simply false: the connection was written and
+   *  only the sign-in failed. The generic must be swapped for the step's own reason, and the
+   *  row-exists sentence must still arrive. */
+  it("never tells the owner nothing happened when the refusal code is unmapped", async () => {
+    world({ rows: [] });
+    const { host } = await render();
+    await openCatalogue(host);
+    await click(host.querySelector<HTMLButtonElement>('.ig-gw-tile[data-mode="connect"]'));
+    invoke
+      .mockResolvedValueOnce({ data: { connection_id: "conn-oauth", status: "pending_verification" }, error: null })
+      .mockResolvedValueOnce(edgeRefusal("a_code_the_map_has_never_heard_of", 502));
+    await click(host.querySelector(".ig-gw-actions button[data-primary]"));
+
+    const text = dialog(host)?.textContent ?? "";
+    expect(text).not.toMatch(/That didn't go through/i);
+    expect(text).toMatch(/didn.t offer a sign-in/i);
+    expect(text).toMatch(/is saved under that name/i);
   });
 
   it("narrows the catalogue by search and still leaves a way to finish", async () => {
@@ -319,25 +512,25 @@ describe("Adding a tool", () => {
     expect((fieldFor(host, "Name") as HTMLInputElement).value).toBe("");
     await type(fieldFor(host, "Name"), "Ops server");
     await type(fieldFor(host, "Server URL"), "https://ops.example.com/mcp");
-    await type(fieldFor(host, "Bearer token"), "tok_value");
+    await type(fieldFor(host, "Bearer token"), "tok_value_123456");
     await click(byText(host, "Add tool"));
-    expect(rpc.mock.calls.find((c) => c[0] === "create_mcp_connection")?.[1]).toMatchObject({ _label: "Ops server" });
+    expect(lastEdgeBody()).toMatchObject({ action: "create", label: "Ops server" });
   });
 });
 
 describe("Writes reach the server", () => {
-  it("sends the write against the real builder shape, not a Promise double", async () => {
-    // Regression: `supabase.rpc()` returns a thenable with no `.catch`. Calling `.catch` on it
-    // threw before the request was ever sent, leaving the button stuck on "Adding…" with no error
-    // and every later write silently dropped. `tsc` and the suite were both green.
+  it("sends the write through the gateway edge and closes on a confirmed answer", async () => {
+    // The builder-shape regression this once guarded now lives on the RETAINED rpc lane (re-key and
+    // disconnect), which still calls `supabase.rpc()` directly — see the disconnect test below and
+    // the hook suite. Creates no longer touch the builder at all.
     world({ rows: [] });
     const { host } = await render();
     await openAddForm(host);
     await type(fieldFor(host, "Name"), "Ops server");
     await type(fieldFor(host, "Server URL"), "https://ops.example.com/mcp");
-    await type(fieldFor(host, "Bearer token"), "tok_value");
+    await type(fieldFor(host, "Bearer token"), "tok_value_123456");
     await click(byText(host, "Add tool"));
-    expect(rpc.mock.calls.some((c) => c[0] === "create_mcp_connection")).toBe(true);
+    expect(edgeCalls("create").length).toBe(1);
     expect(dialog(host)).toBeNull();
   });
 
@@ -378,10 +571,9 @@ describe("Writes reach the server", () => {
     await type(fieldFor(host, "Name"), "Unacknowledged tool");
     await type(fieldFor(host, "Server URL"), "https://unacked.example.com/mcp");
     await type(fieldFor(host, "Bearer token"), "harness-token-not-a-real-secret");
-    rpc.mockImplementation((name: string) =>
-      name.startsWith("create_")
-        ? builder({ data: null, error: null })
-        : builder({ data: [], error: null }));
+    // A VALID envelope with no confirmation in it: 2xx, no error, and a body carrying no
+    // connection_id. Every create acknowledges with one, so this did not confirm the write.
+    invoke.mockResolvedValue({ data: {}, error: null });
     await click(byText(host, "Add tool"));
     expect(dialog(host)).toBeTruthy();
   });
@@ -396,8 +588,8 @@ describe("Writes reach the server", () => {
     await type(fieldFor(host, "Name"), "Unconfirmed tool");
     await type(fieldFor(host, "Server URL"), "https://unconfirmed.example.com/mcp");
     await type(fieldFor(host, "Bearer token"), "harness-token-not-a-real-secret");
-    rpc.mockImplementation((name: string) =>
-      name.startsWith("create_") ? Promise.resolve({}) : builder({ data: [], error: null }));
+    // An adapter that resolves with a non-object carries no acknowledgement at all.
+    invoke.mockResolvedValue(undefined);
     await click(byText(host, "Add tool"));
     // The drawer stays open on the details, and the owner is told it did not go through.
     expect(dialog(host)).toBeTruthy();
@@ -405,12 +597,12 @@ describe("Writes reach the server", () => {
   });
 
   it("leaves the owner able to try again after a refused write", async () => {
-    world({ rows: [], write: { data: null, error: { code: "42501" } } });
+    world({ rows: [], write: edgeRefusal("MCP_FORBIDDEN", 403) });
     const { host } = await render();
     await openAddForm(host);
     await type(fieldFor(host, "Name"), "Ops server");
     await type(fieldFor(host, "Server URL"), "https://ops.example.com/mcp");
-    await type(fieldFor(host, "Bearer token"), "tok_value");
+    await type(fieldFor(host, "Bearer token"), "tok_value_123456");
     await click(byText(host, "Add tool"));
     // The submit control must come back — a write that failed once must not disable the surface.
     const submit = byText(host, "Add tool") as HTMLButtonElement;
@@ -423,9 +615,99 @@ describe("Writes reach the server", () => {
     await openAddForm(host);
     await type(fieldFor(host, "Name"), "Versioned tool");
     await type(fieldFor(host, "Server URL"), "https://api.example.com/v1.10.2/mcp");
-    await type(fieldFor(host, "Bearer token"), "tok_value");
+    await type(fieldFor(host, "Bearer token"), "tok_value_123456");
     await click(byText(host, "Add tool"));
-    expect(rpc.mock.calls.some((c) => c[0] === "create_mcp_connection")).toBe(true);
+    expect(edgeCalls("create").length).toBe(1);
+  });
+});
+
+describe("The open drawer tells one story", () => {
+  it("re-reads the row from the live list after a check, instead of contradicting itself", async () => {
+    // Slice ④ added the first write that leaves this drawer OPEN. Re-key and disconnect both close
+    // it, so a frozen snapshot never had a way to show. After "Check now" reloads the list, a
+    // snapshot would leave the facts list reading "Not checked yet" with no last-checked time,
+    // directly above a banner saying Paige had just reached it.
+    let listed = [row({ status: "pending_verification", health: "unknown", last_checked_at: null, tool_count: 0 })];
+    rpc.mockImplementation((name: string) => {
+      if (name === "get_mcp_connections_v2") return builder({ data: listed, error: null });
+      if (name === "is_current_user_tenant_admin") return builder({ data: true, error: null });
+      return builder({ data: { connection_id: "conn-1" }, error: null });
+    });
+    invoke.mockResolvedValue({ data: { ok: true, status: "connected", health: "healthy", tool_count: 11, error_code: null }, error: null });
+
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(dialog(host)?.textContent).toMatch(/not checked yet/i);
+
+    // The server's own answer to the probe: the row is now connected and healthy.
+    listed = [row({ status: "connected", health: "healthy", last_checked_at: "2026-09-23T17:00:00Z", tool_count: 11 })];
+    await click(byText(host, "Check now"));
+
+    const text = dialog(host)!.textContent!;
+    expect(text).toMatch(/checked just now/i);
+    // The decisive assertions: the facts list moved WITH the verdict. A frozen snapshot fails both
+    // — it would still read "Not checked yet" and "No successful check yet" under the banner.
+    // Matched without \b, since textContent concatenates the <dt>/<dd> pair into "StatusReady".
+    expect(text).toMatch(/StatusReady/);
+    expect(text).not.toMatch(/not checked yet/i);
+    expect(text).not.toMatch(/no successful check yet/i);
+  });
+});
+
+describe("What the surface claims about approvals is true of the runner", () => {
+  it("claims neither a bulk approval nor a blanket block — both are false, in opposite directions", async () => {
+    world({ rows: [row({ status: "connected", health: "healthy", tool_count: 11, approved_count: 3 })] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    const text = dialog(host)!.textContent!;
+
+    // There is no bulk approval anywhere: the approve door takes ONE tool_name, and approved_count
+    // is one row per approved action. "All-or-nothing" also contradicted the line directly above it,
+    // which reads "3 of 11 actions approved".
+    expect(text).not.toMatch(/all-or-nothing/i);
+    expect(text).toMatch(/3 of 11 actions approved/);
+
+    // And the opposite over-correction is false too: resolveEffectApproval returns
+    // requiresApproval:false for a declared read, and the runner skips the consent check for it — so
+    // a blanket "nothing runs without your approval" would be its own §13 defect.
+    expect(text).not.toMatch(/nothing runs without your approval/i);
+
+    // What IS true is scoped to the three branches that actually gate.
+    expect(text).toMatch(/send or change something stays blocked/i);
+  });
+});
+
+describe("A turned-off tool offers only the recovery it actually has", () => {
+  it("hides Check now and Sign in again, which could only refuse", async () => {
+    world({ rows: [row({ enabled: false, status: "unconfigured", auth_kind: "oauth" })] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    // Both actions answer connection_disabled on a turned-off row. A control whose only outcome is
+    // a refusal is the §70.1 failure, not a safety net.
+    expect(byText(host, "Check now")).toBeUndefined();
+    expect(byText(host, "Sign in again")).toBeUndefined();
+    expect(byText(host, "Disconnect")).toBeTruthy();
+  });
+
+  it("tells an OAuth tool the truth: it cannot be re-keyed back on", async () => {
+    // Soft-disable nulls the credential and never changes auth_kind, so an OAuth row stays OAuth,
+    // `rekeyable` stays false, and Re-key never renders. Naming it would be an instruction with
+    // nothing behind it — the exact defect the first fix for this string introduced.
+    world({ rows: [row({ enabled: false, status: "unconfigured", auth_kind: "oauth" })] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(byText(host, "Re-key")).toBeUndefined();
+    expect(dialog(host)?.textContent).toMatch(/removing it and adding it again/i);
+    expect(dialog(host)?.textContent).not.toMatch(/Re-key it to switch it back on/i);
+  });
+
+  it("names Re-key for a turned-off tool that genuinely has it", async () => {
+    // A successful re-key restores enabled=true, so for a re-keyable row this really is the path.
+    world({ rows: [row({ enabled: false, status: "unconfigured", auth_kind: "bearer" })] });
+    const { host } = await render();
+    await click(host.querySelector('[data-gateway-tool="conn-1"]'));
+    expect(byText(host, "Re-key")).toBeTruthy();
+    expect(dialog(host)?.textContent).toMatch(/Re-key it to switch it back on/i);
   });
 });
 
@@ -484,7 +766,9 @@ describe("A failure belongs to the tool it happened on", () => {
   it("does not replay one tool's refusal as a live alert on the next tool opened", async () => {
     world({
       rows: [row(), row({ connection_id: "conn-2", label: "Docs tool" })],
-      write: { data: null, error: { code: "42501", message: "MCP_FORBIDDEN: not permitted" } },
+      // Disconnect is on the RETAINED rpc lane (the gateway edge has no disconnect action), so its
+      // refusal is still a Postgres error, not an edge body.
+      rpcWrite: { data: null, error: { code: "42501", message: "MCP_FORBIDDEN: not permitted" } },
     });
     const { host } = await render();
     await click(host.querySelector('[data-gateway-tool="conn-1"]'));
@@ -647,7 +931,7 @@ describe("Managing a tool", () => {
   });
 
   it("says plainly that a tool the shipped path owns is changed on its own card", async () => {
-    world({ rows: [row()], write: { data: null, error: { code: "42501", message: "MCP_LEGACY_CONNECTION_READONLY: managed by the legacy connection path" } } });
+    world({ rows: [row()], rpcWrite: { data: null, error: { code: "42501", message: "MCP_LEGACY_CONNECTION_READONLY: managed by the legacy connection path" } } });
     const { host } = await render();
     await click(host.querySelector('[data-gateway-tool="conn-1"]'));
     await click(byText(host, "Disconnect"));
