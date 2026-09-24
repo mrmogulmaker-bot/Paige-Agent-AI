@@ -43,6 +43,7 @@ import { classifyCrmRun } from "../_shared/crm-capability-outcome.ts";
 // not a success-shaped receipt. ONE pure home for that decision (§18); handlers wrap their
 // own success shape in it so the model, the status label and the artifact card all inherit it.
 import { artifactProduced, ARTIFACT_ABSENT_ERROR, usableDrafts, IMAGE_NOT_FILED_ERROR } from "../_shared/artifact-receipt.ts";
+import { classifyDocumentSubmissionError, validateDocumentBrief } from "../_shared/document-production.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
 import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold, compactionPressurePct } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
@@ -114,7 +115,11 @@ import { resolveActiveMarketplaceTenant, retainActiveMarketplaceTenant } from ".
 // Redeploy trigger (2026-07-16): the git integration skipped this function on the #88 merge,
 // so the Studio funnel tools (growth_funnel_generate/build/publish) never went live. This
 // no-op comment forces a re-detect so the already-merged tool code deploys. Safe to remove.
-    // Approval-path hardening.
+// Approval-path hardening.
+// Phase 1a / INT-180 relief: the production project is on the paid 400s
+// wall-clock tier. Keep 40s of platform headroom and keep this exactly symmetric
+// with PaigeAIChat's local fence. Durable work still needs the envelope.
+const PAIGE_INTERACTIVE_TURN_BUDGET_MS = 360_000;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -487,6 +492,10 @@ const messageSchema = z.object({
   // Owner "Your Paige" multi-chat: the persisted conversation this turn belongs to.
   // When set, paige-ai-chat persists both turns + rehydrates recall server-side (#94).
   threadId: z.string().uuid().nullable().optional(),
+  // Stable for one user intent and reused by the browser on transport retry. Durable document
+  // submission uses this as its cross-request identity; a server-generated per-request UUID would
+  // recreate INT-180 by dispatching the same document again after a lost response.
+  requestIntentId: z.string().uuid().optional(),
   clientContext: z.string().max(100000).optional().transform((v) => (v && v.length > 50000 ? v.slice(0, 50000) : v)),
   // #292 — what's currently on the Studio canvas. Lets the model UPDATE that artifact in place
   // (stacking its version history) when a turn refines it, instead of minting a fresh sibling. The
@@ -911,7 +920,7 @@ serve(async (req) => {
     }
     const liveOutput = (stream: ReadableStream<Uint8Array>) => liveProof && liveRuntimeScope
       ? liveProof.outputStream(stream, liveRuntimeScope) : stream;
-    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, businessMissionId: payloadBusinessMissionId, threadId: payloadThreadId, clientContext: rawClientContext, surfaceContext, userTime, userTimezone, userTimeFormatted } = validatedData;
+    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, businessMissionId: payloadBusinessMissionId, threadId: payloadThreadId, requestIntentId: payloadRequestIntentId, clientContext: rawClientContext, surfaceContext, userTime, userTimezone, userTimeFormatted } = validatedData;
     // canvasArtifact is a CLIENT request field, meaningful ONLY in a server-resolved Studio session.
     // Declared `let` so it can be neutralized for a dedicated (non-Studio) chat once studio_session_id
     // is resolved (Codex P2): a dedicated-chat client must not be able to drive the reuse clamp with a
@@ -5957,56 +5966,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "document_generate",
-              description: "Admin/coach only. Build a finished, on-brand LONG-FORM DOCUMENT — a guide, one-pager, ebook, checklist, worksheet, proposal, offer letter, or sales offer — and save it. Use when the operator/customer asks for a document, guide, ebook, PDF, one-pager, checklist, worksheet, proposal, quote, statement of work, lead magnet, offer letter, hiring/engagement offer, sales offer, offer sheet, or 'something they can hand out/download'. YOU author the whole document as an ordered list of design BLOCKS (below) — do NOT describe it, produce it. It renders on the studio canvas and the customer can Print / Save as PDF. Craft bar (never a 'Word dump'): the FIRST block is ALWAYS a 'cover'; lead every section with a benefit-stating header, not a bare label; vary the blocks — never more than ~3 'prose' blocks in a row without a callout/list/pull-quote/stat between them; short paragraphs; second person, active voice, one concrete example or number per section; exactly ONE primary 'cta'. Coaching-generic; never introduce credit/funding/finance framing unless the customer explicitly asked for it.\n\nMATCH THE BLOCK SHAPE TO THE doc_type — a worksheet is not a guide, an ebook is not a one-pager, a proposal is not a checklist:\n• guide — cover → optional toc → repeated (section-header + prose/callout/list/stat), ~3-6 sections → one cta. Teaching depth.\n• one_pager — cover → 1-2 section-headers → tight prose + a stat + a short list → one cta. Fits one page; no toc, no chapters.\n• ebook — cover → toc → per chapter: chapter-divider + prose/pull-quote/callout (3+ chapters) → cta. The chapter-divider OPENS each chapter — it is the ebook signature; a guide with no chapter-dividers is NOT an ebook.\n• checklist — cover → short intro prose → list(style:\"checklist\") grouped under section-headers → optional cta. Mostly checkable items.\n• worksheet — cover → brief prose per section → worksheet-field blocks the user FILLS IN (line/lines/box/scale/checkbox) → optional cta. A worksheet MUST contain worksheet-field blocks (real blanks); with none it is just a guide and is wrong.\n• proposal — cover (client + project) → prose (their goals / your understanding) → section-header 'Scope' + list → section-header 'Timeline' + prose/list with REAL dates → section-header 'Investment' + pricing-table (rows + total) → cta ('Approve & start'). A proposal MUST carry a pricing-table and real client name, scope, and dates.\n• offer_letter — cover (candidate name + role) → prose (a warm, specific why-you-fit opening) → section-header 'The Role' + prose → section-header 'Compensation' + pricing-table OR stat blocks (base / variable / equity or benefits summary) → section-header 'Start & Reporting' + prose (real start date + who they report to) → prose (engagement/at-will terms, coaching-generic) → worksheet-field signature lines (candidate + company) → one cta 'Accept'. An offer letter MUST carry the REAL candidate name, role, compensation, and start date — never [CANDIDATE]/[ROLE]/[SALARY]/[DATE] blanks.\n• sales_offer — cover (prospect + offer name) → prose (their goal and the outcome you deliver) → section-header 'What You Get' + list → pricing-table (packages/tiers + total) → section-header 'Terms' + prose (real expiration date) → pull-quote OR stat (a real result/proof you can stand behind, never invented) → one cta 'Accept this offer'. Direct-response, benefit-led copy; a real prospect name, real packages/prices, and a real expiration date — no placeholders.\n\nPROPOSALS NEED REAL SPECIFICS — NEVER ship [PLACEHOLDER]s. A proposal is worthless with [CLIENT NAME]/[SCOPE]/[AMOUNT]/[DATE] in it. Before building a proposal, make sure you actually know: the client's real name, what they're buying (scope), the price(s), and the start/delivery dates. Pull them from the brief/brand/contact when present; otherwise ASK the customer FIRST — use ask_choices for pricing tiers or packaging where you can offer 2-4 concrete options, or just ask in chat for the name and dates. The system REJECTS any document that still contains bracketed placeholder tokens (e.g. [CLIENT NAME], [DATE], [AMOUNT]) — resolve them from real data or by asking, never guess.",
+              description: "Admin/coach only. Submit a substantial private document for durable authoring. Use for guides, one-pagers, ebooks, checklists, worksheets, proposals, offer letters, sales offers, and attorney-review agreement drafts. Give the authoring worker a complete bounded brief and every real fact it must use; never invent missing names, prices, dates, legal terms, results, or sources. Ask the owner for material missing facts before calling. This call accepts work and returns immediately; the completed artifact is posted back into the same conversation after verified persistence, so never claim it is ready from the submission result alone. Ordinary offer letters and sales offers are non-signable draft documents: never request signature lines, an Accept button, or any other execution affordance. If the document is meant to be signed, use agreement_draft; it remains an attorney-review draft artifact and must enter the Agreements lifecycle before it can be sent or signed.",
               parameters: {
                 type: "object",
                 properties: {
-                  doc_type: { type: "string", enum: ["guide", "one_pager", "ebook", "checklist", "worksheet", "proposal", "offer_letter", "sales_offer"], description: "Which kind of document. Infer it from the request, then follow that type's block skeleton above." },
+                  doc_type: { type: "string", enum: ["guide", "one_pager", "ebook", "checklist", "worksheet", "proposal", "offer_letter", "sales_offer", "agreement_draft"], description: "The requested draft type. agreement_draft is the only signable-document-shaped type, but it is still not sendable or signable until promoted through Agreements." },
                   title: { type: "string", description: "The document's title (benefit-led and specific, not the bare topic). For a proposal, name the client + engagement." },
-                  brief: { type: "string", description: "Optional one-line brief/prompt that produced it." },
+                  brief: { type: "string", description: "A complete authoring brief: desired structure, depth, tone, constraints, and what the finished draft must accomplish. Maximum 12,000 characters." },
+                  audience: { type: "string", description: "Optional bounded description of the intended reader." },
+                  purpose: { type: "string", description: "Optional bounded description of how the private draft will be used." },
+                  required_facts: { type: "object", description: "Real scalar facts the draft must preserve exactly, such as client, candidate, scope, dates, compensation, packages, and prices. Never put placeholders here.", additionalProperties: { type: ["string", "number", "boolean"] } },
                   target_content_id: { type: "string", description: "Set to the on-canvas artifact's id (see CANVAS STATE) ONLY when the user is refining/revising the document already on the canvas — this updates that same document in place and keeps its version history. OMIT it to create a brand-new/additional document as a separate asset. Never pass an id for a genuinely new document." },
-                  export_format: { type: "string", enum: ["pdf", "docx", "pptx", "md"], description: "OPTIONAL. When the user asks for a downloadable FILE — 'give me the PDF/Word/PowerPoint/Markdown', 'download this', 'send me a copy' — set this and the saved document is ALSO rendered to that real file, returning a private download link (download_url). Omit it when the user just wants the document on the canvas; omitting it changes nothing. Markdown is the most reliable — it never fails; the other formats render when their libraries are available and otherwise return an honest needs-setup notice." },
-                  blocks: {
-                    type: "array",
-                    description: "The document as an ordered list of design blocks. The first block MUST be type 'cover'.",
-                    items: {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", enum: ["cover", "section-header", "chapter-divider", "toc", "prose", "callout", "pull-quote", "list", "stat", "worksheet-field", "pricing-table", "cta"], description: "The block kind." },
-                        eyebrow: { type: "string", description: "cover: small kicker above the title." },
-                        title: { type: "string", description: "cover/section-header/chapter-divider: the heading. toc: optional heading (defaults to 'Contents')." },
-                        subhead: { type: "string", description: "cover/chapter-divider: one-line promise/outcome under the title." },
-                        kicker: { type: "string", description: "section-header/chapter-divider: small label above the heading." },
-                        number: { type: "number", description: "section-header/chapter-divider: optional section/chapter number." },
-                        entries: { type: "array", items: { type: "string" }, description: "toc: explicit contents lines. OMIT to auto-build the table of contents from your section-header/chapter-divider titles." },
-                        markdown: { type: "string", description: "prose: 1-4 short paragraphs of body copy (markdown)." },
-                        variant: { type: "string", enum: ["tip", "warning", "key-insight", "definition", "example", "do-this"], description: "callout: which kind of callout." },
-                        body: { type: "string", description: "callout: the callout text." },
-                        quote: { type: "string", description: "pull-quote: the quote." },
-                        attribution: { type: "string", description: "pull-quote: who said it (optional)." },
-                        style: { type: "string", enum: ["bullet", "numbered", "checklist"], description: "list: the list style." },
-                        items: { type: "array", items: { type: "string" }, description: "list: the list items." },
-                        value: { type: "string", description: "stat: the big number/value." },
-                        label: { type: "string", description: "stat: what the value measures. worksheet-field: the prompt/question printed above the blank." },
-                        field: { type: "string", enum: ["line", "lines", "box", "scale", "checkbox"], description: "worksheet-field: the kind of blank — 'lines' = N ruled lines (set lines:), 'box' = an open box, 'scale' = a numbered rating row (set scaleMin/scaleMax/minLabel/maxLabel), 'line' = one blank, 'checkbox' = a check + blank. Defaults to 'lines'." },
-                        helper: { type: "string", description: "worksheet-field: optional hint under the prompt." },
-                        lines: { type: "number", description: "worksheet-field (field:'lines'): how many ruled lines to draw (1-12; default 3)." },
-                        scaleMin: { type: "number", description: "worksheet-field (field:'scale'): low end of the scale (default 1)." },
-                        scaleMax: { type: "number", description: "worksheet-field (field:'scale'): high end of the scale (default 5)." },
-                        minLabel: { type: "string", description: "worksheet-field (field:'scale'): caption under the low end." },
-                        maxLabel: { type: "string", description: "worksheet-field (field:'scale'): caption under the high end." },
-                        caption: { type: "string", description: "pricing-table: optional label above the table (e.g. 'Investment')." },
-                        rows: { type: "array", description: "pricing-table: the line items.", items: { type: "object", properties: { item: { type: "string", description: "what the line is." }, detail: { type: "string", description: "optional sub-line detail." }, amount: { type: "string", description: "a plain currency string you set, e.g. '$2,500' or '$500/mo'. Generic pricing — never credit/lending/finance unless asked." } }, required: ["item", "amount"] } },
-                        total: { type: "string", description: "pricing-table: optional total row value (a currency string)." },
-                        headline: { type: "string", description: "cta: the call-to-action headline." },
-                        action: { type: "string", description: "cta: the button label (one imperative ask)." },
-                        href: { type: "string", description: "cta: optional link." }
-                      },
-                      required: ["type"]
-                    }
-                  }
                 },
-                required: ["doc_type", "title", "blocks"]
+                required: ["doc_type", "title", "brief"]
               }
             }
           },
@@ -8276,6 +8248,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // the guard is pushed to `executed` and gets EXACTLY ONE tool-result
       // (including the terminal Unknown-tool branch). Approvals accumulate into
       // the shared queuedApprovals passed in from the loop.
+      let documentCallOrdinal = 0;
       const executeToolCalls = async (toolCalls: any[], queuedApprovals: Array<{ id: string; summary: string; category: string; contact_id: string | null }>) => {
       const toolResults: any[] = [];
       const executed: any[] = [];
@@ -11376,110 +11349,180 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 ? { success: true, content_id: cid }
                 : { success: false, error: ARTIFACT_ABSENT_ERROR.saved_id };
             } else if (tc.function.name === "document_generate") {
-              // #119/#292 — the agent authored the whole document as design blocks; persist it as a
-              // marketing_content row kind='document' (body = the block JSON). Keep only known block
-              // types so a slightly-off block degrades instead of breaking the render (§13); ensure a
-              // cover leads. Returns only what actually persisted.
-              const docType = ["guide", "one_pager", "ebook", "checklist", "worksheet", "proposal", "offer_letter", "sales_offer"].includes(args.doc_type) ? args.doc_type : "guide";
-              // Keep only blocks whose REQUIRED content field is the right type — a well-typed `type`
-              // with a mis-typed value (a list of objects, a non-string markdown) is dropped here so
-              // nothing malformed persists (§13; the renderer also coerces defensively).
-              const _s = (v: unknown) => typeof v === "string" && v.trim().length > 0;
-              const validDocBlock = (b: any): boolean => {
-                if (!b || typeof b !== "object") return false;
-                switch (b.type) {
-                  case "cover": return _s(b.title);
-                  case "section-header": return _s(b.title);
-                  case "chapter-divider": return _s(b.title);
-                  // toc auto-builds from the doc's own headings when it carries no explicit entries, so
-                  // it is always structurally valid; the renderer drops it if nothing resolves.
-                  case "toc": return true;
-                  case "prose": return _s(b.markdown);
-                  case "callout": return _s(b.body);
-                  case "pull-quote": return _s(b.quote);
-                  case "stat": return _s(b.value) || _s(b.label);
-                  case "list": return Array.isArray(b.items) && b.items.some((x: unknown) => _s(x));
-                  case "worksheet-field": return _s(b.label);
-                  case "pricing-table": return Array.isArray(b.rows) && b.rows.some((r: any) => _s(r?.item) || _s(r?.amount));
-                  case "cta": return _s(b.headline) || _s(b.action);
-                  default: return false;
-                }
-              };
-              let blocks = (Array.isArray(args.blocks) ? args.blocks : [])
-                .filter(validDocBlock)
-                .slice(0, 80);
-              // §15/§13 — a document must never ship with fill-in-the-blank placeholders. Bracketed
-              // ALL-CAPS tokens ([CLIENT NAME], [DATE], [AMOUNT], [SCOPE]) are the classic proposal
-              // failure: refuse and tell the agent to get the real specifics from the customer first.
-              // The `(?!\()` tail excludes markdown links like [Read more](url) — those are not placeholders.
-              // Keyword-anchored + case-INSENSITIVE: LLMs emit Title-Case blanks ([Client Name],
-              // [Your Company], [Date]) far more than ALL-CAPS, so an all-caps-only test (the earlier
-              // version) let the common form through. Anchoring to real placeholder words also drops the
-              // [NASDAQ]-style all-caps false-positive; the `(?!\()` tail still spares markdown links.
-              const PLACEHOLDER_RE = /\[[^\]]*\b(CLIENT|NAME|DATE|AMOUNT|SCOPE|COMPANY|PRICE|COST|ADDRESS|EMAIL|PHONE|YOUR|INSERT|TBD|TODO|XXX|ROLE|SALARY|CANDIDATE|COMPENSATION|EQUITY|BENEFITS|POSITION|MANAGER|PROSPECT|EXPIR)\b[^\]]*\](?!\()/i;
-              const hasPlaceholder = (v: unknown): boolean => {
-                if (typeof v === "string") return PLACEHOLDER_RE.test(v);
-                if (Array.isArray(v)) return v.some(hasPlaceholder);
-                if (v && typeof v === "object") return Object.values(v).some(hasPlaceholder);
-                return false;
-              };
-              // Scan the title too (the cover can be synthesized from args.title AFTER this guard).
-              if (blocks.length && (hasPlaceholder(args.title) || blocks.some((b: any) => hasPlaceholder(b)))) {
-                result = { success: false, error: "This still has fill-in-the-blank placeholders like [CLIENT NAME], [DATE], or [AMOUNT]. Get the real client name, scope, pricing, and dates from the customer first — ask them, then build it with the real details." };
-              } else if (!blocks.length) {
-                result = { success: false, error: "No document content was produced — try describing the document again." };
-              } else {
-                if (blocks[0].type !== "cover") blocks = [{ type: "cover", title: String(args.title ?? "Untitled document") }, ...blocks];
-                const docTitle = String(args.title ?? (blocks[0] as any).title ?? "Untitled document").slice(0, 200);
-                // #292 — reuse the on-canvas document row (stack its versions) ONLY when the model
-                // targets the exact document that's actually on the canvas; any other id → new asset
-                // (null), so a stray/echoed id can never overwrite a different artifact (§13 clamp).
-                const reuseDocId = (canvasArtifact?.kind === "document" && args.target_content_id === canvasArtifact.id)
-                  ? canvasArtifact.id : null;
-                const { data: cid, error } = await supabaseClient.rpc("save_marketing_content", {
-                  p_kind: "document",
-                  p_title: docTitle,
-                  p_body: JSON.stringify({ docType, title: docTitle, blocks }),
-                  p_brief: args.brief ?? null,
-                  p_id: reuseDocId,
-                  p_tenant_id: personaCtx?.tenant_id ?? null,
+              const currentDocumentCallOrdinal = documentCallOrdinal++;
+              const documentIntentId = payloadRequestIntentId
+                ? await stableRunId(["document_generate_intent", payloadRequestIntentId, String(currentDocumentCallOrdinal)])
+                : null;
+              // Phase 2 — the chat turn submits a BOUNDED brief and returns immediately. The durable
+              // worker owns long-form authoring, verified artifact persistence, the completion turn,
+              // and the terminal Rail receipt. This request never carries generated document bodies.
+              // Refusals before a work row exists cannot be receipted by that worker, so this entered
+              // branch records those outcomes itself with the service-role client. Nothing in the
+              // outer mega-catch records by tool name: a dispatch-prologue throw is not an invocation.
+              const recordDocumentSubmissionOutcome = async (code: string, outcome: CapabilityOutcome) => {
+                const runId = await stableRunId([
+                  "document_generate_submission",
+                  personaCtx?.tenant_id ?? null,
+                  user.id,
+                  documentIntentId ?? tc.id,
+                  code,
+                ]);
+                return recordCapabilityRun(supabase, {
+                  tenantId: personaCtx?.tenant_id ?? null,
+                  actorId: user.id,
+                  capabilityKey: "document_generate",
+                  outcome,
+                  runId,
                 });
-                if (error) throw error;
-                // §13/§70 — blocks/placeholder guards above prove the CONTENT is real; this proves it
-                // PERSISTED (a 200 with no returned id means it may not have saved).
-                if (!artifactProduced("saved_id", cid)) {
-                  result = { success: false, error: ARTIFACT_ABSENT_ERROR.saved_id };
-                } else {
-                  const base: Record<string, unknown> = { success: true, content_id: cid, title: docTitle, doc_type: docType, blocks: blocks.length };
-                  // §18/§70 — if the caller asked for a downloadable FILE, render it via the export-document
-                  // seam (doc-render lane → private studio-deliverables bucket → 30-day signed URL) and attach
-                  // the link. Behavior-preserving (§37): with no export_format this is skipped and the result is
-                  // byte-identical to before. Honest degrade (§13): a format the renderer can't produce comes
-                  // back needs_config → we attach export_status, never a fake/broken link. The export seam
-                  // re-derives the tenant from the caller's JWT (§9) — we pass only the content_id + format.
-                  const exportFormat = typeof args.export_format === "string" ? args.export_format.toLowerCase() : null;
-                  if (exportFormat && ["pdf", "docx", "pptx", "md"].includes(exportFormat) && personaCtx?.tenant_id) {
-                    try {
-                      const exResp = await fetch(`${supabaseUrl}/functions/v1/export-document`, {
-                        method: "POST",
-                        headers: { "Authorization": authHeader, "Content-Type": "application/json" },
-                        body: JSON.stringify({ content_id: cid, format: exportFormat }),
-                      });
-                      const ex = await exResp.json().catch(() => ({}));
-                      if (ex?.success && ex.download_url) {
-                        base.download_url = ex.download_url;
-                        base.download_format = exportFormat;
+              };
+              if (studioSessionId) {
+                await recordDocumentSubmissionOutcome("DURABLE_DOCUMENT_STUDIO_ASYNC_UNAVAILABLE", "capability_refused");
+                result = {
+                  success: false,
+                  error: "Long-form document authoring completes asynchronously in Paige chat. Open this request in Paige chat so the verified artifact can reconnect there.",
+                  code: "DURABLE_DOCUMENT_STUDIO_ASYNC_UNAVAILABLE",
+                };
+              } else if (!payloadThreadId || !payloadRequestIntentId || !documentIntentId) {
+                await recordDocumentSubmissionOutcome("DURABLE_DOCUMENT_IDENTITY_REQUIRED", "capability_refused");
+                result = {
+                  success: false,
+                  error: "Durable document work needs a saved conversation and a stable request identity. Reopen this chat and try again.",
+                  code: "DURABLE_DOCUMENT_IDENTITY_REQUIRED",
+                };
+              } else {
+                const requestedTarget = canvasArtifact?.kind === "document"
+                  && args.target_content_id === canvasArtifact.id
+                  ? canvasArtifact.id
+                  : null;
+                let expectedRevision: number | null = null;
+                let targetVerified = true;
+                if (requestedTarget && !personaCtx?.tenant_id) {
+                  targetVerified = false;
+                  await recordDocumentSubmissionOutcome("DURABLE_DOCUMENT_TARGET_NOT_VERIFIED", "capability_refused");
+                  result = {
+                    success: false,
+                    error: "That document could not be reopened in a verified workspace. Reopen it on the canvas before revising it.",
+                    code: "DURABLE_DOCUMENT_TARGET_NOT_VERIFIED",
+                  };
+                } else if (requestedTarget && personaCtx?.tenant_id) {
+                  const { data: target, error: targetError } = await supabaseClient
+                    .from("marketing_content")
+                    .select("id,document_revision")
+                    .eq("id", requestedTarget)
+                    .eq("tenant_id", personaCtx.tenant_id)
+                    .eq("kind", "document")
+                    .maybeSingle();
+                  if (targetError || !target?.id || !Number.isInteger(target.document_revision)) {
+                    targetVerified = false;
+                    await recordDocumentSubmissionOutcome("DURABLE_DOCUMENT_TARGET_NOT_VERIFIED", "capability_refused");
+                    result = {
+                      success: false,
+                      error: "That document could not be reopened at a verified revision. Reopen it on the canvas before revising it.",
+                      code: "DURABLE_DOCUMENT_TARGET_NOT_VERIFIED",
+                    };
+                  } else {
+                    expectedRevision = Number(target.document_revision);
+                  }
+                }
+
+                if (targetVerified) {
+                  const candidate = {
+                    version: 1,
+                    doc_type: args.doc_type,
+                    title: args.title,
+                    brief: args.brief,
+                    ...(args.audience !== undefined ? { audience: args.audience } : {}),
+                    ...(args.purpose !== undefined ? { purpose: args.purpose } : {}),
+                    ...(args.required_facts !== undefined ? { required_facts: args.required_facts } : {}),
+                    ...(requestedTarget && expectedRevision
+                      ? { target_content_id: requestedTarget, expected_revision: expectedRevision }
+                      : {}),
+                  };
+                  const validatedBrief = validateDocumentBrief(candidate);
+                  if (!validatedBrief.ok) {
+                    await recordDocumentSubmissionOutcome(validatedBrief.code, "capability_refused");
+                    result = { success: false, error: validatedBrief.message, code: validatedBrief.code };
+                  } else {
+                    const { data: submitted, error: submitError } = await supabaseClient.rpc(
+                      "submit_paige_document_work",
+                      {
+                        _intent_id: documentIntentId,
+                        _thread_id: payloadThreadId,
+                        _request_payload: validatedBrief.value,
+                      },
+                    );
+                    if (submitError) {
+                      // Any five-character PostgreSQL SQLSTATE proves the statement aborted and
+                      // rolled back, so refusal is honest. Gateway/transport codes may describe a
+                      // lost response after commit and must stay unknown;
+                      // the worker may still finish the same intent and file its terminal receipt.
+                      const submissionOutcome = classifyDocumentSubmissionError(submitError);
+                      await recordDocumentSubmissionOutcome(
+                        "DURABLE_DOCUMENT_SUBMIT_FAILED",
+                        submissionOutcome,
+                      );
+                      result = {
+                        success: false,
+                        error: submissionOutcome === "capability_refused"
+                          ? "The document request was refused before any work was accepted."
+                          : "Paige could not confirm whether the document request was accepted. Do not submit it again until this conversation reconnects and reconciles the same request.",
+                        code: "DURABLE_DOCUMENT_SUBMIT_FAILED",
+                      };
+                    } else {
+                      const accepted = Array.isArray(submitted) ? submitted[0] : submitted;
+                      if (accepted?.work_id) {
+                        const workStatus = String(accepted.work_status ?? "outcome_unknown");
+                        if (workStatus === "claimed") {
+                          result = {
+                            success: true,
+                            accepted: true,
+                            work_id: accepted.work_id,
+                            work_status: workStatus,
+                            resumed_existing: accepted.resumed_existing === true,
+                            note: accepted.resumed_existing
+                              ? "The active document job was safely re-awakened under the same work identity. Do not submit it again; the verified artifact will appear in this conversation when complete."
+                              : "Document authoring is underway. Do not claim the document is ready yet; the verified artifact will appear in this conversation when complete.",
+                          };
+                        } else if (workStatus === "succeeded") {
+                          result = {
+                            success: true,
+                            accepted: false,
+                            completed: true,
+                            work_id: accepted.work_id,
+                            work_status: workStatus,
+                            resumed_existing: false,
+                            note: "This document job already completed. Use the verified artifact already filed in this conversation; no new work was dispatched.",
+                          };
+                        } else {
+                          const needsReconciliation = workStatus === "outcome_unknown" || workStatus === "expired";
+                          result = {
+                            success: false,
+                            accepted: false,
+                            work_id: accepted.work_id,
+                            work_status: workStatus,
+                            resumed_existing: false,
+                            code: needsReconciliation
+                              ? "DURABLE_DOCUMENT_RECONCILIATION_REQUIRED"
+                              : workStatus === "blocked"
+                              ? "DURABLE_DOCUMENT_BLOCKED"
+                              : "DURABLE_DOCUMENT_TERMINAL",
+                            error: needsReconciliation
+                              ? "Paige cannot confirm this document job's outcome yet. It must be reconciled before any retry."
+                              : workStatus === "blocked"
+                              ? "This document job is blocked and cannot resume. Resolve the stated authority or version conflict, then start a new document request so Paige can use a fresh work identity and revision."
+                              : `This document job is already ${workStatus} and was not restarted. Start a new document request only if you intend new work.`,
+                          };
+                        }
                       } else {
-                        base.export_status = ex?.needs_config ? "needs_config" : (ex?.status ?? "unavailable");
-                        base.export_note = ex?.note ?? `The ${exportFormat.toUpperCase()} file could not be produced right now.`;
+                        await recordDocumentSubmissionOutcome("DURABLE_DOCUMENT_WORK_ID_MISSING", "capability_outcome_unknown");
+                        result = {
+                          success: false,
+                          error: "The document request returned no durable work identity. Nothing may be claimed as created.",
+                          code: "DURABLE_DOCUMENT_WORK_ID_MISSING",
+                        };
                       }
-                    } catch (exErr) {
-                      base.export_status = "failed";
-                      base.export_note = `Export to ${exportFormat.toUpperCase()} failed.`;
-                      console.error("[paige] document_generate export invoke failed:", (exErr as Error)?.message);
                     }
                   }
-                  result = base;
                 }
               }
             } else if (tc.function.name === "growth_list") {
@@ -12841,7 +12884,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // Bounded multi-round agentic loop. Round 0 reuses the first call already
       // issued above; each later round re-asks WITH tools so Paige can chain
       // actions, stopping on a natural (tool-less) reply or a safety bound.
-      const MAX_ROUNDS = 5, MAX_TOTAL_TOOL_CALLS = 12, WALL_CLOCK_MS = 45_000;
+      const MAX_ROUNDS = 5, MAX_TOTAL_TOOL_CALLS = 12;
+      const WALL_CLOCK_MS = PAIGE_INTERACTIVE_TURN_BUDGET_MS;
       // deep_research runs a full multi-hop investigation (its own ~60s clock) inside a
       // single tool call, so it counts as 3 against the turn's call budget — this keeps
       // two heavy deep runs from stacking in one turn while quick calls stay cheap.
