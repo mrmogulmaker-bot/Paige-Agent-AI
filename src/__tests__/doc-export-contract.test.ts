@@ -459,7 +459,7 @@ describe("export-document edge function — the callable seam (source contract)"
     expect(SRC).not.toContain("Admin or coach access required.");
     expect(SRC).toContain('.from("marketing_content")');
     // the tenant the file is filed under is the row's tenant, never the request body
-    expect(SRC).toContain("const tenantId = doc.tenant_id");
+    expect(SRC).toContain("const tenantId = doc.tenant_id as string | null");
     expect(SRC).not.toContain("body?.tenant_id");
     expect(SRC).toContain('roles.some((r: string) => r === "super_admin" || r === "platform_admin")');
     // Codex round-10 L1 (§59) — marketing_content RLS refuses a fresh Solo OWNER (global role only `user`)
@@ -494,7 +494,7 @@ describe("export-document edge function — the callable seam (source contract)"
     expect(authAt).toBeLessThan(kindAt);          // authorize precedes the kind 400
     expect(authAt).toBeLessThan(nullTenantAt);    // authorize precedes the null-tenant 422
     // tenantId is resolved before the authorize block (the RPCs are keyed on it; a null tenant → both false → 404)
-    expect(SRC.indexOf("const tenantId = doc.tenant_id")).toBeLessThan(authAt);
+    expect(SRC.indexOf("const documentTenantId = doc.tenant_id")).toBeLessThan(authAt);
   });
 
   it("offers only the renderer's real formats and degrades honestly, never a fake link (§13)", () => {
@@ -522,23 +522,14 @@ describe("export-document edge function — the callable seam (source contract)"
   });
 });
 
-describe("document_generate wires the export seam (source contract)", () => {
-  const SRC = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
+describe("document_generate keeps optional export outside durable authoring (source contract)", () => {
+  const CHAT = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
+  const WORKER = readFileSync("supabase/functions/paige-document-worker/index.ts", "utf8");
 
-  it("adds the optional export_format param without adding a new inline tool name", () => {
-    expect(SRC).toContain('export_format: { type: "string", enum: ["pdf", "docx", "pptx", "md"]');
-  });
-
-  it("does not advertise the UNVERIFIED PDF path as reliable — recommends only Markdown (Codex round-12e)", () => {
-    expect(SRC).not.toContain("PDF and Markdown are the most reliable");
-    expect(SRC).toContain("Markdown is the most reliable");
-  });
-
-  it("invokes the export-document seam and attaches a download_url on success, honest status otherwise", () => {
-    expect(SRC).toContain('/functions/v1/export-document');
-    expect(SRC).toContain("base.download_url = ex.download_url");
-    expect(SRC).toContain("base.export_status =");
-    // it re-derives the tenant from the caller JWT at the seam — the invoke passes only content_id + format
-    expect(SRC).toContain('body: JSON.stringify({ content_id: cid, format: exportFormat })');
+  it("does not promise an export that lacks its own durable reconciliation path", () => {
+    const tool = CHAT.slice(CHAT.indexOf('name: "document_generate"'), CHAT.indexOf('name: "growth_list"'));
+    expect(tool).not.toContain("export_format");
+    expect(WORKER).not.toContain("/functions/v1/export-document");
+    expect(WORKER).not.toContain("attach_paige_document_export");
   });
 });

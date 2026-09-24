@@ -101,6 +101,8 @@
     "lint:user-facing-admin-urls": "node scripts/ci/user-facing-admin-producer-lint.mjs",
     "lint:user-facing-admin-urls:test": "node scripts/ci/user-facing-admin-producer-lint.mjs --self-test",
     "proof:tool-confirmation": "node scripts/run-tool-confirmation-proof.mjs",
+    "proof:paige-durable-work": "node scripts/proof/paige-durable-work-concurrency.mjs",
+    "proof:paige-durable-document": "node scripts/proof/paige-durable-document-work.mjs",
     "lint:approval-gate": "node scripts/ci/one-approval-gate-lint.mjs",
     "lint:approval-gate:test": "node scripts/ci/one-approval-gate-lint.mjs --self-test",
     "lint:approval-direct-write": "node scripts/ci/approval-direct-write-lint.mjs",

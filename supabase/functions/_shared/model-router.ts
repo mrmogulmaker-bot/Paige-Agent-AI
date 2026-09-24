@@ -885,7 +885,7 @@ export async function callModel(
   //      client (offline/no service context) → no ledger to read → ungated, like audit/persist.
   const budgetBand: BudgetBand = (opts.is_customer_send || opts.is_approval_decision)
     ? "sensitive"
-    : (tier === "reasoning" ? "reasoning" : "cheap");
+    : (tier === "frontier" ? "reasoning" : "cheap");
   let budgetCheck: BudgetDecision | null = null;
   const budgetAdmin = getAdmin();
   if (budgetAdmin) {
