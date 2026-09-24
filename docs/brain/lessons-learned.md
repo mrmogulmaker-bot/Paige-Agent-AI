@@ -361,7 +361,7 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 > `record_capability_run` with no GRANT and no REVOKE, so that signature defaults to `EXECUTE TO
 > PUBLIC`, and its body never calls `auth.uid()`. On that path the anon+JWT client does not get
 > `permission denied` — it WRITES THE ROW. The failure described below is loud only while the
-> signature actually invoked is locked. `20270411000000` restores the lock on both (in the repo;
+> signature actually invoked is locked. `20270412000000` restores the lock on both (in the repo;
 > prod apply owed). That makes the generalisation SHARPER, not weaker: check the grant against the
 > client **and against the exact signature the caller binds** — an overload is a new `pg_proc`
 > entry and inherits nothing.

@@ -19,7 +19,7 @@
  * 2027-01-07, `20270107000000:94` added a TEN-argument overload. An overload is a new `pg_proc`
  * entry, not a replacement, so it inherited nothing, and that migration issued no GRANT and no
  * REVOKE for it. Name-level auditing reported the function as ACL'd, because the NAME was. Only a
- * signature-level, cross-file check surfaces it. `20270411000000` re-locks it.
+ * signature-level, cross-file check surfaces it. `20270412000000` re-locks it.
  *
  * THE BLANKET SWEEPS, AND WHY THERE IS A CUTOFF. Four DO-block statements revoke PUBLIC/anon
  * EXECUTE across every public DEFINER function — 20260627002438, 20260628220854, 20260629185611
