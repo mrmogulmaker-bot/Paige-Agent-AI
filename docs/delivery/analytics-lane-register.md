@@ -299,6 +299,52 @@ any approved phase plan. It is logged for the coordinator to sequence.
    reports being blocked on the same prerequisites. *Owner's to resolve; it would let this lane
    discharge its own §32 proof instead of owing it onward.*
 
+## C2. WHOLE-SHELL DOCTRINE — binding on Phase 2, recorded 2026-09-24
+
+Coordinator standing doctrine, issued to every lane: Paige is a multi-tenant SaaS CRM. Nothing is
+built for one account, one user, one login or one email address. Every capability ships for the
+whole shell — all Solo accounts — resolving each authenticated person's own tenant, role,
+permissions, thread and memory scope. A temporary pilot, privacy or rollout restriction is
+**operational configuration** — a flag, an allowlist, a gate — and is **never** expressed in the
+product's identity or permission model. Both directions of the error are wrong: building a
+single-account feature because a restriction exists, and assuming a restriction has been lifted
+because the build is multi-tenant.
+
+**Audited against this lane's shipped work, 2026-09-24. Compliant, with the evidence rather than
+the assertion:**
+
+- The D-8 code change is eight files of string literals and one deletion. Swept for hardcoded
+  tenant UUIDs, email addresses, `account_type ===` branches and `tenant_id ===` compares: **zero
+  hits**. It adds no identity constant and no gating logic.
+- The §8 database questions are already population-shaped — *"Do **any** Solo tenants…"*, *"Does
+  **any** Solo tenant…"* — not questions about one account.
+- The one named-account reference in this register (§B, the agency topology) is the §63-sanctioned
+  audit case: evidence about which account tiers exist, never an example, default, fork option or
+  build target.
+- The live-drive prerequisite in blocker 3 asks for a **purpose-built least-privilege test tenant**
+  in the approved CI secret mechanism, explicitly never owner PII and never a pasted value. That is
+  verification infrastructure, not a product identity. It does not become a single-account build,
+  and the owner is never to be asked for an email address or account identifier for it.
+
+**THE INVERSE ERROR IS THIS LANE'S REAL EXPOSURE, and it has a precise analytics form.** The
+doctrine warns against assuming a restriction is lifted because the build is multi-tenant. The
+analytics analogue is sharper: **a correctly tenant-scoped query over an empty or unreachable
+source returns zero rows for every tenant — uniformly scoped and uniformly useless.** Correct
+scoping is not working analytics. This lane's own Phase 0 headline is exactly that failure:
+`src/solo/analytics2.tsx:271` gates the evidence fetch on `lens.route === "money"`, so five of six
+lenses never issue a request — not for one account, for **every** Solo account. The code is
+perfectly multi-tenant and perfectly blank.
+
+**So Phase 2 carries two obligations, not one.** Build the collection and evidence pipe for the
+whole shell, resolving tenant from the caller's session and never from a request body or a named
+constant — and separately prove the numbers are *reachable and true* for an account that is not
+the one it was developed against. A metric verified only where data happens to exist is the
+single-account error wearing multi-tenant clothing. This pairs with §D below, which the coordinator
+set before this doctrine landed and which says the same thing from the other end: analytics must
+work for an account created five minutes ago, by design rather than by retrofit.
+
+Not started. Recorded so Phase 2 cannot begin without it.
+
 ## D. STANDING REQUIREMENT
 
 **A newly created Solo account must have working analytics from the moment it is populated** —
