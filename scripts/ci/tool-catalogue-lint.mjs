@@ -199,9 +199,26 @@ function shadowedRemovals(decls, baseline) {
  *                        and src/components/admin/settings/PaigeAutonomyPanel.tsx:120.
  *
  * So the catalogue is meant to be exactly the operator's view of the GOVERNED set, and this guard
- * does not ask for non-mutating rows. It grades the opposite direction instead: a row with no
- * classification is a false affordance — a switch the operator can flip that governs nothing
- * (§70.1). Baselined at the four above, so this changes no verdict today and bites on a fifth.
+ * does not ask for non-mutating rows. It grades the opposite direction instead: EVERY CATALOGUE ROW
+ * HAS A RISK CLASSIFICATION. Baselined at the four above, so this changes no verdict today and
+ * bites on a fifth.
+ *
+ * READ THE ASSERT LITERALLY, because it used to claim more than it tests. The earlier wording was
+ * "a switch the operator can flip that governs nothing", which reads as a guarantee that every
+ * catalogued row governs something REACHABLE. It does not test reachability, and on this tree that
+ * stronger claim is false while the guard is green:
+ *
+ *   `crm_assign_contact` and `crm_update_pipeline_stage` are classified AND catalogued AND spliced
+ *   out of the model surface at index.ts:7112-7119. Nine legacy CRM writers are spliced there; seven
+ *   come back under CRM_COMMAND_TOOLS pointed at a different executor and these two do not. So the
+ *   operator has two switches in the Capabilities panel that govern nothing the model can call.
+ *   Verified by hand: each appears once in the tip catalogue migration and zero times in the model
+ *   surface this repo's own capability-declaration baseline enumerates.
+ *
+ * That is a real product defect and it is NOT this guard's to fix silently. Grading reachability
+ * means intersecting against the emitted tool manifest, which is the sibling guard's subject. Filed
+ * rather than widened here, because an assert that quietly grows its scope is how the next reader
+ * comes to trust something nobody measured.
  */
 function phantomRows(catKeys, runtime, baseline) {
   const based = new Set(baseline);

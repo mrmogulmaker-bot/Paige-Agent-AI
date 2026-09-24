@@ -496,7 +496,17 @@ if (!PAIGE_SPINE_CAPABILITIES?.length) fail("the PAIGE Spine registry resolved e
 const capabilitiesByTool = new Map();
 for (const capability of PAIGE_SPINE_CAPABILITIES) {
   const tool = capability.action?.chatTool;
-  if (tool) capabilitiesByTool.set(tool, capability);
+  if (!tool) continue;
+  // Two capabilities claiming one chat tool is not something the registry's own validator forbids,
+  // and a plain `.set()` would keep whichever domain composes LAST in registry.ts — so rule 2 below
+  // would grade one act against the other's risk class and never say which it chose. That is a
+  // silent ownership ambiguity, which is the shape of defect this guard exists to surface.
+  const prior = capabilitiesByTool.get(tool);
+  if (prior) {
+    fail(`two Spine capabilities declare chatTool "${tool}" — \`${prior.key}\` and \`${capability.key}\`. ` +
+         `One act, one owner: the grading below cannot choose between them and must not pick silently.`);
+  }
+  capabilitiesByTool.set(tool, capability);
 }
 
 // Rule 2 — the wall.
@@ -571,7 +581,14 @@ if (r.escalated.length) {
 if (r.declared.length || r.softened.length) {
   failed = true;
   console.error(`\n✗ capability-declaration-lint: ${r.declared.length + r.softened.length} baseline entr(ies) are now stale:\n`);
-  for (const t of r.declared) console.error(`    ${t} — now declared by the Spine; delete its entry`);
+  // Two very different reasons a baseline entry goes stale, and saying the wrong one is worse than
+  // saying nothing: a tool that LEFT the model surface is not "now declared by the Spine". Both
+  // sets are already in hand, so there is no excuse for guessing.
+  for (const t of r.declared) {
+    console.error(capabilitiesByTool.has(t)
+      ? `    ${t} — now declared by the Spine; delete its entry`
+      : `    ${t} — no longer on the model surface; delete its entry`);
+  }
   for (const t of r.softened) console.error(`    ${t} — no longer mutating; set its kind to "read"`);
   console.error(`\n  Good news, and the ratchet holds the gain: lower the baseline in this same PR, or the next` +
                 `\n  author inherits a lie. \`node scripts/ci/capability-declaration-lint.mjs --update-baseline\`.`);
