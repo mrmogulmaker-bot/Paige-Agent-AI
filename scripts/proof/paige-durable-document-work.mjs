@@ -13,11 +13,11 @@ const pgBin = process.env.PG_PROOF_BIN
 const executable = (name) => join(pgBin, process.platform === "win32" ? `${name}.exe` : name);
 const cluster = join(tmpdir(), `paige-durable-document-${randomUUID()}`);
 const envelopeMigration = readFileSync(
-  join(root, "supabase/migrations/20270412000000_paige_durable_work_envelope.sql"),
+  join(root, "supabase/migrations/20270417000000_paige_durable_work_envelope.sql"),
   "utf8",
 );
 const documentMigration = readFileSync(
-  join(root, "supabase/migrations/20270413000000_paige_durable_document_work.sql"),
+  join(root, "supabase/migrations/20270418000000_paige_durable_document_work.sql"),
   "utf8",
 );
 

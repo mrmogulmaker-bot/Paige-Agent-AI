@@ -2,7 +2,7 @@
 
 > **Status:** ADOPTED. The 2026-09-23 coordinator ruling replaced the adapter-only substrate
 > decision with one governed cross-capability work envelope. Migration
-> `20270412000000_paige_durable_work_envelope.sql` is the single home for work identity; this
+> `20270417000000_paige_durable_work_envelope.sql` is the single home for work identity; this
 > contract remains the execution mechanism layered on it. It owns no Spine, Brain, Memory, or
 > capability registry facts. Existing capability run tables remain their domain records and carry
 > a nullable `work_id` reference; the Rail remains `record_capability_run`.
@@ -124,7 +124,7 @@ attempt ceiling, and terminal evidence. A caller-stable intent UUID folds a lost
 onto the same server-issued work identity; a replay that changes immutable scope fails closed.
 
 1. **Canonical identity:** `public.paige_durable_work`, created and transitioned only by the
-   service-role seams in migration `20270412000000`.
+   service-role seams in migration `20270417000000`.
 2. **Mechanism:** `supabase/functions/_shared/durable-job/` remains the canonical state, lease,
    reconciliation, idempotency-window, and receipt-correlation contract.
 3. **Capability detail:** existing `*_runs`, `*_jobs`, and execution ledgers keep their schemas and

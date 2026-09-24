@@ -47,16 +47,23 @@ export type BriefValidation =
 export type DocumentSubmissionErrorOutcome = "capability_refused" | "capability_outcome_unknown";
 
 /**
- * An RPC response carrying a PostgreSQL SQLSTATE proves the statement aborted. PostgreSQL rolls the
- * whole statement back, including a durable-work row inserted earlier in the function, so refusal
- * is honest for every five-character SQLSTATE (explicit, implicit P0001, constraint, or internal).
- * Gateway, PostgREST, network, and missing codes do not prove rollback; the response may have been
- * lost after commit, so those remain outcome_unknown until the intent id is reconciled.
+ * Most PostgreSQL SQLSTATEs prove the statement aborted. PostgreSQL rolls the whole statement back,
+ * including a durable-work row inserted earlier in the function, so refusal is honest for explicit,
+ * implicit P0001, constraint, and ordinary internal errors. Connection exceptions (class 08) and
+ * statement_completion_unknown (40003), admin shutdown (57P01), and crash shutdown (57P02)
+ * explicitly do NOT establish whether the statement committed; those, plus gateway/PostgREST/
+ * network/missing codes, remain outcome_unknown until the intent id is reconciled.
  */
 export function classifyDocumentSubmissionError(error: unknown): DocumentSubmissionErrorOutcome {
   const code = error && typeof error === "object" && "code" in error
     ? String((error as { code?: unknown }).code ?? "").trim().toUpperCase()
     : "";
+  if (
+    /^08[0-9A-Z]{3}$/.test(code) ||
+    code === "40003" ||
+    code === "57P01" ||
+    code === "57P02"
+  ) return "capability_outcome_unknown";
   return /^[0-9A-Z]{5}$/.test(code) ? "capability_refused" : "capability_outcome_unknown";
 }
 

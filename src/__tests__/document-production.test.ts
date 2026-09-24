@@ -18,13 +18,28 @@ const brief: DocumentBrief = {
 };
 
 describe("durable document production contract", () => {
-  it.each(["42501", "22023", "P0001", "P0002", "23505", "23514", "28000", "22000", "54000", "XX000"])(
+  it.each([
+    "42501", "22023", "P0001", "P0002", "23505", "23514", "28000", "22000", "54000", "XX000",
+    "57014", "40001", "40P01", "53000",
+  ])(
     "classifies PostgreSQL statement abort %s as refused",
     (code) => expect(classifyDocumentSubmissionError({ code })).toBe("capability_refused"),
   );
 
-  it.each([undefined, null, {}, { code: "" }, { code: "PGRST116" }, { code: "NETWORK_ERROR" }])(
-    "keeps non-SQLSTATE submission errors outcome-unknown",
+  it.each([
+    undefined,
+    null,
+    {},
+    { code: "" },
+    { code: "PGRST116" },
+    { code: "NETWORK_ERROR" },
+    { code: "08007" },
+    { code: "08006" },
+    { code: "40003" },
+    { code: "57P01" },
+    { code: "57P02" },
+  ])(
+    "keeps ambiguous submission error %# outcome-unknown",
     (error) => expect(classifyDocumentSubmissionError(error)).toBe("capability_outcome_unknown"),
   );
 

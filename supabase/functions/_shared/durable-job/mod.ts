@@ -11,7 +11,7 @@
  * renames a business lifecycle.
  *
  * SCOPE OF MECHANICS. The seam owns canonical states, lease math, idempotency-window
- * math, and receipt correlation. Migration `20270412000000_paige_durable_work_envelope`
+ * math, and receipt correlation. Migration `20270417000000_paige_durable_work_envelope`
  * supplies the ONE cross-capability work-identity table and its server-only transition seam.
  * Capability-specific substrates keep their own business/run schemas and reference that
  * envelope through `work_id`; none may create a second universal job table or scheduler.
