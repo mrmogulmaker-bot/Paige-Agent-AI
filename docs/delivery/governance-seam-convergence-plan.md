@@ -7,6 +7,17 @@
 > Companion to `docs/delivery/chat-completion-matrix.md`, which is the chat lane's own delivery
 > record and where this gap was first written down.
 
+
+> **Line numbers are as of commit `bad21bed6` (2026-09-24).** `paige-ai-chat/index.ts` is an
+> actively edited file — a single base merge on the night this was written moved every anchor below
+> by up to thirteen lines. **The durable references are the SYMBOLS**, not the numbers:
+> `executeToolCalls` (one definition, one call site), the `CRM_COMMAND_TOOL_NAMES.has` guard that
+> opens the CRM short-circuit, and the `functions.invoke("crm-command")` beneath it. Re-derive a
+> line before quoting it; and note that `CRM_COMMAND_TOOL_NAMES.has` appears **five** times in the
+> file, so grepping for it and taking the first hit finds the wrong one — the dispatch short-circuit
+> is the occurrence immediately followed by `JSON.parse(tc.function.arguments`.
+
+
 ---
 
 ## 1. The finding, and why it is a flagship rather than a ticket
@@ -19,7 +30,7 @@ shared, door-blind seam: pure, synchronous, no I/O, no clock, no randomness. It 
 `paige-social`, `skill-runner`, `paige-mcp`, `paige-native-event-dispatch` and `execute-approval`
 through their adapters.
 
-`supabase/functions/paige-ai-chat/index.ts` — 14,896 lines, the largest governed surface the
+`supabase/functions/paige-ai-chat/index.ts` — 14,928 lines, the largest governed surface the
 platform has — **never calls it**. `grep -c governedExecution` returns `0`. It runs its own inline
 gate over roughly 155 model-visible tools, of which **about 47 are classified mutations governed
 only by that inline path**.
@@ -47,14 +58,14 @@ Both were the open questions before scoping. Both came back favourably.
 
 ### 2a. There is ONE dispatch chokepoint
 
-`executeToolCalls` is defined at `paige-ai-chat/index.ts:8295` and called from **exactly one
-place**, `:13507`. Only two provider requests expose `tools:` (`:8208` round 0, `:13574` rounds
+`executeToolCalls` is defined at `paige-ai-chat/index.ts:8286` and called from **exactly one
+place**, `:13520`. Only two provider requests expose `tools:` (`:8208` round 0, `:13574` rounds
 1–4); both feed that one call. The closing call at `:13588` sends no tools.
 
 Every governed tool in chat passes through one function. Had the answer been "N independent paths",
 this would be a different and much worse job.
 
-Inside it, the gate occupies `:8295`–`:9024` — **730 lines, of which perhaps 250 are executable
+Inside it, the gate occupies `:8286`–`:9015` — **730 lines, of which perhaps 250 are executable
 statements**; the rest is doctrine prose. That is the surface being changed. The 3,944-line dispatch
 chain below it (`:9025`–`:12968`) is **not** in scope: it runs after the decision and is untouched.
 
@@ -62,8 +73,8 @@ chain below it (`:9025`–`:12968`) is **not** in scope: it runs after the decis
 
 This is the most useful fact in the report, and it is inside the file being migrated.
 
-At `:8336` the CRM tools short-circuit before the inline gate and are forwarded to the
-`crm-command` edge function at `:8379` — auth header passed through, approved fingerprint passed
+At `:8327` the CRM tools short-circuit before the inline gate and are forwarded to the
+`crm-command` edge function at `:8370` — auth header passed through, approved fingerprint passed
 through — and `crm-command/index.ts:342` calls `decideGovernedExecution`.
 
 So chat is not a surface that has never met the seam. It is a surface where **one branch of the
@@ -154,7 +165,7 @@ for chat — every chat request carries a person's JWT (`:739`, 401 otherwise). 
 `principal: "person"`, matching `crm-command:347`.
 
 **Also found, and cheap to bank:** **14 dispatch branches are dead code** — nine tombstoned legacy
-CRM writers intercepted at `:8336`, and five (`pipeline_create`, `pipeline_add_stage`,
+CRM writers intercepted at `:8327`, and five (`pipeline_create`, `pipeline_add_stage`,
 `social_post`, `social_analytics`, `social_accounts`) whose tool definitions exist nowhere in the
 tree. Deleting them shrinks the surface before anything moves.
 
