@@ -67,6 +67,7 @@ class QueryBuilder {
   upsert(row) { this._op = "upsert"; this._live().recorder.inserts.push({ table: this._table, row, upsert: true }); return this; }
   delete() { this._op = "delete"; return this; }
   eq(c, v) { this._filters.push(["eq", c, v]); return this; }
+  filter(c, op, v) { this._filters.push(["filter", c, op, v]); return this; }
   neq(c, v) { this._filters.push(["neq", c, v]); return this; }
   in(c, v) { this._filters.push(["in", c, v]); return this; }
   is(c, v) { this._filters.push(["is", c, v]); return this; }

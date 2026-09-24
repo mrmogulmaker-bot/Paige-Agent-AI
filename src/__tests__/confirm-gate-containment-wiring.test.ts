@@ -33,7 +33,8 @@ describe("FIX A — a batch is disambiguated by the stable subject id, WITHIN th
     expect(gate).toContain('lookup = lookup.filter(`args->>${identityKey}`, "eq", identityVal)');
     // The narrowed claim still requires exactly one match and that it is in the approved set.
     expect(gate).toContain("matches?.length === 1");
-    expect(gate).toContain("approvedConfirmations.has(matches[0].fingerprint)");
+    expect(gate).toContain("approvedConfirmations.has(selected.fingerprint)");
+    expect(gate).toContain("exactMatches.length === 1");
   });
 
   it("the narrowed claim still runs STORED args (I2) — the gate overwrites arguments with the approved call", () => {
@@ -76,9 +77,7 @@ describe("FIX B — an ambiguous approval ends in ONE truthful terminal, never a
   it("only fires when the operator is approving AND the batch is genuinely ambiguous (never on a first ask)", () => {
     // Primary signal: the approved-set lookup found ≥1 but resolved no single fingerprint.
     expect(gate).toContain("approvedSetAmbiguous = true");
-    expect(gate).toContain("let ambiguousApproval = approvedSetAmbiguous");
-    // The typed-yes (no card) branch only considers it ambiguous at ≥2 live proposals.
-    expect(gate).toContain("(pendRows?.length ?? 0) >= 2");
+    expect(gate).toContain("const ambiguousApproval = approvedSetAmbiguous");
   });
 
   it("GUARD (adversary #2): ambiguity is only flagged on an actual approval attempt, not a fresh confirm:false", () => {
@@ -86,13 +85,13 @@ describe("FIX B — an ambiguous approval ends in ONE truthful terminal, never a
   });
 });
 
-describe("GUARD (adversary #1) — the model's word can only claim on a CARD-LESS surface", () => {
-  it("by-scope (claimBy=null) is gated on approvedConfirmations.size === 0 — never when a card was echoed", () => {
-    // When the surface echoed approvals, only the echoed fingerprint (surfaceApproved) may claim; the
-    // model-asserted by-scope path cannot reach an unapproved leftover proposal.
-    expect(gate).toContain("(modelAsserted && !highRisk && approvedConfirmations.size === 0)");
-    // high-risk is still never model-asserted (I6), independent of this guard.
-    expect(gate).toContain("modelAsserted && !highRisk");
+describe("approval-path hardening", () => {
+  it("contract A", () => {
+    expect(gate).toContain("approvedFingerprint !== undefined");
+    expect(gate).toContain("await claimConfirmation(approvedFingerprint, tc.function.name)");
+    expect(HANDLER).toContain("!approvedConfirmations.has(fp)");
+    expect(gate).not.toContain("claimBy");
+    expect(HANDLER).not.toContain("if (fp === null)");
   });
 
   it("the terminal NEVER executes — it only pushes a success:false tool result and continues", () => {
