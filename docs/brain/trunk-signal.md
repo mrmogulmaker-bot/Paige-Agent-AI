@@ -35,7 +35,7 @@ called `ci:tsc`, and there is none called plain `Vercel` either.
 
 | Check | Known state on `main` | What `main`'s red is, when it is red | What would establish attribution for YOUR run |
 |---|---|---|---|
-| **`verify`** | RED — fails on exactly one step, `npm run test` | `main`'s own failure is tracked as **#1372**. That is a fact about `main`, not a verdict on your run. | **One procedure only: compare `main`'s current tip against `main`-merged-with-your-head — the tree CI actually runs — and diff the failure output, names and messages.** No count, no path, no comparison against the recorded list, and not merge-base-versus-head either can clear or convict a run. The section below says why each of those six shortcuts fails. |
+| **`verify`** | RED — fails on exactly one step, `npm run test` | `main`'s own failure is tracked as **#1372**. That is a fact about `main`, not a verdict on your run. | **Nothing in this cell can attribute your run — go to *Attributing a failing run* below.** It depends on which question you are asking, and the two answers use different trees. Six shortcuts that look sufficient are dead; the section names each and why. **This cell has been corrected four times for trying to compress that into one sentence, so it no longer tries.** |
 | **`github-advanced-security`** | **FLAPPING** — mostly red, green perhaps a quarter of the time. Re-count rather than trust this line; the number moves within hours. | When red, `main`'s failure is a vendor fault with a specific signature — **not diagnostic, and NOT a licence to ignore it.** | **Match the failure SIGNATURE in the job log before dismissing it** — see the section below. A red whose signature you have not checked is an uninvestigated failure, not an inherited one. |
 | `ci:tsc` — **a step inside `verify`, not a check of its own** | GREEN — *"no new type errors (baseline 12, current 12)"* | Not red on `main`. It is a ratchet, not a zero-error gate. | Red means a NEW error signature appeared. Read the diagnostic — the program is wider than `src/`, so do not rule yourself out by path. See below. |
 | **`audit`** | GREEN | Not red on `main`. | Read the failure. |
@@ -89,8 +89,24 @@ the base tip merged with your head. Verified on run `35933689151`: `"event": "pu
   or by the *combination* of `main` and your branch, shows up in CI while appearing in neither — so
   matching those two would clear a run that CI is legitimately failing. An earlier version of this
   procedure named exactly that wrong pair.
-- **Locally, produce the tested tree the same way CI does:** merge `origin/main` into your branch (never
-  rebase) and run the suite there; compare against a run on `origin/main` alone.
+- **And a freshly-made local merge is not that run's merge either, once `main` moves.** So the two
+  states depend on which question you are asking, and they are different questions:
+
+| the question | the two trees to compare |
+|---|---|
+| *"why did THAT recorded run fail?"* | the **base SHA that run recorded** and the **exact merge commit that run checked out**. Both pinned to the run, because the run is the subject. |
+| *"is my branch sound right now?"* | `origin/main`'s current tip, and a merge of it into your head made now. Both current, because now is the subject. |
+
+  **Do not mix one from each column.** That is what every version of this procedure did, in a
+  different combination each time.
+
+  **HONEST LIMIT (§13).** Recovering a past run's exact merge commit is not something this file can
+  currently tell you how to do: the workflow-run API exposes `head_sha` — your **branch** commit, not
+  the tree that ran — and no field I checked carries the merge SHA. I did not verify whether the
+  checkout step's log records it, so I am not claiming that it does. **If you cannot reconstruct the
+  tested tree, the honest outcome is that the attribution for that run is UNPROVEN.** Re-run CI on a
+  head you control and attribute that instead; do not substitute a fresh merge and call it the same
+  run.
 
 **Why nothing else works, stated once so it does not have to be rediscovered a sixth time.** Five
 successive review rounds each killed one shortcut this section had offered, and the fifth killed the
@@ -108,8 +124,12 @@ last one:
 **The last row is the one that generalises, and it is this file's own opening mistake wearing a
 different hat: a measurement pinned to a commit cannot answer a question about the present.** That is
 why the totals went stale, why the name list cannot convict, and — a sixth round found — why "merge-base
-versus head" was itself the wrong pair: the merge-base is a pinned point too. The only sound comparison
-has both sides current AND has one of them be the tree CI actually ran.
+versus head" was itself the wrong pair: the merge-base is a pinned point too.
+
+**A seventh round then corrected the rule itself, and this is the version to keep.** The fault was never
+*pinning* — it is a MISMATCH between the question's moment and the measurement's. Asking why a recorded
+run failed requires the trees THAT run used, both pinned to it. Asking whether your branch is sound now
+requires current trees, both current. Every wrong pair in the table above took one from each column.
 
 **So the twenty names below are ORIENTATION, not evidence** — they tell you what `main`'s failure
 looked like when it was measured, which is useful for recognising the shape of a run. They cannot

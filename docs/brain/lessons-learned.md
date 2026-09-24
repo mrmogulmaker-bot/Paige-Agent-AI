@@ -2736,7 +2736,9 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      one newly broken one preserves both numbers. Same shape as the lint bug, in prose instead of code,
      written by the same author in the same change. **Compare the twenty failing test NAMES** — and even
      that only ever adds suspicion: a change can alter a listed failure *in place*, keeping its name, so
-     the only check that CLEARS a run is base-versus-head. Two successive fixes to this one paragraph
+     the only check that CLEARS a run is a comparison whose two trees match the question's moment (see
+     rule 7 — for a recorded CI run that is the run's own base SHA and the merge commit it checked out,
+     NOT the branch head, and not a merge made later). Two successive fixes to this one paragraph
      each overclaimed in the same direction before that landed.
   3. **A backstop written to cure a disease can carry it.** The line counter was added *because* the
      parser had a blind spot, and it had the same blind spot. Ask of any backstop: does this fail
@@ -2773,6 +2775,12 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      (*"what `main`'s red is, when it is red"*) and a separate column carries what would establish
      attribution for the reader's run. **Separate the two subjects rather than wording the shared one
      more carefully** — the recurrence was a sign the structure conflated them.
+     **A cell corrected FOUR times earns a different fix: stop trying to say it there.** The `verify`
+     row's attribution cell was rewritten four times and was wrong each time, because a table cell was
+     being asked to compress a procedure that branches on which question the reader is asking. It now
+     carries one sentence — *go to the section below* — and says why it no longer tries. **When a summary
+     keeps going stale against its own detail, the summary should POINT rather than restate.** A pointer
+     cannot contradict the thing it points at.
   7. **A measurement pinned to a commit cannot answer a question about the present — and that single
      sentence unifies the first and last findings in this entry.** The document's opening error was
      stale COUNTS (376 files / 5273 tests, true at one commit, wrong as soon as `main` added a test).
@@ -2781,7 +2789,7 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      which fails the moment `main` acquires a failure of its own after the measurement. Five review
      rounds each killed one shortcut (totals · failing counts · diff paths · matching names · a missing
      name) before the shape became visible: **every one was a pinned snapshot being asked about now.**
-     The only sound comparison is one whose two sides are BOTH current — here, base versus head. When
+     The only sound comparison is one whose two sides match the MOMENT the question is about. When
      you catch yourself reaching for a recorded value to decide something about the present, that is
      the trap, and the fix is never a fresher snapshot.
      **A sixth round found the rule applying to the REPAIR itself: "merge-base versus head" is also a
@@ -2792,6 +2800,14 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      nor the standalone head. **Know what your CI actually checks out before you design a comparison
      against it** — and note that the `head_sha` in a check-run event names your commit, not the tree
      that ran.
+     **A seventh round corrected this rule, and the corrected form is the one to carry: the fault is not
+     PINNING, it is a MISMATCH between the moment the question is about and the moment the measurement
+     belongs to.** "Why did that recorded run fail?" needs both trees pinned to that run. "Is my branch
+     sound now?" needs both trees current. Every wrong pair in this saga took one from each column — a
+     pinned list against a live run, a pinned merge-base against a tested merge, a current tip against a
+     historical run. And when the trees for the question you are asking cannot be reconstructed, the
+     honest answer is UNPROVEN; substituting the nearest available tree is how a confident wrong
+     attribution gets made.
   8. **The meta-pattern, and the one actually worth carrying: four of the nine findings were an
      ENUMERATION offered where a general RULE was needed.** Widen the regex to cover single quotes
      (enumerate the quote styles). Add a line counter (enumerate the layouts). Name two directories as
@@ -2801,8 +2817,8 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      list was longer and more carefully reasoned than the last, and each was defeated by the first case
      outside it, because **a boundary you have to enumerate is a boundary you have not understood.**
      The three fixes that held were all of the other kind: use the language's parser, compare against
-     the runtime rather than a second derived count, and say "base versus head" instead of listing which
-     diffs need it. When the next fix is a slightly longer list, that is the signal to stop and find the
+     the runtime rather than a second derived count, and name the comparison by the question's moment
+     instead of listing which diffs need it. When the next fix is a slightly longer list, that is the signal to stop and find the
      rule.
 - **Cross-references.** §13 (honest reporting), §32 (a green result is not a working one — this is its
   guard-shaped twin), §39 (peer-gate: all three were found by an independent read, none by the author),
