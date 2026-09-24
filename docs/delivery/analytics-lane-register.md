@@ -200,6 +200,15 @@ and **`LIVE_DRIVE_URL` + `LIVE_DRIVE_EMAIL` + `LIVE_DRIVE_PASSWORD`** set in the
 mechanism. Correcting this entry's own first draft: that is **three** variables, not two. No
 credential value is ever needed in code or in any record.
 
+**Update 2026-09-24 04:20Z — that lane has now MERGED with the proof still owed.** PR #1381 landed
+on `main` as `c43d0d94f`, and its own merge commit states: *"The authenticated live sign-in remains
+PROOF OWED."* `LIVE_DRIVE_URL`, `LIVE_DRIVE_EMAIL` and `LIVE_DRIVE_PASSWORD` remain unset here as
+well, so nothing about the blocker changed — what changed is its standing. This is no longer two
+lanes *waiting* on a prerequisite; it is a capability shipped to `main` carrying an undischarged
+authenticated proof, and a second lane (this one) queued behind the same gap. The prerequisite is
+specified, unambiguous, and nobody has run it. Verified at source from the merge commit on `main`,
+not inferred from the other lane's own account.
+
 **Independently corroborated, and recorded as a lead rather than as fact (§13).** The lane driving
 PR #1381 reached the same conclusion from the same wall — its standing check-in states that
 Playwright and Chromium work, that the installed Chromium is 1194 against a repo pinning 1234, and
