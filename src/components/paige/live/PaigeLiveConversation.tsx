@@ -152,6 +152,10 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
   // The refusal CODE, kept because one of them is the only one a person can act on themselves.
   const [reason, setReason] = useState<string | null>(null);
   const [acceptingTerms, setAcceptingTerms] = useState(false);
+  // Set once the database has refused an acceptance from THIS person. It is the difference between
+  // "we have not asked yet" and "we asked, and their consent is not what is missing" — and without
+  // it the surface re-offers a control that has already proven it cannot do anything.
+  const [consentRefused, setConsentRefused] = useState(false);
   const [pinned, setPinned] = useState(true);
   const [scrollController] = useState(() => createAnchoredTranscriptScroll({ storagePrefix: "paige-live-reading", onPinnedChange: setPinned }));
   const scrollContext = `${contextEpoch}:${threadId ?? "new"}`;
@@ -462,11 +466,18 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
       const outcome = await acceptPaigeLiveTerms();
       if (!mounted.current) return;
       if (!outcome.accepted) {
+        // THE BUG THIS REPLACES. The old branch set the explanation to the byte-for-byte sentence
+        // already on screen and left the consent panel and its button exactly as they were, so a
+        // press produced NO visible change whatsoever and was indistinguishable from a dead control.
+        // The owner pressed it and reported it broken, which is precisely §70: the code path ran and
+        // a person could not tell. A refusal is an outcome and has to look like one.
+        setConsentRefused(true);
         setReason(outcome.code ?? "live_audio_not_enabled");
-        setExplanation("Live audio isn't open for this account yet. Nothing was recorded, sent, or saved. You can keep working with Paige in this conversation.");
-        setAnnouncement("Live audio is not open for this account yet. You can keep working with Paige in this conversation.");
+        setExplanation("Live audio is not open on this platform yet. Your acceptance was not what was missing, so nothing was recorded, sent, or saved. Paige stays available in this conversation.");
+        setAnnouncement("Live audio is not open on this platform yet. Nothing was recorded or sent. Paige stays available in this conversation.");
         return;
       }
+      setConsentRefused(false);
       setReason(null);
       await retry();
     } catch {
@@ -589,9 +600,21 @@ export function PaigeLiveConversation({ disabled, contextEpoch, threadId, ensure
                     <li>Paige treats the microphone as one speaker — you. She cannot tell voices apart, so anyone else in the room is heard as you.</li>
                   </ul>
                   <p className="plc-terms__scope">This is your own decision for your own account. Nobody can make it on your behalf, and you can stop at any time.</p>
-                  <Button variant="gold" size="sm" disabled={disabled || acceptingTerms} onClick={() => void acceptTerms()}>
-                    <ShieldCheck aria-hidden />{acceptingTerms ? "Turning on Live…" : "I understand — turn on Live"}
-                  </Button>
+                  {consentRefused ? (
+                    // Once the database has refused, offering the button again would be asking the
+                    // person to repeat an act that cannot succeed. Say what is actually blocking and
+                    // who can move it, and stop pretending this is theirs to unlock (§36/§70).
+                    <p className="plc-terms__blocked">
+                      Live audio has not been opened on this platform yet, so there is nothing for you
+                      to accept right now. This is not something you can turn on from here — it is
+                      released centrally once the speech provider’s data-retention review is settled.
+                      Paige will ask you again when it is.
+                    </p>
+                  ) : (
+                    <Button variant="gold" size="sm" disabled={disabled || acceptingTerms} onClick={() => void acceptTerms()}>
+                      <ShieldCheck aria-hidden />{acceptingTerms ? "Turning on Live…" : "I understand — turn on Live"}
+                    </Button>
+                  )}
                 </div>
               )}
               <Button variant="outline" size="sm" disabled={disabled} onClick={() => void retry()}><RefreshCw aria-hidden />Retry setup check</Button>

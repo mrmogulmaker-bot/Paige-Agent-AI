@@ -5,18 +5,18 @@ import { supportsWebGL } from "@/lib/webgl";
 import "./paige-presence-3d.css";
 
 /**
- * The 3D Paige, with the flat presence underneath it as a real fallback rather than a blank.
+ * The live wave presence, with the flat presence underneath it as a real fallback rather than a blank.
  *
- * §58 — the owner-approved flat presence is NOT removed. It is what renders when WebGL is absent,
- * when the model fails to load, and when the scene throws. A corner of the Live stage with nothing
- * in it would be a worse outcome than the design that was already approved.
+ * §58 — the flat presence is NOT removed. It is what renders when WebGL is absent and when the
+ * scene throws. A corner of the Live stage with nothing in it would be worse than the simpler design.
  *
  * §32 — a failure here is LOUD. The cycle this contract exists to break is a boundary that renders
  * null on a throw, so a runtime crash and "it just didn't populate" look identical and cost hours.
  * Every degrade path logs its cause and then shows something.
  *
- * The 3.87 MB model is behind `lazy`, so it is fetched when someone opens Live and never for anyone
- * who does not.
+ * The scene is behind `lazy` so three.js is fetched when someone opens Live and never for anyone who
+ * does not. It no longer downloads a model at all: the presence is now geometry and a shader built
+ * at runtime, so the 3.87 MB GLB this wrapper used to wait on is gone from the surface entirely.
  */
 
 const PaigePresenceScene = lazy(() => import("./PaigePresenceScene"));

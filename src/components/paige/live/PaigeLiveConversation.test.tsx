@@ -650,7 +650,7 @@ describe("Paige Live Conversation owner surface", () => {
       expect(relay.connect).not.toHaveBeenCalled();
       const notice = document.querySelector(".plc-notice");
       expect(notice?.textContent).toContain("UNAVAILABLE");
-      expect(notice?.textContent).toContain("Nothing was recorded, sent, or saved");
+      expect(notice?.textContent).toContain("nothing was recorded, sent, or saved");
       // The old assertion here was `expect(getUserMedia).not.toHaveBeenCalled()`, which could never
       // fail: nothing in src/ calls getUserMedia outside tests, and the relay is mocked, so this
       // suite could not observe a microphone request even if one happened. What IS observable, and
@@ -658,6 +658,16 @@ describe("Paige Live Conversation owner surface", () => {
       // being offered rather than replaced by a claim of success.
       expect(relay.connect).not.toHaveBeenCalled();
       expect(document.querySelector(".plc-terms")).not.toBeNull();
+
+      // THE PRESS MUST BE VISIBLE. This suite passed while the control was, to a human, dead: the
+      // old branch re-set the explanation to the sentence already on screen and left the button
+      // exactly where it was, so pressing it changed literally nothing on the surface. The owner
+      // pressed it and reported it broken. A refusal is an outcome, so assert the outcome is drawn
+      // and that the control which cannot succeed is no longer offered.
+      const blocked = document.querySelector(".plc-terms__blocked");
+      expect(blocked).not.toBeNull();
+      expect(blocked?.textContent).toContain("not something you can turn on from here");
+      expect(document.querySelector(".plc-terms button")).toBeNull();
     });
 
     it("a thrown failure says so instead of silently doing nothing", async () => {
