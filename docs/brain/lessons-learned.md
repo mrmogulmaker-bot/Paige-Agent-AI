@@ -7,6 +7,34 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 ---
 
 
+### A restriction written into the identity model is indistinguishable from a single-user product (2026-09-24)
+
+**Symptom.** Live Conversation shipped as a multi-tenant capability with a 39-assertion suite fully
+green, and no Solo account other than the platform operator could use it. Each review looked correct:
+the edge callers resolved standing canonically, the tests passed, the privacy posture was honest.
+The repair that was drafted next made it worse — it kept the single-account shape and simply let the
+operator point it at one *other* membership.
+
+**Root cause.** A temporary rollout restriction was expressed as an **identity predicate**
+(`pilot_actor_user_id = _actor_user_id AND pilot_authorized_by = _actor_user_id AND
+is_platform_owner(...)` over a singleton row) instead of as **operational configuration**. Once
+eligibility is a stored user id, "restricted to one person today" and "built for one person" are the
+same code, and nothing downstream can tell them apart. The suite could not see it either: it asserted
+the restriction, and never drove a *different* active member of the *same* enabled workspace — so
+"only one person can use this" and "the rule works" were one observation, not two.
+
+**Rule.** Build the capability for the whole shell — every account of that type, resolving each
+authenticated person's own tenant, role, permissions, thread and memory — and enforce the current
+restriction as configuration: a flag, an allowlist, a gate, with each admitted subject carrying its
+own acceptance so nobody's consent stands as anybody else's authorization. Prove the refusal rather
+than asserting it, and make the negative subject a *legitimate* active member of a *legitimately*
+enabled workspace with the positive passing one line above; a negative taken against someone who
+lacks standing anyway would pass identically if the gate were never consulted. Both directions of
+this error are wrong: building for one account because a restriction exists, and assuming the
+restriction lifted because the build is multi-tenant.
+
+---
+
 ### "Backward compatible" is a claim about a REPLACE that `create or replace` may not have performed (2026-09-23)
 
 `create or replace function` cannot replace across a **differing argument list**. Given a new
