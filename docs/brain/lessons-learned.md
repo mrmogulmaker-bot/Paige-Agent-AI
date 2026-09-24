@@ -68,7 +68,43 @@ refuses it — `42725 function is not unique`, measured on production.
 drops what it supersedes, or explains why two are wanted. Where a function must stay single, count
 it in a test — `supabase/tests/record_capability_run_single_overload.sql` does, and PREPAREs the
 real call shapes so the assertion is about resolution rather than about existence.
+## `git fetch --tags` does NOT move a tag that moved — a drift report built on it is fiction (2026-09-23)
 
+- **Symptom.** The INT-178 lane reported **"13 edge functions undeployed — 4 mine, 9 other lanes'"** and
+  concluded the platform had a deploy backlog: work merging green and never reaching production. The
+  owner reasonably treated that as a serious finding. **There was no backlog.** Other lanes' work had
+  deployed normally and `edge-live` was exactly where it should have been.
+- **Root cause.** `edge-live` and `db-live` are *moved*, not created. `git fetch --tags` **silently keeps
+  an existing local tag at its old value** — updating a moved tag requires `--force`. Every
+  `git fetch origin --tags` that session returned a stale `edge-live` of `186a978f` while the remote was
+  at `2a190b71`. Measured:
+
+  ```
+  $ git rev-parse --short edge-live            # local, after plain --tags fetch
+  186a978fe
+  $ git ls-remote --tags origin edge-live      # the truth
+  2a190b71a...
+  $ git fetch origin --tags --force && git rev-parse --short edge-live
+  2a190b71a
+  ```
+
+- **Why it is worse than it looks.** Here it failed in the *alarming* direction and invented a backlog,
+  which is embarrassing but self-correcting. The same mechanism fails in the *dangerous* direction just
+  as easily: a session that force-fetched once and then reads the cached ref later reports drift as
+  **ZERO when it is not** — the §32.a false-green this evidence standard exists to prevent, produced by
+  the very command that is supposed to establish it.
+- **Rule.** **Resolve a deploy tag from the REMOTE, never from a local ref.** Use
+  `git ls-remote --tags origin db-live edge-live`, or `git fetch --tags --force` immediately before
+  reading. A drift number obtained from a plain `git fetch --tags` is not evidence and must not be
+  reported as one. And **distinguish "tag behind" from "work undeployed"** — `db-live` legitimately lags
+  `main` whenever no migrations have landed, because the tag only moves when migrations actually run; a
+  lagging tag with zero migration drift is healthy, not a backlog.
+- **Corollary, same day, same seam.** A merge is not a ship. PR #1388 merged green at `7ebdd9fe` and its
+  `deploy-edge-functions` run then FAILED on a GHCR rate limit, so `Record deployed commit` was skipped
+  and `edge-live` did not move — merged, closed, **not live**, with nothing on the PR surface saying so.
+  Confirm the tag moved before calling anything shipped (#1391, #1393).
+
+---
 
 ## Flipping a draft STARTS a review; merging in the same breath KILLS it (2026-09-23)
 
@@ -381,6 +417,16 @@ real call shapes so the assertion is about resolution rather than about existenc
   capabilities should become first-class Spine citizens; until then, don't fight the two lints — extend.
 
 ## 0a. A service_role-only RPC called from the anon+JWT seam writes NOTHING, and every gate stays green (2026-09-05)
+
+> **AMENDED 2027-04-11 — the lesson stands; the fact it rests on does not.** This entry was true
+> when written. On 2027-01-07, `20270107000000:94` added a TEN-argument overload of
+> `record_capability_run` with no GRANT and no REVOKE, so that signature defaults to `EXECUTE TO
+> PUBLIC`, and its body never calls `auth.uid()`. On that path the anon+JWT client does not get
+> `permission denied` — it WRITES THE ROW. The failure described below is loud only while the
+> signature actually invoked is locked. `20270416000000` restores the lock on both (in the repo;
+> MEASURED 2026-09-24: prod already service-role-only on both signatures; the hole is not live and the migration makes that lock reproducible). That makes the generalisation SHARPER, not weaker: check the grant against the
+> client **and against the exact signature the caller binds** — an overload is a new `pg_proc`
+> entry and inherits nothing.
 
 - **Symptom (caught in design, before it shipped).** The obvious way to make PAIGE's acts visible was
   to record once at `paige-ai-chat`'s single tool-dispatch seam, which every executed tool result
@@ -2749,3 +2795,135 @@ never the scope of what it points at.
 ### CRM mutation reach must be counted from the real command door, not tool names
 
 A Chat tool name, human CRUD screen, direct service-role branch or draft PR can all make an operation look present while bypassing tenant authority, risk, idempotency, readback or Rail. The recurrence guard is a shared action-to-tool catalogue plus contract tests proving every exposed CRM tool dispatches to the single authenticated `crm-command` door. Consequential operations need a server preview that binds exact targets, versions and dependency counts; a model `confirm` argument is never approval. Result UI must render server readback and router-owned links, not reconstructed model prose. Source-complete still is not LIVE until database/RLS, authenticated account-switch and deployment proof pass.
+### A route-level grep is not a guard audit — check the component before assigning severity
+
+**What happened (2026-09-23, Platform Reach census).** The census reported two production routes as
+carrying no auth guard: `/tenant-redesign` (`src/App.tsx:233`) and `/broker/app` (`:353`), both
+mounted with only `PageSuspense` where `/app` (`:260`) wraps in `RequireCompleteSignup`. The
+route-level observation was correct, and it was reported with an implied security severity that sent
+both onward as bug fixes. Reading the components reversed it:
+
+- `BrokerWorkspace.tsx:34-52` **guards itself** — `onAuthStateChange` bounces a signed-out visitor,
+  and `getSession()` returns to `/auth` *before* the `user_roles` read. Fails closed.
+- `src/prototype/TenantRedesign.tsx` is **deliberately public and dataless**; its own rendered copy
+  says so — *"This public design route never invents CRM records."*
+
+**The lesson (the class).** "Which routes lack a guard wrapper?" is a one-line grep and it produces a
+list that LOOKS like a security finding. It is not one until two further things are established:
+whether the component guards itself, and whether the data behind it is RLS-scoped server-side. A
+client-side `navigate("/auth")` never protects data either way — **RLS does**. So an unwrapped route
+is, on its own, a *consistency and reviewability* finding: the protection is invisible to anyone
+reading the router. It becomes a security finding only where the server-side scope is also absent.
+
+**How to catch it:** before assigning severity to any "surface X is ungated" finding, open the
+component and answer (a) does it self-guard, (b) does it hold authenticated data at all, and (c) is
+the server-side scope present. Report what you checked and name what you did not. The recurrence
+tell is a finding phrased as a property of a *route table* rather than of a *data path*.
+
+Recorded as [#1409](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/1409), which files the
+accurate, downgraded version and withdraws the overstatement rather than quietly restating it.
+
+## Do not measure a file an agent is still writing, then report it as your commit's state
+
+**2026-09-24, PR #1394.** I grepped `scripts/ci/tool-catalogue-lint.mjs` while a crew agent was
+mid-write, saw `await import("./tool-catalogue-lint.selftest.mjs")` at :217, confirmed that file did
+not exist, and concluded the self-test could not run. That was TRUE at the instant I measured it.
+
+By the time I ran `git add -A`, the agent had rewritten the file: `selfTest()` is now INLINE at :226
+and there is no external import. The self-test works and its negative fixtures bite. But my commit
+message on `1ffef5dd1` states the opposite as fact, and I repeated it to the owner.
+
+The same race produced a second defect in the same stretch. `git status` showed two changed paths, so
+I described the commit as two files. Between that check and the `git add -A`, the agent wrote two
+more — including a 524-line new lint. `1ffef5dd1` shipped four files. Then `32ed90b10`, whose message
+describes only an ACL correction, swept in 30 lines of `.github/workflows/ci.yml` and 3 of
+`package.json` that I never read before pushing. Four new CI steps entered the pipeline on a commit
+message about something else.
+
+**The rule:** a working tree with a live agent in it is not a snapshot. Either the agents write to a
+worktree of their own (`isolation: "worktree"`), or they return their work as data and the integrator
+applies it — which is what I asked for and then undercut by handing them a toolset with write access.
+`git add -A` against a moving tree is not staging; it is a gamble on timing.
+
+**And the narrower one:** never describe a commit from a `git status` taken before the work finished.
+Read `git show --stat` of what you actually committed, after committing, before writing the message
+into a report. The diff is the only account of a commit that cannot be stale.
+
+This is the same failure as the `20270412000000` citations and the receipt-ACL claim, in a third
+costume: acting on a stale read of something that moved underneath.
+
+## A migration version collision does not skip a file — it WEDGES the whole prod chain
+
+**2026-09-24, PR #1436.** Two files shared version `20270106000000`: the durable-job weekly-summary
+claims migration, which merged first and applied, and the Secure Browser control plane, which merged
+second in PR #1046. I reported this as the second file being "silently skipped," reasoning that
+`schema_migrations` is keyed on version alone so the later arrival is ignored.
+
+**That is not what happens, and the difference is the whole incident.** The deploy log:
+
+```
+Applying migration 20270106000000_paige_secure_browser_control_plane.sql...
+ERROR: duplicate key value violates unique constraint "schema_migrations_pkey" (SQLSTATE 23505)
+Key (version)=(20270106000000) already exists.
+At statement: 93
+##[error]Process completed with exit code 1.
+```
+
+`supabase db push` ran all 92 DDL statements, then failed on statement 93 — its own bookkeeping
+`INSERT` — and rolled the transaction back. Then it **exited 1**. Every migration queued behind it
+stopped. Production deploys had been failing for ~30 minutes across two merges, and the Long-Form
+durable document engine the owner merged himself was stuck behind a collision in someone else's
+feature. `main` carried 1079 distinct versions; production had 1077.
+
+**What made it invisible:** three separate green signals. Both branches passed
+`lint:migration-versions`, because `migration-version-collision-lint.mjs:97` resolves its base as
+`origin/main` — a branch only ever compares itself to trunk, never to another open branch (#1425).
+Both PRs' CI was green, because CI does not deploy. And the incident issue #198 exists and was
+commented on twice, but it is a dedup issue 29 comments deep, so a new failure looks like the old one.
+
+**The rules:**
+
+1. **A red `deploy-migrations` run is a production outage of the migration pipeline, not one
+   feature's problem.** Check it on any "why isn't this schema on prod" question before theorising.
+   The count comparison is two queries: distinct versions in `supabase/migrations/` versus rows in
+   `supabase_migrations.schema_migrations`. A gap is a wedge until proven otherwise.
+2. **Read the deploy log before explaining the mechanism.** My "silently skipped" story was coherent,
+   consistent with the evidence I had, and wrong. The log was one call away and said something
+   materially different — that the chain was blocked, not that one file was missing.
+3. **Un-wedging makes OTHER people's dormant SQL runnable.** Auditing my own migration was not
+   enough; the merge is what executes the two Long-Form migrations queued behind it. Audit
+   everything the unblock will run — destructive statements, dependency presence, and above all a
+   `UNIQUE` index on a pre-existing table. (Theirs was safe: partial, `where work_id is not null`, on
+   a column added in the same block, so zero rows were indexed at creation.)
+
+Same root as the entries above it: I explained from a plausible model instead of measuring the thing
+itself. The difference here is that the unmeasured part was not a detail in my account — it was the
+severity.
+
+## The trace's token counts exclude cached tokens, and the tenant-facing figure inherits it
+
+**2026-09-24.** Anthropic's `usage.input_tokens` is the **uncached remainder**, not the prompt size.
+True prompt = `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`. Until
+`20270421000000` nothing in the repo read either cache field, so every token-volume figure derived
+from `paige_llm_trace` was an UNDERCOUNT on any cached turn.
+
+That is not confined to an internal table. `meter_llm_usage` writes
+`quantity = tokens_in + tokens_out` into `platform_usage_events` (`20261033000000:112,126`), and
+`src/solo/billing-contract.ts:611,636` renders that as the tenant-facing **"Used this period — N
+tokens"**. So a tenant on a heavily-cached workload is shown less usage than they actually drove.
+
+**Why this is deliberate and must stay deliberate.** Cache counts were given their own columns rather
+than folded into `tokens_in` precisely because that sum is the metered quantity. Widening `tokens_in`
+would have changed every tenant's metered number as a side effect of an observability fix — a pricing
+change nobody decided (§38/§17). The exclusion is a known, chosen position, not an oversight.
+
+**What makes it safe today and what changes that.** Nothing is charged for this usage — the card says
+so in its own copy. The undercount is therefore a truthfulness gap, not a billing harm. **It becomes a
+billing harm the moment metered usage is charged**, and whoever turns that on owns this decision:
+either cache tokens enter the billable quantity, or the tenant-facing label stops implying it counts
+everything.
+
+**The rule:** before reading any token or cost total off `paige_llm_trace` or
+`platform_usage_events`, ask whether cached tokens belong in the answer. For "what did this cost us"
+they do. For "what is the tenant metered at" they currently, deliberately, do not — and those two
+numbers are not the same number.

@@ -254,6 +254,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:tool-catalogue
 
+      # The guard above also walks EVERY consecutive pair of catalogue declarations, because
+      # `list_tool_autonomy` is CREATE OR REPLACEd with its whole body: a migration written from a
+      # stale copy erases every row added after that copy was taken. That is not hypothetical — on
+      # 2026-09-13 a lane whose migration sorted EARLIER than the tip had 25 governed CRM rows
+      # erased the moment it merged, and shipped a second migration to put them back. The check is
+      # pre-merge: a PR branch already carries the other lane's migration. This proves it bites,
+      # including the case where grading only the newly-added file would pass.
+      - name: ...and the catalogue guard fails when a declaration erases rows
+        if: ${{ !cancelled() }}
+        run: npm run lint:tool-catalogue:test
+
       # Every reason `tenant_comms_readiness()` can BLOCK a tenant for must have a
       # next step on the surface that renders it. The two halves live in a SQL
       # migration and a React file, reviewed at different times by different eyes,
@@ -303,6 +314,27 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:action-risk
 
+      # Risk classification fails CLOSED and is gated above. Evidence coverage did not: which
+      # capabilities write a receipt was three hand-maintained Sets with no guard, so a lane could
+      # classify a new write tool correctly, ship it, emit no receipt, and nothing would say so.
+      # This asks for a DECLARATION rather than detecting emission, because a static detector
+      # cannot reliably tell which tool a recordCapabilityRun call belongs to.
+      - name: Every classified mutation declares whether it writes a receipt
+        if: ${{ !cancelled() }}
+        run: npm run lint:receipt-coverage
+
+      - name: Receipt-coverage guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:receipt-coverage:test
+
+      # The sibling DEFINER guard matches an EXPLICIT grant to anon/PUBLIC, per file, by name. It
+      # is blind to a function with NO acl at all (which inherits EXECUTE TO PUBLIC) and to a new
+      # OVERLOAD of a name whose sibling it already saw granted. That is how record_capability_run
+      # lost its lock. `lint:definer-fns` now runs both rules; this proves the new one bites.
+      - name: DEFINER signature-ACL guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:definer-fns:test
+
       # Three separate slices independently built a SECOND way to prove the operator approved
       # something (#709, #711, #718). Each was competent alone; a door with three locks is only
       # as strong as the weakest, and nobody inspects the weak one. This fails a new channel —
@@ -318,6 +350,25 @@ jobs:
       - name: No new tool is hand-wired into the Chat handler
         if: ${{ !cancelled() }}
         run: npm run lint:chat-tool-registry
+
+      # THE MODEL↔SPINE SEAM, which nothing held before. `lint:tool-catalogue` holds
+      # runtime↔operator; this holds "every tool the model can call is DECLARED by a domain".
+      # Measured on this tree: 154 tools on the maximum model surface, 65 declared, 89 not —
+      # and 46 of those 89 MUTATE, so they can act unattended the moment a tenant sets them to
+      # `auto`. A RATCHET on that gap (exact keys with their kind, never a bare count: a read
+      # tool that later gains a risk class fails even though membership stayed flat), and a
+      # WALL on agreement — where a tool has both a Spine capability and an action-risk class
+      # they must not contradict each other, which has zero violations today.
+      - name: Every model-callable tool is declared by a domain (capability ratchet)
+        if: ${{ !cancelled() }}
+        run: npm run lint:capability-declaration
+
+      # The guard's own proof, including a negative fixture that drives the REAL check against a
+      # baseline with one entry removed and asserts it exits non-zero. A guard nobody proved can
+      # fail is theatre.
+      - name: Capability declaration guard can actually fail
+        if: ${{ !cancelled() }}
+        run: npm run lint:capability-declaration:test
 
       - name: Chat-tool registry ratchet catches what it claims to
         if: ${{ !cancelled() }}
