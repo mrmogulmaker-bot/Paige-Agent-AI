@@ -216,10 +216,13 @@ SCRATCH=$(mktemp -d)                                   # the block owns its scra
 git worktree add --detach "$SCRATCH/wt-base" "$BASE"   # baseline: the merge's FIRST PARENT
 git worktree add --detach "$SCRATCH/wt-head" "$REF"    # tested tree: the MERGE, not $REF^2
 for w in wt-base wt-head; do
-  ( cd "$SCRATCH/$w" && npm ci && npm run test ) > "$SCRATCH/$w.log" 2>&1
-  echo "$w exit $?"                                    # read it here — the next command clobbers it
+  ( cd "$SCRATCH/$w" && npm ci ) > "$SCRATCH/$w.install.log" 2>&1 \
+    || { echo "$w: npm ci FAILED — a SETUP failure, not a test result"; break; }
+  ( cd "$SCRATCH/$w" && npm run test ) > "$SCRATCH/$w.suite.log" 2>&1
+  echo "$w suite exit $?"                              # read it here — the next command clobbers it
+  grep -oE '× .+' "$SCRATCH/$w.suite.log" | sed 's/ [0-9]*ms$//' | sort > "$SCRATCH/$w.names.log"
 done
-diff "$SCRATCH/wt-base.log" "$SCRATCH/wt-head.log"     # READ it; its exit is always 1 — see below
+diff "$SCRATCH/wt-base.names.log" "$SCRATCH/wt-head.names.log"   # EMPTY = same failures = inherited
 rm -f "${SCRATCH:?}"/*.log && git worktree remove "$SCRATCH/wt-base" &&
   git worktree remove "$SCRATCH/wt-head" && rmdir "$SCRATCH"
 ```
@@ -229,12 +232,28 @@ that is the situation you are attributing — so streaming them both to one term
 of failures and leaves nothing to compare; `diff` needs two artifacts. The run's own exit status has to be
 read on the line straight after the subshell, because the next command replaces it.
 
-**`diff`'s exit status is NOT the verdict, and treating it as one inverts the answer.** It is always 1: two
-runs of *identical* work differ on timestamps and durations. Measured by running one test file twice in the
-same tree — **6 differing lines**, every one of them noise: a `[vite]` deprecation warning carrying a wall
-clock time, `Start at`, and `Duration`. So read the diff rather than its exit code, and the verdict is
-whether a failing **name or message** appears on one side and not the other. Everything else it prints is
-that noise.
+**The install is a SEPARATE step because an install failure is not a test failure, and conflating them
+produces the worst output this drill can give you.** Chained as `npm ci && npm run test`, a registry blip or
+a lockfile problem yields the same nonzero exit a failing suite does, the suite never runs, and two trees
+that were never tested produce two logs with no differing test name between them — which reads, by the rule
+below, as a confident **"inherited"**. So the install gets its own log and its own failure message, the loop
+stops rather than continuing, and the missing suite log then makes `diff` fail loudly instead of comparing
+two absences.
+
+**Compare the extracted failing NAMES, never the raw logs — measured at full scale, the raw diff reads as
+dozens of regressions when nothing regressed.** A real pair of full suite runs across two worktrees differs
+on **1074 lines**: **942** of them carry the worktree's own path, because it appears in every stack frame;
+52 are timings; and all **36** failing-name lines show as changed for no reason but vitest appending a
+per-test millisecond figure (`9ms` against `18ms`). Strip the duration, sort, and compare the name sets
+instead: on that same pair the two sets came out byte-identical and `diff` exited **0** — which is the
+inherited verdict, and a comparison whose exit status means something again. The raw suite logs stay on disk
+for reading the *message* behind anything the name comparison does flag.
+
+**Two limits on that extraction, both of which it is better to know than to discover.** It relies on
+vitest's `×` marker, so if the reporter's output changes, re-derive the pattern from the log in front of you
+rather than trusting this line — keeping the raw logs is what makes that possible. And **two EMPTY name sets
+mean either that nothing failed or that nothing ran**: read the two `suite exit` lines and the log's own
+summary before taking an empty comparison as inherited.
 
 **Clean up in that order, and note the `:?`.** Delete the logs before removing the worktrees, or `rmdir`
 fails on a directory that is not empty — and
@@ -463,9 +482,9 @@ claiming the in-flight findings still apply. They do not; they were never delive
 
 | Question | Command | Meaning |
 |---|---|---|
-| Which commit is live on the edge? | `git tag -l edge-live --format='%(objectname:short)'` | Moved by `deploy-edge-functions` on success. |
-| Which commit's migrations are applied? | `git tag -l db-live --format='%(objectname:short)'` | Moved by `deploy-migrations` on success. |
-| Any edge drift? | `git diff --name-only edge-live..origin/main \| python3 .github/scripts/edge-affected.py` | Empty output = zero functions ahead of prod. |
+| Which commit is live on the edge? | `git ls-remote --tags origin edge-live` | Moved by `deploy-edge-functions` on success. **Ask the REMOTE.** `git tag -l` reads your local copy, which a fetch does not refresh by default and which goes stale the moment prod deploys — measured on this branch's own checkout: local `edge-live` sat 9 commits behind the remote one, which computed **27 functions of drift that did not exist**. |
+| Which commit's migrations are applied? | `git ls-remote --tags origin db-live` | Moved by `deploy-migrations` on success. Same stale-local hazard as the row above; it was stale here too. |
+| Any edge drift? | `git diff --name-only edge-live..origin/main \| python3 .github/scripts/edge-affected.py` — then check `${PIPESTATUS[0]}` | Empty output = zero functions ahead of prod, **but only if git actually succeeded.** A missing or mistyped tag prints `fatal:` to *stderr*, exits **128**, and hands the resolver nothing, so the pipeline's stdout is empty exactly as it is when there is no drift (measured). Same hazard on the row below when `<base>` is wrong. A setup failure that looks identical to the good answer is the one to guard, here as everywhere in this file. |
 | Which functions would my change redeploy? | `git diff --name-only <base>..HEAD \| python3 .github/scripts/edge-affected.py` | The resolver's own verdict. **Use this rather than guessing** — a change to a `_shared` module can redeploy a dozen functions while a change to an unimported one redeploys none. |
 
 ---
