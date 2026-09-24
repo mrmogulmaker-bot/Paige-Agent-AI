@@ -2797,9 +2797,12 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      `actions/checkout@v4`, so CI checks out the synthetic MERGE ref — base tip merged with head
      (verified: run `35933689151`, `"event": "pull_request"`). A failure introduced by current `main`, or
      by the combination of `main` and the branch, therefore appears in CI and in neither the merge-base
-     nor the standalone head. **Know what your CI actually checks out before you design a comparison
-     against it** — and note that the `head_sha` in a check-run event names your commit, not the tree
-     that ran.
+     nor a head that does not contain the base. **Know what your CI actually checks out before you design
+     a comparison against it** — and note that the `head_sha` in a check-run event names your commit, not
+     the tree that ran. One carve-out, measured later and worth knowing because it removes all the
+     gymnastics: once `origin/main` is an ANCESTOR of the head, the merge ref's tree equals the head's
+     tree, so the head IS the tested tree — verify it by comparing the two `^{tree}` SHAs rather than
+     assuming it.
      **A seventh round corrected this rule, and the corrected form is the one to carry: the fault is not
      PINNING, it is a MISMATCH between the moment the question is about and the moment the measurement
      belongs to.** "Why did that recorded run fail?" needs both trees pinned to that run. "Is my branch
