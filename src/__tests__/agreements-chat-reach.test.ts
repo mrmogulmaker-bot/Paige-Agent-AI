@@ -18,7 +18,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { PAIGE_SPINE_CAPABILITIES, validateSpineRegistry, getSpineCapability } from "@/../supabase/functions/_shared/paige-spine/registry.ts";
-import { AGREEMENT_TOOLS } from "@/../supabase/functions/_shared/paige-spine/domains/agreement.ts";
+import { AGREEMENT_DRAFT_CAPABILITY, AGREEMENT_TOOLS } from "@/../supabase/functions/_shared/paige-spine/domains/agreement.ts";
 import { readAgreements, AGREEMENT_STATUSES } from "@/../supabase/functions/_shared/agreements/chat-read.ts";
 
 /** A caller-JWT rpc port double. Records every call so the arguments can be asserted. */
@@ -93,18 +93,70 @@ describe("INT-178 · agreements are reachable from the Spine", () => {
     }
   });
 
-  it("exposes exactly two chat tools, both named for reading and neither for sending", () => {
+  /**
+   * THIS ASSERTION CHANGED ON 2026-09-24, DELIBERATELY AND WITH ITS INTENT KEPT (§58).
+   *
+   * It used to read "exactly two chat tools, both named for reading and neither for sending" and
+   * it fired the moment `agreement_draft` landed — correctly, because it was guarding a real
+   * boundary. What it was actually protecting is NOT "every tool is a read". It is "nothing here
+   * reaches the client", and that is unchanged and still asserted below for every tool including
+   * the write. A draft is invisible outside the workspace and mints no signing link.
+   *
+   * The list stays EXACT rather than becoming a `toContain`, because the whole value of this test
+   * is that a fourth tool — a send, a resend, a void — cannot appear here without a human reading
+   * this comment first.
+   */
+  it("exposes three chat tools: two reads and one draft, and not one of them sends", () => {
     const names = AGREEMENT_TOOLS.map((t) => t.function.name);
-    expect(names).toEqual(["agreement_list", "agreement_status"]);
+    expect(names).toEqual(["agreement_list", "agreement_status", "agreement_draft"]);
     // The registered chatTool and the model-facing schema must be the same string, or the model
     // calls a name the dispatcher does not answer to and the capability is registered-but-dead.
     expect(names).toEqual(
-      ["agreement.list", "agreement.status"].map((k) => getSpineCapability(k)?.action?.chatTool),
+      ["agreement.list", "agreement.status", "agreement.draft"].map(
+        (k) => getSpineCapability(k)?.action?.chatTool,
+      ),
     );
-    for (const tool of AGREEMENT_TOOLS) {
+
+    const reads = AGREEMENT_TOOLS.filter((t) => t.function.name !== "agreement_draft");
+    expect(reads).toHaveLength(2);
+    for (const tool of reads) {
       expect(tool.function.description).toMatch(/READ-ONLY/);
       expect(tool.function.description).toMatch(/never sends/i);
     }
+
+    // THE WRITE CARRIES ITS OWN BOUNDARY, in the words a model actually reads. It must say it
+    // writes — a write that reads as a read is how a model reports work it never did — and it must
+    // say plainly that it does not send.
+    const draft = AGREEMENT_TOOLS.find((t) => t.function.name === "agreement_draft")!;
+    expect(draft.function.description).toMatch(/It WRITES/);
+    expect(draft.function.description).toMatch(/does NOT send/);
+    expect(draft.function.description).not.toMatch(/READ-ONLY/);
+
+    // EXACTLY ONE MUTATION among the agreement capabilities, and it is this one. A send or a void
+    // arriving later trips this line rather than slipping in beside the draft.
+    const mutations = ["agreement.list", "agreement.status", "agreement.draft"]
+      .map((k) => getSpineCapability(k))
+      .filter((c) => c?.action?.classification === "mutate");
+    expect(mutations.map((c) => c?.key)).toEqual(["agreement.draft"]);
+    expect(mutations[0]?.action?.approvalAuthority).toBe("chat-canonical");
+  });
+
+  /**
+   * THE DECLARATION IS ONLY A GUARD IF IT RUNS. `capability-kit-lint` reads `governance.actionRiskKey`
+   * and never `governance.risk`, so a declaration whose class contradicts the canonical policy passes
+   * CI and throws at the first cold start — measured: with `risk` flipped to "high", the lint exits 0
+   * while importing the module throws "Capability risk must match the canonical action-risk policy."
+   *
+   * The thing that closes that gap is this file IMPORTING the module at all, which executes the
+   * declaration under vitest. Asserting on the constructed object keeps that import load-bearing, so
+   * nobody later "tidies" it into a type-only import and silently reopens the hole.
+   */
+  it("constructs its governed declaration at import, which is what catches a risk that contradicts the policy", () => {
+    expect(AGREEMENT_DRAFT_CAPABILITY.identity.id).toBe("agreement.draft");
+    expect(AGREEMENT_DRAFT_CAPABILITY.governance.actionRiskKey).toBe("agreement_draft");
+    expect(AGREEMENT_DRAFT_CAPABILITY.governance.risk).toBe("ordinary");
+    // The kit derives approval from the canonical class rather than taking the declaration's word.
+    expect(AGREEMENT_DRAFT_CAPABILITY.governance.approval).toBe("confirm");
   });
 });
 

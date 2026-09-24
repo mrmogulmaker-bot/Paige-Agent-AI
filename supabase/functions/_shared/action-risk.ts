@@ -290,9 +290,18 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // passes CI and throws on import. Not filed as a tracked task; recorded at
   // `scripts/ci/capability-kit-lint.mjs`'s `direct-risk-entry` comment with its falsifying input.
   //
-  // So the entries below are landable whenever the agreements chat-tool work is sequenced. They are
-  // still absent because that wiring is its own slice, not because anything blocks it. The
-  // agreements engine already ships its RPC seams (§10 — Paige-callable).
+  // SEQUENCED, 2026-09-24. `agreement_draft` is landed below — the first of the five, and the first
+  // production `defineCapability()` declaration in this repository, so the contract this note states
+  // is now walked rather than described. The remaining four stay absent for the same reason the READ
+  // half shipped first (domains/agreement.ts:19-21): the send path has a real client on the other end
+  // of it, and each outward-facing key earns its own slice, its own confirm copy and its own proof.
+  //
+  // `agreement_draft` is `ordinary` on the reasoning already given above: a draft is visible to
+  // nobody outside the workspace, the RPC re-proves tenant and membership in its own body, and the
+  // tier trigger refuses a workspace whose plan does not carry agreement signing. It mints rather
+  // than converges, which is a truthfulness problem for its idempotency sentence and not a risk one —
+  // the confirm fingerprint is what stops a second draft, and that is stated where callers read it.
+  ["agreement_draft", "ordinary", "drafts or revises an agreement inside the workspace — nothing is sent, no signing link is minted, and nobody outside the tenant can see it; the RPC re-proves tenant and membership under the caller's own JWT, and a blind retry with no agreement id mints a second draft rather than converging, which the confirm card is what prevents"],
   ["calendar_link_send", "high", "sends a published calendar's public booking link to a real contact by email or SMS — outward-facing; the server refuses a non-public calendar and the comms seam refuses a cross-tenant, suppressed, or unconsented recipient, and it never posts to social or books a meeting"],
   ["deal_create", "ordinary", "adds an opportunity"],
   ["deal_move_stage", "ordinary", "moves a deal between stages"],

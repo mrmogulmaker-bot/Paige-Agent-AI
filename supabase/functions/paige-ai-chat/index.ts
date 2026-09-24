@@ -13,6 +13,7 @@ import { prepareCalendarLinkShare, sendCalendarLink, calendarLinkSocialCopy, typ
 // (`public.paige_agreement_overview`); the send stays on `agreement-send` behind the confirm gate.
 import { AGREEMENT_TOOLS } from '../_shared/paige-spine/domains/agreement.ts';
 import { readAgreements } from '../_shared/agreements/chat-read.ts';
+import { draftAgreement } from '../_shared/agreements/chat-write.ts';
 import { N8N_MANAGEMENT_TOOLS, runN8nManagement } from '../_shared/n8n-management.ts';
 const N8N_MANAGEMENT_TOOL_NAMES = new Set(N8N_MANAGEMENT_TOOLS.map(tool => tool.function.name));
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -262,6 +263,18 @@ function describeStep(
     case "calendar_link_social_copy": return { label: "Prepared social post copy", group: "owner", detail: "copy-ready · nothing posted" };
     // Agreements (INT-178) — both are READS, so neither can report a send. The detail says how many
     // were read, never that anything was delivered or signed.
+    // The one agreement WRITE. It drafts; it never sends, so this chip must never read as delivery.
+    case "agreement_draft": {
+      if (failed) return { label: "Couldn't draft that agreement", group: "owner" };
+      // CREATED vs REVISED, because a silently-created duplicate is this tool's likeliest mistake
+      // and the chip is where the person would first notice it.
+      const made = out?.created === true;
+      return {
+        label: made ? "Drafted a new agreement" : "Revised the draft agreement",
+        group: "owner",
+        detail: typeof out?.title === "string" ? `${out.title} — not sent` : "Not sent",
+      };
+    }
     case "agreement_list":
     case "agreement_status": {
       if (failed) return { label: "Couldn't read your agreements", group: "owner" };
@@ -7426,6 +7439,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       calendar_link_prepare: "preparing a booking link to share",
       calendar_link_send: "sending a booking link to a contact",
       calendar_link_social_copy: "preparing social post copy for a booking link",
+      agreement_draft: "drafting an agreement",
       agreement_list: "checking where your agreements stand",
       agreement_status: "checking a client's agreement",
       update_client_data: "saving details to a client's file",
@@ -12708,6 +12722,68 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           } catch (e) {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:"The booking link was not shared.", note:"No send ran and no delivery may be claimed." }) });
           }
+        } else if (tc.function.name === "agreement_draft") {
+          // INT-178 — AGREEMENTS, the first WRITE. It executes the ONE governed seam
+          // (`public.save_paige_agreement`) through `_shared/agreements/chat-write.ts`.
+          //
+          // IT DRAFTS, AND IT DOES NOT SEND. No signing link is minted and nothing reaches the
+          // client. The outward-facing keys stay unbuilt until each earns its own slice.
+          //
+          // THE CALLER'S CLIENT, NOT THE ADMIN ONE — the same reasoning as the read below, and it
+          // matters more here because this writes. The RPC is SECURITY DEFINER and re-proves
+          // authentication, the expected tenant, owner-or-admin, and the client's membership from
+          // `auth.uid()` in its own body (§59); every one of those is NULL under the service role,
+          // so `supabase` here would refuse everything rather than permit more.
+          //
+          // THE CONFIRM GATE IS NOT SKIPPED. Unlike the reads, `agreement_draft` is classified in
+          // action-risk.ts, so it is in MUTATING_TOOLS and reaches this dispatch only once the gate
+          // has cleared it — which is also what stops a blind retry minting a second draft, since
+          // nothing in the RPC dedupes a create.
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const tid = personaCtx?.tenant_id ?? null;
+            const r = await draftAgreement({
+              caller: supabaseClient,
+              expectedTenantId: tid,
+              contactId: args.contactId ?? null,
+              title: args.title ?? null,
+              bodyMarkdown: args.bodyMarkdown ?? null,
+              agreementId: args.agreementId,
+            });
+            await recordCapabilityRun(supabase, {
+              tenantId: tid,
+              actorId: user.id,
+              capabilityKey: tc.function.name,
+              // EXHAUSTIVE over `AgreementWriteFailure`, for the reason the read states: a failure
+              // mode added later must be a compile error here rather than silently inheriting
+              // "refused" and writing a falsehood into the one artifact whose job is truth.
+              // `no_readback` is deliberately `capability_failed` — the write MAY have landed, and
+              // recording it as a refusal would assert something nobody established.
+              outcome: !r.success
+                ? ((): "capability_refused" | "capability_failed" => {
+                    switch (r.reason) {
+                      case "unavailable":
+                      case "no_readback": return "capability_failed";
+                      case "refused":
+                      case "conflict":
+                      case "already_sent":
+                      case "no_workspace":
+                      case "empty_title":
+                      case "empty_body":
+                      case "bad_agreement_id":
+                      case "bad_contact_id": return "capability_refused";
+                      default: { const _never: never = r.reason; return "capability_refused"; }
+                    }
+                  })()
+                : "capability_succeeded",
+              // Deliberately NO `detail`, for the same reason the read gives: `redactDetail` scrubs
+              // on KEY NAME only, and an agreement's title is the client's business.
+            });
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(r) });
+          } catch (e) {
+            console.error("[agreements] draft dispatch threw", { reason: e instanceof Error ? e.message : "unknown" });
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:"That agreement could not be drafted just now. Nothing was written, and nothing was sent." }) });
+          }
         } else if (tc.function.name === "agreement_list" || tc.function.name === "agreement_status") {
           // INT-178 — AGREEMENTS, the READ half. Both tools execute the ONE governed seam
           // (`public.paige_agreement_overview`) through `_shared/agreements/chat-read.ts`.
@@ -12956,6 +13032,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // Values that are deliberately NOT tables are declared as such in that guard, not left to be
       // guessed from context.
       const WRITE_TARGET: Record<string, string> = {
+        agreement_draft: "paige_agreements",
         crm_create_contact: "clients", crm_update_contact: "clients",
         crm_archive_contact: "clients", crm_restore_contact: "clients",
         crm_link_contact_company: "clients", crm_unlink_contact_company: "clients",
