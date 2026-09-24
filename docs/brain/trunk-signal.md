@@ -137,13 +137,18 @@ Guessing it from the author is how you end up attributing against a tree that wa
   consume it. The two agree often enough to hide this — they agree as this line is written — which is why
   the rule is to take the first parent rather than to check whether it matters.
 
-So the two states depend on which question you are asking, and they are different questions:
+So the two states depend on which question you are asking, and they are different questions. **One rule
+spans both `pull_request` rows, and it is the only baseline worth remembering: the baseline is the merge
+commit's FIRST PARENT.** Which *merge* differs — the one that run checked out, or the one the ref points
+at now — but never the base from somewhere else, because every other candidate can drift from the merge
+it is supposed to pair with. `github.event.pull_request.base.sha` drifts because GitHub does not advance
+it; your local `origin/main` drifts because nothing fetched it.
 
 | the question | the two trees to compare |
 |---|---|
 | *"why did THAT recorded `pull_request` run fail?"* | the **exact merge commit that run checked out** and **its own FIRST PARENT**. Both pinned to the run, because the run is the subject — and the first parent IS the base tip that merge used, so it cannot drift from it. **Do not use `github.event.pull_request.base.sha` here**: see the row below. |
 | *"why did THAT recorded `workflow_dispatch` run fail?"* | the **dispatched commit** — which for a dispatch IS the tested tree, so `head_sha` is enough — and the **`main` tip that run fetched**. |
-| *"is my branch sound right now?"* | `origin/main`'s current tip, and the PR's **current merge ref** — `refs/pull/<N>/merge`, fetched, not hand-built (see below). Both current, because now is the subject. |
+| *"is my branch sound right now?"* | the PR's **current merge ref** — `refs/pull/<N>/merge`, fetched, not hand-built (see below) — and **its own FIRST PARENT**. Both current, because now is the subject. **Not your local `origin/main`**: fetching the merge ref does not update it, so a stale `origin/main` can predate the base that merge was built on, and then the comparison carries `main`-only changes into your branch's column. |
 
   **Do not mix one from each row.** That is what every version of this procedure did, in a different
   combination each time.
@@ -164,8 +169,11 @@ which is the same tree a bare `actions/checkout@v4` hands CI:
 
 ```sh
 PR=<your PR number>            # NOT a number copied out of this file
-git fetch origin "refs/pull/$PR/merge:refs/remotes/origin/pr-$PR-merge"
-git log --format='%H %P' -1 "refs/remotes/origin/pr-$PR-merge"   # prints BOTH parents — read them
+REF=refs/remotes/origin/pr-$PR-merge
+git fetch origin "refs/pull/$PR/merge:$REF"
+git log --format='%H %P' -1 "$REF"     # the merge and BOTH parents — read them
+BASE=$(git rev-parse "$REF^1")         # <- the baseline. NOT origin/main, which this fetch did not touch
+HEAD_CMT=$(git rev-parse "$REF^2")     # the head COMMIT that merge carries, if you want to check it is yours
 ```
 
 Prefer it over `git merge` in a scratch worktree: a hand-made merge is *a* merge of those two commits,
@@ -187,7 +195,9 @@ git rev-parse "refs/remotes/origin/pr-$PR-merge^{tree}" "HEAD^{tree}"   # two li
 Measured here: merge ref `f81bb721f` (parents `bad21bed6` + `e986d4eff`) and head `e986d4eff` both
 resolve to tree `1676c222…`. That turns the "is my branch sound right now?" run into an ordinary run on
 your own checkout — **and it is the only condition under which running the suite on your head answers
-the question**, which is why the standalone head is a dead shortcut everywhere else.
+the question**, which is why the standalone head is a dead shortcut everywhere else. The baseline is
+still `$BASE` above, the merge's first parent, **not** `origin/main`: being an ancestor does not make a
+stale local ref equal to the tip that merge was built on.
 
 **The `$PR` variable is not decoration.** The first version of this block hard-coded the PR it was
 written on, which would have sent every later lane to fetch *that* PR's merge ref and then validate

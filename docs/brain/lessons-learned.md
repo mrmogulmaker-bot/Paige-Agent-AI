@@ -2737,8 +2737,9 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      written by the same author in the same change. **Compare the twenty failing test NAMES** — and even
      that only ever adds suspicion: a change can alter a listed failure *in place*, keeping its name, so
      the only check that CLEARS a run is a comparison whose two trees match the question's moment (see
-     rule 7 — for a recorded CI run that is the run's own base SHA and the merge commit it checked out,
-     NOT the branch head, and not a merge made later). Two successive fixes to this one paragraph
+     rule 7 — for a recorded `pull_request` CI run that is **the merge commit it checked out and that
+     merge's own first parent**, NOT the branch head, NOT a merge made later, and NOT the payload's
+     `base.sha`, which does not advance with the base branch and was measured four commits stale). Two successive fixes to this one paragraph
      each overclaimed in the same direction before that landed.
   3. **A backstop written to cure a disease can carry it.** The line counter was added *because* the
      parser had a blind spot, and it had the same blind spot. Ask of any backstop: does this fail
@@ -2808,7 +2809,13 @@ A Chat tool name, human CRUD screen, direct service-role branch or draft PR can 
      belongs to.** "Why did that recorded run fail?" needs both trees pinned to that run. "Is my branch
      sound now?" needs both trees current. Every wrong pair in this saga took one from each column — a
      pinned list against a live run, a pinned merge-base against a tested merge, a current tip against a
-     historical run. And when the trees for the question you are asking cannot be reconstructed, the
+     historical run. **Where a merge exists at all — i.e. a `pull_request` run — the baseline half has
+     exactly one right answer in both columns: that merge commit's FIRST PARENT.** Anything else you
+     might reach for can drift from the merge it is meant to pair with — the payload `base.sha` because
+     GitHub never advances it, a local `origin/main` because fetching the merge ref does not update it.
+     A `workflow_dispatch` run has no merge and therefore no first parent (rule 10), so its baseline is
+     the `main` tip that run fetched, which is not recoverable afterwards — that is an UNPROVEN
+     attribution, not a licence to substitute today's tip. And when the trees for the question you are asking cannot be reconstructed, the
      honest answer is UNPROVEN; substituting the nearest available tree is how a confident wrong
      attribution gets made.
   8. **The meta-pattern, and the one actually worth carrying: four of the findings were an
