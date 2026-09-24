@@ -1,4 +1,4 @@
-# The presence is her voice, and the console stops scrolling
+# The presence is a pulsing 3D orb, and the console stops scrolling
 
 Existing Project / R3 Deep. Three defects the owner found within minutes of opening the Live surface
 on production, plus one this work caught on the way past.
@@ -13,20 +13,39 @@ the owed visual check became his problem — the §32 failure mode in its exact 
 It is replaced, not retextured (§30). The loader, the model, the normalisation pass and the lighting
 rig are gone from the file, and the smoke asserts their absence rather than trusting it.
 
-## What replaces it is the voice
+## What replaces it took three rejected attempts to find
 
-The owner ruled the platform's other orbs the wrong reference, so none is borrowed — not the flat
-presence's lobe silhouette, not the landing hero, not the studio field. A strand carries her speech
-across the frame: amplitude lifts it, and spectral brightness decides the SHAPE of the lift, so a
-bright consonant reads as tight chop and a vowel as a long swell. Two terms whose balance shifts,
-rather than one sine scaled by loudness — a single frequency with a volume knob is an amplitude meter,
-and an amplitude meter is not expression.
+Recorded because the path is the evidence. **Hairline strands** were rejected as a bleep — a stroke
+has no mass. **A filled waveform ribbon** was rejected as a streaming audio meter — a form travelling
+left to right is a level display, not someone speaking. What the owner asked for, and what ships, is
+an **isolated orb in real 3D that pulses as a whole object** while its surface carries the wave.
+
+The motion is deliberately two things at once. The BODY pulses: the entire radius swells and settles
+with her amplitude, which is the beat. The SURFACE waves: travelling bands run across it, with fine
+chop added on bright consonants so a consonant reads differently from a vowel. A body that only
+pulsed would be a throbbing ball; a surface that only rippled would be a textured sphere sitting
+still. The shading normal is recomputed from the displaced neighbours rather than inherited from the
+undeformed sphere, so light travels across the real shape — that, plus a perspective camera, is what
+makes it read as an object instead of a lit disc.
+
+The platform's other orbs are explicitly NOT referenced: not the flat presence's lobe silhouette, not
+the landing hero, not the studio field.
 
 **Calm while she is being spoken to.** `presenceFrame` reports energy for listening as well as
 speaking, which is right for a generic presence and wrong for this one: when someone interrupts her
-she is receiving, so the wave settles below its resting breath and the gold drains out. The gate lives
-in presentation and can only ever REMOVE motion, never manufacture it, so the honesty contract is
-untouched.
+she is receiving, so the body settles and the gold drains out. The gate lives in presentation and can
+only ever REMOVE motion, never manufacture it, so the honesty contract is untouched.
+
+**Working and thinking are visible states.** They were indistinguishable from idle in the first
+build, because `presenceFrame`'s busy cadence feeds fields the presence does not read. Each now
+carries its own steady ripple at its own amplitude — not an audio cue and making no claim about
+hearing, driven by the job state the product already resolves.
+
+**The controls show their own state.** A footer of five identical outline buttons could not tell
+anyone they were muted, that the session was held, or that Paige was talking. Engaged toggles carry
+indigo because that is state; Interrupt carries gold, and only while she is actually speaking, so the
+body turning gold and the control that stops her are one signal in two places rather than two accents
+competing (§11).
 
 ## The stage never scrolls
 

@@ -4,49 +4,56 @@ import * as THREE from "three";
 import { presenceFrame, SILENT_ENERGY, type AudioEnergy, type PresenceState } from "@/lib/paigeLiveConversation/presence";
 
 /**
- * Paige talking, drawn as the voice itself.
+ * Paige talking, as a single body in three dimensions.
  *
- * WHAT THIS IS, AND THE TWO THINGS IT DELIBERATELY IS NOT. It is not a character: the sculpted
- * figure shipped here first and was rejected on sight, because a humanoid in the corner of a call is
- * a costume for presence rather than presence. It is not an orb either, and specifically not a
- * relative of the other orbs on this platform — the owner ruled those the wrong reference, so the
- * flat presence's lobe silhouette, the landing hero and the studio field are all deliberately NOT
- * borrowed from here. This is a wave. Her speech, given a body.
+ * THE THREE THINGS THIS IS NOT, EACH LEARNED THE EXPENSIVE WAY. Not a character: a sculpted humanoid
+ * shipped here first and was rejected on sight, because a figure in the corner of a call is a costume
+ * for presence rather than presence. Not a stroke: the next build drew hairline strands and read as a
+ * bleep, because a line has no mass. Not a running waveform either: the build after that filled the
+ * strip into a ribbon, and a ribbon travelling left to right is a streaming audio meter, not someone
+ * speaking. What was asked for, and what this is, is an ISOLATED ORB THAT PULSES AS A WHOLE OBJECT
+ * and carries the wave ON ITS SURFACE.
  *
- * THE ONE IDEA. A strand carries her voice across the frame. Amplitude lifts it; spectral
- * brightness decides the SHAPE of the lift, so a bright consonant reads as tight chop and a vowel as
- * a long swell. That is the "moving with her expressions" requirement, and it is why the wave is
- * built from two terms whose balance shifts rather than one sine with a volume knob — a single
- * frequency scaled by loudness is an amplitude meter, and an amplitude meter is not expression.
+ * SO THE MOTION HAS TWO PARTS, AND BOTH MATTER. The BODY pulses — the entire radius swells and
+ * settles with her amplitude, which is the beat you feel. The SURFACE waves — travelling bands run
+ * across it, with fine chop added on bright consonants. A body that only pulsed would be a throbbing
+ * ball; a surface that only rippled would be a textured sphere sitting still. Speech is both at once.
  *
- * CALM WHILE SHE IS BEING SPOKEN TO. Listening is the STILLEST state here, not a second excited one.
- * `presenceFrame` reports energy for speaking and listening alike, which is right for a generic
- * presence and wrong for this one: when someone interrupts her, she is receiving, so the strand
- * settles toward a near-straight line and the warm accent drains out of it. Only her own voice
- * moves it. That gating lives here, in presentation, and only ever REMOVES motion — it can never
- * manufacture any, so the honesty contract below is untouched.
+ * IT IS DELIBERATELY NOT A PERFECT SPHERE. A slow, low-frequency noise field turns it just off-round
+ * and keeps it turning, so it reads as a living body rather than as a primitive.
  *
- * HONEST BY CONSTRUCTION (§13). Every animated value originates in `presenceFrame`, whose `energy`
- * is zero unless a real sample arrived from the output or microphone analyser and whose `detail`
- * carries real spectral brightness. A strand that rippled on a timer would look richer and would be
- * a lie about whether anything was heard. The resting breath is fixed, tiny and visibly not speech.
+ * WHY THE LIGHTING IS REAL. The shading normal is recomputed from the DISPLACED neighbours rather
+ * than inherited from the undeformed sphere, so light actually travels across the new shape. That is
+ * the whole difference between an object and a lit circle, and it is what makes this read as 3D
+ * rather than as a disc with a gradient on it.
  *
- * GOLD IS THE ACT (§11). The strand is indigo at rest and through every listening moment. It crosses
- * to gold only as her own output amplitude rises. Nothing else in the frame is warm.
+ * CALM WHILE SHE IS BEING SPOKEN TO. presenceFrame reports energy for speaking and listening alike,
+ * which is right for a generic presence and wrong for this one: when someone interrupts her she is
+ * receiving, so the body settles and the warm accent drains out. Only her own voice moves it. That
+ * gating lives here, in presentation, and only ever REMOVES motion — it can never manufacture any.
+ *
+ * HONEST BY CONSTRUCTION (§13). Every audio-derived value originates in presenceFrame, whose energy
+ * is zero unless a real sample arrived from the output or microphone analyser, and whose detail
+ * carries real spectral brightness. A body that pulsed on a timer would look richer and would be a
+ * lie about whether anything was heard. The resting breath is fixed, slow and visibly not speech.
+ *
+ * GOLD IS THE ACT (§11). Indigo at rest and through every listening moment; the rim crosses to gold
+ * only as her own output amplitude rises. Nothing else in the frame is warm.
  */
 
-/** Resting breath. Small and slow on purpose: it must never be mistaken for someone talking. */
-const IDLE_LIFT = 0.055;
-/** How far her real amplitude may throw the strand, in strand half-widths. */
-const ENERGY_LIFT = 0.62;
-/** Lengthwise resolution. The wave is sampled per vertex, so this is the smoothness of her voice. */
-const SEGMENTS = 260;
-/** Layered strands. Three reads as one thickening gesture; more reads as a stack of lines. */
-const STRANDS = [
-  { phase: 0.0, depth: 0.0, weight: 1.0, thickness: 0.055 },
-  { phase: 1.9, depth: -0.28, weight: 0.62, thickness: 0.032 },
-  { phase: 3.6, depth: 0.26, weight: 0.4, thickness: 0.022 },
-] as const;
+/** Resting breath of the whole body. Slow and shallow: never mistakable for speech. */
+const IDLE_PULSE = 0.035;
+/** How far her real amplitude may swell the body. This is the beat. */
+const ENERGY_PULSE = 0.3;
+/** How far her real amplitude may throw the travelling surface bands. */
+const ENERGY_WAVE = 0.19;
+/** Thinking reads as the livelier of the two busy states; working is steadier, because it runs long. */
+const THINKING_PULSE = 0.055;
+const WORKING_PULSE = 0.035;
+/** Subdivision. 20·(n+1)² faces — 32 gives ~21k, smooth enough for fine chop on a laptop GPU. */
+const SUBDIVISION = 24;
+/** Base radius in world units. The camera and the fit are derived from this. */
+const RADIUS = 1.0;
 
 const SETTLED: ReadonlySet<PresenceState> = new Set(["held", "disconnected", "interrupted", "unavailable"]);
 
@@ -68,190 +75,235 @@ function token(styles: CSSStyleDeclaration, name: string, fallback: string): THR
   return colour.setHSL(hue / 360, sat / 100, lum / 100);
 }
 
+/**
+ * Ashima Arts / Stefan Gustavson 3D simplex noise (MIT). Vendored rather than added as a dependency:
+ * §22 says a new npm package is a proposal, never a reflex, and this is fifty lines of GLSL that has
+ * not changed in a decade.
+ */
+const SIMPLEX = /* glsl */ `
+vec3 mod289(vec3 x){return x-floor(x*(1./289.))*289.;}
+vec4 mod289(vec4 x){return x-floor(x*(1./289.))*289.;}
+vec4 permute(vec4 x){return mod289(((x*34.)+1.)*x);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+float snoise(vec3 v){
+  const vec2 C=vec2(1./6.,1./3.); const vec4 D=vec4(0.,.5,1.,2.);
+  vec3 i=floor(v+dot(v,C.yyy)); vec3 x0=v-i+dot(i,C.xxx);
+  vec3 g=step(x0.yzx,x0.xyz); vec3 l=1.-g;
+  vec3 i1=min(g.xyz,l.zxy); vec3 i2=max(g.xyz,l.zxy);
+  vec3 x1=x0-i1+C.xxx; vec3 x2=x0-i2+C.yyy; vec3 x3=x0-D.yyy;
+  i=mod289(i);
+  vec4 p=permute(permute(permute(i.z+vec4(0.,i1.z,i2.z,1.))
+        +i.y+vec4(0.,i1.y,i2.y,1.))+i.x+vec4(0.,i1.x,i2.x,1.));
+  float n_=0.142857142857; vec3 ns=n_*D.wyz-D.xzx;
+  vec4 j=p-49.*floor(p*ns.z*ns.z);
+  vec4 x_=floor(j*ns.z); vec4 y_=floor(j-7.*x_);
+  vec4 x=x_*ns.x+ns.yyyy; vec4 y=y_*ns.x+ns.yyyy; vec4 h=1.-abs(x)-abs(y);
+  vec4 b0=vec4(x.xy,y.xy); vec4 b1=vec4(x.zw,y.zw);
+  vec4 s0=floor(b0)*2.+1.; vec4 s1=floor(b1)*2.+1.; vec4 sh=-step(h,vec4(0.));
+  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy; vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+  vec3 p0=vec3(a0.xy,h.x); vec3 p1=vec3(a0.zw,h.y);
+  vec3 p2=vec3(a1.xy,h.z); vec3 p3=vec3(a1.zw,h.w);
+  vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+  p0*=norm.x; p1*=norm.y; p2*=norm.z; p3*=norm.w;
+  vec4 m=max(.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.); m=m*m;
+  return 42.*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+}
+`;
+
+// NOTE TO ANYONE EDITING THE GLSL BELOW: no backticks in these comments. A backtick terminates the
+// template literal and breaks the build. It has happened twice; the smoke test now names it.
 const VERTEX = /* glsl */ `
-uniform float uTime, uEnergy, uDetail, uIdle, uPhase, uWeight, uThickness;
-varying vec2 vUv;
-varying float vLift;
+uniform float uTime, uEnergy, uDetail, uPulse, uBusy;
+varying vec3 vNormal, vView;
+varying float vCrest;
+${SIMPLEX}
 
 /**
- * The wave at a point along the strand.
+ * Radial offset at a point on the unit sphere.
  *
- * Two travelling terms, not one. The swell is slow and long — the body of a vowel. The chop is fast and
- * short and is scaled by spectral brightness, so it only appears on bright sounds. Their balance is
- * what makes the strand read as speech rather than as a level meter.
+ * Three terms, each doing a different job. The blob keeps the body off-round and slowly turning.
+ * The bands are the WAVE: travelling rings that run across the surface, thrown by her amplitude.
+ * The chop is fine structure that only appears on bright sounds, so consonants read differently
+ * from vowels.
  */
-float wave(float x){
-  float swell = sin(x * 5.4 - uTime * 2.6 + uPhase)
-              + 0.55 * sin(x * 8.9 + uTime * 1.7 - uPhase * 0.7);
-  float chop  = sin(x * 26.0 - uTime * 11.0 + uPhase * 2.1)
-              * 0.45 * uDetail;
-  return swell * 0.5 + chop;
+float relief(vec3 n){
+  float blob  = snoise(n * 1.15 + vec3(0.0, 0.0, uTime * 0.18)) * 0.15;
+  float bands = sin(n.y * 7.0 - uTime * 3.2) * 0.6
+              + sin(n.y * 11.0 + n.x * 4.0 - uTime * 5.1) * 0.4;
+  float chop  = snoise(n * 4.2 + vec3(uTime * 0.9, 0.0, 0.0)) * uDetail * 0.085;
+  float work  = sin(n.y * 5.0 - uTime * 2.2) * uBusy;
+  return blob + bands * uEnergy * ${ENERGY_WAVE.toFixed(3)} + chop + work;
+}
+
+/** The body as a whole: base radius plus the pulse, plus the surface relief. */
+float shape(vec3 n){
+  return ${RADIUS.toFixed(2)} + uPulse + relief(n);
 }
 
 void main(){
-  vUv = uv;
+  vec3 n = normalize(position);
+  vec3 displaced = n * shape(n);
 
-  // Zero at both ends and full in the middle, so the strand resolves into the frame instead of
-  // being cut off by it. Raised to <1 so the taper is broad rather than a pinch at the centre.
-  float taper = pow(sin(3.14159265 * uv.x), 0.75);
+  // The shading normal must follow the deformation or the light slides over a shape it is not lit
+  // by — the tell that separates an object from a lit circle. Sample two tangent neighbours and
+  // cross their displaced offsets. With b = n x t, cross(PA-P, PB-P) resolves along +n, so the
+  // winding is correct by construction rather than by trial.
+  vec3 t = normalize(cross(n, abs(n.y) > 0.99 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0)));
+  vec3 b = cross(n, t);
+  float eps = 0.03;
+  vec3 na = normalize(n + t * eps); vec3 nb = normalize(n + b * eps);
+  vec3 pa = na * shape(na);         vec3 pb = nb * shape(nb);
+  vNormal = normalize(mat3(modelMatrix) * normalize(cross(pa - displaced, pb - displaced)));
 
-  float x = (uv.x - 0.5) * 6.2;
-  // The resting breath is a different, much slower motion than speech, so silence never reads as a
-  // quiet voice.
-  float idle = sin(x * 1.6 + uTime * 0.85 + uPhase) * uIdle;
-  float lift = taper * (idle + wave(x) * uEnergy * ${ENERGY_LIFT.toFixed(3)}) * uWeight;
+  // How far this point rode out of the resting body, for the crest highlight.
+  vCrest = clamp((length(displaced) - ${RADIUS.toFixed(2)}) * 2.2, -1.0, 1.0);
 
-  // The strand's own thickness also tapers, so the ends thin to nothing rather than stopping.
-  // position.y already carries the strip's half-thickness from the geometry; taper narrows it.
-  vec3 p = position;
-  p.y = p.y * taper + lift;
-
-  vLift = lift;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+  vec4 world = modelMatrix * vec4(displaced, 1.0);
+  vView = normalize(cameraPosition - world.xyz);
+  gl_Position = projectionMatrix * viewMatrix * world;
 }
 `;
 
 const FRAGMENT = /* glsl */ `
 precision highp float;
-uniform vec3 uRim, uGold;
-uniform float uLight, uSpeak, uWeight;
-varying vec2 vUv;
-varying float vLift;
+uniform vec3 uCore, uRim, uGold;
+uniform float uLight, uSpeak;
+varying vec3 vNormal, vView;
+varying float vCrest;
 
 void main(){
-  // Soft across the strand's thickness so the edge is light rather than a hard rule.
-  float across = 1.0 - abs(vUv.y - 0.5) * 2.0;
-  float body = smoothstep(0.0, 1.0, across);
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(vView);
 
-  // Ends fade out; the strand has no visible termination.
-  float along = pow(sin(3.14159265 * vUv.x), 0.6);
+  // One key, high and to the left, wrapped so the terminator stays soft on a deep body.
+  vec3 L = normalize(vec3(-0.42, 0.76, 0.64));
+  float key = clamp(dot(N, L) * 0.5 + 0.5, 0.0, 1.0);
+  float diffuse = pow(key, 1.5);
 
-  // Gold arrives ONLY with her own speech (§11). At rest and while listening this is zero and the
-  // whole strand is indigo.
-  vec3 colour = mix(uRim, uGold, clamp(uSpeak, 0.0, 1.0));
+  // Fresnel: the body reads as volume because the edge carries the colour, not the middle.
+  float fresnel = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.4);
 
-  // Crests carry a little more light than troughs, so the wave is legible as form, not just line.
-  float crest = clamp(abs(vLift) * 1.6, 0.0, 1.0);
-  // NOT additive. Additive blending reads beautifully on the dark theme and disappears entirely on
-  // the light one, because adding to a near-white background is still near-white — which would make
-  // the presence invisible for half the platform and fail §23 outright.
-  float alpha = clamp((0.5 + uLight * 0.55 + crest * 0.5) * body * along * uWeight, 0.0, 1.0);
+  // Gold arrives ONLY with her own speech. At rest and while listening this is zero and the whole
+  // body is indigo.
+  vec3 rim = mix(uRim, uGold, clamp(uSpeak, 0.0, 1.0));
 
-  gl_FragColor = vec4(colour, alpha);
+  vec3 colour = uCore * (0.34 + diffuse * 0.66);
+  colour += rim * fresnel * (0.75 + uLight * 0.9);
+  // Crests catch more light than troughs, so the travelling bands are legible as form.
+  colour += rim * clamp(vCrest, 0.0, 1.0) * (0.55 + uSpeak * 1.1);
+  // A soft interior lift keeps the centre from reading as a hole on the dark theme.
+  colour += uCore * uLight * 0.3;
+
+  gl_FragColor = vec4(colour, 1.0);
   #include <colorspace_fragment>
 }
 `;
 
-function Strand({ spec, material }: {
-  spec: (typeof STRANDS)[number];
-  material: THREE.ShaderMaterial;
-}) {
-  const geometry = useMemo(() => new THREE.PlaneGeometry(6.2, spec.thickness, SEGMENTS, 1), [spec.thickness]);
-  useEffect(() => () => geometry.dispose(), [geometry]);
-  return <mesh geometry={geometry} material={material} position={[0, 0, spec.depth]} />;
-}
-
-function Voice({ state, reduced, readEnergy, onCrash }: {
+function Orb({ state, reduced, readEnergy, onCrash }: {
   state: PresenceState;
   reduced: boolean;
   readEnergy: () => AudioEnergy;
   onCrash: () => void;
 }) {
+  const mesh = useRef<THREE.Mesh>(null);
+  const group = useRef<THREE.Group>(null);
   const invalidate = useThree((three) => three.invalidate);
   const viewport = useThree((three) => three.viewport);
-  const group = useRef<THREE.Group>(null);
   const crashed = useRef(false);
   const settled = SETTLED.has(state);
 
-  const materials = useMemo(() => {
-    // Resolved once per mount against the live stylesheet, so the strand belongs to whichever theme
-    // is actually on rather than to a hex someone typed.
+  const geometry = useMemo(() => new THREE.IcosahedronGeometry(RADIUS, SUBDIVISION), []);
+
+  const material = useMemo(() => {
     const styles = getComputedStyle(document.documentElement);
-    // --primary, NOT --ring. The focus ring resolves to a pale gold (41 100% 91%) on the dark theme,
-    // so sourcing the resting colour from it would have made the wave gold while nothing was being
-    // said — gold spent on idling, which is the one thing §11 forbids. --primary is the indigo/violet
-    // ground in both themes, which is what "indigo at rest" actually means.
-    const rim = token(styles, "--primary", "#6c5ce0");
-    const gold = token(styles, "--accent", "#ebb94c");
-    return STRANDS.map((spec) => new THREE.ShaderMaterial({
+    // --primary, NOT --ring. The focus ring resolves to a pale gold on the dark theme, so sourcing
+    // the resting colour from it would make the body gold while nothing was being said — gold spent
+    // on idling, the one thing §11 forbids.
+    const primary = token(styles, "--primary", "#6c5ce0");
+    const core = primary.clone().multiplyScalar(0.55);
+    return new THREE.ShaderMaterial({
       vertexShader: VERTEX,
       fragmentShader: FRAGMENT,
-      transparent: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,
       uniforms: {
         uTime: { value: 0 },
         uEnergy: { value: 0 },
         uDetail: { value: 0 },
         uLight: { value: 0.28 },
         uSpeak: { value: 0 },
-        uIdle: { value: IDLE_LIFT },
-        uPhase: { value: spec.phase },
-        uWeight: { value: spec.weight },
-        uThickness: { value: spec.thickness },
-        uRim: { value: rim.clone() },
-        uGold: { value: gold.clone() },
+        uPulse: { value: 0 },
+        uBusy: { value: 0 },
+        uCore: { value: core },
+        uRim: { value: primary },
+        uGold: { value: token(styles, "--accent", "#ebb94c") },
       },
-    }));
+    });
   }, []);
 
-  // Created here rather than handed over by a cache, so ours to free. The stage opens and closes
-  // repeatedly and three.js frees no GPU memory on unmount.
-  useEffect(() => () => materials.forEach((m) => m.dispose()), [materials]);
+  // Both are created here rather than handed over by a cache, so both are ours to free. The stage
+  // opens and closes repeatedly and three.js frees no GPU memory on unmount.
+  useEffect(() => () => { geometry.dispose(); material.dispose(); }, [geometry, material]);
 
-  // Fit the strand to whatever the container is, so the wave spans the frame at every size instead
-  // of being framed for one viewport.
+  // FILL THE FRAME. The body is the presence, so it takes the room it is given rather than sitting
+  // small in the middle of it — the previous build was called slim and slender, and a corner with a
+  // thin thing in it does not read as someone in the room with you.
   useEffect(() => {
     if (!group.current) return;
-    group.current.scale.setScalar(Math.min(viewport.width / 6.6, viewport.height / 2.2));
+    const fit = Math.min(viewport.width, viewport.height) / (RADIUS * 2.65);
+    group.current.scale.setScalar(fit);
     if (reduced) invalidate();
   }, [viewport.width, viewport.height, reduced, invalidate]);
 
-  // Reduced motion must SETTLE the strand, not freeze it mid-wave. The canvas is on `demand`, so put
-  // the uniforms in their resting pose by hand and ask for the single frame that shows it — losing
-  // the presence entirely is a worse answer to "please don't animate" than a still one.
+  // Reduced motion must SETTLE the body, not freeze it mid-deformation. The canvas is on demand, so
+  // put the uniforms in their resting pose by hand and ask for the single frame that shows it.
   useEffect(() => {
     if (!reduced) return;
     const still = presenceFrame(state, 0);
-    materials.forEach((m) => {
-      m.uniforms.uTime.value = 0;
-      m.uniforms.uEnergy.value = 0;
-      m.uniforms.uDetail.value = 0;
-      m.uniforms.uSpeak.value = 0;
-      m.uniforms.uLight.value = still.light;
-      m.uniforms.uIdle.value = 0;
-    });
+    const u = material.uniforms;
+    u.uTime.value = 0; u.uEnergy.value = 0; u.uDetail.value = 0;
+    u.uSpeak.value = 0; u.uBusy.value = 0; u.uPulse.value = 0;
+    u.uLight.value = still.light;
+    if (mesh.current) mesh.current.rotation.set(0, 0, 0);
     invalidate();
-  }, [reduced, state, materials, invalidate]);
+  }, [reduced, state, material, invalidate]);
 
   useFrame(({ clock }, delta) => {
-    if (reduced || crashed.current) return;
+    if (reduced || crashed.current || !mesh.current) return;
     // A THROW HERE ESCAPES THE ERROR BOUNDARY ENTIRELY. R3F calls frame subscribers from inside a
     // requestAnimationFrame callback and React boundaries catch render and lifecycle errors only, so
     // an exception would repeat ~60 times a second forever, freeze the canvas on its last frame, and
     // never reach SceneBoundary or print the one console line the degrade contract rests on.
     try {
       const frame = presenceFrame(state, clock.elapsedTime, readEnergy());
+      const t = clock.elapsedTime;
 
-      // ONLY HER OWN VOICE MOVES THE STRAND. While she is being spoken to she is receiving, so the
-      // wave settles and the accent drains. This can only ever reduce motion below what
+      // ONLY HER OWN VOICE MOVES THE BODY. While she is being spoken to she is receiving, so the
+      // pulse settles and the accent drains. This can only ever reduce motion below what
       // presenceFrame reported; it can never invent any.
       const hers = state === "speaking" ? frame.energy : 0;
       const detail = state === "speaking" ? frame.detail : 0;
+      // Her working the person's jobs is a state they should be able to SEE, distinct from both
+      // silence and speech.
+      const busy = state === "thinking" ? THINKING_PULSE : state === "working" ? WORKING_PULSE : 0;
       // Listening is the calmest state in the scene — calmer than idle, which is the point.
-      const idle = state === "listening" ? IDLE_LIFT * 0.22 : settled ? IDLE_LIFT * 0.5 : IDLE_LIFT;
+      const breathScale = state === "listening" ? 0.3 : settled ? 0.55 : 1;
+      const breath = Math.sin(t * 0.85) * IDLE_PULSE * breathScale;
+      const pulse = breath + hers * ENERGY_PULSE;
 
-      for (const m of materials) {
-        const u = m.uniforms;
-        u.uTime.value = clock.elapsedTime;
-        // Eased toward the sample rather than snapped to it: a voice envelope is continuous, and
-        // per-frame jitter on the raw analyser value reads as noise rather than speech.
-        u.uEnergy.value += (hers - u.uEnergy.value) * Math.min(1, delta * 12);
-        u.uDetail.value += (detail - u.uDetail.value) * Math.min(1, delta * 9);
-        u.uSpeak.value += (hers - u.uSpeak.value) * Math.min(1, delta * 6);
-        u.uLight.value = frame.light;
-        u.uIdle.value += (idle - u.uIdle.value) * Math.min(1, delta * 3);
-      }
+      const u = material.uniforms;
+      u.uTime.value = t;
+      // Eased toward the sample rather than snapped to it: a voice envelope is continuous, and
+      // per-frame jitter on the raw analyser value reads as noise rather than speech.
+      u.uEnergy.value += (hers - u.uEnergy.value) * Math.min(1, delta * 12);
+      u.uDetail.value += (detail - u.uDetail.value) * Math.min(1, delta * 9);
+      u.uSpeak.value += (hers - u.uSpeak.value) * Math.min(1, delta * 6);
+      u.uPulse.value += (pulse - u.uPulse.value) * Math.min(1, delta * 10);
+      u.uBusy.value += (busy - u.uBusy.value) * Math.min(1, delta * 4);
+      u.uLight.value = frame.light;
+
+      // Integrated, never an absolute angle from elapsed time: multiplying elapsed time by a rate
+      // that changes makes the body jump the moment the rate does.
+      mesh.current.rotation.y += delta * (settled ? 0.02 : state === "thinking" || state === "working" ? 0.2 : 0.07);
+      mesh.current.rotation.x = Math.sin(t * 0.23) * 0.09;
     } catch (error) {
       crashed.current = true;
       console.error("[PaigePresenceScene] the animation loop threw — standing down to the flat presence. Cause:", error);
@@ -261,7 +313,7 @@ function Voice({ state, reduced, readEnergy, onCrash }: {
 
   return (
     <group ref={group}>
-      {STRANDS.map((spec, i) => <Strand key={spec.phase} spec={spec} material={materials[i]} />)}
+      <mesh ref={mesh} geometry={geometry} material={material} />
     </group>
   );
 }
@@ -275,9 +327,9 @@ export default function PaigePresenceScene({ state, reduced, readEnergy = () => 
 }) {
   return (
     <Canvas
-      // Orthographic, because a waveform read at an angle is a waveform lying about its amplitude.
-      orthographic
-      camera={{ position: [0, 0, 5], zoom: 100 }}
+      // PERSPECTIVE, not orthographic. An orthographic orb is a disc with a gradient on it; the
+      // perspective divide is a real part of why a sphere reads as a sphere.
+      camera={{ position: [0, 0, 4.2], fov: 38 }}
       // Transparent, so the stage's own ground shows through rather than a second black rectangle.
       gl={{ alpha: true, antialias: true, powerPreference: "low-power" }}
       dpr={[1, 1.75]}
@@ -286,7 +338,7 @@ export default function PaigePresenceScene({ state, reduced, readEnergy = () => 
       frameloop={reduced ? "demand" : "always"}
       style={{ width: "100%", height: "100%" }}
     >
-      <Voice state={state} reduced={reduced} readEnergy={readEnergy} onCrash={onCrash} />
+      <Orb state={state} reduced={reduced} readEnergy={readEnergy} onCrash={onCrash} />
     </Canvas>
   );
 }

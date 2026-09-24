@@ -161,3 +161,13 @@
    outcome, not as a disabled control: a greyed-out gold button would still look like something to
    press, which is the confusion this whole branch exists to end. */
 .plc-terms__blocked { margin-top: .15rem; padding: .6rem .7rem; border-left: 1px solid hsl(var(--border)); border-radius: .35rem; background: hsl(var(--muted)/.5); font-size: .78rem; line-height: 1.5; color: hsl(var(--muted-foreground)); }
+
+/* CONTROLS SHOW THEIR OWN STATE. A footer of five identical outline buttons cannot tell anyone that
+   they are muted, that the session is held, or that Paige is talking right now — the person has to
+   infer all of it from somewhere else on the screen. Engaged toggles carry indigo, because being
+   muted or on hold is a STATE. The one control that carries gold is Interrupt, and only while she is
+   actually speaking: gold means exactly one thing on this surface, so the wave turning gold and the
+   control that stops her lighting up are the same signal in two places rather than two accents
+   competing for it (§11). */
+.plc-controls button[aria-pressed="true"] { border-color: hsl(var(--primary)/.55); background: hsl(var(--primary)/.13); color: hsl(var(--primary)); font-weight: 600; }
+.plc-controls button[data-act="available"] { border-color: hsl(var(--accent)/.75); background: hsl(var(--accent)/.13); color: hsl(var(--gold-dark)); font-weight: 600; }

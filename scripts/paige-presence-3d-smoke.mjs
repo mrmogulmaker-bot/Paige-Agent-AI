@@ -39,8 +39,8 @@ const code = source.replace(/\/\*[\s\S]*?\*\//g, (m) => (m.startsWith("/* glsl *
 for (const [pattern, what] of [
   [/useGLTF/, "the GLTF loader"],
   [/paige-woman\.glb|\.glb["'`]/, "a GLB model reference"],
-  [/SphereGeometry|IcosahedronGeometry/, "a sphere/icosahedron geometry"],
   [/TorusGeometry/, "the old halo torus"],
+  [/PlaneGeometry/, "the flat waveform ribbon"],
 ]) {
   if (pattern.test(code)) bad(`§30: ${what} is still live in the scene — the previous design was covered, not stripped`);
   else ok(`§30: ${what} is gone from the scene`);
@@ -49,6 +49,17 @@ for (const [pattern, what] of [
 // ---------------------------------------------------------------------------------------------
 // THE SHADER/UNIFORM CONTRACT. This is the check that earns the file.
 // ---------------------------------------------------------------------------------------------
+// A BACKTICK INSIDE THE GLSL ENDS THE TEMPLATE LITERAL AND BREAKS THE BUILD. It has happened twice
+// while writing this shader, both times in a prose comment quoting an identifier, and both times the
+// symptom was a baffling "unbalanced braces" from the checks below rather than the actual cause.
+// Named explicitly so the next occurrence reports itself in one line.
+const shaderRegion = source.slice(source.indexOf("const VERTEX"), source.lastIndexOf("`;") + 2);
+const opens = (shaderRegion.match(/\/\* glsl \*\/ `/g) || []).length;
+const ticks = (shaderRegion.match(/`/g) || []).length;
+if (opens > 0 && ticks !== opens * 2) {
+  bad(`a stray backtick is inside a GLSL template literal (${ticks} backticks across ${opens} shader(s); expected ${opens * 2}) — this terminates the literal and is a build break, not a shader bug`);
+}
+
 const glsl = {};
 for (const name of ["VERTEX", "FRAGMENT"]) {
   const match = source.match(new RegExp(`const ${name} = /\\* glsl \\*/ \`([\\s\\S]*?)\``));
@@ -130,43 +141,51 @@ if ([...fVarying].every((n) => vVarying.has(n))) ok(`varyings agree across stage
 if (!/state === "speaking" \? frame\.energy : 0/.test(code)) {
   bad("the scene no longer gates amplitude on her OWN speech — it would animate while being spoken to");
 } else ok("amplitude is gated on speaking: being spoken to leaves the wave calm");
-if (!/state === "listening" \? IDLE_LIFT \* 0\.\d+/.test(code)) {
+if (!/state === "listening" \? 0\.\d+ :/.test(code)) {
   bad("listening is no longer the calmest state — the resting breath is not damped while she listens");
 } else ok("listening damps below idle: the calmest state in the scene");
 
 // ---------------------------------------------------------------------------------------------
 // THE GEOMETRY THE SCENE ACTUALLY BUILDS.
 // ---------------------------------------------------------------------------------------------
-const segments = Number(source.match(/const SEGMENTS = (\d+);/)?.[1]);
-const width = Number(source.match(/new THREE\.PlaneGeometry\(([\d.]+),/)?.[1]);
-if (!Number.isFinite(segments)) bad("could not read SEGMENTS out of the scene");
-if (!Number.isFinite(width)) bad("could not read the strand width out of the scene");
+const subdivision = Number(source.match(/const SUBDIVISION = (\d+);/)?.[1]);
+const radius = Number(source.match(/const RADIUS = ([\d.]+);/)?.[1]);
+if (!Number.isFinite(subdivision)) bad("could not read SUBDIVISION out of the scene");
+if (!Number.isFinite(radius)) bad("could not read RADIUS out of the scene");
 
-const thicknesses = [...source.matchAll(/thickness:\s*([\d.]+)/g)].map((m) => Number(m[1]));
-if (thicknesses.length === 0) bad("no strand thicknesses found — the STRANDS table did not parse");
-else ok(`${thicknesses.length} strand(s) declared: thickness ${thicknesses.join(", ")}`);
+// IT MUST BE A BODY IN 3D, NOT A DISC. Each of these is a property the owner asked for by name and
+// that nothing else in the suite can observe, because a shader is a string and jsdom draws nothing.
+if (!/IcosahedronGeometry/.test(code)) bad("the presence is no longer built on a sphere — it was asked to be an isolated orb");
+else ok("the body is an icosphere");
+if (!/camera=\{\{ position: \[0, 0, [\d.]+\], fov: [\d.]+ \}\}/.test(code)) {
+  bad("the camera is no longer perspective — an orthographic orb is a disc with a gradient on it");
+} else ok("the camera is perspective: the orb reads as a body");
+if (!/cross\(pa - displaced, pb - displaced\)/.test(source)) {
+  bad("the shading normal is no longer recomputed from the displaced neighbours — light would slide over a shape it is not lit by");
+} else ok("the shading normal follows the deformation: it is lit as the shape it actually is");
+if (!/uPulse/.test(source)) bad("the whole-body pulse is gone — the object would ripple without beating");
+else ok("the body pulses as a whole object");
+if (!/bands/.test(source)) bad("the travelling surface bands are gone — the object would beat without waving");
+else ok("the surface carries travelling bands");
 
-for (const thickness of thicknesses) {
-  try {
-    const geometry = new THREE.PlaneGeometry(width, thickness, segments, 1);
-    const position = geometry.attributes.position;
-    if (!position?.count) { bad(`PlaneGeometry(${width}, ${thickness}, ${segments}, 1) built with no vertices`); continue; }
+try {
+  const geometry = new THREE.IcosahedronGeometry(radius, subdivision);
+  const position = geometry.attributes.position;
+  if (!position?.count) bad(`IcosahedronGeometry(${radius}, ${subdivision}) built with no vertices`);
+  else {
     const array = position.array;
     let finite = true;
     for (let i = 0; i < array.length; i++) if (!Number.isFinite(array[i])) { finite = false; break; }
-    if (!finite) bad(`PlaneGeometry(${width}, ${thickness}, ${segments}, 1) produced non-finite positions`);
-    else ok(`PlaneGeometry(${width}, ${thickness}, ${segments}, 1) builds (${position.count} vertices, all finite)`);
-    if (!geometry.attributes.uv) bad("the strand geometry has no uv attribute — both shaders index uv");
-    geometry.dispose();
-  } catch (error) {
-    bad(`PlaneGeometry threw: ${error?.message ?? error}`);
+    if (!finite) bad("the body geometry produced non-finite positions");
+    else ok(`IcosahedronGeometry(${radius}, ${subdivision}) builds (${position.count} vertices, all finite)`);
+    // A budget, not a hope.
+    if (position.count > 80000) bad(`the body would build ${position.count} vertices, over the 80000 budget for a corner surface`);
+    else ok(`total presence cost: ${position.count} vertices`);
   }
+  geometry.dispose();
+} catch (error) {
+  bad(`IcosahedronGeometry threw: ${error?.message ?? error}`);
 }
-
-// A budget, not a hope: three strands at this resolution is the whole cost of the presence.
-const vertices = thicknesses.length * (segments + 1) * 2;
-if (vertices > 4000) bad(`the presence would build ${vertices} vertices, over the 4000 budget for a corner surface`);
-else ok(`total presence cost: ${vertices} vertices`);
 
 // ---------------------------------------------------------------------------------------------
 // HONESTY — that silence stays silent, and that being spoken TO does not animate her, are asserted
