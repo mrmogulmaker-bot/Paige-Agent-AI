@@ -189,3 +189,137 @@ export async function draftAgreement(input: {
     created: !hasId,
   };
 }
+
+/**
+ * ─── THE SEND ────────────────────────────────────────────────────────────────────────────────
+ *
+ * THIS REACHES SOMEONE. It emails each signer a link they can sign with, freezes the presented
+ * document as the record of what they were shown, and moves the agreement one way out of draft.
+ * Nothing recalls it once delivered. That is why `agreement_send` is classified `high`: the model
+ * asserting "they said yes" is refused outright, and only a fingerprint echoed back from a card a
+ * person actually saw will run it.
+ *
+ * IT CALLS THE EDGE FUNCTION, NOT AN RPC, AND FORWARDS THE CALLER'S JWT. `agreement-send` runs its
+ * OWN owner-or-admin check against that token — the one that could not bind until recently, so
+ * every send refused for everyone. Forwarding the caller's authorization is what makes that check
+ * mean something; a service-role call would bypass the very gate this depends on.
+ *
+ * ONE SEND PER DRAFT IS THE GUARANTEE. EXACTLY-ONCE DELIVERY IS NOT. A second plain send is refused
+ * 409 by the status gate, and a signer already holding a live link is reported as not delivered
+ * rather than re-mailed. Below that, nothing dedupes — the shared sender records its idempotency
+ * key and deliberately does not act on it. Never describe this as exactly-once.
+ *
+ * `res.ok` IS NOT DELIVERY, and this module does not pretend otherwise: the function answers with a
+ * body naming who was sent to and who was not, and that body is the truth. A 2xx with nobody
+ * delivered is a real outcome and is reported as one.
+ */
+export type AgreementSendFailure =
+  | "no_workspace"
+  | "bad_agreement_id"
+  | "refused"
+  | "not_a_draft"
+  | "needs_setup"
+  | "document_problem"
+  | "nobody_reachable"
+  | "unavailable";
+
+export type AgreementSendResult =
+  | { success: true; agreementId: string; sentTo: number; notDelivered: number }
+  | { success: false; reason: AgreementSendFailure; message: string };
+
+const SEND_MESSAGES: Record<AgreementSendFailure, string> = {
+  no_workspace: "No workspace is active, so nothing was sent.",
+  bad_agreement_id:
+    "That is not an agreement I can identify, so nothing was sent. List the agreements and use the id from that list.",
+  refused:
+    "That agreement could not be sent — the active workspace may have changed, or this account may not be an owner or admin of it. Nothing was sent.",
+  not_a_draft:
+    "That agreement is not a draft any more, so it was not sent again. Nothing went out. Draft a new agreement rather than resending this one.",
+  needs_setup:
+    "Something this agreement needs is missing, so nothing was sent. It may have no signer yet, or the workspace may have no contact address for signers to reach. Open the agreement in Sales — it will say which.",
+  document_problem:
+    "The document for that agreement could not be prepared, so nothing was sent and nobody was emailed. The agreement is unchanged.",
+  nobody_reachable:
+    "Nothing reached anybody. No message went out, so this agreement is unchanged and nobody has been asked to sign.",
+  unavailable:
+    "The agreement could not be sent just now. Nothing is known to have gone out. Check the agreement's status before trying again, because a send that did reach someone cannot be recalled.",
+};
+
+function sendFail(reason: AgreementSendFailure): AgreementSendResult {
+  return { success: false, reason, message: SEND_MESSAGES[reason] };
+}
+
+/** The HTTP port. Structural so vitest can drive this without a network. */
+export type AgreementSendPort = (
+  agreementId: string,
+) => PromiseLike<{ ok: boolean; status: number; body: unknown }>;
+
+export async function sendAgreement(input: {
+  send: AgreementSendPort;
+  expectedTenantId: string | null | undefined;
+  agreementId: unknown;
+}): Promise<AgreementSendResult> {
+  if (!input.expectedTenantId) return sendFail("no_workspace");
+  const agreementId = typeof input.agreementId === "string" ? input.agreementId.trim() : "";
+  if (!UUID.test(agreementId)) return sendFail("bad_agreement_id");
+
+  let reply: { ok: boolean; status: number; body: unknown };
+  try {
+    reply = await input.send(agreementId);
+  } catch (thrown) {
+    // A THROW leaves the outcome GENUINELY UNKNOWN — the request may have been received and acted
+    // on. The sentence says so rather than inviting a retry that could email a signer twice.
+    console.error("[agreement_send] send threw", {
+      reason: thrown instanceof Error ? thrown.message : "unknown",
+    });
+    return sendFail("unavailable");
+  }
+
+  const body = (reply.body ?? {}) as {
+    ok?: unknown; error?: unknown; status?: unknown;
+    sent?: unknown; failed?: unknown; notDelivered?: unknown;
+  };
+
+  if (!reply.ok) {
+    // The function's own refusal sentences are written for a person, but they are not carried
+    // through: they are its words about its internals, and the caller gets a mapped sentence. The
+    // status is what distinguishes the cases a person can act on.
+    console.error("[agreement_send] refused", { status: reply.status, error: body.error });
+    // MAPPED FROM WHAT THE FUNCTION ACTUALLY RETURNS, read at its source rather than assumed — an
+    // earlier draft of this map had 502 as the document case and 422 as nothing, which would have
+    // told a person to check the wrong thing.
+    //   403 not an owner/admin, or no tenant     404 not in this workspace
+    //   409 already sent / cannot be resent, AND `needs_config` (no workspace contact address)
+    //   400 malformed, or no signer yet          422 a name or document that cannot be rendered
+    //   502 the document could not be stored, verified or recorded
+    if (reply.status === 403) return sendFail("refused");
+    if (reply.status === 404) return sendFail("bad_agreement_id");
+    if (reply.status === 409) {
+      // The 409 family carries two different remedies, and the body distinguishes them: a missing
+      // workspace contact address is `needs_config`, which a person fixes, while an agreement that
+      // has already gone is not a retry at all.
+      return sendFail(body.status === "needs_config" ? "needs_setup" : "not_a_draft");
+    }
+    // The id is validated above, so a 400 on a well-formed id is the "add at least one signer" case
+    // rather than a malformed request — actionable, and named as such.
+    if (reply.status === 400) return sendFail("needs_setup");
+    if (reply.status === 422 || reply.status === 502) return sendFail("document_problem");
+    return sendFail("unavailable");
+  }
+
+  // A 2xx WITH NOBODY DELIVERED IS NOT A SUCCESS. `res.ok` means the function ran, not that a
+  // signer was emailed — reading only the status is exactly how a send with zero recipients gets
+  // reported to an owner as delivered.
+  const sent = Array.isArray(body.sent) ? body.sent.length : 0;
+  // `failed` and `notDelivered` are DIFFERENT lists in the function's reply, and collapsing them
+  // would under-report. Both mean a named signer did not get their link.
+  const notDelivered =
+    (Array.isArray(body.notDelivered) ? body.notDelivered.length : 0) +
+    (Array.isArray(body.failed) ? body.failed.length : 0);
+  if (sent === 0) {
+    console.error("[agreement_send] completed with no recipient", { notDelivered });
+    return sendFail("nobody_reachable");
+  }
+
+  return { success: true, agreementId, sentTo: sent, notDelivered };
+}

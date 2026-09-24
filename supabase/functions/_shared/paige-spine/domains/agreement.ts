@@ -79,6 +79,7 @@ export const AGREEMENT_TOOLS = [
   {type:"function",function:{name:"agreement_list",description:"List this workspace's e-signature agreements with their current status — who it is with, how many signers have signed, what is still outstanding, and when it was sent, completed or expires. READ-ONLY: it never sends, resends, drafts, voids or reminds. Use it to answer 'where do my agreements stand', 'what is outstanding', or 'what have I got waiting on signatures'. Optionally narrow by status. Report the statuses exactly as returned and never imply a document was delivered or signed beyond what the status says.",parameters:{type:"object",properties:{status:{type:"string",enum:["draft","sent","viewed","partially_signed","completed","declined","voided","expired"],description:"Optional: show only agreements in this state."}}}}},
   {type:"function",function:{name:"agreement_status",description:"Check where a specific client's agreement stands — its status, which signers are still outstanding, and the sent/completed/expiry dates. READ-ONLY: it never sends, resends, drafts, voids or reminds. Give it the contactId from a contact lookup to see that client's agreements. Answer only from what it returns: 'viewed' means opened, not signed, and 'sent' does not mean delivered. Signing evidence is deliberately not available here and must never be described as if it were.",parameters:{type:"object",properties:{contactId:{type:"string",format:"uuid",description:"The contact whose agreements to check."},status:{type:"string",enum:["draft","sent","viewed","partially_signed","completed","declined","voided","expired"],description:"Optional: narrow to one state."}},required:["contactId"]}}},
   {type:"function",function:{name:"agreement_draft",description:"Draft a new agreement for a client, or revise one that is still a draft. It WRITES, and it needs the person's OK first. It does NOT send: nothing reaches the client, no signing link is minted, and the agreement stays invisible outside this workspace until a separate send. Give it the contactId from a contact lookup, a title, and the agreement text as markdown. To revise an existing draft, pass its agreementId as well — leaving agreementId out always creates a NEW agreement, so never omit it when the person asked to change one they already have. Only a draft can be revised; once an agreement has been sent it is fixed.",parameters:{type:"object",properties:{contactId:{type:"string",format:"uuid",description:"The client this agreement is with."},title:{type:"string",description:"What the agreement is called, in the tenant's own words."},bodyMarkdown:{type:"string",description:"The agreement text, as markdown."},agreementId:{type:"string",format:"uuid",description:"Revise THIS existing draft. Omit to create a new agreement — omitting it when the person meant to edit creates a duplicate."}},required:["contactId","title","bodyMarkdown"]}}},
+  {type:"function",function:{name:"agreement_send",description:"Send an agreement out for signature. THIS REACHES A REAL PERSON: it emails each signer a link they can sign, freezes the document as the record of what they were shown, and moves the agreement out of draft one way — it cannot be recalled once delivered. Only a DRAFT can be sent, and only once; resending an already-sent agreement is a separate action that does not exist yet, so do not offer it. The person must approve this on the card before it runs — a typed yes is not enough and will be refused. If you are unsure whether they meant to send or only to draft, ask; drafting is reversible and this is not.",parameters:{type:"object",properties:{agreementId:{type:"string",format:"uuid",description:"The draft agreement to send. Get it from agreement_list or from the draft you just created."}},required:["agreementId"]}}},
 ] as const;
 
 /**
@@ -143,6 +144,73 @@ export const AGREEMENT_DRAFT_CAPABILITY = defineCapability({
   idempotency: {
     mode: "required",
     key: "tenant + actor + agreementId. On the CREATE path there is no server key at all — with no agreement id the RPC inserts, so a blind retry mints a second draft AND a second counterparty signer, because the seed trigger fires per insert. The Chat confirmation fingerprint (paige_pending_confirmations) is the execute-once guard, and it is the only one.",
+    readback: "public.paige_agreement_overview",
+    replay: "return_recorded_result",
+  },
+  receipt: {
+    rail: true,
+    recorder: "record_capability_run",
+    redaction: "tenant_safe",
+    visibility: "owner_internal",
+  },
+  outcome: { projector: "capability-record" },
+});
+
+/**
+ * `agreement_send` — the governed declaration for the one agreement action that reaches outside the
+ * workspace. Same contract as the draft above, with two differences that both follow from that:
+ *
+ *   `effect: "external_effect"` — the kit forces `risk: "high"` for this effect, which is the point.
+ *   `providerBinding.operation` names an EDGE FUNCTION rather than an RPC. The kind stays
+ *     `"internal"`: the kit's three kinds are internal / mcp / partner, and an edge function of ours
+ *     is our own infrastructure, not a third party. (`"edge"` is not a kind — I tried it, and the
+ *     constructor refused it at import, which is the behaviour this declaration exists for.)
+ *
+ * DELIBERATELY NOT A SpineCapability. The Spine validator requires an executor to be an exact
+ * `public.<symbol>` present in migration history, and widening that allowlist for an edge function
+ * is a change to the Spine contract itself — for no added enforcement, since what actually clamps a
+ * send is `action-risk.ts` plus the Chat confirm gate plus the function's own admin check. That is
+ * the same boundary `calendar_link_send` sits on, and it is drawn deliberately rather than skipped.
+ */
+export const AGREEMENT_SEND_CAPABILITY = defineCapability({
+  identity: {
+    id: "agreement.send",
+    version: 1,
+    domain: "agreement",
+    owner: "agreements-engine",
+    humanSurface: "/solo/:account/sales",
+    description: "Email a signable link for an agreement to its signers. Reaches a real person.",
+  },
+  input: objectInputSchema({
+    description: "Send a draft agreement out for signature.",
+    properties: { agreementId: { type: "string", format: "uuid" } },
+    required: ["agreementId"],
+  }),
+  effect: "external_effect",
+  governance: {
+    actionRiskKey: "agreement_send",
+    risk: "high",
+    approval: "confirm",
+    requiredPermission: ownerGrantablePermission("agreement.send.execute"),
+  },
+  tenantScope: {
+    source: "server",
+    tenantResolver: "current_user_tenant_id",
+    actorResolver: "authenticated_user",
+    revalidateAt: ["before_availability", "before_execution", "before_receipt"],
+  },
+  availability: {
+    resolver: "paige-capability-status",
+    states: ["live", "needs_approval", "not_for_tier", "unavailable"],
+  },
+  providerBinding: {
+    kind: "internal",
+    operation: "edge.agreement-send",
+    connectionResolver: null,
+  },
+  idempotency: {
+    mode: "required",
+    key: "the agreement's own status. A second plain send is refused 409 because the agreement is no longer a draft, and a signer already holding a live link is reported as not delivered rather than re-mailed. Below that nothing dedupes: the shared sender records its idempotency key and deliberately does not act on it. ONE SEND PER DRAFT is the guarantee; exactly-once DELIVERY is not, and must never be described as if it were.",
     readback: "public.paige_agreement_overview",
     replay: "return_recorded_result",
   },

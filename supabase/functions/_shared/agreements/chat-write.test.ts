@@ -159,3 +159,105 @@ Deno.test("titles and bodies are trimmed, and whitespace-only is refused", async
     assertEquals(r.reason, reason);
   }
 });
+
+// ─── THE SEND ────────────────────────────────────────────────────────────────────────────────
+//
+// These assert the properties that make an OUTWARD-FACING action safe to expose: that a refusal is
+// mapped to the right remedy, that a 2xx with nobody emailed is never reported as a send, and that
+// an unknown outcome never invites a retry — a send that did reach someone cannot be recalled.
+
+import { sendAgreement, type AgreementSendPort } from "./chat-write.ts";
+
+function sendPort(reply: { ok: boolean; status: number; body: unknown }) {
+  const calls: string[] = [];
+  const send: AgreementSendPort = (id) => { calls.push(id); return Promise.resolve(reply); };
+  return { send, calls };
+}
+
+const SENT_OK = { ok: true, status: 200, body: { ok: true, status: "sent", sent: [{ email: "a@b.example" }], failed: [], notDelivered: [] } };
+
+Deno.test("sends, and reports recipients rather than a bare success", async () => {
+  const p = sendPort(SENT_OK);
+  const r = await sendAgreement({ send: p.send, expectedTenantId: TENANT, agreementId: AGREEMENT });
+  assertEquals(p.calls, [AGREEMENT]);
+  assert(r.success);
+  assertEquals(r.sentTo, 1);
+  assertEquals(r.notDelivered, 0);
+});
+
+Deno.test("counts BOTH failed and notDelivered — collapsing them would under-report", async () => {
+  const p = sendPort({ ok: true, status: 200, body: {
+    ok: true, sent: [{ email: "a@b.example" }],
+    failed: [{ email: "c@d.example" }], notDelivered: [{ email: "e@f.example" }],
+  } });
+  const r = await sendAgreement({ send: p.send, expectedTenantId: TENANT, agreementId: AGREEMENT });
+  assert(r.success);
+  assertEquals(r.sentTo, 1);
+  // Two different lists, two different people who did not get their link.
+  assertEquals(r.notDelivered, 2);
+});
+
+Deno.test("a 2xx with NOBODY emailed is not a send", async () => {
+  for (const body of [
+    { ok: true, sent: [], failed: [], notDelivered: [{ email: "x@y.example" }] },
+    { ok: true, sent: [], notDelivered: [] },
+    { ok: true },
+  ]) {
+    const p = sendPort({ ok: true, status: 200, body });
+    const r = await sendAgreement({ send: p.send, expectedTenantId: TENANT, agreementId: AGREEMENT });
+    assert(!r.success, `reported a send for ${JSON.stringify(body)}`);
+    assertEquals(r.reason, "nobody_reachable");
+    // `res.ok` means the function RAN. Reading only the status is how a send that reached nobody
+    // gets reported to an owner as delivered.
+    assert(/nothing reached anybody/i.test(r.message));
+  }
+});
+
+Deno.test("each refusal maps to the remedy that actually applies", async () => {
+  const cases: Array<[number, unknown, string]> = [
+    [403, { error: "Only an owner or admin can send an agreement for signature." }, "refused"],
+    [404, { error: "That agreement is not in this workspace." }, "bad_agreement_id"],
+    [409, { error: "This agreement is already sent. Draft a new one rather than resending this." }, "not_a_draft"],
+    // The 409 family carries TWO remedies and the body is what tells them apart.
+    [409, { status: "needs_config", error: "Add a contact email for your workspace before sending." }, "needs_setup"],
+    [400, { error: "Add at least one signer before sending." }, "needs_setup"],
+    [422, { error: "The uploaded document could not be read, so nothing was sent." }, "document_problem"],
+    [502, { error: "The document could not be stored, so nothing was sent." }, "document_problem"],
+    [500, { error: "boom" }, "unavailable"],
+  ];
+  for (const [status, body, expected] of cases) {
+    const p = sendPort({ ok: false, status, body });
+    const r = await sendAgreement({ send: p.send, expectedTenantId: TENANT, agreementId: AGREEMENT });
+    assert(!r.success);
+    assertEquals(r.reason, expected, `status ${status} / ${JSON.stringify(body)}`);
+    // The function's own words are for the operator log, not for the model or the transcript.
+    const said = (body as { error?: string }).error ?? "";
+    assert(!r.message.includes(said), `echoed the function's words on ${status}`);
+  }
+});
+
+Deno.test("an unknown outcome NEVER invites a blind retry", async () => {
+  const send: AgreementSendPort = () => Promise.reject(new Error("socket hang up"));
+  const r = await sendAgreement({ send, expectedTenantId: TENANT, agreementId: AGREEMENT });
+  assert(!r.success);
+  assertEquals(r.reason, "unavailable");
+  // The request may have been received and acted on. This is the one sentence in the module that
+  // must not read as "nothing happened, go again" — a delivered agreement cannot be recalled.
+  assert(/cannot be recalled/i.test(r.message));
+  assert(!r.message.includes("socket hang up"));
+});
+
+Deno.test("a bad id or no workspace refuses BEFORE anything is sent", async () => {
+  for (const bad of ["", "nope", "33333333-3333-4333-8333"]) {
+    const p = sendPort(SENT_OK);
+    const r = await sendAgreement({ send: p.send, expectedTenantId: TENANT, agreementId: bad });
+    assertEquals(p.calls.length, 0, `called the send for ${JSON.stringify(bad)}`);
+    assert(!r.success);
+    assertEquals(r.reason, "bad_agreement_id");
+  }
+  const q = sendPort(SENT_OK);
+  const r = await sendAgreement({ send: q.send, expectedTenantId: null, agreementId: AGREEMENT });
+  assertEquals(q.calls.length, 0);
+  assert(!r.success);
+  assertEquals(r.reason, "no_workspace");
+});

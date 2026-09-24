@@ -13,7 +13,7 @@ import { prepareCalendarLinkShare, sendCalendarLink, calendarLinkSocialCopy, typ
 // (`public.paige_agreement_overview`); the send stays on `agreement-send` behind the confirm gate.
 import { AGREEMENT_TOOLS } from '../_shared/paige-spine/domains/agreement.ts';
 import { readAgreements } from '../_shared/agreements/chat-read.ts';
-import { draftAgreement } from '../_shared/agreements/chat-write.ts';
+import { draftAgreement, sendAgreement } from '../_shared/agreements/chat-write.ts';
 import { N8N_MANAGEMENT_TOOLS, runN8nManagement } from '../_shared/n8n-management.ts';
 const N8N_MANAGEMENT_TOOL_NAMES = new Set(N8N_MANAGEMENT_TOOLS.map(tool => tool.function.name));
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -263,7 +263,20 @@ function describeStep(
     case "calendar_link_social_copy": return { label: "Prepared social post copy", group: "owner", detail: "copy-ready · nothing posted" };
     // Agreements (INT-178) — both are READS, so neither can report a send. The detail says how many
     // were read, never that anything was delivered or signed.
-    // The one agreement WRITE. It drafts; it never sends, so this chip must never read as delivery.
+    // THE OUTWARD-FACING ONE. This chip is read by someone deciding whether their client has been
+    // asked to sign, so it reports RECIPIENTS, never a bare "sent".
+    case "agreement_send": {
+      if (failed) return { label: "Couldn't send that agreement", group: "owner", detail: "nothing went out" };
+      const to = typeof out?.sentTo === "number" ? out.sentTo : 0;
+      const missed = typeof out?.notDelivered === "number" ? out.notDelivered : 0;
+      return {
+        label: to === 1 ? "Sent the agreement for signature" : `Sent the agreement to ${to} signers`,
+        group: "owner",
+        // A partial send is the case an owner most needs to see, so it is never rounded away.
+        detail: missed > 0 ? `${missed} could not be reached` : undefined,
+      };
+    }
+    // The other agreement WRITE. It drafts; it never sends, so this chip must never read as delivery.
     case "agreement_draft": {
       if (failed) return { label: "Couldn't draft that agreement", group: "owner" };
       // CREATED vs REVISED, because a silently-created duplicate is this tool's likeliest mistake
@@ -7440,6 +7453,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       calendar_link_send: "sending a booking link to a contact",
       calendar_link_social_copy: "preparing social post copy for a booking link",
       agreement_draft: "drafting an agreement",
+      agreement_send: "sending an agreement for signature",
       agreement_list: "checking where your agreements stand",
       agreement_status: "checking a client's agreement",
       update_client_data: "saving details to a client's file",
@@ -7747,6 +7761,39 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         case "booking_preset_restore": {
           const p = await bookingPreset(a?.presetId);
           return `Restore the archived booking calendar ${p.label} — bring it back to Draft or Paused. It does NOT go back on the air; publishing is a separate step.`;
+        }
+        // THE AGREEMENT SEND CARD. This is the one place a person sees what they are authorising
+        // before a client is emailed, so it names BOTH halves of the consequence: which document,
+        // and to whom. A card reading "send this agreement" approves an unnamed thing to an unnamed
+        // person, which is not consent (§70).
+        //
+        // Read in-tenant under the CALLER's JWT, so RLS scopes it and a forged or cross-tenant id
+        // simply returns no row and the card falls back to unnamed wording rather than guessing.
+        case "agreement_send": {
+          const aid = typeof a?.agreementId === "string" ? a.agreementId.trim() : "";
+          const tenantForCard = personaCtx?.tenant_id ?? null;
+          let title = "this agreement";
+          let who = "its signers";
+          if (UUIDISH.test(aid) && tenantForCard) {
+            try {
+              const { data: ag } = await supabaseClient
+                .from("paige_agreements").select("title")
+                .eq("id", aid).eq("tenant_id", tenantForCard).maybeSingle();
+              if (typeof ag?.title === "string" && ag.title.trim()) title = `"${ag.title.trim()}"`;
+              const { data: sg } = await supabaseClient
+                .from("paige_agreement_signers").select("email")
+                .eq("agreement_id", aid).eq("tenant_id", tenantForCard);
+              const addrs = Array.isArray(sg)
+                ? sg.map((r) => (typeof r?.email === "string" ? r.email.trim() : "")).filter(Boolean)
+                : [];
+              // Name every recipient when there are few enough to read. Beyond that the count is
+              // the honest summary — a truncated list reads as the whole list.
+              if (addrs.length === 1) who = addrs[0];
+              else if (addrs.length === 2) who = `${addrs[0]} and ${addrs[1]}`;
+              else if (addrs.length > 2) who = `${addrs.length} signers`;
+            } catch { /* fall through to unnamed wording — §13, better unnamed than wrongly named */ }
+          }
+          return `Email ${title} to ${who} for signature. They get a link they can sign, and once it has gone it cannot be recalled.`;
         }
         case "calendar_link_send": {
           const p = await bookingPreset(a?.calendarId);
@@ -12722,6 +12769,67 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           } catch (e) {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:"The booking link was not shared.", note:"No send ran and no delivery may be claimed." }) });
           }
+        } else if (tc.function.name === "agreement_send") {
+          // INT-178 — THE OUTWARD-FACING ACTION. This emails a real person a link they can sign.
+          //
+          // IT REACHES THE EDGE FUNCTION, AND IT FORWARDS THE CALLER'S JWT. `agreement-send` runs
+          // its OWN owner-or-admin check against that token — the check that could not bind until
+          // recently, so no send had ever succeeded for anyone. Forwarding the caller's
+          // authorization is what makes that check mean something; a service-role call would
+          // bypass the gate this depends on.
+          //
+          // THE CONFIRM GATE IS NOT OPTIONAL HERE. `agreement_send` is `high`, so the model's own
+          // "they said yes" channel is refused outright — only a fingerprint echoed from a card a
+          // person actually saw reaches this line.
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const tid = personaCtx?.tenant_id ?? null;
+            const forwardedAuth = authHeader ?? "";
+            const r = await sendAgreement({
+              expectedTenantId: tid,
+              agreementId: args.agreementId ?? null,
+              send: async (agreementId) => {
+                const resp = await fetch(`${supabaseUrl}/functions/v1/agreement-send`, {
+                  method: "POST",
+                  headers: { "Authorization": forwardedAuth, "apikey": supabaseKey, "Content-Type": "application/json" },
+                  body: JSON.stringify({ agreementId }),
+                });
+                let parsed: unknown = {};
+                try { parsed = await resp.json(); } catch { /* non-JSON → an unknown outcome, handled below */ }
+                return { ok: resp.ok, status: resp.status, body: parsed };
+              },
+            });
+            await recordCapabilityRun(supabase, {
+              tenantId: tid,
+              actorId: user.id,
+              capabilityKey: tc.function.name,
+              // EXHAUSTIVE over `AgreementSendFailure`. `unavailable` and `nobody_reachable` are
+              // FAILURES rather than refusals: in the first the outcome is genuinely unknown, and
+              // in the second the function ran and nobody got their link — neither is the workspace
+              // declining to do something, and the Rail must not read as though it were.
+              outcome: !r.success
+                ? ((): "capability_refused" | "capability_failed" => {
+                    switch (r.reason) {
+                      case "unavailable":
+                      case "nobody_reachable":
+                      case "document_problem": return "capability_failed";
+                      case "refused":
+                      case "not_a_draft":
+                      case "needs_setup":
+                      case "no_workspace":
+                      case "bad_agreement_id": return "capability_refused";
+                      default: { const _never: never = r.reason; return "capability_refused"; }
+                    }
+                  })()
+                : "capability_succeeded",
+            });
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(r) });
+          } catch (e) {
+            console.error("[agreements] send dispatch threw", { reason: e instanceof Error ? e.message : "unknown" });
+            // THE OUTCOME IS UNKNOWN, and this says so. A send that did reach someone cannot be
+            // recalled, so this must never imply nothing happened or invite a blind retry.
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success:false, error:"I could not confirm what happened to that send. Check the agreement's status before trying again — if it did go out, it cannot be recalled." }) });
+          }
         } else if (tc.function.name === "agreement_draft") {
           // INT-178 — AGREEMENTS, the first WRITE. It executes the ONE governed seam
           // (`public.save_paige_agreement`) through `_shared/agreements/chat-write.ts`.
@@ -13032,7 +13140,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // Values that are deliberately NOT tables are declared as such in that guard, not left to be
       // guessed from context.
       const WRITE_TARGET: Record<string, string> = {
-        agreement_draft: "paige_agreements",
+        agreement_draft: "paige_agreements", agreement_send: "paige_agreements",
         crm_create_contact: "clients", crm_update_contact: "clients",
         crm_archive_contact: "clients", crm_restore_contact: "clients",
         crm_link_contact_company: "clients", crm_unlink_contact_company: "clients",
