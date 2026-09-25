@@ -1,5 +1,12 @@
 // The tenant's CLIENT AGREEMENTS read — Campaigns → Sales, Slice 2.
 //
+// LANE: SALES. Renamed from `useSoloAgreements` on 2026-09-23 because that name pointed at the
+// SALES hook while `useSoloAgreementSignings` pointed at the AGREEMENTS one, so whichever lane a
+// person was told they owned, the obvious file was the other lane's. This hook writes
+// `tenant_client_agreements` through `save_client_agreement` and writes nothing else. The single
+// contract across the seam is the commercial-terms id: this side produces it, the signings side
+// consumes it as `commercial_terms_id` and never writes this table.
+//
 // WHAT THIS IS. Catalog says what the business SELLS. An agreement is the different fact: what ONE
 // named client agreed to, on terms that may not be the list terms. This hook reads the agreements,
 // the minimum client identity needed to choose one, and whether the caller may write any of it.
@@ -191,15 +198,49 @@ function toText(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value : null;
 }
 
+// A refusal whose SQLSTATE is in the reserved `PA` class carries a sentence written FOR the
+// operator — by a person, in the migration — and is not a database or provider message. That
+// distinction is the entire reason the class exists. The rule below is right and stays: raw
+// Postgres text must never reach a person. But this function had no way to tell the two apart, so
+// it also swallowed 32 hand-written sentences across the two commercial-terms writers. "An
+// instalment arrangement needs to say how many instalments (two or more)" arrived as "The save
+// could not be confirmed", and the feature never saved a row in its life. The code is the signal
+// that separates them.
+//
+// Generalising this across the four hooks that each carry their own copy of this function is
+// Platform Reach's (#1411). It lives here until that lands — in one place, so there is one thing
+// to replace rather than four.
+const OPERATOR_READABLE = /^PA[0-9]{3}$/;
+
+/** Sentence-cases a message authored in SQL, where the house style is lower-case and unpunctuated. */
+function asSentence(said: string): string {
+  const trimmed = said.trim();
+  return /[.!?]$/.test(trimmed)
+    ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1)
+    : `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}.`;
+}
+
+/** The server's own sentence, if it sent one. Read defensively: the RPC is called through `never`. */
+function operatorSentence(error: unknown): string | undefined {
+  const said = (error as { message?: unknown } | null)?.message;
+  return typeof said === "string" ? said : undefined;
+}
+
 // Public copy is chosen from stable error codes, never database/provider messages.
-function safeWriteMessage(code?: string): string {
+function safeWriteMessage(code?: string, serverSentence?: string): string {
+  if (code && OPERATOR_READABLE.test(code) && typeof serverSentence === "string") {
+    // Bounded on purpose: a refusal is a sentence, not a payload. An empty or oversized one falls
+    // through to the coded copy below rather than rendering a blank or a wall of text.
+    const said = serverSentence.trim();
+    if (said !== "" && said.length <= 400) return asSentence(said);
+  }
   if (code === "40001") return "Someone else changed this record. Close and reopen it before saving.";
   if (code === "42501") return "Your permission or workspace changed. Reopen this form with owner or admin access.";
   if (code === "22023" || code === "23514" || code === "22P02") return "Check the selected records, amounts and dates, then try again.";
   return "The save could not be confirmed. Refresh and check your records before trying again.";
 }
 
-export function useSoloAgreements(): AgreementsState {
+export function useSoloCommercialTerms(): AgreementsState {
   const { activeTenantId, accountContextLoading } = useTenantContext();
   // An identity epoch also invalidates a completion after A -> B -> A.
   const identity = useRef({ tenantId: activeTenantId, resolving: accountContextLoading });
@@ -266,11 +307,15 @@ export function useSoloAgreements(): AgreementsState {
         return {
           ok: false,
           stale,
-          message: safeWriteMessage(error.code),
+          message: safeWriteMessage(error.code, operatorSentence(error)),
         };
       }
       if (data === null || data === undefined) {
-        return { ok: false, message: "The save could not be confirmed. Refresh and check your records before trying again." };
+        // NOT a refusal, and it used to say the same sentence as one. The call did not fail — it
+        // returned nothing — so the write may well have landed, and "try again" could duplicate it.
+        // Say only what is known (§13).
+        console.error("[sales] commercial terms write returned no row");
+        return { ok: false, message: "The server did not confirm what it saved, so nothing is being claimed here. Reload and check your records before saving again." };
       }
       setRefreshKey((key) => key + 1);
       return { ok: true, result: (data ?? null) as Record<string, unknown> | null };
@@ -322,11 +367,15 @@ export function useSoloAgreements(): AgreementsState {
         return {
           ok: false,
           stale: error.code === "40001",
-          message: safeWriteMessage(error.code),
+          message: safeWriteMessage(error.code, operatorSentence(error)),
         };
       }
       if (data === null || data === undefined) {
-        return { ok: false, message: "The save could not be confirmed. Refresh and check your records before trying again." };
+        // NOT a refusal, and it used to say the same sentence as one. The call did not fail — it
+        // returned nothing — so the write may well have landed, and "try again" could duplicate it.
+        // Say only what is known (§13).
+        console.error("[sales] commercial terms write returned no row");
+        return { ok: false, message: "The server did not confirm what it saved, so nothing is being claimed here. Reload and check your records before saving again." };
       }
       setRefreshKey((key) => key + 1);
       return { ok: true, result: (data ?? null) as Record<string, unknown> | null };
