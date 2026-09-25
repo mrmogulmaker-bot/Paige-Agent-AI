@@ -2,6 +2,7 @@ import { BUSINESS_MISSION_TOOLS } from '../_shared/paige-spine/domains/business_
 import { executeVerifiedMissionMutation, resolveBusinessMissionThreadContext, resolveSelectedBusinessMissionContext } from '../_shared/business-mission-tenant-brain.ts';
 import { CAMPAIGN_BRIEF_TOOLS } from '../_shared/paige-spine/domains/campaigns.ts';
 import { CRM_COMMAND_TOOLS, CRM_COMMAND_TOOL_NAMES, CRM_TOOL_TO_ACTION, crmApprovalSubject } from '../_shared/crm-command/catalog.ts';
+import { resolveCrmApprovedFingerprint, CRM_APPROVAL_CANDIDATE_LIMIT } from '../_shared/crm-command/approval-resolution.ts';
 import { executeVerifiedCampaignBriefMutation, resolveCampaignBriefListContext } from '../_shared/campaign-brief-tenant-brain.ts';
 import { CALENDAR_PRESET_TOOLS } from '../_shared/paige-spine/domains/calendar_preset.ts';
 import { executeVerifiedCalendarPresetMutation, resolveCalendarPresetListContext, type CalendarPresetMutationTool } from '../_shared/calendar-preset-tenant-brain.ts';
@@ -8314,26 +8315,93 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             arguments: crmArgs,
           });
           let approvedFingerprint: string | undefined;
-          let approvalResolutionFailed = false;
+          // Not a bare boolean: the operator is TOLD why, and the two causes are different facts.
+          // "More than one approval is waiting" is true of an ambiguous set and FALSE of a lookup
+          // that errored or threw — and the `note` below instructs the model to say the sentence
+          // verbatim, so a single shared message would have Paige state a cause that did not
+          // happen. That is the §13 failure this whole change is about, reappearing in the copy.
+          let approvalResolutionFailed: "" | "ambiguous" | "lookup_failed" = "";
           if (approvedConfirmations.size > 0 && personaCtx?.tenant_id) {
             const gateAdmin = createClient(supabaseUrl, supabaseServiceKey);
             const approvalSubject = await crmApprovalSubject(action, { action, ...crmArgs });
-            // Narrow THIS call within the operator-echoed set by the canonical, full consequential
-            // command subject stored by crm-command. Two identical approved commands remain
-            // ambiguous and fail closed; arguments from the model never replace the stored call.
-            const { data: approvedRows, error: approvedRowsError } = await gateAdmin.from("paige_pending_confirmations")
-              .select("fingerprint").eq("tenant_id", personaCtx.tenant_id).eq("user_id", user.id)
-              .eq("tool_name", tc.function.name).in("fingerprint", [...approvedConfirmations])
-              .filter("args->>approval_subject", "eq", approvalSubject)
-              .is("thread_id", null).is("scoped_client_id", null).is("consumed_at", null)
-              .not("server_issued_at", "is", null).not("issued_in_request", "is", null)
-              .gt("expires_at", new Date().toISOString()).limit(2);
-            if (!approvedRowsError && approvedRows?.length === 1 && typeof approvedRows[0]?.fingerprint === "string") approvedFingerprint = approvedRows[0].fingerprint;
-            else approvalResolutionFailed = true;
+            // Narrow THIS call WITHIN the operator-echoed set. Every predicate below is the
+            // claimable boundary and none of them may be relaxed: the set itself, the tenant, the
+            // actor, the exact capability, the action-door scope (thread/client NULL), liveness
+            // (unconsumed, unexpired) and server issuance.
+            //
+            // The `.in(...)` SEARCHES on each echoed token's bare 16-hex prefix, exactly as the
+            // general gate does (`token.split(":")[0]`, ~L8760), because a stored CRM fingerprint is
+            // always bare while an echoed token may be scoped (`fp:uuid`). Searching on the raw
+            // token would simply MISS such a row — and "miss" resolves to `none`, which proceeds
+            // and re-proposes, i.e. the accumulate-another-card loop this whole change exists to
+            // end. Widening the SEARCH is not widening the CLAIM: the claim below re-checks
+            // `approvedConfirmations.has(...)` for the WHOLE token, so a scoped token can never
+            // spend a bare proposal. That is `18.H25`/`18.H26` in scripts/client-memory-authz, and
+            // an earlier revision of this block failed H25 for exactly this reason.
+            //
+            // WHAT CHANGED (2026-09-25). The subject equality used to be an SQL filter ON this
+            // query, computed from the MODEL's re-emitted arguments. A *.create has no stable record
+            // id, so `crmApprovalSubject` falls back to a hash of the WHOLE command — and the model
+            // is told on the approval turn that it need not reproduce the arguments. Any drift
+            // therefore returned ZERO rows, the approval was refused, and nothing was created. Prod
+            // shows exactly that split over 14 days: crm_update_contact (subject = contact_id,
+            // drift-proof) 2 asked / 0 stranded, crm_create_contact 4 asked / 3 stranded,
+            // deal_create 2 asked / 2 stranded. The subject is now a PREFERENCE applied over the
+            // candidates instead of a gate on them, and a single live approved proposal for this
+            // tool is claimable without it. That widens nothing — the set is still the human's
+            // echoed fingerprints — and drift still cannot reach the write, because crm-command
+            // claims the row atomically and executes its STORED args, never the re-emission.
+            try {
+              const { data: approvedRows, error: approvedRowsError } = await gateAdmin.from("paige_pending_confirmations")
+                .select("fingerprint,args").eq("tenant_id", personaCtx.tenant_id).eq("user_id", user.id)
+                .eq("tool_name", tc.function.name).in("fingerprint", [...approvedConfirmations].map((token) => token.split(":")[0]))
+                .is("thread_id", null).is("scoped_client_id", null).is("consumed_at", null)
+                .not("server_issued_at", "is", null).not("issued_in_request", "is", null)
+                .gt("expires_at", new Date().toISOString()).limit(CRM_APPROVAL_CANDIDATE_LIMIT + 1);
+              // DELIBERATELY NOT `.neq("issued_in_request", requestNonce)`, which the general gate
+              // does carry. There it is load-bearing because that gate MINTS proposals itself,
+              // stamped with this very nonce, so a same-request mint could otherwise be claimed.
+              // CRM proposals are minted ONLY by the crm-command function, which stamps its own
+              // per-invocation nonce (crm-command/index.ts ~318 and ~469) — a value this handler's
+              // nonce can never equal — and this door `continue`s before the minting gate, so no CRM
+              // tool name ever reaches recordConfirmation. The predicate would exclude nothing, and
+              // a no-op that reads as a protection is worse than its absence. The self-approval
+              // hazard is closed upstream anyway: `approvedConfirmations` is a request-body field
+              // from the authenticated surface, which the model cannot author, so a fingerprint
+              // minted during this request cannot be in it.
+              if (approvedRowsError) {
+                // §68 — loud, so a persistent lookup break is never a silent dark failure.
+                console.error("[paige] CRM approved-set lookup failed — failing to the honest refusal", JSON.stringify({ tool: tc.function.name, correlation_id: requestNonce, message: approvedRowsError?.message ?? null }));
+                approvalResolutionFailed = "lookup_failed";
+              } else {
+                const resolved = resolveCrmApprovedFingerprint(approvedRows ?? [], approvalSubject);
+                if (resolved.kind === "claim") {
+                  // The WHOLE echoed token must be present, not the bare prefix the search used —
+                  // this is what stops a scoped `fp:uuid` from spending a bare proposal (18.H25).
+                  if (approvedConfirmations.has(resolved.fingerprint)) approvedFingerprint = resolved.fingerprint;
+                  else approvalResolutionFailed = "ambiguous";
+                } else if (resolved.kind === "ambiguous") approvalResolutionFailed = "ambiguous";
+                // `none` — the operator's approvals are live for some OTHER tool, so this call is an
+                // ordinary unapproved one: it goes on with no approved_fingerprint and crm-command
+                // decides it fresh, which ends in its own "Needs your OK" card. Refusing here would
+                // deny a card the person never got to see, which is the second half of the report
+                // ("create contact is not available on all of my Solo accounts").
+              }
+            } catch (lookupThrow) {
+              // A THROWN failure is the same hazard as the returned error, and the entry guard means
+              // we are always mid-approval here — fail closed to the honest refusal, loudly (§68).
+              console.error("[paige] CRM approved-set lookup threw — failing to the honest refusal", JSON.stringify({ tool: tc.function.name, correlation_id: requestNonce, error: String(lookupThrow) }));
+              approvalResolutionFailed = "lookup_failed";
+            }
           }
           if (approvalResolutionFailed) {
+            const refusal = approvalResolutionFailed === "lookup_failed"
+              ? { error: "Nothing was created, changed or sent. Something went wrong on our side while checking your approval.",
+                  note: "Say this to the operator in ONE plain line: nothing happened, it was a problem on our side rather than anything they did, and they can approve it again. Do NOT blame their approval, do NOT call this tool again in this reply and do NOT open a new approval card." }
+              : { error: "Nothing was created, changed or sent. More than one approval is waiting for this kind of change, so it is not clear which one to run.",
+                  note: "Say this to the operator in ONE plain line: nothing happened, more than one approval is waiting for this kind of change, and they can clear it by approving just one of them at a time. Do NOT call this tool again in this reply and do NOT open a new approval card." };
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, outcome: "refused",
-              error: "The approved CRM batch could not be matched to exactly one stored command. Nothing changed; reopen the approval card and review the individual actions." }) });
+              ...refusal, correlation_id: requestNonce }) });
             continue;
           }
           const { data: crmData, error: crmError } = await supabaseClient.functions.invoke("crm-command", {
