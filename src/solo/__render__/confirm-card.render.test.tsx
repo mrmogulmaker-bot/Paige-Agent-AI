@@ -120,8 +120,8 @@ renders no Approve button at all &mdash; that is the change.</p>
 ${cards}
 </div></body></html>`;
 
-    mkdirSync("scratchpad", { recursive: true });
-    writeFileSync("scratchpad/confirm-card.html", page, "utf8");
+    mkdirSync("docs/evidence/ui-delivery/solo-approval-executes", { recursive: true });
+    writeFileSync("docs/evidence/ui-delivery/solo-approval-executes/confirm-card.html", page, "utf8");
 
     // Also mount it once for real, so a render-time throw fails this harness rather than
     // surfacing later as a blank card (§32 — a green build is not a working render).
