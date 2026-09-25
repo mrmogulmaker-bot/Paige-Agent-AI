@@ -3035,6 +3035,39 @@ numbers are not the same number.
 
 ## Two approval systems on one surface: the button ticked, the action never ran (2026-09-25)
 
+> **CORRECTED THE SAME DAY, before the entry was a day old (§58 — marked, never deleted).** The
+> diagnosis below is accurate as a reading of `src/solo/agent.tsx` + `useSoloChat.ts` and **wrong
+> about why the owner's approvals failed**, because THAT PAIR DOES NOT SHIP. Nothing in `src/`
+> imports `agent.tsx`; its strings are absent from `dist/`. The live Solo chat is
+> `SoloPaigeWorkspace` → `PaigeAIChat`, which has always carried the body-borne fingerprint echo.
+> The measurement (36 proposals in 30 days, 21 never consumed) stands; the cause named below does
+> not explain it.
+>
+> **What the re-measurement showed instead: the 21 were never one bug.** Three unconsumed
+> `n8n_create_workflow` rows carry `server_issued_at IS NULL` — the documented unrecoverable legacy
+> class, working as specified. Six are CRM-door tools whose `thread_id IS NULL` is deliberate (the
+> door stores and reads with null thread/client scope), and the same door shows `crm_update_contact`
+> at 4 asked / 0 unconsumed, so it is not broken per se. Twelve are `action_advance`, which the
+> 2026-09-13 batch-ambiguity terminal already explains. Two `team_invite_member` rows carry a null
+> thread WITHOUT being CRM-door tools, and the inline gate scopes `.eq("thread_id", payloadThreadId)`
+> — that pair is genuinely anomalous and remains unexplained.
+>
+> **The lesson the original entry missed, and the one worth keeping:** *is the surface REACHABLE?*
+> A file's folder and name are not evidence that it ships. `agent.tsx` sits in `src/solo/`, exports
+> `Agent` and `PaigePanel`, owns `useSoloChat`, and reads exactly like the Solo chat. It was edited,
+> tested, committed and pushed before anyone asked what imported it — by the same session that wrote
+> §71 that morning, which is why §71.1 now carries the reachability half, cited here.
+>
+> **A second method lesson from the same day:** proving "these failures are pre-existing" with
+> `git stash` on an already-clean tree stashes nothing, pops with "No stash entries found", and
+> compares a tree with itself. It cannot fail, so it measures nothing, and it looks exactly like a
+> passing check. A worktree at the base commit is the comparison that can disagree. The under-measured
+> claim ("19 across 4 files") was corrected to the real figure (21 across 6, identical both sides)
+> only because CI disagreed. §71.3 now carries both.
+>
+> The body below is left intact as the original reasoning, which is still correct about the code it
+> describes — and is the exact shape of a confident, well-evidenced, wrong root cause.
+
 **Symptom (owner-reported, production).** The owner pressed **Approve** in the Solo shell and the
 action did not happen. He pressed it eight times across two hours in one client session. Nothing
 executed once — no contact created, no document written, no email sent. The card was visibly there
