@@ -221,7 +221,14 @@ describe("tenant shell owns one PAIGE surface", () => {
   it("derives the Solo workspace claim from server-resolved tenant ownership", () => {
     const owner = source("src/solo/SoloApp.tsx");
     expect(owner).not.toContain('userRole="admin"');
-    expect(owner).toContain("activeTenant?.owner_user_id === activeUserId");
+    // Pins BOTH halves of the claim, which is stronger than the single substring this used to
+    // assert. That substring stopped matching when SoloApp.tsx:205 was correctly hardened to
+    // `activeTenant?.owner_user_id != null && activeTenant.owner_user_id === activeUserId` — a
+    // source-coupled assertion going red against a STRICTER implementation. Asserting the guard
+    // and the comparison separately survives that reformatting and additionally pins the null
+    // guard, so a regression that dropped it would now be caught rather than merely tolerated.
+    expect(owner).toContain("activeTenant?.owner_user_id != null");
+    expect(owner).toContain("activeTenant.owner_user_id === activeUserId");
   });
 
   it.each([
@@ -281,9 +288,13 @@ describe("tenant shell owns one PAIGE surface", () => {
     expect(sharedOwner).not.toContain("<PaigePanel");
   });
 
-  it("keeps the legacy panel available only for non-v3 hosts", () => {
-    expect(source("src/solo/agent.tsx")).toContain("export const PaigePanel=");
-  });
+  // REMOVED 2026-09-25 — "keeps the legacy panel available only for non-v3 hosts" asserted that
+  // `src/solo/agent.tsx` contained `export const PaigePanel=`. There were no non-v3 hosts: nothing
+  // in src/ imported that file, no route lazy-loaded it, and its unique strings were absent from
+  // dist/assets while the live chat's were present. The test passed green for as long as the file
+  // shipped nothing, which is the §71.1 reachability trap in miniature — an export is not a mount.
+  // The file and its hook are deleted; §58 is satisfied because no shipped capability went with
+  // them. The live Solo chat is SoloPaigeWorkspace -> PaigeAIChat, covered by the tests below.
 
   it("owns one accessible Solo brand-home link at the server-resolved Command Center container", async () => {
     const { default: SoloApp } = await import("@/solo/SoloApp");

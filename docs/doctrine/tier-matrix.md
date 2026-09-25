@@ -460,8 +460,22 @@ Paige chat tools (not nav surfaces), gated server-side to **admin / coach / supe
 | Capability | God (act-as) | Agency-as-tenant | Standalone Solo | Sub-account | Client | Anonymous | Deploy state |
 |---|---|---|---|---|---|---|---|
 | `capability_status` (truthful "what can you do here?") | ✓ | ✓ (own book) | ✓ | ✓ | — (client seat sealed) | 403 | **edge-LIVE on merge** (uses already-live prod RPCs) |
-| `crm_create_contact` honest outcome + idempotency | ✓ | ✓ | ✓ | ✓ | — | 403 | edge logic LIVE; `create_contact_v2` signal deploy-pending #1147 |
+| `crm_create_contact` honest outcome + idempotency | ✓ | ✓ | ✓ | ✓ | — | 403 | edge logic LIVE; `create_contact_v2` signal deploy-pending #1147; **its APPROVAL path was dark until 2026-09-25 — see the CRM approval note below** |
 | `contact.created` native event + `contact_event_status` read | ✓ | ✓ | ✓ | ✓ | — | 403 | **code MERGED, prod activation PENDING #1147** (migration `20270119000000` sorts after the broken Social `20270117000000`); edge deploys inert until tables land |
+
+Honest note (§13), CRM approval door, added 2026-09-25 because the ledger above asserted something
+production falsified. "One approval executes exactly once" was recorded ✓ on every tier while, for
+the CRM door specifically, a class of approvals executed **zero** times. Fourteen days of
+`paige_pending_confirmations` measured before the repair: `crm_update_contact` 2 asked / 0 stranded,
+but `crm_create_contact` 4 asked / **3 stranded** and `deal_create` 2 asked / **2 stranded**. The
+cause was structural rather than per-tier — `crmApprovalSubject` keys update-shaped actions on a
+stable record id, but a `*.create` has none and fell back to hashing the whole command, which the
+model was not required to retype identically on the approval turn — so it stranded **identically on
+every tier**, which is also why no per-tier parity check caught it. Repaired 2026-09-25: the subject
+became a preference over the operator's echoed candidate set rather than an SQL gate on it
+(`_shared/crm-command/approval-resolution.ts`). **AUTHENTICATED RUNTIME PROOF IS OWED** — the repair
+is proven by unit, wiring and authorization-harness tests plus the production measurement of the
+defect, not yet by an owner drive of the deployed Solo shell (§32.c/§70.1).
 
 Honest note (§13): the `contact.created` substrate (tables, trigger, drainer, read RPC) is code-complete and reviewed (§39/§5, no blockers) but **not live on prod** until the Social workstream fixes #1147 so the prod migration queue advances past it; the read tool degrades to "not available yet" until then. Authenticated owner-drive §32.c/§70 OWED on all three. Hardening fast-follows: #1149.
 
@@ -1629,6 +1643,7 @@ five of six surfaces without any ledger row noticing.
 | `update_client_data` completable by a client seat | n/a | n/a | n/a | n/a | n/a | ✓ | 403 |
 | `web_fetch` a public URL — SSRF-guarded + injection-fenced (read; functional PR #1227, was inert) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (in `CLIENT_SEAT_ALLOW`) | 403 |
 | One approval executes exactly once | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| …and an approval the operator gave actually RUNS — CRM door | ✓ | ✓ | ✓ | ✓ | n/a | 403 | **repaired 2026-09-25**; see the honest note below |
 | A declined proposal is cancelled, not left live | — | — | — | ✓ | ✓ | — | 403 |
 | Every executed write files an attribution row | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
 | …and the actor can record their OWN action (`paige_audit_log` INSERT) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |

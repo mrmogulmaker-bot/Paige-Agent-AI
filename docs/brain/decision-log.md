@@ -5850,3 +5850,31 @@ and that estimate omits cached tokens. `cache_control` has been live on the stre
 `8af6bd91a` (2026-09-11), so the ceiling has admitted more real spend than it states for two weeks.
 Pre-existing; named in the migration header and filed rather than silently fixed, because pricing
 cached tokens moves a shipped §33 cap.
+
+## 2026-09-25 — CRM approval door: an approved create actually runs (PR #1450)
+
+**Decision.** In the Chat CRM door (`paige-ai-chat/index.ts` ~L8320), the approval subject becomes a
+PREFERENCE over the operator's echoed candidate set rather than an SQL GATE on it, resolved in one
+pure home (`_shared/crm-command/approval-resolution.ts`). Exact stored-subject match wins; else a
+single live approved proposal for the tool is claimable, but ONLY when the turn holds one call for
+that capability; else it refuses honestly.
+
+**Why.** Measured on production: `crm_update_contact` 2 asked / 0 stranded against
+`crm_create_contact` 4 asked / 3 stranded and `deal_create` 2 asked / 2 stranded, because
+`crmApprovalSubject` falls back to hashing the whole command for a `*.create` and the model is not
+required to retype it on the approval turn. The general gate was repaired for this on 2026-09-13;
+the CRM door was not.
+
+**Safety.** Nothing widens. The candidate set is still only the request-body fingerprints the model
+cannot author; the whole token is re-checked before claiming (so a scoped `fp:uuid` cannot spend a
+bare proposal — `18.H25`); and drift cannot reach the write because `crm-command` claims atomically
+and executes the STORED args.
+
+**Deferred, filed as #1452, not silently dropped:** the `none` pass-through can mint a second card
+for already-consumed work in a narrow retry window; a multi-proposal batch with drifted args still
+refuses; the CRM door skips `cancellationsRecorded`/`revalidateProposalScope()`.
+
+**Also:** `src/solo/agent.tsx` + `src/solo/data/useSoloChat.ts` deleted — unimported, absent from the
+built bundle, and the test that kept them asserted only that the file contained an export.
+
+**Owed:** authenticated runtime proof on the deployed Solo shell (§32.c/§70.1).

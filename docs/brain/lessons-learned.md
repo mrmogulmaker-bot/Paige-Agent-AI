@@ -3032,3 +3032,136 @@ everything.
 `platform_usage_events`, ask whether cached tokens belong in the answer. For "what did this cost us"
 they do. For "what is the tenant metered at" they currently, deliberately, do not — and those two
 numbers are not the same number.
+
+## Two approval systems on one surface: the button ticked, the action never ran (2026-09-25)
+
+> **THE CAUSE IS NOW ESTABLISHED AND FIXED (2026-09-25, PR #1450, commits `c23d61a5f` +
+> `c504dd67c`).** Read this first; the two blocks below are the record of getting there wrong twice,
+> kept because how the misses happened is the reusable part.
+>
+> **The real defect lived in the CRM approval door in `paige-ai-chat`, not in the Solo client at
+> all.** `crmApprovalSubject` keys update-shaped actions on a stable record id, but a `*.create` has
+> none and fell back to hashing the WHOLE command. The door narrowed the operator's approved set
+> with an SQL equality on that subject **computed from the model's re-emitted arguments** — while
+> the model is explicitly told on the approval turn that it need not reproduce them. Any drift
+> returned zero rows, the approval was refused, and each refusal made Paige file another proposal,
+> which made the next approval genuinely ambiguous. Self-perpetuating.
+>
+> The production split is the proof, and it is the cleanest natural experiment in this file:
+> `crm_update_contact` (subject = `contact_id`, drift-proof) **2 asked / 0 stranded**, against
+> `crm_create_contact` **4 asked / 3 stranded** and `deal_create` **2 asked / 2 stranded**. Same
+> door, same tenant, same week — the only variable is whether the action had a stable id.
+>
+> **The general (non-CRM) gate was repaired for exactly this on 2026-09-13. The CRM door never got
+> the fix.** That is the reusable lesson: when a gate is repaired, enumerate every door that shares
+> its shape and port it, or write down why it does not apply. A fix applied to one of two twins is
+> a fix with a shelf life.
+>
+> **Three of the four findings that mattered came from RUNNING things, not reading them.** The
+> build's own reasoning was sound and its tests bit; what it could not see was (a) an `18.H25`
+> regression in `scripts/client-memory-authz` — found by running the harness and measuring 333/1
+> against the base's 334/0 — and (b) a §39 peer-gate finding that the fix reintroduced the exact lie
+> it exists to end: the sole-candidate rule claimed the one live approval regardless of which call
+> was being resolved, so approving "create John" and asking for Jane in the same turn made Jane's
+> call spend John's approval. The write stayed safe (stored args execute) but Paige would have
+> narrated a record the owner never got. **A fix for a lying-about-outcomes bug is exactly where to
+> look hardest for a new way to lie about outcomes.**
+>
+> **And one in the copy.** The refusal told the operator to "approve them one at a time" — the card
+> has a single Approve button and cannot do that. Correct diagnosis, correct code, and an
+> instruction the interface cannot obey (§36/§70.1). Check the recovery you name against the control
+> that exists.
+
+> **CORRECTED THE SAME DAY, before the entry was a day old (§58 — marked, never deleted).** The
+> diagnosis below is accurate as a reading of `src/solo/agent.tsx` + `useSoloChat.ts` and **wrong
+> about why the owner's approvals failed**, because THAT PAIR DOES NOT SHIP. Nothing in `src/`
+> imports `agent.tsx`; its strings are absent from `dist/`. The live Solo chat is
+> `SoloPaigeWorkspace` → `PaigeAIChat`, which has always carried the body-borne fingerprint echo.
+> The measurement (36 proposals in 30 days, 21 never consumed) stands; the cause named below does
+> not explain it.
+>
+> **What the re-measurement showed instead: the 21 were never one bug.** Three unconsumed
+> `n8n_create_workflow` rows carry `server_issued_at IS NULL` — the documented unrecoverable legacy
+> class, working as specified. Six are CRM-door tools whose `thread_id IS NULL` is deliberate (the
+> door stores and reads with null thread/client scope), and the same door shows `crm_update_contact`
+> at 4 asked / 0 unconsumed, so it is not broken per se. Twelve are `action_advance`, which the
+> 2026-09-13 batch-ambiguity terminal already explains. Two `team_invite_member` rows carry a null
+> thread WITHOUT being CRM-door tools, and the inline gate scopes `.eq("thread_id", payloadThreadId)`
+> — that pair is genuinely anomalous and remains unexplained.
+>
+> **The lesson the original entry missed, and the one worth keeping:** *is the surface REACHABLE?*
+> A file's folder and name are not evidence that it ships. `agent.tsx` sits in `src/solo/`, exports
+> `Agent` and `PaigePanel`, owns `useSoloChat`, and reads exactly like the Solo chat. It was edited,
+> tested, committed and pushed before anyone asked what imported it — by the same session that wrote
+> §71 that morning, which is why §71.1 now carries the reachability half, cited here.
+>
+> **A second method lesson from the same day:** proving "these failures are pre-existing" with
+> `git stash` on an already-clean tree stashes nothing, pops with "No stash entries found", and
+> compares a tree with itself. It cannot fail, so it measures nothing, and it looks exactly like a
+> passing check. A worktree at the base commit is the comparison that can disagree. The under-measured
+> claim ("19 across 4 files") was corrected to the real figure (21 across 6, identical both sides)
+> only because CI disagreed. §71.3 now carries both.
+>
+> The body below is left intact as the original reasoning, which is still correct about the code it
+> describes — and is the exact shape of a confident, well-evidenced, wrong root cause.
+
+**Symptom (owner-reported, production).** The owner pressed **Approve** in the Solo shell and the
+action did not happen. He pressed it eight times across two hours in one client session. Nothing
+executed once — no contact created, no document written, no email sent. The card was visibly there
+and visibly responded, which is why this read as "approvals are flaky" rather than as a seam bug.
+
+**Root cause — two disjoint systems, mistaken for one.** Solo's Approve button called
+`execute-approval`, which claims a row in **`paige_pending_approvals`**. The chat gate in
+`paige-ai-chat` executes a confirmation-required action only when the exact fingerprint of the
+stored call is echoed back in the **request body**, against **`paige_pending_confirmations`**.
+Nothing in the repo converts one into the other — `execute-approval` contains zero references to the
+confirmations table, and the only place both names meet is a pair of *independent* FK columns on
+`paige_social_jobs`, whose trigger validates each separately. So the rail ticked and the gate went
+on waiting.
+
+Three compounding defects made it invisible:
+
+1. **`useSoloChat` deleted the pending ask on arrival.** `if (parsed.paige_confirm?.summary)
+   continue;` — dropped on the stated grounds that confirms were *"already surfaced in the 'She
+   proposed today' rail"*. One wrong sentence in a comment. That rail is the other table, so the
+   drop routed the frame nowhere; it destroyed the only handle on the action.
+2. **The shared card was built to allow a dead button.** `fingerprints` was optional, and its own
+   doc-comment said a caller without it renders fine and *"that caller's approvals simply will not
+   open the gate."* The hazard was known, written down, and shipped as a type.
+3. **Summary and fingerprint were parallel arrays with one of them `.filter()`ed**, so a single
+   action missing a fingerprint shifted every later summary onto the wrong call.
+
+**The proof class that missed it.** Every existing test asserted the card **rendered** and the
+button **fired**. None asserted the **action ran**. That gap is invisible to unit tests, to
+typecheck, to a build, and to a screenshot — a button with no binding behind it renders,
+type-checks, and photographs exactly like one that works. It is only visible from the other end of
+the seam: does a row in `paige_pending_confirmations` ever reach `consumed_at`? Measured on
+production, it did not — **36 proposals in 30 days, 21 never acted on**, while the one surface wired
+correctly (`PaigeAIChat`, via `crm_update_contact`) showed 4 asked and 0 unanswered. The divergence
+between two surfaces' consumption rates was the signal, and no test could have produced it.
+
+**A second-order lesson about the fix that preceded it.** #1418 — the self-approval branch a model's
+own `confirm:true` could spend — was a real defect and its removal (`cda229c`, deployed
+2026-09-24 03:47:50 UTC) was correct. But that branch was also, by its own comment, *"necessary,
+because five of the six surfaces render no card"* — it was the compensation keeping the card-less
+surfaces working, scoped to them and refused for `high` risk. Removing it turned the acknowledged
+outage on. **A security fix that removes a compensation must measure what the compensation was
+holding up**; the write-up of the incident asserted the blast-radius measurement "does not need to
+be run", and it was exactly the thing that needed running.
+
+**The rules.**
+
+- **A control that cannot work must be unrepresentable, not merely discouraged.** An optional
+  binding with a warning comment is a loaded gun with a label on it. Make the type refuse: bind
+  per-action, and render no approve affordance when there is nothing to spend.
+- **Assert the effect, never the affordance.** "The button rendered and the handler fired" is not
+  evidence the action ran (§70). Where the effect crosses a seam, prove it at the far side.
+- **Two stores that answer the same question are a defect, not an architecture.** Before adding an
+  approval path, check which table the executing gate actually reads (§18 — the one home is
+  `docs/doctrine/one-approval-gate.md`).
+- **When a comment explains why a frame is safe to drop, verify the claim.** This one named a
+  destination that did not exist, and cost every Solo write path for a month.
+- **A per-tenant workaround is not a fix.** The account where this "worked" had ~60 tool-autonomy
+  rows set to skip asking; every other account had zero to three and defaulted to
+  `coalesce(_mode,'confirm')`. The seam repair is what makes a brand-new tenant work with no
+  configuration — the configured account was hiding the bug, not demonstrating the cure.
