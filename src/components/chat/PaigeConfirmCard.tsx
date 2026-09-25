@@ -49,8 +49,14 @@ export type ConfirmAction = {
   note?: string;
 };
 
-const ROW_ICON: Record<ConfirmActionState, typeof Check> = {
-  pending: ShieldQuestion,
+/**
+ * Settled rows earn an icon because the icon carries the outcome. A PENDING row does not: repeating
+ * the header's shield on every line is noise, and in a mixed batch it actively misleads — an
+ * approvable row and an unapprovable one rendered identically while behaving differently. Pending
+ * rows use a typographic marker instead, and the two kinds differ at a glance: a filled dot for one
+ * this card can act on, a dash for one it cannot.
+ */
+const ROW_ICON: Partial<Record<ConfirmActionState, typeof Check>> = {
   working: Loader2,
   done: Check,
   failed: AlertTriangle,
@@ -147,7 +153,7 @@ export function PaigeConfirmCard({
           {/* A real heading, not an uppercase eyebrow. It states the decision, and it changes
               with the outcome so the card reports what happened instead of silently vanishing. */}
           <p
-            className="text-sm font-semibold leading-5 tracking-[-0.01em] text-foreground"
+            className="text-[13px] font-semibold leading-[18px] tracking-[-0.012em] text-foreground"
             aria-live="polite"
           >
             {HEADINGS[cardState](actions.length)}
@@ -158,23 +164,38 @@ export function PaigeConfirmCard({
               const state = action.state ?? "pending";
               const RowIcon = ROW_ICON[state];
               const settled = state === "done" || state === "failed";
+              const bound = typeof action.fingerprint === "string" && action.fingerprint !== "";
               return (
                 <li
                   key={action.fingerprint ?? `${i}-${action.summary.slice(0, 24)}`}
                   className="flex items-start gap-2 text-sm leading-5 text-foreground"
                 >
-                  {multi && (
-                    <RowIcon
-                      aria-hidden
-                      className={cn(
-                        "mt-0.5 h-3.5 w-3.5 shrink-0",
-                        ROW_TONE[state],
-                        state === "working" && "animate-spin motion-reduce:animate-none",
-                      )}
-                    />
-                  )}
+                  {multi &&
+                    (RowIcon ? (
+                      <RowIcon
+                        aria-hidden
+                        className={cn(
+                          "mt-0.5 h-3.5 w-3.5 shrink-0",
+                          ROW_TONE[state],
+                          state === "working" && "animate-spin motion-reduce:animate-none",
+                        )}
+                      />
+                    ) : (
+                      <span
+                        aria-hidden
+                        className="mt-[7px] h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                      >
+                        {bound ? (
+                          <span className="block h-1 w-1 rounded-full bg-current" />
+                        ) : (
+                          <span className="block h-px w-2.5 bg-current opacity-60" />
+                        )}
+                      </span>
+                    ))}
                   <span className="min-w-0">
-                    <span className={cn(settled && "text-muted-foreground")}>{action.summary}</span>
+                    <span className={cn((settled || (!bound && multi)) && "text-muted-foreground")}>
+                      {action.summary}
+                    </span>
                     {action.note && (
                       <span
                         className={cn(
@@ -185,7 +206,10 @@ export function PaigeConfirmCard({
                         {action.note}
                       </span>
                     )}
-                    {!action.fingerprint && !settled && (
+                    {/* Only worth saying per ROW when the card can still act on something else.
+                        When nothing is approvable the card-level line below says it once, and
+                        saying it twice reads as a system repeating itself. */}
+                    {!bound && !settled && canApprove && (
                       <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">
                         Can&rsquo;t be approved from this chat.
                       </span>

@@ -74,8 +74,10 @@ describe("the card cannot offer an approval it has no binding for", () => {
 
     expect(ui.button("Approve")).toBeUndefined();
     expect(ui.buttons()).toHaveLength(0);
-    // …and it says so, rather than leaving a person to discover it by pressing.
-    expect(ui.text()).toContain("Can’t be approved from this chat.");
+    // …and it says so ONCE, rather than leaving a person to discover it by pressing. When nothing
+    // is approvable the card-level line carries it; repeating it per row reads as a stutter.
+    expect(ui.text()).toContain("can’t complete approvals");
+    expect(ui.text()).not.toContain("Can’t be approved from this chat.");
     expect(onApprove).not.toHaveBeenCalled();
     ui.cleanup();
   });
