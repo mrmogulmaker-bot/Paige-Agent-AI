@@ -3035,6 +3035,43 @@ numbers are not the same number.
 
 ## Two approval systems on one surface: the button ticked, the action never ran (2026-09-25)
 
+> **THE CAUSE IS NOW ESTABLISHED AND FIXED (2026-09-25, PR #1450, commits `c23d61a5f` +
+> `c504dd67c`).** Read this first; the two blocks below are the record of getting there wrong twice,
+> kept because how the misses happened is the reusable part.
+>
+> **The real defect lived in the CRM approval door in `paige-ai-chat`, not in the Solo client at
+> all.** `crmApprovalSubject` keys update-shaped actions on a stable record id, but a `*.create` has
+> none and fell back to hashing the WHOLE command. The door narrowed the operator's approved set
+> with an SQL equality on that subject **computed from the model's re-emitted arguments** — while
+> the model is explicitly told on the approval turn that it need not reproduce them. Any drift
+> returned zero rows, the approval was refused, and each refusal made Paige file another proposal,
+> which made the next approval genuinely ambiguous. Self-perpetuating.
+>
+> The production split is the proof, and it is the cleanest natural experiment in this file:
+> `crm_update_contact` (subject = `contact_id`, drift-proof) **2 asked / 0 stranded**, against
+> `crm_create_contact` **4 asked / 3 stranded** and `deal_create` **2 asked / 2 stranded**. Same
+> door, same tenant, same week — the only variable is whether the action had a stable id.
+>
+> **The general (non-CRM) gate was repaired for exactly this on 2026-09-13. The CRM door never got
+> the fix.** That is the reusable lesson: when a gate is repaired, enumerate every door that shares
+> its shape and port it, or write down why it does not apply. A fix applied to one of two twins is
+> a fix with a shelf life.
+>
+> **Three of the four findings that mattered came from RUNNING things, not reading them.** The
+> build's own reasoning was sound and its tests bit; what it could not see was (a) an `18.H25`
+> regression in `scripts/client-memory-authz` — found by running the harness and measuring 333/1
+> against the base's 334/0 — and (b) a §39 peer-gate finding that the fix reintroduced the exact lie
+> it exists to end: the sole-candidate rule claimed the one live approval regardless of which call
+> was being resolved, so approving "create John" and asking for Jane in the same turn made Jane's
+> call spend John's approval. The write stayed safe (stored args execute) but Paige would have
+> narrated a record the owner never got. **A fix for a lying-about-outcomes bug is exactly where to
+> look hardest for a new way to lie about outcomes.**
+>
+> **And one in the copy.** The refusal told the operator to "approve them one at a time" — the card
+> has a single Approve button and cannot do that. Correct diagnosis, correct code, and an
+> instruction the interface cannot obey (§36/§70.1). Check the recovery you name against the control
+> that exists.
+
 > **CORRECTED THE SAME DAY, before the entry was a day old (§58 — marked, never deleted).** The
 > diagnosis below is accurate as a reading of `src/solo/agent.tsx` + `useSoloChat.ts` and **wrong
 > about why the owner's approvals failed**, because THAT PAIR DOES NOT SHIP. Nothing in `src/`
