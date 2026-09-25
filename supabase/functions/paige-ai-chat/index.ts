@@ -1,7 +1,7 @@
 import { BUSINESS_MISSION_TOOLS } from '../_shared/paige-spine/domains/business_mission.ts';
 import { executeVerifiedMissionMutation, resolveBusinessMissionThreadContext, resolveSelectedBusinessMissionContext } from '../_shared/business-mission-tenant-brain.ts';
 import { CAMPAIGN_BRIEF_TOOLS } from '../_shared/paige-spine/domains/campaigns.ts';
-import { CRM_COMMAND_TOOLS, CRM_COMMAND_TOOL_NAMES, CRM_TOOL_TO_ACTION, crmApprovalSubject } from '../_shared/crm-command/catalog.ts';
+import { CRM_ACTION_LABEL, CRM_COMMAND_TOOLS, CRM_COMMAND_TOOL_NAMES, CRM_TOOL_TO_ACTION, crmApprovalSubject } from '../_shared/crm-command/catalog.ts';
 import { resolveCrmApprovedFingerprint, CRM_APPROVAL_CANDIDATE_LIMIT } from '../_shared/crm-command/approval-resolution.ts';
 import { executeVerifiedCampaignBriefMutation, resolveCampaignBriefListContext } from '../_shared/campaign-brief-tenant-brain.ts';
 import { CALENDAR_PRESET_TOOLS } from '../_shared/paige-spine/domains/calendar_preset.ts';
@@ -8320,10 +8320,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // that errored or threw — and the `note` below instructs the model to say the sentence
           // verbatim, so a single shared message would have Paige state a cause that did not
           // happen. That is the §13 failure this whole change is about, reappearing in the copy.
-          let approvalResolutionFailed: "" | "ambiguous" | "lookup_failed" = "";
+          let approvalResolutionFailed: "" | "ambiguous" | "unclaimable" | "lookup_failed" = "";
           if (approvedConfirmations.size > 0 && personaCtx?.tenant_id) {
             const gateAdmin = createClient(supabaseUrl, supabaseServiceKey);
-            const approvalSubject = await crmApprovalSubject(action, { action, ...crmArgs });
             // Narrow THIS call WITHIN the operator-echoed set. Every predicate below is the
             // claimable boundary and none of them may be relaxed: the set itself, the tenant, the
             // actor, the exact capability, the action-door scope (thread/client NULL), liveness
@@ -8352,6 +8351,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // echoed fingerprints — and drift still cannot reach the write, because crm-command
             // claims the row atomically and executes its STORED args, never the re-emission.
             try {
+              // INSIDE the guard: this hashes model-supplied arguments, so a throw here must reach
+              // the honest refusal like any other lookup failure rather than escaping the handler.
+              // It costs nothing to guard now that the subject is only a PREFERENCE — a failure to
+              // compute it degrades to the sole-candidate path, not to a wrong claim.
+              const approvalSubject = await crmApprovalSubject(action, { action, ...crmArgs });
               const { data: approvedRows, error: approvedRowsError } = await gateAdmin.from("paige_pending_confirmations")
                 .select("fingerprint,args").eq("tenant_id", personaCtx.tenant_id).eq("user_id", user.id)
                 .eq("tool_name", tc.function.name).in("fingerprint", [...approvedConfirmations].map((token) => token.split(":")[0]))
@@ -8374,18 +8378,34 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 console.error("[paige] CRM approved-set lookup failed — failing to the honest refusal", JSON.stringify({ tool: tc.function.name, correlation_id: requestNonce, message: approvedRowsError?.message ?? null }));
                 approvalResolutionFailed = "lookup_failed";
               } else {
-                const resolved = resolveCrmApprovedFingerprint(approvedRows ?? [], approvalSubject);
+                // The count of THIS capability's calls in this turn decides whether the sole-candidate rule
+                // may fire at all (see the resolver). Counted from `toolCalls`, which the model authored
+                // but cannot use to widen anything — a larger count only makes the resolver stricter.
+                const sameToolCallsThisTurn = toolCalls.filter((call: any) => call?.function?.name === tc.function.name).length;
+                const resolved = resolveCrmApprovedFingerprint(approvedRows ?? [], approvalSubject, sameToolCallsThisTurn);
                 if (resolved.kind === "claim") {
                   // The WHOLE echoed token must be present, not the bare prefix the search used —
                   // this is what stops a scoped `fp:uuid` from spending a bare proposal (18.H25).
+                  // Its own label, because NOTHING here is ambiguous: the search found exactly one
+                  // row and the echoed token simply does not name it. Telling the operator "more
+                  // than one approval is waiting" would be the same §13 lie one branch over.
                   if (approvedConfirmations.has(resolved.fingerprint)) approvedFingerprint = resolved.fingerprint;
-                  else approvalResolutionFailed = "ambiguous";
+                  else approvalResolutionFailed = "unclaimable";
                 } else if (resolved.kind === "ambiguous") approvalResolutionFailed = "ambiguous";
                 // `none` — the operator's approvals are live for some OTHER tool, so this call is an
-                // ordinary unapproved one: it goes on with no approved_fingerprint and crm-command
-                // decides it fresh, which ends in its own "Needs your OK" card. Refusing here would
-                // deny a card the person never got to see, which is the second half of the report
-                // ("create contact is not available on all of my Solo accounts").
+                // ordinary unapproved one and goes on with no approved_fingerprint. Refusing here
+                // would deny a card the person never got to see, which is the second half of the
+                // report ("create contact is not available on all of my Solo accounts").
+                //
+                // WHAT DECIDES WHAT HAPPENS NEXT IS THE LANE, NOT THIS DOOR (§13 — an earlier draft
+                // of this comment asserted it "ends in its own Needs your OK card", which is true
+                // only at `confirm`). With no claim, decideGovernedExecution proposes on `confirm`
+                // and executes the model's arguments on `auto`. That is byte-for-byte what a turn
+                // carrying NO approvals already does for the same call, so this is not a new
+                // authority — the old refusal was an accidental extra brake that applied only when
+                // the operator happened to be approving something else, and being stricter there
+                // than on an ordinary turn was incoherent. The lane is the control surface, and
+                // §67/§68 govern it: today `trust_effective_rung()` = 1 clamps `auto` to `confirm`.
               }
             } catch (lookupThrow) {
               // A THROWN failure is the same hazard as the returned error, and the entry guard means
@@ -8395,11 +8415,23 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             }
           }
           if (approvalResolutionFailed) {
+            // THE RECOVERY MUST BE ONE THE SHIPPED CARD CAN PERFORM (§36/§70.1). The card has a
+            // SINGLE Approve button that submits every bound fingerprint at once
+            // (PaigeConfirmCard.tsx) — there is no per-row control, no checkbox, no slice. So
+            // "approve them one at a time", inherited from the general gate's terminal, instructed
+            // the operator to do something the interface does not offer and then blamed them for
+            // the wall. "Not now" DOES work: cancelConfirmations has a dedicated CRM branch that
+            // consumes these rows. Name that, and name the change in the operator's words.
+            // Leading clause only: several labels carry a model-facing "; <caveat>" tail (see catalog.ts).
+            const actionLabel = (CRM_ACTION_LABEL[action] ?? "make this change").split(";")[0].trim();
             const refusal = approvalResolutionFailed === "lookup_failed"
               ? { error: "Nothing was created, changed or sent. Something went wrong on our side while checking your approval.",
                   note: "Say this to the operator in ONE plain line: nothing happened, it was a problem on our side rather than anything they did, and they can approve it again. Do NOT blame their approval, do NOT call this tool again in this reply and do NOT open a new approval card." }
-              : { error: "Nothing was created, changed or sent. More than one approval is waiting for this kind of change, so it is not clear which one to run.",
-                  note: "Say this to the operator in ONE plain line: nothing happened, more than one approval is waiting for this kind of change, and they can clear it by approving just one of them at a time. Do NOT call this tool again in this reply and do NOT open a new approval card." };
+              : approvalResolutionFailed === "unclaimable"
+              ? { error: `Nothing was created, changed or sent. That approval no longer matches anything I can run to ${actionLabel}.`,
+                  note: "Say this to the operator in ONE plain line: nothing happened, that approval no longer matches anything you can run, and they can just ask you again for the one they want. Do NOT say anything is ambiguous, do NOT call this tool again in this reply and do NOT open a new approval card." }
+              : { error: `Nothing was created, changed or sent. More than one approval is waiting to ${actionLabel}, so it is not clear which one to run.`,
+                  note: "Say this to the operator in ONE plain line: nothing happened, more than one approval is waiting for that, and they can press Not now to clear them and then ask you again for the one they want. Do NOT tell them to approve one at a time — the card has a single Approve button and cannot do that. Do NOT call this tool again in this reply and do NOT open a new approval card." };
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, outcome: "refused",
               ...refusal, correlation_id: requestNonce }) });
             continue;

@@ -1,20 +1,24 @@
 /**
- * Solo approvals actually execute — the regression battery for the two-systems defect.
+ * Solo approvals actually execute — the regression battery for the shared approval card.
  *
- * THE DEFECT. Solo's Approve button wrote to `paige_pending_approvals` (via `execute-approval`)
- * while the chat gate in `paige-ai-chat` only ever honours a fingerprint echoed back in the
- * REQUEST BODY against `paige_pending_confirmations`. Two disjoint systems, nothing converting one
- * into the other. So the owner pressed Approve, the proposals rail ticked, and the action never
- * ran. Measured on production before this change: 36 proposals in 30 days, 21 never acted on —
- * including a contact, an offer letter and an email draft from one client session.
+ * WHAT THIS FILE ORIGINALLY CLAIMED, AND WHY THAT WAS WRONG (§13, kept rather than edited out).
+ * It opened by blaming `src/solo/agent.tsx` + `useSoloChat.ts` for dropping the `paige_confirm`
+ * frame. That reading of those two files was accurate and the conclusion was still wrong, because
+ * THAT PAIR NEVER SHIPPED: nothing imported it, no route lazy-loaded it, and its unique strings
+ * were absent from dist/assets while the live chat's were present. Both files are now deleted and
+ * the assertions that read them with them. The live Solo chat is SoloPaigeWorkspace -> PaigeAIChat.
  *
- * `useSoloChat` compounded it by DELETING the `paige_confirm` frame outright, on the stated
- * grounds that confirms were "already surfaced in the 'She proposed today' rail". They were not.
+ * The measured defect was real and its true cause is fixed elsewhere: the CRM approval door in
+ * `paige-ai-chat` required the model to retype an approved create byte-for-byte, so any drift
+ * refused it and nothing was created (see `src/__tests__/crm-approval-resolution.test.ts`).
  *
- * TWO PROOF CLASSES, kept apart on purpose (§13). The card is exercised BEHAVIOURALLY — really
- * rendered, really clicked. The hook needs a live `fetch` and a Supabase session, so its wiring is
- * pinned by SOURCE ASSERTION, the same class `confirm-gate-containment-wiring.test.ts` uses for
- * the edge handler. Neither stands in for an authenticated runtime drive, which is owed.
+ * WHAT THIS FILE STILL GUARDS, on the live path:
+ *  - the shared card cannot offer an approval it holds no binding for, and
+ *  - PaigeAIChat keeps each summary PAIRED with its own fingerprint, so an approval can never be
+ *    spent on a neighbouring call.
+ *
+ * The card is exercised BEHAVIOURALLY — really rendered, really clicked. Neither class stands in
+ * for an authenticated runtime drive, which is owed.
  */
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -23,8 +27,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { PaigeConfirmCard, type ConfirmAction } from "@/components/chat/PaigeConfirmCard";
 
-const HOOK = readFileSync("src/solo/data/useSoloChat.ts", "utf8");
-const SHELL = readFileSync("src/solo/agent.tsx", "utf8");
 
 function render(node: React.ReactElement) {
   const host = document.createElement("div");
@@ -141,41 +143,17 @@ describe("the card cannot offer an approval it has no binding for", () => {
   });
 });
 
-describe("Solo carries the approval back to the gate", () => {
-  it("puts the echoed fingerprints in the request BODY, where the model cannot write", () => {
-    expect(HOOK).toContain("approvedConfirmations: approvedFingerprints");
-    expect(HOOK).toContain("declinedConfirmations: declinedFingerprints");
-    // They must be inside the fetch body, not merely declared somewhere in the file.
-    const body = HOOK.slice(HOOK.indexOf("body: JSON.stringify({"), HOOK.indexOf("if (!response.ok)"));
-    expect(body).toContain("approvedConfirmations");
-  });
-
-  it("no longer DELETES the pending ask", () => {
-    // The old line was `if (parsed.paige_confirm?.summary) continue;` with no collection.
-    // Guard the exact regression: a bare drop with nothing captured.
-    expect(HOOK).not.toMatch(/if \(parsed\.paige_confirm\?\.summary\) continue;/);
-    expect(HOOK).toContain("setConfirms((prev)");
-    expect(HOOK).toContain("confirms");
-  });
-
-  it("clears a pending ask when the turn, thread or chat changes — never a stale decision", () => {
-    // A card offering a decision about a superseded turn is worse than none.
-    expect(HOOK.match(/setConfirms\(\[\]\)/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
-  });
-
-  it("renders the ONE shared card on BOTH Solo chat surfaces, and builds no second one (§18)", () => {
-    expect(SHELL).toContain('from "@/components/chat/PaigeConfirmCard"');
-    // Full workspace AND the floating panel — a panel that could not approve would be the same
-    // defect in a smaller frame.
-    expect(SHELL.match(/<PaigeConfirmCard actions=\{confirms\}/g)?.length).toBe(2);
-    expect(SHELL).toContain('onApprove={fps=>send("Approved — run it.",fps)}');
-  });
-
-  it("keeps summary and fingerprint PAIRED so an approval cannot land on a neighbouring call", () => {
+describe("an approval cannot land on a neighbouring call", () => {
+  it("keeps summary and fingerprint PAIRED in the live chat", () => {
     // The old caller built two arrays and filtered one, shifting every later summary onto the
-    // wrong fingerprint.
+    // wrong fingerprint. This is the LIVE surface: SoloPaigeWorkspace renders PaigeAIChat.
     const chat = readFileSync("src/components/dashboard/PaigeAIChat.tsx", "utf8");
     expect(chat).not.toContain("fingerprints={message.confirm.map((c) => c.fingerprint).filter(");
     expect(chat).toContain("actions={message.confirm.map((c) => ({");
+  });
+
+  it("is reached from the Solo workspace, not from a file nothing mounts (§71.1)", () => {
+    const workspace = readFileSync("src/solo/SoloPaigeWorkspace.tsx", "utf8");
+    expect(workspace).toContain('from "@/components/dashboard/PaigeAIChat"');
   });
 });

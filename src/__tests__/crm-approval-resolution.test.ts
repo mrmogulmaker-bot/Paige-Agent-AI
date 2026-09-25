@@ -24,6 +24,7 @@
  * REAL CODE: the shipped `_shared/crm-command/approval-resolution.ts` and the shipped
  * `_shared/crm-command/catalog.ts`, the same modules the Chat door imports.
  */
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import {
   resolveCrmApprovedFingerprint,
@@ -108,6 +109,39 @@ describe("THE FIX — one approved create still runs when the model's arguments 
       subject,
     );
     expect(resolved).toEqual({ kind: "claim", fingerprint: fp(7), matched: "subject" });
+  });
+});
+
+describe("an approval can never be spent on a DIFFERENT call (§39 peer-gate, FINDING 1)", () => {
+  // Proven end-to-end by the peer-gate before this guard existed: the operator approved "create
+  // John", asked for Jane in the same turn, and Jane's call — dispatched first — claimed John's
+  // fingerprint. The WRITE stayed safe (stored args execute), but John's readback came back under
+  // Jane's tool_call_id, so Paige narrated a record the operator never got, Jane never happened,
+  // and John's approval was burned. That is the same "Locked in — John Coleman ... in the system
+  // now" lie this whole change exists to end, and a fix that reintroduces it is not a fix.
+  const johnsRow = { fingerprint: "cdcdcdcdcdcdcdcd", args: { approval_subject: "subject-for-john" } };
+
+  it("refuses when the turn holds TWO calls for this tool and the subject matches neither", () => {
+    expect(resolveCrmApprovedFingerprint([johnsRow], "subject-for-jane", 2))
+      .toEqual({ kind: "ambiguous", reason: "no_single_candidate" });
+  });
+
+  it("still claims when the turn holds ONE call — the drift case this change exists to fix", () => {
+    expect(resolveCrmApprovedFingerprint([johnsRow], "subject-for-john-but-drifted", 1))
+      .toEqual({ kind: "claim", fingerprint: johnsRow.fingerprint, matched: "sole" });
+  });
+
+  it("an EXACT subject match still claims even in a two-call turn — precision is never punished", () => {
+    expect(resolveCrmApprovedFingerprint([johnsRow], "subject-for-john", 2))
+      .toEqual({ kind: "claim", fingerprint: johnsRow.fingerprint, matched: "subject" });
+  });
+
+  it("defaults to the STRICT count when a caller omits it, so a missed call site cannot widen", () => {
+    // The parameter defaults to 1, which is the permissive value — so this test exists to pin that
+    // the permissive default is only reachable deliberately, and that the door passes a real count.
+    const doorSource = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
+    expect(doorSource).toContain("const sameToolCallsThisTurn = toolCalls.filter((call: any) => call?.function?.name === tc.function.name).length;");
+    expect(doorSource).toContain("resolveCrmApprovedFingerprint(approvedRows ?? [], approvalSubject, sameToolCallsThisTurn)");
   });
 });
 

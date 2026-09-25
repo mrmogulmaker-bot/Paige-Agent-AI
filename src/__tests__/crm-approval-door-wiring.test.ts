@@ -83,7 +83,7 @@ describe("the subject is a preference over the candidates, no longer a gate on t
     expect(HANDLER).toMatch(
       /import\s*\{[^}]*\bresolveCrmApprovedFingerprint\b[^}]*\bCRM_APPROVAL_CANDIDATE_LIMIT\b[^}]*\}\s*from\s*["']\.\.\/_shared\/crm-command\/approval-resolution\.ts["']/,
     );
-    expect(door).toContain("resolveCrmApprovedFingerprint(approvedRows ?? [], approvalSubject)");
+    expect(door).toContain("resolveCrmApprovedFingerprint(approvedRows ?? [], approvalSubject, sameToolCallsThisTurn)");
     // Bounded like the general gate: one more than the limit, so an over-large set is detectable.
     expect(door).toContain(".limit(CRM_APPROVAL_CANDIDATE_LIMIT + 1)");
   });
@@ -110,8 +110,30 @@ describe("the refusal tells the truth in words a person can act on (§13/§36)",
     expect(refusal).toContain("Nothing was created, changed or sent.");
   });
 
-  it("says what to do next", () => {
-    expect(refusal).toContain("approving just one of them at a time");
+  it("names a recovery the SHIPPED card can actually perform (§36/§70.1)", () => {
+    // PaigeConfirmCard has ONE Approve button that submits every bound fingerprint at once —
+    // no per-row control, no checkbox, no slice. So "approve them one at a time" instructed the
+    // operator to do something the interface does not offer, then blamed them for the wall.
+    // "Not now" genuinely clears these rows (cancelConfirmations has a CRM branch).
+    expect(refusal).toContain("press Not now to clear them");
+    expect(refusal).not.toContain("approving just one of them at a time");
+    expect(refusal).toContain("the card has a single Approve button and cannot do that");
+  });
+
+  it("states a cause that is TRUE of the branch it fires on (§13)", () => {
+    // Three causes, three messages. A shared line would have Paige assert "more than one
+    // approval is waiting" on a lookup that errored, or on a single unclaimable row — the same
+    // narrate-something-that-did-not-happen failure this whole change is about.
+    expect(refusal).toContain('approvalResolutionFailed === "lookup_failed"');
+    expect(refusal).toContain('approvalResolutionFailed === "unclaimable"');
+    expect(refusal).toContain("Something went wrong on our side");
+    expect(refusal).toContain("no longer matches anything I can run");
+    expect(refusal).toContain("More than one approval is waiting");
+  });
+
+  it("names the change in the operator's words, not a tool key", () => {
+    expect(refusal).toContain("CRM_ACTION_LABEL[action]");
+    expect(refusal).not.toContain("tc.function.name");
   });
 
   it("carries no engineering jargon the operator would have to decode", () => {

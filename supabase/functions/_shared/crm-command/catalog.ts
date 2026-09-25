@@ -104,7 +104,12 @@ const required: Record<CrmAction, string[]> = {
   "deal.delete": ["deal_id","expected_version"],
 };
 
-const labels: Record<CrmAction, string> = {
+/**
+ * The operator-readable name of each action. Primarily the model-facing tool description, so some
+ * entries carry a trailing "; <caveat>" clause. A surface quoting one to a PERSON takes the leading
+ * clause only (`.split(";")[0]`) — see the CRM approval refusal in paige-ai-chat.
+ */
+export const CRM_ACTION_LABEL: Record<CrmAction, string> = {
   "contact.create":"create a contact", "contact.update":"edit a contact", "contact.archive":"archive a contact", "contact.restore":"restore a contact",
   "contact.link_company":"link a contact to a company", "contact.unlink_company":"unlink a contact from a company", "contact.assign_coach":"change a contact's coach",
   "contact.assign_owner":"change a contact's owner", "contact.merge":"merge two contacts after reviewing conflicts and dependencies",
@@ -122,7 +127,7 @@ export const CRM_COMMAND_TOOLS = (Object.entries(CRM_ACTION_CAPABILITY) as [CrmA
   type: "function",
   function: {
     name: capability,
-    description: `Governed CRM: ${labels[action]}. Resolve exact IDs and version fields from a current read. Tenant, actor, role, account, authority and approval are always resolved by the server. Returns durable readback, receipt state and a route locator; destructive and ownership operations require the rendered approval card.`,
+    description: `Governed CRM: ${CRM_ACTION_LABEL[action]}. Resolve exact IDs and version fields from a current read. Tenant, actor, role, account, authority and approval are always resolved by the server. Returns durable readback, receipt state and a route locator; destructive and ownership operations require the rendered approval card.`,
     parameters: {
       type: "object",
       properties: {

@@ -84,7 +84,7 @@ describe("Paige Chat canonical CRM adoption", () => {
     // resolution order lives in the one shared, unit-tested home. Behaviour: see
     // crm-approval-resolution.test.ts; wiring: see crm-approval-door-wiring.test.ts.
     expect(chat).toContain('.in("fingerprint", [...approvedConfirmations].map((token) => token.split(":")[0]))');
-    expect(chat).toContain("resolveCrmApprovedFingerprint(approvedRows ?? [], approvalSubject)");
+    expect(chat).toContain("resolveCrmApprovedFingerprint(approvedRows ?? [], approvalSubject, sameToolCallsThisTurn)");
     expect(chat).toContain("if (approvedConfirmations.has(resolved.fingerprint)) approvedFingerprint = resolved.fingerprint;");
     expect(chat).not.toContain("const idempotencyKey = suppliedKey || crypto.randomUUID()");
   });

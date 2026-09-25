@@ -71,14 +71,22 @@ function storedSubject(args: unknown): string | null {
  *  4. EXACTLY ONE candidate whose STORED subject equals this call's subject → claim it. This is the
  *     precise, drift-free path and it keeps today's behaviour whenever the model did reproduce the
  *     command.
- *  5. No subject match but EXACTLY ONE live approved candidate → claim it. The person approved one
- *     thing for this tool; model drift must not defeat it, and the stored call is what executes.
+ *  5. No subject match, EXACTLY ONE live approved candidate, AND exactly one call for this tool in
+ *     this turn → claim it. The person approved one thing for this tool; model drift must not
+ *     defeat it, and the stored call is what executes. The turn-count condition is load-bearing:
+ *     with two same-tool calls there is no basis for choosing, so it falls through to ambiguous.
  *  6. Anything else — two or more candidates with no single subject match → ambiguous. Refuse
  *     honestly; do not guess which one the person meant.
  */
 export function resolveCrmApprovedFingerprint(
   candidates: readonly CrmApprovalCandidate[],
   approvalSubject: string,
+  /**
+   * How many calls for THIS capability the model emitted in this turn. The sole-candidate rule
+   * (5) is only sound when it is 1 — see the rule's own note. Defaults to 1 so an omitted
+   * argument can never silently widen; callers that know better pass the real count.
+   */
+  sameToolCallsThisTurn = 1,
 ): CrmApprovalResolution {
   if (candidates.length > CRM_APPROVAL_CANDIDATE_LIMIT) {
     return { kind: "ambiguous", reason: "too_many_candidates" };
@@ -95,7 +103,15 @@ export function resolveCrmApprovedFingerprint(
   const subject = typeof approvalSubject === "string" && approvalSubject !== "" ? approvalSubject : null;
   const exact = subject === null ? [] : live.filter((row) => row.subject === subject);
   if (exact.length === 1) return { kind: "claim", fingerprint: exact[0].fingerprint, matched: "subject" };
-  if (exact.length === 0 && live.length === 1) {
+  // Rule 5 is sound ONLY when this turn holds a single call for this capability. With two, the
+  // resolver cannot tell which one the operator approved, and "the only live approval" is not an
+  // answer to that — it is a coin toss. The peer-gate proved the failure end-to-end: approve
+  // "create John", ask for Jane in the same turn, and Jane's call (dispatched first) claims John's
+  // fingerprint. The WRITE stays safe, because the stored args execute — but John's readback
+  // returns under Jane's tool_call_id, so Paige narrates a record the operator did not get, Jane
+  // never happens, and John's approval is burned. That is precisely the "Locked in" lie this
+  // change exists to end, so it must not be reintroduced by the fix for it.
+  if (exact.length === 0 && live.length === 1 && sameToolCallsThisTurn === 1) {
     return { kind: "claim", fingerprint: live[0].fingerprint, matched: "sole" };
   }
   return { kind: "ambiguous", reason: "no_single_candidate" };
