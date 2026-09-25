@@ -2661,6 +2661,18 @@ run #363, `✓ deployed paige-ai-chat`). Building the named fix would have been 
 was already closed, while the real live regression — caused by that very fix removing a
 compensation — went unbuilt. **A fix without this check can be a day of work that changes nothing.**
 
+**AND IS THE SURFACE REACHABLE?** *(artifact: the import graph, and the built bundle)* — added
+2026-09-25, because the first version of this section did not ask it and its own author walked
+straight into the gap hours later. A file's path and name are not evidence that it ships. Before
+editing a surface, prove something mounts it: `grep` for imports of it, and `grep` the built bundle
+for a string only it contains. In the same session that wrote this section, `src/solo/agent.tsx` —
+in the Solo folder, exporting `Agent` and `PaigePanel`, owning `useSoloChat`, reading exactly like
+the Solo chat — was edited, tested, committed and pushed before anyone asked what imported it.
+**Nothing did**, and its strings are absent from `dist/`. The live Solo chat was
+`SoloPaigeWorkspace` → `PaigeAIChat` the entire time, and the diagnosis built on the dead file was
+wrong. A test that passes against unreachable code passes exactly as convincingly as one that
+does not (§70 — the deliverable is a human completing the task, and nobody can reach dead code).
+
 ### 2. WHAT DOES PRODUCTION ACTUALLY SAY? *(artifact: a real query result)*
 
 Reason from the live system before reasoning from the source. Source tells you what CAN happen;
@@ -2676,10 +2688,22 @@ defect precise.
 
 ### 3. HAVE I PROVEN THE BASELINE, OR AM I ASSERTING IT? *(artifact: a measured before/after)*
 
-**"Those failures are pre-existing" is a measurement, not an observation.** Stash the change, run the
-same command, record the result, restore. Same for a lint, a typecheck count, a timing. A session
-that writes "pre-existing" without the stashed run is guessing in the one place a reader will
-believe it, and it is how a real regression ships inside a known-red suite.
+**"Those failures are pre-existing" is a measurement, not an observation.** Run the same command on
+the base commit and on the change, whole suite both sides, and record both numbers. Same for a
+lint, a typecheck count, a timing. A session that writes "pre-existing" without both runs is
+guessing in the one place a reader will believe it, and it is how a real regression ships inside a
+known-red suite.
+
+**USE A WORKTREE, NOT `git stash`** (added 2026-09-25, from this section's author failing it). A
+`git stash` on an ALREADY-CLEAN tree stashes nothing, `stash pop` answers "No stash entries found",
+and the "before" run is the same tree as the "after" run — **a comparison that cannot fail, and
+therefore measures nothing.** It looks exactly like a passing check. `git worktree add /tmp/base
+<base-sha>` with `node_modules` symlinked in gives a comparison that can actually disagree with you.
+
+**And measure the WHOLE suite, not the subset you were looking at.** A partial run generalised into
+a whole-suite claim is the same error wearing a number: the same session reported "19 across 4
+files" from a `src/solo/`-only run when the true figure was 21 across 6, and only found out because
+CI disagreed. The conclusion survived; the evidence had never reached it.
 
 ### 4. DOES MY TEST BITE? *(artifact: the test failing on purpose)*
 
