@@ -3032,3 +3032,66 @@ everything.
 `platform_usage_events`, ask whether cached tokens belong in the answer. For "what did this cost us"
 they do. For "what is the tenant metered at" they currently, deliberately, do not — and those two
 numbers are not the same number.
+
+## Two approval systems on one surface: the button ticked, the action never ran (2026-09-25)
+
+**Symptom (owner-reported, production).** The owner pressed **Approve** in the Solo shell and the
+action did not happen. He pressed it eight times across two hours in one client session. Nothing
+executed once — no contact created, no document written, no email sent. The card was visibly there
+and visibly responded, which is why this read as "approvals are flaky" rather than as a seam bug.
+
+**Root cause — two disjoint systems, mistaken for one.** Solo's Approve button called
+`execute-approval`, which claims a row in **`paige_pending_approvals`**. The chat gate in
+`paige-ai-chat` executes a confirmation-required action only when the exact fingerprint of the
+stored call is echoed back in the **request body**, against **`paige_pending_confirmations`**.
+Nothing in the repo converts one into the other — `execute-approval` contains zero references to the
+confirmations table, and the only place both names meet is a pair of *independent* FK columns on
+`paige_social_jobs`, whose trigger validates each separately. So the rail ticked and the gate went
+on waiting.
+
+Three compounding defects made it invisible:
+
+1. **`useSoloChat` deleted the pending ask on arrival.** `if (parsed.paige_confirm?.summary)
+   continue;` — dropped on the stated grounds that confirms were *"already surfaced in the 'She
+   proposed today' rail"*. One wrong sentence in a comment. That rail is the other table, so the
+   drop routed the frame nowhere; it destroyed the only handle on the action.
+2. **The shared card was built to allow a dead button.** `fingerprints` was optional, and its own
+   doc-comment said a caller without it renders fine and *"that caller's approvals simply will not
+   open the gate."* The hazard was known, written down, and shipped as a type.
+3. **Summary and fingerprint were parallel arrays with one of them `.filter()`ed**, so a single
+   action missing a fingerprint shifted every later summary onto the wrong call.
+
+**The proof class that missed it.** Every existing test asserted the card **rendered** and the
+button **fired**. None asserted the **action ran**. That gap is invisible to unit tests, to
+typecheck, to a build, and to a screenshot — a button with no binding behind it renders,
+type-checks, and photographs exactly like one that works. It is only visible from the other end of
+the seam: does a row in `paige_pending_confirmations` ever reach `consumed_at`? Measured on
+production, it did not — **36 proposals in 30 days, 21 never acted on**, while the one surface wired
+correctly (`PaigeAIChat`, via `crm_update_contact`) showed 4 asked and 0 unanswered. The divergence
+between two surfaces' consumption rates was the signal, and no test could have produced it.
+
+**A second-order lesson about the fix that preceded it.** #1418 — the self-approval branch a model's
+own `confirm:true` could spend — was a real defect and its removal (`cda229c`, deployed
+2026-09-24 03:47:50 UTC) was correct. But that branch was also, by its own comment, *"necessary,
+because five of the six surfaces render no card"* — it was the compensation keeping the card-less
+surfaces working, scoped to them and refused for `high` risk. Removing it turned the acknowledged
+outage on. **A security fix that removes a compensation must measure what the compensation was
+holding up**; the write-up of the incident asserted the blast-radius measurement "does not need to
+be run", and it was exactly the thing that needed running.
+
+**The rules.**
+
+- **A control that cannot work must be unrepresentable, not merely discouraged.** An optional
+  binding with a warning comment is a loaded gun with a label on it. Make the type refuse: bind
+  per-action, and render no approve affordance when there is nothing to spend.
+- **Assert the effect, never the affordance.** "The button rendered and the handler fired" is not
+  evidence the action ran (§70). Where the effect crosses a seam, prove it at the far side.
+- **Two stores that answer the same question are a defect, not an architecture.** Before adding an
+  approval path, check which table the executing gate actually reads (§18 — the one home is
+  `docs/doctrine/one-approval-gate.md`).
+- **When a comment explains why a frame is safe to drop, verify the claim.** This one named a
+  destination that did not exist, and cost every Solo write path for a month.
+- **A per-tenant workaround is not a fix.** The account where this "worked" had ~60 tool-autonomy
+  rows set to skip asking; every other account had zero to three and defaulted to
+  `coalesce(_mode,'confirm')`. The seam repair is what makes a brand-new tenant work with no
+  configuration — the configured account was hiding the bug, not demonstrating the cure.
