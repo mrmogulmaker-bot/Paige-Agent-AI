@@ -38,6 +38,7 @@ import { usePaigeThreads, type PaigeTurn } from "@/hooks/usePaigeThreads";
 import { getUserClock } from "@/lib/userClock";
 import { parsePaigeChatError } from "@/lib/paigeChatError";
 import { toast } from "@/hooks/use-toast";
+import type { ConfirmAction } from "@/components/chat/PaigeConfirmCard";
 
 /** A message in the Solo Bubble shape (agent.tsx `Bubble`). */
 export interface SoloChatMsg {
@@ -70,8 +71,21 @@ export interface UseSoloChat {
   cur: string | null;
   /** Select a thread → load its real turn history. */
   setCur: (id: string) => void;
-  /** Send a message → stream the real reply through paige-ai-chat. */
-  send: (text: string) => void;
+  /**
+   * Send a message → stream the real reply through paige-ai-chat.
+   *
+   * `approvedFingerprints` carries the EXACT calls a person ticked on a confirm card. The chat
+   * gate only ever runs a call whose fingerprint arrives in the request body — a place the model
+   * cannot write to — so without this argument an approval on this surface can never execute.
+   * Solo shipped without it, which is why pressing Approve ticked the proposals rail and the
+   * action itself never ran.
+   */
+  send: (text: string, approvedFingerprints?: string[], declinedFingerprints?: string[]) => void;
+  /**
+   * Confirmations the server is waiting on for the current turn, newest turn only. Rendered by the
+   * ONE shared `PaigeConfirmCard` — never a Solo-local second approval surface (§18).
+   */
+  confirms: ConfirmAction[];
   /** Start a fresh chat (the real thread is created lazily on first send). */
   newChat: () => void;
   /** The Solo-shaped row for the active thread, or a synthetic "New chat" row. */
@@ -137,6 +151,7 @@ export function useSoloChat(opts?: { autoResume?: boolean }): UseSoloChat {
 
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<SoloChatMsg[]>([]);
+  const [confirms, setConfirms] = useState<ConfirmAction[]>([]);
   const [think, setThink] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   // Guards the streaming lifecycle so overlapping sends / selects can't clobber it.
@@ -179,6 +194,9 @@ export function useSoloChat(opts?: { autoResume?: boolean }): UseSoloChat {
       try {
         const turns = await threadsApi.loadTurns(id);
         setMsgs(turnsToSolo(turns));
+        // A pending ask belongs to the turn that raised it, in the thread that raised it. Carrying
+        // it across a thread switch would offer a decision about another conversation's action.
+        setConfirms([]);
         setActiveThreadId(id);
       } catch (e) {
         console.error("[useSoloChat] load thread failed:", e);
@@ -206,9 +224,19 @@ export function useSoloChat(opts?: { autoResume?: boolean }): UseSoloChat {
   }, [autoResume, hydrated, threadsApi.isFetched, threadsApi.threads]);
 
   const streamTurn = useCallback(
-    async (soloBase: SoloChatMsg[], rollback: SoloChatMsg[], userText: string) => {
+    async (
+      soloBase: SoloChatMsg[],
+      rollback: SoloChatMsg[],
+      userText: string,
+      approvedFingerprints?: string[],
+      declinedFingerprints?: string[],
+    ) => {
       streamingRef.current = true;
       setThink(true);
+      // A new turn supersedes the previous turn's pending asks: either they were just approved
+      // (and the server is acting on them) or the person moved on. Either way the old card must
+      // not linger offering a decision that is no longer the live one.
+      setConfirms([]);
       // The edge reads only role/content — map the Solo bubbles to that shape.
       const payloadMessages = soloBase.map((m) => ({ role: m.r === "me" ? "user" : "assistant", content: m.t }));
       let assistantText = "";
@@ -255,6 +283,12 @@ export function useSoloChat(opts?: { autoResume?: boolean }): UseSoloChat {
             messages: payloadMessages,
             ...(threadId ? { threadId } : {}),
             ...getUserClock(),
+            // The exact calls the person ticked on a confirm card. The gate runs only a call
+            // whose fingerprint arrives HERE; the model cannot write a request body, and its own
+            // `confirm: true` no longer opens the gate. Omitting these is what made every Solo
+            // approval inert — the same two lines PaigeAIChat has carried since it shipped.
+            ...(approvedFingerprints?.length ? { approvedConfirmations: approvedFingerprints } : {}),
+            ...(declinedFingerprints?.length ? { declinedConfirmations: declinedFingerprints } : {}),
           }),
         });
 
@@ -294,15 +328,46 @@ export function useSoloChat(opts?: { autoResume?: boolean }): UseSoloChat {
 
             try {
               const parsed = JSON.parse(jsonStr);
-              // Structured lifecycle frames — no Solo Bubble element renders them, and
-              // approvals/confirms/artifacts are already surfaced in the "She proposed
-              // today" rail. Drop them here rather than fabricate a card (§13).
+              // Structured lifecycle frames with no Solo Bubble element to render them.
               if (parsed.paige_step) continue;
               if (parsed.paige_phase === "writing") continue;
               if (parsed.paige_compacting) continue;
               if (Array.isArray(parsed.approval_queued)) continue;
-              if (parsed.paige_confirm?.summary) continue;
               if (parsed.paige_artifact) continue;
+
+              // THE FRAME THAT USED TO BE DELETED HERE.
+              //
+              // It was dropped on the stated grounds that confirms are "already surfaced in the
+              // 'She proposed today' rail". They are not, and that single wrong sentence is the
+              // whole defect: the rail reads `paige_pending_approvals`, while this frame points at
+              // a `paige_pending_confirmations` row that ONLY an echoed fingerprint can redeem.
+              // Two disjoint systems — nothing converts one into the other — so dropping the frame
+              // did not route it anywhere, it destroyed the only handle on the pending action.
+              // Measured on production: 21 of 36 proposals in 30 days were never acted on.
+              //
+              // Collected now and rendered by the ONE shared confirm card. An action with no
+              // fingerprint is still carried, so the card can say plainly that it cannot be
+              // approved here rather than offering a control that would do nothing (§13/§70).
+              if (parsed.paige_confirm?.summary) {
+                const c = parsed.paige_confirm as { summary?: unknown; fingerprint?: unknown };
+                const summary = typeof c.summary === "string" ? c.summary : "";
+                if (summary) {
+                  setConfirms((prev) =>
+                    prev.some((p) => p.summary === summary && p.fingerprint === c.fingerprint)
+                      ? prev
+                      : [
+                          ...prev,
+                          {
+                            summary,
+                            ...(typeof c.fingerprint === "string" && c.fingerprint
+                              ? { fingerprint: c.fingerprint }
+                              : {}),
+                          },
+                        ],
+                  );
+                }
+                continue;
+              }
 
               const content = parsed.choices?.[0]?.delta?.content as string | undefined;
               if (content) {
@@ -340,13 +405,13 @@ export function useSoloChat(opts?: { autoResume?: boolean }): UseSoloChat {
   );
 
   const send = useCallback(
-    (text: string) => {
+    (text: string, approvedFingerprints?: string[], declinedFingerprints?: string[]) => {
       const userText = text.trim();
       if (!userText || streamingRef.current) return;
       const rollback = msgs;
       const soloBase: SoloChatMsg[] = [...msgs, { r: "me", t: userText }];
       setMsgs(soloBase);
-      void streamTurn(soloBase, rollback, userText);
+      void streamTurn(soloBase, rollback, userText, approvedFingerprints, declinedFingerprints);
     },
     [msgs, streamTurn],
   );
@@ -355,6 +420,7 @@ export function useSoloChat(opts?: { autoResume?: boolean }): UseSoloChat {
     if (streamingRef.current) return;
     setActiveThreadId(null);
     setMsgs([]);
+    setConfirms([]);
   }, []);
 
   const setCur = useCallback((id: string) => void selectThread(id), [selectThread]);
@@ -366,6 +432,7 @@ export function useSoloChat(opts?: { autoResume?: boolean }): UseSoloChat {
       if (id === activeThreadId) {
         setActiveThreadId(null);
         setMsgs([]);
+        setConfirms([]);
       }
     },
     [threadsApi, activeThreadId],
@@ -376,6 +443,7 @@ export function useSoloChat(opts?: { autoResume?: boolean }): UseSoloChat {
       if (id === activeThreadId) {
         setActiveThreadId(null);
         setMsgs([]);
+        setConfirms([]);
       }
     },
     [threadsApi, activeThreadId],
@@ -384,6 +452,7 @@ export function useSoloChat(opts?: { autoResume?: boolean }): UseSoloChat {
   return {
     threads,
     msgs,
+    confirms,
     think,
     cur: activeThreadId,
     setCur,

@@ -1949,11 +1949,15 @@ const PaigeAIChatInner = ({
                         )}
                         {!!message.confirm?.length && !message.confirmResolved && index === messages.length - 1 && !isLoading && (
                           <PaigeConfirmCard
-                            items={message.confirm.map((c) => c.summary)}
-                            // The fingerprints of the exact calls these summaries describe. Without
-                            // them "Approved — run it." is a sentence the model interprets, and the
-                            // call it re-emits need not be the one the person read.
-                            fingerprints={message.confirm.map((c) => c.fingerprint).filter((f): f is string => !!f)}
+                            // Summary and fingerprint stay PAIRED. The previous version built two
+                            // parallel arrays and `.filter()`ed the fingerprints, so one action
+                            // missing a fingerprint shifted every later summary onto the wrong
+                            // call — an approval spendable on a neighbouring action. Pairing them
+                            // in one object makes that misalignment unrepresentable.
+                            actions={message.confirm.map((c) => ({
+                              summary: c.summary,
+                              fingerprint: c.fingerprint,
+                            }))}
                             disabled={composerSendBlocked}
                             onApprove={(fps) => void handleSend("Approved — run it.", fps)}
                             // Declining CANCELS the stored proposal, rather than only saying so in

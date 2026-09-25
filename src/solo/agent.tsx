@@ -3,6 +3,10 @@ import React from "react";
 import { Ic } from "./_shared";
 import { useSoloProposals } from "./data/useSoloProposals";
 import { useSoloChat } from "./data/useSoloChat";
+// The ONE approval card (§18). Solo does not build a second one — `compass.tsx` already
+// documented this as the intended home; it simply was never imported, so every Solo approval
+// went to the proposals rail (a different table) and the action itself never ran.
+import { PaigeConfirmCard } from "@/components/chat/PaigeConfirmCard";
 
 export const CHAT_MODELS=[
  {id:'paige-2',n:'Paige 2',d:'Her default. Fast, knows your Playbook, drafts in your voice.',tag:'Default'},
@@ -147,7 +151,7 @@ export const Agent=()=>{
 // REAL seam: threads, turn history, and streaming send — scoped to the session
 // (§9/§51, no client tenant_id). Replaces the fixture CHAT_THREADS + fake useChat.
 const chat=useSoloChat();
-const{threads,msgs,think,cur,setCur,send,newChat,curThread}=chat;
+const{threads,msgs,confirms,think,cur,setCur,send,newChat,curThread}=chat;
 const[q,setQ]=React.useState('');
 const[proj,setProj]=React.useState(null);
 const[model,setModel]=React.useState('paige-2');
@@ -185,7 +189,10 @@ return <div className="fade-in chat-shell" style={{height:'100%',minHeight:0}}>
 {['What needs me first today?','Draft the Selby reset','Model a 30% price increase','Why did the pixel drop?'].map(s=>
 <button key={s} onClick={()=>send(s)} className="btn btn-s">{s}</button>)}</div></div></div>
 :<div ref={scroll} className="pane" style={{flex:1,padding:'20px 20px 8px',display:'flex',flexDirection:'column',gap:16}}>
-{msgs.map((m,i)=><Bubble key={i} m={m}/>)}{think&&<Thinking/>}</div>}
+{msgs.map((m,i)=><Bubble key={i} m={m}/>)}{think&&<Thinking/>}
+{!think&&!!confirms.length&&<PaigeConfirmCard actions={confirms}
+onApprove={fps=>send("Approved — run it.",fps)}
+onDeny={fps=>send("Hold off — skip that one.",undefined,fps)}/>}</div>}
 
 <Composer onSend={send} model={model} setModel={setModel} focus={focus} setFocus={setFocus}
 chips={empty?null:["Show me the Selby reset draft","What's at risk this week?","Model a 30% price increase"]}/></div>
@@ -224,7 +231,7 @@ chips={empty?null:["Show me the Selby reset draft","What's at risk this week?","
 // always-in-context conversation, NOT a replacement for the full Paige workspace
 // (Knowledge · Sub-Agents · Actions · Skills · Paige Team). When the host shell can
 // navigate to that workspace it passes this handler, and the panel carries the way in.
-export const PaigePanel=({open,onClose,onOpenFull})=>{const{msgs,think,send}=useSoloChat({autoResume:open});const[model,setModel]=React.useState('paige-2');const[focus,setFocus]=React.useState('none');
+export const PaigePanel=({open,onClose,onOpenFull})=>{const{msgs,confirms,think,send}=useSoloChat({autoResume:open});const[model,setModel]=React.useState('paige-2');const[focus,setFocus]=React.useState('none');
 const scroll=React.useRef(null);
 // Keep the newest turn in view — without this the panel silently strands a reply
 // below the fold the moment the transcript outgrows the pane (§11 no dead ends).
@@ -250,5 +257,10 @@ title="Open the full Paige workspace — Knowledge, Sub-Agents, Actions, Skills,
 <div className="tile" style={{margin:'0 auto 12px',width:40,height:40,borderRadius:14,background:'var(--violet-tint)',color:'var(--violet)'}}><Ic.spark size={19}/></div>
 <div style={{fontWeight:600,fontSize:14.5}}>What are we working on?</div>
 <div className="sub" style={{marginTop:5,lineHeight:1.55}}>Say it plainly — she routes to the right department herself.</div></div></div>
-:<div ref={scroll} className="pane" style={{flex:1,padding:'18px',display:'flex',flexDirection:'column',gap:14}}>{msgs.map((m,i)=><Bubble key={i} m={m}/>)}{think&&<Thinking/>}</div>}
+:<div ref={scroll} className="pane" style={{flex:1,padding:'18px',display:'flex',flexDirection:'column',gap:14}}>{msgs.map((m,i)=><Bubble key={i} m={m}/>)}{think&&<Thinking/>}
+{/* The SAME card as the full workspace. A floating panel that could not approve would be the
+    original defect wearing a smaller frame — one hook, one card, every Solo surface. */}
+{!think&&!!confirms.length&&<PaigeConfirmCard actions={confirms}
+onApprove={fps=>send("Approved — run it.",fps)}
+onDeny={fps=>send("Hold off — skip that one.",undefined,fps)}/>}</div>}
 <Composer compact onSend={send} model={model} setModel={setModel} focus={focus} setFocus={setFocus} chips={["What needs me first?","Chase the failed charges"]}/></aside></>};
