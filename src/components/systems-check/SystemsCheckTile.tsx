@@ -68,16 +68,48 @@ function rankFinding(a: SystemsCheckFinding, b: SystemsCheckFinding): number {
   return Date.parse(a.created_at) - Date.parse(b.created_at);
 }
 
-/** Pull a human sentence out of the drafted-fix jsonb (or string), defensively (§13). */
-function draftedFixText(fix: SystemsCheckFinding["paige_drafted_fix"]): string | null {
+/** Pull a human sentence out of the drafted-fix jsonb (or string), defensively (§13).
+ *
+ * `brief` IS NOT A DRAFT. It is the registry's `remediation_prompt` with the tenant's name
+ * substituted (systems-check-runner.ts resolveRemediationBrief) — an instruction addressed to
+ * Paige, ABOUT the tenant, in the third person: "Check whether <business> has any contacts in
+ * the CRM. If empty, offer to import their existing customer list." The runner stores it next to
+ * a marker on every path where the forge did NOT produce a draft — { brief, needs_config, reason },
+ * { brief, error }, and { brief, deferred, reason }. This function read `brief` FIRST and omitted
+ * `content` entirely, so all three rendered under the heading "Paige drafted this fix".
+ *
+ * SoloSystemsCheckWorkspace already treats `brief` as an internal drafting instruction that must
+ * not be presented, and its test asserts exactly that ("shows owner-facing remediation content
+ * instead of an internal drafting brief"). This tile had no equivalent guard, which is the only
+ * reason the divergence survived — and it is the tile, not that workspace, that a sub-account
+ * reaches (BusinessEntry → AgencyApp → CommandCenter).
+ *
+ * OPERATOR scope is the one place `brief` IS the genuine guidance: prompt-forge is tenant-scoped
+ * and cannot run tenant-less, so the runner deterministically stores
+ * { brief, source: "operator_registry_brief", operator_scope: true } instead of calling a model.
+ * Dropping `brief` outright would blank every operator finding's remediation (§58), so it stays —
+ * for operators, and only for them.
+ */
+export function draftedFixText(
+  fix: SystemsCheckFinding["paige_drafted_fix"],
+  scope: SystemsCheckScope,
+): string | null {
   if (!fix) return null;
   if (typeof fix === "string") return fix.trim() || null;
-  if (typeof fix === "object") {
-    const o = fix as Record<string, unknown>;
-    for (const k of ["brief", "summary", "remediation", "plan", "guidance", "text", "body"]) {
-      const v = o[k];
-      if (typeof v === "string" && v.trim()) return v.trim();
-    }
+  if (typeof fix !== "object") return null;
+  const o = fix as Record<string, unknown>;
+
+  // An honest-degrade marker means no draft exists. Return nothing rather than present the
+  // internal brief as one — the caller renders no drafted-fix block at all, so this removes a
+  // false claim without needing replacement copy.
+  if (o.deferred === true || o.needs_config === true || typeof o.error === "string") return null;
+
+  const keys = scope === "operator"
+    ? ["brief", "summary", "remediation", "plan", "guidance", "text", "body"]
+    : ["content", "summary", "remediation", "plan", "guidance", "text", "body"];
+  for (const k of keys) {
+    const v = o[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
   }
   return null;
 }
@@ -266,7 +298,7 @@ export function SystemsCheckTile({ scope }: { scope: SystemsCheckScope }) {
     const current = openFails[0];
     const rest = openFails.slice(1);
     const sev = SEVERITY_PILL[current.severity_at_finding ?? "low"];
-    const fixText = draftedFixText(current.paige_drafted_fix);
+    const fixText = draftedFixText(current.paige_drafted_fix, scope);
     body = (
       <div className="space-y-4">
         {/* At-a-glance per-domain status (gold-free). */}

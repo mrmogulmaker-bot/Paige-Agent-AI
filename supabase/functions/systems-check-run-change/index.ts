@@ -10,7 +10,7 @@
 // §9/§588: tenant from the VERIFIED JWT (owner may target via body.tenant_id). verify_jwt = true
 // (default; declared in config.toml). §18: imports the ONE core + the runner barrel; writes no rows itself.
 
-import { runSystemsCheck } from "../_shared/systems-check-runner.ts";
+import { runSystemsCheck, SOLE_RUN_DRAFT_BUDGET_MS } from "../_shared/systems-check-runner.ts";
 import "../_shared/systems-check-runners/index.ts"; // side-effect: registers the 10 runner modules (§18)
 import { corsHeaders, json, resolveTenantFromJwt } from "../_shared/systems-check-http.ts";
 
@@ -63,6 +63,12 @@ Deno.serve(async (req) => {
       runnerKeys,
       actionFiling: "all",
       triggeredBy: { source: "change_triggered", changed_surface: surface, owner_initiated: resolved.isOwner },
+      // Bounded like every other entry point, and NOT because this flavour is expensive — 16 of the
+      // 17 surfaces below map to a single runner. It is here because one does not: `payments` maps
+      // to two, so a change run can forge twice, and the claim that this flavour is structurally
+      // incapable of it was simply wrong. A budget costs nothing on the 16 single-runner surfaces
+      // and removes the need for anyone to re-derive that count when the map grows.
+      draftBudgetMs: SOLE_RUN_DRAFT_BUDGET_MS,
     });
     return json(200, { ok: true, changed_surface: surface, ...summary });
   } catch (e) {
