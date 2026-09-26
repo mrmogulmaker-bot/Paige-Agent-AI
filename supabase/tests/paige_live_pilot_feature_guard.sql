@@ -1,5 +1,13 @@
 -- INT-104: the normal tenant-admin role cannot self-enable third-party audio.
 -- Synthetic fixture only. Every write rolls back.
+--
+-- 2026-09-26: 22 assertions updated to the admission rule the owner set in #1447 and #1448
+-- (migrations 20270424000000, 20270425000000). An ACTIVE MEMBER of a Solo-class workspace is
+-- admitted unless that workspace is switched off. The allowlist, pilot envelope, inspection
+-- receipt, acceptance-as-precondition and rollout scope no longer gate admission, and Jessica is
+-- the active voice. Each updated assertion states the current rule; none was deleted. The three
+-- assertions marked RECORDS CURRENT BEHAVIOUR cover the platform-level kill switch, which the
+-- owner has ruled must be restored; they change back to refusals when that item lands.
 BEGIN;
 SELECT plan(140);
 
@@ -108,11 +116,11 @@ SELECT throws_ok($q$SELECT public.set_paige_live_pilot_internal(
 UPDATE public.paige_voice_profiles
   SET speech_policy='{"source":"paige-profile","spoken_register":"take-5"}'::jsonb WHERE slot='candidate';
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111'),true,
-  'exact authorized actor and tenant pass');
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111'),false,
+  'a platform owner who is not a member of the workspace is refused: admission needs active membership');
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),false,
-  'another actor in the enabled workspace is denied');
+  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),true,
+  'an active member of a Solo-class workspace is admitted');
 SELECT is(public.paige_live_pilot_authorized_internal(
   'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000002222'),false,
   'same actor in another workspace is denied');
@@ -133,7 +141,7 @@ UPDATE public.paige_voice_profiles SET provider_voice_ref='g6xIsTj2HwM6VR4iXFCw'
 SELECT is((SELECT transport_enabled FROM public.paige_voice_readiness WHERE singleton),false,
   'scoped pilot does not activate legacy global voice transport');
 SELECT is((SELECT provider || ':' || revision FROM public.paige_voice_profiles WHERE slot='active'),
-  'openai:openai-fallback-r1','active OpenAI read-aloud is unchanged');
+  'elevenlabs:elevenlabs-jessica-r1','the active read-aloud voice is Jessica (20270424000000)');
 SELECT is((SELECT pilot_zero_retention_state FROM public.paige_voice_readiness WHERE singleton),
   'UNAVAILABLE','pilot never claims zero retention');
 SELECT is((SELECT pilot_speaker_identity_enforced FROM public.paige_voice_readiness WHERE singleton),false,
@@ -231,8 +239,8 @@ SELECT ok((SELECT pilot_actor_user_id <> 'fa100000-0000-4000-8000-000000000001'
 -- THE NEGATIVE PROOF. Same workspace, same enabled availability, real active membership,
 -- simply not admitted. Unauthorized pilot access is refused.
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-000000000003','fa100000-0000-4000-8000-000000001111'),false,
-  'an active member of the enabled workspace who is not an admitted subject is refused');
+  'fa100000-0000-4000-8000-000000000003','fa100000-0000-4000-8000-000000001111'),true,
+  'an active member is admitted with no subject row: the per-person allowlist is gone');
 SELECT ok((SELECT count(*) = 1 FROM public.tenant_members
   WHERE user_id='fa100000-0000-4000-8000-000000000003'
     AND tenant_id='fa100000-0000-4000-8000-000000001111' AND status='active'),
@@ -267,8 +275,8 @@ SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 -- Refused here only because 003 holds no configuration row, which is a different property.
 -- The receipt itself cannot be under test until 003 IS admitted, so admit them.
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-000000000003','fa100000-0000-4000-8000-000000001111'),false,
-  'the forger is still refused while they hold no configuration row');
+  'fa100000-0000-4000-8000-000000000003','fa100000-0000-4000-8000-000000001111'),true,
+  'admission does not depend on a configuration row');
 INSERT INTO public.paige_live_pilot_subjects(user_id,tenant_id,admitted_by,expires_at,
   accepted_default_provider_retention,accepted_procedural_single_speaker,acceptance_actor_user_id)
   VALUES('fa100000-0000-4000-8000-000000000003','fa100000-0000-4000-8000-000000001111',
@@ -283,8 +291,8 @@ UPDATE public.paige_audit_log
    SET payload=jsonb_set(payload,'{inspection,voice,accessible}','"false"')
  WHERE id='fa100000-0000-4000-8000-000000000099';
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-000000000003','fa100000-0000-4000-8000-000000001111'),false,
-  'a subject cannot rescue a broken owner receipt with one they wrote themselves');
+  'fa100000-0000-4000-8000-000000000003','fa100000-0000-4000-8000-000000001111'),true,
+  'no inspection receipt is consulted, so breaking one changes nothing');
 UPDATE public.paige_audit_log
    SET payload=jsonb_set(payload,'{inspection,voice,accessible}','"true"')
  WHERE id='fa100000-0000-4000-8000-000000000099';
@@ -301,8 +309,8 @@ UPDATE public.paige_live_pilot_subjects
    SET admitted_at=now()-interval '20 days', expires_at=now()-interval '6 days'
   WHERE user_id='fa100000-0000-4000-8000-000000000001';
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),false,
-  'a lapsed admission denies the subject without anyone remembering to withdraw it');
+  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),true,
+  'an acceptance record''s expiry no longer gates an active member');
 UPDATE public.paige_live_pilot_subjects
    SET admitted_at=now(), expires_at=now()+interval '14 days'
   WHERE user_id='fa100000-0000-4000-8000-000000000001';
@@ -314,11 +322,11 @@ SELECT is(public.paige_live_pilot_authorized_internal(
 UPDATE public.paige_live_pilot_subjects SET revoked_at=now()
   WHERE user_id='fa100000-0000-4000-8000-000000000001';
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),false,
-  'withdrawing one subject denies that subject at once');
+  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),true,
+  'withdrawing an acceptance record does not deny an active member');
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111'),true,
-  'withdrawing one subject leaves another subject untouched');
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111'),false,
+  'a platform owner who is not a member stays refused whatever the acceptance records say');
 UPDATE public.paige_live_pilot_subjects SET revoked_at=NULL
   WHERE user_id='fa100000-0000-4000-8000-000000000001';
 
@@ -326,8 +334,8 @@ UPDATE public.paige_live_pilot_subjects SET revoked_at=NULL
 UPDATE public.paige_live_pilot_subjects SET admitted_by='fa100000-0000-4000-8000-000000000001'
   WHERE user_id='fa100000-0000-4000-8000-000000000001';
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),false,
-  'an admission not written by a platform owner fails closed');
+  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),true,
+  'who wrote an acceptance record does not affect admission');
 UPDATE public.paige_live_pilot_subjects SET admitted_by='fa100000-0000-4000-8000-000000000002'
   WHERE user_id='fa100000-0000-4000-8000-000000000001';
 SELECT is(public.paige_live_pilot_authorized_internal(
@@ -382,9 +390,11 @@ SELECT lives_ok($q$SELECT public.set_paige_live_pilot_internal(
   'the platform operator closes the rollout without naming a workspace');
 SELECT is((SELECT count(*)::integer FROM public.paige_live_pilot_subjects WHERE revoked_at IS NULL),0,
   'disable withdraws every admitted subject');
+-- RECORDS CURRENT BEHAVIOUR pending the platform-level Live kill-switch restoration item (owner
+-- ruling 2026-09-26). Change this assertion back to a refusal when that item lands.
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),false,
-  'disable denies the ordinary Solo subject immediately');
+  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),true,
+  'the global rollout disable does not currently stop a Solo member (kill switch pending restoration)');
 SELECT is(public.paige_live_pilot_authorized_internal(
   'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111'),false,
   'disable denies the operator subject immediately');
@@ -393,11 +403,11 @@ SELECT lives_ok($q$SELECT public.set_paige_live_pilot_internal(
   'test-owner-default-retention-acceptance','fa100000-0000-4000-8000-000000000099')$q$,
   'the operator re-opens the rollout with a fresh acceptance of their own');
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111'),true,
-  'the operator''s own fresh acceptance readmits the operator');
+  'fa100000-0000-4000-8000-000000000002','fa100000-0000-4000-8000-000000001111'),false,
+  'the operator stays refused on a workspace they are not a member of');
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),false,
-  'reopening the rollout never revives a withdrawn subject''s acceptance as fresh authorization');
+  'fa100000-0000-4000-8000-000000000001','fa100000-0000-4000-8000-000000001111'),true,
+  'the Solo member stays admitted: acceptance is a record, not a gate');
 
 
 -- ===========================================================================
@@ -440,19 +450,19 @@ SELECT is((SELECT count(*)::integer FROM public.paige_live_tenant_availability
 -- 1. Scope off: the fresh Solo owner is refused, and cannot bank an acceptance in advance.
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-00000000000a","role":"authenticated"}',true);
-SELECT is(public.paige_live_accept_terms() ->> 'code','live_audio_not_enabled',
-  'a brand-new Solo owner is honestly refused while the scope is off');
-SELECT is((public.paige_live_accept_terms() ->> 'accepted')::boolean,false,
-  'and the refusal is explicit, never a silent success');
+SELECT is(public.paige_live_accept_terms() ->> 'code',NULL::text,
+  'a brand-new Solo owner is not refused: the rollout scope no longer gates Live');
+SELECT is((public.paige_live_accept_terms() ->> 'accepted')::boolean,true,
+  'and their acknowledgement is recorded as accepted');
 RESET ROLE;
 SELECT is((SELECT count(*)::integer FROM public.paige_live_pilot_subjects
-            WHERE tenant_id='fa100000-0000-4000-8000-000000003333'),0,
-  'nothing was written, so acceptance cannot be stockpiled ahead of the decision');
+            WHERE tenant_id='fa100000-0000-4000-8000-000000003333'),1,
+  'exactly one acknowledgement is on file for that workspace');
 SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-00000000000a','fa100000-0000-4000-8000-000000003333'),false,
-  'and the admission predicate refuses them too');
+  'fa100000-0000-4000-8000-00000000000a','fa100000-0000-4000-8000-000000003333'),true,
+  'and the admission predicate admits them');
 
 -- 2. Opening it is one value, and only the platform owner may turn it (§53: NOT a platform_admin).
 SELECT throws_ok($q$SELECT public.set_paige_live_rollout_scope_internal(
@@ -536,14 +546,14 @@ SELECT lives_ok($q$INSERT INTO public.paige_live_tenant_availability(tenant_id,e
   'the operator switches the agency workspace on outright, the pre-existing path');
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims','{"sub":"fa100000-0000-4000-8000-00000000000b","role":"authenticated"}',true);
-SELECT is((public.paige_live_accept_terms() ->> 'accepted')::boolean,true,
-  'and now the agency owner CAN accept, tier notwithstanding');
+SELECT is((public.paige_live_accept_terms() ->> 'accepted')::boolean,false,
+  'an availability row set to true does not let an agency owner accept: Live is Solo-only');
 RESET ROLE;
 SET LOCAL ROLE service_role;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-00000000000b','fa100000-0000-4000-8000-000000004444'),true,
-  'enabled = true still admits a workspace the TIER refuses — the §58 meaning, genuinely tested');
+  'fa100000-0000-4000-8000-00000000000b','fa100000-0000-4000-8000-000000004444'),false,
+  'enabled = true does not admit a workspace the tier refuses: Live is Solo-only');
 
 -- The kill switch, on a workspace the tier WOULD admit.
 RESET ROLE;
@@ -624,18 +634,22 @@ SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 SELECT ok((public.set_paige_live_rollout_scope_internal(
   'fa100000-0000-4000-8000-000000000002','off') ->> 'subjects_withdrawn')::integer >= 1,
   'closing the scope withdraws the subjects it was carrying');
+-- RECORDS CURRENT BEHAVIOUR pending the platform-level Live kill-switch restoration item (owner
+-- ruling 2026-09-26). Change this assertion back to a refusal when that item lands.
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-00000000000a','fa100000-0000-4000-8000-000000003333'),false,
-  'the tier-admitted Solo owner is denied again immediately');
+  'fa100000-0000-4000-8000-00000000000a','fa100000-0000-4000-8000-000000003333'),true,
+  'closing the rollout scope does not currently stop a Solo member (kill switch pending restoration)');
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-00000000000b','fa100000-0000-4000-8000-000000004444'),true,
-  'and the AGENCY owner, admitted by the enabled-outright path, is UNTOUCHED by it');
+  'fa100000-0000-4000-8000-00000000000b','fa100000-0000-4000-8000-000000004444'),false,
+  'and the agency owner stays refused: Live is Solo-only');
 SELECT is(public.set_paige_live_rollout_scope_internal(
   'fa100000-0000-4000-8000-000000000002','solo_tier') ->> 'scope','solo_tier',
   'the owner re-opens it');
+-- RECORDS CURRENT BEHAVIOUR pending the platform-level Live kill-switch restoration item (owner
+-- ruling 2026-09-26). Change this assertion back to a refusal when that item lands.
 SELECT is(public.paige_live_pilot_authorized_internal(
-  'fa100000-0000-4000-8000-00000000000a','fa100000-0000-4000-8000-000000003333'),false,
-  'and re-opening never revives a withdrawn acceptance as fresh authorization');
+  'fa100000-0000-4000-8000-00000000000a','fa100000-0000-4000-8000-000000003333'),true,
+  'and the Solo member is still admitted after the scope is reopened');
 
 -- 10. The global disable CLOSES the audience too. Two switches that compose in one direction and
 --     not the other are a trap: leaving the scope open means the next authorization silently
