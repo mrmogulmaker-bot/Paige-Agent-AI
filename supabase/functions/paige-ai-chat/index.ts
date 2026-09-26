@@ -1516,10 +1516,21 @@ JSON:`;
                 file_path: storagePath,
                 file_size: bytes.length,
                 analysis_status: "processing",
+                // Uploads carry a tenant: a named client's comes from its record in the database; an
+                // upload about the caller carries the caller's active tenant.
+                ...(scopedClientId
+                  ? { client_id: scopedClientId }
+                  : { tenant_id: await callerActiveTenantId() }),
               })
               .select("id")
               .single();
-            if (!insertErr) paigeChatUploadId = uploadRec.id;
+            if (!insertErr) {
+              paigeChatUploadId = uploadRec.id;
+            } else {
+              // §13 — a refused record (for example, no tenant to place it in) leaves the stored file
+              // reachable by its owner only. Say so; never echo a path or an identifier.
+              console.error("[paige] credit-report upload record NOT saved", JSON.stringify({ code: insertErr.code ?? null }));
+            }
           }
           }
         } catch (storeErr) {
