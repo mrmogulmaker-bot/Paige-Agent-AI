@@ -38,6 +38,11 @@ on:
       - "scripts/proof/paige-voice-budget-concurrency.mjs"
       - "supabase/tests/paige_spine_foundation.sql"
       - "supabase/tests/governed_crm_commands.sql"
+      # The CRM patch-schema proof and the generator that writes it. (`supabase/migrations/**`
+      # above already re-runs this job when an allowlist itself changes, which is the case that
+      # matters most; these two cover a change to the proof or to how it is derived.)
+      - "supabase/tests/crm_patch_fields_match_database.sql"
+      - "scripts/ci/crm-patch-field-gen.mjs"
       - "supabase/tests/media_credit_ledger.sql"
       - "supabase/tests/business_context_readiness.sql"
       - "supabase/tests/team_authority_readiness.sql"
@@ -106,6 +111,11 @@ on:
       - "scripts/proof/paige-voice-budget-concurrency.mjs"
       - "supabase/tests/paige_spine_foundation.sql"
       - "supabase/tests/governed_crm_commands.sql"
+      # The CRM patch-schema proof and the generator that writes it. (`supabase/migrations/**`
+      # above already re-runs this job when an allowlist itself changes, which is the case that
+      # matters most; these two cover a change to the proof or to how it is derived.)
+      - "supabase/tests/crm_patch_fields_match_database.sql"
+      - "scripts/ci/crm-patch-field-gen.mjs"
       - "supabase/tests/media_credit_ledger.sql"
       - "supabase/tests/business_context_readiness.sql"
       - "supabase/tests/team_authority_readiness.sql"
@@ -182,6 +192,16 @@ jobs:
       - run: supabase test db supabase/tests/paige_live_session_transition.sql
       # Governed CRM/Pipeline: tenant, authority, idempotency, destructive preview, readback, and Rail proof.
       - run: supabase test db supabase/tests/governed_crm_commands.sql
+      # The patch field list Paige is SHOWN must equal the allowlist that REFUSES her patch. On
+      # 2026-09-25 it did not: she sent `company_name`/`zip`, the executor accepts
+      # `entity_name`/`zip_code`, and an approved contact create died as
+      # CRM_PATCH_FIELDS_INVALID:company_name,zip with nothing in the tool schema to tell her
+      # otherwise. `npm run lint:crm-patch-fields` already re-derives the seven lists by slicing
+      # migration TEXT; this proof is the half that asks POSTGRES instead, against the database
+      # `db reset` just replayed — so the definition Postgres actually resolves is the authority,
+      # not a filename-sort heuristic. Both artifacts are generated together, so they cannot
+      # disagree without one of the two guards going red.
+      - run: supabase test db supabase/tests/crm_patch_fields_match_database.sql
       - run: supabase test db supabase/tests/paige_spine_foundation.sql
       # Vibe Media Credit Ledger: append-only, closure math, anti-leakage release
       # gate, lazy mint, RLS, and the §59 service-role surface (2026-09-12).
