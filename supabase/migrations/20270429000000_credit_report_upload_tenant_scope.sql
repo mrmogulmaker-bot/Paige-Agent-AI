@@ -15,7 +15,13 @@
 --   * admin and assignee access to uploads follows the upload's tenant;
 --   * staff reach a stored file only through the upload record whose path it is, so a file with no
 --     record is reachable by its owner (and the service role) alone. No file moves; no path changes.
---   * the owner's own access, by the first folder of the path, is unchanged.
+--   * the owner's own access, by the first folder of the path, is unchanged;
+--   * a record names exactly one file, in its subject's own folder, and never changes it; a record that
+--     names a client record is about that client; staff cannot adopt a stored file no record stands
+--     behind; removing a client record detaches its uploads and keeps their tenant.
+--
+-- Staff access to stored files follows the upload-record policies, which already admitted a tenant's
+-- agency managers; the file policies now admit them too, so the record and its file agree.
 --
 -- The assignee policies on the bucket no longer require the global 'coach' role. Measured before this
 -- change: zero assignment rows exist, so no one passed those policies with or without the condition,
@@ -35,8 +41,14 @@ BEGIN
      AND (SELECT count(DISTINCT t) FROM (
             SELECT tm.tenant_id AS t FROM public.tenant_members tm WHERE tm.user_id = u.user_id AND tm.status = 'active'
             UNION SELECT c.tenant_id FROM public.clients c WHERE c.linked_user_id = u.user_id) s) <> 1;
+  SELECT _unplaceable + count(*) INTO _unplaceable FROM public.credit_report_uploads u
+    JOIN public.clients c ON c.id = u.client_id
+   WHERE c.tenant_id IS NULL OR u.user_id NOT IN (c.id, coalesce(c.linked_user_id, c.id));
+  SELECT _unplaceable + count(*) INTO _unplaceable FROM public.credit_report_uploads u
+   WHERE split_part(u.file_path, '/', 1) <> u.user_id::text
+      OR EXISTS (SELECT 1 FROM public.credit_report_uploads o WHERE o.file_path = u.file_path AND o.id <> u.id);
   IF _unplaceable > 0 THEN
-    RAISE EXCEPTION 'report upload scope: % upload(s) cannot be placed in exactly one tenant; re-derive this migration', _unplaceable;
+    RAISE EXCEPTION 'report upload scope: % upload(s) cannot be placed in exactly one tenant, or do not own their file; re-derive this migration', _unplaceable;
   END IF;
 END $$;
 
@@ -57,7 +69,7 @@ UPDATE public.credit_report_uploads u
 
 ALTER TABLE public.credit_report_uploads ALTER COLUMN tenant_id SET NOT NULL;
 CREATE INDEX credit_report_uploads_tenant_id_idx ON public.credit_report_uploads (tenant_id);
-CREATE INDEX credit_report_uploads_file_path_idx ON public.credit_report_uploads (file_path);
+CREATE UNIQUE INDEX credit_report_uploads_file_path_key ON public.credit_report_uploads (file_path);
 COMMENT ON COLUMN public.credit_report_uploads.tenant_id IS
   'The tenant this upload was made in. Filled from the client record, the signed-in maker''s active tenant, or the person''s single client record; validated on write; immutable.';
 
@@ -73,6 +85,17 @@ DECLARE
 BEGIN
   IF TG_OP = 'UPDATE' AND NEW.tenant_id IS DISTINCT FROM OLD.tenant_id THEN
     RAISE EXCEPTION 'UPLOAD_TENANT_IMMUTABLE: an upload''s tenant cannot be changed'
+      USING ERRCODE = '23514';
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.file_path IS DISTINCT FROM OLD.file_path THEN
+    RAISE EXCEPTION 'UPLOAD_FILE_IMMUTABLE: an upload''s file cannot be changed'
+      USING ERRCODE = '23514';
+  END IF;
+  -- The stored file is reached through this record, so the record may only name a file in the folder
+  -- of the person it is about.
+  IF (TG_OP = 'INSERT' OR NEW.user_id IS DISTINCT FROM OLD.user_id)
+     AND split_part(NEW.file_path, '/', 1) IS DISTINCT FROM NEW.user_id::text THEN
+    RAISE EXCEPTION 'UPLOAD_FILE_OUTSIDE_SUBJECT: an upload names only a file in its subject''s folder'
       USING ERRCODE = '23514';
   END IF;
 
@@ -107,11 +130,28 @@ BEGIN
       RAISE EXCEPTION 'UPLOAD_TENANT_MISMATCH: an upload takes its client record''s tenant'
         USING ERRCODE = '23514';
     END IF;
-  ELSIF (TG_OP = 'INSERT' OR NEW.user_id IS DISTINCT FROM OLD.user_id OR NEW.client_id IS DISTINCT FROM OLD.client_id)
+    IF (TG_OP = 'INSERT' OR NEW.user_id IS DISTINCT FROM OLD.user_id OR NEW.client_id IS DISTINCT FROM OLD.client_id)
+       AND NOT EXISTS (SELECT 1 FROM public.clients c
+                        WHERE c.id = NEW.client_id AND NEW.user_id IN (c.id, c.linked_user_id)) THEN
+      RAISE EXCEPTION 'UPLOAD_CLIENT_MISMATCH: an upload naming a client record is about that client'
+        USING ERRCODE = '23514';
+    END IF;
+  -- A client record removed from under an upload (client_id set to null) detaches it; the upload keeps
+  -- its tenant and is not re-judged, so removing a client never fails on its uploads.
+  ELSIF (TG_OP = 'INSERT' OR NEW.user_id IS DISTINCT FROM OLD.user_id)
         AND NOT (public.tenant_assignee_qualifies(NEW.tenant_id, NEW.user_id)
                  OR EXISTS (SELECT 1 FROM public.clients c
                              WHERE c.tenant_id = NEW.tenant_id AND c.linked_user_id = NEW.user_id)) THEN
     RAISE EXCEPTION 'UPLOAD_SUBJECT_NOT_IN_TENANT: the person this upload is about does not belong to its tenant'
+      USING ERRCODE = '23514';
+  END IF;
+
+  -- A signed-in maker filing a record about someone else may not adopt a file that already exists:
+  -- staff file the record first, so a file already present is someone else's to account for.
+  IF TG_OP = 'INSERT' AND _caller IS NOT NULL AND _caller IS DISTINCT FROM NEW.user_id
+     AND EXISTS (SELECT 1 FROM storage.objects o
+                  WHERE o.bucket_id = 'credit-report-uploads' AND o.name = NEW.file_path) THEN
+    RAISE EXCEPTION 'UPLOAD_FILE_ALREADY_STORED: a record for someone else cannot adopt an existing file'
       USING ERRCODE = '23514';
   END IF;
 
