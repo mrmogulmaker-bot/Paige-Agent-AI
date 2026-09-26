@@ -1501,6 +1501,11 @@ JSON:`;
                 file_path: storagePath,
                 file_size: bytes.length,
                 analysis_status: "processing",
+                // Uploads carry a tenant: a named client's comes from its record in the database; an
+                // upload about the caller carries the caller's active tenant.
+                ...(scopedClientId
+                  ? { client_id: scopedClientId }
+                  : { tenant_id: await callerActiveTenantId() }),
               })
               .select("id")
               .single();
