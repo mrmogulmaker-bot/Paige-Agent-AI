@@ -278,17 +278,24 @@ export type ChatRailApi = {
  */
 function ApprovalCheckLinks({ links }: { links: Array<{ label: string; to: string }> }) {
   const inRouter = useInRouterContext();
-  const className = "inline-flex items-center gap-1 text-[13px] font-semibold text-primary underline-offset-[3px] hover:underline";
+  // Ink with an underline at rest, as the approved design draws it. The Solo shell paints every
+  // link gold (`[data-pg] a`), and gold is spent on Approve alone, so the colour is set firmly here.
+  const className = "inline-flex items-center gap-1 text-[13px] font-semibold !text-foreground";
+  const label = (text: string) => (
+    <span className="underline decoration-[color:var(--pg-line-strong,hsl(var(--border)))] underline-offset-[3px] hover:decoration-current">
+      {text}
+    </span>
+  );
   return (
     <>
       {links.map((link) => inRouter ? (
         <Link key={link.to} to={link.to} className={className}>
-          {link.label}
+          {label(link.label)}
           <ArrowRight className="h-3.5 w-3.5" aria-hidden />
         </Link>
       ) : (
         <a key={link.to} href={link.to} className={className}>
-          {link.label}
+          {label(link.label)}
           <ArrowRight className="h-3.5 w-3.5" aria-hidden />
         </a>
       ))}
@@ -565,6 +572,8 @@ const PaigeAIChatInner = ({
     draftHandle: ComposerDraftHandle | null;
     requestIntentId: string;
     live?: boolean;
+    /** Solo: the turn carried an approval or a decline, which a retry can never replay. */
+    decision?: boolean;
   } | null>(null);
 
   // §13 — `!ticket ||` USED TO SHORT-CIRCUIT THIS TO `true`, AND THAT UNDID THE WHOLE FENCE ON THE
@@ -613,8 +622,11 @@ const PaigeAIChatInner = ({
     if (!soloTenantSafety) return;
     const cancelledTurn = retryTurnRef.current;
     abortActiveRequest();
-    if (cancelledTurn && !cancelledTurn.live) setMessages(cancelledTurn.rollback);
-    if (cancelledTurn?.live) retryTurnRef.current = null;
+    // A decision is never rolled back: an approval may already have reached Paige and run, and
+    // putting its card back would offer a second Approve for something that may be done. Its
+    // outcome card stays and, with no report, says it couldn't confirm.
+    if (cancelledTurn && !cancelledTurn.live && !cancelledTurn.decision) setMessages(cancelledTurn.rollback);
+    if (cancelledTurn?.live || cancelledTurn?.decision) retryTurnRef.current = null;
     setCancelled(true);
     setConnectionIssue(null);
   }, [abortActiveRequest, soloTenantSafety]);
@@ -1021,6 +1033,9 @@ const PaigeAIChatInner = ({
     requestIntentId: string = durableIntentUuid(),
   ) => {
     if (soloTenantSafety && !activeTenantId) return;
+    // Solo: this turn carries a decision; an approval's outcome card answers for it (see below).
+    const approvalTurn = Boolean(soloTenantSafety && approvedFingerprints?.length);
+    const decisionTurn = Boolean(soloTenantSafety && (approvedFingerprints?.length || declinedFingerprints?.length));
     const requestHandle = originDraft ?? composerScopeRef.current.writableHandle;
     const requestScope = requestScopeRef.current;
     if (!requestHandle || !composerDraftHandlesMatch(requestHandle, requestScope.handle)) return;
@@ -1037,12 +1052,13 @@ const PaigeAIChatInner = ({
       draftHandle: persistedDraft,
       requestIntentId,
       live: Boolean(voiceSink),
+      decision: decisionTurn,
     };
     setConnectionIssue(null);
     if (soloTenantSafety && typeof navigator !== "undefined" && navigator.onLine === false) {
       // A decision that never left is undone, card and all: the person decides again when they are
       // back online. A Retry could not carry it — an approval is never replayed on a retry.
-      if (approvedFingerprints?.length || declinedFingerprints?.length) {
+      if (decisionTurn) {
         setMessages(rollback);
         retryTurnRef.current = null;
       }
@@ -1050,9 +1066,6 @@ const PaigeAIChatInner = ({
       return;
     }
     const newMessages = base;
-    // Solo: this turn carries an approval, so its outcome card answers for it (see below).
-    const approvalTurn = Boolean(soloTenantSafety && approvedFingerprints?.length);
-    const decisionTurn = Boolean(soloTenantSafety && (approvedFingerprints?.length || declinedFingerprints?.length));
     if (!claimRequestBusy(requestTicket)) return;
     setCancelled(false);
     setSteps([]); // fresh "watch her work" trace per turn
@@ -1066,11 +1079,15 @@ const PaigeAIChatInner = ({
         voiceSink.failed();
         retryTurnRef.current = null;
         setConnectionIssue("live-interrupted");
-      } else if (decisionTurn) {
-        // The outcome card already says Paige couldn't report back and to check first. A Retry
-        // here would resend the words without the decision, which approves or skips nothing.
+      } else if (approvalTurn) {
+        // The outcome card already says Paige couldn't report back and to check first.
         retryTurnRef.current = null;
-      } else setConnectionIssue("timeout");
+      } else {
+        // A decline has no outcome card, so it keeps the notice — but never a Retry: resending
+        // the words without the decision would skip nothing.
+        if (decisionTurn) retryTurnRef.current = null;
+        setConnectionIssue("timeout");
+      }
     }, PAIGE_INTERACTIVE_TURN_BUDGET_MS) : null;
     const assistantId = safeUuid();
     const assistantTs = Date.now();
@@ -1231,6 +1248,9 @@ const PaigeAIChatInner = ({
         // Deliberately 5xx ONLY. A 4xx — too large, malformed, refused on its merits — will be
         // refused identically next time, and a Retry button that cannot succeed is exactly the kind
         // of control §70 counts as not delivered.
+        // The card is back as it was, so the way to try again is on it. A Retry would resend the
+        // words without the decision, which approves or skips nothing.
+        if (decisionTurn) retryTurnRef.current = null;
         if (response.status >= 500) setConnectionIssue("server");
         return;
       }
@@ -1502,6 +1522,7 @@ const PaigeAIChatInner = ({
       setMessages(rollback);
       releaseRequestBusy(requestTicket);
       if (enableHistory) setStreamingThreadId(null);
+      if (decisionTurn) retryTurnRef.current = null;
       if (soloTenantSafety) setConnectionIssue("server");
     } finally {
       if (timeoutId !== null) window.clearTimeout(timeoutId);
@@ -2091,6 +2112,9 @@ const PaigeAIChatInner = ({
                               fingerprint: c.fingerprint,
                             }))}
                             disabled={composerSendBlocked}
+                            // Solo: after "Ask Paige again" the button that was pressed is gone, so
+                            // the fresh card takes focus — but only when nothing else holds it.
+                            focusOnMount={soloTenantSafety}
                             onApprove={(fps) => void handleSend("Approved — run it.", fps)}
                             // Declining CANCELS the stored proposal, rather than only saying so in
                             // prose the model interprets. Without this the row stays live for its
@@ -2224,7 +2248,7 @@ const PaigeAIChatInner = ({
             )}
             {soloTenantSafety && connectionIssue && (
               <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
-                <span>{connectionIssue === "live-interrupted" ? "Paige's answer was interrupted. What arrived is still shown here. You can continue in text chat." : connectionIssue === "offline" ? "You appear to be offline. This message has not been sent." : connectionIssue === "server" ? "Something went wrong on our side and PAIGE didn't get to answer. Your message wasn't sent — try again." : `PAIGE was ${writingPhase ? "writing the response" : "working on your request"} when the six-minute interactive window ended. This chat stopped listening, so I can't confirm whether that work finished or was saved. Retry may start the work again.`}</span>
+                <span>{connectionIssue === "live-interrupted" ? "Paige's answer was interrupted. What arrived is still shown here. You can continue in text chat." : connectionIssue === "offline" ? "You appear to be offline. This message has not been sent." : connectionIssue === "server" ? "Something went wrong on our side and PAIGE didn't get to answer. Your message wasn't sent — try again." : `PAIGE was ${writingPhase ? "writing the response" : "working on your request"} when the six-minute interactive window ended. This chat stopped listening, so I can't confirm whether that work finished or was saved.${retryTurnRef.current && !retryTurnRef.current.live ? " Retry may start the work again." : ""}`}</span>
                 {connectionIssue !== "live-interrupted" && retryTurnRef.current && !retryTurnRef.current.live && <Button type="button" variant="outline" size="sm" disabled={!composerScope.writable || dictationActive} onClick={handleConnectionRetry}>Retry</Button>}
               </div>
             )}

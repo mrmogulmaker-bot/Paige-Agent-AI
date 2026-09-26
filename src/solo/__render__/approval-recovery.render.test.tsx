@@ -146,6 +146,20 @@ const SCENES: Scene[] = [
     ]),
   },
   {
+    label: "One ran, one couldn't confirm",
+    note: "The one that may have gone through says so on its own row, in amber, and nothing offers to ask again.",
+    ask: "Clear out those two old follow-up drafts.",
+    offer: "I found two drafts still waiting on your OK. I can dismiss both of them.",
+    proposal: DRAFTS,
+    answer: sse([
+      frame({ paige_approval_outcome: { actions: [
+        { fingerprint: FP_A, outcome: "ran" },
+        { fingerprint: FP_B, outcome: "unconfirmed", note: "This may have gone through. Check before asking again, so it doesn't happen twice." },
+      ] } }),
+      say("The first one is cleared. I couldn't confirm the second, so check it before asking me again."), DONE,
+    ]),
+  },
+  {
     label: "Couldn't confirm",
     note: "The answer never came back, so it may have worked. Amber, not red, and the step is to check first.",
     ask: "Add Maya Ortiz at Ortiz Landscaping, 118 Birch Street, Austin, Texas 78704.",

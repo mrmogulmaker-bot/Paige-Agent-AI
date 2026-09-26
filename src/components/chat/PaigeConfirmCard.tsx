@@ -73,6 +73,14 @@ const ROW_ICON: Partial<Record<ConfirmActionState, typeof Check>> = {
   unconfirmed: CircleHelp,
 };
 
+/** What each row's icon says, for someone who cannot see it. */
+const ROW_WORD: Partial<Record<ConfirmActionState, string>> = {
+  working: "Running",
+  done: "Done",
+  failed: "Didn't run",
+  unconfirmed: "Couldn't confirm",
+};
+
 /** The seal carries the card's outcome; a mixed batch is a failure until the person acts on it. */
 const SEAL_ICON: Record<CardState, typeof Check> = {
   pending: ShieldQuestion,
@@ -124,6 +132,12 @@ function cardStateOf(actions: ConfirmAction[]): CardState {
 type SharedProps = {
   actions: ConfirmAction[];
   className?: string;
+  /**
+   * Take focus when the card appears, if nothing else holds it — the button that led here (Approve,
+   * or Ask Paige again) is gone. The CARD takes it, never the Approve inside it: a stray Enter must
+   * not approve something the person has not yet read.
+   */
+  focusOnMount?: boolean;
 };
 
 type DecideProps = SharedProps & {
@@ -147,8 +161,6 @@ type ReportProps = SharedProps & {
   recovery?: { onPress: () => void; disabled?: boolean };
   /** Where to check, when something may have gone through. Rendered by the caller (router-owned). */
   check?: ReactNode;
-  /** Take focus when the card appears, if nothing else holds it: the Approve it replaces is gone. */
-  focusOnMount?: boolean;
 };
 
 export type PaigeConfirmCardProps = DecideProps | ReportProps;
@@ -158,7 +170,7 @@ export function PaigeConfirmCard(props: PaigeConfirmCardProps) {
   const report = props.mode === "report";
   const noteId = useId();
   const cardRef = useRef<HTMLDivElement>(null);
-  const focusOnMount = report && props.focusOnMount === true;
+  const focusOnMount = props.focusOnMount === true;
   useEffect(() => {
     if (!focusOnMount) return;
     // Only when focus was lost with the card that went away. Someone who has already moved on —
@@ -192,10 +204,11 @@ export function PaigeConfirmCard(props: PaigeConfirmCardProps) {
     <div
       ref={cardRef}
       role="group"
-      tabIndex={report ? -1 : undefined}
+      tabIndex={report || focusOnMount ? -1 : undefined}
       aria-label={heading}
       aria-describedby={note ? noteId : undefined}
       data-state={cardState}
+      data-card-mode={report ? "report" : "decide"}
       className={cn(
         "mt-2 rounded-xl border p-3.5 transition-colors motion-reduce:transition-none",
         report
@@ -284,6 +297,9 @@ export function PaigeConfirmCard(props: PaigeConfirmCardProps) {
                     ))}
                   <span className="min-w-0">
                     <span className={cn((settled || (!bound && multi)) && "text-muted-foreground")}>
+                      {/* The icon beside a row is hidden from assistive tech, so its state is said
+                          in words: in a mixed card the heading cannot tell which one ran. */}
+                      {multi && ROW_WORD[state] && <span className="sr-only">{ROW_WORD[state]}: </span>}
                       {action.summary}
                     </span>
                     {action.note && (

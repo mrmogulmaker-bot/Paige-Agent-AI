@@ -143,6 +143,34 @@ describe("focus", () => {
   });
 });
 
+describe("each row says what happened to it, in words", () => {
+  it("names every settled row's state for assistive tech, so a mixed card says which one ran", () => {
+    const ui = render(<PaigeConfirmCard mode="report" actions={rows("done", "unconfirmed", "failed")} />);
+    const words = Array.from(ui.host.querySelectorAll("li .sr-only")).map((el) => el.textContent);
+    expect(words).toEqual(["Done: ", "Couldn't confirm: ", "Didn't run: "]);
+  });
+
+  it("adds nothing to a single action, whose heading already says it, or to a card awaiting a decision", () => {
+    expect(render(<PaigeConfirmCard mode="report" actions={rows("done")} />).host.querySelectorAll(".sr-only")).toHaveLength(0);
+    expect(render(<PaigeConfirmCard actions={rows("pending", "pending")} onApprove={vi.fn()} onDeny={vi.fn()} />)
+      .host.querySelectorAll(".sr-only")).toHaveLength(0);
+  });
+});
+
+describe("a fresh card after asking again", () => {
+  it("takes focus itself when nothing holds it — never its Approve, so a stray Enter cannot approve", () => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    const ui = render(<PaigeConfirmCard actions={rows("pending")} onApprove={vi.fn()} onDeny={vi.fn()} focusOnMount />);
+    expect(document.activeElement).toBe(ui.card());
+    expect(document.activeElement?.tagName).not.toBe("BUTTON");
+  });
+
+  it("stays unfocusable, as before, without the option", () => {
+    const ui = render(<PaigeConfirmCard actions={rows("pending")} onApprove={vi.fn()} onDeny={vi.fn()} />);
+    expect(ui.card()?.hasAttribute("tabindex")).toBe(false);
+  });
+});
+
 describe("motion", () => {
   it("is switched off for anyone who asked for reduced motion", () => {
     const ui = render(<PaigeConfirmCard mode="report" actions={rows("done", "failed")} />);

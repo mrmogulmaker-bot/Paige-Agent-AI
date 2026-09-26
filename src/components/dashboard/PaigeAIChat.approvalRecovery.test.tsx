@@ -121,7 +121,7 @@ async function mount(solo = true) {
 const buttons = (host: HTMLElement, label: RegExp) =>
   Array.from(host.querySelectorAll<HTMLButtonElement>("button")).filter((b) => label.test(b.textContent ?? ""));
 const reports = (host: HTMLElement) =>
-  Array.from(host.querySelectorAll<HTMLElement>('[role="group"][tabindex="-1"]'));
+  Array.from(host.querySelectorAll<HTMLElement>('[data-card-mode="report"]'));
 
 async function ask(host: HTMLElement, text = "clear those two drafts") {
   const textarea = host.querySelector("textarea")!;
@@ -192,6 +192,24 @@ describe("PAIGE chat, Solo — after Approve the card answers for what happened"
     const sent = (again?.messages as Array<{ role: string; content: string }>).at(-1);
     expect(sent).toMatchObject({ role: "user", content: "Try again: Dismiss the first draft; Dismiss the second draft" });
     expect(again?.approvedConfirmations).toBeUndefined();
+  });
+
+  it("offers asking again only while that report is the latest thing said — never from an older turn", async () => {
+    server(DRAFTS, sse([
+      frame({ paige_approval_outcome: { note: "It didn't go through.", actions: [{ fingerprint: FP_A, outcome: "not_run" }, { fingerprint: FP_B, outcome: "not_run" }] } }),
+      say("If you still want those cleared, ask me again."), DONE,
+    ]), sse([say("Sure — what's next?"), DONE]));
+    const host = await mount();
+    await ask(host);
+    await press(buttons(host, /^Approve/)[0]);
+    expect(buttons(host, /Ask Paige again/)).toHaveLength(1);
+
+    // The person moves on. The report stays, still saying what happened, but it no longer offers
+    // to redo something the conversation has since gone past.
+    await ask(host, "thanks, never mind those");
+    expect(reports(host)).toHaveLength(1);
+    expect(reports(host)[0].getAttribute("aria-label")).toBe("Didn't run");
+    expect(buttons(host, /Ask Paige again/)).toHaveLength(0);
   });
 
   it("shows a created contact as done, with a receipt that says Added", async () => {
@@ -284,6 +302,53 @@ describe("PAIGE chat, Solo — after Approve the card answers for what happened"
     expect(reports(host)).toHaveLength(0);
     expect(host.textContent).not.toContain("Approved · 2 actions");
     expect(buttons(host, /^Approve 2/)).toHaveLength(1);
+    // Trying again is the Approve that came back. A Retry would resend "Approved — run it." with no
+    // approval in it, and show the record of a decision that never reached Paige.
+    expect(buttons(host, /^Retry$/)).toHaveLength(0);
+  });
+
+  it("keeps the turn when the person stops Paige mid-approval, and never offers Approve again", async () => {
+    server(DRAFTS, new Promise(() => {}));
+    const host = await mount();
+    await ask(host);
+    await press(buttons(host, /^Approve/)[0]);
+    expect(reports(host)[0].getAttribute("aria-label")).toBe("Running…");
+
+    const stop = Array.from(host.querySelectorAll<HTMLButtonElement>("button"))
+      .find((b) => b.getAttribute("aria-label") === "Cancel PAIGE response");
+    await press(stop);
+
+    // The approval may already have run: no card to approve twice, the record and the turn stay.
+    expect(buttons(host, /^Approve/)).toHaveLength(0);
+    expect(host.textContent).toContain("Approved · 2 actions");
+    expect(host.textContent).toContain("Approved — run it.");
+    expect(reports(host)[0].getAttribute("aria-label")).toBe("Couldn't confirm");
+    expect(host.textContent).toContain("Paige couldn't report back, so these may have gone through. Check before asking again.");
+    expect(buttons(host, /^Retry$/)).toHaveLength(0);
+  });
+
+  it("gives focus to the fresh card after Ask Paige again, not to nowhere", async () => {
+    server(DRAFTS,
+      sse([frame({ paige_approval_outcome: {
+        note: "Nothing changed. More than one approval was waiting, so Paige stopped rather than guess.",
+        actions: [{ fingerprint: FP_A, outcome: "not_run" }, { fingerprint: FP_B, outcome: "not_run" }],
+      } }), DONE]),
+      sse([say("Here they are again."), ...DRAFTS.map((c) => frame({ paige_confirm: { ...c, fingerprint: `${c.fingerprint.slice(0, 15)}c` } })), DONE]),
+    );
+    const host = await mount();
+    await ask(host);
+    await press(buttons(host, /^Approve/)[0]);
+
+    const again = buttons(host, /Ask Paige again/)[0];
+    again.focus();
+    expect(document.activeElement).toBe(again);
+    await press(again);
+
+    // The button that was focused is gone; the new card holds focus, and it is the card, not Approve.
+    const fresh = Array.from(host.querySelectorAll<HTMLElement>('[role="group"]'))
+      .find((el) => el.getAttribute("aria-label") === "Needs your OK · 2 actions");
+    expect(fresh).toBeTruthy();
+    expect(document.activeElement).toBe(fresh);
   });
 
   it("undoes a decision that never left because the device is offline, card and all, with no dead Retry", async () => {
@@ -314,6 +379,38 @@ describe("PAIGE chat, Solo — after Approve the card answers for what happened"
     expect(bodies[1]?.declinedConfirmations).toEqual([FP_A, FP_B]);
     expect(host.textContent).toContain("Skipped · nothing changed");
     expect(reports(host)).toHaveLength(0);
+  });
+});
+
+describe("PAIGE chat, Solo — when the interactive window runs out", () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("answers an approval from its card, and names no Retry for a decline it cannot replay", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    server(DRAFTS, new Promise(() => {}), new Promise(() => {}));
+    const host = await mount();
+    await ask(host);
+    await press(buttons(host, /Not now/)[0]);
+    await act(async () => { vi.advanceTimersByTime(360_000); await flush(); });
+
+    // A decline has no outcome card, so it keeps the notice, without a Retry or a sentence about one.
+    expect(host.textContent).toContain("six-minute interactive window ended");
+    expect(host.textContent).not.toContain("Retry may start the work again");
+    expect(buttons(host, /^Retry$/)).toHaveLength(0);
+    expect(host.textContent).toContain("Skipped · nothing changed");
+  });
+
+  it("lets the approval's own card say it couldn't confirm, with no second notice", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    server(DRAFTS, new Promise(() => {}));
+    const host = await mount();
+    await ask(host);
+    await press(buttons(host, /^Approve/)[0]);
+    await act(async () => { vi.advanceTimersByTime(360_000); await flush(); });
+
+    expect(reports(host)[0].getAttribute("aria-label")).toBe("Couldn't confirm");
+    expect(host.textContent).not.toContain("six-minute interactive window ended");
+    expect(buttons(host, /^Retry$/)).toHaveLength(0);
   });
 });
 

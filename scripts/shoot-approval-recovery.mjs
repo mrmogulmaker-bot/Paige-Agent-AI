@@ -93,13 +93,13 @@ function measure(selectors) {
 }
 
 const TEXT = [
-  ["heading", '[role="group"][tabindex="-1"] p.font-semibold'],
-  ["card note", '[role="group"][tabindex="-1"] p[id]'],
-  ["row summary", '[role="group"][tabindex="-1"] li > span > span:first-child'],
-  ["row note", '[role="group"][tabindex="-1"] li span.block'],
-  ["helper", '[role="group"][tabindex="-1"] .mt-3 > span'],
-  ["ask again", '[role="group"][tabindex="-1"] button'],
-  ["check link", '[role="group"][tabindex="-1"] a'],
+  ["heading", '[data-card-mode="report"] p.font-semibold'],
+  ["card note", '[data-card-mode="report"] p[id]'],
+  ["row summary", '[data-card-mode="report"] li > span > span:first-child'],
+  ["row note", '[data-card-mode="report"] li span.block'],
+  ["helper", '[data-card-mode="report"] .mt-3 > span'],
+  ["ask again", '[data-card-mode="report"] button'],
+  ["check link", '[data-card-mode="report"] a'],
   ["record", '[data-paige-message-id] div.rounded-full'],
   ["receipt heading", "[data-paige-crm-result] p.font-medium"],
 ];
@@ -167,8 +167,8 @@ try {
   const rm = await browser.newContext({ viewport: { width: 900, height: 1000 }, reducedMotion: "reduce" });
   const rp = await rm.newPage();
   await rp.goto(`file://${resolve(`${DIR}/approval-recovery.light.html`)}`, { waitUntil: "load" });
-  results.reducedMotionChecked = await rp.evaluate(() => document.querySelectorAll('[role="group"][tabindex="-1"]').length);
-  results.reducedMotion = await rp.evaluate(() => [...document.querySelectorAll('[role="group"][tabindex="-1"], [role="group"][tabindex="-1"] svg')]
+  results.reducedMotionChecked = await rp.evaluate(() => document.querySelectorAll('[data-card-mode="report"]').length);
+  results.reducedMotion = await rp.evaluate(() => [...document.querySelectorAll('[data-card-mode="report"], [data-card-mode="report"] svg')]
     .map((el) => getComputedStyle(el))
     .filter((s) => s.animationName !== "none")
     .map((s) => ({ name: s.animationName, duration: s.animationDuration })));
@@ -182,9 +182,9 @@ for (const [theme, r] of Object.entries(results.themes)) {
   const measured = new Set(r.contrast.map((c) => c.label));
   const missing = TEXT.map(([label]) => label).filter((label) => !measured.has(label));
   if (missing.length) throw new Error(`${theme}: no element matched for ${missing.join(", ")}`);
-  if (r.cards !== 7) throw new Error(`${theme}: only ${r.cards} cards rendered`);
+  if (r.cards !== 8) throw new Error(`${theme}: only ${r.cards} cards rendered`);
 }
-if (results.reducedMotionChecked !== 6) throw new Error(`reduced motion checked only ${results.reducedMotionChecked} cards`);
+if (results.reducedMotionChecked !== 7) throw new Error(`reduced motion checked only ${results.reducedMotionChecked} cards`);
 writeFileSync(`${DIR}/render-results.json`, `${JSON.stringify(results, null, 2)}\n`);
 const worst = Object.entries(results.themes).flatMap(([theme, r]) => r.contrast.map((c) => ({ theme, ...c })))
   .sort((a, b) => a.ratio - b.ratio).slice(0, 6);
